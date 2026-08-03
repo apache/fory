@@ -66,8 +66,11 @@ DATATYPE_ORDER = [
     "mediacontentlist",
 ]
 OPERATIONS = ["serialize", "deserialize"]
-DOCS_HEADER = "# Java Benchmarks"
-JSON_REPORT_LINK = "See the [Java JSON benchmark report](json/) for fory-json, Jackson, and Gson results."
+DOCS_HEADER = "# Java Xlang Serialization Benchmarks"
+JSON_REPORT_LINK = (
+    "See the [Java JSON benchmark report](../../../json/java/README.md) "
+    "for fory-json, Jackson, and Gson results."
+)
 BENCHMARK_PATTERN = re.compile(
     r"(?:^|[.])BM_(?P<serializer>Fory|Protobuf|Flatbuffer)_"
     r"(?P<datatype>NumericStruct|Sample|MediaContent|NumericStructList|SampleList|MediaContentList)_"
@@ -250,22 +253,9 @@ def winner_cell(values: dict) -> str:
     return serializer_title(winner)
 
 
-def build_xlang_section(results: dict, image_name: str) -> str:
+def build_results_section(results: dict, image_name: str) -> str:
     lines = [
-        "## Xlang Benchmark\n\n",
-        (
-            "Run from `benchmarks/java/run.sh`. Raw JMH JSON stays under the ignored local "
-            "`benchmarks/java/reports/` directory; `throughput.png` and this xlang "
-            "section are synced into `docs/benchmarks/object-serialization/xlang/java/`.\n\n"
-        ),
-        "```bash\n",
-        "cd benchmarks/java\n",
-        "./run.sh\n",
-        "```\n\n",
-        (
-            "JMH parameters: `-f 1 -wi 3 -i 3 -t 1 -w 3s -r 3s -bm thrpt -tu s`. "
-            "Higher throughput is better.\n\n"
-        ),
+        "## Results\n\n",
         f"![Java Xlang Serialization Throughput]({image_name})\n\n",
         "| Data type | Operation | "
         + " | ".join(
@@ -299,7 +289,8 @@ def build_xlang_section(results: dict, image_name: str) -> str:
 def write_local_readme(output_dir: Path, section: str) -> Path:
     report_path = output_dir / "README.md"
     report_path.write_text(
-        "# Java Xlang Benchmark Report\n\n" + section, encoding="utf-8"
+        DOCS_HEADER + "\n\n" + JSON_REPORT_LINK + "\n\n" + section,
+        encoding="utf-8",
     )
     run_prettier(report_path)
     return report_path
@@ -320,12 +311,12 @@ def update_docs_readme(docs_output_dir: Path, section: str) -> Path:
                 )
             else:
                 content = JSON_REPORT_LINK + "\n\n" + content
-        marker = "\n## Xlang Benchmark\n"
-        if marker in content:
-            prefix = content.split(marker, 1)[0].rstrip()
-            content = prefix + "\n\n" + section
-        else:
-            content = content + "\n\n" + section
+        result_markers = ("\n## Results\n", "\n## Xlang Benchmark\n")
+        marker = next(
+            (candidate for candidate in result_markers if candidate in content), None
+        )
+        prefix = content.split(marker, 1)[0].rstrip() if marker else content
+        content = prefix + "\n\n" + section
     else:
         content = DOCS_HEADER + "\n\n" + JSON_REPORT_LINK + "\n\n" + section
     docs_readme.write_text(content.rstrip() + "\n", encoding="utf-8")
@@ -343,7 +334,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     results = collect_results(load_json(args.json_file))
     output_path = render_plot(results, str(output_dir))
-    section = build_xlang_section(results, os.path.basename(output_path))
+    section = build_results_section(results, os.path.basename(output_path))
     report_path = write_local_readme(output_dir, section)
     print(f"Generated {report_path}")
     print(f"Generated {output_path}")

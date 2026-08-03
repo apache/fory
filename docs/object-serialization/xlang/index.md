@@ -153,6 +153,11 @@ This generates native language types with consistent field/type mappings across 
 | [Getting Started](../../start/index.md)                   | Installation and basic setup for all languages  |
 | [Type Mapping](../../specification/xlang_type_mapping.md) | Xlang type mapping reference                    |
 | [Type System](type-system.md)                             | Built-in types and cross-runtime type behavior  |
+| [Type Identity](type-identity.md)                         | Coordinate names and numeric IDs across peers   |
+| [Nullability](nullability.md)                             | Nullable field behavior and configuration       |
+| [References](references.md)                               | Shared and circular object references           |
+| [Polymorphism](polymorphism.md)                           | Runtime type selection and registration         |
+| [Schema Evolution](schema-evolution.md)                   | Compatible and same-schema mode choices         |
 | [Zero-Copy](zero-copy.md)                                 | Out-of-band serialization for large data        |
 | [Row Format](../../row-format/index.md)                   | Cache-friendly binary format with random access |
 | [Troubleshooting](troubleshooting.md)                     | Common issues and solutions                     |
