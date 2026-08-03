@@ -133,6 +133,11 @@ public class TypeInference {
    * When type is both iterable and bean, we take it as iterable in row-format. Note circular
    * references in bean class is not allowed.
    *
+   * <p>This is the source of truth for the wrapper-descent grammar (custom codec, Optional,
+   * array/Iterable, map key/value). {@code SchemaHistory.Wrapper.classify} mirrors that subset for
+   * evolution-site discovery; a new wrapper type must be added in both, or nested versioned beans
+   * reachable only through it go undiscovered.
+   *
    * @return DataType of a typeToken
    */
   private static Field inferField(String name, TypeRef<?> typeRef, TypeResolutionContext ctx) {
@@ -256,6 +261,16 @@ public class TypeInference {
               "Unsupported type %s for field %s, seen type set is %s",
               typeRef, name, ctx.getWalkedTypePath()));
     }
+  }
+
+  /**
+   * Infer a single named field from its Java type, used by schema-evolution code paths that need to
+   * reconstruct historical fields by name and type without going through a Java member.
+   */
+  static Field inferNamedField(String name, TypeRef<?> typeRef) {
+    TypeResolutionContext ctx =
+        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
+    return inferField(name, typeRef, ctx);
   }
 
   public static String inferTypeName(TypeRef<?> token) {

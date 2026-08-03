@@ -19,6 +19,8 @@
 
 package org.apache.fory.format.encoder;
 
+import org.apache.fory.Fory;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
@@ -33,18 +35,69 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
   private final BaseBinaryRowWriter writer;
   private final boolean sizeEmbedded;
   private final long schemaHash;
+  private final Fory fory;
+
+  /**
+   * Hash → source able to compile and bind a projection codec for an older version. {@code null}
+   * when schema evolution is disabled; in that case a hash mismatch is a hard error. Shared,
+   * immutable, and built without compiling anything: a combination's codec class is compiled only
+   * the first time its hash is decoded.
+   */
+  private final LongMap<ProjectionSource> projectionSources;
+
+  /**
+   * Per-encoder cache of projection codecs compiled on first decode of their hash. Lock-free: an
+   * encoder is single-threaded (see {@link RowEncoder}), and the underlying class compile is
+   * memoized globally by the shared code generator, so a concurrent first-miss on the same hash in
+   * another encoder compiles the class once.
+   */
+  private final LongMap<ProjectionCodec> projections;
+
   private final MemoryBuffer buffer = MemoryUtils.buffer(16);
+
+  /**
+   * A projection codec and a row factory with the historical schema's layout precomputed so
+   * projection decodes match the current-schema path's per-call cost.
+   */
+  static final class ProjectionCodec {
+    final RowFactory rowFactory;
+    final GeneratedRowEncoder codec;
+
+    ProjectionCodec(RowFactory rowFactory, GeneratedRowEncoder codec) {
+      this.rowFactory = rowFactory;
+      this.codec = codec;
+    }
+  }
+
+  /** Compiles and binds one historical version's projection codec on first decode of its hash. */
+  interface ProjectionSource {
+    ProjectionCodec compile(BaseBinaryRowWriter writer, Fory fory);
+  }
 
   BinaryRowEncoder(
       final Schema schema,
       final GeneratedRowEncoder codec,
       final BaseBinaryRowWriter writer,
       final boolean sizeEmbedded) {
+    this(schema, codec, writer, sizeEmbedded, DataTypes.computeSchemaHash(schema), null, null);
+  }
+
+  BinaryRowEncoder(
+      final Schema schema,
+      final GeneratedRowEncoder codec,
+      final BaseBinaryRowWriter writer,
+      final boolean sizeEmbedded,
+      final long schemaHash,
+      final LongMap<ProjectionSource> projectionSources,
+      final Fory fory) {
     this.schema = schema;
     this.codec = codec;
     this.writer = writer;
     this.sizeEmbedded = sizeEmbedded;
-    this.schemaHash = DataTypes.computeSchemaHash(schema);
+    this.schemaHash = schemaHash;
+    this.projectionSources = projectionSources;
+    this.fory = fory;
+    this.projections = projectionSources == null ? null : new LongMap<>(projectionSources.size);
   }
 
   @Override
@@ -68,27 +121,65 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
     return decode(buffer, sizeEmbedded ? buffer.readInt32() : buffer.remaining());
   }
 
+  @SuppressWarnings("unchecked")
   T decode(final MemoryBuffer buffer, final int size) {
-    final long peerSchemaHash = buffer.readInt64();
-    if (peerSchemaHash != schemaHash) {
+    if (size < 8) {
       throw new ClassNotCompatibleException(
-          String.format(
-              "Schema is not consistent, encoder schema is %s. "
-                  + "self/peer schema hash are %s/%s. "
-                  + "Please check writer schema.",
-              schema, schemaHash, peerSchemaHash));
+          "Row payload too small for an 8-byte schema hash: size=" + size);
     }
+    final long peerSchemaHash = buffer.readInt64();
+    // The 8-byte hash has just been consumed; the row body occupies the remaining bytes.
     final int rowSize = size - 8;
-    final BinaryRow row = writer.newRow();
-    row.pointTo(buffer, buffer.readerIndex(), rowSize);
-    buffer.increaseReaderIndex(rowSize);
-    return fromRow(row);
+    if (peerSchemaHash == schemaHash) {
+      // Hot path: writer.newRow() reuses the writer's cached row layout for the current schema.
+      final BinaryRow row = writer.newRow();
+      row.pointTo(buffer, buffer.readerIndex(), rowSize);
+      buffer.increaseReaderIndex(rowSize);
+      return fromRow(row);
+    }
+    if (projectionSources != null) {
+      ProjectionCodec projection = resolveProjection(peerSchemaHash);
+      if (projection != null) {
+        // The writer is bound to the current schema, so the historical row comes from the
+        // projection's own factory, which carries that schema's precomputed layout.
+        final BinaryRow row = projection.rowFactory.newRow();
+        row.pointTo(buffer, buffer.readerIndex(), rowSize);
+        buffer.increaseReaderIndex(rowSize);
+        return (T) projection.codec.fromRow(row);
+      }
+    }
+    throw new ClassNotCompatibleException(
+        String.format(
+            "Schema is not consistent, encoder schema is %s. "
+                + "self/peer schema hash are %x/%x. "
+                + "Please check writer schema.",
+            schema, schemaHash, peerSchemaHash));
   }
 
   @Override
   public T decode(final byte[] bytes) {
-    // byte[] overloads ignore sizeEmbedded: encode writes no size prefix, decode uses bytes.length.
+    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (the schema-hash prefix
+    // is part of the body, not framing), so decode takes the size from bytes.length.
     return decode(MemoryUtils.wrap(bytes), bytes.length);
+  }
+
+  /**
+   * The projection codec for {@code peerSchemaHash}, or {@code null} if no historical version has
+   * that hash. Compiles the codec on first encounter and caches it for the rest of this encoder's
+   * life. Single-threaded by the {@link RowEncoder} contract, so the cache needs no locking.
+   */
+  private ProjectionCodec resolveProjection(final long peerSchemaHash) {
+    ProjectionCodec cached = projections.get(peerSchemaHash);
+    if (cached != null) {
+      return cached;
+    }
+    ProjectionSource source = projectionSources.get(peerSchemaHash);
+    if (source == null) {
+      return null;
+    }
+    ProjectionCodec projection = source.compile(writer, fory);
+    projections.put(peerSchemaHash, projection);
+    return projection;
   }
 
   @Override
