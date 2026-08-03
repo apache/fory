@@ -70,8 +70,14 @@ RELEASE_DOC_ROOTS = (
     "csharp/README.md",
     "swift/README.md",
     "dart/packages/fory/README.md",
+    "docs/introduction",
+    "docs/start",
+    "docs/object-serialization",
+    "docs/row-format",
+    "docs/json",
     "docs/compiler",
-    "docs/guide",
+    "docs/grpc",
+    "docs/development",
     "examples",
 )
 RELEASE_DOC_EXTS = (".md", ".example")
@@ -756,7 +762,7 @@ def bump_csharp_version(new_version):
         _update_csharp_readme_package_version,
     )
     _bump_version(
-        "docs/guide/csharp",
+        "docs/object-serialization/csharp",
         "index.md",
         release_version or new_version,
         _update_csharp_readme_package_version,

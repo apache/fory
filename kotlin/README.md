@@ -87,20 +87,20 @@ Android projects should use `fory-kotlin` for Kotlin runtime serializers and
 `fory-kotlin-ksp` for Kotlin xlang/schema structs. Validate Android behavior
 with a minified release build because debug builds do not prove R8 reachability.
 
-See [Kotlin Android Support](../docs/guide/kotlin/android-support.md) for the
-Android setup and [Kotlin Static Generated Serializers](../docs/guide/kotlin/static-generated-serializers.md)
+See [Kotlin Android Support](../docs/object-serialization/java/android.md) for the
+Android setup and [Kotlin Static Generated Serializers](../docs/object-serialization/kotlin/static-generated-serializers.md)
 for the generated serializer model.
 
 If an Android app also contains Java `@ForyStruct` classes, configure the Java
 annotation processor described in
-[Java Static Generated Serializers](../docs/guide/java/static-generated-serializers.md).
+[Java Static Generated Serializers](../docs/object-serialization/java/static-generated-serializers.md).
 
 ## Documentation
 
-- [Kotlin Guide](../docs/guide/kotlin/index.md)
-- [Kotlin Static Generated Serializers](../docs/guide/kotlin/static-generated-serializers.md)
-- [Kotlin Android Support](../docs/guide/kotlin/android-support.md)
-- [Java Guide](../docs/guide/java/index.md)
+- [Kotlin Guide](../docs/object-serialization/kotlin/index.md)
+- [Kotlin Static Generated Serializers](../docs/object-serialization/kotlin/static-generated-serializers.md)
+- [Kotlin Android Support](../docs/object-serialization/java/android.md)
+- [Java Guide](../docs/object-serialization/java/index.md)
 
 ## Build
 

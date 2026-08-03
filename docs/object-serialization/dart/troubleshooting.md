@@ -1,0 +1,224 @@
+---
+title: Troubleshooting
+sidebar_position: 90
+id: troubleshooting
+license: |
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+---
+
+This page covers common Dart issues and fixes.
+
+## `Only xlang payloads are supported by the Dart implementation.`
+
+The writer is sending a native-mode payload. Make sure every peer writes the xlang wire format:
+
+- **Java**: configure the peer for xlang mode instead of native mode.
+- **Go**: configure the peer for xlang mode.
+- **Other languages**: check their respective guides for xlang mode.
+
+## `Type ... is not registered.`
+
+Fory does not know how to serialize or deserialize this type. Fix it by:
+
+1. Running code generation if you haven't: `dart run build_runner build`
+2. Calling the generated `register` function (or `registerSerializer`) for the type **before** calling `serialize` or `deserialize`.
+3. Registering **all** types that appear in a message, not just the root type. For example, if `Order` contains an `Address`, register both.
+
+## Generated part file is missing or stale
+
+Regenerate code:
+
+```bash
+dart run build_runner build
+```
+
+Run the command from the package that owns the source. If a dependency exposes
+private hierarchy fields, generate that provider package first and ensure its
+published source contains the generated `.fory.dart` part, then regenerate the
+consumer. If you moved files, renamed types, or changed a hierarchy, rebuild
+before re-running analysis or tests.
+
+## Inherited private field is not accessible
+
+Ordinary hierarchy discovery includes private storage even when it is declared
+in another Dart library. Privacy affects generated access, not whether the
+field exists in the schema.
+
+Same-library private fields need no parent annotation. For a cross-library
+field, expose it from its declaring library with `exposePrivateFields: true` and
+make the generated companion visible to the child. If the child intentionally
+excludes all private ancestor state, set
+`ignoreInheritedPrivateFields: true` on that child instead.
+
+See [Struct Inheritance](inheritance.md) for complete access, omission, and
+multi-library rules.
+
+## Final inherited field cannot be reconstructed
+
+A final or `late final` field that remains in the schema must receive its
+decoded value
+unchanged from a parameter of the concrete child's selected generative
+constructor. Fory can follow initializing formals, super formals, redirects,
+and direct constructor initializers across the hierarchy.
+
+A parameter with the same name and type is insufficient if it is unused or its
+value is cast, transformed, or passed through a function. Forward the decoded
+value directly to the exact field, mark the field declaration with
+`@ForyField(ignore: true)`, or use a custom serializer. If
+`ignoreInheritedPrivateFields` removes the only serialized source for a
+required constructor parameter, Fory still reports this error rather than
+inventing a value. See
+[Constructors and Final Fields](inheritance.md#constructors-and-final-fields).
+
+## Inherited field is hidden
+
+A subclass field or accessor can hide an included ancestor storage slot while
+both physical slots remain on the object. Fory rejects this shape instead of
+choosing one slot and losing the other. Rename or remove the hiding member,
+ignore the ancestor field at its declaration, or use a custom serializer. For
+private ancestor state, setting `ignoreInheritedPrivateFields: true` omits all
+private ancestor storage from that child schema.
+
+## External target generation fails
+
+An external structural serializer requires:
+
+- an `abstract final` serializer declaration with `late final` schema fields;
+- a concrete imported target class;
+- an accessible target getter with the same name and exact Dart type for every
+  field;
+- a public generative constructor whose parameters map to fields, or a
+  zero-required-argument constructor plus matching setters.
+
+Select a public named constructor with
+`@ForyStruct(target: Type, constructor: 'name')`. Use a
+[custom serializer](custom-serializers.md) when the target requires a factory,
+private state, field conversion, or name translation.
+
+## `Deserialized value has type ..., expected ...`
+
+The payload describes a different type than `T` in `deserialize<T>`. Common causes:
+
+- You registered the type on the writing side with a different ID or name than on the reading side.
+- The payload was produced by a different code path that serializes a different root object.
+- You are trying to deserialize a heterogeneous container — decode it as `Object?` or `List<Object?>` first, then cast.
+
+## Objects aren't the same instance after deserialization
+
+Fory does not track object identity by default, so two fields pointing to the same object will produce two independent copies after a round trip.
+
+To preserve identity:
+
+- For fields inside a `@ForyStruct`, add `@ForyField(ref: true)` to those fields.
+- For a top-level collection, pass `trackRef: true` to `fory.serialize(...)`.
+- In a custom serializer, use `context.writeRef` / `context.readRef` and call `context.reference(obj)` before reading nested fields.
+
+## Cross-language field mismatch (missing data or wrong values)
+
+Symptoms: fields come back as default values or wrong types after a round trip to another language.
+
+Checklist:
+
+1. Same registration identity on both sides (same numeric ID **or** same `name`).
+2. Stable `@ForyField(id: ...)` assigned before the first payload was produced.
+3. Compatible numeric widths — use `@ForyField(type: Int32Type())` in Dart when the peer field is `int` (Java), `int32` (Go), or `int` (C#).
+4. `Timestamp` / `LocalDate` instead of raw `DateTime` for date/time fields.
+5. Compatible schema evolution on both sides. Dart enables it by default; make sure peers have not explicitly selected `compatible: false`.
+
+## Int64 or Uint64 values fail on web
+
+On Dart VM builds, Dart `int` can represent signed 64-bit values. On Dart web
+builds, Dart `int` values are backed by JavaScript numbers and are only precise
+inside the JS-safe integer range:
+
+```text
+-9007199254740991 <= value <= 9007199254740991
+```
+
+If a generated serializer writes an `int64` field declared as Dart `int`,
+web builds reject values outside that range instead of silently writing
+corrupted bytes. To exchange full signed 64-bit values on web, declare the
+field as Fory's `Int64` wrapper:
+
+```dart
+@ForyStruct()
+class LedgerEntry {
+  LedgerEntry();
+
+  Int64 sequence = Int64(0); // full signed 64-bit range on VM and web
+}
+```
+
+For unsigned 64-bit values, prefer `Uint64` rather than Dart `int`. Dart `int`
+cannot represent the full `uint64` range on either VM or web:
+
+```dart
+@ForyStruct()
+class FileBlock {
+  FileBlock();
+
+  Uint64 offset = Uint64(0); // full unsigned 64-bit range
+}
+```
+
+`@ForyField(type: Int64Type(...))` changes the wire encoding for a Dart `int`
+field, but it does not remove the web integer precision limit. Use `Int64` for
+full-range signed values and `Uint64` for full-range unsigned values. See
+[Web Platform Support](web-platform-support.md) for the full browser support
+matrix and platform guidance.
+
+## Running Tests Locally
+
+Main Dart package:
+
+```bash
+dart run build_runner build
+dart analyze
+dart test
+```
+
+Integration test package:
+
+```bash
+cd dart/packages/fory-test
+dart run build_runner build
+dart test
+```
+
+## Generated gRPC files cannot find `package:grpc` types
+
+**Cause**: gRPC packages are application dependencies. The `fory` package does
+not add gRPC as a hard dependency.
+
+**Fix**: Add `grpc` to your `pubspec.yaml` (and the `build_runner` dev
+dependency), then run `dart pub get`. See [gRPC Support](../../grpc/dart.md).
+
+## A protobuf client cannot decode a Fory gRPC service
+
+**Cause**: Fory gRPC companions use gRPC transports with Fory-encoded message
+bodies, not protobuf wire encoding.
+
+**Fix**: Use a Fory-generated client for Fory-generated services, or expose a
+separate protobuf service endpoint for generic protobuf clients.
+
+## Related Topics
+
+- [Struct Inheritance](inheritance.md)
+- [Xlang Serialization](xlang.md)
+- [Code Generation](code-generation.md)
+- [Custom Serializers](custom-serializers.md)
+- [Web Platform Support](web-platform-support.md)
+- [gRPC Support](../../grpc/dart.md)

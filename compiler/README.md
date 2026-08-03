@@ -18,8 +18,8 @@ For comprehensive documentation, see the [FDL Schema Guide](../docs/compiler/ind
 
 - [FDL Syntax Reference](../docs/compiler/schema-idl.md) - Complete language syntax and grammar
 - [Type System](../docs/compiler/schema-idl.md#type-system) - Primitive types, collections, and language mappings
-- [Compiler Guide](../docs/compiler/compiler-guide.md) - CLI options and build integration
-- [Generated Code](../docs/compiler/generated-code.md) - Output format for each target language
+- [Compiler Guide](../docs/compiler/cli.md) - CLI options and build integration
+- [Generated Code](../docs/compiler/generated-code/index.md) - Output format for each target language
 - [Protocol Buffers vs FDL](../docs/compiler/protobuf-idl.md) - Feature comparison and porting guide
 
 ## Installation

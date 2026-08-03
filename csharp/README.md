@@ -127,7 +127,7 @@ public sealed class User : Entity
 
 An inaccessible base member is serialized only when it has `[ForyField]`.
 Unmodifiable third-party bases use an external `BaseOnly` declaration. See the
-[class inheritance guide](https://fory.apache.org/docs/guide/csharp/basic-serialization/#class-inheritance).
+[class inheritance guide](https://fory.apache.org/docs/object-serialization/csharp/core-api/#class-inheritance).
 
 ### 3. Shared and Circular References
 
@@ -236,7 +236,7 @@ ThirdParty.User decoded = fory.Deserialize<ThirdParty.User>(payload);
 ```
 
 The target is the runtime and registration type. See the
-[external-types guide](https://fory.apache.org/docs/guide/csharp/external-types/).
+[external-types guide](https://fory.apache.org/docs/object-serialization/csharp/external-types/).
 
 ### 8. Custom Serializers
 
@@ -278,10 +278,10 @@ Fory fory = Fory.Builder()
 fory.Register<Person>(100); // same ID on other language peers
 ```
 
-See [xlang guide](https://fory.apache.org/docs/guide/xlang/) for mapping details.
+See [xlang guide](https://fory.apache.org/docs/object-serialization/xlang/) for mapping details.
 
 ## Documentation
 
-- [C# guide index](https://fory.apache.org/docs/guide/csharp/)
+- [C# guide index](https://fory.apache.org/docs/object-serialization/csharp/)
 - [Cross-language serialization spec](https://fory.apache.org/docs/specification/xlang_serialization_spec/)
 - [Cross-language type mapping](https://fory.apache.org/docs/specification/xlang_type_mapping/)

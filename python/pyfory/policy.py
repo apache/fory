@@ -141,7 +141,7 @@ class DeserializationPolicy:
     See Also
     --------
     - Python's pickle module security warnings: https://docs.python.org/3/library/pickle.html
-    - Fory Python security guide: https://fory.apache.org/docs/guide/python/security
+    - Object serialization security guide: https://fory.apache.org/docs/object-serialization/security
     """
 
     # ============================================================================

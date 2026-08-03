@@ -1,0 +1,163 @@
+---
+title: Configuration
+sidebar_position: 4
+id: configuration
+license: |
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+---
+
+Fory JavaScript is an xlang-only implementation. `new Fory()` writes xlang payloads and uses compatible
+schema evolution by default. There is no native-mode switch in the JavaScript API.
+
+## Basic Configuration
+
+```ts
+import Fory from "@apache-fory/core";
+
+const fory = new Fory();
+```
+
+Create one `Fory` instance per application area and reuse it. Registration generates and caches
+serializer code for each schema.
+
+## Constructor Options
+
+```ts
+import Fory from "@apache-fory/core";
+import hps from "@apache-fory/hps";
+
+const fory = new Fory({
+  ref: true,
+  compatible: true,
+  maxDepth: 100,
+  maxGraphMemoryBytes: 128 * 1024 * 1024,
+  maxUnbackedContainerItems: 8192,
+  maxTypeFields: 512,
+  maxTypeMetaBytes: 4096,
+  maxSchemaVersionsPerType: 10,
+  maxAverageSchemaVersionsPerType: 3,
+  hps,
+});
+```
+
+| Option                            | Default   | Description                                                                           |
+| --------------------------------- | --------- | ------------------------------------------------------------------------------------- |
+| `ref`                             | `false`   | Enable reference tracking for shared or circular object graphs                        |
+| `compatible`                      | `true`    | Allow field additions/removals without breaking existing messages                     |
+| `maxDepth`                        | `50`      | Maximum nesting depth. Must be `>= 2`. Increase for deeply nested structures          |
+| `maxGraphMemoryBytes`             | `128 MiB` | Approximate graph-memory gate accepted during one root deserialization                |
+| `maxUnbackedContainerItems`       | `8192`    | Unbacked collection elements and map entries allowed during one root deserialization  |
+| `maxTypeFields`                   | `512`     | Maximum fields accepted in one received remote struct metadata body                   |
+| `maxTypeMetaBytes`                | `4096`    | Maximum encoded body bytes accepted for one received TypeMeta body                    |
+| `maxSchemaVersionsPerType`        | `10`      | Maximum accepted remote metadata versions for one logical type                        |
+| `maxAverageSchemaVersionsPerType` | `3`       | Average accepted remote metadata versions across accepted remote types                |
+| `useSliceString`                  | `false`   | Optional string-reading optimization for Node.js. Leave at default unless benchmarked |
+| `hps`                             | unset     | Optional fast string helper from `@apache-fory/hps` (Node.js 20+)                     |
+| `hooks.afterCodeGenerated`        | unset     | Callback to inspect the generated serializer code, useful for debugging               |
+
+## Reference Tracking
+
+Global reference tracking must be enabled before field-level reference metadata can take effect:
+
+```ts
+const fory = new Fory({ ref: true });
+```
+
+Then mark reference-tracked fields in the schema, for example with
+`Type.struct("example.node").setTrackingRef(true)`. See [References](references.md) and
+[Schema Metadata](schema-metadata.md).
+
+## Compatible Schema Evolution
+
+Compatible mode is the default. To use faster serialization and smaller size:
+
+```ts
+const fory = new Fory({ compatible: false });
+```
+
+Use compatible mode for rolling upgrades, independently deployed services, and
+cross-language payloads. Use `compatible: false` only when every reader and
+writer always uses the same struct schema and you want faster serialization and
+smaller size. For individual structs, `evolving: false` applies the same opt-out
+to that struct. For cross-language payloads, set `compatible: false` only after
+verifying that every language uses the same schema, or when native types are
+generated from Fory schema IDL. See [Schema Evolution](schema-evolution.md).
+
+## Graph Memory Budget
+
+`maxGraphMemoryBytes` sets an approximate graph-memory gate for one root deserialization. The
+estimate mainly covers materialized arrays, sets, maps, structs, and objects. It skips leaf values
+such as strings, binary data, primitive scalars, and dense primitive arrays, so actual JavaScript
+heap use can be higher than this value. Leaf values remain protected by byte-availability checks: if
+the unread input does not contain enough bytes, Fory will not read or create that leaf value. The
+default is a fixed `128 MiB` and is not derived from input size.
+
+Use a positive byte value to set an explicit lower or higher limit:
+
+```ts
+const fory = new Fory({
+  maxGraphMemoryBytes: 32 * 1024 * 1024,
+});
+```
+
+Explicit non-positive values are rejected when the runtime is created.
+
+String, binary, and dedicated dense primitive array payloads keep their normal
+byte-size checks and do not consume this graph budget. Raise the limit only for
+trusted workloads that legitimately contain very compact object graphs.
+
+## Unbacked Container Work Budget
+
+`maxUnbackedContainerItems` limits collection elements and map entries whose
+repeated read bodies do not consume proportional input during one root
+deserialization. The default is `8192`; zero is a strict limit. Raise it only
+for trusted payloads that intentionally use compact zero-byte codecs.
+
+## Optional HPS String Path
+
+`@apache-fory/hps` provides an optional Node.js string fast path:
+
+```ts
+import hps from "@apache-fory/hps";
+
+const fory = new Fory({ hps });
+```
+
+Leave this unset unless you run on Node.js 20+ and have benchmarked your workload.
+
+## Security
+
+Security-related configuration:
+
+- Register only the expected schemas before deserializing untrusted payloads.
+- Set `maxDepth` for the maximum nesting depth your service accepts.
+- Set `maxGraphMemoryBytes` as an approximate gate for collection, map, array, struct, and
+  object-heavy payloads. It is not an exact heap cap; leaf values are gated by remaining input
+  bytes.
+- Keep `maxTypeFields` and `maxTypeMetaBytes` at their defaults unless the data
+  is not malicious and a trusted peer sends larger remote metadata.
+- Keep `maxSchemaVersionsPerType` and
+  `maxAverageSchemaVersionsPerType` at their defaults unless the data is not
+  malicious and a trusted peer sends many remote schema versions.
+- Prefer explicit `Type.struct(...)` schemas over `Type.any()` for untrusted input.
+- Pass `hps` only from the official package version you deploy with Fory.
+
+## Related Topics
+
+- [Basic Serialization](core-api.md)
+- [Schema Metadata](schema-metadata.md)
+- [Schema Evolution](schema-evolution.md)
+- [References](references.md)

@@ -10,11 +10,11 @@ ecosystem.
 
 ## Choose a Format
 
-| Format                          | Use it when                                                                      | Module        | Guide                                                 |
-| ------------------------------- | -------------------------------------------------------------------------------- | ------------- | ----------------------------------------------------- |
-| **Binary Object Serialization** | You need compact object graphs in Java native mode or across supported languages | `fory-core`   | [Java guide](../docs/guide/java/)                     |
-| **Row Format**                  | You need zero-copy random access, partial reads, or Arrow integration            | `fory-format` | [Row-format guide](../docs/guide/java/row-format.md)  |
-| **Fory JSON**                   | You need high-throughput standard JSON for Java applications                     | `fory-json`   | [Fory JSON guide](../docs/guide/java/json-support.md) |
+| Format                          | Use it when                                                                      | Module        | Guide                                            |
+| ------------------------------- | -------------------------------------------------------------------------------- | ------------- | ------------------------------------------------ |
+| **Binary Object Serialization** | You need compact object graphs in Java native mode or across supported languages | `fory-core`   | [Java guide](../docs/object-serialization/java/) |
+| **Row Format**                  | You need zero-copy random access, partial reads, or Arrow integration            | `fory-format` | [Row-format guide](../docs/row-format/java.md)   |
+| **Fory JSON**                   | You need high-throughput standard JSON for Java applications                     | `fory-json`   | [Fory JSON guide](../docs/json/index.md)         |
 
 Keep all Fory modules in one application on the same version.
 
@@ -64,14 +64,14 @@ Keep all Fory modules in one application on the same version.
 
 ## Documentation
 
-| Topic                       | Description                                   | Source Doc Link                                                                | Website Doc Link                                                                              |
-| --------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| **Java Guide**              | Binary xlang and native mode usage            | [docs/guide/java](../docs/guide/java)                                          | [Java Guide](https://fory.apache.org/docs/guide/java/)                                        |
-| **Row Format**              | Random access and Arrow integration           | [row-format.md](../docs/guide/java/row-format.md)                              | [Row Format](https://fory.apache.org/docs/guide/java/row_format)                              |
-| **Fory JSON**               | JSON usage, object mapping, and configuration | [json-support.md](../docs/guide/java/json-support.md)                          | [Fory JSON](https://fory.apache.org/docs/guide/java/json_support)                             |
-| **GraalVM Native Image**    | Native image support                          | [graalvm-support.md](../docs/guide/java/graalvm-support.md)                    | [GraalVM Support](https://fory.apache.org/docs/guide/java/graalvm_support)                    |
-| **Java Serialization Spec** | Binary protocol specification                 | [java_serialization_spec.md](../docs/specification/java_serialization_spec.md) | [Java Serialization Spec](https://fory.apache.org/docs/specification/java_serialization_spec) |
-| **Java Benchmarks**         | Performance data and plots                    | [java/README.md](../docs/benchmarks/java/README.md)                            | [Java Benchmarks](https://fory.apache.org/docs/benchmarks/java)                               |
+| Topic                       | Description                                   | Source Doc Link                                                                         | Website Doc Link                                                                              |
+| --------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **Java Guide**              | Binary xlang and native mode usage            | [Java Object Serialization](../docs/object-serialization/java/index.md)                 | [Java Guide](https://fory.apache.org/docs/object-serialization/java/)                         |
+| **Row Format**              | Random access and Arrow integration           | [Java Row Format](../docs/row-format/java.md)                                           | [Row Format](https://fory.apache.org/docs/row-format/java)                                    |
+| **Fory JSON**               | JSON usage, object mapping, and configuration | [Fory JSON](../docs/json/index.md)                                                      | [Fory JSON](https://fory.apache.org/docs/json/)                                               |
+| **GraalVM Native Image**    | Native image support                          | [GraalVM Native Image](../docs/object-serialization/java/graalvm.md)                    | [GraalVM Support](https://fory.apache.org/docs/object-serialization/java/graalvm)             |
+| **Java Serialization Spec** | Binary protocol specification                 | [java_serialization_spec.md](../docs/specification/java_serialization_spec.md)          | [Java Serialization Spec](https://fory.apache.org/docs/specification/java_serialization_spec) |
+| **Java Benchmarks**         | Performance data and plots                    | [Java Native Benchmarks](../docs/benchmarks/object-serialization/native/java/README.md) | [Java Benchmarks](https://fory.apache.org/docs/benchmarks/object-serialization/native/java/)  |
 
 ## Modules
 
@@ -287,7 +287,7 @@ Fory fory = Fory.builder()
   .build();
 ```
 
-See the [Java guide](../docs/guide/java/) for detailed configuration options.
+See the [Java guide](../docs/object-serialization/java/) for detailed configuration options.
 
 ### JDK Custom Serialization Semantics
 
@@ -418,7 +418,7 @@ public final class RowExample {
 }
 ```
 
-See the [Java row-format guide](../docs/guide/java/row-format.md) for nested
+See the [Java row-format guide](../docs/row-format/java.md) for nested
 structs, arrays, maps, partial deserialization, and Arrow integration.
 
 ## Fory JSON
@@ -466,7 +466,7 @@ public final class JsonExample {
 
 Fory JSON supports Java 8 and later on standard JDKs, GraalVM native images,
 and Android. Java records are supported on Java 17 and later. See the
-[Fory JSON guide](../docs/guide/java/json-support.md) for supported types,
+[Fory JSON guide](../docs/json/index.md) for supported types,
 annotations, custom codecs, security controls, and platform setup.
 
 ## GraalVM Native Image
@@ -485,7 +485,7 @@ mvn package -Pnative
 ./target/my-app
 ```
 
-See [GraalVM Support](../docs/guide/java/graalvm-support.md) for details.
+See [GraalVM Support](../docs/object-serialization/java/graalvm.md) for details.
 
 ## Development
 

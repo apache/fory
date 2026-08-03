@@ -24,7 +24,7 @@ DATA_FILTER=""
 SERIALIZER_FILTER=""
 DURATION_SECONDS="3"
 REPORT_DIR="${SCRIPT_DIR}/reports"
-DOCS_OUTPUT_DIR="${SCRIPT_DIR}/../../docs/benchmarks/java"
+DOCS_OUTPUT_DIR="${SCRIPT_DIR}/../../docs/benchmarks/object-serialization/xlang/java"
 SKIP_BUILD="false"
 GENERATE_REPORT="true"
 
@@ -41,7 +41,7 @@ Options:
   --reports-dir <dir>          Local directory for benchmark_results.json and throughput.png
                                (default: reports)
   --output-dir <dir>           Docs directory for copied throughput.png and README xlang section
-  --no-copy-docs               Skip copying xlang report artifacts into docs/benchmarks/java
+  --no-copy-docs               Skip copying xlang report artifacts into docs/benchmarks/object-serialization/xlang/java
   --skip-build                 Reuse an existing target/benchmarks.jar
   --no-report                  Do not generate throughput.png
   --help                       Show this help

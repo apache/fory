@@ -256,7 +256,7 @@ def build_xlang_section(results: dict, image_name: str) -> str:
         (
             "Run from `benchmarks/java/run.sh`. Raw JMH JSON stays under the ignored local "
             "`benchmarks/java/reports/` directory; `throughput.png` and this xlang "
-            "section are synced into `docs/benchmarks/java/`.\n\n"
+            "section are synced into `docs/benchmarks/object-serialization/xlang/java/`.\n\n"
         ),
         "```bash\n",
         "cd benchmarks/java\n",

@@ -102,7 +102,7 @@ go test -bench=BenchmarkFory_NumericStruct -benchmem
 
 Example results on Apple M1 Pro:
 
-![Combined Benchmark](../../docs/benchmarks/go/throughput.png)
+![Combined Benchmark](../../docs/benchmarks/object-serialization/xlang/go/throughput.png)
 
 | Data Type         | Operation   | Fory (ops/s) | Protobuf (ops/s) | Msgpack (ops/s) | Fory vs PB | Fory vs MP |
 | ----------------- | ----------- | ------------ | ---------------- | --------------- | ---------- | ---------- |

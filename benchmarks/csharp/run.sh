@@ -21,7 +21,7 @@ export ENABLE_FORY_DEBUG_OUTPUT=0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
-DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/csharp"
+DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/object-serialization/xlang/csharp"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -52,7 +52,7 @@ Options:
   --duration <seconds>         Measure duration per benchmark (default: 3)
   --warmup <seconds>           Warmup duration per benchmark (default: 1)
   --output-dir <dir>           Base directory for benchmark outputs
-  --no-copy-docs               Skip copying report/plots into docs/benchmarks/csharp
+  --no-copy-docs               Skip copying report/plots into docs/benchmarks/object-serialization/xlang/csharp
   --external-equivalence       Run ordinary/external Fory equivalence cases
   --allocation-iterations <n>  Allocation operations per equivalence case (default: 100000)
   --baseline-worktree <dir>    Dedicated apache/main worktree for equivalence runs

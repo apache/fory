@@ -1305,7 +1305,7 @@ Apache License 2.0. See [LICENSE](https://github.com/apache/fory/blob/main/LICEN
 
 ## Links
 
-- **Documentation**: https://fory.apache.org/docs/guide/python/
+- **Documentation**: https://fory.apache.org/docs/object-serialization/python/
 - **GitHub**: https://github.com/apache/fory
 - **PyPI**: https://pypi.org/project/pyfory/
 - **Issues**: https://github.com/apache/fory/issues

@@ -9,10 +9,11 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - `.agents/docs-and-formatting.md`: documentation, specification, and markdown rules.
 - `.agents/ci-and-pr.md`: code review workflow, CI triage, PR expectations, and commit conventions.
 - `.agents/testing/integration-tests.md`: `integration_tests/` prerequisites, regeneration rules, and commands.
-- `docs/security/index.md`: security model index.
-- `docs/security/threat-model.md`: project-level trust boundaries, non-goals,
-  and downstream responsibilities.
-- `docs/security/deserialization.md`: security boundaries for untrusted deserialization classification.
+- `docs/object-serialization/security.md`: user-facing security guidance for binary object
+  serialization.
+- `docs/json/security.md`: user-facing security guidance for Fory JSON.
+- `docs/object-serialization/deserialization-security-model.md`: implementation boundaries for
+  untrusted deserialization classification.
 - `.agents/languages/java.md`
 - `.agents/languages/csharp.md`
 - `.agents/languages/cpp.md`
@@ -33,7 +34,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Respect ownership. Keep logic, state, and helpers in their natural owner, and do not move serializer-local, context-local, runtime-type-local, or protocol-local problems into global utilities.
 - Check the spec before implementation. For wire behavior and xlang mapping, use the specs as the source of truth and never copy one runtime's bug into another runtime just to make tests pass.
 - Do not make assumptions about runtime behavior, ownership, registration, metadata construction, protocol semantics, or test coverage. Read the current code, owning docs/specs, and relevant tests before making a design judgment or implementation decision. If the evidence is incomplete, inspect more or state the uncertainty explicitly instead of filling gaps from memory or analogy with another runtime.
-- For untrusted deserialization, read `docs/security/deserialization.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve backing/output capacity from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent. Root graph memory reservation is accounting only and may happen before that byte check, but it must not replace the byte check.
+- For untrusted deserialization, read `docs/object-serialization/deserialization-security-model.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve backing/output capacity from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent. Root graph memory reservation is accounting only and may happen before that byte check, but it must not replace the byte check.
 - Malformed input must surface as a controlled root-operation error and still run
   root cleanup, but the exact exception type, error code, message, detection
   layer, and detection point are not contracts unless a public API or
@@ -164,7 +165,8 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 
 ## Design Integrity Gates
 
-- Record all core design and decisions in the owning docs when they belong there, especially under `docs/guide/**` or `docs/specification/**`.
+- Record all core design and decisions in the owning docs when they belong there, especially under
+  `docs/object-serialization/**`, the relevant capability directory, or `docs/specification/**`.
 - Do not allow implementation drift from the design document.
 - Do not compromise design decisions to make implementation easier.
 - Do not leave workaround code behind.
@@ -220,10 +222,12 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 
 ## Source of Truth
 
-- Primary references: `README.md`, `CONTRIBUTING.md`, `docs/DEVELOPMENT.md`, and language guides under `docs/guide/`.
+- Primary references: `README.md`, `CONTRIBUTING.md`, `docs/development/building.md`, and the
+  capability-first documentation under `docs/`.
 - Protocol changes require reading and updating the relevant specs in `docs/specification/**` and aligning the relevant cross-language tests.
 - If instructions conflict, follow the most specific module docs and call out the conflict.
-- `docs/DEVELOPMENT.md` plus updates under `docs/guide/` and `docs/benchmarks/` are synced to `apache/fory-site`; other website content belongs there.
+- The `docs/` tree is the canonical source for the website's Introduction, Getting Started,
+  Benchmarks, capability guides, development guides, and separate Specification surface.
 - When benchmark logic, scripts, configuration, or compared serializers change, rerun the relevant benchmarks and refresh the artifacts under `docs/benchmarks/**`.
 
 ## Shared Engineering Expectations
@@ -327,8 +331,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 
 ## Security
 
-Security models start at `docs/security/index.md`. Read
-`docs/security/threat-model.md` for project-level trust boundaries, non-goals,
-and downstream responsibilities. For untrusted deserialization, read
-`docs/security/deserialization.md` before reporting or changing allocation,
-stream filling, skip, reference, metadata, or policy validation behavior.
+User-facing security guidance lives only under Object Serialization and Fory JSON. Read
+`docs/object-serialization/security.md` or `docs/json/security.md` for the selected product. Before
+reporting or changing allocation, stream filling, skip, reference, metadata, or policy validation
+behavior, read `docs/object-serialization/deserialization-security-model.md`.

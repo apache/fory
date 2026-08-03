@@ -1,6 +1,6 @@
 ---
 title: Overview
-sidebar_position: 1
+sidebar_position: 0
 id: index
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -96,15 +96,9 @@ foryc animals.fdl --java_out=./generated/java --python_out=./generated/python --
 ```
 
 The generated service code uses normal gRPC APIs, but request and response
-objects are serialized with Fory. Applications provide their own grpc-java,
-grpc-kotlin, Scala grpc-java APIs, `grpcio`, grpc-go, Rust `tonic` and `bytes`,
-gRPC C++ 1.39.0 or later, C# `Grpc.Core.Api` and hosting/client dependencies, or
-Dart `package:grpc`; Fory packages do not add gRPC as a hard dependency. See
-[C++ gRPC Support](../guide/cpp/grpc-support.md) for C++ linking instructions.
-Python companions use `grpc.aio` by default and can be generated in sync mode
-with `--grpc-python-mode=sync`. JavaScript Node.js companions use
-`@grpc/grpc-js`; browser clients are generated separately with `--grpc-web` and
-use `grpc-web`.
+objects are serialized with Fory. See [Fory gRPC](../grpc/index.md) for runtime
+dependencies, server and client setup, streaming modes, browser support, and
+interoperability boundaries.
 
 ## Why Fory IDL?
 
@@ -218,8 +212,9 @@ const person = deserializePerson(data);
 | [Fory IDL Syntax](schema-idl.md)                 | Complete language syntax and grammar              |
 | [Type System](schema-idl.md#type-system)         | Primitive types, collections, and type rules      |
 | [RPC Services](schema-idl.md#service-definition) | Service and RPC method syntax                     |
-| [Compiler Guide](compiler-guide.md)              | CLI options and build integration                 |
-| [Generated Code](generated-code.md)              | Output format for each target language            |
+| [Compiler CLI](cli.md)                           | Compiler commands and options                     |
+| [Build Integration](build-integration.md)        | Maven, Gradle, build.rs, CMake, Bazel, and more   |
+| [Generated Code](generated-code/index.md)        | Output format for each target language            |
 | [Protocol Buffers IDL Support](protobuf-idl.md)  | Protobuf mapping rules and adoption guidance      |
 | [FlatBuffers IDL Support](flatbuffers-idl.md)    | FlatBuffers mapping rules and codegen differences |
 

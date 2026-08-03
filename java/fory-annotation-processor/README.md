@@ -52,7 +52,7 @@ component accessors directly. This includes a Record using a String `JsonValue` 
 an annotated canonical constructor. `@JsonCodec` uses ordinary type, field, method, and parameter
 annotations, so every supported codec member remains available through reflection with equivalent
 rules. See
-[`docs/guide/java/android-support.md`](../../docs/guide/java/android-support.md).
+[`docs/object-serialization/java/android.md`](../../docs/object-serialization/java/android.md).
 
 Android models with direct `JsonValidator` methods use `@JsonType` so the processor can emit direct
 calls and exact retention rules. Third-party targets receive the same support from a compiled exact
@@ -60,5 +60,5 @@ calls and exact retention rules. Third-party targets receive the same support fr
 themselves do not require a generated validator call.
 
 For the full user-facing guides, see
-[`docs/guide/java/static-generated-serializers.md`](../../docs/guide/java/static-generated-serializers.md)
-and [`docs/guide/java/json-support.md`](../../docs/guide/java/json-support.md).
+[`docs/object-serialization/java/static-generated-serializers.md`](../../docs/object-serialization/java/static-generated-serializers.md)
+and [`docs/json/index.md`](../../docs/json/index.md).

@@ -476,7 +476,7 @@ assert_eq!(data, decoded);
 
 For a type that needs an opaque encoding, implement a custom `Serializer`. A
 separate serializer type can also target a type from another crate; see the
-[external-type serialization guide](../docs/guide/rust/external-types.md).
+[external-type serialization guide](../docs/object-serialization/rust/external-types.md).
 Custom serializers work in native and xlang modes when the chosen EXT identity
 and opaque body format are supported by every peer. The example below uses
 native mode.
@@ -587,7 +587,7 @@ Supported fixed-width values are `bool`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`
 
 Standard rows use an 8-byte-aligned null bitmap and one 8-byte slot per struct field. Fixed-width fields are stored little-endian in their slots. Variable-width slots encode the little-endian `u64` value `(relative_offset << 32) | size`; variable bodies and array slot regions have zero padding to 8-byte alignment. Standard arrays use natural-width storage for fixed elements, and maps contain complete key and value arrays.
 
-`to_row` accepts derived structs, supported arrays, and `BTreeMap` roots. `to_row_into` writes the same bytes into a reusable caller-owned `Vec<u8>` and clears partial output on error. Scalar, string, binary, and `Option<T>` values are field or element values rather than standalone roots. See the [Rust Row Format guide](https://fory.apache.org/docs/guide/rust/row-format) and [Row Format specification](https://fory.apache.org/docs/specification/row_format_spec) for details.
+`to_row` accepts derived structs, supported arrays, and `BTreeMap` roots. `to_row_into` writes the same bytes into a reusable caller-owned `Vec<u8>` and clears partial output on error. Scalar, string, binary, and `Option<T>` values are field or element values rather than standalone roots. See the [Rust Row Format guide](../docs/row-format/rust.md) and [Row Format specification](../docs/specification/row_format_spec.md) for details.
 
 ## Cross-Language Serialization
 
@@ -627,11 +627,11 @@ cd benchmarks/rust
 
 ## Documentation
 
-- **[User Guide](https://fory.apache.org/docs/guide/rust/)** - Comprehensive user documentation
+- **[User Guide](https://fory.apache.org/docs/object-serialization/rust/)** - Comprehensive user documentation
 - **[API Documentation](https://docs.rs/fory)** - Complete API reference
 - **[Protocol Specification](https://fory.apache.org/docs/specification/xlang_serialization_spec)** - Serialization protocol details
 - **[Type Mapping](https://fory.apache.org/docs/specification/xlang_type_mapping)** - Cross-language type mappings
-- **[Source](https://github.com/apache/fory/tree/main/docs/guide/rust)** - Source code for doc
+- **[Source](https://github.com/apache/fory/tree/main/docs/object-serialization/rust)** - Source code for doc
 
 ## Use Cases
 

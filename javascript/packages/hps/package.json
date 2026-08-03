@@ -2,7 +2,7 @@
   "name": "@apache-fory/hps",
   "version": "1.6.0-alpha.0",
   "description": "Apache Fory™ nodejs high-performance suite",
-  "homepage": "https://fory.apache.org/docs/guide/javascript",
+  "homepage": "https://fory.apache.org/docs/object-serialization/javascript",
   "main": "dist/index.js",
   "files": [
     "dist",

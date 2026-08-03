@@ -108,7 +108,7 @@ class TextMessage extends MessageBase {
 
 The generated `TextMessage` schema contains both `sequence` and `text`.
 Superclass and applied-mixin fields are flattened into one child serializer.
-See [Struct Inheritance](https://fory.apache.org/docs/guide/dart/inheritance)
+See [Struct Inheritance](https://fory.apache.org/docs/object-serialization/dart/inheritance)
 for private fields, mixins, constructors, and
 `ignoreInheritedPrivateFields`.
 
@@ -384,4 +384,4 @@ For the xlang wire format and type mapping details, see the
 [Apache Fory specification](https://github.com/apache/fory/tree/main/docs/specification).
 
 For the full Dart guide, see
-[https://fory.apache.org/docs/guide/dart/](https://fory.apache.org/docs/guide/dart/).
+[https://fory.apache.org/docs/object-serialization/dart/](https://fory.apache.org/docs/object-serialization/dart/).

@@ -1,7 +1,7 @@
 ---
 title: Schema IDL
-sidebar_position: 2
-id: syntax
+sidebar_position: 3
+id: schema-idl
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -22,7 +22,7 @@ license: |
 This document provides the syntax and semantic reference for Fory IDL.
 
 For compiler usage and build integration, see
-[Compiler Guide](compiler-guide.md). For protobuf/FlatBuffers frontend mapping
+[Compiler Guide](cli.md). For protobuf/FlatBuffers frontend mapping
 rules, see [Protocol Buffers IDL Support](protobuf-idl.md) and
 [FlatBuffers IDL Support](flatbuffers-idl.md).
 

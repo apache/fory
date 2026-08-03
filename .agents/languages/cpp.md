@@ -83,6 +83,6 @@ FORY_CPP_JAVA_CI=1 ENABLE_FORY_DEBUG_OUTPUT=1 mvn -T16 test -Dtest=org.apache.fo
 
 ## Debugging And Profiling
 
-- See `docs/cpp_debug.md` for C++ debugging guidance.
+- See `docs/development/cpp-debugging.md` for C++ debugging guidance.
 - Generate `compile_commands.json` with `bazel run :refresh_compile_commands`.
 - DTrace-based stack sampling is documented in `CONTRIBUTING.md`.

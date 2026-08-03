@@ -21,7 +21,7 @@ export ENABLE_FORY_DEBUG_OUTPUT=0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
-DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/swift"
+DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/object-serialization/xlang/swift"
 
 # Colors
 RED='\033[0;31m'
@@ -52,7 +52,7 @@ usage() {
     echo "  --duration <seconds>         Minimum time to run each benchmark (default: 3)"
     echo "  --external                   Also run isolated external-type benchmarks"
     echo "  --no-report                  Skip Python report generation"
-    echo "  --no-copy-docs               Skip copying report/plots into docs/benchmarks/swift"
+    echo "  --no-copy-docs               Skip copying report/plots into docs/benchmarks/object-serialization/xlang/swift"
     echo "  --help                       Show this help message"
     echo ""
     echo "Examples:"

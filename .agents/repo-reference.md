@@ -19,8 +19,8 @@ Load this file when you need repo layout, protocol context, compiler guidance, o
 - `CLAUDE.md`: compatibility shim that points back to `AGENTS.md`
 - `README.md`: project overview and quick start
 - `CONTRIBUTING.md`: contributor workflow and environment notes
-- `docs/DEVELOPMENT.md`: development setup and build notes
-- `docs/cpp_debug.md`: C++ debugging guidance
+- `docs/development/building.md`: development setup and build notes
+- `docs/development/cpp-debugging.md`: C++ debugging guidance
 - `licenserc.toml`: license header configuration
 
 ## Protocol Overview
@@ -36,10 +36,10 @@ Apache Fory is a multi-language serialization framework with multiple wire forma
 
 - Primary references:
   - `docs/compiler/index.md`
-  - `docs/compiler/compiler-guide.md`
+  - `docs/compiler/cli.md`
   - `docs/compiler/schema-idl.md`
-  - `docs/compiler/type-system.md`
-  - `docs/compiler/generated-code.md`
+  - `docs/compiler/schema-idl.md#type-system`
+  - `docs/compiler/generated-code/index.md`
   - `docs/compiler/protobuf-idl.md`
   - `docs/compiler/flatbuffers-idl.md`
 - Compiler location: `compiler/`
