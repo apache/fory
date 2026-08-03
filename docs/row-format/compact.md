@@ -47,5 +47,4 @@ Reuse the encoder within one thread. Create separate encoders for concurrent thr
 Choose Compact Row only when every reader is Java and the space reduction justifies using an
 unstable format. Use [Standard Row](standard.md) for Java/Python/C++/Rust interchange.
 
-See the [Row Format specification](../specification/row_format_spec.md#compact-row-format-java-only)
-for the exact binary layout.
+See the [Row Format specification](../specification/row_format_spec.md) for the exact binary layout.

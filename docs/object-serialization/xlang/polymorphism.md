@@ -26,8 +26,8 @@ field schema.
 ## Runtime rules
 
 Use the selected runtime's schema metadata, registration, and polymorphism pages for exact syntax.
-The [xlang serialization specification](../../specification/xlang_serialization_spec.md#polymorphisms)
-defines the shared behavior and limitations.
+The [xlang serialization specification](../../specification/xlang_serialization_spec.md) defines
+the shared behavior and limitations.
 
 Do not infer xlang support from host-language inheritance alone. A concrete subtype must have a
 portable xlang mapping and coordinated registration on every peer that can receive it.
