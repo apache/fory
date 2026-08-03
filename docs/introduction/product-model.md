@@ -24,12 +24,12 @@ contract you need, then choose a runtime API.
 
 ## Serialization products
 
-| Product                                  | Data model                           | Interoperability boundary                                                                             |
-| ---------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Binary Object Serialization: xlang mode  | Portable object graphs               | Shared wire format across supported runtimes                                                          |
-| Binary Object Serialization: native mode | Runtime-native object graphs         | Same runtime family only                                                                              |
+| Product                                  | Data model                           | Interoperability boundary                                                       |
+| ---------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------- |
+| Binary Object Serialization: xlang mode  | Portable object graphs               | Shared wire format across supported runtimes                                    |
+| Binary Object Serialization: native mode | Runtime-native object graphs         | Same runtime family only                                                        |
 | Row Format                               | Random-access binary rows            | Standard Row is shared by Java, Python, C++, and Rust; Compact Row is Java-only |
-| Fory JSON                                | Standard JSON mapped to Java objects | Java API with text interoperability                                                                   |
+| Fory JSON                                | Standard JSON mapped to Java objects | Java API with text interoperability                                             |
 
 Xlang and native are sibling modes of Binary Object Serialization. Row Format and Fory JSON are
 separate products; neither is a third object-serialization mode.

@@ -802,6 +802,7 @@ int secondScore = scores.getInt32(1);
 For Java imports, nested structs, arrays/maps, Arrow integration, and partial
 deserialization, see the [Java row-format guide](docs/row-format/java.md),
 [Python row-format guide](docs/row-format/python.md),
+[C++ row-format guide](docs/row-format/cpp.md),
 [Rust row-format guide](docs/row-format/rust.md), and
 [row-format specification](docs/specification/row_format_spec.md).
 

@@ -19,8 +19,8 @@ license: |
   limitations under the License.
 ---
 
-Compact Row is a Java-only row encoding that reduces fixed-slot and null-bitmap overhead. It is
-currently unstable and is not wire-compatible with Standard Row.
+Compact Row is a Java-only row encoding that reduces fixed-slot and null-bitmap overhead. It is not
+wire-compatible with Standard Row.
 
 ## Create a compact encoder
 
@@ -44,7 +44,7 @@ Reuse the encoder within one thread. Create separate encoders for concurrent thr
 - The null bitmap is omitted when no field is nullable.
 - Fixed-size nested structs can be stored inline.
 
-Choose Compact Row only when every reader is Java and the space reduction justifies using an
-unstable format. Use [Standard Row](standard.md) for Java/Python/C++/Rust interchange.
+Choose Compact Row only when every reader is Java and the space reduction justifies the
+Java-specific layout. Use [Standard Row](standard.md) for Java/Python/C++/Rust interchange.
 
 See the [Row Format specification](../specification/row_format_spec.md) for the exact binary layout.

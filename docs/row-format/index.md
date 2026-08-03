@@ -25,10 +25,10 @@ in-memory data processing.
 
 ## Choose a row family
 
-| Family                      | Runtime support         | Compatibility                                 |
-| --------------------------- | ----------------------- | --------------------------------------------- |
-| [Standard Row](standard.md) | Java, Python, C++, Rust | Shared Standard Row layout                    |
-| [Compact Row](compact.md)   | Java                    | Java-only, space-oriented, currently unstable |
+| Family                      | Runtime support         | Compatibility                    |
+| --------------------------- | ----------------------- | -------------------------------- |
+| [Standard Row](standard.md) | Java, Python, C++, Rust | Shared Standard Row layout       |
+| [Compact Row](compact.md)   | Java                    | Java-only, space-oriented layout |
 
 Use Binary Object Serialization when the goal is complete object reconstruction, references, or
 general application messaging. Use Row Format when a workload reads selected fields, nested arrays,

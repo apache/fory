@@ -98,6 +98,7 @@ fn main() -> Result<(), Error> {
 `ArrayView::iter` and `IntoIterator for &ArrayView` read elements on demand through the same checked path as `get`. Each item is a `Result`, so malformed data is reported when that element is visited.
 
 `MapView` exposes `len`, `is_empty`, `key(index)`, and `value(index)`. Its `keys()` and `values()` array views remain available for independent iteration.
+Call `to_btree_map()` only when an owned lookup structure is more useful than indexed access; it materializes the map from the borrowed key and value views.
 
 Struct, array, and map views are cheap `Copy` and `Clone` values. The `RowView` trait provides `as_bytes()`, which returns the exact encoded slice bound to the view, and `encoded_len()`, which returns its length. A nested view returns only its size-delimited child bytes.
 

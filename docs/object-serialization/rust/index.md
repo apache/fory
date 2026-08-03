@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-**Apache Fory™** is a high-performance multi-language serialization framework. The Rust implementation uses compile-time code generation for object serialization and borrowed views for zero-copy Row Format access.
+**Apache Fory™** is a high-performance multi-language serialization framework. The Rust implementation uses compile-time code generation for object serialization.
 
 The Rust implementation provides versatile and high-performance serialization with automatic memory management and compile-time type safety. It supports both xlang mode for cross-language payloads and native mode for Rust-only payloads.
 
@@ -32,7 +32,6 @@ The Rust implementation provides versatile and high-performance serialization wi
 - **Circular references**: Automatic tracking of shared and circular references with `Rc`/`Arc` and weak pointers
 - **Polymorphic**: Serialize trait objects with `Box<dyn Trait>`, `Rc<dyn Trait>`, and `Arc<dyn Trait>`
 - **Schema evolution**: Compatible mode for independent schema changes
-- **Two formats**: Object graph serialization and the Standard Row Format shared with Java, C++, and Python
 
 ## Crates
 
@@ -155,15 +154,6 @@ fn main() -> Result<(), Error> {
 - General-purpose serialization with full type safety
 - Schema evolution with compatible mode
 - Graph-like data structures with circular references
-
-### Standard Row Format
-
-- High-throughput data processing
-- Analytics workloads requiring fast field access
-- Memory-constrained environments
-- Real-time data streaming applications
-- Zero-copy field and collection access
-- Standard Row Format interchange with Java, C++, and Python
 
 ## Next Steps
 

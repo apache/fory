@@ -152,12 +152,9 @@ fory = { version = "1.5.0", features = ["chrono"] }
 
 ### Custom Types
 
-| Macro                   | Description                           |
-| ----------------------- | ------------------------------------- |
-| `#[derive(ForyStruct)]` | Object graph serialization            |
-| `#[derive(ForyRow)]`    | Standard Row Format for named structs |
-
-`ForyRow` has a separate type set and returns borrowed field views. Row reads and field access use `Result` to report invalid row data. See [Row Format](../../row-format/rust.md) for supported types, nullability, and examples.
+Use `#[derive(ForyStruct)]` for object graph serialization. The separate
+[Rust Row Format guide](../../row-format/rust.md) documents `#[derive(ForyRow)]` and its supported
+type set.
 
 ## Serialization APIs
 
@@ -207,7 +204,6 @@ all supported carriers, and registration.
 
 ## Performance Tips
 
-- **Selective Zero-Copy Access**: Row Format returns borrowed views for direct field and element access
 - **Buffer Pre-allocation**: Minimizes memory allocations during serialization
 - **Compact Encoding**: Variable-length encoding for space efficiency
 - **Little-Endian**: Optimized for modern CPU architectures

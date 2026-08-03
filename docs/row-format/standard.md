@@ -51,7 +51,7 @@ or complete object reconstruction as its primary access pattern.
 | Java    | Compatible                 | [Java](java.md)     | Arrow conversion; interface and extension-type mapping |
 | Python  | Compatible                 | [Python](python.md) | PyArrow schema and table conversion                    |
 | C++     | Compatible                 | [C++](cpp.md)       | Native row readers and writers                         |
-| Rust    | Compatible                 | [Rust](rust.md)     | Borrowed struct, array, and map views                   |
+| Rust    | Compatible                 | [Rust](rust.md)     | Borrowed struct, array, and map views                  |
 
 Use the runtime guides for installation, schema construction, encoding, random
 access, partial reads, and language-specific integrations.
