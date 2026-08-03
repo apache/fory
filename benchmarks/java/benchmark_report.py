@@ -67,8 +67,12 @@ DATATYPE_ORDER = [
 ]
 OPERATIONS = ["serialize", "deserialize"]
 DOCS_HEADER = "# Java Xlang Serialization Benchmarks"
-JSON_REPORT_LINK = (
+DOCS_JSON_REPORT_LINK = (
     "See the [Java JSON benchmark report](../../../json/java/README.md) "
+    "for fory-json, Jackson, and Gson results."
+)
+LOCAL_JSON_REPORT_LINK = (
+    "See the [Java JSON benchmark report](../../../docs/benchmarks/json/java/README.md) "
     "for fory-json, Jackson, and Gson results."
 )
 BENCHMARK_PATTERN = re.compile(
@@ -289,7 +293,7 @@ def build_results_section(results: dict, image_name: str) -> str:
 def write_local_readme(output_dir: Path, section: str) -> Path:
     report_path = output_dir / "README.md"
     report_path.write_text(
-        DOCS_HEADER + "\n\n" + JSON_REPORT_LINK + "\n\n" + section,
+        DOCS_HEADER + "\n\n" + LOCAL_JSON_REPORT_LINK + "\n\n" + section,
         encoding="utf-8",
     )
     run_prettier(report_path)
@@ -300,17 +304,17 @@ def update_docs_readme(docs_output_dir: Path, section: str) -> Path:
     docs_readme = docs_output_dir / "README.md"
     if docs_readme.exists():
         content = docs_readme.read_text(encoding="utf-8").rstrip()
-        if JSON_REPORT_LINK not in content:
+        if DOCS_JSON_REPORT_LINK not in content:
             if content.startswith(DOCS_HEADER):
                 content = (
                     DOCS_HEADER
                     + "\n\n"
-                    + JSON_REPORT_LINK
+                    + DOCS_JSON_REPORT_LINK
                     + "\n\n"
                     + content[len(DOCS_HEADER) :].lstrip()
                 )
             else:
-                content = JSON_REPORT_LINK + "\n\n" + content
+                content = DOCS_JSON_REPORT_LINK + "\n\n" + content
         result_markers = ("\n## Results\n", "\n## Xlang Benchmark\n")
         marker = next(
             (candidate for candidate in result_markers if candidate in content), None
@@ -318,7 +322,7 @@ def update_docs_readme(docs_output_dir: Path, section: str) -> Path:
         prefix = content.split(marker, 1)[0].rstrip() if marker else content
         content = prefix + "\n\n" + section
     else:
-        content = DOCS_HEADER + "\n\n" + JSON_REPORT_LINK + "\n\n" + section
+        content = DOCS_HEADER + "\n\n" + DOCS_JSON_REPORT_LINK + "\n\n" + section
     docs_readme.write_text(content.rstrip() + "\n", encoding="utf-8")
     run_prettier(docs_readme)
     return docs_readme

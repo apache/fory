@@ -18,6 +18,10 @@ license: |
   limitations under the License.
 ---
 
+import JumpGeneratedFile from "@site/docs/images/jmp_generate_file.png";
+import VscodeDebugFory from "@site/docs/images/vscode_debug_fory.jpg";
+import VscodeSelectDebugRun from "@site/docs/images/vscode_select_debug_run.png";
+
 ## Debugging C++
 
 Debug C++ is tricky and binary protocol bug is hard to locate without debugging support, but setup
@@ -29,7 +33,7 @@ Just open the fory root directory in vscode, then open a test file such as `src/
 enter `F5`, then you can debug the c++ code line by line, watch variables, add breakpoints in vscode just like
 java/python debugging.
 
-<img src="../images/vscode_debug_fory.jpg" alt="Apache Fory™ Debugging Example" width="50%" height="50%" />
+<img src={VscodeDebugFory} alt="Apache Fory™ Debugging Example" width="50%" height="50%" />
 
 ## Notes
 
@@ -38,6 +42,6 @@ java/python debugging.
   - install gdb for fedora/centos by `sudo yum install -y gdb`
   - install gdb for fedora/centos by `sudo apt-get install gdb`
 - If debugging doesn't work, please select correct debug/run options:
-  <img src="../images/vscode_select_debug_run.png" alt="select correct debug/run options" width="50%" height="50%" />
+  <img src={VscodeSelectDebugRun} alt="select correct debug/run options" width="50%" height="50%" />
 - Debug will jump to source files in bazel generated directory, we need to return raw files in source tree
-  for debugging again: <img src="../images/jmp_generate_file.png" alt="jump to generated files" width="50%" height="50%" />
+  for debugging again: <img src={JumpGeneratedFile} alt="jump to generated files" width="50%" height="50%" />
