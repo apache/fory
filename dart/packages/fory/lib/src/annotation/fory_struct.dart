@@ -17,7 +17,7 @@
  * under the License.
  */
 
-/// Configures Fory struct code generation for the annotated class or [target].
+/// Configures Fory generation for an ordinary class or mixin, or for [target].
 final class ForyStruct {
   /// Whether the generated struct should use evolving field metadata.
   ///
@@ -39,6 +39,36 @@ final class ForyStruct {
   /// with [target].
   final String? constructor;
 
+  /// Whether this library exposes private hierarchy storage to child libraries.
+  ///
+  /// This option is valid only on a public ordinary hierarchy boundary. It
+  /// generates typed static access methods for non-ignored private storage
+  /// declared by this library and inherited through the boundary. It does not
+  /// control field discovery or same-library private access, and it cannot be
+  /// used with [target].
+  final bool exposePrivateFields;
+
+  /// Whether this struct omits private storage declared by hierarchy ancestors.
+  ///
+  /// This option belongs to the annotated concrete struct only. When enabled,
+  /// private instance fields declared by any superclass or applied mixin are
+  /// omitted from this struct's flattened schema, including fields from the
+  /// same library. Private fields declared by the annotated class and all
+  /// inherited public fields remain in the schema.
+  ///
+  /// This option defaults to `false` and is not inherited from an ancestor's
+  /// annotation. It is invalid with [target] and on provider-only
+  /// declarations. When a concrete boundary also enables
+  /// [exposePrivateFields], its provider companion is generated independently
+  /// of this schema option.
+  final bool ignoreInheritedPrivateFields;
+
   /// Creates struct-level generation options.
-  const ForyStruct({this.evolving = true, this.target, this.constructor});
+  const ForyStruct({
+    this.evolving = true,
+    this.target,
+    this.constructor,
+    this.exposePrivateFields = false,
+    this.ignoreInheritedPrivateFields = false,
+  });
 }

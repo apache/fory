@@ -19,6 +19,7 @@ import Foundation
 
 extension Bool: Serializer {
     public static var staticTypeId: TypeId { .bool }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> Bool { false }
 
@@ -41,6 +42,7 @@ extension Bool: Serializer {
 
 extension Int8: Serializer {
     public static var staticTypeId: TypeId { .int8 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> Int8 { 0 }
 
@@ -63,6 +65,7 @@ extension Int8: Serializer {
 
 extension Int16: Serializer {
     public static var staticTypeId: TypeId { .int16 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> Int16 { 0 }
 
@@ -85,6 +88,7 @@ extension Int16: Serializer {
 
 extension Int32: Serializer {
     public static var staticTypeId: TypeId { .varint32 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> Int32 { 0 }
 
@@ -107,6 +111,7 @@ extension Int32: Serializer {
 
 extension Int64: Serializer {
     public static var staticTypeId: TypeId { .varint64 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> Int64 { 0 }
 
@@ -129,6 +134,7 @@ extension Int64: Serializer {
 
 extension UInt8: Serializer {
     public static var staticTypeId: TypeId { .uint8 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> UInt8 { 0 }
 
@@ -151,6 +157,7 @@ extension UInt8: Serializer {
 
 extension UInt16: Serializer {
     public static var staticTypeId: TypeId { .uint16 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> UInt16 { 0 }
 
@@ -173,6 +180,7 @@ extension UInt16: Serializer {
 
 extension UInt32: Serializer {
     public static var staticTypeId: TypeId { .varUInt32 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> UInt32 { 0 }
 
@@ -195,6 +203,7 @@ extension UInt32: Serializer {
 
 extension UInt64: Serializer {
     public static var staticTypeId: TypeId { .varUInt64 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> UInt64 { 0 }
 
@@ -218,6 +227,7 @@ extension UInt64: Serializer {
 #if arch(arm64) || arch(x86_64)
     extension Int: Serializer {
         public static var staticTypeId: TypeId { .varint64 }
+        public static var readDataAlwaysAdvances: Bool { true }
 
         public static func defaultValue(_ context: ReadContext) throws -> Int { 0 }
 
@@ -240,6 +250,7 @@ extension UInt64: Serializer {
 
     extension UInt: Serializer {
         public static var staticTypeId: TypeId { .varUInt64 }
+        public static var readDataAlwaysAdvances: Bool { true }
 
         public static func defaultValue(_ context: ReadContext) throws -> UInt { 0 }
 
@@ -263,6 +274,7 @@ extension UInt64: Serializer {
 
 extension Float: Serializer {
     public static var staticTypeId: TypeId { .float32 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> Float { 0 }
 
@@ -285,6 +297,7 @@ extension Float: Serializer {
 
 extension Double: Serializer {
     public static var staticTypeId: TypeId { .float64 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> Double { 0 }
 
@@ -314,6 +327,7 @@ public struct BFloat16: Serializer, Equatable, Hashable, Sendable {
 
     public static func defaultValue(_ context: ReadContext) throws -> BFloat16 { .init() }
     public static var staticTypeId: TypeId { .bfloat16 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
@@ -334,6 +348,7 @@ public struct BFloat16: Serializer, Equatable, Hashable, Sendable {
 
 extension Float16: Serializer {
     public static var staticTypeId: TypeId { .float16 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> Float16 { 0 }
 
@@ -371,6 +386,7 @@ private func decodeLatin1(_ bytes: [UInt8]) -> String {
 
 extension String: Serializer {
     public static var staticTypeId: TypeId { .string }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> String { "" }
 
@@ -434,6 +450,7 @@ extension String: Serializer {
 
 extension Data: Serializer {
     public static var staticTypeId: TypeId { .binary }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> Data { Data() }
 

@@ -104,6 +104,7 @@ public final class ForyBuilder {
   int maxSchemaVersionsPerType = 10;
   int maxAverageSchemaVersionsPerType = 3;
   long maxGraphMemoryBytes = 128L * 1024 * 1024;
+  int maxUnbackedContainerItems = 8192;
   float mapRefLoadFactor = 0.51f;
   boolean forVirtualThread = false;
   TypeChecker typeChecker;
@@ -602,6 +603,19 @@ public final class ForyBuilder {
     return this;
   }
 
+  /**
+   * Sets the maximum collection elements and map entries whose reads are not backed by one input
+   * byte per item during one root deserialization. The default is 8192. Zero is a strict limit, not
+   * a disabled sentinel.
+   */
+  public ForyBuilder withMaxUnbackedContainerItems(int maxUnbackedContainerItems) {
+    Preconditions.checkArgument(
+        maxUnbackedContainerItems >= 0, "maxUnbackedContainerItems must be non-negative");
+    this.maxUnbackedContainerItems = maxUnbackedContainerItems;
+    recordAction(b -> b.withMaxUnbackedContainerItems(maxUnbackedContainerItems));
+    return this;
+  }
+
   /** Set loadFactor of MapRefResolver writtenObjects. Default value is 0.51 */
   public ForyBuilder withMapRefLoadFactor(float loadFactor) {
     Preconditions.checkArgument(
@@ -679,8 +693,8 @@ public final class ForyBuilder {
     }
     if (defaultJDKStreamSerializerType == JavaSerializer.class) {
       LOG.info(
-          "JDK serialization is used for types which customized java serialization by "
-              + "implementing methods such as writeObject/readObject. This is not secure, try to "
+          "JDK serialization is used for types with custom Java serialization methods such as "
+              + "writeObject/readObject. This is not secure, try to "
               + "use {} instead, or implement a custom {}.",
           ObjectStreamSerializer.class,
           Serializer.class);

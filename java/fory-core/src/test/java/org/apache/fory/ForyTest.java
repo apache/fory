@@ -923,6 +923,41 @@ public class ForyTest extends ForyTestBase {
     }
   }
 
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testInterpretedPolymorphicFieldDepth(boolean referenceTracking) {
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(referenceTracking)
+            .withCodegen(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(referenceTracking)
+            .withCodegen(false)
+            .requireClassRegistration(false)
+            .withMaxDepth(4)
+            .withCompatible(false)
+            .build();
+
+    MaxDepth shallow = nestedMaxDepth(2);
+    MaxDepth shallowCopy = (MaxDepth) reader.deserialize(writer.serialize(shallow));
+    assertEquals(shallowCopy.f1, shallow.f1);
+    assertThrows(
+        InsecureException.class, () -> reader.deserialize(writer.serialize(nestedMaxDepth(12))));
+  }
+
+  private static MaxDepth nestedMaxDepth(int levels) {
+    Object value = "leaf";
+    for (int i = levels; i > 0; i--) {
+      value = new MaxDepth(i, value);
+    }
+    return (MaxDepth) value;
+  }
+
   @Test
   public void testMaxDepthCodegen() {
     assertTrue(TypeUtils.hasExpandableLeafs(MaxDepth.class));

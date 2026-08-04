@@ -13,6 +13,8 @@
   public static void generatedPlainRules();
   public static void generatedRecord();
   public static void generatedValueRecord();
+  public static void generatedFormatTimezone();
+  public static void generatedValidator();
   public static void manualCodecs();
   public static void generatedCodecs();
   public static void generatedUnwrapped();

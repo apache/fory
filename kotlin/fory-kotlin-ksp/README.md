@@ -56,8 +56,8 @@ consumer R8/ProGuard rules for generated serializer constructors and Kotlin
 metadata required by Fory. Fix packaging if those generated resources are not
 included in the Android artifact.
 
-See [Kotlin Android Support](../../docs/guide/kotlin/android-support.md) and
-[Kotlin Static Generated Serializers](../../docs/guide/kotlin/static-generated-serializers.md)
+See [Kotlin Android Support](../../docs/object-serialization/java/android.md) and
+[Kotlin Static Generated Serializers](../../docs/object-serialization/kotlin/static-generated-serializers.md)
 for user-facing documentation.
 
 ## Development

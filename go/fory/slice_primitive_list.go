@@ -163,6 +163,7 @@ func (s primitiveListSerializer) Read(ctx *ReadContext, refMode RefMode, readTyp
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s primitiveListSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -233,6 +234,7 @@ func (s compatiblePrimitiveListToArraySerializer) Read(ctx *ReadContext, refMode
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {

@@ -19,8 +19,8 @@ Load this file when you need repo layout, protocol context, compiler guidance, o
 - `CLAUDE.md`: compatibility shim that points back to `AGENTS.md`
 - `README.md`: project overview and quick start
 - `CONTRIBUTING.md`: contributor workflow and environment notes
-- `docs/DEVELOPMENT.md`: development setup and build notes
-- `docs/cpp_debug.md`: C++ debugging guidance
+- `docs/development/building.md`: development setup and build notes
+- `docs/development/cpp-debugging.md`: C++ debugging guidance
 - `licenserc.toml`: license header configuration
 
 ## Protocol Overview
@@ -36,10 +36,10 @@ Apache Fory is a multi-language serialization framework with multiple wire forma
 
 - Primary references:
   - `docs/compiler/index.md`
-  - `docs/compiler/compiler-guide.md`
+  - `docs/compiler/cli.md`
   - `docs/compiler/schema-idl.md`
-  - `docs/compiler/type-system.md`
-  - `docs/compiler/generated-code.md`
+  - `docs/compiler/schema-idl.md#type-system`
+  - `docs/compiler/generated-code/index.md`
   - `docs/compiler/protobuf-idl.md`
   - `docs/compiler/flatbuffers-idl.md`
 - Compiler location: `compiler/`
@@ -95,8 +95,12 @@ the value reserves the storage it owns.
 Treat `maxGraphMemoryBytes` and runtime-named equivalents as approximate gates, mainly for
 materialized collection, map, array, struct, and object owners. Actual process memory can be higher.
 Dedicated string, binary, primitive scalar, primitive array, and dense primitive-array leaf values
-are skipped by this graph budget and must remain gated by unread input bytes: if remaining bytes are
-insufficient, the leaf value must not be read or created.
+are skipped unless a runtime-specific owner rule includes them. Java Fory core primitive arrays and
+primitive lists reserve their retained owners once from the validated logical length; compressed
+paths use the decompressed length. Java Fory JSON primitive arrays decoded from JSON arrays reserve
+their array header plus actual primitive storage; a `byte[]` handled by a JSON binary or Base64
+codec remains a binary leaf. Values skipped by this graph budget must remain gated by unread input
+bytes: if remaining bytes are insufficient, the value must not be read or created.
 
 ## Runtime Map
 

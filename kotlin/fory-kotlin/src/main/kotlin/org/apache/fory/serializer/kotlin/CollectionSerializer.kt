@@ -55,10 +55,15 @@ public class KotlinArrayDequeSerializer<E>(
     return adapter
   }
 
-  override fun newCollection(readContext: ReadContext): Collection<E> {
-    val numElements = readCollectionSize(readContext, readContext.buffer)
+  override fun newCollection(
+    readContext: ReadContext,
+    elementReadAlwaysAdvances: Boolean,
+  ): Collection<E> {
+    val numElements = readCollectionSize(readContext, readContext.buffer, elementReadAlwaysAdvances)
     setNumElements(numElements)
-    return ArrayDequeBuilder<E>(ArrayDeque<E>(numElements))
+    val arrayDeque = ArrayDeque<E>(numElements)
+    readContext.reference(arrayDeque)
+    return ArrayDequeBuilder<E>(arrayDeque)
   }
 }
 

@@ -31,6 +31,7 @@ final class SourceStruct {
   final boolean record;
   final boolean debug;
   final boolean hasNestedCompatibleStructFields;
+  final boolean readDataAlwaysAdvances;
   final int graphMemoryBytes;
   final List<SourceField> fields;
   final List<SourceField> recordConstructorFields;
@@ -56,10 +57,13 @@ final class SourceStruct {
     this.recordConstructorFields =
         Collections.unmodifiableList(new ArrayList<>(recordConstructorFields));
     boolean hasNestedStruct = false;
+    boolean readDataAlwaysAdvances = false;
     for (SourceField field : fields) {
       hasNestedStruct |= field.typeNode.hasNestedCompatibleStruct();
+      readDataAlwaysAdvances |= field.fieldReadAlwaysAdvances;
     }
     this.hasNestedCompatibleStructFields = hasNestedStruct;
+    this.readDataAlwaysAdvances = readDataAlwaysAdvances;
   }
 
   String qualifiedSerializerName() {

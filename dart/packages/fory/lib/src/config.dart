@@ -29,6 +29,7 @@ final class Config {
   static const int defaultMaxSchemaVersionsPerType = 10;
   static const int defaultMaxAverageSchemaVersionsPerType = 3;
   static const int defaultMaxGraphMemoryBytes = 128 * 1024 * 1024;
+  static const int defaultMaxUnbackedContainerItems = 8192;
 
   /// Enables compatible struct encoding and decoding.
   ///
@@ -66,6 +67,12 @@ final class Config {
   /// Value must be a positive byte limit.
   final int maxGraphMemoryBytes;
 
+  /// Maximum collection elements and map entries that may be read without
+  /// proportional input progress during one root deserialization.
+  ///
+  /// Value must be non-negative. Zero is a strict limit.
+  final int maxUnbackedContainerItems;
+
   /// Creates an immutable configuration object.
   ///
   /// Invalid numeric limits fail fast. When [compatible] is `true`,
@@ -80,29 +87,30 @@ final class Config {
     int maxAverageSchemaVersionsPerType =
         defaultMaxAverageSchemaVersionsPerType,
     int maxGraphMemoryBytes = defaultMaxGraphMemoryBytes,
+    int maxUnbackedContainerItems = defaultMaxUnbackedContainerItems,
   }) : checkStructVersion = compatible ? false : checkStructVersion,
-       maxDepth = _positive(maxDepth, 'maxDepth'),
-       maxTypeFields = _positive(maxTypeFields, 'maxTypeFields'),
-       maxTypeMetaBytes = _positive(maxTypeMetaBytes, 'maxTypeMetaBytes'),
-       maxSchemaVersionsPerType = _positive(
+       maxDepth = _positiveSafeInteger(maxDepth, 'maxDepth'),
+       maxTypeFields = _positiveSafeInteger(maxTypeFields, 'maxTypeFields'),
+       maxTypeMetaBytes = _positiveSafeInteger(
+         maxTypeMetaBytes,
+         'maxTypeMetaBytes',
+       ),
+       maxSchemaVersionsPerType = _positiveSafeInteger(
          maxSchemaVersionsPerType,
          'maxSchemaVersionsPerType',
        ),
-       maxAverageSchemaVersionsPerType = _positive(
+       maxAverageSchemaVersionsPerType = _positiveSafeInteger(
          maxAverageSchemaVersionsPerType,
          'maxAverageSchemaVersionsPerType',
        ),
        maxGraphMemoryBytes = _positiveSafeInteger(
          maxGraphMemoryBytes,
          'maxGraphMemoryBytes',
+       ),
+       maxUnbackedContainerItems = _nonNegativeSafeInteger(
+         maxUnbackedContainerItems,
+         'maxUnbackedContainerItems',
        );
-
-  static int _positive(int value, String name) {
-    if (value <= 0) {
-      throw ArgumentError.value(value, name, 'must be positive');
-    }
-    return value;
-  }
 
   static int _positiveSafeInteger(int value, String name) {
     const maxSafeInteger = 9007199254740991;
@@ -111,6 +119,18 @@ final class Config {
         value,
         name,
         'must be in range [1, $maxSafeInteger]',
+      );
+    }
+    return value;
+  }
+
+  static int _nonNegativeSafeInteger(int value, String name) {
+    const maxSafeInteger = 9007199254740991;
+    if (value < 0 || value > maxSafeInteger) {
+      throw ArgumentError.value(
+        value,
+        name,
+        'must be in range [0, $maxSafeInteger]',
       );
     }
     return value;

@@ -31,13 +31,14 @@ import org.apache.fory.annotation.{
   UInt8Type
 }
 import org.apache.fory.config.Int64Encoding
+import org.apache.fory.exception.InsecureException
 import org.apache.fory.memory.MemoryBuffer
 import org.apache.fory.meta.TypeDef
 import org.apache.fory.reflect.{FieldAccessor, ObjectInstantiators}
 import org.apache.fory.scala.ForySerializer
 import org.apache.fory.scala.ForyScala
 import org.apache.fory.scala.register
-import org.apache.fory.serializer.StaticGeneratedStructSerializer
+import org.apache.fory.serializer.{GraphMemoryEstimates, StaticGeneratedStructSerializer}
 import org.apache.fory.`type`.{Types, TypeUtils}
 import org.apache.fory.`type`.union.UnknownCase
 import org.scalatest.matchers.should.Matchers
@@ -56,6 +57,9 @@ object ForySerializerDerivationTest {
 
   @ForyStruct
   final case class SearchUser(@ForyField(id = 1) name: String) derives ForySerializer
+
+  @ForyStruct
+  final case class EmptyProgress() derives ForySerializer
 
   @ForyStruct
   final case class CollectionBox(
@@ -174,6 +178,13 @@ object ForySerializerDerivationTest {
     var name: String = ""
   }
 
+  @ForyStruct
+  final class StoredState(@ForyField(id = 1) val id: Int) derives ForySerializer {
+    private val localOnly: Long = 17L
+
+    def localOnlyValue: Long = localOnly
+  }
+
   @ForyUnion
   enum SearchTarget derives ForySerializer {
     @ForyUnknownCase
@@ -211,6 +222,7 @@ object ForySerializerDerivationTest {
       .build()
     ForySerializer.register(fory, classOf[Person], "scala_test.Person")
     ForySerializer.register(fory, classOf[SearchUser], "scala_test.SearchUser")
+    ForySerializer.register(fory, classOf[EmptyProgress], "scala_test.EmptyProgress")
     ForySerializer.register(fory, classOf[CollectionBox], "scala_test.CollectionBox")
     ForySerializer.register(
       fory,
@@ -238,6 +250,18 @@ object ForySerializerDerivationTest {
     fory
   }
 
+  def graphBudgetFory(maxGraphMemoryBytes: Long): Fory = {
+    val fory = ForyScala.builder()
+      .withXlang(true)
+      .withRefTracking(true)
+      .withMaxGraphMemoryBytes(maxGraphMemoryBytes)
+      .requireClassRegistration(true)
+      .suppressClassRegistrationWarnings(false)
+      .build()
+    ForySerializer.register(fory, classOf[StoredState], "scala_test.StoredState")
+    fory
+  }
+
   def newAccessorValue[T](cls: Class[T], values: (String, AnyRef)*): T = {
     val value = ObjectInstantiators.getObjectInstantiator(cls).newInstance()
     values.foreach { (fieldName, fieldValue) =>
@@ -257,6 +281,19 @@ class ForySerializerDerivationTest extends AnyWordSpec with Matchers {
         Person("Ada", 36, Some("ada@example.com"))
       fory.deserialize(fory.serialize(Person("Grace", 85, None))) shouldEqual
         Person("Grace", 85, None)
+    }
+
+    "reserve generated physical storage" in {
+      val value = new StoredState(7)
+      val required = GraphMemoryEstimates.shallowObjectBytes(classOf[StoredState]).toLong
+      val bytes = graphBudgetFory(required).serialize(value)
+
+      intercept[InsecureException] {
+        graphBudgetFory(required - 1).deserialize(bytes)
+      }
+      val restored = graphBudgetFory(required).deserialize(bytes).asInstanceOf[StoredState]
+      restored.id shouldBe value.id
+      restored.localOnlyValue shouldBe value.localOnlyValue
     }
 
     "register derived structs with dotted names" in {
@@ -295,6 +332,10 @@ class ForySerializerDerivationTest extends AnyWordSpec with Matchers {
         summon[ForySerializer[CollectionBox]]
           .createSerializer(fory.getTypeResolver)
           .asInstanceOf[StaticGeneratedStructSerializer[CollectionBox]]
+      serializer.readDataAlwaysAdvances() shouldBe true
+      summon[ForySerializer[EmptyProgress]]
+        .createSerializer(fory.getTypeResolver)
+        .readDataAlwaysAdvances() shouldBe false
       val tags = serializer.getGeneratedDescriptors.asScala.find(_.getName == "tags").get
       val tagMeta = TypeUtils.getElementType(tags.getTypeRef).getTypeExtMeta
       if tagMeta != null then {

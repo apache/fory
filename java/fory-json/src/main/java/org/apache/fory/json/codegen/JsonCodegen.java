@@ -52,6 +52,8 @@ import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.platform.internal.DefineClass;
+import org.apache.fory.platform.internal._JDKAccess;
 
 /**
  * Generates concrete object and exact-collection capability classes.
@@ -79,6 +81,7 @@ public final class JsonCodegen {
   private final int codegenHash;
   private final CodeGenerator codeGenerator;
   private final ClassLoader jsonLoader;
+  private final boolean hostedCodegen;
 
   static String generatedCodecType(CodegenContext ctx, Class<?> codecType) {
     // Janino-generated serializers use erased types, matching Fory core code generation. Runtime
@@ -91,9 +94,10 @@ public final class JsonCodegen {
     return ctx.type(arrayType);
   }
 
-  public JsonCodegen(int codegenHash, ClassLoader jsonLoader) {
+  public JsonCodegen(int codegenHash, ClassLoader jsonLoader, boolean hostedCodegen) {
     this.codegenHash = codegenHash;
     this.jsonLoader = jsonLoader;
+    this.hostedCodegen = hostedCodegen;
     codeGenerator = new CodeGenerator(jsonLoader);
   }
 
@@ -218,7 +222,7 @@ public final class JsonCodegen {
       String code =
           new StringWriterCodegen(this, resolver)
               .genUnwrappedWriterCode(builder, type, codec, unwrapped);
-      return compileCodecClass(generatedPackage, className, code);
+      return compileObjectCodecClass(type, generatedPackage, className, code);
     }
     AnyInfo any = codec.anyInfo();
     JsonFieldInfo[] properties = codec.writeFields();
@@ -227,7 +231,7 @@ public final class JsonCodegen {
           new JsonGeneratedCodecBuilder(generatedPackage, className, type);
       String code =
           new StringWriterCodegen(this, resolver).genAnyWriterCode(builder, type, properties, any);
-      return compileCodecClass(generatedPackage, className, code);
+      return compileObjectCodecClass(type, generatedPackage, className, code);
     }
     Function<int[], String> source =
         groupEnds -> {
@@ -237,7 +241,7 @@ public final class JsonCodegen {
               .genWriterCode(builder, type, properties, groupEnds);
         };
     return compileWriterClass(
-        generatedPackage, className, properties, "writeString", "writeStringMembers", source);
+        type, generatedPackage, className, properties, "writeString", "writeStringMembers", source);
   }
 
   private Class<?> buildUtf8Writer(ObjectCodec<?> codec, JsonTypeResolver resolver) {
@@ -251,7 +255,7 @@ public final class JsonCodegen {
       String code =
           new Utf8WriterCodegen(this, resolver, false)
               .genUnwrappedWriterCode(builder, type, codec, unwrapped);
-      return compileCodecClass(generatedPackage, className, code);
+      return compileObjectCodecClass(type, generatedPackage, className, code);
     }
     AnyInfo any = codec.anyInfo();
     JsonFieldInfo[] properties = codec.writeFields();
@@ -261,7 +265,7 @@ public final class JsonCodegen {
       String code =
           new Utf8WriterCodegen(this, resolver, false)
               .genAnyWriterCode(builder, type, properties, any);
-      return compileCodecClass(generatedPackage, className, code);
+      return compileObjectCodecClass(type, generatedPackage, className, code);
     }
     Function<int[], String> normalSource =
         groupEnds -> {
@@ -293,11 +297,11 @@ public final class JsonCodegen {
       int expandedSize =
           methodSize(codeStats(generatedPackage, className, expandedSource), "writeUtf8");
       if (expandedSize > HOT_INLINE_LIMIT) {
-        return compileCodecClass(generatedPackage, className, expandedSource);
+        return compileObjectCodecClass(type, generatedPackage, className, expandedSource);
       }
     }
     return compileUtf8WriterClass(
-        generatedPackage, className, properties, "writeUtf8", directSource, groupedSource);
+        type, generatedPackage, className, properties, "writeUtf8", directSource, groupedSource);
   }
 
   private Class<?> buildLatin1Reader(ObjectCodec<?> codec, JsonTypeResolver resolver) {
@@ -311,7 +315,7 @@ public final class JsonCodegen {
       String code =
           new Latin1ReaderCodegen(this, resolver)
               .genUnwrappedReaderCode(builder, type, codec, unwrapped);
-      return compileCodecClass(generatedPackage, className, code);
+      return compileObjectCodecClass(type, generatedPackage, className, code);
     }
     AnyInfo any = codec.anyInfo();
     JsonFieldInfo[] properties = codec.readFields();
@@ -321,10 +325,11 @@ public final class JsonCodegen {
               new JsonGeneratedCodecBuilder(generatedPackage, className, type);
           Latin1ReaderCodegen reader = new Latin1ReaderCodegen(this, resolver, groupEnds);
           return any == null || any.readField() == null && any.readSetter() == null
-              ? reader.genReaderCode(builder, type, properties, codec.creatorInfo())
-              : reader.genAnyReaderCode(builder, type, properties, codec.creatorInfo(), any);
+              ? reader.genReaderCode(builder, codec, properties, codec.creatorInfo())
+              : reader.genAnyReaderCode(builder, codec, properties, codec.creatorInfo(), any);
         };
     return compileReaderClass(
+        type,
         generatedPackage,
         className,
         properties.length,
@@ -344,7 +349,7 @@ public final class JsonCodegen {
       String code =
           new Utf16ReaderCodegen(this, resolver)
               .genUnwrappedReaderCode(builder, type, codec, unwrapped);
-      return compileCodecClass(generatedPackage, className, code);
+      return compileObjectCodecClass(type, generatedPackage, className, code);
     }
     AnyInfo any = codec.anyInfo();
     JsonFieldInfo[] properties = codec.readFields();
@@ -354,10 +359,11 @@ public final class JsonCodegen {
               new JsonGeneratedCodecBuilder(generatedPackage, className, type);
           Utf16ReaderCodegen reader = new Utf16ReaderCodegen(this, resolver, groupEnds);
           return any == null || any.readField() == null && any.readSetter() == null
-              ? reader.genReaderCode(builder, type, properties, codec.creatorInfo())
-              : reader.genAnyReaderCode(builder, type, properties, codec.creatorInfo(), any);
+              ? reader.genReaderCode(builder, codec, properties, codec.creatorInfo())
+              : reader.genAnyReaderCode(builder, codec, properties, codec.creatorInfo(), any);
         };
     return compileReaderClass(
+        type,
         generatedPackage,
         className,
         properties.length,
@@ -378,7 +384,7 @@ public final class JsonCodegen {
       String code =
           new Utf8ReaderCodegen(this, resolver, finalDependencies)
               .genUnwrappedReaderCode(builder, type, codec, unwrapped);
-      return compileCodecClass(generatedPackage, className, code);
+      return compileObjectCodecClass(type, generatedPackage, className, code);
     }
     AnyInfo any = codec.anyInfo();
     JsonFieldInfo[] properties = codec.readFields();
@@ -389,10 +395,11 @@ public final class JsonCodegen {
           Utf8ReaderCodegen reader =
               new Utf8ReaderCodegen(this, resolver, finalDependencies, groupEnds);
           return any == null || any.readField() == null && any.readSetter() == null
-              ? reader.genReaderCode(builder, type, properties, codec.creatorInfo())
-              : reader.genAnyReaderCode(builder, type, properties, codec.creatorInfo(), any);
+              ? reader.genReaderCode(builder, codec, properties, codec.creatorInfo())
+              : reader.genAnyReaderCode(builder, codec, properties, codec.creatorInfo(), any);
         };
     return compileReaderClass(
+        type,
         generatedPackage,
         className,
         properties.length,
@@ -402,6 +409,7 @@ public final class JsonCodegen {
   }
 
   private Class<?> compileReaderClass(
+      Class<?> ownerType,
       String generatedPackage,
       String className,
       int propertyCount,
@@ -412,10 +420,11 @@ public final class JsonCodegen {
         groupable
             ? readerGroupEnds(generatedPackage, className, propertyCount, readMethod, source)
             : oneGroup(propertyCount);
-    return compileCodecClass(generatedPackage, className, source.apply(groupEnds));
+    return compileObjectCodecClass(ownerType, generatedPackage, className, source.apply(groupEnds));
   }
 
   private Class<?> compileWriterClass(
+      Class<?> ownerType,
       String generatedPackage,
       String className,
       JsonFieldInfo[] properties,
@@ -423,7 +432,7 @@ public final class JsonCodegen {
       String memberMethod,
       Function<int[], String> source) {
     if (properties.length < 2) {
-      return compileCodecClass(generatedPackage, className, source.apply(null));
+      return compileObjectCodecClass(ownerType, generatedPackage, className, source.apply(null));
     }
     // Group only the bytecode emitted in this generated class. A callee with its own stable
     // boundary contributes its invocation, not the body that C2 must keep in the callee.
@@ -431,7 +440,7 @@ public final class JsonCodegen {
     JaninoUtils.CodeStats oneGroupStats =
         codeStats(generatedPackage, className, source.apply(oneGroup));
     if (privateMethodSize(oneGroupStats, writeMethod + "Object") <= HOT_INLINE_LIMIT) {
-      return compileCodecClass(generatedPackage, className, source.apply(null));
+      return compileObjectCodecClass(ownerType, generatedPackage, className, source.apply(null));
     }
     int[] groupEnds =
         writerGroupEnds(
@@ -442,10 +451,11 @@ public final class JsonCodegen {
             writeMethod,
             memberMethod,
             source);
-    return compileCodecClass(generatedPackage, className, source.apply(groupEnds));
+    return compileObjectCodecClass(ownerType, generatedPackage, className, source.apply(groupEnds));
   }
 
   private Class<?> compileUtf8WriterClass(
+      Class<?> ownerType,
       String generatedPackage,
       String className,
       JsonFieldInfo[] properties,
@@ -455,19 +465,19 @@ public final class JsonCodegen {
     if (properties.length < 2
         || methodSize(codeStats(generatedPackage, className, directSource), writeMethod)
             <= HOT_INLINE_LIMIT) {
-      return compileCodecClass(generatedPackage, className, directSource);
+      return compileObjectCodecClass(ownerType, generatedPackage, className, directSource);
     }
     int firstGroupMember = JsonWriterCodegen.firstGroupMember(properties);
     if (properties.length - firstGroupMember < 2) {
-      return compileCodecClass(generatedPackage, className, directSource);
+      return compileObjectCodecClass(ownerType, generatedPackage, className, directSource);
     }
     int[] groupEnds =
         utf8WriterGroupEnds(
             generatedPackage, className, properties.length, firstGroupMember, writeMethod, source);
     if (groupEnds.length < 2) {
-      return compileCodecClass(generatedPackage, className, directSource);
+      return compileObjectCodecClass(ownerType, generatedPackage, className, directSource);
     }
-    return compileCodecClass(generatedPackage, className, source.apply(groupEnds));
+    return compileObjectCodecClass(ownerType, generatedPackage, className, source.apply(groupEnds));
   }
 
   private int[] utf8WriterGroupEnds(
@@ -645,6 +655,22 @@ public final class JsonCodegen {
     return result;
   }
 
+  private Class<?> compileObjectCodecClass(
+      Class<?> ownerType, String generatedPackage, String className, String code) {
+    if (!hostedCodegen || _JDKAccess.isExported(ownerType)) {
+      return compileCodecClass(generatedPackage, className, code);
+    }
+    try {
+      // A codec for a concealed model package must live beside the model to access its public
+      // members without an application export or open. Exported and bootstrap models stay in the
+      // generated loader, which also avoids changing their module graph.
+      CompileUnit unit = new CompileUnit(generatedPackage, className, code);
+      return compileHostedClass(ownerType, unit);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot compile generated JSON codec " + className, e);
+    }
+  }
+
   private Class<?> compileCodecClass(String generatedPackage, String className, String code) {
     try {
       CompileUnit unit = new CompileUnit(generatedPackage, className, code);
@@ -653,6 +679,38 @@ public final class JsonCodegen {
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot compile generated JSON codec " + className, e);
     }
+  }
+
+  private Class<?> compileHostedClass(Class<?> ownerType, CompileUnit unit) {
+    Map<String, byte[]> classes = JaninoUtils.toBytecode(jsonLoader, "", unit);
+    String mainClassName = unit.getQualifiedClassName();
+    String mainClassPath = mainClassName.replace('.', '/') + ".class";
+    byte[] mainBytecode = classes.get(mainClassPath);
+    if (mainBytecode == null) {
+      throw new ForyJsonException("Missing generated JSON codec bytecode " + mainClassName);
+    }
+    ClassLoader ownerLoader = ownerType.getClassLoader();
+    if (ownerLoader == null) {
+      throw new ForyJsonException(
+          "Cannot define generated JSON codec beside bootstrap type " + ownerType.getName());
+    }
+    Object ownerModule = _JDKAccess.getModule(ownerType);
+    // The generated source names APIs from both JSON and core. A concealed third-party model
+    // package may not already read either module, so establish only those two implementation
+    // dependencies before defining the ordinary class in the model module.
+    _JDKAccess.addReads(ownerModule, _JDKAccess.getModule(JsonCodegen.class));
+    _JDKAccess.addReads(ownerModule, _JDKAccess.getModule(DefineClass.class));
+    Class<?> mainClass =
+        DefineClass.defineClass(
+            mainClassName, ownerType, ownerLoader, ownerType.getProtectionDomain(), mainBytecode);
+    for (Map.Entry<String, byte[]> entry : classes.entrySet()) {
+      if (!entry.getKey().equals(mainClassPath)) {
+        String className = CodeGenerator.fullClassNameFromClassFilePath(entry.getKey());
+        DefineClass.defineClass(
+            className, ownerType, ownerLoader, ownerType.getProtectionDomain(), entry.getValue());
+      }
+    }
+    return mainClass;
   }
 
   @Internal

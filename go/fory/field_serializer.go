@@ -60,6 +60,87 @@ func serializerNeedsGenericDispatch(serializer Serializer) bool {
 	}
 }
 
+// interfaceScalarSerializer is a cold compatible adapter for a
+// schema-declared scalar whose matched local field is an interface.
+type interfaceScalarSerializer struct {
+	type_      reflect.Type
+	serializer Serializer
+}
+
+func (s interfaceScalarSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	scalar := s.concreteValue(value)
+	if !scalar.IsValid() {
+		ctx.SetError(SerializationError("schema-declared interface scalar cannot be nil"))
+		return
+	}
+	if scalar.Type() != s.type_ {
+		ctx.SetError(SerializationErrorf(
+			"interface scalar type %s does not match schema type %s", scalar.Type(), s.type_))
+		return
+	}
+	s.serializer.WriteData(ctx, scalar)
+}
+
+func (s interfaceScalarSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	scalar := s.concreteValue(value)
+	if !scalar.IsValid() {
+		if refMode == RefModeNone {
+			ctx.SetError(SerializationError("schema-declared interface scalar cannot be nil"))
+			return
+		}
+		ctx.Buffer().WriteInt8(NullFlag)
+		return
+	}
+	if scalar.Type() != s.type_ {
+		ctx.SetError(SerializationErrorf(
+			"interface scalar type %s does not match schema type %s", scalar.Type(), s.type_))
+		return
+	}
+	s.serializer.Write(ctx, refMode, writeType, hasGenerics, scalar)
+}
+
+func (s interfaceScalarSerializer) concreteValue(value reflect.Value) reflect.Value {
+	if value.IsValid() && value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return reflect.Value{}
+		}
+		return value.Elem()
+	}
+	return value
+}
+
+func (s interfaceScalarSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	scalar := reflect.New(s.type_).Elem()
+	s.serializer.ReadData(ctx, scalar)
+	if ctx.HasError() {
+		return
+	}
+	value.Set(scalar)
+}
+
+func (s interfaceScalarSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	if refMode != RefModeNone {
+		flag := ctx.Buffer().ReadInt8(ctx.Err())
+		if ctx.HasError() {
+			return
+		}
+		if flag == NullFlag {
+			value.SetZero()
+			return
+		}
+	}
+	scalar := reflect.New(s.type_).Elem()
+	s.serializer.Read(ctx, RefModeNone, readType, hasGenerics, scalar)
+	if ctx.HasError() {
+		return
+	}
+	value.Set(scalar)
+}
+
+func (s interfaceScalarSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
+
 func newDeclaredSliceSerializer(type_ reflect.Type, elemSerializer Serializer, referencable bool) (*sliceSerializer, error) {
 	elem := type_.Elem()
 	if elem.Kind() == reflect.Interface {
@@ -110,6 +191,7 @@ func (s encodedByteSliceSerializer) Read(ctx *ReadContext, refMode RefMode, read
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s encodedByteSliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {

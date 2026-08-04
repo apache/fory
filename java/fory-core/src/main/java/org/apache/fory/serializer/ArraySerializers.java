@@ -47,6 +47,7 @@ import org.apache.fory.util.Preconditions;
 public final class ArraySerializers {
   private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
   private static final int OBJECT_ARRAY_OWNER_BYTES = GraphMemoryEstimates.objectArrayBytes();
+  private static final int UNBACKED_CHECK_INTERVAL = 1024;
 
   private ArraySerializers() {}
 
@@ -62,8 +63,11 @@ public final class ArraySerializers {
     if (numElements < 0) {
       throwInvalidObjectArraySize(numElements);
     }
+    int requiredReadable = numElements - readContext.remainingUnbackedContainerItems();
+    if (requiredReadable > 0) {
+      buffer.checkReadableBytes(requiredReadable);
+    }
     readContext.reserveGraphMemory(OBJECT_ARRAY_OWNER_BYTES + (long) numElements * REFERENCE_BYTES);
-    buffer.checkReadableBytes(numElements);
     return numElements;
   }
 
@@ -162,6 +166,11 @@ public final class ArraySerializers {
     private Object[] newArray(int numElements) {
       return (Object[]) Array.newInstance(type.getComponentType(), numElements);
     }
+
+    @Override
+    public boolean readDataAlwaysAdvances() {
+      return true;
+    }
   }
 
   /**
@@ -238,6 +247,11 @@ public final class ArraySerializers {
 
     private Object[] newArray(int numElements) {
       return (Object[]) Array.newInstance(componentType, numElements);
+    }
+
+    @Override
+    public final boolean readDataAlwaysAdvances() {
+      return true;
     }
   }
 
@@ -521,8 +535,12 @@ public final class ArraySerializers {
         value[i] = serializer.read(readContext, RefMode.TRACKING);
       }
     } else if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
-      for (int i = 0; i < numElements; i++) {
-        value[i] = serializer.read(readContext, RefMode.NONE);
+      if (serializer.readDataAlwaysAdvances()) {
+        for (int i = 0; i < numElements; i++) {
+          value[i] = serializer.read(readContext, RefMode.NONE);
+        }
+      } else {
+        readUnbackedSameTypeArrayElements(readContext, serializer, value, numElements);
       }
     } else {
       MemoryBuffer buffer = readContext.getBuffer();
@@ -535,6 +553,31 @@ public final class ArraySerializers {
       }
     }
     readContext.decreaseDepth();
+  }
+
+  private static void readUnbackedSameTypeArrayElements(
+      ReadContext readContext, Serializer serializer, Object[] value, int numElements) {
+    MemoryBuffer buffer = readContext.getBuffer();
+    int checkpoint = buffer.readerIndex();
+    for (int i = 0; i < numElements; i++) {
+      value[i] = serializer.read(readContext, RefMode.NONE);
+      int completed = i + 1;
+      if ((completed & (UNBACKED_CHECK_INTERVAL - 1)) == 0) {
+        int current = buffer.readerIndex();
+        int consumed = current - checkpoint;
+        if (consumed < UNBACKED_CHECK_INTERVAL) {
+          readContext.reserveUnbackedContainerItems(UNBACKED_CHECK_INTERVAL - consumed);
+        }
+        checkpoint = current;
+      }
+    }
+    int tail = numElements & (UNBACKED_CHECK_INTERVAL - 1);
+    if (tail != 0) {
+      int consumed = buffer.readerIndex() - checkpoint;
+      if (consumed < tail) {
+        readContext.reserveUnbackedContainerItems(tail - consumed);
+      }
+    }
   }
 
   private static void readDifferentTypeArrayElements(
@@ -686,6 +729,11 @@ public final class ArraySerializers {
 
     private Object[] newArray(int numElements) {
       return (Object[]) Array.newInstance(type.getComponentType(), numElements);
+    }
+
+    @Override
+    public boolean readDataAlwaysAdvances() {
+      return true;
     }
   }
 }

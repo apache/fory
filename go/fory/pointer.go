@@ -165,15 +165,12 @@ func (s *ptrToValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 	case RefModeTracking:
 		refID, refErr := ctx.RefResolver().TryPreserveRefId(buf)
 		if refErr != nil {
-			ctx.SetError(FromError(refErr))
+			ctxErr.SetError(refErr)
 			return
 		}
 		if refID < int32(NotNullValueFlag) {
 			// Reference found
-			obj := ctx.RefResolver().GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
-			}
+			assignReadRef(ctx, refID, value)
 			return
 		}
 	case RefModeNullOnly:
@@ -199,7 +196,11 @@ func (s *ptrToValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 				return
 			}
 			// Use the serializer from TypeInfo which has the remote field definitions
-			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
+			serializer := serializerForConcreteType(value.Type().Elem(), typeInfo, ctxErr)
+			if ctxErr.HasError() {
+				return
+			}
+			if structSer, ok := serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
 				// Allocate the pointer value if needed
 				if value.IsNil() {
 					// Pointer serializers reserve only when they allocate the pointed value.
@@ -287,10 +288,7 @@ func (s *ptrToInterfaceSerializer) Read(ctx *ReadContext, refMode RefMode, readT
 		}
 		if refID < int32(NotNullValueFlag) {
 			// Reference found
-			obj := ctx.RefResolver().GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
-			}
+			assignReadRef(ctx, refID, value)
 			return
 		}
 	case RefModeNullOnly:

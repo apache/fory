@@ -29,7 +29,7 @@ public struct User: Equatable, Hashable, NamedValue {
     }
 }
 
-public struct ManualUser: Equatable, Hashable, NamedValue {
+public struct CustomUser: Equatable, Hashable, NamedValue {
     public var name: String
     public var age: UInt32
 
@@ -95,6 +95,7 @@ public struct Group: Equatable {
 public final class Node {
     public var value: Int32 = 0
     public var next: Node?
+    private var omittedState: (UInt64, UInt64) = (0, 0)
 
     public init() {}
 }

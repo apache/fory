@@ -258,6 +258,13 @@ macro_rules! impl_single_carrier_serializer {
                     false,
                 > as $crate::serializer::Serializer>::REQUIRES_SCOPED_ACCESS;
 
+            const READ_DATA_ALWAYS_ADVANCES: bool = <$codec<
+                    S::Target,
+                    S,
+                    false,
+                    false,
+                > as $crate::serializer::Serializer>::READ_DATA_ALWAYS_ADVANCES;
+
             #[inline(always)]
             fn dynamic_type_id(
                 value: &Self::Target,
@@ -411,6 +418,9 @@ macro_rules! impl_single_carrier_serializer {
             const REQUIRES_SCOPED_ACCESS: bool =
                 <$provider<T> as $crate::serializer::Serializer>::REQUIRES_SCOPED_ACCESS;
 
+            const READ_DATA_ALWAYS_ADVANCES: bool =
+                <$provider<T> as $crate::serializer::Serializer>::READ_DATA_ALWAYS_ADVANCES;
+
             #[inline(always)]
             fn dynamic_type_id(
                 value: &Self,
@@ -510,6 +520,8 @@ macro_rules! impl_collection_carrier_codec {
             fn static_type_id() -> $crate::TypeId {
                 $crate::TypeId::$wire_type
             }
+
+            const READ_DATA_ALWAYS_ADVANCES: bool = true;
         }
 
         impl<T, C, const NULLABLE: bool, const TRACK_REF: bool>

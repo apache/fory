@@ -40,6 +40,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class TypeDefEncoderTest {
+  private static final int FIELD_TYPE_MAX_DEPTH = 50;
+  private static final int DEEP_TYPE_META_BYTES = 16384;
 
   // Test data: Class with duplicate tag IDs (both set to 100)
   @Data
@@ -260,6 +262,72 @@ public class TypeDefEncoderTest {
         Descriptor.getDescriptorsMap(NestedUnionMapField.class).get("values");
     new FieldInfo(NestedUnionMapField.class.getName(), "values", fieldType)
         .toDescriptor(fory.getTypeResolver(), localDescriptor);
+  }
+
+  @Test
+  public void testXlangFieldTypeDepth() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(true)
+            .withMaxDepth(FIELD_TYPE_MAX_DEPTH)
+            .withMaxTypeMetaBytes(DEEP_TYPE_META_BYTES)
+            .build();
+    MemoryBuffer buffer = deepXlangMapFieldType(FIELD_TYPE_MAX_DEPTH, false);
+    FieldTypes.FieldType fieldType =
+        FieldTypes.FieldType.readCrossLanguage(
+            buffer, (XtypeResolver) fory.getTypeResolver(), Types.MAP, false, false);
+
+    for (int i = 0; i < FIELD_TYPE_MAX_DEPTH; i++) {
+      Assert.assertTrue(fieldType instanceof FieldTypes.MapFieldType);
+      FieldTypes.MapFieldType mapType = (FieldTypes.MapFieldType) fieldType;
+      Assert.assertTrue(mapType.getKeyType() instanceof FieldTypes.ObjectFieldType);
+      fieldType = mapType.getValueType();
+    }
+    Assert.assertTrue(fieldType instanceof FieldTypes.ObjectFieldType);
+    Assert.assertEquals(buffer.remaining(), 0);
+
+    Assert.assertThrows(
+        DeserializationException.class,
+        () ->
+            FieldTypes.FieldType.readCrossLanguage(
+                deepXlangMapFieldType(FIELD_TYPE_MAX_DEPTH + 1, false),
+                (XtypeResolver) fory.getTypeResolver(),
+                Types.MAP,
+                false,
+                false));
+  }
+
+  @Test
+  public void testMalformedDeepXlangFieldType() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(true)
+            .withMaxDepth(FIELD_TYPE_MAX_DEPTH)
+            .withMaxTypeMetaBytes(DEEP_TYPE_META_BYTES)
+            .build();
+    MemoryBuffer buffer = deepXlangMapFieldType(FIELD_TYPE_MAX_DEPTH, true);
+
+    Assert.assertThrows(
+        RuntimeException.class,
+        () ->
+            FieldTypes.FieldType.readCrossLanguage(
+                buffer, (XtypeResolver) fory.getTypeResolver(), Types.MAP, false, false));
+  }
+
+  private static MemoryBuffer deepXlangMapFieldType(int depth, boolean truncated) {
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(depth * 2);
+    for (int i = 0; i < depth; i++) {
+      buffer.writeVarUInt32Small7(Types.UNKNOWN << 2);
+      if (i + 1 < depth) {
+        buffer.writeVarUInt32Small7(Types.MAP << 2);
+      }
+    }
+    if (truncated) {
+      buffer.writeByte(0x80);
+    } else {
+      buffer.writeVarUInt32Small7(Types.UNKNOWN << 2);
+    }
+    return MemoryBuffer.fromByteArray(buffer.getBytes(0, buffer.writerIndex()));
   }
 
   @Test

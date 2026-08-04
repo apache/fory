@@ -455,6 +455,8 @@ public enum SerializerCodec<S: Serializer>: FieldCodec {
     public static var isRefType: Bool { S.isRefType }
     @inlinable
     public static var isWrapper: Bool { S.isWrapper }
+    @inlinable
+    public static var readDataAlwaysAdvances: Bool { S.readDataAlwaysAdvances }
 
     @inlinable
     public static func isNone(_ value: Target) -> Bool {
@@ -614,6 +616,7 @@ public enum SerializerCodec<S: Serializer>: FieldCodec {
 
 public enum BoolCodec: FieldCodec {
     public typealias Target = Bool
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Bool, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -628,6 +631,7 @@ public enum BoolCodec: FieldCodec {
 
 public enum Int8Codec: FieldCodec {
     public typealias Target = Int8
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Int8, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -642,6 +646,7 @@ public enum Int8Codec: FieldCodec {
 
 public enum Int16Codec: FieldCodec {
     public typealias Target = Int16
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Int16, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -656,6 +661,7 @@ public enum Int16Codec: FieldCodec {
 
 public enum Int32VarintCodec: FieldCodec {
     public typealias Target = Int32
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Int32, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -670,6 +676,7 @@ public enum Int32VarintCodec: FieldCodec {
 
 public enum Int32FixedCodec: FieldCodec {
     public typealias Target = Int32
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Int32, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -684,6 +691,7 @@ public enum Int32FixedCodec: FieldCodec {
 
 public enum Int64VarintCodec: FieldCodec {
     public typealias Target = Int64
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Int64, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -698,6 +706,7 @@ public enum Int64VarintCodec: FieldCodec {
 
 public enum Int64FixedCodec: FieldCodec {
     public typealias Target = Int64
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Int64, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -712,6 +721,7 @@ public enum Int64FixedCodec: FieldCodec {
 
 public enum Int64TaggedCodec: FieldCodec {
     public typealias Target = Int64
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Int64, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -726,6 +736,7 @@ public enum Int64TaggedCodec: FieldCodec {
 
 public enum UInt8Codec: FieldCodec {
     public typealias Target = UInt8
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: UInt8, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -740,6 +751,7 @@ public enum UInt8Codec: FieldCodec {
 
 public enum UInt16Codec: FieldCodec {
     public typealias Target = UInt16
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: UInt16, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -754,6 +766,7 @@ public enum UInt16Codec: FieldCodec {
 
 public enum UInt32VarintCodec: FieldCodec {
     public typealias Target = UInt32
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: UInt32, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -768,6 +781,7 @@ public enum UInt32VarintCodec: FieldCodec {
 
 public enum UInt32FixedCodec: FieldCodec {
     public typealias Target = UInt32
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: UInt32, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -782,6 +796,7 @@ public enum UInt32FixedCodec: FieldCodec {
 
 public enum UInt64VarintCodec: FieldCodec {
     public typealias Target = UInt64
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: UInt64, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -796,6 +811,7 @@ public enum UInt64VarintCodec: FieldCodec {
 
 public enum UInt64FixedCodec: FieldCodec {
     public typealias Target = UInt64
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: UInt64, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -810,6 +826,7 @@ public enum UInt64FixedCodec: FieldCodec {
 
 public enum UInt64TaggedCodec: FieldCodec {
     public typealias Target = UInt64
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: UInt64, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -824,6 +841,7 @@ public enum UInt64TaggedCodec: FieldCodec {
 
 public enum IntVarintCodec: FieldCodec {
     public typealias Target = Int
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Int, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -838,6 +856,7 @@ public enum IntVarintCodec: FieldCodec {
 
 public enum IntFixedCodec: FieldCodec {
     public typealias Target = Int
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Int, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -852,6 +871,7 @@ public enum IntFixedCodec: FieldCodec {
 
 public enum IntTaggedCodec: FieldCodec {
     public typealias Target = Int
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Int, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -866,6 +886,7 @@ public enum IntTaggedCodec: FieldCodec {
 
 public enum UIntVarintCodec: FieldCodec {
     public typealias Target = UInt
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: UInt, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -880,6 +901,7 @@ public enum UIntVarintCodec: FieldCodec {
 
 public enum UIntFixedCodec: FieldCodec {
     public typealias Target = UInt
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: UInt, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -894,6 +916,7 @@ public enum UIntFixedCodec: FieldCodec {
 
 public enum UIntTaggedCodec: FieldCodec {
     public typealias Target = UInt
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: UInt, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -908,6 +931,7 @@ public enum UIntTaggedCodec: FieldCodec {
 
 public enum Float16Codec: FieldCodec {
     public typealias Target = Float16
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Float16, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -922,6 +946,7 @@ public enum Float16Codec: FieldCodec {
 
 public enum BFloat16Codec: FieldCodec {
     public typealias Target = BFloat16
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: BFloat16, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -936,6 +961,7 @@ public enum BFloat16Codec: FieldCodec {
 
 public enum FloatCodec: FieldCodec {
     public typealias Target = Float
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Float, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -950,6 +976,7 @@ public enum FloatCodec: FieldCodec {
 
 public enum DoubleCodec: FieldCodec {
     public typealias Target = Double
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeFieldData(
         _ value: Double, _ context: WriteContext, hasDeclaredChildren _: Bool
@@ -973,6 +1000,7 @@ public enum ArrayFieldCodec<ElementCodec: FieldCodec>: FieldCodec {
     public typealias Target = [ElementCodec.Target]
 
     public static var staticTypeId: TypeId { ArraySerializer<ElementCodec>.staticTypeId }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func defaultValue(_ context: ReadContext) throws -> Target {
         try ArraySerializer<ElementCodec>.defaultValue(context)
@@ -1742,6 +1770,25 @@ private func readPackedArrayElementCount(
     return count
 }
 
+@inline(__always)
+private func minimumListElementBytes(_ rawTypeID: UInt32) throws -> Int {
+    guard let typeID = TypeId(rawValue: rawTypeID) else {
+        throw ForyError.invalidData("unsupported compatible list element type id \(rawTypeID)")
+    }
+    switch typeID {
+    case .bool, .int8, .uint8, .varint32, .varUInt32, .varint64, .varUInt64:
+        return 1
+    case .int16, .uint16, .float16, .bfloat16:
+        return 2
+    case .int32, .uint32, .float32, .taggedInt64, .taggedUInt64:
+        return 4
+    case .int64, .uint64, .float64:
+        return 8
+    default:
+        throw ForyError.invalidData("unsupported compatible list element type id \(rawTypeID)")
+    }
+}
+
 @inline(never)
 private func readListPayloadAsArray<ElementCodec: FieldCodec>(
     _ context: ReadContext,
@@ -1815,7 +1862,14 @@ private func readListPayloadAsArrayPayload<ElementCodec: FieldCodec>(
     } else {
         throw ForyError.invalidData("compatible list-to-array field requires declared elements")
     }
-    try context.ensureRemainingBytes(length, label: "array")
+    // Prove the remote element encoding before the dense target reserves storage.
+    // Variable-width integer encodings use their protocol minimum so compact values remain valid.
+    let elementBytes = try minimumListElementBytes(remoteElementTypeID)
+    let (requiredBytes, overflow) = length.multipliedReportingOverflow(by: elementBytes)
+    if overflow {
+        throw ForyError.invalidData("compatible list payload size overflows")
+    }
+    try context.ensureRemainingBytes(requiredBytes, label: "array")
     var result: [ElementCodec.Target] = []
     result.reserveCapacity(length)
     return try ElementCodec.withFieldTypeInfo(elementTypeInfo, context) {

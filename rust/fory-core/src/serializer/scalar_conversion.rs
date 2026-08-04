@@ -1985,7 +1985,7 @@ fn canonical_decimal(mut decimal: Decimal) -> Result<Decimal, Error> {
         decimal.unscaled *= factor;
         decimal.scale = 0;
     }
-    canonicalize_decimal(&mut decimal.unscaled, &mut decimal.scale);
+    canonicalize_decimal(&mut decimal.unscaled, &mut decimal.scale)?;
     if !compatible_decimal_bounds(&decimal.unscaled, decimal.scale) {
         return Err(conversion_error(
             type_id::DECIMAL,
@@ -1996,16 +1996,62 @@ fn canonical_decimal(mut decimal: Decimal) -> Result<Decimal, Error> {
     Ok(decimal)
 }
 
-fn canonicalize_decimal(unscaled: &mut BigInt, scale: &mut i32) {
+fn canonicalize_decimal(unscaled: &mut BigInt, scale: &mut i32) -> Result<(), Error> {
     if unscaled.is_zero() {
         *scale = 0;
-        return;
+        return Ok(());
     }
-    let ten = BigInt::from(10);
-    while *scale > 0 && (&*unscaled % &ten).is_zero() {
-        *unscaled /= &ten;
-        *scale -= 1;
+    if *scale <= 0 {
+        return Ok(());
     }
+
+    const DECIMAL_CHUNK: u32 = 1_000_000_000;
+    const DECIMAL_CHUNK_DIGITS: i32 = 9;
+
+    // One scalar remainder bounds the common path. A zero chunk can hide an
+    // arbitrarily long run, so strip that run with one radix reconstruction.
+    let mut chunk = (unscaled.magnitude() % DECIMAL_CHUNK)
+        .to_u32()
+        .expect("decimal chunk remainder fits in u32");
+    if chunk != 0 {
+        let mut trailing_zeros = 0;
+        while trailing_zeros < *scale && chunk % 10 == 0 {
+            chunk /= 10;
+            trailing_zeros += 1;
+        }
+        if trailing_zeros != 0 {
+            *unscaled /= 10u32.pow(trailing_zeros as u32);
+            *scale -= trailing_zeros;
+        }
+        return Ok(());
+    }
+
+    if *scale <= DECIMAL_CHUNK_DIGITS {
+        *unscaled /= 10u32.pow(*scale as u32);
+        *scale = 0;
+        return Ok(());
+    }
+
+    let (sign, digits) = unscaled.to_radix_le(10);
+    let trailing_zeros = digits
+        .iter()
+        .take(*scale as usize)
+        .take_while(|digit| **digit == 0)
+        .count();
+    debug_assert!(trailing_zeros >= DECIMAL_CHUNK_DIGITS as usize);
+    if digits.len() - trailing_zeros > MAX_COMPATIBLE_DECIMAL_DIGITS as usize {
+        // num-bigint rebuilds base-10 digits progressively. Reject an invalid
+        // significant prefix before that work can become quadratic.
+        return Err(conversion_error(
+            type_id::DECIMAL,
+            type_id::DECIMAL,
+            "converted decimal exceeds compatible conversion bounds",
+        ));
+    }
+    *unscaled = BigInt::from_radix_le(sign, &digits[trailing_zeros..], 10)
+        .expect("BigInt base-10 digits are valid");
+    *scale -= trailing_zeros as i32;
+    Ok(())
 }
 
 fn canonicalize_decimal_i64(unscaled: &mut BigInt, scale: &mut i64) {

@@ -214,11 +214,11 @@ public final class CompressedArraySerializers {
 
       switch (compressionType) {
         case INT_TO_BYTE:
-          return readCompressedFromBytes(buffer);
+          return readCompressedFromBytes(readContext);
         case INT_TO_SHORT:
-          return readCompressedFromShorts(buffer);
+          return readCompressedFromShorts(readContext);
         case NONE:
-          return readUncompressed(buffer);
+          return readUncompressed(readContext);
         default:
           throw new IllegalStateException("Unsupported compression type: " + compressionType);
       }
@@ -229,34 +229,44 @@ public final class CompressedArraySerializers {
       int size = buf.remaining();
       validateBinarySize(size, 4);
       buf.checkReadableBytes(size);
-      int[] values = new int[size >>> 2];
+      int length = size >>> 2;
+      reserveArray(readContext, length, 4);
+      int[] values = new int[length];
       buf.readInt32ArrayBytes(values, size);
       return values;
     }
 
-    private int[] readCompressedFromBytes(MemoryBuffer buffer) {
+    private int[] readCompressedFromBytes(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int size = buffer.readVarUInt32Small7();
       validateBinarySize(size, 1);
       buffer.checkReadableBytes(size);
+      reserveArray(readContext, size, 4);
       byte[] values = new byte[size];
       buffer.readByteArrayBytes(values, size);
       return ArrayCompressionUtils.decompressFromBytes(values);
     }
 
-    private int[] readCompressedFromShorts(MemoryBuffer buffer) {
+    private int[] readCompressedFromShorts(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int size = buffer.readVarUInt32Small7();
       validateBinarySize(size, 2);
       buffer.checkReadableBytes(size);
-      short[] values = new short[size >>> 1];
+      int length = size >>> 1;
+      reserveArray(readContext, length, 4);
+      short[] values = new short[length];
       buffer.readInt16ArrayBytes(values, size);
       return ArrayCompressionUtils.decompressFromShorts(values);
     }
 
-    private int[] readUncompressed(MemoryBuffer buffer) {
+    private int[] readUncompressed(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int size = buffer.readVarUInt32Small7();
       validateBinarySize(size, 4);
       buffer.checkReadableBytes(size);
-      int[] values = new int[size >>> 2];
+      int length = size >>> 2;
+      reserveArray(readContext, length, 4);
+      int[] values = new int[length];
       buffer.readInt32ArrayBytes(values, size);
       return values;
     }
@@ -324,9 +334,9 @@ public final class CompressedArraySerializers {
 
       switch (compressionType) {
         case LONG_TO_INT:
-          return readCompressedFromInts(buffer);
+          return readCompressedFromInts(readContext);
         case NONE:
-          return readUncompressed(buffer);
+          return readUncompressed(readContext);
         default:
           throw new IllegalStateException("Unsupported compression type: " + compressionType);
       }
@@ -337,25 +347,33 @@ public final class CompressedArraySerializers {
       int size = buf.remaining();
       validateBinarySize(size, 8);
       buf.checkReadableBytes(size);
-      long[] values = new long[size >>> 3];
+      int length = size >>> 3;
+      reserveArray(readContext, length, 8);
+      long[] values = new long[length];
       buf.readInt64ArrayBytes(values, size);
       return values;
     }
 
-    private long[] readCompressedFromInts(MemoryBuffer buffer) {
+    private long[] readCompressedFromInts(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int size = buffer.readVarUInt32Small7();
       validateBinarySize(size, 4);
       buffer.checkReadableBytes(size);
-      int[] values = new int[size >>> 2];
+      int length = size >>> 2;
+      reserveArray(readContext, length, 8);
+      int[] values = new int[length];
       buffer.readInt32ArrayBytes(values, size);
       return ArrayCompressionUtils.decompressFromInts(values);
     }
 
-    private long[] readUncompressed(MemoryBuffer buffer) {
+    private long[] readUncompressed(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int size = buffer.readVarUInt32Small7();
       validateBinarySize(size, 8);
       buffer.checkReadableBytes(size);
-      long[] values = new long[size >>> 3];
+      int length = size >>> 3;
+      reserveArray(readContext, length, 8);
+      long[] values = new long[length];
       buffer.readInt64ArrayBytes(values, size);
       return values;
     }

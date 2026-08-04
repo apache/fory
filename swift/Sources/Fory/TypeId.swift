@@ -110,6 +110,23 @@ public enum TypeId: UInt32, CaseIterable, Sendable {
         }
     }
 
+    @inline(__always)
+    internal var readDataAlwaysAdvances: Bool {
+        switch self {
+        case .unknown,
+            .structType,
+            .compatibleStruct,
+            .namedStruct,
+            .namedCompatibleStruct,
+            .ext,
+            .namedExt,
+            .none:
+            return false
+        default:
+            return true
+        }
+    }
+
     internal var denseArrayElementTypeID: TypeId? {
         switch self {
         case .boolArray:

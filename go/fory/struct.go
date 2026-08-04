@@ -42,14 +42,30 @@ type structSerializer struct {
 	fieldDefs []FieldDef  // for type_def compatibility
 
 	// Mode flags (set at init)
-	isCompatibleMode bool // true when compatible=true
-	typeDefDiffers   bool // true when compatible=true AND remote TypeDef != local (requires ordered read)
+	isCompatibleMode       bool // true when compatible=true
+	typeDefDiffers         bool // true when compatible=true AND remote TypeDef != local (requires ordered read)
+	readDataAlwaysAdvances bool
 
 	// Initialization state
 	initialized bool
 
 	// Cached addressable value for non-addressable writes.
 	tempValue *reflect.Value
+}
+
+func (s *structSerializer) computeReadDataAlwaysAdvances() bool {
+	if !s.isCompatibleMode || s.fieldGroup.FixedSize > 0 || len(s.fieldGroup.PrimitiveVarintFields) > 0 {
+		return true
+	}
+	for i := range s.fieldGroup.RemainingFields {
+		field := &s.fieldGroup.RemainingFields[i]
+		if field.RefMode != RefModeNone ||
+			(field.Meta != nil && field.Meta.WriteType) ||
+			serializerReadDataAlwaysAdvances(field.Serializer) {
+			return true
+		}
+	}
+	return false
 }
 
 // newStructSerializerFromTypeDef creates a new structSerializer with the given parameters.
@@ -1336,10 +1352,7 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 		}
 		if refID < int32(NotNullValueFlag) {
 			// Reference found
-			obj := ctx.RefResolver().GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
-			}
+			assignReadRef(ctx, refID, value)
 			return
 		}
 	case RefModeNullOnly:
@@ -1378,7 +1391,9 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 	if ctx.refResolver.refTracking && value.CanAddr() {
 		// Publish addressable value storage before reading fields so self
 		// references resolve without a root-special read path.
-		ctx.refResolver.SetReadObject(refID, value.Addr())
+		if !publishReadRef(ctx, refID, value.Addr()) {
+			return
+		}
 	}
 	// Value serializers do not reserve their own graph memory because value
 	// storage is owned by the holder that stores or allocates the value.
@@ -1394,7 +1409,7 @@ func (s *structSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, t
 
 func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Early error check - skip all intermediate checks for normal path performance
-	if ctx.HasError() {
+	if ctx.HasError() || !ctx.enterDepth() {
 		return
 	}
 
@@ -1433,6 +1448,10 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Use ordered reading when TypeDef differs from local type (schema evolution)
 	if s.typeDefDiffers {
 		s.readFieldsInOrder(ctx, value)
+		if ctx.HasError() {
+			return
+		}
+		ctx.decDepth()
 		return
 	}
 
@@ -1628,7 +1647,9 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	}
 	if ctx.HasError() {
 		ctx.Err().stack = append(ctx.Err().stack, fmt.Sprintf(" [struct %s]", s.name))
+		return
 	}
+	ctx.decDepth()
 }
 
 // readRemainingField reads a non-primitive field (string, slice, map, struct, enum)
@@ -2437,7 +2458,7 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			// Use pre-computed RefMode and WriteType from field initialization
 			field.Serializer.Read(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, fieldValue)
 		} else {
-			ctx.ReadValue(fieldValue, RefModeTracking, true)
+			ctx.ReadValue(fieldValue, field.RefMode, true)
 		}
 		if ctx.HasError() {
 			return
@@ -2847,6 +2868,9 @@ func (s *skipStructSerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 }
 
 func (s *skipStructSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	if ctx.HasError() || !ctx.enterDepth() {
+		return
+	}
 	// Skip all fields based on fieldDefs from remote TypeDef
 	for _, fieldDef := range s.fieldDefs {
 		isStructType := isStructFieldType(fieldDef.typeSpec)
@@ -2855,6 +2879,7 @@ func (s *skipStructSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 			return
 		}
 	}
+	ctx.decDepth()
 }
 
 func (s *skipStructSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {

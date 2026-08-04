@@ -140,10 +140,10 @@ const bytes = serialize({ id: 1n, content: "hello from JavaScript" });
 
 ## Documentation
 
-- [JavaScript Serialization Guide](https://fory.apache.org/docs/guide/javascript)
-- [Cross-Language Serialization](https://fory.apache.org/docs/guide/javascript/cross_language)
-- [Supported Types](https://fory.apache.org/docs/guide/javascript/supported_types)
-- [Schema Evolution](https://fory.apache.org/docs/guide/javascript/schema_evolution)
+- [JavaScript Serialization Guide](https://fory.apache.org/docs/object-serialization/javascript)
+- [Xlang Serialization](https://fory.apache.org/docs/object-serialization/javascript/xlang)
+- [Supported Types](https://fory.apache.org/docs/object-serialization/javascript/supported-types)
+- [Schema Evolution](https://fory.apache.org/docs/object-serialization/javascript/schema-evolution)
 - [Xlang Serialization Spec](https://fory.apache.org/docs/specification/xlang_serialization_spec)
 
 ## License

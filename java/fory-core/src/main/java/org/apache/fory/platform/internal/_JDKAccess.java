@@ -345,18 +345,25 @@ public class _JDKAccess {
     }
   }
 
-  // caller sensitive, must use MethodHandle to walk around the check.
   private static volatile MethodHandle addReadsHandle;
 
   public static Object addReads(Object thisModule, Object otherModule) {
     Preconditions.checkArgument(JdkVersion.MAJOR_VERSION >= 9);
     try {
       if (addReadsHandle == null) {
-        Class<?> cls = Class.forName("java.lang.Module");
-        MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(cls);
-        addReadsHandle = lookup.findVirtual(cls, "addReads", MethodType.methodType(cls, cls));
+        Class<?> moduleClass = Class.forName("java.lang.Module");
+        Class<?> modulesClass = Class.forName("jdk.internal.module.Modules");
+        MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(modulesClass);
+        // Module.addReads is caller-sensitive and rejects changes to another module even through a
+        // trusted handle. The JDK module-graph owner exposes the corresponding privileged update.
+        addReadsHandle =
+            lookup.findStatic(
+                modulesClass,
+                "addReads",
+                MethodType.methodType(void.class, moduleClass, moduleClass));
       }
-      return addReadsHandle.invoke(thisModule, otherModule);
+      addReadsHandle.invoke(thisModule, otherModule);
+      return thisModule;
     } catch (Throwable e) {
       throw ExceptionUtils.throwException(e);
     }

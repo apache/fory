@@ -66,8 +66,8 @@ final class ExternalBenchmarkSuite {
         self.fory = Fory(config: .init(trackRef: false, compatible: false))
         try fory.register(DirectRecord.self, id: 100)
         try fory.register(ExternalRecordSerializer.self, id: 101)
-        try fory.register(DirectManualRecord.self, id: 102)
-        try fory.register(ManualRecordSerializer.self, id: 103)
+        try fory.register(DirectCustomRecord.self, id: 102)
+        try fory.register(CustomRecordSerializer.self, id: 103)
         try fory.register(DirectRecordHolder.self, id: 104)
         try fory.register(ExternalRecordHolderSerializer.self, id: 105)
         try fory.register(DirectCompositeHolder.self, id: 106)
@@ -79,8 +79,8 @@ final class ExternalBenchmarkSuite {
 
         let direct = DirectRecord(id: 7, name: "record")
         let external = ExternalRecord(id: 7, name: "record")
-        let directManual = DirectManualRecord(id: 7, name: "record")
-        let manual = ManualRecord(id: 7, name: "record")
+        let directCustom = DirectCustomRecord(id: 7, name: "record")
+        let custom = CustomRecord(id: 7, name: "record")
 
         try appendOrdinaryCase(
             name: "DirectStructural",
@@ -94,14 +94,14 @@ final class ExternalBenchmarkSuite {
             entries: &entries
         )
         try appendOrdinaryCase(
-            name: "DirectManual",
-            value: directManual,
+            name: "DirectCustom",
+            value: directCustom,
             entries: &entries
         )
         try appendSelectedCase(
-            name: "ExternalManual",
-            value: manual,
-            serializer: ManualRecordSerializer.self,
+            name: "ExternalCustom",
+            value: custom,
+            serializer: CustomRecordSerializer.self,
             entries: &entries
         )
 
@@ -203,8 +203,8 @@ final class ExternalBenchmarkSuite {
             entries: &entries
         )
         try appendSelectedCase(
-            name: "DynamicManual",
-            value: manual as any BenchmarkRecord,
+            name: "DynamicCustom",
+            value: custom as any BenchmarkRecord,
             serializer: DynamicSerializer<any BenchmarkRecord>.self,
             entries: &entries
         )

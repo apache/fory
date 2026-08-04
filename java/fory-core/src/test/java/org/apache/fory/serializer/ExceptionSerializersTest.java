@@ -19,16 +19,24 @@
 
 package org.apache.fory.serializer;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.TestUtils;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -123,6 +131,33 @@ public class ExceptionSerializersTest extends ForyTestBase {
     Assert.assertEquals(copy.getSuppressed().length, 1);
     Assert.assertEquals(copy.getSuppressed()[0].getClass(), IllegalStateException.class);
     Assert.assertEquals(copy.getSuppressed()[0].getMessage(), "close-failure");
+  }
+
+  @Test
+  public void testSuppressedGraphBudget() {
+    verifySuppressedGraphBudget(MemoryUtils.JDK_LANG_FIELD_ACCESS);
+  }
+
+  @Test
+  public void testAndroidSuppressedGraphBudget() throws Exception {
+    ProcessBuilder processBuilder =
+        new ProcessBuilder(TestUtils.javaCommand(AndroidSuppressedBudgetProbe.class))
+            .redirectErrorStream(true);
+    processBuilder.environment().put("FORY_ANDROID_ENABLED", "1");
+    Process process = processBuilder.start();
+    String output = readFully(process.getInputStream());
+    Assert.assertEquals(process.waitFor(), 0, output);
+  }
+
+  @Test
+  public void testPendingTraversalVisitsOnce() {
+    CountingThrowable leaf = new CountingThrowable(null);
+    CountingThrowable shared = new CountingThrowable(leaf);
+    List<Throwable> suppressedRoots = Collections.nCopies(64, shared);
+
+    Assert.assertFalse(ExceptionSerializers.containsPendingThrowable(shared, suppressedRoots));
+    Assert.assertEquals(shared.causeReads, 1);
+    Assert.assertEquals(leaf.causeReads, 1);
   }
 
   @Test
@@ -258,6 +293,75 @@ public class ExceptionSerializersTest extends ForyTestBase {
     Assert.assertThrows(ForyException.class, () -> serializer.read(readContext));
   }
 
+  private static void verifySuppressedGraphBudget(boolean retainsInputList) {
+    int numSuppressed = 32;
+    RuntimeException value = new RuntimeException("root");
+    value.setStackTrace(new StackTraceElement[0]);
+    RuntimeException shared = new RuntimeException("shared");
+    shared.setStackTrace(new StackTraceElement[0]);
+    for (int i = 0; i < numSuppressed; i++) {
+      value.addSuppressed(shared);
+    }
+
+    byte[] bytes = exceptionFory(Long.MAX_VALUE).serialize(value);
+    long required = suppressedGraphBytes(numSuppressed, retainsInputList);
+    Assert.assertThrows(
+        InsecureException.class, () -> exceptionFory(required - 1).deserialize(bytes));
+    RuntimeException copy = (RuntimeException) exceptionFory(required).deserialize(bytes);
+    Throwable[] suppressed = copy.getSuppressed();
+    Assert.assertEquals(suppressed.length, numSuppressed);
+    for (int i = 1; i < numSuppressed; i++) {
+      Assert.assertSame(suppressed[i], suppressed[0]);
+    }
+
+    RuntimeException empty = new RuntimeException("empty");
+    empty.setStackTrace(new StackTraceElement[0]);
+    byte[] emptyBytes = exceptionFory(Long.MAX_VALUE).serialize(empty);
+    long emptyRequired =
+        GraphMemoryEstimates.shallowObjectBytes(RuntimeException.class)
+            + GraphMemoryEstimates.objectArrayBytes();
+    Assert.assertThrows(
+        InsecureException.class, () -> exceptionFory(emptyRequired - 1).deserialize(emptyBytes));
+    RuntimeException emptyCopy =
+        (RuntimeException) exceptionFory(emptyRequired).deserialize(emptyBytes);
+    Assert.assertEquals(emptyCopy.getSuppressed().length, 0);
+  }
+
+  private static long suppressedGraphBytes(int numSuppressed, boolean retainsInputList) {
+    long referenceBytes = GraphMemoryEstimates.REFERENCE_BYTES;
+    long bytes =
+        2L * GraphMemoryEstimates.shallowObjectBytes(RuntimeException.class)
+            + 2L * GraphMemoryEstimates.objectArrayBytes();
+    if (retainsInputList) {
+      bytes +=
+          GraphMemoryEstimates.shallowObjectBytes(ArrayList.class) + numSuppressed * referenceBytes;
+    } else {
+      bytes +=
+          GraphMemoryEstimates.shallowObjectBytes(Object.class) + numSuppressed * referenceBytes;
+    }
+    return bytes;
+  }
+
+  private static Fory exceptionFory(long maxGraphMemoryBytes) {
+    return Fory.builder()
+        .withXlang(false)
+        .withRefTracking(true)
+        .withCodegen(false)
+        .requireClassRegistration(false)
+        .withMaxGraphMemoryBytes(maxGraphMemoryBytes)
+        .build();
+  }
+
+  private static String readFully(InputStream inputStream) throws IOException {
+    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+    byte[] buffer = new byte[1024];
+    int read;
+    while ((read = inputStream.read(buffer)) != -1) {
+      outputStream.write(buffer, 0, read);
+    }
+    return new String(outputStream.toByteArray(), StandardCharsets.UTF_8);
+  }
+
   private static RuntimeException buildTryWithResourcesException() {
     try {
       try (FailingCloseable ignored = new FailingCloseable()) {
@@ -265,6 +369,29 @@ public class ExceptionSerializersTest extends ForyTestBase {
       }
     } catch (RuntimeException e) {
       return e;
+    }
+  }
+
+  public static final class AndroidSuppressedBudgetProbe {
+    public static void main(String[] args) {
+      if (!AndroidSupport.IS_ANDROID) {
+        throw new AssertionError("Expected forced Android mode");
+      }
+      verifySuppressedGraphBudget(false);
+    }
+  }
+
+  private static final class CountingThrowable extends Throwable {
+    private int causeReads;
+
+    private CountingThrowable(Throwable cause) {
+      super(null, cause, false, false);
+    }
+
+    @Override
+    public synchronized Throwable getCause() {
+      causeReads++;
+      return super.getCause();
     }
   }
 

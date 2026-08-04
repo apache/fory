@@ -62,6 +62,7 @@ class UnionSerializer(Serializer):
 
     def __init__(self, type_resolver, type_, alternative_types):
         super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
         self.type_resolver = type_resolver
         if isinstance(alternative_types, dict):
             self._typing_union = False
@@ -122,10 +123,10 @@ class UnionSerializer(Serializer):
 
     def _read_case_value(self, read_context, serializer):
         read_context.increase_depth()
-        try:
-            return serializer.read(read_context)
-        finally:
-            read_context.decrease_depth()
+        # Root reset owns failed-read cleanup; only balance depth after success.
+        value = serializer.read(read_context)
+        read_context.decrease_depth()
+        return value
 
     def _get_case_type_info(self, case_id: int):
         typeinfo = self._case_type_infos.get(case_id)

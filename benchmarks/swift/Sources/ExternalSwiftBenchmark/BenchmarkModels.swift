@@ -30,7 +30,7 @@ struct ExternalRecordSerializer {
     var name: String
 }
 
-struct DirectManualRecord: BenchmarkRecord, Equatable, Hashable, Serializer {
+struct DirectCustomRecord: BenchmarkRecord, Equatable, Hashable, Serializer {
     typealias Target = Self
 
     var id: Int32 = 0
@@ -55,8 +55,8 @@ struct DirectManualRecord: BenchmarkRecord, Equatable, Hashable, Serializer {
     }
 }
 
-enum ManualRecordSerializer: Serializer {
-    typealias Target = ManualRecord
+enum CustomRecordSerializer: Serializer {
+    typealias Target = CustomRecord
 
     static var staticTypeId: TypeId { .ext }
 

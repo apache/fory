@@ -23,7 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 JS_ROOT="${REPO_ROOT}/javascript"
 OUTPUT_JSON="${SCRIPT_DIR}/benchmark_results.json"
-DOC_OUTPUT_DIR="${REPO_ROOT}/docs/benchmarks/javascript"
+DOC_OUTPUT_DIR="${REPO_ROOT}/docs/benchmarks/object-serialization/xlang/javascript"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'

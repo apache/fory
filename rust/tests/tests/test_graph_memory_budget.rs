@@ -77,7 +77,7 @@ struct BudgetNestedHolderReader {
 #[derive(ForyStruct, Debug, PartialEq)]
 struct BudgetEmpty;
 
-#[derive(ForyStruct, Debug)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct ListWireInts {
     values: Vec<Option<i32>>,
 }
@@ -350,6 +350,28 @@ fn compatible_list_array_budget() {
         decoded,
         DenseWireInts {
             values: (0..64).collect()
+        }
+    );
+}
+
+#[test]
+fn compatible_array_list_budget() {
+    let value = DenseWireInts {
+        values: (0..64).collect(),
+    };
+    let writer = compatible_fory::<DenseWireInts>(DEFAULT_GRAPH_MEMORY_BYTES);
+    let bytes = writer.serialize(&value).unwrap();
+
+    let required = 64 * mem::size_of::<Option<i32>>();
+    let limited = compatible_fory::<ListWireInts>(required - 1);
+    assert!(limited.deserialize::<ListWireInts>(&bytes).is_err());
+
+    let enough = compatible_fory::<ListWireInts>(required);
+    let decoded = enough.deserialize::<ListWireInts>(&bytes).unwrap();
+    assert_eq!(
+        decoded,
+        ListWireInts {
+            values: (0..64).map(Some).collect()
         }
     );
 }

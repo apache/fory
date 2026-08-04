@@ -18,9 +18,9 @@
 """
 Extract C++ code examples from markdown documentation and generate test files.
 
-This script scans markdown files in docs/guide/cpp/, extracts ```cpp code blocks,
-and generates compilable C++ test files that can be run to verify the documentation
-examples are correct.
+This script scans C++ object-serialization documentation plus explicitly selected
+C++ capability pages, extracts ```cpp code blocks, and generates compilable C++
+test files that can be run to verify the documentation examples are correct.
 """
 
 import argparse
@@ -28,7 +28,7 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -181,14 +181,18 @@ int main() {{
 """
 
 
-def generate_test_file_name(doc_file: str, block_index: int) -> str:
+def generate_test_file_name(
+    doc_file: str, block_index: int, file_tag: Optional[str] = None
+) -> str:
     # Generate a test file name from documentation file and block index.
 
-    base_name = Path(doc_file).stem
+    base_name = file_tag or Path(doc_file).stem
     return f"doc_test_{base_name}_{block_index}.cc"
 
 
-def process_markdown_file(md_path: Path, output_dir: Path) -> List[Path]:
+def process_markdown_file(
+    md_path: Path, output_dir: Path, file_tag: Optional[str] = None
+) -> List[Path]:
     # logging.info(f"Processing {md_path}")
 
     with open(md_path, "r", encoding="utf-8") as f:
@@ -205,7 +209,7 @@ def process_markdown_file(md_path: Path, output_dir: Path) -> List[Path]:
             continue
 
         test_content = wrap_code_as_test(code, md_path.name, i)
-        test_file_name = generate_test_file_name(md_path.name, i)
+        test_file_name = generate_test_file_name(md_path.name, i, file_tag)
         test_path = output_dir / test_file_name
 
         with open(test_path, "w", encoding="utf-8") as f:
@@ -269,13 +273,19 @@ def main():
     )
     parser.add_argument(
         "--docs-dir",
-        default="docs/guide/cpp",
+        default="docs/object-serialization/cpp",
         help="Directory containing markdown documentation files",
     )
     parser.add_argument(
         "--output-dir",
         default="cpp/doc_tests",
         help="Output directory for generated test files",
+    )
+    parser.add_argument(
+        "--docs-file",
+        action="append",
+        default=[],
+        help="Additional Markdown file to scan; may be specified more than once",
     )
     parser.add_argument(
         "--generate-build",
@@ -309,6 +319,15 @@ def main():
 
     for md_file in sorted(docs_dir.glob("*.md")):
         test_files = process_markdown_file(md_file, output_dir)
+        all_test_files.extend(test_files)
+
+    for docs_file in args.docs_file:
+        md_file = project_root / docs_file
+        if not md_file.is_file():
+            logging.error(f"Documentation file not found: {md_file}")
+            sys.exit(1)
+        file_tag = f"{md_file.parent.name}-{md_file.stem}"
+        test_files = process_markdown_file(md_file, output_dir, file_tag)
         all_test_files.extend(test_files)
 
     logging.info(f"\nTotal: Generated {len(all_test_files)} test files")

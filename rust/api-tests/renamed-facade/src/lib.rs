@@ -19,12 +19,12 @@
 mod tests {
     use fory_external_model::{ExternalId, User};
     use fory_facade::{
-        from_row, register_trait_type, to_row, ArcSerializer, ArcWeakSerializer, ArraySerializer,
-        BTreeMapSerializer, BTreeSetSerializer, BinaryHeapSerializer, BoxSerializer, Error, Fory,
-        ForyEnum, ForyObject, ForyRow, ForyStruct, ForyUnion, HashMapSerializer, HashSetSerializer,
-        LinkedListSerializer, MutexSerializer, OptionSerializer, RcSerializer, RcWeakSerializer,
-        ReadContext, RefCellSerializer, Serializer, VecDequeSerializer, VecSerializer,
-        WriteContext,
+        from_row, register_trait_type, to_row, to_row_into, ArcSerializer, ArcWeakSerializer,
+        ArraySerializer, BTreeMapSerializer, BTreeSetSerializer, BinaryHeapSerializer,
+        BoxSerializer, Error, Fory, ForyEnum, ForyObject, ForyRow, ForyStruct, ForyUnion,
+        HashMapSerializer, HashSetSerializer, LinkedListSerializer, MutexSerializer,
+        OptionSerializer, RcSerializer, RcWeakSerializer, ReadContext, RefCellSerializer, RowView,
+        Serializer, VecDequeSerializer, VecSerializer, WriteContext,
     };
     use std::collections::HashMap;
     use std::rc::Rc;
@@ -205,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn renamed_manual_and_trait_roots() {
+    fn renamed_custom_and_trait_roots() {
         let mut fory = Fory::builder().xlang(false).compatible(false).build();
         register_types(&mut fory);
 
@@ -234,9 +234,12 @@ mod tests {
 
     #[test]
     fn renamed_facade_row_derive() {
-        let row = to_row(&RenamedRow { id: 9 }).unwrap();
-        let decoded = from_row::<RenamedRow>(&row);
-        assert_eq!(decoded.id(), 9);
+        let mut row = Vec::new();
+        to_row_into(&RenamedRow { id: 9 }, &mut row).unwrap();
+        let decoded = from_row::<RenamedRow>(&row).unwrap();
+        assert_eq!(decoded.id().unwrap(), 9);
+        assert_eq!(decoded.as_bytes(), row);
+        assert_eq!(row, to_row(&RenamedRow { id: 9 }).unwrap());
     }
 
     #[test]

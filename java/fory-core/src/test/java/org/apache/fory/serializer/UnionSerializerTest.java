@@ -27,11 +27,13 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.type.Types;
@@ -174,6 +176,123 @@ public class UnionSerializerTest extends ForyTestBase {
         () -> fory.registerUnion(Union2.class, "demo", "Union.Two", invalidSerializer));
   }
 
+  @Test
+  public void testDirectCaseDepth() {
+    Fory writer =
+        Fory.builder().withXlang(true).requireClassRegistration(true).withCompatible(true).build();
+    UnionSerializer writerSerializer =
+        new UnionSerializer(writer.getTypeResolver(), RecursiveUnion.class);
+    writer.registerUnion(RecursiveUnion.class, 109, writerSerializer);
+
+    Fory reader =
+        Fory.builder()
+            .withXlang(true)
+            .requireClassRegistration(true)
+            .withMaxDepth(3)
+            .withCompatible(true)
+            .build();
+    UnionSerializer readerSerializer =
+        new UnionSerializer(reader.getTypeResolver(), RecursiveUnion.class);
+    reader.registerUnion(RecursiveUnion.class, 109, readerSerializer);
+
+    MemoryBuffer shallowBuffer = MemoryUtils.buffer(64);
+    writeSerializer(writer, writerSerializer, shallowBuffer, recursiveUnion(2));
+    RecursiveUnion shallow =
+        (RecursiveUnion) readSerializer(reader, readerSerializer, shallowBuffer);
+    assertEquals(shallow.getNext().getNext(), null);
+
+    MemoryBuffer deepBuffer = MemoryUtils.buffer(64);
+    writeSerializer(writer, writerSerializer, deepBuffer, recursiveUnion(8));
+    org.testng.Assert.assertThrows(
+        InsecureException.class, () -> readSerializer(reader, readerSerializer, deepBuffer));
+  }
+
+  @Test
+  public void testDynamicCaseDepth() {
+    Fory writer =
+        Fory.builder().withXlang(true).requireClassRegistration(true).withCompatible(true).build();
+    UnionSerializer writerSerializer =
+        (UnionSerializer) writer.getTypeResolver().getSerializer(Union.class);
+
+    Fory reader =
+        Fory.builder()
+            .withXlang(true)
+            .requireClassRegistration(true)
+            .withMaxDepth(3)
+            .withCompatible(true)
+            .build();
+    UnionSerializer readerSerializer =
+        (UnionSerializer) reader.getTypeResolver().getSerializer(Union.class);
+
+    MemoryBuffer shallowBuffer = MemoryUtils.buffer(64);
+    writeSerializer(writer, writerSerializer, shallowBuffer, recursiveDynamicUnion(2));
+    Union shallow = readSerializer(reader, readerSerializer, shallowBuffer);
+    assertEquals(((Union) shallow.getValue()).getValue(), null);
+
+    MemoryBuffer deepBuffer = MemoryUtils.buffer(64);
+    writeSerializer(writer, writerSerializer, deepBuffer, recursiveDynamicUnion(8));
+    org.testng.Assert.assertThrows(
+        InsecureException.class, () -> readSerializer(reader, readerSerializer, deepBuffer));
+  }
+
+  @Test
+  public void testGenericCaseCleanupAfterFailure() {
+    Fory writer =
+        Fory.builder().withXlang(true).requireClassRegistration(true).withCompatible(true).build();
+    UnionSerializer writerSerializer =
+        new UnionSerializer(writer.getTypeResolver(), StringListUnion.class);
+    writer.registerUnion(StringListUnion.class, 110, writerSerializer);
+
+    Fory reader =
+        Fory.builder().withXlang(true).requireClassRegistration(true).withCompatible(true).build();
+    UnionSerializer readerSerializer =
+        new UnionSerializer(reader.getTypeResolver(), StringListUnion.class);
+    reader.registerUnion(StringListUnion.class, 110, readerSerializer);
+
+    StringListUnion malformed = new StringListUnion(0, new ArrayList<>(), Types.LIST);
+    byte[] encoded = writer.serialize(malformed);
+    byte[] truncated = Arrays.copyOf(encoded, encoded.length - 1);
+    org.testng.Assert.assertThrows(RuntimeException.class, () -> reader.deserialize(truncated));
+    assertGenericStateCleared(reader);
+
+    ArrayList<String> strings = new ArrayList<>();
+    strings.add("value");
+    StringListUnion value = new StringListUnion(0, strings, Types.LIST);
+    byte[] valid = writer.serialize(value);
+    StringListUnion copy = (StringListUnion) reader.deserialize(valid);
+    assertEquals(copy.getStrings(), strings);
+    assertGenericStateCleared(reader);
+
+    org.testng.Assert.assertThrows(
+        RuntimeException.class, () -> reader.deserialize(truncated, StringListUnion.class));
+    assertGenericStateCleared(reader);
+
+    copy = reader.deserialize(valid, StringListUnion.class);
+    assertEquals(copy.getStrings(), strings);
+    assertGenericStateCleared(reader);
+  }
+
+  private static void assertGenericStateCleared(Fory fory) {
+    assertNull(fory.getReadContext().getGenerics().nextGenericType(1));
+    assertNull(fory.getReadContext().getGenerics().nextGenericType(2));
+  }
+
+  private static RecursiveUnion recursiveUnion(int levels) {
+    RecursiveUnion value = null;
+    for (int i = 0; i < levels; i++) {
+      value = new RecursiveUnion(0, value);
+    }
+    return value;
+  }
+
+  private static Union recursiveDynamicUnion(int levels) {
+    Union value = null;
+    for (int i = 0; i < levels; i++) {
+      value = new Union(0, value);
+    }
+    return value;
+  }
+
   private static Union writeReadUnion(
       Fory fory, UnionSerializer serializer, Union value, int expectedCaseId) {
     MemoryBuffer buffer = MemoryUtils.buffer(64);
@@ -201,6 +320,59 @@ public class UnionSerializerTest extends ForyTestBase {
 
     public SchemaUnion(int caseId, Object value, int typeId) {
       super(caseId, value, typeId);
+    }
+  }
+
+  public static final class RecursiveUnion extends Union {
+    public enum RecursiveCase {
+      NEXT(0);
+
+      private final int id;
+
+      RecursiveCase(int id) {
+        this.id = id;
+      }
+    }
+
+    public RecursiveUnion(int caseId, Object value) {
+      super(caseId, value);
+    }
+
+    public RecursiveUnion getNext() {
+      return (RecursiveUnion) value;
+    }
+
+    public void setNext(RecursiveUnion next) {
+      value = next;
+    }
+  }
+
+  public static final class StringListUnion extends Union {
+    public enum StringListCase {
+      STRINGS(0);
+
+      private final int id;
+
+      StringListCase(int id) {
+        this.id = id;
+      }
+    }
+
+    public StringListUnion(int caseId, Object value) {
+      super(caseId, value);
+    }
+
+    public StringListUnion(int caseId, Object value, int typeId) {
+      super(caseId, value, typeId);
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<String> getStrings() {
+      return (List<String>) value;
+    }
+
+    public void setStrings(List<String> strings) {
+      value = strings;
     }
   }
 

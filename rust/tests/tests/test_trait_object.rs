@@ -73,6 +73,7 @@ impl Animal for Fox {
 
 register_trait_type!(Animal, Dog, Cat);
 
+#[allow(clippy::assertions_on_constants)]
 const _: () = {
     assert!(<Box<dyn Animal> as Serializer>::IS_POLYMORPHIC);
     assert!(<Box<dyn Animal> as Serializer>::IS_WRAPPER);

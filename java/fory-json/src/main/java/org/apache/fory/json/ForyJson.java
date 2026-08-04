@@ -27,6 +27,7 @@ import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -61,13 +62,16 @@ import org.apache.fory.serializer.StringSerializer;
  * path selection is observable by custom codecs and is therefore not interchangeable even when a
  * Latin1 string contains only ASCII.
  *
- * <p>The facade has no close lifecycle. Contended operations borrow another pooled state or create
- * a temporary unpooled state instead of serializing all callers through one root lock. Java {@code
- * null} writes as JSON {@code null}; JSON {@code null} returns {@code null} for reference targets
- * and is rejected for primitive root targets.
+ * <p>The facade has no close lifecycle. It owns exactly the configured number of execution states;
+ * a root operation waits when every state is in use. Root APIs on one instance are not reentrant. A
+ * custom codec must continue through the concrete reader or writer passed to it instead of invoking
+ * another root API on the same instance. Java {@code null} writes as JSON {@code null}; JSON {@code
+ * null} returns {@code null} for reference targets and is rejected for primitive root targets.
  */
 public final class ForyJson {
   private static final int HOME_SLOT_RETRIES = 2;
+  private static final int CONTENDED_YIELD_SCANS = 32;
+  private static final long CONTENDED_PARK_NANOS = 100L;
   private static final int INITIAL_BUFFER_SIZE = 8192;
   private static final int RETAINED_UTF16_BYTES = 64 * 1024;
   private static final byte[] EMPTY_BYTES = new byte[0];
@@ -78,9 +82,11 @@ public final class ForyJson {
   /** Default maximum number of short, unescaped ASCII field names cached by each JSON reader. */
   public static final int DEFAULT_MAX_CACHED_FIELD_NAMES = 8192;
 
-  private final JsonConfig config;
-  private final JsonSharedRegistry sharedRegistry;
+  /** Default approximate graph-memory gate for one root JSON deserialization. */
+  public static final long DEFAULT_MAX_GRAPH_MEMORY_BYTES = 128L * 1024 * 1024;
+
   private final int homeSlotMask;
+  private final JsonConfig config;
   private final PooledState[] slots;
 
   ForyJson(JsonConfig config) {
@@ -89,12 +95,14 @@ public final class ForyJson {
 
   ForyJson(JsonConfig config, JsonSharedRegistry sharedRegistry) {
     this.config = config;
-    this.sharedRegistry = sharedRegistry;
     int poolSize = config.concurrencyLevel();
     homeSlotMask = Integer.highestOneBit(poolSize) - 1;
+    // This fixed array is the only JsonState owner. Each state's three readers own their configured
+    // field-name cache limits, so creating execution states outside this array would make the
+    // number of caches unbounded.
     slots = new PooledState[poolSize];
     for (int i = 0; i < poolSize; i++) {
-      slots[i] = new PooledState(new JsonState(config, sharedRegistry), true);
+      slots[i] = new PooledState(new JsonState(config, sharedRegistry));
     }
   }
 
@@ -103,7 +111,17 @@ public final class ForyJson {
     return new ForyJsonBuilder();
   }
 
-  /** Serializes {@code value} as one complete JSON document backed by a detached String. */
+  JsonConfig config() {
+    return config;
+  }
+
+  /**
+   * Serializes {@code value} as one complete JSON document backed by a detached String.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must write nested content through the {@link StringJsonWriter} passed to its {@code
+   * writeString} method instead of invoking a {@code ForyJson} root API.
+   */
   public String toJson(Object value) {
     PooledState entry = acquire();
     JsonState state = entry.state;
@@ -136,6 +154,10 @@ public final class ForyJson {
    * <p>This overload is required when the declared type owns a closed {@code JsonSubTypes} table. A
    * non-null value must be assignable to the declared type. Primitive declarations accept only
    * their exact boxed carrier and reject null; {@code void} is never a JSON value type.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must write nested content through the {@link StringJsonWriter} passed to its {@code
+   * writeString} method instead of invoking a {@code ForyJson} root API.
    */
   public <T> String toJson(T value, Class<T> declaredType) {
     requireDeclaredType(declaredType);
@@ -148,6 +170,10 @@ public final class ForyJson {
    *
    * <p>An explicit declared type controls the complete root schema, including closed subtype
    * metadata inside generic containers. A non-null value must be assignable to its raw type.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must write nested content through the {@link StringJsonWriter} passed to its {@code
+   * writeString} method instead of invoking a {@code ForyJson} root API.
    */
   public <T> String toJson(T value, TypeRef<T> declaredType) {
     requireDeclaredType(declaredType);
@@ -157,7 +183,13 @@ public final class ForyJson {
     return toJsonDeclared(value, declaredType.getType(), rawType);
   }
 
-  /** Serializes {@code value} as one complete JSON document in a detached UTF-8 byte array. */
+  /**
+   * Serializes {@code value} as one complete JSON document in a detached UTF-8 byte array.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must write nested content through the {@link Utf8JsonWriter} passed to its {@code
+   * writeUtf8} method instead of invoking a {@code ForyJson} root API.
+   */
   public byte[] toJsonBytes(Object value) {
     PooledState entry = acquire();
     JsonState state = entry.state;
@@ -184,14 +216,26 @@ public final class ForyJson {
     }
   }
 
-  /** Serializes {@code value} as UTF-8 using {@code declaredType}'s codec. */
+  /**
+   * Serializes {@code value} as UTF-8 using {@code declaredType}'s codec.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must write nested content through the {@link Utf8JsonWriter} passed to its {@code
+   * writeUtf8} method instead of invoking a {@code ForyJson} root API.
+   */
   public <T> byte[] toJsonBytes(T value, Class<T> declaredType) {
     requireDeclaredType(declaredType);
     validateWriteValue(value, declaredType);
     return toJsonBytesDeclared(value, declaredType, declaredType);
   }
 
-  /** Serializes {@code value} as UTF-8 using the generic codec captured by {@code declaredType}. */
+  /**
+   * Serializes {@code value} as UTF-8 using the generic codec captured by {@code declaredType}.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must write nested content through the {@link Utf8JsonWriter} passed to its {@code
+   * writeUtf8} method instead of invoking a {@code ForyJson} root API.
+   */
   public <T> byte[] toJsonBytes(T value, TypeRef<T> declaredType) {
     requireDeclaredType(declaredType);
     validateDeclaredType(declaredType.getType());
@@ -205,6 +249,10 @@ public final class ForyJson {
    *
    * <p>The complete document is buffered before one write to the stream. This method neither
    * flushes nor closes the caller-owned stream.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must write nested content through the {@link Utf8JsonWriter} passed to its {@code
+   * writeUtf8} method instead of invoking a {@code ForyJson} root API.
    */
   public void writeJsonTo(Object value, OutputStream output) {
     Objects.requireNonNull(output, "output");
@@ -237,6 +285,10 @@ public final class ForyJson {
   /**
    * Writes UTF-8 JSON using {@code declaredType}'s codec without flushing or closing {@code
    * output}.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must write nested content through the {@link Utf8JsonWriter} passed to its {@code
+   * writeUtf8} method instead of invoking a {@code ForyJson} root API.
    */
   public <T> void writeJsonTo(T value, Class<T> declaredType, OutputStream output) {
     requireDeclaredType(declaredType);
@@ -247,6 +299,10 @@ public final class ForyJson {
   /**
    * Writes UTF-8 JSON using the generic codec captured by {@code declaredType}, without flushing or
    * closing {@code output}.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must write nested content through the {@link Utf8JsonWriter} passed to its {@code
+   * writeUtf8} method instead of invoking a {@code ForyJson} root API.
    */
   public <T> void writeJsonTo(T value, TypeRef<T> declaredType, OutputStream output) {
     requireDeclaredType(declaredType);
@@ -394,6 +450,11 @@ public final class ForyJson {
   /**
    * Parses exactly one JSON value from {@code json} using {@code type} as its declared Java type.
    * Trailing non-whitespace content is rejected.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must consume nested content through the {@link Latin1JsonReader} or {@link
+   * Utf16JsonReader} passed to its representation-specific read method instead of invoking a {@code
+   * ForyJson} root API.
    */
   public <T> T fromJson(String json, Class<T> type) {
     PooledState entry = acquire();
@@ -417,6 +478,11 @@ public final class ForyJson {
   /**
    * Parses exactly one JSON value using a generic type captured by {@link TypeRef}. Trailing
    * non-whitespace content is rejected.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must consume nested content through the {@link Latin1JsonReader} or {@link
+   * Utf16JsonReader} passed to its representation-specific read method instead of invoking a {@code
+   * ForyJson} root API.
    */
   public <T> T fromJson(String json, TypeRef<T> typeRef) {
     PooledState entry = acquire();
@@ -441,6 +507,10 @@ public final class ForyJson {
   /**
    * Parses exactly one UTF-8 JSON value from {@code bytes} using {@code type} as its declared Java
    * type. Trailing non-whitespace content is rejected.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must consume nested content through the {@link Utf8JsonReader} passed to its {@code
+   * readUtf8} method instead of invoking a {@code ForyJson} root API.
    */
   public <T> T fromJson(byte[] bytes, Class<T> type) {
     PooledState entry = acquire();
@@ -464,6 +534,10 @@ public final class ForyJson {
   /**
    * Parses exactly one UTF-8 JSON value using a generic type captured by {@link TypeRef}. Trailing
    * non-whitespace content is rejected.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must consume nested content through the {@link Utf8JsonReader} passed to its {@code
+   * readUtf8} method instead of invoking a {@code ForyJson} root API.
    */
   public <T> T fromJson(byte[] bytes, TypeRef<T> typeRef) {
     PooledState entry = acquire();
@@ -490,7 +564,7 @@ public final class ForyJson {
     PooledState[] slots = this.slots;
     if (slots.length == 1) {
       PooledState entry = slots[0];
-      return entry.tryAcquire() ? entry : newOverflowState();
+      return entry.tryAcquire() ? entry : acquireContended(0);
     }
     // A Thread's identity hash is stable for both platform and virtual threads, but retaining the
     // Thread is unnecessary. The hash selects only a cache-affine home state; the lease remains
@@ -501,37 +575,45 @@ public final class ForyJson {
     return entry.tryAcquire() ? entry : acquireContended(slotIndex);
   }
 
-  private PooledState newOverflowState() {
-    return new PooledState(new JsonState(config, sharedRegistry), false);
-  }
-
   private void release(PooledState entry) {
     entry.release();
   }
 
   private PooledState acquireContended(int slotIndex) {
-    PooledState entry;
-    for (int i = 1; i < HOME_SLOT_RETRIES; i++) {
-      entry = tryBorrowSlot(slotIndex);
-      if (entry != null) {
-        return entry;
+    int failedScans = 0;
+    while (true) {
+      PooledState entry;
+      for (int i = 1; i < HOME_SLOT_RETRIES; i++) {
+        entry = tryBorrowSlot(slotIndex);
+        if (entry != null) {
+          return entry;
+        }
       }
-    }
-    int index = slotIndex + 1;
-    if (index == slots.length) {
-      index = 0;
-    }
-    for (int i = 1; i < slots.length; i++) {
-      entry = tryBorrowSlot(index);
-      if (entry != null) {
-        return entry;
-      }
-      index++;
+      int index = slotIndex + 1;
       if (index == slots.length) {
         index = 0;
       }
+      for (int i = 1; i < slots.length; i++) {
+        entry = tryBorrowSlot(index);
+        if (entry != null) {
+          return entry;
+        }
+        index++;
+        if (index == slots.length) {
+          index = 0;
+        }
+      }
+      // Yield through brief contention, then park after repeated complete misses to prevent
+      // sustained saturation from consuming a CPU per waiter. parkNanos is imprecise and release
+      // does not notify it, so the delay stays tiny; waiter registration would add shared state
+      // and work to release and uncontended paths.
+      if (failedScans < CONTENDED_YIELD_SCANS) {
+        failedScans++;
+        Thread.yield();
+      } else {
+        LockSupport.parkNanos(CONTENDED_PARK_NANOS);
+      }
     }
-    return newOverflowState();
   }
 
   private PooledState tryBorrowSlot(int index) {
@@ -612,13 +694,11 @@ public final class ForyJson {
   /** Permanently owns one execution state and leases it to at most one root operation. */
   private static final class PooledState {
     private final JsonState state;
-    private final boolean pooled;
     private final AtomicInteger leased;
 
-    private PooledState(JsonState state, boolean pooled) {
+    private PooledState(JsonState state) {
       this.state = state;
-      this.pooled = pooled;
-      leased = new AtomicInteger(pooled ? 0 : 1);
+      leased = new AtomicInteger();
     }
 
     private boolean tryAcquire() {
@@ -626,11 +706,9 @@ public final class ForyJson {
     }
 
     private void release() {
-      if (pooled) {
-        // A slot keeps its state reference for its whole lifetime. Publishing only the lease avoids
-        // a reference-store GC barrier and still makes all state cleanup visible to the next owner.
-        leased.lazySet(0);
-      }
+      // A slot keeps its state reference for its whole lifetime. Publishing only the lease avoids
+      // a reference-store GC barrier and still makes all state cleanup visible to the next owner.
+      leased.lazySet(0);
     }
   }
 

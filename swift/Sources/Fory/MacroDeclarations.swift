@@ -19,6 +19,7 @@
     member,
     names: named(Target),
     named(staticTypeId),
+    named(readDataAlwaysAdvances),
     named(foryEvolving),
     named(isRefType),
     named(__foryValidateReferenceTarget),
@@ -52,6 +53,7 @@ public macro ForyStruct(target: Any.Type? = nil, evolving: Bool = true) =
     member,
     names: named(Target),
     named(staticTypeId),
+    named(readDataAlwaysAdvances),
     named(foryEvolving),
     named(isRefType),
     named(__foryNormalizeSchemaFingerprintTypeID),
@@ -83,6 +85,7 @@ public macro ForyEnum(target: Any.Type? = nil) =
     member,
     names: named(Target),
     named(staticTypeId),
+    named(readDataAlwaysAdvances),
     named(foryEvolving),
     named(isRefType),
     named(__foryNormalizeSchemaFingerprintTypeID),
@@ -242,9 +245,11 @@ public struct ForyFieldType: Sendable {
 }
 
 @attached(peer)
-/// Configures a generated field and optionally selects its exact serializer.
+/// Configures a generated field, selects its exact serializer, or declares
+/// budget-only storage for an external structural serializer.
 public macro ForyField(
     id: Int? = nil,
+    ignore: Bool = false,
     encoding: ForyFieldEncoding? = nil,
     type: ForyFieldType? = nil,
     with serializer: Any.Type? = nil

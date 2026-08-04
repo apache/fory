@@ -34,6 +34,7 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.serializer.StringSerializer;
 
 final class JsonTestSupport {
+  private static final String GENERATED_CODEC_SUFFIX = "ForyJsonCodec";
   private static final JsonConfig CONFIG =
       new JsonConfig(
           false,
@@ -44,6 +45,7 @@ final class JsonTestSupport {
           JsonTestSupport.class.getClassLoader(),
           ForyJson.DEFAULT_MAX_DEPTH,
           ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES,
+          ForyJson.DEFAULT_MAX_GRAPH_MEMORY_BYTES,
           1,
           2 * 1024 * 1024,
           new CodecRegistry(),
@@ -166,12 +168,28 @@ final class JsonTestSupport {
     }
   }
 
-  static JsonConfig config(ForyJson json) {
-    try {
-      return (JsonConfig) field(json, "config");
-    } catch (ReflectiveOperationException e) {
-      throw new AssertionError(e);
+  static JsonSharedRegistry newSharedRegistry() {
+    return new JsonSharedRegistry(CONFIG);
+  }
+
+  static Class<?> generatedUtf8WriterClass(ForyJson json, Class<?> type) {
+    JsonTypeResolver resolver = currentTypeResolver(json);
+    Object owner = resolver.getObjectCodec(type);
+    Object codec = resolver.getTypeInfo(type, type).utf8Writer();
+    if (codec == owner) {
+      throw new AssertionError("No generated UTF-8 writer for " + type.getName());
     }
+    return codec.getClass();
+  }
+
+  static int generatedCodecId(Class<?> generatedClass) {
+    String simpleName = generatedClass.getSimpleName();
+    int suffixStart = simpleName.lastIndexOf(GENERATED_CODEC_SUFFIX);
+    if (suffixStart < 0) {
+      throw new AssertionError("Unexpected generated class " + generatedClass.getName());
+    }
+    String id = simpleName.substring(suffixStart + GENERATED_CODEC_SUFFIX.length());
+    return id.isEmpty() ? 0 : Integer.parseInt(id);
   }
 
   static String stringReaderPath(String input) {

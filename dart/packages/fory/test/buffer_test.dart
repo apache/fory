@@ -137,6 +137,44 @@ void main() {
       },
     );
 
+    test('root reads stop at writerIndex and restore spare storage', () {
+      final fory = Fory();
+      final outsideStorage = anyOf(isA<RangeError>(), isA<ArgumentError>());
+      final cases = <({Object value, int typeId})>[
+        (value: 0x10203040, typeId: TypeIds.int32),
+        (value: 0x4000, typeId: TypeIds.varUint32),
+        (value: Int64(0x10203040), typeId: TypeIds.int64),
+      ];
+
+      for (final testCase in cases) {
+        final encoded = fory.serializeBuiltin(
+          testCase.value,
+          typeId: testCase.typeId,
+        );
+        final buffer = Buffer(encoded.length + 32)
+          ..writeBytes(encoded.sublist(0, encoded.length - 1));
+        final fullStorage = bufferBytes(buffer);
+
+        expect(
+          () => fory.deserializeFrom<Object>(buffer),
+          throwsA(outsideStorage),
+          reason: 'typeId=${testCase.typeId}',
+        );
+        expect(bufferBytes(buffer), same(fullStorage));
+
+        fory.serializeBuiltinTo(
+          testCase.value,
+          buffer,
+          typeId: testCase.typeId,
+        );
+        expect(
+          fory.deserializeFrom<Object>(buffer),
+          equals(testCase.value),
+          reason: 'typeId=${testCase.typeId}',
+        );
+      }
+    });
+
     test('round-trips UTF-8 strings with length prefixes', () {
       final buffer = Buffer();
       const ascii = 'Apache Fory';
@@ -175,6 +213,19 @@ void main() {
           write: (buffer, value) => buffer.writeVarUint32(value),
           read: (buffer) => buffer.readVarUint32(),
         );
+      }
+    });
+
+    test('rejects varuint32 encodings wider than 32 bits', () {
+      const malformed = <List<int>>[
+        <int>[0x80, 0x80, 0x80, 0x80, 0x80],
+        <int>[0xff, 0xff, 0xff, 0xff, 0x10],
+      ];
+
+      for (final bytes in malformed) {
+        final buffer = Buffer.wrap(Uint8List.fromList(<int>[...bytes, 0x2a]));
+        expect(() => buffer.readVarUint32(), throwsA(isA<StateError>()));
+        expect(buffer.readableBytes, equals(1));
       }
     });
 
@@ -281,30 +332,32 @@ void main() {
       }
     });
 
-    test('round-trips tagged int64 boundary values with Java-aligned lengths',
-        () {
-      final cases = <({int bytes, Int64 value})>[
-        (bytes: 4, value: Int64(-0x40000000)),
-        (bytes: 4, value: Int64(-1)),
-        (bytes: 4, value: Int64(0)),
-        (bytes: 4, value: Int64(1)),
-        (bytes: 4, value: Int64(1 << 28)),
-        (bytes: 4, value: Int64(0x3fffffff)),
-        (bytes: 9, value: Int64(-0x40000001)),
-        (bytes: 9, value: Int64(0x40000000)),
-        (bytes: 9, value: _i64Hex('7fffffffffffffff')),
-        (bytes: 9, value: _i64Hex('8000000000000000')),
-      ];
+    test(
+      'round-trips tagged int64 boundary values with Java-aligned lengths',
+      () {
+        final cases = <({int bytes, Int64 value})>[
+          (bytes: 4, value: Int64(-0x40000000)),
+          (bytes: 4, value: Int64(-1)),
+          (bytes: 4, value: Int64(0)),
+          (bytes: 4, value: Int64(1)),
+          (bytes: 4, value: Int64(1 << 28)),
+          (bytes: 4, value: Int64(0x3fffffff)),
+          (bytes: 9, value: Int64(-0x40000001)),
+          (bytes: 9, value: Int64(0x40000000)),
+          (bytes: 9, value: _i64Hex('7fffffffffffffff')),
+          (bytes: 9, value: _i64Hex('8000000000000000')),
+        ];
 
-      for (final testCase in cases) {
-        _expectEncodedInt64RoundTrip(
-          value: testCase.value,
-          expectedBytes: testCase.bytes,
-          write: (buffer, value) => buffer.writeTaggedInt64(value),
-          read: (buffer) => buffer.readTaggedInt64(),
-        );
-      }
-    });
+        for (final testCase in cases) {
+          _expectEncodedInt64RoundTrip(
+            value: testCase.value,
+            expectedBytes: testCase.bytes,
+            write: (buffer, value) => buffer.writeTaggedInt64(value),
+            read: (buffer) => buffer.readTaggedInt64(),
+          );
+        }
+      },
+    );
 
     test(
       'round-trips tagged uint64 boundary values with Java-aligned lengths',
@@ -332,42 +385,44 @@ void main() {
       },
     );
 
-    test('int64 int helpers match Int64 wrapper encodings at safe boundaries',
-        () {
-      const cases = <int>[
-        _jsSafeIntMin,
-        -0x40000001,
-        -0x40000000,
-        -1,
-        0,
-        1,
-        0x3fffffff,
-        0x40000000,
-        _jsSafeIntMax,
-      ];
+    test(
+      'int64 int helpers match Int64 wrapper encodings at safe boundaries',
+      () {
+        const cases = <int>[
+          _jsSafeIntMin,
+          -0x40000001,
+          -0x40000000,
+          -1,
+          0,
+          1,
+          0x3fffffff,
+          0x40000000,
+          _jsSafeIntMax,
+        ];
 
-      for (final value in cases) {
-        _expectInt64IntHelperMatchesWrapper(
-          value: value,
-          writeInt: (buffer, value) => buffer.writeInt64FromInt(value),
-          writeWrapper: (buffer, value) => buffer.writeInt64(Int64(value)),
-          readInt: (buffer) => buffer.readInt64AsInt(),
-        );
-        _expectInt64IntHelperMatchesWrapper(
-          value: value,
-          writeInt: (buffer, value) => buffer.writeVarInt64FromInt(value),
-          writeWrapper: (buffer, value) => buffer.writeVarInt64(Int64(value)),
-          readInt: (buffer) => buffer.readVarInt64AsInt(),
-        );
-        _expectInt64IntHelperMatchesWrapper(
-          value: value,
-          writeInt: (buffer, value) => buffer.writeTaggedInt64FromInt(value),
-          writeWrapper: (buffer, value) =>
-              buffer.writeTaggedInt64(Int64(value)),
-          readInt: (buffer) => buffer.readTaggedInt64AsInt(),
-        );
-      }
-    });
+        for (final value in cases) {
+          _expectInt64IntHelperMatchesWrapper(
+            value: value,
+            writeInt: (buffer, value) => buffer.writeInt64FromInt(value),
+            writeWrapper: (buffer, value) => buffer.writeInt64(Int64(value)),
+            readInt: (buffer) => buffer.readInt64AsInt(),
+          );
+          _expectInt64IntHelperMatchesWrapper(
+            value: value,
+            writeInt: (buffer, value) => buffer.writeVarInt64FromInt(value),
+            writeWrapper: (buffer, value) => buffer.writeVarInt64(Int64(value)),
+            readInt: (buffer) => buffer.readVarInt64AsInt(),
+          );
+          _expectInt64IntHelperMatchesWrapper(
+            value: value,
+            writeInt: (buffer, value) => buffer.writeTaggedInt64FromInt(value),
+            writeWrapper:
+                (buffer, value) => buffer.writeTaggedInt64(Int64(value)),
+            readInt: (buffer) => buffer.readTaggedInt64AsInt(),
+          );
+        }
+      },
+    );
 
     test('web rejects JS-unsafe int64 int helper values', () {
       if (!identical(1, 1.0)) {
@@ -402,13 +457,17 @@ void main() {
         throwsA(isA<StateError>()),
       );
       expect(
-        () => Buffer.wrap(Uint8List.fromList(varint.toBytes()))
-            .readVarInt64AsInt(),
+        () =>
+            Buffer.wrap(
+              Uint8List.fromList(varint.toBytes()),
+            ).readVarInt64AsInt(),
         throwsA(isA<StateError>()),
       );
       expect(
-        () => Buffer.wrap(Uint8List.fromList(tagged.toBytes()))
-            .readTaggedInt64AsInt(),
+        () =>
+            Buffer.wrap(
+              Uint8List.fromList(tagged.toBytes()),
+            ).readTaggedInt64AsInt(),
         throwsA(isA<StateError>()),
       );
     });

@@ -26,6 +26,27 @@ private struct DecimalEnvelope: Equatable {
     var note: String = ""
 }
 
+private func decimalWireData(
+    scale: Int32,
+    header: UInt64,
+    magnitude: [UInt8] = []
+) -> Data {
+    let buffer = ByteBuffer()
+    buffer.writeUInt8(ForyHeaderFlag.isXlang)
+    buffer.writeInt8(RefFlag.notNullValue.rawValue)
+    buffer.writeUInt8(UInt8(TypeId.decimal.rawValue))
+    buffer.writeVarInt32(scale)
+    buffer.writeVarUInt64(header)
+    buffer.writeBytes(magnitude)
+    return buffer.toData()
+}
+
+private func bigDecimalHeader(length: Int, negative: Bool = false) -> UInt64 {
+    let sign: UInt64 = negative ? 1 : 0
+    let meta = (UInt64(length) << 1) | sign
+    return (meta << 1) | 1
+}
+
 private func makeDecimal(unscaled: String, scale: Int32) throws -> Decimal {
     var digits = unscaled
     var sign = ""
@@ -121,5 +142,103 @@ func decimalRejectsNonCanonicalBigPayloads() throws {
     }
     #expect(throws: ForyError.self) {
         let _: Decimal = try fory.deserialize(trailingZeroPayload)
+    }
+}
+
+@Test
+func decimalWriterUsesBinaryMagnitudeOrder() throws {
+    let fory = Fory()
+
+    let positive = try fory.serialize(Decimal(UInt64.max))
+    #expect(
+        positive
+            == decimalWireData(
+                scale: 0,
+                header: bigDecimalHeader(length: 8),
+                magnitude: Array(repeating: 0xff, count: 8)
+            )
+    )
+
+    let negative = try fory.serialize(Decimal(Int64.min))
+    #expect(
+        negative
+            == decimalWireData(
+                scale: 0,
+                header: bigDecimalHeader(length: 8, negative: true),
+                magnitude: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80]
+            )
+    )
+}
+
+@Test
+func decimalReaderChecksNativeMagnitude() throws {
+    let fory = Fory()
+    let boundaryMagnitude = Array(repeating: UInt8(0), count: 15) + [0x01]
+    let boundaryWire = decimalWireData(
+        scale: 0,
+        header: bigDecimalHeader(length: boundaryMagnitude.count),
+        magnitude: boundaryMagnitude
+    )
+
+    let decoded: Decimal = try fory.deserialize(boundaryWire)
+    #expect(decoded.foryScale == 0)
+    #expect(try fory.serialize(decoded) == boundaryWire)
+
+    let oversizedMagnitude = Array(repeating: UInt8(1), count: 17)
+    let oversizedBuffer = ByteBuffer(
+        data: decimalWireData(
+            scale: 0,
+            header: bigDecimalHeader(length: oversizedMagnitude.count),
+            magnitude: oversizedMagnitude
+        )
+    )
+    #expect(throws: ForyError.self) {
+        let _: Decimal = try fory.deserialize(from: oversizedBuffer)
+    }
+    #expect(oversizedBuffer.remaining == oversizedMagnitude.count)
+
+    let overflowBuffer = ByteBuffer(
+        data: decimalWireData(scale: 0, header: UInt64.max)
+    )
+    #expect(throws: ForyError.self) {
+        let _: Decimal = try fory.deserialize(from: overflowBuffer)
+    }
+
+    let legalLength = 16
+    let truncatedMagnitude = Array(repeating: UInt8(1), count: legalLength - 1)
+    let truncatedBuffer = ByteBuffer(
+        data: decimalWireData(
+            scale: 0,
+            header: bigDecimalHeader(length: legalLength),
+            magnitude: truncatedMagnitude
+        )
+    )
+    #expect(throws: ForyError.self) {
+        let _: Decimal = try fory.deserialize(from: truncatedBuffer)
+    }
+    #expect(truncatedBuffer.remaining == truncatedMagnitude.count)
+}
+
+@Test
+func decimalReaderUsesFoundationScaleRange() throws {
+    let fory = Fory()
+    let nativeCases: [(value: Decimal, scale: Int32)] = [
+        (Decimal(sign: .plus, exponent: -128, significand: Decimal(1)), 128),
+        (Decimal(sign: .plus, exponent: 127, significand: Decimal(1)), -127)
+    ]
+
+    for testCase in nativeCases {
+        let encoded = try fory.serialize(testCase.value)
+        let decoded: Decimal = try fory.deserialize(encoded)
+        #expect(decoded == testCase.value)
+        #expect(decoded.foryScale == testCase.scale)
+    }
+
+    for scale in [Int32(-128), 129, -10_001, -10_000, 10_000, 10_001, .min, .max] {
+        #expect(throws: ForyError.self) {
+            let _: Decimal = try fory.deserialize(
+                decimalWireData(scale: scale, header: 0x04)
+            )
+        }
     }
 }

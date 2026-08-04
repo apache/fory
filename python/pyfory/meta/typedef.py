@@ -255,9 +255,12 @@ class TypeDef:
                         return NonExistEnumSerializer(resolver)
                     raise
             return resolver.get_type_info_by_id(self.type_id, user_type_id=self.user_type_id).serializer
-        from pyfory.struct import DataClassSerializer
+        from pyfory.struct import DataClassSerializer, UnknownStruct, UnknownStructSerializer
         from pyfory.struct import FieldInfo as StructFieldInfo
         from pyfory.type_util import get_type_hints, unwrap_optional
+
+        if self.cls is UnknownStruct:
+            return UnknownStructSerializer(resolver, self)
 
         # Resolve actual field names from TAG_ID encoding if needed
         field_names = self._resolve_field_names_from_tag_ids()
@@ -503,6 +506,14 @@ class FieldType:
         )
 
 
+_COMPATIBLE_MAP_CHILD_TYPES = frozenset(
+    (
+        TypeId.COMPATIBLE_STRUCT,
+        TypeId.NAMED_COMPATIBLE_STRUCT,
+    )
+)
+
+
 class CollectionFieldType(FieldType):
     def __init__(
         self,
@@ -562,6 +573,11 @@ class MapFieldType(FieldType):
             value_type = type_[2]
         key_serializer = self.key_type.create_serializer(resolver, key_type)
         value_serializer = self.value_type.create_serializer(resolver, value_type)
+        # The outer TypeDef records only the nested user-type kind, not its
+        # schema version. Compatible map chunks must therefore carry child
+        # TypeInfo so the reader selects the matching remote schema codec.
+        key_write_type_info = resolver.compatible and self.key_type.type_id in _COMPATIBLE_MAP_CHILD_TYPES
+        value_write_type_info = resolver.compatible and self.value_type.type_id in _COMPATIBLE_MAP_CHILD_TYPES
         key_override = getattr(self.key_type, "tracking_ref_override", None)
         value_override = getattr(self.value_type, "tracking_ref_override", None)
         from pyfory.serializer import MapSerializer
@@ -573,6 +589,8 @@ class MapFieldType(FieldType):
             value_serializer,
             key_override,
             value_override,
+            key_write_type_info,
+            value_write_type_info,
         )
 
     def __repr__(self):
@@ -852,6 +870,7 @@ def _create_compatible_field_serializer(
                 resolver,
                 target_serializer,
                 elem_serializer,
+                remote_field_type.element_type.type_id,
                 field_name,
             )
 
@@ -1060,22 +1079,11 @@ def is_value_assignable(value, local_field_type: FieldType) -> bool:
     type_id = local_field_type.type_id
     if type_id == TypeId.UNKNOWN:
         return True
-    if type_id in (TypeId.LIST, TypeId.SET):
-        if not isinstance(value, (list, tuple, set)):
-            return False
-        return all(is_value_assignable(element, local_field_type.element_type) for element in value)
-    if type_id == TypeId.MAP:
-        if not isinstance(value, dict):
-            return False
-        return all(
-            is_value_assignable(key, local_field_type.key_type) and is_value_assignable(map_value, local_field_type.value_type)
-            for key, map_value in value.items()
-        )
+    if type_id in (TypeId.LIST, TypeId.SET, TypeId.MAP):
+        return _is_value_assignable(value, local_field_type, {})
     if type_id in _INT_TYPE_DOMAINS:
         return _validate_int_value(value, type_id)
-    if type_id == TypeId.BINARY:
-        return _is_bytes_like(value) or _is_uint8_array_like(value)
-    if type_id == TypeId.UINT8_ARRAY:
+    if type_id in (TypeId.BINARY, TypeId.UINT8_ARRAY):
         return _is_bytes_like(value) or _is_uint8_array_like(value)
     if type_id == TypeId.BOOL:
         return type(value) is bool
@@ -1086,6 +1094,37 @@ def is_value_assignable(value, local_field_type: FieldType) -> bool:
     return True
 
 
+def _is_value_assignable(value, local_field_type: FieldType, completed) -> bool:
+    # Keep the memo completed-only so cycles retain normal Python recursion failure.
+    key = (id(value), id(local_field_type))
+    result = completed.get(key)
+    if result is not None:
+        return result
+    type_id = local_field_type.type_id
+    if value is None:
+        result = local_field_type.is_nullable
+    elif type_id == TypeId.UNKNOWN:
+        result = True
+    elif type_id in (TypeId.LIST, TypeId.SET):
+        if not isinstance(value, (list, tuple, set)):
+            result = False
+        else:
+            result = all(_is_value_assignable(element, local_field_type.element_type, completed) for element in value)
+    elif type_id == TypeId.MAP:
+        if not isinstance(value, dict):
+            result = False
+        else:
+            result = all(
+                _is_value_assignable(key, local_field_type.key_type, completed)
+                and _is_value_assignable(map_value, local_field_type.value_type, completed)
+                for key, map_value in value.items()
+            )
+    else:
+        result = is_value_assignable(value, local_field_type)
+    completed[key] = result
+    return result
+
+
 def coerce_assignable_value(value, local_field_type: FieldType):
     if value is None:
         return None
@@ -1094,16 +1133,79 @@ def coerce_assignable_value(value, local_field_type: FieldType):
         return _bytes_from_uint8_value(value)
     if type_id == TypeId.UINT8_ARRAY and _is_bytes_like(value):
         return _uint8_array_from_bytes(value)
-    if type_id == TypeId.LIST:
-        return [coerce_assignable_value(element, local_field_type.element_type) for element in value]
-    if type_id == TypeId.SET:
-        return {coerce_assignable_value(element, local_field_type.element_type) for element in value}
-    if type_id == TypeId.MAP:
-        return {
-            coerce_assignable_value(key, local_field_type.key_type): coerce_assignable_value(map_value, local_field_type.value_type)
-            for key, map_value in value.items()
-        }
+    if type_id in (TypeId.LIST, TypeId.SET, TypeId.MAP):
+        return _coerce_assignable_value(value, local_field_type, {})
     return value
+
+
+def _coerce_assignable_value(value, local_field_type: FieldType, completed):
+    # Keep the memo completed-only so cycles retain normal Python recursion failure.
+    key = (id(value), id(local_field_type))
+    try:
+        return completed[key]
+    except KeyError:
+        pass
+    if value is None:
+        result = None
+        completed[key] = result
+        return result
+    type_id = local_field_type.type_id
+    if type_id == TypeId.LIST:
+        # Compatible readers already budget and publish builtin container owners.
+        # Preserve them below; allocate replacements only for mismatched carriers.
+        if type(value) is list:
+            for index, element in enumerate(value):
+                converted = _coerce_assignable_value(element, local_field_type.element_type, completed)
+                if converted is not element:
+                    value[index] = converted
+            result = value
+        else:
+            result = [_coerce_assignable_value(element, local_field_type.element_type, completed) for element in value]
+    elif type_id == TypeId.SET:
+        if type(value) is set:
+            changes = None
+            for element in value:
+                converted = _coerce_assignable_value(element, local_field_type.element_type, completed)
+                if converted is not element:
+                    if changes is None:
+                        changes = []
+                    changes.append((element, converted))
+            if changes is not None:
+                for element, _ in changes:
+                    value.remove(element)
+                for _, converted in changes:
+                    value.add(converted)
+            result = value
+        else:
+            result = {_coerce_assignable_value(element, local_field_type.element_type, completed) for element in value}
+    elif type_id == TypeId.MAP:
+        if type(value) is dict:
+            rebuild = False
+            for map_key, map_value in value.items():
+                converted_key = _coerce_assignable_value(map_key, local_field_type.key_type, completed)
+                converted_value = _coerce_assignable_value(map_value, local_field_type.value_type, completed)
+                if converted_key is not map_key or converted_value is not map_value:
+                    rebuild = True
+                    break
+            if rebuild:
+                items = list(value.items())
+                value.clear()
+                for map_key, map_value in items:
+                    converted_key = _coerce_assignable_value(map_key, local_field_type.key_type, completed)
+                    converted_value = _coerce_assignable_value(map_value, local_field_type.value_type, completed)
+                    value[converted_key] = converted_value
+            result = value
+        else:
+            result = {
+                _coerce_assignable_value(map_key, local_field_type.key_type, completed): _coerce_assignable_value(
+                    map_value, local_field_type.value_type, completed
+                )
+                for map_key, map_value in value.items()
+            }
+    else:
+        result = coerce_assignable_value(value, local_field_type)
+    completed[key] = result
+    return result
 
 
 def build_field_infos(type_resolver, cls):

@@ -22,7 +22,27 @@ import type { TypeInfo } from "../typeInfo";
 const skipReadActions = new WeakSet<TypeInfo>();
 
 export function markCompatibleSkipRead(typeInfo: TypeInfo): TypeInfo {
-  skipReadActions.add(typeInfo);
+  // A removed compatible field owns the whole declared codec tree. Propagate
+  // the marker during regeneration so nested dynamic children use discard-only
+  // type resolution without adding checks to ordinary generated readers.
+  const pending = [typeInfo];
+  for (let i = 0; i < pending.length; i++) {
+    const current = pending[i];
+    if (skipReadActions.has(current)) {
+      continue;
+    }
+    skipReadActions.add(current);
+    const options = current.options;
+    if (options?.inner !== undefined) {
+      pending.push(options.inner);
+    }
+    if (options?.key !== undefined) {
+      pending.push(options.key);
+    }
+    if (options?.value !== undefined) {
+      pending.push(options.value);
+    }
+  }
   return typeInfo;
 }
 

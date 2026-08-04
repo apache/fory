@@ -78,7 +78,8 @@ python ci/release.py bump_version -l all -version <next-dev-version>
 
 - `README.md`
 - Runtime README files such as `java/README.md`, `rust/README.md`, `scala/README.md`, `csharp/README.md`, `swift/README.md`, `dart/packages/fory/README.md`
-- `docs/guide/**`
+- `docs/start/**` and `docs/object-serialization/**`
+- `docs/row-format/**`, `docs/json/**`, and `docs/grpc/**`
 - `docs/compiler/**` when compiler examples include Fory package versions
 - `examples/**`
 

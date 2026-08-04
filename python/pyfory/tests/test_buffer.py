@@ -81,6 +81,22 @@ class PartialWriteStream:
         return bytes(self._data)
 
 
+class RecordingOneByteStream:
+    def __init__(self, data: bytes):
+        self._data = data
+        self._offset = 0
+        self.offered_sizes = []
+
+    def readinto(self, buffer):
+        view = memoryview(buffer).cast("B")
+        self.offered_sizes.append(len(view))
+        if self._offset >= len(self._data):
+            return 0
+        view[0] = self._data[self._offset]
+        self._offset += 1
+        return 1
+
+
 def test_buffer():
     buffer = Buffer.allocate(8)
     buffer.write_bool(True)
@@ -407,6 +423,14 @@ def test_stream_buffer_read_with_recv_into():
 def test_stream_buffer_read_with_legacy_recvinto():
     reader = Buffer.from_stream(LegacyRecvIntoOnlyStream(bytes([0x11, 0x22, 0x33, 0x44])))
     assert reader.read_uint32() == 0x44332211
+
+
+def test_stream_buffer_geometric_growth():
+    stream = RecordingOneByteStream(bytes(range(32)))
+    reader = Buffer.from_stream(stream, buffer_size=1)
+
+    assert [reader.read_uint8() for _ in range(32)] == list(range(32))
+    assert max(stream.offered_sizes) >= 8
 
 
 def test_stream_buffer_set_reader_index():

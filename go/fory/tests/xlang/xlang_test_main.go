@@ -336,7 +336,7 @@ type StructWithList struct {
 }
 
 type StructWithMap struct {
-	Data map[string]string
+	Data map[*string]*string
 }
 
 type RefOverrideElement struct {

@@ -36,6 +36,8 @@ pub struct VecSerializer<S>(PhantomData<fn() -> S>);
 impl<S: Serializer> Serializer for VecSerializer<S> {
     type Target = Vec<S::Target>;
 
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
+
     #[inline(always)]
     fn write_data(value: &Self::Target, context: &mut WriteContext) -> Result<(), Error> {
         <RootVecSerializer<S> as Serializer>::write_data(value, context)
@@ -105,6 +107,8 @@ where
     T: Serializer<Target = T>,
 {
     type Target = Self;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
 
     #[inline(always)]
     fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {

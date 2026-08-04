@@ -502,6 +502,22 @@ known statically:
 Boxed primitives use the same value payload after the selected null/reference
 slot.
 
+### Big-Number Value Range
+
+Java native `BigInteger` and `BigDecimal` serializers accept an absolute
+integer or unscaled magnitude of at most `10_000` canonical unsigned binary
+bytes. `BigDecimal` also accepts only scales in `[-10_000, 10_000]`.
+
+These are accepted-value limits, not changes to native or xlang encoding. A
+leading sign byte in Java's signed two's-complement native body does not count
+toward the magnitude limit. Writers reject an out-of-range value before writing
+any part of it. Readers validate the logical magnitude before allocating the
+body or constructing `BigInteger` or `BigDecimal`, and retain the existing
+readable-byte, length, overflow, and canonical checks.
+
+Compatible scalar conversion keeps its separate `256`-digit and scale/output
+expansion limits.
+
 ## String Values
 
 Java strings are encoded as:

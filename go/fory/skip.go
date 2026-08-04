@@ -92,8 +92,11 @@ func SkipFieldValueWithTypeFlag(ctx *ReadContext, fieldDef FieldDef, readRefFlag
 			}
 			if typeInfo != nil && typeInfo.Serializer != nil {
 				// Use the serializer to read and discard the value
-				var dummy any
-				dummyVal := reflect.ValueOf(&dummy).Elem()
+				if typeInfo.Type == nil {
+					ctx.SetError(DeserializationErrorf("cannot skip EXT type %d without a concrete registered type", wroteTypeID))
+					return
+				}
+				dummyVal := reflect.New(typeInfo.Type).Elem()
 				typeInfo.Serializer.Read(ctx, RefModeNone, false, false, dummyVal)
 				return
 			}
@@ -110,8 +113,11 @@ func SkipFieldValueWithTypeFlag(ctx *ReadContext, fieldDef FieldDef, readRefFlag
 			}
 			if typeInfo != nil && typeInfo.Serializer != nil {
 				// Use the serializer to read and discard the value
-				var dummy any
-				dummyVal := reflect.ValueOf(&dummy).Elem()
+				if typeInfo.Type == nil {
+					ctx.SetError(DeserializationError("cannot skip NAMED_EXT type without a concrete registered type"))
+					return
+				}
+				dummyVal := reflect.New(typeInfo.Type).Elem()
 				typeInfo.Serializer.Read(ctx, RefModeNone, false, false, dummyVal)
 				return
 			}
@@ -241,12 +247,26 @@ func readKnownTypeInfoForSkip(ctx *ReadContext, typeID uint32) *TypeInfo {
 	return typeInfo
 }
 
+func fieldReadAlwaysAdvances(fieldDef FieldDef, typeInfo *TypeInfo) bool {
+	if typeInfo != nil && serializerReadDataAlwaysAdvances(typeInfo.Serializer) {
+		return true
+	}
+	return fieldDef.typeSpec != nil && typeIDReadDataAlwaysAdvances(fieldDef.typeSpec.TypeId())
+}
+
 // skipCollection skips a collection (list/set) value
 // Uses context error state for deferred error checking.
 func skipCollection(ctx *ReadContext, fieldDef FieldDef) {
+	if ctx.HasError() || !ctx.enterDepth() {
+		return
+	}
 	err := ctx.Err()
 	length := uint32(ctx.ReadCollectionLength())
-	if ctx.HasError() || length == 0 {
+	if ctx.HasError() {
+		return
+	}
+	if length == 0 {
+		ctx.decDepth()
 		return
 	}
 
@@ -302,28 +322,51 @@ func skipCollection(ctx *ReadContext, fieldDef FieldDef) {
 		}
 	}
 
-	ctx.depth++
-	if ctx.depth > ctx.maxDepth {
-		ctx.SetError(MaxDepthExceededError(ctx.depth))
-		return
-	}
-	defer ctx.decDepth()
-
-	for i := uint32(0); i < length; i++ {
-		// Read ref flag if collection has ref tracking enabled
-		skipValue(ctx, elemDef, trackRef || hasNull, false, elemTypeInfo)
-		if ctx.HasError() {
-			return
+	elementReadAlwaysAdvances := !isSameType || trackRef || hasNull ||
+		fieldReadAlwaysAdvances(elemDef, elemTypeInfo)
+	if elementReadAlwaysAdvances {
+		for i := uint32(0); i < length; i++ {
+			skipValue(ctx, elemDef, trackRef || hasNull, false, elemTypeInfo)
+			if ctx.HasError() {
+				return
+			}
+		}
+	} else {
+		checkpoint := ctx.buffer.logicalReaderIndex()
+		for i := uint32(0); i < length; i++ {
+			skipValue(ctx, elemDef, false, false, elemTypeInfo)
+			if ctx.HasError() {
+				return
+			}
+			if (i+1)&(unbackedContainerCheckInterval-1) == 0 {
+				if !ctx.settleUnbackedContainerItems(unbackedContainerCheckInterval, checkpoint) {
+					return
+				}
+				checkpoint = ctx.buffer.logicalReaderIndex()
+			}
+		}
+		if tail := int(length & (unbackedContainerCheckInterval - 1)); tail != 0 {
+			if !ctx.settleUnbackedContainerItems(tail, checkpoint) {
+				return
+			}
 		}
 	}
+	ctx.decDepth()
 }
 
 // skipMap skips a map value
 // Uses context error state for deferred error checking.
 func skipMap(ctx *ReadContext, fieldDef FieldDef) {
+	if ctx.HasError() || !ctx.enterDepth() {
+		return
+	}
 	bufErr := ctx.Err()
 	length := uint32(ctx.ReadCollectionLength())
-	if ctx.HasError() || length == 0 {
+	if ctx.HasError() {
+		return
+	}
+	if length == 0 {
+		ctx.decDepth()
 		return
 	}
 
@@ -368,6 +411,19 @@ func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 		// Only key is null
 		if (header & KEY_HAS_NULL) != 0 {
 			valueDeclared := (header & VALUE_DECL_TYPE) != 0
+			valueTrackRef := (header & TRACKING_VALUE_REF) != 0
+			if valueTrackRef && !valueDeclared {
+				// Polymorphic null chunks write the reference envelope before
+				// TypeInfo; back-references have no TypeInfo or value body.
+				if !consumeSkippedRefFlag(ctx, true) {
+					if ctx.HasError() {
+						return
+					}
+					lenCounter++
+					continue
+				}
+				valueTrackRef = false
+			}
 			var valueDef FieldDef
 			var valueTypeInfo *TypeInfo
 			if !valueDeclared {
@@ -386,13 +442,7 @@ func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 			} else {
 				valueDef = declaredValueDef
 			}
-			ctx.depth++
-			if ctx.depth > ctx.maxDepth {
-				ctx.SetError(MaxDepthExceededError(ctx.depth))
-				return
-			}
-			skipValue(ctx, valueDef, false, false, valueTypeInfo)
-			ctx.decDepth()
+			skipValue(ctx, valueDef, valueTrackRef, false, valueTypeInfo)
 			if ctx.HasError() {
 				return
 			}
@@ -403,6 +453,19 @@ func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 		// Only value is null
 		if (header & VALUE_HAS_NULL) != 0 {
 			keyDeclared := (header & KEY_DECL_TYPE) != 0
+			keyTrackRef := (header & TRACKING_KEY_REF) != 0
+			if keyTrackRef && !keyDeclared {
+				// Polymorphic null chunks write the reference envelope before
+				// TypeInfo; back-references have no TypeInfo or value body.
+				if !consumeSkippedRefFlag(ctx, true) {
+					if ctx.HasError() {
+						return
+					}
+					lenCounter++
+					continue
+				}
+				keyTrackRef = false
+			}
 			var keyDef FieldDef
 			var keyTypeInfo *TypeInfo
 			if !keyDeclared {
@@ -421,13 +484,7 @@ func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 			} else {
 				keyDef = declaredKeyDef
 			}
-			ctx.depth++
-			if ctx.depth > ctx.maxDepth {
-				ctx.SetError(MaxDepthExceededError(ctx.depth))
-				return
-			}
-			skipValue(ctx, keyDef, false, false, keyTypeInfo)
-			ctx.decDepth()
+			skipValue(ctx, keyDef, keyTrackRef, false, keyTypeInfo)
 			if ctx.HasError() {
 				return
 			}
@@ -441,7 +498,7 @@ func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 			return
 		}
 		if chunkSize == 0 || uint32(chunkSize) > length-lenCounter {
-			ctx.SetError(DeserializationErrorf("invalid map chunk size %d for remaining length %d", chunkSize, length-lenCounter))
+			setInvalidMapChunkSize(ctx, uint64(chunkSize), uint64(length-lenCounter))
 			return
 		}
 
@@ -487,33 +544,37 @@ func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 		// Check if ref tracking is enabled for keys and values
 		keyTrackRef := (header & TRACKING_KEY_REF) != 0
 		valueTrackRef := (header & TRACKING_VALUE_REF) != 0
-
-		ctx.depth++
-		if ctx.depth > ctx.maxDepth {
-			ctx.SetError(MaxDepthExceededError(ctx.depth))
-			return
+		entryReadAlwaysAdvances := keyTrackRef || valueTrackRef ||
+			fieldReadAlwaysAdvances(keyDef, keyTypeInfo) ||
+			fieldReadAlwaysAdvances(valueDef, valueTypeInfo)
+		var checkpoint uint64
+		if !entryReadAlwaysAdvances {
+			checkpoint = ctx.buffer.logicalReaderIndex()
 		}
+
 		for i := byte(0); i < chunkSize; i++ {
 			skipValue(ctx, keyDef, keyTrackRef, false, keyTypeInfo)
 			if ctx.HasError() {
-				ctx.decDepth()
 				return
 			}
 			skipValue(ctx, valueDef, valueTrackRef, false, valueTypeInfo)
 			if ctx.HasError() {
-				ctx.decDepth()
 				return
 			}
 		}
-		ctx.decDepth()
+		if !entryReadAlwaysAdvances &&
+			!ctx.settleUnbackedContainerItems(int(chunkSize), checkpoint) {
+			return
+		}
 		lenCounter += uint32(chunkSize)
 	}
+	ctx.decDepth()
 }
 
 // skipStruct skips a struct value using TypeInfo
 // Uses context error state for deferred error checking.
 func skipStruct(ctx *ReadContext, info *TypeInfo) {
-	if ctx.HasError() {
+	if ctx.HasError() || !ctx.enterDepth() {
 		return
 	}
 
@@ -537,13 +598,6 @@ func skipStruct(ctx *ReadContext, info *TypeInfo) {
 		fieldDefs = typeDef.fieldDefs
 	}
 
-	ctx.depth++
-	if ctx.depth > ctx.maxDepth {
-		ctx.SetError(MaxDepthExceededError(ctx.depth))
-		return
-	}
-	defer ctx.decDepth()
-
 	for _, fieldDef := range fieldDefs {
 		// Use FieldDef's trackRef and nullable to determine if ref flag was written by Java
 		// Java writes ref flag based on its FieldDef, not based on type rules
@@ -555,6 +609,7 @@ func skipStruct(ctx *ReadContext, info *TypeInfo) {
 			return
 		}
 	}
+	ctx.decDepth()
 }
 
 // skipValue is the main dispatcher for skipping values based on their type
@@ -598,8 +653,11 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 		}
 		if typeInfo != nil && typeInfo.Serializer != nil {
 			// Use the serializer to read and discard the value
-			var dummy any
-			dummyVal := reflect.ValueOf(&dummy).Elem()
+			if typeInfo.Type == nil {
+				ctx.SetError(DeserializationErrorf("cannot skip type %d without a concrete registered type", typeIDNum))
+				return
+			}
+			dummyVal := reflect.New(typeInfo.Type).Elem()
 			typeInfo.Serializer.Read(ctx, RefModeNone, false, false, dummyVal)
 			return
 		}
@@ -639,25 +697,11 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 
 	// String types
 	case STRING:
-		// String format: VarUint64 header (size << 2 | encoding) + data bytes
-		header := ctx.buffer.ReadVarUint64(err)
+		header := ctx.buffer.ReadVaruint36Small(err)
 		if ctx.HasError() {
 			return
 		}
-		size := header >> 2
-		encoding := header & 0b11
-		switch encoding {
-		case 0: // Latin1 - 1 byte per char
-			skipSizedBytes(ctx, size)
-		case 1: // UTF-16LE - 2 bytes per char
-			if size > uint64(MaxInt)/2 {
-				ctx.SetError(DeserializationErrorf("UTF-16 string byte length exceeds supported int range: %d", size))
-				return
-			}
-			skipSizedBytes(ctx, size*2)
-		case 2: // UTF-8 - variable, but size is byte count
-			skipSizedBytes(ctx, size)
-		}
+		skipSizedBytes(ctx, header>>2)
 	case BINARY:
 		length := ctx.ReadBinaryLength()
 		if ctx.HasError() {
@@ -710,11 +754,18 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 		skipMap(ctx, fieldDef)
 
 	case UNION, TYPED_UNION, NAMED_UNION:
+		if !ctx.enterDepth() {
+			return
+		}
 		_ = ctx.buffer.ReadVarUint32(err) // case_id
 		if ctx.HasError() {
 			return
 		}
 		SkipAnyValue(ctx, true)
+		if ctx.HasError() {
+			return
+		}
+		ctx.decDepth()
 
 	case NONE:
 		return

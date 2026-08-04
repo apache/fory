@@ -76,6 +76,61 @@ describe("array", () => {
     const o = { a: "123" };
     expect(deserialize(serialize({ c: [o, o] }))).toEqual({ c: [o, o] });
   });
+
+  test("preserves a self-reference in a dynamic list", () => {
+    const fory = new Fory({ compatible: false, ref: true });
+    const value: any[] = [];
+    value.push(value);
+
+    const result = fory.deserialize(fory.serialize(value)) as any[];
+
+    expect(result[0]).toBe(result);
+  });
+
+  test("round-trips dynamic list frames", () => {
+    const fory = new Fory({ compatible: false, ref: true });
+    const shared = ["nested"];
+    const value = [shared, null, 1, shared];
+
+    const result = fory.deserialize(fory.serialize(value)) as unknown[];
+
+    expect(result[0]).toBe(result[3]);
+    expect(result[1]).toBeNull();
+    expect(result[2]).toBe(1);
+    expect(fory.deserialize(fory.serialize([null, null]))).toEqual([null, null]);
+  });
+
+  test("round-trips compact empty-struct lists", () => {
+    @Type.struct(302)
+    class DynamicEmpty {}
+
+    const dynamicFory = new Fory({ compatible: true, ref: false });
+    dynamicFory.register(DynamicEmpty);
+    const dynamicValues = Array.from({ length: 256 }, () => new DynamicEmpty());
+    const dynamicBytes = dynamicFory.serialize(dynamicValues);
+
+    expect(dynamicBytes.length).toBeLessThan(dynamicValues.length);
+    const dynamicResult = dynamicFory.deserialize(dynamicBytes) as DynamicEmpty[];
+    expect(dynamicResult).toHaveLength(dynamicValues.length);
+    expect(dynamicResult.every((value) => value instanceof DynamicEmpty)).toBe(true);
+
+    const staticFory = new Fory({ compatible: true, ref: false });
+    const staticEmptyType = Type.struct(304, {});
+    @staticEmptyType
+    class StaticEmpty {}
+    staticFory.register(StaticEmpty);
+    const staticSerializer = staticFory.register(
+      Type.struct(303, {
+        values: Type.list(staticEmptyType),
+      }),
+    );
+    const staticValues = Array.from({ length: 256 }, () => new StaticEmpty());
+    const staticValue = { values: staticValues };
+    const staticBytes = staticSerializer.serialize(staticValue);
+
+    expect(staticSerializer.deserialize(staticBytes)).toEqual(staticValue);
+  });
+
   test("should typedarray work", () => {
     const typeinfo = Type.struct(
       {

@@ -437,6 +437,8 @@ ReadContext::ReadContext(const Config &config,
       type_resolver_(std::move(type_resolver)), current_dyn_depth_(0) {
   FORY_CHECK(config.max_graph_memory_bytes > 0)
       << "max_graph_memory_bytes must be positive";
+  FORY_CHECK(config.max_unbacked_container_items >= 0)
+      << "max_unbacked_container_items must be non-negative";
 }
 
 ReadContext::~ReadContext() = default;
@@ -482,7 +484,8 @@ ReadContext::read_enum_type_info(uint32_t base_type_id) {
   return Unexpected(Error::type_mismatch(type_id, base_type_id));
 }
 
-static constexpr size_t k_min_remote_type_meta_limit = 8192;
+static constexpr uint64_t k_min_remote_type_meta_limit = 8192;
+static constexpr uint64_t k_max_remote_type_meta_keys = 8192;
 
 Result<std::string, Error>
 ReadContext::check_remote_type_meta_limit(const TypeMeta &type_meta) {
@@ -499,6 +502,14 @@ ReadContext::check_remote_type_meta_limit(const TypeMeta &type_meta) {
   }
 
   auto *entry = remote_schema_versions_by_type_.find(key);
+  if (FORY_PREDICT_FALSE(
+          entry == nullptr &&
+          static_cast<uint64_t>(remote_schema_versions_by_type_.size()) >=
+              k_max_remote_type_meta_keys)) {
+    return Unexpected(Error::invalid_data(
+        "Remote TypeMeta logical type limit 8192 exceeded"));
+  }
+
   const uint32_t versions_for_type = entry == nullptr ? 0 : entry->second;
   if (FORY_PREDICT_FALSE(versions_for_type >=
                          config_->max_schema_versions_per_type)) {
@@ -509,13 +520,14 @@ ReadContext::check_remote_type_meta_limit(const TypeMeta &type_meta) {
         std::to_string(config_->max_schema_versions_per_type)));
   }
 
-  const size_t accepted_type_count =
-      remote_schema_versions_by_type_.size() + (entry == nullptr ? 1 : 0);
-  const size_t global_limit = std::max(
-      k_min_remote_type_meta_limit,
-      accepted_type_count *
-          static_cast<size_t>(config_->max_average_schema_versions_per_type));
-  if (FORY_PREDICT_FALSE(total_accepted_schema_versions_ >= global_limit)) {
+  const uint64_t accepted_type_count =
+      static_cast<uint64_t>(remote_schema_versions_by_type_.size()) +
+      (entry == nullptr ? 1 : 0);
+  const uint64_t max_average = config_->max_average_schema_versions_per_type;
+  if (FORY_PREDICT_FALSE(
+          total_accepted_schema_versions_ >= k_min_remote_type_meta_limit &&
+          total_accepted_schema_versions_ / accepted_type_count >=
+              max_average)) {
     return Unexpected(Error::invalid_data(
         "Remote schema version limit exceeded globally. The data may be "
         "malicious. If the data is not malicious, please increase "
@@ -750,14 +762,24 @@ bool ReadContext::set_graph_memory_exceeded(size_t bytes, size_t remaining) {
   return false;
 }
 
+bool ReadContext::set_unbacked_container_items_exceeded(size_t items,
+                                                        size_t remaining) {
+  set_error(Error::invalid_data(
+      "container read work request " + std::to_string(items) +
+      " items exceeds max_unbacked_container_items remaining budget " +
+      std::to_string(remaining) + " items"));
+  return false;
+}
+
 void ReadContext::reset() {
   // Clear error state first
   error_ = Error();
-  if (config_->track_ref) {
-    ref_reader_.reset();
-  }
+  // Wire-level skip paths can reserve reference slots even when local
+  // reference tracking is disabled, so every root must clear this state.
+  ref_reader_.reset();
   reading_type_infos_.clear();
   current_dyn_depth_ = 0;
+  remaining_unbacked_container_items_ = 0;
   // Root deserialization overwrites the remaining graph budget before any
   // serializer can reserve, so reset avoids an extra hot cleanup store here.
   if (meta_string_table_active_) {

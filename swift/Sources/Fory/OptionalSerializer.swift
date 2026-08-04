@@ -26,6 +26,7 @@ public enum OptionalSerializer<Wrapped: Serializer>: Serializer {
     public static var isNullableType: Bool { true }
     public static var isRefType: Bool { Wrapped.isRefType }
     public static var isWrapper: Bool { true }
+    public static var readDataAlwaysAdvances: Bool { Wrapped.readDataAlwaysAdvances }
 
     @inlinable
     @inline(__always)
@@ -416,6 +417,12 @@ extension Optional: Serializer where Wrapped: Serializer, Wrapped.Target == Wrap
     @inline(__always)
     public static var isWrapper: Bool {
         OptionalSerializer<Wrapped>.isWrapper
+    }
+
+    @inlinable
+    @inline(__always)
+    public static var readDataAlwaysAdvances: Bool {
+        OptionalSerializer<Wrapped>.readDataAlwaysAdvances
     }
 
     @inlinable

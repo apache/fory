@@ -184,6 +184,8 @@ class MapRefReader(RefReader):
         if ref_id is None:
             ref_id = len(self.read_objects)
             self.read_objects.append(None)
+        elif ref_id != NOT_NULL_VALUE_FLAG and (ref_id < 0 or ref_id >= len(self.read_objects)):
+            raise ValueError(f"Invalid ref id {ref_id}, current size {len(self.read_objects)}")
         self.read_ref_ids.append(ref_id)
         return ref_id
 
@@ -196,21 +198,25 @@ class MapRefReader(RefReader):
         self.read_object = None
         if head_flag == REF_VALUE_FLAG:
             return self.preserve_ref_id()
-        # ``NOT_NULL_VALUE_FLAG`` means the value is not ref-tracked, but we still push a
-        # sentinel so ``reference`` can be called unconditionally by callers that materialize
-        # composite objects early.
-        self.read_ref_ids.append(-1)
+        if head_flag == NOT_NULL_VALUE_FLAG:
+            # Composite readers publish eagerly through ``reference`` even when
+            # the current value is not tracked, so preserve one no-op sentinel.
+            self.read_ref_ids.append(NOT_NULL_VALUE_FLAG)
         return head_flag
 
     def last_preserved_ref_id(self) -> int:
+        if not self.read_ref_ids:
+            raise ValueError("No preserved ref id")
         return self.read_ref_ids[-1]
 
     def has_preserved_ref_id(self) -> bool:
         return bool(self.read_ref_ids)
 
     def reference(self, obj):
+        if not self.read_ref_ids:
+            raise ValueError("No preserved ref id")
         ref_id = self.read_ref_ids.pop()
-        if ref_id < 0:
+        if ref_id == NOT_NULL_VALUE_FLAG:
             return
         self.set_read_ref(ref_id, obj)
 
@@ -225,10 +231,10 @@ class MapRefReader(RefReader):
         return obj
 
     def set_read_ref(self, id_, obj):
-        if id_ < 0:
+        if id_ == NOT_NULL_VALUE_FLAG:
             return
-        if id_ >= len(self.read_objects):
-            raise RuntimeError(f"Ref id {id_} invalid")
+        if id_ < 0 or id_ >= len(self.read_objects):
+            raise ValueError(f"Invalid ref id {id_}, current size {len(self.read_objects)}")
         self.read_objects[id_] = obj
 
     def reset(self):

@@ -56,7 +56,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.fory.builder.UnsafeCodegenSupport;
@@ -424,7 +423,7 @@ public interface Expression {
         return new ExprCode(null, TrueLiteral, defaultLiteral);
       } else {
         if (javaType == String.class) {
-          return new ExprCode(FalseLiteral, new LiteralValue("\"" + value + "\""));
+          return new ExprCode(FalseLiteral, new LiteralValue(stringLiteral((String) value)));
         } else if (javaType == Boolean.class || javaType == Integer.class) {
           return new ExprCode(null, FalseLiteral, new LiteralValue(javaType, value.toString()));
         } else if (javaType == Float.class) {
@@ -438,8 +437,7 @@ public interface Expression {
             return new ExprCode(
                 FalseLiteral, new LiteralValue(javaType, "Float.NEGATIVE_INFINITY"));
           } else {
-            return new ExprCode(
-                FalseLiteral, new LiteralValue(javaType, String.format(Locale.ROOT, "%fF", f)));
+            return new ExprCode(FalseLiteral, new LiteralValue(javaType, Float.toString(f) + "F"));
           }
         } else if (javaType == Double.class) {
           Double d = (Double) value;
@@ -452,8 +450,7 @@ public interface Expression {
             return new ExprCode(
                 FalseLiteral, new LiteralValue(javaType, "Double.NEGATIVE_INFINITY"));
           } else {
-            return new ExprCode(
-                FalseLiteral, new LiteralValue(javaType, String.format(Locale.ROOT, "%fD", d)));
+            return new ExprCode(FalseLiteral, new LiteralValue(javaType, Double.toString(d) + "D"));
           }
         } else if (javaType == Byte.class) {
           return new ExprCode(
@@ -483,6 +480,48 @@ public interface Expression {
           throw new UnsupportedOperationException("Unsupported type " + javaType);
         }
       }
+    }
+
+    private static String stringLiteral(String value) {
+      StringBuilder builder = new StringBuilder(value.length() + 2);
+      builder.append('"');
+      for (int i = 0; i < value.length(); i++) {
+        char c = value.charAt(i);
+        switch (c) {
+          case '\b':
+            builder.append("\\b");
+            break;
+          case '\t':
+            builder.append("\\t");
+            break;
+          case '\n':
+            builder.append("\\n");
+            break;
+          case '\f':
+            builder.append("\\f");
+            break;
+          case '\r':
+            builder.append("\\r");
+            break;
+          case '"':
+            builder.append("\\\"");
+            break;
+          case '\\':
+            builder.append("\\\\");
+            break;
+          default:
+            if (c < 0x20 || c == 0x7f) {
+              builder
+                  .append('\\')
+                  .append((char) ('0' + ((c >>> 6) & 0x7)))
+                  .append((char) ('0' + ((c >>> 3) & 0x7)))
+                  .append((char) ('0' + (c & 0x7)));
+            } else {
+              builder.append(c);
+            }
+        }
+      }
+      return builder.append('"').toString();
     }
 
     private static String charLiteral(char value) {

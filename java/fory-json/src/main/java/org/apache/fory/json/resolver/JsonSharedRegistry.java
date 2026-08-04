@@ -110,7 +110,6 @@ import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.GeneratedJsonCodec;
-import org.apache.fory.json.codec.GeneratedJsonCodecFactory;
 import org.apache.fory.json.codec.GuavaCodecs;
 import org.apache.fory.json.codec.JsonSubTypesInfo;
 import org.apache.fory.json.codec.JsonValueCodec;
@@ -120,10 +119,12 @@ import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
+import org.apache.fory.json.codegen.JsonCodegenKey;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.meta.JsonAnySetterAccessor;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldKind;
+import org.apache.fory.json.resolver.JsonGeneratedClassRegistry.Configuration;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -146,9 +147,8 @@ import org.apache.fory.util.record.RecordUtils;
  * <p>Accepted type-check results are cached by class name up to a bounded 8192-entry shared cache.
  * Once full, new names are checked on every resolution rather than growing attacker-controlled
  * state. Common short field names admitted by reader-local caches are published here for
- * best-effort String reference reuse across readers. Reader-local admission is the only field-name
- * capacity gate; the shared field-name map has no explicit limit. Source-generated model companions
- * and JIT-generated class futures are shared here; concrete JIT codec instances, ordinary type
+ * best-effort String reference reuse across readers. Source-generated model companions and
+ * JIT-generated class futures are shared here; concrete JIT codec instances, ordinary type
  * bindings, graph construction, JIT locks, and publication remain resolver-local. A fresh {@link
  * JsonJITContext} is therefore created for every pooled JSON state.
  */
@@ -173,6 +173,8 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<String, Boolean> typeCheckCache;
   private final Object typeCheckCacheLock;
   private final JsonCodegen codegen;
+  private final JsonCodegenKey nativeCodegenKey;
+  private final boolean hostedCodegen;
   private final boolean asyncCompilationEnabled;
   private final ExecutorService compilationService;
   private final boolean propertyDiscoveryEnabled;
@@ -197,16 +199,27 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> utf8ReaderClasses;
   private final ConcurrentHashMap<Type, CompletableFuture<Class<?>>> utf8CollectionWriterClasses;
   private final ConcurrentHashMap<Type, CompletableFuture<Class<?>>> utf8CollectionReaderClasses;
+  // Only ForyJson's fixed-pool reader-local caches publish production entries here, and each reader
+  // owns its configured entry limit. This reference-reuse table does not own a second capacity
+  // policy.
   private final ConcurrentHashMap<Long, CachedFieldName> cachedFieldNames;
 
   public JsonSharedRegistry(JsonConfig config) {
-    this(config, null);
+    this(config, null, false);
   }
 
   JsonSharedRegistry(JsonConfig config, ExecutorService compilationService) {
-    this.customCodecs = config.codecRegistry().copy();
-    typeChecker = config.typeChecker();
-    typeCheckContext = config.typeCheckContext();
+    this(config, compilationService, false);
+  }
+
+  private JsonSharedRegistry(
+      JsonConfig config, ExecutorService compilationService, boolean hostedCodegen) {
+    this.customCodecs = config.codecRegistry();
+    // Hosted compilation produces classes shared by configurations with the same source shape.
+    // Runtime type policy is intentionally not part of that shape and remains enforced by each
+    // runtime resolver before it installs a generated capability.
+    typeChecker = hostedCodegen ? null : config.typeChecker();
+    typeCheckContext = hostedCodegen ? null : config.typeCheckContext();
     typeCheckCache = typeChecker == null ? null : new ConcurrentHashMap<>();
     typeCheckCacheLock = typeChecker == null ? null : new Object();
     this.propertyDiscoveryEnabled = config.propertyDiscoveryEnabled();
@@ -235,10 +248,118 @@ public final class JsonSharedRegistry {
     utf8CollectionReaderClasses = new ConcurrentHashMap<>();
     cachedFieldNames = new ConcurrentHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
-    codegen = codegenEnabled ? new JsonCodegen(config.getCodegenHash(), classLoader) : null;
-    asyncCompilationEnabled = codegenEnabled && config.asyncCompilationEnabled();
+    this.hostedCodegen = hostedCodegen;
+    boolean createCompiler =
+        codegenEnabled && (hostedCodegen || !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE);
+    codegen =
+        createCompiler
+            ? new JsonCodegen(config.getCodegenHash(), classLoader, hostedCodegen)
+            : null;
+    nativeCodegenKey =
+        codegenEnabled && GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE ? config.codegenKey() : null;
+    asyncCompilationEnabled = createCompiler && !hostedCodegen && config.asyncCompilationEnabled();
     this.compilationService = compilationService;
     registerExactCodecs();
+  }
+
+  /** Creates the transient synchronous compiler registry owned by Native Image hosted analysis. */
+  @Internal
+  public static JsonSharedRegistry forHostedCodegen(JsonConfig config) {
+    if (!GraalvmSupport.isGraalBuildTime()) {
+      throw new IllegalStateException("Hosted Fory JSON code generation requires image build time");
+    }
+    if (!config.codegenEnabled()) {
+      throw new IllegalArgumentException("Hosted Fory JSON configuration has codegen disabled");
+    }
+    return new JsonSharedRegistry(config, null, true);
+  }
+
+  /** Returns a complete immutable snapshot of every synchronously generated class. */
+  GeneratedClasses generatedClasses() {
+    if (codegen == null || asyncCompilationEnabled) {
+      throw new IllegalStateException("Generated class snapshots require synchronous codegen");
+    }
+    return new GeneratedClasses(
+        completedClasses(stringWriterClasses),
+        completedClasses(utf8WriterClasses),
+        completedClasses(latin1ReaderClasses),
+        completedClasses(utf16ReaderClasses),
+        completedClasses(utf8ReaderClasses),
+        completedClasses(utf8CollectionWriterClasses),
+        completedClasses(utf8CollectionReaderClasses));
+  }
+
+  private static <K> Map<K, Class<?>> completedClasses(
+      Map<K, CompletableFuture<Class<?>>> futures) {
+    Map<K, Class<?>> classes = new HashMap<>(futures.size());
+    for (Map.Entry<K, CompletableFuture<Class<?>>> entry : futures.entrySet()) {
+      CompletableFuture<Class<?>> future = entry.getValue();
+      if (!future.isDone() || future.isCompletedExceptionally()) {
+        throw new IllegalStateException(
+            "Fory JSON generated class is incomplete: " + entry.getKey());
+      }
+      Class<?> generatedClass = future.getNow(null);
+      if (generatedClass == null) {
+        throw new IllegalStateException("Fory JSON generated class is null: " + entry.getKey());
+      }
+      classes.put(entry.getKey(), generatedClass);
+    }
+    return Collections.unmodifiableMap(classes);
+  }
+
+  static final class GeneratedClasses {
+    private final Map<Class<?>, Class<?>> stringWriters;
+    private final Map<Class<?>, Class<?>> utf8Writers;
+    private final Map<Class<?>, Class<?>> latin1Readers;
+    private final Map<Class<?>, Class<?>> utf16Readers;
+    private final Map<Class<?>, Class<?>> utf8Readers;
+    private final Map<Type, Class<?>> utf8CollectionWriters;
+    private final Map<Type, Class<?>> utf8CollectionReaders;
+
+    private GeneratedClasses(
+        Map<Class<?>, Class<?>> stringWriters,
+        Map<Class<?>, Class<?>> utf8Writers,
+        Map<Class<?>, Class<?>> latin1Readers,
+        Map<Class<?>, Class<?>> utf16Readers,
+        Map<Class<?>, Class<?>> utf8Readers,
+        Map<Type, Class<?>> utf8CollectionWriters,
+        Map<Type, Class<?>> utf8CollectionReaders) {
+      this.stringWriters = stringWriters;
+      this.utf8Writers = utf8Writers;
+      this.latin1Readers = latin1Readers;
+      this.utf16Readers = utf16Readers;
+      this.utf8Readers = utf8Readers;
+      this.utf8CollectionWriters = utf8CollectionWriters;
+      this.utf8CollectionReaders = utf8CollectionReaders;
+    }
+
+    Map<Class<?>, Class<?>> stringWriters() {
+      return stringWriters;
+    }
+
+    Map<Class<?>, Class<?>> utf8Writers() {
+      return utf8Writers;
+    }
+
+    Map<Class<?>, Class<?>> latin1Readers() {
+      return latin1Readers;
+    }
+
+    Map<Class<?>, Class<?>> utf16Readers() {
+      return utf16Readers;
+    }
+
+    Map<Class<?>, Class<?>> utf8Readers() {
+      return utf8Readers;
+    }
+
+    Map<Type, Class<?>> utf8CollectionWriters() {
+      return utf8CollectionWriters;
+    }
+
+    Map<Type, Class<?>> utf8CollectionReaders() {
+      return utf8CollectionReaders;
+    }
   }
 
   CompletableFuture<Class<?>> stringWriterClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
@@ -280,6 +401,63 @@ public final class JsonSharedRegistry {
         utf8CollectionReaderClasses,
         declaredType,
         () -> codegen.compileUtf8CollectionReader(declaredType, owner));
+  }
+
+  boolean generatedCapabilitiesEnabled() {
+    return codegen != null || nativeConfiguration() != null;
+  }
+
+  boolean hostedCodegen() {
+    return hostedCodegen;
+  }
+
+  boolean missingNativeConfiguration() {
+    return nativeCodegenKey != null && nativeConfiguration() == null;
+  }
+
+  boolean nativeGeneratedClasses() {
+    return nativeCodegenKey != null && codegen == null && nativeConfiguration() != null;
+  }
+
+  Class<?> nativeStringWriterClass(Class<?> type) {
+    Configuration configuration = nativeConfiguration();
+    return configuration == null ? null : configuration.stringWriter(type);
+  }
+
+  Class<?> nativeUtf8WriterClass(Class<?> type) {
+    Configuration configuration = nativeConfiguration();
+    return configuration == null ? null : configuration.utf8Writer(type);
+  }
+
+  Class<?> nativeLatin1ReaderClass(Class<?> type) {
+    Configuration configuration = nativeConfiguration();
+    return configuration == null ? null : configuration.latin1Reader(type);
+  }
+
+  Class<?> nativeUtf16ReaderClass(Class<?> type) {
+    Configuration configuration = nativeConfiguration();
+    return configuration == null ? null : configuration.utf16Reader(type);
+  }
+
+  Class<?> nativeUtf8ReaderClass(Class<?> type) {
+    Configuration configuration = nativeConfiguration();
+    return configuration == null ? null : configuration.utf8Reader(type);
+  }
+
+  Class<?> nativeUtf8CollectionWriterClass(Type type) {
+    Configuration configuration = nativeConfiguration();
+    return configuration == null ? null : configuration.utf8CollectionWriter(type);
+  }
+
+  Class<?> nativeUtf8CollectionReaderClass(Type type) {
+    Configuration configuration = nativeConfiguration();
+    return configuration == null ? null : configuration.utf8CollectionReader(type);
+  }
+
+  private Configuration nativeConfiguration() {
+    return nativeCodegenKey == null
+        ? null
+        : JsonGeneratedClassRegistry.configuration(nativeCodegenKey);
   }
 
   private <K> CompletableFuture<Class<?>> generatedClassFuture(
@@ -359,17 +537,17 @@ public final class JsonSharedRegistry {
   }
 
   GeneratedJsonCodec<?> generatedCodec(Class<?> type) {
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return null;
+    }
     Class<?> mixinType = mixinType(type);
-    boolean directGenerated = type.getDeclaredAnnotation(JsonType.class) != null;
-    if (!directGenerated && mixinType == null) {
+    boolean directType = type.getDeclaredAnnotation(JsonType.class) != null;
+    if (!directType && mixinType == null) {
       return null;
     }
     try {
       GeneratedJsonCodec<?> codec = generatedCodecIfPresent(type, mixinType);
-      if (codec == null
-          && (directGenerated
-              || mixinType != null
-                  && (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE))) {
+      if (codec == null && (directType || mixinType != null && AndroidSupport.IS_ANDROID)) {
         throw missingGeneratedCodec(type, mixinType, "JSON object model");
       }
       return codec;
@@ -416,10 +594,6 @@ public final class JsonSharedRegistry {
   }
 
   private GeneratedJsonCodec<?> loadGeneratedCodec(Class<?> type, Class<?> mixinType) {
-    if (GraalvmSupport.isGraalRuntime()) {
-      GeneratedJsonCodecFactory factory = GeneratedJsonCodecFactories.get(type, mixinType);
-      return factory == null ? null : validateGeneratedCodec(type, factory.create());
-    }
     String generatedName =
         mixinType == null
             ? generatedCodecBinaryName(type)
@@ -488,8 +662,7 @@ public final class JsonSharedRegistry {
   public static GeneratedJsonCodec<?> validateGeneratedCodec(
       Class<?> type, GeneratedJsonCodec<?> codec) {
     if (codec == null) {
-      throw new ForyJsonException(
-          "Generated JSON codec factory returned null for " + type.getName());
+      throw new ForyJsonException("Generated JSON codec is null for " + type.getName());
     }
     Class<?> declaredType;
     JsonFieldAccessor[] accessors;
@@ -497,6 +670,7 @@ public final class JsonSharedRegistry {
     String[] creatorNames;
     Class<?>[] creatorTypes;
     String creatorFactory;
+    Method[] validatorMethods;
     boolean record;
     try {
       declaredType = codec.type();
@@ -505,6 +679,7 @@ public final class JsonSharedRegistry {
       creatorNames = codec.creatorParameterNames();
       creatorTypes = codec.creatorParameterTypes();
       creatorFactory = codec.creatorFactoryName();
+      validatorMethods = codec.validatorMethods();
       record = codec.isRecord();
     } catch (RuntimeException | LinkageError e) {
       throw new ForyJsonException(
@@ -524,9 +699,8 @@ public final class JsonSharedRegistry {
     Executable creator =
         validateGeneratedCreator(
             type, memberAccessors, creatorNames, creatorTypes, creatorFactory, record);
-    if (!AndroidSupport.IS_ANDROID
-        && !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE
-        && RecordUtils.isRecord(type) != record) {
+    validateGeneratedValidators(type, validatorMethods);
+    if (!AndroidSupport.IS_ANDROID && RecordUtils.isRecord(type) != record) {
       throw invalidGeneratedCodec(type, "isRecord() does not match the runtime model class");
     }
     codec.initializeValidated(
@@ -537,8 +711,35 @@ public final class JsonSharedRegistry {
         creatorTypes,
         creatorFactory,
         creator,
-        record);
+        record,
+        validatorMethods);
     return codec;
+  }
+
+  private static void validateGeneratedValidators(Class<?> type, Method[] methods) {
+    if (methods == null) {
+      return;
+    }
+    Set<Method> unique = new HashSet<>();
+    for (Method method : methods) {
+      if (method == null) {
+        throw invalidGeneratedCodec(type, "validatorMethods() contains null");
+      }
+      int modifiers = method.getModifiers();
+      if (!method.getDeclaringClass().isAssignableFrom(type)
+          || !Modifier.isPublic(modifiers)
+          || Modifier.isStatic(modifiers)
+          || Modifier.isAbstract(modifiers)
+          || method.isSynthetic()
+          || method.isBridge()
+          || method.getParameterCount() != 0
+          || method.getReturnType() != void.class) {
+        throw invalidGeneratedCodec(type, "generated validator has an invalid shape");
+      }
+      if (!unique.add(method)) {
+        throw invalidGeneratedCodec(type, "duplicate generated validator " + method);
+      }
+    }
   }
 
   private static void validateGeneratedAccessor(
@@ -926,10 +1127,6 @@ public final class JsonSharedRegistry {
       this.overlay = overlay;
     }
 
-    public boolean isEmpty() {
-      return overlay.isEmpty();
-    }
-
     public Set<AnnotatedElement> sourceDeclarations() {
       return overlay.sourceDeclarations();
     }
@@ -989,7 +1186,8 @@ public final class JsonSharedRegistry {
         }
         Class<?> mixinType = mixinType(targetType);
         boolean loadGeneratedCodec =
-            targetType.getDeclaredAnnotation(JsonType.class) != null || mixinType != null;
+            !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE
+                && (targetType.getDeclaredAnnotation(JsonType.class) != null || mixinType != null);
         GeneratedJsonCodec<?> generatedCodec =
             loadGeneratedCodec ? generatedCodecIfPresent(targetType, mixinType) : null;
         JsonValueDeclaration resolved =
@@ -1159,8 +1357,16 @@ public final class JsonSharedRegistry {
     return newCodec(codecClass, "JSON map key codec");
   }
 
+  @SuppressWarnings("unchecked")
   private static <T> T newCodec(Class<? extends T> codecClass, String role) {
     validateCodecClass(codecClass, role);
+    if (GraalvmSupport.isGraalRuntime()) {
+      try {
+        return (T) ReflectionUtils.getCtrHandle(codecClass, new Class<?>[0]).invoke();
+      } catch (Throwable e) {
+        throw invalidCodecClass(codecClass, role, "constructor failed", e);
+      }
+    }
     Constructor<? extends T> constructor;
     try {
       constructor = codecClass.getConstructor();

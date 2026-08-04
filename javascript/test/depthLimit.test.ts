@@ -244,6 +244,61 @@ describe("depth-limit", () => {
       expect(() => deserialize(serialized)).toThrow("Deserialization depth limit exceeded");
     });
 
+    test("changed compatible structs enforce depth and reset at root", () => {
+      const writerFory = new Fory({ compatible: true });
+      const readerFory = new Fory({ compatible: true, maxDepth: 2 });
+      const writerGrandchild = Type.struct(7402, {
+        value: Type.string().setId(1),
+      });
+      const readerGrandchild = Type.struct(7402, {
+        value: Type.int32().setId(1),
+      });
+      const writerChild = Type.struct(7401, {
+        grandchild: Type.struct(7402).setId(1),
+        marker: Type.string().setId(2),
+      });
+      const readerChild = Type.struct(7401, {
+        grandchild: Type.struct(7402).setId(1),
+        marker: Type.int32().setId(2),
+      });
+      const writerRoot = Type.struct(7400, {
+        child: Type.struct(7401).setId(1),
+        marker: Type.string().setId(2),
+      });
+      const readerRoot = Type.struct(7400, {
+        child: Type.struct(7401).setId(1),
+        marker: Type.int32().setId(2),
+      });
+      writerFory.register(writerGrandchild);
+      writerFory.register(writerChild);
+      readerFory.register(readerGrandchild);
+      readerFory.register(readerChild);
+      const writer = writerFory.register(writerRoot);
+      const reader = readerFory.register(readerRoot);
+      const malformedDepth = writer.serialize({
+        child: {
+          grandchild: { value: "7" },
+          marker: "8",
+        },
+        marker: "9",
+      });
+
+      expect(() => reader.deserialize(malformedDepth)).toThrow(
+        "Deserialization depth limit exceeded",
+      );
+      expect(readerFory.readContext.depth).toBe(0);
+
+      const shallowType = Type.struct(7403, {
+        value: Type.int32().setId(1),
+      });
+      const shallowWriter = writerFory.register(shallowType);
+      const shallowReader = readerFory.register(shallowType);
+      expect(shallowReader.deserialize(shallowWriter.serialize({ value: 10 }))).toEqual({
+        value: 10,
+      });
+      expect(readerFory.readContext.depth).toBe(0);
+    });
+
     test("should reset depth at start of each deserialization", () => {
       const fory = new Fory({ compatible: false, maxDepth: 50 });
       const typeInfo = Type.struct(
@@ -352,6 +407,37 @@ describe("depth-limit", () => {
       result = deserialize(serialize({ a: 2 }));
       expect(result).toEqual({ a: 2 });
       expect(fory.readContext.depth).toBe(0);
+    });
+
+    test("root resets depth after nested failure", () => {
+      const typeInfo = Type.struct(
+        {
+          typeName: "depth.failure.outer",
+        },
+        {
+          inner: Type.struct(
+            {
+              typeName: "depth.failure.inner",
+            },
+            {
+              value: Type.string(),
+            },
+          ),
+        },
+      );
+      const value = { inner: { value: "truncated" } };
+      const fory = new Fory({ compatible: false, maxDepth: 50 });
+      const { serialize, deserialize } = fory.register(typeInfo);
+      const serialized = serialize(value);
+      const rootReaders = [deserialize, (bytes: Uint8Array) => fory.deserialize(bytes)];
+
+      for (const readRoot of rootReaders) {
+        expect(() => readRoot(serialized.subarray(0, serialized.length - 1))).toThrow();
+        expect(fory.readContext.depth).toBe(0);
+
+        expect(readRoot(serialized)).toEqual(value);
+        expect(fory.readContext.depth).toBe(0);
+      }
     });
   });
 

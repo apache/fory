@@ -34,6 +34,8 @@ public object DurationSerializers {
 
   private class DurationXlangSerializer(config: Config) :
     ImmutableSerializer<Duration>(config, Duration::class.java, false, true), Shareable {
+    override fun readDataAlwaysAdvances(): Boolean = true
+
     override fun write(writeContext: WriteContext, value: Duration) {
       DurationEncoding.write(writeContext, value)
     }

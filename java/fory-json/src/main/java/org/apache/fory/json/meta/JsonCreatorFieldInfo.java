@@ -23,6 +23,7 @@ import java.lang.reflect.Type;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -40,6 +41,7 @@ public final class JsonCreatorFieldInfo {
   private final Class<?> rawType;
   private final JsonCodec codecAnnotation;
   private final Class<? extends JsonValueCodec<?>> valueCodecClass;
+  private final JsonFormat formatAnnotation;
   private JsonTypeInfo typeInfo;
 
   public JsonCreatorFieldInfo(
@@ -48,7 +50,8 @@ public final class JsonCreatorFieldInfo {
       Type type,
       Class<?> rawType,
       JsonCodec codecAnnotation,
-      Class<? extends JsonValueCodec<?>> valueCodecClass) {
+      Class<? extends JsonValueCodec<?>> valueCodecClass,
+      JsonFormat formatAnnotation) {
     this.name = name;
     nameHash = JsonFieldNameHash.hash(name);
     this.argumentIndex = argumentIndex;
@@ -56,6 +59,7 @@ public final class JsonCreatorFieldInfo {
     this.rawType = rawType;
     this.codecAnnotation = codecAnnotation;
     this.valueCodecClass = valueCodecClass;
+    this.formatAnnotation = formatAnnotation;
   }
 
   public String name() {
@@ -65,7 +69,13 @@ public final class JsonCreatorFieldInfo {
   /** Returns parent-local metadata with a transformed JSON name and the same creator argument. */
   public JsonCreatorFieldInfo withName(String transformedName) {
     return new JsonCreatorFieldInfo(
-        transformedName, argumentIndex, type, rawType, codecAnnotation, valueCodecClass);
+        transformedName,
+        argumentIndex,
+        type,
+        rawType,
+        codecAnnotation,
+        valueCodecClass,
+        formatAnnotation);
   }
 
   public long nameHash() {
@@ -94,7 +104,9 @@ public final class JsonCreatorFieldInfo {
             ? resolver.getTypeInfo(type, rawType, codecAnnotation)
             : valueCodecClass != null
                 ? resolver.getTypeInfo(type, rawType, valueCodecClass)
-                : resolver.getTypeInfo(type, rawType);
+                : formatAnnotation != null
+                    ? resolver.getTypeInfo(type, rawType, formatAnnotation)
+                    : resolver.getTypeInfo(type, rawType);
   }
 
   public Object readLatin1(Latin1JsonReader reader) {

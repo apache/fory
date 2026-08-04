@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
@@ -66,6 +65,12 @@ public sealed class Node
 public sealed class AnyNode
 {
     public object? Next { get; set; }
+}
+
+[ForyStruct]
+public sealed class CollectionNode
+{
+    public List<CollectionNode> Children { get; set; } = [];
 }
 
 [ForyStruct]
@@ -204,6 +209,20 @@ public sealed class CompatibleUInt32ArrayListCarrierSchema
 {
     [ForyField(Type = typeof(S.Array<S.UInt32>))]
     public List<uint> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class CompatibleFloat64ListSchema
+{
+    [ForyField(Type = typeof(S.List<S.Float64>))]
+    public List<double> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class CompatibleFloat64ArraySchema
+{
+    [ForyField(Type = typeof(S.Array<S.Float64>))]
+    public double[] Values { get; set; } = [];
 }
 
 [ForyStruct]
@@ -503,6 +522,57 @@ public abstract partial record SourceGeneratedShape
 
     [ForyCase(1, Type = typeof(S.Fixed<S.Int32>))]
     public sealed partial record Number(int Value) : SourceGeneratedShape;
+}
+
+[ForyUnion]
+public abstract partial record GeneratedDepthUnion
+{
+    private GeneratedDepthUnion()
+    {
+    }
+
+    [ForyUnknownCase]
+    public sealed partial record Unknown(UnknownCase Value) : GeneratedDepthUnion;
+
+    [ForyCase(0, Type = typeof(S.Fixed<S.Int32>))]
+    public sealed partial record Leaf(int Value) : GeneratedDepthUnion;
+
+    [ForyCase(1)]
+    public sealed partial record Next(GeneratedDepthUnion Value) : GeneratedDepthUnion;
+
+    [ForyCase(2)]
+    public sealed partial record Any(object? Value) : GeneratedDepthUnion;
+
+    [ForyCase(3)]
+    public sealed partial record Many(List<GeneratedDepthUnion> Value) : GeneratedDepthUnion;
+}
+
+public sealed class RuntimeDepthUnion : Union
+{
+    private RuntimeDepthUnion(int index, object? value)
+        : base(index, value)
+    {
+    }
+
+    public static RuntimeDepthUnion Leaf(int value)
+    {
+        return new RuntimeDepthUnion(0, value);
+    }
+
+    public static RuntimeDepthUnion Next(RuntimeDepthUnion value)
+    {
+        return new RuntimeDepthUnion(1, value);
+    }
+
+    public static RuntimeDepthUnion Dynamic(int caseId, object? value)
+    {
+        return new RuntimeDepthUnion(caseId, value);
+    }
+
+    public static RuntimeDepthUnion Many(List<RuntimeDepthUnion> value)
+    {
+        return new RuntimeDepthUnion(2, value);
+    }
 }
 
 [ForyStruct]
@@ -1068,47 +1138,6 @@ public sealed class ForyRuntimeTests
         Assert.Same(decoded.NestedMap["first"][0], decoded.NestedMap["second"][0]);
         Assert.Null(decoded.NestedMap["first"][1]);
     }
-
-    [Fact]
-    public void StreamDeserializeConsumesSingleFrame()
-    {
-        ForyRuntime fory = ForyRuntime.Builder().Build();
-
-        byte[] p1 = fory.Serialize(11);
-        byte[] p2 = fory.Serialize(22);
-        byte[] joined = new byte[p1.Length + p2.Length];
-        Buffer.BlockCopy(p1, 0, joined, 0, p1.Length);
-        Buffer.BlockCopy(p2, 0, joined, p1.Length, p2.Length);
-
-        ReadOnlySequence<byte> sequence = new(joined);
-        int first = fory.Deserialize<int>(ref sequence);
-        int second = fory.Deserialize<int>(ref sequence);
-
-        Assert.Equal(11, first);
-        Assert.Equal(22, second);
-        Assert.Equal(0, sequence.Length);
-    }
-
-    [Fact]
-    public void StreamDeserializeGenericObjectConsumesSingleFrame()
-    {
-        ForyRuntime fory = ForyRuntime.Builder().Build();
-
-        byte[] p1 = fory.Serialize<object?>("first");
-        byte[] p2 = fory.Serialize<object?>(99);
-        byte[] joined = new byte[p1.Length + p2.Length];
-        Buffer.BlockCopy(p1, 0, joined, 0, p1.Length);
-        Buffer.BlockCopy(p2, 0, joined, p1.Length, p2.Length);
-
-        ReadOnlySequence<byte> sequence = new(joined);
-        object? first = fory.Deserialize<object?>(ref sequence);
-        object? second = fory.Deserialize<object?>(ref sequence);
-
-        Assert.Equal("first", first);
-        Assert.Equal(99, second);
-        Assert.Equal(0, sequence.Length);
-    }
-
     [Fact]
     public void MacroStructRoundTrip()
     {
@@ -1452,6 +1481,43 @@ public sealed class ForyRuntimeTests
             arrayWriter.Serialize(new CompatibleUInt32ArraySchema { Values = [9u, uint.MaxValue] }));
 
         Assert.Equal([9u, uint.MaxValue], decodedList.Values);
+    }
+
+    [Fact]
+    public void Float64ListChecksBytesBeforeArray()
+    {
+        const int declaredLength = 1_000_000;
+        ForyRuntime writer = ForyRuntime.Builder()
+            .Compatible(true)
+            .TrackRef(false)
+            .Build();
+        writer.Register<CompatibleFloat64ListSchema>(313);
+        byte[] payload = writer.Serialize(new CompatibleFloat64ListSchema());
+
+        ForyRuntime reader = ForyRuntime.Builder()
+            .Compatible(true)
+            .TrackRef(false)
+            .Build();
+        reader.Register<CompatibleFloat64ArraySchema>(313);
+        Assert.Empty(reader.Deserialize<CompatibleFloat64ArraySchema>(payload).Values);
+        Assert.Equal(0, payload[^1]);
+
+        ByteWriter listHeader = new();
+        listHeader.WriteVarUInt32(declaredLength);
+        listHeader.WriteUInt8(CollectionBits.SameType | CollectionBits.DeclaredElementType);
+        byte[] headerBytes = listHeader.ToArray();
+        int prefixLength = payload.Length - 1;
+        Array.Resize(ref payload, prefixLength + headerBytes.Length + declaredLength);
+        headerBytes.CopyTo(payload, prefixLength);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<OutOfBoundsException>(
+            () => reader.Deserialize<CompatibleFloat64ArraySchema>(payload));
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.True(
+            allocated < (long)declaredLength * sizeof(double),
+            $"Rejected Float64 list input allocated {allocated} bytes before its body was proven readable.");
     }
 
     [Fact]
@@ -1829,6 +1895,97 @@ public sealed class ForyRuntimeTests
             CompatibleRead<ScalarFloat64Field, ScalarDecimalField>(
                 new ScalarFloat64Field { Value = double.Epsilon }));
         Assert.Contains("field 'value' from Float64 to Decimal", expansionError.Message);
+    }
+
+    [Fact]
+    public void CompatibleScalarDecimalLongScale()
+    {
+        const int scale = 4096;
+        BigInteger scaleFactor = BigInteger.Pow(10, scale);
+
+        Assert.Equal("1", CompatibleRead<ScalarDecimalField, ScalarStringField>(
+            new ScalarDecimalField { Value = new ForyDecimal(scaleFactor, scale) }).Value);
+        Assert.Equal("-123.45", CompatibleRead<ScalarDecimalField, ScalarStringField>(
+            new ScalarDecimalField { Value = new ForyDecimal(-12345 * scaleFactor, scale + 2) }).Value);
+
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarDecimalField, ScalarStringField>(
+            new ScalarDecimalField { Value = new ForyDecimal(BigInteger.One, int.MaxValue) }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarDecimalField, ScalarStringField>(
+            new ScalarDecimalField { Value = new ForyDecimal(scaleFactor + 1, scale) }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarDecimalField, ScalarStringField>(
+            new ScalarDecimalField
+            {
+                Value = new ForyDecimal(scaleFactor * BigInteger.Pow(10, 256), scale),
+            }));
+    }
+
+    [Fact]
+    public void CompatibleScalarDecimalWireBounds()
+    {
+        BigInteger maxScaleFactor = BigInteger.Pow(10, DecimalCodec.MaxScale);
+        Assert.Equal("1", CompatibleRead<ScalarDecimalField, ScalarStringField>(
+            new ScalarDecimalField
+            {
+                Value = new ForyDecimal(maxScaleFactor, DecimalCodec.MaxScale),
+            }).Value);
+
+        InvalidDataException negativeScaleBoundary = Assert.Throws<InvalidDataException>(
+            () => ReadCompatibleDecimal(
+                CompatibleDecimalPayload(
+                    DecimalCodec.MinScale,
+                    declaredLength: 1,
+                    negative: false,
+                    [1])));
+        Assert.Contains(
+            "converted decimal exceeds compatible conversion bounds",
+            negativeScaleBoundary.Message,
+            StringComparison.Ordinal);
+
+        int[] rejectedScales =
+        [
+            DecimalCodec.MinScale - 1,
+            DecimalCodec.MaxScale + 1,
+            int.MinValue,
+            int.MaxValue,
+        ];
+        foreach (int scale in rejectedScales)
+        {
+            InvalidDataException scaleException = Assert.Throws<InvalidDataException>(
+                () => ReadCompatibleDecimal(
+                    CompatibleDecimalPayload(
+                        scale,
+                        DecimalCodec.MaxMagnitudeBytes + 1UL,
+                        negative: false,
+                        [])));
+            Assert.Contains("outside range", scaleException.Message, StringComparison.Ordinal);
+        }
+
+        byte[] maxMagnitude = new byte[DecimalCodec.MaxMagnitudeBytes];
+        maxMagnitude[0] = 1;
+        maxMagnitude[^1] = 1;
+        InvalidDataException conversionException = Assert.Throws<InvalidDataException>(
+            () => ReadCompatibleDecimal(
+                CompatibleDecimalPayload(
+                    scale: 0,
+                    declaredLength: DecimalCodec.MaxMagnitudeBytes,
+                    negative: false,
+                    maxMagnitude)));
+        Assert.Contains(
+            "converted decimal exceeds compatible conversion bounds",
+            conversionException.Message,
+            StringComparison.Ordinal);
+
+        InvalidDataException magnitudeException = Assert.Throws<InvalidDataException>(
+            () => ReadCompatibleDecimal(
+                CompatibleDecimalPayload(
+                    scale: 0,
+                    declaredLength: DecimalCodec.MaxMagnitudeBytes + 1UL,
+                    negative: false,
+                    [])));
+        Assert.Contains(
+            $"limit {DecimalCodec.MaxMagnitudeBytes}",
+            magnitudeException.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2346,8 +2503,10 @@ public sealed class ForyRuntimeTests
         ByteReader firstReader = new(firstWriter.ToArray());
         Assert.Equal(0u, firstReader.ReadVarUInt32());
 
-        Union2<string, long> firstDecoded =
-            serializer.ReadData(new ReadContext(new ByteReader(firstWriter.ToArray()), resolver, config));
+        ReadContext firstContext =
+            new(new ByteReader(firstWriter.ToArray()), resolver, config);
+        firstContext._remainingGraphMemoryBytes = config.MaxGraphMemoryBytes;
+        Union2<string, long> firstDecoded = serializer.ReadData(firstContext);
         Assert.Equal(0, firstDecoded.Index);
         Assert.Equal("hello", firstDecoded.GetT1());
 
@@ -2357,8 +2516,10 @@ public sealed class ForyRuntimeTests
         ByteReader secondReader = new(secondWriter.ToArray());
         Assert.Equal(1u, secondReader.ReadVarUInt32());
 
-        Union2<string, long> secondDecoded =
-            serializer.ReadData(new ReadContext(new ByteReader(secondWriter.ToArray()), resolver, config));
+        ReadContext secondContext =
+            new(new ByteReader(secondWriter.ToArray()), resolver, config);
+        secondContext._remainingGraphMemoryBytes = config.MaxGraphMemoryBytes;
+        Union2<string, long> secondDecoded = serializer.ReadData(secondContext);
         Assert.Equal(1, secondDecoded.Index);
         Assert.Equal(42L, secondDecoded.GetT2());
 
@@ -2492,6 +2653,249 @@ public sealed class ForyRuntimeTests
         List<object?> inner = Assert.IsType<List<object?>>(outer[0]);
         Assert.Single(inner);
         Assert.Equal(1, inner[0]);
+    }
+
+    [Fact]
+    public void NestedFailureRetainsReadDepth()
+    {
+        ForyRuntime fory = ForyRuntime.Builder()
+            .MaxDepth(1)
+            .Build();
+        TypeResolver resolver = new();
+        ReadContext context =
+            new(new ByteReader([]), resolver, fory.Config);
+
+        Assert.Throws<OutOfBoundsException>(
+            () => resolver.ReadNestedData(
+                resolver.GetSerializer<int>(),
+                context));
+        Assert.Equal(1, context.CurrentReadDepth);
+
+        context.Reset();
+        Assert.Equal(0, context.CurrentReadDepth);
+    }
+
+    [Fact]
+    public void FailedRootResetsReadDepth()
+    {
+        Node source = new()
+        {
+            Value = 1,
+            Next = new Node { Value = 2 },
+        };
+        ForyRuntime fory = DepthFory(1);
+        byte[] payload = fory.Serialize(source);
+        byte[] truncated = payload[..^1];
+
+        Assert.Throws<OutOfBoundsException>(
+            () => fory.Deserialize<Node>(truncated));
+
+        Node decoded = fory.Deserialize<Node>(payload);
+        Assert.Equal(1, decoded.Value);
+        Assert.Equal(2, decoded.Next?.Value);
+        Assert.Null(decoded.Next?.Next);
+    }
+
+    [Fact]
+    public void GeneratedMemberReadDepth()
+    {
+        Node chain = new()
+        {
+            Value = 1,
+            Next = new Node
+            {
+                Value = 2,
+                Next = new Node { Value = 3 },
+            },
+        };
+        byte[] payload = DepthFory(20).Serialize(chain);
+
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<Node>(payload));
+        Node decoded = DepthFory(2).Deserialize<Node>(payload);
+        Assert.Equal(1, decoded.Value);
+        Assert.Equal(2, decoded.Next?.Value);
+        Assert.Equal(3, decoded.Next?.Next?.Value);
+        Assert.Null(decoded.Next?.Next?.Next);
+
+        Node root = new() { Value = 4 };
+        Node child = new() { Value = 5, Next = root };
+        root.Next = child;
+        ForyRuntime tracked = DepthFory(1, trackRef: true);
+        Node cycle = tracked.Deserialize<Node>(tracked.Serialize(root));
+        Assert.Same(cycle, cycle.Next?.Next);
+
+        byte[] dynamicPayload = DepthFory(20).Serialize<object?>(chain);
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<object?>(dynamicPayload));
+        Assert.IsType<Node>(
+            DepthFory(3).Deserialize<object?>(dynamicPayload));
+    }
+
+    [Fact]
+    public void GeneratedMemberAnyDepth()
+    {
+        AnyNode source = new()
+        {
+            Next = new List<object?> { new List<object?> { 1 } },
+        };
+        byte[] payload = DepthFory(20).Serialize(source);
+
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<AnyNode>(payload));
+        AnyNode decoded = DepthFory(2).Deserialize<AnyNode>(payload);
+        Assert.IsType<List<object?>>(decoded.Next);
+    }
+
+    [Fact]
+    public void GeneratedCollectionReadDepth()
+    {
+        CollectionNode source = new()
+        {
+            Children =
+            [
+                new CollectionNode(),
+            ],
+        };
+        byte[] payload = DepthFory(20).Serialize(source);
+
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<CollectionNode>(payload));
+        CollectionNode decoded =
+            DepthFory(2).Deserialize<CollectionNode>(payload);
+        Assert.Single(decoded.Children);
+        Assert.Empty(decoded.Children[0].Children);
+
+        CollectionNode root = new();
+        root.Children.Add(root);
+        ForyRuntime tracked = DepthFory(1, trackRef: true);
+        CollectionNode cycle =
+            tracked.Deserialize<CollectionNode>(tracked.Serialize(root));
+        Assert.Same(cycle, cycle.Children[0]);
+    }
+
+    [Fact]
+    public void GeneratedUnionReadDepth()
+    {
+        GeneratedDepthUnion source =
+            new GeneratedDepthUnion.Next(
+                new GeneratedDepthUnion.Next(
+                    new GeneratedDepthUnion.Leaf(7)));
+        byte[] payload = DepthFory(20).Serialize(source);
+
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<GeneratedDepthUnion>(payload));
+        GeneratedDepthUnion decoded =
+            DepthFory(2).Deserialize<GeneratedDepthUnion>(payload);
+        Assert.IsType<GeneratedDepthUnion.Next>(decoded);
+
+        GeneratedDepthUnion dynamicSource =
+            new GeneratedDepthUnion.Next(new GeneratedDepthUnion.Leaf(8));
+        byte[] dynamicPayload = DepthFory(20).Serialize<object?>(dynamicSource);
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<object?>(dynamicPayload));
+        Assert.IsAssignableFrom<GeneratedDepthUnion>(
+            DepthFory(2).Deserialize<object?>(dynamicPayload));
+    }
+
+    [Fact]
+    public void GeneratedUnionAnyDepth()
+    {
+        GeneratedDepthUnion source =
+            new GeneratedDepthUnion.Any(
+                new List<object?> { new List<object?> { 1 } });
+        byte[] payload = DepthFory(20).Serialize(source);
+
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<GeneratedDepthUnion>(payload));
+        GeneratedDepthUnion.Any decoded =
+            Assert.IsType<GeneratedDepthUnion.Any>(
+                DepthFory(2).Deserialize<GeneratedDepthUnion>(payload));
+        Assert.IsType<List<object?>>(decoded.Value);
+    }
+
+    [Fact]
+    public void GeneratedUnionCollectionDepth()
+    {
+        GeneratedDepthUnion source =
+            new GeneratedDepthUnion.Many(
+                [
+                    new GeneratedDepthUnion.Many(
+                        [
+                            new GeneratedDepthUnion.Leaf(7),
+                        ]),
+                ]);
+        byte[] payload = DepthFory(20).Serialize(source);
+
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<GeneratedDepthUnion>(payload));
+        GeneratedDepthUnion.Many decoded =
+            Assert.IsType<GeneratedDepthUnion.Many>(
+                DepthFory(2).Deserialize<GeneratedDepthUnion>(payload));
+        Assert.IsType<GeneratedDepthUnion.Many>(decoded.Value[0]);
+    }
+
+    [Fact]
+    public void RuntimeUnionReadDepth()
+    {
+        RuntimeDepthUnion source =
+            RuntimeDepthUnion.Next(
+                RuntimeDepthUnion.Next(
+                    RuntimeDepthUnion.Leaf(7)));
+        byte[] payload = DepthFory(20).Serialize(source);
+
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<RuntimeDepthUnion>(payload));
+        RuntimeDepthUnion decoded =
+            DepthFory(2).Deserialize<RuntimeDepthUnion>(payload);
+        Assert.Equal(1, decoded.Index);
+
+        RuntimeDepthUnion dynamicSource =
+            RuntimeDepthUnion.Next(RuntimeDepthUnion.Leaf(8));
+        byte[] dynamicPayload = DepthFory(20).Serialize<object?>(dynamicSource);
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<object?>(dynamicPayload));
+        Assert.IsType<RuntimeDepthUnion>(
+            DepthFory(2).Deserialize<object?>(dynamicPayload));
+    }
+
+    [Fact]
+    public void RuntimeUnionAnyDepth()
+    {
+        RuntimeDepthUnion source =
+            RuntimeDepthUnion.Dynamic(
+                99,
+                new List<object?> { new List<object?> { 1 } });
+        byte[] payload = DepthFory(20).Serialize(source);
+
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<RuntimeDepthUnion>(payload));
+        RuntimeDepthUnion decoded =
+            DepthFory(2).Deserialize<RuntimeDepthUnion>(payload);
+        Assert.IsType<List<object?>>(decoded.Value);
+    }
+
+    [Fact]
+    public void RuntimeUnionCollectionDepth()
+    {
+        RuntimeDepthUnion source =
+            RuntimeDepthUnion.Many(
+                [
+                    RuntimeDepthUnion.Many(
+                        [
+                            RuntimeDepthUnion.Leaf(7),
+                        ]),
+                ]);
+        byte[] payload = DepthFory(20).Serialize(source);
+
+        Assert.Throws<InvalidDataException>(
+            () => DepthFory(1).Deserialize<RuntimeDepthUnion>(payload));
+        RuntimeDepthUnion decoded =
+            DepthFory(2).Deserialize<RuntimeDepthUnion>(payload);
+        Assert.Equal(2, decoded.Index);
+        List<RuntimeDepthUnion> nested =
+            Assert.IsType<List<RuntimeDepthUnion>>(decoded.Value);
+        Assert.Equal(2, nested[0].Index);
     }
 
     [Fact]
@@ -2976,6 +3380,41 @@ public sealed class ForyRuntimeTests
         return reader.Deserialize<TReader>(writer.Serialize(value));
     }
 
+    private static ScalarStringField ReadCompatibleDecimal(byte[] payload)
+    {
+        ForyRuntime reader = ForyRuntime.Builder().Compatible(true).Build();
+        reader.Register<ScalarStringField>(812);
+        return reader.Deserialize<ScalarStringField>(payload);
+    }
+
+    private static byte[] CompatibleDecimalPayload(
+        int scale,
+        ulong declaredLength,
+        bool negative,
+        ReadOnlySpan<byte> magnitude)
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).Build();
+        writer.Register<ScalarDecimalField>(812);
+        byte[] template = writer.Serialize(
+            new ScalarDecimalField
+            {
+                Value = new ForyDecimal(BigInteger.One, 0),
+            });
+        (_, int bodyOffset, _) = ReadCompatibleTypeMetaRange(template);
+
+        ByteWriter body = new();
+        body.WriteVarInt32(scale);
+        ulong meta = (declaredLength << 1) | (negative ? 1UL : 0UL);
+        body.WriteVarUInt64((meta << 1) | 1UL);
+        body.WriteBytes(magnitude);
+        byte[] bodyBytes = body.ToArray();
+
+        byte[] payload = new byte[bodyOffset + bodyBytes.Length];
+        Buffer.BlockCopy(template, 0, payload, 0, bodyOffset);
+        Buffer.BlockCopy(bodyBytes, 0, payload, bodyOffset, bodyBytes.Length);
+        return payload;
+    }
+
     private static byte[] CorruptCompatibleTypeMetaBody(byte[] payload)
     {
         (int typeMetaStart, int typeMetaEnd, _) = ReadCompatibleTypeMetaRange(payload);
@@ -3082,5 +3521,19 @@ public sealed class ForyRuntimeTests
     {
         TypeInfo typeInfo = TypeInfo.Create(typeof(LateTypeMetaExt), new LateTypeMetaExtSerializer());
         resolver.Register(typeof(LateTypeMetaExt), "example", "LateTypeMetaExt", typeInfo);
+    }
+
+    private static ForyRuntime DepthFory(int maxDepth, bool trackRef = true)
+    {
+        return ForyRuntime.Builder()
+            .Compatible(false)
+            .TrackRef(trackRef)
+            .MaxDepth(maxDepth)
+            .Build()
+            .Register<Node>(320)
+            .Register<AnyNode>(321)
+            .Register<GeneratedDepthUnion>(322)
+            .Register<RuntimeDepthUnion>(323)
+            .Register<CollectionNode>(324);
     }
 }

@@ -53,6 +53,8 @@ final BigInt _ten = BigInt.from(10);
 const int _int64SignHigh32 = 0x80000000;
 const int _maxCompatibleDecimalDigits = 256;
 const int _maxCompatibleNumericTextLength = 320;
+const int _decimalZeroChunkDigits = 18;
+final BigInt _decimalZeroChunk = _ten.pow(_decimalZeroChunkDigits);
 final BigInt _maxCompatibleDecimalMagnitude = BigInt.from(
   10,
 ).pow(_maxCompatibleDecimalDigits);
@@ -101,23 +103,32 @@ CompatibleScalarConversion? compatibleScalarConversion(
   FieldInfo remoteField,
   FieldInfo localField,
 ) {
-  if (remoteField.fieldType.ref || localField.fieldType.ref) {
-    return null;
-  }
-  final exactScalarFieldType =
-      remoteField.fieldType.typeId == localField.fieldType.typeId &&
-      remoteField.fieldType.nullable == localField.fieldType.nullable &&
-      remoteField.fieldType.ref == localField.fieldType.ref;
-  if (exactScalarFieldType) {
-    return null;
-  }
-  if (!_supportsCompatibleScalarConversion(
-    remoteField.fieldType.typeId,
-    localField.fieldType.typeId,
+  if (!canConvertCompatibleScalarTypes(
+    remoteField.fieldType,
+    localField.fieldType,
   )) {
     return null;
   }
   return CompatibleScalarConversion(remoteField, localField);
+}
+
+bool canConvertCompatibleScalarTypes(
+  FieldType remoteType,
+  FieldType localType,
+) {
+  if (remoteType.ref || localType.ref) {
+    return false;
+  }
+  final exactScalarFieldType =
+      remoteType.typeId == localType.typeId &&
+      remoteType.nullable == localType.nullable;
+  if (exactScalarFieldType) {
+    return false;
+  }
+  return _supportsCompatibleScalarConversion(
+    remoteType.typeId,
+    localType.typeId,
+  );
 }
 
 CompatibleScalarReadDescriptor compatibleScalarReadDescriptor(
@@ -1144,6 +1155,10 @@ _DecimalValue _canonicalDecimalValue(BigInt unscaled, int scale) {
     resultUnscaled *= _ten.pow(-resultScale);
     resultScale = 0;
   }
+  if (resultScale >= _decimalZeroChunkDigits &&
+      resultUnscaled.remainder(_decimalZeroChunk) == BigInt.zero) {
+    return _canonicalizeLongDecimal(resultUnscaled, resultScale);
+  }
   while (resultScale > 0 && resultUnscaled.remainder(_ten) == BigInt.zero) {
     resultUnscaled ~/= _ten;
     resultScale -= 1;
@@ -1154,6 +1169,27 @@ _DecimalValue _canonicalDecimalValue(BigInt unscaled, int scale) {
     throw const FormatException('Compatible decimal is too large.');
   }
   return _DecimalValue(resultUnscaled, resultScale);
+}
+
+@pragma('vm:never-inline')
+_DecimalValue _canonicalizeLongDecimal(BigInt unscaled, int scale) {
+  final negative = unscaled.isNegative;
+  final digits = unscaled.abs().toString();
+  var significantEnd = digits.length;
+  var resultScale = scale;
+  while (resultScale > 0 && digits.codeUnitAt(significantEnd - 1) == 48) {
+    significantEnd -= 1;
+    resultScale -= 1;
+  }
+  // Check the canonical shape before parsing the retained prefix. Dividing a
+  // growing BigInt once per stripped zero makes valid long-zero decimals
+  // quadratic.
+  if (resultScale > _maxCompatibleDecimalDigits ||
+      significantEnd > _maxCompatibleDecimalDigits) {
+    throw const FormatException('Compatible decimal is too large.');
+  }
+  final magnitude = BigInt.parse(digits.substring(0, significantEnd));
+  return _DecimalValue(negative ? -magnitude : magnitude, resultScale);
 }
 
 int _decimalDigitCount(BigInt value) {
@@ -1243,7 +1279,7 @@ Never _throwScalarConversionError(
   Object cause,
 ) {
   throw InvalidDataException(
-    'Cannot convert compatible field ${conversion.localField.identifier} '
+    'Cannot convert compatible field ${conversion.localField.name} '
     'from type ${conversion.remoteField.fieldType.typeId} '
     'to type ${conversion.localField.fieldType.typeId}: $value',
     cause,

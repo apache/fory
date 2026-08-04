@@ -19,8 +19,9 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.generatedCodecId;
+import static org.apache.fory.json.JsonTestSupport.generatedUtf8WriterClass;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
@@ -45,27 +46,30 @@ import org.testng.annotations.Test;
 public class JsonFieldNameCacheTest {
   @Test
   public void configuration() {
-    JsonConfig defaults = JsonTestSupport.config(ForyJson.builder().build());
-    assertEquals(defaults.maxCachedFieldNames(), ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES);
+    assertEquals(ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES, 8192);
     assertThrows(
         IllegalArgumentException.class, () -> ForyJson.builder().withMaxCachedFieldNames(-1));
     assertThrows(
         IllegalArgumentException.class,
         () -> ForyJson.builder().withMaxCachedFieldNames(Integer.MAX_VALUE));
 
-    JsonConfig first =
-        JsonTestSupport.config(
-            ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(1).build());
-    JsonConfig second =
-        JsonTestSupport.config(
-            ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(2).build());
-    assertNotEquals(first, second);
-    assertNotEquals(first.hashCode(), second.hashCode());
-    assertEquals(first.getCodegenHash(), second.getCodegenHash());
-    assertEquals(first.maxCachedFieldNames(), 1);
-    assertEquals(second.maxCachedFieldNames(), 2);
-    assertEquals(JsonTestSupport.config(newJson(0)).maxCachedFieldNames(), 0);
-    assertEquals(ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES, 8192);
+    ForyJson oneEntry =
+        ForyJson.builder()
+            .withAsyncCompilation(false)
+            .withConcurrencyLevel(1)
+            .withMaxCachedFieldNames(1)
+            .build();
+    ForyJson twoEntries =
+        ForyJson.builder()
+            .withAsyncCompilation(false)
+            .withConcurrencyLevel(1)
+            .withMaxCachedFieldNames(2)
+            .build();
+    oneEntry.toJsonBytes(new TypedFields());
+    twoEntries.toJsonBytes(new TypedFields());
+    assertEquals(
+        generatedCodecId(generatedUtf8WriterClass(oneEntry, TypedFields.class)),
+        generatedCodecId(generatedUtf8WriterClass(twoEntries, TypedFields.class)));
   }
 
   @Test
@@ -328,8 +332,7 @@ public class JsonFieldNameCacheTest {
 
   @Test
   public void sharedHashCollision() {
-    JsonConfig config = JsonTestSupport.config(newJson(4));
-    JsonSharedRegistry registry = new JsonSharedRegistry(config);
+    JsonSharedRegistry registry = JsonTestSupport.newSharedRegistry();
     CachedFieldName first = registry.cacheFieldName(1L, "a", 'a', 0);
     CachedFieldName second = registry.cacheFieldName(1L, "b", 'b', 0);
     assertSame(second, first);
@@ -366,8 +369,7 @@ public class JsonFieldNameCacheTest {
 
   @Test
   public void concurrentPublication() throws Exception {
-    JsonConfig config = JsonTestSupport.config(newJson(1));
-    JsonSharedRegistry registry = new JsonSharedRegistry(config);
+    JsonSharedRegistry registry = JsonTestSupport.newSharedRegistry();
     int threads = 8;
     ExecutorService executor = Executors.newFixedThreadPool(threads);
     CountDownLatch start = new CountDownLatch(1);

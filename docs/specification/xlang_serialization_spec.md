@@ -61,7 +61,7 @@ This specification defines the Fory xlang binary format. The format is dynamic r
 - compatible_struct: a dynamic(final) type serialized by Fory compatible Struct serializer.
 - named_struct: a `struct` whose type mapping will be encoded as a name.
 - named_compatible_struct: a `compatible_struct` whose type mapping will be encoded as a name.
-- ext: a type which will be serialized by a manual serializer.
+- ext: a type which will be serialized by a custom serializer.
 - named_ext: an `ext` type whose type mapping will be encoded as a name.
 - list: a sequence of objects.
 - set: an unordered set of unique elements.
@@ -123,7 +123,7 @@ wire identity.
 - That equivalence includes canonical specialized carrier mappings. For
   example, a Rust vector carrier serializer over the canonical `i32` serializer
   uses `INT32_ARRAY`, one over the canonical `u8` serializer uses BINARY, and one
-  over an external structural or manual serializer uses LIST. A nested carrier
+  over an external structural or custom serializer uses LIST. A nested carrier
   MUST preserve the selected child type ID and recursive `FieldType`; serializer
   composition
   MUST NOT replace a canonical primitive-array or binary mapping with LIST.
@@ -145,7 +145,7 @@ wire identity.
   without adding a wire identity or repeated registration lookup; any
   containing schema metadata owns the prior identity validation. The carrier
   serializer itself remains unregistered in every case.
-- A manual serializer that is not the runtime's
+- A custom serializer that is not the runtime's
   canonical implementation of an existing built-in MUST use the existing EXT
   or NAMED_EXT form. This serializer-provider separation does not replace runtime-owned
   built-in mappings.
@@ -1618,6 +1618,8 @@ The mathematical value is:
 
 - `scale` is encoded as signed varint32.
 - `scale` carries no extra flags or mode bits.
+- Arbitrary-precision decimal carriers accept only
+  `-10_000 <= scale <= 10_000`.
 
 #### Unscaled Header
 
@@ -1652,6 +1654,10 @@ Encoding:
 - `unscaledHeader = (meta << 1) | 1`
 - `payload = magnitude as canonical minimal little-endian bytes`
 
+For arbitrary-precision decimal carriers, `len` must not exceed `10_000`.
+This limit counts only the canonical unsigned binary bytes of `abs(unscaled)`;
+it does not count the header, decimal digits, or textual representations.
+
 Decoding:
 
 - `meta = unscaledHeader >>> 1`
@@ -1672,6 +1678,17 @@ Decoding:
 After decoding `scale` and `unscaled`, the decimal value is reconstructed as:
 
 `value = unscaled × 10^-scale`
+
+The scale and magnitude bounds are accepted-value limits, not changes to the
+wire encoding. Writers must reject values outside them, and readers must reject
+them before allocating the magnitude or constructing the decimal while still
+checking that an accepted body is readable and canonically encoded. A target
+with a fixed-range decimal carrier may impose a stricter native range.
+
+The compatible scalar conversion limits described earlier in this specification
+remain independent. In particular, conversion that formats plain text,
+rescales, quantizes, or otherwise expands output must retain its own expected
+output-length checks; the ordinary decimal scale bound does not replace them.
 
 ### struct
 

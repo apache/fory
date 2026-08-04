@@ -21,9 +21,12 @@ package org.apache.fory.codegen;
 
 import static org.apache.fory.codegen.ExpressionUtils.neq;
 import static org.apache.fory.codegen.ExpressionUtils.or;
+import static org.apache.fory.type.TypeUtils.PRIMITIVE_DOUBLE_TYPE;
+import static org.apache.fory.type.TypeUtils.PRIMITIVE_FLOAT_TYPE;
 import static org.apache.fory.type.TypeUtils.PRIMITIVE_SHORT_TYPE;
 import static org.testng.Assert.assertNull;
 
+import java.lang.reflect.Method;
 import org.apache.fory.codegen.Code.ExprCode;
 import org.apache.fory.codegen.Expression.ListExpression;
 import org.apache.fory.codegen.Expression.Literal;
@@ -92,5 +95,43 @@ public class ExpressionTest {
             neq(Literal.ofInt(5), Literal.ofInt(6)));
     ExprCode exprCode = or.genCode(ctx);
     Assert.assertEquals(exprCode.value().code(), "((3 != 4) || (5 != 6))");
+  }
+
+  @Test
+  public void testLiteralSourceRoundTrip() throws Exception {
+    String text =
+        "quote\" slash\\ newline\n carriage\r tab\t backspace\b formfeed\f "
+            + (char) 0
+            + (char) 1
+            + " unicode雪 literal\\u000a";
+    CodegenContext ctx = new CodegenContext();
+    String clsName = "LiteralRoundTrip";
+    ctx.setClassName(clsName);
+    ctx.setPackage("test");
+    ctx.addMethod("text", new Return(Literal.ofString(text)).genCode(ctx).code(), String.class);
+    ctx.addMethod(
+        "floatValue",
+        new Return(new Literal(Float.MIN_VALUE, PRIMITIVE_FLOAT_TYPE)).genCode(ctx).code(),
+        float.class);
+    ctx.addMethod(
+        "doubleValue",
+        new Return(new Literal(Double.MIN_VALUE, PRIMITIVE_DOUBLE_TYPE)).genCode(ctx).code(),
+        double.class);
+
+    ClassLoader loader =
+        new CodeGenerator(getClass().getClassLoader())
+            .compile(new CompileUnit("test", clsName, ctx.genCode()));
+    Object generated = loader.loadClass("test." + clsName).getDeclaredConstructor().newInstance();
+    Assert.assertEquals(generated.getClass().getMethod("text").invoke(generated), text);
+
+    Method floatMethod = generated.getClass().getMethod("floatValue");
+    float floatValue = (Float) floatMethod.invoke(generated);
+    Assert.assertEquals(
+        Float.floatToRawIntBits(floatValue), Float.floatToRawIntBits(Float.MIN_VALUE));
+
+    Method doubleMethod = generated.getClass().getMethod("doubleValue");
+    double doubleValue = (Double) doubleMethod.invoke(generated);
+    Assert.assertEquals(
+        Double.doubleToRawLongBits(doubleValue), Double.doubleToRawLongBits(Double.MIN_VALUE));
   }
 }

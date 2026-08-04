@@ -32,13 +32,24 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.function.LongFunction;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.collection.BoolList;
 import org.apache.fory.collection.Int32List;
+import org.apache.fory.collection.Int64List;
+import org.apache.fory.collection.UInt32List;
+import org.apache.fory.collection.UInt64List;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.context.ReadContext;
-import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.serializer.collection.PrimitiveListSerializers;
+import org.apache.fory.type.BFloat16Array;
+import org.apache.fory.type.Float16Array;
+import org.apache.fory.type.Types;
+import org.apache.fory.util.PrimitiveArrayCompressionType;
 import org.testng.annotations.Test;
 
 public class GraphMemoryBudgetTest extends ForyTestBase {
@@ -127,8 +138,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     mapContext.prepare(buffer, null, false);
     try {
       assertThrows(
-          DeserializationException.class,
-          () -> reader.getSerializer(HashMap.class).read(mapContext));
+          RuntimeException.class, () -> reader.getSerializer(HashMap.class).read(mapContext));
     } finally {
       mapContext.reset();
     }
@@ -227,18 +237,146 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   }
 
   @Test
-  public void testScalarOwnersSkipBudget() {
+  public void testBoxedArrayAsListBudget() {
+    List<Boolean> booleans = Arrays.asList(true, false, true);
+    byte[] booleanBytes = boxedArrayAsListBytes(booleans, Types.BOOL_ARRAY);
+    long booleanRequired = collectionBytes(booleans.size());
+
+    assertThrows(
+        InsecureException.class,
+        () -> readBoxedArrayAsList(booleanRequired - 1, booleanBytes, Types.BOOL_ARRAY));
+    assertEquals(readBoxedArrayAsList(booleanRequired, booleanBytes, Types.BOOL_ARRAY), booleans);
+
+    List<Double> doubles = Arrays.asList(1.0, 2.0, 3.0);
+    byte[] doubleBytes = boxedArrayAsListBytes(doubles, Types.FLOAT64_ARRAY);
+    long doubleRequired = primitiveArrayBytes(doubles.size(), 8);
+
+    assertThrows(
+        InsecureException.class,
+        () -> readBoxedArrayAsList(doubleRequired - 1, doubleBytes, Types.FLOAT64_ARRAY));
+    assertEquals(readBoxedArrayAsList(doubleRequired, doubleBytes, Types.FLOAT64_ARRAY), doubles);
+  }
+
+  @Test
+  public void testArraysAsListBudget() {
+    List<Object> value = Arrays.asList(null, null, null);
+    byte[] bytes = builder().build().serialize(value);
+    long required =
+        objectArrayBytes(value.size()) + GraphMemoryEstimates.shallowObjectBytes(value.getClass());
+
+    assertThrows(InsecureException.class, () -> newFory(required - 1).deserialize(bytes));
+    assertEquals(newFory(required).deserialize(bytes), value);
+  }
+
+  @Test
+  public void testLeafScalarSkipsBudget() {
     Fory fory = newFory(1);
     assertEquals(fory.deserialize(fory.serialize("graph budget")), "graph budget");
+  }
 
-    byte[] bytes = new byte[] {1, 2, 3};
-    assertTrue(Arrays.equals((byte[]) fory.deserialize(fory.serialize(bytes)), bytes));
+  @Test
+  public void testPrimitiveArrayBudget() {
+    Object[][] cases = {
+      {new boolean[] {true, false, true}, 3, 1, 0},
+      {new byte[] {1, 2, 3}, 3, 1, 0},
+      {new char[] {'a', 'b', 'c'}, 3, 2, 0},
+      {new short[] {1, 2, 3}, 3, 2, 0},
+      {new int[] {1, 2, 3}, 3, 4, 0},
+      {new long[] {1, 2, 3}, 3, 8, 0},
+      {new float[] {1, 2, 3}, 3, 4, 0},
+      {new double[] {1, 2, 3}, 3, 8, 0},
+      {Float16Array.of(1, 2, 3), 3, 2, GraphMemoryEstimates.shallowObjectBytes(Float16Array.class)},
+      {
+        BFloat16Array.of(1, 2, 3),
+        3,
+        2,
+        GraphMemoryEstimates.shallowObjectBytes(BFloat16Array.class)
+      }
+    };
+    for (Object[] testCase : cases) {
+      Object value = testCase[0];
+      int length = (int) testCase[1];
+      int elemSize = (int) testCase[2];
+      int wrapperBytes = (int) testCase[3];
+      assertGraphBudget(
+          value,
+          primitiveArrayBytes(length, elemSize) + wrapperBytes,
+          GraphMemoryBudgetTest::newFory);
+    }
+  }
 
-    int[] ints = new int[] {4, 5, 6};
-    assertTrue(Arrays.equals((int[]) fory.deserialize(fory.serialize(ints)), ints));
+  @Test
+  public void testCompressedPrimitiveArrayBudget() {
+    assertGraphBudget(
+        new int[] {1, 2, 3},
+        primitiveArrayBytes(3, 4),
+        GraphMemoryBudgetTest::newCompressedPrimitiveFory);
+    assertGraphBudget(
+        new long[] {1, 2, 3},
+        primitiveArrayBytes(3, 8),
+        GraphMemoryBudgetTest::newCompressedPrimitiveFory);
+  }
 
-    Int32List denseList = new Int32List(new int[] {7, 8, 9});
-    assertEquals(fory.deserialize(fory.serialize(denseList)), denseList);
+  @Test
+  public void testNarrowPrimitiveArrayBudget() {
+    int[] ints = {1, 2, 3};
+    byte[] intBytes = uncompressedIntArrayBytes(ints);
+    long intRequired = primitiveArrayBytes(ints.length, 4);
+    assertThrows(
+        InsecureException.class, () -> readNarrowIntArray(newFory(intRequired - 1), intBytes));
+    assertTrue(Arrays.equals(readNarrowIntArray(newFory(intRequired), intBytes), ints));
+
+    long[] longs = {1, 2, 3};
+    byte[] longBytes = uncompressedLongArrayBytes(longs);
+    long longRequired = primitiveArrayBytes(longs.length, 8);
+    assertThrows(
+        InsecureException.class, () -> readNarrowLongArray(newFory(longRequired - 1), longBytes));
+    assertTrue(Arrays.equals(readNarrowLongArray(newFory(longRequired), longBytes), longs));
+  }
+
+  @Test
+  public void testPrimitiveListBudget() {
+    assertGraphBudget(
+        new BoolList(new boolean[] {true, false, true}),
+        primitiveListBytes(BoolList.class, 3, 1),
+        GraphMemoryBudgetTest::newFory);
+    assertGraphBudget(
+        new Int32List(new int[] {1, 2, 3}),
+        primitiveListBytes(Int32List.class, 3, 4),
+        GraphMemoryBudgetTest::newCompressedPrimitiveFory);
+    assertGraphBudget(
+        new Int64List(new long[] {1, 2, 3}),
+        primitiveListBytes(Int64List.class, 3, 8),
+        GraphMemoryBudgetTest::newCompressedPrimitiveFory);
+    assertGraphBudget(
+        new UInt32List(new int[] {1, 2, 3}),
+        primitiveListBytes(UInt32List.class, 3, 4),
+        GraphMemoryBudgetTest::newCompressedPrimitiveFory);
+    assertGraphBudget(
+        new UInt64List(new long[] {1, 2, 3}),
+        primitiveListBytes(UInt64List.class, 3, 8),
+        GraphMemoryBudgetTest::newCompressedPrimitiveFory);
+  }
+
+  @Test
+  public void testXlangPrimitiveListBudget() {
+    Int32List value = new Int32List(new int[] {1, 2, 3});
+    long required = primitiveListBytes(Int32List.class, 3, 4);
+    Fory writer = newXlangFory(DEFAULT_GRAPH_MEMORY_BYTES);
+    Serializer<Int32List> writerSerializer =
+        new PrimitiveListSerializers.Int32ListSerializer(writer.getTypeResolver());
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+    WriteContext writeContext = writer.getWriteContext();
+    writeContext.prepare(buffer, null);
+    try {
+      writerSerializer.write(writeContext, value);
+    } finally {
+      writeContext.reset();
+    }
+    byte[] bytes = buffer.getBytes(0, buffer.writerIndex());
+
+    assertThrows(InsecureException.class, () -> readInt32List(newXlangFory(required - 1), bytes));
+    assertEquals(readInt32List(newXlangFory(required), bytes), value);
   }
 
   @Test
@@ -253,8 +391,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     readContext.prepare(buffer, null, false);
     try {
       assertThrows(
-          IndexOutOfBoundsException.class,
-          () -> fory.getSerializer(ArrayList.class).read(readContext));
+          RuntimeException.class, () -> fory.getSerializer(ArrayList.class).read(readContext));
     } finally {
       readContext.reset();
     }
@@ -283,6 +420,108 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     return readContext;
   }
 
+  private static byte[] boxedArrayAsListBytes(List<?> value, int typeId) {
+    Fory fory = newXlangFory(DEFAULT_GRAPH_MEMORY_BYTES);
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
+    WriteContext writeContext = fory.getWriteContext();
+    writeContext.prepare(buffer, null);
+    try {
+      boxedArrayAsListSerializer(fory, typeId).write(writeContext, value);
+      return buffer.getBytes(0, buffer.writerIndex());
+    } finally {
+      writeContext.reset();
+    }
+  }
+
+  private static List<?> readBoxedArrayAsList(long maxGraphMemoryBytes, byte[] bytes, int typeId) {
+    Fory fory = newXlangFory(maxGraphMemoryBytes);
+    ReadContext readContext = fory.getReadContext();
+    readContext.prepare(MemoryBuffer.fromByteArray(bytes), null, false);
+    try {
+      return boxedArrayAsListSerializer(fory, typeId).read(readContext);
+    } finally {
+      readContext.reset();
+    }
+  }
+
+  private static PrimitiveListSerializers.BoxedArrayAsListSerializer boxedArrayAsListSerializer(
+      Fory fory, int typeId) {
+    return new PrimitiveListSerializers.BoxedArrayAsListSerializer(
+        fory.getTypeResolver(), typeId, "values");
+  }
+
+  private static Fory newXlangFory(long maxGraphMemoryBytes) {
+    return builder()
+        .withXlang(true)
+        .withCodegen(false)
+        .withMaxGraphMemoryBytes(maxGraphMemoryBytes)
+        .build();
+  }
+
+  private static Fory newCompressedPrimitiveFory(long maxGraphMemoryBytes) {
+    return builder()
+        .withMaxGraphMemoryBytes(maxGraphMemoryBytes)
+        .withIntArrayCompressed(true)
+        .withLongArrayCompressed(true)
+        .withLongCompressed(Int64Encoding.VARINT)
+        .build();
+  }
+
+  private static void assertGraphBudget(
+      Object value, long required, LongFunction<Fory> foryFactory) {
+    byte[] bytes = foryFactory.apply(DEFAULT_GRAPH_MEMORY_BYTES).serialize(value);
+    assertThrows(InsecureException.class, () -> foryFactory.apply(required - 1).deserialize(bytes));
+    Object decoded = foryFactory.apply(required).deserialize(bytes);
+    assertEquals(decoded.getClass(), value.getClass());
+  }
+
+  private static Int32List readInt32List(Fory fory, byte[] bytes) {
+    ReadContext readContext = fory.getReadContext();
+    readContext.prepare(MemoryBuffer.fromByteArray(bytes), null, false);
+    try {
+      return new PrimitiveListSerializers.Int32ListSerializer(fory.getTypeResolver())
+          .read(readContext);
+    } finally {
+      readContext.reset();
+    }
+  }
+
+  private static byte[] uncompressedIntArrayBytes(int[] values) {
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+    buffer.writeByte((byte) PrimitiveArrayCompressionType.NONE.getValue());
+    buffer.writeIntsWithSize(values);
+    return buffer.getBytes(0, buffer.writerIndex());
+  }
+
+  private static byte[] uncompressedLongArrayBytes(long[] values) {
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+    buffer.writeByte((byte) PrimitiveArrayCompressionType.NONE.getValue());
+    buffer.writeLongsWithSize(values);
+    return buffer.getBytes(0, buffer.writerIndex());
+  }
+
+  private static int[] readNarrowIntArray(Fory fory, byte[] bytes) {
+    ReadContext readContext = fory.getReadContext();
+    readContext.prepare(MemoryBuffer.fromByteArray(bytes), null, false);
+    try {
+      return new CompressedArraySerializers.CompressedIntArraySerializer(fory.getTypeResolver())
+          .read(readContext);
+    } finally {
+      readContext.reset();
+    }
+  }
+
+  private static long[] readNarrowLongArray(Fory fory, byte[] bytes) {
+    ReadContext readContext = fory.getReadContext();
+    readContext.prepare(MemoryBuffer.fromByteArray(bytes), null, false);
+    try {
+      return new CompressedArraySerializers.CompressedLongArraySerializer(fory.getTypeResolver())
+          .read(readContext);
+    } finally {
+      readContext.reset();
+    }
+  }
+
   private static long collectionBytes(int numElements) {
     return GraphMemoryEstimates.shallowObjectBytes(ArrayList.class)
         + (long) numElements * REFERENCE_BYTES;
@@ -301,6 +540,15 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
 
   private static long objectArrayBytes(int numElements) {
     return GraphMemoryEstimates.objectArrayBytes() + (long) numElements * REFERENCE_BYTES;
+  }
+
+  private static long primitiveArrayBytes(int numElements, int elemSize) {
+    return GraphMemoryEstimates.objectArrayBytes() + (long) numElements * elemSize;
+  }
+
+  private static long primitiveListBytes(Class<?> type, int numElements, int elemSize) {
+    return GraphMemoryEstimates.shallowObjectBytes(type)
+        + primitiveArrayBytes(numElements, elemSize);
   }
 
   private static long emptyPojoBytes() {

@@ -29,22 +29,23 @@ import (
 
 // ReadContext holds all state needed during deserialization.
 type ReadContext struct {
-	buffer                    *ByteBuffer
-	refReader                 *RefReader
-	trackRef                  bool // Cached flag to avoid indirection
-	xlang                     bool // Cross-language serialization mode
-	rootHeader                byte
-	compatible                bool          // Schema evolution compatibility mode
-	typeResolver              *TypeResolver // For complex type deserialization
-	refResolver               *RefResolver  // For reference tracking in native-mode paths
-	outOfBandBuffers          []*ByteBuffer // Out-of-band buffers for deserialization
-	outOfBandIndex            int           // Current index into out-of-band buffers
-	depth                     int           // Current nesting depth for cycle detection
-	maxDepth                  int           // Maximum allowed nesting depth
-	err                       Error         // Accumulated error state for deferred checking
-	lastTypePtr               uintptr
-	lastTypeInfo              *TypeInfo
-	remainingGraphMemoryBytes int64
+	buffer                          *ByteBuffer
+	refReader                       *RefReader
+	trackRef                        bool // Cached flag to avoid indirection
+	xlang                           bool // Cross-language serialization mode
+	rootHeader                      byte
+	compatible                      bool          // Schema evolution compatibility mode
+	typeResolver                    *TypeResolver // For complex type deserialization
+	refResolver                     *RefResolver  // For reference tracking in native-mode paths
+	outOfBandBuffers                []*ByteBuffer // Out-of-band buffers for deserialization
+	outOfBandIndex                  int           // Current index into out-of-band buffers
+	depth                           int           // Current nesting depth for cycle detection
+	maxDepth                        int           // Maximum allowed nesting depth
+	err                             Error         // Accumulated error state for deferred checking
+	lastTypePtr                     uintptr
+	lastTypeInfo                    *TypeInfo
+	remainingGraphMemoryBytes       int64
+	remainingUnbackedContainerItems int64
 }
 
 // IsXlang returns whether cross-language serialization mode is enabled
@@ -58,7 +59,7 @@ func NewReadContext(trackRef bool) *ReadContext {
 		buffer:    NewByteBuffer(nil),
 		refReader: NewRefReader(trackRef),
 		trackRef:  trackRef,
-		maxDepth:  128, // Default maximum nesting depth
+		maxDepth:  defaultConfig().MaxDepth,
 	}
 }
 
@@ -67,7 +68,9 @@ func (c *ReadContext) Reset() {
 	c.refReader.Reset()
 	c.outOfBandBuffers = nil
 	c.outOfBandIndex = 0
+	c.depth = 0
 	c.err = Error{} // Clear error state
+	c.remainingUnbackedContainerItems = 0
 	// Graph budget state is overwritten by each root read before deserialization.
 	// Avoid extra reset stores on the successful root hot path.
 	if c.refResolver != nil {
@@ -99,6 +102,30 @@ func (c *ReadContext) rejectGraphMemoryReservation(bytes int64) bool {
 	return false
 }
 
+func (c *ReadContext) reserveUnbackedContainerItems(items int64) bool {
+	if uint64(items) <= uint64(c.remainingUnbackedContainerItems) {
+		c.remainingUnbackedContainerItems -= items
+		return true
+	}
+	return c.rejectUnbackedContainerItems(items)
+}
+
+//go:noinline
+func (c *ReadContext) rejectUnbackedContainerItems(items int64) bool {
+	c.SetError(DeserializationErrorf(
+		"unbacked container item request %d exceeds remaining budget %d",
+		items, c.remainingUnbackedContainerItems))
+	return false
+}
+
+func (c *ReadContext) settleUnbackedContainerItems(items int, start uint64) bool {
+	consumed := c.buffer.logicalReaderIndex() - start
+	if consumed >= uint64(items) {
+		return true
+	}
+	return c.reserveUnbackedContainerItems(int64(uint64(items) - consumed))
+}
+
 // SetData sets new input data (for buffer reuse)
 // Reuses existing buffer to avoid allocation
 func (c *ReadContext) SetData(data []byte) {
@@ -107,6 +134,7 @@ func (c *ReadContext) SetData(data []byte) {
 	} else {
 		c.buffer.data = data
 		c.buffer.readerIndex = 0
+		c.buffer.discardedByteBase = 0
 		c.buffer.writerIndex = len(data)
 		c.buffer.reader = nil
 	}
@@ -722,12 +750,22 @@ func (c *ReadContext) ReadBufferObject() *ByteBuffer {
 	return buf
 }
 
-// incDepth increments the nesting depth and checks for overflow
-func (c *ReadContext) incDepth() {
-	c.depth++
-	if c.depth > c.maxDepth {
-		c.SetError(MaxDepthExceededError(c.maxDepth))
+// enterDepth enters one recursive compound owner without mutating state on rejection.
+// Reference, type, pointer, optional, and interface framing must remain transparent.
+// Compound owners decrement only after their complete body succeeds. Do not defer
+// decDepth: a failed read retains depth until root reset owns exceptional cleanup.
+func (c *ReadContext) enterDepth() bool {
+	if c.depth < c.maxDepth {
+		c.depth++
+		return true
 	}
+	return c.rejectDepth()
+}
+
+//go:noinline
+func (c *ReadContext) rejectDepth() bool {
+	c.SetError(MaxDepthExceededError(c.depth + 1))
+	return false
 }
 
 // decDepth decrements the nesting depth
@@ -764,10 +802,7 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 			}
 			if refID < int32(NotNullValueFlag) {
 				// Reference found
-				obj := c.RefResolver().GetReadObject(refID)
-				if obj.IsValid() {
-					value.Set(obj)
-				}
+				assignReadRef(c, refID, value)
 				return
 			}
 		} else if refMode == RefModeNullOnly {
@@ -798,6 +833,11 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 			// Leave interface value as nil for unknown types
 			return
 		}
+		if typeInfo.Serializer == nil {
+			c.SetError(DeserializationErrorf(
+				"wire type %v has no deserializer", actualType))
+			return
+		}
 
 		// Create a new instance
 		var newValue reflect.Value
@@ -812,6 +852,12 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 				internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT)
 
 		if isNamedStruct {
+			resultType := reflect.PtrTo(actualType)
+			if !resultType.AssignableTo(valueType) {
+				c.SetError(DeserializationErrorf(
+					"wire type %v is not assignable to %v", resultType, valueType))
+				return
+			}
 			structSer, ok := typeInfo.Serializer.(*structSerializer)
 			if !ok {
 				c.SetError(DeserializationError("expected struct serializer for dynamic named struct"))
@@ -826,7 +872,9 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 			}
 			newValue := reflect.New(actualType)
 			if refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
-				c.RefResolver().SetReadObject(refID, newValue)
+				if !publishReadRef(c, refID, newValue) {
+					return
+				}
 			}
 			typeInfo.Serializer.ReadData(c, newValue.Elem())
 			if c.HasError() {
@@ -836,24 +884,24 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 			return
 		}
 
-		if actualType.Kind() == reflect.Ptr {
-			// For pointer types, create a pointer directly
-			// The serializer's ReadData will handle allocating and reading the element
-			newValue = reflect.New(actualType).Elem()
-			valueToSet = newValue
-		} else {
-			newValue = reflect.New(actualType).Elem()
-			valueToSet = newValue
+		actualType, serializer := wrapMapSerializerIfNeeded(
+			c, valueType, actualType, typeInfo.Serializer, typeInfo.ValueBytes)
+		if c.HasError() {
+			return
 		}
+		newValue = reflect.New(actualType).Elem()
+		valueToSet = newValue
 
-		typeInfo.Serializer.ReadData(c, newValue)
+		serializer.ReadData(c, newValue)
 		if c.HasError() {
 			return
 		}
 
 		// Register reference after reading data for non-struct types
 		if refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
-			c.RefResolver().SetReadObject(refID, newValue)
+			if !publishReadRef(c, refID, newValue) {
+				return
+			}
 		}
 
 		// Set the interface value
@@ -894,66 +942,28 @@ func (c *ReadContext) ReadInto(value reflect.Value, serializer Serializer, refMo
 // ReadArrayValue handles array targets with configurable ref mode and type reading.
 // Arrays are serialized as slices in xlang protocol.
 func (c *ReadContext) ReadArrayValue(target reflect.Value, refMode RefMode, readType bool) {
-	var refID int32 = int32(NotNullValueFlag)
-
-	// Handle ref tracking based on refMode
-	if refMode == RefModeTracking {
-		var err error
-		refID, err = c.RefResolver().TryPreserveRefId(c.buffer)
-		if err != nil {
-			c.SetError(FromError(err))
-			return
-		}
-		if refID < int32(NotNullValueFlag) {
-			// Reference to existing object
-			obj := c.RefResolver().GetReadObject(refID)
-			if obj.IsValid() {
-				reflect.Copy(target, obj)
-			}
-			return
-		}
-	} else if refMode == RefModeNullOnly {
-		flag := c.buffer.ReadInt8(c.Err())
-		if flag == NullFlag {
-			return
-		}
+	if readSliceOrArrayRef(c, refMode, target) || c.HasError() {
+		return
 	}
 
 	// Read type ID if requested (will be slice type in stream)
 	if readType {
 		c.buffer.ReadUint8(c.Err())
+		if c.HasError() {
+			return
+		}
 	}
 
-	// Get slice serializer to read the data
-	sliceType := reflect.SliceOf(target.Type().Elem())
-	serializer, err := c.typeResolver.getSerializerByType(sliceType, false)
+	// Root writers encode arrays through their corresponding slice wire
+	// serializer. Array readers keep that wire contract while decoding directly
+	// into caller-owned fixed storage.
+	serializer, err := c.typeResolver.getArraySerializer(target.Type())
 	if err != nil {
-		c.SetError(DeserializationErrorf("failed to get serializer for slice type %v: %v", sliceType, err))
+		c.SetError(DeserializationErrorf("failed to get serializer for array type %v: %v", target.Type(), err))
 		return
 	}
-
-	// Create addressable temporary slice using reflect.New
-	tempSlicePtr := reflect.New(sliceType)
-	tempSlice := tempSlicePtr.Elem()
-	tempSlice.Set(reflect.MakeSlice(sliceType, target.Len(), target.Len()))
-
-	// Use ReadData to read slice data (ref/type already handled)
-	serializer.ReadData(c, tempSlice)
+	serializer.ReadData(c, target)
 	if c.HasError() {
 		return
-	}
-
-	// Verify length matches
-	if tempSlice.Len() != target.Len() {
-		c.SetError(DeserializationErrorf("array length mismatch: got %d, want %d", tempSlice.Len(), target.Len()))
-		return
-	}
-
-	// Copy to array
-	reflect.Copy(target, tempSlice)
-
-	// Register for circular refs
-	if refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
-		c.RefResolver().SetReadObject(refID, target)
 	}
 }

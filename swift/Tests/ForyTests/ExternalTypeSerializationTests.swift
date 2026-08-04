@@ -117,10 +117,19 @@ private struct CarrierSelections: Equatable {
 
 @ForyStruct(target: Node.self)
 private final class NodeSerializer {
+    @ForyField(ignore: false)
     var value: Int32 = 0
 
     @ForyField(with: OptionalSerializer<NodeSerializer>.self)
     var next: Node?
+
+    @ForyField(ignore: true)
+    var omittedState: (UInt64, UInt64) = (0, 0)
+}
+
+@ForyStruct(target: Node.self)
+private final class NodeValueSerializer {
+    var value: Int32 = 0
 }
 
 @ForyEnum(target: Status.self)
@@ -213,8 +222,8 @@ private struct ValueNodeSerializer {
     var next: Node?
 }
 
-private enum ManualUserSerializer: Serializer {
-    typealias Target = ManualUser
+private enum CustomUserSerializer: Serializer {
+    typealias Target = CustomUser
 
     static var staticTypeId: TypeId { .ext }
 
@@ -235,7 +244,7 @@ private enum ManualUserSerializer: Serializer {
     }
 }
 
-private enum UserArrayManualSerializer: Serializer {
+private enum UserArrayCustomSerializer: Serializer {
     typealias Target = [User]
 
     static var staticTypeId: TypeId { .ext }
@@ -251,7 +260,7 @@ private enum UserArrayManualSerializer: Serializer {
     }
 }
 
-private enum StringManualSerializer: Serializer {
+private enum StringCustomSerializer: Serializer {
     typealias Target = String
 
     static var staticTypeId: TypeId { .ext }
@@ -268,9 +277,9 @@ private enum StringManualSerializer: Serializer {
 }
 
 @ForyStruct
-private struct ManualUserHolder: Equatable {
-    @ForyField(with: ManualUserSerializer.self)
-    var user: ManualUser
+private struct CustomUserHolder: Equatable {
+    @ForyField(with: CustomUserSerializer.self)
+    var user: CustomUser
 }
 
 private typealias AliasedUserGroups = [String: [User?]]
@@ -483,6 +492,64 @@ func externalClassCycleRoundTrip() throws {
 }
 
 @Test
+func externalIgnoredFieldBudget() throws {
+    let value = Node()
+    value.value = 42
+    let required =
+        2 * MemoryLayout<Int>.stride
+        + MemoryLayout<Int32>.stride
+        + 4
+        + MemoryLayout<(UInt64, UInt64)>.stride
+
+    for compatible in [false, true] {
+        let writer = Fory(
+            config: .init(
+                trackRef: false,
+                compatible: compatible
+            )
+        )
+        let bytes: Data
+        if compatible {
+            try writer.register(NodeValueSerializer.self, id: 142)
+            bytes = try writer.serialize(value, with: NodeValueSerializer.self)
+        } else {
+            try writer.register(NodeSerializer.self, id: 142)
+            bytes = try writer.serialize(value, with: NodeSerializer.self)
+        }
+
+        let limited = Fory(
+            config: .init(
+                trackRef: false,
+                compatible: compatible,
+                maxGraphMemoryBytes: Int64(required - 1)
+            )
+        )
+        try limited.register(NodeSerializer.self, id: 142)
+        #expect(throws: ForyError.self) {
+            let _: Node = try limited.deserialize(
+                bytes,
+                with: NodeSerializer.self
+            )
+        }
+
+        let exact = Fory(
+            config: .init(
+                trackRef: false,
+                compatible: compatible,
+                maxGraphMemoryBytes: Int64(required)
+            )
+        )
+        try exact.register(NodeSerializer.self, id: 142)
+        let decoded: Node = try exact.deserialize(
+            bytes,
+            with: NodeSerializer.self
+        )
+        #expect(decoded.value == value.value)
+        #expect(decoded.next == nil)
+    }
+}
+
+@Test
 func externalEnumAndUnionRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
     try fory.register(UserSerializer.self, id: 108)
@@ -599,48 +666,48 @@ func externalReferenceShapeMatches() throws {
 }
 
 @Test
-func manualRootAndField() throws {
+func customRootAndField() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    try fory.register(ManualUserSerializer.self, id: 113)
-    try fory.register(ManualUserHolder.self, id: 114)
+    try fory.register(CustomUserSerializer.self, id: 113)
+    try fory.register(CustomUserHolder.self, id: 114)
 
-    let value = ManualUser(name: "Alice", age: 31)
+    let value = CustomUser(name: "Alice", age: 31)
     let decoded = try fory.deserialize(
-        fory.serialize(value, with: ManualUserSerializer.self),
-        with: ManualUserSerializer.self
+        fory.serialize(value, with: CustomUserSerializer.self),
+        with: CustomUserSerializer.self
     )
     #expect(decoded == value)
 
-    let holder = ManualUserHolder(user: value)
-    let decodedHolder: ManualUserHolder = try fory.deserialize(try fory.serialize(holder))
+    let holder = CustomUserHolder(user: value)
+    let decodedHolder: CustomUserHolder = try fory.deserialize(try fory.serialize(holder))
     #expect(decodedHolder == holder)
 }
 
 @Test
-func manualWholeCarrierRoundTrip() throws {
+func customWholeCarrierRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
     try fory.register(UserSerializer.self, id: 115)
-    try fory.register(UserArrayManualSerializer.self, id: 116)
+    try fory.register(UserArrayCustomSerializer.self, id: 116)
 
     let value = [
         User(name: "Alice", age: 31),
         User(name: "Bob", age: 29)
     ]
     let decoded = try fory.deserialize(
-        fory.serialize(value, with: UserArrayManualSerializer.self),
-        with: UserArrayManualSerializer.self
+        fory.serialize(value, with: UserArrayCustomSerializer.self),
+        with: UserArrayCustomSerializer.self
     )
     #expect(decoded == value)
 }
 
 @Test
-func manualCarrierEnforcesBudget() throws {
+func customCarrierEnforcesBudget() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: false))
     try writer.register(UserSerializer.self, id: 138)
-    try writer.register(UserArrayManualSerializer.self, id: 139)
+    try writer.register(UserArrayCustomSerializer.self, id: 139)
     let bytes = try writer.serialize(
         [User(name: "Alice", age: 31)],
-        with: UserArrayManualSerializer.self
+        with: UserArrayCustomSerializer.self
     )
 
     let reader = Fory(
@@ -651,11 +718,11 @@ func manualCarrierEnforcesBudget() throws {
         )
     )
     try reader.register(UserSerializer.self, id: 138)
-    try reader.register(UserArrayManualSerializer.self, id: 139)
+    try reader.register(UserArrayCustomSerializer.self, id: 139)
     #expect(throws: ForyError.self) {
         let _: [User] = try reader.deserialize(
             bytes,
-            with: UserArrayManualSerializer.self
+            with: UserArrayCustomSerializer.self
         )
     }
 }
@@ -729,20 +796,20 @@ func carrierCompositionRoundTrip() throws {
 
     let fory = Fory(config: .init(trackRef: false, compatible: false))
     try fory.register(UserSerializer.self, id: 72)
-    try fory.register(ManualUserSerializer.self, id: 73)
+    try fory.register(CustomUserSerializer.self, id: 73)
 
-    let manualUsers = [
-        ManualUser(name: "Alice", age: 31),
-        ManualUser(name: "Bob", age: 29)
+    let customUsers = [
+        CustomUser(name: "Alice", age: 31),
+        CustomUser(name: "Bob", age: 29)
     ]
-    let decodedManual = try fory.deserialize(
+    let decodedCustom = try fory.deserialize(
         fory.serialize(
-            manualUsers,
-            with: ArraySerializer<ManualUserSerializer>.self
+            customUsers,
+            with: ArraySerializer<CustomUserSerializer>.self
         ),
-        with: ArraySerializer<ManualUserSerializer>.self
+        with: ArraySerializer<CustomUserSerializer>.self
     )
-    #expect(decodedManual == manualUsers)
+    #expect(decodedCustom == customUsers)
 
     let nested: [String: [Set<User>]]? = [
         "team": [
@@ -827,12 +894,12 @@ func protocolRootAndCarrier() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
     try fory.register(LocalNamedValue.self, id: 120)
     try fory.register(UserSerializer.self, id: 121)
-    try fory.register(ManualUserSerializer.self, id: 122)
+    try fory.register(CustomUserSerializer.self, id: 122)
 
     let values: [any NamedValue] = [
         LocalNamedValue(name: "local", age: 1),
         User(name: "external", age: 2),
-        ManualUser(name: "manual", age: 3)
+        CustomUser(name: "custom", age: 3)
     ]
     let decoded = try fory.deserialize(
         fory.serialize(values, with: ValuesSerializer.self),
@@ -842,7 +909,7 @@ func protocolRootAndCarrier() throws {
     #expect(decoded.count == 3)
     #expect(decoded[0] as? LocalNamedValue == LocalNamedValue(name: "local", age: 1))
     #expect(decoded[1] as? User == User(name: "external", age: 2))
-    #expect(decoded[2] as? ManualUser == ManualUser(name: "manual", age: 3))
+    #expect(decoded[2] as? CustomUser == CustomUser(name: "custom", age: 3))
 }
 
 @Test
@@ -1085,7 +1152,7 @@ func registrationRejectsInvalidOwnership() throws {
 
     let builtinTarget = Fory()
     #expect(throws: ForyError.self) {
-        try builtinTarget.register(StringManualSerializer.self, id: 129)
+        try builtinTarget.register(StringCustomSerializer.self, id: 129)
     }
 
     let valueDeclaration = Fory()

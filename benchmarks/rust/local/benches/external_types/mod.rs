@@ -35,7 +35,7 @@ use std::sync::{Arc, Mutex};
 const USER_ID: u32 = 200;
 const KEY_ID: u32 = 201;
 const COMMAND_ID: u32 = 202;
-const MANUAL_ID: u32 = 203;
+const CUSTOM_ID: u32 = 203;
 const DIRECT_FIELD_ID: u32 = 204;
 const SKIPPED_FIELD_ID: u32 = 205;
 const COMPOSITE_FIELD_ID: u32 = 206;
@@ -365,7 +365,7 @@ fn build_pair(compatible: bool) -> (Fory, Fory) {
     local.register::<LocalUser>(USER_ID).unwrap();
     local.register::<LocalKey>(KEY_ID).unwrap();
     local.register::<LocalCommand>(COMMAND_ID).unwrap();
-    local.register_serializer::<LocalId>(MANUAL_ID).unwrap();
+    local.register_serializer::<LocalId>(CUSTOM_ID).unwrap();
     local.register::<LocalDirectField>(DIRECT_FIELD_ID).unwrap();
     local
         .register::<LocalSkippedField>(SKIPPED_FIELD_ID)
@@ -389,7 +389,7 @@ fn build_pair(compatible: bool) -> (Fory, Fory) {
     external.register::<KeySerializer>(KEY_ID).unwrap();
     external.register::<CommandSerializer>(COMMAND_ID).unwrap();
     external
-        .register_serializer::<ExternalIdSerializer>(MANUAL_ID)
+        .register_serializer::<ExternalIdSerializer>(CUSTOM_ID)
         .unwrap();
     external
         .register::<ExternalDirectField>(DIRECT_FIELD_ID)
@@ -530,7 +530,7 @@ pub fn run_external_type_benchmarks(criterion: &mut Criterion) {
     );
     run_pair::<LocalId, ExternalIdSerializer>(
         criterion,
-        "external_manual_leaf",
+        "external_custom_leaf",
         &local,
         &external,
         LocalId(0x1020_3040_5060_7080),
@@ -688,7 +688,7 @@ pub fn run_external_type_benchmarks(criterion: &mut Criterion) {
     );
     run_pair::<Vec<LocalId>, VecSerializer<ExternalIdSerializer>>(
         criterion,
-        "carrier_manual_vec",
+        "carrier_custom_vec",
         &local,
         &external,
         vec![LocalId(1), LocalId(2)],

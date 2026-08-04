@@ -49,9 +49,9 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
  * Representation-neutral JSON cursor and common scalar parsing owner.
  *
  * <p>The base class retains the resolver used by dynamic codecs, the current code-unit position,
- * configured and current container depth, a reusable ASCII token view, and a fixed workspace for
- * exact floating-point boundary correction. Concrete readers own input storage, string decoding,
- * field-name probes, and direct primitive numeric fast paths for their representation.
+ * configured and current container depth, reusable creator and numeric workspaces, and an ASCII
+ * token view. Concrete readers own input storage, string decoding, field-name probes, and direct
+ * primitive numeric fast paths for their representation.
  *
  * <p>Primitive {@code int}, {@code long}, {@code float}, and {@code double} parsing does not
  * materialize a String or arbitrary-precision number. Precision-sensitive floating input uses the
@@ -60,10 +60,10 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
  * not inherit that resource policy.
  *
  * <p>Readers are mutable and confined to one borrowed {@code ForyJson} state. Concrete reset
- * methods borrow an input and reset the cursor and depth; {@code clear()} detaches that input
- * before the state returns to the pool. A failed nested parse may leave depth nonzero because the
- * root cleanup resets it; nested codec paths intentionally avoid cleanup-only {@code try/finally}
- * regions.
+ * methods borrow an input and reset the cursor, depth, and graph-memory budget; {@code clear()}
+ * detaches that input and clears the root state before the state returns to the pool. A failed
+ * nested parse may leave depth nonzero because the root cleanup resets it; nested codec paths
+ * intentionally avoid cleanup-only {@code try/finally} regions.
  */
 public abstract class JsonReader {
   private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
@@ -153,10 +153,12 @@ public abstract class JsonReader {
     1.0f, 10.0f, 100.0f, 1_000.0f, 10_000.0f, 100_000.0f, 1_000_000.0f, 10_000_000.0f
   };
 
+  private final JsonConfig config;
   private final JsonTypeResolver typeResolver;
   protected int position;
   private final int maxDepth;
   private int depth;
+  private long remainingGraphMemoryBytes;
 
   /**
    * Scans one complete object for a closed-subtype string discriminator without consuming input.
@@ -190,6 +192,8 @@ public abstract class JsonReader {
           throw errorAt("Expected ':'", cursor);
         }
         cursor = scanWhitespace(cursor + 1);
+        // The hash selects only the declared discriminator-property candidate. The complete
+        // decoded member name must match before this field can control subtype selection.
         if (fieldHash == info.propertyHash()
             && matchesScannedString(fieldStart, fieldEnd, info.property())) {
           if (found >= 0) {
@@ -201,6 +205,8 @@ public abstract class JsonReader {
           int valueStart = cursor;
           int valueEnd = scanStringEnd(valueStart);
           int candidate = info.nameIndex(scanStringHash(valueStart, valueEnd));
+          // Logical subtype names use the same two-stage contract: select by hash, then compare the
+          // complete decoded name before returning the closed-table class index.
           if (candidate < 0 || !matchesScannedString(valueStart, valueEnd, info.name(candidate))) {
             throw errorAt("Unknown JSON subtype discriminator", valueStart);
           }
@@ -243,15 +249,22 @@ public abstract class JsonReader {
 
   protected abstract boolean matchesScannedString(int start, int end, String expected);
 
-  /** Reads one subtype name from a fixed validated table without materializing a String. */
+  /**
+   * Reads one wrapper subtype name from a fixed validated table without materializing a String.
+   *
+   * <p>Concrete readers may use the decoded-name hash to select a candidate, but must compare the
+   * complete decoded name before returning its closed-table class index.
+   */
   public abstract int readSubtypeName(JsonSubtypeScanInfo info);
 
   private final AsciiStringView asciiStringView = new AsciiStringView(this);
+  private final Object[] creatorArguments = new Object[1];
   // Primitive floating fallback reuses this exact-boundary workspace. Reader construction is the
   // cold owner so the first precision-sensitive scalar cannot allocate on the numeric hot path.
   private final byte[] decimalBoundaryDigits = new byte[DECIMAL_BOUNDARY_DIGITS];
 
   protected JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
+    this.config = config;
     this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
     maxDepth = config.maxDepth();
   }
@@ -261,6 +274,19 @@ public abstract class JsonReader {
    */
   public final JsonTypeResolver typeResolver() {
     return typeResolver;
+  }
+
+  /** Returns this reader's reusable one-value creator argument array. */
+  @Internal
+  public final Object[] creatorArguments(Object value) {
+    creatorArguments[0] = value;
+    return creatorArguments;
+  }
+
+  /** Releases the value retained by {@link #creatorArguments(Object)}. */
+  @Internal
+  public final void clearCreatorArguments() {
+    creatorArguments[0] = null;
   }
 
   protected abstract int length();
@@ -317,6 +343,51 @@ public abstract class JsonReader {
 
   protected final void reset() {
     depth = 0;
+    remainingGraphMemoryBytes = config.maxGraphMemoryBytes();
+  }
+
+  /**
+   * Reserves estimated graph memory before an owner or its retained storage is materialized.
+   *
+   * <p>Custom codecs use this raw byte API before allocating a composite owner and at their bounded
+   * batch boundaries for retained container storage. Dedicated leaf values do not reserve graph
+   * memory.
+   */
+  public final void reserveGraphMemory(long bytes) {
+    long remaining = remainingGraphMemoryBytes;
+    long nextRemaining = remaining - bytes;
+    if ((bytes | nextRemaining) < 0) {
+      throwInvalidGraphMemory(bytes, remaining);
+    }
+    remainingGraphMemoryBytes = nextRemaining;
+  }
+
+  /**
+   * Reserves estimated graph memory before an owner or its retained storage is materialized.
+   *
+   * <p>This overload keeps the common integer-estimate path to one comparison and subtraction.
+   */
+  public final void reserveGraphMemory(int bytes) {
+    long remaining = remainingGraphMemoryBytes;
+    if (bytes < 0 || remaining < bytes) {
+      throwInvalidGraphMemory(bytes, remaining);
+    }
+    remainingGraphMemoryBytes = remaining - bytes;
+  }
+
+  private void throwInvalidGraphMemory(long bytes, long remaining) {
+    if (bytes < 0) {
+      throw new ForyJsonException(
+          "Estimated graph memory must be non-negative, but got " + bytes + " bytes");
+    }
+    throw new ForyJsonException(
+        "Estimated graph memory request "
+            + bytes
+            + " bytes exceeds maxGraphMemoryBytes remaining budget "
+            + remaining
+            + " bytes out of configured limit "
+            + config.maxGraphMemoryBytes()
+            + " bytes; increase ForyJsonBuilder#withMaxGraphMemoryBytes for trusted data");
   }
 
   public final void enterDepth() {
@@ -339,6 +410,21 @@ public abstract class JsonReader {
 
   public String readNullableString() {
     return tryReadNull() ? null : readString();
+  }
+
+  /**
+   * Reads nullable date/time text without materializing an ASCII string.
+   *
+   * <p>The returned view is reused by this reader and must be parsed before another reader method
+   * is called. Escaped or non-ASCII input falls back to an ordinary String.
+   */
+  @Internal
+  public final CharSequence readDateTimeText() {
+    if (tryReadNull()) {
+      return null;
+    }
+    CharSequence value = tryReadAsciiStringView();
+    return value == null ? readString() : value;
   }
 
   /** Reads a nullable Base64 JSON string directly into its decoded bytes. */

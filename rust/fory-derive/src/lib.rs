@@ -67,27 +67,43 @@
 //!
 //! ### `#[derive(ForyRow)]`
 //!
-//! Generates row-based serialization code for structs. This macro implements
-//! the `Row` trait, enabling zero-copy deserialization for maximum performance.
+//! Generates Standard Row Format serialization and borrowed field views for a
+//! named struct. The macro implements `RowValue` and the root `Row` marker.
+//! Enums, unions, tuple structs, and unit structs are rejected at compile time.
 //!
 //! **Supported Types:**
-//! - Structs with named fields only
-//! - All field types must implement the `Row` trait
+//! - Fixed values: `bool`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`, `Date`,
+//!   `Timestamp`, and `Duration`
+//! - Variable values: `String` and `&str`, binary `Vec<u8>` and `&[u8]`, fixed
+//!   and variable arrays, `BTreeMap`, and other derived row structs
+//! - `Option<T>` for nullable fields and array elements
+//! - Every field type must implement `RowValue`
 //!
 //! **Example:**
 //! ```rust
+//! use fory_core::error::Error;
+//! use fory_core::row::{from_row, to_row};
 //! use fory_derive::ForyRow;
-//! use std::collections::BTreeMap;
 //!
 //! #[derive(ForyRow)]
 //! struct UserProfile {
 //!     id: i64,
 //!     username: String,
-//!     email: String,
-//!     scores: Vec<i32>,
-//!     preferences: BTreeMap<String, String>,
-//!     is_active: bool,
+//!     email: Option<String>,
 //! }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let bytes = to_row(&UserProfile {
+//!     id: 7,
+//!     username: "fory".to_owned(),
+//!     email: None,
+//! })?;
+//! let view = from_row::<UserProfile>(&bytes)?;
+//! assert_eq!(view.id()?, 7);
+//! assert_eq!(view.username()?, "fory");
+//! assert_eq!(view.email()?, None);
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Generated Code
@@ -103,10 +119,11 @@
 //! ### For `#[derive(ForyRow)]`
 //!
 //! The macro generates:
-//! - `Row` trait implementation
-//! - A getter struct for zero-copy field access
-//! - Field accessor methods that return references to the underlying data
-//! - Efficient serialization without object allocation
+//! - A `RowValue` implementation and a root `Row` marker implementation
+//! - A borrowed view type whose visibility matches the source struct
+//! - `RowView` backing-byte access and cheap `Copy`/`Clone` views
+//! - One declaration-order field method preserving each source field's visibility
+//! - Field methods returning `Result<<Field as RowValue>::View<'_>, Error>`
 //!
 //! ## Attributes
 //!
@@ -131,11 +148,11 @@
 //!
 //! ## Field Types
 //!
-//! Both macros support a wide range of field types:
+//! The object-format derives support a wide range of field types:
 //!
 //! **Primitive Types:**
 //! - `bool`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`
-//! - `String`, `&str` (in row format)
+//! - `String`
 //! - `Vec<u8>` for binary data
 //!
 //! **Collections:**
@@ -150,7 +167,11 @@
 //! - `chrono::NaiveDate`, `chrono::NaiveDateTime`, and `chrono::Duration` when the `chrono` feature is enabled
 //!
 //! **Custom Types:**
-//! - Any type that implements `Serializer` (for `Fory`) or `Row` (for `ForyRow`)
+//! - Any type that implements `Serializer`
+//!
+//! `ForyRow` uses the separate, exact type set documented under its macro
+//! section. A row field implements `RowValue`; only derived structs, arrays,
+//! and maps implement the root `Row` marker.
 //!
 //! Derived structs, enums, and unions can be used behind
 //! `Arc<dyn Any + Send + Sync>` when the concrete type satisfies `Send + Sync`.
@@ -192,9 +213,8 @@
 //! ## Performance Considerations
 //!
 //! - **`Fory`**: Best for complex object graphs with references and nested structures
-//! - **`ForyRow`**: Best for high-throughput scenarios requiring zero-copy access
+//! - **`ForyRow`**: Provides lazy, borrowed access to Standard Row Format data
 //! - Both macros generate optimized code with minimal runtime overhead
-//! - Field access in row format is extremely fast as it involves no allocations
 
 use fory_row::derive_row;
 use proc_macro::TokenStream;
@@ -273,24 +293,36 @@ fn derive_serializer(input: DeriveInput) -> TokenStream {
     object::derive_serializer(&input, attrs, runtime_root)
 }
 
-/// Derive macro for row-based serialization.
+/// Derive macro for Standard Row Format serialization.
 ///
-/// This macro generates code to implement the `Row` trait for the annotated
-/// type, enabling zero-copy deserialization for maximum performance in
-/// high-throughput scenarios.
+/// This macro accepts named structs whose fields implement `RowValue`. It
+/// implements `RowValue` and the root `Row` marker, preserves field declaration
+/// order, and generates a borrowed view with field methods that return `Result`.
 ///
 /// # Example
 ///
 /// ```rust
+/// use fory_core::error::Error;
+/// use fory_core::row::{from_row, to_row};
 /// use fory_derive::ForyRow;
 ///
 /// #[derive(ForyRow)]
 /// struct UserProfile {
 ///     id: i64,
 ///     username: String,
-///     email: String,
-///     is_active: bool,
+///     email: Option<String>,
 /// }
+///
+/// # fn main() -> Result<(), Error> {
+/// let bytes = to_row(&UserProfile {
+///     id: 7,
+///     username: "fory".to_owned(),
+///     email: None,
+/// })?;
+/// let view = from_row::<UserProfile>(&bytes)?;
+/// assert_eq!(view.username()?, "fory");
+/// # Ok(())
+/// # }
 /// ```
 #[proc_macro_derive(ForyRow)]
 pub fn proc_macro_derive_fory_row(input: proc_macro::TokenStream) -> TokenStream {

@@ -27,6 +27,7 @@ import java.util.Collection;
 import java.util.Map;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.JsonReader;
@@ -89,6 +90,7 @@ public final class JsonFieldInfo {
   private final Class<?> readRawType;
   private final JsonCodec codecAnnotation;
   private final Class<? extends JsonValueCodec<?>> valueCodecClass;
+  private final JsonFormat formatAnnotation;
   private JsonFieldKind writeKind;
   private JsonFieldKind readKind;
   private int writeKindId;
@@ -147,6 +149,7 @@ public final class JsonFieldInfo {
       TypeRef<?> ownerType,
       JsonCodec codecAnnotation,
       Class<? extends JsonValueCodec<?>> valueCodecClass,
+      JsonFormat formatAnnotation,
       boolean rawValue) {
     this.name = name;
     // The write-null decision and read index are both immutable after ObjectCodec construction.
@@ -167,6 +170,7 @@ public final class JsonFieldInfo {
     this.readRawType = semanticRawType(readType, readFallback);
     this.codecAnnotation = codecAnnotation;
     this.valueCodecClass = valueCodecClass;
+    this.formatAnnotation = formatAnnotation;
     this.writeAccessor = writeAccessor;
     this.readAccessor = readAccessor;
     writeKind = writeRawType == null ? null : kind(writeRawType);
@@ -267,6 +271,7 @@ public final class JsonFieldInfo {
             ownerType,
             codecAnnotation,
             valueCodecClass,
+            formatAnnotation,
             writesRawString());
     copy.setReadIndex(readIndex());
     return copy;
@@ -386,7 +391,9 @@ public final class JsonFieldInfo {
             ? typeResolver.getTypeInfo(codecType, codecRawType, codecAnnotation)
             : valueCodecClass != null
                 ? typeResolver.getTypeInfo(codecType, codecRawType, valueCodecClass)
-                : null;
+                : formatAnnotation != null
+                    ? typeResolver.getTypeInfo(codecType, codecRawType, formatAnnotation)
+                    : null;
     boolean rawString = writeKindId == KIND_RAW_STRING;
     if (writeRawType != null) {
       writeTypeInfo =

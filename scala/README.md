@@ -151,19 +151,19 @@ val fory = ForyScala.builder().withXlang(false)
 
 ## Documentation
 
-| Resource          | Link                                             |
-| ----------------- | ------------------------------------------------ |
-| **Website**       | https://fory.apache.org/docs/guide/scala         |
-| **Source Docs**   | [docs/guide/scala](../docs/guide/scala/index.md) |
-| **Java Guide**    | [docs/guide/java](../docs/guide/java/index.md)   |
-| **API Reference** | [Fory Java API](../java/README.md)               |
+| Resource          | Link                                                                           |
+| ----------------- | ------------------------------------------------------------------------------ |
+| **Website**       | https://fory.apache.org/docs/object-serialization/scala                        |
+| **Source Docs**   | [docs/object-serialization/scala](../docs/object-serialization/scala/index.md) |
+| **Java Guide**    | [docs/object-serialization/java](../docs/object-serialization/java/index.md)   |
+| **API Reference** | [Fory Java API](../java/README.md)                                             |
 
 ## Installation
 
 Add the dependency with sbt:
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.4.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.5.0"
 ```
 
 ## Building

@@ -26,7 +26,10 @@ import 'package:fory/src/context/ref_writer.dart';
 import 'package:fory/src/meta/field_info.dart';
 import 'package:fory/src/meta/field_type.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
+import 'package:fory/src/serializer/collection_flags.dart';
+import 'package:fory/src/serializer/collection_serializers.dart';
 import 'package:fory/src/serializer/scalar_conversion.dart';
+import 'package:fory/src/serializer/serialization_field_info.dart';
 import 'package:fory/src/serializer/serializer_support.dart';
 import 'package:test/test.dart';
 
@@ -857,6 +860,38 @@ void main() {
       );
     });
 
+    test('checks compatible list bytes before dense array allocation', () {
+      final localArray = SerializationFieldInfo(
+        field: _compatibleArrayEnvelopeForyFieldInfo.single.toFieldInfo(),
+        index: 0,
+      );
+      final remoteList =
+          _compatibleListEnvelopeForyFieldInfo.single.toFieldInfo();
+      final truncated =
+          Buffer()
+            ..writeVarUint32(2)
+            ..writeUint8(
+              CollectionFlags.isDeclaredElementType |
+                  CollectionFlags.isSameType,
+            )
+            ..writeUint16(0);
+
+      expect(
+        () => readCompatibleMatchedCollectionArrayField(
+          _compatibleReadContext(truncated),
+          localArray,
+          remoteList,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            equals('Insufficient readable bytes: 8.'),
+          ),
+        ),
+      );
+    });
+
     test('adapts immediate compatible dense array and list fields', () {
       final writer = Fory();
       final reader = Fory();
@@ -1277,6 +1312,29 @@ void main() {
         ).value,
         equals(1),
       );
+
+      final longZeroSuffix = List<String>.filled(4096, '0').join();
+      final longCanonicalDecimal =
+          _compatibleScalarRoundTrip<CompatibleScalarStringEnvelope>(
+            CompatibleScalarDecimalEnvelope,
+            CompatibleScalarStringEnvelope,
+            CompatibleScalarDecimalEnvelope()
+              ..value = Decimal(BigInt.parse('1$longZeroSuffix'), 4096),
+          ).value;
+      expect(longCanonicalDecimal, equals('1'));
+
+      final longPrefix = List<String>.filled(256, '7').join();
+      final longPrefixDecimal =
+          _compatibleScalarRoundTrip<CompatibleScalarStringEnvelope>(
+            CompatibleScalarDecimalEnvelope,
+            CompatibleScalarStringEnvelope,
+            CompatibleScalarDecimalEnvelope()
+              ..value = Decimal(
+                BigInt.parse('$longPrefix$longZeroSuffix'),
+                4096,
+              ),
+          ).value;
+      expect(longPrefixDecimal, equals(longPrefix));
     });
 
     test('rejects invalid compatible scalar payloads as invalid data', () {
@@ -1346,6 +1404,17 @@ void main() {
         CompatibleScalarDecimalEnvelope,
         CompatibleScalarStringEnvelope,
         CompatibleScalarDecimalEnvelope()..value = Decimal(BigInt.one, -256),
+      );
+      final longSignificantPrefix = List<String>.filled(257, '7').join();
+      final longZeroSuffix = List<String>.filled(4096, '0').join();
+      _expectCompatibleScalarError(
+        CompatibleScalarDecimalEnvelope,
+        CompatibleScalarStringEnvelope,
+        CompatibleScalarDecimalEnvelope()
+          ..value = Decimal(
+            BigInt.parse('$longSignificantPrefix$longZeroSuffix'),
+            4096,
+          ),
       );
       _expectCompatibleScalarError(
         CompatibleScalarFloat64Envelope,

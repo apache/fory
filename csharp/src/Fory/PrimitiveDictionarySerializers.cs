@@ -792,9 +792,9 @@ internal static class PrimitiveDictionaryCodecReader
             }
 
             int chunkSize = context.Reader.ReadUInt8();
-            if (chunkSize == 0)
+            if (chunkSize == 0 || chunkSize > totalLength - readCount)
             {
-                throw new InvalidDataException("invalid primitive map chunk size 0");
+                ThrowInvalidChunkSize(chunkSize, totalLength - readCount);
             }
 
             if (!keyDeclared)
@@ -818,6 +818,13 @@ internal static class PrimitiveDictionaryCodecReader
         }
 
         return map;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowInvalidChunkSize(int chunkSize, int remaining)
+    {
+        throw new InvalidDataException(
+            $"invalid primitive map chunk size {chunkSize} with {remaining} entries remaining");
     }
 
     private static void ReadAndValidateTypeInfo(ReadContext context, TypeId expectedTypeId)

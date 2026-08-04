@@ -2226,6 +2226,7 @@ template <typename T> Harness TypeResolver::make_serializer_harness() {
                   &TypeResolver::harness_empty_sorted_fields<T>);
   harness.any_write_fn = &detail::any_write_adapter<T>;
   harness.any_read_fn = &detail::any_read_adapter<T>;
+  harness.read_data_always_advances = read_data_always_advances_v<T>;
   harness.find_read_as_fn = &TypeResolver::find_exact_read<T>;
   return harness;
 }

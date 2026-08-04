@@ -131,6 +131,37 @@ FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
                                                         uint32_t type_id,
                                                         Error &error);
 
+FORY_ALWAYS_INLINE uint32_t primitive_min_read_bytes(uint32_t type_id) {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::BOOL:
+  case TypeId::INT8:
+  case TypeId::UINT8:
+    return 1;
+  case TypeId::INT16:
+  case TypeId::UINT16:
+  case TypeId::FLOAT16:
+  case TypeId::BFLOAT16:
+    return 2;
+  case TypeId::INT32:
+  case TypeId::UINT32:
+  case TypeId::FLOAT32:
+  case TypeId::TAGGED_INT64:
+  case TypeId::TAGGED_UINT64:
+    return 4;
+  case TypeId::INT64:
+  case TypeId::UINT64:
+  case TypeId::FLOAT64:
+    return 8;
+  case TypeId::VARINT32:
+  case TypeId::VAR_UINT32:
+  case TypeId::VARINT64:
+  case TypeId::VAR_UINT64:
+    return 1;
+  default:
+    return 0;
+  }
+}
+
 /// write a primitive value to buffer at given offset WITHOUT updating
 /// writer_index. Returns the number of bytes written. Caller must ensure buffer
 /// has sufficient capacity.
@@ -857,6 +888,63 @@ template <typename ValueType, typename StructT, size_t Index, int8_t NodeIndex>
 ValueType read_configured_value(ReadContext &ctx, RefMode ref_mode,
                                 bool read_type);
 
+template <typename ValueType, typename StructT, size_t Index, int8_t NodeIndex>
+inline constexpr bool configured_read_data_always_advances() {
+  if constexpr (is_optional_v<ValueType>) {
+    using Inner = typename ValueType::value_type;
+    constexpr FieldNodeKind kind =
+        configured_node_kind<StructT, Index, NodeIndex>();
+    constexpr int8_t child =
+        kind == FieldNodeKind::Inner
+            ? configured_node_child<StructT, Index, NodeIndex, 0>()
+            : NodeIndex;
+    return configured_read_data_always_advances<Inner, StructT, Index, child>();
+  }
+  return read_data_always_advances_v<ValueType>;
+}
+
+template <bool MeasureProgress, typename Container, typename StructT,
+          size_t Index, int8_t ElemNode>
+inline bool read_configured_list_items(Container &result, ReadContext &ctx,
+                                       uint32_t length, RefMode elem_ref_mode) {
+  using Elem = element_type_t<Container>;
+  uint32_t checkpoint_item = 0;
+  uint64_t checkpoint_byte = 0;
+  if constexpr (MeasureProgress) {
+    checkpoint_byte = ctx.buffer().logical_reader_index();
+  }
+  for (uint32_t i = 0; i < length; ++i) {
+    if constexpr (ElemNode >= 0) {
+      auto elem = read_configured_value<Elem, StructT, Index, ElemNode>(
+          ctx, elem_ref_mode, false);
+      collection_insert(result, std::move(elem));
+    } else {
+      auto elem = Serializer<Elem>::read(ctx, elem_ref_mode, false);
+      collection_insert(result, std::move(elem));
+    }
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return false;
+    }
+    if constexpr (MeasureProgress) {
+      const uint32_t completed = i + 1;
+      if ((completed & 1023U) == 0) {
+        if (FORY_PREDICT_FALSE(!detail::settle_unbacked_container_items(
+                ctx, completed - checkpoint_item, checkpoint_byte))) {
+          return false;
+        }
+        checkpoint_item = completed;
+        checkpoint_byte = ctx.buffer().logical_reader_index();
+      }
+    }
+  }
+  if constexpr (MeasureProgress) {
+    return checkpoint_item == length ||
+           detail::settle_unbacked_container_items(
+               ctx, length - checkpoint_item, checkpoint_byte);
+  }
+  return true;
+}
+
 template <typename Container, typename StructT, size_t Index, int8_t NodeIndex,
           int8_t ElemNode>
 void write_configured_list_data(const Container &coll, WriteContext &ctx) {
@@ -913,21 +1001,38 @@ Container read_configured_list_data(ReadContext &ctx) {
       return result;
     }
   }
-  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
-    return result;
-  }
+  constexpr bool element_read_data_always_advances = []() constexpr {
+    if constexpr (ElemNode >= 0) {
+      return configured_read_data_always_advances<Elem, StructT, Index,
+                                                  ElemNode>();
+    }
+    return read_data_always_advances_v<Elem>;
+  }();
   const RefMode elem_ref_mode =
       track_ref ? RefMode::Tracking
                 : (has_null ? RefMode::NullOnly : RefMode::None);
-  for (uint32_t i = 0; i < length; ++i) {
-    if constexpr (ElemNode >= 0) {
-      auto elem = read_configured_value<Elem, StructT, Index, ElemNode>(
-          ctx, elem_ref_mode, false);
-      collection_insert(result, std::move(elem));
-    } else {
-      auto elem = Serializer<Elem>::read(ctx, elem_ref_mode, false);
-      collection_insert(result, std::move(elem));
+  if constexpr (element_read_data_always_advances) {
+    if (FORY_PREDICT_FALSE(!reserve_collection<true>(result, ctx, length))) {
+      return result;
     }
+  } else if (elem_ref_mode != RefMode::None) {
+    if (FORY_PREDICT_FALSE(!reserve_collection<true>(result, ctx, length))) {
+      return result;
+    }
+  } else if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+    return result;
+  }
+  if constexpr (element_read_data_always_advances) {
+    (void)
+        read_configured_list_items<false, Container, StructT, Index, ElemNode>(
+            result, ctx, length, elem_ref_mode);
+  } else if (elem_ref_mode != RefMode::None) {
+    (void)
+        read_configured_list_items<false, Container, StructT, Index, ElemNode>(
+            result, ctx, length, elem_ref_mode);
+  } else {
+    (void)read_configured_list_items<true, Container, StructT, Index, ElemNode>(
+        result, ctx, length, elem_ref_mode);
   }
   return result;
 }
@@ -968,8 +1073,31 @@ FORY_NOINLINE Container read_configured_list_data_as_array_field(
         "compatible list to array field requires declared elements"));
     return result;
   }
-  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+  // This remains a primitive dense-array leaf after compatibility adaptation,
+  // so it must not use the generic collection graph-budget owner. Prove the
+  // fixed-width body before reserving; variable-width encodings use their
+  // minimum width so compact valid values remain accepted.
+  const uint32_t element_bytes =
+      primitive_min_read_bytes(remote_element_type_id);
+  if (FORY_PREDICT_FALSE(element_bytes == 0)) {
+    ctx.set_error(Error::type_error(
+        "compatible list to array field has unsupported element type " +
+        std::to_string(remote_element_type_id)));
     return result;
+  }
+  const uint64_t required_bytes = static_cast<uint64_t>(length) * element_bytes;
+  if (FORY_PREDICT_FALSE(required_bytes >
+                         std::numeric_limits<uint32_t>::max())) {
+    ctx.set_error(
+        Error::invalid_data("compatible list body size exceeds uint32 range"));
+    return result;
+  }
+  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(
+          static_cast<uint32_t>(required_bytes), ctx.error()))) {
+    return result;
+  }
+  if constexpr (has_reserve_v<Container>) {
+    result.reserve(length);
   }
   for (uint32_t i = 0; i < length; ++i) {
     if constexpr (is_raw_primitive_v<Elem>) {
@@ -1046,6 +1174,46 @@ void write_configured_map_data(const MapType &map, WriteContext &ctx) {
   }
 }
 
+template <bool MeasureProgress, typename MapType, typename StructT,
+          size_t Index, int8_t KeyNode, int8_t ValueNode>
+inline bool read_configured_map_chunk(MapType &result, ReadContext &ctx,
+                                      uint8_t chunk_size) {
+  using Key = key_type_t<MapType>;
+  using Value = mapped_type_t<MapType>;
+  uint64_t checkpoint_byte = 0;
+  if constexpr (MeasureProgress) {
+    checkpoint_byte = ctx.buffer().logical_reader_index();
+  }
+  for (uint8_t i = 0; i < chunk_size; ++i) {
+    Key key = [&]() {
+      if constexpr (KeyNode >= 0) {
+        return read_configured_value<Key, StructT, Index, KeyNode>(
+            ctx, RefMode::None, false);
+      }
+      return Serializer<Key>::read_data(ctx);
+    }();
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return false;
+    }
+    Value value = [&]() {
+      if constexpr (ValueNode >= 0) {
+        return read_configured_value<Value, StructT, Index, ValueNode>(
+            ctx, RefMode::None, false);
+      }
+      return Serializer<Value>::read_data(ctx);
+    }();
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return false;
+    }
+    result.emplace(std::move(key), std::move(value));
+  }
+  if constexpr (MeasureProgress) {
+    return detail::settle_unbacked_container_items(ctx, chunk_size,
+                                                   checkpoint_byte);
+  }
+  return true;
+}
+
 template <typename MapType, typename StructT, size_t Index, int8_t KeyNode,
           int8_t ValueNode>
 MapType read_configured_map_data(ReadContext &ctx) {
@@ -1056,7 +1224,24 @@ MapType read_configured_map_data(ReadContext &ctx) {
   if (length == 0) {
     return result;
   }
-  if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
+  constexpr bool key_read_data_always_advances = []() constexpr {
+    if constexpr (KeyNode >= 0) {
+      return configured_read_data_always_advances<Key, StructT, Index,
+                                                  KeyNode>();
+    }
+    return read_data_always_advances_v<Key>;
+  }();
+  constexpr bool value_read_data_always_advances = []() constexpr {
+    if constexpr (ValueNode >= 0) {
+      return configured_read_data_always_advances<Value, StructT, Index,
+                                                  ValueNode>();
+    }
+    return read_data_always_advances_v<Value>;
+  }();
+  constexpr bool entry_read_data_always_advances =
+      key_read_data_always_advances || value_read_data_always_advances;
+  if (FORY_PREDICT_FALSE(
+          !reserve_map<entry_read_data_always_advances>(result, ctx, length))) {
     return result;
   }
   uint32_t read_count = 0;
@@ -1064,6 +1249,10 @@ MapType read_configured_map_data(ReadContext &ctx) {
     uint8_t header = ctx.read_uint8(ctx.error());
     uint8_t chunk_size = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return result;
+    }
+    if (FORY_PREDICT_FALSE(!detail::check_map_chunk_size(
+            ctx, chunk_size, length - read_count))) {
       return result;
     }
     const bool key_decl = (header & DECL_KEY_TYPE) != 0;
@@ -1074,32 +1263,23 @@ MapType read_configured_map_data(ReadContext &ctx) {
     if (!value_decl) {
       (void)ctx.read_any_type_info(ctx.error());
     }
-    for (uint8_t i = 0; i < chunk_size && read_count < length; ++i) {
-      Key key = [&]() {
-        if constexpr (KeyNode >= 0) {
-          return read_configured_value<Key, StructT, Index, KeyNode>(
-              ctx, RefMode::None, false);
-        } else {
-          return Serializer<Key>::read_data(ctx);
-        }
-      }();
-      if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return result;
-      }
-      Value value = [&]() {
-        if constexpr (ValueNode >= 0) {
-          return read_configured_value<Value, StructT, Index, ValueNode>(
-              ctx, RefMode::None, false);
-        } else {
-          return Serializer<Value>::read_data(ctx);
-        }
-      }();
-      if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return result;
-      }
-      result.emplace(std::move(key), std::move(value));
-      ++read_count;
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return result;
     }
+    if constexpr (entry_read_data_always_advances) {
+      if (FORY_PREDICT_FALSE(
+              (!read_configured_map_chunk<false, MapType, StructT, Index,
+                                          KeyNode, ValueNode>(result, ctx,
+                                                              chunk_size)))) {
+        return result;
+      }
+    } else if (FORY_PREDICT_FALSE(
+                   (!read_configured_map_chunk<true, MapType, StructT, Index,
+                                               KeyNode, ValueNode>(
+                       result, ctx, chunk_size)))) {
+      return result;
+    }
+    read_count += chunk_size;
   }
   return result;
 }
@@ -1404,6 +1584,49 @@ template <typename T> struct CompileTimeFieldHelpers {
       }
     }
   }
+
+  // This is intentionally a one-field proof, not a recursive Struct graph
+  // classification. A field envelope or a declared serializer body that is
+  // independently known to advance is enough to prove this Struct body
+  // advances; an unframed Struct field remains unknown.
+  template <size_t Index> static constexpr bool field_read_always_advances() {
+    if constexpr (FieldCount == 0) {
+      return false;
+    } else {
+      using FieldType = ValueType<Index>;
+      if constexpr (field_nullable<Index>() || field_track_ref<Index>() ||
+                    is_nullable_v<FieldType>) {
+        return true;
+      } else {
+        constexpr TypeId field_type =
+            static_cast<TypeId>(field_type_id<Index>());
+        if constexpr (is_struct_type(field_type)) {
+          return false;
+        } else if constexpr (is_ext_type(field_type) ||
+                             field_type == TypeId::NONE) {
+          return declared_read_data_always_advances<FieldType>::value;
+        } else if constexpr (field_type == TypeId::UNKNOWN) {
+          return field_dynamic_value<Index>() != 0 ||
+                 declared_read_data_always_advances<FieldType>::value;
+        } else {
+          return read_data_always_advances_v<FieldType>;
+        }
+      }
+    }
+  }
+
+  template <size_t... Indices>
+  static constexpr bool
+  any_field_read_always_advances(std::index_sequence<Indices...>) {
+    if constexpr (FieldCount == 0) {
+      return false;
+    } else {
+      return (field_read_always_advances<Indices>() || ...);
+    }
+  }
+
+  static constexpr bool read_data_always_advances =
+      any_field_read_always_advances(std::make_index_sequence<FieldCount>{});
 
   /// Returns true if the field needs per-field type info in compatible mode.
   /// This matches write_single_field/read_single_field logic:
@@ -2076,77 +2299,6 @@ template <typename T> struct CompileTimeFieldHelpers {
 
   static inline constexpr size_t primitive_field_count =
       compute_primitive_field_count();
-
-  /// Check if a type_id represents a fixed-size primitive (not varint)
-  /// Includes bool, int8, int16, int32, int64, float8, float16, bfloat16,
-  /// float32, float64
-  static constexpr bool is_fixed_size_primitive(uint32_t tid) {
-    switch (static_cast<TypeId>(tid)) {
-    case TypeId::BOOL:
-    case TypeId::INT8:
-    case TypeId::INT16:
-    case TypeId::INT32:
-    case TypeId::INT64:
-    case TypeId::FLOAT8:
-    case TypeId::FLOAT16:
-    case TypeId::BFLOAT16:
-    case TypeId::FLOAT32:
-    case TypeId::FLOAT64:
-      return true;
-    default:
-      return false;
-    }
-  }
-
-  /// Check if a type_id represents a varint primitive (int32/int64 types)
-  /// VARINT32/VARINT64/TAGGED_INT64 use varint encoding
-  static constexpr bool is_varint_primitive(uint32_t tid) {
-    switch (static_cast<TypeId>(tid)) {
-    case TypeId::VARINT32:     // explicit varint type
-    case TypeId::VARINT64:     // explicit varint type
-    case TypeId::TAGGED_INT64: // hybrid int64 encoding
-      return true;
-    default:
-      return false;
-    }
-  }
-
-  /// get the max varint size in bytes for a type_id (0 if not varint)
-  static constexpr size_t max_varint_bytes(uint32_t tid) {
-    switch (static_cast<TypeId>(tid)) {
-    case TypeId::VARINT32: // explicit varint
-      return 5;            // int32 varint max
-    case TypeId::VARINT64: // explicit varint
-    case TypeId::TAGGED_INT64:
-      return 10; // int64 varint max
-    default:
-      return 0;
-    }
-  }
-
-  /// get the fixed size in bytes for a type_id (0 if not fixed-size)
-  static constexpr size_t fixed_size_bytes(uint32_t tid) {
-    switch (static_cast<TypeId>(tid)) {
-    case TypeId::BOOL:
-    case TypeId::INT8:
-    case TypeId::FLOAT8:
-      return 1;
-    case TypeId::INT16:
-    case TypeId::FLOAT16:
-    case TypeId::BFLOAT16:
-      return 2;
-    case TypeId::INT32:
-      return 4;
-    case TypeId::FLOAT32:
-      return 4;
-    case TypeId::INT64:
-      return 8;
-    case TypeId::FLOAT64:
-      return 8;
-    default:
-      return 0;
-    }
-  }
 
   /// Compute total bytes for leading fixed-size primitive fields only
   /// (stops at first varint or non-primitive field)
@@ -4421,6 +4573,7 @@ read_struct_fields_compatible(T &obj, ReadContext &ctx,
 template <typename T>
 struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
   static constexpr TypeId type_id = TypeId::STRUCT;
+  static constexpr bool is_generated_struct_serializer = true;
 
   /// write type info only (type_id and meta index if applicable).
   /// This is used by collection serializers to write element type info.
@@ -4882,10 +5035,12 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
   // deserializers
   static T read_with_type_info(ReadContext &ctx, RefMode ref_mode,
                                const TypeInfo &type_info) {
-    // Note: When called from polymorphic shared_ptr, the shared_ptr has already
-    // consumed the ref flag, so we should not read it again here. The read_ref
-    // parameter is just for protocol compatibility but should not cause us to
-    // read another ref flag.
+    // Smart-pointer owners pass RefMode::None after consuming their envelope.
+    // Direct compatible collection/map/tuple bindings pass the sender's mode
+    // here, so consume it before the remote field plan reads the struct body.
+    if (!read_null_only_flag(ctx, ref_mode)) {
+      return T{};
+    }
 
     // In compatible mode with type info provided, use schema evolution path
     if (ctx.is_compatible() && type_info.type_meta) {
@@ -4896,6 +5051,12 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     return read_data(ctx);
   }
 };
+
+template <typename T>
+struct declared_read_data_always_advances<
+    T, std::enable_if_t<Serializer<T>::is_generated_struct_serializer>>
+    : std::bool_constant<
+          detail::CompileTimeFieldHelpers<T>::read_data_always_advances> {};
 
 } // namespace serialization
 } // namespace fory

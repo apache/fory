@@ -18,6 +18,7 @@ including getting started, API reference, and code examples.
 | `packages/fory/example/`              | Annotated example with generated output             |
 | `packages/fory/test/`                 | Unit and integration tests                          |
 | `packages/external-type-test-models/` | Fory-free dependency models for external-type tests |
+| `packages/inheritance-test-models/`   | Cross-library inheritance test providers            |
 | `test/`                               | Cross-language integration tests                    |
 
 ## Type Mapping
@@ -81,7 +82,7 @@ class Person {
 ```
 
 ```bash
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 ```
 
 Serialize and deserialize:
@@ -93,6 +94,10 @@ PersonForyModule.register(fory, Person, name: 'example.Person');
 final bytes = fory.serialize(Person()..name = 'Ada'..age = 36);
 final roundTrip = fory.deserialize<Person>(bytes);
 ```
+
+Ordinary annotated classes serialize one flattened view of their concrete
+superclass and applied-mixin storage. See
+[Struct Inheritance](../docs/object-serialization/dart/inheritance.md) for details.
 
 ## Development
 
@@ -107,5 +112,5 @@ Run the code generator on the example:
 
 ```bash
 cd packages/fory
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 ```

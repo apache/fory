@@ -216,6 +216,111 @@ public sealed class RuntimeEdgeCaseTests
     }
 
     [Fact]
+    public void CompatibleNoneListSkipUsesBudget()
+    {
+        ByteWriter writer = new();
+        writer.WriteVarUInt32(int.MaxValue);
+        writer.WriteUInt8(CollectionBits.SameType);
+        writer.WriteUInt8((byte)TypeId.None);
+        writer.WriteUInt8(0xA5);
+        byte[] payload = writer.ToArray();
+
+        ByteReader reader = new(payload);
+        Config config = ForyRuntime.Builder()
+            .Compatible(true)
+            .MaxUnbackedContainerItems(0)
+            .Build().Config;
+        ReadContext context = new(reader, new TypeResolver(), config);
+        context._remainingUnbackedContainerItems = config.MaxUnbackedContainerItems;
+        TypeMetaFieldType elementType =
+            new((uint)TypeId.Unknown, nullable: false);
+        TypeMetaFieldType listType =
+            new((uint)TypeId.List, nullable: false, generics: [elementType]);
+
+        Assert.Throws<InvalidDataException>(
+            () => FieldSkipper.SkipFieldValue(context, listType));
+        Assert.Equal(payload.Length - 1, reader.Cursor);
+    }
+
+    [Fact]
+    public void CompatibleNoneMapSkipUsesBudget()
+    {
+        ByteWriter writer = new();
+        writer.WriteVarUInt32(3);
+        writer.WriteUInt8(
+            DictionaryBits.DeclaredKeyType |
+            DictionaryBits.DeclaredValueType);
+        writer.WriteUInt8(3);
+        writer.WriteUInt8(0xA5);
+        byte[] payload = writer.ToArray();
+
+        Config config = ForyRuntime.Builder()
+            .Compatible(true)
+            .MaxUnbackedContainerItems(2)
+            .Build().Config;
+        ByteReader reader = new(payload);
+        ReadContext context = new(reader, new TypeResolver(), config);
+        context._remainingUnbackedContainerItems = config.MaxUnbackedContainerItems;
+        TypeMetaFieldType noneType = new((uint)TypeId.None, nullable: false);
+        TypeMetaFieldType mapType = new(
+            (uint)TypeId.Map,
+            nullable: false,
+            generics: [noneType, noneType]);
+
+        Assert.Throws<InvalidDataException>(
+            () => FieldSkipper.SkipFieldValue(context, mapType));
+        Assert.Equal(payload.Length - 1, reader.Cursor);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void MapChunksRespectDeclaredCount(int chunkSize)
+    {
+        byte[] payload = InvalidIntMapPayload(chunkSize, fixedWidth: false, schemaPrefix: false);
+
+        Check(new DictionarySerializer<int, int>());
+        Check(new NullableKeyDictionarySerializer<int, int>());
+        Check(new TypeResolver().GetSerializer<Dictionary<int, int>>());
+
+        void Check<T>(Serializer<T> serializer)
+        {
+            ReadContext context = NewReadContext(payload, new TypeResolver());
+            Assert.Throws<InvalidDataException>(() => serializer.ReadData(context));
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void GeneratedMapChunksRespectDeclaredCount(int chunkSize)
+    {
+        byte[] payload = InvalidIntMapPayload(chunkSize, fixedWidth: true, schemaPrefix: true);
+        TypeResolver resolver = new();
+        Serializer<GeneratedSchemaMapBudget> serializer =
+            resolver.GetSerializer<GeneratedSchemaMapBudget>();
+        ReadContext context = NewReadContext(payload, resolver);
+
+        Assert.Throws<InvalidDataException>(() => serializer.ReadData(context));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void MapSkipChunksRespectDeclaredCount(int chunkSize)
+    {
+        byte[] payload = InvalidIntMapPayload(chunkSize, fixedWidth: false, schemaPrefix: false);
+        ReadContext context = NewReadContext(payload, new TypeResolver());
+        TypeMetaFieldType intType =
+            new((uint)TypeId.VarInt32, nullable: false);
+        TypeMetaFieldType mapType =
+            new((uint)TypeId.Map, nullable: false, generics: [intType, intType]);
+
+        Assert.Throws<InvalidDataException>(
+            () => FieldSkipper.SkipFieldValue(context, mapType));
+    }
+
+    [Fact]
     public void DecimalRoundTripEdgeCases()
     {
         ForyRuntime fory = ForyRuntime.Builder().Build();
@@ -326,6 +431,178 @@ public sealed class RuntimeEdgeCaseTests
         InvalidDataException trailingZeroException =
             Assert.Throws<InvalidDataException>(() => fory.Deserialize<ForyDecimal>(writer.ToArray()));
         Assert.Contains("trailing zero byte", trailingZeroException.Message);
+    }
+
+    [Fact]
+    public void SystemDecimalRoundTripBounds()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        decimal[] values =
+        [
+            decimal.MaxValue,
+            decimal.MinValue,
+            new decimal(-1, -1, -1, isNegative: false, scale: 28),
+            new decimal(-1, -1, -1, isNegative: true, scale: 28),
+            new decimal(1, 0, 0, isNegative: false, scale: 28),
+            new decimal(1, 0, 0, isNegative: true, scale: 28),
+        ];
+
+        foreach (decimal value in values)
+        {
+            decimal decoded = fory.Deserialize<decimal>(fory.Serialize(value));
+            Assert.Equal(decimal.GetBits(value), decimal.GetBits(decoded));
+        }
+    }
+
+    [Fact]
+    public void SystemDecimalUsesNativeMagnitudeBound()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        decimal scaledMax =
+            new(-1, -1, -1, isNegative: false, scale: 28);
+        byte[] payload = fory.Serialize(scaledMax);
+        ByteReader reader = new(payload);
+        fory.ReadHead(reader);
+        Assert.Equal((sbyte)RefFlag.NotNullValue, reader.ReadInt8());
+        Assert.Equal((uint)TypeId.Decimal, reader.ReadUInt8());
+        Assert.Equal(28, reader.ReadVarInt32());
+        Assert.Equal(49UL, reader.ReadVarUInt64());
+        Assert.All(reader.ReadBytes(12), value => Assert.Equal((byte)0xFF, value));
+        Assert.Equal(0, reader.Remaining);
+
+        byte[] maxMagnitude = new byte[12];
+        Array.Fill(maxMagnitude, (byte)0xFF);
+        Assert.Equal(
+            decimal.MaxValue,
+            fory.Deserialize<decimal>(
+                DecimalPayload(fory, scale: 0, declaredLength: 12, negative: false, maxMagnitude)));
+        Assert.Equal(
+            decimal.MinValue,
+            fory.Deserialize<decimal>(
+                DecimalPayload(fory, scale: 0, declaredLength: 12, negative: true, maxMagnitude)));
+        Assert.Throws<InvalidDataException>(
+            () => fory.Deserialize<decimal>(
+                DecimalScalePayload(fory, -1)));
+        Assert.Throws<InvalidDataException>(
+            () => fory.Deserialize<decimal>(
+                DecimalScalePayload(fory, 29)));
+
+        InvalidDataException nativeBound = Assert.Throws<InvalidDataException>(
+            () => fory.Deserialize<decimal>(
+                DecimalPayload(fory, scale: 0, declaredLength: 13, negative: false, [])));
+        Assert.Contains("limit 12", nativeBound.Message, StringComparison.Ordinal);
+
+        Assert.Throws<OutOfBoundsException>(
+            () => fory.Deserialize<decimal>(
+                DecimalPayload(
+                    fory,
+                    scale: 0,
+                    declaredLength: 12,
+                    negative: false,
+                    maxMagnitude.AsSpan(0, 11))));
+
+        byte[] nonCanonical = (byte[])maxMagnitude.Clone();
+        nonCanonical[^1] = 0;
+        InvalidDataException trailingZero = Assert.Throws<InvalidDataException>(
+            () => fory.Deserialize<decimal>(
+                DecimalPayload(fory, scale: 0, declaredLength: 12, negative: false, nonCanonical)));
+        Assert.Contains("trailing zero byte", trailingZero.Message, StringComparison.Ordinal);
+
+        InvalidDataException overflow = Assert.Throws<InvalidDataException>(
+            () => fory.Deserialize<decimal>(
+                DecimalPayload(
+                    fory,
+                    scale: 0,
+                    declaredLength: (ulong)int.MaxValue + 1,
+                    negative: false,
+                    [])));
+        Assert.Contains("invalid decimal magnitude length", overflow.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(-10_001, false)]
+    [InlineData(-10_000, true)]
+    [InlineData(10_000, true)]
+    [InlineData(10_001, false)]
+    [InlineData(int.MinValue, false)]
+    [InlineData(int.MaxValue, false)]
+    public void ForyDecimalScaleBounds(int scale, bool accepted)
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        TypeResolver resolver = new();
+        Serializer<ForyDecimal> serializer = resolver.GetSerializer<ForyDecimal>();
+        ByteWriter writer = new();
+        WriteContext context =
+            new(writer, resolver, trackRef: false);
+        ForyDecimal value = new(BigInteger.One, scale);
+
+        if (accepted)
+        {
+            serializer.WriteData(context, value, hasGenerics: false);
+            Assert.True(writer.Count > 0);
+            Assert.Equal(value, fory.Deserialize<ForyDecimal>(fory.Serialize(value)));
+            return;
+        }
+
+        Assert.Throws<InvalidDataException>(
+            () => serializer.WriteData(context, value, hasGenerics: false));
+        Assert.Equal(0, writer.Count);
+        InvalidDataException readException = Assert.Throws<InvalidDataException>(
+            () => fory.Deserialize<ForyDecimal>(DecimalScalePayload(fory, scale)));
+        Assert.Contains("outside range", readException.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ForyDecimalMagnitudeBounds()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        byte[] magnitude = new byte[DecimalCodec.MaxMagnitudeBytes];
+        magnitude[0] = 1;
+        magnitude[^1] = 1;
+        ForyDecimal value =
+            new(new BigInteger(magnitude, isUnsigned: true, isBigEndian: false), 0);
+        byte[] payload = fory.Serialize(value);
+        ByteReader reader = new(payload);
+        fory.ReadHead(reader);
+        Assert.Equal((sbyte)RefFlag.NotNullValue, reader.ReadInt8());
+        Assert.Equal((uint)TypeId.Decimal, reader.ReadUInt8());
+        Assert.Equal(0, reader.ReadVarInt32());
+        ulong meta = reader.ReadVarUInt64() >> 1;
+        Assert.Equal((ulong)DecimalCodec.MaxMagnitudeBytes, meta >> 1);
+        reader.Skip(DecimalCodec.MaxMagnitudeBytes);
+        Assert.Equal(0, reader.Remaining);
+        Assert.Equal(value, fory.Deserialize<ForyDecimal>(payload));
+
+        byte[] oversizedMagnitude = new byte[DecimalCodec.MaxMagnitudeBytes + 1];
+        oversizedMagnitude[0] = 1;
+        oversizedMagnitude[^1] = 1;
+        ForyDecimal oversized =
+            new(new BigInteger(oversizedMagnitude, isUnsigned: true, isBigEndian: false), 256);
+        TypeResolver resolver = new();
+        Serializer<ForyDecimal> serializer = resolver.GetSerializer<ForyDecimal>();
+        ByteWriter writer = new();
+        WriteContext context =
+            new(writer, resolver, trackRef: false);
+        InvalidDataException writeException = Assert.Throws<InvalidDataException>(
+            () => serializer.WriteData(context, oversized, hasGenerics: false));
+        Assert.Equal(0, writer.Count);
+        Assert.Contains(
+            $"limit {DecimalCodec.MaxMagnitudeBytes}",
+            writeException.Message,
+            StringComparison.Ordinal);
+
+        InvalidDataException readException = Assert.Throws<InvalidDataException>(
+            () => fory.Deserialize<ForyDecimal>(
+                DecimalPayload(
+                    fory,
+                    scale: 256,
+                    declaredLength: DecimalCodec.MaxMagnitudeBytes + 1UL,
+                    negative: false,
+                    [])));
+        Assert.Contains(
+            $"limit {DecimalCodec.MaxMagnitudeBytes}",
+            readException.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -543,6 +820,60 @@ public sealed class RuntimeEdgeCaseTests
     }
 
     [Fact]
+    public void TypeMetaLogicalKeyLimit()
+    {
+        const uint maxLogicalKeys = 8192;
+        TypeResolver resolver = new();
+        resolver.Register(typeof(TestColor), "example", "LogicalLimitEnum");
+        Config config = ForyRuntime.Builder()
+            .Compatible(false)
+            .MaxSchemaVersionsPerType(2)
+            .Build()
+            .Config;
+        ReadContext context =
+            new(new ByteReader(Array.Empty<byte>()), resolver, config);
+        TypeMeta? firstRead = null;
+        TypeMeta? lastRead = null;
+
+        for (uint typeId = 1; typeId <= maxLogicalKeys; typeId++)
+        {
+            TypeMeta read =
+                ReadAndStoreTypeMeta(context, RemoteStructTypeMeta(typeId, "value"));
+            firstRead ??= read;
+            lastRead = read;
+        }
+
+        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(firstRead!), out _));
+        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(lastRead!), out _));
+        Assert.Same(firstRead, ReadAndStoreTypeMeta(context, RemoteStructTypeMeta(1, "value")));
+
+        TypeMeta exact = resolver
+            .GetTypeInfo(typeof(TestColor))
+            .GetTypeMetaCacheEntry(trackRef: false)
+            .TypeMeta;
+        TypeMeta exactRead = ReadAndStoreTypeMeta(context, exact);
+        Assert.Same(exactRead, ReadAndStoreTypeMeta(context, exact));
+
+        TypeMeta rejected =
+            RemoteStructTypeMeta(maxLogicalKeys + 1, "value");
+        InvalidDataException exception =
+            Assert.Throws<InvalidDataException>(
+                () => ReadAndStoreTypeMeta(context, rejected));
+        Assert.Contains("logical type limit", exception.Message, StringComparison.Ordinal);
+        Assert.False(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(rejected), out _));
+
+        TypeMeta rejectedAgain =
+            RemoteStructTypeMeta(maxLogicalKeys + 1, "other");
+        Assert.Throws<InvalidDataException>(
+            () => ReadAndStoreTypeMeta(context, rejectedAgain));
+        Assert.False(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(rejectedAgain), out _));
+
+        TypeMeta existing = RemoteStructTypeMeta(1, "other");
+        TypeMeta existingRead = ReadAndStoreTypeMeta(context, existing);
+        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(existingRead), out _));
+    }
+
+    [Fact]
     public void NonStructTypeMetaUsesSchemaLimit()
     {
         Config config = ForyRuntime.Builder()
@@ -728,6 +1059,56 @@ public sealed class RuntimeEdgeCaseTests
         Assert.Equal(0x7b, context.Reader.ReadUInt8());
     }
 
+    [Fact]
+    public void TypeMetaDepthRejectsBeforeCache()
+    {
+        Config config = ForyRuntime.Builder()
+            .Compatible(false)
+            .MaxDepth(2)
+            .MaxSchemaVersionsPerType(1)
+            .Build()
+            .Config;
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), new TypeResolver(), config);
+        TypeMeta rejected = RemoteCompatibleStructTypeMeta(
+            903,
+            "value",
+            NestedGenericType(3));
+
+        InvalidDataException exception =
+            Assert.Throws<InvalidDataException>(() => ReadAndStoreTypeMeta(context, rejected));
+        Assert.Contains("MaxDepth", exception.Message, StringComparison.Ordinal);
+        Assert.False(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(rejected), out _));
+
+        TypeMeta accepted = RemoteCompatibleStructTypeMeta(
+            903,
+            "value",
+            NestedGenericType(2));
+        TypeMeta first = ReadAndStoreTypeMeta(context, accepted);
+        TypeMeta second = ReadAndStoreTypeMeta(context, accepted);
+
+        Assert.Same(first, second);
+        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(accepted), out _));
+    }
+
+    [Fact]
+    public void TypeMetaDecodeUsesDefaultDepth()
+    {
+        TypeMeta accepted = RemoteCompatibleStructTypeMeta(
+            904,
+            "value",
+            NestedGenericType(20));
+        TypeMeta rejected = RemoteCompatibleStructTypeMeta(
+            904,
+            "value",
+            NestedGenericType(21));
+
+        byte[] acceptedBytes = accepted.Encode();
+        Assert.Equal(acceptedBytes, TypeMeta.Decode(acceptedBytes).Encode());
+        InvalidDataException exception =
+            Assert.Throws<InvalidDataException>(() => TypeMeta.Decode(rejected.Encode()));
+        Assert.Contains("MaxDepth", exception.Message, StringComparison.Ordinal);
+    }
+
     private static TypeMeta RemoteStructTypeMeta(uint userTypeId, string fieldName)
     {
         return RemoteStructTypeMeta(userTypeId, [fieldName]);
@@ -793,6 +1174,113 @@ public sealed class RuntimeEdgeCaseTests
                 new TypeMetaFieldType((uint)TypeId.String, nullable: false),
                 new TypeMetaFieldType((uint)TypeId.Int32, nullable: false),
             ]);
+    }
+
+    private static TypeMetaFieldType NestedGenericType(int depth)
+    {
+        TypeMetaFieldType type =
+            new((uint)TypeId.Int32, nullable: false);
+        for (int i = 0; i < depth; i++)
+        {
+            type = (i & 1) == 0
+                ? new TypeMetaFieldType(
+                    (uint)TypeId.List,
+                    nullable: false,
+                    generics: [type])
+                : new TypeMetaFieldType(
+                    (uint)TypeId.Map,
+                    nullable: false,
+                    generics:
+                    [
+                        new TypeMetaFieldType((uint)TypeId.String, nullable: false),
+                        type,
+                    ]);
+        }
+
+        return type;
+    }
+
+    private static byte[] InvalidIntMapPayload(
+        int chunkSize,
+        bool fixedWidth,
+        bool schemaPrefix)
+    {
+        ByteWriter writer = new();
+        if (schemaPrefix)
+        {
+            writer.WriteInt32(0);
+        }
+
+        writer.WriteVarUInt32(1);
+        byte header = DictionaryBits.DeclaredKeyType | DictionaryBits.DeclaredValueType;
+        writer.WriteUInt8(header);
+        writer.WriteUInt8((byte)chunkSize);
+        if (chunkSize == 0)
+        {
+            writer.WriteUInt8(header);
+            writer.WriteUInt8(1);
+            WritePair(writer, 1, 11, fixedWidth);
+        }
+        else
+        {
+            WritePair(writer, 1, 11, fixedWidth);
+            WritePair(writer, 2, 22, fixedWidth);
+        }
+
+        return writer.ToArray();
+    }
+
+    private static void WritePair(
+        ByteWriter writer,
+        int key,
+        int value,
+        bool fixedWidth)
+    {
+        if (fixedWidth)
+        {
+            writer.WriteInt32(key);
+            writer.WriteInt32(value);
+            return;
+        }
+
+        writer.WriteVarInt32(key);
+        writer.WriteVarInt32(value);
+    }
+
+    private static ReadContext NewReadContext(byte[] bytes, TypeResolver resolver)
+    {
+        Config config = ForyRuntime.Builder().Compatible(false).Build().Config;
+        ReadContext context = new(new ByteReader(bytes), resolver, config);
+        context._remainingGraphMemoryBytes = config.MaxGraphMemoryBytes;
+        return context;
+    }
+
+    private static byte[] DecimalPayload(
+        ForyRuntime fory,
+        int scale,
+        ulong declaredLength,
+        bool negative,
+        ReadOnlySpan<byte> magnitude)
+    {
+        ByteWriter writer = new();
+        fory.WriteHead(writer);
+        writer.WriteInt8((sbyte)RefFlag.NotNullValue);
+        writer.WriteUInt8((byte)TypeId.Decimal);
+        writer.WriteVarInt32(scale);
+        ulong meta = (declaredLength << 1) | (negative ? 1UL : 0UL);
+        writer.WriteVarUInt64((meta << 1) | 1UL);
+        writer.WriteBytes(magnitude);
+        return writer.ToArray();
+    }
+
+    private static byte[] DecimalScalePayload(ForyRuntime fory, int scale)
+    {
+        ByteWriter writer = new();
+        fory.WriteHead(writer);
+        writer.WriteInt8((sbyte)RefFlag.NotNullValue);
+        writer.WriteUInt8((byte)TypeId.Decimal);
+        writer.WriteVarInt32(scale);
+        return writer.ToArray();
     }
 
     private static TypeMeta ReadAndStoreTypeMeta(ReadContext context, TypeMeta typeMeta)

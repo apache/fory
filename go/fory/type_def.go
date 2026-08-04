@@ -295,9 +295,25 @@ func skipTypeDef(buffer *ByteBuffer, header int64, err *Error) {
 	// otherwise materialize that body.
 	sz := int(header & META_SIZE_MASK)
 	if sz == META_SIZE_MASK {
-		sz += int(buffer.ReadVarUint32(err))
+		extra := buffer.ReadVarUint32(err)
+		if err != nil && err.HasError() {
+			return
+		}
+		var ok bool
+		sz, ok = checkedTypeDefSize(sz, extra, uint64(MaxInt))
+		if !ok {
+			err.SetError(DeserializationError("TypeDef metadata size exceeds supported int range"))
+			return
+		}
 	}
 	buffer.Skip(sz, err)
+}
+
+func checkedTypeDefSize(size int, extra uint32, maxInt uint64) (int, bool) {
+	if uint64(size) > maxInt || uint64(extra) > maxInt-uint64(size) {
+		return 0, false
+	}
+	return size + int(extra), true
 }
 
 const BIG_NAME_THRESHOLD = 0b111111 // 6 bits for size when using 2 bits for encoding
@@ -539,14 +555,6 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 	}
 
 	return fieldDefs, nil
-}
-
-func getFieldTypeSerializer(fory *Fory, spec *TypeSpec) (Serializer, error) {
-	typeInfo, err := spec.getTypeInfo(fory)
-	if err != nil {
-		return nil, err
-	}
-	return typeInfo.Serializer, nil
 }
 
 func getFieldTypeSerializerWithResolver(resolver *TypeResolver, spec *TypeSpec) (Serializer, error) {
@@ -1052,7 +1060,13 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		registeredByName = (metaHeaderByte & RegisterByNameFlag) != 0
 		fieldCount = int(metaHeaderByte & SmallNumFieldsThreshold)
 		if fieldCount == SmallNumFieldsThreshold {
-			fieldCount += int(metaBuffer.ReadVarUint32(&metaErr))
+			extra := metaBuffer.ReadVarUint32(&metaErr)
+			if !metaErr.HasError() {
+				if uint64(extra) > uint64(MaxInt-fieldCount) {
+					return nil, fmt.Errorf("type metadata field count exceeds supported int range")
+				}
+				fieldCount += int(extra)
+			}
 		}
 		if metaErr.HasError() {
 			return nil, metaErr.TakeError()

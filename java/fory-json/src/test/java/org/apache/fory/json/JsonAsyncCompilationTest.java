@@ -60,6 +60,7 @@ import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonSubTypes;
+import org.apache.fory.json.annotation.JsonValidator;
 import org.apache.fory.json.codec.ClosedSubtypeCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
@@ -181,6 +182,31 @@ public class JsonAsyncCompilationTest {
     assertNotSame(info.utf16Reader(), owner);
     assertNotSame(info.utf8Reader(), owner);
     assertEquals(json.fromJson("{\"name\":\"again\",\"id\":5}", AsyncCreator.class).id, 5);
+  }
+
+  @Test
+  public void validatorsSurviveReplacement() throws Exception {
+    ControlledJson controlled = controlledJson();
+    ForyJson json = controlled.json;
+    AsyncValidated initial = json.fromJson("{\"id\":1}", AsyncValidated.class);
+    assertEquals(initial.validations, 1);
+
+    JsonTypeResolver resolver = currentTypeResolver(json);
+    ObjectCodec<AsyncValidated> owner = resolver.getObjectCodec(AsyncValidated.class);
+    JsonTypeInfo info = resolver.getTypeInfo(AsyncValidated.class, AsyncValidated.class);
+    assertSame(info.latin1Reader(), owner);
+    controlled.executor.runAll();
+    assertNotSame(info.latin1Reader(), owner);
+    assertNotSame(info.utf16Reader(), owner);
+    assertNotSame(info.utf8Reader(), owner);
+
+    AsyncValidated latin1 = json.fromJson("{\"id\":2}", AsyncValidated.class);
+    AsyncValidated utf16 = json.fromJson("{\"name\":\"你好\",\"id\":3}", AsyncValidated.class);
+    AsyncValidated utf8 =
+        json.fromJson("{\"id\":4}".getBytes(StandardCharsets.UTF_8), AsyncValidated.class);
+    assertEquals(latin1.validations, 1);
+    assertEquals(utf16.validations, 1);
+    assertEquals(utf8.validations, 1);
   }
 
   @Test
@@ -527,7 +553,7 @@ public class JsonAsyncCompilationTest {
     CountDownLatch releaseRoot = new CountDownLatch(1);
     CodecRegistry codecs = new CodecRegistry();
     codecs.register(BlockingValue.class, new BlockingCodec(rootEntered, releaseRoot));
-    ControlledJson controlled = controlledJson(codecs);
+    ControlledJson controlled = controlledJson(codecs, 2);
     AtomicReference<Throwable> firstFailure = new AtomicReference<>();
     Thread first =
         new Thread(
@@ -1273,6 +1299,11 @@ public class JsonAsyncCompilationTest {
   }
 
   private static ControlledJson controlledJson(CodecRegistry codecs) throws Exception {
+    return controlledJson(codecs, 1);
+  }
+
+  private static ControlledJson controlledJson(CodecRegistry codecs, int concurrencyLevel)
+      throws Exception {
     JsonConfig config =
         new JsonConfig(
             false,
@@ -1283,7 +1314,8 @@ public class JsonAsyncCompilationTest {
             JsonAsyncCompilationTest.class.getClassLoader(),
             ForyJson.DEFAULT_MAX_DEPTH,
             ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES,
-            1,
+            ForyJson.DEFAULT_MAX_GRAPH_MEMORY_BYTES,
+            concurrencyLevel,
             2 * 1024 * 1024,
             codecs,
             Collections.<Class<?>, Class<?>>emptyMap(),
@@ -1570,6 +1602,20 @@ public class JsonAsyncCompilationTest {
     public AsyncCreator(int id, String name) {
       this.id = id;
       this.name = name;
+    }
+  }
+
+  public static final class AsyncValidated {
+    public int id;
+    public String name;
+    public transient int validations;
+
+    @JsonValidator
+    public void validate() {
+      if (id <= 0) {
+        throw new IllegalArgumentException("invalid id");
+      }
+      validations++;
     }
   }
 

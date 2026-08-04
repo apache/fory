@@ -19,6 +19,7 @@
 
 package org.apache.fory.json.codec;
 
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -46,7 +47,10 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 
 /**
  * Codec family for declared Java map types and JSON object member-name conversion.
@@ -64,6 +68,15 @@ import org.apache.fory.reflect.TypeRef;
  */
 public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T> {
   private static final Class<?> UNTYPED_MAP = LinkedHashMap.class;
+  private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+  private static final int ENTRY_BYTES = 2 * REFERENCE_BYTES;
+  // Reserve before each batch's final entry read. This leaves at most 1023 key/value slot pairs
+  // pending while avoiding a graph-budget call for every entry.
+  private static final int ENTRY_BATCH_SIZE = 1024;
+  private static final int ENTRY_BATCH_MASK = ENTRY_BATCH_SIZE - 1;
+  private static final int ENTRY_BATCH_BYTES = ENTRY_BATCH_SIZE * ENTRY_BYTES;
+  private static final int JSON_OBJECT_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(JsonObject.class);
   private static final MapKeyCodec STRING_KEY_CODEC =
       new MapKeyCodec() {
         @Override
@@ -188,17 +201,27 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
 
   static Map<Object, Object> readUntyped(Latin1JsonReader reader) {
     JsonTypeInfo valueInfo = reader.typeResolver().getTypeInfo(Object.class, Object.class);
+    reader.reserveGraphMemory(JSON_OBJECT_OWNER_BYTES);
     Map<Object, Object> map = (Map<Object, Object>) (Map<?, ?>) new JsonObject();
     Latin1ReaderCodec<Object> codec = valueInfo.latin1Reader();
     reader.enterDepth();
     reader.expectNextToken('{');
+    int size = 0;
     if (!reader.consumeNextToken('}')) {
       do {
+        if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+          reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+        }
         Object key = reader.readFieldName();
         reader.expectNextToken(':');
         map.put(key, codec.readLatin1(reader));
+        size++;
       } while (reader.consumeNextToken(','));
       reader.expectNextToken('}');
+    }
+    int tailSize = size & ENTRY_BATCH_MASK;
+    if (tailSize != 0) {
+      reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
     }
     reader.exitDepth();
     return map;
@@ -206,17 +229,27 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
 
   static Map<Object, Object> readUntyped(Utf16JsonReader reader) {
     JsonTypeInfo valueInfo = reader.typeResolver().getTypeInfo(Object.class, Object.class);
+    reader.reserveGraphMemory(JSON_OBJECT_OWNER_BYTES);
     Map<Object, Object> map = (Map<Object, Object>) (Map<?, ?>) new JsonObject();
     Utf16ReaderCodec<Object> codec = valueInfo.utf16Reader();
     reader.enterDepth();
     reader.expectNextToken('{');
+    int size = 0;
     if (!reader.consumeNextToken('}')) {
       do {
+        if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+          reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+        }
         Object key = reader.readFieldName();
         reader.expectNextToken(':');
         map.put(key, codec.readUtf16(reader));
+        size++;
       } while (reader.consumeNextToken(','));
       reader.expectNextToken('}');
+    }
+    int tailSize = size & ENTRY_BATCH_MASK;
+    if (tailSize != 0) {
+      reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
     }
     reader.exitDepth();
     return map;
@@ -224,28 +257,38 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
 
   static Map<Object, Object> readUntyped(Utf8JsonReader reader) {
     JsonTypeInfo valueInfo = reader.typeResolver().getTypeInfo(Object.class, Object.class);
+    reader.reserveGraphMemory(JSON_OBJECT_OWNER_BYTES);
     Map<Object, Object> map = (Map<Object, Object>) (Map<?, ?>) new JsonObject();
     Utf8ReaderCodec<Object> codec = valueInfo.utf8Reader();
     reader.enterDepth();
     reader.expectNextToken('{');
+    int size = 0;
     if (!reader.consumeNextToken('}')) {
       do {
+        if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+          reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+        }
         Object key = reader.readFieldName();
         reader.expectNextToken(':');
         map.put(key, codec.readUtf8(reader));
+        size++;
       } while (reader.consumeNextToken(','));
       reader.expectNextToken('}');
+    }
+    int tailSize = size & ENTRY_BATCH_MASK;
+    if (tailSize != 0) {
+      reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
     }
     reader.exitDepth();
     return map;
   }
 
-  final Map<Object, Object> newMap() {
-    return factory.newMap();
+  final Map<Object, Object> newMap(JsonReader reader) {
+    return factory.newMap(reader);
   }
 
-  final Map<?, ?> finishMap(Map<Object, Object> map) {
-    return factory.finish(map);
+  final Map<?, ?> finishMap(JsonReader reader, Map<Object, Object> map) {
+    return factory.finish(reader, map);
   }
 
   private static void writeKey(JsonWriter writer, Object key, MapKeyCodec keyCodec) {
@@ -290,43 +333,113 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
       return guavaFactory;
     }
     if (rawType == JsonObject.class) {
-      return () -> (Map<Object, Object>) (Map<?, ?>) new JsonObject();
+      return new MapFactory(JsonObject.class) {
+        @Override
+        public Map<Object, Object> newMap(JsonReader reader) {
+          reader.reserveGraphMemory(ownerBytes());
+          return (Map<Object, Object>) (Map<?, ?>) new JsonObject();
+        }
+      };
     }
     if (rawType == EnumMap.class) {
       if (!keyRawType.isEnum()) {
         throw new ForyJsonException("EnumMap requires an enum key type");
       }
-      return () -> new EnumMap(keyRawType);
+      int enumCount = keyRawType.getEnumConstants().length;
+      int ownerBytes =
+          Math.addExact(
+              GraphMemoryEstimates.shallowObjectBytes(EnumMap.class),
+              Math.addExact(
+                  GraphMemoryEstimates.objectArrayBytes(),
+                  Math.multiplyExact(enumCount, REFERENCE_BYTES)));
+      return new MapFactory(ownerBytes) {
+        @Override
+        public Map<Object, Object> newMap(JsonReader reader) {
+          reader.reserveGraphMemory(ownerBytes());
+          return new EnumMap(keyRawType);
+        }
+      };
     }
     if (rawType == AbstractMap.class) {
-      return () -> new LinkedHashMap<>(0);
+      return new MapFactory(LinkedHashMap.class) {
+        @Override
+        public Map<Object, Object> newMap(JsonReader reader) {
+          reader.reserveGraphMemory(ownerBytes());
+          return new LinkedHashMap<>(0);
+        }
+      };
     }
     if (rawType == UNTYPED_MAP || rawType.isInterface()) {
       if (ConcurrentMap.class.isAssignableFrom(rawType)) {
         if (NavigableMap.class.isAssignableFrom(rawType)
             || SortedMap.class.isAssignableFrom(rawType)) {
-          return ConcurrentSkipListMap::new;
+          return new MapFactory(ConcurrentSkipListMap.class) {
+            @Override
+            public Map<Object, Object> newMap(JsonReader reader) {
+              reader.reserveGraphMemory(ownerBytes());
+              return new ConcurrentSkipListMap<>();
+            }
+          };
         }
-        return ConcurrentHashMap::new;
+        return new MapFactory(ConcurrentHashMap.class) {
+          @Override
+          public Map<Object, Object> newMap(JsonReader reader) {
+            reader.reserveGraphMemory(ownerBytes());
+            return new ConcurrentHashMap<>();
+          }
+        };
       }
       if (NavigableMap.class.isAssignableFrom(rawType)
           || SortedMap.class.isAssignableFrom(rawType)) {
-        return TreeMap::new;
+        return new MapFactory(TreeMap.class) {
+          @Override
+          public Map<Object, Object> newMap(JsonReader reader) {
+            reader.reserveGraphMemory(ownerBytes());
+            return new TreeMap<>();
+          }
+        };
       }
-      return () -> new LinkedHashMap<>(0);
+      return new MapFactory(LinkedHashMap.class) {
+        @Override
+        public Map<Object, Object> newMap(JsonReader reader) {
+          reader.reserveGraphMemory(ownerBytes());
+          return new LinkedHashMap<>(0);
+        }
+      };
     }
-    return () -> {
-      try {
-        return (Map<Object, Object>) rawType.newInstance();
-      } catch (ReflectiveOperationException e) {
-        throw new ForyJsonException("Cannot create map " + rawType, e);
+    if (GraalvmSupport.isGraalRuntime()) {
+      MethodHandle constructor = ReflectionUtils.getCtrHandle(rawType, new Class<?>[0]);
+      return new MapFactory(rawType) {
+        @Override
+        public Map<Object, Object> newMap(JsonReader reader) {
+          reader.reserveGraphMemory(ownerBytes());
+          try {
+            return (Map<Object, Object>) constructor.invoke();
+          } catch (Throwable e) {
+            throw new ForyJsonException("Cannot create map " + rawType, e);
+          }
+        }
+      };
+    }
+    return new MapFactory(rawType) {
+      @Override
+      public Map<Object, Object> newMap(JsonReader reader) {
+        reader.reserveGraphMemory(ownerBytes());
+        try {
+          return (Map<Object, Object>) rawType.newInstance();
+        } catch (ReflectiveOperationException e) {
+          throw new ForyJsonException("Cannot create map " + rawType, e);
+        }
       }
     };
   }
 
   private static MapFactory unsupportedMapFactory(Class<?> rawType) {
-    return () -> {
-      throw new ForyJsonException("Unsupported JSON map type " + rawType);
+    return new MapFactory(0) {
+      @Override
+      public Map<Object, Object> newMap(JsonReader reader) {
+        throw new ForyJsonException("Unsupported JSON map type " + rawType);
+      }
     };
   }
 
@@ -349,10 +462,29 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         || type == Byte.class;
   }
 
-  interface MapFactory {
-    Map<Object, Object> newMap();
+  static void reserveEntry(JsonReader reader) {
+    // ObjectCodec's any-map path owns its stronger per-entry reservation timing.
+    reader.reserveGraphMemory(ENTRY_BYTES);
+  }
 
-    default Map<?, ?> finish(Map<Object, Object> map) {
+  abstract static class MapFactory {
+    private final int ownerBytes;
+
+    MapFactory(Class<?> ownerType) {
+      this(GraphMemoryEstimates.shallowObjectBytes(ownerType));
+    }
+
+    MapFactory(int ownerBytes) {
+      this.ownerBytes = ownerBytes;
+    }
+
+    abstract Map<Object, Object> newMap(JsonReader reader);
+
+    final int ownerBytes() {
+      return ownerBytes;
+    }
+
+    Map<?, ?> finish(JsonReader reader, Map<Object, Object> map) {
       return map;
     }
   }
@@ -407,19 +539,28 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         return null;
       }
       reader.enterDepth();
-      Map<Object, Object> map = newMap();
+      Map<Object, Object> map = newMap(reader);
       Latin1ReaderCodec<Object> codec = valueTypeInfo.latin1Reader();
       reader.expectNextToken('{');
+      int size = 0;
       if (!reader.consumeNextToken('}')) {
         do {
+          if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+            reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+          }
           Object key = keyCodec.readName(reader);
           reader.expectNextToken(':');
           map.put(key, codec.readLatin1(reader));
+          size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
+      int tailSize = size & ENTRY_BATCH_MASK;
+      if (tailSize != 0) {
+        reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
+      }
       reader.exitDepth();
-      return finishMap(map);
+      return finishMap(reader, map);
     }
 
     @Override
@@ -428,19 +569,28 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         return null;
       }
       reader.enterDepth();
-      Map<Object, Object> map = newMap();
+      Map<Object, Object> map = newMap(reader);
       Utf16ReaderCodec<Object> codec = valueTypeInfo.utf16Reader();
       reader.expectNextToken('{');
+      int size = 0;
       if (!reader.consumeNextToken('}')) {
         do {
+          if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+            reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+          }
           Object key = keyCodec.readName(reader);
           reader.expectNextToken(':');
           map.put(key, codec.readUtf16(reader));
+          size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
+      int tailSize = size & ENTRY_BATCH_MASK;
+      if (tailSize != 0) {
+        reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
+      }
       reader.exitDepth();
-      return finishMap(map);
+      return finishMap(reader, map);
     }
 
     @Override
@@ -449,19 +599,28 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         return null;
       }
       reader.enterDepth();
-      Map<Object, Object> map = newMap();
+      Map<Object, Object> map = newMap(reader);
       Utf8ReaderCodec<Object> codec = valueTypeInfo.utf8Reader();
       reader.expectNextToken('{');
+      int size = 0;
       if (!reader.consumeNextToken('}')) {
         do {
+          if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+            reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+          }
           Object key = keyCodec.readName(reader);
           reader.expectNextToken(':');
           map.put(key, codec.readUtf8(reader));
+          size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
+      int tailSize = size & ENTRY_BATCH_MASK;
+      if (tailSize != 0) {
+        reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
+      }
       reader.exitDepth();
-      return finishMap(map);
+      return finishMap(reader, map);
     }
   }
 
@@ -476,18 +635,27 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         return null;
       }
       reader.enterDepth();
-      Map<Object, Object> map = newMap();
+      Map<Object, Object> map = newMap(reader);
       reader.expectNextToken('{');
+      int size = 0;
       if (!reader.consumeNextToken('}')) {
         do {
+          if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+            reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+          }
           String key = reader.readFieldName();
           reader.expectNextToken(':');
           map.put(key, readLatin1Value(reader));
+          size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
+      int tailSize = size & ENTRY_BATCH_MASK;
+      if (tailSize != 0) {
+        reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
+      }
       reader.exitDepth();
-      return finishMap(map);
+      return finishMap(reader, map);
     }
 
     @Override
@@ -496,18 +664,27 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         return null;
       }
       reader.enterDepth();
-      Map<Object, Object> map = newMap();
+      Map<Object, Object> map = newMap(reader);
       reader.expectNextToken('{');
+      int size = 0;
       if (!reader.consumeNextToken('}')) {
         do {
+          if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+            reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+          }
           String key = reader.readFieldName();
           reader.expectNextToken(':');
           map.put(key, readUtf16Value(reader));
+          size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
+      int tailSize = size & ENTRY_BATCH_MASK;
+      if (tailSize != 0) {
+        reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
+      }
       reader.exitDepth();
-      return finishMap(map);
+      return finishMap(reader, map);
     }
 
     @Override
@@ -516,18 +693,27 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         return null;
       }
       reader.enterDepth();
-      Map<Object, Object> map = newMap();
+      Map<Object, Object> map = newMap(reader);
       reader.expectNextToken('{');
+      int size = 0;
       if (!reader.consumeNextToken('}')) {
         do {
+          if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+            reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+          }
           String key = reader.readFieldName();
           reader.expectNextToken(':');
           map.put(key, readUtf8Value(reader));
+          size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
+      int tailSize = size & ENTRY_BATCH_MASK;
+      if (tailSize != 0) {
+        reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
+      }
       reader.exitDepth();
-      return finishMap(map);
+      return finishMap(reader, map);
     }
 
     // Each scalar specialization owns the complete map value, including JSON null.
@@ -946,18 +1132,27 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         return null;
       }
       reader.enterDepth();
-      Map<Object, Object> map = newMap();
+      Map<Object, Object> map = newMap(reader);
       reader.expectNextToken('{');
+      int size = 0;
       if (!reader.consumeNextToken('}')) {
         do {
+          if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+            reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+          }
           Object key = keyCodec.readName(reader);
           reader.expectNextToken(':');
           map.put(key, reader.readNullableString());
+          size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
+      int tailSize = size & ENTRY_BATCH_MASK;
+      if (tailSize != 0) {
+        reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
+      }
       reader.exitDepth();
-      return finishMap(map);
+      return finishMap(reader, map);
     }
 
     @Override
@@ -966,18 +1161,27 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         return null;
       }
       reader.enterDepth();
-      Map<Object, Object> map = newMap();
+      Map<Object, Object> map = newMap(reader);
       reader.expectNextToken('{');
+      int size = 0;
       if (!reader.consumeNextToken('}')) {
         do {
+          if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+            reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+          }
           Object key = keyCodec.readName(reader);
           reader.expectNextToken(':');
           map.put(key, reader.readNullableString());
+          size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
+      int tailSize = size & ENTRY_BATCH_MASK;
+      if (tailSize != 0) {
+        reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
+      }
       reader.exitDepth();
-      return finishMap(map);
+      return finishMap(reader, map);
     }
 
     @Override
@@ -986,18 +1190,27 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         return null;
       }
       reader.enterDepth();
-      Map<Object, Object> map = newMap();
+      Map<Object, Object> map = newMap(reader);
       reader.expectNextToken('{');
+      int size = 0;
       if (!reader.consumeNextToken('}')) {
         do {
+          if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
+            reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
+          }
           Object key = keyCodec.readName(reader);
           reader.expectNextToken(':');
           map.put(key, reader.readNullableString());
+          size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
+      int tailSize = size & ENTRY_BATCH_MASK;
+      if (tailSize != 0) {
+        reader.reserveGraphMemory(tailSize * ENTRY_BYTES);
+      }
       reader.exitDepth();
-      return finishMap(map);
+      return finishMap(reader, map);
     }
   }
 

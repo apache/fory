@@ -30,18 +30,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.json.codegen.JsonCodegenKey;
 import org.apache.fory.json.resolver.CodecRegistry;
 
 /**
  * Build configuration used to create all pooled states of one {@link ForyJson} instance.
  *
- * <p>Scalar settings are fixed at construction. The codec registry is builder-owned mutable input
- * and is copied immediately by the runtime's shared registry; the JSON runtime never mutates it.
- * The type checker uses identity semantics because checker instances may carry different user
- * policy despite sharing a class. {@link #getCodegenHash()} identifies only settings that can
- * change generated source; runtime-only settings such as depth and asynchronous scheduling do not
- * fragment generated class names. Concurrency, per-reader field-name cache, and retained
- * writer-buffer limits are also runtime-only and do not fragment generated class names.
+ * <p>Scalar settings and the codec registry are snapshotted at construction; the JSON runtime never
+ * observes later builder mutation. {@link #getCodegenHash()} identifies only settings that can
+ * change generated source; runtime-only settings such as depth, graph memory, and asynchronous
+ * scheduling do not fragment generated class names. Concurrency, per-reader field-name cache, and
+ * retained writer-buffer limits are also runtime-only and do not fragment generated class names.
  */
 public final class JsonConfig {
   private static final int MAX_CACHED_FIELD_NAMES = 1 << 29;
@@ -54,14 +53,14 @@ public final class JsonConfig {
   private final ClassLoader classLoader;
   private final int maxDepth;
   private final int maxCachedFieldNames;
+  private final long maxGraphMemoryBytes;
   private final int concurrencyLevel;
   private final int bufferSizeLimitBytes;
   private final CodecRegistry codecRegistry;
   private final Map<Class<?>, Class<?>> mixins;
   private final JsonTypeChecker typeChecker;
   private final JsonTypeCheckContext typeCheckContext;
-  private final String codecRegistryKey;
-  private final CodegenKey codegenKey;
+  private final JsonCodegenKey codegenKey;
   private transient int codegenHash;
 
   JsonConfig(
@@ -73,6 +72,7 @@ public final class JsonConfig {
       ClassLoader classLoader,
       int maxDepth,
       int maxCachedFieldNames,
+      long maxGraphMemoryBytes,
       int concurrencyLevel,
       int bufferSizeLimitBytes,
       CodecRegistry codecRegistry,
@@ -88,15 +88,17 @@ public final class JsonConfig {
     this.maxDepth = maxDepth;
     validateMaxCachedFieldNames(maxCachedFieldNames);
     this.maxCachedFieldNames = maxCachedFieldNames;
+    validateMaxGraphMemoryBytes(maxGraphMemoryBytes);
+    this.maxGraphMemoryBytes = maxGraphMemoryBytes;
     this.concurrencyLevel = concurrencyLevel;
     this.bufferSizeLimitBytes = bufferSizeLimitBytes;
-    this.codecRegistry = codecRegistry;
+    this.codecRegistry = codecRegistry.copy();
     this.mixins = immutableMixins(mixins);
     this.typeChecker = typeChecker;
     typeCheckContext = new JsonTypeCheckContext();
-    codecRegistryKey = codecRegistry.codegenKey();
+    String codecRegistryKey = this.codecRegistry.codegenKey();
     codegenKey =
-        new CodegenKey(
+        new JsonCodegenKey(
             writeNullFields,
             propertyDiscoveryEnabled,
             propertyNamingStrategy,
@@ -138,10 +140,21 @@ public final class JsonConfig {
     return maxCachedFieldNames;
   }
 
+  /** Returns the approximate root-operation graph-memory gate in bytes. */
+  public long maxGraphMemoryBytes() {
+    return maxGraphMemoryBytes;
+  }
+
   static void validateMaxCachedFieldNames(int maxCachedFieldNames) {
     if (maxCachedFieldNames < 0 || maxCachedFieldNames > MAX_CACHED_FIELD_NAMES) {
       throw new IllegalArgumentException(
           "maxCachedFieldNames must be between 0 and " + MAX_CACHED_FIELD_NAMES);
+    }
+  }
+
+  static void validateMaxGraphMemoryBytes(long maxGraphMemoryBytes) {
+    if (maxGraphMemoryBytes <= 0) {
+      throw new IllegalArgumentException("maxGraphMemoryBytes must be positive");
     }
   }
 
@@ -169,48 +182,6 @@ public final class JsonConfig {
 
   public JsonTypeCheckContext typeCheckContext() {
     return typeCheckContext;
-  }
-
-  @Override
-  public boolean equals(Object other) {
-    if (this == other) {
-      return true;
-    }
-    if (other == null || getClass() != other.getClass()) {
-      return false;
-    }
-    JsonConfig that = (JsonConfig) other;
-    return writeNullFields == that.writeNullFields
-        && codegenEnabled == that.codegenEnabled
-        && asyncCompilationEnabled == that.asyncCompilationEnabled
-        && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
-        && propertyNamingStrategy == that.propertyNamingStrategy
-        && classLoader == that.classLoader
-        && maxDepth == that.maxDepth
-        && maxCachedFieldNames == that.maxCachedFieldNames
-        && concurrencyLevel == that.concurrencyLevel
-        && bufferSizeLimitBytes == that.bufferSizeLimitBytes
-        && typeChecker == that.typeChecker
-        && Objects.equals(codecRegistryKey, that.codecRegistryKey)
-        && mixins.equals(that.mixins);
-  }
-
-  @Override
-  public int hashCode() {
-    int result = Boolean.hashCode(writeNullFields);
-    result = 31 * result + Boolean.hashCode(codegenEnabled);
-    result = 31 * result + Boolean.hashCode(asyncCompilationEnabled);
-    result = 31 * result + Boolean.hashCode(propertyDiscoveryEnabled);
-    result = 31 * result + propertyNamingStrategy.hashCode();
-    result = 31 * result + System.identityHashCode(classLoader);
-    result = 31 * result + maxDepth;
-    result = 31 * result + maxCachedFieldNames;
-    result = 31 * result + concurrencyLevel;
-    result = 31 * result + bufferSizeLimitBytes;
-    result = 31 * result + System.identityHashCode(typeChecker);
-    result = 31 * result + codecRegistryKey.hashCode();
-    result = 31 * result + mixins.hashCode();
-    return result;
   }
 
   private static Map<Class<?>, Class<?>> immutableMixins(Map<Class<?>, Class<?>> registrations) {
@@ -244,7 +215,7 @@ public final class JsonConfig {
   // Equal generated source inputs share one map entry, following core generated-code naming model.
   // This process-wide map retains only immutable configuration text and integers, never user
   // classes, codec instances, class loaders, or generated classes.
-  private static final ConcurrentMap<CodegenKey, Integer> CODEGEN_ID_MAP =
+  private static final ConcurrentMap<JsonCodegenKey, Integer> CODEGEN_ID_MAP =
       new ConcurrentHashMap<>();
 
   public int getCodegenHash() {
@@ -254,48 +225,9 @@ public final class JsonConfig {
     return codegenHash;
   }
 
-  private static final class CodegenKey {
-    private final boolean writeNullFields;
-    private final boolean propertyDiscoveryEnabled;
-    private final PropertyNamingStrategy propertyNamingStrategy;
-    private final String codecRegistryKey;
-    private final String mixinKey;
-
-    private CodegenKey(
-        boolean writeNullFields,
-        boolean propertyDiscoveryEnabled,
-        PropertyNamingStrategy propertyNamingStrategy,
-        String codecRegistryKey,
-        String mixinKey) {
-      this.writeNullFields = writeNullFields;
-      this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
-      this.propertyNamingStrategy = propertyNamingStrategy;
-      this.codecRegistryKey = codecRegistryKey;
-      this.mixinKey = mixinKey;
-    }
-
-    @Override
-    public boolean equals(Object other) {
-      if (this == other) {
-        return true;
-      }
-      if (other == null || getClass() != other.getClass()) {
-        return false;
-      }
-      CodegenKey that = (CodegenKey) other;
-      return writeNullFields == that.writeNullFields
-          && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
-          && propertyNamingStrategy == that.propertyNamingStrategy
-          && Objects.equals(codecRegistryKey, that.codecRegistryKey)
-          && Objects.equals(mixinKey, that.mixinKey);
-    }
-
-    @Override
-    public int hashCode() {
-      int result =
-          Objects.hash(
-              writeNullFields, propertyDiscoveryEnabled, propertyNamingStrategy, codecRegistryKey);
-      return 31 * result + mixinKey.hashCode();
-    }
+  /** Returns the immutable generated-source identity for this configuration. */
+  @Internal
+  public JsonCodegenKey codegenKey() {
+    return codegenKey;
   }
 }

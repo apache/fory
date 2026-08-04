@@ -53,9 +53,11 @@ pub struct MetaString {
     pub special_char2: char,
 }
 
+// Encoding is part of the wire key because the same bytes can decode to different names.
+// Derived and decoder-specific fields are not part of the encoded identity.
 impl PartialEq for MetaString {
     fn eq(&self, other: &Self) -> bool {
-        self.bytes == other.bytes
+        self.encoding == other.encoding && self.bytes == other.bytes
     }
 }
 
@@ -63,6 +65,7 @@ impl Eq for MetaString {}
 
 impl std::hash::Hash for MetaString {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.encoding.hash(state);
         self.bytes.hash(state);
     }
 }
@@ -604,20 +607,13 @@ impl MetaStringDecoder {
     }
     fn decode_rep_all_to_lower_special(&self, data: &[u8]) -> Result<String, Error> {
         let decoded_str = self.decode_lower_special(data)?;
-        let mut result = String::new();
-        let mut skip = false;
-        for (i, char) in decoded_str.chars().enumerate() {
-            if skip {
-                skip = false;
-                continue;
-            }
-            // Encounter a '|', capitalize the next character
-            // and skip the following character.
+        let mut result = String::with_capacity(decoded_str.len());
+        let mut chars = decoded_str.chars();
+        while let Some(char) = chars.next() {
             if char == '|' {
-                if let Some(next_char) = decoded_str.chars().nth(i + 1) {
+                if let Some(next_char) = chars.next() {
                     result.push(next_char.to_ascii_uppercase());
                 }
-                skip = true;
             } else {
                 result.push(char);
             }

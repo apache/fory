@@ -2454,7 +2454,7 @@ public abstract class TypeResolver {
     int userIdGenerator = 0;
     final ArrayList<SerializerFactory> serializerFactories = new ArrayList<>();
     final LongMap<TypeInfo> typeInfoByTypeDefId = new LongMap<>(2, 0.5f);
-    // cache absTypeInfo, support customized serializer for abstract or interface.
+    // cache absTypeInfo, support custom serializer for abstract or interface.
     // IdentityHashMap is more memory efficient than fory IdentityMap, and this is not in hotpath
     // for query
     final IdentityHashMap<Class<?>, TypeInfo> abstractTypeInfo = new IdentityHashMap<>();

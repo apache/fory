@@ -123,6 +123,8 @@ impl<S: Serializer> Serializer for OptionSerializer<S> {
 
     const REQUIRES_SCOPED_ACCESS: bool = S::REQUIRES_SCOPED_ACCESS;
 
+    const READ_DATA_ALWAYS_ADVANCES: bool = S::READ_DATA_ALWAYS_ADVANCES;
+
     #[inline(always)]
     fn is_none(value: &Self::Target) -> bool {
         value.is_none()
@@ -233,6 +235,8 @@ where
     const IS_WRAPPER: bool = true;
 
     const REQUIRES_SCOPED_ACCESS: bool = OptionSerializer::<T>::REQUIRES_SCOPED_ACCESS;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = T::READ_DATA_ALWAYS_ADVANCES;
 
     #[inline(always)]
     fn is_none(value: &Self) -> bool {

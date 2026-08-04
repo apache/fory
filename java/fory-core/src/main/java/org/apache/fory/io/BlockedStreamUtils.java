@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.channels.ReadableByteChannel;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -32,7 +31,6 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.util.ExceptionUtils;
-import org.apache.fory.util.Preconditions;
 
 /**
  * A serialization helper as the fallback of streaming serialization/deserialization in {@link
@@ -46,6 +44,8 @@ import org.apache.fory.util.Preconditions;
  * actual deserialization, which don't have any streaming behaviour under the hood.
  */
 public class BlockedStreamUtils {
+  private static final int MAX_CONSECUTIVE_ZERO_READS = 100;
+
   public static void serialize(Fory fory, OutputStream outputStream, Object obj) {
     serializeToStream(fory, outputStream, buf -> fory.serialize(buf, obj, null));
   }
@@ -86,14 +86,13 @@ public class BlockedStreamUtils {
       Fory fory, ReadableByteChannel channel, Function<MemoryBuffer, Object> action) {
     try {
       MemoryBuffer buf = fory.getBuffer();
+      // resetBuffer may shrink the reusable buffer below the fixed frame header size.
+      buf.ensure(4);
       buf.readerIndex(0);
-      ByteBuffer byteBuffer = ByteBuffer.allocate(4);
-      byteBuffer.order(ByteOrder.LITTLE_ENDIAN);
-      readByteBuffer(channel, byteBuffer, 4);
-      int size = byteBuffer.getInt();
-      buf.ensure(size);
-      readByteBuffer(channel, buf.sliceAsByteBuffer(), size);
-      return action.apply(buf);
+      readByteBuffer(channel, buf.sliceAsByteBuffer(0, 4), 4);
+      int size = readFrameSize(buf);
+      readFrameBody(channel, buf, size);
+      return action.apply(buf.slice(0, size));
     } catch (Throwable t) {
       throw ExceptionUtils.handleReadFailed(fory, t);
     } finally {
@@ -103,6 +102,7 @@ public class BlockedStreamUtils {
 
   private static void readByteBuffer(ReadableByteChannel channel, ByteBuffer buffer, int size) {
     int read = 0;
+    int zeroReads = 0;
     buffer.limit(buffer.position() + size);
     try {
       while (read < size) {
@@ -111,6 +111,16 @@ public class BlockedStreamUtils {
           throw new DeserializationException(
               String.format("Channel only have %s, but need %s", read, size));
         }
+        if (len == 0) {
+          // Zero is a legal transient channel result. Keep the current frame position instead of
+          // abandoning a partial header/body, but bound retries so a broken or non-ready channel
+          // cannot spin forever.
+          if (++zeroReads >= MAX_CONSECUTIVE_ZERO_READS) {
+            throw new DeserializationException("Channel made no progress while reading a frame");
+          }
+          continue;
+        }
+        zeroReads = 0;
         read += len;
       }
     } catch (IOException e) {
@@ -145,8 +155,8 @@ public class BlockedStreamUtils {
       Fory fory, InputStream inputStream, Function<MemoryBuffer, Object> function) {
     MemoryBuffer buf = fory.getBuffer();
     try {
-      readToBufferFromStream(inputStream, buf);
-      return function.apply(buf);
+      MemoryBuffer frame = readToBufferFromStream(inputStream, buf);
+      return function.apply(frame);
     } catch (Throwable t) {
       throw ExceptionUtils.handleReadFailed(fory, t);
     } finally {
@@ -154,15 +164,65 @@ public class BlockedStreamUtils {
     }
   }
 
-  private static void readToBufferFromStream(InputStream inputStream, MemoryBuffer buffer)
+  private static MemoryBuffer readToBufferFromStream(InputStream inputStream, MemoryBuffer buffer)
       throws IOException {
+    // resetBuffer may shrink the reusable buffer below the fixed frame header size.
+    buffer.ensure(4);
     buffer.readerIndex(0);
     int read = readBytes(inputStream, buffer.getHeapMemory(), 0, 4);
-    Preconditions.checkArgument(read == 4);
-    int size = buffer.readInt32();
-    buffer.ensure(4 + size);
-    read = readBytes(inputStream, buffer.getHeapMemory(), 4, size);
-    Preconditions.checkArgument(read == size);
+    if (read != 4) {
+      throw new DeserializationException(
+          String.format("Input stream only has %s frame header bytes, but needs 4", read));
+    }
+    int size = readFrameSize(buffer);
+    readFrameBody(inputStream, buffer, size);
+    return buffer.slice(0, size);
+  }
+
+  private static int readFrameSize(MemoryBuffer buffer) {
+    int size = buffer.getInt32(0);
+    if (size < 0) {
+      throw new DeserializationException("Frame size must be non-negative: " + size);
+    }
+    return size;
+  }
+
+  private static void readFrameBody(InputStream inputStream, MemoryBuffer buffer, int frameSize)
+      throws IOException {
+    int read = 0;
+    while (read < frameSize) {
+      if (read == buffer.size()) {
+        growFrameBuffer(buffer, frameSize);
+      }
+      int chunkSize = Math.min(frameSize - read, buffer.size() - read);
+      int count = readBytes(inputStream, buffer.getHeapMemory(), read, chunkSize);
+      read += Math.max(count, 0);
+      if (count != chunkSize) {
+        throw new DeserializationException(
+            String.format("Input stream only has %s frame bytes, but needs %s", read, frameSize));
+      }
+    }
+  }
+
+  private static void readFrameBody(
+      ReadableByteChannel channel, MemoryBuffer buffer, int frameSize) {
+    int read = 0;
+    while (read < frameSize) {
+      if (read == buffer.size()) {
+        growFrameBuffer(buffer, frameSize);
+      }
+      int chunkSize = Math.min(frameSize - read, buffer.size() - read);
+      readByteBuffer(channel, buffer.sliceAsByteBuffer(read, chunkSize), chunkSize);
+      read += chunkSize;
+    }
+  }
+
+  private static void growFrameBuffer(MemoryBuffer buffer, int frameSize) {
+    int capacity = buffer.size();
+    // Grow only after the current capacity has been filled with bytes from the stream. Doubling
+    // keeps copying linear while ensuring a declared frame size cannot trigger eager allocation.
+    int newCapacity = capacity <= frameSize - capacity ? capacity << 1 : frameSize;
+    buffer.ensure(newCapacity);
   }
 
   private static int readBytes(InputStream inputStream, byte[] buffer, int offset, int size)

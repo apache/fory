@@ -19,10 +19,12 @@
 
 #include "fory/meta/meta_string.h"
 
+#include "fory/thirdparty/MurmurHash3.h"
 #include "fory/util/buffer.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 
 namespace fory {
 namespace meta {
@@ -236,6 +238,30 @@ MetaStringDecoder::decode_lower_upper_digit_special_char(uint8_t value) const {
 
 MetaStringTable::MetaStringTable() = default;
 
+int64_t compute_meta_string_hash(const std::vector<uint8_t> &bytes,
+                                 MetaEncoding encoding) {
+  static constexpr uint8_t k_empty_input = 0;
+  const uint8_t *data = bytes.empty() ? &k_empty_input : bytes.data();
+  uint64_t hash_out[2] = {0, 0};
+  MurmurHash3_x64_128(data, static_cast<int>(bytes.size()), 47, hash_out);
+
+  uint64_t hash = hash_out[0];
+  if ((hash & (uint64_t{1} << 63)) != 0) {
+    // Unsigned negation matches Java Math.abs(long) bit-for-bit, including
+    // Long.MIN_VALUE wrapping to itself without signed overflow.
+    hash = uint64_t{0} - hash;
+  }
+  if (hash == 0) {
+    hash += 256;
+  }
+  hash &= UINT64_C(0xffffffffffffff00);
+  hash |= static_cast<uint8_t>(encoding);
+
+  int64_t signed_hash;
+  std::memcpy(&signed_hash, &hash, sizeof(signed_hash));
+  return signed_hash;
+}
+
 Result<std::string, Error>
 MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
   Error error;
@@ -265,14 +291,13 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
   if (len > k_small_threshold) {
     // Big string layout in Java MetaStringResolver:
     //   header (len<<1 | flags) + hash_code(int64) + data[len]
-    // The original encoding is not transmitted explicitly. For cross-language
-    // purposes we treat the payload bytes as UTF8 and let callers handle any
-    // higher-level semantics.
     int64_t hash_code = buffer.read_int64(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
-    (void)hash_code; // hash_code is only used for Java-side caching.
+    FORY_TRY(encoded, to_meta_encoding(static_cast<uint8_t>(
+                          static_cast<uint64_t>(hash_code))));
+    encoding = encoded;
     if (len > 0) {
       if (FORY_PREDICT_FALSE(!buffer.ensure_readable(len, error))) {
         return Unexpected(std::move(error));
@@ -283,7 +308,10 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
         return Unexpected(std::move(error));
       }
     }
-    encoding = MetaEncoding::UTF8;
+    if (FORY_PREDICT_FALSE(compute_meta_string_hash(bytes, encoding) !=
+                           hash_code)) {
+      return Unexpected(Error::invalid_data("Malformed meta string hash"));
+    }
   } else {
     // Small string layout: data[len] with an encoding byte when len > 0.
     // Java omits the encoding byte for empty strings.

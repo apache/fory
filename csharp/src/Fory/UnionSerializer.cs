@@ -194,7 +194,14 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
     private static object? ReadTypedCaseValue(ReadContext context, Type caseType)
     {
         TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(caseType);
-        object? value = context.TypeResolver.ReadObject(typeInfo, context, RefMode.Tracking, readTypeInfo: true);
+        bool canContainValues =
+            typeInfo.UserTypeKind is UserTypeKind.Struct or UserTypeKind.Ext or UserTypeKind.TypedUnion ||
+            typeInfo.BuiltInTypeId is TypeId.List or TypeId.Set or TypeId.Map;
+        // Resolve the ref envelope before advancing depth so null and back-reference cases remain
+        // depth-free. The dynamic fallback in ReadData already enters through DynamicAny's guard.
+        object? value = canContainValues
+            ? context.TypeResolver.ReadNested(typeInfo, context, RefMode.Tracking, readTypeInfo: true)
+            : context.TypeResolver.ReadObject(typeInfo, context, RefMode.Tracking, readTypeInfo: true);
         return NormalizeCaseValue(value, caseType);
     }
 

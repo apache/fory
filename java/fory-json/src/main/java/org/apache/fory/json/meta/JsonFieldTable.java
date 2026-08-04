@@ -28,9 +28,8 @@ import org.apache.fory.json.ForyJsonException;
  * <p>The table is built at a low load factor during object metadata construction and stores both
  * the field object and its ordered read index. Any-enabled metadata may also store declared fixed
  * names that have no read sink in a separate hash table so those names are skipped rather than
- * captured as dynamic members. Concrete readers probe by the hash computed while reading the member
- * name, avoiding String materialization. Hash collisions between declared fields are rejected
- * during construction because runtime lookup deliberately performs no secondary name comparison.
+ * captured as dynamic members. Concrete readers probe by the internal {@link JsonFieldNameHash} key
+ * computed while reading the member name, avoiding String materialization.
  */
 public final class JsonFieldTable {
   @Internal public static final int UNKNOWN = -1;

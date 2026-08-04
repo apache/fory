@@ -375,6 +375,16 @@ func TestGraphBudgetSkipsDense(t *testing.T) {
 	require.Equal(t, []int32{1, 2, 3, 4}, ints)
 }
 
+func TestGraphBudgetFixedArray(t *testing.T) {
+	data, err := New(WithCompatible(false)).Serialize([1]string{"value"})
+	require.NoError(t, err)
+
+	var out [1]string
+	err = New(WithCompatible(false), WithMaxGraphMemoryBytes(1)).Deserialize(data, &out)
+	require.NoError(t, err)
+	require.Equal(t, [1]string{"value"}, out)
+}
+
 func TestGraphBudgetByteChecks(t *testing.T) {
 	buf := NewByteBuffer(nil)
 	buf.WriteByte_(XLangFlag)

@@ -54,6 +54,11 @@ import org.apache.fory.resolver.TypeResolver;
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class ExceptionSerializers {
   private static final Set<Class<?>> THROWABLE_SUPER_CLASSES = ofHashSet(Throwable.class);
+  private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+  private static final int SUPPRESSED_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(ArrayList.class);
+  private static final int SUPPRESSED_STORAGE_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Object.class);
 
   private ExceptionSerializers() {}
 
@@ -153,7 +158,7 @@ public final class ExceptionSerializers {
       String detailMessage = readContext.readStringRef();
       List<Throwable> suppressedExceptions = readSuppressedExceptions(readContext);
       skipExtraFields(readContext);
-      if (containsPendingThrowable(cause) || containsPendingThrowable(suppressedExceptions)) {
+      if (containsPendingThrowable(cause, suppressedExceptions)) {
         throw new ForyException(
             "Deserializing cyclic Throwable references for type "
                 + type.getName()
@@ -161,6 +166,12 @@ public final class ExceptionSerializers {
                 + jdkFieldAccessMessage());
       }
       readContext.reserveGraphMemory(graphMemoryBytes);
+      if (!suppressedExceptions.isEmpty()) {
+        // Throwable does not expose the storage created by addSuppressed. Charge only its portable
+        // lower-bound owner and reference slots instead of guessing a JDK or Android layout.
+        readContext.reserveGraphMemory(
+            SUPPRESSED_STORAGE_OWNER_BYTES + (long) suppressedExceptions.size() * REFERENCE_BYTES);
+      }
       T obj = newThrowableWithMessage(detailMessage);
       readContext.reference(obj);
       if (stackTrace != null) {
@@ -511,6 +522,15 @@ public final class ExceptionSerializers {
               + " must be non-negative");
     }
     buffer.checkReadableBytes(numSuppressedExceptions);
+    if (numSuppressedExceptions == 0) {
+      return Collections.emptyList();
+    }
+    if (MemoryUtils.JDK_LANG_FIELD_ACCESS) {
+      // This exact list becomes the retained Throwable owner. The no-field path uses it only as a
+      // temporary helper and charges the storage materialized by addSuppressed instead.
+      readContext.reserveGraphMemory(
+          SUPPRESSED_LIST_OWNER_BYTES + (long) numSuppressedExceptions * REFERENCE_BYTES);
+    }
     List<Throwable> suppressedExceptions = new ArrayList<>(numSuppressedExceptions);
     for (int i = 0; i < numSuppressedExceptions; i++) {
       suppressedExceptions.add((Throwable) readContext.readRef());
@@ -524,17 +544,19 @@ public final class ExceptionSerializers {
     }
   }
 
-  private static boolean containsPendingThrowable(List<Throwable> throwables) {
+  static boolean containsPendingThrowable(Throwable cause, List<Throwable> suppressedExceptions) {
+    Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+    return containsPendingThrowable(cause, seen)
+        || containsPendingThrowable(suppressedExceptions, seen);
+  }
+
+  private static boolean containsPendingThrowable(List<Throwable> throwables, Set<Throwable> seen) {
     for (Throwable throwable : throwables) {
-      if (containsPendingThrowable(throwable)) {
+      if (containsPendingThrowable(throwable, seen)) {
         return true;
       }
     }
     return false;
-  }
-
-  private static boolean containsPendingThrowable(Throwable throwable) {
-    return containsPendingThrowable(throwable, Collections.newSetFromMap(new IdentityHashMap<>()));
   }
 
   private static boolean containsPendingThrowable(Throwable throwable, Set<Throwable> seen) {
@@ -588,9 +610,7 @@ public final class ExceptionSerializers {
         Throwable throwable, List<Throwable> suppressedExceptions) {
       SUPPRESSED_ACCESSOR.putObject(
           throwable,
-          suppressedExceptions.isEmpty()
-              ? DEFAULT_SUPPRESSED_EXCEPTIONS
-              : new ArrayList<>(suppressedExceptions));
+          suppressedExceptions.isEmpty() ? DEFAULT_SUPPRESSED_EXCEPTIONS : suppressedExceptions);
     }
   }
 

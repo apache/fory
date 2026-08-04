@@ -37,7 +37,7 @@ Options:
                                Filter benchmark by serializer
   --filter <regex>             Custom criterion filter
   --no-report                  Skip Python report generation
-  --no-copy-docs               Skip copying the report into docs/benchmarks/rust
+  --no-copy-docs               Skip copying the report into docs/benchmarks/object-serialization/xlang/rust
 ```
 
 Examples:
@@ -79,7 +79,7 @@ boundary preserves the xlang `serialization_bench` binary, dependency graph,
 and measurement shape. Each comparison has `self_serialize`,
 `selected_serialize`, `self_deserialize`, and `selected_deserialize` lanes.
 The self lane uses an equivalent self-provided Rust target. The selected lane
-uses the external structural serializer, manual serializer, carrier serializer,
+uses the external structural serializer, custom serializer, carrier serializer,
 or registered external target named by the case. Setup verifies byte equality
 before measuring the pair.
 
@@ -87,8 +87,8 @@ The matrix covers:
 
 - direct roots, direct fields, skipped fields, and recursive list/map/tuple
   field selection;
-- external structural serializers, manual leaf serializers, and exact
-  whole-container manual serializers;
+- external structural serializers, custom leaf serializers, and exact
+  whole-container custom serializers;
 - Option, Box, Rc, Arc, Fory weak references, RefCell, Mutex, lists, sets,
   heaps, fixed arrays, maps, and tuples;
 - map key-only, value-only, key-and-value, and nested carrier selection;

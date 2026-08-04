@@ -26,6 +26,7 @@ import 'package:fory/fory.dart';
 import 'package:fory/src/util/hash_util.dart';
 import 'package:fory_test/entity/xlang_test_models.dart';
 import 'package:fory_test/model/external_serializers.dart';
+import 'package:fory_test/model/inheritance_models.dart';
 
 String _dataFilePath() {
   final path = Platform.environment['DATA_FILE'];
@@ -322,6 +323,43 @@ void _runExternalUser({int? id, String? name}) {
   _writeFile(fory.serialize(user));
 }
 
+void _registerInheritedXlangChild(Fory fory) {
+  InheritanceModelsForyModule.register(fory, XlangInheritedChild, id: 1101);
+}
+
+XlangInheritedChild _newInheritedXlangChild() {
+  return XlangInheritedChild()
+    ..childInt = 101
+    ..childFlag = true
+    ..childText = 'child'
+    ..setParentValues(parentInt: 202, parentFlag: false, parentText: 'parent');
+}
+
+void _verifyInheritedXlangChild(XlangInheritedChild value) {
+  if (value.childInt != 101 ||
+      value.parentInt != 202 ||
+      !value.childFlag ||
+      value.parentFlag ||
+      value.childText != 'child' ||
+      value.parentText != 'parent') {
+    throw StateError('Unexpected inherited xlang field values.');
+  }
+}
+
+void _roundTripInheritedXlangChild() {
+  final fory = _newFory();
+  _registerInheritedXlangChild(fory);
+  final value = fory.deserialize<XlangInheritedChild>(_readFile());
+  _verifyInheritedXlangChild(value);
+  _writeFile(fory.serialize(value));
+}
+
+void _writeInheritedXlangChild() {
+  final fory = _newFory();
+  _registerInheritedXlangChild(fory);
+  _writeFile(fory.serialize(_newInheritedXlangChild()));
+}
+
 void _runCollectionElementRefOverride() {
   final fory = _newFory();
   registerXlangType(fory, RefOverrideElement, id: 701);
@@ -468,6 +506,12 @@ void _runCase(String caseName) {
       return;
     case 'test_external_struct_name':
       _runExternalUser(name: 'test.external_user');
+      return;
+    case 'test_inherited_flat_from_java':
+      _roundTripInheritedXlangChild();
+      return;
+    case 'test_inherited_flat_from_dart':
+      _writeInheritedXlangChild();
       return;
     case 'test_list':
     case 'test_map':

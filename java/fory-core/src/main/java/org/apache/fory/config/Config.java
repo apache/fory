@@ -69,6 +69,7 @@ public class Config implements Serializable {
   private final int maxSchemaVersionsPerType;
   private final int maxAverageSchemaVersionsPerType;
   private final long maxGraphMemoryBytes;
+  private final int maxUnbackedContainerItems;
   private final float mapRefLoadFactor;
   private final boolean forVirtualThread;
 
@@ -116,6 +117,7 @@ public class Config implements Serializable {
     maxSchemaVersionsPerType = builder.maxSchemaVersionsPerType;
     maxAverageSchemaVersionsPerType = builder.maxAverageSchemaVersionsPerType;
     maxGraphMemoryBytes = builder.maxGraphMemoryBytes;
+    maxUnbackedContainerItems = builder.maxUnbackedContainerItems;
     mapRefLoadFactor = builder.mapRefLoadFactor;
     forVirtualThread = builder.forVirtualThread;
   }
@@ -327,6 +329,11 @@ public class Config implements Serializable {
     return maxGraphMemoryBytes;
   }
 
+  /** Returns the root-operation allowance for container items not backed by input bytes. */
+  public int maxUnbackedContainerItems() {
+    return maxUnbackedContainerItems;
+  }
+
   /** Returns loadFactor of MacRef's writtenObjects. */
   public float mapRefLoadFactor() {
     return mapRefLoadFactor;
@@ -376,6 +383,7 @@ public class Config implements Serializable {
         && maxSchemaVersionsPerType == config.maxSchemaVersionsPerType
         && maxAverageSchemaVersionsPerType == config.maxAverageSchemaVersionsPerType
         && maxGraphMemoryBytes == config.maxGraphMemoryBytes
+        && maxUnbackedContainerItems == config.maxUnbackedContainerItems
         && Objects.equals(defaultJDKStreamSerializerType, config.defaultJDKStreamSerializerType)
         && longEncoding == config.longEncoding
         && forVirtualThread == config.forVirtualThread;
@@ -412,6 +420,7 @@ public class Config implements Serializable {
         maxSchemaVersionsPerType,
         maxAverageSchemaVersionsPerType,
         maxGraphMemoryBytes,
+        maxUnbackedContainerItems,
         metaShareEnabled,
         scopedMetaShareEnabled,
         metaCompressor,

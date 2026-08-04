@@ -141,7 +141,7 @@ class DeserializationPolicy:
     See Also
     --------
     - Python's pickle module security warnings: https://docs.python.org/3/library/pickle.html
-    - Fory Python security guide: https://fory.apache.org/docs/guide/python/security
+    - Object serialization security guide: https://fory.apache.org/docs/object-serialization/security
     """
 
     # ============================================================================
@@ -331,9 +331,10 @@ class DeserializationPolicy:
 
         Args:
             module_name (str): The name of the module to import (e.g., 'os.path').
-            is_local (bool): True if the reference being resolved is local (defined
-                           in __main__ or within a function/method scope), False
-                           otherwise.
+            is_local (bool): For custom policies, True only when the module owner is
+                           __main__. A resolved class or function reports its own
+                           locality through its validation hook. DEFAULT_POLICY
+                           preserves historical reference-locality values.
             **kwargs: Reserved for future extensions.
 
         Raises:

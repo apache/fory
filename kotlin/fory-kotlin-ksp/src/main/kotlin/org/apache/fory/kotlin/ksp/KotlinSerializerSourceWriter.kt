@@ -108,6 +108,10 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       .append("    private const val HAS_COMPAT_NESTED_FIELDS: Boolean = ")
       .append(struct.hasCompatStructFields)
       .append("\n\n")
+    builder
+      .append("    private const val READ_DATA_ALWAYS_ADVANCES: Boolean = ")
+      .append(struct.fields.any(::fieldReadAlwaysAdvances))
+      .append("\n\n")
     builder.append("    @JvmField\n")
     builder.append("    public val DESCRIPTORS: List<Descriptor> = buildDescriptors()\n\n")
     builder.append("    private fun buildDescriptors(): List<Descriptor> {\n")
@@ -155,7 +159,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     builder.append(
       "  public constructor(typeResolver: TypeResolver, type: Class<*>) : super(typeResolver, type) {\n"
     )
-    writeConstructorBody("buildFieldGroups(DESCRIPTORS)", "false")
+    writeConstructorBody("buildFieldGroups(DESCRIPTORS)", "false", false)
     builder.append("  }\n\n")
 
     builder.append(
@@ -164,11 +168,16 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     writeConstructorBody(
       "buildLocalFieldGroups(DESCRIPTORS)",
       "typeDef != null && !HAS_COMPAT_NESTED_FIELDS && typeDef.id == TypeDef.buildTypeDef(typeResolver, type).id",
+      true,
     )
     builder.append("  }\n\n")
   }
 
-  private fun writeConstructorBody(fieldGroupsExpression: String, sameSchemaExpression: String) {
+  private fun writeConstructorBody(
+    fieldGroupsExpression: String,
+    sameSchemaExpression: String,
+    bindCompatibleScalars: Boolean,
+  ) {
     builder.append("    val fieldGroups: FieldGroups = ").append(fieldGroupsExpression).append("\n")
     builder.append("    this.allFields = fieldGroups.allFields\n")
     builder.append("    this.allFieldIds = localFieldIds(this.allFields, DESCRIPTORS)\n")
@@ -192,6 +201,9 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       "    this.constructorFieldBits = buildConstructorFieldBits(DESCRIPTORS.size, constructorFieldIds)\n"
     )
     writeScalarBindings()
+    if (bindCompatibleScalars) {
+      writeCompatibleScalarBindings()
+    }
     builder.append(
       "    this.classVersionHash = if (typeResolver.checkClassVersion()) computeClassVersionHash(DESCRIPTORS) else 0\n"
     )
@@ -204,6 +216,65 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
         continue
       }
       writeScalarBinding(field.type, "this.fieldsById[${field.id}]!!.genericType")
+    }
+  }
+
+  private fun writeCompatibleScalarBindings() {
+    val fields =
+      struct.fields.filter { it.type.isCollectionOrMap() && needsScalarSerializer(it.type) }
+    if (fields.isEmpty()) {
+      return
+    }
+    // Compatible nested metadata is schema-matched before generated dispatch. Bind the remote
+    // scalar leaves so the Java container serializer fills its budgeted, published owner with the
+    // final Kotlin values instead of making the generated read allocate a second owner. The
+    // distinct list/array adapter does not consume GenericType and must adapt its own owner.
+    builder.append("    for (remoteField in remoteFields) {\n")
+    builder.append("      when (remoteField.matchedId) {\n")
+    for (field in fields) {
+      builder.append("        ").append(field.id * 2 + 1).append(" -> {\n")
+      if (usesCompatibleScalarListAdapter(field.type)) {
+        builder.append("          if (remoteField.compatibleCollectionArrayReadAction == null) {\n")
+      }
+      writeCompatibleScalarBinding(
+        field.type,
+        "remoteField.serializationFieldInfo.genericType",
+        "this.fieldsById[${field.id}]!!.genericType",
+        if (usesCompatibleScalarListAdapter(field.type)) "  " else "",
+      )
+      if (usesCompatibleScalarListAdapter(field.type)) {
+        builder.append("          }\n")
+      }
+      builder.append("        }\n")
+    }
+    builder.append("        else -> {}\n")
+    builder.append("      }\n")
+    builder.append("    }\n")
+  }
+
+  private fun writeCompatibleScalarBinding(
+    type: KotlinSourceTypeNode,
+    remoteGenericExpression: String,
+    localGenericExpression: String,
+    indent: String = "",
+  ) {
+    if ((type.unsigned && type.componentType == null) || type.typeId == "Types.DURATION") {
+      builder
+        .append("          ")
+        .append(indent)
+        .append(remoteGenericExpression)
+        .append(".setSerializer(")
+        .append(localGenericExpression)
+        .append(".getSerializer())\n")
+      return
+    }
+    for (i in type.typeArguments.indices) {
+      writeCompatibleScalarBinding(
+        type.typeArguments[i],
+        "$remoteGenericExpression.getTypeParameter$i()",
+        "$localGenericExpression.getTypeParameter$i()",
+        indent,
+      )
     }
   }
 
@@ -356,6 +427,9 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
   }
 
   private fun writeRead() {
+    builder.append(
+      "  override fun readDataAlwaysAdvances(): Boolean = READ_DATA_ALWAYS_ADVANCES && (typeDef == null || sameSchemaCompatible)\n\n"
+    )
     builder
       .append("  override fun read(readContext: ReadContext): ")
       .append(struct.typeName)
@@ -385,6 +459,22 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     builder.append("  }\n\n")
     writeConstructorRead()
   }
+
+  private fun fieldReadAlwaysAdvances(field: KotlinSourceField): Boolean =
+    field.nullable || field.trackingRef || typeReadDataAlwaysAdvances(field.type)
+
+  private fun typeReadDataAlwaysAdvances(type: KotlinSourceTypeNode): Boolean =
+    type.primitive ||
+      type.enum ||
+      type.union ||
+      type.arrayType ||
+      type.componentType != null ||
+      when (type.typeId) {
+        null,
+        "Types.UNKNOWN",
+        "Types.NONE" -> false
+        else -> true
+      }
 
   private fun appendGraphMemoryReserve(indent: String) {
     builder
@@ -1347,10 +1437,22 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     }
     val denseUnsigned = denseUnsignedArrayConversion(field)
     if (denseUnsigned != null) {
+      if (field.trackingRef) {
+        // Compatible tracked reads return the primitive backing stored in the ref table.
+        // Re-wrap it as a view so aliases keep sharing that backing.
+        val unsignedView = denseUnsignedArrayView(field)
+        if (field.nullable) {
+          return "($expression as ${denseUnsignedDelegate(field)}?)?.$unsignedView()"
+        }
+        return "($expression as ${denseUnsignedDelegate(field)}).$unsignedView()"
+      }
       if (field.nullable) {
         return "($expression as ${denseUnsignedDelegate(field)}?)?.let { KotlinXlangArrayEncoding.$denseUnsigned(it) }"
       }
       return "KotlinXlangArrayEncoding.$denseUnsigned($expression as ${denseUnsignedDelegate(field)})"
+    }
+    if (compatible && field.type.isCollectionOrMap() && needsScalarSerializer(field.type)) {
+      return compatibleScalarContainerExpr(field.type, expression)
     }
     if (compatible && hasKotlinScalar(field.type)) {
       return fromJavaCompatExpr(field.type, expression)
@@ -1360,6 +1462,24 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     }
     return "($expression as ${field.type.valueTypeName})"
   }
+
+  private fun compatibleScalarContainerExpr(
+    type: KotlinSourceTypeNode,
+    expression: String,
+  ): String {
+    if (!usesCompatibleScalarListAdapter(type)) {
+      return "($expression as ${type.valueTypeName})"
+    }
+    val element = type.typeArguments[0]
+    val converted = fromJavaCompatExpr(element, "compatibleList[index0]", 1)
+    return "if (remoteField.compatibleCollectionArrayReadAction != null) run { val compatibleList = ($expression as java.util.List<Any?>); for (index0 in compatibleList.indices) { compatibleList[index0] = $converted }; compatibleList as ${type.valueTypeName} } else ($expression as ${type.valueTypeName})"
+  }
+
+  private fun usesCompatibleScalarListAdapter(type: KotlinSourceTypeNode): Boolean =
+    type.typeId == "Types.LIST" &&
+      type.typeArguments.size == 1 &&
+      type.typeArguments[0].unsigned &&
+      type.typeArguments[0].componentType == null
 
   private fun compatibleScalarReadExpression(field: KotlinSourceField): String? {
     if (field.type.componentType != null || field.type.typeArguments.isNotEmpty()) {
@@ -1621,36 +1741,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       val compatibleValue = "compatibleValue$depth"
       return "run { val $compatibleValue = $expression; if ($compatibleValue is kotlin.time.Duration) $compatibleValue else DurationEncoding.fromJava($compatibleValue as java.time.Duration) }"
     }
-    if (type.typeArguments.isEmpty()) {
-      return "($expression as ${type.valueTypeName})"
-    }
-    return when (type.typeId) {
-      "Types.LIST",
-      "Types.SET" -> {
-        val element = type.typeArguments[0]
-        if (hasKotlinScalar(element)) {
-          val elementName = "element$depth"
-          if (type.typeId == "Types.SET") {
-            "run { val source$depth = ($expression as java.util.Collection<*>); val target$depth = java.util.LinkedHashSet<Any?>(source$depth.size()); for ($elementName in source$depth) { target$depth.add(${fromJavaCompatExpr(element, elementName, depth + 1)}) }; target$depth as ${type.valueTypeName} }"
-          } else {
-            "run { val source$depth = ($expression as java.util.Collection<*>); val target$depth = java.util.ArrayList<Any?>(source$depth.size()); for ($elementName in source$depth) { target$depth.add(${fromJavaCompatExpr(element, elementName, depth + 1)}) }; target$depth as ${type.valueTypeName} }"
-          }
-        } else {
-          "($expression as ${type.valueTypeName})"
-        }
-      }
-      "Types.MAP" -> {
-        val key = type.typeArguments[0]
-        val value = type.typeArguments[1]
-        if (hasKotlinScalar(key) || hasKotlinScalar(value)) {
-          val entryName = "entry$depth"
-          "run { val source$depth = ($expression as kotlin.collections.Map<*, *>); val target$depth = java.util.LinkedHashMap<Any?, Any?>(source$depth.size); for ($entryName in source$depth.entries) { target$depth[${fromJavaCompatExpr(key, "$entryName.key", depth + 1)}] = ${fromJavaCompatExpr(value, "$entryName.value", depth + 1)} }; target$depth as ${type.valueTypeName} }"
-        } else {
-          "($expression as ${type.valueTypeName})"
-        }
-      }
-      else -> "($expression as ${type.valueTypeName})"
-    }
+    return "($expression as ${type.valueTypeName})"
   }
 
   private fun unsignedCompatExpr(valueName: String, expression: String, target: String): String {
@@ -1687,6 +1778,15 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
 
   private fun directWriteStatement(field: KotlinSourceField, value: String): String? {
     val denseWrite = denseUnsignedArrayWrite(field)
+    if (denseWrite != null && field.trackingRef) {
+      // Unsigned arrays are inline views; their primitive backing is the stable identity owner.
+      val trackedArray = "trackedArray${field.id}"
+      val backingView = denseUnsignedBackingView(field)
+      if (field.nullable) {
+        return "val $trackedArray = $value; if (!writeContext.writeRefOrNull($trackedArray?.$backingView())) { KotlinXlangArrayEncoding.$denseWrite(writeContext, $trackedArray!!) }"
+      }
+      return "val $trackedArray = $value; if (!writeContext.writeRefOrNull($trackedArray.$backingView())) { KotlinXlangArrayEncoding.$denseWrite(writeContext, $trackedArray) }"
+    }
     if (denseWrite != null && !field.nullable && !field.trackingRef) {
       return "KotlinXlangArrayEncoding.$denseWrite(writeContext, $value)"
     }
@@ -1744,6 +1844,20 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
 
   private fun directReadExpression(field: KotlinSourceField): String? {
     val denseRead = denseUnsignedArrayRead(field)
+    if (denseRead != null && field.trackingRef) {
+      val trackedArray = "trackedArray${field.id}"
+      val nextReadRefId = "nextReadRefId${field.id}"
+      val backingType = denseUnsignedDelegate(field)
+      val backingView = denseUnsignedBackingView(field)
+      val unsignedView = denseUnsignedArrayView(field)
+      val readRef =
+        if (field.nullable) {
+          "(readContext.getReadRef() as $backingType?)?.$unsignedView()"
+        } else {
+          "(readContext.getReadRef() as $backingType).$unsignedView()"
+        }
+      return "run { val $nextReadRefId = readContext.tryPreserveRefId(); if ($nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) { val $trackedArray = KotlinXlangArrayEncoding.$denseRead(readContext); readContext.setReadRef($nextReadRefId, $trackedArray.$backingView()); $trackedArray } else { $readRef } }"
+    }
     if (denseRead != null && !field.nullable) {
       return "KotlinXlangArrayEncoding.$denseRead(readContext)"
     }
@@ -1831,6 +1945,24 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       "UIntArray" -> "toUIntArray"
       "ULongArray" -> "toULongArray"
       else -> null
+    }
+
+  private fun denseUnsignedArrayView(field: KotlinSourceField): String =
+    when (field.type.valueTypeName.removeSuffix("?")) {
+      "UByteArray" -> "asUByteArray"
+      "UShortArray" -> "asUShortArray"
+      "UIntArray" -> "asUIntArray"
+      "ULongArray" -> "asULongArray"
+      else -> error("No dense unsigned array view for ${field.type.valueTypeName}")
+    }
+
+  private fun denseUnsignedBackingView(field: KotlinSourceField): String =
+    when (field.type.valueTypeName.removeSuffix("?")) {
+      "UByteArray" -> "asByteArray"
+      "UShortArray" -> "asShortArray"
+      "UIntArray" -> "asIntArray"
+      "ULongArray" -> "asLongArray"
+      else -> error("No dense unsigned backing view for ${field.type.valueTypeName}")
     }
 
   private fun denseUnsignedArrayWrite(field: KotlinSourceField): String? =

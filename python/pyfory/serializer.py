@@ -31,6 +31,14 @@ from typing import Tuple
 from pyfory.serialization import Buffer
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
 from pyfory.policy import DEFAULT_POLICY
+from pyfory.type_util import (
+    _is_class_static,
+    _is_local_class_static,
+    _is_local_module_name,
+    _is_module_static,
+    _resolve_static_module_attr,
+    _resolve_static_module_qualname,
+)
 
 try:
     import numpy as np
@@ -52,6 +60,7 @@ _DICT_OWNER_BYTES = 8 * _REFERENCE_BYTES
 _SLOTTED_OBJECT_OWNER_BYTES = _PY_OBJECT_OWNER_BYTES
 _DICT_BACKED_OBJECT_OWNER_BYTES = _PY_OBJECT_OWNER_BYTES
 _INSTANCE_DICT_OWNER_BYTES = _DICT_OWNER_BYTES
+_MAX_GRAPH_MEMORY_BYTES = (1 << 63) - 1
 
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 from pyfory.types import TypeId
@@ -63,15 +72,21 @@ def _import_validated_module(policy, module_name, is_local=False):
 
 
 def _resolve_validated_module_attr(policy, module_name, attr_name, is_local=False):
-    module = _import_validated_module(policy, module_name, is_local=is_local)
-    return getattr(module, attr_name)
+    if policy is DEFAULT_POLICY:
+        module = _import_validated_module(policy, module_name, is_local=is_local)
+        return getattr(module, attr_name)
+    module = _import_validated_module(policy, module_name, is_local=_is_local_module_name(module_name))
+    return _resolve_static_module_attr(module, attr_name)
 
 
 def _resolve_validated_module_qualname(policy, module_name, qualname):
-    obj = _import_validated_module(policy, module_name, is_local=_is_local_qualname(module_name, qualname))
-    for name in qualname.split("."):
-        obj = getattr(obj, name)
-    return obj
+    if policy is DEFAULT_POLICY:
+        obj = _import_validated_module(policy, module_name, is_local=_is_local_qualname(module_name, qualname))
+        for name in qualname.split("."):
+            obj = getattr(obj, name)
+        return obj
+    module = _import_validated_module(policy, module_name, is_local=_is_local_module_name(module_name))
+    return _resolve_static_module_qualname(module, qualname, policy)
 
 
 def _check_non_negative_size(size, kind):
@@ -104,6 +119,49 @@ def _is_local_callable(obj):
     return _is_local_qualname(module_name, qualname)
 
 
+def _is_local_receiver_static(obj):
+    cls = obj if _is_class_static(obj) else type(obj)
+    return _is_local_class_static(cls)
+
+
+def _is_local_callable_static(obj):
+    if _is_class_static(obj):
+        return _is_local_class_static(obj)
+    obj_type = type(obj)
+    if obj_type is types.MethodType or obj_type is types.BuiltinMethodType:
+        receiver = object.__getattribute__(obj, "__self__")
+        if receiver is not None and not _is_module_static(receiver):
+            return _is_local_receiver_static(receiver)
+    if (
+        obj_type is types.FunctionType
+        or obj_type is types.BuiltinFunctionType
+        or obj_type is types.MethodDescriptorType
+        or obj_type is types.WrapperDescriptorType
+    ):
+        try:
+            module_name = object.__getattribute__(obj, "__module__")
+        except AttributeError:
+            module_name = ""
+        try:
+            qualname = object.__getattribute__(obj, "__qualname__")
+        except AttributeError:
+            qualname = object.__getattribute__(obj, "__name__")
+        if type(module_name) is not str or type(qualname) is not str:
+            return False
+        return _is_local_qualname(module_name, qualname)
+    return _is_local_class_static(obj_type)
+
+
+def _is_bound_method_value_static(obj):
+    obj_type = type(obj)
+    if obj_type is types.MethodType:
+        return True
+    if obj_type is types.BuiltinMethodType:
+        receiver = object.__getattribute__(obj, "__self__")
+        return receiver is not None and not _is_module_static(receiver)
+    return False
+
+
 def _is_bound_method_value(obj):
     if isinstance(obj, types.MethodType):
         return True
@@ -114,14 +172,17 @@ def _is_bound_method_value(obj):
 
 
 def _validate_function_value(policy, func, is_local):
-    if isinstance(func, type):
+    is_class = isinstance(func, type) if policy is DEFAULT_POLICY else _is_class_static(func)
+    if is_class:
         policy.validate_class(func, is_local=is_local)
-        if isinstance(func, type):
-            raise TypeError(f"Function serializer resolved class {func.__module__}.{func.__qualname__}")
-    if _is_bound_method_value(func):
+        raise TypeError(f"Function serializer resolved class {func.__module__}.{func.__qualname__}")
+    is_method = _is_bound_method_value(func) if policy is DEFAULT_POLICY else _is_bound_method_value_static(func)
+    if is_method:
         policy.validate_method(func, is_local=is_local)
         return func
     if not callable(func):
+        if policy is not DEFAULT_POLICY:
+            raise TypeError("Function serializer resolved non-callable object")
         raise TypeError(f"Function serializer resolved non-callable object {func!r}")
     policy.validate_function(func, is_local=is_local)
     return func
@@ -325,8 +386,9 @@ class NoneSerializer(Serializer):
 _MIN_INT64 = -(1 << 63)
 _MAX_INT64 = (1 << 63) - 1
 _MAX_SMALL_ZIGZAG = (1 << 63) - 1
-_MIN_INT32 = -(1 << 31)
-_MAX_INT32 = (1 << 31) - 1
+_MAX_DECIMAL_MAGNITUDE_BYTES = 10_000
+_MAX_DECIMAL_MAGNITUDE_DIGITS = 24_083
+_MAX_DECIMAL_SCALE = 10_000
 _UINT64_MOD = 1 << 64
 
 
@@ -349,8 +411,16 @@ def _decimal_parts(value: decimal.Decimal) -> Tuple[int, int]:
         raise ValueError(f"Decimal value must be finite, got {value!r}")
     sign, digits, exponent = value.as_tuple()
     scale = -exponent
-    if scale < _MIN_INT32 or scale > _MAX_INT32:
-        raise ValueError(f"Decimal scale {scale} is outside signed Int32 range")
+    if scale < -_MAX_DECIMAL_SCALE or scale > _MAX_DECIMAL_SCALE:
+        raise ValueError(
+            f"Decimal scale {scale} is outside supported range [-{_MAX_DECIMAL_SCALE}, {_MAX_DECIMAL_SCALE}]",
+        )
+    # A 10,000-byte coefficient has at most 24,083 decimal digits. Values at
+    # that digit boundary still need the writer's exact bit-length check.
+    if len(digits) > _MAX_DECIMAL_MAGNITUDE_DIGITS:
+        raise ValueError(
+            f"Decimal magnitude with {len(digits)} digits exceeds {_MAX_DECIMAL_MAGNITUDE_BYTES} bytes",
+        )
     unscaled = 0
     for digit in digits:
         unscaled = unscaled * 10 + digit
@@ -365,21 +435,31 @@ def _decimal_from_parts(scale: int, unscaled: int) -> decimal.Decimal:
         sign = 0
     else:
         sign = 1 if unscaled < 0 else 0
-        digits = tuple(int(ch) for ch in str(abs(unscaled)))
+        magnitude = abs(unscaled)
+        if magnitude.bit_length() <= 63:
+            digits = tuple(int(ch) for ch in str(magnitude))
+        else:
+            digits = decimal.Decimal(magnitude).as_tuple().digits
     return decimal.Decimal((sign, digits, -scale))
 
 
 def _write_decimal_parts(write_context, scale: int, unscaled: int):
-    write_context.write_varint32(scale)
     if _can_use_small_decimal_encoding(unscaled):
+        write_context.write_varint32(scale)
         header = _encode_zigzag64(unscaled) << 1
         _write_var_uint64(write_context, header)
         return
+    magnitude_length = (unscaled.bit_length() + 7) // 8
+    if magnitude_length > _MAX_DECIMAL_MAGNITUDE_BYTES:
+        raise ValueError(
+            f"Decimal magnitude length {magnitude_length} exceeds {_MAX_DECIMAL_MAGNITUDE_BYTES} bytes",
+        )
     magnitude = abs(unscaled)
     if magnitude == 0:
         raise ValueError("Zero must use the small decimal encoding")
-    magnitude_bytes = magnitude.to_bytes((magnitude.bit_length() + 7) // 8, "little", signed=False)
+    magnitude_bytes = magnitude.to_bytes(magnitude_length, "little", signed=False)
     meta = (len(magnitude_bytes) << 1) | (1 if unscaled < 0 else 0)
+    write_context.write_varint32(scale)
     _write_var_uint64(write_context, (meta << 1) | 1)
     write_context.write_bytes(magnitude_bytes)
 
@@ -393,6 +473,10 @@ def _write_var_uint64(write_context, value: int):
 
 def _read_decimal_parts(read_context) -> Tuple[int, int]:
     scale = read_context.read_varint32()
+    if scale < -_MAX_DECIMAL_SCALE or scale > _MAX_DECIMAL_SCALE:
+        raise ValueError(
+            f"Decimal scale {scale} is outside supported range [-{_MAX_DECIMAL_SCALE}, {_MAX_DECIMAL_SCALE}]",
+        )
     header = read_context.read_var_uint64()
     if header < 0:
         header += _UINT64_MOD
@@ -403,6 +487,10 @@ def _read_decimal_parts(read_context) -> Tuple[int, int]:
     length = meta >> 1
     if length <= 0:
         raise ValueError(f"Invalid decimal magnitude length {length}")
+    if length > _MAX_DECIMAL_MAGNITUDE_BYTES:
+        raise ValueError(
+            f"Decimal magnitude length {length} exceeds {_MAX_DECIMAL_MAGNITUDE_BYTES} bytes",
+        )
     magnitude_bytes = read_context.read_bytes(length)
     if magnitude_bytes[-1] == 0:
         raise ValueError("Non-canonical decimal magnitude bytes: trailing zero byte")
@@ -416,6 +504,7 @@ class DecimalSerializer(Serializer):
     def __init__(self, type_resolver, type_):
         super().__init__(type_resolver, type_)
         self.need_to_write_ref = False
+        self.read_data_always_advances = True
 
     def write(self, write_context, value: decimal.Decimal):
         scale, unscaled = _decimal_parts(value)
@@ -553,6 +642,7 @@ class PyArraySerializer(Serializer):
 
     def __init__(self, type_resolver, ftype, type_id: str):
         super().__init__(type_resolver, ftype)
+        self.read_data_always_advances = True
         self.typecode = typeid_code[type_id]
         self.itemsize, ftype, self.type_id = typecode_dict[self.typecode]
 
@@ -640,6 +730,7 @@ class ForyArrayListAdapterSerializer(Serializer):
         self.wrapper_serializer = wrapper_serializer
         self.field_name = field_name or "<array>"
         self.need_to_write_ref = False
+        self.read_data_always_advances = True
 
     def _copy_list_to_wrapper(self, value):
         if type(value) is not list:
@@ -676,6 +767,7 @@ class ForyArrayFieldSerializer(Serializer):
         self.pyarray_serializer = self._build_pyarray_serializer(type_resolver, type_id)
         self.ndarray_serializer = self._build_ndarray_serializer(type_resolver, type_id)
         self.need_to_write_ref = False
+        self.read_data_always_advances = True
 
     def _build_pyarray_serializer(self, type_resolver, type_id):
         typecode = typeid_code.get(type_id)
@@ -740,6 +832,7 @@ class DynamicPyArraySerializer(Serializer):
 
     def __init__(self, type_resolver, cls):
         super().__init__(type_resolver, cls)
+        self.read_data_always_advances = True
 
     def write(self, buffer, value):
         try:
@@ -822,6 +915,7 @@ class Numpy1DArraySerializer(Serializer):
 
     def __init__(self, type_resolver, ftype, dtype):
         super().__init__(type_resolver, ftype)
+        self.read_data_always_advances = True
         self.dtype = dtype
         self.itemsize, self.typecode, _, self.type_id = _np_dtypes_dict[self.dtype]
 
@@ -867,6 +961,10 @@ def _is_numpy_1d_array_serializer(serializer):
 
 
 class NDArraySerializer(Serializer):
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
+
     def write(self, buffer, value):
         # Write concrete 1D primitive ndarray using type id + bytes payload.
         dtype_info = _np_dtypes_dict.get(value.dtype)
@@ -900,6 +998,18 @@ class NDArraySerializer(Serializer):
             else:
                 arr = arr.astype(dtype)
         return arr
+
+
+def _object_ndarray_element_count(shape):
+    if 0 in shape:
+        return 0
+    max_elements = (_MAX_GRAPH_MEMORY_BYTES - _PY_OBJECT_OWNER_BYTES) // _REFERENCE_BYTES
+    element_count = 1
+    for dim in shape:
+        if element_count > max_elements // dim:
+            raise ValueError("Estimated graph memory overflow")
+        element_count *= dim
+    return element_count
 
 
 class PythonNDArraySerializer(NDArraySerializer):
@@ -941,12 +1051,25 @@ class PythonNDArraySerializer(NDArraySerializer):
         _check_non_negative_size(ndim, "ndarray dimension")
         shape = tuple(read_context.read_var_uint32() for _ in range(ndim))
         if dtype.kind == "O":
+            if ndim == 0:
+                raise ValueError("Object ndarray must have at least one dimension")
             length = read_context.read_varint32()
             _check_non_negative_size(length, "ndarray object")
-            read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES + length * _REFERENCE_BYTES)
+            if length != shape[0]:
+                raise ValueError(f"Object ndarray length {length} does not match declared first dimension {shape[0]}")
+            element_count = _object_ndarray_element_count(shape)
+            read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES + element_count * _REFERENCE_BYTES)
             read_context.check_readable_bytes(length)
             items = [read_context.read_ref() for _ in range(length)]
-            return np.array(items, dtype=object)
+            if ndim > 1:
+                row_shape = shape[1:]
+                for index, item in enumerate(items):
+                    if not isinstance(item, np.ndarray) or item.dtype != dtype or item.shape != row_shape:
+                        raise ValueError(f"Object ndarray row {index} does not match declared dtype {dtype} and shape {row_shape}")
+            value = np.empty(shape, dtype=object)
+            if length:
+                value[:] = items
+            return value
         for dim in shape:
             _check_non_negative_size(dim, "ndarray dimension")
         fory_buf = read_context.read_buffer_object()
@@ -958,6 +1081,10 @@ class PythonNDArraySerializer(NDArraySerializer):
 
 
 class BytesSerializer(Serializer):
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
+
     def write(self, write_context, value):
         if write_context.buffer_callback is None:
             write_context.write_bytes_and_size(value)
@@ -1137,12 +1264,22 @@ class ReduceSerializer(Serializer):
         self._getnewargs = getattr(cls, "__getnewargs__", None)
 
     def _validate_global_object(self, policy, obj):
-        if isinstance(obj, type):
-            policy.validate_class(obj, is_local=_is_local_class(obj))
-        elif _is_bound_method_value(obj):
-            policy.validate_method(obj, is_local=_is_local_callable(obj))
-        elif isinstance(obj, (types.FunctionType, types.BuiltinFunctionType)):
-            policy.validate_function(obj, is_local=_is_local_callable(obj))
+        if policy is DEFAULT_POLICY:
+            if isinstance(obj, type):
+                policy.validate_class(obj, is_local=_is_local_class(obj))
+            elif _is_bound_method_value(obj):
+                policy.validate_method(obj, is_local=_is_local_callable(obj))
+            elif isinstance(obj, (types.FunctionType, types.BuiltinFunctionType)):
+                policy.validate_function(obj, is_local=_is_local_callable(obj))
+            return obj
+
+        obj_type = type(obj)
+        if _is_class_static(obj):
+            policy.validate_class(obj, is_local=_is_local_class_static(obj))
+        elif _is_bound_method_value_static(obj):
+            policy.validate_method(obj, is_local=_is_local_callable_static(obj))
+        elif obj_type is types.FunctionType or obj_type is types.BuiltinFunctionType:
+            policy.validate_function(obj, is_local=_is_local_callable_static(obj))
         return obj
 
     def _resolve_global_name(self, read_context, global_name):
@@ -1306,8 +1443,13 @@ class TypeSerializer(Serializer):
             return self._deserialize_local_class(read_context)
         module_name = read_context.read_string()
         qualname = read_context.read_string()
-        cls = _resolve_validated_module_qualname(read_context.policy, module_name, qualname)
-        read_context.policy.validate_class(cls, is_local=_is_local_class(cls))
+        policy = read_context.policy
+        cls = _resolve_validated_module_qualname(policy, module_name, qualname)
+        is_class = isinstance(cls, type) if policy is DEFAULT_POLICY else _is_class_static(cls)
+        if not is_class:
+            raise TypeError(f"Type serializer resolved non-class object {module_name}.{qualname}")
+        is_local = _is_local_class(cls) if policy is DEFAULT_POLICY else _is_local_class_static(cls)
+        policy.validate_class(cls, is_local=is_local)
         return cls
 
     def _serialize_local_class(self, write_context, cls):
@@ -1373,11 +1515,16 @@ class TypeSerializer(Serializer):
 
         num_class_methods = read_context.read_var_uint32()
         _check_non_negative_size(num_class_methods, "local class method")
+        policy = read_context.policy
+        use_default_policy = policy is DEFAULT_POLICY
         for _ in range(num_class_methods):
             attr_name = read_context.read_string()
+            _authorize_callable_materialization(policy, types.MethodType, method_name=attr_name)
             func = read_context.read_ref()
             read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
             method = types.MethodType(func, cls)
+            if not use_default_policy:
+                policy.validate_method(method, is_local=True)
             setattr(cls, attr_name, method)
         class_dict = read_context.read_ref()
         for k, v in class_dict.items():
@@ -1560,13 +1707,16 @@ class FunctionSerializer(Serializer):
         if func_type_id == 1:
             module = read_context.read_string()
             qualname = read_context.read_string()
-            mod = _resolve_validated_module_qualname(read_context.policy, module, qualname)
-            return _validate_function_value(read_context.policy, mod, is_local=_is_local_callable(mod))
+            policy = read_context.policy
+            mod = _resolve_validated_module_qualname(policy, module, qualname)
+            is_local = _is_local_callable(mod) if policy is DEFAULT_POLICY else _is_local_callable_static(mod)
+            return _validate_function_value(policy, mod, is_local=is_local)
 
         module = read_context.read_string()
         qualname = read_context.read_string()
         policy = read_context.policy
-        mod = _import_validated_module(policy, module, is_local=_is_local_qualname(module, qualname))
+        module_is_local = _is_local_qualname(module, qualname) if policy is DEFAULT_POLICY else _is_local_module_name(module)
+        mod = _import_validated_module(policy, module, is_local=module_is_local)
         _authorize_callable_materialization(
             policy,
             types.FunctionType,
@@ -1666,13 +1816,15 @@ class NativeFuncMethodSerializer(Serializer):
         name = read_context.read_string()
         if read_context.read_bool():
             module = read_context.read_string()
+            policy = read_context.policy
             func = _resolve_validated_module_attr(
-                read_context.policy,
+                policy,
                 module,
                 name,
                 is_local=_is_local_qualname(module, name),
             )
-            func = _validate_function_value(read_context.policy, func, is_local=_is_local_callable(func))
+            is_local = _is_local_callable(func) if policy is DEFAULT_POLICY else _is_local_callable_static(func)
+            func = _validate_function_value(policy, func, is_local=is_local)
         else:
             policy = read_context.policy
             _authorize_callable_materialization(policy, types.MethodType, method_name=name)
@@ -1798,6 +1950,7 @@ class NonExistEnumSerializer(Serializer):
     def __init__(self, type_resolver):
         super().__init__(type_resolver, NonExistEnum)
         self.need_to_write_ref = False
+        self.read_data_always_advances = True
 
     @classmethod
     def support_subclass(cls) -> bool:

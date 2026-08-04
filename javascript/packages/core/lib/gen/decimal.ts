@@ -23,7 +23,12 @@ import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
 import { TypeId } from "../type";
 import { Scope } from "./scope";
-import { Decimal, DecimalCodec } from "../types/decimal";
+import {
+  Decimal,
+  DECIMAL_MAX_MAGNITUDE_BYTES,
+  DECIMAL_MAX_SCALE,
+  DecimalCodec,
+} from "../types/decimal";
 
 class DecimalSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
@@ -42,12 +47,16 @@ class DecimalSerializerGenerator extends BaseSerializerGenerator {
     return `
       const ${scale} = ${accessor}.scale;
       const ${unscaled} = ${accessor}.unscaledValue;
-      ${this.builder.writer.writeVarInt32(scale)}
+      if (${scale} < -${DECIMAL_MAX_SCALE} || ${scale} > ${DECIMAL_MAX_SCALE}) {
+        throw new Error(\`Decimal scale \${${scale}} exceeds supported range [-${DECIMAL_MAX_SCALE}, ${DECIMAL_MAX_SCALE}].\`);
+      }
       if (${codec}.canUseSmallEncoding(${unscaled})) {
+        ${this.builder.writer.writeVarInt32(scale)}
         ${this.builder.writer.writeVarUInt64(`(${codec}.encodeZigZag64(${unscaled}) << 1n)`)}
       } else {
         const ${magnitudeBytes} = ${codec}.toCanonicalLittleEndianMagnitude(${unscaled});
         const ${meta} = (BigInt(${magnitudeBytes}.length) << 1n) | (${unscaled} < 0n ? 1n : 0n);
+        ${this.builder.writer.writeVarInt32(scale)}
         ${this.builder.writer.writeVarUInt64(`((${meta} << 1n) | 1n)`)}
         ${this.builder.writer.buffer(magnitudeBytes)}
       }
@@ -64,16 +73,24 @@ class DecimalSerializerGenerator extends BaseSerializerGenerator {
     const magnitudeBytes = this.scope.uniqueName("decimal_magnitude_bytes");
     const magnitude = this.scope.uniqueName("decimal_magnitude");
     const unscaled = this.scope.uniqueName("decimal_unscaled");
+    const result = this.scope.uniqueName("decimal_result");
     return `
       const ${scale} = ${this.builder.reader.readVarInt32()};
+      if (${scale} < -${DECIMAL_MAX_SCALE} || ${scale} > ${DECIMAL_MAX_SCALE}) {
+        throw new Error(\`Decimal scale \${${scale}} exceeds supported range [-${DECIMAL_MAX_SCALE}, ${DECIMAL_MAX_SCALE}].\`);
+      }
       const ${header} = ${this.builder.reader.readVarUInt64()};
+      let ${result};
       if ((${header} & 1n) === 0n) {
-        ${accessor(`new ${decimal}(${codec}.decodeZigZag64(${header} >> 1n), ${scale})`)}
+        ${result} = new ${decimal}(${codec}.decodeZigZag64(${header} >> 1n), ${scale});
       } else {
         const ${meta} = ${header} >> 1n;
         const ${length} = Number(${meta} >> 1n);
         if (${length} <= 0 || ${length} > 0x7fffffff) {
           throw new Error(\`Invalid decimal magnitude length \${${length}}.\`);
+        }
+        if (${length} > ${DECIMAL_MAX_MAGNITUDE_BYTES}) {
+          throw new Error(\`Decimal magnitude length \${${length}} exceeds ${DECIMAL_MAX_MAGNITUDE_BYTES} bytes.\`);
         }
         const ${magnitudeBytes} = ${this.builder.reader.buffer(length)};
         if (${magnitudeBytes}[${length} - 1] === 0) {
@@ -84,8 +101,9 @@ class DecimalSerializerGenerator extends BaseSerializerGenerator {
           throw new Error("Big decimal encoding must not represent zero.");
         }
         const ${unscaled} = ((${meta} & 1n) === 0n) ? ${magnitude} : -${magnitude};
-        ${accessor(`new ${decimal}(${unscaled}, ${scale})`)}
+        ${result} = new ${decimal}(${unscaled}, ${scale});
       }
+      ${accessor(result)}
     `;
   }
 

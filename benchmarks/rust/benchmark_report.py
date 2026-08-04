@@ -385,7 +385,7 @@ def write_report(system_info, results, pair_results, sizes, output_dir, plot_pre
         report.append("\n### External-Type and Carrier Comparisons\n\n")
         report.append(
             "These comparisons use equivalent schemas, wire work, and benchmark configuration. "
-            "The selected lane uses an external structural serializer, manual serializer, carrier "
+            "The selected lane uses an external structural serializer, custom serializer, carrier "
             "serializer, or registered external target as named by the case. The self lane uses "
             "the equivalent self-provided target. Lower time is better.\n\n"
         )

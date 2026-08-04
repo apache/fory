@@ -381,6 +381,7 @@ pub struct ReadContext<'a> {
     check_struct_version: bool,
     check_string_read: bool,
     pub(crate) remaining_graph_memory_bytes: usize,
+    pub(crate) remaining_unbacked_container_items: usize,
 
     // Context-specific fields
     pub reader: Reader<'a>,
@@ -411,6 +412,7 @@ impl<'a> ReadContext<'a> {
             check_struct_version: config.check_struct_version,
             check_string_read: config.check_string_read,
             remaining_graph_memory_bytes: 0,
+            remaining_unbacked_container_items: 0,
             reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
@@ -482,6 +484,23 @@ impl<'a> ReadContext<'a> {
     }
 
     #[inline(always)]
+    #[doc(hidden)]
+    pub fn remaining_unbacked_container_items(&self) -> usize {
+        self.remaining_unbacked_container_items
+    }
+
+    #[inline(always)]
+    #[doc(hidden)]
+    pub fn reserve_unbacked_container_items(&mut self, items: usize) -> Result<(), Error> {
+        let remaining = self.remaining_unbacked_container_items;
+        if items > remaining {
+            return Err(unbacked_container_items_exceeded(items, remaining));
+        }
+        self.remaining_unbacked_container_items = remaining - items;
+        Ok(())
+    }
+
+    #[inline(always)]
     pub fn detach_reader(&mut self) -> Reader<'_> {
         mem::take(&mut self.reader)
     }
@@ -525,24 +544,7 @@ impl<'a> ReadContext<'a> {
                     // Read type meta inline using streaming protocol
                     self.read_type_meta()
                 } else {
-                    let namespace = self.read_meta_string()?.to_owned();
-                    let type_name = self.read_meta_string()?.to_owned();
-                    let rc_namespace = Rc::from(namespace.clone());
-                    let rc_type_name = Rc::from(type_name.clone());
-                    self.type_resolver
-                        .get_type_info_by_meta_string_name(rc_namespace, rc_type_name)
-                        .or_else(|| {
-                            self.type_resolver.get_type_info_by_name(
-                                namespace.original.as_str(),
-                                type_name.original.as_str(),
-                            )
-                        })
-                        .ok_or_else(|| {
-                            Error::type_error(format!(
-                                "Name harness not found: namespace='{}', type='{}'",
-                                namespace.original, type_name.original
-                            ))
-                        })
+                    self.read_named_type_info()
                 }
             }
             _ => self
@@ -550,6 +552,28 @@ impl<'a> ReadContext<'a> {
                 .get_type_info_by_id(fory_type_id)
                 .ok_or_else(|| Error::type_error("ID harness not found")),
         }
+    }
+
+    // Name decoding and resolver fallback allocate; keep them out of the common ID and compatible
+    // dispatch body without marking successful named dispatch as cold.
+    #[inline(never)]
+    fn read_named_type_info(&mut self) -> Result<Rc<TypeInfo>, Error> {
+        let namespace = self.read_meta_string()?.to_owned();
+        let type_name = self.read_meta_string()?.to_owned();
+        let rc_namespace = Rc::from(namespace.clone());
+        let rc_type_name = Rc::from(type_name.clone());
+        self.type_resolver
+            .get_type_info_by_meta_string_name(rc_namespace, rc_type_name)
+            .or_else(|| {
+                self.type_resolver
+                    .get_type_info_by_name(namespace.original.as_str(), type_name.original.as_str())
+            })
+            .ok_or_else(|| {
+                Error::type_error(format!(
+                    "Name harness not found: namespace='{}', type='{}'",
+                    namespace.original, type_name.original
+                ))
+            })
     }
 
     #[inline(always)]
@@ -590,6 +614,8 @@ impl<'a> ReadContext<'a> {
 
     #[inline(always)]
     pub fn dec_depth(&mut self) {
+        // Nested readers decrement only after their child completed successfully. An error keeps
+        // the failed path's depth until the root reset owns all read-side cleanup.
         self.current_depth = self.current_depth.saturating_sub(1);
     }
 
@@ -598,7 +624,9 @@ impl<'a> ReadContext<'a> {
         self.meta_resolver.reset();
         self.meta_string_resolver.reset();
         self.ref_reader.reset();
+        // Root reset is the only failure-cleanup owner for read depth.
         self.current_depth = 0;
+        self.remaining_unbacked_container_items = 0;
     }
 }
 
@@ -608,5 +636,13 @@ fn graph_memory_exceeded(bytes: usize, remaining: usize, limit: usize) -> Error 
     Error::invalid_data(format!(
         "estimated graph memory request {} bytes exceeds max_graph_memory_bytes remaining budget {} bytes out of effective limit {} bytes",
         bytes, remaining, limit
+    ))
+}
+
+#[cold]
+#[inline(never)]
+fn unbacked_container_items_exceeded(items: usize, remaining: usize) -> Error {
+    Error::invalid_data(format!(
+        "container read work request {items} items exceeds max_unbacked_container_items remaining budget {remaining} items"
     ))
 }

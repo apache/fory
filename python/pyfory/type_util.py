@@ -18,12 +18,20 @@
 import dataclasses
 import importlib
 import inspect
+import types
 
 import typing
 from abc import ABC, abstractmethod
 
 from pyfory.annotation import ArrayMeta, RefMeta
+from pyfory.policy import DEFAULT_POLICY
 from pyfory.type_id import TypeId
+
+# Explicit built-in descriptors bypass data descriptors supplied by an
+# input-selected metaclass or module subclass.
+_TYPE_NAMESPACE_GETTER = type.__dict__["__dict__"].__get__
+_TYPE_MRO_GETTER = type.__dict__["__mro__"].__get__
+_MODULE_NAMESPACE_GETTER = types.ModuleType.__dict__["__dict__"].__get__
 
 try:
     from typing import Annotated
@@ -411,22 +419,160 @@ def qualified_class_name(cls):
     return cls.__module__ + "#" + cls.__qualname__
 
 
+def _type_namespace(cls):
+    return _TYPE_NAMESPACE_GETTER(cls, type(cls))
+
+
+def _type_mro(cls):
+    return _TYPE_MRO_GETTER(cls, type(cls))
+
+
+def _module_namespace(module):
+    return _MODULE_NAMESPACE_GETTER(module, type(module))
+
+
+def _has_type_base(value, base):
+    for cls in _type_mro(type(value)):
+        if cls is base:
+            return True
+    return False
+
+
+def _is_class_static(value):
+    return _has_type_base(value, type)
+
+
+def _is_module_static(value):
+    return _has_type_base(value, types.ModuleType)
+
+
+def _is_local_class_static(cls):
+    namespace = _type_namespace(cls)
+    module_name = namespace.get("__module__", "")
+    qualname = namespace.get("__qualname__", "")
+    return type(module_name) is str and type(qualname) is str and (module_name == "__main__" or "<locals>" in qualname)
+
+
+def _is_local_module_name(module_name):
+    # An input-selected target name may contain "<locals>" while resolving a
+    # remote module-dictionary alias. Only the module owner determines whether
+    # authorizing its import is local.
+    return module_name == "__main__"
+
+
+def _static_module_attr(module, attr_name):
+    namespace = _module_namespace(module)
+    try:
+        return namespace[attr_name]
+    except KeyError as exc:
+        raise AttributeError(attr_name) from exc
+
+
+def _defines_descriptor(value):
+    value_type = type(value)
+    for cls in _type_mro(value_type):
+        if "__get__" in _type_namespace(cls):
+            return True
+    return False
+
+
+def _static_class_attr(owner, attr_name, policy):
+    declaring_class = None
+    value = None
+    for cls in _type_mro(owner):
+        namespace = _type_namespace(cls)
+        if attr_name in namespace:
+            declaring_class = cls
+            value = namespace[attr_name]
+            break
+    if declaring_class is None:
+        raise AttributeError(attr_name)
+    if declaring_class is not owner:
+        policy.validate_class(declaring_class, is_local=_is_local_class_static(declaring_class))
+
+    value_type = type(value)
+    if value_type is staticmethod:
+        return object.__getattribute__(value, "__func__")
+    if value_type is classmethod:
+        policy.authorize_instantiation(types.MethodType, method_name=attr_name)
+        return types.MethodType(object.__getattribute__(value, "__func__"), owner)
+    class_method_descriptor = getattr(types, "ClassMethodDescriptorType", None)
+    if class_method_descriptor is not None and value_type is class_method_descriptor:
+        policy.authorize_instantiation(types.BuiltinMethodType, method_name=attr_name)
+        return value_type.__get__(value, None, owner)
+    if (
+        _is_class_static(value)
+        or value_type is types.FunctionType
+        or value_type is types.BuiltinFunctionType
+        or value_type is types.MethodType
+        or value_type is types.BuiltinMethodType
+        or value_type is types.MethodDescriptorType
+        or value_type is types.WrapperDescriptorType
+        or value_type is types.GetSetDescriptorType
+        or value_type is types.MemberDescriptorType
+        or value_type is property
+        or not _defines_descriptor(value)
+    ):
+        return value
+    raise ValueError(f"Cannot resolve descriptor {attr_name!r} safely")
+
+
+def _resolve_static_module_attr(module, attr_name):
+    # inspect.getattr_static still consults a class through its metaclass while
+    # finding __dict__. Calling the built-in namespace descriptors directly
+    # keeps input-selected module and metaclass hooks out of policy resolution.
+    return _static_module_attr(module, attr_name)
+
+
+def _resolve_static_module_qualname(module, qualname, policy):
+    names = qualname.split(".")
+    owner = module
+    for index, name in enumerate(names):
+        if _is_module_static(owner):
+            value = _static_module_attr(owner, name)
+        elif _is_class_static(owner):
+            value = _static_class_attr(owner, name, policy)
+        else:
+            raise AttributeError(name)
+
+        if index + 1 != len(names):
+            if _is_class_static(value):
+                policy.validate_class(value, is_local=_is_local_class_static(value))
+            elif _is_module_static(value):
+                namespace = _module_namespace(value)
+                module_name = namespace.get("__name__", "")
+                if type(module_name) is not str:
+                    raise ValueError("Cannot resolve module name safely")
+                policy.validate_module(module_name, is_local=_is_local_module_name(module_name))
+            else:
+                raise AttributeError(name)
+        owner = value
+    return owner
+
+
 def load_class(classname: str, policy=None):
     mod_name, cls_name = classname.rsplit("#", 1)
     is_local = mod_name == "__main__" or "<locals>" in cls_name
     if policy is not None:
-        policy.validate_module(mod_name, is_local=is_local)
+        module_is_local = is_local if policy is DEFAULT_POLICY else _is_local_module_name(mod_name)
+        policy.validate_module(mod_name, is_local=module_is_local)
     try:
         mod = importlib.import_module(mod_name)
     except ImportError as ex:
         raise Exception(f"Can't import module {mod_name}") from ex
     try:
-        classes = cls_name.split(".")
-        cls = getattr(mod, classes.pop(0))
-        while classes:
-            cls = getattr(cls, classes.pop(0))
+        if policy is None or policy is DEFAULT_POLICY:
+            classes = cls_name.split(".")
+            cls = getattr(mod, classes.pop(0))
+            while classes:
+                cls = getattr(cls, classes.pop(0))
+        else:
+            cls = _resolve_static_module_qualname(mod, cls_name, policy)
         if policy is not None:
-            policy.validate_class(cls, is_local=is_local)
+            class_is_local = is_local
+            if policy is not DEFAULT_POLICY:
+                class_is_local = _is_local_class_static(cls) if _is_class_static(cls) else False
+            policy.validate_class(cls, is_local=class_is_local)
         return cls
     except AttributeError as ex:
         raise Exception(f"Can't import class {cls_name} from module {mod_name}") from ex

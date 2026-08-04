@@ -188,6 +188,78 @@ fn test_arc_weak_in_vec_circular_reference() {
     assert_eq!(deserialized.len(), 3);
 }
 
+#[derive(ForyStruct, Debug)]
+struct RcDagNode {
+    value: i32,
+    child: Option<Rc<RcDagNode>>,
+}
+
+#[test]
+fn rc_weak_first_ref_ids() {
+    let mut fory = Fory::builder()
+        .xlang(false)
+        .track_ref(true)
+        .compatible(false)
+        .build();
+    fory.register::<RcDagNode>(6001).unwrap();
+
+    let child = Rc::new(RcDagNode {
+        value: 2,
+        child: None,
+    });
+    let target = Rc::new(RcDagNode {
+        value: 1,
+        child: Some(child.clone()),
+    });
+    let value = (RcWeak::from(&target), target, child);
+
+    let bytes = fory.serialize(&value).unwrap();
+    let decoded: (RcWeak<RcDagNode>, Rc<RcDagNode>, Rc<RcDagNode>) =
+        fory.deserialize(&bytes).unwrap();
+    let weak_target = decoded.0.upgrade().unwrap();
+
+    assert_eq!(decoded.1.value, 1);
+    assert_eq!(decoded.2.value, 2);
+    assert!(Rc::ptr_eq(&weak_target, &decoded.1));
+    assert!(Rc::ptr_eq(decoded.1.child.as_ref().unwrap(), &decoded.2));
+}
+
+#[derive(ForyStruct, Debug)]
+struct ArcDagNode {
+    value: i32,
+    child: Option<Arc<ArcDagNode>>,
+}
+
+#[test]
+fn arc_weak_first_ref_ids() {
+    let mut fory = Fory::builder()
+        .xlang(false)
+        .track_ref(true)
+        .compatible(false)
+        .build();
+    fory.register::<ArcDagNode>(6002).unwrap();
+
+    let child = Arc::new(ArcDagNode {
+        value: 2,
+        child: None,
+    });
+    let target = Arc::new(ArcDagNode {
+        value: 1,
+        child: Some(child.clone()),
+    });
+    let value = (ArcWeak::from(&target), target, child);
+
+    let bytes = fory.serialize(&value).unwrap();
+    let decoded: (ArcWeak<ArcDagNode>, Arc<ArcDagNode>, Arc<ArcDagNode>) =
+        fory.deserialize(&bytes).unwrap();
+    let weak_target = decoded.0.upgrade().unwrap();
+
+    assert_eq!(decoded.1.value, 1);
+    assert_eq!(decoded.2.value, 2);
+    assert!(Arc::ptr_eq(&weak_target, &decoded.1));
+    assert!(Arc::ptr_eq(decoded.1.child.as_ref().unwrap(), &decoded.2));
+}
+
 #[test]
 fn test_rc_weak_field_in_struct() {
     use fory_derive::ForyStruct;

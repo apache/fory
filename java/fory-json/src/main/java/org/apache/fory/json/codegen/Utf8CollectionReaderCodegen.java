@@ -24,9 +24,16 @@ import org.apache.fory.codegen.Code;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 
 /** Generates one exact declared ArrayList-backed UTF-8 collection capability. */
 final class Utf8CollectionReaderCodegen {
+  private static final int ARRAY_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(ArrayList.class);
+  private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+  private static final int REFERENCE_BATCH_SIZE = 1024;
+  private static final int REFERENCE_BATCH_MASK = REFERENCE_BATCH_SIZE - 1;
+  private static final int REFERENCE_BATCH_BYTES = REFERENCE_BATCH_SIZE * REFERENCE_BYTES;
   // The ninth value remains scalar until the following separator proves whether the list ends or
   // continues. Exact size nine therefore allocates nine slots, while a continuation starts at the
   // same capacity 13 that ArrayList growth would have selected, without creating and copying a
@@ -145,18 +152,22 @@ final class Utf8CollectionReaderCodegen {
         + "reader.expectNextToken('[');\n"
         + "if (reader.consumeNextToken(']')) {\n"
         + "  reader.exitDepth();\n"
-        + "  return new ArrayList(0);\n"
+        + reserveArrayList(0, "  ")
+        + "  ArrayList list = new ArrayList(0);\n"
+        + "  return list;\n"
         + "}\n"
         + readStringElement(ctx, "e0", "E0")
         + "int nextElement = reader.consumeNextStringArrayElement();\n"
         + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
         + "  reader.exitDepth();\n"
+        + reserveArrayList(1, "  ")
         + "  ArrayList list = new ArrayList(1);\n"
         + "  list.add(e0);\n"
         + "  return list;\n"
         + "}\n"
         + readStringArrayElement(ctx, "e1", "E1")
-        + "return readArrayListBody(reader, e0, e1);";
+        + "ArrayList list = readArrayListBody(reader, e0, e1);\n"
+        + "return list;";
   }
 
   private static String readStringArrayListBodyCode(CodegenContext ctx) {
@@ -165,6 +176,7 @@ final class Utf8CollectionReaderCodegen {
     return "int nextElement = reader.consumeNextStringArrayElement();\n"
         + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
         + "  reader.exitDepth();\n"
+        + reserveArrayList(2, "  ")
         + "  ArrayList list = new ArrayList(2);\n"
         + "  list.add(e0);\n"
         + "  list.add(e1);\n"
@@ -174,6 +186,7 @@ final class Utf8CollectionReaderCodegen {
         + "nextElement = reader.consumeNextStringArrayElement();\n"
         + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
         + "  reader.exitDepth();\n"
+        + reserveArrayList(3, "  ")
         + "  ArrayList list = new ArrayList(3);\n"
         + "  list.add(e0);\n"
         + "  list.add(e1);\n"
@@ -188,6 +201,7 @@ final class Utf8CollectionReaderCodegen {
     return "int nextElement = reader.consumeNextStringArrayElement();\n"
         + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
         + "  reader.exitDepth();\n"
+        + reserveArrayList(4, "  ")
         + "  ArrayList list = new ArrayList(4);\n"
         + "  list.add(e0);\n"
         + "  list.add(e1);\n"
@@ -199,6 +213,7 @@ final class Utf8CollectionReaderCodegen {
         + "nextElement = reader.consumeNextStringArrayElement();\n"
         + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
         + "  reader.exitDepth();\n"
+        + reserveArrayList(5, "  ")
         + "  ArrayList list = new ArrayList(5);\n"
         + "  list.add(e0);\n"
         + "  list.add(e1);\n"
@@ -215,6 +230,7 @@ final class Utf8CollectionReaderCodegen {
     return "int nextElement = reader.consumeNextStringArrayElement();\n"
         + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
         + "  reader.exitDepth();\n"
+        + reserveArrayList(6, "  ")
         + "  ArrayList list = new ArrayList(6);\n"
         + "  list.add(e0);\n"
         + "  list.add(e1);\n"
@@ -228,6 +244,7 @@ final class Utf8CollectionReaderCodegen {
         + "nextElement = reader.consumeNextStringArrayElement();\n"
         + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
         + "  reader.exitDepth();\n"
+        + reserveArrayList(7, "  ")
         + "  ArrayList list = new ArrayList(7);\n"
         + "  list.add(e0);\n"
         + "  list.add(e1);\n"
@@ -241,6 +258,7 @@ final class Utf8CollectionReaderCodegen {
         + readStringArrayElement(ctx, "e7", "L7")
         + "if (!reader.consumeNextCommaOrEndArray()) {\n"
         + "  reader.exitDepth();\n"
+        + reserveArrayList(8, "  ")
         + "  ArrayList list = new ArrayList(8);\n"
         + "  list.add(e0);\n"
         + "  list.add(e1);\n"
@@ -260,6 +278,7 @@ final class Utf8CollectionReaderCodegen {
         + "int nextElement = reader.consumeNextStringArrayElement();\n"
         + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
         + "  reader.exitDepth();\n"
+        + reserveArrayList(ARRAY_LIST_PREFIX_SIZE, "  ")
         + "  ArrayList list = new ArrayList("
         + ARRAY_LIST_PREFIX_SIZE
         + ");\n"
@@ -274,6 +293,7 @@ final class Utf8CollectionReaderCodegen {
         + "  list.add(e8);\n"
         + "  return list;\n"
         + "}\n"
+        + reserveArrayList(ARRAY_LIST_PREFIX_SIZE + 1, "")
         + "ArrayList list = new ArrayList("
         + ARRAY_LIST_FIRST_GROWTH
         + ");\n"
@@ -286,17 +306,45 @@ final class Utf8CollectionReaderCodegen {
         + "list.add(e6);\n"
         + "list.add(e7);\n"
         + "list.add(e8);\n"
-        + "do {\n"
-        + "  String element;\n"
+        + "String element;\n"
+        + "if (nextElement == Utf8JsonReader.STRING_ARRAY_QUOTED) {\n"
+        + readQuotedStringElement(ctx, "quotedElement", "LoopFirstQuoted")
+        + "  element = quotedElement;\n"
+        + "} else {\n"
+        + "  element = (String) elementReader.readUtf8(reader);\n"
+        + "}\n"
+        + "list.add(element);\n"
+        + "nextElement = reader.consumeNextStringArrayElement();\n"
+        + "int pendingSize = 0;\n"
+        + "while (nextElement != Utf8JsonReader.STRING_ARRAY_END) {\n"
+        + "  if ((pendingSize & "
+        + REFERENCE_BATCH_MASK
+        + ") == "
+        + REFERENCE_BATCH_MASK
+        + ") {\n"
+        + "    reader.reserveGraphMemory("
+        + REFERENCE_BATCH_BYTES
+        + ");\n"
+        + "  }\n"
+        + "  String loopElement;\n"
         + "  if (nextElement == Utf8JsonReader.STRING_ARRAY_QUOTED) {\n"
         + readQuotedStringElement(ctx, "quotedElement", "LoopQuoted")
-        + "    element = quotedElement;\n"
+        + "    loopElement = quotedElement;\n"
         + "  } else {\n"
-        + "    element = (String) elementReader.readUtf8(reader);\n"
+        + "    loopElement = (String) elementReader.readUtf8(reader);\n"
         + "  }\n"
-        + "  list.add(element);\n"
+        + "  list.add(loopElement);\n"
+        + "  pendingSize++;\n"
         + "  nextElement = reader.consumeNextStringArrayElement();\n"
-        + "} while (nextElement != Utf8JsonReader.STRING_ARRAY_END);\n"
+        + "}\n"
+        + "int tailSize = pendingSize & "
+        + REFERENCE_BATCH_MASK
+        + ";\n"
+        + "if (tailSize != 0) {\n"
+        + "  reader.reserveGraphMemory(tailSize * "
+        + REFERENCE_BYTES
+        + ");\n"
+        + "}\n"
         + "reader.exitDepth();\n"
         + "return list;";
   }
@@ -350,26 +398,56 @@ final class Utf8CollectionReaderCodegen {
     code.append("reader.enterDepth();\n");
     code.append("reader.expectNextToken('[');\n");
     code.append("if (reader.consumeNextToken(']')) {\n");
-    code.append("  reader.exitDepth();\n  return new ArrayList(0);\n}\n");
+    code.append("  reader.exitDepth();\n");
+    code.append(reserveArrayList(0, "  "));
+    code.append("  ArrayList empty = new ArrayList(0);\n");
+    code.append("  return empty;\n}\n");
     for (int i = 0; i < 8; i++) {
       code.append("Object e").append(i).append(" = null;\n");
     }
     code.append("ArrayList list = null;\nint size = 0;\n");
     code.append("do {\n");
-    code.append("  Object element = elementReader.readUtf8(reader);\n");
-    code.append("  if (list == null) {\n    switch (size) {\n");
+    code.append("  if (list == null) {\n");
+    code.append("    Object element = elementReader.readUtf8(reader);\n");
+    code.append("    switch (size) {\n");
     for (int i = 0; i < 8; i++) {
       code.append("      case ").append(i).append(": e").append(i).append(" = element; break;\n");
     }
-    code.append("      default:\n        list = new ArrayList(9);\n");
+    code.append("      default:\n");
+    code.append(reserveArrayList(ARRAY_LIST_PREFIX_SIZE, "        "));
+    code.append("        list = new ArrayList(9);\n");
     for (int i = 0; i < 8; i++) {
       code.append("        list.add(e").append(i).append(");\n");
     }
     code.append("        list.add(element);\n    }\n");
-    code.append("  } else {\n    list.add(element);\n  }\n");
+    code.append("  } else {\n");
+    code.append("    if (((size - ")
+        .append(ARRAY_LIST_PREFIX_SIZE)
+        .append(") & ")
+        .append(REFERENCE_BATCH_MASK)
+        .append(") == ")
+        .append(REFERENCE_BATCH_MASK)
+        .append(") {\n");
+    code.append("      reader.reserveGraphMemory(").append(REFERENCE_BATCH_BYTES).append(");\n");
+    code.append("    }\n");
+    code.append("    list.add(elementReader.readUtf8(reader));\n  }\n");
     code.append("  size++;\n} while (reader.consumeNextCommaOrEndArray());\n");
+    code.append("if (list != null) {\n");
+    // Tail reservation can fail, so depth stays active until the complete collection succeeds.
+    code.append("  int tailSize = (size - ")
+        .append(ARRAY_LIST_PREFIX_SIZE)
+        .append(") & ")
+        .append(REFERENCE_BATCH_MASK)
+        .append(";\n");
+    code.append("  if (tailSize != 0) {\n");
+    code.append("    reader.reserveGraphMemory(tailSize * ").append(REFERENCE_BYTES).append(");\n");
+    code.append("  }\n");
+    code.append("  reader.exitDepth();\n");
+    code.append("  return list;\n}\n");
     code.append("reader.exitDepth();\n");
-    code.append("if (list != null) {\n  return list;\n}\n");
+    // list remains null only for the staged prefix, so size is at most eight and the generated int
+    // reservation cannot overflow.
+    code.append(reserveArrayList("size", ""));
     code.append("list = new ArrayList(size);\n");
     code.append("switch (size) {\n");
     for (int size = 1; size <= 8; size++) {
@@ -382,5 +460,23 @@ final class Utf8CollectionReaderCodegen {
     code.append("  default: throw new IllegalStateException();\n}\n");
     code.append("return list;\n");
     return code.toString();
+  }
+
+  private static String reserveArrayList(String size, String indent) {
+    return indent
+        + "reader.reserveGraphMemory("
+        + ARRAY_LIST_OWNER_BYTES
+        + " + "
+        + size
+        + " * "
+        + REFERENCE_BYTES
+        + ");\n";
+  }
+
+  private static String reserveArrayList(int size, String indent) {
+    return indent
+        + "reader.reserveGraphMemory("
+        + (ARRAY_LIST_OWNER_BYTES + size * REFERENCE_BYTES)
+        + ");\n";
   }
 }

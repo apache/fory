@@ -1,0 +1,138 @@
+---
+title: Code Generation
+sidebar_position: 3
+id: code-generation
+license: |
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+---
+
+Fory generates fast serializer code for your Dart classes at build time. You annotate your models, run `build_runner`, and Fory takes care of the rest.
+
+## Step 1 — Annotate Your Models
+
+Add `@ForyStruct()` to each class you want to serialize. Include the generated part directive at the top of the file.
+
+```dart
+import 'package:fory/fory.dart';
+
+part 'models.fory.dart';
+
+@ForyStruct()
+class Address {
+  Address();
+
+  String city = '';
+  String street = '';
+}
+
+@ForyStruct()
+class User {
+  User();
+
+  String name = '';
+
+  @ForyField(type: Int32Type())
+  int age = 0;
+  Address address = Address();
+}
+```
+
+Enums defined in the same file are automatically included in the generated registration.
+
+For a class owned by another library, define an
+[external structural serializer](external-types.md) with
+`@ForyStruct(target: ExternalType)`.
+
+## Inherited Fields
+
+An ordinary `@ForyStruct()` flattens its concrete superclass and applied-mixin
+fields into one generated child schema. Public inherited fields require no
+annotation on the parent.
+
+See [Struct Inheritance](inheritance.md) for private fields,
+`ignoreInheritedPrivateFields`, cross-library access, constructors, mixins, and
+schema compatibility.
+
+## Step 2 — Run the Generator
+
+From the directory that contains your `pubspec.yaml`:
+
+```bash
+dart run build_runner build
+```
+
+This emits a `.fory.dart` file next to your source file. Re-run this command any
+time you add or rename annotated types, change hierarchy storage, or change an
+exposure boundary or `ignoreInheritedPrivateFields`.
+
+## Step 3 — Register and Use
+
+The generator creates a Fory module class (named after your file) with a `register` function. Call it before serializing:
+
+```dart
+final fory = Fory();
+ModelsForyModule.register(fory, Address, id: 1);
+ModelsForyModule.register(fory, User, id: 2);
+```
+
+Or use a stable name instead of a numeric ID (useful for cross-language scenarios):
+
+```dart
+ModelsForyModule.register(
+  fory,
+  User,
+  name: 'example.User',
+);
+```
+
+See [Type Registration](type-registration.md) for guidance on choosing between IDs and names.
+
+## Schema Evolution: `evolving`
+
+`@ForyStruct()` defaults to `evolving: true`, which is the right choice for most applications.
+
+- `evolving: true` — Fory stores enough metadata so that if you add or remove fields later, old and new code can still exchange messages. Enable this whenever different versions of your app or service may be running at the same time.
+- `evolving: false` — Faster serialization and smaller size. Use only when every reader and writer always uses the same struct schema.
+
+```dart
+// evolving: true is the default, you can omit it
+@ForyStruct(evolving: true)
+class Event {
+  Event();
+
+  String name = '';
+}
+```
+
+When using evolving structs, also assign stable field IDs with `@ForyField(id: ...)` before you ship your first payload — those IDs are how Fory matches fields after a schema change.
+
+Included inherited and direct fields share this one ID namespace. Do not reuse
+an ID among fields included in the same child schema.
+
+## Choosing Generated or Custom Serialization
+
+Use an [external structural serializer](external-types.md) when another
+package's class exposes matching public getters and a safe public construction
+path. Use a [custom serializer](custom-serializers.md) when the wire body,
+field names, values, or construction need custom logic.
+
+## Related Topics
+
+- [Struct Inheritance](inheritance.md)
+- [Type Registration](type-registration.md)
+- [External-Type Serialization](external-types.md)
+- [Schema Metadata](schema-metadata.md)
+- [Schema Evolution](schema-evolution.md)

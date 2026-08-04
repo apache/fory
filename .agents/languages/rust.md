@@ -22,7 +22,7 @@ Load this file when changing `rust/` or Rust xlang behavior.
   emit unconditional `pub` or `pub(crate)` items, add a second macro, or introduce a runtime
   registration path to solve private-trait visibility.
 - Use "external-type serialization" for this feature, "external structural serializer" for a
-  schema-derived serializer targeting another crate's type, "manual serializer" for customized
+  schema-derived serializer targeting another crate's type, "custom serializer" for custom
   behavior, and "carrier serializer" for Fory's recursive generic serializers. "Serializer
   provider" is acceptable only for the internal type-level role. Do not add a separate public marker,
   derive, attribute, registration concept, example suffix, heading, test concept, alternate feature
@@ -88,7 +88,7 @@ Load this file when changing `rust/` or Rust xlang behavior.
   `Serializer` nor `Codec` exposes a parent-array kind. Reuse the same private mapping to validate
   every unsafe bulk copy and to adapt compatible LIST/array fields. Canonical primitive children
   retain dense-array/BINARY encodings, including `u8` BINARY and the existing `isize`/`usize` array
-  kinds; an external structural or manual child serializer targeting a primitive remains LIST
+  kinds; an external structural or custom child serializer targeting a primitive remains LIST
   because it does not expose that scalar wire ID. Rust 1.70 cannot select a codec type from an
   associated const, so one unified `VecCodec` and one unified `ArrayCodec` own both primitive and
   object bodies. The Vec carrier implementation has two compile-time schema consts.
@@ -111,7 +111,7 @@ Load this file when changing `rust/` or Rust xlang behavior.
   Preserve native non-compatible direct position bodies, compatible/xlang heterogeneous LIST
   bodies, the existing UNKNOWN-generic tuple `FieldType`, missing-position defaults, extra-position
   skipping, and wire behavior. Tuples are not transparent wrappers: keep `IS_WRAPPER = false` and
-  reject tuple serializers from manual EXT registration through their LIST category. No serializer
+  reject tuple serializers from custom EXT registration through their LIST category. No serializer
   type or tuple index appears on the wire.
 - Keep shared LIST/SET loops in `serializer/collection.rs`, MAP chunk behavior in
   `serializer/map.rs`, and arity-generated heterogeneous tuple behavior in
@@ -122,7 +122,7 @@ Load this file when changing `rust/` or Rust xlang behavior.
   bound rather than exposing that implementation accident through the serializer API.
 - Fory-owned carrier serializers are not registered and have no resolver entry, dynamic harness, or
   wire identity. A field `with` selects one serializer whose `Target` is exactly the declared field
-  node and accepts ordinary, external structural, manual, and carrier serializers. Transparent
+  node and accepts ordinary, external structural, custom, and carrier serializers. Transparent
   fields therefore name their exact carrier serializer, such as
   `OptionSerializer<UserSerializer>`, while recursive list/map/tuple annotations select child
   nodes. Field codegen must recognize every canonical carrier serializer and ordinary carrier type
@@ -138,7 +138,7 @@ Load this file when changing `rust/` or Rust xlang behavior.
   must not use `type_name` or enter the value hot path. Compile-time target equality comes from
   `Codec<T>: Serializer<Target = T>`.
   Registration rejects carrier serializers through the existing API semantics: structural APIs
-  require `StructSerializer` and the matching structural category, while manual registration
+  require `StructSerializer` and the matching structural category, while custom registration
   requires an independent EXT/NAMED_EXT serializer and rejects transparent wrappers. Require a
   selected serializer's registration only when the owning carrier or field path accesses its
   registered identity or registration-backed metadata. `Serializer::write_data/read_data` are
@@ -165,7 +165,7 @@ Load this file when changing `rust/` or Rust xlang behavior.
   null/target inspection and later its normal body access; never retain a borrow/guard across the
   other side, stage body bytes, allocate a prepared value, invoke a callback, or change MAP wire
   order. A
-  node-local manual serializer may target one exact whole container or tuple as opaque EXT;
+  node-local custom serializer may target one exact whole container or tuple as opaque EXT;
   recursive list/map/tuple annotations or Fory-owned carrier serializer roots instead preserve the
   structural carrier and select child serializers. Never combine both meanings at one node.
   Registration must not silently replace static selection.
@@ -196,7 +196,7 @@ Load this file when changing `rust/` or Rust xlang behavior.
   Private built-in registration validates the expected internal type ID before publication, and
   later user insertions use the same target-index conflict checks. Do not classify generic target
   families through `type_name` or add a target-kind marker hierarchy; an
-  otherwise unowned exact container/tuple target may use one manual EXT serializer.
+  otherwise unowned exact container/tuple target may use one custom EXT serializer.
 - External structural serializers must access and construct their target directly. Do not create a temporary
   external structural serializer, mirror value, conversion hook, private-field workaround, or unsafe access path.
 - Because external structural serializer declarations are compile-time schemas rather than runtime
@@ -235,14 +235,14 @@ Load this file when changing `rust/` or Rust xlang behavior.
   remote-only stub returns no target identity and enters a cold missing-registration error.
   `Any` and application traits work in native and xlang modes only through mode-eligible concrete
   serializers; their Rust carrier/trait identity never appears on the wire.
-- Manual serializers used through sync Arc dynamic carriers must implement the direct final-Arc
+- Custom serializers used through sync Arc dynamic carriers must implement the direct final-Arc
   materializer hook. Do not allocate a Box first, and do not make non-Send/Sync serializers pretend
   Arc materialization is supported.
 - `Rc`, `Arc`, `RcWeak`, and `ArcWeak` own only their reference envelope. After consuming it, a
   compatible metadata-bearing structural child must still consume its inline `TypeInfo`, while a
   declared recursive carrier child must receive the remote `FieldType` directly. Do not discard
   either metadata form, read a second reference envelope, or add a lookup.
-- Manual serializers own allocation and proportional readable-byte/graph-memory checks inside their
+- Custom serializers own allocation and proportional readable-byte/graph-memory checks inside their
   opaque body. Serializer codecs own the outer envelope and only the carriers they materialize;
   dynamic Box/Rc harnesses reserve before serializer reading and allocate the outer owner once
   afterward. Dynamic Arc harnesses reserve first, then the serializer/structural Arc hook performs
@@ -261,9 +261,9 @@ Load this file when changing `rust/` or Rust xlang behavior.
 - `IS_WRAPPER` identifies only Fory-owned wrapper serializers without an independent registration
   identity: Option, Box, Rc, Arc, RcWeak, ArcWeak, RefCell, and Mutex. It is intrinsic to the outer
   serializer and remains true over an EXT child. Lists, sets, maps, fixed arrays, and tuples are
-  false. A manual serializer targeting a wrapper-shaped Rust type also remains false because it
+  false. A custom serializer targeting a wrapper-shaped Rust type also remains false because it
   owns an independent opaque EXT body. Use this constant with the existing wire category for
-  manual EXT registration validation, its only runtime consumer; do not replace it with reflection,
+  custom EXT registration validation, its only runtime consumer; do not replace it with reflection,
   `type_name` classification, target syntax inspection, or a second registration marker.
 - Mark cold failure and slow-path entrances reachable from Rust serialization hot paths with both
   `#[cold]` and `#[inline(never)]`. Keep successful dynamic dispatch and normal non-null/matched
@@ -279,6 +279,11 @@ Load this file when changing `rust/` or Rust xlang behavior.
   compile-time selection hooks whose bodies must disappear after monomorphization.
 - If breakage is explicitly acceptable during a Rust module refactor, rewire macros, tests, and sibling crates directly to the new boundaries instead of adding compatibility re-exports.
 - For panic-safety in hot paths, preserve TLS context reuse. Add scoped guards or owned fallbacks rather than per-call context allocation, and reset reused contexts at entry and successful exit.
+- Read depth and per-root generic/reference state use root reset as their only failure-cleanup
+  owner. Nested readers and skippers increment depth before reading children and decrement only
+  after every child succeeds; an error must retain the failed path's depth and transient state until
+  root reset. Do not use `Drop`, RAII, scope guards, or match-error cleanup to decrement or pop that
+  read-side state on failure. This rule does not change write-side cleanup.
 - Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Keep recursive matched-field shape classification owned by `fory-core/src/meta/type_meta.rs`; collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
 - Root deserialization graph memory budget state belongs to `ReadContext` and is initialized by the
   root `Fory` read methods before the header is consumed. Use the fixed `128 MiB` default unless a
@@ -301,24 +306,27 @@ Load this file when changing `rust/` or Rust xlang behavior.
   Root deserialization does not reserve root object memory.
   Dedicated primitive dense ARRAY `Vec<T>` readers, strings, binary, primitive scalars, and
   primitive fixed-array owners stay skipped and keep their byte checks.
-- Ordinary, external, manual, carrier-root, and derive field paths converge on the same carrier
+- Ordinary, external, custom, carrier-root, and derive field paths converge on the same carrier
   body/allocation implementation. Root paths compose child serializers and field paths compose
   child codecs. Keep exactly one reservation before `Vec::with_capacity`,
   `HashMap::with_capacity`, or collection materialization at that concrete owner. Do not restore a
   duplicate collection/map body route or duplicate reservation. Empty non-leaf owners that
   allocate an independent owner object or storage reserve nonzero shallow self cost.
-- Count-derived collection and map owners must prove at least the declared element or entry count
-  in readable post-count bytes exactly once before reservation or allocation. Their writers must
-  symmetrically reject any value whose complete post-count header, metadata, framing, and body are
-  shorter than that count, including non-zero-sized targets with compact or empty manual bodies.
-  Use one aggregate writer check per variable carrier, never a per-element branch, and do not
-  repeat the reader gate after metadata.
-- Fixed arrays do not allocate from their validated wire count and bypass the proportional gate.
-  Zero-sized children also bypass it for `Vec`, `VecDeque`, and `BinaryHeap`, whose representation
-  has no count-derived backing for those elements. `LinkedList`, `HashSet`, `BTreeSet`, `HashMap`,
-  and `BTreeMap` retain the gate for node, bucket, entry, or duplicate-processing work. Compile the
-  check out for fixed arrays and eligible zero-sized carriers. Do not add guessed node charges,
-  padding bytes, a global compact-body bypass, or another collection or map codec.
+- Count-derived collection and map owners whose exact repeated body is compile-time proven to
+  consume a byte must retain the direct readable-count gate with no unbacked-budget access. An
+  uncertain owner may exclude the root operation's remaining unbacked-container allowance from
+  that preallocation byte check, then must settle actual item/body byte progress in its one
+  existing loop: every 1024 collection items plus the tail, and at existing map chunk boundaries.
+  The allowance is root-shared, defaults to `8192`, and zero is strict. Writers must keep compact
+  empty bodies valid; do not reject, pad, or change their wire encoding for this reader policy.
+- Fixed arrays do not allocate from their validated wire count and bypass the preallocation gate.
+  Zero-sized children also bypass that gate for `Vec`, `VecDeque`, and `BinaryHeap`, whose
+  representation has no count-derived backing for those elements, but their repeated read work
+  still uses the root unbacked-container budget when the body is not proven to advance.
+  `LinkedList`, `HashSet`, `BTreeSet`, `HashMap`, and `BTreeMap` retain the allocation gate for node,
+  bucket, entry, or duplicate-processing work. Compile proven-positive budget access out after
+  monomorphization. Do not add guessed node charges, padding bytes, a second container loop, or
+  another collection or map codec.
 
 ## Key Paths
 

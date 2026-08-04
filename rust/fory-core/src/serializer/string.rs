@@ -32,6 +32,8 @@ enum StrEncoding {
 impl Serializer for String {
     type Target = Self;
 
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
+
     #[inline(always)]
     fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
         let header = (value.len() as i32 as u64) << 2 | StrEncoding::Utf8 as u64;

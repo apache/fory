@@ -247,9 +247,6 @@ private func readDynamicValue<S: Serializer>(
         reservedRefID = nil
     }
 
-    try context.enterDynamicAnyDepth()
-    defer { context.leaveDynamicAnyDepth() }
-
     let typeInfo: TypeInfo
     if readTypeInfo {
         typeInfo = try context.readTypeInfo()

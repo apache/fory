@@ -199,7 +199,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     }
     if (!Throwable.class.isAssignableFrom(type)) {
       LOG.warnOnce(
-          "{} customized jdk serialization, which is inefficient. "
+          "{} uses custom JDK serialization, which is inefficient. "
               + "Please replace it with a {} or implements {}",
           type,
           Serializer.class.getName(),

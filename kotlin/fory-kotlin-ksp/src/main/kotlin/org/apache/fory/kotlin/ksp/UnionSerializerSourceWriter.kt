@@ -68,6 +68,9 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
     builder.append("import org.apache.fory.resolver.TypeResolver\n")
     builder.append("import org.apache.fory.serializer.FieldGroups\n")
     builder.append("import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo\n")
+    if (usesDirectList()) {
+      builder.append("import org.apache.fory.serializer.GraphMemoryEstimates\n")
+    }
     builder.append("import org.apache.fory.serializer.StaticGeneratedStructSerializer\n")
     builder.append("import org.apache.fory.serializer.UnionSerializer\n")
     builder.append("import org.apache.fory.serializer.collection.CollectionFlags\n")
@@ -98,6 +101,11 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
     builder.append("  public companion object {\n")
     builder.append("    @JvmField\n")
     builder.append("    public val DESCRIPTORS: List<Descriptor> = buildDescriptors()\n\n")
+    if (usesDirectList()) {
+      builder.append(
+        "    private val ARRAY_LIST_OWNER_BYTES: Int = GraphMemoryEstimates.shallowObjectBytes(java.util.ArrayList::class.java)\n\n"
+      )
+    }
     builder.append("    private fun buildDescriptors(): List<Descriptor> {\n")
     builder
       .append("      val descriptors = ArrayList<Descriptor>(")
@@ -173,6 +181,7 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
   }
 
   private fun writeRead() {
+    builder.append("  override fun readDataAlwaysAdvances(): Boolean = true\n\n")
     builder
       .append("  override fun read(readContext: ReadContext): ")
       .append(union.typeName)
@@ -342,29 +351,43 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
   private fun canDirect(type: KotlinSourceTypeNode): Boolean =
     !type.trackingRef && type.typeArguments.isEmpty() && type.componentType == null
 
-  private fun directListBodyWrite(type: KotlinSourceTypeNode, value: String): String? {
-    if (type.typeId != "Types.LIST" || type.typeArguments.size != 1 || type.nullable) {
-      return null
+  // Tracked payloads stay on UnionSerializer so ref flags and read publication have one owner.
+  private fun canUseDirectList(type: KotlinSourceTypeNode): Boolean {
+    if (
+      type.typeId != "Types.LIST" ||
+        type.typeArguments.size != 1 ||
+        type.nullable ||
+        type.trackingRef
+    ) {
+      return false
     }
     val elementType = type.typeArguments[0]
     if (elementType.nullable || !canDirect(elementType)) {
+      return false
+    }
+    return directPayloadWrite(elementType, "element") != null &&
+      directPayloadRead(elementType) != null
+  }
+
+  private fun usesDirectList(): Boolean = union.cases.any { canUseDirectList(it.valueType) }
+
+  private fun directListBodyWrite(type: KotlinSourceTypeNode, value: String): String? {
+    if (!canUseDirectList(type)) {
       return null
     }
+    val elementType = type.typeArguments[0]
     val writeElement = directPayloadWrite(elementType, "element") ?: return null
     return "$value.let { listValue -> buffer.writeVarUInt32Small7(listValue.size); if (listValue.isNotEmpty()) { buffer.writeByte(CollectionFlags.DECL_SAME_TYPE_NOT_HAS_NULL); for (element in listValue) { $writeElement } } }"
   }
 
   private fun directListBodyRead(type: KotlinSourceTypeNode): String? {
-    if (type.typeId != "Types.LIST" || type.typeArguments.size != 1 || type.nullable) {
+    if (!canUseDirectList(type)) {
       return null
     }
     val elementType = type.typeArguments[0]
-    if (elementType.nullable || !canDirect(elementType)) {
-      return null
-    }
     val readElement = directPayloadRead(elementType) ?: return null
     val valueType = type.valueTypeName.removeSuffix("?")
-    return "run { val size = buffer.readVarUInt32Small7(); val result = if (size == 0) java.util.ArrayList<Any?>(0) else { check(buffer.readByte().toInt() == CollectionFlags.DECL_SAME_TYPE_NOT_HAS_NULL); buffer.checkReadableBytes(size); val values = java.util.ArrayList<Any?>(size); for (i in 0 until size) { values.add($readElement) }; values }; result as $valueType }"
+    return "run { val size = buffer.readVarUInt32Small7(); if (size < 0) { throw org.apache.fory.exception.DeserializationException(\"Collection size must be non-negative: \" + size) }; readContext.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + size.toLong() * GraphMemoryEstimates.REFERENCE_BYTES); val result = if (size == 0) java.util.ArrayList<Any?>(0) else { check(buffer.readByte().toInt() == CollectionFlags.DECL_SAME_TYPE_NOT_HAS_NULL); buffer.checkReadableBytes(size); val values = java.util.ArrayList<Any?>(size); for (i in 0 until size) { values.add($readElement) }; values }; result as $valueType }"
   }
 
   private fun denseUnsignedArrayWrite(type: KotlinSourceTypeNode): String? =

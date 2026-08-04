@@ -19,7 +19,7 @@ import array
 import dataclasses
 import struct
 import sys
-from typing import Any
+from typing import Any, List
 
 import pytest
 
@@ -46,6 +46,10 @@ class OneByteStream:
     def __init__(self, data: bytes):
         self._data = data
         self._offset = 0
+
+    @property
+    def bytes_read(self):
+        return self._offset
 
     def read(self, size=-1):
         if self._offset >= len(self._data):
@@ -144,6 +148,16 @@ class BudgetRefNode:
     children: Any = pyfory.field(default_factory=list, ref=True, nullable=True)
 
 
+@dataclasses.dataclass
+class BudgetInt32ArrayPayload:
+    payload: pyfory.Array[pyfory.Int32]
+
+
+@dataclasses.dataclass
+class BudgetInt32ListPayload:
+    payload: List[pyfory.FixedInt32]
+
+
 def collection_memory(num_elements):
     return LIST_OWNER_BYTES + num_elements * REFERENCE_BYTES
 
@@ -184,6 +198,42 @@ def varuint_payload(value):
     buffer = Buffer.allocate(16)
     buffer.write_var_uint32(value)
     return buffer.to_bytes(0, buffer.get_writer_index())
+
+
+def object_ndarray_payload(shape, items, length=None, *, limit=DEFAULT_GRAPH_MEMORY_BYTES, root=False):
+    fory = new_fory(limit, xlang=False)
+    serializer = fory.type_resolver.get_serializer(np.ndarray)
+    buffer = Buffer.allocate(64)
+    write_context = fory.write_context
+    try:
+        write_context.prepare(buffer)
+        if root:
+            buffer.write_int8(0)
+            root_value = np.empty(1, dtype=object)
+            assert write_context.write_ref_value_flag(root_value)
+            fory.type_resolver.write_type_info(write_context, fory.type_resolver.get_type_info(np.ndarray))
+        buffer.write_string(np.dtype(object).str)
+        buffer.write_var_uint32(len(shape))
+        for dim in shape:
+            buffer.write_var_uint32(dim)
+        buffer.write_varint32(len(items) if length is None else length)
+        child_offset = buffer.get_writer_index()
+        for item in items:
+            write_context.write_ref(item)
+        payload = buffer.to_bytes(0, buffer.get_writer_index())
+    finally:
+        fory.reset_write()
+    return fory, serializer, payload, child_offset
+
+
+def read_object_ndarray(shape, items, length=None):
+    fory, serializer, payload, _ = object_ndarray_payload(shape, items, length)
+
+    try:
+        fory.read_context.prepare(Buffer(payload))
+        return fory.read_context.read_non_ref(serializer)
+    finally:
+        fory.reset_read()
 
 
 def test_fixed_default_budget():
@@ -431,6 +481,100 @@ def test_object_ndarray_budget():
     np.testing.assert_array_equal(restored, value)
 
 
+def test_object_ndarray_2d_budget():
+    if np is None:
+        pytest.skip("numpy is not installed")
+    value = np.array([[1, 2, 3], [4, 5, 6]], dtype=object)
+    budget = collection_memory(6) + 2 * collection_memory(3)
+    restored = expect_budget(value, budget, xlang=False)
+    np.testing.assert_array_equal(restored, value)
+
+
+def test_object_ndarray_header_mismatch():
+    if np is None:
+        pytest.skip("numpy is not installed")
+    with pytest.raises(ValueError, match="at least one dimension"):
+        read_object_ndarray((), [], 0)
+    row = np.array([1, 2], dtype=object)
+    with pytest.raises(ValueError, match="does not match declared first dimension"):
+        read_object_ndarray((2, 2), [row], 1)
+
+
+def test_object_ndarray_row_mismatch():
+    if np is None:
+        pytest.skip("numpy is not installed")
+    rows = [
+        np.array([1, 2], dtype=np.int64),
+        np.array([1, 2, 3], dtype=object),
+    ]
+    for row in rows:
+        with pytest.raises(ValueError, match="does not match declared dtype"):
+            read_object_ndarray((1, 2), [row])
+
+
+def test_object_ndarray_element_shape():
+    if np is None:
+        pytest.skip("numpy is not installed")
+    element = np.array([1, 2, 3], dtype=np.int64)
+    value = np.empty(1, dtype=object)
+    value[0] = element
+    fory = new_fory(xlang=False)
+    restored = fory.deserialize(fory.serialize(value))
+    assert restored.shape == (1,)
+    assert restored.dtype == np.dtype(object)
+    assert isinstance(restored[0], np.ndarray)
+    np.testing.assert_array_equal(restored[0], element)
+
+
+def test_object_ndarray_product_overflow(monkeypatch):
+    if np is None:
+        pytest.skip("numpy is not installed")
+    shape = (1, (1 << 32) - 1, (1 << 32) - 1)
+    fory, serializer, payload, _ = object_ndarray_payload(shape, [], 1)
+
+    def fail_allocation(*_args, **_kwargs):
+        raise AssertionError("ndarray allocation must not run")
+
+    monkeypatch.setattr(np, "empty", fail_allocation)
+    try:
+        fory.read_context.prepare(Buffer(payload))
+        with pytest.raises(ValueError, match="Estimated graph memory overflow"):
+            fory.read_context.read_non_ref(serializer)
+    finally:
+        fory.reset_read()
+
+
+def test_object_ndarray_budget_before_body():
+    if np is None:
+        pytest.skip("numpy is not installed")
+    row = np.array([1, 2], dtype=object)
+    budget = collection_memory(2) - 1
+    fory, _, payload, child_offset = object_ndarray_payload((1, 2), [row], limit=budget, root=True)
+    stream = OneByteStream(payload)
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        fory.deserialize(Buffer.from_stream(stream))
+    assert stream.bytes_read == child_offset
+
+
+def test_object_ndarray_root_failure_reuse():
+    if np is None:
+        pytest.skip("numpy is not installed")
+    valid = np.array([7], dtype=object)
+
+    malformed_row = np.array([1, 2, 3], dtype=object)
+    fory, _, payload, _ = object_ndarray_payload((1, 2), [malformed_row], root=True)
+    with pytest.raises(ValueError, match="does not match declared dtype"):
+        fory.deserialize(payload)
+    np.testing.assert_array_equal(fory.deserialize(fory.serialize(valid)), valid)
+
+    row = np.array([1, 2], dtype=object)
+    budget = collection_memory(2) - 1
+    fory, _, payload, _ = object_ndarray_payload((1, 2), [row], limit=budget, root=True)
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        fory.deserialize(payload)
+    np.testing.assert_array_equal(fory.deserialize(fory.serialize(valid)), valid)
+
+
 def test_dense_leaf_owners_skipped():
     values = [
         "x" * 256,
@@ -446,6 +590,23 @@ def test_dense_leaf_owners_skipped():
             np.testing.assert_array_equal(restored, value)
         else:
             assert restored == value
+
+
+def test_compatible_array_to_list_budget():
+    type_name = "example.BudgetInt32Sequence"
+    writer = new_fory(xlang=True)
+    writer.register(BudgetInt32ArrayPayload, name=type_name)
+    data = writer.serialize(BudgetInt32ArrayPayload(pyfory.Int32Array([1, 2, 3])))
+    budget = object_memory(1) + collection_memory(3)
+
+    reader = new_fory(budget - 1, xlang=True)
+    reader.register(BudgetInt32ListPayload, name=type_name)
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        reader.deserialize(data)
+
+    reader = new_fory(budget, xlang=True)
+    reader.register(BudgetInt32ListPayload, name=type_name)
+    assert reader.deserialize(data) == BudgetInt32ListPayload([1, 2, 3])
 
 
 def test_large_list_needs_bytes():

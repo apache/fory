@@ -33,7 +33,7 @@ import numpy as np
 from matplotlib.ticker import FuncFormatter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from plot_style import (  # noqa: E402
+from plot_style import (
     BAR_EDGE_COLOR,
     apply_benchmark_style,
     format_markdown_with_prettier,
@@ -112,7 +112,7 @@ def parse_libs(value: str) -> tuple[str, ...]:
     for name in requested:
         serializer = LIB_ALIASES.get(name)
         if serializer is None:
-            choices = ", ".join(("fory-json", "jackson", "gson", "fastjson2"))
+            choices = "fory-json, jackson, gson, fastjson2"
             raise ValueError(f"Unknown JSON library: {name}. Available: {choices}")
         if serializer in serializers:
             raise ValueError(f"Duplicate JSON library: {SERIALIZER_LABELS[serializer]}")
@@ -125,7 +125,7 @@ def load_json(path: Path) -> list[dict[str, Any]]:
         payload = json.load(source)
     benchmarks = payload if isinstance(payload, list) else payload.get("benchmarks", [])
     if not isinstance(benchmarks, list):
-        raise ValueError(f"Expected a JMH benchmark list in {path}")
+        raise TypeError(f"Expected a JMH benchmark list in {path}")
     return benchmarks
 
 
@@ -267,7 +267,7 @@ def render_report(
     library_names = ", ".join(SERIALIZER_LABELS[name] for name in serializers)
     lines = [
         "# Java JSON Benchmark Report\n\n",
-        f"The benchmark compares {library_names} using the same MediaContent data. "
+        f"The benchmark compares {library_names} using the same data. "
         "The String group excludes UTF-8 conversion. The UTF-8 bytes group uses "
         "direct byte-array APIs when available. "
         + (

@@ -3,7 +3,7 @@
 Apache Fory™ Dart is the Dart xlang implementation for
 [Apache Fory™](https://github.com/apache/fory). It reads and writes Fory's
 cross-language wire format and is designed around generated serializers for
-annotated Dart models, with manual serializers available for advanced use
+annotated Dart models, with custom serializers available for advanced use
 cases.
 
 ## Features
@@ -11,10 +11,11 @@ cases.
 - Cross-language serialization with the Fory xlang format
 - Dart VM/AOT, Flutter, and web platform support
 - Generated serializers for annotated structs and enums
+- Flattened superclass and mixin storage for ordinary generated structs
 - External structural serializers for classes owned by another package
 - Compatible mode for schema evolution
 - Optional reference tracking for shared and circular object graphs
-- Manual serializers for custom payloads, construction, and unions
+- Custom serializers for custom payloads, construction, and unions
 - Explicit exact-width value classes for `Int64`, `Uint64`, `Float32`,
   `LocalDate`, and `Timestamp`, plus `Duration` support
 
@@ -24,7 +25,7 @@ Add `fory` to your package dependencies.
 
 ```yaml
 dependencies:
-  fory: ^1.4.0
+  fory: ^1.5.0
 
 dev_dependencies:
   build_runner: ^2.4.13
@@ -87,8 +88,29 @@ void main() {
 Generate the companion file before running the program:
 
 ```bash
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 ```
+
+## Ordinary Struct Inheritance
+
+```dart
+class MessageBase {
+  int sequence = 0;
+}
+
+@ForyStruct()
+class TextMessage extends MessageBase {
+  TextMessage();
+
+  String text = '';
+}
+```
+
+The generated `TextMessage` schema contains both `sequence` and `text`.
+Superclass and applied-mixin fields are flattened into one child serializer.
+See [Struct Inheritance](https://fory.apache.org/docs/object-serialization/dart/inheritance)
+for private fields, mixins, constructors, and
+`ignoreInheritedPrivateFields`.
 
 ## External-Type Serialization
 
@@ -111,7 +133,11 @@ abstract final class UserSerializer {
 }
 ```
 
-The declaration is schema-only. Register and serialize the target:
+The declaration is schema-only.
+Use `@ForyField(ignore: true)` for declaration-only storage that should count
+toward the graph-memory budget without being serialized.
+
+Register and serialize the target:
 
 ```dart
 ExternalSerializersForyModule.register(
@@ -127,6 +153,10 @@ final decoded = fory.deserialize<third_party.User>(bytes);
 Fields and nested `List`, `Set`, and `Map` values use the same target
 registration. Select a public named generative constructor with
 `constructor: 'name'` when the unnamed constructor is not appropriate.
+External declarations remain explicit schemas: they may list an accessible
+inherited target property, but Fory does not scan the external target's
+hierarchy automatically. Neither `exposePrivateFields` nor
+`ignoreInheritedPrivateFields` is valid with `target`.
 
 ## Type Registration
 
@@ -156,6 +186,9 @@ Exactly one registration mode is required:
 Use `.` inside `name` to add a namespace prefix, for example `example.Person`.
 
 Keep the same registration identity on every peer that exchanges the type.
+Finish all generated and custom serializer registration before the first root
+read or write. A `Fory` instance permanently rejects registration after that
+point; create a new instance for a different registry.
 
 ## Configuration
 
@@ -194,17 +227,21 @@ class NodeList {
 }
 ```
 
+Included inherited field metadata enters this same reference analysis.
+Inheritance does not add a second reference owner or change the runtime
+reference protocol.
+
 ## Field Annotations
 
 `@ForyField()` controls per-field serialization behavior:
 
-| Option     | Description                                      |
-| ---------- | ------------------------------------------------ |
-| `skip`     | Skip the field during serialization              |
-| `id`       | Stable field ID for compatible-mode evolution    |
-| `nullable` | Override nullability inference                   |
-| `ref`      | Enable reference tracking for this field         |
-| `dynamic`  | Control whether runtime type metadata is written |
+| Option     | Description                                         |
+| ---------- | --------------------------------------------------- |
+| `ignore`   | Exclude the declaring storage field from the schema |
+| `id`       | Stable field ID for compatible-mode evolution       |
+| `nullable` | Override nullability inference                      |
+| `ref`      | Enable reference tracking for this field            |
+| `dynamic`  | Control whether runtime type metadata is written    |
 
 `type:` is the canonical override surface for nested field semantics:
 
@@ -217,10 +254,11 @@ class NodeList {
 Map<String, List<int?>> nested = <String, List<int?>>{};
 ```
 
-## Manual Serializers
+## Custom Serializers
 
 Use `Serializer<T>` when a type needs custom wire behavior, field conversion,
-or construction that an external structural serializer cannot express.
+or construction that generated ordinary or external structural serializers
+cannot prove.
 
 ```dart
 import 'package:fory/fory.dart';
@@ -317,8 +355,9 @@ The main exported API includes:
 
 - `Fory` — main serialization facade
 - `Config` — Fory configuration
-- `ForyStruct`, including `target` and `constructor`, plus `ForyField`,
-  `ListField`, `SetField`, and `MapField` — struct annotations
+- `ForyStruct`, including `target`, `constructor`, `exposePrivateFields`, and
+  `ignoreInheritedPrivateFields`, plus `ForyField`, `ListField`, `SetField`,
+  and `MapField` — struct annotations
 - `ForyUnion` — union type annotation
 - `Serializer`, `UnionSerializer`, `EnumSerializer` — serializer base classes
 - `Buffer`, `WriteContext`, `ReadContext` — low-level I/O
@@ -345,4 +384,4 @@ For the xlang wire format and type mapping details, see the
 [Apache Fory specification](https://github.com/apache/fory/tree/main/docs/specification).
 
 For the full Dart guide, see
-[https://fory.apache.org/docs/guide/dart/](https://fory.apache.org/docs/guide/dart/).
+[https://fory.apache.org/docs/object-serialization/dart/](https://fory.apache.org/docs/object-serialization/dart/).

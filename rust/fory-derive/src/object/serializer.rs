@@ -100,10 +100,19 @@ pub fn derive_serializer(
         default_value,
         reserved_space,
         static_type_id,
+        read_data_always_advances,
     ) = match &ast.data {
         Data::Struct(data) => {
             let source = source_fields(&data.fields);
             let fields = extract_fields(&source);
+            let read_data_always_advances =
+                match crate::object::field_codec::struct_read_data_always_advances(&source) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        clear_struct_context();
+                        return err.into_compile_error().into();
+                    }
+                };
             let actual_type_id = if attrs.evolving == Some(false) {
                 misc::gen_actual_type_id_no_evolving()
             } else {
@@ -129,6 +138,7 @@ pub fn derive_serializer(
                 read::gen_default_value(&data.fields, &source, &target_path),
                 write::gen_reserved_space(&source),
                 quote! { fory_core::TypeId::STRUCT },
+                read_data_always_advances,
             )
         }
         Data::Enum(data) => (
@@ -153,6 +163,7 @@ pub fn derive_serializer(
             derive_enum::gen_default_value(data, &target_path),
             derive_enum::gen_reserved_space(),
             derive_enum::gen_static_type_id(data),
+            quote! { true },
         ),
         Data::Union(_) => {
             clear_struct_context();
@@ -233,6 +244,8 @@ pub fn derive_serializer(
 
         impl #impl_generics fory_core::Serializer for #name #ty_generics #where_clause {
             type Target = #target_ty;
+
+            const READ_DATA_ALWAYS_ADVANCES: bool = #read_data_always_advances;
 
             // External structural serializers need a stable body boundary:
             // recursive carrier composition would otherwise duplicate the

@@ -551,6 +551,34 @@ func TestReadSharedTypeMetaExactLocalPopulatesCache(t *testing.T) {
 	require.NotNil(t, typeInfo)
 }
 
+func TestCheckedTypeDefSize32BitLimit(t *testing.T) {
+	const maxInt32 = uint64(1<<31 - 1)
+	extraAtLimit := uint32(maxInt32 - META_SIZE_MASK)
+
+	size, ok := checkedTypeDefSize(META_SIZE_MASK, extraAtLimit, maxInt32)
+	require.True(t, ok)
+	require.Equal(t, int(maxInt32), size)
+
+	_, ok = checkedTypeDefSize(META_SIZE_MASK, extraAtLimit+1, maxInt32)
+	require.False(t, ok)
+	_, ok = checkedTypeDefSize(META_SIZE_MASK, ^uint32(0), maxInt32)
+	require.False(t, ok)
+}
+
+func TestSkipTypeDefExtendedSizeIntRange(t *testing.T) {
+	buffer := NewByteBuffer(nil)
+	buffer.WriteVarUint32(^uint32(0))
+	var err Error
+
+	skipTypeDef(buffer, META_SIZE_MASK, &err)
+	require.Error(t, err.CheckError())
+	if intSize == 32 {
+		require.Contains(t, err.Error(), "supported int range")
+	} else {
+		require.Equal(t, ErrKindBufferOutOfBound, err.Kind())
+	}
+}
+
 func TestRemoteSchemaLimitRejectsExtraVersions(t *testing.T) {
 	fory := NewFory(WithXlang(false), WithCompatible(true), WithMaxSchemaVersionsPerType(1))
 	first := remoteSchemaLimitTypeDef(t, SimpleStruct{}, "example.Shared")

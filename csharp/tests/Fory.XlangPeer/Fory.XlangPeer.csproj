@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Fory.ExternalTypes\Fory.ExternalTypes.csproj" />
+    <ProjectReference Include="..\Fory.InheritanceProviders\Fory.InheritanceProviders.csproj" />
     <ProjectReference Include="..\..\src\Fory\Fory.csproj" />
     <ProjectReference Include="..\..\src\Fory.Generator\Fory.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>

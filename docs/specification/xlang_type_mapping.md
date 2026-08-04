@@ -112,6 +112,12 @@ FDL spells them as an encoding modifier plus a semantic integer type.
 
 Notes:
 
+- C# external-type serialization maps a third-party class/struct or enum
+  through a local
+  `ForyStruct(Target = typeof(...))` or
+  `ForyEnum(Target = typeof(...))` serializer declaration. The runtime target
+  still uses the C# mapping shown above; declaration ownership is not a wire
+  distinction.
 - Python `pyfory.Float16` and `pyfory.BFloat16` are reserved annotation markers; scalar values deserialize as native Python `float`.
 - Python `BoolArray`, `Int8Array`, `Int16Array`, `Int32Array`, `Int64Array`, `UInt8Array`, `UInt16Array`, `UInt32Array`, `UInt64Array`, `Float16Array`, `BFloat16Array`, `Float32Array`, and `Float64Array` are public dense-array wrappers with list-like sequence behavior.
 - JavaScript `BoolArray`, fallback `Float16Array`, and `BFloat16Array` are public dense-array wrappers backed by `Uint8Array` or `Uint16Array`. Scalar `float16` and `bfloat16` values use `number`. A JavaScript environment with native `Float16Array` may return that native carrier for `array<float16>`.

@@ -22,9 +22,11 @@ import 'dart:typed_data';
 import 'package:fory/fory.dart';
 import 'package:fory/src/context/meta_string_reader.dart';
 import 'package:fory/src/context/ref_reader.dart';
+import 'package:fory/src/meta/type_def.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/collection_serializers.dart';
 import 'package:fory/src/serializer/map_serializers.dart';
+import 'package:fory/src/util/hash_util.dart';
 import 'package:test/test.dart';
 
 part 'graph_memory_budget_test.fory.dart';
@@ -56,6 +58,16 @@ class BudgetGeneratedEnvelope {
 }
 
 @ForyStruct()
+class BudgetIgnoredEnvelope {
+  BudgetIgnoredEnvelope();
+
+  int value = 0;
+
+  @ForyField(ignore: true)
+  Object? ignored;
+}
+
+@ForyStruct()
 class BudgetSelfNode {
   BudgetSelfNode();
 
@@ -82,6 +94,59 @@ class BudgetCompatibleArrayEnvelope {
 
   @ArrayField(element: Int32Type())
   Int32List values = Int32List(0);
+}
+
+class BudgetHierarchyBase {
+  BudgetHierarchyBase();
+
+  @ForyField(id: 30, type: Int32Type())
+  int baseValue = 0;
+
+  int _ignoredBase = 0;
+}
+
+mixin BudgetHierarchyMixin {
+  @ForyField(id: 10, type: Int32Type())
+  int mixinValue = 0;
+
+  int _ignoredMixin = 0;
+}
+
+@ForyStruct(ignoreInheritedPrivateFields: true)
+class BudgetHierarchyChild extends BudgetHierarchyBase
+    with BudgetHierarchyMixin {
+  BudgetHierarchyChild();
+
+  @ForyField(id: 20, type: Int32Type())
+  int childValue = 0;
+}
+
+@ForyStruct()
+class BudgetHierarchyFlat {
+  BudgetHierarchyFlat();
+
+  @ForyField(id: 20, type: Int32Type())
+  int childValue = 0;
+
+  @ForyField(ignore: true)
+  int ignoredMixin = 0;
+
+  @ForyField(id: 30, type: Int32Type())
+  int baseValue = 0;
+
+  @ForyField(ignore: true)
+  int ignoredBase = 0;
+
+  @ForyField(id: 10, type: Int32Type())
+  int mixinValue = 0;
+}
+
+@ForyStruct()
+class BudgetCompatibleRemote {
+  BudgetCompatibleRemote();
+
+  @ForyField(id: 20, type: Int32Type())
+  int childValue = 0;
 }
 
 final class ThrowsGraphBudget extends Matcher {
@@ -114,6 +179,14 @@ void _registerGenerated(Fory fory) {
   );
 }
 
+void _registerIgnored(Fory fory) {
+  GraphMemoryBudgetTestForyModule.register(
+    fory,
+    BudgetIgnoredEnvelope,
+    name: 'test.BudgetIgnoredEnvelope',
+  );
+}
+
 void _registerSelfNode(Fory fory) {
   GraphMemoryBudgetTestForyModule.register(
     fory,
@@ -136,6 +209,33 @@ void _registerCompatibleArray(Fory fory) {
     BudgetCompatibleArrayEnvelope,
     name: 'test.BudgetCompatibleEnvelope',
   );
+}
+
+void _registerHierarchy(Fory fory, Type type) {
+  GraphMemoryBudgetTestForyModule.register(fory, type, id: 410);
+}
+
+void _registerCompatibleRemote(Fory fory) {
+  GraphMemoryBudgetTestForyModule.register(
+    fory,
+    BudgetCompatibleRemote,
+    name: 'test.BudgetHierarchy',
+  );
+}
+
+void _registerCompatibleHierarchy(Fory fory) {
+  GraphMemoryBudgetTestForyModule.register(
+    fory,
+    BudgetHierarchyChild,
+    name: 'test.BudgetHierarchy',
+  );
+}
+
+TypeDef _hierarchyTypeDef(Type type) {
+  _registerHierarchy(Fory(), type);
+  final resolver = TypeResolver(Config());
+  resolver.registerGenerated(type, id: 410, namespace: null, typeName: null);
+  return resolver.typeDefForResolved(resolver.resolvedRegisteredType(type));
 }
 
 ReadContext _readContext(
@@ -241,6 +341,60 @@ void main() {
       expect(identical(roundTrip, roundTrip.children.single), isTrue);
     });
 
+    test('reserves ignored field storage', () {
+      final writer = Fory();
+      _registerIgnored(writer);
+      final bytes = writer.serialize(
+        BudgetIgnoredEnvelope()
+          ..value = 7
+          ..ignored = Object(),
+      );
+      final required = _objectGraphBytes(2);
+
+      final failingReader = Fory(maxGraphMemoryBytes: required - 1);
+      _registerIgnored(failingReader);
+      expect(
+        () => failingReader.deserialize<BudgetIgnoredEnvelope>(bytes),
+        _throwsGraphBudget,
+      );
+
+      final passingReader = Fory(maxGraphMemoryBytes: required);
+      _registerIgnored(passingReader);
+      final roundTrip = passingReader.deserialize<BudgetIgnoredEnvelope>(bytes);
+      expect(roundTrip.value, equals(7));
+      expect(roundTrip.ignored, isNull);
+    });
+
+    test('reserves one flattened hierarchy owner', () {
+      final writer = Fory();
+      _registerHierarchy(writer, BudgetHierarchyChild);
+      final bytes = writer.serialize(
+        BudgetHierarchyChild()
+          ..baseValue = 30
+          .._ignoredBase = 31
+          ..mixinValue = 10
+          .._ignoredMixin = 11
+          ..childValue = 20,
+      );
+      final required = _objectGraphBytes(5);
+
+      final failingReader = Fory(maxGraphMemoryBytes: required - 1);
+      _registerHierarchy(failingReader, BudgetHierarchyChild);
+      expect(
+        () => failingReader.deserialize<BudgetHierarchyChild>(bytes),
+        _throwsGraphBudget,
+      );
+
+      final passingReader = Fory(maxGraphMemoryBytes: required);
+      _registerHierarchy(passingReader, BudgetHierarchyChild);
+      final roundTrip = passingReader.deserialize<BudgetHierarchyChild>(bytes);
+      expect(roundTrip.baseValue, equals(30));
+      expect(roundTrip.mixinValue, equals(10));
+      expect(roundTrip.childValue, equals(20));
+      expect(roundTrip._ignoredBase, isZero);
+      expect(roundTrip._ignoredMixin, isZero);
+    });
+
     test('reserves map entries', () {
       final value = <Object?, Object?>{'a': 1};
 
@@ -339,6 +493,35 @@ void main() {
       );
     });
 
+    test('compatible reads reserve the local flattened shape', () {
+      final writer = Fory(compatible: true);
+      _registerCompatibleRemote(writer);
+      final bytes = writer.serialize(BudgetCompatibleRemote()..childValue = 20);
+      final required = _objectGraphBytes(5);
+
+      final failingReader = Fory(
+        compatible: true,
+        maxGraphMemoryBytes: required - 1,
+      );
+      _registerCompatibleHierarchy(failingReader);
+      expect(
+        () => failingReader.deserialize<BudgetHierarchyChild>(bytes),
+        _throwsGraphBudget,
+      );
+
+      final passingReader = Fory(
+        compatible: true,
+        maxGraphMemoryBytes: required,
+      );
+      _registerCompatibleHierarchy(passingReader);
+      final roundTrip = passingReader.deserialize<BudgetHierarchyChild>(bytes);
+      expect(roundTrip.baseValue, isZero);
+      expect(roundTrip.mixinValue, isZero);
+      expect(roundTrip.childValue, equals(20));
+      expect(roundTrip._ignoredBase, isZero);
+      expect(roundTrip._ignoredMixin, isZero);
+    });
+
     test('skips strings binary and dense typed arrays', () {
       final fory = Fory(maxGraphMemoryBytes: 1);
       final text = List<String>.filled(128, 'x').join();
@@ -371,6 +554,47 @@ void main() {
         () => MapSerializer.readPayload(mapContext, null, null),
         throwsStateError,
       );
+    });
+
+    test('rejects invalid map chunk sizes before type metadata', () {
+      for (final chunkSize in <int>[0, 2]) {
+        final buffer =
+            Buffer()
+              ..writeVarUint32(1)
+              ..writeUint8(0)
+              ..writeUint8(chunkSize);
+        final context = _readContext(buffer);
+
+        try {
+          expect(
+            () => MapSerializer.readPayload(context, null, null),
+            throwsStateError,
+            reason: 'chunkSize=$chunkSize',
+          );
+        } finally {
+          context.reset();
+        }
+      }
+    });
+  });
+
+  group('flattened hierarchy schema', () {
+    test('matches flat TypeDef bytes hash and global order', () {
+      final inherited = _hierarchyTypeDef(BudgetHierarchyChild);
+      final flat = _hierarchyTypeDef(BudgetHierarchyFlat);
+
+      expect(
+        inherited.fields.map((field) => field.id),
+        orderedEquals(<int>[10, 20, 30]),
+      );
+      expect(
+        flat.fields.map((field) => field.id),
+        orderedEquals(<int>[10, 20, 30]),
+      );
+      expect(inherited.encoded, orderedEquals(flat.encoded));
+      expect(inherited.header, equals(flat.header));
+      expect(schemaFingerprint(inherited), equals(schemaFingerprint(flat)));
+      expect(schemaHash(inherited), equals(schemaHash(flat)));
     });
   });
 }

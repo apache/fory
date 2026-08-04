@@ -28,6 +28,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -35,7 +37,9 @@ import java.util.List;
 import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonRawValue;
+import org.apache.fory.json.annotation.JsonValidator;
 import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.JdkVersion;
@@ -44,7 +48,9 @@ import org.testng.annotations.Test;
 public class JsonAndroidRuntimeTest {
   @Test
   public void normalJvm() {
-    assertRoundTrips(ForyJson.builder().withCodegen(false).build());
+    ForyJson json = ForyJson.builder().withCodegen(false).build();
+    assertRoundTrips(json);
+    assertValidators(json);
   }
 
   @Test
@@ -109,6 +115,47 @@ public class JsonAndroidRuntimeTest {
         json.fromJson("{\"body\":\"text\",\"bytes\":\"AQID\"}", AndroidRaw.class);
     assertEquals(decodedRaw.body, "text");
     assertEquals(decodedRaw.bytes, new byte[] {1, 2, 3});
+
+    AndroidFormat format = new AndroidFormat();
+    format.value = LocalDate.of(2024, 1, 2);
+    format.values = Arrays.asList(LocalDate.of(2024, 1, 3), LocalDate.of(2024, 1, 4));
+    format.instant = Instant.parse("2024-01-02T03:04:05Z");
+    format.instants = Arrays.asList(format.instant, format.instant.plusSeconds(3600));
+    String formatJson = json.toJson(format);
+    assertTrue(formatJson.contains("\"value\":\"02/01/2024\""), formatJson);
+    assertTrue(formatJson.contains("\"values\":[\"03/01/2024\",\"04/01/2024\"]"), formatJson);
+    assertTrue(formatJson.contains("\"instant\":\"2024-01-02 11:04:05 +08:00\""), formatJson);
+    assertTrue(
+        formatJson.contains(
+            "\"instants\":[\"2024-01-02 11:04:05 +08:00\"," + "\"2024-01-02 12:04:05 +08:00\"]"),
+        formatJson);
+    AndroidFormat decodedFormat = json.fromJson(formatJson, AndroidFormat.class);
+    assertEquals(decodedFormat.value, format.value);
+    assertEquals(decodedFormat.values, format.values);
+    assertEquals(decodedFormat.instant, format.instant);
+    assertEquals(decodedFormat.instants, format.instants);
+  }
+
+  private static void assertValidators(ForyJson json) {
+    AndroidValidated valid = json.fromJson("{\"value\":12}", AndroidValidated.class);
+    assertTrue(valid.validatorInvoked());
+    try {
+      json.fromJson("{\"value\":-1}", AndroidValidated.class);
+      throw new AssertionError("Invalid AndroidValidated input must fail validation");
+    } catch (ForyJsonException e) {
+      assertTrue(e.getCause() instanceof IllegalArgumentException, e.toString());
+    }
+  }
+
+  private static void assertGeneratedValidatorRequired(ForyJson json) {
+    try {
+      json.fromJson("{\"value\":12}", AndroidValidated.class);
+      throw new AssertionError("Android validators must use generated operations");
+    } catch (ForyJsonException e) {
+      assertTrue(
+          e.getMessage().contains("Generated JSON validator operations are required"),
+          e.toString());
+    }
   }
 
   private static List<String> javaCommand(String classPath, Class<?> mainClass) {
@@ -145,6 +192,7 @@ public class JsonAndroidRuntimeTest {
       ForyJson json = ForyJson.builder().withCodegen(true).withAsyncCompilation(true).build();
       assertFalse(ForyJsonTestModels.hasGeneratedCapability(json, AndroidModel.class));
       assertRoundTrips(json);
+      assertGeneratedValidatorRequired(json);
       System.out.println("RESULT:ok");
     }
   }
@@ -210,5 +258,36 @@ public class JsonAndroidRuntimeTest {
   public static final class AndroidRaw {
     @JsonRawValue public String body;
     @JsonBase64 public byte[] bytes;
+  }
+
+  public static final class AndroidFormat {
+    @JsonFormat(pattern = "dd/MM/uuuu")
+    public LocalDate value;
+
+    @JsonFormat(pattern = "dd/MM/uuuu")
+    public List<LocalDate> values;
+
+    @JsonFormat(pattern = "uuuu-MM-dd HH:mm:ss XXX", timezone = "Asia/Shanghai")
+    public Instant instant;
+
+    @JsonFormat(pattern = "uuuu-MM-dd HH:mm:ss XXX", timezone = "Asia/Shanghai")
+    public List<Instant> instants;
+  }
+
+  public static final class AndroidValidated {
+    public int value;
+    private boolean validatorInvoked;
+
+    @JsonValidator
+    public void validate() {
+      validatorInvoked = true;
+      if (value < 0) {
+        throw new IllegalArgumentException("value must not be negative");
+      }
+    }
+
+    public boolean validatorInvoked() {
+      return validatorInvoked;
+    }
   }
 }

@@ -39,6 +39,7 @@ const DEFAULT_MAX_TYPE_META_BYTES = 4096 as const;
 const DEFAULT_MAX_SCHEMA_VERSIONS_PER_TYPE = 10 as const;
 const DEFAULT_MAX_AVERAGE_SCHEMA_VERSIONS_PER_TYPE = 3 as const;
 const DEFAULT_MAX_GRAPH_MEMORY_BYTES = 128 * 1024 * 1024;
+const DEFAULT_MAX_UNBACKED_CONTAINER_ITEMS = 8192 as const;
 export default class Fory {
   readonly typeResolver: TypeResolver;
   readonly anySerializer: Serializer;
@@ -68,28 +69,30 @@ export default class Fory {
 
   private initConfig(config: Partial<Config> | undefined) {
     const maxTypeFields = config?.maxTypeFields ?? DEFAULT_MAX_TYPE_FIELDS;
-    if (!Number.isInteger(maxTypeFields) || maxTypeFields <= 0) {
-      throw new Error(`maxTypeFields must be a positive integer but got ${maxTypeFields}`);
+    if (!Number.isSafeInteger(maxTypeFields) || maxTypeFields <= 0) {
+      throw new Error(`maxTypeFields must be a positive safe integer but got ${maxTypeFields}`);
     }
     const maxTypeMetaBytes = config?.maxTypeMetaBytes ?? DEFAULT_MAX_TYPE_META_BYTES;
-    if (!Number.isInteger(maxTypeMetaBytes) || maxTypeMetaBytes <= 0) {
-      throw new Error(`maxTypeMetaBytes must be a positive integer but got ${maxTypeMetaBytes}`);
+    if (!Number.isSafeInteger(maxTypeMetaBytes) || maxTypeMetaBytes <= 0) {
+      throw new Error(
+        `maxTypeMetaBytes must be a positive safe integer but got ${maxTypeMetaBytes}`,
+      );
     }
     const maxSchemaVersionsPerType =
       config?.maxSchemaVersionsPerType ?? DEFAULT_MAX_SCHEMA_VERSIONS_PER_TYPE;
-    if (!Number.isInteger(maxSchemaVersionsPerType) || maxSchemaVersionsPerType <= 0) {
+    if (!Number.isSafeInteger(maxSchemaVersionsPerType) || maxSchemaVersionsPerType <= 0) {
       throw new Error(
-        `maxSchemaVersionsPerType must be a positive integer but got ${maxSchemaVersionsPerType}`,
+        `maxSchemaVersionsPerType must be a positive safe integer but got ${maxSchemaVersionsPerType}`,
       );
     }
     const maxAverageSchemaVersionsPerType =
       config?.maxAverageSchemaVersionsPerType ?? DEFAULT_MAX_AVERAGE_SCHEMA_VERSIONS_PER_TYPE;
     if (
-      !Number.isInteger(maxAverageSchemaVersionsPerType) ||
+      !Number.isSafeInteger(maxAverageSchemaVersionsPerType) ||
       maxAverageSchemaVersionsPerType <= 0
     ) {
       throw new Error(
-        `maxAverageSchemaVersionsPerType must be a positive integer but got ${maxAverageSchemaVersionsPerType}`,
+        `maxAverageSchemaVersionsPerType must be a positive safe integer but got ${maxAverageSchemaVersionsPerType}`,
       );
     }
     const maxGraphMemoryBytes = config?.maxGraphMemoryBytes ?? DEFAULT_MAX_GRAPH_MEMORY_BYTES;
@@ -98,11 +101,19 @@ export default class Fory {
         `maxGraphMemoryBytes must be in range [1, ${Number.MAX_SAFE_INTEGER}] but got ${maxGraphMemoryBytes}`,
       );
     }
+    const maxUnbackedContainerItems =
+      config?.maxUnbackedContainerItems ?? DEFAULT_MAX_UNBACKED_CONTAINER_ITEMS;
+    if (!Number.isSafeInteger(maxUnbackedContainerItems) || maxUnbackedContainerItems < 0) {
+      throw new Error(
+        `maxUnbackedContainerItems must be in range [0, ${Number.MAX_SAFE_INTEGER}] but got ${maxUnbackedContainerItems}`,
+      );
+    }
     return {
       ref: Boolean(config?.ref),
       useSliceString: Boolean(config?.useSliceString),
       maxDepth: config?.maxDepth,
       maxGraphMemoryBytes,
+      maxUnbackedContainerItems,
       maxTypeFields,
       maxTypeMetaBytes,
       maxSchemaVersionsPerType,
@@ -163,12 +174,16 @@ export default class Fory {
 
   deserialize<T = any>(bytes: Uint8Array, serializer: Serializer = this.anySerializer): T | null {
     this.readContext.reset(bytes);
-    const reader = this.readContext.reader;
-    const bitmap = reader.readUint8();
-    if (bitmap !== ConfigFlags.isCrossLanguageFlag) {
-      this.throwInvalidRootHeader(bitmap);
+    try {
+      const reader = this.readContext.reader;
+      const bitmap = reader.readUint8();
+      if (bitmap !== ConfigFlags.isCrossLanguageFlag) {
+        this.throwInvalidRootHeader(bitmap);
+      }
+      return serializer.readRef();
+    } finally {
+      this.readContext.resetReadDepth();
     }
-    return serializer.readRef();
   }
 
   private throwInvalidRootHeader(bitmap: number): never {
@@ -214,11 +229,15 @@ export default class Fory {
     const rootHeader = ConfigFlags.isCrossLanguageFlag;
     rootDeserializer = (bytes: Uint8Array) => {
       readContext.reset(bytes);
-      const bitmap = reader.readUint8();
-      if (bitmap !== rootHeader) {
-        this.throwInvalidRootHeader(bitmap);
+      try {
+        const bitmap = reader.readUint8();
+        if (bitmap !== rootHeader) {
+          this.throwInvalidRootHeader(bitmap);
+        }
+        return rootSerializer.readRef();
+      } finally {
+        readContext.resetReadDepth();
       }
-      return rootSerializer.readRef();
     };
     this.rootDeserializers.set(serializer, rootDeserializer);
     return rootDeserializer;

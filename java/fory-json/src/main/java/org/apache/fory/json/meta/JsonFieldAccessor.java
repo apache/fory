@@ -22,9 +22,14 @@ package org.apache.fory.json.meta;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.FieldAccessor;
 
@@ -37,6 +42,11 @@ import org.apache.fory.reflect.FieldAccessor;
  * generated codecs consume the original field or method metadata and emit direct expressions.
  */
 public abstract class JsonFieldAccessor {
+  // The Feature calls the ordinary factories during analysis, so Native Image retains the same
+  // accessor instances later returned while runtime configurations build interpreted codecs.
+  private static final ClassValueCache<ConcurrentMap<Member, JsonFieldAccessor>> NATIVE_ACCESSORS =
+      ClassValueCache.newClassKeyCache(32);
+
   public Object getObject(Object target) {
     throw new UnsupportedOperationException();
   }
@@ -126,15 +136,40 @@ public abstract class JsonFieldAccessor {
   }
 
   public static JsonFieldAccessor forField(Field field) {
-    return new FieldJsonAccessor(FieldAccessor.createAccessor(field));
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return nativeAccessors(field).computeIfAbsent(field, JsonFieldAccessor::newFieldAccessor);
+    }
+    return newFieldAccessor(field);
   }
 
   public static JsonFieldAccessor forGetter(Method getter) {
-    return new GetterJsonAccessor(getter);
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return nativeAccessors(getter).computeIfAbsent(getter, JsonFieldAccessor::newGetterAccessor);
+    }
+    return newGetterAccessor(getter);
   }
 
   public static JsonFieldAccessor forSetter(Method setter) {
-    return new SetterJsonAccessor(setter);
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return nativeAccessors(setter).computeIfAbsent(setter, JsonFieldAccessor::newSetterAccessor);
+    }
+    return newSetterAccessor(setter);
+  }
+
+  private static ConcurrentMap<Member, JsonFieldAccessor> nativeAccessors(Member member) {
+    return NATIVE_ACCESSORS.get(member.getDeclaringClass(), ConcurrentHashMap::new);
+  }
+
+  private static JsonFieldAccessor newFieldAccessor(Member member) {
+    return new FieldJsonAccessor(FieldAccessor.createAccessor((Field) member));
+  }
+
+  private static JsonFieldAccessor newGetterAccessor(Member member) {
+    return new GetterJsonAccessor((Method) member);
+  }
+
+  private static JsonFieldAccessor newSetterAccessor(Member member) {
+    return new SetterJsonAccessor((Method) member);
   }
 
   private static final class FieldJsonAccessor extends JsonFieldAccessor {

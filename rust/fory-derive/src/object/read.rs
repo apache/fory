@@ -506,16 +506,17 @@ pub(crate) fn gen_read_compatible_target(
         }
     } else {
         quote! {
+            let remote_meta = type_info.get_type_meta_ref();
+            // Metadata resolution owns exact byte validation before publishing TypeInfo. Reusing
+            // that result avoids a local metadata lookup and must not be replaced by a hash-only
+            // schema decision.
+            if type_info.has_exact_local_schema() {
+                return <Self as fory_core::Serializer>::read_data(context);
+            }
             let meta = context.get_type_resolver().get_type_meta_by_index_ref(
                 &::std::any::TypeId::of::<Self>(),
                 <Self as fory_core::StructSerializer>::type_index(),
             )?;
-            let local_type_hash = meta.get_hash();
-            let remote_meta = type_info.get_type_meta_ref();
-            let remote_type_hash = remote_meta.get_hash();
-            if remote_type_hash == local_type_hash {
-                return <Self as fory_core::Serializer>::read_data(context);
-            }
             #fields_binding
         }
     };

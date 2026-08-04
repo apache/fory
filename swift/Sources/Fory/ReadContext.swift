@@ -47,6 +47,7 @@ public final class ReadContext {
     private var lastTypeInfo = TypeInfo.uncached
     private let config: Config
     var remainingGraphMemoryBytes = 0
+    var remainingUnbackedContainerItems = 0
 
     init(
         buffer: ByteBuffer,
@@ -72,6 +73,23 @@ public final class ReadContext {
             try throwGraphMemoryExceeded(bytes: bytes)
         }
         remainingGraphMemoryBytes -= bytes
+    }
+
+    @usableFromInline
+    @inline(__always)
+    internal func reserveUnbackedContainerItems(_ items: Int) throws {
+        if _slowPath(items > remainingUnbackedContainerItems) {
+            try throwUnbackedContainerItemsExceeded(items: items)
+        }
+        remainingUnbackedContainerItems -= items
+    }
+
+    @inline(never)
+    private func throwUnbackedContainerItemsExceeded(items: Int) throws -> Never {
+        throw ForyError.invalidData(
+            "container read work request \(items) items exceeds maxUnbackedContainerItems "
+                + "remaining budget \(remainingUnbackedContainerItems) items"
+        )
     }
 
     @inline(never)
@@ -224,13 +242,15 @@ public final class ReadContext {
 
         let localTypeInfo = try typeInfo(for: type)
         let expectedWireTypeID = localTypeInfo.wireTypeID(compatible: compatible)
-        if !isAllowedRegisteredWireTypeID(
-            typeID,
-            declaredTypeID: localTypeInfo.typeID,
-            registerByName: localTypeInfo.registerByName,
-            compatible: compatible,
-            evolving: localTypeInfo.evolving
-        ) {
+        if typeID != expectedWireTypeID
+            && !isAllowedRegisteredWireTypeID(
+                typeID,
+                declaredTypeID: localTypeInfo.typeID,
+                registerByName: localTypeInfo.registerByName,
+                compatible: compatible,
+                evolving: localTypeInfo.evolving
+            )
+        {
             throw ForyError.typeMismatch(expected: expectedWireTypeID.rawValue, actual: rawTypeID)
         }
 
@@ -242,10 +262,13 @@ public final class ReadContext {
             )
         case .namedEnum, .namedStruct, .namedExt, .namedUnion:
             if compatible {
-                _ = try readCompatibleTypeInfoIfNeeded(
+                let remoteTypeInfo = try readCompatibleTypeInfoIfNeeded(
                     for: localTypeInfo,
                     wireTypeID: typeID
                 )
+                // Only named structs use remote field metadata while reading their body. Enum,
+                // extension, and union bodies remain ordinal-, codec-, or case-ID-driven.
+                return typeID == .namedStruct ? remoteTypeInfo : nil
             } else {
                 let namespace = try readMetaString(
                     context: self,
@@ -309,6 +332,8 @@ public final class ReadContext {
                     // The declared local type owns this exact metadata header, so this is a
                     // local-schema hit rather than a remote cache publish. Keep it allocation-free:
                     // skip the body, add the local type to the per-read table, and do not parse/hash.
+                    // A later value of this same type may refer back to this table index even when
+                    // none of the type's fields require nested TypeDef metadata.
                     try buffer.skip(bodySize)
                     compatibleTypeDefTypeInfos.push(localTypeInfo)
                     return nil
@@ -653,18 +678,20 @@ public final class ReadContext {
         let previousTypeInfo = typeInfoStack.value(for: typeKey)
         typeInfoScopeStack.append((typeKey: typeKey, previousTypeInfo: previousTypeInfo))
         typeInfoStack.set(typeInfo, for: typeKey)
-        defer {
-            if let scope = typeInfoScopeStack.popLast() {
-                if let previousTypeInfo = scope.previousTypeInfo {
-                    typeInfoStack.set(previousTypeInfo, for: scope.typeKey)
-                } else {
-                    _ = typeInfoStack.removeValue(for: scope.typeKey)
-                }
+        // Restore successful nested scopes in LIFO order. A thrown child read
+        // intentionally leaves both stacks active for the root reset, matching
+        // compound-depth and reference-state failure cleanup.
+        let result = try body()
+        if let scope = typeInfoScopeStack.popLast() {
+            if let previousTypeInfo = scope.previousTypeInfo {
+                typeInfoStack.set(previousTypeInfo, for: scope.typeKey)
             } else {
-                assertionFailure("type info scope stack underflow")
+                _ = typeInfoStack.removeValue(for: scope.typeKey)
             }
+        } else {
+            assertionFailure("type info scope stack underflow")
         }
-        return try body()
+        return result
     }
 
     @inline(__always)
@@ -678,6 +705,8 @@ public final class ReadContext {
     }
 
     func reset() {
+        // Nested dynamic reads release depth only after success. A failure keeps
+        // the active depth until this root-owned cleanup resets the context.
         if dynamicAnyDepth != 0 {
             dynamicAnyDepth = 0
         }
@@ -689,6 +718,7 @@ public final class ReadContext {
             typeInfoScopeStack.removeAll(keepingCapacity: true)
         }
         compatibleTypeDefTypeInfos.reset()
-        metaStrings.reset()
+        metaStrings.resetReleasingUsedElements()
+        remainingUnbackedContainerItems = 0
     }
 }

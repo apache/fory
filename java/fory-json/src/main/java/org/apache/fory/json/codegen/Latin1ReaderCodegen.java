@@ -94,6 +94,11 @@ final class Latin1ReaderCodegen extends JsonReaderCodegen {
   }
 
   @Override
+  boolean rawFieldNameDispatch() {
+    return true;
+  }
+
+  @Override
   boolean isDirectName(String name, boolean tokenValueRead) {
     return JsonAsciiToken.isLongPackable(fieldNameToken(name));
   }

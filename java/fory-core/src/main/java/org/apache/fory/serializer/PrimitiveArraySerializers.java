@@ -105,10 +105,63 @@ public final class PrimitiveArraySerializers {
   public abstract static class PrimitiveArraySerializer<T> extends Serializer<T>
       implements Shareable {
     protected final Config config;
+    private final int arrayOwnerBytes;
 
     public PrimitiveArraySerializer(TypeResolver typeResolver, Class<T> cls) {
       super(typeResolver.getConfig(), cls);
       this.config = typeResolver.getConfig();
+      int ownerBytes = GraphMemoryEstimates.objectArrayBytes();
+      if (!cls.isArray()) {
+        ownerBytes = Math.addExact(ownerBytes, GraphMemoryEstimates.shallowObjectBytes(cls));
+      }
+      arrayOwnerBytes = ownerBytes;
+    }
+
+    @Override
+    public final boolean readDataAlwaysAdvances() {
+      return true;
+    }
+
+    protected final void reserveArray(ReadContext readContext, int length, int elemSize) {
+      readContext.reserveGraphMemory(arrayOwnerBytes + (long) length * elemSize);
+    }
+
+    protected final short[] readShortBits(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
+      if (readContext.isPeerOutOfBandEnabled()) {
+        MemoryBuffer buf = readContext.readBufferObject();
+        int size = buf.remaining();
+        if ((size & 1) != 0) {
+          throwUnalignedBinarySize(size, 2);
+        }
+        int numElements = size >>> 1;
+        buf.checkReadableBytes(size);
+        reserveArray(readContext, numElements, 2);
+        short[] values = new short[numElements];
+        if (NativeByteOrder.IS_LITTLE_ENDIAN) {
+          buf.readInt16ArrayBytes(values, size);
+        } else {
+          readInt16BySwapEndian(buf, values, numElements);
+        }
+        return values;
+      }
+      int size = buffer.readVarUInt32Small7();
+      if ((size & 1) != 0) {
+        throwUnalignedBinarySize(size, 2);
+      }
+      if (size < 0) {
+        throwNegativeBinarySize(size);
+      }
+      int numElements = size >>> 1;
+      buffer.checkReadableBytes(size);
+      reserveArray(readContext, numElements, 2);
+      short[] values = new short[numElements];
+      if (NativeByteOrder.IS_LITTLE_ENDIAN) {
+        buffer.readInt16ArrayBytes(values, size);
+      } else {
+        readInt16BySwapEndian(buffer, values, numElements);
+      }
+      return values;
     }
   }
 
@@ -153,6 +206,7 @@ public final class PrimitiveArraySerializers {
         MemoryBuffer buf = readContext.readBufferObject();
         int size = buf.remaining();
         buf.checkReadableBytes(size);
+        reserveArray(readContext, size, 1);
         boolean[] values = new boolean[size];
         buf.readBooleanArrayBytes(values, size);
         return values;
@@ -162,6 +216,7 @@ public final class PrimitiveArraySerializers {
         throwNegativeBinarySize(size);
       }
       buffer.checkReadableBytes(size);
+      reserveArray(readContext, size, 1);
       boolean[] values = new boolean[size];
       buffer.readBooleanArrayBytes(values, size);
       return values;
@@ -196,6 +251,7 @@ public final class PrimitiveArraySerializers {
         MemoryBuffer buf = readContext.readBufferObject();
         int size = buf.remaining();
         buf.checkReadableBytes(size);
+        reserveArray(readContext, size, 1);
         byte[] values = new byte[size];
         buf.readByteArrayBytes(values, size);
         return values;
@@ -205,6 +261,7 @@ public final class PrimitiveArraySerializers {
         throwNegativeBinarySize(size);
       }
       buffer.checkReadableBytes(size);
+      reserveArray(readContext, size, 1);
       byte[] values = new byte[size];
       buffer.readByteArrayBytes(values, size);
       return values;
@@ -264,6 +321,7 @@ public final class PrimitiveArraySerializers {
         }
         int numElements = size >>> 1;
         buf.checkReadableBytes(size);
+        reserveArray(readContext, numElements, 2);
         char[] values = new char[numElements];
         if (NativeByteOrder.IS_LITTLE_ENDIAN) {
           buf.readCharArrayBytes(values, size);
@@ -281,6 +339,7 @@ public final class PrimitiveArraySerializers {
       }
       int numElements = size >>> 1;
       buffer.checkReadableBytes(size);
+      reserveArray(readContext, numElements, 2);
       char[] values = new char[numElements];
       if (NativeByteOrder.IS_LITTLE_ENDIAN) {
         buffer.readCharArrayBytes(values, size);
@@ -373,6 +432,7 @@ public final class PrimitiveArraySerializers {
         }
         int numElements = size >>> 2;
         buf.checkReadableBytes(size);
+        reserveArray(readContext, numElements, 4);
         int[] values = new int[numElements];
         if (size > 0) {
           if (NativeByteOrder.IS_LITTLE_ENDIAN) {
@@ -384,7 +444,7 @@ public final class PrimitiveArraySerializers {
         return values;
       }
       if (!config.isXlang() && config.compressIntArray()) {
-        return readInt32Compressed(buffer);
+        return readInt32Compressed(readContext);
       }
       int size = buffer.readVarUInt32Small7();
       if ((size & 3) != 0) {
@@ -395,6 +455,7 @@ public final class PrimitiveArraySerializers {
       }
       int numElements = size >>> 2;
       buffer.checkReadableBytes(size);
+      reserveArray(readContext, numElements, 4);
       int[] values = new int[numElements];
       if (size > 0) {
         if (NativeByteOrder.IS_LITTLE_ENDIAN) {
@@ -423,12 +484,14 @@ public final class PrimitiveArraySerializers {
       }
     }
 
-    private int[] readInt32Compressed(MemoryBuffer buffer) {
+    private int[] readInt32Compressed(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUInt32Small7();
       if (numElements < 0) {
         throwNegativeElementCount(numElements);
       }
       buffer.checkReadableBytes(numElements);
+      reserveArray(readContext, numElements, 4);
       int[] values = new int[numElements];
       for (int i = 0; i < numElements; i++) {
         values[i] = buffer.readVarInt32();
@@ -494,6 +557,7 @@ public final class PrimitiveArraySerializers {
         }
         int numElements = size >>> 3;
         buf.checkReadableBytes(size);
+        reserveArray(readContext, numElements, 8);
         long[] values = new long[numElements];
         if (size > 0) {
           if (NativeByteOrder.IS_LITTLE_ENDIAN) {
@@ -505,7 +569,7 @@ public final class PrimitiveArraySerializers {
         return values;
       }
       if (compressLongArray) {
-        return readInt64Compressed(buffer, config.longEncoding());
+        return readInt64Compressed(readContext, config.longEncoding());
       }
       int size = buffer.readVarUInt32Small7();
       if ((size & 7) != 0) {
@@ -516,6 +580,7 @@ public final class PrimitiveArraySerializers {
       }
       int numElements = size >>> 3;
       buffer.checkReadableBytes(size);
+      reserveArray(readContext, numElements, 8);
       long[] values = new long[numElements];
       if (size > 0) {
         if (NativeByteOrder.IS_LITTLE_ENDIAN) {
@@ -552,12 +617,14 @@ public final class PrimitiveArraySerializers {
       }
     }
 
-    private long[] readInt64Compressed(MemoryBuffer buffer, Int64Encoding longEncoding) {
+    private long[] readInt64Compressed(ReadContext readContext, Int64Encoding longEncoding) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUInt32Small7();
       if (numElements < 0) {
         throwNegativeElementCount(numElements);
       }
       buffer.checkReadableBytes(numElements);
+      reserveArray(readContext, numElements, 8);
       long[] values = new long[numElements];
       if (longEncoding == Int64Encoding.TAGGED) {
         for (int i = 0; i < numElements; i++) {
@@ -619,6 +686,7 @@ public final class PrimitiveArraySerializers {
         }
         int numElements = size >>> 2;
         buf.checkReadableBytes(size);
+        reserveArray(readContext, numElements, 4);
         float[] values = new float[numElements];
         if (NativeByteOrder.IS_LITTLE_ENDIAN) {
           buf.readFloat32ArrayBytes(values, size);
@@ -636,6 +704,7 @@ public final class PrimitiveArraySerializers {
       }
       int numElements = size >>> 2;
       buffer.checkReadableBytes(size);
+      reserveArray(readContext, numElements, 4);
       float[] values = new float[numElements];
       if (NativeByteOrder.IS_LITTLE_ENDIAN) {
         buffer.readFloat32ArrayBytes(values, size);
@@ -703,6 +772,7 @@ public final class PrimitiveArraySerializers {
         }
         int numElements = size >>> 3;
         buf.checkReadableBytes(size);
+        reserveArray(readContext, numElements, 8);
         double[] values = new double[numElements];
         if (NativeByteOrder.IS_LITTLE_ENDIAN) {
           buf.readFloat64ArrayBytes(values, size);
@@ -720,6 +790,7 @@ public final class PrimitiveArraySerializers {
       }
       int numElements = size >>> 3;
       buffer.checkReadableBytes(size);
+      reserveArray(readContext, numElements, 8);
       double[] values = new double[numElements];
       if (NativeByteOrder.IS_LITTLE_ENDIAN) {
         buffer.readFloat64ArrayBytes(values, size);
@@ -807,42 +878,6 @@ public final class PrimitiveArraySerializers {
       buffer._unsafePutInt16(idx + i * 2, value[i]);
     }
     buffer._unsafeWriterIndex(idx + length * 2);
-  }
-
-  private static short[] readShortBits(ReadContext readContext) {
-    MemoryBuffer buffer = readContext.getBuffer();
-    if (readContext.isPeerOutOfBandEnabled()) {
-      MemoryBuffer buf = readContext.readBufferObject();
-      int size = buf.remaining();
-      if ((size & 1) != 0) {
-        throwUnalignedBinarySize(size, 2);
-      }
-      int numElements = size >>> 1;
-      buf.checkReadableBytes(size);
-      short[] values = new short[numElements];
-      if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-        buf.readInt16ArrayBytes(values, size);
-      } else {
-        readInt16BySwapEndian(buf, values, numElements);
-      }
-      return values;
-    }
-    int size = buffer.readVarUInt32Small7();
-    if ((size & 1) != 0) {
-      throwUnalignedBinarySize(size, 2);
-    }
-    if (size < 0) {
-      throwNegativeBinarySize(size);
-    }
-    int numElements = size >>> 1;
-    buffer.checkReadableBytes(size);
-    short[] values = new short[numElements];
-    if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-      buffer.readInt16ArrayBytes(values, size);
-    } else {
-      readInt16BySwapEndian(buffer, values, numElements);
-    }
-    return values;
   }
 
   private static void readInt16BySwapEndian(MemoryBuffer buffer, short[] values, int numElements) {

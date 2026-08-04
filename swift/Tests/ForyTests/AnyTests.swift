@@ -31,6 +31,12 @@ private struct AnyHashableDynamicValue: Equatable {
 }
 
 @ForyStruct
+private struct AnyDynamicValueNode {
+    var value: Int32 = 0
+    var next: Any = Int32(0)
+}
+
+@ForyStruct
 private final class AnyObjectDynamicNode {
     var value: Int32 = 0
 
@@ -651,10 +657,11 @@ func dynamicAnyMaxDepthRejectsDeepNesting() throws {
 @Test
 func dynamicAnyMaxDepthAllowsBoundaryDepth() throws {
     let value = nestedDynamicAnyList(depth: 3)
-    let fory = Fory(config: .init(maxDepth: 4))
+    let writer = Fory(config: .init(maxDepth: 8))
+    let reader = Fory(config: .init(maxDepth: 4))
 
-    let payload = try fory.serialize(value, with: DynamicSerializer<Any>.self)
-    let decoded = try fory.deserialize(payload, with: DynamicSerializer<Any>.self)
+    let payload = try writer.serialize(value, with: DynamicSerializer<Any>.self)
+    let decoded = try reader.deserialize(payload, with: DynamicSerializer<Any>.self)
 
     let level1 = decoded as? [Any]
     let level2 = level1?.first as? [Any]
@@ -664,4 +671,80 @@ func dynamicAnyMaxDepthAllowsBoundaryDepth() throws {
     #expect(level2 != nil)
     #expect(level3 != nil)
     #expect(level3?.first as? Int32 == 1)
+}
+
+@Test
+func dynamicClassCountsOneMaterialization() throws {
+    let tail = AnyObjectDynamicGraphNode(value: 3)
+    let middle = AnyObjectDynamicGraphNode(value: 2, next: tail)
+    let value = AnyObjectDynamicGraphNode(value: 1, next: middle)
+    let writer = Fory(config: .init(trackRef: false, maxDepth: 8))
+    try writer.register(AnyObjectDynamicGraphNode.self, id: 507)
+    let payload = try writer.serialize(
+        value as AnyObject,
+        with: DynamicSerializer<AnyObject>.self
+    )
+
+    let limited = Fory(config: .init(trackRef: false, maxDepth: 0))
+    try limited.register(AnyObjectDynamicGraphNode.self, id: 507)
+    do {
+        _ = try limited.deserialize(payload, with: DynamicSerializer<AnyObject>.self)
+        Issue.record("expected maxDepth failure")
+    } catch ForyError.invalidData(let message) {
+        #expect(message.contains("maxDepth"))
+    }
+
+    // The root is selected through Any, while its statically declared children
+    // follow the registered schema and do not consume dynamic Any depth.
+    let boundary = Fory(config: .init(trackRef: false, maxDepth: 1))
+    try boundary.register(AnyObjectDynamicGraphNode.self, id: 507)
+    let decoded = try boundary.deserialize(
+        payload,
+        with: DynamicSerializer<AnyObject>.self
+    )
+    let root = try #require(decoded as? AnyObjectDynamicGraphNode)
+    #expect(root.value == 1)
+    #expect(root.next?.value == 2)
+    #expect(root.next?.next?.value == 3)
+}
+
+@Test
+func dynamicValueStructDepthIsBounded() throws {
+    let leaf = AnyDynamicValueNode(value: 3)
+    let middle = AnyDynamicValueNode(value: 2, next: leaf)
+    let deep = AnyDynamicValueNode(value: 1, next: middle)
+    let shallow = AnyDynamicValueNode(
+        value: 4,
+        next: AnyDynamicValueNode(value: 5)
+    )
+
+    let writer = Fory(config: .init(trackRef: false, compatible: false, maxDepth: 8))
+    try writer.register(AnyDynamicValueNode.self, id: 508)
+    let deepData = try writer.serialize(deep)
+    let shallowData = try writer.serialize(shallow)
+
+    let limited = Fory(config: .init(trackRef: false, compatible: false, maxDepth: 2))
+    try limited.register(AnyDynamicValueNode.self, id: 508)
+    do {
+        let _: AnyDynamicValueNode = try limited.deserialize(deepData)
+        Issue.record("expected maxDepth failure")
+    } catch ForyError.invalidData(let message) {
+        #expect(message.contains("maxDepth"))
+    }
+
+    let reused: AnyDynamicValueNode = try limited.deserialize(shallowData)
+    let reusedChild = try #require(reused.next as? AnyDynamicValueNode)
+    #expect(reused.value == 4)
+    #expect(reusedChild.value == 5)
+    #expect(reusedChild.next as? Int32 == 0)
+
+    let boundary = Fory(config: .init(trackRef: false, compatible: false, maxDepth: 3))
+    try boundary.register(AnyDynamicValueNode.self, id: 508)
+    let decoded: AnyDynamicValueNode = try boundary.deserialize(deepData)
+    let decodedMiddle = try #require(decoded.next as? AnyDynamicValueNode)
+    let decodedLeaf = try #require(decodedMiddle.next as? AnyDynamicValueNode)
+    #expect(decoded.value == 1)
+    #expect(decodedMiddle.value == 2)
+    #expect(decodedLeaf.value == 3)
+    #expect(decodedLeaf.next as? Int32 == 0)
 }

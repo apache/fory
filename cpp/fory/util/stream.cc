@@ -154,9 +154,7 @@ Result<void, Error> StdInputStream::fill_buffer(uint32_t min_fill_size) {
       if (new_size <= data_.size()) {
         new_size = static_cast<uint64_t>(data_.size()) + 1;
       }
-      if (new_size > target) {
-        new_size = target;
-      }
+      new_size = std::min<uint64_t>(new_size, k_max_u32);
       reserve(static_cast<uint32_t>(new_size));
     }
     uint32_t writable = static_cast<uint32_t>(data_.size()) - write_pos;
@@ -228,6 +226,7 @@ void StdInputStream::shrink_buffer() {
       std::memmove(data_.data(), data_.data() + read_pos,
                    static_cast<size_t>(remaining));
     }
+    buffer_->discarded_reader_bytes_ += read_pos;
     buffer_->reader_index_ = 0;
     buffer_->size_ = remaining;
     buffer_->writer_index_ = remaining;

@@ -51,6 +51,7 @@ impl Animal for Cat {
 
 register_trait_type!(sync Animal, Dog, Cat);
 
+#[allow(clippy::assertions_on_constants)]
 const _: () = {
     assert!(AnimalRcSerializer::IS_POLYMORPHIC);
     assert!(AnimalRcSerializer::IS_SHARED_REF);

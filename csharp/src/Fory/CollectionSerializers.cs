@@ -199,6 +199,7 @@ internal static class CollectionCodec
 
 internal static class CollectionReadCodec
 {
+    private const int UnbackedCheckInterval = 1024;
     private const int ReferenceBytes = 4;
     // Lower-bound shallow owner costs for retained CLR collection objects. ObjectHeaderBytes is
     // the CLR object header/method-table estimate, not a Fory wire header; element storage is
@@ -225,6 +226,29 @@ internal static class CollectionReadCodec
     private static class ElementStorage<T>
     {
         internal static readonly int Bytes = typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+    }
+
+    private readonly struct CollectionReadState
+    {
+        internal CollectionReadState(
+            bool trackRef,
+            bool hasNull,
+            bool declared,
+            bool sameType,
+            bool guardUnbackedItems)
+        {
+            TrackRef = trackRef;
+            HasNull = hasNull;
+            Declared = declared;
+            SameType = sameType;
+            GuardUnbackedItems = guardUnbackedItems;
+        }
+
+        internal bool TrackRef { get; }
+        internal bool HasNull { get; }
+        internal bool Declared { get; }
+        internal bool SameType { get; }
+        internal bool GuardUnbackedItems { get; }
     }
 
     private interface IValueSink<T>
@@ -266,18 +290,64 @@ internal static class CollectionReadCodec
         return length;
     }
 
-    private static byte ReadHeader(ReadContext context, int length)
+    private static CollectionReadState ReadHeader<T>(
+        Serializer<T> elementSerializer,
+        ReadContext context,
+        int length)
     {
         byte header = context.Reader.ReadUInt8();
-        context.Reader.CheckBound(length);
-        return header;
+        bool trackRef = (header & CollectionBits.TrackingRef) != 0;
+        bool hasNull = (header & CollectionBits.HasNull) != 0;
+        bool declared = (header & CollectionBits.DeclaredElementType) != 0;
+        bool sameType = (header & CollectionBits.SameType) != 0;
+        if (sameType && !declared)
+        {
+            context.TypeResolver.ReadTypeInfo(elementSerializer, context);
+        }
+
+        bool elementReadAlwaysAdvances = false;
+        if (sameType && !trackRef && !hasNull)
+        {
+            elementReadAlwaysAdvances = context.TypeResolver.GetTypeInfo<T>()
+                .ReadDataAlwaysAdvancesFor(elementSerializer);
+            if (!declared)
+            {
+                if (typeof(T) == typeof(object))
+                {
+                    elementReadAlwaysAdvances = context.GetReadTypeInfo(typeof(T))?
+                        .ReadDataAlwaysAdvances ?? elementReadAlwaysAdvances;
+                }
+                else if (context.Compatible)
+                {
+                    elementReadAlwaysAdvances = context.GetTypeMeta<T>()?
+                        .ReadDataAlwaysAdvances ?? elementReadAlwaysAdvances;
+                }
+            }
+        }
+
+        bool guardUnbackedItems = sameType && !trackRef && !hasNull && !elementReadAlwaysAdvances;
+        if (guardUnbackedItems)
+        {
+            context.CheckUnbackedContainerAllocation(length);
+        }
+        else
+        {
+            context.Reader.CheckBound(length);
+        }
+
+        return new CollectionReadState(
+            trackRef,
+            hasNull,
+            declared,
+            sameType,
+            guardUnbackedItems);
     }
 
     private static void ReadElements<T, TSink>(
         Serializer<T> elementSerializer,
         ReadContext context,
         int length,
-        byte header,
+        CollectionReadState state,
         TSink sink)
         where TSink : struct, IValueSink<T>
     {
@@ -285,14 +355,9 @@ internal static class CollectionReadCodec
         // the wire, not the local generic metadata that may imply a different
         // ref policy. Shared xlang tests intentionally deserialize one ref
         // policy and then serialize another local payload. DO NOT REMOVE this comment.
-        bool trackRef = (header & CollectionBits.TrackingRef) != 0;
-        bool hasNull = (header & CollectionBits.HasNull) != 0;
-        bool declared = (header & CollectionBits.DeclaredElementType) != 0;
-        bool sameType = (header & CollectionBits.SameType) != 0;
-
-        if (!sameType)
+        if (!state.SameType)
         {
-            if (trackRef)
+            if (state.TrackRef)
             {
                 for (int i = 0; i < length; i++)
                 {
@@ -302,7 +367,7 @@ internal static class CollectionReadCodec
                 return;
             }
 
-            if (hasNull)
+            if (state.HasNull)
             {
                 for (int i = 0; i < length; i++)
                 {
@@ -332,19 +397,14 @@ internal static class CollectionReadCodec
             return;
         }
 
-        if (!declared)
-        {
-            context.TypeResolver.ReadTypeInfo(elementSerializer, context);
-        }
-
-        if (trackRef)
+        if (state.TrackRef)
         {
             for (int i = 0; i < length; i++)
             {
                 sink.Add(elementSerializer.Read(context, RefMode.Tracking, false));
             }
 
-            if (!declared)
+            if (!state.Declared)
             {
                 context.ClearReadTypeInfo(typeof(T));
             }
@@ -352,7 +412,7 @@ internal static class CollectionReadCodec
             return;
         }
 
-        if (hasNull)
+        if (state.HasNull)
         {
             for (int i = 0; i < length; i++)
             {
@@ -367,15 +427,35 @@ internal static class CollectionReadCodec
                 }
             }
         }
-        else
+        else if (!state.GuardUnbackedItems)
         {
             for (int i = 0; i < length; i++)
             {
                 sink.Add(elementSerializer.ReadData(context));
             }
         }
+        else
+        {
+            int checkpoint = context.Reader.Cursor;
+            for (int i = 0; i < length; i++)
+            {
+                sink.Add(elementSerializer.ReadData(context));
+                if (((i + 1) & (UnbackedCheckInterval - 1)) == 0)
+                {
+                    int cursor = context.Reader.Cursor;
+                    context.SettleUnbackedContainerItems(UnbackedCheckInterval, cursor - checkpoint);
+                    checkpoint = cursor;
+                }
+            }
 
-        if (!declared)
+            int tail = length & (UnbackedCheckInterval - 1);
+            if (tail != 0)
+            {
+                context.SettleUnbackedContainerItems(tail, context.Reader.Cursor - checkpoint);
+            }
+        }
+
+        if (!state.Declared)
         {
             context.ClearReadTypeInfo(typeof(T));
         }
@@ -412,14 +492,14 @@ internal static class CollectionReadCodec
             return empty;
         }
 
-        byte header = ReadHeader(context, length);
+        CollectionReadState state = ReadHeader(elementSerializer, context, length);
         List<T> values = new(length);
         if (publishRef)
         {
             context.RefReader.StoreRefAt(refId, values);
         }
 
-        ReadElements(elementSerializer, context, length, header, new CollectionSink<List<T>, T>(values));
+        ReadElements(elementSerializer, context, length, state, new CollectionSink<List<T>, T>(values));
         return values;
     }
 
@@ -454,14 +534,14 @@ internal static class CollectionReadCodec
             return empty;
         }
 
-        byte header = ReadHeader(context, length);
+        CollectionReadState state = ReadHeader(elementSerializer, context, length);
         HashSet<T> values = new(length);
         if (publishRef)
         {
             context.RefReader.StoreRefAt(refId, values);
         }
 
-        ReadElements(elementSerializer, context, length, header, new CollectionSink<HashSet<T>, T>(values));
+        ReadElements(elementSerializer, context, length, state, new CollectionSink<HashSet<T>, T>(values));
         return values;
     }
 
@@ -496,8 +576,8 @@ internal static class CollectionReadCodec
             return values;
         }
 
-        byte header = ReadHeader(context, length);
-        ReadElements(elementSerializer, context, length, header, new CollectionSink<SortedSet<T>, T>(values));
+        CollectionReadState state = ReadHeader(elementSerializer, context, length);
+        ReadElements(elementSerializer, context, length, state, new CollectionSink<SortedSet<T>, T>(values));
         return values;
     }
 
@@ -513,12 +593,12 @@ internal static class CollectionReadCodec
             return values.ToImmutable();
         }
 
-        byte header = ReadHeader(context, length);
+        CollectionReadState state = ReadHeader(elementSerializer, context, length);
         ReadElements(
             elementSerializer,
             context,
             length,
-            header,
+            state,
             new CollectionSink<ImmutableHashSet<T>.Builder, T>(values));
         return values.ToImmutable();
     }
@@ -551,8 +631,8 @@ internal static class CollectionReadCodec
             return values;
         }
 
-        byte header = ReadHeader(context, length);
-        ReadElements(elementSerializer, context, length, header, new CollectionSink<LinkedList<T>, T>(values));
+        CollectionReadState state = ReadHeader(elementSerializer, context, length);
+        ReadElements(elementSerializer, context, length, state, new CollectionSink<LinkedList<T>, T>(values));
         return values;
     }
 
@@ -573,19 +653,25 @@ internal static class CollectionReadCodec
         uint refId)
     {
         int length = ReadLength<T>(context, QueueOwnerBytes);
+        if (length == 0)
+        {
+            Queue<T> empty = new(length);
+            if (publishRef)
+            {
+                context.RefReader.StoreRefAt(refId, empty);
+            }
+
+            return empty;
+        }
+
+        CollectionReadState state = ReadHeader(elementSerializer, context, length);
         Queue<T> values = new(length);
         if (publishRef)
         {
             context.RefReader.StoreRefAt(refId, values);
         }
 
-        if (length == 0)
-        {
-            return values;
-        }
-
-        byte header = ReadHeader(context, length);
-        ReadElements(elementSerializer, context, length, header, new QueueSink<T>(values));
+        ReadElements(elementSerializer, context, length, state, new QueueSink<T>(values));
         return values;
     }
 
@@ -606,19 +692,25 @@ internal static class CollectionReadCodec
         uint refId)
     {
         int length = ReadLength<T>(context, StackOwnerBytes);
+        if (length == 0)
+        {
+            Stack<T> empty = new(length);
+            if (publishRef)
+            {
+                context.RefReader.StoreRefAt(refId, empty);
+            }
+
+            return empty;
+        }
+
+        CollectionReadState state = ReadHeader(elementSerializer, context, length);
         Stack<T> values = new(length);
         if (publishRef)
         {
             context.RefReader.StoreRefAt(refId, values);
         }
 
-        if (length == 0)
-        {
-            return values;
-        }
-
-        byte header = ReadHeader(context, length);
-        ReadElements(elementSerializer, context, length, header, new StackSink<T>(values));
+        ReadElements(elementSerializer, context, length, state, new StackSink<T>(values));
         return values;
     }
 
@@ -650,14 +742,14 @@ internal static class CollectionReadCodec
             return empty;
         }
 
-        byte header = ReadHeader(context, length);
+        CollectionReadState state = ReadHeader(elementSerializer, context, length);
         T[] values = new T[length];
         if (publishRef)
         {
             context.RefReader.StoreRefAt(refId, values);
         }
 
-        ReadElements(elementSerializer, context, length, header, new ArraySink<T>(values));
+        ReadElements(elementSerializer, context, length, state, new ArraySink<T>(values));
         return values;
     }
 }

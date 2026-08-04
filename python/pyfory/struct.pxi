@@ -291,6 +291,7 @@ cdef class DataClassSerializer(Serializer):
         self._field_runtime_infos.clear()
         self._has_missing_fields = False
         self._has_validation_fields = False
+        self.read_data_always_advances = not self.type_resolver.compatible
         current_fields = set(self._get_field_names(self.type_))
         self._field_runtime_infos.reserve(len(self._field_names))
         self._assign_fields = [
@@ -320,6 +321,17 @@ cdef class DataClassSerializer(Serializer):
             runtime_info.track_ref = 1 if is_tracking_ref else 0
             runtime_info.is_dynamic = 1 if is_dynamic else 0
             runtime_info.compatible_scalar = 1 if isinstance(serializer, CompatibleScalarFieldSerializer) else 0
+            if (
+                not self.read_data_always_advances
+                and (
+                    runtime_info.basic_type_id != _BASIC_FIELD_NOT_INLINE
+                    or is_nullable
+                    or is_tracking_ref
+                    or is_dynamic
+                    or (serializer is not None and serializer.read_data_always_advances)
+                )
+            ):
+                self.read_data_always_advances = True
             runtime_info.field_exists = 1 if field_name in current_fields else 0
             runtime_info.assign = 1 if assign else 0
             if runtime_info.field_exists == 0 or runtime_info.assign == 0:
@@ -453,7 +465,6 @@ cdef class DataClassSerializer(Serializer):
                 self._apply_missing_defaults_slots(obj)
             else:
                 self._apply_missing_defaults_dict(obj.__dict__)
-        read_context.buffer.shrink_input_buffer()
         return obj
 
     cdef inline void _read_dict(self, ReadContext read_context, object obj):
@@ -486,7 +497,7 @@ cdef class DataClassSerializer(Serializer):
             for i in range(field_count):
                 field_info = &self._field_runtime_infos[i]
                 if field_info.field_exists == 0 or field_info.assign == 0:
-                    self._read_missing_field_value(read_context, field_info)
+                    self._read_field_value(read_context, field_info)
                     continue
                 field_value = self._read_field_value(read_context, field_info)
                 field_name = <object>field_info.field_name
@@ -496,7 +507,7 @@ cdef class DataClassSerializer(Serializer):
         for i in range(field_count):
             field_info = &self._field_runtime_infos[i]
             if field_info.field_exists == 0 or field_info.assign == 0:
-                self._read_missing_field_value(read_context, field_info)
+                self._read_field_value(read_context, field_info)
                 continue
             field_value = self._read_field_value(read_context, field_info)
             field_name = <object>field_info.field_name
@@ -538,7 +549,7 @@ cdef class DataClassSerializer(Serializer):
             for i in range(field_count):
                 field_info = &self._field_runtime_infos[i]
                 if field_info.field_exists == 0 or field_info.assign == 0:
-                    self._read_missing_field_value(read_context, field_info)
+                    self._read_field_value(read_context, field_info)
                     continue
                 field_value = self._read_field_value(read_context, field_info)
                 field_name = <object>field_info.field_name
@@ -548,7 +559,7 @@ cdef class DataClassSerializer(Serializer):
         for i in range(field_count):
             field_info = &self._field_runtime_infos[i]
             if field_info.field_exists == 0 or field_info.assign == 0:
-                self._read_missing_field_value(read_context, field_info)
+                self._read_field_value(read_context, field_info)
                 continue
             field_value = self._read_field_value(read_context, field_info)
             field_name = <object>field_info.field_name
@@ -560,15 +571,6 @@ cdef class DataClassSerializer(Serializer):
                     field_name,
                     self._validate_or_default(field_name, field_value, field_info),
                 )
-
-    cdef inline object _read_missing_field_value(self, ReadContext read_context, FieldRuntimeInfo *field_info):
-        cdef object resolver = self.type_resolver.resolver
-        cdef object previous = resolver._allow_unregistered_typedef
-        resolver._allow_unregistered_typedef = True
-        try:
-            return self._read_field_value(read_context, field_info)
-        finally:
-            resolver._allow_unregistered_typedef = previous
 
     cdef inline object _read_field_value(self, ReadContext read_context, FieldRuntimeInfo *field_info):
         cdef uint8_t type_id = field_info.basic_type_id

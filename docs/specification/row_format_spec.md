@@ -26,14 +26,14 @@ Apache Fory Row Format is a cache-friendly, random-access binary format designed
 - **Random Field Access**: Read individual fields without deserializing the entire row
 - **Zero-Copy Operations**: Direct memory access without data transformation
 - **Cache-Friendly Layout**: Optimized memory layout for CPU cache efficiency
-- **Cross-Language Support**: Consistent binary format across Java, C++, and Python
+- **Cross-Language Support**: Consistent binary format across Java, C++, Python, and Rust
 
 Fory provides two row format variants:
 
-| Format          | Languages         | Use Case                       |
-| --------------- | ----------------- | ------------------------------ |
-| Standard Format | Java, C++, Python | Cross-language compatibility   |
-| Compact Format  | Java only         | Space efficiency, smaller rows |
+| Format          | Languages               | Use Case                       |
+| --------------- | ----------------------- | ------------------------------ |
+| Standard Format | Java, C++, Python, Rust | Cross-language compatibility   |
+| Compact Format  | Java only               | Space efficiency, smaller rows |
 
 ## Format Comparison
 
@@ -99,7 +99,7 @@ Each field occupies a fixed 8-byte slot regardless of its actual data type:
 
 #### Variable-Width Data Encoding
 
-Variable-length fields (strings, arrays, maps, nested structs) store an offset-size pair in their slot:
+Variable-length fields (strings, arrays, maps, nested structs) store an offset-size pair in their slot. The pair is interpreted as one little-endian 64-bit value:
 
 ```
 +---------------------------+---------------------------+
@@ -111,6 +111,7 @@ Variable-length fields (strings, arrays, maps, nested structs) store an offset-s
 
 - **Relative Offset** (upper 32 bits): Offset from the row's base address
 - **Size** (lower 32 bits): Size of the variable-width data in bytes
+- **Physical byte order**: Bytes 0-3 contain size and bytes 4-7 contain the relative offset
 
 **Encoding**:
 
@@ -201,6 +202,7 @@ Maps store key-value pairs as two separate arrays:
 **Values Array Offset**: `base_offset + 8 + keys_array_size`
 
 Both keys and values arrays follow the standard array binary layout.
+The key and value arrays must contain the same number of elements.
 
 ### Nested Struct Layout
 
@@ -445,11 +447,14 @@ where:
 ### Standard Array Size
 
 ```
-array_size = header_size + data_size
+array_size = header_size + fixed_data_size + variable_data_size
 
 where:
   header_size = 8 + ((num_elements + 63) / 64) * 8
-  data_size = ((num_elements * element_size + 7) / 8) * 8
+  element_slot_size = natural width for fixed-width elements, otherwise 8
+  fixed_data_size = ((num_elements * element_slot_size + 7) / 8) * 8
+  variable_data_size = sum of (padded_size for each non-null variable-width element)
+  padded_size = ((size + 7) / 8) * 8
 ```
 
 ### Compact Array Size
@@ -473,14 +478,14 @@ map_size = 8 + keys_array_size + values_array_size
 
 ### Layout Summary
 
-| Component        | Standard Format                 | Compact Format                        |
-| ---------------- | ------------------------------- | ------------------------------------- |
-| Row Header       | `((N + 63) / 64) * 8` bytes     | 0 or `(N + 7) / 8` bytes (at end)     |
-| Row Field Slots  | `N * 8` bytes                   | `sum(field_widths)` bytes             |
-| Array Header     | `8 + ((E + 63) / 64) * 8` bytes | `4 + (E + 7) / 8` bytes (if nullable) |
-| Array Elements   | `E * element_size` (8-aligned)  | `E * element_width`                   |
-| Map Header       | 8 bytes                         | 8 bytes                               |
-| Offset+Size Pair | 8 bytes (32-bit offset + size)  | 8 bytes (same)                        |
+| Component        | Standard Format                        | Compact Format                        |
+| ---------------- | -------------------------------------- | ------------------------------------- |
+| Row Header       | `((N + 63) / 64) * 8` bytes            | 0 or `(N + 7) / 8` bytes (at end)     |
+| Row Field Slots  | `N * 8` bytes                          | `sum(field_widths)` bytes             |
+| Array Header     | `8 + ((E + 63) / 64) * 8` bytes        | `4 + (E + 7) / 8` bytes (if nullable) |
+| Array Elements   | 8-aligned slots plus variable bodies   | `E * element_width`                   |
+| Map Header       | 8 bytes                                | 8 bytes                               |
+| Offset+Size Pair | 8-byte `u64`: `(offset << 32) \| size` | 8 bytes (same)                        |
 
 Where N = number of fields, E = number of elements
 
@@ -505,7 +510,7 @@ Where N = number of fields, E = number of elements
 ### Endianness
 
 - All multi-byte integers are stored in **little-endian** format
-- Floating-point values use native IEEE 754 representation
+- Floating-point values use IEEE 754 bit representations stored in little-endian byte order
 
 ### Memory Safety
 
@@ -530,11 +535,11 @@ Where N = number of fields, E = number of elements
 
 ### When to Use Each Format
 
-| Scenario                         | Recommended Format |
-| -------------------------------- | ------------------ |
-| Cross-language data exchange     | Standard           |
-| Java-only, memory-constrained    | Compact            |
-| Many small primitive fields      | Compact            |
-| Many nested fixed-size structs   | Compact            |
-| Maximum read performance         | Standard           |
-| Interoperability with C++/Python | Standard           |
+| Scenario                                   | Recommended Format |
+| ------------------------------------------ | ------------------ |
+| Cross-language data exchange               | Standard           |
+| Java-only, memory-constrained              | Compact            |
+| Many small primitive fields                | Compact            |
+| Many nested fixed-size structs             | Compact            |
+| Maximum read performance                   | Standard           |
+| Interoperability with Java/C++/Python/Rust | Standard           |

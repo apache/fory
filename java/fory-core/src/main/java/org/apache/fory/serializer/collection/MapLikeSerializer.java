@@ -589,7 +589,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
 
   @Override
   public T read(ReadContext readContext) {
-    Map map = newMap(readContext);
+    Map map = newMap(readContext, false);
     int size = getAndClearNumElements();
     readElements(readContext, size, map);
     return onMapRead(map);
@@ -786,6 +786,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     boolean keyIsDeclaredType = (chunkHeader & KEY_DECL_TYPE) != 0;
     boolean valueIsDeclaredType = (chunkHeader & VALUE_DECL_TYPE) != 0;
     int chunkSize = buffer.readUnsignedByte();
+    checkChunkSize(chunkSize, size);
     if (!keyIsDeclaredType) {
       keySerializer =
           typeResolver.readTypeInfo(readContext, state.keyTypeInfoReadCache).getSerializer();
@@ -794,6 +795,12 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       valueSerializer =
           typeResolver.readTypeInfo(readContext, state.valueTypeInfoReadCache).getSerializer();
     }
+    boolean entryReadAlwaysAdvances =
+        trackKeyRef
+            || trackValueRef
+            || keySerializer.readDataAlwaysAdvances()
+            || valueSerializer.readDataAlwaysAdvances();
+    int bodyStart = entryReadAlwaysAdvances ? 0 : buffer.readerIndex();
     readContext.increaseDepth();
     for (int i = 0; i < chunkSize; i++) {
       Object key =
@@ -808,6 +815,9 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       size--;
     }
     readContext.decreaseDepth();
+    if (!entryReadAlwaysAdvances) {
+      reserveUnbackedEntries(readContext, chunkSize, buffer.readerIndex() - bodyStart);
+    }
     return size > 0 ? (size << 8) | buffer.readUnsignedByte() : 0;
   }
 
@@ -831,6 +841,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     boolean keyIsDeclaredType = (chunkHeader & KEY_DECL_TYPE) != 0;
     boolean valueIsDeclaredType = (chunkHeader & VALUE_DECL_TYPE) != 0;
     int chunkSize = buffer.readUnsignedByte();
+    checkChunkSize(chunkSize, size);
     Serializer keySerializer, valueSerializer;
     if (!keyIsDeclaredType) {
       keySerializer =
@@ -844,6 +855,12 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     } else {
       valueSerializer = valueGenericType.getSerializer(typeResolver);
     }
+    boolean entryReadAlwaysAdvances =
+        trackKeyRef
+            || trackValueRef
+            || keySerializer.readDataAlwaysAdvances()
+            || valueSerializer.readDataAlwaysAdvances();
+    int bodyStart = entryReadAlwaysAdvances ? 0 : buffer.readerIndex();
     for (int i = 0; i < chunkSize; i++) {
       generics.pushGenericType(keyGenericType, readContext.getDepth());
       readContext.increaseDepth();
@@ -863,6 +880,9 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       generics.popGenericType(readContext.getDepth());
       map.put(key, value);
       size--;
+    }
+    if (!entryReadAlwaysAdvances) {
+      reserveUnbackedEntries(readContext, chunkSize, buffer.readerIndex() - bodyStart);
     }
     return size > 0 ? (size << 8) | buffer.readUnsignedByte() : 0;
   }
@@ -910,10 +930,13 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
    *
    * <p>without default constructor, created list will have elementData as null, adding elements
    * will raise NPE.
+   *
+   * @param entryReadAlwaysAdvances whether at least one generated declared key/value operation
+   *     always consumes input
    */
-  public Map newMap(ReadContext readContext) {
+  public Map newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
     MemoryBuffer buffer = readContext.getBuffer();
-    numElements = readMapSize(readContext, buffer);
+    numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
     if (AndroidSupport.IS_ANDROID) {
       try {
         Constructor<?> constructor = type.getDeclaredConstructor();
@@ -969,8 +992,8 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
 
   /**
    * Get and reset numElements of deserializing collection. Should be called after {@link
-   * #newMap(ReadContext)}. Nested read may overwrite this element, reset is necessary to avoid use
-   * wrong value by mistake.
+   * #newMap(ReadContext, boolean)}. Nested read may overwrite this element, reset is necessary to
+   * avoid use wrong value by mistake.
    */
   public int getAndClearNumElements() {
     int size = numElements;
@@ -982,14 +1005,19 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     this.numElements = numElements;
   }
 
-  protected final int readMapSize(ReadContext readContext, MemoryBuffer buffer) {
+  protected final int readMapSize(
+      ReadContext readContext, MemoryBuffer buffer, boolean entryReadAlwaysAdvances) {
     int numElements = buffer.readVarUInt32Small7();
     checkMapSize(numElements);
-    if (numElements > Integer.MAX_VALUE / 2) {
-      throwInvalidMapBodySize(numElements);
+    if (entryReadAlwaysAdvances) {
+      buffer.checkReadableBytes(numElements);
+    } else {
+      int requiredReadable = numElements - readContext.remainingUnbackedContainerItems();
+      if (requiredReadable > 0) {
+        buffer.checkReadableBytes(requiredReadable);
+      }
     }
     readContext.reserveGraphMemory(mapOwnerBytes + (long) numElements * 2 * REFERENCE_BYTES);
-    buffer.checkReadableBytes(numElements << 1);
     return numElements;
   }
 
@@ -1001,12 +1029,32 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     }
   }
 
+  @CodegenInvoke
+  public static void checkChunkSize(int chunkSize, long remainingSize) {
+    if (chunkSize == 0 || chunkSize > remainingSize) {
+      throwInvalidChunkSize(chunkSize, remainingSize);
+    }
+  }
+
+  private static void throwInvalidChunkSize(int chunkSize, long remainingSize) {
+    throw new DeserializationException(
+        "Map chunk size must be between 1 and remaining size " + remainingSize + ": " + chunkSize);
+  }
+
   private void throwInvalidMapSize(int numElements) {
     throw new DeserializationException("Map size must be non-negative: " + numElements);
   }
 
-  private void throwInvalidMapBodySize(int numElements) {
-    throw new DeserializationException("Map size is too large to read: " + numElements);
+  private static void reserveUnbackedEntries(
+      ReadContext readContext, int entries, int consumedBytes) {
+    if (consumedBytes < entries) {
+      readContext.reserveUnbackedContainerItems(entries - consumedBytes);
+    }
+  }
+
+  @Override
+  public final boolean readDataAlwaysAdvances() {
+    return true;
   }
 
   public abstract T onMapCopy(Map map);

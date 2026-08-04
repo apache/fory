@@ -110,6 +110,11 @@ examples/cpp/cmake_example/build
 **/benchmark_results.json
 **/benchmark_report.md
 **/benchmark_*.png
+benchmark-results/
+benchmarks/csharp/benchmark-results/
+benchmarks/dart/benchmark-results/
+benchmarks/java/benchmark-results/
+benchmarks/swift/benchmark-results/
 .cli.params.json
 benchmarks/java/reports/
 **/results/
@@ -130,8 +135,14 @@ csharp/src/Fory/bin/
 csharp/src/Fory/obj/
 csharp/tests/Fory.Tests/bin/
 csharp/tests/Fory.Tests/obj/
+csharp/tests/Fory.ExternalTypes/bin/
+csharp/tests/Fory.ExternalTypes/obj/
 csharp/tests/Fory.XlangPeer/bin/
 csharp/tests/Fory.XlangPeer/obj/
+csharp/tests/Fory.InheritanceProviders/bin/
+csharp/tests/Fory.InheritanceProviders/obj/
+csharp/tests/Fory.InheritanceConsumer/bin/
+csharp/tests/Fory.InheritanceConsumer/obj/
 csharp/artifacts/
 
 tasks/

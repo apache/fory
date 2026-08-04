@@ -83,7 +83,7 @@ export const TypeId = {
   NAMED_STRUCT: 29,
   // a `compatible_struct` whose type mapping will be encoded as a name.
   NAMED_COMPATIBLE_STRUCT: 30,
-  // a type which will be serialized by a customized serializer.
+  // a type which will be serialized by a custom serializer.
   EXT: 31,
   // an `ext` type whose type mapping will be encoded as a name.
   NAMED_EXT: 32,
@@ -235,6 +235,8 @@ export type CustomSerializer<T> = {
 export type Serializer<T = any> = {
   _initialized?: boolean;
   fixedSize: number;
+  /** Whether every successful serializer data read consumes at least one input byte. */
+  readDataAlwaysAdvances: boolean;
   getTypeInfo: () => TypeInfo;
   needToWriteRef: () => boolean;
   getTypeId: () => number;
@@ -299,6 +301,11 @@ export interface Config {
    * higher.
    */
   maxGraphMemoryBytes: number;
+  /**
+   * Maximum collection elements and map entries in one root read whose bodies
+   * are not backed by input bytes. Zero is a strict limit.
+   */
+  maxUnbackedContainerItems: number;
   maxTypeFields: number;
   maxTypeMetaBytes: number;
   maxSchemaVersionsPerType: number;

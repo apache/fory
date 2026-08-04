@@ -551,23 +551,24 @@ public final class Fory implements BaseFory {
 
   @SuppressWarnings("unchecked")
   private <T> T deserializeByType(MemoryBuffer buffer, Class<T> type) {
+    // The outer root operation resets generic state after failure; balance this push here only
+    // after a successful read.
     readContext
         .getGenerics()
         .pushGenericType(typeResolver.buildGenericType(type), readContext.getDepth());
-    try {
-      RefReader refReader = readContext.getRefReader();
-      int nextReadRefId = refReader.tryPreserveRefId(buffer);
-      if (nextReadRefId < NOT_NULL_VALUE_FLAG) {
-        return (T) refReader.getReadRef();
-      }
-      TypeInfo typeInfo = typeResolver.readTypeInfo(readContext, type);
-      readContext.preserveNotNullValueRefId(nextReadRefId, typeInfo.getSerializer());
-      Object value = readContext.readNonRef(typeInfo);
-      refReader.setReadRef(nextReadRefId, value);
-      return (T) value;
-    } finally {
+    RefReader refReader = readContext.getRefReader();
+    int nextReadRefId = refReader.tryPreserveRefId(buffer);
+    if (nextReadRefId < NOT_NULL_VALUE_FLAG) {
+      T value = (T) refReader.getReadRef();
       readContext.getGenerics().popGenericType(readContext.getDepth());
+      return value;
     }
+    TypeInfo typeInfo = typeResolver.readTypeInfo(readContext, type);
+    readContext.preserveNotNullValueRefId(nextReadRefId, typeInfo.getSerializer());
+    T value = (T) readContext.readNonRef(typeInfo);
+    refReader.setReadRef(nextReadRefId, value);
+    readContext.getGenerics().popGenericType(readContext.getDepth());
+    return value;
   }
 
   private void checkHeaderBitmapWithoutOutOfBand(byte bitmap) {

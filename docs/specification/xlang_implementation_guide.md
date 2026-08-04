@@ -213,11 +213,152 @@ The ownership split is:
   field schemas
 - one carrier implementation owns the body, allocation, insertion, and
   reference algorithms reused by root serializers and field codecs
-- a manual serializer owns allocations inside its opaque body and must perform the
+- a custom serializer owns allocations inside its opaque body and must perform the
   corresponding readable-byte, policy, and graph-memory checks before
   allocation
 - `Fory` owns root framing and operation setup/reset
 - `TypeResolver` owns registration and dynamic lookup
+
+#### C# generated structural serializers
+
+C# uses one target-keyed source-generation path for ordinary and external
+structural serializers. `ForyStructAttribute` is non-inherited: every
+first-party class that participates in a serializable hierarchy carries a
+direct annotation. An external declaration supplies the equivalent contract
+for an unmodifiable target.
+
+For one concrete ordinary class, compilation-level hierarchy discovery
+produces two independent immutable outputs:
+
+- one flattened wire-member set, used by field ordering, schema hashes,
+  `TypeMeta`, and generated reads and writes; and
+- one shallow-storage model, used only by graph-memory accounting.
+
+The wire set is assembled base-first from declaration-owned generated
+descriptors. Property override chains collapse to one logical slot before the
+complete set is validated and sorted by the protocol comparator. Hidden
+members retain their exact declaring type. A generated child never calls a
+parent serializer body and never encodes a base object as a nested value.
+
+Each inheritable ordinary class publishes a target-keyed compiler contract
+containing:
+
+- its exact target;
+- its exact directly declared wire-member count;
+- one descriptor on each deterministic accessor for a directly declared wire
+  member: fields use a writable `ref` accessor, while properties use a getter
+  plus a matching setter; and
+- a public static readonly cumulative `HierarchyShallowBytes` value.
+
+The provider's shallow value is the immediate parent provider value plus only
+the current class's directly declared physical instance fields. A sealed
+concrete serializer uses the same cumulative expression privately and does not
+publish a provider marker, descriptors, or hierarchy value. The concrete
+serializer adds object self storage once. Properties never directly add
+storage, while private, readonly, compiler-generated, and non-wire instance
+fields do. Referenced child compilations consume only an accessible provider
+contract; they do not import, enumerate, or reconstruct private parent fields.
+Provider-only targets emit a static provider; a concrete non-sealed
+serializer carries the same contract without a second type or forwarding path.
+An internal provider is available only to assemblies granted normal C#
+accessibility, such as through `InternalsVisibleTo`; an inaccessible or
+extern-alias-only contract does not own another compilation's hierarchy.
+
+The generator emits ordinary direct member access whenever C# accessibility
+allows it. A provider publishes an accessor when a referenced child must reach
+declaration-owned state. The accessor signature preserves the member's CLR
+type and nullability metadata. Missing or ambiguous providers fail generation.
+
+An abstract ordinary class emits only its generated hierarchy provider and does not
+create a serializer instance or registration. Its property descriptors may
+publish unresolved abstract override slots; a concrete descendant must supply
+the callable implementation. Concrete classes require legal parameterless
+construction and retain the existing allocate-before-children and reference
+publication order.
+
+`ForyStructAttribute` and `ForyEnumAttribute` carry an optional `Target` type.
+A local non-generic abstract class supplies an external structural declaration,
+while an empty non-generic static class selects an external enum target:
+
+```csharp
+[ForyStruct(Target = typeof(ThirdParty.User))]
+internal abstract class UserSerializer
+{
+    [ForyField(
+        1,
+        TargetDeclaringType = typeof(ThirdParty.User),
+        TargetMemberName = "<Name>k__BackingField")]
+    public abstract string Name { get; }
+}
+
+[ForyEnum(Target = typeof(ThirdParty.Status))]
+internal static class StatusSerializer
+{
+}
+```
+
+External declarations are compile-time generator input only. They are never
+instantiated, reflected over by the runtime, registered, reference-published,
+or used as wire identities. Runtime type positions, construction, `TypeInfo`,
+metadata, reference publication, generated factory keys, roots, fields,
+dynamic values, and carriers use the target type.
+
+An external member may bind a visible same-name field or property. For external
+class targets, setting `TargetDeclaringType` and `TargetMemberName` instead
+declares one exact field on the target or a non-`object` ancestor. An exact wire mapping
+also supplies physical storage; `Ignore = true` supplies only shallow storage.
+External struct targets support visible member mappings only. Unmapped visible
+public instance fields are added to external class shallow storage once. The
+generator never discovers private fields from a referenced assembly.
+
+`BaseOnly = true` makes an external class declaration the terminal provider for
+a complete third-party hierarchy prefix. It may list exact target and
+target-ancestor fields and publishes no standalone factory or registration. An
+ordinary child consumes this provider exactly as it consumes an ordinary
+parent provider. A `BaseOnly` target may be abstract or nonconstructible
+because only the concrete ordinary child is materialized.
+
+Exact private mappings are version-pinned package ABI declarations. Wire
+accessors fail with the CLR missing-field error if the target ABI changes;
+there is no reflection or alternate-member fallback. On .NET 8, the generator
+rejects private wire access whose declaring owner or signature is generic.
+Visible closed-generic members and explicit storage-only field mappings remain
+supported for class targets. An inaccessible pointer field cannot be
+distinguished from fixed-buffer storage without importing private layout, so an
+exact private pointer mapping is rejected.
+
+Standalone external structural targets require an accessible concrete class
+or struct, legal parameterless construction, and writable declared wire state.
+Constructor-only, factory-only, readonly, init-only, converted, and
+custom-wire shapes use a custom `Serializer<T>`. Explicit nullability must
+match when target metadata is annotated; otherwise the declaration supplies
+schema nullability.
+
+Every generated ordinary or external struct uses
+`TypeResolver.RegisterGeneratedStruct<T, TSerializer>(bool evolving)` to carry
+generator-owned `Evolving` into target `TypeInfo`. Generated enums and unions
+use `TypeResolver.RegisterGenerated<T, TSerializer>()`. Abstract ordinary and
+`BaseOnly` providers do not register. Multiple generated owners for one target
+are rejected during generation or deterministically on the cold
+cross-assembly factory-registration path. Custom serializer replacement keeps
+the resolver's normal target rules.
+
+C# carrier composition remains target-based. The resolver recursively binds
+`Nullable<T>`, one-dimensional `T[]`, `List<T>`, `LinkedList<T>`, `Queue<T>`,
+`Stack<T>`, `HashSet<T>`, `SortedSet<T>`, `ImmutableHashSet<T>`,
+`Dictionary<TKey, TValue>`, `SortedDictionary<TKey, TValue>`,
+`SortedList<TKey, TValue>`, `ConcurrentDictionary<TKey, TValue>`, and
+`NullableKeyDictionary<TKey, TValue>`. Ordinary, external, and custom
+serializers use the same carrier bodies. There is no hierarchy runtime lookup,
+provider object, callback, schema tree, per-element dispatch, or additional
+value allocation.
+
+Dynamic `object` values and unions resolve concrete target types through
+`TypeResolver`. Arbitrary statically typed interface or base-class
+polymorphism remains unsupported. Flat ordinary and external generated hot
+bodies retain the same work and allocation shape apart from target/member
+metadata tokens; hierarchy composition is static initialization and
+compile-time metadata work.
 
 Rust names these serializer operation boundaries explicitly:
 
@@ -259,7 +400,7 @@ or forwards field framing without changing root or value composition.
 
 Serializer-provider identity is a host implementation detail and is never
 encoded. External structural serializers use the same STRUCT, ENUM, or UNION
-metadata and value format as an equivalent directly supported target. Manual
+metadata and value format as an equivalent directly supported target. Custom
 serializers that are not the runtime's canonical implementation of an existing
 built-in use EXT or NAMED_EXT. Serializer-provider separation does not replace
 runtime-owned built-in mappings.
@@ -267,7 +408,7 @@ runtime-owned built-in mappings.
 Static generated fields and serializer-selected roots should dispatch directly
 to the serializer selected by their schema. A Rust field `with = S` selects the
 exact field node and requires `S::Target` to equal the declared field type.
-This accepts an ordinary, external structural, manual, or carrier serializer.
+This accepts an ordinary, external structural, custom, or carrier serializer.
 For example, `with = VecSerializer<UserSerializer>` selects the structural
 `Vec<User>` field node, while `list(element(with = UserSerializer))` selects
 the child node recursively. Transparent fields select their exact carrier
@@ -332,7 +473,7 @@ Carrier delegation must include every existing canonical specialization rather
 than forcing a generic collection shape. For example, a Rust vector carrier
 serializer over the canonical `i32` serializer retains `INT32_ARRAY`, one over
 the canonical `u8` serializer retains BINARY, and one over an external
-structural or manual serializer uses LIST. A nested vector retains the selected
+structural or custom serializer uses LIST. A nested vector retains the selected
 child representation in root bytes; the equivalent field-codec tree retains it
 in recursive `FieldType`.
 
@@ -351,7 +492,7 @@ For Rust, the audited carrier serializer surface is exhaustive:
 
 Every carrier serializer target is formed recursively from child serializer
 targets. Each child can be an ordinary serializer targeting itself, an external
-structural serializer, a manual serializer, or another carrier serializer, and
+structural serializer, a custom serializer, or another carrier serializer, and
 all four forms enter the same carrier body implementation. `Tuple1Serializer` through
 `Tuple22Serializer` and matching
 arity-specific codecs are macro-generated because Rust has no variadic
@@ -368,8 +509,8 @@ Likewise, standard-library weak pointers are not aliases for Fory's weak
 carriers.
 
 For Swift, `Serializer` follows the same exact-target ownership boundary with
-an associated `Target`. A self-provided structural or manual serializer uses
-`Target == Self`; a separately provided structural or manual serializer names
+an associated `Target`. A self-provided structural or custom serializer uses
+`Target == Self`; a separately provided structural or custom serializer names
 another target type. Serializer operations are static and accept or return
 `Target`. Fory never instantiates a serializer object, and generated external
 structural code reads target properties and constructs the target directly.
@@ -391,7 +532,7 @@ serializer so applications can choose the implementation explicitly.
 
 Swift `StructSerializer` covers every structural registration category.
 Ordinary and external `@ForyStruct`, `@ForyEnum`, and `@ForyUnion` expansions
-all conform; manual EXT serializers do not.
+all conform; custom EXT serializers do not.
 
 Swift's doc-hidden `FieldCodec` extends value serialization for the same exact
 target. It owns `FieldType`, recursive field generics, field null/reference
@@ -416,7 +557,7 @@ packed-array wire mapping.
 
 Swift `Serializer.isWrapper` is a doc-hidden value-level property used only to
 reject Fory-owned transparent wrappers as independent EXT registrations.
-`OptionalSerializer` sets it; collection carriers do not. A manual serializer
+`OptionalSerializer` sets it; collection carriers do not. A custom serializer
 does not acquire wrapper status from target spelling and may own an independent
 opaque carrier body. Target-identity conflicts prevent it from replacing a
 seeded canonical dynamic builtin.
@@ -481,16 +622,22 @@ the class target's `AnyObject` constraint. Swift has no negative generic
 constraint for the inverse case, so cold registration validation rejects a
 value-schema declaration that targets a class before publishing metadata. An
 inaccessible, immutable, invariant-bearing, or non-exhaustive target requires a
-manual serializer; the implementation must not use reflection, unsafe layout
+custom serializer; the implementation must not use reflection, unsafe layout
 access, unavailable-overload tricks, schema mirror values, conversion wrappers,
 or builders as a fallback.
+
+Swift macros cannot inspect another type's stored layout. An external class's
+shallow graph-memory formula therefore uses its declaration fields only.
+`@ForyField(ignore: true)` adds a budget-only declaration field without schema,
+target access, construction, or wire code. Applications must use this form for
+substantial omitted storage.
 
 An external structural union requires the target to expose a lossless
 `unknown(UnknownCase)` case. A dependency-free target module may expose a
 generic unknown payload and let the application select its `UnknownCase`
 specialization; a target may also use Fory's carrier directly. Fory does not
 convert another module's unknown representation. A third-party union without
-this shape requires a manual serializer and does not claim structural-union
+this shape requires a custom serializer and does not claim structural-union
 wire equivalence.
 
 An ordinary Swift generated field recursively selects a self-provided declared
@@ -539,7 +686,7 @@ identity and concrete target identity. Static schema and explicit selection use
 serializer identity; dynamic writes use target identity; wire reads use the
 numeric ID or name. All directions share one writer, exact reader, compatible
 reader, metadata, and registration owner. Public registration accepts the
-selected structural or manual serializer through the ID or name API. It rejects
+selected structural or custom serializer through the ID or name API. It rejects
 carrier, dynamic, builtin, and field codec identities before publication.
 
 Swift arbitrary application protocol existentials use a zero-state
@@ -645,7 +792,7 @@ only for explicit `#[fory(array)]`; it maps canonical `u8` BINARY to
 `#[fory(bytes)]`. Consequently, an unannotated `Vec<i32>` field remains
 `LIST<VARINT32>`, an explicit fixed-element list remains `LIST<INT32>`, and
 ordinary or serializer-selected primitive Vec roots retain their dense-array or
-BINARY representation. An external structural or manual serializer targeting a
+BINARY representation. An external structural or custom serializer targeting a
 primitive remains an object LIST child because its serializer does not expose the
 canonical scalar wire ID. Derive may validate the explicit primitive category
 but does not map Rust types to wire IDs. Inline scalar-ID and exact-target
@@ -667,22 +814,22 @@ required child registration through its ordinary per-position type-metadata
 operation. A binding must not add an eager recursive root validation pass,
 reached-body check, selector tree, composed-target lookup, per-element
 serializer dispatch, allocation, callback, or hot-path branch to change that
-behavior. An exact manual serializer for a whole container remains a separate
+behavior. An exact custom serializer for a whole container remains a separate
 opaque EXT/NAMED_EXT choice. It owns registered dynamic target identity, while
 unregistered carrier serializers continue to own explicit static structural
 composition.
 
 Carrier serializers have no independent registered identity. Structural
 registration requires the existing structural serializer contract and matching
-STRUCT/ENUM/UNION category. Manual registration requires an independent
+STRUCT/ENUM/UNION category. Custom registration requires an independent
 EXT/NAMED_EXT serializer and rejects `IS_WRAPPER`. Option, Box, Rc, Arc,
 RcWeak, ArcWeak, RefCell, and Mutex carrier serializers set this property
 independently of their child's category. Lists, sets, maps, fixed arrays, and
 tuples keep it false and are rejected through their own wire category. A
-manual serializer targeting one of the same Rust shapes also keeps it false
+custom serializer targeting one of the same Rust shapes also keeps it false
 because it owns an independent opaque EXT body. Private built-in registration
 validates only its expected internal type ID. These semantic checks use the
-existing serializer contracts and wire categories. Manual EXT registration is
+existing serializer contracts and wire categories. Custom EXT registration is
 the only runtime consumer of `IS_WRAPPER`.
 
 Dynamic values should resolve by the concrete target identity. When a runtime
@@ -1188,6 +1335,10 @@ In Java:
 - `@ForyEnumId` can override that with a stable explicit tag
 - `serializeEnumByName(true)` affects native Java mode, not xlang mode
 
+In C#, the enum's underlying numeric value is the xlang tag. Java peers for
+sparse C# enums must declare matching `@ForyEnumId` values instead of relying
+on declaration ordinals.
+
 Other language implementations should preserve the same wire rule even if the configuration or
 annotation surface differs.
 
@@ -1217,7 +1368,7 @@ The normal Dart integration path is:
 2. annotate field overrides with `@ForyField`
 3. run `build_runner`
 4. call the generated per-library helper, such as
-   `<InputFile>Fory.register(...)`, to bind private generated metadata and
+   `<InputFile>ForyModule.register(...)`, to bind private generated metadata and
    register generated types
 
 Generated code should emit:
@@ -1230,6 +1381,206 @@ Generated code should emit:
 The public helper should be a thin generated wrapper around the Fory
 registration API, not a public global registry or a second unrelated
 registration API family.
+
+### Dart Ordinary Struct Inheritance
+
+Ordinary Dart `ForyStruct` inheritance is a code-generation-time field
+discovery, normalization, access, construction, and flattening change. It does
+not redesign the runtime reference protocol.
+
+For a concrete annotated child, the generator walks the instantiated
+superclass and applied-mixin storage chain rather than only the child's direct
+`element.fields`. Each layer's `InterfaceType.element.fields` exposes its
+declared elements, including private declarations in another library. Dart
+privacy controls which generated expression can access an element; it does not
+control whether the element is discovered.
+
+The storage collector:
+
+1. visits the instantiated superclass;
+2. visits actually applied mixins in application order;
+3. visits the current class;
+4. collects concrete instance storage declared by each layer exactly once.
+
+It excludes `Object`, interfaces, mixin `on` constraints, abstract accessors,
+static fields, external fields, and synthetic members that do not own storage.
+A mixin slot is identified by its application site and declaring field, so
+multiple applications cannot be collapsed by spelling or `baseElement`.
+
+Every discovered storage field follows one pipeline:
+
+```text
+complete hierarchy discovery
+  -> declaration-owned @ForyField(ignore: true)
+  -> concrete-child ignoreInheritedPrivateFields policy
+  -> concrete generic substitution
+  -> direct or companion access resolution
+  -> constructor validation
+  -> one globally sorted child schema
+```
+
+`@ForyField(ignore: true)` is the declaration-owned, per-field omission.
+After that check, a concrete child with
+`ignoreInheritedPrivateFields: true` removes every private field declared by a
+superclass or applied mixin, including same-library, cross-library, direct, and
+transitive ancestors. It does not remove child-declared private fields or
+inherited public fields. Both omission forms bypass substitution, access,
+construction, wire identity, reference analysis, and codec work while their
+physical slots remain in the concrete object's shallow graph-memory field
+count. Any unresolved field that remains included is a generation error.
+
+Ownership is fixed:
+
+| Concern                          | Owner                                            |
+| -------------------------------- | ------------------------------------------------ |
+| Field identity and annotations   | Declaring storage field                          |
+| Hierarchy discovery/substitution | Concrete-child generator                         |
+| Inherited-private omission       | Concrete annotated child                         |
+| Cross-library private permission | Public boundary in the field's declaring library |
+| Schema, sort, and codec          | Concrete annotated child                         |
+| Construction                     | Selected concrete-child generative constructor   |
+| Reference analysis/publication   | Existing concrete-child serializer path          |
+| Graph-memory self charge         | One concrete child object                        |
+| External target field list       | Explicit external serializer declaration         |
+
+The concrete-child omission option defaults to `false`, is not inherited from
+ancestor annotations, and is valid only on an ordinary concrete declaration
+that owns a flattened schema. It is invalid on external target declarations
+and provider-only abstract, open-generic, or mixin boundaries. It is applied
+after complete storage discovery and before generic substitution or access
+resolution, so a matching field needs no direct access or companion even when
+a companion exists.
+
+For fields that remain included, public inherited fields and private inherited
+fields declared in the child's library use direct generated access and require
+no parent annotation. A private field declared in another library requires
+`ForyStruct(exposePrivateFields: true)` on a public hierarchy boundary in that
+field's declaring library. `exposePrivateFields` defaults to `false`, is
+invalid with `ForyStruct.target`, and authorizes only provider-library access
+generation. It does not enable discovery, alter same-library access, change
+field inclusion, or let a consumer authorize another library's private state.
+
+A public boundary may expose same-library private storage inherited from a
+private class or mixin. If private fields come from several Dart libraries,
+each declaring library must independently provide an opted-in public boundary
+and visible companion. The nearest qualifying child-visible boundary in the
+declaring library is selected.
+
+The provider's `.fory.dart` part emits a public `@nodoc` typed static access
+companion. It emits an exact getter for each exposed non-ignored private field,
+a setter only for mutable storage, and no setter for `final` or `late final`
+storage. The receiver is the public boundary type. Generic bounds and every
+type nested in a public signature must be nameable outside the provider
+library. The companion must not use `dynamic`, `Object?` bridge casts,
+reflection, callbacks, runtime lookup, a parent serializer, or stored runtime
+state. Companion generation is independent of every consumer child's
+`ignoreInheritedPrivateFields` value. A concrete boundary may enable both
+options: its own serializer applies the omission, while its provider companion
+continues to expose the declaring library's eligible private storage.
+
+The child source must have a direct import or re-export namespace that exposes
+the public boundary and companion. Provider output must be generated and
+published before a dependent package is built. Missing permission, a hidden or
+ambiguous companion namespace, an unnameable signature, or dispatch that no
+longer reaches the exact storage slot is a generation error. A child must also
+validate the complete concrete hierarchy so field hiding below the boundary
+cannot redirect a generated getter or setter to another slot.
+
+Every included `final` or `late final` field must be initialized by a
+statically proven identity flow:
+
+```text
+selected concrete-child constructor parameter
+  -> redirect or super parameter
+  -> exact storage field
+```
+
+Accepted edges are exact field formals, super formals, direct parameter
+references in constructor field initializers, and direct parameter references
+in redirecting or super-constructor arguments. Types must remain identical
+after concrete generic substitution, including nullability. Calls, operators,
+casts, null assertions, constants, constructor-body assignment, and matching
+names without element identity are not proof. A declaration initializer on a
+included final field is unsupported because the decoded value cannot own that
+slot. There is no post-construction final write, reflection, or fallback.
+
+Mutable fields connected to selected constructor parameters are initialized
+once through the same exact identity flow. Remaining mutable fields require an
+exact setter and are restored after construction. Required constructor
+parameters must have one unambiguous field source. Optional named parameters
+may be omitted; an omitted optional positional parameter cannot be followed by
+a passed positional parameter. Constructor arguments and assignments are
+matched by resolved storage-field identity rather than field-name strings. If
+omission removes the only serialized source for a required parameter,
+generation fails; the generator must not invent a value or relax identity
+proof.
+
+The concrete child owns one `GeneratedStructSchema`, one canonical field sort,
+one serializer and descriptor cache, one reconstruction, one reference
+publication path, and one graph-memory owner. Parent serializers are neither
+nested nor invoked, and parent runtime registration is not required. A
+separately annotated concrete parent has its own independently flattened
+schema only for values of that exact type.
+
+Included direct and inherited fields feed one normalized list into the
+existing recursive reference analysis and `needsRootRef` calculation.
+Included inherited `ref: true` and nested container metadata behave like
+equivalent direct child fields; omitted fields do not enter that list.
+Inheritance adds no reference state, `ReadContext` API, serializer signature,
+call-contract change, runtime branch, slot, sentinel, callback, wrapper,
+compatible-layout state, or parent reference owner. A failure shared by the
+equivalent flat model is a separate reference-subsystem issue.
+
+Java provides only the flattened-model comparison for this feature: its object
+serializer extends one field-descriptor list across inheritance and adds no
+inheritance-specific reference state. Java's existing reference contract uses
+the `readRefIds` stack, real reference IDs, and its `-1` sentinel to associate
+`reference(obj)` with the current serializer invocation. That contract differs
+from Dart's current reference subsystem and is not a design to transplant as
+part of Dart hierarchy support. Dart inheritance is required only to match its
+own equivalent flat model.
+
+Hierarchy traversal, substitution, access validation, and constructor proofs
+run during generation. Existing flat serializers gain no runtime work, public
+and same-library inherited fields emit the same direct operations as equivalent
+flat fields, policy filtering emits no runtime check, and included
+cross-library private fields add only an inlineable typed static companion
+call. Generation must not introduce runtime hierarchy traversal, allocation,
+callbacks, reflection, or parent dispatch.
+
+The child's shallow graph-memory formula is:
+
+```text
+24 + 4 * actualConcreteStorageFieldCount
+```
+
+It counts every real inherited and ignored storage slot once and adds no parent
+self charge.
+
+Generated diagnostics must identify the concrete child, declaring field,
+declaring library, and failed access or constructor path, then give an
+actionable remedy. Typical remedies are adding
+`exposePrivateFields: true` to a public owner-library boundary, importing its
+generated companion, forwarding a constructor value unchanged, placing
+`@ForyField(ignore: true)` on the field declaration, setting
+`ignoreInheritedPrivateFields: true` on the concrete child when all private
+ancestor state should be omitted, or using a custom serializer. Diagnostics
+must state that hierarchy discovery is independent of cross-library access.
+
+Changes to hierarchy storage, exposure boundaries, or
+`ignoreInheritedPrivateFields` require regeneration of every affected
+`.fory.dart` file. Compatible mode uses normal missing/unknown-field handling;
+fixed-schema peers must change together. Implementations must not add a
+special legacy reader, retain an alternative path limited to child
+declarations, bind constructors only by name, use a late-final setter path,
+fall back to another access model, or delegate to a parent serializer.
+
+Acceptance requires that every hierarchy storage slot is either omitted by its
+declaration, omitted by the concrete-child inherited-private policy, or
+represented exactly once with a valid type, access path, wire identity, and
+reconstruction path. Equivalent included flat and inherited models must
+produce the same canonical schema, wire bytes, reference IDs, and round-trip
+behavior. External target declarations remain explicit and unaffected.
 
 ### Dart External Structural Serializers
 
@@ -1244,14 +1595,26 @@ name. Every runtime type position uses the target type: `Serializer<Target>`,
 `GeneratedStructSchema<Target>`, read and write signatures, constructor calls,
 schema `type`, and generated-module dispatch.
 
-For each declaration field, resolve an accessible target getter with the same
-name and exact instantiated Dart type. Constructor parameters and any
-post-construction setter must also match exactly. A public named generative
-constructor is selected only when the annotation names it. Factory
+For each serialized declaration field, resolve an accessible target getter
+with the same name and exact instantiated Dart type. Constructor parameters
+and any post-construction setter must also match exactly. A public named
+generative constructor is selected only when the annotation names it. Factory
 constructors, abstract targets, open target types, and constructor-based
 reference-tracked paths back to the target are rejected during generation.
 The recursive check includes target elements, keys, and values nested in the
 supported list, set, and map field metadata.
+
+The external declaration's fields are the complete schema. It may explicitly
+name an accessible property inherited by the target, but the generator does
+not automatically scan the external target hierarchy for schema fields.
+`exposePrivateFields` and `ignoreInheritedPrivateFields` are invalid on an
+external declaration.
+
+An external object's shallow graph-memory formula is the union of declaration
+fields and public instance fields discovered on the target, its superclasses,
+and applied mixins. A public target field represented by a declaration is
+counted once. `@ForyField(ignore: true)` adds budget-only declaration storage
+without target access, construction, metadata, or wire code.
 
 Generated code reads getters and invokes target constructors or setters
 directly. It must not allocate the declaration, copy values through an
@@ -1315,7 +1678,7 @@ For Dart implementation changes, run at minimum:
 
 ```bash
 cd dart
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 dart analyze
 dart test
 ```
@@ -1324,6 +1687,6 @@ For generated consumer coverage, also run:
 
 ```bash
 cd dart/packages/fory-test
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 dart test
 ```

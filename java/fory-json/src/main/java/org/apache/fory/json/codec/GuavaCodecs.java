@@ -32,11 +32,13 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 
 /**
  * Optional codecs and collection factories for supported Guava immutable value types.
@@ -138,6 +140,24 @@ public final class GuavaCodecs {
   // Keep direct Guava class descriptors in nested classes so ordinary no-Guava startup can
   // initialize the outer owner for class-name availability checks without loading Guava APIs.
   private static final class Direct {
+    private static final int IMMUTABLE_LIST_OWNER_BYTES =
+        minimumOwnerBytes(ImmutableList.of(), ImmutableList.of(1), ImmutableList.of(1, 2));
+    private static final int IMMUTABLE_SET_OWNER_BYTES =
+        minimumOwnerBytes(ImmutableSet.of(), ImmutableSet.of(1), ImmutableSet.of(1, 2));
+    private static final int IMMUTABLE_SORTED_SET_OWNER_BYTES =
+        minimumOwnerBytes(
+            ImmutableSortedSet.of(), ImmutableSortedSet.of(1), ImmutableSortedSet.of(1, 2));
+    private static final int IMMUTABLE_MAP_OWNER_BYTES =
+        minimumOwnerBytes(ImmutableMap.of(), ImmutableMap.of(1, 1), ImmutableMap.of(1, 1, 2, 2));
+    private static final int IMMUTABLE_BI_MAP_OWNER_BYTES =
+        minimumOwnerBytes(
+            ImmutableBiMap.of(), ImmutableBiMap.of(1, 1), ImmutableBiMap.of(1, 1, 2, 2));
+    private static final int IMMUTABLE_SORTED_MAP_OWNER_BYTES =
+        minimumOwnerBytes(
+            ImmutableSortedMap.of(),
+            ImmutableSortedMap.of(1, 1),
+            ImmutableSortedMap.of(1, 1, 2, 2));
+
     private Direct() {}
 
     private static void registerExactCodecs(Map<Class<?>, JsonValueCodec<?>> exactCodecs) {
@@ -148,14 +168,16 @@ public final class GuavaCodecs {
       if (!isSupportedImmutableCollection(rawType)) {
         return null;
       }
-      return new CollectionCodec.CollectionFactory() {
+      int ownerBytes = immutableCollectionOwnerBytes(rawType);
+      return new CollectionCodec.CollectionFactory(ownerBytes) {
         @Override
-        public Collection<Object> newCollection() {
+        public Collection<Object> newCollection(JsonReader reader) {
           return new ArrayList<>(0);
         }
 
         @Override
-        public Collection<?> finish(Collection<Object> collection) {
+        public Collection<?> finish(JsonReader reader, Collection<Object> collection) {
+          reader.reserveGraphMemory(ownerBytes);
           return copyImmutableCollection(rawType, collection);
         }
       };
@@ -165,17 +187,52 @@ public final class GuavaCodecs {
       if (!isSupportedImmutableMap(rawType)) {
         return null;
       }
-      return new MapCodec.MapFactory() {
+      int ownerBytes = immutableMapOwnerBytes(rawType);
+      return new MapCodec.MapFactory(ownerBytes) {
         @Override
-        public Map<Object, Object> newMap() {
+        public Map<Object, Object> newMap(JsonReader reader) {
           return new LinkedHashMap<>(0);
         }
 
         @Override
-        public Map<?, ?> finish(Map<Object, Object> map) {
+        public Map<?, ?> finish(JsonReader reader, Map<Object, Object> map) {
+          reader.reserveGraphMemory(ownerBytes);
           return copyImmutableMap(rawType, map);
         }
       };
+    }
+
+    private static int immutableCollectionOwnerBytes(Class<?> rawType) {
+      if (rawType == ImmutableList.class) {
+        return IMMUTABLE_LIST_OWNER_BYTES;
+      }
+      if (rawType == ImmutableSet.class) {
+        return IMMUTABLE_SET_OWNER_BYTES;
+      }
+      if (rawType == ImmutableSortedSet.class) {
+        return IMMUTABLE_SORTED_SET_OWNER_BYTES;
+      }
+      throw new AssertionError("Unsupported immutable collection " + rawType);
+    }
+
+    private static int immutableMapOwnerBytes(Class<?> rawType) {
+      if (rawType == ImmutableMap.class) {
+        return IMMUTABLE_MAP_OWNER_BYTES;
+      }
+      if (rawType == ImmutableBiMap.class) {
+        return IMMUTABLE_BI_MAP_OWNER_BYTES;
+      }
+      if (rawType == ImmutableSortedMap.class) {
+        return IMMUTABLE_SORTED_MAP_OWNER_BYTES;
+      }
+      throw new AssertionError("Unsupported immutable map " + rawType);
+    }
+
+    private static int minimumOwnerBytes(Object empty, Object singleton, Object regular) {
+      int emptyBytes = GraphMemoryEstimates.shallowObjectBytes(empty.getClass());
+      int singletonBytes = GraphMemoryEstimates.shallowObjectBytes(singleton.getClass());
+      int regularBytes = GraphMemoryEstimates.shallowObjectBytes(regular.getClass());
+      return Math.min(emptyBytes, Math.min(singletonBytes, regularBytes));
     }
 
     private static boolean isSupportedImmutableCollection(Class<?> rawType) {

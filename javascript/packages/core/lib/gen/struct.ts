@@ -571,7 +571,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     // edge cases). The self-serializer may not be registered yet during factory
     // initialization so we cannot hoist it eagerly.
     this.serializerExpr = TypeId.isNamedType(typeInfo.typeId)
-      ? `${this.builder.getTypeResolverName()}.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(typeInfo.named!)}")`
+      ? `${this.builder.getTypeResolverName()}.getSerializerByName(${CodecBuilder.sourceString(typeInfo.named!)})`
       : `${this.builder.getTypeResolverName()}.getSerializerById(${typeInfo.typeId}, ${typeInfo.userTypeId})`;
     this.ownTypeInfoExpr = `${this.serializerExpr}.getTypeInfo()`;
   }
@@ -585,6 +585,37 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   private objectGraphBytes(): number {
     return JS_STRUCT_OWNER_BYTES + this.sortedProps.length * REFERENCE_BYTES;
+  }
+
+  readDataAlwaysAdvances(): boolean {
+    if (!this.builder.resolver.isCompatible()) {
+      return true;
+    }
+    for (const { typeInfo } of this.sortedProps) {
+      if (
+        toRefMode(typeInfo.trackingRef, typeInfo.nullable) !== RefMode.NONE ||
+        !this.builder.resolver.isMonomorphic(typeInfo, typeInfo.dynamic) ||
+        getCompatibleScalarReadAction(typeInfo) !== undefined
+      ) {
+        return true;
+      }
+      // Query only the serializer already bound for the declared field. A
+      // recursive placeholder remains unknown and selects the guarded loop;
+      // do not recursively walk the schema graph here.
+      if (
+        this.builder.resolver.getSerializerByTypeInfo(typeInfo)?.readDataAlwaysAdvances === true
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private readFieldAssign(result: string, fieldName: string, expr: string): string {
+    if (fieldName === "__proto__") {
+      return `Object.defineProperty(${result}, "__proto__", { value: ${expr}, writable: true, enumerable: true, configurable: true })`;
+    }
+    return `${result}${CodecBuilder.safePropAccessor(fieldName)} = ${expr}`;
   }
 
   readField(
@@ -645,7 +676,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
             ${assignStmt("null")}
             break;
           default:
-            throw new Error("Invalid reference flag for compatible scalar field ${CodecBuilder.replaceBackslashAndQuote(fieldName)}");
+            throw new Error(${CodecBuilder.sourceString(`Invalid reference flag for compatible scalar field ${fieldName}`)});
         }
       `;
     }
@@ -704,7 +735,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       } else {
         stmt = `
             if (${fieldAccessor} === null || ${fieldAccessor} === undefined) {
-              throw new Error('Field ${CodecBuilder.safeString(fieldName)} is not nullable');
+              throw new Error(${CodecBuilder.sourceString(`Field "${fieldName}" is not nullable`)});
             } else {
               ${embedGenerator.write(fieldAccessor)}
             }
@@ -725,7 +756,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       } else {
         stmt = `
             if (${fieldAccessor} === null || ${fieldAccessor} === undefined) {
-              throw new Error('Field ${CodecBuilder.safeString(fieldName)} is not nullable');
+              throw new Error(${CodecBuilder.sourceString(`Field "${fieldName}" is not nullable`)});
             } else {
               ${embedGenerator.writeNoRef(fieldAccessor)}
             }
@@ -786,14 +817,14 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       return {
         key,
         fieldAccessor: `${accessor}${CodecBuilder.safePropAccessor(key)}`,
-        local: this.scope.uniqueName(key),
+        local: this.scope.uniqueName("field"),
       };
     });
     const checks = locals
       .map(
         ({ key, local }) => `
       if (${local} === null || ${local} === undefined) {
-        throw new Error('Field ${CodecBuilder.safeString(key)} is not nullable');
+        throw new Error(${CodecBuilder.sourceString(`Field "${key}" is not nullable`)});
       }
     `,
       )
@@ -898,7 +929,10 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
           const ${result} = {
             ${this.sortedProps
               .map(({ key }) => {
-                if (shouldSkipCompatibleRead(this.typeInfo.options!.props![key])) {
+                if (
+                  key === "__proto__" ||
+                  shouldSkipCompatibleRead(this.typeInfo.options!.props![key])
+                ) {
                   return "";
                 }
                 return `${CodecBuilder.safePropName(key)}: null`;
@@ -917,7 +951,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
           }
           const innerGenerator = new InnerGeneratorClass(typeInfo, this.builder, this.scope);
           return `
-          ${this.readField(key, typeInfo, (expr) => `${result}${CodecBuilder.safePropAccessor(key)} = ${expr}`, innerGenerator.readEmbed())}
+          ${this.readField(key, typeInfo, (expr) => this.readFieldAssign(result, key, expr), innerGenerator.readEmbed())}
         `;
         })
         .join(";\n")}
@@ -929,6 +963,9 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     accessor: (expr: string) => string,
     refState: string,
   ): string | null {
+    if (this.sortedProps.some(({ key }) => key === "__proto__")) {
+      return null;
+    }
     const varInt32ObjectRead = this.readDirectVarInt32Object(accessor, refState);
     if (varInt32ObjectRead !== null) {
       return varInt32ObjectRead;
@@ -972,7 +1009,11 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     accessor: (expr: string) => string,
     refState: string,
   ): string | null {
-    if (this.typeInfo.options!.withConstructor || this.sortedProps.length === 0) {
+    if (
+      this.typeInfo.options!.withConstructor ||
+      this.sortedProps.length === 0 ||
+      this.sortedProps.some(({ key }) => key === "__proto__")
+    ) {
       return null;
     }
     const fields = [];
@@ -987,7 +1028,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       fields.push({
         key,
         kind,
-        local: this.scope.uniqueName(key),
+        local: this.scope.uniqueName("field"),
       });
     }
     const cursor = this.scope.uniqueName("cursor");
@@ -1076,11 +1117,17 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
+    // A changed-schema serializer is still a nested read. Leave depth retained
+    // after failure so the root operation remains the sole cleanup owner.
+    const readChanged = (changedSerializer: string) => `
+      ${this.builder.getReadContextName()}.incReadDepth();
+      let ${result} = ${changedSerializer}.read(${refState});
+      ${this.builder.getReadContextName()}.decReadDepth();
+      ${assignStmt(result)};
+    `;
     if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
       return this.readTypeInfoThen(
-        (changedSerializer) => `
-          ${assignStmt(`${changedSerializer}.read(${refState})`)};
-        `,
+        readChanged,
         () => `
         ${this.builder.getReadContextName()}.incReadDepth();
         let ${result} = ${this.serializerExpr}.read(${refState});
@@ -1092,9 +1139,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     }
     if (this.isDepthFreeStruct()) {
       return this.readTypeInfoThen(
-        (changedSerializer) => `
-          ${assignStmt(`${changedSerializer}.read(${refState})`)};
-        `,
+        readChanged,
         () => `
         let ${result};
           ${this.read((v) => `${result} = ${v}`, refState)};
@@ -1104,9 +1149,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       );
     }
     return this.readTypeInfoThen(
-      (changedSerializer) => `
-        ${assignStmt(`${changedSerializer}.read(${refState})`)};
-      `,
+      readChanged,
       () => `
       ${this.builder.getReadContextName()}.incReadDepth();
       let ${result};
@@ -1141,8 +1184,11 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
             ${unchangedStmt}
           }`;
       }
+      // The factory's typeInfo is this serializer's declared owner. Pass it directly so the
+      // exact-schema hot path does not repeat a resolver lookup; nested fields use readEmbed's
+      // already-hoisted serializer owner.
       return `
-          const ${changedSerializer} = ${this.builder.typeMetaResolver.readCompatibleStructSerializer(localHash)};
+          const ${changedSerializer} = ${this.builder.typeMetaResolver.readCompatibleStructSerializer(localHash, "typeInfo")};
           if (${changedSerializer} !== undefined) {
             ${onMetaChanged?.(changedSerializer) ?? `return ${changedSerializer};`}
           }${unchangedBranch}
@@ -1231,7 +1277,12 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
               const result = scope.uniqueName("result");
               return `
               ${inlineCompatibleTypeInfo(
-                (changedSerializer) => `${accessor(`${changedSerializer}.read(${refState})`)};`,
+                (changedSerializer) => `
+                ${builder.getReadContextName()}.incReadDepth();
+                let ${result} = ${changedSerializer}.read(${refState});
+                ${builder.getReadContextName()}.decReadDepth();
+                ${accessor(result)};
+              `,
                 () => `
                 ${builder.getReadContextName()}.incReadDepth();
                 let ${result} = ${hoisted}.read(${refState});
@@ -1249,20 +1300,28 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
               return `
               const ${refFlag} = ${builder.reader.readInt8()};
               let ${result};
-              if (${refFlag} === ${RefFlags.NullFlag}) {
-                ${result} = null;
-              } else if (${refFlag} === ${RefFlags.RefFlag}) {
-                ${result} = ${builder.referenceResolver.getReadRef(builder.reader.readVarUInt32())};
-              } else {
-                ${inlineCompatibleTypeInfo(
-                  (changedSerializer) =>
-                    `${result} = ${changedSerializer}.read(${refFlag} === ${RefFlags.RefValueFlag});`,
-                  () => `
-                  ${builder.getReadContextName()}.incReadDepth();
-                  ${result} = ${hoisted}.read(${refFlag} === ${RefFlags.RefValueFlag});
-                  ${builder.getReadContextName()}.decReadDepth();
-                `,
-                )}
+              switch (${refFlag}) {
+                case ${RefFlags.NullFlag}:
+                  ${result} = null;
+                  break;
+                case ${RefFlags.RefFlag}:
+                  ${result} = ${builder.referenceResolver.getReadRef(builder.reader.readVarUInt32())};
+                  break;
+                case ${RefFlags.NotNullValueFlag}:
+                case ${RefFlags.RefValueFlag}:
+                  ${inlineCompatibleTypeInfo(
+                    (changedSerializer) => `
+                    ${builder.getReadContextName()}.incReadDepth();
+                    ${result} = ${changedSerializer}.read(${refFlag} === ${RefFlags.RefValueFlag});
+                    ${builder.getReadContextName()}.decReadDepth();
+                  `,
+                    () => `
+                    ${builder.getReadContextName()}.incReadDepth();
+                    ${result} = ${hoisted}.read(${refFlag} === ${RefFlags.RefValueFlag});
+                    ${builder.getReadContextName()}.decReadDepth();
+                  `,
+                  )}
+                  break;
               }
               ${accessor(result)};
             `;
@@ -1348,15 +1407,11 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
             const typeInfo = this.typeInfo;
             const nsBytes = this.scope.declare(
               "nsBytes",
-              this.builder.metaStringResolver.encodeNamespace(
-                CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace),
-              ),
+              this.builder.metaStringResolver.encodeNamespace(typeInfo.namespace),
             );
             const typeNameBytes = this.scope.declare(
               "typeNameBytes",
-              this.builder.metaStringResolver.encodeTypeName(
-                CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName),
-              ),
+              this.builder.metaStringResolver.encodeTypeName(typeInfo.typeName),
             );
             typeMeta = `
               ${this.builder.metaStringResolver.writeBytes(nsBytes)}

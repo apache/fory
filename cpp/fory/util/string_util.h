@@ -22,6 +22,7 @@
 #include "macros.h"
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -33,7 +34,8 @@ static inline bool is_ascii_fallback(const char *data, size_t size) {
   // Loop through 8-byte chunks
   for (; i + 7 < size; i += 8) {
     // Load 8 bytes from the string
-    uint64_t chunk = *reinterpret_cast<const uint64_t *>(data + i);
+    uint64_t chunk;
+    std::memcpy(&chunk, data + i, sizeof(chunk));
     // Check if any byte in the 64-bit chunk is >= 128
     // This checks if any of the top bits of each byte are set
     if (chunk & 0x8080808080808080ULL) {
@@ -60,6 +62,13 @@ static inline bool is_latin1_fallback(const uint16_t *data, size_t size) {
 std::string utf16_to_utf8(const std::u16string &utf16, bool is_little_endian);
 
 std::u16string utf8_to_utf16(const std::string &utf8, bool is_little_endian);
+
+namespace detail {
+
+bool utf8_to_utf16_checked(const char *utf8, size_t size, bool is_little_endian,
+                           std::u16string &utf16);
+
+} // namespace detail
 
 // inline
 
@@ -184,8 +193,10 @@ inline std::string utf16_to_utf8(const uint16_t *data, size_t char_count) {
 
 static inline bool has_surrogate_pair_fallback(const uint16_t *data,
                                                size_t size) {
+  const auto *bytes = reinterpret_cast<const uint8_t *>(data);
   for (size_t i = 0; i < size; ++i) {
-    auto c = data[i];
+    uint16_t c;
+    std::memcpy(&c, bytes + i * sizeof(uint16_t), sizeof(c));
     if (c >= 0xD800 && c <= 0xDFFF) {
       return true;
     }

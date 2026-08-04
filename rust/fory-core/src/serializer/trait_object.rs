@@ -35,7 +35,7 @@ impl<T: Any> ForyObject for T {
 /// Generates serializers for a closed set of concrete application-trait targets.
 ///
 /// The listed types are runtime target types. Their registered ordinary serializer,
-/// external structural serializer, or manual serializer determines wire behavior.
+/// external structural serializer, or custom serializer determines wire behavior.
 ///
 /// ```rust,ignore
 /// use fory::{register_trait_type, ForyObject};
@@ -388,7 +388,7 @@ macro_rules! register_trait_type {
                     read_type_info: bool,
                 ) -> Result<Self, $crate::Error> {
                     context.inc_depth()?;
-                    let result = (|| {
+                    let value = (|| {
                         if ref_mode != $crate::RefMode::None
                             && context.reader.read_i8()?
                                 != $crate::RefFlag::NotNullValue as i8
@@ -400,9 +400,9 @@ macro_rules! register_trait_type {
                         }
                         let type_info = context.read_any_type_info()?;
                         [<$trait_name ForyDispatch>]::read_box(context, &type_info)
-                    })();
+                    })()?;
                     context.dec_depth();
-                    result
+                    Ok(value)
                 }
 
                 #[inline(always)]
@@ -412,7 +412,7 @@ macro_rules! register_trait_type {
                     type_info: &std::rc::Rc<$crate::TypeInfo>,
                 ) -> Result<Self, $crate::Error> {
                     context.inc_depth()?;
-                    let result = (|| {
+                    let value = (|| {
                         if ref_mode != $crate::RefMode::None
                             && context.reader.read_i8()?
                                 != $crate::RefFlag::NotNullValue as i8
@@ -420,9 +420,9 @@ macro_rules! register_trait_type {
                             return Err([<$trait_name ForyDispatch>]::null_box_value());
                         }
                         [<$trait_name ForyDispatch>]::read_box(context, type_info)
-                    })();
+                    })()?;
                     context.dec_depth();
-                    result
+                    Ok(value)
                 }
 
                 #[inline(always)]
@@ -611,7 +611,7 @@ macro_rules! register_trait_type {
                         }
                         $crate::RefFlag::NotNullValue => {
                             context.inc_depth()?;
-                            let result = (|| {
+                            let value = (|| {
                                 if !read_type_info {
                                     return Err(
                                         [<$trait_name ForyDispatch>]::missing_rc_metadata()
@@ -619,14 +619,14 @@ macro_rules! register_trait_type {
                                 }
                                 let type_info = context.read_any_type_info()?;
                                 [<$trait_name ForyDispatch>]::read_rc(context, &type_info)
-                            })();
+                            })()?;
                             context.dec_depth();
-                            result
+                            Ok(value)
                         }
                         $crate::RefFlag::RefValue => {
                             let ref_id = context.ref_reader.reserve_ref_id();
                             context.inc_depth()?;
-                            let result = (|| {
+                            let value = (|| {
                                 if !read_type_info {
                                     return Err(
                                         [<$trait_name ForyDispatch>]::missing_rc_metadata()
@@ -634,9 +634,8 @@ macro_rules! register_trait_type {
                                 }
                                 let type_info = context.read_any_type_info()?;
                                 [<$trait_name ForyDispatch>]::read_rc(context, &type_info)
-                            })();
+                            })()?;
                             context.dec_depth();
-                            let value = result?;
                             context.ref_reader.store_rc_ref_at(ref_id, value.clone());
                             Ok(value)
                         }
@@ -670,18 +669,17 @@ macro_rules! register_trait_type {
                         }
                         $crate::RefFlag::NotNullValue => {
                             context.inc_depth()?;
-                            let result =
-                                [<$trait_name ForyDispatch>]::read_rc(context, type_info);
+                            let value =
+                                [<$trait_name ForyDispatch>]::read_rc(context, type_info)?;
                             context.dec_depth();
-                            result
+                            Ok(value)
                         }
                         $crate::RefFlag::RefValue => {
                             let ref_id = context.ref_reader.reserve_ref_id();
                             context.inc_depth()?;
-                            let result =
-                                [<$trait_name ForyDispatch>]::read_rc(context, type_info);
+                            let value =
+                                [<$trait_name ForyDispatch>]::read_rc(context, type_info)?;
                             context.dec_depth();
-                            let value = result?;
                             context.ref_reader.store_rc_ref_at(ref_id, value.clone());
                             Ok(value)
                         }
@@ -904,7 +902,7 @@ macro_rules! register_trait_type {
                         }
                         $crate::RefFlag::NotNullValue => {
                             context.inc_depth()?;
-                            let result = (|| {
+                            let value = (|| {
                                 if !read_type_info {
                                     return Err(
                                         [<$trait_name ForyDispatch>]::missing_arc_metadata()
@@ -912,14 +910,14 @@ macro_rules! register_trait_type {
                                 }
                                 let type_info = context.read_any_type_info()?;
                                 [<$trait_name ForyDispatch>]::read_arc(context, &type_info)
-                            })();
+                            })()?;
                             context.dec_depth();
-                            result
+                            Ok(value)
                         }
                         $crate::RefFlag::RefValue => {
                             let ref_id = context.ref_reader.reserve_ref_id();
                             context.inc_depth()?;
-                            let result = (|| {
+                            let value = (|| {
                                 if !read_type_info {
                                     return Err(
                                         [<$trait_name ForyDispatch>]::missing_arc_metadata()
@@ -927,9 +925,8 @@ macro_rules! register_trait_type {
                                 }
                                 let type_info = context.read_any_type_info()?;
                                 [<$trait_name ForyDispatch>]::read_arc(context, &type_info)
-                            })();
+                            })()?;
                             context.dec_depth();
-                            let value = result?;
                             context.ref_reader.store_arc_ref_at(ref_id, value.clone());
                             Ok(value)
                         }
@@ -963,18 +960,17 @@ macro_rules! register_trait_type {
                         }
                         $crate::RefFlag::NotNullValue => {
                             context.inc_depth()?;
-                            let result =
-                                [<$trait_name ForyDispatch>]::read_arc(context, type_info);
+                            let value =
+                                [<$trait_name ForyDispatch>]::read_arc(context, type_info)?;
                             context.dec_depth();
-                            result
+                            Ok(value)
                         }
                         $crate::RefFlag::RefValue => {
                             let ref_id = context.ref_reader.reserve_ref_id();
                             context.inc_depth()?;
-                            let result =
-                                [<$trait_name ForyDispatch>]::read_arc(context, type_info);
+                            let value =
+                                [<$trait_name ForyDispatch>]::read_arc(context, type_info)?;
                             context.dec_depth();
-                            let value = result?;
                             context.ref_reader.store_arc_ref_at(ref_id, value.clone());
                             Ok(value)
                         }

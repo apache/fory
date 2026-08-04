@@ -18,13 +18,9 @@
 @TestOn('vm')
 library;
 
-import 'dart:io';
-import 'dart:isolate';
-
-import 'package:build/build.dart';
-import 'package:build_test/build_test.dart';
-import 'package:fory/src/codegen/fory_builder.dart';
 import 'package:test/test.dart';
+
+import 'codegen_test_support.dart';
 
 const String _fixtureHeader = '''
 import 'package:fory/src/annotation/fory_field.dart';
@@ -35,47 +31,19 @@ import 'external_target_fixture.dart';
 part 'external_serializer_fixture.fory.dart';
 ''';
 
-final Future<Map<String, String>> _annotationAssets = _loadAnnotationAssets();
-
-Future<Map<String, String>> _loadAnnotationAssets() async {
-  const paths = <String>[
-    'src/annotation/fory_field.dart',
-    'src/annotation/fory_struct.dart',
-    'src/annotation/fory_union.dart',
-    'src/annotation/type_spec.dart',
-  ];
-  final assets = <String, String>{};
-  for (final path in paths) {
-    final uri = await Isolate.resolvePackageUri(
-      Uri.parse('package:fory/$path'),
-    );
-    if (uri == null) {
-      throw StateError('Could not resolve package:fory/$path.');
-    }
-    assets['fory|lib/$path'] = await File.fromUri(uri).readAsString();
-  }
-  return assets;
-}
-
 Future<void> _expectGenerationError({
   required String targetSource,
   required String declarationSource,
   required String message,
 }) async {
-  final logs = <String>[];
-  await testBuilder(
-    foryBuilder(BuilderOptions.empty),
-    <String, String>{
-      ...(await _annotationAssets),
+  await expectForyGenerationError(
+    inputPath: 'test/external_serializer_fixture.dart',
+    source: '$_fixtureHeader\n$declarationSource',
+    additionalAssets: <String, String>{
       'fory|test/external_target_fixture.dart': targetSource,
-      'fory|test/external_serializer_fixture.dart':
-          '$_fixtureHeader\n$declarationSource',
     },
-    rootPackage: 'fory',
-    generateFor: <String>{'fory|test/external_serializer_fixture.dart'},
-    onLog: (record) => logs.add(record.message),
+    message: message,
   );
-  expect(logs, contains(contains(message)));
 }
 
 Future<void> _expectGenerationOutput({
@@ -85,20 +53,14 @@ Future<void> _expectGenerationOutput({
   String fixtureHeader = _fixtureHeader,
   Map<String, String> additionalAssets = const <String, String>{},
 }) async {
-  await testBuilder(
-    foryBuilder(BuilderOptions.empty),
-    <String, String>{
-      ...(await _annotationAssets),
+  await expectForyGenerationOutput(
+    inputPath: 'test/external_serializer_fixture.dart',
+    source: '$fixtureHeader\n$declarationSource',
+    additionalAssets: <String, String>{
       'fory|test/external_target_fixture.dart': targetSource,
       ...additionalAssets,
-      'fory|test/external_serializer_fixture.dart':
-          '$fixtureHeader\n$declarationSource',
     },
-    rootPackage: 'fory',
-    generateFor: <String>{'fory|test/external_serializer_fixture.dart'},
-    outputs: <String, Matcher>{
-      'fory|test/external_serializer_fixture.fory.dart': decodedMatches(output),
-    },
+    output: output,
   );
 }
 
@@ -304,6 +266,20 @@ class Target {
 @ForyStruct(target: Target)
 abstract final class TargetSerializer {
   late final String value = '';
+}
+''',
+      message: 'must be a late final field without an initializer',
+    );
+  });
+
+  test('validates ignored schema field shape', () async {
+    await _expectGenerationError(
+      targetSource: 'class Target {}',
+      declarationSource: '''
+@ForyStruct(target: Target)
+abstract final class TargetSerializer {
+  @ForyField(ignore: true)
+  late String hidden;
 }
 ''',
       message: 'must be a late final field without an initializer',
@@ -548,6 +524,48 @@ abstract final class TargetSerializer {
       output: allOf(
         contains('final value = Target(_firstValue);'),
         contains('value.third = _thirdValue;'),
+      ),
+    );
+  });
+
+  test('accounts for external target storage without serializing it', () async {
+    await _expectGenerationOutput(
+      targetSource: '''
+mixin TargetMixin {
+  final bool mixed = false;
+}
+
+class Base<T> {
+  Base(this.inherited);
+
+  final T inherited;
+}
+
+class Target extends Base<String> with TargetMixin {
+  Target(this.value, String inherited) : super(inherited);
+
+  final int value;
+  final String omitted = 'omitted';
+  final Object _hidden = Object();
+}
+''',
+      declarationSource: '''
+@ForyStruct(target: Target)
+abstract final class TargetSerializer {
+  late final int value;
+  late final String inherited;
+
+  @ForyField(ignore: true)
+  late final Object _hidden;
+}
+''',
+      output: allOf(
+        contains('context.reserveGraphMemory(44);'),
+        contains("identifier: 'value',"),
+        contains("identifier: 'inherited',"),
+        isNot(contains("identifier: 'omitted',")),
+        isNot(contains('_hidden')),
+        isNot(contains("identifier: 'mixed',")),
       ),
     );
   });

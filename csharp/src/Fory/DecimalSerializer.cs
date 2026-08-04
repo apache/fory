@@ -23,6 +23,11 @@ public readonly record struct ForyDecimal(BigInteger UnscaledValue, int Scale);
 
 public sealed class DecimalSerializer : Serializer<decimal>
 {
+    // System.Decimal owns a 96-bit coefficient. Keep its native read bound separate from the
+    // wider arbitrary-precision ForyDecimal bound used by compatible scalar conversion.
+    private const int MinScale = 0;
+    private const int MaxScale = 28;
+    private const int MaxMagnitudeBytes = 12;
     private static readonly BigInteger UInt32Mask = uint.MaxValue;
 
     public override decimal DefaultValue => 0m;
@@ -31,12 +36,13 @@ public sealed class DecimalSerializer : Serializer<decimal>
     {
         _ = hasGenerics;
         (int scale, BigInteger unscaled) = ToParts(value);
-        DecimalCodec.Write(context.Writer, scale, unscaled);
+        DecimalCodec.Write(context.Writer, scale, unscaled, maxMagnitudeBytes: null);
     }
 
     public override decimal ReadData(ReadContext context)
     {
-        (int scale, BigInteger unscaled) = DecimalCodec.Read(context.Reader);
+        (int scale, BigInteger unscaled) =
+            DecimalCodec.Read(context.Reader, MinScale, MaxScale, MaxMagnitudeBytes);
         return FromParts(scale, unscaled);
     }
 
@@ -83,28 +89,51 @@ internal sealed class ForyDecimalSerializer : Serializer<ForyDecimal>
     public override void WriteData(WriteContext context, in ForyDecimal value, bool hasGenerics)
     {
         _ = hasGenerics;
-        DecimalCodec.Write(context.Writer, value.Scale, value.UnscaledValue);
+        if (value.Scale is < DecimalCodec.MinScale or > DecimalCodec.MaxScale)
+        {
+            throw new InvalidDataException(
+                $"decimal scale {value.Scale} is outside range " +
+                $"[{DecimalCodec.MinScale}, {DecimalCodec.MaxScale}]");
+        }
+
+        DecimalCodec.Write(
+            context.Writer,
+            value.Scale,
+            value.UnscaledValue,
+            DecimalCodec.MaxMagnitudeBytes);
     }
 
     public override ForyDecimal ReadData(ReadContext context)
     {
-        (int scale, BigInteger unscaled) = DecimalCodec.Read(context.Reader);
+        (int scale, BigInteger unscaled) =
+            DecimalCodec.Read(
+                context.Reader,
+                DecimalCodec.MinScale,
+                DecimalCodec.MaxScale,
+                DecimalCodec.MaxMagnitudeBytes);
         return new ForyDecimal(unscaled, scale);
     }
 }
 
 internal static class DecimalCodec
 {
+    public const int MinScale = -10_000;
+    public const int MaxScale = 10_000;
+    public const int MaxMagnitudeBytes = 10_000;
     private static readonly BigInteger LongMin = long.MinValue;
     private static readonly BigInteger LongMax = long.MaxValue;
 
-    public static void Write(ByteWriter buffer, int scale, BigInteger unscaled)
+    public static void Write(
+        ByteWriter buffer,
+        int scale,
+        BigInteger unscaled,
+        int? maxMagnitudeBytes)
     {
-        buffer.WriteVarInt32(scale);
         if (CanUseSmallEncoding(unscaled))
         {
             long smallValue = (long)unscaled;
             ulong zigzag = EncodeZigZag64(smallValue);
+            buffer.WriteVarInt32(scale);
             buffer.WriteVarUInt64(zigzag << 1);
             return;
         }
@@ -115,16 +144,34 @@ internal static class DecimalCodec
             throw new InvalidDataException("zero must use the small decimal encoding");
         }
 
+        if (maxMagnitudeBytes is int maxBytes &&
+            magnitude.GetBitLength() > (long)maxBytes * 8)
+        {
+            throw new InvalidDataException(
+                $"decimal magnitude exceeds limit {maxBytes}");
+        }
+
         byte[] magnitudeBytes = magnitude.ToByteArray(isUnsigned: true, isBigEndian: false);
         ulong meta = ((ulong)magnitudeBytes.Length << 1) | (unscaled.Sign < 0 ? 1UL : 0UL);
         ulong header = (meta << 1) | 1UL;
+        buffer.WriteVarInt32(scale);
         buffer.WriteVarUInt64(header);
         buffer.WriteBytes(magnitudeBytes);
     }
 
-    public static (int Scale, BigInteger Unscaled) Read(ByteReader buffer)
+    public static (int Scale, BigInteger Unscaled) Read(
+        ByteReader buffer,
+        int minScale,
+        int maxScale,
+        int maxMagnitudeBytes)
     {
         int scale = buffer.ReadVarInt32();
+        if (scale < minScale || scale > maxScale)
+        {
+            throw new InvalidDataException(
+                $"decimal scale {scale} is outside range [{minScale}, {maxScale}]");
+        }
+
         ulong header = buffer.ReadVarUInt64();
         if ((header & 1UL) == 0UL)
         {
@@ -136,6 +183,12 @@ internal static class DecimalCodec
         if (lenLong == 0 || lenLong > int.MaxValue)
         {
             throw new InvalidDataException($"invalid decimal magnitude length {lenLong}");
+        }
+
+        if (lenLong > (ulong)maxMagnitudeBytes)
+        {
+            throw new InvalidDataException(
+                $"decimal magnitude length {lenLong} exceeds limit {maxMagnitudeBytes}");
         }
 
         int length = checked((int)lenLong);

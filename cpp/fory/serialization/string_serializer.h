@@ -206,11 +206,15 @@ inline std::u16string read_u16string_data(ReadContext &ctx) {
     return result;
   }
   case StringEncoding::UTF8: {
-    // Read UTF-8 bytes and convert to UTF-16
-    std::string utf8(length_u32, '\0');
-    std::memcpy(&utf8[0], data, length_u32);
+    std::u16string result;
+    if (FORY_PREDICT_FALSE(!fory::detail::utf8_to_utf16_checked(
+            reinterpret_cast<const char *>(data), length_u32,
+            true /* little endian */, result))) {
+      ctx.set_error(Error::encoding_error("Invalid UTF-8 encoding"));
+      return std::u16string();
+    }
     buffer.unsafe_increase_reader_index(length_u32);
-    return utf8_to_utf16(utf8, true /* little endian */);
+    return result;
   }
   default:
     ctx.set_error(

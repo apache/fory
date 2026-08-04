@@ -29,6 +29,7 @@ import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonSharedRegistry.CachedFieldName;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.testng.annotations.Test;
 
 public class FieldNameCacheTest {
@@ -81,11 +82,17 @@ public class FieldNameCacheTest {
 
   private static JsonSharedRegistry registry() {
     try {
-      ForyJson json = ForyJson.builder().withCodegen(false).build();
-      Field field = ForyJson.class.getDeclaredField("sharedRegistry");
-      field.setAccessible(true);
-      return (JsonSharedRegistry) field.get(json);
-    } catch (NoSuchFieldException | IllegalAccessException e) {
+      ForyJson json = ForyJson.builder().withCodegen(false).withConcurrencyLevel(1).build();
+      Field slotsField = ForyJson.class.getDeclaredField("slots");
+      slotsField.setAccessible(true);
+      Object stateSlot = ((Object[]) slotsField.get(json))[0];
+      Field stateField = stateSlot.getClass().getDeclaredField("state");
+      stateField.setAccessible(true);
+      Object state = stateField.get(stateSlot);
+      Field resolverField = state.getClass().getDeclaredField("typeResolver");
+      resolverField.setAccessible(true);
+      return ((JsonTypeResolver) resolverField.get(state)).sharedRegistry();
+    } catch (ReflectiveOperationException e) {
       throw new AssertionError(e);
     }
   }

@@ -30,7 +30,7 @@ public struct ExternalRecord: BenchmarkRecord, Equatable, Hashable {
     }
 }
 
-public struct ManualRecord: BenchmarkRecord, Equatable, Hashable {
+public struct CustomRecord: BenchmarkRecord, Equatable, Hashable {
     public var id: Int32
     public var name: String
 

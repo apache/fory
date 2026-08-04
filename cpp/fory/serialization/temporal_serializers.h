@@ -36,6 +36,7 @@ namespace serialization {
 /// nanoseconds
 template <> struct Serializer<Duration> {
   static constexpr TypeId type_id = TypeId::DURATION;
+  static constexpr bool read_data_always_advances = true;
 
   static inline void write_type_info(WriteContext &ctx) {
     ctx.write_uint8(static_cast<uint8_t>(type_id));
@@ -120,6 +121,7 @@ template <> struct Serializer<Duration> {
 /// epoch
 template <> struct Serializer<Timestamp> {
   static constexpr TypeId type_id = TypeId::TIMESTAMP;
+  static constexpr bool read_data_always_advances = true;
 
   static inline void write_type_info(WriteContext &ctx) {
     ctx.write_uint8(static_cast<uint8_t>(type_id));
@@ -210,6 +212,7 @@ template <> struct Serializer<Timestamp> {
 /// Per xlang spec: serialized as signed varint64 day count since Unix epoch
 template <> struct Serializer<Date> {
   static constexpr TypeId type_id = TypeId::DATE;
+  static constexpr bool read_data_always_advances = true;
 
   static inline void write_type_info(WriteContext &ctx) {
     ctx.write_uint8(static_cast<uint8_t>(type_id));
@@ -298,6 +301,7 @@ template <> struct Serializer<Date> {
 /// nanoseconds
 template <> struct Serializer<std::chrono::nanoseconds> {
   static constexpr TypeId type_id = TypeId::DURATION;
+  static constexpr bool read_data_always_advances = true;
 
   static inline void write_type_info(WriteContext &ctx) {
     ctx.write_uint8(static_cast<uint8_t>(type_id));
@@ -349,6 +353,7 @@ struct Serializer<std::chrono::time_point<std::chrono::system_clock,
   using ChronoTs = std::chrono::time_point<std::chrono::system_clock,
                                            std::chrono::nanoseconds>;
   static constexpr TypeId type_id = TypeId::TIMESTAMP;
+  static constexpr bool read_data_always_advances = true;
 
   static inline void write_type_info(WriteContext &ctx) {
     ctx.write_uint8(static_cast<uint8_t>(type_id));

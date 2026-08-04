@@ -217,3 +217,81 @@ func mixedEnumShapesRoundTrip() throws {
     let decoded: [Token] = try fory.deserialize(data)
     #expect(decoded == tokens)
 }
+
+@Test
+func unionDepthOnlyCountsDynamicUnknownPayload() throws {
+    let writer = Fory(config: .init(trackRef: false, maxDepth: 8))
+    try writer.register(Token.self, id: 1001)
+    let value = Token.child(.child(.ident("leaf")))
+    let bytes = try writer.serialize(value)
+
+    let staticReader = Fory(config: .init(trackRef: false, maxDepth: 0))
+    try staticReader.register(Token.self, id: 1001)
+    let decoded: Token = try staticReader.deserialize(bytes)
+    #expect(decoded == value)
+
+    func unknownContext(maxDepth: Int) -> ReadContext {
+        let buffer = ByteBuffer()
+        buffer.writeVarUInt32(77)
+        buffer.writeInt8(RefFlag.notNullValue.rawValue)
+        buffer.writeUInt8(UInt8(TypeId.varint32.rawValue))
+        buffer.writeVarInt32(9)
+        let config = Config(compatible: false, maxDepth: maxDepth)
+        let context = ReadContext(
+            buffer: buffer,
+            typeResolver: TypeResolver(config: config),
+            config: config
+        )
+        context.remainingGraphMemoryBytes = Int(config.maxGraphMemoryBytes)
+        return context
+    }
+
+    do {
+        let _: ForwardStringOrLong = try ForwardStringOrLong.readData(
+            unknownContext(maxDepth: 0)
+        )
+        Issue.record("expected maxDepth failure")
+    } catch ForyError.invalidData(let message) {
+        #expect(message.contains("maxDepth"))
+    }
+
+    let unknown = try ForwardStringOrLong.readData(unknownContext(maxDepth: 1))
+    guard case .unknown(let payload) = unknown else {
+        Issue.record("expected unknown union case")
+        return
+    }
+    #expect(payload.caseId == 77)
+    #expect(payload.value as? Int32 == 9)
+}
+
+@Test
+func unknownScalarReplayDepthBoundary() throws {
+    let value = ForwardStringOrLong.unknown(
+        UnknownCase(
+            caseId: 77,
+            typeId: TypeId.varint32.rawValue,
+            value: Int32(9)
+        ))
+
+    let blocked = Fory(config: .init(trackRef: false, compatible: false, maxDepth: 0))
+    try blocked.register(ForwardStringOrLong.self, id: 1002)
+    do {
+        _ = try blocked.serialize(value)
+        Issue.record("expected maxDepth failure")
+    } catch ForyError.invalidData(let message) {
+        #expect(message.contains("maxDepth"))
+    }
+
+    let boundary = Fory(config: .init(trackRef: false, compatible: false, maxDepth: 1))
+    try boundary.register(ForwardStringOrLong.self, id: 1002)
+    let decoded: ForwardStringOrLong = try boundary.deserialize(
+        boundary.serialize(value)
+    )
+    guard case .unknown(let payload) = decoded else {
+        Issue.record("expected unknown union case")
+        return
+    }
+    #expect(payload.caseId == 77)
+    #expect(payload.typeId == TypeId.varint32.rawValue)
+    #expect(payload.value as? Int32 == 9)
+}

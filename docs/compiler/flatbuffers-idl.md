@@ -1,7 +1,7 @@
 ---
 title: FlatBuffers IDL Support
-sidebar_position: 7
-id: flatbuffers_idl
+sidebar_position: 6
+id: flatbuffers-idl
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with

@@ -71,14 +71,6 @@ fn arc_weak_tracking_error() -> Error {
 
 #[cold]
 #[inline(never)]
-fn weak_ref_missing_after_insert(owner: &str, ref_id: u32) -> Error {
-    Error::invalid_ref(format!(
-        "{owner} reference {ref_id} not found after insertion"
-    ))
-}
-
-#[cold]
-#[inline(never)]
 fn weak_write_mode_error(owner: &str) -> Error {
     Error::invalid_ref(format!(
         "{owner} requires RefMode::Tracking for serialization"
@@ -225,17 +217,16 @@ macro_rules! read_rc_weak_owner {
                 Ok(RcWeak::new())
             }
             RefFlag::RefValue => {
+                // The writer assigns the strong target's ID before its body.
+                // Reserve that slot now, but publish only the final Rc after
+                // the complete child read succeeds.
+                let ref_id = $context.ref_reader.reserve_ref_id();
                 $context.inc_depth()?;
-                let result = $read_inner;
+                let value = $read_inner?;
                 $context.dec_depth();
-                let value = result?;
                 let strong = Rc::new(value);
-                let ref_id = $context.ref_reader.store_rc_ref(strong);
-                let strong = $context
-                    .ref_reader
-                    .get_rc_ref::<T>(ref_id)
-                    .ok_or_else(|| weak_ref_missing_after_insert("Rc", ref_id))?;
                 reserve_weak_cell::<std::rc::Weak<T>>($context)?;
+                $context.ref_reader.store_rc_ref_at(ref_id, strong.clone());
                 Ok(RcWeak::from(&strong))
             }
             RefFlag::Ref => {
@@ -602,17 +593,16 @@ macro_rules! read_arc_weak_owner {
                 Ok(ArcWeak::new())
             }
             RefFlag::RefValue => {
+                // The writer assigns the strong target's ID before its body.
+                // Reserve that slot now, but publish only the final Arc after
+                // the complete child read succeeds.
+                let ref_id = $context.ref_reader.reserve_ref_id();
                 $context.inc_depth()?;
-                let result = $read_inner;
+                let value = $read_inner?;
                 $context.dec_depth();
-                let value = result?;
                 let strong = Arc::new(value);
-                let ref_id = $context.ref_reader.store_arc_ref(strong);
-                let strong = $context
-                    .ref_reader
-                    .get_arc_ref::<T>(ref_id)
-                    .ok_or_else(|| weak_ref_missing_after_insert("Arc", ref_id))?;
                 reserve_weak_cell::<std::sync::Weak<T>>($context)?;
+                $context.ref_reader.store_arc_ref_at(ref_id, strong.clone());
                 Ok(ArcWeak::from(&strong))
             }
             RefFlag::Ref => {

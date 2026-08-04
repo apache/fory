@@ -6,6 +6,7 @@ cc_library(
     hdrs = glob(["*.h"]),
     strip_include_prefix = "/cpp",
     deps = [
+        "//cpp/fory/thirdparty:libmmh3",
         "//cpp/fory/type:fory_type",
         "//cpp/fory/util:fory_util",
     ],

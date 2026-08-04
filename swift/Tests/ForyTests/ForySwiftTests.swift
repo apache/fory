@@ -584,6 +584,27 @@ func typeMetaBodyLimitRejectsLargeMetadata() throws {
 }
 
 @Test
+func typeMetaRejectsLargeTaggedFieldID() {
+    let body = ByteBuffer()
+    body.writeUInt8(0b1000_0001)
+    body.writeVarUInt32(1)
+    body.writeUInt8(0b1111_1100)
+    body.writeVarUInt32(UInt32(Int(Int16.max) + 1 - 0b1111))
+    body.writeUInt8(UInt8(TypeId.int32.rawValue))
+
+    let encoded = ByteBuffer()
+    encoded.writeUInt64(UInt64(body.count))
+    encoded.writeBytes(body.storage)
+
+    #expect(
+        throws: ForyError.invalidData(
+            "tagged field id \(Int(Int16.max) + 1) exceeds Int16 range")
+    ) {
+        _ = try TypeMeta.decode(encoded)
+    }
+}
+
+@Test
 func schemaLimitTracksStructTypesSeparately() throws {
     let config = Config(maxSchemaVersionsPerType: 1)
     let resolver = TypeResolver(config: config)

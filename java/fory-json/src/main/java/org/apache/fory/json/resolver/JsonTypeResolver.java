@@ -41,6 +41,7 @@ import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.ClosedSubtypeCodec;
 import org.apache.fory.json.codec.CodecUtils;
@@ -66,6 +67,8 @@ import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.meta.JsonFieldTable;
+import org.apache.fory.logging.Logger;
+import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.reflect.TypeRef;
 
 /**
@@ -87,6 +90,12 @@ import org.apache.fory.reflect.TypeRef;
  * raw-class JIT dispatch.
  */
 public final class JsonTypeResolver {
+  private static final Logger LOG = LoggerFactory.getLogger(JsonTypeResolver.class);
+  private static final String NATIVE_INTERPRETER_MESSAGE =
+      "Fory JSON is using interpreted codecs because the current configuration was not included "
+          + "in this native image. Return this configuration from a reachable "
+          + "@ForyJsonProvider to enable generated codecs.";
+
   private final Map<Object, ObjectCodec<?>> objectCodecs;
   private final Map<Object, JsonTypeInfo> typeInfos;
   private final JsonSharedRegistry sharedRegistry;
@@ -331,6 +340,37 @@ public final class JsonTypeResolver {
     return annotationTypeInfo(declaredType, rawType, codecClass);
   }
 
+  @Internal
+  public JsonTypeInfo getTypeInfo(Type declaredType, Class<?> fallback, JsonFormat annotation) {
+    Class<?> rawType = CodecUtils.rawType(declaredType, fallback);
+    ResolutionSnapshot snapshot = beginResolution();
+    try {
+      JsonTypeInfo result = resolveTypeInfo(declaredType, rawType, annotation);
+      completeResolution(snapshot);
+      return result;
+    } catch (RuntimeException | Error e) {
+      rollbackResolution(snapshot);
+      throw e;
+    } finally {
+      endResolution();
+    }
+  }
+
+  /** Generates every hosted capability rooted at an explicitly selected Native Image model. */
+  @Internal
+  public void generateHostedCodecs(Class<?> type) {
+    if (!sharedRegistry.hostedCodegen()) {
+      throw new IllegalStateException("Hosted JSON codec generation requires a hosted registry");
+    }
+    JsonTypeInfo typeInfo = getTypeInfo(type, type);
+    ArrayList<JsonTypeInfo> roots = new ArrayList<>(1);
+    roots.add(typeInfo);
+    // A preceding selected model may already have resolved this type inside an uncodegenable graph.
+    // Cached metadata is still a generation root; otherwise that earlier graph can suppress every
+    // capability for an independently eligible annotated model.
+    requestCapabilities(roots);
+  }
+
   private JsonTypeInfo resolveTypeInfo(Type declaredType, Class<?> rawType, Object key) {
     JsonTypeInfo typeInfo = customTypeInfo(declaredType, rawType);
     if (typeInfo != null) {
@@ -451,6 +491,75 @@ public final class JsonTypeResolver {
     throw invalidCodecConfig(rawType, "does not support child codecs");
   }
 
+  private JsonTypeInfo resolveTypeInfo(Type declaredType, Class<?> rawType, JsonFormat annotation) {
+    if (ScalarCodecs.supportsDateTimeFormat(rawType)) {
+      return formatTypeInfo(declaredType, rawType, annotation);
+    }
+    if (sharedRegistry.customCodec(rawType) != null
+        || sharedRegistry.codecDeclaration(rawType) != null
+        || sharedRegistry.valueDeclaration(rawType) != null
+        || sharedRegistry.subTypesInfo(rawType) != null) {
+      throw invalidFormatConfig(rawType, "a complete representation hides its direct child");
+    }
+    sharedRegistry.checkSecure(rawType);
+    TypeRef<?> typeRef = typeRef(declaredType, rawType);
+    if (rawType.isArray()) {
+      Type elementType =
+          declaredType instanceof GenericArrayType
+              ? ((GenericArrayType) declaredType).getGenericComponentType()
+              : rawType.getComponentType();
+      requireConcreteChild(elementType, rawType, "element", "@JsonFormat");
+      Class<?> elementRawType = CodecUtils.rawType(elementType, rawType.getComponentType());
+      JsonTypeInfo elementInfo = formatTypeInfo(elementType, elementRawType, annotation);
+      return newTypeInfo(declaredType, rawType, ArrayCodec.create(rawType, elementInfo));
+    }
+    if (rawType == AtomicReferenceArray.class) {
+      TypeRef<?> elementType = directElementType(typeRef, rawType, "element", "@JsonFormat");
+      JsonTypeInfo elementInfo =
+          formatTypeInfo(elementType.getType(), elementType.getRawType(), annotation);
+      return newTypeInfo(
+          declaredType, rawType, new ScalarCodecs.AtomicReferenceArrayCodec(elementInfo));
+    }
+    if (Collection.class.isAssignableFrom(rawType)) {
+      TypeRef<?> elementType = directElementType(typeRef, rawType, "element", "@JsonFormat");
+      JsonTypeInfo elementInfo =
+          formatTypeInfo(elementType.getType(), elementType.getRawType(), annotation);
+      return newTypeInfo(
+          declaredType,
+          rawType,
+          CollectionCodec.create(rawType, elementType.getRawType(), elementInfo, this));
+    }
+    if (Map.class.isAssignableFrom(rawType)) {
+      requireTypeArguments(typeRef, rawType, "@JsonFormat");
+      Tuple2<TypeRef<?>, TypeRef<?>> children = CodecUtils.mapKeyValueTypeRefs(typeRef);
+      TypeRef<?> valueType = children.f1;
+      requireConcreteChild(valueType.getType(), rawType, "value", "@JsonFormat");
+      JsonTypeInfo valueInfo =
+          formatTypeInfo(valueType.getType(), valueType.getRawType(), annotation);
+      Class<?> keyRawType = children.f0.getRawType();
+      checkMapKeySecure(keyRawType);
+      return newTypeInfo(declaredType, rawType, MapCodec.create(rawType, keyRawType, valueInfo));
+    }
+    if (rawType == Optional.class || rawType == AtomicReference.class) {
+      TypeRef<?> contentType = directElementType(typeRef, rawType, "content", "@JsonFormat");
+      JsonTypeInfo contentInfo =
+          formatTypeInfo(contentType.getType(), contentType.getRawType(), annotation);
+      JsonValueCodec<?> codec =
+          rawType == Optional.class
+              ? new ScalarCodecs.OptionalCodec(contentInfo)
+              : new ScalarCodecs.AtomicReferenceCodec(contentInfo);
+      return newTypeInfo(declaredType, rawType, codec);
+    }
+    throw invalidFormatConfig(rawType, "requires a date/time value or supported direct wrapper");
+  }
+
+  private JsonTypeInfo formatTypeInfo(Type type, Class<?> rawType, JsonFormat annotation) {
+    sharedRegistry.checkSecure(rawType);
+    JsonValueCodec<?> codec =
+        ScalarCodecs.dateTimeFormatCodec(rawType, annotation.pattern(), annotation.timezone());
+    return newTypeInfo(type, rawType, JsonFieldKind.OBJECT, codec, true);
+  }
+
   private JsonTypeInfo customTypeInfo(Type declaredType, Class<?> rawType) {
     JsonValueCodec<?> codec = sharedRegistry.customCodec(rawType);
     if (codec != null) {
@@ -481,25 +590,40 @@ public final class JsonTypeResolver {
   }
 
   private static TypeRef<?> directElementType(TypeRef<?> typeRef, Class<?> rawType, String slot) {
-    requireTypeArguments(typeRef, rawType);
+    return directElementType(typeRef, rawType, slot, "@JsonCodec");
+  }
+
+  private static TypeRef<?> directElementType(
+      TypeRef<?> typeRef, Class<?> rawType, String slot, String annotation) {
+    requireTypeArguments(typeRef, rawType, annotation);
     TypeRef<?> elementType = CodecUtils.elementTypeRef(typeRef);
-    requireConcreteChild(elementType.getType(), rawType, slot);
+    requireConcreteChild(elementType.getType(), rawType, slot, annotation);
     return elementType;
   }
 
   private static void requireTypeArguments(TypeRef<?> typeRef, Class<?> rawType) {
+    requireTypeArguments(typeRef, rawType, "@JsonCodec");
+  }
+
+  private static void requireTypeArguments(
+      TypeRef<?> typeRef, Class<?> rawType, String annotation) {
     if (!typeRef.hasExplicitTypeArguments() && rawType.getTypeParameters().length != 0) {
-      throw invalidCodecConfig(rawType, "child codecs require concrete type arguments");
+      throw invalidConfig(rawType, annotation, "direct child requires concrete type arguments");
     }
   }
 
   private static void requireConcreteChild(Type type, Class<?> rawType, String slot) {
+    requireConcreteChild(type, rawType, slot, "@JsonCodec");
+  }
+
+  private static void requireConcreteChild(
+      Type type, Class<?> rawType, String slot, String annotation) {
     if (type instanceof TypeVariable || type instanceof WildcardType) {
-      throw invalidCodecConfig(rawType, slot + " requires a concrete direct child type");
+      throw invalidConfig(rawType, annotation, slot + " requires a concrete direct child type");
     }
     if (type instanceof ParameterizedType
         && !(((ParameterizedType) type).getRawType() instanceof Class)) {
-      throw invalidCodecConfig(rawType, slot + " requires a concrete direct child type");
+      throw invalidConfig(rawType, annotation, slot + " requires a concrete direct child type");
     }
   }
 
@@ -511,7 +635,17 @@ public final class JsonTypeResolver {
   }
 
   private static ForyJsonException invalidCodecConfig(Class<?> rawType, String reason) {
-    return new ForyJsonException("Invalid @JsonCodec for " + rawType.getTypeName() + ": " + reason);
+    return invalidConfig(rawType, "@JsonCodec", reason);
+  }
+
+  private static ForyJsonException invalidFormatConfig(Class<?> rawType, String reason) {
+    return invalidConfig(rawType, "@JsonFormat", reason);
+  }
+
+  private static ForyJsonException invalidConfig(
+      Class<?> rawType, String annotation, String reason) {
+    return new ForyJsonException(
+        "Invalid " + annotation + " for " + rawType.getTypeName() + ": " + reason);
   }
 
   private void rejectConflictingValue(Class<?> rawType) {
@@ -536,7 +670,7 @@ public final class JsonTypeResolver {
   }
 
   private void completeResolution(ResolutionSnapshot snapshot) {
-    if (snapshot == null || codegen == null) {
+    if (snapshot == null) {
       return;
     }
     ArrayList<JsonTypeInfo> roots = new ArrayList<>();
@@ -545,9 +679,25 @@ public final class JsonTypeResolver {
         roots.add(entry.getValue());
       }
     }
-    if (!roots.isEmpty()) {
-      requestCapabilities(roots);
+    if (roots.isEmpty()) {
+      return;
     }
+    if (!sharedRegistry.generatedCapabilitiesEnabled()) {
+      if (sharedRegistry.missingNativeConfiguration() && containsObjectModel(roots)) {
+        LOG.warnOnce(NATIVE_INTERPRETER_MESSAGE);
+      }
+      return;
+    }
+    requestCapabilities(roots);
+  }
+
+  private boolean containsObjectModel(ArrayList<JsonTypeInfo> roots) {
+    for (int i = 0; i < roots.size(); i++) {
+      if (canonicalObjectOwner(roots.get(i)) != null) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private void rollbackResolution(ResolutionSnapshot snapshot) {
@@ -1358,9 +1508,42 @@ public final class JsonTypeResolver {
   }
 
   private boolean canCompile(ObjectCodec<?> owner, CapabilityKind kind) {
-    return kind == CapabilityKind.STRING_WRITER || kind == CapabilityKind.UTF8_WRITER
-        ? codegen.canCompileWriter(owner)
-        : codegen.canCompileReader(owner);
+    if (nativeObjectClass(owner.type(), kind) != null) {
+      return true;
+    }
+    return codegen != null
+        && (kind == CapabilityKind.STRING_WRITER || kind == CapabilityKind.UTF8_WRITER
+            ? codegen.canCompileWriter(owner)
+            : codegen.canCompileReader(owner));
+  }
+
+  private boolean canCompileCollection(JsonTypeInfo typeInfo, CapabilityKind kind) {
+    Type type = typeInfo.type();
+    boolean generated =
+        kind == CapabilityKind.UTF8_WRITER
+            ? sharedRegistry.nativeUtf8CollectionWriterClass(type) != null
+            : sharedRegistry.nativeUtf8CollectionReaderClass(type) != null;
+    if (generated) {
+      return true;
+    }
+    return codegen != null;
+  }
+
+  private Class<?> nativeObjectClass(Class<?> type, CapabilityKind kind) {
+    switch (kind) {
+      case STRING_WRITER:
+        return sharedRegistry.nativeStringWriterClass(type);
+      case UTF8_WRITER:
+        return sharedRegistry.nativeUtf8WriterClass(type);
+      case LATIN1_READER:
+        return sharedRegistry.nativeLatin1ReaderClass(type);
+      case UTF16_READER:
+        return sharedRegistry.nativeUtf16ReaderClass(type);
+      case UTF8_READER:
+        return sharedRegistry.nativeUtf8ReaderClass(type);
+      default:
+        throw new IllegalStateException("Unknown JSON capability kind " + kind);
+    }
   }
 
   private static Object currentCapability(JsonTypeInfo typeInfo, CapabilityKind kind) {
@@ -1407,6 +1590,22 @@ public final class JsonTypeResolver {
       default:
         throw new IllegalStateException("Unknown JSON capability kind " + kind);
     }
+  }
+
+  private Class<?> nativeGeneratedClass(CapabilityNode node, CapabilityKind kind) {
+    if (node.subtypeOwner != null) {
+      throw new IllegalStateException("Inline subtype readers reuse child generated classes");
+    }
+    if (node.collectionOwner != null) {
+      if (kind == CapabilityKind.UTF8_WRITER) {
+        return sharedRegistry.nativeUtf8CollectionWriterClass(node.typeInfo.type());
+      }
+      if (kind == CapabilityKind.UTF8_READER) {
+        return sharedRegistry.nativeUtf8CollectionReaderClass(node.typeInfo.type());
+      }
+      throw new IllegalStateException("Unsupported generated JSON collection capability " + kind);
+    }
+    return nativeObjectClass(node.objectOwner.type(), kind);
   }
 
   private Object newCapability(
@@ -1602,13 +1801,33 @@ public final class JsonTypeResolver {
   private void requestCapabilities(ArrayList<JsonTypeInfo> roots) {
     for (CapabilityKind kind : CapabilityKind.values()) {
       CapabilityGraph graph = new CapabilityGraph(kind);
-      if (graph.addRoots(roots) && !graph.ordered.isEmpty()) {
+      for (int i = 0; i < roots.size(); i++) {
+        JsonTypeInfo root = roots.get(i);
+        // Probe each cold root independently so an interpreter-only graph cannot reject unrelated
+        // eligible roots. Successful roots are then rebuilt into one graph to preserve the existing
+        // atomic parent/child publication boundary.
+        CapabilityGraph candidate = new CapabilityGraph(kind);
+        if (candidate.addDependency(root) && !graph.addDependency(root)) {
+          throw new IllegalStateException(
+              "Cannot merge eligible JSON capability graph for " + root.type());
+        }
+      }
+      if (!graph.ordered.isEmpty()) {
         requestGraph(graph);
       }
     }
   }
 
   private void requestGraph(CapabilityGraph graph) {
+    if (sharedRegistry.hostedCodegen()) {
+      graph.classesReady().join();
+      return;
+    }
+    if (sharedRegistry.nativeGeneratedClasses()) {
+      graph.loadNativeClasses();
+      graph.publish();
+      return;
+    }
     jitContext.registerJITFuture(
         () -> graph.classesReady().thenApply(ignored -> graph),
         new JsonJITContext.JITCallback<CapabilityGraph>() {
@@ -1640,15 +1859,6 @@ public final class JsonTypeResolver {
 
     private CapabilityGraph(CapabilityKind kind) {
       this.kind = kind;
-    }
-
-    private boolean addRoots(ArrayList<JsonTypeInfo> roots) {
-      for (int i = 0; i < roots.size(); i++) {
-        if (!addDependency(roots.get(i))) {
-          return false;
-        }
-      }
-      return true;
     }
 
     private boolean addDependency(JsonTypeInfo typeInfo) {
@@ -1735,7 +1945,7 @@ public final class JsonTypeResolver {
         return existing.complete;
       }
       JsonTypeInfo element = declaredCollectionElement(typeInfo);
-      if (element == null) {
+      if (element == null || !canCompileCollection(typeInfo, kind)) {
         return false;
       }
       CapabilityNode node = new CapabilityNode(typeInfo, owner, initial);
@@ -1755,10 +1965,32 @@ public final class JsonTypeResolver {
         if (node.subtypeOwner != null) {
           continue;
         }
+        if (sharedRegistry.hostedCodegen()) {
+          // Another provider loader may already have generated this capability under the same
+          // source key. Reuse it while still walking the graph so this loader can add missing
+          // types.
+          node.generatedClass = nativeGeneratedClass(node, kind);
+          if (node.generatedClass != null) {
+            continue;
+          }
+        }
         node.classFuture = generatedClass(node, kind);
         futures.add(node.classFuture);
       }
       return CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0]));
+    }
+
+    private void loadNativeClasses() {
+      for (int i = 0; i < ordered.size(); i++) {
+        CapabilityNode node = ordered.get(i);
+        if (node.subtypeOwner == null) {
+          node.generatedClass = nativeGeneratedClass(node, kind);
+          if (node.generatedClass == null) {
+            throw new IllegalStateException(
+                "Missing generated Fory JSON class for " + node.typeInfo.type());
+          }
+        }
+      }
     }
 
     private void publish() {
@@ -1779,7 +2011,8 @@ public final class JsonTypeResolver {
         }
         Class<?> generatedClass = null;
         if (node.subtypeOwner == null) {
-          generatedClass = node.classFuture.getNow(null);
+          generatedClass =
+              node.generatedClass == null ? node.classFuture.getNow(null) : node.generatedClass;
           if (generatedClass == null) {
             throw new IllegalStateException("Generated JSON class is not ready");
           }
@@ -1811,6 +2044,7 @@ public final class JsonTypeResolver {
     private final Object initial;
     private boolean complete;
     private CompletableFuture<Class<?>> classFuture;
+    private Class<?> generatedClass;
     private Object instance;
 
     private CapabilityNode(JsonTypeInfo typeInfo, ObjectCodec<Object> owner, Object initial) {
@@ -1959,7 +2193,7 @@ public final class JsonTypeResolver {
     if (initialCodec instanceof CollectionCodec) {
       collectionCodecs.put(typeInfo, (CollectionCodec<?>) initialCodec);
     }
-    if (initialCodec.getClass() == ObjectCodec.class
+    if (initialCodec instanceof ObjectCodec
         && typeInfo.type() instanceof Class
         && typeInfo.rawType() != Object.class) {
       ObjectCodec<?> owner = (ObjectCodec<?>) initialCodec;

@@ -531,16 +531,12 @@ public final class ByteBuffer {
     @inline(__always)
     public func readUInt64() throws -> UInt64 {
         try checkBound(8)
-        let b0 = UInt64(byte(at: cursor))
-        let b1 = UInt64(byte(at: cursor + 1)) << 8
-        let b2 = UInt64(byte(at: cursor + 2)) << 16
-        let b3 = UInt64(byte(at: cursor + 3)) << 24
-        let b4 = UInt64(byte(at: cursor + 4)) << 32
-        let b5 = UInt64(byte(at: cursor + 5)) << 40
-        let b6 = UInt64(byte(at: cursor + 6)) << 48
-        let b7 = UInt64(byte(at: cursor + 7)) << 56
+        let offset = cursor
+        let value = storage.withUnsafeBytes {
+            $0.loadUnaligned(fromByteOffset: offset, as: UInt64.self)
+        }
         cursor += 8
-        return b0 | b1 | b2 | b3 | b4 | b5 | b6 | b7
+        return UInt64(littleEndian: value)
     }
 
     @inlinable

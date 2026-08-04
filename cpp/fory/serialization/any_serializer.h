@@ -122,7 +122,7 @@ template <> struct Serializer<std::any> {
       return std::any();
     }
 
-    return type_info->harness.any_read_fn(ctx);
+    return read_value(ctx, *type_info);
   }
 
   static inline std::any read_data(ReadContext &ctx) {
@@ -142,7 +142,26 @@ template <> struct Serializer<std::any> {
       return std::any();
     }
 
-    return type_info.harness.any_read_fn(ctx);
+    return read_value(ctx, type_info);
+  }
+
+private:
+  static inline std::any read_value(ReadContext &ctx,
+                                    const TypeInfo &type_info) {
+    // std::any is a dynamic materialization boundary: its wire type can select
+    // another registered std::any-bearing object recursively. Keep concrete
+    // smart-pointer layouts out of this dynamic-depth policy.
+    auto depth_result = ctx.increase_dyn_depth();
+    if (FORY_PREDICT_FALSE(!depth_result.ok())) {
+      ctx.set_error(std::move(depth_result).error());
+      return std::any();
+    }
+    std::any value = type_info.harness.any_read_fn(ctx);
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return value;
+    }
+    ctx.decrease_dyn_depth();
+    return value;
   }
 };
 

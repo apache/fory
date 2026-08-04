@@ -102,6 +102,7 @@ struct Harness {
   ReadCompatibleFn read_compatible_fn = nullptr;
   AnyWriteFn any_write_fn = nullptr;
   AnyReadFn any_read_fn = nullptr;
+  bool read_data_always_advances = false;
   // Polymorphic smart-pointer reads resolve this before materializing the wire
   // type so only declared C++ base relationships can reach an owning reader.
   FindReadAsFn find_read_as_fn = nullptr;

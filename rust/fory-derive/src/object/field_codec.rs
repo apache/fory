@@ -43,6 +43,7 @@ pub(crate) struct ResolvedField<'a> {
     pub value_ty: &'a Type,
     pub field_id: i16,
     pub has_selected_provider: bool,
+    pub read_always_advances: TokenStream,
 }
 
 impl<'a> ResolvedField<'a> {
@@ -274,6 +275,14 @@ pub(crate) fn build_bindings<'a>(
             } else {
                 -1
             };
+            let field_read_always_advances = if track_ref || is_option_type(&source.field.ty) {
+                quote! { true }
+            } else if meta.with.is_some() || codec_body_is_known(&source.field.ty) {
+                let codec_ty = &selection.ty;
+                quote! { <#codec_ty as fory_core::Serializer>::READ_DATA_ALWAYS_ADVANCES }
+            } else {
+                quote! { false }
+            };
             Ok(FieldBinding::Codec(ResolvedField {
                 source,
                 private_ident,
@@ -281,9 +290,66 @@ pub(crate) fn build_bindings<'a>(
                 value_ty: &source.field.ty,
                 field_id,
                 has_selected_provider: meta.with.is_some(),
+                read_always_advances: field_read_always_advances,
             }))
         })
         .collect()
+}
+
+pub(crate) fn struct_read_data_always_advances(
+    source_fields: &[SourceField<'_>],
+) -> syn::Result<TokenStream> {
+    let bindings = build_bindings(source_fields)?;
+    let fields = bindings.iter().filter_map(|binding| match binding {
+        FieldBinding::Codec(field) => Some(&field.read_always_advances),
+        FieldBinding::Skipped(_) => None,
+    });
+    Ok(quote! { false #(|| #fields)* })
+}
+
+fn codec_body_is_known(ty: &Type) -> bool {
+    if matches!(ty, Type::Array(_) | Type::Tuple(_)) {
+        return true;
+    }
+    let Some((name, _)) = type_name_and_args(ty) else {
+        return false;
+    };
+    matches!(
+        name.as_str(),
+        "bool"
+            | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "i128"
+            | "isize"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "u128"
+            | "usize"
+            | "f32"
+            | "f64"
+            | "float16"
+            | "bfloat16"
+            | "String"
+            | "Decimal"
+            | "Timestamp"
+            | "Date"
+            | "Duration"
+            | "NaiveDateTime"
+            | "NaiveDate"
+            | "ChronoDuration"
+            | "Vec"
+            | "LinkedList"
+            | "VecDeque"
+            | "BinaryHeap"
+            | "BTreeSet"
+            | "HashSet"
+            | "BTreeMap"
+            | "HashMap"
+    )
 }
 
 #[cfg(test)]

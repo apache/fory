@@ -204,14 +204,14 @@ fn non_send_sync_carrier_reader_unsupported() {
 }
 
 #[test]
-fn manual_serializer_arc_any_read() {
+fn custom_serializer_arc_any_read() {
     #[derive(Clone, Debug, PartialEq)]
-    struct ManualValue {
+    struct CustomValue {
         id: i32,
         name: String,
     }
 
-    impl Serializer for ManualValue {
+    impl Serializer for CustomValue {
         type Target = Self;
 
         fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
@@ -232,13 +232,13 @@ fn manual_serializer_arc_any_read() {
     }
 
     let mut fory = Fory::builder().xlang(false).compatible(false).build();
-    fory.register_serializer::<ManualValue>(910).unwrap();
+    fory.register_serializer::<CustomValue>(910).unwrap();
 
     assert_arc_any_roundtrip(
         &fory,
-        ManualValue {
+        CustomValue {
             id: 7,
-            name: "manual".to_string(),
+            name: "custom".to_string(),
         },
     );
 }

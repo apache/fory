@@ -93,6 +93,11 @@ public final class UnknownClassSerializers {
       }
     }
 
+    @Override
+    public boolean readDataAlwaysAdvances() {
+      return typeDef != null && typeDef.readDataAlwaysAdvances();
+    }
+
     /**
      * Multiple un existed class will correspond to this `UnknownStruct`. When querying classinfo by
      * `class`, it may dispatch to same `UnknownClassSerializer`, so we can't use `typeDef` in this

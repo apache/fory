@@ -205,6 +205,68 @@ TEST(SmartPtrSerializerTest, OptionalIntNullRoundTrip) {
   EXPECT_FALSE(deserialized.value.has_value());
 }
 
+TEST(SmartPtrSerializerTest, OptionalPreservesReferenceIds) {
+  for (bool with_type_info : {false, true}) {
+    SCOPED_TRACE(with_type_info);
+    Config config;
+    config.track_ref = true;
+    ReadContext ctx(config, std::make_unique<TypeResolver>());
+    Buffer buffer;
+
+    buffer.write_int8(REF_VALUE_FLAG);
+    buffer.write_var_int32(7);
+    ctx.attach(buffer);
+
+    TypeInfo type_info;
+    std::optional<int32_t> optional;
+    if (with_type_info) {
+      optional = Serializer<std::optional<int32_t>>::read_with_type_info(
+          ctx, RefMode::Tracking, type_info);
+    } else {
+      optional = Serializer<std::optional<int32_t>>::read(
+          ctx, RefMode::Tracking, false);
+    }
+    ASSERT_FALSE(ctx.has_error()) << ctx.error().to_string();
+    ASSERT_TRUE(optional.has_value());
+    EXPECT_EQ(*optional, 7);
+    EXPECT_TRUE(ctx.ref_reader().is_pending_ref(0));
+    EXPECT_EQ(ctx.ref_reader().reserve_ref_id(), 1U);
+    EXPECT_EQ(ctx.buffer().reader_index(), buffer.writer_index());
+  }
+}
+
+TEST(SmartPtrSerializerTest, OptionalPreservesLaterAliases) {
+  auto writer = create_serializer(true);
+  auto reader = create_serializer(true);
+  using WriterOptionals = std::vector<std::shared_ptr<int32_t>>;
+  using ReaderOptionals = std::vector<std::optional<int32_t>>;
+  using Owners = std::vector<std::shared_ptr<int32_t>>;
+  using WriterRoot = std::tuple<WriterOptionals, Owners, int32_t>;
+  using ReaderRoot = std::tuple<ReaderOptionals, Owners, int32_t>;
+  auto owner = std::make_shared<int32_t>(17);
+  WriterRoot original{
+      {std::make_shared<int32_t>(7), std::make_shared<int32_t>(9)},
+      {owner, owner},
+      11};
+  auto bytes = writer.serialize(original);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+  auto decoded = reader.deserialize<ReaderRoot>(*bytes);
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  const ReaderOptionals &values = std::get<0>(*decoded);
+  ASSERT_EQ(values.size(), 2U);
+  ASSERT_TRUE(values[0].has_value());
+  ASSERT_TRUE(values[1].has_value());
+  EXPECT_EQ(*values[0], 7);
+  EXPECT_EQ(*values[1], 9);
+  const Owners &owners = std::get<1>(*decoded);
+  ASSERT_EQ(owners.size(), 2U);
+  ASSERT_TRUE(owners[0]);
+  EXPECT_EQ(*owners[0], 17);
+  EXPECT_EQ(owners[0], owners[1]);
+  EXPECT_EQ(std::get<2>(*decoded), 11);
+}
+
 TEST(SmartPtrSerializerTest, OptionalSharedPtrRoundTrip) {
   OptionalSharedHolder original;
   original.value = std::make_shared<int32_t>(42);
@@ -934,6 +996,39 @@ struct NestedContainerHolder {
   FORY_STRUCT(NestedContainerHolder, ptr);
 };
 
+struct UniqueNestedContainer {
+  UniqueNestedContainer() = default;
+  UniqueNestedContainer(const UniqueNestedContainer &) = delete;
+  UniqueNestedContainer &operator=(const UniqueNestedContainer &) = delete;
+  UniqueNestedContainer(UniqueNestedContainer &&) noexcept = default;
+  UniqueNestedContainer &operator=(UniqueNestedContainer &&) noexcept = default;
+  virtual ~UniqueNestedContainer() = default;
+  std::unique_ptr<UniqueNestedContainer> nested;
+  FORY_STRUCT(UniqueNestedContainer, nested);
+};
+
+struct StaticSharedNode {
+  int32_t value = 0;
+  std::shared_ptr<StaticSharedNode> nested;
+  FORY_STRUCT(StaticSharedNode, value, nested);
+};
+
+struct StaticSharedHolder {
+  std::shared_ptr<StaticSharedNode> ptr;
+  FORY_STRUCT(StaticSharedHolder, ptr);
+};
+
+struct StaticUniqueNode {
+  int32_t value = 0;
+  std::unique_ptr<StaticUniqueNode> nested;
+  FORY_STRUCT(StaticUniqueNode, value, nested);
+};
+
+struct StaticUniqueHolder {
+  std::unique_ptr<StaticUniqueNode> ptr;
+  FORY_STRUCT(StaticUniqueHolder, ptr);
+};
+
 TEST(SmartPtrSerializerTest, MaxDynDepthExceeded) {
   // Create Fory with max_dyn_depth=2
   auto fory =
@@ -972,6 +1067,184 @@ TEST(SmartPtrSerializerTest, MaxDynDepthExceeded) {
   EXPECT_TRUE(error_msg.find("depth") != std::string::npos ||
               error_msg.find("Depth") != std::string::npos)
       << "Error should mention depth: " << error_msg;
+}
+
+TEST(SmartPtrSerializerTest, SharedCollectionDepth) {
+  auto writer = Fory::builder()
+                    .xlang(true)
+                    .track_ref(false)
+                    .compatible(false)
+                    .max_dyn_depth(10)
+                    .build();
+  auto reader = Fory::builder()
+                    .xlang(true)
+                    .track_ref(false)
+                    .compatible(false)
+                    .max_dyn_depth(1)
+                    .build();
+  ASSERT_TRUE(
+      writer.register_struct<NestedContainer>("test", "NestedContainer").ok());
+  ASSERT_TRUE(
+      reader.register_struct<NestedContainer>("test", "NestedContainer").ok());
+
+  auto root = std::make_shared<NestedContainer>();
+  root->nested = std::make_shared<NestedContainer>();
+  std::vector<std::shared_ptr<NestedContainer>> deep;
+  deep.push_back(std::move(root));
+
+  auto deep_bytes = writer.serialize(deep);
+  ASSERT_TRUE(deep_bytes.ok()) << deep_bytes.error().to_string();
+  auto rejected =
+      reader.deserialize<std::vector<std::shared_ptr<NestedContainer>>>(
+          deep_bytes->data(), deep_bytes->size());
+  ASSERT_FALSE(rejected.ok());
+  EXPECT_EQ(rejected.error().code(), ErrorCode::DepthExceed);
+
+  std::vector<std::shared_ptr<NestedContainer>> shallow;
+  shallow.push_back(std::make_shared<NestedContainer>());
+  auto shallow_bytes = writer.serialize(shallow);
+  ASSERT_TRUE(shallow_bytes.ok()) << shallow_bytes.error().to_string();
+  auto decoded =
+      reader.deserialize<std::vector<std::shared_ptr<NestedContainer>>>(
+          shallow_bytes->data(), shallow_bytes->size());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  ASSERT_EQ(decoded->size(), 1U);
+  ASSERT_NE(decoded->front(), nullptr);
+}
+
+TEST(SmartPtrSerializerTest, StaticSharedDepth) {
+  auto writer = Fory::builder()
+                    .xlang(true)
+                    .track_ref(false)
+                    .compatible(false)
+                    .max_dyn_depth(10)
+                    .build();
+  auto reader = Fory::builder()
+                    .xlang(true)
+                    .track_ref(false)
+                    .compatible(false)
+                    .max_dyn_depth(1)
+                    .build();
+  ASSERT_TRUE(writer.register_struct<StaticSharedHolder>(310).ok());
+  ASSERT_TRUE(reader.register_struct<StaticSharedHolder>(310).ok());
+  ASSERT_TRUE(
+      writer.register_struct<StaticSharedNode>("test", "StaticSharedNode")
+          .ok());
+  ASSERT_TRUE(
+      reader.register_struct<StaticSharedNode>("test", "StaticSharedNode")
+          .ok());
+
+  StaticSharedHolder deep;
+  deep.ptr = std::make_shared<StaticSharedNode>();
+  deep.ptr->nested = std::make_shared<StaticSharedNode>();
+  auto deep_bytes = writer.serialize(deep);
+  ASSERT_TRUE(deep_bytes.ok()) << deep_bytes.error().to_string();
+  auto rejected = reader.deserialize<StaticSharedHolder>(deep_bytes->data(),
+                                                         deep_bytes->size());
+  ASSERT_FALSE(rejected.ok());
+  EXPECT_EQ(rejected.error().code(), ErrorCode::DepthExceed);
+
+  StaticSharedHolder shallow;
+  shallow.ptr = std::make_shared<StaticSharedNode>();
+  shallow.ptr->value = 7;
+  auto shallow_bytes = writer.serialize(shallow);
+  ASSERT_TRUE(shallow_bytes.ok()) << shallow_bytes.error().to_string();
+  auto decoded = reader.deserialize<StaticSharedHolder>(shallow_bytes->data(),
+                                                        shallow_bytes->size());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  ASSERT_NE(decoded->ptr, nullptr);
+  EXPECT_EQ(decoded->ptr->value, 7);
+}
+
+TEST(SmartPtrSerializerTest, UniqueCollectionDepth) {
+  auto writer = Fory::builder()
+                    .xlang(true)
+                    .track_ref(false)
+                    .compatible(false)
+                    .max_dyn_depth(10)
+                    .build();
+  auto reader = Fory::builder()
+                    .xlang(true)
+                    .track_ref(false)
+                    .compatible(false)
+                    .max_dyn_depth(1)
+                    .build();
+  ASSERT_TRUE(writer
+                  .register_struct<UniqueNestedContainer>(
+                      "test", "UniqueNestedContainer")
+                  .ok());
+  ASSERT_TRUE(reader
+                  .register_struct<UniqueNestedContainer>(
+                      "test", "UniqueNestedContainer")
+                  .ok());
+
+  auto root = std::make_unique<UniqueNestedContainer>();
+  root->nested = std::make_unique<UniqueNestedContainer>();
+  std::vector<std::unique_ptr<UniqueNestedContainer>> deep;
+  deep.push_back(std::move(root));
+
+  auto deep_bytes = writer.serialize(deep);
+  ASSERT_TRUE(deep_bytes.ok()) << deep_bytes.error().to_string();
+  auto rejected =
+      reader.deserialize<std::vector<std::unique_ptr<UniqueNestedContainer>>>(
+          deep_bytes->data(), deep_bytes->size());
+  ASSERT_FALSE(rejected.ok());
+  EXPECT_EQ(rejected.error().code(), ErrorCode::DepthExceed);
+
+  std::vector<std::unique_ptr<UniqueNestedContainer>> shallow;
+  shallow.push_back(std::make_unique<UniqueNestedContainer>());
+  auto shallow_bytes = writer.serialize(shallow);
+  ASSERT_TRUE(shallow_bytes.ok()) << shallow_bytes.error().to_string();
+  auto decoded =
+      reader.deserialize<std::vector<std::unique_ptr<UniqueNestedContainer>>>(
+          shallow_bytes->data(), shallow_bytes->size());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  ASSERT_EQ(decoded->size(), 1U);
+  ASSERT_NE(decoded->front(), nullptr);
+}
+
+TEST(SmartPtrSerializerTest, StaticUniqueDepth) {
+  auto writer = Fory::builder()
+                    .xlang(true)
+                    .track_ref(false)
+                    .compatible(false)
+                    .max_dyn_depth(10)
+                    .build();
+  auto reader = Fory::builder()
+                    .xlang(true)
+                    .track_ref(false)
+                    .compatible(false)
+                    .max_dyn_depth(1)
+                    .build();
+  ASSERT_TRUE(writer.register_struct<StaticUniqueHolder>(311).ok());
+  ASSERT_TRUE(reader.register_struct<StaticUniqueHolder>(311).ok());
+  ASSERT_TRUE(
+      writer.register_struct<StaticUniqueNode>("test", "StaticUniqueNode")
+          .ok());
+  ASSERT_TRUE(
+      reader.register_struct<StaticUniqueNode>("test", "StaticUniqueNode")
+          .ok());
+
+  StaticUniqueHolder deep;
+  deep.ptr = std::make_unique<StaticUniqueNode>();
+  deep.ptr->nested = std::make_unique<StaticUniqueNode>();
+  auto deep_bytes = writer.serialize(deep);
+  ASSERT_TRUE(deep_bytes.ok()) << deep_bytes.error().to_string();
+  auto rejected = reader.deserialize<StaticUniqueHolder>(deep_bytes->data(),
+                                                         deep_bytes->size());
+  ASSERT_FALSE(rejected.ok());
+  EXPECT_EQ(rejected.error().code(), ErrorCode::DepthExceed);
+
+  StaticUniqueHolder shallow;
+  shallow.ptr = std::make_unique<StaticUniqueNode>();
+  shallow.ptr->value = 9;
+  auto shallow_bytes = writer.serialize(shallow);
+  ASSERT_TRUE(shallow_bytes.ok()) << shallow_bytes.error().to_string();
+  auto decoded = reader.deserialize<StaticUniqueHolder>(shallow_bytes->data(),
+                                                        shallow_bytes->size());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  ASSERT_NE(decoded->ptr, nullptr);
+  EXPECT_EQ(decoded->ptr->value, 9);
 }
 
 TEST(SmartPtrSerializerTest, MaxDynDepthSufficient) {
@@ -1039,11 +1312,90 @@ struct PolymorphicBaseForMono {
   FORY_STRUCT(PolymorphicBaseForMono, value, data);
 };
 
+struct MonoSharedNode {
+  virtual ~MonoSharedNode() = default;
+  std::shared_ptr<MonoSharedNode> nested;
+  FORY_STRUCT(MonoSharedNode, (nested, fory::F().nullable().dynamic(false)));
+};
+
+struct MonoSharedHolder {
+  std::shared_ptr<MonoSharedNode> ptr;
+  FORY_STRUCT(MonoSharedHolder, (ptr, fory::F().nullable().dynamic(false)));
+};
+
+struct MonoUniqueNode {
+  MonoUniqueNode() = default;
+  MonoUniqueNode(const MonoUniqueNode &) = delete;
+  MonoUniqueNode &operator=(const MonoUniqueNode &) = delete;
+  MonoUniqueNode(MonoUniqueNode &&) noexcept = default;
+  MonoUniqueNode &operator=(MonoUniqueNode &&) noexcept = default;
+  virtual ~MonoUniqueNode() = default;
+  std::unique_ptr<MonoUniqueNode> nested;
+  FORY_STRUCT(MonoUniqueNode, (nested, fory::F().nullable().dynamic(false)));
+};
+
+struct MonoUniqueHolder {
+  std::unique_ptr<MonoUniqueNode> ptr;
+  FORY_STRUCT(MonoUniqueHolder, (ptr, fory::F().nullable().dynamic(false)));
+};
+
 struct NonDynamicFieldHolder {
   std::shared_ptr<PolymorphicBaseForMono> ptr;
   FORY_STRUCT(NonDynamicFieldHolder,
               (ptr, fory::F().nullable().dynamic(false)));
 };
+
+TEST(SmartPtrSerializerTest, StaticPolymorphicDepth) {
+  auto writer = Fory::builder()
+                    .xlang(true)
+                    .track_ref(false)
+                    .compatible(false)
+                    .max_dyn_depth(10)
+                    .build();
+  auto reader = Fory::builder()
+                    .xlang(true)
+                    .track_ref(false)
+                    .compatible(false)
+                    .max_dyn_depth(1)
+                    .build();
+  ASSERT_TRUE(writer.register_struct<MonoSharedHolder>(320).ok());
+  ASSERT_TRUE(reader.register_struct<MonoSharedHolder>(320).ok());
+  ASSERT_TRUE(writer.register_struct<MonoSharedNode>(321).ok());
+  ASSERT_TRUE(reader.register_struct<MonoSharedNode>(321).ok());
+  ASSERT_TRUE(writer.register_struct<MonoUniqueHolder>(322).ok());
+  ASSERT_TRUE(reader.register_struct<MonoUniqueHolder>(322).ok());
+  ASSERT_TRUE(writer.register_struct<MonoUniqueNode>(323).ok());
+  ASSERT_TRUE(reader.register_struct<MonoUniqueNode>(323).ok());
+
+  MonoSharedHolder shared;
+  shared.ptr = std::make_shared<MonoSharedNode>();
+  shared.ptr->nested = std::make_shared<MonoSharedNode>();
+  auto shared_bytes = writer.serialize(shared);
+  ASSERT_TRUE(shared_bytes.ok()) << shared_bytes.error().to_string();
+  auto shared_rejected = reader.deserialize<MonoSharedHolder>(
+      shared_bytes->data(), shared_bytes->size());
+  ASSERT_FALSE(shared_rejected.ok());
+  EXPECT_EQ(shared_rejected.error().code(), ErrorCode::DepthExceed);
+
+  MonoUniqueHolder unique;
+  unique.ptr = std::make_unique<MonoUniqueNode>();
+  unique.ptr->nested = std::make_unique<MonoUniqueNode>();
+  auto unique_bytes = writer.serialize(unique);
+  ASSERT_TRUE(unique_bytes.ok()) << unique_bytes.error().to_string();
+  auto unique_rejected = reader.deserialize<MonoUniqueHolder>(
+      unique_bytes->data(), unique_bytes->size());
+  ASSERT_FALSE(unique_rejected.ok());
+  EXPECT_EQ(unique_rejected.error().code(), ErrorCode::DepthExceed);
+
+  MonoSharedHolder shallow;
+  shallow.ptr = std::make_shared<MonoSharedNode>();
+  auto shallow_bytes = writer.serialize(shallow);
+  ASSERT_TRUE(shallow_bytes.ok()) << shallow_bytes.error().to_string();
+  auto decoded = reader.deserialize<MonoSharedHolder>(shallow_bytes->data(),
+                                                      shallow_bytes->size());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  ASSERT_NE(decoded->ptr, nullptr);
+}
 
 TEST(SmartPtrSerializerTest, NonDynamicFieldConfig) {
   NonDynamicFieldHolder original;

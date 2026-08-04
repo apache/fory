@@ -63,13 +63,14 @@ class Serializer(ABC):
     branching in this module. The mode switch belongs at the import boundary.
     """
 
-    __slots__ = "type_resolver", "type_", "need_to_write_ref"
+    __slots__ = "type_resolver", "type_", "need_to_write_ref", "read_data_always_advances"
 
     def __init__(self, type_resolver, type_):
         self.type_resolver = type_resolver
         type_ = normalize_fory_type(type_)
         self.type_ = type_
         self.need_to_write_ref = type_resolver.track_ref and not is_primitive_type(type_)
+        self.read_data_always_advances = False
 
     def write(self, write_context, value):
         raise NotImplementedError
@@ -82,7 +83,13 @@ class Serializer(ABC):
         return False
 
 
-class BooleanSerializer(Serializer):
+class _PrimitiveSerializer(Serializer):
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
+
+
+class BooleanSerializer(_PrimitiveSerializer):
     def write(self, write_context, value):
         write_context.write_bool(value)
 
@@ -90,7 +97,7 @@ class BooleanSerializer(Serializer):
         return read_context.read_bool()
 
 
-class ByteSerializer(Serializer):
+class ByteSerializer(_PrimitiveSerializer):
     def write(self, write_context, value):
         write_context.write_int8(value)
 
@@ -98,7 +105,7 @@ class ByteSerializer(Serializer):
         return read_context.read_int8()
 
 
-class Int16Serializer(Serializer):
+class Int16Serializer(_PrimitiveSerializer):
     def write(self, write_context, value):
         write_context.write_int16(value)
 
@@ -106,7 +113,7 @@ class Int16Serializer(Serializer):
         return read_context.read_int16()
 
 
-class Int32Serializer(Serializer):
+class Int32Serializer(_PrimitiveSerializer):
     """Serializer for INT32/VARINT32 type - uses variable-length encoding for xlang compatibility."""
 
     def write(self, write_context, value):
@@ -116,7 +123,7 @@ class Int32Serializer(Serializer):
         return read_context.read_varint32()
 
 
-class FixedInt32Serializer(Serializer):
+class FixedInt32Serializer(_PrimitiveSerializer):
     """Serializer for fixed-width 32-bit signed integer (INT32 type_id=4)."""
 
     def write(self, write_context, value):
@@ -126,7 +133,7 @@ class FixedInt32Serializer(Serializer):
         return read_context.read_int32()
 
 
-class Int64Serializer(Serializer):
+class Int64Serializer(_PrimitiveSerializer):
     """Serializer for INT64/VARINT64 type - uses variable-length encoding for xlang compatibility."""
 
     def write(self, write_context, value):
@@ -136,7 +143,7 @@ class Int64Serializer(Serializer):
         return read_context.read_varint64()
 
 
-class FixedInt64Serializer(Serializer):
+class FixedInt64Serializer(_PrimitiveSerializer):
     """Serializer for fixed-width 64-bit signed integer (INT64 type_id=6)."""
 
     def write(self, write_context, value):
@@ -146,7 +153,7 @@ class FixedInt64Serializer(Serializer):
         return read_context.read_int64()
 
 
-class Varint32Serializer(Serializer):
+class Varint32Serializer(_PrimitiveSerializer):
     """Serializer for VARINT32 type - variable-length encoded signed 32-bit integer."""
 
     def write(self, write_context, value):
@@ -156,7 +163,7 @@ class Varint32Serializer(Serializer):
         return read_context.read_varint32()
 
 
-class Varint64Serializer(Serializer):
+class Varint64Serializer(_PrimitiveSerializer):
     """Serializer for VARINT64 type - variable-length encoded signed 64-bit integer."""
 
     def write(self, write_context, value):
@@ -166,7 +173,7 @@ class Varint64Serializer(Serializer):
         return read_context.read_varint64()
 
 
-class TaggedInt64Serializer(Serializer):
+class TaggedInt64Serializer(_PrimitiveSerializer):
     """Serializer for TAGGED_INT64 type - tagged encoding for signed 64-bit integer."""
 
     def write(self, write_context, value):
@@ -176,7 +183,7 @@ class TaggedInt64Serializer(Serializer):
         return read_context.read_tagged_int64()
 
 
-class Uint8Serializer(Serializer):
+class Uint8Serializer(_PrimitiveSerializer):
     """Serializer for UINT8 type - unsigned 8-bit integer."""
 
     def write(self, write_context, value):
@@ -186,7 +193,7 @@ class Uint8Serializer(Serializer):
         return read_context.read_uint8()
 
 
-class Uint16Serializer(Serializer):
+class Uint16Serializer(_PrimitiveSerializer):
     """Serializer for UINT16 type - unsigned 16-bit integer."""
 
     def write(self, write_context, value):
@@ -196,7 +203,7 @@ class Uint16Serializer(Serializer):
         return read_context.read_uint16()
 
 
-class Uint32Serializer(Serializer):
+class Uint32Serializer(_PrimitiveSerializer):
     """Serializer for UINT32 type - fixed-size unsigned 32-bit integer."""
 
     def write(self, write_context, value):
@@ -206,7 +213,7 @@ class Uint32Serializer(Serializer):
         return read_context.read_uint32()
 
 
-class VarUint32Serializer(Serializer):
+class VarUint32Serializer(_PrimitiveSerializer):
     """Serializer for VAR_UINT32 type - variable-length encoded unsigned 32-bit integer."""
 
     def write(self, write_context, value):
@@ -216,7 +223,7 @@ class VarUint32Serializer(Serializer):
         return read_context.read_var_uint32()
 
 
-class Uint64Serializer(Serializer):
+class Uint64Serializer(_PrimitiveSerializer):
     """Serializer for UINT64 type - fixed-size unsigned 64-bit integer."""
 
     def write(self, write_context, value):
@@ -226,7 +233,7 @@ class Uint64Serializer(Serializer):
         return read_context.read_uint64()
 
 
-class VarUint64Serializer(Serializer):
+class VarUint64Serializer(_PrimitiveSerializer):
     """Serializer for VAR_UINT64 type - variable-length encoded unsigned 64-bit integer."""
 
     def write(self, write_context, value):
@@ -236,7 +243,7 @@ class VarUint64Serializer(Serializer):
         return read_context.read_var_uint64()
 
 
-class TaggedUint64Serializer(Serializer):
+class TaggedUint64Serializer(_PrimitiveSerializer):
     """Serializer for TAGGED_UINT64 type - tagged encoding for unsigned 64-bit integer."""
 
     def write(self, write_context, value):
@@ -246,7 +253,7 @@ class TaggedUint64Serializer(Serializer):
         return read_context.read_tagged_uint64()
 
 
-class Float32Serializer(Serializer):
+class Float32Serializer(_PrimitiveSerializer):
     def write(self, write_context, value):
         write_context.write_float32(value)
 
@@ -254,7 +261,7 @@ class Float32Serializer(Serializer):
         return read_context.read_float32()
 
 
-class Float64Serializer(Serializer):
+class Float64Serializer(_PrimitiveSerializer):
     def write(self, write_context, value):
         write_context.write_float64(value)
 
@@ -270,7 +277,7 @@ def _coerce_bfloat16_bits(value):
     return _bfloat16_to_bits(value)
 
 
-class Float16Serializer(Serializer):
+class Float16Serializer(_PrimitiveSerializer):
     def write(self, write_context, value):
         write_context.write_uint16(_coerce_float16_bits(value))
 
@@ -286,6 +293,7 @@ class _DenseArraySerializer(Serializer):
     def __init__(self, type_resolver, type_):
         super().__init__(type_resolver, type_)
         self.need_to_write_ref = False
+        self.read_data_always_advances = True
 
     def write(self, write_context, value):
         if type(value) is not self.wrapper_type:
@@ -372,7 +380,7 @@ class Float16ArraySerializer(_DenseArraySerializer):
     reduced_precision = True
 
 
-class BFloat16Serializer(Serializer):
+class BFloat16Serializer(_PrimitiveSerializer):
     def write(self, write_context, value):
         write_context.write_uint16(_coerce_bfloat16_bits(value))
 
@@ -400,6 +408,7 @@ class StringSerializer(Serializer):
     def __init__(self, type_resolver, type_):
         super().__init__(type_resolver, type_)
         self.need_to_write_ref = False
+        self.read_data_always_advances = True
 
     def write(self, write_context, value: str):
         write_context.write_string(value)
@@ -412,6 +421,10 @@ _base_date = datetime.date(1970, 1, 1)
 
 
 class DateSerializer(Serializer):
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
+
     def write(self, write_context, value: datetime.date):
         if not isinstance(value, datetime.date):
             raise TypeError("{} should be {} instead of {}".format(value, datetime.date, type(value)))
@@ -431,6 +444,10 @@ class DateSerializer(Serializer):
 
 class TimestampSerializer(Serializer):
     __win_platform = platform.system() == "Windows"
+
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
 
     def _get_timestamp(self, value: datetime.datetime):
         seconds_offset = 0
@@ -458,6 +475,10 @@ class TimestampSerializer(Serializer):
 
 
 class DurationSerializer(Serializer):
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
+
     def write(self, write_context, value: datetime.timedelta):
         if not isinstance(value, datetime.timedelta):
             raise TypeError("{} should be {} instead of {}".format(value, datetime.timedelta, type(value)))
@@ -480,6 +501,7 @@ class EnumSerializer(Serializer):
     def __init__(self, type_resolver, type_):
         super().__init__(type_resolver, type_)
         self.need_to_write_ref = False
+        self.read_data_always_advances = True
         self._members = tuple(type_)
         self._wire_value_by_member = {member: idx for idx, member in enumerate(self._members)}
         self._member_by_wire_value = {idx: member for idx, member in enumerate(self._members)}
@@ -517,6 +539,10 @@ class EnumSerializer(Serializer):
 
 class SliceSerializer(Serializer):
     """Pure-Python slice serializer used when Cython serialization is disabled."""
+
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
 
     def write(self, write_context, value: slice):
         buffer = write_context.buffer

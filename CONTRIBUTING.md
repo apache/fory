@@ -42,7 +42,7 @@ Key points:
 
 ## Testing
 
-For environmental requirements, please check [DEVELOPMENT.md](./docs/DEVELOPMENT.md).
+For environmental requirements, please check [DEVELOPMENT.md](./docs/development/building.md).
 
 ### Python
 
@@ -118,7 +118,7 @@ mvn checkstyle:check
 ```bash
 cd python
 # install dependencies for formatting
-pip install ruff
+pip install ruff==0.15.22
 # format python code
 ruff format
 ```
@@ -182,7 +182,7 @@ cygdb build
 
 ### C++
 
-See the [Debugging C++](docs/cpp_debug.md) doc.
+See the [Debugging C++](docs/development/cpp-debugging.md) guide.
 
 ### Debug Crash
 
@@ -236,10 +236,12 @@ And due to the usage of `sun.misc.Unsafe` API, which is not visible in Java 11+,
 
 Apache Fory™'s website consists of static pages hosted at https://github.com/apache/fory-site.
 
-Updates to [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md), docs under [guide](docs/guide), and docs under [benchmarks](docs/benchmarks) will be synced to the site repo automatically.
+The capability-first [docs](docs) tree is the canonical source for the website documentation,
+including Introduction, Getting Started, Benchmarks, user guides, Development, and the separate
+Specification surface.
 
 If you want write a blog, or update other contents about the website, please submit PR to the site repo.
 
 ## Development
 
-For more information, please refer to [Development Guide](./docs/DEVELOPMENT.md).
+For more information, please refer to [Development Guide](./docs/development/building.md).

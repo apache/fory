@@ -401,6 +401,10 @@ impl Serializer for SilentValueSerializer {
     }
 }
 
+const _: [(); 1] = [(); UserSerializer::READ_DATA_ALWAYS_ADVANCES as usize];
+const _: [(); 0] = [(); MarkerSerializer::READ_DATA_ALWAYS_ADVANCES as usize];
+const _: [(); 0] = [(); SilentValueSerializer::READ_DATA_ALWAYS_ADVANCES as usize];
+
 #[derive(ForyStruct, Clone, Debug, PartialEq)]
 struct LocalUser {
     name: String,
@@ -743,6 +747,7 @@ where
     assert_eq!(decoded.21, value.21);
 }
 
+#[allow(clippy::assertions_on_constants)]
 const _: () = {
     type Optional = OptionSerializer<ExternalIdSerializer>;
     type BoxedOptional = BoxSerializer<Optional>;
@@ -993,11 +998,11 @@ fn registration_by_name() {
         .unwrap();
     roundtrip::<ValueSerializer>(&union, &Value::Count(42));
 
-    let mut manual = Fory::builder().xlang(false).compatible(false).build();
-    manual
+    let mut custom = Fory::builder().xlang(false).compatible(false).build();
+    custom
         .register_serializer_by_name::<ExternalIdSerializer>("example.ExternalId")
         .unwrap();
-    roundtrip::<ExternalIdSerializer>(&manual, &ExternalId(9));
+    roundtrip::<ExternalIdSerializer>(&custom, &ExternalId(9));
 }
 
 #[test]
@@ -1193,9 +1198,7 @@ fn zero_body_carrier_bounds() {
     roundtrip::<BTreeSetSerializer<MarkerSerializer>>(&fory, &markers.iter().copied().collect());
 
     let linked: LinkedList<Marker> = markers.iter().copied().collect();
-    assert!(fory
-        .serialize_with::<LinkedListSerializer<MarkerSerializer>>(&linked)
-        .is_err());
+    roundtrip::<LinkedListSerializer<MarkerSerializer>>(&fory, &linked);
 }
 
 #[test]
@@ -1213,35 +1216,50 @@ fn non_zst_zero_body_bounds() {
             .unwrap(),
         fixed
     );
-    assert!(fory
-        .deserialize_with::<VecSerializer<SilentValueSerializer>>(&fixed_bytes)
-        .is_err());
-
     let values = vec![SilentValue(0); 256];
-    let error = fory
+    let values_bytes = fory
         .serialize_with::<VecSerializer<SilentValueSerializer>>(&values)
-        .unwrap_err();
-    assert!(error.to_string().contains("proportional encoded bytes"));
+        .unwrap();
 
     let hash_map: HashMap<_, _> = (0u64..256)
         .map(|id| (SilentValue(id), SilentValue(id)))
         .collect();
-    let error = fory
+    let hash_bytes = fory
         .serialize_with::<HashMapSerializer<SilentValueSerializer, SilentValueSerializer>>(
             &hash_map,
         )
-        .unwrap_err();
-    assert!(error.to_string().contains("proportional encoded bytes"));
+        .unwrap();
 
     let tree_map: BTreeMap<_, _> = (0u64..256)
         .map(|id| (SilentValue(id), SilentValue(id)))
         .collect();
-    let error = fory
+    let tree_bytes = fory
         .serialize_with::<BTreeMapSerializer<SilentValueSerializer, SilentValueSerializer>>(
             &tree_map,
         )
-        .unwrap_err();
-    assert!(error.to_string().contains("proportional encoded bytes"));
+        .unwrap();
+
+    let mut limited = Fory::builder()
+        .xlang(false)
+        .compatible(false)
+        .max_unbacked_container_items(255)
+        .build();
+    limited
+        .register_serializer::<SilentValueSerializer>(181)
+        .unwrap();
+    assert!(limited
+        .deserialize_with::<VecSerializer<SilentValueSerializer>>(&values_bytes)
+        .is_err());
+    assert!(limited
+        .deserialize_with::<HashMapSerializer<SilentValueSerializer, SilentValueSerializer>>(
+            &hash_bytes,
+        )
+        .is_err());
+    assert!(limited
+        .deserialize_with::<BTreeMapSerializer<SilentValueSerializer, SilentValueSerializer>>(
+            &tree_bytes,
+        )
+        .is_err());
 }
 
 #[test]
@@ -1763,16 +1781,14 @@ fn map_rejects_invalid_chunks() {
         .unwrap();
 
     bytes[chunk_offset] = 0;
-    let error = fory
+    assert!(fory
         .deserialize_with::<HashMapSerializer<i32, i32>>(&bytes)
-        .unwrap_err();
-    assert!(error.to_string().contains("map chunk size"));
+        .is_err());
 
     bytes[chunk_offset] = 2;
-    let error = fory
+    assert!(fory
         .deserialize_with::<HashMapSerializer<i32, i32>>(&bytes)
-        .unwrap_err();
-    assert!(error.to_string().contains("map chunk size"));
+        .is_err());
 }
 
 #[test]

@@ -16,27 +16,27 @@
 // under the License.
 
 func buildReadDataDecl(
-    isClass: Bool,
-    fields: [ParsedField],
+    declaration: ParsedDecl,
     sortedFields: [ParsedField],
     accessPrefix: String,
     successBodyAttribute: String
 ) -> String {
-    if isClass {
+    if declaration.isClass {
         return buildClassReadDataDecl(
             sortedFields: sortedFields,
+            graphFields: declaration.graphFields,
             accessPrefix: accessPrefix,
             successBodyAttribute: successBodyAttribute
         )
     }
-    if fields.isEmpty {
+    if declaration.fields.isEmpty {
         return buildEmptyStructReadDataDecl(
             accessPrefix: accessPrefix,
             successBodyAttribute: successBodyAttribute
         )
     }
     return buildStructReadDataDecl(
-        fields: fields,
+        fields: declaration.fields,
         sortedFields: sortedFields,
         accessPrefix: accessPrefix,
         successBodyAttribute: successBodyAttribute
@@ -44,22 +44,28 @@ func buildReadDataDecl(
 }
 
 func buildReadCompatibleDataDecl(
-    isClass: Bool,
-    fields: [ParsedField],
+    declaration: ParsedDecl,
     sortedFields: [ParsedField],
     accessPrefix: String
 ) -> String {
-    if isClass {
-        return buildClassReadCompatibleDataDecl(sortedFields: sortedFields, accessPrefix: accessPrefix)
+    if declaration.isClass {
+        return buildClassReadCompatibleDataDecl(
+            sortedFields: sortedFields,
+            graphFields: declaration.graphFields,
+            accessPrefix: accessPrefix
+        )
     }
-    if fields.isEmpty {
+    if declaration.fields.isEmpty {
         return buildEmptyStructReadCompatibleDataDecl(accessPrefix: accessPrefix)
     }
     return buildStructReadCompatibleDataDecl(
-        fields: fields, sortedFields: sortedFields, accessPrefix: accessPrefix)
+        fields: declaration.fields,
+        sortedFields: sortedFields,
+        accessPrefix: accessPrefix
+    )
 }
 
-private func graphFieldBytesExpr(_ field: ParsedField) -> String {
+private func serializedGraphFieldBytesExpr(_ field: ParsedField) -> String {
     if field.primitiveSize > 0 {
         return "\(field.primitiveSize)"
     }
@@ -73,7 +79,16 @@ private func graphFieldBytesExpr(_ field: ParsedField) -> String {
     return "(\(field.typeText).isRefType ? 4 : max(1, MemoryLayout<\(field.typeText)>.stride))"
 }
 
-func classGraphOwnerBytesExpr(_ fields: [ParsedField]) -> String {
+private func graphFieldBytesExpr(_ field: ParsedGraphField) -> String {
+    switch field {
+    case .serialized(let serializedField):
+        return serializedGraphFieldBytesExpr(serializedField)
+    case .ignored(let typeText):
+        return "max(1, MemoryLayout<\(typeText)>.stride)"
+    }
+}
+
+func classGraphOwnerBytesExpr(_ fields: [ParsedGraphField]) -> String {
     let ownerBytes = "(2 * MemoryLayout<Int>.stride)"
     if fields.isEmpty {
         return ownerBytes
@@ -81,7 +96,10 @@ func classGraphOwnerBytesExpr(_ fields: [ParsedField]) -> String {
     return ownerBytes + " + " + fields.map(graphFieldBytesExpr).joined(separator: " + ")
 }
 
-private func reserveClassGraphOwnerLine(fields: [ParsedField], indent: String) -> String {
+private func reserveClassGraphOwnerLine(
+    fields: [ParsedGraphField],
+    indent: String
+) -> String {
     "\(indent)try context.reserveGraphMemory(\(classGraphOwnerBytesExpr(fields)))"
 }
 
@@ -216,6 +234,7 @@ func buildStructReadWrapperDecl(
 
 private func buildClassReadDataDecl(
     sortedFields: [ParsedField],
+    graphFields: [ParsedGraphField],
     accessPrefix: String,
     successBodyAttribute: String
 ) -> String {
@@ -228,7 +247,7 @@ private func buildClassReadDataDecl(
         private static func __foryReadDataImpl(_ context: ReadContext, reservedRefID: UInt32?) throws -> Target {
             let __buffer = context.buffer
             \(schemaHashCheckExpr())
-            \(reserveClassGraphOwnerLine(fields: sortedFields, indent: "        "))
+            \(reserveClassGraphOwnerLine(fields: graphFields, indent: "        "))
             let value = Target.init()
             if let reservedRefID {
                 context.refReader.storeRef(value, at: reservedRefID)
@@ -287,6 +306,7 @@ private func buildStructReadDataDecl(
 
 private func buildClassReadCompatibleDataDecl(
     sortedFields: [ParsedField],
+    graphFields: [ParsedGraphField],
     accessPrefix: String
 ) -> String {
     let primitiveFastFields = leadingPrimitiveFastPathFields(sortedFields)
@@ -320,7 +340,7 @@ private func buildClassReadCompatibleDataDecl(
             \(bufferBinding)guard let typeMeta = remoteTypeInfo.compatibleTypeMeta else {
                 throw ForyError.invalidData("compatible type metadata is required")
             }
-            \(reserveClassGraphOwnerLine(fields: sortedFields, indent: "        "))
+            \(reserveClassGraphOwnerLine(fields: graphFields, indent: "        "))
             let value = Target.init()
             if let reservedRefID {
                 context.refReader.storeRef(value, at: reservedRefID)

@@ -56,6 +56,7 @@ export interface SerializerGenerator {
 
   getType(): number;
   getTypeId(): number | undefined;
+  readDataAlwaysAdvances(): boolean;
 }
 
 export enum RefStateType {
@@ -183,6 +184,17 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
 
   getInternalTypeId() {
     return this.getTypeId();
+  }
+
+  readDataAlwaysAdvances(): boolean {
+    const typeId = this.getTypeId();
+    return (
+      typeId !== TypeId.UNKNOWN &&
+      typeId !== TypeId.NONE &&
+      !TypeId.structType(typeId!) &&
+      typeId !== TypeId.EXT &&
+      typeId !== TypeId.NAMED_EXT
+    );
   }
 
   abstract read(assignStmt: (v: string) => string, refState: string): string;
@@ -328,6 +340,8 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
         ${this.readTypeInfo()}
       };
     `;
+    // Append read-only capability metadata so existing writer properties keep
+    // their object-layout order on serialization hot paths.
     return `
         return function (typeResolver, external, typeInfo, options) {
             ${this.scope.generate()}
@@ -353,6 +367,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
               readRefWithoutTypeInfo,
               readNoRef,
               readTypeInfo,
+              readDataAlwaysAdvances: ${this.readDataAlwaysAdvances()},
             };
         }
         `;

@@ -75,7 +75,7 @@ func (s boolArraySerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 }
 
 func (s boolArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, BOOL_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, BOOL_ARRAY)
 	if ctx.HasError() {
 		return
 	}
@@ -134,7 +134,7 @@ func (s int8ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 }
 
 func (s int8ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, INT8_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, INT8_ARRAY)
 	if ctx.HasError() {
 		return
 	}
@@ -194,7 +194,7 @@ func (s int16ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value) 
 }
 
 func (s int16ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, INT16_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, INT16_ARRAY)
 	if ctx.HasError() {
 		return
 	}
@@ -261,7 +261,7 @@ func (s int32ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value) 
 }
 
 func (s int32ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, INT32_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, INT32_ARRAY)
 	if ctx.HasError() {
 		return
 	}
@@ -328,7 +328,7 @@ func (s int64ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value) 
 }
 
 func (s int64ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, INT64_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, INT64_ARRAY)
 	if ctx.HasError() {
 		return
 	}
@@ -395,7 +395,7 @@ func (s float32ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value
 }
 
 func (s float32ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, FLOAT32_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, FLOAT32_ARRAY)
 	if ctx.HasError() {
 		return
 	}
@@ -462,7 +462,7 @@ func (s float64ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value
 }
 
 func (s float64ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, FLOAT64_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, FLOAT64_ARRAY)
 	if ctx.HasError() {
 		return
 	}
@@ -528,7 +528,7 @@ func (s uint8ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value) 
 }
 
 func (s uint8ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, BINARY)
+	writeArrayRefAndType(ctx, refMode, writeType, BINARY)
 	if ctx.HasError() {
 		return
 	}
@@ -589,7 +589,7 @@ func (s uint16ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value)
 }
 
 func (s uint16ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, UINT16_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, UINT16_ARRAY)
 	if ctx.HasError() {
 		return
 	}
@@ -655,7 +655,7 @@ func (s uint32ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value)
 }
 
 func (s uint32ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, UINT32_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, UINT32_ARRAY)
 	if ctx.HasError() {
 		return
 	}
@@ -720,7 +720,7 @@ func (s uint64ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value)
 }
 
 func (s uint64ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, UINT64_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, UINT64_ARRAY)
 	if ctx.HasError() {
 		return
 	}
@@ -789,7 +789,7 @@ func (s float16ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value
 }
 
 func (s float16ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, FLOAT16_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, FLOAT16_ARRAY)
 	if ctx.HasError() {
 		return
 	}
@@ -858,7 +858,7 @@ func (s bfloat16ArraySerializer) WriteData(ctx *WriteContext, value reflect.Valu
 }
 
 func (s bfloat16ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, BFLOAT16_ARRAY)
+	writeArrayRefAndType(ctx, refMode, writeType, BFLOAT16_ARRAY)
 	if ctx.HasError() {
 		return
 	}

@@ -109,19 +109,6 @@ object ForySerializerMacros {
       annotations.foldRight(boxed)((annotation, current) => AnnotatedType(current, annotation))
     }
 
-    def graphFieldBytes(tpe: TypeRepr): Long = {
-      val base = peelAnnotations(tpe.widen)._1.dealias
-      if base =:= TypeRepr.of[Boolean] then 1L
-      else if base =:= TypeRepr.of[Byte] then 1L
-      else if base =:= TypeRepr.of[Char] then 2L
-      else if base =:= TypeRepr.of[Short] then 2L
-      else if base =:= TypeRepr.of[Int] then 4L
-      else if base =:= TypeRepr.of[Float] then 4L
-      else if base =:= TypeRepr.of[Long] then 8L
-      else if base =:= TypeRepr.of[Double] then 8L
-      else 4L
-    }
-
     def classFor(tpe: TypeRepr): Expr[Class[?]] = {
       val normalized = peelAnnotations(tpe.widen)._1.dealias
       val fullName = normalized.typeSymbol.fullName
@@ -220,10 +207,6 @@ object ForySerializerMacros {
         !privateField,
         constructorOwned || (field.flags.is(Flags.Mutable) && !privateField))
     }
-    val referenceBytes: Long = 4L
-    val objectOwnerBytes: Long = 3L * referenceBytes
-    val objectGraphMemoryBytes: Long =
-      objectOwnerBytes + fields.map(field => graphFieldBytes(field.sourceType)).sum
     val hasNestedCompatibleStructFields =
       fields.exists(field => hasNestedCompatibleStruct(field.sourceType))
 
@@ -323,6 +306,44 @@ object ForySerializerMacros {
         then Types.STRING
         else Types.UNKNOWN
       }
+    }
+
+    def typeReadDataAlwaysAdvances(tpe: TypeRepr): Boolean = {
+      val normalized = peelAnnotations(tpe.widen)._1.dealias
+      val fullName = normalized.typeSymbol.fullName
+      val boxedScalar = Set(
+        "java.lang.Boolean",
+        "java.lang.Byte",
+        "java.lang.Character",
+        "java.lang.Short",
+        "java.lang.Integer",
+        "java.lang.Long",
+        "java.lang.Float",
+        "java.lang.Double")
+      val framedValue = Set(
+        "java.math.BigDecimal",
+        "java.math.BigInteger",
+        "java.time.Duration",
+        "java.time.Instant",
+        "java.time.LocalDate")
+      wireTypeId(normalized) != Types.UNKNOWN ||
+      normalized =:= TypeRepr.of[Char] ||
+      boxedScalar.contains(fullName) ||
+      framedValue.contains(fullName) ||
+      fullName == "scala.Array" ||
+      isScalaEnumType(normalized) ||
+      hasAnnotation[ForyUnion](normalized.typeSymbol) ||
+      normalized.baseClasses.exists { base =>
+        val name = base.fullName
+        name == "scala.collection.Iterable" ||
+        name == "scala.collection.Map" ||
+        name == "java.util.Collection" ||
+        name == "java.util.Map"
+      }
+    }
+
+    val generatedReadDataAlwaysAdvances = fields.exists { field =>
+      field.nullable || field.trackingRef || typeReadDataAlwaysAdvances(field.wireType)
     }
 
     def descriptor(field: FieldMeta): Expr[Descriptor] = {
@@ -1029,6 +1050,7 @@ object ForySerializerMacros {
         serializerExpr: Expr[StaticGeneratedStructSerializer[T]],
         resolverExpr: Expr[TypeResolver],
         fieldsByIdExpr: Expr[Array[FieldGroups.SerializationFieldInfo]],
+        graphMemoryBytesExpr: Expr[Long],
         readContextExpr: Expr[org.apache.fory.context.ReadContext],
         instantiatorExpr: Expr[org.apache.fory.reflect.ObjectInstantiator[T]],
         fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[T] = {
@@ -1146,7 +1168,7 @@ object ForySerializerMacros {
       Block(
         localDefs ++ maskDefs,
         Block(
-          '{ $readContextExpr.reserveGraphMemory(${ Expr(objectGraphMemoryBytes) }) }.asTerm ::
+          '{ $readContextExpr.reserveGraphMemory($graphMemoryBytesExpr) }.asTerm ::
             readLoop.asTerm :: defaultAssignments.toList,
           constructFromLocals(localFields, instantiatorExpr, fieldAccessorsExpr).asTerm))
         .asExprOf[T]
@@ -1159,6 +1181,7 @@ object ForySerializerMacros {
         classVersionHashExpr: Expr[Int],
         allFieldsExpr: Expr[Array[FieldGroups.SerializationFieldInfo]],
         allFieldIdsExpr: Expr[Array[Int]],
+        graphMemoryBytesExpr: Expr[Long],
         readContextExpr: Expr[org.apache.fory.context.ReadContext],
         instantiatorExpr: Expr[org.apache.fory.reflect.ObjectInstantiator[T]],
         fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[T] = {
@@ -1169,7 +1192,7 @@ object ForySerializerMacros {
           if $resolverExpr.checkClassVersion() then {
             $serializerExpr.checkClassVersion(buffer.readInt32(), $classVersionHashExpr)
           }
-          $readContextExpr.reserveGraphMemory(${ Expr(objectGraphMemoryBytes) })
+          $readContextExpr.reserveGraphMemory($graphMemoryBytesExpr)
           val obj = $instantiatorExpr.newInstance()
           $readContextExpr.reference(obj)
           var i = 0
@@ -1195,7 +1218,7 @@ object ForySerializerMacros {
           if $resolverExpr.checkClassVersion() then {
             $serializerExpr.checkClassVersion(buffer.readInt32(), $classVersionHashExpr)
           }
-          $readContextExpr.reserveGraphMemory(${ Expr(objectGraphMemoryBytes) })
+          $readContextExpr.reserveGraphMemory($graphMemoryBytesExpr)
           val values = new Array[Any]($descriptorsExpr.size())
           var i = 0
           while i < $allFieldsExpr.length do {
@@ -1215,6 +1238,7 @@ object ForySerializerMacros {
         descriptorsExpr: Expr[java.util.List[Descriptor]],
         fieldsByIdExpr: Expr[Array[FieldGroups.SerializationFieldInfo]],
         sameSchemaCompatibleExpr: Expr[Boolean],
+        graphMemoryBytesExpr: Expr[Long],
         readContextExpr: Expr[org.apache.fory.context.ReadContext],
         instantiatorExpr: Expr[org.apache.fory.reflect.ObjectInstantiator[T]],
         fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[T] = {
@@ -1224,7 +1248,7 @@ object ForySerializerMacros {
           if $sameSchemaCompatibleExpr then {
             $serializerExpr.read($readContextExpr)
           } else {
-            $readContextExpr.reserveGraphMemory(${ Expr(objectGraphMemoryBytes) })
+            $readContextExpr.reserveGraphMemory($graphMemoryBytesExpr)
             val obj = $instantiatorExpr.newInstance()
             $readContextExpr.reference(obj)
             val remoteFields = $serializerExpr.getRemoteFields()
@@ -1256,6 +1280,7 @@ object ForySerializerMacros {
                 serializerExpr,
                 resolverExpr,
                 fieldsByIdExpr,
+                graphMemoryBytesExpr,
                 readContextExpr,
                 instantiatorExpr,
                 fieldAccessorsExpr)
@@ -1326,6 +1351,10 @@ object ForySerializerMacros {
             private val generatedObjectInstantiator
                 : org.apache.fory.reflect.ObjectInstantiator[T] =
               resolver.getObjectInstantiator(cls)
+            // Match the base serializer's physical instance estimate, including storage-only fields
+            // that must not be added to generated wire metadata.
+            private val generatedObjectGraphMemoryBytes: Long =
+              org.apache.fory.serializer.GraphMemoryEstimates.shallowObjectBytes(cls).toLong
             private val generatedFieldAccessors
                 : Array[org.apache.fory.reflect.FieldAccessor] =
               ${ fieldAccessors('cls) }
@@ -1337,6 +1366,10 @@ object ForySerializerMacros {
                 remoteTypeDef.getId == ForyTypeDef.buildTypeDef(resolver, cls).getId
 
             override def getGeneratedDescriptors(): java.util.List[Descriptor] = descriptors
+
+            override def readDataAlwaysAdvances(): Boolean =
+              ${ Expr(generatedReadDataAlwaysAdvances) } &&
+                (remoteTypeDef == null || sameSchemaCompatible)
 
             override def copySerializer(
                 typeResolver: TypeResolver,
@@ -1383,6 +1416,7 @@ object ForySerializerMacros {
                   'classVersionHash,
                   'allFields,
                   'allFieldIds,
+                  'generatedObjectGraphMemoryBytes,
                   'readContext,
                   'generatedObjectInstantiator,
                   'generatedFieldAccessors)
@@ -1396,6 +1430,7 @@ object ForySerializerMacros {
                   'descriptors,
                   'fieldsById,
                   'sameSchemaCompatible,
+                  'generatedObjectGraphMemoryBytes,
                   'readContext,
                   'generatedObjectInstantiator,
                   'generatedFieldAccessors)
@@ -1982,6 +2017,8 @@ object ForySerializerMacros {
               val caseId = buffer.readVarUInt32()
               ${ readDispatch('caseId, 'readContext, 'resolver, 'caseFieldInfos) }
             }
+
+            override def readDataAlwaysAdvances(): Boolean = true
 
             override def copy(copyContext: org.apache.fory.context.CopyContext, value: T): T = {
               val copied = ${ copyDispatch('value, 'copyContext, 'caseFieldInfos) }

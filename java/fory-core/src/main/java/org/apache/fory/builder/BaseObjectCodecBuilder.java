@@ -119,6 +119,7 @@ import org.apache.fory.config.Config;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.ObjectInstantiator;
@@ -379,6 +380,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         ROOT_OBJECT_NAME);
     ctx.overrideMethod(
         readMethodName, decodeCode, Object.class, ReadContext.class, READ_CONTEXT_NAME);
+    if (generatedReadDataAlwaysAdvances()) {
+      ctx.overrideMethod("readDataAlwaysAdvances", "return true;", boolean.class);
+    }
     registerJITNotifyCallback();
     ctx.addConstructor(
         constructorCode,
@@ -391,6 +395,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
 
   protected String decodePrefixCode() {
     return "";
+  }
+
+  protected boolean generatedReadDataAlwaysAdvances() {
+    return false;
   }
 
   protected static class InvokeHint {
@@ -2734,8 +2742,16 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
           serializer.type());
     }
     Invoke supportHook = inlineInvoke(serializer, "supportCodegenHook", PRIMITIVE_BOOLEAN_TYPE);
+    boolean elementReadAlwaysAdvances =
+        isMonomorphic(elementType.getRawType())
+            && registeredReadDataAlwaysAdvances(elementType.getRawType());
     Expression collection =
-        new Invoke(serializer, "newCollection", COLLECTION_TYPE, readContextRef);
+        new Invoke(
+            serializer,
+            "newCollection",
+            COLLECTION_TYPE,
+            readContextRef,
+            Literal.ofBoolean(elementReadAlwaysAdvances));
     Expression size = new Invoke(serializer, "getAndClearNumElements", "size", PRIMITIVE_INT_TYPE);
     // Do not add an ArrayList-specific branch here: it pushes generated code over 325 bytes, and
     // List#add is more likely to inline when the call site has only one receiver subclass.
@@ -2788,12 +2804,12 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             new If(
                 trackRef,
                 readContainerElements(elementType, true, null, null, buffer, collection, size),
-                readContainerElements(elementType, false, null, hasNull, buffer, collection, size),
+                readSameTypeContainerElements(elementType, null, hasNull, buffer, collection, size),
                 false));
       } else {
         builder.add(
             hasNull,
-            readContainerElements(elementType, false, null, hasNull, buffer, collection, size));
+            readSameTypeContainerElements(elementType, null, hasNull, buffer, collection, size));
       }
     } else {
       Literal isSameTypeFlag = ofInt(CollectionFlags.IS_SAME_TYPE);
@@ -2802,29 +2818,62 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       //  if ((flags & Flags.NOT_DECL_ELEMENT_TYPE) == Flags.NOT_DECL_ELEMENT_TYPE)
       Literal isDeclTypeFlag = ofInt(CollectionFlags.IS_DECL_ELEMENT_TYPE);
       Expression isDeclType = eq(new BitAnd(flags, isDeclTypeFlag), isDeclTypeFlag);
-      Invoke serializer =
+      Invoke remoteSerializer =
           inlineInvoke(readTypeInfo(elemClass, buffer), "getSerializer", SERIALIZER_TYPE);
       TypeRef<?> serializerType = getSerializerType(elementType);
-      Expression elemSerializer; // make it in scope of `if(sameElementClass)`
       boolean maybeDecl = typeResolver(r -> r.isSerializable(elemClass));
+      Expression remoteElemSerializer = uninline(cast(remoteSerializer.inline(), serializerType));
+      Expression declaredElemSerializer =
+          maybeDecl ? cast(getOrCreateSerializer(elemClass), serializerType) : null;
+      boolean declaredElementReadAlwaysAdvances =
+          maybeDecl && registeredReadDataAlwaysAdvances(elemClass);
+      builder.add(sameElementClass);
+      Literal hasNullFlag = ofInt(CollectionFlags.HAS_NULL);
+      Expression hasNull = eq(new BitAnd(flags, hasNullFlag), hasNullFlag, "hasNull");
+      builder.add(hasNull);
+      ListExpression remoteSameTypeRead =
+          new ListExpression(
+              remoteElemSerializer,
+              readResolvedContainerElements(
+                  elementType,
+                  remoteElemSerializer,
+                  hasNull,
+                  buffer,
+                  collection,
+                  size,
+                  trackingRef,
+                  trackRef,
+                  false));
+      Expression sameTypeRead = remoteSameTypeRead;
       if (maybeDecl) {
-        elemSerializer =
+        // Keep remote serializer resolution and its guarded fallback outside the generated local
+        // declared-type method. Inlining both branches can push that common method past HotSpot's
+        // 325-byte inline limit even though the declared branch has compile-time progress proof.
+        Expression remoteRead =
+            invokeGenerated(
+                ctx,
+                readCutPoints(buffer, collection, size, hasNull, trackRef),
+                remoteSameTypeRead,
+                "remoteSameTypeElemsRead",
+                false);
+        sameTypeRead =
             new If(
                 isDeclType,
-                cast(getOrCreateSerializer(elemClass), serializerType),
-                cast(serializer.inline(), serializerType),
-                false,
-                serializerType);
-      } else {
-        elemSerializer = cast(serializer.inline(), serializerType);
+                readResolvedContainerElements(
+                    elementType,
+                    declaredElemSerializer,
+                    hasNull,
+                    buffer,
+                    collection,
+                    size,
+                    trackingRef,
+                    trackRef,
+                    declaredElementReadAlwaysAdvances),
+                remoteRead,
+                false);
       }
-      elemSerializer = uninline(elemSerializer);
-      builder.add(sameElementClass);
       Expression action;
       if (trackingRef) {
-        Literal hasNullFlag = ofInt(CollectionFlags.HAS_NULL);
-        Expression hasNull = eq(new BitAnd(flags, hasNullFlag), hasNullFlag, "hasNull");
-        builder.add(hasNull);
         Set<Expression> cutPoint = readCutPoints(buffer, collection, size);
         Expression differentElemTypeRead =
             invokeGenerated(
@@ -2841,29 +2890,11 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                 readContainerElements(elementType, false, null, hasNull, buffer, collection, size),
                 "differentTypeElemsNoRefRead",
                 false);
-        ListExpression sameTypeRead = new ListExpression(elemSerializer);
-        sameTypeRead.add(
-            new If(
-                trackRef,
-                readContainerElements(
-                    elementType, true, elemSerializer, null, buffer, collection, size),
-                readContainerElements(
-                    elementType, false, elemSerializer, hasNull, buffer, collection, size),
-                false));
         Expression diffTypeRead =
             new If(trackRef, differentElemTypeRead, noRefDifferentTypeElemsRead, false);
         builder.add(trackRef);
         action = new If(sameElementClass, sameTypeRead, diffTypeRead);
       } else {
-        Literal hasNullFlag = ofInt(CollectionFlags.HAS_NULL);
-        Expression hasNull = eq(new BitAnd(flags, hasNullFlag), hasNullFlag, "hasNull");
-        builder.add(hasNull);
-        // Same element class read start
-        ListExpression readBuilder = new ListExpression(elemSerializer);
-        readBuilder.add(
-            readContainerElements(
-                elementType, false, elemSerializer, hasNull, buffer, collection, size));
-        // Same element class read end
         Set<Expression> cutPoint = readCutPoints(buffer, collection, size, hasNull);
         Expression differentTypeElemsRead =
             invokeGenerated(
@@ -2872,13 +2903,36 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                 readContainerElements(elementType, false, null, hasNull, buffer, collection, size),
                 "differentTypeElemsRead",
                 false);
-        action = new If(sameElementClass, readBuilder, differentTypeElemsRead);
+        action = new If(sameElementClass, sameTypeRead, differentTypeElemsRead);
       }
       builder.add(action);
     }
     walkPath.removeLast();
     // place newCollection as last as expr value
     return new ListExpression(size, collection, new If(gt(size, ofInt(0)), builder), collection);
+  }
+
+  private Expression readResolvedContainerElements(
+      TypeRef<?> elementType,
+      Expression serializer,
+      Expression hasNull,
+      Expression buffer,
+      Expression collection,
+      Expression size,
+      boolean trackingRef,
+      Expression trackRef,
+      boolean elementReadAlwaysAdvances) {
+    Expression noRefRead =
+        readSameTypeContainerElements(
+            elementType, serializer, hasNull, buffer, collection, size, elementReadAlwaysAdvances);
+    if (!trackingRef) {
+      return noRefRead;
+    }
+    return new If(
+        trackRef,
+        readContainerElements(elementType, true, serializer, null, buffer, collection, size),
+        noRefRead,
+        false);
   }
 
   private Expression readContainerElements(
@@ -2913,6 +2967,154 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                 exprHolder.get("hasNull"),
                 exprHolder.get("serializer"),
                 v -> new Invoke(exprHolder.get("collection"), "add", inline(v))));
+  }
+
+  private Expression readSameTypeContainerElements(
+      TypeRef<?> elementType,
+      Expression serializer,
+      Expression hasNull,
+      Expression buffer,
+      Expression collection,
+      Expression size) {
+    return readSameTypeContainerElements(
+        elementType,
+        serializer,
+        hasNull,
+        buffer,
+        collection,
+        size,
+        serializer == null && registeredReadDataAlwaysAdvances(elementType.getRawType()));
+  }
+
+  private Expression readSameTypeContainerElements(
+      TypeRef<?> elementType,
+      Expression serializer,
+      Expression hasNull,
+      Expression buffer,
+      Expression collection,
+      Expression size,
+      boolean elementReadAlwaysAdvances) {
+    if (elementReadAlwaysAdvances) {
+      return readContainerElements(
+          elementType, false, serializer, hasNull, buffer, collection, size);
+    }
+    Expression guarded =
+        readGuardedContainerElements(elementType, serializer, buffer, collection, size);
+    if (serializer != null) {
+      guarded =
+          invokeGenerated(
+              ctx,
+              readCutPoints(buffer, collection, size, serializer),
+              guarded,
+              "guardedElemsRead",
+              false);
+      guarded =
+          new If(
+              inlineInvoke(serializer, "readDataAlwaysAdvances", PRIMITIVE_BOOLEAN_TYPE),
+              readContainerElements(
+                  elementType, false, serializer, Literal.False, buffer, collection, size),
+              guarded,
+              false);
+    }
+    return hasNull == null
+        ? guarded
+        : new If(
+            hasNull,
+            readContainerElements(
+                elementType, false, serializer, Literal.True, buffer, collection, size),
+            guarded,
+            false);
+  }
+
+  protected final boolean registeredReadDataAlwaysAdvances(Class<?> type) {
+    TypeInfo typeInfo = typeResolver(r -> r.getTypeInfo(type, false));
+    Serializer<?> serializer = typeInfo == null ? null : typeInfo.getSerializer();
+    if (serializer == null) {
+      return false;
+    }
+    boolean inspectDeclaredStruct =
+        serializer instanceof DeferredLazyObjectSerializer
+            || serializer instanceof LazyInitBeanSerializer
+            || serializer instanceof ObjectSerializer;
+    if (!inspectDeclaredStruct) {
+      return serializer.readDataAlwaysAdvances();
+    }
+    // Deferred/lazy serializers describe construction timing, not the generated body shape.
+    // Inspect the declared schema here so codegen does not retain guarded loops for ordinary
+    // Structs whose primitive, string, or container fields already prove input progress.
+    TypeDef typeDef = typeInfo.getTypeDef();
+    if (typeDef == null) {
+      typeDef = typeResolver(r -> r.getTypeDef(type, true));
+    }
+    return typeDef.readDataAlwaysAdvances();
+  }
+
+  private Expression readGuardedContainerElements(
+      TypeRef<?> elementType,
+      Expression serializer,
+      Expression buffer,
+      Expression collection,
+      Expression size) {
+    Variable checkpointItem = new Variable("checkpointItem", ofInt(0));
+    Variable checkpointByte =
+        new Variable(
+            "checkpointByte", new Invoke(buffer, "readerIndex", "readerIndex", PRIMITIVE_INT_TYPE));
+    ExprHolder holder =
+        ExprHolder.of(
+            "buffer",
+            buffer,
+            "collection",
+            collection,
+            "serializer",
+            serializer,
+            "checkpointItem",
+            checkpointItem,
+            "checkpointByte",
+            checkpointByte);
+    ForLoop loop =
+        new ForLoop(
+            ofInt(0),
+            size,
+            ofInt(1),
+            i -> {
+              Expression completed = inline(add(i, ofInt(1)));
+              return list(
+                  readContainerElement(
+                      holder.get("buffer"),
+                      elementType,
+                      false,
+                      Literal.False,
+                      holder.get("serializer"),
+                      v -> new Invoke(holder.get("collection"), "add", inline(v))),
+                  new If(
+                      eq(bitand(completed, ofInt(1023)), ofInt(0)),
+                      settleUnbackedContainerItems(holder, completed)));
+            });
+    return list(
+        checkpointItem,
+        checkpointByte,
+        loop,
+        new If(neq(checkpointItem, size), settleUnbackedContainerItems(holder, size)));
+  }
+
+  private Expression settleUnbackedContainerItems(ExprHolder holder, Expression completed) {
+    Variable currentByte =
+        new Variable(
+            "currentByte",
+            new Invoke(holder.get("buffer"), "readerIndex", "readerIndex", PRIMITIVE_INT_TYPE));
+    Variable processed =
+        new Variable("processed", subtract(completed, holder.get("checkpointItem")));
+    Variable consumed =
+        new Variable("consumed", subtract(currentByte, holder.get("checkpointByte")));
+    return list(
+        currentByte,
+        processed,
+        consumed,
+        new If(
+            gt(processed, consumed),
+            invokeReadContext("reserveUnbackedContainerItems", subtract(processed, consumed))),
+        new Assign(holder.get("checkpointItem"), completed),
+        new Assign(holder.get("checkpointByte"), currentByte));
   }
 
   private Expression readContainerElement(
@@ -2991,7 +3193,20 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     Expression mapSerializer = serializer;
     Invoke supportHook = inlineInvoke(serializer, "supportCodegenHook", PRIMITIVE_BOOLEAN_TYPE);
     ListExpression expressions = new ListExpression();
-    Expression newMap = new Invoke(serializer, "newMap", MAP_TYPE, readContextRef);
+    Class<?> keyCls = keyType.getRawType();
+    Class<?> valueCls = valueType.getRawType();
+    boolean keyMonomorphic = isMonomorphic(keyCls);
+    boolean valueMonomorphic = isMonomorphic(valueCls);
+    boolean entryReadAlwaysAdvances =
+        (keyMonomorphic && registeredReadDataAlwaysAdvances(keyCls))
+            || (valueMonomorphic && registeredReadDataAlwaysAdvances(valueCls));
+    Expression newMap =
+        new Invoke(
+            serializer,
+            "newMap",
+            MAP_TYPE,
+            readContextRef,
+            Literal.ofBoolean(entryReadAlwaysAdvances));
     Expression size = new Invoke(serializer, "getAndClearNumElements", "size", PRIMITIVE_INT_TYPE);
     Expression chunkHeader =
         new If(
@@ -2999,10 +3214,6 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             ofInt(0),
             inlineInvoke(buffer, "readUnsignedByte", PRIMITIVE_INT_TYPE));
     expressions.add(newMap, size, chunkHeader);
-    Class<?> keyCls = keyType.getRawType();
-    Class<?> valueCls = valueType.getRawType();
-    boolean keyMonomorphic = isMonomorphic(keyCls);
-    boolean valueMonomorphic = isMonomorphic(valueCls);
     boolean refKey = needWriteRef(keyType);
     boolean refValue = needWriteRef(valueType);
     boolean inline = keyMonomorphic && valueMonomorphic && (!refKey || !refValue);
@@ -3116,7 +3327,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     Expression keyIsDeclaredType = neq(bitand(chunkHeader, ofInt(KEY_DECL_TYPE)), ofInt(0));
     Expression valueIsDeclaredType = neq(bitand(chunkHeader, ofInt(VALUE_DECL_TYPE)), ofInt(0));
     Expression chunkSize = new Invoke(buffer, "readUnsignedByte", "chunkSize", PRIMITIVE_INT_TYPE);
-    expressions.add(chunkSize);
+    expressions.add(
+        chunkSize, new StaticInvoke(MapLikeSerializer.class, "checkChunkSize", chunkSize, size));
     if (trackingKeyRef) {
       expressions.add(trackKeyRef);
     }
@@ -3192,7 +3404,48 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                   new Invoke(map, "put", keyAction, valueAction),
                   new Assign(size, subtract(size, ofInt(1))));
             });
-    expressions.add(readKeyValues);
+    boolean keyReadDataAlwaysAdvances =
+        keyMonomorphic && registeredReadDataAlwaysAdvances(keyTypeRawType);
+    boolean valueReadDataAlwaysAdvances =
+        valueMonomorphic && registeredReadDataAlwaysAdvances(valueTypeRawType);
+    if (keyReadDataAlwaysAdvances || valueReadDataAlwaysAdvances) {
+      expressions.add(readKeyValues);
+    } else {
+      Expression entryReadAlwaysAdvances = null;
+      if (trackingKeyRef) {
+        entryReadAlwaysAdvances = trackKeyRef;
+      }
+      if (trackingValueRef) {
+        entryReadAlwaysAdvances =
+            entryReadAlwaysAdvances == null
+                ? trackValueRef
+                : or(entryReadAlwaysAdvances, trackValueRef);
+      }
+      if (!keyMonomorphic) {
+        Expression keyAdvances =
+            inlineInvoke(keySerializerExpr, "readDataAlwaysAdvances", PRIMITIVE_BOOLEAN_TYPE);
+        if (registeredReadDataAlwaysAdvances(keyTypeRawType)) {
+          keyAdvances = or(keyIsDeclaredType, keyAdvances);
+        }
+        entryReadAlwaysAdvances =
+            entryReadAlwaysAdvances == null
+                ? keyAdvances
+                : or(entryReadAlwaysAdvances, keyAdvances);
+      }
+      if (!valueMonomorphic) {
+        Expression valueAdvances =
+            inlineInvoke(valueSerializerExpr, "readDataAlwaysAdvances", PRIMITIVE_BOOLEAN_TYPE);
+        if (registeredReadDataAlwaysAdvances(valueTypeRawType)) {
+          valueAdvances = or(valueIsDeclaredType, valueAdvances);
+        }
+        entryReadAlwaysAdvances =
+            entryReadAlwaysAdvances == null
+                ? valueAdvances
+                : or(entryReadAlwaysAdvances, valueAdvances);
+      }
+      expressions.add(
+          guardUnbackedMapEntries(buffer, chunkSize, readKeyValues, entryReadAlwaysAdvances));
+    }
 
     if (inline) {
       expressions.add(
@@ -3222,6 +3475,47 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Set<Expression> params = readCutPoints(buffer, size, chunkHeader, map);
       return invokeGenerated(ctx, params, expressions, "readChunk", false);
     }
+  }
+
+  private Expression guardUnbackedMapEntries(
+      Expression buffer,
+      Expression chunkSize,
+      Expression readEntries,
+      Expression entryReadAlwaysAdvances) {
+    Variable bodyStart;
+    ListExpression result = new ListExpression();
+    if (entryReadAlwaysAdvances == null) {
+      bodyStart =
+          new Variable(
+              "bodyStart", new Invoke(buffer, "readerIndex", "readerIndex", PRIMITIVE_INT_TYPE));
+    } else {
+      Variable progress = new Variable("entryReadAlwaysAdvances", entryReadAlwaysAdvances);
+      result.add(progress);
+      bodyStart =
+          new Variable(
+              "bodyStart",
+              new If(
+                  progress,
+                  ofInt(-1),
+                  new Invoke(buffer, "readerIndex", "readerIndex", PRIMITIVE_INT_TYPE),
+                  false,
+                  PRIMITIVE_INT_TYPE));
+    }
+    result.add(bodyStart, readEntries);
+    Variable currentByte =
+        new Variable(
+            "currentByte", new Invoke(buffer, "readerIndex", "readerIndex", PRIMITIVE_INT_TYPE));
+    Variable consumed = new Variable("consumed", subtract(currentByte, bodyStart));
+    Expression settle =
+        list(
+            currentByte,
+            consumed,
+            new If(
+                gt(chunkSize, consumed),
+                invokeReadContext("reserveUnbackedContainerItems", subtract(chunkSize, consumed))));
+    result.add(
+        entryReadAlwaysAdvances == null ? settle : new If(neq(bodyStart, ofInt(-1)), settle));
+    return result;
   }
 
   private Expression readOrGetSerializerForDeclaredType(

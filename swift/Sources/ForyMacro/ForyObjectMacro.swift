@@ -52,7 +52,10 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
             throw MacroExpansionErrorMessage("@ForyStruct supports struct and class declarations only")
         }
 
-        let parsed = try parseFields(declaration)
+        let parsed = try parseFields(
+            declaration,
+            isExternal: objectConfig.targetType != nil
+        )
         let sortedFields = sortFields(parsed.fields)
         let targetType =
             objectConfig.targetType
@@ -72,6 +75,12 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
         let staticTypeIDDecl: DeclSyntax = """
             \(raw: accessPrefix)static var staticTypeId: TypeId { .structType }
             """
+        let readProgressDecl: DeclSyntax = DeclSyntax(
+            stringLiteral: buildReadProgressDecl(
+                fields: parsed.fields,
+                accessPrefix: accessPrefix
+            )
+        )
         let evolvingDecl: DeclSyntax = """
             \(raw: accessPrefix)static var foryEvolving: Bool { \(raw: objectConfig.evolving ? "true" : "false") }
             """
@@ -98,6 +107,7 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
             stringLiteral: buildDefaultDecl(
                 isClass: parsed.isClass,
                 fields: parsed.fields,
+                graphFields: parsed.graphFields,
                 accessPrefix: accessPrefix
             )
         )
@@ -125,8 +135,7 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
         )
         let readDecl: DeclSyntax = DeclSyntax(
             stringLiteral: buildReadDataDecl(
-                isClass: parsed.isClass,
-                fields: parsed.fields,
+                declaration: parsed,
                 sortedFields: sortedFields,
                 accessPrefix: accessPrefix,
                 successBodyAttribute: successBodyAttribute
@@ -134,8 +143,7 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
         )
         let readCompatibleDecl: DeclSyntax = DeclSyntax(
             stringLiteral: buildReadCompatibleDataDecl(
-                isClass: parsed.isClass,
-                fields: parsed.fields,
+                declaration: parsed,
                 sortedFields: sortedFields,
                 accessPrefix: accessPrefix
             )
@@ -143,6 +151,7 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
         return [
             targetDecl,
             staticTypeIDDecl,
+            readProgressDecl,
             evolvingDecl,
             referenceTrackDecl,
             referenceTargetValidationDecl,
@@ -368,9 +377,17 @@ struct ParsedField {
     let customCodecType: String?
 }
 
-private struct ParsedDecl {
+enum ParsedGraphField {
+    case serialized(ParsedField)
+    // An ignored external field declares storage only; retaining just its type
+    // keeps it out of schema, target access, and construction generation.
+    case ignored(typeText: String)
+}
+
+struct ParsedDecl {
     let isClass: Bool
     let fields: [ParsedField]
+    let graphFields: [ParsedGraphField]
 }
 
 private enum ParsedEnumKind: Equatable {
@@ -417,6 +434,7 @@ private indirect enum FieldTypeHint {
 private struct ParsedForyFieldConfiguration {
     let encoding: FieldEncoding?
     let id: Int?
+    let ignore: Bool?
     let typeHint: FieldTypeHint?
     let serializerType: String?
 }
@@ -609,6 +627,9 @@ private func buildOrdinalEnumDecls(
     let staticTypeIDDecl: DeclSyntax = """
         \(raw: accessPrefix)static var staticTypeId: TypeId { .enumType }
         """
+    let readProgressDecl: DeclSyntax = """
+        \(raw: accessPrefix)static var readDataAlwaysAdvances: Bool { true }
+        """
     let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl(accessPrefix: accessPrefix))
     let readWrapperDecl: DeclSyntax = DeclSyntax(
         stringLiteral: buildStructReadWrapperDecl(
@@ -670,6 +691,7 @@ private func buildOrdinalEnumDecls(
         targetDecl,
         defaultDecl,
         staticTypeIDDecl,
+        readProgressDecl,
         writeWrapperDecl,
         readWrapperDecl,
         invalidRefFlagDecl,
@@ -845,6 +867,9 @@ private func buildTaggedUnionEnumDecls(
     let staticTypeIDDecl: DeclSyntax = """
         \(raw: accessPrefix)static var staticTypeId: TypeId { .typedUnion }
         """
+    let readProgressDecl: DeclSyntax = """
+        \(raw: accessPrefix)static var readDataAlwaysAdvances: Bool { true }
+        """
     let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl(accessPrefix: accessPrefix))
     let readWrapperDecl: DeclSyntax = DeclSyntax(
         stringLiteral: buildStructReadWrapperDecl(
@@ -897,6 +922,7 @@ private func buildTaggedUnionEnumDecls(
         targetDecl,
         defaultDecl,
         staticTypeIDDecl,
+        readProgressDecl,
         writeWrapperDecl,
         readWrapperDecl,
         invalidRefFlagDecl,
@@ -941,13 +967,17 @@ private func enumCaseDefaultExpr(_ enumCase: ParsedEnumCase) -> String {
     return ".\(enumCase.name)(\(args))"
 }
 
-private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDecl {
+private func parseFields(
+    _ declaration: some DeclGroupSyntax,
+    isExternal: Bool
+) throws -> ParsedDecl {
     let isClass = declaration.is(ClassDeclSyntax.self)
     guard isClass || declaration.is(StructDeclSyntax.self) else {
         throw MacroExpansionErrorMessage("@ForyStruct supports struct and class only")
     }
 
     var fields: [ParsedField] = []
+    var graphFields: [ParsedGraphField] = []
     var originalIndex = 0
 
     for member in declaration.memberBlock.members {
@@ -955,14 +985,12 @@ private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDe
             continue
         }
 
-        if varDecl.modifiers.contains(where: { $0.name.tokenKind == .keyword(.static) || $0.name.tokenKind == .keyword(.class) }) {
-            continue
-        }
-
         let fieldConfig = try parseForyFieldConfiguration(
             from: varDecl.attributes,
             supportsEncoding: true
         )
+        let ignoreSpecified = fieldConfig?.ignore != nil
+        let isIgnored = fieldConfig?.ignore == true
         let directTypeHint =
             fieldConfig?.serializerType.map { FieldTypeHint.with(serializerType: $0) }
             ?? fieldConfig?.typeHint
@@ -970,15 +998,49 @@ private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDe
             from: varDecl.attributes,
             existing: directTypeHint
         )
+        if ignoreSpecified && !isExternal {
+            throw MacroExpansionErrorMessage(
+                "@ForyField(ignore:) is only supported by external @ForyStruct declarations"
+            )
+        }
+        if isIgnored,
+            fieldConfig?.id != nil || fieldConfig?.encoding != nil || fieldTypeHint != nil
+        {
+            throw MacroExpansionErrorMessage(
+                "@ForyField(ignore: true) cannot be combined with wire or nested field options"
+            )
+        }
+        let isStatic = varDecl.modifiers.contains {
+            $0.name.tokenKind == .keyword(.static)
+                || $0.name.tokenKind == .keyword(.class)
+        }
+        if ignoreSpecified && isStatic {
+            throw MacroExpansionErrorMessage(
+                "@ForyField(ignore:) requires a named instance stored property"
+            )
+        }
+        if isStatic {
+            continue
+        }
         if fieldConfig != nil || fieldTypeHint != nil, varDecl.bindings.count != 1 {
             throw MacroExpansionErrorMessage("Fory field annotations can only be used on a single stored property")
         }
 
         for binding in varDecl.bindings {
             guard let pattern = binding.pattern.as(IdentifierPatternSyntax.self) else {
+                if ignoreSpecified {
+                    throw MacroExpansionErrorMessage(
+                        "@ForyField(ignore:) requires a named instance stored property"
+                    )
+                }
                 continue
             }
-            guard binding.accessorBlock == nil else {
+            if binding.accessorBlock != nil {
+                if ignoreSpecified {
+                    throw MacroExpansionErrorMessage(
+                        "@ForyField(ignore:) requires a named instance stored property"
+                    )
+                }
                 continue
             }
             guard let typeAnnotation = binding.typeAnnotation else {
@@ -987,6 +1049,11 @@ private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDe
 
             let name = pattern.identifier.text
             let rawType = typeAnnotation.type.trimmedDescription
+            if isIgnored {
+                graphFields.append(.ignored(typeText: rawType))
+                originalIndex += 1
+                continue
+            }
             let optionalUnwrapped = unwrapOptional(rawType)
             let isOptional = optionalUnwrapped.isOptional
             let concreteType = optionalUnwrapped.type
@@ -1021,25 +1088,25 @@ private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDe
                 group = 3
             }
 
-            fields.append(
-                ParsedField(
-                    name: name,
-                    typeText: rawType,
-                    typeHint: fieldTypeHint,
-                    originalIndex: originalIndex,
-                    isOptional: isOptional,
-                    isCollection: classification.isCollection || classification.isMap,
-                    fieldID: fieldID,
-                    schemaIdentifier: schemaIdentifier,
-                    fieldIdentifier: fieldIdentifier,
-                    group: group,
-                    typeID: classification.typeID,
-                    isCompressedNumeric: classification.isCompressedNumeric,
-                    primitiveSize: classification.primitiveSize,
-                    customCodecType:
-                        typeResolution.customCodecType ?? dynamicCodecType ?? carrierCodecType
-                )
+            let field = ParsedField(
+                name: name,
+                typeText: rawType,
+                typeHint: fieldTypeHint,
+                originalIndex: originalIndex,
+                isOptional: isOptional,
+                isCollection: classification.isCollection || classification.isMap,
+                fieldID: fieldID,
+                schemaIdentifier: schemaIdentifier,
+                fieldIdentifier: fieldIdentifier,
+                group: group,
+                typeID: classification.typeID,
+                isCompressedNumeric: classification.isCompressedNumeric,
+                primitiveSize: classification.primitiveSize,
+                customCodecType:
+                    typeResolution.customCodecType ?? dynamicCodecType ?? carrierCodecType
             )
+            fields.append(field)
+            graphFields.append(.serialized(field))
             originalIndex += 1
         }
     }
@@ -1057,7 +1124,11 @@ private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDe
         seenFieldIDs[fieldID] = field.name
     }
 
-    return ParsedDecl(isClass: isClass, fields: fields)
+    return ParsedDecl(
+        isClass: isClass,
+        fields: fields,
+        graphFields: graphFields
+    )
 }
 
 private func parseForyFieldConfiguration(
@@ -1066,6 +1137,7 @@ private func parseForyFieldConfiguration(
 ) throws -> ParsedForyFieldConfiguration? {
     var parsedEncoding: FieldEncoding?
     var parsedID: Int?
+    var parsedIgnore: Bool?
     var parsedTypeHint: FieldTypeHint?
     var parsedSerializerType: String?
     for element in attributes {
@@ -1111,6 +1183,20 @@ private func parseForyFieldConfiguration(
                 continue
             }
 
+            if label == "ignore" {
+                let ignore = try parseBoolLiteralExpression(
+                    arg.expression,
+                    message: "@ForyField ignore must be a boolean literal"
+                )
+                if let existing = parsedIgnore, existing != ignore {
+                    throw MacroExpansionErrorMessage(
+                        "conflicting @ForyField ignore values on the same declaration"
+                    )
+                }
+                parsedIgnore = ignore
+                continue
+            }
+
             if label == "type" {
                 if parsedTypeHint != nil {
                     throw MacroExpansionErrorMessage("conflicting @ForyField type hints on the same declaration")
@@ -1131,7 +1217,7 @@ private func parseForyFieldConfiguration(
             }
 
             throw MacroExpansionErrorMessage(
-                "@ForyField supports only 'id', 'encoding', 'type', and 'with' arguments"
+                "@ForyField supports only 'id', 'ignore', 'encoding', 'type', and 'with' arguments"
             )
         }
     }
@@ -1147,13 +1233,19 @@ private func parseForyFieldConfiguration(
         )
     }
 
-    if parsedEncoding == nil, parsedID == nil, parsedTypeHint == nil, parsedSerializerType == nil {
+    if parsedEncoding == nil,
+        parsedID == nil,
+        parsedIgnore == nil,
+        parsedTypeHint == nil,
+        parsedSerializerType == nil
+    {
         return nil
     }
 
     return ParsedForyFieldConfiguration(
         encoding: parsedEncoding,
         id: parsedID,
+        ignore: parsedIgnore,
         typeHint: parsedTypeHint,
         serializerType: parsedSerializerType
     )
@@ -2758,11 +2850,16 @@ private func buildSchemaTypeFingerprint(
     return "\"\\(__foryNormalizeSchemaFingerprintTypeID(\(typeIDExpr))),\\(\(trackFlagExpr)),\(nullableLiteral)\""
 }
 
-private func buildDefaultDecl(isClass: Bool, fields: [ParsedField], accessPrefix: String) -> String {
+private func buildDefaultDecl(
+    isClass: Bool,
+    fields: [ParsedField],
+    graphFields: [ParsedGraphField],
+    accessPrefix: String
+) -> String {
     if isClass {
         return """
             \(accessPrefix)static func defaultValue(_ context: ReadContext) throws -> Target {
-                try context.reserveGraphMemory(\(classGraphOwnerBytesExpr(fields)))
+                try context.reserveGraphMemory(\(classGraphOwnerBytesExpr(graphFields)))
                 return Target.init()
             }
             """
@@ -3431,6 +3528,23 @@ private func classifyType(
     }
 
     return .init(typeID: 27, isPrimitive: false, isBuiltIn: false, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
+}
+
+private func buildReadProgressDecl(fields: [ParsedField], accessPrefix: String) -> String {
+    let terms = fields.compactMap { field -> String? in
+        if field.isOptional {
+            return "true"
+        }
+        if let codec = field.customCodecType {
+            return "\(codec).readDataAlwaysAdvances"
+        }
+        if classifyType(field.typeText).isBuiltIn {
+            return "\(field.typeText).readDataAlwaysAdvances"
+        }
+        return nil
+    }
+    let expression = terms.isEmpty ? "false" : terms.joined(separator: " || ")
+    return "\(accessPrefix)static var readDataAlwaysAdvances: Bool { \(expression) }"
 }
 
 private func parseArrayElement(_ type: String) -> String? {

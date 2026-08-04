@@ -41,7 +41,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     this.typeInfo = typeInfo;
     this.typeMeta = TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver);
     this.serializerExpr = TypeId.isNamedType(typeInfo.typeId)
-      ? `${this.builder.getTypeResolverName()}.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(typeInfo.named!)}")`
+      ? `${this.builder.getTypeResolverName()}.getSerializerByName(${CodecBuilder.sourceString(typeInfo.named!)})`
       : `${this.builder.getTypeResolverName()}.getSerializerById(${typeInfo.typeId}, ${typeInfo.userTypeId})`;
     this.ownTypeInfoExpr = `${this.serializerExpr}.getTypeInfo()`;
   }
@@ -133,9 +133,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
             const name = this.scope.declare(
               "ext_ser",
               TypeId.isNamedType(this.typeInfo.typeId)
-                ? this.builder.typeResolver.getSerializerByName(
-                    CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
-                  )
+                ? this.builder.typeResolver.getSerializerByName(this.typeInfo.named!)
                 : this.builder.typeResolver.getSerializerById(
                     this.typeInfo.typeId,
                     this.typeInfo.userTypeId,
@@ -157,9 +155,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
             const name = this.scope.declare(
               "ext_ser",
               TypeId.isNamedType(this.typeInfo.typeId)
-                ? this.builder.typeResolver.getSerializerByName(
-                    CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
-                  )
+                ? this.builder.typeResolver.getSerializerByName(this.typeInfo.named!)
                 : this.builder.typeResolver.getSerializerById(
                     this.typeInfo.typeId,
                     this.typeInfo.userTypeId,
@@ -185,15 +181,11 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
           const typeInfo = this.typeInfo;
           const nsBytes = this.scope.declare(
             "nsBytes",
-            this.builder.metaStringResolver.encodeNamespace(
-              CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace),
-            ),
+            this.builder.metaStringResolver.encodeNamespace(typeInfo.namespace),
           );
           const typeNameBytes = this.scope.declare(
             "typeNameBytes",
-            this.builder.metaStringResolver.encodeTypeName(
-              CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName),
-            ),
+            this.builder.metaStringResolver.encodeTypeName(typeInfo.typeName),
           );
           typeMeta = `
             ${this.builder.metaStringResolver.writeBytes(nsBytes)}

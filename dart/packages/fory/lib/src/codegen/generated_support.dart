@@ -134,8 +134,6 @@ final class GeneratedStructFieldDescriptor {
     required this.usesDeclaredType,
   });
 
-  String get name => field.name;
-
   meta_types.FieldType get fieldType => field.fieldType;
 }
 
@@ -146,6 +144,7 @@ final class GeneratedStructSchema<T> {
   final bool evolving;
   final bool needsRootRef;
   final bool usesNestedTypeDefinitions;
+  final bool readDataAlwaysAdvances;
   final List<GeneratedFieldInfo> fields;
 
   GeneratedStructSchema({
@@ -154,6 +153,7 @@ final class GeneratedStructSchema<T> {
     required this.evolving,
     required this.needsRootRef,
     required this.usesNestedTypeDefinitions,
+    required this.readDataAlwaysAdvances,
     required this.fields,
   });
 
@@ -173,14 +173,16 @@ void registerGeneratedEnum(
   int? id,
   String? name,
 }) {
-  GeneratedTypeCatalog.remember(
+  fory.registerGenerated(
     schema.type,
     GeneratedTypeEntry(
       kind: GeneratedTypeKind.enumType,
       serializerFactory: schema.serializerFactory,
+      readDataAlwaysAdvances: true,
     ),
+    id: id,
+    name: name,
   );
-  fory.register(schema.type, id: id, name: name);
 }
 
 @internal
@@ -190,7 +192,7 @@ void registerGeneratedStruct<T>(
   int? id,
   String? name,
 }) {
-  GeneratedTypeCatalog.remember(
+  fory.registerGenerated(
     schema.type,
     GeneratedTypeEntry(
       kind: GeneratedTypeKind.struct,
@@ -198,10 +200,12 @@ void registerGeneratedStruct<T>(
       evolving: schema.evolving,
       needsRootRef: schema.needsRootRef,
       usesNestedTypeDefinitions: schema.usesNestedTypeDefinitions,
+      readDataAlwaysAdvances: schema.readDataAlwaysAdvances,
       fields: schema.fieldInfos,
     ),
+    id: id,
+    name: name,
   );
-  fory.register(schema.type, id: id, name: name);
 }
 
 @internal
@@ -532,14 +536,30 @@ Object readGeneratedStructDirectValue(
   } else {
     resolved = context.readTypeMetaValue(declared);
   }
+  final structSerializer = resolved.structSerializer;
+  if (structSerializer == null) {
+    // An explicit custom registration before the first root operation may
+    // replace a generated child binding. The finalized TypeInfo owns that
+    // operation; only an ordinary generated-struct binding uses the direct
+    // path below.
+    return _readGeneratedCustomField(context, resolved, field.fieldType);
+  }
   context.increaseDepth();
-  final structSerializer = resolved.structSerializer!;
   final value =
       resolved.remoteTypeDef == null
           ? structSerializer.readValue(context, resolved)
           : structSerializer.readGeneratedCompatibleValue(context, resolved);
   context.decreaseDepth();
   return value;
+}
+
+@pragma('vm:never-inline')
+Object _readGeneratedCustomField(
+  ReadContext context,
+  resolver.TypeInfo resolved,
+  meta_types.FieldType fieldType,
+) {
+  return context.readResolvedValue(resolved, fieldType)!;
 }
 
 @internal

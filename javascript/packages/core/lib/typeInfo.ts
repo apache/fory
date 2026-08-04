@@ -27,7 +27,7 @@ const targetFields = new WeakMap<new () => any, { [key: string]: TypeInfo }>();
 
 const addField = (target: new () => any, key: string, des: TypeInfo) => {
   if (!targetFields.has(target)) {
-    targetFields.set(target, {});
+    targetFields.set(target, Object.create(null));
   }
   targetFields.get(target)![key] = des;
 };
@@ -120,10 +120,8 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     }
     this.options!.withConstructor = true;
     this.options!.creator = target;
-    if (!this.options!.props) {
-      this.options!.props = {};
-    }
-    Object.assign(this.options!.props, targetFields.get(target) || {});
+    const props = this.options!.props ?? (this.options!.props = Object.create(null));
+    Object.assign(props, targetFields.get(target) || {});
     const that = this;
     Object.defineProperties(target.prototype, {
       [ForyTypeInfoSymbol]: {

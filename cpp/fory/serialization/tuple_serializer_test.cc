@@ -20,9 +20,11 @@
 #include "fory/serialization/fory.h"
 #include "gtest/gtest.h"
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <tuple>
+#include <variant>
 
 namespace fory {
 namespace serialization {
@@ -90,6 +92,28 @@ struct TupleEmptyHolder {
 struct TupleNestedHolder {
   std::tuple<std::tuple<int32_t, int32_t>, std::string> values;
   FORY_STRUCT(TupleNestedHolder, values);
+};
+
+struct TupleRemoteV1 {
+  int32_t value{};
+  int32_t removed{};
+  FORY_STRUCT(TupleRemoteV1, value, removed);
+};
+
+struct TupleRemoteV2 {
+  int32_t value{};
+  FORY_STRUCT(TupleRemoteV2, value);
+};
+
+struct TuplePolyBase {
+  virtual ~TuplePolyBase() = default;
+  int32_t base_value{};
+  FORY_STRUCT(TuplePolyBase, base_value);
+};
+
+struct TuplePolyDerived : TuplePolyBase {
+  int32_t derived_value{};
+  FORY_STRUCT(TuplePolyDerived, FORY_BASE(TuplePolyBase), derived_value);
 };
 
 Fory create_fory() {
@@ -283,6 +307,87 @@ TEST(TupleSerializerTest, HomogeneousOptimizationSize) {
   // Homogeneous should be smaller due to single type info
   EXPECT_GT(homo_bytes->size(), 0u);
   EXPECT_GT(hetero_bytes->size(), 0u);
+}
+
+TEST(TupleSerializerTest, ExtraNoneElementsNeedNoInput) {
+  Config config;
+  config.xlang = true;
+  ReadContext ctx(config, std::make_unique<TypeResolver>());
+  Buffer buffer;
+  buffer.write_var_uint32(std::numeric_limits<uint32_t>::max());
+  buffer.write_uint8(COLL_IS_SAME_TYPE);
+  buffer.write_uint8(static_cast<uint8_t>(TypeId::NONE));
+  ctx.attach(buffer);
+
+  auto result = Serializer<std::tuple<std::monostate>>::read_data(ctx);
+  ASSERT_FALSE(ctx.has_error()) << ctx.error().to_string();
+  EXPECT_EQ(result, std::tuple<std::monostate>{});
+  EXPECT_EQ(ctx.buffer().reader_index(), buffer.writer_index());
+}
+
+TEST(TupleSerializerTest, SameTypeUsesRemoteReadBinding) {
+  auto writer =
+      Fory::builder().xlang(true).compatible(true).track_ref(true).build();
+  auto reader =
+      Fory::builder().xlang(true).compatible(true).track_ref(true).build();
+  ASSERT_TRUE(
+      writer.register_struct<TupleRemoteV1>("remote", "TupleValue").ok());
+  ASSERT_TRUE(
+      reader.register_struct<TupleRemoteV2>("remote", "TupleValue").ok());
+  using WriterInner = std::vector<TupleRemoteV1>;
+  using ReaderInner = std::tuple<TupleRemoteV2, TupleRemoteV2, TupleRemoteV2>;
+  using WriterRoot = std::tuple<WriterInner, int32_t>;
+  using ReaderRoot = std::tuple<ReaderInner, int32_t>;
+  WriterRoot original{WriterInner{{7, 70}, {9, 90}, {13, 130}}, 11};
+  auto bytes = writer.serialize(original);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+  auto decoded = reader.deserialize<ReaderRoot>(*bytes);
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  const ReaderInner &inner = std::get<0>(*decoded);
+  EXPECT_EQ(std::get<0>(inner).value, 7);
+  EXPECT_EQ(std::get<1>(inner).value, 9);
+  EXPECT_EQ(std::get<2>(inner).value, 13);
+  EXPECT_EQ(std::get<1>(*decoded), 11);
+}
+
+TEST(TupleSerializerTest, PolymorphicSameTypeBinding) {
+  auto writer =
+      Fory::builder().xlang(true).compatible(true).track_ref(true).build();
+  auto reader =
+      Fory::builder().xlang(true).compatible(true).track_ref(true).build();
+  ASSERT_TRUE(
+      writer.register_struct<TuplePolyBase>("remote", "TuplePolyBase").ok());
+  ASSERT_TRUE(
+      writer.register_struct<TuplePolyDerived>("remote", "TuplePolyDerived")
+          .ok());
+  ASSERT_TRUE(
+      reader.register_struct<TuplePolyBase>("remote", "TuplePolyBase").ok());
+  ASSERT_TRUE(
+      reader.register_struct<TuplePolyDerived>("remote", "TuplePolyDerived")
+          .ok());
+
+  using WriterInner = std::vector<std::shared_ptr<TuplePolyBase>>;
+  using ReaderInner = std::tuple<std::shared_ptr<TuplePolyBase>,
+                                 std::shared_ptr<TuplePolyBase>>;
+  using WriterRoot = std::tuple<WriterInner, int32_t>;
+  using ReaderRoot = std::tuple<ReaderInner, int32_t>;
+  auto value = std::make_shared<TuplePolyDerived>();
+  value->base_value = 7;
+  value->derived_value = 9;
+  auto bytes = writer.serialize(WriterRoot{{value, value}, 11});
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+  auto decoded = reader.deserialize<ReaderRoot>(*bytes);
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  const ReaderInner &inner = std::get<0>(*decoded);
+  ASSERT_TRUE(std::get<0>(inner));
+  EXPECT_EQ(std::get<0>(inner), std::get<1>(inner));
+  auto *derived = dynamic_cast<TuplePolyDerived *>(std::get<0>(inner).get());
+  ASSERT_NE(derived, nullptr);
+  EXPECT_EQ(derived->base_value, 7);
+  EXPECT_EQ(derived->derived_value, 9);
+  EXPECT_EQ(std::get<1>(*decoded), 11);
 }
 
 } // namespace

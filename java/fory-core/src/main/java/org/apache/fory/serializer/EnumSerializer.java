@@ -338,4 +338,9 @@ public class EnumSerializer extends ImmutableSerializer<Enum> implements Shareab
       return (int) tag;
     }
   }
+
+  @Override
+  public final boolean readDataAlwaysAdvances() {
+    return true;
+  }
 }

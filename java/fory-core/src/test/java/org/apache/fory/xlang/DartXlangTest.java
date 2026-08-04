@@ -31,6 +31,7 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.ForyStruct;
+import org.apache.fory.annotation.Int32Type;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.TestUtils;
@@ -45,19 +46,12 @@ public class DartXlangTest extends XlangTestBase {
   private static final int DART_SETUP_TIMEOUT_SECONDS = 300;
   private static final File DART_WORK_DIR = new File("../../dart");
   private static final File DART_FORY_TEST_WORK_DIR = new File("../../dart/packages/fory-test");
-  private static final File DART_XLANG_SOURCE_FILE =
-      new File(DART_FORY_TEST_WORK_DIR, "lib/entity/xlang_test_models.dart");
-  private static final File DART_XLANG_GENERATED_FILE =
-      new File(DART_FORY_TEST_WORK_DIR, "lib/entity/xlang_test_models.fory.dart");
-  private static final File DART_EXTERNAL_SOURCE_FILE =
-      new File(DART_FORY_TEST_WORK_DIR, "lib/model/external_serializers.dart");
-  private static final File DART_EXTERNAL_GENERATED_FILE =
-      new File(DART_FORY_TEST_WORK_DIR, "lib/model/external_serializers.fory.dart");
+  private static final File DART_INHERITANCE_PROVIDER_WORK_DIR =
+      new File("../../dart/packages/inheritance-test-models");
   private static final String DART_MODULE =
       "packages/fory-test/test/cross_lang_test/xlang_test_main.dart";
   private static final List<String> DART_CODEGEN_COMMAND =
-      Arrays.asList(
-          DART_EXECUTABLE, "run", "build_runner", "build", "--delete-conflicting-outputs");
+      Arrays.asList(DART_EXECUTABLE, "run", "build_runner", "build");
 
   private static final List<String> DART_BASE_COMMAND =
       Arrays.asList(DART_EXECUTABLE, "run", DART_MODULE, "<DART_TESTCASE>");
@@ -99,12 +93,14 @@ public class DartXlangTest extends XlangTestBase {
   }
 
   private static synchronized void ensureGeneratedXlangSpecs() {
-    if (DART_XLANG_GENERATED_FILE.isFile()
-        && DART_XLANG_GENERATED_FILE.lastModified() >= DART_XLANG_SOURCE_FILE.lastModified()
-        && DART_EXTERNAL_GENERATED_FILE.isFile()
-        && DART_EXTERNAL_GENERATED_FILE.lastModified()
-            >= DART_EXTERNAL_SOURCE_FILE.lastModified()) {
-      return;
+    if (!TestUtils.executeCommand(
+        DART_CODEGEN_COMMAND,
+        DART_SETUP_TIMEOUT_SECONDS,
+        Collections.emptyMap(),
+        DART_INHERITANCE_PROVIDER_WORK_DIR)) {
+      throw new IllegalStateException(
+          "Failed to generate Dart inheritance providers by command: "
+              + String.join(" ", DART_CODEGEN_COMMAND));
     }
     if (!TestUtils.executeCommand(
         DART_CODEGEN_COMMAND,
@@ -129,6 +125,30 @@ public class DartXlangTest extends XlangTestBase {
 
     @ForyField(id = 2)
     int age;
+  }
+
+  @Data
+  @ForyStruct
+  static class FlatInheritedStruct {
+    @ForyField(id = 1)
+    @Int32Type
+    int childInt;
+
+    @ForyField(id = 2)
+    @Int32Type
+    int parentInt;
+
+    @ForyField(id = 5)
+    boolean childFlag;
+
+    @ForyField(id = 6)
+    boolean parentFlag;
+
+    @ForyField(id = 9)
+    String childText;
+
+    @ForyField(id = 10)
+    String parentText;
   }
 
   private void runExternalUser(boolean enableCodegen, boolean named) throws IOException {
@@ -161,6 +181,43 @@ public class DartXlangTest extends XlangTestBase {
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testExternalStructName(boolean enableCodegen) throws IOException {
     runExternalUser(enableCodegen, true);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testInheritedFlatStruct(boolean enableCodegen) throws IOException {
+    Fory fory =
+        Fory.builder()
+            .withXlang(true)
+            .withCompatible(false)
+            .withCodegen(enableCodegen)
+            .withMetaCompressor(new NoOpMetaCompressor())
+            .build();
+    fory.register(FlatInheritedStruct.class, 1101);
+
+    FlatInheritedStruct expected = new FlatInheritedStruct();
+    expected.childInt = 101;
+    expected.parentInt = 202;
+    expected.childFlag = true;
+    expected.parentFlag = false;
+    expected.childText = "child";
+    expected.parentText = "parent";
+    byte[] javaBytes = fory.serialize(expected);
+
+    ExecutionContext javaContext = prepareExecution("test_inherited_flat_from_java", javaBytes);
+    runPeer(javaContext);
+    byte[] dartRoundTripBytes = readBytes(javaContext.dataFile());
+    Assert.assertTrue(
+        Arrays.equals(dartRoundTripBytes, javaBytes),
+        "Dart inherited round-trip must preserve Java flat bytes.");
+    Assert.assertEquals(fory.deserialize(dartRoundTripBytes), expected);
+
+    ExecutionContext dartContext = prepareExecution("test_inherited_flat_from_dart", new byte[0]);
+    runPeer(dartContext);
+    byte[] dartBytes = readBytes(dartContext.dataFile());
+    Assert.assertTrue(
+        Arrays.equals(dartBytes, javaBytes),
+        "Dart inherited and Java flat writers must emit identical bytes.");
+    Assert.assertEquals(fory.deserialize(dartBytes), expected);
   }
 
   @Test(groups = "xlang")

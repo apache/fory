@@ -19,6 +19,8 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.generatedCodecId;
+import static org.apache.fory.json.JsonTestSupport.generatedUtf8WriterClass;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertThrows;
@@ -45,6 +47,7 @@ import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.annotation.JsonValidator;
 import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -141,6 +144,20 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void validatorAnnotations() {
+    ForyJson added = newJsonBuilder().registerMixin(ValidatorMixin.class).build();
+    ValidatorTarget value = added.fromJson("{\"id\":7}", ValidatorTarget.class);
+    assertEquals(value.validations, 1);
+
+    ForyJson direct = newJson();
+    assertEquals(direct.fromJson("{\"id\":8}", RemoveValidatorTarget.class).validations, 1);
+    ForyJson removed = newJsonBuilder().registerMixin(RemoveValidatorMixin.class).build();
+    assertEquals(removed.fromJson("{\"id\":8}", RemoveValidatorTarget.class).validations, 0);
+    assertGeneratedWhenSupported(added, ValidatorTarget.class);
+    assertGeneratedWhenSupported(removed, RemoveValidatorTarget.class);
+  }
+
+  @Test
   public void typeAnnotations() {
     ForyJson subtypeJson = newJsonBuilder().registerMixin(ShapeMixin.class).build();
     Shape value = new Circle(3);
@@ -189,14 +206,20 @@ public class JsonMixinTest extends ForyJsonTestModels {
             .registerMixin(FirstNameMixin.class)
             .build();
     ForyJson equivalent = newJsonBuilder().registerMixin(FirstNameMixin.class).build();
-    assertEquals(JsonTestSupport.config(repeated), JsonTestSupport.config(equivalent));
-    assertEquals(
-        JsonTestSupport.config(repeated).getCodegenHash(),
-        JsonTestSupport.config(equivalent).getCodegenHash());
-    assertNotEquals(JsonTestSupport.config(first), JsonTestSupport.config(second));
-    assertNotEquals(
-        JsonTestSupport.config(first).getCodegenHash(),
-        JsonTestSupport.config(second).getCodegenHash());
+    assertEquals(repeated.toJson(new NameTarget("repeat")), "{\"first\":\"repeat\"}");
+    assertEquals(equivalent.toJson(new NameTarget("equal")), "{\"first\":\"equal\"}");
+    if (codegenEnabled()) {
+      first.toJsonBytes(new NameTarget("first"));
+      second.toJsonBytes(new NameTarget("second"));
+      repeated.toJsonBytes(new NameTarget("repeat"));
+      equivalent.toJsonBytes(new NameTarget("equal"));
+      assertEquals(
+          generatedCodecId(generatedUtf8WriterClass(repeated, NameTarget.class)),
+          generatedCodecId(generatedUtf8WriterClass(equivalent, NameTarget.class)));
+      assertNotEquals(
+          generatedCodecId(generatedUtf8WriterClass(first, NameTarget.class)),
+          generatedCodecId(generatedUtf8WriterClass(second, NameTarget.class)));
+    }
     assertGeneratedWhenSupported(first, NameTarget.class);
     assertGeneratedWhenSupported(second, NameTarget.class);
   }
@@ -568,6 +591,40 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
     @JsonCreator
     ValueTarget create(String value);
+  }
+
+  public static final class ValidatorTarget {
+    public int id;
+    public transient int validations;
+
+    public void checkValid() {
+      if (id <= 0) {
+        throw new IllegalArgumentException("invalid id");
+      }
+      validations++;
+    }
+  }
+
+  @JsonMixin(target = ValidatorTarget.class)
+  public abstract static class ValidatorMixin {
+    @JsonValidator
+    public abstract void checkValid();
+  }
+
+  public static final class RemoveValidatorTarget {
+    public int id;
+    public transient int validations;
+
+    @JsonValidator
+    public void checkValid() {
+      validations++;
+    }
+  }
+
+  @JsonMixin(target = RemoveValidatorTarget.class)
+  public abstract static class RemoveValidatorMixin {
+    @JsonMixinRemove(JsonValidator.class)
+    public abstract void checkValid();
   }
 
   public interface Shape {}

@@ -53,6 +53,7 @@ func (s *structSerializer) initialize(typeResolver *TypeResolver) error {
 			return err
 		}
 	}
+	s.readDataAlwaysAdvances = s.computeReadDataAlwaysAdvances()
 	// Compute struct hash
 	s.structHash = s.computeHash()
 	if s.tempValue == nil {
@@ -510,6 +511,15 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 					shouldRead = true
 					fieldType = localType
 				}
+			} else if localFieldSpec != nil &&
+				(!def.nullable || localNullableByIndex[fieldIndex]) &&
+				def.trackRef == localTrackRefByIndex[fieldIndex] &&
+				canReadEnumSpec(def.typeSpec, localFieldSpec.Type) {
+				// A generic remote ENUM has no concrete Go type, so container type
+				// resolution yields any. Bind the local enum carrier, but keep the
+				// remote TypeSpec below so wire null/ref framing remains authoritative.
+				shouldRead = true
+				fieldType = localType
 			} else if typeLookupFailed && defTypeId == LIST {
 				if localType.Kind() == reflect.Slice {
 					elemKind := localType.Elem().Kind()
@@ -646,6 +656,16 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 						} else {
 							fieldSerializer = int32ArraySerializer{arrayType: localType}
 						}
+					}
+				}
+				if localType.Kind() == reflect.Interface && compatibleScalarType(defTypeId) && fieldSerializer != nil {
+					scalarType, ok := goTypeForTypeID(defTypeId, typeResolver)
+					if !ok || scalarType == nil || !scalarType.AssignableTo(localType) {
+						return fmt.Errorf("compatible scalar type %d cannot be materialized as %s", defTypeId, localType)
+					}
+					fieldSerializer = interfaceScalarSerializer{
+						type_:      scalarType,
+						serializer: fieldSerializer,
 					}
 				}
 			} else {
@@ -841,6 +861,51 @@ func fieldSpecEqualForDiff(remoteSpec *TypeSpec, remoteNullable bool, remoteTrac
 	local.Nullable = localNullable
 	local.TrackRef = localTrackRef
 	return remote.EqualForDiff(local)
+}
+
+func canReadEnumSpec(remote, local *TypeSpec) bool {
+	ok, hasEnum := matchEnumSpec(remote, local, true)
+	return ok && hasEnum
+}
+
+func matchEnumSpec(remote, local *TypeSpec, root bool) (bool, bool) {
+	if remote == nil || local == nil {
+		return false, false
+	}
+	remote.normalizeChildren()
+	local.normalizeChildren()
+	if remote.TypeID != local.TypeID {
+		return false, false
+	}
+	// FieldDef owns root null/ref flags, which wire TypeSpec roots strip. The
+	// caller compares those flags; only nested TypeSpecs are checked here.
+	var localNullable bool
+	if !root {
+		// Nested TypeDef flags come from explicit declarations. Mirror that
+		// projection here without allocating a second TypeSpec tree.
+		localNullable = local.declaredNullable()
+		if remote.TrackRef != local.declaredTrackRef() ||
+			(remote.Nullable && !localNullable) {
+			return false, false
+		}
+	}
+	switch remote.TypeID {
+	case ENUM:
+		return true, true
+	case LIST, SET:
+		return matchEnumSpec(remote.Element, local.Element, false)
+	case MAP:
+		keyOK, keyEnum := matchEnumSpec(remote.Key, local.Key, false)
+		valueOK, valueEnum := matchEnumSpec(remote.Value, local.Value, false)
+		return keyOK && valueOK, keyEnum || valueEnum
+	default:
+		if root {
+			return true, false
+		}
+		// Non-enum leaves must be identical; only enum/container nullability is
+		// directional because the remote serializer owns that framing.
+		return remote.Nullable == localNullable, false
+	}
 }
 
 func sameListSchemaCanReadLocalArray(remoteSpec *TypeSpec, remoteNullable bool, remoteTrackRef bool, localSpec *TypeSpec, localNullable bool, localTrackRef bool, localType reflect.Type) bool {

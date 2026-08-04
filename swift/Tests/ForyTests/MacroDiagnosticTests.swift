@@ -395,3 +395,176 @@ func serializerExistentialRejected() {
             "fields cannot use 'any Serializer' as an application value; select a concrete application protocol with DynamicSerializer"
     )
 }
+
+@Test
+func ignoredFieldRequiresExternalTarget() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadIgnoredField {
+            @ForyField(ignore: true)
+            var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+                struct BadIgnoredField {
+                    var value: Int32 = 0
+                }
+            """,
+        message: "@ForyField(ignore:) is only supported by external @ForyStruct declarations"
+    )
+
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadExplicitFalse {
+            @ForyField(ignore: false)
+            var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            struct BadExplicitFalse {
+                var value: Int32 = 0
+            }
+            """,
+        message: "@ForyField(ignore:) is only supported by external @ForyStruct declarations"
+    )
+}
+
+@Test
+func ignoredFieldRequiresLiteral() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        struct BadIgnoredField {
+            @ForyField(ignore: enabled)
+            var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            struct BadIgnoredField {
+                var value: Int32 = 0
+            }
+            """,
+        message: "@ForyField ignore must be a boolean literal"
+    )
+}
+
+@Test
+func ignoredFieldRejectsWireOptions() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        struct BadIgnoredField {
+            @ForyField(id: 1, ignore: true)
+            var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            struct BadIgnoredField {
+                var value: Int32 = 0
+            }
+            """,
+        message: "@ForyField(ignore: true) cannot be combined with wire or nested field options"
+    )
+}
+
+@Test
+func ignoredFieldRejectsNestedOptions() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        struct BadIgnoredField {
+            @ForyField(ignore: true)
+            @ListField(element: .int32())
+            var value: [Int32] = []
+        }
+        """,
+        expandedSource:
+            """
+            struct BadIgnoredField {
+                var value: [Int32] = []
+            }
+            """,
+        message: "@ForyField(ignore: true) cannot be combined with wire or nested field options"
+    )
+}
+
+@Test
+func ignoredFieldShapeDiagnostics() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        final class BadStaticField {
+            @ForyField(ignore: true)
+            static var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            final class BadStaticField {
+                static var value: Int32 = 0
+            }
+            """,
+        message: "@ForyField(ignore:) requires a named instance stored property"
+    )
+
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        struct BadPatternField {
+            @ForyField(ignore: true)
+            var (first, second): (Int32, Int32) = (0, 0)
+        }
+        """,
+        expandedSource:
+            """
+            struct BadPatternField {
+                var (first, second): (Int32, Int32) = (0, 0)
+            }
+            """,
+        message: "@ForyField(ignore:) requires a named instance stored property"
+    )
+
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        final class BadComputedField {
+            @ForyField(ignore: true)
+            var value: Int32 {
+                0
+            }
+        }
+        """,
+        expandedSource:
+            """
+            final class BadComputedField {
+                var value: Int32 {
+                    0
+                }
+            }
+            """,
+        message: "@ForyField(ignore:) requires a named instance stored property"
+    )
+
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        struct BadMultiBinding {
+            @ForyField(ignore: true)
+            var first: Int32 = 0, second: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            struct BadMultiBinding {
+                var first: Int32 = 0, second: Int32 = 0
+            }
+            """,
+        message: "Fory field annotations can only be used on a single stored property"
+    )
+}

@@ -17,7 +17,7 @@
 
 //! Internal field codecs used by macro-generated serializers.
 //!
-//! Manual serialization belongs in [`crate::Serializer`]. Codecs are
+//! Custom serialization belongs in [`crate::Serializer`]. Codecs are
 //! Fory-owned building blocks that allow generated code to apply field-local and
 //! nested collection configuration without creating wrapper value types.
 
@@ -717,6 +717,8 @@ where
 
     const REQUIRES_SCOPED_ACCESS: bool = S::REQUIRES_SCOPED_ACCESS;
 
+    const READ_DATA_ALWAYS_ADVANCES: bool = S::READ_DATA_ALWAYS_ADVANCES;
+
     #[inline(always)]
     fn is_none(value: &S::Target) -> bool {
         S::is_none(value)
@@ -882,6 +884,8 @@ where
     C: Serializer<Target = T>,
 {
     type Target = Option<T>;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = C::READ_DATA_ALWAYS_ADVANCES;
 
     #[inline(always)]
     fn reserved_space() -> usize {
@@ -1602,6 +1606,8 @@ where
     S: Serializer<Target = T>,
 {
     type Target = Vec<T>;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
 
     #[inline(always)]
     fn reserved_space() -> usize {

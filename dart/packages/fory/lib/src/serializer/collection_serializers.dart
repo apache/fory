@@ -22,6 +22,7 @@ import 'dart:typed_data';
 import 'package:fory/src/context/read_context.dart';
 import 'package:fory/src/context/ref_writer.dart';
 import 'package:fory/src/context/write_context.dart';
+import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/meta/field_info.dart';
 import 'package:fory/src/meta/field_type.dart';
 import 'package:fory/src/meta/type_ids.dart';
@@ -39,6 +40,7 @@ import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/uint64.dart';
 
 const int _referenceBytes = 4;
+const int _unbackedCheckInterval = 1024;
 // Conservative lower bound for the retained Dart List/Set owner itself. The six reference-width
 // slots approximate object/runtime metadata and backing-storage state; element slots are charged
 // separately by count below. This is not a Fory wire header or a Dart VM layout probe.
@@ -340,7 +342,11 @@ final class ListSerializer extends Serializer<List> {
     bool hasPreservedRef = false,
   }) {
     final state = _prepareListRead(context, elementFieldType);
-    context.buffer.checkReadableBytes(state.size);
+    if (state.guardUnbackedItems) {
+      context.checkUnbackedContainerAllocation(state.size);
+    } else {
+      context.buffer.checkReadableBytes(state.size);
+    }
     final result = List<Object?>.filled(state.size, null, growable: false);
     if (hasPreservedRef) {
       context.reference(result);
@@ -351,8 +357,30 @@ final class ListSerializer extends Serializer<List> {
     if (state.tracksDepth) {
       context.increaseDepth();
     }
-    for (var index = 0; index < state.size; index += 1) {
-      result[index] = _readPreparedListItem(context, state);
+    if (!state.guardUnbackedItems) {
+      for (var index = 0; index < state.size; index += 1) {
+        result[index] = _readPreparedListItem(context, state);
+      }
+    } else {
+      var checkpoint = bufferReaderIndex(context.buffer);
+      for (var index = 0; index < state.size; index += 1) {
+        result[index] = _readPreparedListItem(context, state);
+        if (((index + 1) & (_unbackedCheckInterval - 1)) == 0) {
+          final cursor = bufferReaderIndex(context.buffer);
+          context.settleUnbackedContainerItems(
+            _unbackedCheckInterval,
+            cursor - checkpoint,
+          );
+          checkpoint = cursor;
+        }
+      }
+      final tail = state.size & (_unbackedCheckInterval - 1);
+      if (tail != 0) {
+        context.settleUnbackedContainerItems(
+          tail,
+          bufferReaderIndex(context.buffer) - checkpoint,
+        );
+      }
     }
     if (state.tracksDepth) {
       context.decreaseDepth();
@@ -385,7 +413,9 @@ final class SetSerializer extends Serializer<Set> {
     bool hasPreservedRef = false,
   }) {
     final state = _prepareListRead(context, elementFieldType);
-    context.buffer.checkReadableBytes(state.size);
+    if (!state.guardUnbackedItems) {
+      context.buffer.checkReadableBytes(state.size);
+    }
     final result = <Object?>{};
     if (hasPreservedRef) {
       context.reference(result);
@@ -396,8 +426,30 @@ final class SetSerializer extends Serializer<Set> {
     if (state.tracksDepth) {
       context.increaseDepth();
     }
-    for (var index = 0; index < state.size; index += 1) {
-      result.add(_readPreparedListItem(context, state));
+    if (!state.guardUnbackedItems) {
+      for (var index = 0; index < state.size; index += 1) {
+        result.add(_readPreparedListItem(context, state));
+      }
+    } else {
+      var checkpoint = bufferReaderIndex(context.buffer);
+      for (var index = 0; index < state.size; index += 1) {
+        result.add(_readPreparedListItem(context, state));
+        if (((index + 1) & (_unbackedCheckInterval - 1)) == 0) {
+          final cursor = bufferReaderIndex(context.buffer);
+          context.settleUnbackedContainerItems(
+            _unbackedCheckInterval,
+            cursor - checkpoint,
+          );
+          checkpoint = cursor;
+        }
+      }
+      final tail = state.size & (_unbackedCheckInterval - 1);
+      if (tail != 0) {
+        context.settleUnbackedContainerItems(
+          tail,
+          bufferReaderIndex(context.buffer) - checkpoint,
+        );
+      }
     }
     if (state.tracksDepth) {
       context.decreaseDepth();
@@ -546,7 +598,11 @@ Object _readCompatibleListAsArrayField(
     );
   }
   final elementResolved = context.typeResolver.resolveFieldType(elementType);
-  context.buffer.checkReadableBytes(size);
+  // The remote list count sizes the dense target allocation, so prove the
+  // remote element encoding's minimum bytes before allocating it.
+  context.buffer.checkReadableBytes(
+    size * _minimumEncodedElementBytes(elementType.typeId),
+  );
   final result = _newArrayValue(arrayTypeId, size);
   for (var index = 0; index < size; index += 1) {
     _setArrayValue(
@@ -585,6 +641,26 @@ int _compatibleArrayElementTypeId(int typeId) {
     TypeIds.varUint32 => TypeIds.uint32,
     TypeIds.varUint64 || TypeIds.taggedUint64 => TypeIds.uint64,
     _ => typeId,
+  };
+}
+
+int _minimumEncodedElementBytes(int typeId) {
+  return switch (typeId) {
+    TypeIds.boolType ||
+    TypeIds.int8 ||
+    TypeIds.varInt32 ||
+    TypeIds.uint8 ||
+    TypeIds.varUint32 ||
+    TypeIds.varInt64 ||
+    TypeIds.varUint64 => 1,
+    TypeIds.int16 || TypeIds.uint16 || TypeIds.float16 || TypeIds.bfloat16 => 2,
+    TypeIds.int32 ||
+    TypeIds.taggedInt64 ||
+    TypeIds.uint32 ||
+    TypeIds.taggedUint64 ||
+    TypeIds.float32 => 4,
+    TypeIds.int64 || TypeIds.uint64 || TypeIds.float64 => 8,
+    _ => throw StateError('Unsupported compatible list element type $typeId.'),
   };
 }
 
@@ -668,8 +744,39 @@ List<T> readTypedListPayload<T>(
   if (state.size == 0) {
     return List<T>.empty(growable: false);
   }
+  if (state.guardUnbackedItems) {
+    context.checkUnbackedContainerAllocation(state.size);
+  } else {
+    context.buffer.checkReadableBytes(state.size);
+  }
   if (state.tracksDepth) {
     context.increaseDepth();
+  }
+  if (state.guardUnbackedItems) {
+    var checkpoint = bufferReaderIndex(context.buffer);
+    final result = List<T>.generate(state.size, (index) {
+      final value = convert(_readPreparedListItem(context, state));
+      if (((index + 1) & (_unbackedCheckInterval - 1)) == 0) {
+        final cursor = bufferReaderIndex(context.buffer);
+        context.settleUnbackedContainerItems(
+          _unbackedCheckInterval,
+          cursor - checkpoint,
+        );
+        checkpoint = cursor;
+      }
+      return value;
+    }, growable: false);
+    final tail = state.size & (_unbackedCheckInterval - 1);
+    if (tail != 0) {
+      context.settleUnbackedContainerItems(
+        tail,
+        bufferReaderIndex(context.buffer) - checkpoint,
+      );
+    }
+    if (state.tracksDepth) {
+      context.decreaseDepth();
+    }
+    return result;
   }
   final directTypeInfo = state.declaredTypeInfo ?? state.sameTypeInfo;
   if (directTypeInfo != null && !state.trackRef && !state.hasNull) {
@@ -678,7 +785,6 @@ List<T> readTypedListPayload<T>(
     if (directTypeInfo.type == T &&
         directTypeInfo.kind == RegistrationKind.struct) {
       final structSerializer = directTypeInfo.structSerializer!;
-      context.buffer.checkReadableBytes(state.size);
       final result =
           directTypeInfo.remoteTypeDef == null
               ? List<T>.generate(
@@ -702,7 +808,6 @@ List<T> readTypedListPayload<T>(
       return result;
     }
     if (directTypeInfo.type == T && directTypeInfo.typeId == TypeIds.string) {
-      context.buffer.checkReadableBytes(state.size);
       final result = List<T>.generate(
         state.size,
         (_) => StringSerializer.readPayload(context) as T,
@@ -713,7 +818,6 @@ List<T> readTypedListPayload<T>(
       }
       return result;
     }
-    context.buffer.checkReadableBytes(state.size);
     final result = List<T>.generate(
       state.size,
       (_) =>
@@ -725,7 +829,6 @@ List<T> readTypedListPayload<T>(
     }
     return result;
   }
-  context.buffer.checkReadableBytes(state.size);
   final result = List<T>.generate(
     state.size,
     (_) => convert(_readPreparedListItem(context, state)),
@@ -743,13 +846,40 @@ Set<T> readTypedSetPayload<T>(
   T Function(Object? value) convert,
 ) {
   final state = _prepareListRead(context, elementFieldType);
-  context.buffer.checkReadableBytes(state.size);
   final result = <T>{};
   if (state.size == 0) {
     return result;
   }
+  if (!state.guardUnbackedItems) {
+    context.buffer.checkReadableBytes(state.size);
+  }
   if (state.tracksDepth) {
     context.increaseDepth();
+  }
+  if (state.guardUnbackedItems) {
+    var checkpoint = bufferReaderIndex(context.buffer);
+    for (var index = 0; index < state.size; index += 1) {
+      result.add(convert(_readPreparedListItem(context, state)));
+      if (((index + 1) & (_unbackedCheckInterval - 1)) == 0) {
+        final cursor = bufferReaderIndex(context.buffer);
+        context.settleUnbackedContainerItems(
+          _unbackedCheckInterval,
+          cursor - checkpoint,
+        );
+        checkpoint = cursor;
+      }
+    }
+    final tail = state.size & (_unbackedCheckInterval - 1);
+    if (tail != 0) {
+      context.settleUnbackedContainerItems(
+        tail,
+        bufferReaderIndex(context.buffer) - checkpoint,
+      );
+    }
+    if (state.tracksDepth) {
+      context.decreaseDepth();
+    }
+    return result;
   }
   final directTypeInfo = state.declaredTypeInfo ?? state.sameTypeInfo;
   if (directTypeInfo != null && !state.trackRef && !state.hasNull) {
@@ -971,6 +1101,7 @@ final class _PreparedListRead {
   final TypeInfo? declaredTypeInfo;
   final TypeInfo? sameTypeInfo;
   final bool tracksDepth;
+  final bool guardUnbackedItems;
 
   const _PreparedListRead({
     required this.size,
@@ -981,6 +1112,7 @@ final class _PreparedListRead {
     required this.declaredTypeInfo,
     required this.sameTypeInfo,
     required this.tracksDepth,
+    required this.guardUnbackedItems,
   });
 }
 
@@ -1001,6 +1133,7 @@ _PreparedListRead _prepareListRead(
       declaredTypeInfo: null,
       sameTypeInfo: null,
       tracksDepth: false,
+      guardUnbackedItems: false,
     );
   }
   final header = context.buffer.readUint8();
@@ -1030,6 +1163,12 @@ _PreparedListRead _prepareListRead(
       (declaredTypeInfo != null &&
           tracksNestedPayloadDepth(declaredTypeInfo)) ||
       (sameTypeInfo != null && tracksNestedPayloadDepth(sameTypeInfo));
+  final directTypeInfo = declaredTypeInfo ?? sameTypeInfo;
+  final guardUnbackedItems =
+      !trackRef &&
+      !hasNull &&
+      directTypeInfo != null &&
+      !directTypeInfo.readDataAlwaysAdvances;
   return _PreparedListRead(
     size: size,
     trackRef: trackRef,
@@ -1039,6 +1178,7 @@ _PreparedListRead _prepareListRead(
     declaredTypeInfo: declaredTypeInfo,
     sameTypeInfo: sameTypeInfo,
     tracksDepth: tracksDepth,
+    guardUnbackedItems: guardUnbackedItems,
   );
 }
 
@@ -1069,30 +1209,6 @@ Object? _readPreparedListItem(ReadContext context, _PreparedListRead state) {
       state.declaredTypeInfo,
       state.usesDeclaredType,
     );
-  }
-  if (state.sameTypeInfo != null) {
-    if (state.hasNull || state.trackRef) {
-      final flag = context.refReader.tryPreserveRefId(context.buffer);
-      final preservedRefId = flag >= RefWriter.refValueFlag ? flag : null;
-      if (flag == RefWriter.nullFlag) {
-        return null;
-      }
-      if (flag == RefWriter.refFlag) {
-        return context.refReader.getReadRef();
-      }
-      final value = context.readResolvedValue(
-        state.sameTypeInfo!,
-        null,
-        hasPreservedRef: preservedRefId != null,
-      );
-      if (preservedRefId != null &&
-          state.sameTypeInfo!.supportsRef &&
-          context.refReader.readRefAt(preservedRefId) == null) {
-        context.refReader.setReadRef(preservedRefId, value);
-      }
-      return value;
-    }
-    return context.readResolvedValue(state.sameTypeInfo!, null);
   }
   return _readDifferentTypeElement(context, state.trackRef, state.hasNull);
 }

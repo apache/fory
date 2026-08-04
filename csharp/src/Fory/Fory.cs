@@ -220,23 +220,6 @@ public sealed class Fory
     }
 
     /// <summary>
-    /// Deserializes a value from the head of a framed sequence and advances the sequence.
-    /// </summary>
-    /// <typeparam name="T">Target type.</typeparam>
-    /// <param name="payload">Input sequence. On success, sliced past the consumed frame.</param>
-    /// <returns>Deserialized value.</returns>
-    public T Deserialize<T>(ref ReadOnlySequence<byte> payload)
-    {
-        byte[] bytes = payload.ToArray();
-        ByteReader reader = _readContext.Reader;
-        reader.Reset(bytes);
-        T value = DeserializeFromReader<T>(reader);
-        payload = payload.Slice(reader.Cursor);
-        return value;
-    }
-
-
-    /// <summary>
     /// Writes the frame header for a payload.
     /// </summary>
     /// <param name="writer">Destination writer.</param>
@@ -273,11 +256,12 @@ public sealed class Fory
             : $"unsupported root header bitmap 0x{bitmap:X2}");
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private T DeserializeFromReader<T>(ByteReader reader)
+    internal T DeserializeFromReader<T>(ByteReader reader)
     {
         ReadContext readContext = _readContext;
         readContext.ResetFor(reader);
         readContext._remainingGraphMemoryBytes = Config.MaxGraphMemoryBytes;
+        readContext._remainingUnbackedContainerItems = Config.MaxUnbackedContainerItems;
         try
         {
             ReadHead(reader);
@@ -291,7 +275,8 @@ public sealed class Fory
             readContext._readTypeInfoByType.ClearKeys();
             readContext._cachedTypeMetaType = null;
             readContext._cachedTypeMeta = null;
-            readContext._currentDynamicReadDepth = 0;
+            readContext.ResetReadDepth();
+            readContext._remainingUnbackedContainerItems = 0;
             return value;
         }
         catch

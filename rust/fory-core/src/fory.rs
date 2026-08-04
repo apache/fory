@@ -280,6 +280,13 @@ impl ForyBuilder {
         self
     }
 
+    /// Sets the root allowance for collection elements and map entries not
+    /// backed by newly consumed input bytes. Defaults to 8192. Zero is strict.
+    pub fn max_unbacked_container_items(mut self, max_items: usize) -> Self {
+        self.config.max_unbacked_container_items = max_items;
+        self
+    }
+
     /// Sets the maximum depth for nested dynamic object serialization.
     ///
     /// # Arguments
@@ -588,7 +595,7 @@ impl Fory {
     /// Serializes a value using the explicitly selected serializer.
     ///
     /// `record` must be exactly [`Serializer::Target`] for `S`. Register `S`
-    /// first when it is an independently registered structural or manual serializer. Fory-owned
+    /// first when it is an independently registered structural or custom serializer. Fory-owned
     /// carrier serializers compose their child serializers and are not registered.
     pub fn serialize_with<S>(&self, record: &S::Target) -> Result<Vec<u8>, Error>
     where
@@ -930,13 +937,13 @@ impl Fory {
         self.type_resolver.register_union_by_name::<S>(name)
     }
 
-    /// Registers a manual serializer with a numeric type ID.
+    /// Registers a custom serializer with a numeric type ID.
     ///
     /// # Type Parameters
     ///
-    /// * `S` - The manual EXT serializer to register.
+    /// * `S` - The custom EXT serializer to register.
     ///   Unlike `register()`, this does not require `StructSerializer`, making it suitable
-    ///   for non-struct types or types with manual serialization logic.
+    ///   for non-struct types or types with custom serialization logic.
     ///
     /// # Arguments
     ///
@@ -944,7 +951,7 @@ impl Fory {
     ///
     /// # Use Cases
     ///
-    /// Use this method for a manual serializer that declares the EXT
+    /// Use this method for a custom serializer that declares the EXT
     /// wire category and implements opaque, hand-written serialization for its target.
     ///
     /// # Examples
@@ -960,11 +967,11 @@ impl Fory {
         self.type_resolver.register_serializer::<S>(id)
     }
 
-    /// Registers a manual serializer with a qualified type name.
+    /// Registers a custom serializer with a qualified type name.
     ///
     /// # Type Parameters
     ///
-    /// * `S` - The manual EXT serializer to register.
+    /// * `S` - The custom EXT serializer to register.
     ///
     /// # Arguments
     ///
@@ -1047,6 +1054,7 @@ impl Fory {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
             context.attach_reader(Reader::new(outlive_buffer));
             context.remaining_graph_memory_bytes = self.config.max_graph_memory_bytes;
+            context.remaining_unbacked_container_items = self.config.max_unbacked_container_items;
             let result = self.deserialize_with_context::<S>(context);
             context.detach_reader();
             result
@@ -1121,6 +1129,7 @@ impl Fory {
             new_reader.set_cursor(reader.cursor);
             context.attach_reader(new_reader);
             context.remaining_graph_memory_bytes = self.config.max_graph_memory_bytes;
+            context.remaining_unbacked_container_items = self.config.max_unbacked_container_items;
             let result = self.deserialize_with_context::<S>(context);
             let end = context.detach_reader().get_cursor();
             reader.set_cursor(end);

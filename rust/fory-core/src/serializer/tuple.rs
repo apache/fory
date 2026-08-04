@@ -433,6 +433,12 @@ macro_rules! impl_tuple_codec {
         {
             type Target = ($($T,)+);
 
+            const READ_DATA_ALWAYS_ADVANCES: bool = false $(
+                || $C::IS_OPTIONAL
+                || $C::IS_SHARED_REF
+                || $C::READ_DATA_ALWAYS_ADVANCES
+            )+;
+
             #[inline(always)]
             fn write_data(
                 value: &Self::Target,
@@ -619,6 +625,12 @@ macro_rules! impl_tuple_codec {
         impl<$($S: Serializer,)+> Serializer for $provider<$($S,)+> {
             type Target = ($($S::Target,)+);
 
+            const READ_DATA_ALWAYS_ADVANCES: bool = false $(
+                || $S::IS_OPTIONAL
+                || $S::IS_SHARED_REF
+                || $S::READ_DATA_ALWAYS_ADVANCES
+            )+;
+
             #[inline(always)]
             fn write_data(value: &Self::Target, context: &mut WriteContext) -> Result<(), Error> {
                 <$codec<
@@ -673,6 +685,12 @@ macro_rules! impl_tuple_codec {
             $($T: Serializer<Target = $T>,)+
         {
             type Target = Self;
+
+            const READ_DATA_ALWAYS_ADVANCES: bool = false $(
+                || $T::IS_OPTIONAL
+                || $T::IS_SHARED_REF
+                || $T::READ_DATA_ALWAYS_ADVANCES
+            )+;
 
             #[inline(always)]
             fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {

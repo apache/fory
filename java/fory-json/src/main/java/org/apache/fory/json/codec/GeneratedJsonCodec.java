@@ -21,9 +21,11 @@ package org.apache.fory.json.codec;
 
 import java.lang.reflect.Executable;
 import java.lang.reflect.Member;
+import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Map;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.meta.JsonAnySetterAccessor;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 
@@ -37,6 +39,7 @@ public abstract class GeneratedJsonCodec<T> {
   private Class<?>[] validatedCreatorParameterTypes;
   private String validatedCreatorFactoryName;
   private Executable validatedCreator;
+  private Method[] validatedValidatorMethods;
   private boolean validatedRecord;
   private boolean initialized;
 
@@ -73,8 +76,21 @@ public abstract class GeneratedJsonCodec<T> {
     return false;
   }
 
+  /**
+   * Returns the exact validation methods represented by {@link #invokeValidators(Object)}, or
+   * {@code null} when the companion has none.
+   */
+  public Method[] validatorMethods() {
+    return null;
+  }
+
   /** Constructs a creator-backed object from arguments in creator parameter order. */
   public T newInstance(Object[] arguments) {
+    throw new UnsupportedOperationException();
+  }
+
+  /** Invokes every generated validation method for {@code target}. */
+  public void invokeValidators(Object target) {
     throw new UnsupportedOperationException();
   }
 
@@ -87,7 +103,8 @@ public abstract class GeneratedJsonCodec<T> {
       Class<?>[] creatorParameterTypes,
       String creatorFactoryName,
       Executable creator,
-      boolean record) {
+      boolean record,
+      Method[] validatorMethods) {
     if (initialized) {
       throw new IllegalStateException("Generated JSON codec is already initialized");
     }
@@ -99,6 +116,7 @@ public abstract class GeneratedJsonCodec<T> {
     validatedCreatorFactoryName = creatorFactoryName;
     validatedCreator = creator;
     validatedRecord = record;
+    validatedValidatorMethods = validatorMethods;
     initialized = true;
   }
 
@@ -158,15 +176,64 @@ public abstract class GeneratedJsonCodec<T> {
     return creator != null && creator.equals(validatedCreator);
   }
 
+  /** Returns whether this companion represents exactly the supplied validators, ignoring order. */
+  public final boolean matchesValidators(Method[] methods) {
+    requireInitialized();
+    int validatedLength = validatedValidatorMethods == null ? 0 : validatedValidatorMethods.length;
+    int methodsLength = methods == null ? 0 : methods.length;
+    if (validatedLength != methodsLength) {
+      return false;
+    }
+    for (int i = 0; i < validatedLength; i++) {
+      if (!contains(methods, validatedValidatorMethods[i])) {
+        return false;
+      }
+    }
+    for (int i = 0; i < methodsLength; i++) {
+      if (!contains(validatedValidatorMethods, methods[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /** Rethrows a checked creator failure without widening the generated ABI. */
   protected static RuntimeException creatorFailure(Throwable throwable) {
     GeneratedJsonCodec.<RuntimeException>throwUnchecked(throwable);
     throw new AssertionError();
   }
 
+  /** Creates the contextual failure for one generated validation call. */
+  protected static ForyJsonException validatorFailure(
+      Class<?> type, Method method, Throwable throwable) {
+    if (throwable instanceof Error) {
+      throw (Error) throwable;
+    }
+    return new ForyJsonException(
+        "JSON validator failed for " + type.getName() + ": " + method, throwable);
+  }
+
+  /** Resolves one exact generated validation method during cold companion initialization. */
+  protected static Method validatorMethod(Class<?> type, String methodName) {
+    try {
+      return type.getMethod(methodName);
+    } catch (NoSuchMethodException e) {
+      throw new ExceptionInInitializerError(e);
+    }
+  }
+
   @SuppressWarnings("unchecked")
   private static <E extends Throwable> void throwUnchecked(Throwable throwable) throws E {
     throw (E) throwable;
+  }
+
+  private static boolean contains(Method[] methods, Method expected) {
+    for (Method method : methods) {
+      if (expected.equals(method)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private void requireInitialized() {

@@ -1283,7 +1283,7 @@ public class ClassResolver extends TypeResolver {
       compositeNameBytes2TypeInfo.put(
           new TypeNameBytes(typeInfo.namespace, typeInfo.typeName), typeInfo);
     }
-    // in order to support customized serializer for abstract or interface.
+    // in order to support custom serializer for abstract or interface.
     if (!type.isPrimitive() && (ReflectionUtils.isAbstract(type) || type.isInterface())) {
       extRegistry.abstractTypeInfo.put(type, typeInfo);
       extRegistry.registeredTypeInfos.add(typeInfo);
@@ -1782,7 +1782,7 @@ public class ClassResolver extends TypeResolver {
       return shimSerializer;
     }
 
-    // support customized serializer for abstract or interface.
+    // support custom serializer for abstract or interface.
     if (!extRegistry.abstractTypeInfo.isEmpty()) {
       Class<?> tmpCls = cls;
       while (tmpCls != null && tmpCls != Object.class) {

@@ -19,6 +19,7 @@
 
 package org.apache.fory.json.codec;
 
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
 import java.util.Date;
 import java.util.IdentityHashMap;
@@ -28,6 +29,8 @@ import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.reflect.ReflectionUtils;
 
 /**
  * Optional codecs for {@code java.sql} date/time values represented as epoch milliseconds.
@@ -67,13 +70,22 @@ public final class SqlJsonCodecs {
   }
 
   private static final class SqlMillisCodec<T extends Date> implements JsonValueCodec<T> {
+    private final Class<T> type;
     private final Constructor<T> constructor;
+    private final MethodHandle constructorHandle;
 
     private SqlMillisCodec(Class<T> type) {
-      try {
-        constructor = type.getConstructor(long.class);
-      } catch (NoSuchMethodException e) {
-        throw new ForyJsonException("Cannot access SQL JSON type " + type.getName(), e);
+      this.type = type;
+      if (GraalvmSupport.isGraalRuntime()) {
+        constructor = null;
+        constructorHandle = ReflectionUtils.getCtrHandle(type, long.class);
+      } else {
+        try {
+          constructor = type.getConstructor(long.class);
+          constructorHandle = null;
+        } catch (NoSuchMethodException e) {
+          throw new ForyJsonException("Cannot access SQL JSON type " + type.getName(), e);
+        }
       }
     }
 
@@ -110,12 +122,14 @@ public final class SqlJsonCodecs {
       return reader.tryReadNullToken() ? null : newSqlValue(reader.readLong());
     }
 
+    @SuppressWarnings("unchecked")
     private T newSqlValue(long millis) {
       try {
-        return constructor.newInstance(millis);
-      } catch (ReflectiveOperationException e) {
-        throw new ForyJsonException(
-            "Cannot create SQL JSON type " + constructor.getDeclaringClass(), e);
+        return constructorHandle == null
+            ? constructor.newInstance(millis)
+            : (T) constructorHandle.invoke(millis);
+      } catch (Throwable e) {
+        throw new ForyJsonException("Cannot create SQL JSON type " + type, e);
       }
     }
   }

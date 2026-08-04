@@ -20,10 +20,10 @@
 import 'package:fory/src/context/read_context.dart';
 import 'package:fory/src/context/write_context.dart';
 
-/// Advanced extension point for generated and manual serializers.
+/// Advanced extension point for generated and custom serializers.
 ///
 /// Most application code uses a generated library namespace for generated
-/// types, or [Fory.registerSerializer] for manual serializers, instead of
+/// types, or [Fory.registerSerializer] for custom serializers, instead of
 /// implementing this interface directly.
 abstract class Serializer<T> {
   const Serializer();

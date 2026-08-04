@@ -31,6 +31,7 @@ import com.google.common.primitives.Primitives;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.io.Serializable;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -68,6 +69,7 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.meta.ClassSpec;
 import org.apache.fory.meta.EncodedMetaString;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.FieldTypes;
@@ -755,6 +757,71 @@ public class ClassResolverTest extends ForyTestBase {
 
     assertSame(first, sharedRegistry.getOrCreateRemoteTypeDef(first, "remote.UnknownA"));
     assertSame(second, sharedRegistry.getOrCreateRemoteTypeDef(second, "remote.UnknownB"));
+  }
+
+  @Test
+  public void testRemoteTypeKeyLimit() throws Exception {
+    ForyBuilder builder =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .withMetaShare(true);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
+    TypeDef template = TypeDef.buildTypeDef(resolver, BeanB.class);
+    Constructor<TypeDef> constructor =
+        TypeDef.class.getDeclaredConstructor(ClassSpec.class, List.class, long.class, byte[].class);
+    constructor.setAccessible(true);
+    TypeDef first = null;
+    for (int i = 0; i < 8192; i++) {
+      String remoteTypeKey = "remote.Type" + i;
+      TypeDef typeDef =
+          constructor.newInstance(
+              new ClassSpec(remoteTypeKey, false, false, 0),
+              template.getFieldsInfo(),
+              i + 1L,
+              template.getEncoded());
+      assertSame(sharedRegistry.getOrCreateRemoteTypeDef(typeDef, remoteTypeKey), typeDef);
+      if (i == 0) {
+        first = typeDef;
+      }
+    }
+
+    assertSame(first, sharedRegistry.getOrCreateRemoteTypeDef(first, "remote.Type0"));
+    TypeDef existingTypeVersion =
+        constructor.newInstance(
+            new ClassSpec("remote.Type0", false, false, 0),
+            template.getFieldsInfo(),
+            8193L,
+            template.getEncoded());
+    assertSame(
+        existingTypeVersion,
+        sharedRegistry.getOrCreateRemoteTypeDef(existingTypeVersion, "remote.Type0"));
+
+    TypeDef rejected =
+        constructor.newInstance(
+            new ClassSpec("remote.Rejected", false, false, 0),
+            template.getFieldsInfo(),
+            8194L,
+            template.getEncoded());
+    Assert.assertThrows(
+        ForyException.class,
+        () -> sharedRegistry.getOrCreateRemoteTypeDef(rejected, "remote.Rejected"));
+    Assert.assertFalse(sharedRegistry.remoteTypeDefById.containsKey(rejected.getId()));
+    Assert.assertFalse(sharedRegistry.typeDefById.containsKey(rejected.getId()));
+
+    TypeDef exact = resolver.getTypeDef(BeanA.class, true);
+    ReadContext readContext = fory.getReadContext();
+    readContext.setMetaReadContext(new MetaReadContext());
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
+    readContext.prepare(buffer, null, false);
+    buffer.writeVarUInt32(0);
+    exact.writeTypeDef(buffer);
+    buffer.readerIndex(0);
+    assertSame(resolver.readSharedClassMeta(readContext, BeanA.class).getType(), BeanA.class);
   }
 
   @Test

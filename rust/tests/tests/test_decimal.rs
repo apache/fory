@@ -15,16 +15,38 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use fory_core::buffer::Reader;
+use fory_core::buffer::{Reader, Writer};
 use fory_core::type_id::config_flags::IS_CROSS_LANGUAGE_FLAG;
 use fory_core::{Decimal, Fory, RefFlag, TypeId};
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
+
+const MAX_DECIMAL_MAGNITUDE_BYTES: usize = 10_000;
+const MAX_DECIMAL_SCALE: i32 = 10_000;
 
 fn decimal(unscaled: &str, scale: i32) -> Decimal {
     Decimal::new(
         BigInt::parse_bytes(unscaled.as_bytes(), 10).expect("invalid decimal test value"),
         scale,
     )
+}
+
+fn magnitude_bytes(len: usize) -> Vec<u8> {
+    let mut bytes = vec![0; len];
+    bytes[len - 1] = 1;
+    bytes
+}
+
+fn decimal_payload(scale: i32, magnitude: &[u8]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let mut writer = Writer::from_buffer(&mut bytes);
+    writer.write_u8(IS_CROSS_LANGUAGE_FLAG);
+    writer.write_i8(RefFlag::NotNullValue as i8);
+    writer.write_var_u32(TypeId::DECIMAL as u32);
+    writer.write_var_i32(scale);
+    let meta = (magnitude.len() as u64) << 1;
+    writer.write_var_u64((meta << 1) | 1);
+    writer.write_bytes(magnitude);
+    bytes
 }
 
 #[test]
@@ -95,4 +117,55 @@ fn test_decimal_rejects_non_canonical_big_payload() {
     ];
     let err = fory.deserialize::<Decimal>(&payload).unwrap_err();
     assert!(err.to_string().contains("trailing zero byte"));
+}
+
+#[test]
+fn test_decimal_scale_limits() {
+    let fory = Fory::builder().xlang(true).compatible(false).build();
+
+    for scale in [-MAX_DECIMAL_SCALE, MAX_DECIMAL_SCALE] {
+        let value = Decimal::new(BigInt::from(1), scale);
+        let bytes = fory.serialize(&value).unwrap();
+        let decoded: Decimal = fory.deserialize(&bytes).unwrap();
+        assert_eq!(decoded.scale, scale);
+        assert_eq!(decoded.unscaled, BigInt::from(1));
+    }
+
+    for scale in [
+        -MAX_DECIMAL_SCALE - 1,
+        MAX_DECIMAL_SCALE + 1,
+        i32::MIN,
+        i32::MAX,
+    ] {
+        let value = Decimal::new(BigInt::from(1), scale);
+        let err = fory.serialize(&value).unwrap_err();
+        assert!(err.to_string().contains("decimal scale"));
+
+        let payload = decimal_payload(scale, &[1]);
+        let err = fory.deserialize::<Decimal>(&payload).unwrap_err();
+        assert!(err.to_string().contains("decimal scale"));
+    }
+}
+
+#[test]
+fn test_decimal_magnitude_limits() {
+    let fory = Fory::builder().xlang(true).compatible(false).build();
+
+    let boundary_bytes = magnitude_bytes(MAX_DECIMAL_MAGNITUDE_BYTES);
+    let boundary = Decimal::new(BigInt::from_bytes_le(Sign::Plus, &boundary_bytes), 0);
+    let bytes = fory.serialize(&boundary).unwrap();
+    let decoded: Decimal = fory.deserialize(&bytes).unwrap();
+    assert_eq!(
+        decoded.unscaled.bits(),
+        ((MAX_DECIMAL_MAGNITUDE_BYTES - 1) * 8 + 1) as u64
+    );
+
+    let oversized_bytes = magnitude_bytes(MAX_DECIMAL_MAGNITUDE_BYTES + 1);
+    let oversized = Decimal::new(BigInt::from_bytes_le(Sign::Plus, &oversized_bytes), 0);
+    let err = fory.serialize(&oversized).unwrap_err();
+    assert!(err.to_string().contains("decimal magnitude"));
+
+    let payload = decimal_payload(0, &oversized_bytes);
+    let err = fory.deserialize::<Decimal>(&payload).unwrap_err();
+    assert!(err.to_string().contains("decimal magnitude length"));
 }

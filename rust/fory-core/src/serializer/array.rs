@@ -294,6 +294,8 @@ where
 {
     type Target = [T; N];
 
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
+
     #[inline(always)]
     fn write_data(value: &Self::Target, context: &mut WriteContext) -> Result<(), Error> {
         if let Some(type_id) = selected_array_type_id::<T, S>() {
@@ -473,6 +475,8 @@ pub struct ArraySerializer<S, const N: usize>(PhantomData<fn() -> S>);
 impl<S: Serializer, const N: usize> Serializer for ArraySerializer<S, N> {
     type Target = [S::Target; N];
 
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
+
     #[inline(always)]
     fn write_data(value: &Self::Target, context: &mut WriteContext) -> Result<(), Error> {
         <RootArrayCodec<S, N> as Serializer>::write_data(value, context)
@@ -542,6 +546,8 @@ where
     T: Serializer<Target = T>,
 {
     type Target = Self;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
 
     #[inline(always)]
     fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {

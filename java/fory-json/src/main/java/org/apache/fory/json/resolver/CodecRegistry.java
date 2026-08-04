@@ -32,10 +32,10 @@ import org.apache.fory.util.Preconditions;
  * Builder-side registry of exact user-supplied {@link JsonValueCodec} bindings.
  *
  * <p>Registration is keyed by class identity and replaces any previous codec for the exact class. A
- * {@link JsonSharedRegistry} receives a copy when a runtime is built, separating later builder
- * mutation from an existing {@code ForyJson}. The deterministic {@link #codegenKey()} describes
- * codec classes that can affect generated source without retaining codec instances in process-wide
- * code-generation naming state.
+ * {@code JsonConfig} receives a copy when a runtime is built, separating later builder mutation
+ * from an existing {@code ForyJson}. The runtime registry reads that owned snapshot directly. The
+ * deterministic {@link #codegenKey()} describes codec classes that can affect generated source
+ * without retaining codec instances in process-wide code-generation naming state.
  */
 public final class CodecRegistry {
   private final ConcurrentMap<Class<?>, JsonValueCodec<?>> codecs;

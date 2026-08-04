@@ -322,19 +322,100 @@
 //!     value: Box<dyn Any>,
 //! }
 //! ```
+//!
+//! A generated Row view preserves each source field's visibility:
+//!
+//! ```compile_fail
+//! use fory::{from_row, to_row};
+//! use fory_facade_api_tests::VisibilitySchema;
+//!
+//! let bytes = to_row(&VisibilitySchema::new(1, 2)).unwrap();
+//! let view = from_row::<VisibilitySchema>(&bytes).unwrap();
+//! let _ = view.hidden();
+//! ```
+//!
+//! Generated public Row views and public field methods satisfy strict documentation lints:
+//!
+//! ```
+//! #![doc = "Generated Row view documentation check."]
+//! #![deny(missing_docs)]
+//! use fory::ForyRow;
+//!
+//! /// A documented row schema.
+//! #[derive(ForyRow)]
+//! pub struct DocumentedSchema {
+//!     /// A documented field.
+//!     pub value: i64,
+//! }
+//! ```
+//!
+//! Public Row views do not expose private field types in declaration bounds:
+//!
+//! ```
+//! #![deny(private_bounds)]
+//! use fory::ForyRow;
+//!
+//! #[derive(ForyRow)]
+//! struct PrivateChild {
+//!     value: i32,
+//! }
+//!
+//! #[derive(ForyRow)]
+//! pub struct PublicParent {
+//!     child: PrivateChild,
+//! }
+//! ```
+//!
+//! Generated Row views preserve generic parameter defaults:
+//!
+//! ```
+//! use fory::{from_row, to_row, ForyRow};
+//!
+//! #[derive(ForyRow)]
+//! struct DefaultSchema<T = i32, const N: usize = 2> {
+//!     value: T,
+//!     values: [T; N],
+//! }
+//!
+//! let value: DefaultSchema = DefaultSchema {
+//!     value: 7,
+//!     values: [8, 9],
+//! };
+//! let bytes = to_row(&value).unwrap();
+//! let view: DefaultSchemaRowView<'_> = from_row::<DefaultSchema>(&bytes).unwrap();
+//! assert_eq!(view.value().unwrap(), 7);
+//! ```
+
+use fory::ForyRow;
+
+/// A public Row schema used to verify generated field visibility.
+#[derive(ForyRow)]
+pub struct VisibilitySchema {
+    /// A public field.
+    pub visible: i64,
+    hidden: i64,
+}
+
+impl VisibilitySchema {
+    /// Creates a visibility test row.
+    pub fn new(visible: i64, hidden: i64) -> Self {
+        Self { visible, hidden }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use fory::{
-        from_row, register_trait_type, to_row, ArcSerializer, ArcWeakSerializer, ArraySerializer,
-        BTreeMapSerializer, BTreeSetSerializer, BinaryHeapSerializer, BoxSerializer, Error, Fory,
-        ForyEnum, ForyObject, ForyRow, ForyStruct, ForyUnion, HashMapSerializer, HashSetSerializer,
-        LinkedListSerializer, MutexSerializer, OptionSerializer, RcSerializer, RcWeakSerializer,
-        ReadContext, Reader, RefCellSerializer, Serializer, VecDequeSerializer, VecSerializer,
+        from_row, register_trait_type, to_row, to_row_into, ArcSerializer, ArcWeakSerializer,
+        ArrayIter, ArraySerializer, ArrayView, BTreeMapSerializer, BTreeSetSerializer,
+        BinaryHeapSerializer, BoxSerializer, Error, Fory, ForyEnum, ForyObject, ForyRow,
+        ForyStruct, ForyUnion, HashMapSerializer, HashSetSerializer, LinkedListSerializer, MapView,
+        MutexSerializer, OptionSerializer, RcSerializer, RcWeakSerializer, ReadContext, Reader,
+        RefCellSerializer, Row, RowView, Serializer, VecDequeSerializer, VecSerializer,
         WriteContext,
     };
     use fory_external_model::{Command, ExternalId, Key, Marker, Point, Status, User, Value};
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::rc::Rc;
     use std::sync::Arc;
 
@@ -434,6 +515,14 @@ mod tests {
         name: String,
     }
 
+    fn assert_row_api<T: Row>() {}
+
+    fn assert_array_view(_: &ArrayView<'_, i32>) {}
+
+    fn assert_array_iter(_: ArrayIter<'_, '_, i32>) {}
+
+    fn assert_map_view(_: &MapView<'_, String, i32>) {}
+
     trait Animal: ForyObject {
         fn name(&self) -> &str;
     }
@@ -479,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn external_and_manual_roots() {
+    fn external_and_custom_roots() {
         let mut fory = Fory::builder().xlang(false).compatible(false).build();
         register_types(&mut fory);
 
@@ -621,14 +710,32 @@ mod tests {
 
     #[test]
     fn facade_row_derive_roundtrip() {
+        assert_row_api::<RowUser>();
         let value = RowUser {
             id: 7,
             name: "Grace".to_string(),
         };
         let row = to_row(&value).unwrap();
-        let decoded = from_row::<RowUser>(&row);
-        assert_eq!(decoded.id(), 7);
-        assert_eq!(decoded.name(), "Grace");
+        let decoded = from_row::<RowUser>(&row).unwrap();
+        assert_eq!(decoded.id().unwrap(), 7);
+        assert_eq!(decoded.name().unwrap(), "Grace");
+        assert_eq!(decoded.as_bytes(), row);
+        let copied = decoded;
+        assert_eq!(copied.encoded_len(), row.len());
+
+        let mut array_bytes = Vec::new();
+        to_row_into(&vec![1i32], &mut array_bytes).unwrap();
+        let array = from_row::<Vec<i32>>(&array_bytes).unwrap();
+        assert_array_view(&array);
+        assert_array_iter(array.iter());
+        assert_eq!(array.iter().next().unwrap().unwrap(), 1);
+
+        let map_bytes = to_row(&BTreeMap::from([("one".to_owned(), 1i32)])).unwrap();
+        let map = from_row::<BTreeMap<String, i32>>(&map_bytes).unwrap();
+        assert_map_view(&map);
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.key(0).unwrap(), "one");
+        assert_eq!(map.value(0).unwrap(), 1);
     }
 
     #[test]

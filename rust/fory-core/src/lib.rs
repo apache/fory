@@ -18,7 +18,7 @@
 //! Core runtime for Apache Fory's Rust implementation.
 //!
 //! [`Serializer`] statically handles one associated [`Serializer::Target`]. An ordinary local
-//! type serializes itself. A local external structural serializer or manual serializer can
+//! type serializes itself. A local external structural serializer or custom serializer can
 //! target a type owned by another crate without creating a wrapper value.
 //!
 //! [`Fory`] exposes ordinary roots for self-serializing types and four explicit-serializer roots:

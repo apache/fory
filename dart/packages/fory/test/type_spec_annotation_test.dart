@@ -54,9 +54,7 @@ void main() {
   group('container type specs', () {
     test('ListType stores nested element specs', () {
       const lt = ListType(
-        element: MapType(
-          value: DeclaredType(ref: true),
-        ),
+        element: MapType(value: DeclaredType(ref: true)),
         nullable: true,
       );
       expect(lt.nullable, isTrue);
@@ -66,10 +64,7 @@ void main() {
     });
 
     test('ArrayType stores dense element specs', () {
-      const array = ArrayType(
-        element: Int32Type(),
-        nullable: true,
-      );
+      const array = ArrayType(element: Int32Type(), nullable: true);
       expect(array.nullable, isTrue);
       expect(array.element, isA<Int32Type>());
     });
@@ -78,10 +73,7 @@ void main() {
       const mt = MapType(
         key: StringType(),
         value: ListType(
-          element: Int32Type(
-            nullable: true,
-            encoding: Encoding.fixed,
-          ),
+          element: Int32Type(nullable: true, encoding: Encoding.fixed),
         ),
         ref: true,
       );
@@ -103,9 +95,7 @@ void main() {
         dynamic: true,
         type: MapType(
           key: StringType(),
-          value: ListType(
-            element: Int32Type(encoding: Encoding.fixed),
-          ),
+          value: ListType(element: Int32Type(encoding: Encoding.fixed)),
         ),
       );
       expect(field.id, equals(3));
@@ -114,17 +104,29 @@ void main() {
       expect(field.type, isA<MapType>());
     });
 
+    test('ForyField stores ignore without wire metadata', () {
+      const field = ForyField(ignore: true);
+      expect(field.ignore, isTrue);
+    });
+
+    test('ignored fields reject wire metadata', () {
+      final invalidFields = <ForyField Function()>[
+        () => ForyField(ignore: true, id: 1),
+        () => ForyField(ignore: true, nullable: true),
+        () => ForyField(ignore: true, ref: true),
+        () => ForyField(ignore: true, dynamic: true),
+        () => ForyField(ignore: true, type: StringType()),
+      ];
+      for (final invalidField in invalidFields) {
+        expect(invalidField, throwsA(isA<AssertionError>()));
+      }
+    });
+
     test('container sugar stores nested element and value overrides', () {
-      const listField = ListField(
-        element: DeclaredType(ref: true),
-      );
-      const arrayField = ArrayField(
-        element: Uint8Type(),
-      );
+      const listField = ListField(element: DeclaredType(ref: true));
+      const arrayField = ArrayField(element: Uint8Type());
       const mapField = MapField(
-        value: ListType(
-          element: Int32Type(encoding: Encoding.fixed),
-        ),
+        value: ListType(element: Int32Type(encoding: Encoding.fixed)),
       );
       expect((listField.element as DeclaredType).ref, isTrue);
       expect(arrayField.element, isA<Uint8Type>());

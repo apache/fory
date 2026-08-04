@@ -22,10 +22,11 @@ package org.apache.fory.serializer.scala
 import org.apache.fory.context.ReadContext
 import org.apache.fory.context.WriteContext
 import org.apache.fory.reflect.FieldAccessor
+import org.apache.fory.resolver.{RefMode, TypeResolver}
+import org.apache.fory.serializer.GraphMemoryEstimates
 import org.apache.fory.serializer.Shareable
 import org.apache.fory.serializer.Serializer
 import org.apache.fory.serializer.collection.CollectionLikeSerializer
-import org.apache.fory.resolver.TypeResolver
 import java.util
 
 import java.lang.invoke.{MethodHandle, MethodHandles}
@@ -35,6 +36,7 @@ class RangeSerializer[T <: Range](typeResolver: TypeResolver, cls: Class[T])
   extends CollectionLikeSerializer[T](typeResolver, cls, false)
   with Shareable {
   private val rangeClass = cls
+  private val graphMemoryBytes = GraphMemoryEstimates.shallowObjectBytes(cls)
 
   override def write(writeContext: WriteContext, value: T): Unit = {
     val buffer = writeContext.getBuffer
@@ -43,6 +45,7 @@ class RangeSerializer[T <: Range](typeResolver: TypeResolver, cls: Class[T])
     buffer.writeVarInt32(value.step)
   }
   override def read(readContext: ReadContext): T = {
+    readContext.reserveGraphMemory(graphMemoryBytes)
     val buffer = readContext.getBuffer
     val start = buffer.readVarInt32()
     val end = buffer.readVarInt32()
@@ -75,6 +78,7 @@ class NumericRangeSerializer[A, T <: NumericRange[A]](typeResolver: TypeResolver
   extends CollectionLikeSerializer[T](typeResolver, cls, false)
   with Shareable {
   private val ctr = RangeUtils.lookupCache.get(cls)
+  private val graphMemoryBytes = GraphMemoryEstimates.shallowObjectBytes(cls)
   private val getter =
     FieldAccessor.createAccessor(
       cls.getDeclaredFields.find(f => f.getType == classOf[Integral[?]]).get)
@@ -92,12 +96,19 @@ class NumericRangeSerializer[A, T <: NumericRange[A]](typeResolver: TypeResolver
   }
 
   override def read(readContext: ReadContext) = {
+    readContext.reserveGraphMemory(graphMemoryBytes)
     val resolver = readContext.getTypeResolver
     val classInfo = resolver.readTypeInfo(readContext)
     val serializer = classInfo.getSerializer.asInstanceOf[Serializer[A]]
-    val start = serializer.read(readContext)
-    val end = serializer.read(readContext)
-    val step = serializer.read(readContext)
+    // These components share one child depth, but each raw read still needs RefMode.NONE so a
+    // reference-capable serializer consumes its sentinel instead of the enclosing range's ref id.
+    // Root deserialization resets depth after failure, so nested owners decrement only after all
+    // three reads succeed. The Integral value below goes through readRef and owns its own depth.
+    readContext.increaseDepth()
+    val start = serializer.read(readContext, RefMode.NONE)
+    val end = serializer.read(readContext, RefMode.NONE)
+    val step = serializer.read(readContext, RefMode.NONE)
+    readContext.decreaseDepth()
     ctr.invoke(start, end, step, readContext.readRef()).asInstanceOf[T]
   }
   override def onCollectionWrite(writeContext: WriteContext, value: T): util.Collection[_] =
