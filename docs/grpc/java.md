@@ -366,7 +366,7 @@ final class StreamingClient {
 The generated descriptors preserve the exact IDL service and method names for
 the gRPC path.
 
-## gRPC Runtime Behavior
+## gRPC Stack Behavior
 
 The generated service code only replaces request and response serialization.
 All normal gRPC operational features still belong to grpc-java:

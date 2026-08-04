@@ -125,7 +125,7 @@ object copy, and native-mode zero-copy buffers. See [Native Serialization](nativ
 
 ## Cross-Language Interoperability
 
-The default xlang format is shared by all Fory runtimes. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
+The default xlang format is shared by all supported Fory implementations. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
 
 Apache Fory™ xlang serialization is the Java wire mode for payloads that must be read by Python,
 Rust, Go, JavaScript/TypeScript, C++, C#, Swift, Dart, Scala, Kotlin, or another non-Java Fory implementation. Java defaults to

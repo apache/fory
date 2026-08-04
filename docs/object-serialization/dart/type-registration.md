@@ -67,11 +67,11 @@ UserModelsForyModule.register(fory, User, id: 100);
 
 For an ordinary inherited type, register the concrete annotated child. Its
 generated serializer already owns the complete flattened child schema; Fory
-does not require runtime registration of a superclass or mixin merely because
+does not require separate registration of a superclass or mixin merely because
 it contributes fields.
 
 Register an independently annotated concrete parent only when values whose
-runtime type is that parent are also serialized. A provider-only
+actual type is exactly that parent are also serialized. A provider-only
 `@ForyStruct(exposePrivateFields: true)` boundary supplies generated field
 access and has no registration entry of its own. See
 [Struct Inheritance](inheritance.md) for boundary and child-schema options.

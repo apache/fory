@@ -26,7 +26,7 @@ Xlang is the default serialization mode for Fory Kotlin. This page covers the ba
 The following sections cover model generation, registration, and cross-language round trips in the default xlang mode.
 
 Kotlin xlang serialization uses the JVM Fory implementation through `ForyKotlin`. Use it when
-Kotlin payloads must be read by another supported Fory runtime. Register portable model types with
+Kotlin payloads must be read by another supported Fory implementation. Register portable model types with
 the same identity and field schema on every peer.
 
 Kotlin data classes, enums, and sealed-class models use the Kotlin integration and generated

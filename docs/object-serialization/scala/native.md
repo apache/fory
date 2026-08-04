@@ -178,6 +178,6 @@ val employee = Employee(
 println(fory.deserialize(fory.serialize(employee)))
 ```
 
-Use native mode for Scala/JVM-only traffic that needs Scala case classes,
-collections, tuples, options, or enums on the JVM runtime path. See
+Use native mode for Scala/JVM-only traffic with Scala case classes, collections,
+tuples, options, or enums. See
 [Scala Configuration](configuration.md) for production builder settings.

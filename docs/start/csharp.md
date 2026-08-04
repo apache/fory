@@ -21,7 +21,7 @@ license: |
 
 Fory C# provides xlang Object Serialization, generated models, and Fory gRPC.
 The `Apache.Fory` NuGet package requires .NET 8 or later and includes both the
-runtime and source generator.
+serialization library and source generator.
 
 ## Verify the Toolchain
 

@@ -36,7 +36,7 @@ comparing different semantics as if they were equivalent.
 
 Compare one operation and equivalent data semantics. Do not compare an xlang payload with a native
 payload or a full object reconstruction with Row Format field access without naming that semantic
-difference. JIT- and codegen-based runtimes require representative warm-up.
+difference. JIT- and codegen-based implementations require representative warm-up.
 
 Run the active benchmark harness for decisions that depend on current code. Checked-in reports are
 evidence for the commit and environment they record.

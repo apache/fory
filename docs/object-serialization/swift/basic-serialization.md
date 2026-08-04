@@ -177,7 +177,7 @@ See [Polymorphism and Dynamic Types](polymorphism.md).
 
 ## Cross-Language Interoperability
 
-The default xlang format is shared by all Fory runtimes. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
+The default xlang format is shared by all Fory implementations. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
 
 Fory Swift can exchange payloads with other Fory implementations using the xlang protocol.
 

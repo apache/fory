@@ -104,7 +104,7 @@ public class DebugOrder {
 }
 ```
 
-## Runtime Use
+## Serializer Selection
 
 Fory uses static generated serializers when they are available on:
 

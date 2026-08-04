@@ -52,8 +52,9 @@ Gradle:
 implementation("org.apache.fory:fory-json:1.5.0")
 ```
 
-On JDK 25 and later, open `java.lang.invoke` to Fory core. Use
-`ALL-UNNAMED` on the classpath:
+On JDK 25 and later, opening `java.lang.invoke` to Fory core is not required, but is recommended. It avoids
+the current-JDK Unsafe fallback and is required when Unsafe access is disabled or unavailable,
+including with `--sun-misc-unsafe-memory-access=deny`. Use `ALL-UNNAMED` on the classpath:
 
 ```bash
 --add-opens=java.base/java.lang.invoke=ALL-UNNAMED

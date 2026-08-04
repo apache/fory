@@ -96,7 +96,7 @@ foryc animals.fdl --java_out=./generated/java --python_out=./generated/python --
 ```
 
 The generated service code uses normal gRPC APIs, but request and response
-objects are serialized with Fory. See [Fory gRPC](../grpc/index.md) for runtime
+objects are serialized with Fory. See [Fory gRPC](../grpc/index.md) for language-specific
 dependencies, server and client setup, streaming modes, browser support, and
 interoperability boundaries.
 

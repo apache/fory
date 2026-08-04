@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Use the selected runtime guide for dependency- and API-specific diagnostics.
+Use the selected language guide for dependency- and API-specific diagnostics.
 
 ## `UNIMPLEMENTED`
 
@@ -33,5 +33,5 @@ separate ordinary protobuf service.
 
 ## A generated file does not compile
 
-Check the runtime page's required gRPC packages and versions, then regenerate all model and service
+Check the language page's required gRPC packages and versions, then regenerate all model and service
 files with the same compiler version.

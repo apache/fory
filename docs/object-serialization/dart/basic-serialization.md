@@ -140,7 +140,7 @@ If you skip registration, deserialization fails with `Type ... is not registered
 
 ## Cross-Language Interoperability
 
-The default xlang format is shared by all Fory runtimes. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
+The default xlang format is shared by all Fory implementations. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
 
 Apache Fory™ Dart serializes to the same binary format as the Java, Go, C#, Python, Rust, and Swift Fory implementations. You can write a message in Dart and read it in Java — or any other direction — without any conversion layer.
 

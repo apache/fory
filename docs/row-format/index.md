@@ -30,7 +30,7 @@ reconstruction as its primary access pattern.
 
 ## Choose a Layout
 
-| Layout       | Runtime support         | Compatibility                    |
+| Layout       | Language support        | Compatibility                    |
 | ------------ | ----------------------- | -------------------------------- |
 | Standard Row | Java, Python, C++, Rust | Shared Standard Row layout       |
 | Compact Row  | Java                    | Java-only, space-oriented layout |
@@ -53,16 +53,16 @@ arrays, and maps use a schema to resolve field positions and element types. The 
 layout, alignment rules, type table, and endianness are defined by the
 [Row Format specification](../specification/row_format_spec.md).
 
-### Runtime Support
+### Language Support
 
-| Runtime | Standard Row compatibility | Runtime guide       | Additional integration                                 |
-| ------- | -------------------------- | ------------------- | ------------------------------------------------------ |
-| Java    | Compatible                 | [Java](java.md)     | Arrow conversion; interface and extension-type mapping |
-| Python  | Compatible                 | [Python](python.md) | PyArrow schema and table conversion                    |
-| C++     | Compatible                 | [C++](cpp.md)       | Native row readers and writers                         |
-| Rust    | Compatible                 | [Rust](rust.md)     | Borrowed struct, array, and map views                  |
+| Language | Standard Row compatibility | Language guide      | Additional integration                                 |
+| -------- | -------------------------- | ------------------- | ------------------------------------------------------ |
+| Java     | Compatible                 | [Java](java.md)     | Arrow conversion; interface and extension-type mapping |
+| Python   | Compatible                 | [Python](python.md) | PyArrow schema and table conversion                    |
+| C++      | Compatible                 | [C++](cpp.md)       | Native row readers and writers                         |
+| Rust     | Compatible                 | [Rust](rust.md)     | Borrowed struct, array, and map views                  |
 
-Use the runtime guides for installation, schema construction, encoding, random access, partial
+Use the language guides for installation, schema construction, encoding, random access, partial
 reads, and language-specific integrations.
 
 ## Compact Row

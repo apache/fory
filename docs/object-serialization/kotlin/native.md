@@ -190,7 +190,7 @@ The following types work with the default Fory Java implementation:
 
 Use `ForyKotlin.builder()` for Kotlin-specific types such as unsigned values, ranges, and `Duration`.
 
-Use native mode for Kotlin/JVM-only traffic that needs Kotlin data classes,
-nullable types, ranges, unsigned values, or Kotlin collections on the JVM runtime
-path. Choose registration and thread-safety settings for the application in
+Use native mode for Kotlin/JVM-only traffic with Kotlin data classes, nullable
+types, ranges, unsigned values, or Kotlin collections. Choose registration and
+thread-safety settings for the application in
 [Kotlin Configuration](configuration.md).

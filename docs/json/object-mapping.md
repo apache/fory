@@ -22,7 +22,7 @@ license: |
 ## Thread safety, reuse, and code generation
 
 `ForyJson` is immutable and thread-safe after `build()`. Reuse one instance instead of creating a
-builder and runtime for every operation. Registered and annotation-selected `JsonValueCodec`
+builder and `ForyJson` instance for every operation. Registered and annotation-selected `JsonValueCodec`
 instances and the `JsonTypeChecker` may be called concurrently and must also be thread-safe.
 
 Code generation and asynchronous compilation are enabled by default. Disabling code generation is
@@ -126,7 +126,7 @@ Collection interfaces are reconstructed with standard mutable implementations, s
 `TreeMap`, `ConcurrentHashMap`, or `ConcurrentSkipListMap`. `ArrayBlockingQueue`, `Arrays.asList`
 results, JDK immutable collections, empty/singleton/unmodifiable wrappers, constructor-constrained
 implementations, and unlisted Guava immutable implementations cannot be reconstructed. Guava
-support is optional and does not make Guava a required runtime dependency.
+support is optional and does not make Guava a required application dependency.
 
 Non-finite float and double values use the quoted strings `"NaN"`, `"Infinity"`, and
 `"-Infinity"`. Use explicit `BigInteger` or `BigDecimal` targets when arbitrary precision must be
@@ -213,7 +213,7 @@ size, only reusable writer storage retained after an operation.
 For class loading, type policy, nesting depth, graph-memory limits, and external input controls,
 see [Fory JSON Security](security.md).
 
-Builder mutation after `build()` does not modify an existing `ForyJson` runtime.
+Builder mutation after `build()` does not modify an existing `ForyJson` instance.
 
 On Android, runtime code generation and asynchronous compilation are disabled. In a GraalVM native
 image, runtime compilation is unavailable; configurations returned by a reachable

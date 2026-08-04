@@ -126,7 +126,7 @@ let fory = Fory::builder()
     .build();
 ```
 
-Zero is rejected when the runtime is created.
+Zero is rejected when the Fory instance is created.
 
 ### Unbacked Container Work Budget
 

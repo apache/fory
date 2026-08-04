@@ -114,7 +114,7 @@ For this schema, the C++ generator emits:
 
 Include the generated gRPC header from application code and compile
 `demo_greeter.service.grpc.cc` once in your build target. The codec is generated
-directly in the gRPC header; there is no separate Fory gRPC runtime source file.
+directly in the gRPC header; there is no separate Fory gRPC support source file.
 
 ## Implement a Server
 
@@ -245,7 +245,7 @@ the final status.
 The generated descriptors preserve the exact IDL service and method names for
 the gRPC path.
 
-## gRPC Runtime Behavior
+## gRPC Stack Behavior
 
 The generated service companion only supplies Fory serialization and gRPC C++
 bindings. Operational behavior remains standard gRPC C++ behavior:

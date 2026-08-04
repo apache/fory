@@ -14,7 +14,7 @@ serialize application-owned objects or deserialize encoded Fory data. Fory does
 not provide a standalone network service, daemon, authentication system, or
 transport protocol.
 
-Fory can generate service companions for application-provided gRPC runtimes.
+Fory can generate service companions for application-provided gRPC implementations.
 Those companions provide Fory serialization for request and response objects;
 the application and gRPC stack still own listeners, channels, credentials,
 authentication, authorization, deadlines, retries, and transport lifecycle.

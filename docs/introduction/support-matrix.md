@@ -19,13 +19,13 @@ license: |
   limitations under the License.
 ---
 
-Use this matrix to confirm the documented API surface before choosing a capability. A runtime page
+Use this matrix to confirm the documented API surface before choosing a capability. A language page
 does not imply support for every Fory capability.
 
-| Capability                  | Documented runtimes                                                                | Interoperability                                         |
+| Capability                  | Documented languages                                                               | Interoperability                                         |
 | --------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | Xlang object serialization  | Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin | One shared xlang wire format                             |
-| Native object serialization | Java, Python, C++, Go, Rust, Scala, Kotlin                                         | Same runtime family only                                 |
+| Native object serialization | Java, Python, C++, Go, Rust, Scala, Kotlin                                         | One Fory implementation family only                      |
 | Standard Row Format         | Java, Python, C++, Rust                                                            | Shared Standard Row layout                               |
 | Compact Row Format          | Java                                                                               | Java-only compact layout                                 |
 | Fory JSON                   | Java                                                                               | Standard JSON text                                       |

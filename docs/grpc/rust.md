@@ -300,7 +300,7 @@ reference metadata for a request or response type, Rust gRPC generation rejects
 that service. Use thread-safe reference shapes for gRPC payloads, or keep the
 non-thread-safe type out of the RPC boundary.
 
-## gRPC Runtime Behavior
+## gRPC Stack Behavior
 
 The generated service companion only supplies Fory serialization and tonic
 bindings. Operational behavior remains standard tonic behavior:

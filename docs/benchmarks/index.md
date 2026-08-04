@@ -128,6 +128,6 @@ Note: Results depend on hardware, dataset, and runtime versions. See the
 
 ## Read Results Responsibly
 
-Start with [Methodology](methodology.md), then open the report whose capability, runtime, schema,
+Start with [Methodology](methodology.md), then open the report whose capability, language, schema,
 mode, and operation match your workload. The checked-in results are historical evidence from their
 recorded environment, not a guarantee for a different application or current main branch.

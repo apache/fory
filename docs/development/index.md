@@ -129,7 +129,7 @@ Requirements:
 
 See [Debugging C++](cpp-debugging.md) for the repository's VS Code, Bazel, LLDB, and GDB setup.
 
-Runtime-specific contributor instructions remain in each runtime's source tree and contributor
+Language-specific contributor instructions remain in each language's source tree and contributor
 README when they are not part of the shared repository build.
 
 ## Contributing

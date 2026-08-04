@@ -20,9 +20,9 @@ license: |
 ---
 
 Apache Fory Java provides high-performance binary object serialization. Use xlang mode for payloads
-shared with other supported runtimes and native mode for Java/JVM-only object graphs.
+shared across Fory implementation families and native mode for JVM-family object graphs.
 
-This runtime guide is scoped to Binary Object Serialization. For other Java capabilities, use
+This Java guide is scoped to Binary Object Serialization. For other Java capabilities, use
 [Row Format](../../row-format/java.md), [Fory JSON](../../json/index.md),
 [Fory IDL and compiler](../../compiler/index.md), or [Fory gRPC](../../grpc/java.md).
 
@@ -76,8 +76,10 @@ implementation("org.apache.fory:fory-core:1.5.0")
 
 #### JDK 25 and Later
 
-On JDK 25 and later, open `java.lang.invoke` to Fory. Use `ALL-UNNAMED` when Fory is on
-the classpath:
+On JDK 25 and later, opening `java.lang.invoke` to Fory core is not required, but is recommended. It avoids
+the current-JDK Unsafe fallback and is required when Unsafe access is disabled or unavailable,
+including with `--sun-misc-unsafe-memory-access=deny`. Use `ALL-UNNAMED` when Fory is on the
+classpath:
 
 ```bash
 --add-opens=java.base/java.lang.invoke=ALL-UNNAMED

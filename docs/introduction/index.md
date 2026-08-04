@@ -23,9 +23,9 @@ license: |
 idiomatic domain objects, schema IDL, and cross-language data exchange.
 
 Fory is built for compact, high-throughput serialization across languages and
-runtimes. It works directly with application objects, supports shared schemas
+execution platforms. It works directly with application objects, supports shared schemas
 when you need a stable contract, and preserves object graph features such as
-shared references, circular references, and polymorphic runtime types.
+shared references, circular references, and concrete types for polymorphic values.
 
 ## Quick Example
 
@@ -82,7 +82,7 @@ exchanges compact binary payloads across supported languages:
 
 - **Compact metadata**: Type metadata and field information are packed to keep payloads small.
 - **Schema evolution**: Compatible mode supports forward and backward evolution for application schemas.
-- **Object graph semantics**: Shared references, circular references, and polymorphic runtime types are preserved across runtimes.
+- **Object graph semantics**: Shared references, circular references, and concrete types for polymorphic values are preserved across languages.
 - **Type mapping**: Language-specific values are mapped through the shared [type mapping](../specification/xlang_type_mapping.md).
 
 ### Domain Objects First
@@ -103,7 +103,7 @@ once and generate native domain objects for each target language:
 - Model numbers, strings, lists, maps, arrays, enums, structs, and unions.
 - Express shared and circular references directly in the schema.
 - Generate idiomatic host-language code without introducing transport-specific wrapper types into user code.
-- Use schema IDL when services need a stable contract across independently maintained runtimes.
+- Use schema IDL when services need a stable contract across independently maintained Fory implementations.
 
 ### Row-Format Random Access
 
@@ -115,11 +115,11 @@ optimized for analytics and partial-read workloads:
 - **Apache Arrow integration**: Convert to columnar data for analytics pipelines.
 - **Multi-language support**: Exchange Standard Row Format data across Java, Python, C++, and Rust.
 
-### Optimized Runtimes
+### Optimized Fory Implementations
 
-Fory keeps hot paths fast without making every runtime use the same implementation strategy:
+Fory keeps hot paths fast without making every Fory implementation use the same strategy:
 
 - **Java JIT serializers**: Runtime code generation eliminates reflection overhead and inlines hot paths.
-- **Generated and static serializers**: Other runtimes use generated or static serializers where appropriate.
+- **Generated and static serializers**: Other Fory implementations use generated or static serializers where appropriate.
 - **Zero-copy paths**: Row format and out-of-band buffers avoid unnecessary copies for large values.
 - **Metadata sharing**: Repeated type information is shared or packed to reduce serialization overhead.

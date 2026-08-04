@@ -161,7 +161,7 @@ fory.Serialize<object?>(dynamicWriter, value);
 
 ## Cross-Language Interoperability
 
-The default xlang format is shared by all Fory runtimes. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
+The default xlang format is shared by all Fory implementations. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
 
 Apache Fory™ C# supports xlang serialization with other Fory implementations.
 

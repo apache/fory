@@ -206,7 +206,7 @@ static_cast<Dog*>(container.pet.get())->breed = "Beagle";
 auto bytes = fory.serialize(container).value();
 auto decoded = fory.deserialize<Container>(bytes).value();
 
-// Runtime type preserved
+// Dynamic type preserved
 auto* dog = dynamic_cast<Dog*>(decoded.pet.get());
 assert(dog != nullptr);
 assert(dog->breed == "Beagle");

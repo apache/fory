@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-## Android Runtime
+## Android Support
 
 Fory Java supports Android 8.0+ (API level 26+) through the regular `fory-core` artifact. No separate
 Android artifact is required for core object serialization.

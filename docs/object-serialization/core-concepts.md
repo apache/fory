@@ -30,18 +30,18 @@ cycles. Serialization walks that graph from the root. Deserialization creates a 
 encoded type and field data.
 
 This is different from serializing a row or a JSON document. Object serialization can preserve
-runtime types and object identity so the reader can reconstruct application objects rather than
+concrete object types and object identity so the reader can reconstruct application objects rather than
 only values. Use [Row Format](../row-format/index.md) for trusted analytical rows and
 [Fory JSON](../json/index.md) for JSON interchange.
 
-## Runtime instances and registration
+## Fory instances and registration
 
 A Fory instance owns its mode, schema behavior, reference settings, registered types, custom
 serializers, and read limits. Configure and register the instance before its first root
 serialization or deserialization operation, then reuse it. Registration is frozen after the first
 root operation so the same instance always resolves a type in the same way.
 
-Thread-safety differs by runtime. Some runtimes provide a thread-safe wrapper or pool; others use
+Thread-safety differs by Fory implementation. Some implementations provide a thread-safe wrapper or pool; others use
 one instance per thread or task. Follow the selected language guide instead of sharing an ordinary
 instance without checking its concurrency contract.
 
@@ -52,13 +52,14 @@ extension types use a registered numeric ID or name. Type identity answers _whic
 model should read this value_; a field schema describes _what data that model contains_.
 
 A statically known field can use its declared type directly. A dynamic field also carries the
-concrete runtime type needed for interfaces, abstract classes, trait objects, broad object types,
+concrete type needed for interfaces, abstract classes, trait objects, broad object types,
 or heterogeneous values. Dynamic typing is more flexible but requires every possible concrete type
 to be registered and supported by the selected mode.
 
 In xlang mode, peers must coordinate the same portable type identity and mapping. Native mode may
-use runtime-specific identities and types. See [Xlang Serialization](xlang.md) for the portable
-rules and each language's Type Registration page for its exact API.
+use implementation-specific identities and language-specific types. See
+[Xlang Serialization](xlang.md) for the portable rules and each language's Type Registration page
+for its exact API.
 
 ## Schemas and evolution
 
@@ -90,7 +91,7 @@ than once or contains a cycle. Without reference tracking, repeated values may b
 objects and cycles may recurse until the operation fails.
 
 Leave reference tracking disabled for value-shaped, acyclic data when identity does not matter; it
-adds per-object metadata and lookup work. Some runtimes combine a global setting with field-level
+adds per-object metadata and lookup work. Some Fory implementations combine a global setting with field-level
 metadata, so use the language-specific References or Basic Serialization page for exact behavior.
 
 ## Polymorphism
@@ -99,24 +100,25 @@ Polymorphism stores the concrete type of a value whose declared position is broa
 must know and accept that concrete type, and the type must be representable in the selected mode.
 
 Host-language inheritance alone does not create a portable contract. For cross-language data,
-model only alternatives that have xlang mappings on every peer. For same-runtime data, native mode
-may support additional runtime-specific class, trait, or hook behavior.
+model only alternatives that have xlang mappings on every peer. For data within one Fory
+implementation family, native mode may support additional language-specific class, trait, or hook
+behavior.
 
 ## Custom serializers
 
 Use a custom serializer when a type needs a representation that built-in schema inference cannot
 provide. Registration connects the custom serializer to the application type. A custom serializer
 must follow the selected mode's rules: xlang serializers need a portable representation, while
-native serializers may use runtime-specific data and hooks.
+native serializers may use language-specific data and hooks.
 
 Prefer built-in serializers and generated models when they already describe the type. They keep
 schema evolution, reference handling, and cross-language behavior easier to reason about.
 
 ## Continue with a mode
 
-- [Xlang Serialization](xlang.md) is the default and is required when different language runtimes
-  exchange bytes.
-- [Native Serialization](native.md) is for supported same-runtime use cases that need native types
-  or behavior.
+- [Xlang Serialization](xlang.md) is the default and is required when peers use different Fory
+  implementation families or need a portable contract.
+- [Native Serialization](native.md) is for supported use cases within one Fory implementation
+  family that need native types or behavior.
 - Choose a language section after selecting a mode to find installation, API, configuration,
   registration, platform, security, and troubleshooting guidance.

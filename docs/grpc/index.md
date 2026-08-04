@@ -25,7 +25,7 @@ the Fory compiler. The payload marshaller uses Fory rather than protobuf message
 ## When to Use It
 
 Use Fory gRPC when every peer is generated from the same Fory IDL, protobuf IDL, or FlatBuffers IDL
-contract and supports the matching Fory runtime. Use ordinary protobuf gRPC when generic protobuf
+contract and supports the matching Fory implementation for its language. Use ordinary protobuf gRPC when generic protobuf
 clients, reflection tools, or protobuf message bytes are required.
 
 ## Schema Frontends
@@ -45,7 +45,7 @@ project build.
 
 1. Define messages and services in a supported compiler frontend.
 2. Generate models and gRPC companions with `foryc`.
-3. Add the normal gRPC dependencies for the selected runtime.
+3. Add the normal gRPC dependencies for the selected language.
 4. Implement the generated server base and call the generated client.
 5. Verify unary and streaming calls between generated peers.
 
@@ -62,19 +62,19 @@ generated request and response models.
 
 ### Ownership Boundary
 
-Fory can generate service companions for application-provided gRPC runtimes. Those companions
+Fory can generate service companions for application-provided gRPC implementations. Those companions
 provide Fory serialization for request and response objects; the application and gRPC stack still
 own listeners, channels, credentials, authentication, authorization, deadlines, retries, and
 transport lifecycle.
 
 Fory packages do not add a gRPC implementation as a hard dependency. The application selects and
-configures the runtime's gRPC libraries.
+configures its gRPC libraries.
 
 ### Generated Service Surface
 
-The compiler emits runtime-idiomatic service bases, clients or stubs, method metadata, and Fory
+The compiler emits language-idiomatic service bases, clients or stubs, method metadata, and Fory
 marshallers. Model generation is documented under
-[Generated Code](../compiler/generated-code/index.md); the runtime pages document server and client
+[Generated Code](../compiler/generated-code/index.md); the language pages document server and client
 integration.
 
 ## Interoperability
@@ -94,13 +94,13 @@ Test at least one unary call and every streaming shape used by the service. A pr
 `UNIMPLEMENTED` or decode failure usually means the peer used an ordinary protobuf stub or a
 different generated service contract.
 
-## Runtime Guides
+## Language Guides
 
 Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Dart, Scala, and Kotlin have documented gRPC
-companions. Use the [support matrix](../introduction/support-matrix.md) and the selected runtime page
+companions. Use the [support matrix](../introduction/support-matrix.md) and the selected language page
 for current dependencies and streaming support.
 
-| Runtime               | Guide                                 |
+| Language              | Guide                                 |
 | --------------------- | ------------------------------------- |
 | Java                  | [Java](java.md)                       |
 | Python                | [Python](python.md)                   |

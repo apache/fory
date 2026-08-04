@@ -20,16 +20,16 @@ license: |
 ---
 
 Xlang is Fory's default object serialization mode. It uses one portable binary format across Java,
-Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Each runtime's
-[Basic Serialization](#runtime-guides) page owns its API and model examples; this page explains the
-rules that peers must share.
+Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Each
+language-specific [Basic Serialization](#language-guides) page documents the relevant API and model
+examples; this page explains the rules that peers must share.
 
 Read [Core Concepts](core-concepts.md) first for the object graph, schema, reference, and
 polymorphism concepts shared by xlang and native modes.
 
 ## Overview
 
-Use xlang serialization when bytes cross runtime boundaries, including polyglot services, data
+Use xlang serialization when bytes cross language boundaries, including polyglot services, data
 pipelines, and frontend/backend communication. It provides:
 
 - Direct serialization of native language models without requiring an IDL.
@@ -37,15 +37,15 @@ pipelines, and frontend/backend communication. It provides:
 - Compatible schema evolution for independently deployed peers.
 - Optional shared-reference and circular-reference preservation.
 - Polymorphic values when every concrete type has a portable mapping.
-- Out-of-band buffers for large binary and numeric data where the runtime supports them.
+- Out-of-band buffers for large binary and numeric data where the Fory implementation supports them.
 
-Use [Native Serialization](native.md) instead when every writer and reader uses the same supported
-runtime and the object graph needs language-specific behavior such as Java serialization hooks or
-Python pickle-compatible objects.
+Use [Native Serialization](native.md) instead when every writer and reader uses one supported Fory
+implementation family and the object graph needs language-specific behavior such as Java
+serialization hooks or Python pickle-compatible objects.
 
-### Supported Runtimes
+### Supported Languages
 
-| Runtime               | Package or target                          | Modes        |
+| Language              | Package or target                          | Modes        |
 | --------------------- | ------------------------------------------ | ------------ |
 | Java                  | `org.apache.fory:fory-core`                | xlang/native |
 | Python                | `pyfory`                                   | xlang/native |
@@ -124,7 +124,7 @@ message Person {
 }
 ```
 
-Generate the required runtime targets with `foryc`; generated models use consistent field and type
+Generate the required language targets with `foryc`; generated models use consistent field and type
 metadata across those targets.
 
 ## Type System and Type Identity
@@ -141,9 +141,9 @@ carrier for every xlang type. Important cases include:
 
 - Python uses markers such as `pyfory.Int32`, `pyfory.Float16`, and `pyfory.BFloat16` when the native
   Python type does not express the required width.
-- Java, Dart, and other runtimes use annotations or schema metadata where one host type can represent
+- Java, Dart, and other languages use annotations or schema metadata where one host type can represent
   multiple xlang types.
-- Reduced-precision `float16` and `bfloat16` values and dense arrays use runtime-specific carriers.
+- Reduced-precision `float16` and `bfloat16` values and dense arrays use language-specific carriers.
 - `list<T>` and dense `array<T>` are distinct schemas. In compatible mode, a direct struct field may
   adapt between a list and dense bool/numeric array when the element domain is compatible and the
   actual list contains no unrepresentable null or reference-tracked element.
@@ -161,22 +161,22 @@ small contract registry or use generated Fory IDL modules when multiple teams ow
 
 ### Static and Dynamic Fields
 
-A statically known field uses its declared serializer without writing a concrete runtime type. A
+A statically known field uses its declared serializer without writing a concrete type. A
 dynamic field carries enough type information to select the concrete registered type. Dynamic
 metadata is needed for interfaces, abstract types, trait objects, and other polymorphic positions;
 it is unnecessary for primitives and exact final types.
 
-| Runtime | Dynamic field model                                               |
-| ------- | ----------------------------------------------------------------- |
-| Java    | `@ForyField(dynamic = ...)` controls automatic or forced metadata |
-| Python  | `pyfory.field(dynamic=...)` controls object-field metadata        |
-| C++     | `fory::F(...).dynamic(...)` overrides automatic detection         |
-| Go      | Interface fields express dynamic values                           |
-| Rust    | Trait-object carriers express dynamic values                      |
+| Language | Dynamic field model                                               |
+| -------- | ----------------------------------------------------------------- |
+| Java     | `@ForyField(dynamic = ...)` controls automatic or forced metadata |
+| Python   | `pyfory.field(dynamic=...)` controls object-field metadata        |
+| C++      | `fory::F(...).dynamic(...)` overrides automatic detection         |
+| Go       | Interface fields express dynamic values                           |
+| Rust     | Trait-object carriers express dynamic values                      |
 
 Writing dynamic metadata costs space and type-resolution work. Disable it only when the field can
 never contain another concrete type. Exact annotation and registration examples belong to each
-runtime's schema metadata, type registration, and polymorphism pages.
+language's schema metadata, type registration, and polymorphism pages.
 
 ## Nullability and Reference Tracking
 
@@ -189,7 +189,8 @@ Nullability and reference tracking solve different problems:
 
 The wire framing is defined by the
 [xlang serialization specification](../specification/xlang_serialization_spec.md). Applications
-should configure the semantic behavior through runtime APIs rather than depend on flag values.
+should configure the semantic behavior through their language-specific Fory APIs rather than depend
+on flag values.
 
 ### Nullability
 
@@ -227,9 +228,9 @@ Fory fory = Fory.builder()
     .build();
 ```
 
-Global reference tracking enables the runtime mechanism; field metadata selects which positions
+Global reference tracking enables the reference-tracking mechanism; field metadata selects which positions
 participate. Common field-level controls are Java and Scala `@Ref`, Go `fory:"ref"` tags, Rust
-`#[fory(ref = true)]`, and C++ smart-pointer or `fory::F().ref()` metadata. Consult the runtime guide
+`#[fory(ref = true)]`, and C++ smart-pointer or `fory::F().ref()` metadata. Consult the language guide
 because default tracking differs by carrier and language.
 
 Reference support also follows the host ownership model. For example, Rust can preserve supported
@@ -242,12 +243,12 @@ element, or root type is broader. Every receiving peer must:
 
 1. Register the same concrete type identity.
 2. Provide a compatible field schema for that concrete type.
-3. Mark or model the position as dynamic when the runtime cannot infer it.
+3. Mark or model the position as dynamic when the Fory implementation cannot infer it.
 4. Use a concrete type that has a portable xlang mapping.
 
 Host-language inheritance alone does not make a type portable. If a shape has no xlang mapping, use
-the runtime's native mode for same-language traffic or define a portable model. See the runtime
-polymorphism pages for interfaces, trait objects, unions, and generated-code syntax.
+native mode for traffic within one Fory implementation family or define a portable model. See the
+language polymorphism pages for interfaces, trait objects, unions, and generated-code syntax.
 
 ## Schema Evolution
 
@@ -270,7 +271,7 @@ together. Normative compatibility behavior lives in the
 
 ## Zero-Copy Serialization
 
-Some runtimes can move large binary or numeric buffers out of the main serialized byte stream. This
+Some Fory implementations can move large binary or numeric buffers out of the main serialized byte stream. This
 avoids copying those buffers into one contiguous payload.
 
 The transport flow is:
@@ -300,7 +301,7 @@ decoded = fory.deserialize(metadata, buffers=buffers)
 ```
 
 Go exposes the equivalent callback-buffer flow through its serialization and buffer APIs. Use the
-runtime documentation for the current method names and supported buffer carriers.
+language guide for the current method names and supported buffer carriers.
 
 Out-of-band serialization helps when buffers are large and the transport can send them without an
 additional copy. For small arrays, callback and multi-buffer transport overhead may cost more than
@@ -309,33 +310,33 @@ copying. The application owns buffer ordering, lifetime, and transport framing. 
 
 ## Troubleshooting
 
-| Symptom                                  | Likely cause                                        | Resolution                                                     |
-| ---------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------- |
-| Type is not registered                   | Registration missing or performed too late          | Register every custom type before the first root operation     |
-| Type ID or name mismatch                 | Peers use different identities                      | Use the same numeric ID or the same namespace and type name    |
-| Integer overflow or float precision loss | Host carriers use different numeric widths          | Follow the type mapping and use explicit width metadata        |
-| Fields decode incorrectly                | Field IDs, names, or types differ                   | Align field metadata or regenerate all peers from the same IDL |
-| Stack overflow on a cyclic graph         | Reference tracking is disabled                      | Enable global and field-level reference tracking               |
-| Shared objects become duplicates         | The value position does not track references        | Enable reference tracking for that carrier or field            |
-| Unsupported host type                    | The type has no portable xlang representation       | Use a portable model or native mode for same-language traffic  |
-| Schema/hash mismatch                     | Same-schema peers have different schemas            | Align every peer or restore compatible mode                    |
-| Failure after an upgrade                 | Peers run incompatible protocol versions            | Align supported Fory versions and review release notes         |
-| Payload rejected immediately             | One peer wrote native bytes and another reads xlang | Keep all peers on xlang for a cross-language contract          |
+| Symptom                                  | Likely cause                                        | Resolution                                                                |
+| ---------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------- |
+| Type is not registered                   | Registration missing or performed too late          | Register every custom type before the first root operation                |
+| Type ID or name mismatch                 | Peers use different identities                      | Use the same numeric ID or the same namespace and type name               |
+| Integer overflow or float precision loss | Host carriers use different numeric widths          | Follow the type mapping and use explicit width metadata                   |
+| Fields decode incorrectly                | Field IDs, names, or types differ                   | Align field metadata or regenerate all peers from the same IDL            |
+| Stack overflow on a cyclic graph         | Reference tracking is disabled                      | Enable global and field-level reference tracking                          |
+| Shared objects become duplicates         | The value position does not track references        | Enable reference tracking for that carrier or field                       |
+| Unsupported host type                    | The type has no portable xlang representation       | Use a portable model or native mode within one Fory implementation family |
+| Schema/hash mismatch                     | Same-schema peers have different schemas            | Align every peer or restore compatible mode                               |
+| Failure after an upgrade                 | Peers run incompatible protocol versions            | Align supported Fory versions and review release notes                    |
+| Payload rejected immediately             | One peer wrote native bytes and another reads xlang | Keep all peers on xlang for a cross-language contract                     |
 
 ### Diagnostic Checklist
 
 1. Confirm that every peer uses xlang mode and a mutually supported Fory version.
 2. Compare the registered type identity, field IDs or names, numeric widths, nullability, and
    reference metadata.
-3. Reproduce a same-runtime round trip before testing the cross-runtime direction.
+3. Reproduce a local round trip in each Fory implementation before testing the cross-language direction.
 4. Test both directions for every language pair used in production.
 5. Reduce the value to one type and field, then add fields back until the mismatch appears.
-6. Inspect the runtime-specific troubleshooting page for generated-code, platform, or API errors.
+6. Inspect the language-specific troubleshooting page for generated-code, platform, or API errors.
 
-When diagnosing binary layout, use the specifications and runtime debug facilities. Do not treat a
+When diagnosing binary layout, use the specifications and implementation-specific debug facilities. Do not treat a
 hex dump or internal flag value as a stable application API.
 
-## Runtime Guides
+## Language Guides
 
 - [Java](java/basic-serialization.md#cross-language-interoperability)
 - [Python](python/basic-serialization.md#cross-language-interoperability)
@@ -352,9 +353,9 @@ hex dump or internal flag value as a stable application API.
 ## Related Documentation
 
 - [Xlang Serialization Format](../specification/xlang_serialization_spec.md) — normative wire format
-- [Xlang Type Mapping](../specification/xlang_type_mapping.md) — exact runtime carrier mappings
+- [Xlang Type Mapping](../specification/xlang_type_mapping.md) — exact host-language carrier mappings
 - [Fory IDL and Compiler](../compiler/index.md) — schema-first models and code generation
-- [Getting Started](../start/index.md) — installation and first serialization for each runtime
+- [Getting Started](../start/index.md) — installation and first serialization for each language
 - [Row Format](../row-format/index.md) — random-access analytical rows for trusted data
 
 ## Operational Best Practices

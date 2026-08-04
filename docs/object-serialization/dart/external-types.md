@@ -226,7 +226,7 @@ Register every concrete external type that can appear dynamically.
 
 Non-empty root lists, sets, and maps decode their elements, keys, and values as
 the registered external targets. Dart root collections retain their existing
-runtime shapes, so read a root collection as `Object?` and cast its outer
+untyped outer shapes, so read a root collection as `Object?` and cast its outer
 carrier:
 
 ```dart

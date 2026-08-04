@@ -239,7 +239,7 @@ This is useful when debugging schema behavior, field ordering, or generated fast
 
 ## Cross-Language Interoperability
 
-The default xlang format is shared by all Fory runtimes. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
+The default xlang format is shared by all Fory implementations. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
 
 Fory JavaScript serializes to the same binary format as the Java, Python, C++,
 Go, Rust, C#, Swift, Dart, Scala, and Kotlin Fory implementations. You can write a

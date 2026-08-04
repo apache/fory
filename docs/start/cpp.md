@@ -33,7 +33,7 @@ cmake --version
 
 ## Object Serialization
 
-Use xlang mode for data shared with other Fory runtimes or native mode for
+Use xlang mode for data shared with Fory implementations in other languages or native mode for
 C++-only data. Fetch a released source tree and link the serialization target:
 
 ```cmake title="CMakeLists.txt"

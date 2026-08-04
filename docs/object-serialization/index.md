@@ -24,10 +24,10 @@ collections, polymorphic values, and optional shared references.
 
 ## Choose a mode
 
-| Mode            | Use it when                                          | Start here                        |
-| --------------- | ---------------------------------------------------- | --------------------------------- |
-| Xlang (default) | Bytes cross runtime boundaries                       | [Xlang Serialization](xlang.md)   |
-| Native          | Every writer and reader uses the same runtime family | [Native serialization](native.md) |
+| Mode            | Use it when                                                 | Start here                        |
+| --------------- | ----------------------------------------------------------- | --------------------------------- |
+| Xlang (default) | Bytes cross language boundaries                             | [Xlang Serialization](xlang.md)   |
+| Native          | Every writer and reader uses one Fory implementation family | [Native serialization](native.md) |
 
 Xlang and native are the only object-serialization modes. Row Format is a random-access analytical
 representation, and Fory JSON is a Java JSON codec; use the
@@ -35,32 +35,33 @@ representation, and Fory JSON is a Java JSON codec; use the
 
 ## Read the concepts and modes
 
-Read these pages before choosing a runtime API:
+Read these pages before choosing the Fory API for a language:
 
 1. [Core Concepts](core-concepts.md) explains object graphs, types, schemas, references,
    polymorphism, and schema evolution across both modes.
 2. [Xlang Serialization](xlang.md) explains the portable format used by default and the rules that
-   different language runtimes must share.
-3. [Native Serialization](native.md) explains when a same-runtime native format is appropriate.
+   Fory implementations in different languages must share.
+3. [Native Serialization](native.md) explains when an implementation-specific native format is
+   appropriate.
 
-## Browse by runtime
+## Browse by language
 
-Choose a runtime to find its installation route, lifecycle, exact APIs, configuration, type
+Choose a language to find its installation route, lifecycle, exact APIs, configuration, type
 registration, schema behavior, extensions, platforms, and troubleshooting:
 
-| Runtime               | Modes                | Documentation                                          |
-| --------------------- | -------------------- | ------------------------------------------------------ |
-| Java                  | xlang and native     | [Java runtime](./java/index.md)                        |
-| Python                | xlang and native     | [Python runtime](./python/index.md)                    |
-| C++                   | xlang and native     | [C++ runtime](./cpp/index.md)                          |
-| Go                    | xlang and native     | [Go runtime](./go/index.md)                            |
-| Rust                  | xlang and native     | [Rust runtime](./rust/index.md)                        |
-| JavaScript/TypeScript | xlang                | [JavaScript/TypeScript runtime](./javascript/index.md) |
-| C#                    | xlang                | [C# runtime](./csharp/index.md)                        |
-| Swift                 | xlang                | [Swift runtime](./swift/index.md)                      |
-| Dart                  | xlang                | [Dart runtime](./dart/index.md)                        |
-| Scala                 | xlang and JVM native | [Scala runtime](./scala/index.md)                      |
-| Kotlin                | xlang and JVM native | [Kotlin runtime](./kotlin/index.md)                    |
+| Language              | Modes                | Documentation                                        |
+| --------------------- | -------------------- | ---------------------------------------------------- |
+| Java                  | xlang and native     | [Java guide](./java/index.md)                        |
+| Python                | xlang and native     | [Python guide](./python/index.md)                    |
+| C++                   | xlang and native     | [C++ guide](./cpp/index.md)                          |
+| Go                    | xlang and native     | [Go guide](./go/index.md)                            |
+| Rust                  | xlang and native     | [Rust guide](./rust/index.md)                        |
+| JavaScript/TypeScript | xlang                | [JavaScript/TypeScript guide](./javascript/index.md) |
+| C#                    | xlang                | [C# guide](./csharp/index.md)                        |
+| Swift                 | xlang                | [Swift guide](./swift/index.md)                      |
+| Dart                  | xlang                | [Dart guide](./dart/index.md)                        |
+| Scala                 | xlang and JVM native | [Scala guide](./scala/index.md)                      |
+| Kotlin                | xlang and JVM native | [Kotlin guide](./kotlin/index.md)                    |
 
 ## Specifications
 

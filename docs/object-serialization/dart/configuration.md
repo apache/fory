@@ -126,7 +126,7 @@ collection/map/struct gate:
 final fory = Fory(maxGraphMemoryBytes: 256 * 1024 * 1024);
 ```
 
-Explicit non-positive values are rejected when the runtime is created.
+Explicit non-positive values are rejected when the Fory instance is created.
 
 ### `maxUnbackedContainerItems`
 

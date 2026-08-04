@@ -211,7 +211,7 @@ all supported carriers, and registration.
 
 ## Cross-Language Interoperability
 
-The default xlang format is shared by all Fory runtimes. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
+The default xlang format is shared by all supported Fory implementations. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
 
 Apache Fory™ supports seamless data exchange across Java, Python, C++, Go,
 Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin.

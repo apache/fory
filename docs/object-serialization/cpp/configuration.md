@@ -108,7 +108,7 @@ auto fory = Fory::builder()
 
 The default limit is a fixed `128 MiB` for byte-array, `Buffer`, and stream
 roots. Positive values override the default. Explicit non-positive values are
-rejected when the runtime is created.
+rejected when the Fory instance is created.
 
 This budget is an approximate lower-bound estimate for materialized graph
 owners, mainly collections, maps, arrays, structs, and objects. It is not an

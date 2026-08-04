@@ -20,7 +20,7 @@ license: |
 ---
 
 Fory Scala provides binary Object Serialization, generated models, and Fory
-gRPC. The runtime artifact supports Scala 2.13 and Scala 3; generated Scala
+gRPC. The Fory Scala artifact supports Scala 2.13 and Scala 3; generated Scala
 models require Scala 3.
 
 ## Verify the Toolchain
@@ -33,7 +33,7 @@ sbt --version
 
 ## Object Serialization
 
-Add the runtime to `build.sbt`:
+Add the Fory Scala library to `build.sbt`:
 
 ```sbt
 ThisBuild / scalaVersion := "3.3.1"
@@ -66,8 +66,8 @@ object ScalaExample {
 sbt run
 ```
 
-Use xlang mode for data shared with other Fory runtimes or native mode for
-Scala/JVM-only data. Continue with
+Use xlang mode when a peer uses a different Fory implementation family; use native mode for data
+within the JVM Fory implementation family. Continue with
 [Scala Object Serialization](../object-serialization/scala/index.md),
 [xlang](../object-serialization/scala/basic-serialization.md#cross-language-interoperability), or
 [native mode](../object-serialization/scala/native.md).

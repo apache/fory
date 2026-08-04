@@ -29,7 +29,7 @@ External-type serialization puts `Target` on a local abstract serializer
 declaration. Its properties own the field names, IDs, schema descriptors,
 and nullability. A standalone declaration also owns its `Evolving` setting.
 An external `BaseOnly` declaration cannot set `Evolving`; each concrete
-descendant owns that setting. The target supplies the runtime values and
+descendant owns that setting. The target supplies values of the target type and
 directly accessed members.
 
 ```csharp

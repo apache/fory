@@ -320,7 +320,7 @@ class Counters:
 ```
 
 For `values`, map keys are written as fixed-width int32 values and each nested list element is
-written as tagged int64. Runtime type inference is used only for dynamic or unknown container
+written as tagged int64. Value-based type inference is used only for dynamic or unknown container
 schemas.
 
 In compatible mode, readers consume field bytes using the remote schema metadata. Python assigns the

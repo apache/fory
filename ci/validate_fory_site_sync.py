@@ -26,9 +26,7 @@ import sys
 from typing import List, Tuple
 
 TARGET_REPO = "apache/fory-site@main"
-FORBIDDEN_SYNC_ROOTS = (
-    pathlib.PurePosixPath("docs/security"),
-)
+FORBIDDEN_SYNC_ROOTS = (pathlib.PurePosixPath("docs/security"),)
 
 
 def is_forbidden_sync_path(path: str) -> bool:
@@ -102,76 +100,12 @@ def sync_files(
         print(f"synced {source} -> {dest}")
 
 
-def rewrite_versions_block(text: str) -> str:
-    marker = "versions:"
-    idx = text.find(marker)
-    if idx == -1:
-        return text
-
-    brace_start = text.find("{", idx)
-    if brace_start == -1:
-        return text
-
-    depth = 0
-    end = -1
-    i = brace_start
-    while i < len(text):
-        ch = text[i]
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                end = i
-                break
-        i += 1
-
-    if end == -1:
-        return text
-
-    j = end + 1
-    while j < len(text) and text[j].isspace():
-        j += 1
-    if j < len(text) and text[j] == ",":
-        j += 1
-
-    replacement = (
-        "versions: {\n"
-        "            current: {\n"
-        "              label: 'dev',\n"
-        "            },\n"
-        "          },"
-    )
-    return text[:idx] + replacement + text[j:]
-
-
-def patch_docusaurus_config(path: pathlib.Path) -> None:
-    if not path.exists():
-        return
-    text = path.read_text(encoding="utf-8")
-    text = re.sub(r"locales:\s*\[[^\]]*\]", "locales: ['en-US']", text, count=1)
-    text = re.sub(r"lastVersion:\s*'[^']*'", "lastVersion: 'current'", text)
-    text = rewrite_versions_block(text)
-    path.write_text(text, encoding="utf-8")
-
-
-def prune_for_fast_build(site_root: pathlib.Path) -> None:
-    for directory in ("i18n", "versioned_docs", "versioned_sidebars"):
-        shutil.rmtree(site_root / directory, ignore_errors=True)
-
-    versions_json = site_root / "versions.json"
-    if versions_json.exists():
-        versions_json.write_text("[]\n", encoding="utf-8")
-
-    patch_docusaurus_config(site_root / "docusaurus.config.ts")
-    patch_docusaurus_config(site_root / "docusaurus.config.js")
-
-
 def run_site_commands(site_root: pathlib.Path) -> None:
+    # Limit rendering without rewriting the site's released-version state. The normal build command
+    # also preserves site-owned Docusaurus acceleration such as `future.faster`.
     for command in (
-        ("npm", "install"),
         ("npm", "run", "lint", "--if-present"),
-        ("npm", "run", "build"),
+        ("npm", "run", "build", "--", "--locale", "en-US"),
     ):
         subprocess.run(command, cwd=site_root, check=True)
 
@@ -197,7 +131,6 @@ def main() -> int:
         raise FileNotFoundError(f"fory-site directory not found: {site_root}")
 
     sync_files(fory_root, site_root, sync_file)
-    prune_for_fast_build(site_root)
     run_site_commands(site_root)
     return 0
 

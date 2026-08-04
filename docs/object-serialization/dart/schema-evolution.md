@@ -124,7 +124,7 @@ must change together because the resulting field list is different. A parent
 annotation does not propagate this setting to children.
 
 This option changes generated field selection only. It does not change the
-runtime reference protocol or add a compatibility reader.
+reference protocol or add a compatibility reader.
 
 ## Related Topics
 

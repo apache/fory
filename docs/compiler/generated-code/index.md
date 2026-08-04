@@ -156,12 +156,12 @@ union Wrapper {
 | Swift                 | `toBytes` / `fromBytes`   |
 | Dart                  | (via `fory.serialize()`)  |
 
-## Runtime References
+## Language References
 
-Choose the generated-code reference for the output runtime. Generated models remain ordinary
-runtime-owned types and use that runtime's supported Fory serialization APIs.
+Choose the generated-code reference for the target language. Generated models remain ordinary
+language-native types and use the supported Fory serialization APIs for that language.
 
-| Runtime               | Generated-code reference               |
+| Language              | Generated-code reference               |
 | --------------------- | -------------------------------------- |
 | Java                  | [Java](java.md)                        |
 | Python                | [Python](python.md)                    |

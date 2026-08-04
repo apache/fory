@@ -112,7 +112,7 @@ Fory fory = Fory.Builder()
 ```
 
 The default limit is a fixed `128 MiB` for all root input forms. A positive value overrides the
-default. Explicit non-positive values are rejected when the runtime is created. Skipped leaf values
+default. Explicit non-positive values are rejected when the Fory instance is created. Skipped leaf values
 are still gated by remaining input bytes: if the unread input does not contain enough bytes, Fory
 will not read or create that leaf value.
 

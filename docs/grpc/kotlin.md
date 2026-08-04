@@ -230,7 +230,7 @@ stub.chat(
 }
 ```
 
-## gRPC Runtime Behavior
+## gRPC Stack Behavior
 
 The generated service code only replaces request and response serialization.
 All normal gRPC operational features still belong to grpc-java and

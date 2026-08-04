@@ -185,8 +185,10 @@ fory.registerSerializer(MyClass.class, new MyClassSerializer(fory.getTypeResolve
 
 ### JDK25+ access errors
 
-On JDK25+, if an error names `java.base/java.lang.invoke`, open `java.lang.invoke` to Fory. Use
-`ALL-UNNAMED` when Fory is on the classpath:
+On JDK25+, opening `java.lang.invoke` to Fory core is not required, but is recommended. Add the opening if
+an error names `java.base/java.lang.invoke`, or when Unsafe access is disabled or unavailable,
+including with `--sun-misc-unsafe-memory-access=deny`. Use `ALL-UNNAMED` when Fory is on the
+classpath:
 
 ```bash
 --add-opens=java.base/java.lang.invoke=ALL-UNNAMED

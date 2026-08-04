@@ -2043,12 +2043,26 @@ jobs:
           ref: main
           path: fory-site
 
-      - name: Set up Node.js 20.x
+      - name: Set up Node.js 24.x
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 24.x
           cache: npm
           cache-dependency-path: fory-site/package-lock.json
+
+      - name: Install fory-site dependencies
+        working-directory: fory-site
+        run: npm ci --prefer-offline --fund=false
+
+      - name: Restore Docusaurus cache
+        uses: actions/cache@v4
+        with:
+          path: fory-site/node_modules/.cache
+          key: ${{ runner.os }}-node24-docusaurus-${{ hashFiles('fory-site/package-lock.json') }}
+
+      - name: Test fory-site validator
+        working-directory: fory
+        run: python3 -m unittest ci.test_validate_fory_site_sync
 
       - name: Sync files and validate site build
         run: |

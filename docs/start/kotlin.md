@@ -32,7 +32,7 @@ java -version
 
 ## Object Serialization
 
-Add the runtime to the application module:
+Add the Fory Kotlin library to the application module:
 
 ```kotlin title="build.gradle.kts"
 dependencies {
@@ -67,8 +67,8 @@ If the project applies Gradle's `application` plugin, run its application task:
 ./gradlew run
 ```
 
-Use xlang mode for data shared with other Fory runtimes or native mode for
-Kotlin/JVM-only data. Continue with
+Use xlang mode when a peer uses a different Fory implementation family; use native mode for data
+within the JVM Fory implementation family. Continue with
 [Kotlin Object Serialization](../object-serialization/kotlin/index.md),
 [xlang](../object-serialization/kotlin/basic-serialization.md#cross-language-interoperability), or
 [native mode](../object-serialization/kotlin/native.md).
@@ -77,4 +77,4 @@ Kotlin/JVM-only data. Continue with
 
 - **Fory IDL and Compiler** generates Kotlin models and registration helpers through KSP. See [Compiler Getting Started](../compiler/getting-started.md) and the [Kotlin generated-code guide](../compiler/generated-code/kotlin.md).
 - **Fory gRPC** uses grpc-kotlin and grpc-java transports with Fory-encoded messages. See [Kotlin gRPC](../grpc/kotlin.md).
-- **Android** uses generated serializers with the same Fory Kotlin runtime. See [Android Object Serialization](../object-serialization/java/android.md).
+- **Android** uses generated serializers with the same Fory Kotlin library. See [Android Object Serialization](../object-serialization/java/android.md).

@@ -108,7 +108,7 @@ enum ValueSerializer {
 }
 ```
 
-The target must represent the same runtime unknown carrier for lossless xlang
+The target must represent the same in-memory unknown-case carrier for lossless xlang
 union reads. A third-party crate can remain independent of Fory by declaring a
 generic enum such as `Value<U>`; the application sets the serializer target to
 `Value<UnknownCase>`. A target that cannot carry unknown cases is not eligible

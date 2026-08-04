@@ -33,7 +33,7 @@ Before deserialization:
   first root operation.
 - Validate the deserialized value against application authorization and domain rules before use.
 
-## Runtime safeguards
+## Built-in safeguards
 
 Keep class registration enabled for production and any untrusted payload source:
 
@@ -77,7 +77,7 @@ allow list when dynamic class loading is required.
 
 Add negative tests for the boundary as well as normal round trips. Verify that the configured reader
 rejects unexpected application types, excessive nesting, resource-limit violations, and malformed
-input. After a failed read, verify that a valid root can still be read with the reusable runtime.
+input. After a failed read, verify that a valid root can still be read with the same Fory instance.
 
 See [Configuration](configuration.md) for the complete option reference and
-[Type Registration](type-registration.md) for the runtime's registration API.
+[Type Registration](type-registration.md) for the Fory registration API.

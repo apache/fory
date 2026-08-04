@@ -21,12 +21,11 @@ license: |
 
 ## Overview
 
-This guide describes the current xlang implementation ownership model used by
-the xlang runtimes.
+This guide describes the current xlang ownership model used by Fory implementations.
 
 The wire format is defined by
 [Xlang Serialization Spec](xlang_serialization_spec.md). This document is about
-service boundaries, operation flow, and internal ownership. New language implementations do not
+service boundaries, operation flow, and internal ownership. New Fory implementations do not
 need the same class names, but they should preserve the same control flow:
 
 - root operations stay on the `Fory` facade
@@ -202,7 +201,7 @@ The ownership split is:
 
 - the serializer provider owns static serialization behavior and, for an
   external structural serializer, the local schema declaration
-- the target owns runtime values, host type identity, storage size, and
+- the target owns values of the target type, host type identity, storage size, and
   dynamic downcasts
 - the value serializer owns target bodies, complete root values, defaults,
   value type identity, root/dynamic type information, and value-level
@@ -298,8 +297,8 @@ internal static class StatusSerializer
 ```
 
 External declarations are compile-time generator input only. They are never
-instantiated, reflected over by the runtime, registered, reference-published,
-or used as wire identities. Runtime type positions, construction, `TypeInfo`,
+instantiated, reflected over at runtime, registered, reference-published,
+or used as wire identities. All serializer type positions, construction, `TypeInfo`,
 metadata, reference publication, generated factory keys, roots, fields,
 dynamic values, and carriers use the target type.
 
@@ -349,7 +348,7 @@ C# carrier composition remains target-based. The resolver recursively binds
 `Dictionary<TKey, TValue>`, `SortedDictionary<TKey, TValue>`,
 `SortedList<TKey, TValue>`, `ConcurrentDictionary<TKey, TValue>`, and
 `NullableKeyDictionary<TKey, TValue>`. Ordinary, external, and custom
-serializers use the same carrier bodies. There is no hierarchy runtime lookup,
+serializers use the same carrier bodies. There is no hierarchy lookup at runtime,
 provider object, callback, schema tree, per-element dispatch, or additional
 value allocation.
 
@@ -373,7 +372,7 @@ Rust represents immutable value-serializer properties with five associated
 constants on `Serializer`:
 
 - `IS_OPTIONAL` means the selected value shape carries Option semantics;
-- `IS_POLYMORPHIC` means its concrete target is selected from the runtime
+- `IS_POLYMORPHIC` means its concrete target is selected from the application
   value;
 - `IS_SHARED_REF` means it uses the existing shared-reference wire behavior;
 - `IS_WRAPPER` means it is a Fory-owned wrapper serializer without an
@@ -401,9 +400,9 @@ or forwards field framing without changing root or value composition.
 Serializer-provider identity is a host implementation detail and is never
 encoded. External structural serializers use the same STRUCT, ENUM, or UNION
 metadata and value format as an equivalent directly supported target. Custom
-serializers that are not the runtime's canonical implementation of an existing
+serializers that are not the Fory implementation's canonical serializer for an existing
 built-in use EXT or NAMED_EXT. Serializer-provider separation does not replace
-runtime-owned built-in mappings.
+implementation-owned built-in mappings.
 
 Static generated fields and serializer-selected roots should dispatch directly
 to the serializer selected by their schema. A Rust field `with = S` selects the
@@ -830,9 +829,9 @@ custom serializer targeting one of the same Rust shapes also keeps it false
 because it owns an independent opaque EXT body. Private built-in registration
 validates only its expected internal type ID. These semantic checks use the
 existing serializer contracts and wire categories. Custom EXT registration is
-the only runtime consumer of `IS_WRAPPER`.
+the only consumer of `IS_WRAPPER`.
 
-Dynamic values should resolve by the concrete target identity. When a runtime
+Dynamic values should resolve by the concrete target identity. When a Fory implementation
 needs both directions, its serializer-provider-to-type-info and target-to-type-info
 indexes must point to the same immutable registration metadata and serializer
 harness rather than creating parallel metadata or serialization paths.
@@ -1076,7 +1075,7 @@ This policy avoids three inefficient implementation shapes:
 
 Scratch buffers remain appropriate when the target representation is not a
 direct byte target, such as string transcoding, compression, byte-order
-conversion that is not performed in place, bit-packed values, or runtimes whose
+conversion that is not performed in place, bit-packed values, or implementations whose
 stream API cannot read into a caller-provided target.
 
 For fixed-width primitive arrays, the final result must not become visible to
@@ -1104,8 +1103,8 @@ memory budget before allocation or size hinting. The budget state belongs to
 state. Root facades set or reset the per-operation budget only; they must not
 pre-reserve root type or root self bytes. `maxGraphMemoryBytes` defaults to a
 fixed `128 MiB`; positive configuration overrides the default; explicit
-non-positive configuration is invalid and must be rejected when the runtime is
-created. Do not derive this budget from root input size, and do not add dynamic
+non-positive configuration is invalid and must be rejected during configuration or Fory instance
+creation. Do not derive this budget from root input size, and do not add dynamic
 stream bytes-read accounting for this budget.
 Because the budget is fixed per root, read state should not mirror the
 configured maximum into a second active-limit field. Use the existing
@@ -1136,13 +1135,13 @@ reserve the heap or boxed storage they allocate. Value serializers, including
 root and generated struct/product read paths, do not reserve their own self
 storage. Struct/record/POJO/tuple, compatible, generated, and dynamic object
 owners reserve a nonzero shallow self cost plus shallow field storage only in
-reference-object runtimes or dynamic/boxed materialization paths.
+reference-object implementations or dynamic/boxed materialization paths.
 Parents must not recursively include child object, collection, map, string,
 binary, or primitive dense-array contents. Skip enum/union as separate owners and
 skip dedicated string, binary, primitive scalar, primitive array, and primitive
 dense-array leaf owners, but do not skip general inline-value containers such as
 vectors or lists of value objects. If reference slot size is not cheap or
-reliable to query, use a 4-byte reference slot. Native runtimes may use
+reliable to query, use a 4-byte reference slot. Native-code implementations may use
 conservative lower-bound estimates instead of guessing non-portable object,
 container, allocator, table, node, entry, or debug-layout details. Reject
 arithmetic overflow before budget comparison or allocation, and keep the
@@ -1150,7 +1149,7 @@ existing `checkReadableBytes` proof before backing
 allocation or capacity reservation.
 Skipped leaf owners must still be gated by remaining input bytes. If unread
 bytes are insufficient for a string, binary value, primitive scalar, primitive
-array, or primitive dense array, the runtime must not read or create that leaf
+array, or primitive dense array, the reader must not read or create that leaf
 value.
 
 For TypeDef or TypeMeta bodies, first prove that the encoded metadata body bytes
@@ -1197,7 +1196,7 @@ The exact-local candidate must be derived inside the metadata owner path from
 the decoded metadata identity: `userTypeId` for id-registered metadata, or
 `(namespace, typeName)` for name-registered metadata. Do not thread extra
 expected-type parameters through read callers solely for this check. This rule
-applies to every runtime. Java and Python may lazy-build the local encoded
+applies to every Fory implementation. Java and Python may lazy-build the local encoded
 metadata only after this identity lookup selects a local class and the existing
 class, registration, and deserialization-policy checks for that class have run.
 
@@ -1270,7 +1269,7 @@ When `Config.compatible` is enabled and the struct is marked evolving:
   classified as compatible when element domains match; the nullable element
   schema bit alone is not a schema-pair rejection. Actual null element payloads
   fail in the dense-array reader. Ref-tracked list-element framing is separate
-  and may remain rejected when the runtime cannot materialize it without
+  and may remain rejected when the implementation cannot materialize it without
   generic/reference paths.
 
 When `compatible` is disabled and `checkStructVersion` is enabled:
@@ -1339,7 +1338,7 @@ In C#, the enum's underlying numeric value is the xlang tag. Java peers for
 sparse C# enums must declare matching `@ForyEnumId` values instead of relying
 on declaration ordinals.
 
-Other language implementations should preserve the same wire rule even if the configuration or
+Other Fory implementations should preserve the same wire rule even if the configuration or
 annotation surface differs.
 
 A Rust data-carrying enum is an xlang union only when each known variant is unit
@@ -1386,7 +1385,7 @@ registration API family.
 
 Ordinary Dart `ForyStruct` inheritance is a code-generation-time field
 discovery, normalization, access, construction, and flattening change. It does
-not redesign the runtime reference protocol.
+not redesign the reference protocol.
 
 For a concrete annotated child, the generator walks the instantiated
 superclass and applied-mixin storage chain rather than only the child's direct
@@ -1518,7 +1517,7 @@ proof.
 The concrete child owns one `GeneratedStructSchema`, one canonical field sort,
 one serializer and descriptor cache, one reconstruction, one reference
 publication path, and one graph-memory owner. Parent serializers are neither
-nested nor invoked, and parent runtime registration is not required. A
+nested nor invoked, and parent type registration is not required. A
 separately annotated concrete parent has its own independently flattened
 schema only for values of that exact type.
 
@@ -1591,7 +1590,7 @@ registration identity.
 
 The generator must analyze ordinary and external structs through one struct
 model and one emitter. Private generated symbol names come from the declaration
-name. Every runtime type position uses the target type: `Serializer<Target>`,
+name. Every generated serializer type position uses the target type: `Serializer<Target>`,
 `GeneratedStructSchema<Target>`, read and write signatures, constructor calls,
 schema `type`, and generated-module dispatch.
 
@@ -1626,7 +1625,7 @@ paths remain the only runtime paths.
 Registration is keyed by `Target` through the generated module and the existing
 generated registration API. Direct roots, generated fields, dynamic values,
 and recursive collection/map children resolve the same target registration.
-Dart root collections retain their existing untyped outer runtime shapes.
+Dart root collections retain their existing untyped outer shapes.
 
 ## Directory Layout
 

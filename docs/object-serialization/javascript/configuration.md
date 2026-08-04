@@ -113,7 +113,7 @@ const fory = new Fory({
 });
 ```
 
-Explicit non-positive values are rejected when the runtime is created.
+Explicit non-positive values are rejected when the Fory instance is created.
 
 String, binary, and dedicated dense primitive array payloads keep their normal
 byte-size checks and do not consume this graph budget. Raise the limit only for

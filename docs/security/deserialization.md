@@ -31,7 +31,7 @@ a `JsonCreator`, but the selected business invariant remains an application
 policy rather than a Fory protocol security boundary.
 
 This model also does not cover trusted in-memory formats. Row format and other
-memory-format paths are trusted-data paths unless a runtime explicitly exposes
+memory-format paths are trusted-data paths unless a Fory implementation explicitly exposes
 them as untrusted deserialization APIs.
 
 ## Trust Boundaries
@@ -119,7 +119,7 @@ accounting boundary.
 ## Depth And Progress
 
 Deserialization paths that recurse through objects, metadata, containers, or
-references should enforce the runtime's configured depth limit before crafted
+references should enforce the Fory instance's configured depth limit before crafted
 nesting can exhaust the call stack or bypass cleanup. A malformed input that
 exceeds the configured depth should fail the root operation instead of
 continuing unbounded recursion.
@@ -283,7 +283,7 @@ The security requirement is to avoid disproportionate preallocation from a
 declared logical count before enough input bytes justify that capacity. When
 the repeated element or entry body is proven to consume at least one byte, a
 reader that allocates or reserves from the declared count should call
-`checkReadableBytes(logicalCount)` or the runtime equivalent before that
+`checkReadableBytes(logicalCount)` or an equivalent readable-byte check before that
 allocation. When the body may consume no bytes, the readable-byte requirement
 may exclude the root operation's remaining unbacked-container allowance. The
 reader must still account for actual input progress while reading the
@@ -298,7 +298,7 @@ segmentation is normal input and is not a security issue by itself.
 
 ## Unbacked Container Work Budget
 
-Runtimes enforce a root-scoped limit on count-driven collection elements and
+Fory implementations enforce a root-scoped limit on count-driven collection elements and
 map entries whose repeated read bodies are not backed by input progress. The
 public option is named `maxUnbackedContainerItems` or the language-equivalent
 spelling. Its default is `8192`; values must be non-negative, and zero is a
@@ -319,15 +319,15 @@ those proven-positive paths.
 
 ## Graph Memory Budget
 
-Runtimes should enforce a per-operation approximate gate for estimated memory created by one
+Fory implementations should enforce a per-operation approximate gate for estimated memory created by one
 materialized graph. This is cumulative accounting for graph owners created by one top-level
 deserialization operation; it is not exact heap measurement and it is not a raw element-slot limit.
 Actual process memory can be higher than the configured gate.
 
 The public configuration is `maxGraphMemoryBytes`. The default is a fixed `128 MiB` for all input
 forms; positive user configuration overrides the default. Explicit non-positive configuration is
-invalid and should be rejected when the runtime is created. The budget is not derived from input
-size, and stream budgeting should not depend on dynamic bytes-read accounting.
+invalid and should be rejected during configuration or Fory instance creation. The budget is not
+derived from input size, and stream budgeting should not depend on dynamic bytes-read accounting.
 
 Graph budget accounting should:
 
@@ -352,14 +352,14 @@ Graph budget accounting should:
   and use primitive/value field widths for inline storage;
 - preserve existing byte-availability checks before backing allocation or capacity reservation;
 - skip enum/union as separate owners and skip dedicated string, binary, primitive scalar, primitive
-  array, and primitive dense-array leaf owners unless a runtime-specific owner section explicitly
+  array, and primitive dense-array leaf owners unless a language-specific owner section explicitly
   includes them.
 
 Skipped leaf owners must still be gated by remaining input bytes. If the unread input does not
 contain enough bytes for a string, binary value, primitive scalar, primitive array, or primitive
-dense array, the runtime must not read or create that leaf value.
+dense array, the reader must not read or create that leaf value.
 
-Each runtime must inspect the concrete owner path before choosing formulas. Reserve self storage
+Each Fory implementation must inspect the concrete owner path before choosing formulas. Reserve self storage
 exactly once at the owner that stores, boxes, or allocates the value. Deserialization facades may
 reset the budget for each operation, but must not pre-reserve the top-level result type, self bytes,
 or value storage.
@@ -367,7 +367,7 @@ Reference-backed paths reserve parent owner self cost plus reference storage, wh
 heap owner reserves its own shallow self cost when materialized. Inline/value paths reserve inline
 element, field, or boxed storage in the holder/allocation owner; top-level value serializers and
 generated struct/product read paths must not charge their own self storage.
-For inline/value collection or map runtimes, the top-level value container itself is not charged by
+For inline/value collection or map implementations, the top-level value container itself is not charged by
 the deserialization facade or by the container serializer only because it is the returned value.
 Nested value containers are charged as inline slots of the parent holder or as backing storage
 elements of the outer collection that actually owns those slots. Pointer, box, smart-pointer, or
@@ -446,19 +446,19 @@ the complete target and target-ancestor prefix used by an ordinary child. It mus
 non-public physical field in that prefix; the generator does not scan the referenced assembly for
 private layout.
 
-Exact external private identities are version-pinned package ABI assertions. Runtime wire access
+Exact external private identities are version-pinned package ABI assertions. Generated wire access
 uses exact accessors and must not fall back to reflection, layout probing, or a different member.
-Storage-only private declarations have no runtime accessor, so the application must validate them
+Storage-only private declarations have no generated accessor, so the application must validate them
 against the pinned package version.
 
 Dart generators may additionally include public instance fields visible on the target at
 generation time. Swift macros cannot inspect another type's stored layout and therefore use only
-the external declaration. In every runtime, these formulas are resolved during generation and
+the external declaration. In every implementation, these formulas are resolved during generation and
 must not add reflection, layout probing, allocation, or field enumeration to deserialization hot
 paths. The normal owner rules still apply: a reference target reserves its shallow owner and field
 storage, while an inline value target is charged by the holder that owns its storage.
 
-### Runtime-Specific Owner Notes
+### Language-Specific Owner Notes
 
 #### C++
 
@@ -536,7 +536,7 @@ materialization path, owns that reservation. Boxing, `object`, and dynamic mater
 reserve a boxed owner when Fory creates the retained box. Owner constants should be real portable
 lower bounds for the relevant C# object or container shape, not placeholder markers.
 
-Runtimes should not guess object headers, array headers, allocator headers, debug-mode fields, hash
+Fory implementations should not guess object headers, array headers, allocator headers, debug-mode fields, hash
 buckets, tree links, hash-chain links, node headers, map-entry objects, spare blocks, or runtime
 table layouts unless the owner path has a cheap, stable, explicit lower-bound storage signal and
 documents the formula. Owner constants should be real lower bounds for the owner shape, not
@@ -545,14 +545,14 @@ placeholder markers.
 ## Skip Semantics
 
 Skipping unknown or incompatible data is classified by concrete impact, not by
-whether the runtime materializes a temporary value.
+whether the Fory implementation materializes a temporary value.
 
 Directly consuming encoded contents is useful when it is simple and owned by the
-current runtime path. It is not a security requirement for complex fields such
-as lists, sets, and maps. A runtime may materialize a value and discard it when
+current reader path. It is not a security requirement for complex fields such
+as lists, sets, and maps. A Fory implementation may materialize a value and discard it when
 that preserves the existing serializer ownership model.
 
-For extension, dynamic, or user-owned types, the owning runtime may not always
+For extension, dynamic, or user-owned types, the owning Fory implementation may not always
 have enough information to skip without invoking a registered serializer. In
 that case, classify the behavior by concrete impact:
 
@@ -643,7 +643,7 @@ one TypeDef. These limits are checked before copying, decompressing, reserving,
 or allocating from attacker-declared metadata sizes or field counts.
 
 The default limits are `maxTypeFields = 512` and `maxTypeMetaBytes = 4096`.
-Runtimes should report limit failures as possible malicious data and tell users
+Fory implementations should report limit failures as possible malicious data and tell users
 to increase the exact option only when the data is not malicious. These limits
 must not introduce validation on metadata cache-hit, generated serializer, or
 already-resolved type-id hot paths.
@@ -673,7 +673,7 @@ The downstream error does not need to be a dedicated reference-protocol error.
 
 ## Error Propagation And Cleanup
 
-Fory runtimes may intentionally use lazy error propagation. After a read records
+Fory implementations may intentionally use lazy error propagation. After a read records
 an error, later read steps may continue until the outer operation observes and
 returns the error.
 

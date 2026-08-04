@@ -36,7 +36,7 @@ mvn -version
 ## Object Serialization
 
 Use Object Serialization for object graphs. Xlang mode produces data that other
-Fory runtimes can read; native mode supports a broader JVM object surface.
+Fory implementations in other languages can read; native mode supports a broader JVM object surface.
 
 Maven:
 
@@ -124,7 +124,7 @@ object mapping, annotations, Android, GraalVM, and security.
 - **Fory IDL and Compiler** generates Java models and registration helpers from Fory IDL, protobuf IDL, or FlatBuffers IDL. See [Compiler Getting Started](../compiler/getting-started.md) and the [Java generated-code guide](../compiler/generated-code/java.md).
 - **Fory gRPC** uses normal grpc-java transports with Fory-encoded request and response objects. See [Java gRPC](../grpc/java.md).
 
-## Runtime Notes
+## Platform Notes
 
 - On JDK 25 and later, follow the setup in
   [Java Object Serialization](../object-serialization/java/index.md).

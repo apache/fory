@@ -21,8 +21,7 @@ license: |
 
 Fory JSON is Apache Fory's thread-safe Java JSON codec. It provides interpreted and
 runtime-generated codecs for Java objects, records, immutable creator-based classes, common JDK
-types, generic containers, custom complete-value codecs, and finite annotation-declared
-polymorphism.
+types, generic containers, and custom complete-value codecs.
 
 Fory JSON is a separate data format from Fory's binary native and xlang protocols. Use it when a
 system must exchange ordinary JSON with browsers, APIs, logs, configuration, or another JSON
@@ -31,34 +30,34 @@ reference identity, circular graphs, or Fory's binary-only features.
 
 ## Documentation map
 
-| Goal                                                             | Page                                  |
-| ---------------------------------------------------------------- | ------------------------------------- |
-| First runnable JSON round trip                                   | [Getting Started](getting-started.md) |
-| Understand Java object mapping and configuration                 | [Object Mapping](object-mapping.md)   |
-| Configure properties, creators, values, validators, and subtypes | [Annotations](annotations.md)         |
-| Extend complete values, children, and map keys                   | [Custom Codecs](custom-codecs.md)     |
-| Deploy on Android                                                | [Android](android.md)                 |
-| Build a GraalVM native image                                     | [GraalVM Native Image](graalvm.md)    |
-| Decode input safely                                              | [Security](security.md)               |
-| Diagnose failures                                                | [Troubleshooting](troubleshooting.md) |
+| Goal                                                           | Page                                  |
+| -------------------------------------------------------------- | ------------------------------------- |
+| First runnable JSON round trip                                 | [Getting Started](getting-started.md) |
+| Understand Java object mapping and configuration               | [Object Mapping](object-mapping.md)   |
+| Configure properties, creators, values, validators, and mixins | [Annotations](annotations.md)         |
+| Extend complete values, children, and map keys                 | [Custom Codecs](custom-codecs.md)     |
+| Deploy on Android                                              | [Android](android.md)                 |
+| Build a GraalVM native image                                   | [GraalVM Native Image](graalvm.md)    |
+| Decode input safely                                            | [Security](security.md)               |
+| Diagnose failures                                              | [Troubleshooting](troubleshooting.md) |
 
-## Limits and unsupported features
+## Performance
 
-Fory JSON intentionally has a smaller semantic surface than the Fory binary protocol and general
-Jackson object mapping:
+The Java JSON benchmark compares fory-json, Jackson, and Gson with the same data. Results below are
+single-threaded throughput measurements on an Apple M4 Pro with JDK 26.0.1; higher is better. See
+the [complete benchmark report](../benchmarks/json/java/README.md) for the command, environment, and
+measurement configuration.
 
-- no shared-reference identity or circular-reference protocol;
-- no open polymorphism, JSON class-name IDs, runtime subtype discovery, or runtime subtype table
-  extension;
-- no `InputStream` parser or incremental `OutputStream` writer on the `ForyJson` root API;
-- no pretty-print configuration;
-- no Jackson/Gson annotation compatibility layer;
-- no aliases, views, filters, injection, managed/back references, object identity annotations, or
-  root wrapping;
-- no Fory core `Expose` processing.
+![Java JSON String benchmark throughput](../benchmarks/json/java/string_throughput.png)
 
-Circular graphs eventually fail `maxDepth`; they are not reconstructed. Use Fory core's binary
-native or xlang protocol when reference identity or cycles are required.
+![Java JSON UTF-8 bytes benchmark throughput](../benchmarks/json/java/utf8_bytes_throughput.png)
+
+| Representation | Operation   | fory-json ops/sec | jackson ops/sec | gson ops/sec |
+| -------------- | ----------- | ----------------: | --------------: | -----------: |
+| String         | Serialize   |         7,387,465 |       2,049,368 |    1,084,042 |
+| String         | Deserialize |         2,897,955 |       1,074,885 |      902,772 |
+| UTF-8 bytes    | Serialize   |        10,375,498 |       1,868,614 |    1,037,211 |
+| UTF-8 bytes    | Deserialize |         3,077,158 |       1,268,397 |      933,079 |
 
 ## Related Java guides
 

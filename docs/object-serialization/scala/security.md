@@ -33,7 +33,7 @@ Before deserialization:
   first root operation.
 - Validate the deserialized value against application authorization and domain rules before use.
 
-## Runtime safeguards
+## Built-in safeguards
 
 Scala uses the Java configuration surface. Keep class registration enabled for production
 and any untrusted payload source:
@@ -68,7 +68,7 @@ Security-related configuration:
 
 Add negative tests for the boundary as well as normal round trips. Verify that the configured reader
 rejects unexpected application types, excessive nesting, resource-limit violations, and malformed
-input. After a failed read, verify that a valid root can still be read with the reusable runtime.
+input. After a failed read, verify that a valid root can still be read with the same Fory instance.
 
 See [Configuration](configuration.md) for the Scala option reference and
 [Java Type Registration](../java/type-registration.md) for the underlying registration API.

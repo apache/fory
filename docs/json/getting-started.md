@@ -46,7 +46,9 @@ Use the same version for every Fory module in one application.
 
 ### JDK 25 and later
 
-On JDK 25 and later, open `java.lang.invoke` to Fory core. For a classpath application:
+On JDK 25 and later, opening `java.lang.invoke` to Fory core is not required, but is recommended. It avoids
+the current-JDK Unsafe fallback and is required when Unsafe access is disabled or unavailable,
+including with `--sun-misc-unsafe-memory-access=deny`. For a classpath application:
 
 ```bash
 --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
