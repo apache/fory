@@ -36,7 +36,7 @@ Add the public crate:
 
 ```toml title="Cargo.toml"
 [dependencies]
-fory = "1.5.0"
+fory = "1.6.0"
 ```
 
 ```rust

@@ -135,7 +135,7 @@ from pyfory.type_util import (  # pylint: disable=unused-import
 )
 from pyfory.policy import DeserializationPolicy  # pylint: disable=unused-import
 
-__version__ = "1.6.0.dev0"
+__version__ = "1.6.0"
 
 __all__ = [
     "Array",

@@ -46,7 +46,7 @@ Reference the single `Apache.Fory` package. It includes the Fory library and the
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Apache.Fory" Version="1.5.0" />
+  <PackageReference Include="Apache.Fory" Version="1.6.0" />
 </ItemGroup>
 ```
 

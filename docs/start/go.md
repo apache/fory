@@ -38,7 +38,7 @@ Create a module and install the released Fory module:
 mkdir fory-example
 cd fory-example
 go mod init example.com/fory-example
-go get github.com/apache/fory/go/fory@v1.5.0
+go get github.com/apache/fory/go/fory@v1.6.0
 ```
 
 If a Go proxy has not picked up a new submodule tag yet, retry later or use

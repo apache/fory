@@ -37,7 +37,7 @@ Add the Fory Scala library to `build.sbt`:
 
 ```sbt
 ThisBuild / scalaVersion := "3.3.1"
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.5.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.6.0"
 ```
 
 Create `src/main/scala/ScalaExample.scala`:

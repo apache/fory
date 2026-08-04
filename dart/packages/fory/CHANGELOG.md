@@ -1,6 +1,6 @@
-## 1.6.0-dev
+## 1.6.0
 
-- Start the next development cycle after the 1.5.0 release.
+- Release Apache Fory Dart 1.6.0.
 
 ## 1.5.0
 
