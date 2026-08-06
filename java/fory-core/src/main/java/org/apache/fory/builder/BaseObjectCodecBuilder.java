@@ -2186,18 +2186,13 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     // indicates that the object is first read.
     Expression needDeserialize =
         ExpressionUtils.egt(refId, new Literal(Fory.NOT_NULL_VALUE_FLAG, PRIMITIVE_BYTE_TYPE));
-    // a peer without ref tracking for this type sends NOT_NULL with no id preserved; reserve a
-    // placeholder so the nested read's `readContext.reference` stays balanced
-    Expression preserveNotNullRefId = invokeReadContext("preserveNotNullValueRefId", refId);
     Expression deserializedValue = deserializeForNotNull.get();
     Expression setReadRef = invokeReadContext("setReadRef", refId, deserializedValue);
     Expression readValue = inlineInvokeReadContext("getReadRef", OBJECT_TYPE);
     // use false to ignore null
     return new If(
         needDeserialize,
-        callback.apply(
-            new ListExpression(
-                refId, preserveNotNullRefId, deserializedValue, setReadRef, deserializedValue)),
+        callback.apply(new ListExpression(refId, deserializedValue, setReadRef, deserializedValue)),
         callback.apply(readValue),
         false);
   }

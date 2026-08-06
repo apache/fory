@@ -179,11 +179,9 @@ public class UnionSerializer extends Serializer<Union> {
         TypeInfo readTypeInfo = resolver.readTypeInfo(readContext, declared);
         Serializer serializer = getCaseSerializer(caseId, readTypeInfo.getTypeId(), declared);
         GenericType genericType = getCaseGenericType(caseId, readTypeInfo.getTypeId());
-        readContext.preserveNotNullValueRefId(nextReadRefId, serializer);
         caseValue = readCaseValue(readContext, serializer, genericType);
       } else {
         TypeInfo readTypeInfo = resolver.readTypeInfo(readContext);
-        readContext.preserveNotNullValueRefId(nextReadRefId, readTypeInfo.getSerializer());
         readContext.increaseDepth();
         caseValue = Serializers.read(readContext, readTypeInfo.getSerializer());
         readContext.decreaseDepth();
@@ -345,7 +343,6 @@ public class UnionSerializer extends Serializer<Union> {
         readTypeInfo = resolver.readTypeInfo(readContext);
       }
       Serializer serializer = getCaseSerializer(fieldInfo, readTypeInfo.getTypeId(), readTypeInfo);
-      readContext.preserveNotNullValueRefId(nextReadRefId, serializer);
       Object caseValue =
           readCaseValue(
               readContext, serializer, getCaseGenericType(fieldInfo, readTypeInfo.getTypeId()));

@@ -416,34 +416,6 @@ public final class ReadContext {
     return refReader.tryPreserveRefId(buffer);
   }
 
-  /**
-   * Reserves a no-op ref id when a {@link Fory#NOT_NULL_VALUE_FLAG} header precedes a serializer
-   * whose read binds its instance through {@link #reference(Object)}.
-   *
-   * <p>A peer may disable reference tracking globally or per type and send {@code NOT_NULL} where
-   * this runtime preserved no id, so tracked reads must reserve a placeholder to keep the
-   * serializer's {@code reference} pop balanced. {@link #setReadRef(int, Object)} ignores the
-   * negative id. Must be called only after the value's serializer is resolved; a {@code REF_VALUE}
-   * header already preserved the real id and pushing again would shadow it, breaking circular
-   * references.
-   */
-  public void preserveNotNullValueRefId(int nextReadRefId, Serializer<?> serializer) {
-    if (nextReadRefId == Fory.NOT_NULL_VALUE_FLAG && serializer.needToWriteRef()) {
-      refReader.preserveRefId(-1);
-    }
-  }
-
-  /**
-   * Variant of {@link #preserveNotNullValueRefId(int, Serializer)} for generated codecs, which only
-   * emit ref headers for declared types that participate in ref tracking. Kept to a single int
-   * argument so the generated call stays small enough for method-size budgets.
-   */
-  public void preserveNotNullValueRefId(int nextReadRefId) {
-    if (nextReadRefId == Fory.NOT_NULL_VALUE_FLAG) {
-      refReader.preserveRefId(-1);
-    }
-  }
-
   /** Returns the last ref id preserved by the active {@link RefReader}. */
   public int lastPreservedRefId() {
     return refReader.lastPreservedRefId();
@@ -634,7 +606,6 @@ public final class ReadContext {
     int nextReadRefId = refReader.tryPreserveRefId(buffer);
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
       TypeInfo typeInfo = typeResolver.readTypeInfo(this);
-      preserveNotNullValueRefId(nextReadRefId, typeInfo.getSerializer());
       Object o = readNonRef(typeInfo);
       refReader.setReadRef(nextReadRefId, o);
       return o;
@@ -646,7 +617,6 @@ public final class ReadContext {
   public Object readRef(TypeInfo typeInfo) {
     int nextReadRefId = refReader.tryPreserveRefId(buffer);
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
-      preserveNotNullValueRefId(nextReadRefId, typeInfo.getSerializer());
       Object o = readNonRef(typeInfo);
       refReader.setReadRef(nextReadRefId, o);
       return o;
@@ -659,7 +629,6 @@ public final class ReadContext {
     int nextReadRefId = refReader.tryPreserveRefId(buffer);
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
       TypeInfo typeInfo = typeResolver.readTypeInfo(this, classInfoHolder);
-      preserveNotNullValueRefId(nextReadRefId, typeInfo.getSerializer());
       Object o = readNonRef(typeInfo);
       refReader.setReadRef(nextReadRefId, o);
       return o;
@@ -672,7 +641,6 @@ public final class ReadContext {
     if (serializer.needToWriteRef()) {
       int nextReadRefId = refReader.tryPreserveRefId(buffer);
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
-        preserveNotNullValueRefId(nextReadRefId, serializer);
         Object o = readNonRef(serializer);
         refReader.setReadRef(nextReadRefId, o);
         return (T) o;
