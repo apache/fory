@@ -908,7 +908,8 @@ union_field := ['repeated'] field_type IDENTIFIER '=' INTEGER [field_options] ';
 Services define RPC method contracts in Fory IDL. They are optional: schemas
 with services still generate the normal data model types, and gRPC service code
 is generated only when the compiler is run with `--grpc` for supported language
-outputs such as Java, Python, Go, Rust, C#, Dart, Scala, Kotlin, and JavaScript.
+outputs such as Java, Python, Go, Rust, C#, Swift, Dart, Scala, Kotlin, and
+JavaScript.
 JavaScript browser gRPC-Web clients are generated with `--grpc-web`.
 
 ```protobuf
