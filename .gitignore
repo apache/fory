@@ -59,6 +59,8 @@ go/fory/tests/xlang_test_main
 go/fory/tests/xlang/xlang_test_main
 go/fory/xlang_test_main
 go/fory/xlang
+go/fory/tests/row_xlang_bin
+go/fory/tests/row_xlang_bin.exe
 
 # Build directories for all languages
 # Java
