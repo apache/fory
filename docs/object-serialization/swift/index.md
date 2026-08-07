@@ -60,6 +60,7 @@ targets: [
 - [Shared and Circular References](references.md)
 - [Polymorphism and Dynamic Types](polymorphism.md)
 - [Schema Evolution](schema-evolution.md)
+- [gRPC Support](../../grpc/swift.md)
 - [Troubleshooting](troubleshooting.md)
 
 ## Quick Example

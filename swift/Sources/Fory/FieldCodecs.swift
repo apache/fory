@@ -206,10 +206,16 @@ public extension FieldCodec {
         hasDeclaredChildren: Bool
     ) throws {
         if refMode != .none {
-            if refMode == .tracking, isRefType {
-                let object = value as AnyObject
-                if context.refWriter.tryWriteRef(buffer: context.buffer, object: object) {
-                    return
+            if refMode == .tracking {
+                if isRefType {
+                    let object = value as AnyObject
+                    if context.refWriter.tryWriteRef(buffer: context.buffer, object: object) {
+                        return
+                    }
+                } else {
+                    // Peers that track every object assign this value a ref id too.
+                    context.buffer.writeInt8(RefFlag.refValue.rawValue)
+                    context.refWriter.reserveRefID()
                 }
             } else {
                 context.buffer.writeInt8(RefFlag.notNullValue.rawValue)

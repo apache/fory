@@ -21,7 +21,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-TEST_CLASSES="${1:-PythonAsyncGrpcTest,PythonSyncGrpcTest,RustGrpcTest,GoGrpcTest,CppGrpcTest,KotlinGrpcTest,DartGrpcTest}"
+TEST_CLASSES="${1:-PythonAsyncGrpcTest,PythonSyncGrpcTest,RustGrpcTest,GoGrpcTest,CppGrpcTest,KotlinGrpcTest,DartGrpcTest,SwiftGrpcTest}"
 
 has_test_class() {
   [[ ",${TEST_CLASSES}," == *",$1,"* ]]
@@ -55,6 +55,19 @@ if has_test_class "DartGrpcTest"; then
   dart run build_runner build
   dart analyze bin lib/generated/*/*_grpc.dart
   dart format --output=none --set-exit-if-changed bin lib/generated/*/*_grpc.dart
+fi
+# Swift toolchain tests (generated marshaller round-trip and concurrency). These
+# need the Swift toolchain rather than the JVM, so they run in their own package.
+if command -v swift >/dev/null 2>&1 && [ -d "${SCRIPT_DIR}/swift/interop" ]; then
+  cd "${SCRIPT_DIR}/swift/interop"
+  swift test
+  if [[ "${FORY_SWIFT_TSAN:-}" == "1" ]]; then
+    swift test --sanitize=thread
+  fi
+fi
+if has_test_class "SwiftGrpcTest"; then
+  cd "${SCRIPT_DIR}/swift/interop"
+  swift build -c release --product interop
 fi
 cd "${ROOT_DIR}/integration_tests/grpc_tests/java"
 mvn -T16 --no-transfer-progress \

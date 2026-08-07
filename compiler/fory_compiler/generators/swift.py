@@ -24,7 +24,8 @@ from typing import ClassVar
 
 from fory_compiler.frontend.base import FrontendError
 from fory_compiler.frontend.utils import parse_idl_file
-from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.base import BaseGenerator, GeneratedFile, GeneratorOptions
+from fory_compiler.generators.services.swift import SwiftServiceMixin
 from fory_compiler.ir.ast import (
     ArrayType,
     Enum,
@@ -41,7 +42,7 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class SwiftGenerator(BaseGenerator):
+class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
     """Generates Swift types using Fory Swift model macros."""
 
     language_name = "swift"
@@ -200,6 +201,21 @@ class SwiftGenerator(BaseGenerator):
             package_path = self.schema.package.replace(".", "/")
             return f"{package_path}/{file_name}"
         return file_name
+
+    def swift_model_top_level_symbols(self) -> set[str]:
+        # In enum style with a package, types live nested under a shared namespace
+        # enum, so there are no collidable top-level names. Flatten and default
+        # packages put each type and the module helper at file scope.
+        components = self._package_components_for_schema(self.schema)
+        if self.get_namespace_style() == "enum" and components:
+            return set()
+        symbols: set[str] = set()
+        for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
+            if self.is_imported_type(type_def):
+                continue
+            symbols.add(self._declared_type_name(type_def.name))
+        symbols.add(self._module_helper_name_for_schema(self.schema))
+        return symbols
 
     def module_file_name(self) -> str:
         if self.schema.source_file and not self.schema.source_file.startswith("<"):
@@ -1469,3 +1485,56 @@ class SwiftGenerator(BaseGenerator):
 
         lines.append(f"{ind}" + "}")
         return lines
+
+
+def validate_swift_generation(
+    graph: list[tuple[Path, Schema]],
+    namespace_style: str | None = None,
+    grpc: bool = False,
+) -> bool:
+    """Preflight Swift output paths and top-level symbol owners before writing."""
+    output_owners: dict[str, list[str]] = {}
+    symbol_owners: dict[str, list[str]] = {}
+    for path, schema in graph:
+        options = GeneratorOptions(
+            output_dir=Path("."), swift_namespace_style=namespace_style
+        )
+        generator = SwiftGenerator(schema, options)
+        output_owners.setdefault(generator.output_file_path(), []).append(
+            f"{path} schema module"
+        )
+        for symbol in generator.swift_model_top_level_symbols():
+            symbol_owners.setdefault(symbol, []).append(f"{path} schema type")
+        if grpc:
+            for service in schema.services:
+                if generator.is_imported_type(service):
+                    continue
+                output_owners.setdefault(
+                    generator.swift_grpc_output_path(service), []
+                ).append(f"{path} service {service.name}")
+                for symbol in generator.swift_grpc_service_symbols(service):
+                    symbol_owners.setdefault(symbol, []).append(
+                        f"{path} service {service.name}"
+                    )
+
+    _raise_swift_collision(
+        output_owners,
+        "Swift generated file path collision; rename schema files or services, "
+        "or use distinct packages",
+    )
+    _raise_swift_collision(
+        symbol_owners,
+        "Swift top-level symbol collision; rename schema types or services, "
+        "or use distinct packages",
+    )
+    return True
+
+
+def _raise_swift_collision(owners: dict[str, list[str]], message: str) -> None:
+    collisions = {key: names for key, names in owners.items() if len(names) > 1}
+    if not collisions:
+        return
+    details = ", ".join(
+        f"{key}: {', '.join(names)}" for key, names in sorted(collisions.items())
+    )
+    raise ValueError(f"{message}. Collisions: {details}")
