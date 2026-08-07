@@ -171,7 +171,7 @@ func (c *ReadContext) RefResolver() *RefResolver {
 
 // HasError returns true if an error has occurred
 func (c *ReadContext) HasError() bool {
-	return c.err.HasError()
+	return c.err.kind != ErrKindOK
 }
 
 // Err returns a pointer to the accumulated error for passing to buffer methods
