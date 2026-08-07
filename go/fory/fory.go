@@ -580,12 +580,19 @@ func (f *Fory) Serialize(value any) ([]byte, error) {
 				reflValue.Type(), reflValue.Type())
 		}
 	}
-	f.writeCtx.WriteValue(reflValue, RefModeTracking, true)
+	f.writeCtx.WriteValue(reflValue, f.rootRefMode(), true)
 	if f.writeCtx.HasError() {
 		return nil, f.writeCtx.TakeError()
 	}
 
 	return f.writeCtx.buffer.GetByteSlice(0, f.writeCtx.buffer.writerIndex), nil
+}
+
+func (f *Fory) rootRefMode() RefMode {
+	if f.config.TrackRef {
+		return RefModeTracking
+	}
+	return RefModeNullOnly
 }
 
 // Deserialize deserializes data directly into the provided target value.
@@ -602,7 +609,7 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	f.readCtx.ReadValue(target, f.rootRefMode(), true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -668,7 +675,7 @@ func (f *Fory) SerializeTo(buf *ByteBuffer, value any) error {
 	}
 
 	// Standard path - TypeMeta is written inline using streaming protocol
-	f.writeCtx.WriteValue(rv, RefModeTracking, true)
+	f.writeCtx.WriteValue(rv, f.rootRefMode(), true)
 	if f.writeCtx.HasError() {
 		f.writeCtx.buffer = origBuffer
 		return f.writeCtx.TakeError()
@@ -700,7 +707,7 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	f.readCtx.ReadValue(target, f.rootRefMode(), true)
 	if f.readCtx.HasError() {
 		f.readCtx.buffer = origBuffer
 		return f.readCtx.TakeError()
@@ -768,7 +775,7 @@ func (f *Fory) SerializeWithCallback(buffer *ByteBuffer, v any, callback func(Bu
 	writeHeader(f.writeCtx, f.config)
 
 	// Serialize the value - TypeMeta is written inline using streaming protocol
-	f.writeCtx.WriteValue(reflect.ValueOf(v), RefModeTracking, true)
+	f.writeCtx.WriteValue(reflect.ValueOf(v), f.rootRefMode(), true)
 	if f.writeCtx.HasError() {
 		return f.writeCtx.TakeError()
 	}
@@ -819,7 +826,7 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	f.readCtx.ReadValue(target, f.rootRefMode(), true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -839,7 +846,7 @@ func (f *Fory) serializeReflectValue(value reflect.Value) ([]byte, error) {
 	}
 
 	// Serialize the value - TypeMeta is written inline using streaming protocol
-	f.writeCtx.WriteValue(value, RefModeTracking, true)
+	f.writeCtx.WriteValue(value, f.rootRefMode(), true)
 	if f.writeCtx.HasError() {
 		return nil, f.writeCtx.TakeError()
 	}
