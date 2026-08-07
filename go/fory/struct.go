@@ -1584,7 +1584,15 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 					*(*int32)(unsafe.Add(ptr, field.Offset)) = buf.UnsafeReadVarint32(err)
 				}
 			} else {
-				for _, field := range s.fieldGroup.PrimitiveVarintFields {
+				fields := s.fieldGroup.PrimitiveVarintFields
+				i := 0
+				for i < len(fields) && buf.remaining() >= 8 {
+					field := &fields[i]
+					*(*int32)(unsafe.Add(ptr, field.Offset)) = buf.UnsafeReadVarint32(err)
+					i++
+				}
+				for ; i < len(fields); i++ {
+					field := &fields[i]
 					*(*int32)(unsafe.Add(ptr, field.Offset)) = buf.ReadVarint32(err)
 				}
 			}
