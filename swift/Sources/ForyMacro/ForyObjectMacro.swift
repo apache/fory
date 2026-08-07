@@ -2901,9 +2901,15 @@ private func buildWriteWrapperDecl(accessPrefix: String) -> String {
     ) throws {
         let __buffer = context.buffer
         if refMode != .none {
-            if refMode == .tracking, Self.isRefType, let object = value as AnyObject? {
-                if context.refWriter.tryWriteRef(buffer: __buffer, object: object) {
-                    return
+            if refMode == .tracking {
+                if Self.isRefType, let object = value as AnyObject? {
+                    if context.refWriter.tryWriteRef(buffer: __buffer, object: object) {
+                        return
+                    }
+                } else {
+                    // Peers that track every object assign this value a ref id too.
+                    __buffer.writeInt8(RefFlag.refValue.rawValue)
+                    context.refWriter.reserveRefID()
                 }
             } else {
                 __buffer.writeInt8(RefFlag.notNullValue.rawValue)
