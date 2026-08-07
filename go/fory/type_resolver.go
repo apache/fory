@@ -1338,18 +1338,26 @@ func (r *TypeResolver) writeSharedTypeMeta(buffer *ByteBuffer, typeInfo *TypeInf
 	context := r.fory.MetaContext()
 	key := typePointer(typeInfo.Type)
 	writeTypeDefInline := func() {
-		typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
-		if typeDefErr != nil {
-			err.SetError(typeDefErr)
-			return
+		typeDef := typeInfo.TypeDef
+		if typeDef == nil {
+			var typeDefErr error
+			typeDef, typeDefErr = r.localTypeDef(typeInfo)
+			if typeDefErr != nil {
+				err.SetError(typeDefErr)
+				return
+			}
 		}
 		typeDef.writeTypeDef(buffer, err)
 	}
 	writeTypeDefWithZeroMarker := func() {
-		typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
-		if typeDefErr != nil {
-			err.SetError(typeDefErr)
-			return
+		typeDef := typeInfo.TypeDef
+		if typeDef == nil {
+			var typeDefErr error
+			typeDef, typeDefErr = r.localTypeDef(typeInfo)
+			if typeDefErr != nil {
+				err.SetError(typeDefErr)
+				return
+			}
 		}
 		buffer.WriteUint8(0)
 		typeDef.writeTypeDef(buffer, err)
@@ -1602,11 +1610,18 @@ func (r *TypeResolver) localTypeDef(typeInfo *TypeInfo) (*TypeDef, error) {
 	if typeInfo == nil || typeInfo.Type == nil {
 		return nil, nil
 	}
+	if typeInfo.TypeDef != nil {
+		return typeInfo.TypeDef, nil
+	}
 	type_ := typeInfo.Type
 	if type_.Kind() == reflect.Ptr {
 		type_ = type_.Elem()
 	}
-	return r.getTypeDef(type_, true)
+	typeDef, err := r.getTypeDef(type_, true)
+	if err == nil {
+		typeInfo.TypeDef = typeDef
+	}
+	return typeDef, err
 }
 
 func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s Serializer, err error) {

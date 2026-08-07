@@ -427,6 +427,10 @@ func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
 	}
 
 	typeDef.encoded = encoded
+	// Keep locally built metadata linked to the registered type owner so warmed
+	// writes and exact-local reads reuse the canonical TypeDef and serializer.
+	typeDef.cachedTypeInfo = infoPtr
+	infoPtr.TypeDef = typeDef
 	if DebugOutputEnabled {
 		fmt.Printf("[Go TypeDef BUILT] %s\n", typeDef.String())
 	}
