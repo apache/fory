@@ -23,7 +23,7 @@ Fory JSON supports ordinary classes on Android API level 26 and later through th
 `fory-json` artifact. Runtime JSON code generation and asynchronous compilation are disabled
 automatically, so `ForyJson.builder().build()` uses the interpreted object mapper.
 
-## Installation and Runtime Model
+## Installation and Codec Model
 
 Add Fory JSON to the application:
 
@@ -92,7 +92,7 @@ public final class Invoice {
 ## Mixins
 
 The same processor supports Fory JSON Mixins. A Mixin declares one exact target and is registered
-on the runtime that should use it:
+on the `ForyJson` builder that should use it:
 
 ```java
 import org.apache.fory.json.ForyJson;
@@ -109,8 +109,8 @@ ForyJson json =
 ```
 
 Compile every non-empty Mixin source with `fory-annotation-processor`. The processor emits exact
-R8 rules and any pair-specific target operations that the runtime can use. Registered codecs,
-effective type codecs, and built-in mappings keep their normal runtime precedence. An empty Mixin
+R8 rules and any pair-specific target operations that the built `ForyJson` instance can use. Registered codecs,
+effective type codecs, and built-in mappings keep their normal codec-selection precedence. An empty Mixin
 produces no generated output.
 
 A Mixin may place `JsonValidator` on a public abstract zero-argument `void` method that exactly
@@ -118,13 +118,13 @@ matches a public target method. The generated pair calls that target method dire
 does not need `JsonType` solely for a Mixin validator.
 
 The target does not need `JsonType` merely because it has a Mixin. `JsonMixin` is itself the
-processor entry point for the pair. If a target also uses `JsonType`, the runtime selects the
+processor entry point for the pair. If a target also uses `JsonType`, the built `ForyJson` instance selects the
 pair-specific companion for a non-empty registered Mixin instead of combining the overlay with the
 target's direct companion.
 
-Only one source is enabled for an exact target in one built runtime. A later registration for that
+Only one source is enabled for an exact target in one built `ForyJson` instance. A later registration for that
 target replaces an earlier registration on the builder, and `build()` snapshots the selected
-mapping. The processor may generate artifacts for multiple source alternatives; the runtime uses
+mapping. The processor may generate artifacts for multiple source alternatives; the built instance uses
 only the last registered source.
 
 Use the processor-generated R8 rules for non-empty Mixins instead of broad package keep rules.

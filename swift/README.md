@@ -34,7 +34,7 @@ The Swift implementation provides high-performance object graph serialization wi
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/apache/fory.git", from: "1.5.0")
+    .package(url: "https://github.com/apache/fory.git", from: "1.6.0")
 ],
 targets: [
     .target(
@@ -486,7 +486,7 @@ ENABLE_FORY_DEBUG_OUTPUT=1 FORY_SWIFT_JAVA_CI=1 mvn -T16 test -Dtest=org.apache.
 - [Schema Evolution](../docs/object-serialization/swift/schema-evolution.md)
 - [External-Type Serialization](../docs/object-serialization/swift/external-types.md)
 - [Custom Serializers](../docs/object-serialization/swift/custom-serializers.md)
-- [Xlang Serialization](../docs/object-serialization/swift/xlang.md)
+- [Basic Serialization](../docs/object-serialization/swift/basic-serialization.md)
 - [Xlang Specification](../docs/specification/xlang_serialization_spec.md)
 - [Xlang Type Mapping](../docs/specification/xlang_type_mapping.md)
 

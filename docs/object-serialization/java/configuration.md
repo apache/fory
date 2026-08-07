@@ -86,43 +86,7 @@ For xlang payloads, call `withCompatible(false)` only after verifying that every
 
 ## Security
 
-Keep class registration enabled for production and any untrusted payload source:
-
-```java
-Fory fory = Fory.builder()
-    .requireClassRegistration(true)
-    .withMaxDepth(50)
-    .withMaxGraphMemoryBytes(128L * 1024 * 1024)
-    .withMaxUnbackedContainerItems(8192)
-    .build();
-```
-
-Security-related options:
-
-- `requireClassRegistration(true)` restricts deserialization to registered classes.
-- `withMaxDepth(...)` rejects unexpectedly deep object graphs.
-- `withMaxGraphMemoryBytes(...)` sets an approximate gate for materialized graph memory during one
-  root deserialization. The estimate mainly covers collections, maps, arrays, structs, and objects;
-  Fory core primitive arrays and primitive lists count their primitive storage from the decoded
-  length. It skips leaf values such as strings, primitive scalars, and dedicated binary values that
-  do not use a primitive-array serializer. Actual process memory can be higher than this limit. Leaf
-  values remain protected by byte-availability checks: if the unread input does not contain enough
-  bytes, Fory will not read or create that leaf value. The default is a fixed `128 MiB`; set a
-  positive byte limit when trusted workloads need a larger or smaller gate.
-- `withMaxUnbackedContainerItems(...)` limits count-driven collection and map work whose repeated
-  read bodies do not consume proportional input. The default is `8192`; zero is a strict limit.
-- `withMaxTypeFields(...)` and `withMaxTypeMetaBytes(...)` bound the field count
-  and encoded body size of one received remote metadata body.
-- `withMaxSchemaVersionsPerType(...)` and
-  `withMaxAverageSchemaVersionsPerType(...)` bound accepted remote metadata versions without
-  changing registration, dynamic loading, or schema-evolution semantics.
-- `withDeserializeUnknownClass(false)` avoids materializing unknown classes from metadata.
-- `checkJdkClassSerializable(true)` keeps the JDK serializability check for `java.*` classes.
-- Class registration warnings can be useful during security audits; use
-  `suppressClassRegistrationWarnings(false)` when you need to surface unexpected types.
-
-Use `requireClassRegistration(false)` only for trusted payloads, and pair it with a `TypeChecker`
-allow list when dynamic class loading is required.
+See [Java Security](security.md) for trust boundaries, safe reader configuration, and verification.
 
 ## Related Topics
 

@@ -23,7 +23,7 @@ Rust native serialization is the Rust-only wire mode selected with `.xlang(false
 every writer and reader is Rust and the payload should preserve Rust object-graph behavior instead
 of the portable xlang type system.
 
-Use [Xlang Serialization](xlang.md), the default Rust mode, when bytes must be read
+Use [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability), the default Rust mode, when bytes must be read
 by Java, Python, C++, Go, JavaScript/TypeScript, C#, Swift, Dart, Scala,
 Kotlin, or another non-Rust Fory implementation.
 
@@ -108,14 +108,14 @@ Native serialization owns the Rust-specific object surface:
 - `Box<T>`, `Rc<T>`, `Arc<T>`, `RcWeak<T>`, and `ArcWeak<T>`.
 - `RefCell<T>` and `Mutex<T>`.
 - Trait objects such as `Box<dyn Trait>`, `Rc<dyn Trait>`, and `Arc<dyn Trait>`.
-- Runtime type dispatch with `Box<dyn Any>`, `Rc<dyn Any>`, and
+- Dynamic type dispatch with `Box<dyn Any>`, `Rc<dyn Any>`, and
   `Arc<dyn Any + Send + Sync>` for registered non-container payloads. Wrap
   containers in registered structs, enums, or unions, or register an
   exact-target custom serializer when an opaque EXT/NAMED_EXT representation
   is appropriate.
 - Date and time carriers, including optional `chrono` support.
 
-Use [Basic Serialization](core-api.md), [References](references.md), and
+Use [Basic Serialization](basic-serialization.md), [References](references.md), and
 [Trait Object Serialization](polymorphism.md) for focused examples.
 
 ## Shared And Circular References
@@ -264,9 +264,9 @@ Native serialization defaults to compatible mode. Keep that default when schemas
 
 ## Related Topics
 
-- [Xlang Serialization](xlang.md) - Cross-language Rust payloads
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - Cross-language Rust payloads
 - [Configuration](configuration.md) - Builder options
-- [Basic Serialization](core-api.md) - Object graph serialization
+- [Basic Serialization](basic-serialization.md) - Object graph serialization
 - [Shared & Circular References](references.md) - `Rc`, `Arc`, and weak pointers
 - [Trait Object Serialization](polymorphism.md) - Trait objects and dynamic dispatch
 - [Schema Evolution](schema-evolution.md) - Compatible mode

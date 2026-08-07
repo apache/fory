@@ -46,7 +46,7 @@ Reference the single `Apache.Fory` package. It includes the Fory library and the
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Apache.Fory" Version="1.5.0" />
+  <PackageReference Include="Apache.Fory" Version="1.6.0" />
 </ItemGroup>
 ```
 
@@ -86,24 +86,26 @@ User decoded = fory.Deserialize<User>(payload);
 
 ## Documentation
 
-| Topic                                       | Description                                   |
-| ------------------------------------------- | --------------------------------------------- |
-| [Configuration](configuration.md)           | Builder options and mode settings             |
-| [Basic Serialization](core-api.md)          | Typed and dynamic serialization APIs          |
-| [Xlang Serialization](xlang.md)             | Interoperability guidance                     |
-| [Schema Metadata](schema-metadata.md)       | `[ForyField]` ids and schema type descriptors |
-| [Type Registration](type-registration.md)   | Registering user types and custom serializers |
-| [External Types](external-types.md)         | Serializers for third-party types             |
-| [Custom Serializers](custom-serializers.md) | Implementing `Serializer<T>`                  |
-| [References](references.md)                 | Shared/circular reference handling            |
-| [Schema Evolution](schema-evolution.md)     | Compatible mode behavior                      |
-| [Supported Types](supported-types.md)       | Built-in and generated type support           |
-| [Thread Safety](thread-safety.md)           | `Fory` vs `ThreadSafeFory` usage              |
-| [gRPC Support](../../grpc/csharp.md)        | Generated Fory-backed gRPC service companions |
-| [Troubleshooting](troubleshooting.md)       | Common errors and debugging steps             |
+| Topic                                         | Description                                   |
+| --------------------------------------------- | --------------------------------------------- |
+| [Configuration](configuration.md)             | Builder options and mode settings             |
+| [Basic Serialization](basic-serialization.md) | Default xlang APIs and interoperability       |
+| [Schema Metadata](schema-metadata.md)         | `[ForyField]` ids and schema type descriptors |
+| [Type Registration](type-registration.md)     | Registering user types and custom serializers |
+| [External Types](external-types.md)           | Serializers for third-party types             |
+| [Custom Serializers](custom-serializers.md)   | Implementing `Serializer<T>`                  |
+| [References](references.md)                   | Shared/circular reference handling            |
+| [Schema Evolution](schema-evolution.md)       | Compatible mode behavior                      |
+| [Supported Types](supported-types.md)         | Built-in and generated type support           |
+| [Thread Safety](thread-safety.md)             | `Fory` vs `ThreadSafeFory` usage              |
+| [gRPC Support](../../grpc/csharp.md)          | Generated Fory-backed gRPC service companions |
+| [Troubleshooting](troubleshooting.md)         | Common errors and debugging steps             |
 
 ## Related Resources
 
 - [Xlang serialization specification](../../specification/xlang_serialization_spec.md)
-- [Xlang guide](../xlang/index.md)
+- [Cross-language guide](../xlang.md)
 - [C# source directory](https://github.com/apache/fory/tree/main/csharp)
+
+Before decoding bytes from outside the application trust boundary, read
+[C# Security](security.md).

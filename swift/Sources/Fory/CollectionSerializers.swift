@@ -368,22 +368,210 @@ private func preparePrimitiveArray<Element: Serializer>(
     count: Int,
     label: String
 ) throws {
+    try preparePrimitiveArrayStorage(
+        context,
+        reserveGraphStorage: reserveGraphStorage,
+        ownerBytes: storedOwnerBytes([Element].self),
+        count: count,
+        elementBytes: storedElementBytes(type),
+        label: label
+    )
+}
+
+@inline(__always)
+private func preparePrimitiveArrayStorage(
+    _ context: ReadContext,
+    reserveGraphStorage: Bool,
+    ownerBytes: Int,
+    count: Int,
+    elementBytes: Int,
+    label: String
+) throws {
     try context.ensureCollectionLength(count, label: label)
     if reserveGraphStorage {
-        try reserveGraphArrayMemory(
-            context, type, ownerBytes: storedOwnerBytes([Element].self), count: count)
+        try reserveGraphElements(
+            context, ownerBytes: ownerBytes, count: count, elementBytes: elementBytes)
     }
 }
 
-// Keep the primitive type branches in one generic body so specialization removes every
-// nonmatching branch without adding forwarding calls to packed-array reads.
+@inline(__always)
+private func readPrimitiveArrayByteSize(_ context: ReadContext) throws -> Int {
+    let byteSize = Int(try context.buffer.readVarUInt32())
+    try context.ensureRemainingBytes(byteSize, label: "primitive_array_bytes")
+    return byteSize
+}
+
+@inline(__always)
+func readBoolPrimitiveArray(
+    _ context: ReadContext,
+    reserveGraphStorage: Bool = false
+) throws -> [Bool] {
+    let byteSize = try readPrimitiveArrayByteSize(context)
+    try preparePrimitiveArrayStorage(
+        context,
+        reserveGraphStorage: reserveGraphStorage,
+        ownerBytes: MemoryLayout<[Bool]>.stride,
+        count: byteSize,
+        elementBytes: MemoryLayout<Bool>.stride,
+        label: "bool_array"
+    )
+    return try readArrayUninitialized(count: byteSize) { destination in
+        for index in 0..<byteSize {
+            destination.advanced(by: index).initialize(to: try context.buffer.readUInt8() != 0)
+        }
+    }
+}
+
+@inline(__always)
+func readInt32PrimitiveArray(
+    _ context: ReadContext,
+    reserveGraphStorage: Bool = false
+) throws -> [Int32] {
+    let byteSize = try readPrimitiveArrayByteSize(context)
+    if byteSize % 4 != 0 { throw primitiveArraySizeMismatch("int32") }
+    let count = byteSize / 4
+    try preparePrimitiveArrayStorage(
+        context,
+        reserveGraphStorage: reserveGraphStorage,
+        ownerBytes: MemoryLayout<[Int32]>.stride,
+        count: count,
+        elementBytes: MemoryLayout<Int32>.stride,
+        label: "int32_array"
+    )
+    if hostIsLittleEndian {
+        return try readArrayUninitialized(count: count) { destination in
+            try context.buffer.readBytes(
+                into: UnsafeMutableRawBufferPointer(start: destination, count: byteSize))
+        }
+    }
+    return try readArrayUninitialized(count: count) { destination in
+        for index in 0..<count {
+            destination.advanced(by: index).initialize(to: try context.buffer.readInt32())
+        }
+    }
+}
+
+@inline(__always)
+func readInt64PrimitiveArray(
+    _ context: ReadContext,
+    reserveGraphStorage: Bool = false
+) throws -> [Int64] {
+    let byteSize = try readPrimitiveArrayByteSize(context)
+    if byteSize % 8 != 0 { throw primitiveArraySizeMismatch("int64") }
+    let count = byteSize / 8
+    try preparePrimitiveArrayStorage(
+        context,
+        reserveGraphStorage: reserveGraphStorage,
+        ownerBytes: MemoryLayout<[Int64]>.stride,
+        count: count,
+        elementBytes: MemoryLayout<Int64>.stride,
+        label: "int64_array"
+    )
+    if hostIsLittleEndian {
+        return try readArrayUninitialized(count: count) { destination in
+            try context.buffer.readBytes(
+                into: UnsafeMutableRawBufferPointer(start: destination, count: byteSize))
+        }
+    }
+    return try readArrayUninitialized(count: count) { destination in
+        for index in 0..<count {
+            destination.advanced(by: index).initialize(to: try context.buffer.readInt64())
+        }
+    }
+}
+
+@inline(__always)
+func readFloatPrimitiveArray(
+    _ context: ReadContext,
+    reserveGraphStorage: Bool = false
+) throws -> [Float] {
+    let byteSize = try readPrimitiveArrayByteSize(context)
+    if byteSize % 4 != 0 { throw primitiveArraySizeMismatch("float32") }
+    let count = byteSize / 4
+    try preparePrimitiveArrayStorage(
+        context,
+        reserveGraphStorage: reserveGraphStorage,
+        ownerBytes: MemoryLayout<[Float]>.stride,
+        count: count,
+        elementBytes: MemoryLayout<Float>.stride,
+        label: "float32_array"
+    )
+    if hostIsLittleEndian {
+        return try readArrayUninitialized(count: count) { destination in
+            try context.buffer.readBytes(
+                into: UnsafeMutableRawBufferPointer(start: destination, count: byteSize))
+        }
+    }
+    return try readArrayUninitialized(count: count) { destination in
+        for index in 0..<count {
+            destination.advanced(by: index).initialize(to: try context.buffer.readFloat32())
+        }
+    }
+}
+
+@inline(__always)
+func readDoublePrimitiveArray(
+    _ context: ReadContext,
+    reserveGraphStorage: Bool = false
+) throws -> [Double] {
+    let byteSize = try readPrimitiveArrayByteSize(context)
+    if byteSize % 8 != 0 { throw primitiveArraySizeMismatch("float64") }
+    let count = byteSize / 8
+    try preparePrimitiveArrayStorage(
+        context,
+        reserveGraphStorage: reserveGraphStorage,
+        ownerBytes: MemoryLayout<[Double]>.stride,
+        count: count,
+        elementBytes: MemoryLayout<Double>.stride,
+        label: "float64_array"
+    )
+    if hostIsLittleEndian {
+        return try readArrayUninitialized(count: count) { destination in
+            try context.buffer.readBytes(
+                into: UnsafeMutableRawBufferPointer(start: destination, count: byteSize))
+        }
+    }
+    return try readArrayUninitialized(count: count) { destination in
+        for index in 0..<count {
+            destination.advanced(by: index).initialize(to: try context.buffer.readFloat64())
+        }
+    }
+}
+
+// Common packed types use concrete readers so Array metadata and initialization stay specialized.
+// The generic entry delegates to the same readers to keep one decoding path per type.
 // swiftlint:disable:next function_body_length
 func readPrimitiveArray<Element: Serializer>(
     _ context: ReadContext,
     reserveGraphStorage: Bool = false
 ) throws -> [Element] {
-    let byteSize = Int(try context.buffer.readVarUInt32())
-    try context.ensureRemainingBytes(byteSize, label: "primitive_array_bytes")
+    if Element.self == Bool.self {
+        return uncheckedArrayCast(
+            try readBoolPrimitiveArray(context, reserveGraphStorage: reserveGraphStorage),
+            to: Element.self)
+    }
+    if Element.self == Int32.self {
+        return uncheckedArrayCast(
+            try readInt32PrimitiveArray(context, reserveGraphStorage: reserveGraphStorage),
+            to: Element.self)
+    }
+    if Element.self == Int64.self {
+        return uncheckedArrayCast(
+            try readInt64PrimitiveArray(context, reserveGraphStorage: reserveGraphStorage),
+            to: Element.self)
+    }
+    if Element.self == Float.self {
+        return uncheckedArrayCast(
+            try readFloatPrimitiveArray(context, reserveGraphStorage: reserveGraphStorage),
+            to: Element.self)
+    }
+    if Element.self == Double.self {
+        return uncheckedArrayCast(
+            try readDoublePrimitiveArray(context, reserveGraphStorage: reserveGraphStorage),
+            to: Element.self)
+    }
+
+    let byteSize = try readPrimitiveArrayByteSize(context)
 
     if Element.self == UInt8.self {
         try preparePrimitiveArray(
@@ -391,18 +579,6 @@ func readPrimitiveArray<Element: Serializer>(
             label: "uint8_array")
         let bytes = try context.buffer.readBytes(count: byteSize)
         return uncheckedArrayCast(bytes, to: Element.self)
-    }
-
-    if Element.self == Bool.self {
-        try preparePrimitiveArray(
-            context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: byteSize,
-            label: "bool_array")
-        let out = try readArrayUninitialized(count: byteSize) { destination in
-            for index in 0..<byteSize {
-                destination.advanced(by: index).initialize(to: try context.buffer.readUInt8() != 0)
-            }
-        }
-        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == Int8.self {
@@ -437,27 +613,6 @@ func readPrimitiveArray<Element: Serializer>(
         return uncheckedArrayCast(out, to: Element.self)
     }
 
-    if Element.self == Int32.self {
-        if byteSize % 4 != 0 { throw primitiveArraySizeMismatch("int32") }
-        let count = byteSize / 4
-        try preparePrimitiveArray(
-            context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
-            label: "int32_array")
-        if hostIsLittleEndian {
-            var out = Array(repeating: Int32(0), count: count)
-            try out.withUnsafeMutableBytes { rawBytes in
-                try context.buffer.readBytes(into: rawBytes)
-            }
-            return uncheckedArrayCast(out, to: Element.self)
-        }
-        let out = try readArrayUninitialized(count: count) { destination in
-            for index in 0..<count {
-                destination.advanced(by: index).initialize(to: try context.buffer.readInt32())
-            }
-        }
-        return uncheckedArrayCast(out, to: Element.self)
-    }
-
     if Element.self == UInt32.self {
         if byteSize % 4 != 0 { throw primitiveArraySizeMismatch("uint32") }
         let count = byteSize / 4
@@ -474,27 +629,6 @@ func readPrimitiveArray<Element: Serializer>(
         let out = try readArrayUninitialized(count: count) { destination in
             for index in 0..<count {
                 destination.advanced(by: index).initialize(to: try context.buffer.readUInt32())
-            }
-        }
-        return uncheckedArrayCast(out, to: Element.self)
-    }
-
-    if Element.self == Int64.self {
-        if byteSize % 8 != 0 { throw primitiveArraySizeMismatch("int64") }
-        let count = byteSize / 8
-        try preparePrimitiveArray(
-            context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
-            label: "int64_array")
-        if hostIsLittleEndian {
-            var out = Array(repeating: Int64(0), count: count)
-            try out.withUnsafeMutableBytes { rawBytes in
-                try context.buffer.readBytes(into: rawBytes)
-            }
-            return uncheckedArrayCast(out, to: Element.self)
-        }
-        let out = try readArrayUninitialized(count: count) { destination in
-            for index in 0..<count {
-                destination.advanced(by: index).initialize(to: try context.buffer.readInt64())
             }
         }
         return uncheckedArrayCast(out, to: Element.self)
@@ -572,45 +706,7 @@ func readPrimitiveArray<Element: Serializer>(
         return uncheckedArrayCast(values, to: Element.self)
     }
 
-    if Element.self == Float.self {
-        if byteSize % 4 != 0 { throw primitiveArraySizeMismatch("float32") }
-        let count = byteSize / 4
-        try preparePrimitiveArray(
-            context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
-            label: "float32_array")
-        if hostIsLittleEndian {
-            var out = Array(repeating: Float(0), count: count)
-            try out.withUnsafeMutableBytes { rawBytes in
-                try context.buffer.readBytes(into: rawBytes)
-            }
-            return uncheckedArrayCast(out, to: Element.self)
-        }
-        let out = try readArrayUninitialized(count: count) { destination in
-            for index in 0..<count {
-                destination.advanced(by: index).initialize(to: try context.buffer.readFloat32())
-            }
-        }
-        return uncheckedArrayCast(out, to: Element.self)
-    }
-
-    if byteSize % 8 != 0 { throw primitiveArraySizeMismatch("float64") }
-    let count = byteSize / 8
-    try preparePrimitiveArray(
-        context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
-        label: "float64_array")
-    if hostIsLittleEndian {
-        var out = Array(repeating: Double(0), count: count)
-        try out.withUnsafeMutableBytes { rawBytes in
-            try context.buffer.readBytes(into: rawBytes)
-        }
-        return uncheckedArrayCast(out, to: Element.self)
-    }
-    let out = try readArrayUninitialized(count: count) { destination in
-        for index in 0..<count {
-            destination.advanced(by: index).initialize(to: try context.buffer.readFloat64())
-        }
-    }
-    return uncheckedArrayCast(out, to: Element.self)
+    preconditionFailure("Unsupported primitive array element type \(Element.self)")
 }
 
 @inline(never)
@@ -805,6 +901,14 @@ public enum ArraySerializer<Element: Serializer>: Serializer {
             itemReadAlwaysAdvances: elementReadAlwaysAdvances,
             label: "array"
         )
+        if !trackRef && !hasNull && elementReadAlwaysAdvances {
+            if let elementTypeInfo {
+                return try Codec.withFieldTypeInfo(elementTypeInfo, context) {
+                    try readNonNullElements(context, codec: Codec.self, count: length)
+                }
+            }
+            return try readNonNullElements(context, codec: Codec.self, count: length)
+        }
         return try Codec.withFieldTypeInfo(elementTypeInfo, context) {
             if trackRef {
                 return try readArrayTrackingInitialization(
@@ -845,19 +949,6 @@ public enum ArraySerializer<Element: Serializer>: Serializer {
                 }
             }
 
-            if elementReadAlwaysAdvances {
-                return try readArrayTrackingInitialization(
-                    count: length
-                ) { destination, initializedCount in
-                    for index in 0..<length {
-                        destination.advanced(by: index).initialize(
-                            to: try Codec.readFieldData(context)
-                        )
-                        initializedCount = index + 1
-                    }
-                }
-            }
-
             return try readArrayTrackingInitialization(
                 count: length
             ) { destination, initializedCount in
@@ -880,6 +971,23 @@ public enum ArraySerializer<Element: Serializer>: Serializer {
                     try settleUnbackedContainerItems(
                         context, completed: windowItems, startCursor: windowStart)
                 }
+            }
+        }
+    }
+
+    @inlinable
+    @inline(__always)
+    internal static func readNonNullElements<Codec: FieldCodec>(
+        _ context: ReadContext,
+        codec _: Codec.Type,
+        count: Int
+    ) throws -> [Codec.Target] where Codec.Target == Element.Target {
+        try [Codec.Target](unsafeUninitializedCapacity: count) { destination, initializedCount in
+            let baseAddress = destination.baseAddress!
+            for index in 0..<count {
+                baseAddress.advanced(by: index).initialize(to: try Codec.readFieldData(context))
+                // A later decode may throw, so Array must own every initialized prefix element.
+                initializedCount = index + 1
             }
         }
     }

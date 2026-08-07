@@ -19,7 +19,9 @@ license: |
   limitations under the License.
 ---
 
-Fory Swift is distributed through Swift Package Manager from the Apache Fory repository. The current package uses Swift tools 6.0 and targets macOS 13 or later and iOS 16 or later. Pin one Fory release across every peer in an application.
+Fory Swift provides xlang Object Serialization and compiler-generated models.
+It is distributed through Swift Package Manager, uses Swift tools 6.0, and
+targets macOS 13 or later and iOS 16 or later.
 
 ## Verify the Toolchain
 
@@ -27,11 +29,58 @@ Fory Swift is distributed through Swift Package Manager from the Apache Fory rep
 swift --version
 ```
 
-## Choose a Capability
+## Object Serialization
 
-| Capability                  | Package product or tool      | Continue with                                                                                                            |
-| --------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Object Serialization        | Swift package product `Fory` | [Swift object serialization](../object-serialization/swift/index.md) and [xlang](../object-serialization/swift/xlang.md) |
-| Schema and generated models | `fory-compiler`              | [Fory IDL and Compiler](../compiler/index.md)                                                                            |
+Create an executable package:
 
-The selected capability guide owns its exact package declaration and first runnable example.
+```bash
+swift package init --type executable --name ForyExample
+```
+
+Add the released package and depend on its `Fory` library in the generated `Package.swift`:
+
+```swift title="Package.swift"
+dependencies: [
+    .package(url: "https://github.com/apache/fory.git", exact: "1.6.0")
+],
+targets: [
+    .executableTarget(
+        name: "ForyExample",
+        dependencies: [.product(name: "Fory", package: "fory")]
+    )
+]
+```
+
+Replace `Sources/main.swift` with:
+
+```swift title="Sources/main.swift"
+import Fory
+
+@ForyStruct
+struct User: Equatable {
+    var id: Int64 = 0
+    var name: String = ""
+}
+
+let fory = Fory()
+try fory.register(User.self, id: 1)
+
+let input = User(id: 1, name: "Alice")
+let bytes = try fory.serialize(input)
+let decoded: User = try fory.deserialize(bytes)
+assert(input == decoded)
+```
+
+```bash
+swift run
+```
+
+Swift uses xlang mode. Continue with
+[Swift Object Serialization](../object-serialization/swift/index.md),
+[xlang types](../object-serialization/swift/basic-serialization.md#cross-language-interoperability),
+[configuration](../object-serialization/swift/configuration.md), and
+[schema evolution](../object-serialization/swift/schema-evolution.md).
+
+## Other Capabilities
+
+- **Fory IDL and Compiler** generates Swift models and registration helpers. See [Compiler Getting Started](../compiler/getting-started.md) and the [Swift generated-code guide](../compiler/generated-code/swift.md).

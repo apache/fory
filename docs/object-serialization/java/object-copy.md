@@ -357,7 +357,7 @@ Fix it by either:
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md) - Fory instance creation and core APIs
+- [Basic Serialization](basic-serialization.md) - Fory instance creation and core APIs
 - [Configuration](configuration.md) - Builder options including `withRefCopy`
 - [Custom Serializers](custom-serializers.md) - Serializer design and registration
 - [Virtual Threads](virtual-threads.md) - Thread-safe Fory guidance

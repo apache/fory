@@ -421,4 +421,4 @@ Both instances can exchange data even with different schema versions.
 
 - [Configuration](configuration.md) - Enabling compatible mode
 - [Type Registration](type-registration.md) - Type ID management
-- [Xlang Serialization](xlang.md) - Cross-language considerations
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - Cross-language considerations

@@ -62,7 +62,7 @@ include(FetchContent)
 FetchContent_Declare(
     fory
     GIT_REPOSITORY https://github.com/apache/fory.git
-    GIT_TAG        v1.5.0
+    GIT_TAG        v1.6.0
     SOURCE_SUBDIR  cpp
 )
 FetchContent_MakeAvailable(fory)
@@ -92,11 +92,11 @@ module(
 
 bazel_dep(name = "rules_cc", version = "0.1.1")
 
-bazel_dep(name = "fory", version = "1.5.0")
+bazel_dep(name = "fory", version = "1.6.0")
 git_override(
     module_name = "fory",
     remote = "https://github.com/apache/fory.git",
-    commit = "v1.5.0",  # Or use a specific commit hash for reproducibility
+    commit = "v1.6.0",  # Or use a specific commit hash for reproducibility
 )
 ```
 
@@ -128,7 +128,7 @@ bazel run //:my_app
 For local development, you can use `local_path_override` instead:
 
 ```bazel
-bazel_dep(name = "fory", version = "1.5.0")
+bazel_dep(name = "fory", version = "1.6.0")
 local_path_override(
     module_name = "fory",
     path = "/path/to/fory",
@@ -222,7 +222,7 @@ Use xlang mode for cross-language payloads and schemas shared with other Fory im
 
 Use native mode for C++-only traffic. Native mode is selected with `.xlang(false)` and keeps C++ object serialization in C++-native form. It is optimized for C++ types and avoids portable xlang type-mapping constraints when the payload never leaves C++. Compatible mode is enabled by default. Set `.compatible(false)` only when every reader and writer uses the same C++ schema and you want faster serialization and smaller size.
 
-See [Xlang Serialization](xlang.md) for C++ xlang registration and interoperability rules, and [Native Serialization](native.md) for C++-only payloads.
+See [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) for C++ xlang registration and interoperability rules, and [Native Serialization](native.md) for C++-only payloads.
 
 ## Thread Safety
 
@@ -264,8 +264,7 @@ std::thread t2([&]() {
 ## Next Steps
 
 - [Configuration](configuration.md) - Builder options and modes
-- [Basic Serialization](core-api.md) - Object graph serialization
-- [Xlang Serialization](xlang.md) - xlang mode and interoperability
+- [Basic Serialization](basic-serialization.md) - Default xlang object graphs and interoperability
 - [Native Serialization](native.md) - C++-only serialization
 - [Schema Metadata](schema-metadata.md) - Field-level metadata (nullable, ref tracking)
 - [Schema Evolution](schema-evolution.md) - Compatible mode and schema changes
@@ -274,3 +273,6 @@ std::thread t2([&]() {
 - [Custom Serializers](custom-serializers.md) - Extend serialization behavior
 - [Row Format](../../row-format/cpp.md) - Zero-copy row-based format
 - [gRPC Support](../../grpc/cpp.md) - Fory payloads over gRPC C++
+
+Before decoding bytes from outside the application trust boundary, read
+[C++ Security](security.md).

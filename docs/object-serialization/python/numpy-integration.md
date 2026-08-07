@@ -100,4 +100,4 @@ assert np.array_equal(array, result)
 ## Related Topics
 
 - [Out-of-Band Serialization](out-of-band.md) - Zero-copy buffers
-- [Basic Serialization](core-api.md) - Standard usage
+- [Basic Serialization](basic-serialization.md) - Standard usage

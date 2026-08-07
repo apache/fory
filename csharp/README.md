@@ -32,7 +32,7 @@ From NuGet, reference the single `Apache.Fory` package. It includes the Fory lib
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Apache.Fory" Version="1.5.0" />
+  <PackageReference Include="Apache.Fory" Version="1.6.0" />
 </ItemGroup>
 ```
 
@@ -127,7 +127,7 @@ public sealed class User : Entity
 
 An inaccessible base member is serialized only when it has `[ForyField]`.
 Unmodifiable third-party bases use an external `BaseOnly` declaration. See the
-[class inheritance guide](https://fory.apache.org/docs/object-serialization/csharp/core-api/#class-inheritance).
+[class inheritance guide](https://fory.apache.org/docs/object-serialization/csharp/basic-serialization/#class-inheritance).
 
 ### 3. Shared and Circular References
 

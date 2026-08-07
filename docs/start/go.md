@@ -19,7 +19,9 @@ license: |
   limitations under the License.
 ---
 
-Fory Go is published as the Go module `github.com/apache/fory/go/fory` and requires Go 1.24 or later. Use one compatible Fory release across every peer in an application.
+Fory Go provides xlang and native Object Serialization, generated models, and
+Fory gRPC. It is published as `github.com/apache/fory/go/fory` and requires Go
+1.25 or later.
 
 ## Verify the Toolchain
 
@@ -28,14 +30,64 @@ go version
 go env GOPROXY
 ```
 
-If a Go proxy has not picked up a new submodule tag yet, retry later or use `GOPROXY=direct` temporarily.
+## Object Serialization
 
-## Choose a Capability
+Create a module and install the released Fory module:
 
-| Capability                  | Module or tool                    | Continue with                                                                                                                                                              |
-| --------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Object Serialization        | `github.com/apache/fory/go/fory`  | [Go object serialization](../object-serialization/go/index.md), then choose [xlang](../object-serialization/go/xlang.md) or [native](../object-serialization/go/native.md) |
-| Schema and generated models | `fory-compiler`                   | [Fory IDL and Compiler](../compiler/index.md)                                                                                                                              |
-| Fory gRPC                   | generated companions plus grpc-go | [Go gRPC](../grpc/go.md)                                                                                                                                                   |
+```bash
+mkdir fory-example
+cd fory-example
+go mod init example.com/fory-example
+go get github.com/apache/fory/go/fory@v1.6.0
+```
 
-Each capability guide owns its exact module command and first runnable example.
+If a Go proxy has not picked up a new submodule tag yet, retry later or use
+`GOPROXY=direct` temporarily.
+
+```go title="main.go"
+package main
+
+import (
+    "fmt"
+
+    "github.com/apache/fory/go/fory"
+)
+
+type User struct {
+    ID   int64
+    Name string
+}
+
+func main() {
+    f := fory.New(fory.WithXlang(true))
+    if err := f.RegisterStruct(User{}, 1); err != nil {
+        panic(err)
+    }
+
+    bytes, err := f.Serialize(&User{ID: 1, Name: "Alice"})
+    if err != nil {
+        panic(err)
+    }
+
+    var decoded User
+    if err := f.Deserialize(bytes, &decoded); err != nil {
+        panic(err)
+    }
+    fmt.Println(decoded.Name)
+}
+```
+
+```bash
+go run .
+```
+
+Use [xlang mode](../object-serialization/go/basic-serialization.md#cross-language-interoperability) for cross-language data
+and [native mode](../object-serialization/go/native.md) for Go-only data.
+Continue with [Go Object Serialization](../object-serialization/go/index.md),
+[configuration](../object-serialization/go/configuration.md), and
+[schema evolution](../object-serialization/go/schema-evolution.md).
+
+## Other Capabilities
+
+- **Fory IDL and Compiler** generates Go models and registration helpers. See [Compiler Getting Started](../compiler/getting-started.md) and the [Go generated-code guide](../compiler/generated-code/go.md).
+- **Fory gRPC** uses grpc-go transports with Fory-encoded messages. See [Go gRPC](../grpc/go.md).

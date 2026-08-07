@@ -42,18 +42,19 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-json</artifactId>
-  <version>1.5.0</version>
+  <version>1.6.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-json:1.5.0")
+implementation("org.apache.fory:fory-json:1.6.0")
 ```
 
-On JDK 25 and later, open `java.lang.invoke` to Fory core. Use
-`ALL-UNNAMED` on the classpath:
+On JDK 25 and later, opening `java.lang.invoke` to Fory core is also recommended. It avoids
+the current-JDK Unsafe fallback and is required when Unsafe access is disabled or unavailable,
+including with `--sun-misc-unsafe-memory-access=deny`. Use `ALL-UNNAMED` on the classpath:
 
 ```bash
 --add-opens=java.base/java.lang.invoke=ALL-UNNAMED

@@ -105,7 +105,7 @@ skips leaf values such as strings, binary data, primitive scalars, and dense pri
 actual process memory can be higher than this value. Leaf values remain protected by
 byte-availability checks: if the unread input does not contain enough bytes, Fory will not read or
 create that leaf value. The default limit is a fixed `128 MiB` for all root input forms. A positive
-value overrides the default. Explicit non-positive values are rejected when the runtime is created.
+value overrides the default. Explicit non-positive values are rejected when the Fory instance is created.
 
 `maxUnbackedContainerItems` limits collection elements and map entries whose
 repeated read bodies do not consume proportional input during one root
@@ -157,13 +157,4 @@ let fory = Fory(compatible: false)
 
 ## Security
 
-Security-related configuration:
-
-- Register only the expected generated models before deserializing untrusted payloads.
-- Use `checkClassVersion` with `compatible: false` for intentional same-schema payloads.
-- Set `maxDepth` for the largest dynamic `Any` nesting depth your service accepts.
-- Set `maxGraphMemoryBytes` as an approximate gate for collection, map, array, struct, class, and
-  object-heavy payloads. It is not an exact heap cap; leaf values are gated by remaining input
-  bytes.
-- Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
-  trusted peer sends larger metadata or many schema versions.
+See [Swift Security](security.md) for trust boundaries, safe reader configuration, and verification.

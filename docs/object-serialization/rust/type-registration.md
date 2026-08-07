@@ -76,7 +76,7 @@ API:
 fory.register::<UserSerializer>(101)?;
 ```
 
-The serializer's `Target` is the runtime value type. Registration does not
+The serializer's `Target` is the Rust value type. Registration does not
 require a separate external-type API. At fields, `with` can select an exact
 carrier serializer such as `VecSerializer<UserSerializer>`, while recursive
 `list`, `map`, or `tuple` annotations select serializers at child nodes. At
@@ -136,6 +136,6 @@ let handles: Vec<_> = (0..4)
 ## Related Topics
 
 - [Configuration](configuration.md) - Fory builder options
-- [Xlang Serialization](xlang.md) - xlang mode registration
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - xlang mode registration
 - [Custom Serializers](custom-serializers.md) - Custom serialization
 - [External-Type Serialization](external-types.md) - Third-party targets and carrier roots

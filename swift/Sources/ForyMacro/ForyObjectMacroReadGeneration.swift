@@ -345,10 +345,8 @@ private func buildClassReadCompatibleDataDecl(
             if let reservedRefID {
                 context.refReader.storeRef(value, at: reservedRefID)
             }
-            if let localTypeMeta = remoteTypeInfo.typeMeta,
-               let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
-               typeMeta.headerHash == localHeaderHash,
-               typeMeta.fields == localTypeMeta.fields {
+            if let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
+               typeMeta.headerHash == localHeaderHash {
                 if !remoteTypeInfo.typeDefHasUserTypeFields {
                     \(schemaAssignBody)
                     return value
@@ -382,10 +380,8 @@ private func buildEmptyStructReadCompatibleDataDecl(accessPrefix: String) -> Str
         guard let typeMeta = typeInfo.compatibleTypeMeta else {
             throw ForyError.invalidData("compatible type metadata is required")
         }
-        if let localTypeMeta = typeInfo.typeMeta,
-           let localHeaderHash = typeInfo.typeDefHeaderHash,
-           typeMeta.headerHash == localHeaderHash,
-           typeMeta.fields == localTypeMeta.fields {
+        if let localHeaderHash = typeInfo.typeDefHeaderHash,
+           typeMeta.headerHash == localHeaderHash {
             return Target()
         }
         for remoteField in typeMeta.fields {
@@ -436,10 +432,8 @@ private func buildStructReadCompatibleDataDecl(
             \(bufferBinding)guard let typeMeta = typeInfo.compatibleTypeMeta else {
                 throw ForyError.invalidData("compatible type metadata is required")
             }
-            if let localTypeMeta = typeInfo.typeMeta,
-               let localHeaderHash = typeInfo.typeDefHeaderHash,
-               typeMeta.headerHash == localHeaderHash,
-               typeMeta.fields == localTypeMeta.fields {
+            if let localHeaderHash = typeInfo.typeDefHeaderHash,
+               typeMeta.headerHash == localHeaderHash {
                 if !typeInfo.typeDefHasUserTypeFields {
                     \(schemaReadBody)
                     return Target(

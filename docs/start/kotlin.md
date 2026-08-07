@@ -19,7 +19,8 @@ license: |
   limitations under the License.
 ---
 
-Fory Kotlin artifacts are published to Maven Central and run on Fory Java. Fory core supports Java 8 and later. Keep Kotlin, Java core, and generated-code artifacts in one application on the same Fory release.
+Fory Kotlin provides binary Object Serialization, generated models, Fory gRPC,
+and Android support. It runs on Fory Java and supports Java 8 and later.
 
 ## Verify the Toolchain
 
@@ -29,13 +30,51 @@ java -version
 # or: mvn -version
 ```
 
-## Choose a Capability
+## Object Serialization
 
-| Capability                   | Artifact or tool                                | Continue with                                                                                                                                                                              |
-| ---------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Object Serialization         | `fory-kotlin`                                   | [Kotlin object serialization](../object-serialization/kotlin/index.md), then choose [xlang](../object-serialization/kotlin/xlang.md) or [native](../object-serialization/kotlin/native.md) |
-| Schema and generated models  | `fory-compiler` and Kotlin KSP support          | [Fory IDL and Compiler](../compiler/index.md)                                                                                                                                              |
-| Fory gRPC                    | generated coroutine companions plus grpc-kotlin | [Kotlin gRPC](../grpc/kotlin.md)                                                                                                                                                           |
-| Android object serialization | `fory-kotlin` plus generated serializers        | [Android](../object-serialization/java/android.md)                                                                                                                                         |
+Add the Fory Kotlin library to the application module:
 
-Each capability guide owns its exact Maven or Gradle declaration and first runnable example.
+```kotlin title="build.gradle.kts"
+dependencies {
+  implementation("org.apache.fory:fory-kotlin:1.6.0")
+}
+```
+
+Create `src/main/kotlin/KotlinExample.kt`:
+
+```kotlin
+import org.apache.fory.ThreadSafeFory
+import org.apache.fory.kotlin.ForyKotlin
+
+data class User(val id: Long, val name: String)
+
+fun main() {
+    val fory: ThreadSafeFory = ForyKotlin.builder()
+        .withXlang(true)
+        .requireClassRegistration(true)
+        .buildThreadSafeFory()
+    fory.register(User::class.java, 1)
+
+    val bytes = fory.serialize(User(1, "Alice"))
+    val decoded = fory.deserialize(bytes) as User
+    println(decoded.name)
+}
+```
+
+If the project applies Gradle's `application` plugin, run its application task:
+
+```bash
+./gradlew run
+```
+
+Use xlang mode when a peer uses a different Fory implementation family; use native mode for data
+within the JVM Fory implementation family. Continue with
+[Kotlin Object Serialization](../object-serialization/kotlin/index.md),
+[xlang](../object-serialization/kotlin/basic-serialization.md#cross-language-interoperability), or
+[native mode](../object-serialization/kotlin/native.md).
+
+## Other Capabilities
+
+- **Fory IDL and Compiler** generates Kotlin models and registration helpers through KSP. See [Compiler Getting Started](../compiler/getting-started.md) and the [Kotlin generated-code guide](../compiler/generated-code/kotlin.md).
+- **Fory gRPC** uses grpc-kotlin and grpc-java transports with Fory-encoded messages. See [Kotlin gRPC](../grpc/kotlin.md).
+- **Android** uses generated serializers with the same Fory Kotlin library. See [Android Object Serialization](../object-serialization/java/android.md).

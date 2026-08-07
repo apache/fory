@@ -1,5 +1,6 @@
 {
   "position": 3,
+  "key": "benchmark-object-serialization",
   "label": "Object Serialization",
   "collapsible": true,
   "collapsed": true

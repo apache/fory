@@ -126,7 +126,7 @@ let fory = Fory::builder()
     .build();
 ```
 
-Zero is rejected when the runtime is created.
+Zero is rejected when the Fory instance is created.
 
 ### Unbacked Container Work Budget
 
@@ -201,21 +201,10 @@ Use `.compatible(false)` only when the schema used to deserialize every payload 
 
 ## Security
 
-Security-related configuration:
-
-- Register application structs and trait-object implementations before deserializing untrusted
-  payloads.
-- Use `max_dyn_depth(...)` to reject unexpectedly deep dynamic object graphs.
-- Keep `max_graph_memory_bytes(...)` at the fixed `128 MiB` default for most inputs, or set a
-  positive byte gate for trusted workloads with different legitimate collection/map/struct sizes.
-- Keep `max_unbacked_container_items(...)` at `8192` unless trusted compact codecs require a
-  larger root allowance. Zero rejects every unbacked item.
-- Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
-  trusted peer sends larger metadata or many schema versions.
-- Prefer concrete typed fields over `dyn Any` or broad trait-object fields for untrusted input.
+See [Rust Security](security.md) for trust boundaries, safe reader configuration, and verification.
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md) - Using configured Fory
+- [Basic Serialization](basic-serialization.md) - Using configured Fory
 - [Schema Evolution](schema-evolution.md) - Compatible mode details
-- [Xlang Serialization](xlang.md) - xlang mode
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - xlang mode

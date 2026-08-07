@@ -144,7 +144,7 @@ leaf values such as strings, binary data, primitive scalars, and dense primitive
 process memory can be higher than this value.
 
 The default limit is a fixed `128 MiB` for all root input forms. A positive value overrides the
-default. Explicit non-positive values are rejected when the runtime is created. Graph memory
+default. Explicit non-positive values are rejected when the Fory instance is created. Graph memory
 reservation complements byte-availability checks; it does not replace them. Skipped leaf values are
 still gated by remaining input bytes: if the unread input does not contain enough bytes, Fory will
 not read or create that leaf value.
@@ -214,7 +214,7 @@ xlang := fory.New(fory.WithXlang(true))
 
 - Go-native serialization mode
 - Supports more Go-native type behavior
-- Not compatible with other language implementations
+- Not wire-compatible with other Fory implementation families
 
 ## Thread Safety
 
@@ -417,17 +417,11 @@ for req := range requests {
 
 ## Security
 
-Security-related configuration:
-
-- Register only the expected structs before deserializing untrusted data.
-- Use `WithMaxDepth(...)` to reject unexpectedly deep payloads.
-- Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
-  trusted peer sends larger metadata or many schema versions.
-- Prefer concrete struct fields over broad `any` or interface-typed fields for untrusted input.
+See [Go Security](security.md) for trust boundaries, safe reader configuration, and verification.
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md)
+- [Basic Serialization](basic-serialization.md)
 - [References](references.md)
 - [Schema Evolution](schema-evolution.md)
 - [Thread Safety](thread-safety.md)

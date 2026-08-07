@@ -137,5 +137,5 @@ class SameSchemaMessage:
 ## Related Topics
 
 - [Configuration](configuration.md) - Compatible mode settings
-- [Xlang Serialization](xlang.md) - Schema evolution across languages
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - Schema evolution across languages
 - [Type Registration](type-registration.md) - Registration patterns

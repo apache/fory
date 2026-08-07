@@ -145,9 +145,9 @@ wire identity.
   without adding a wire identity or repeated registration lookup; any
   containing schema metadata owns the prior identity validation. The carrier
   serializer itself remains unregistered in every case.
-- A custom serializer that is not the runtime's
+- A custom serializer that is not the Fory implementation's
   canonical implementation of an existing built-in MUST use the existing EXT
-  or NAMED_EXT form. This serializer-provider separation does not replace runtime-owned
+  or NAMED_EXT form. This serializer-provider separation does not replace implementation-owned
   built-in mappings.
 - Serializer-provider, external structural serializer, or generated-code type names MUST
   NOT change the encoded type ID, registered user ID or name, TypeDef, field order, schema hash,
@@ -261,7 +261,7 @@ metadata. The reader must decide from the collection payload: if the payload
 actually carries a null element, the local `array<T>` field must raise a
 compatible-read error. Null list elements must not be coerced to dense-array
 default values. Reference-tracked list-element framing is separate from
-nullable element schema. A runtime that cannot materialize ref-tracked list
+nullable element schema. A Fory implementation that cannot materialize ref-tracked list
 elements into a dense array without generic/reference paths may reject that
 field during compatible classification; if it accepts the field, reference
 payloads that cannot be represented as dense array element values must fail
@@ -1597,7 +1597,7 @@ Date represents a date without timezone. It is encoded as:
 - `days` (varint64): signed count of days since the Unix epoch (`1970-01-01`)
 
 The value is reconstructed as `LocalDate.ofEpochDay(days)` or the equivalent calendar-date constructor in
-the target language implementation.
+the target Fory implementation.
 
 This `varint64` encoding applies to xlang serialization only. Native, language-specific local-date
 encodings are unchanged.
@@ -1850,7 +1850,7 @@ A union payload is:
 ```
 
 `case_id` is the union alternative tag number.
-Runtime APIs MAY expose zero-based ordinal indexes for generic union carriers;
+Fory APIs MAY expose zero-based ordinal indexes for generic union carriers;
 those ordinals are valid wire `case_id` values when they are the schema's
 alternative IDs.
 
@@ -1875,7 +1875,7 @@ numeric type IDs, the type ID byte is the complete value type metadata and the
 payload writer MAY use the stored wire type ID to preserve fixed, variable, or
 tagged integer encodings when the decoded value has the expected concrete value type.
 These scalar numeric payloads are not reference-tracked, so their ref metadata
-is `NotNullValue`. Otherwise it MUST fall back to the language implementation's
+is `NotNullValue`. Otherwise it MUST fall back to the Fory implementation's
 ordinary polymorphic Any-value writer. Unknown carriers are implementation-provided
 forward-compatibility containers, not entries in the local schema case table;
 schema-defined union cases MAY use `0..N`. When an unknown carrier is written

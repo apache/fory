@@ -108,9 +108,9 @@ reads expecting compatible metadata, deserialization will fail.
 
 ## Xlang Requirement
 
-Compatible mode only protects you from schema differences in the _fields_ of a type. You still need the same type identity (same numeric ID or same `typeName`) on every side. See [Xlang Serialization](xlang.md).
+Compatible mode only protects you from schema differences in the _fields_ of a type. You still need the same type identity (same numeric ID or same `typeName`) on every side. See [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability).
 
 ## Related Topics
 
 - [Type Registration](type-registration.md)
-- [Xlang Serialization](xlang.md)
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability)

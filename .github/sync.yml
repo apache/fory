@@ -18,6 +18,9 @@
 apache/fory-site@main:
   - source: docs/index.md
     dest: docs/index.md
+  - source: docs/images/
+    dest: docs/images/
+    deleteOrphaned: true
   - source: docs/introduction/
     dest: docs/introduction/
     deleteOrphaned: true
@@ -44,9 +47,6 @@ apache/fory-site@main:
     deleteOrphaned: true
   - source: docs/development/
     dest: docs/development/
-    deleteOrphaned: true
-  - source: docs/images/
-    dest: docs/images/
     deleteOrphaned: true
   - source: docs/specification/
     dest: docs/specification/

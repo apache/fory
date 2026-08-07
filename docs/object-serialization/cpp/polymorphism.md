@@ -206,7 +206,7 @@ static_cast<Dog*>(container.pet.get())->breed = "Beagle";
 auto bytes = fory.serialize(container).value();
 auto decoded = fory.deserialize<Container>(bytes).value();
 
-// Runtime type preserved
+// Dynamic type preserved
 auto* dog = dynamic_cast<Dog*>(decoded.pet.get());
 assert(dog != nullptr);
 assert(dog->breed == "Beagle");
@@ -487,4 +487,4 @@ if (!decoded_result.ok()) {
 - [Schema Metadata](schema-metadata.md) - Field-level metadata and options
 - [Supported Types](supported-types.md) - Smart pointers and collections
 - [Configuration](configuration.md) - `max_dyn_depth` and other settings
-- [Basic Serialization](core-api.md) - Core serialization concepts
+- [Basic Serialization](basic-serialization.md) - Core serialization concepts

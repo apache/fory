@@ -131,7 +131,7 @@ private mapping is an application-owned package ABI declaration. Pin and test
 the package version together with the declaration. If a mapped private field
 changes, the generated exact accessor fails with the CLR's missing-field error;
 Fory does not fall back to reflection or another member. An ignored private
-field has no runtime accessor, so validate that storage declaration against the
+field has no generated accessor, so validate that storage declaration against the
 pinned package build.
 
 External struct targets support visible field and property mappings only.
@@ -220,7 +220,7 @@ long as each concrete annotated child has a legal parameterless construction
 path.
 
 First-party bases use direct `[ForyStruct]` annotations instead. See
-[Class Inheritance](core-api.md#class-inheritance).
+[Class Inheritance](basic-serialization.md#class-inheritance).
 
 ## Declaration and Target Requirements
 
@@ -306,7 +306,7 @@ List<ThirdParty.User> decoded =
 ```
 
 External children are supported through the concrete carrier types already
-supported by the C# runtime:
+supported by Fory C#:
 
 - `Nullable<T>` for external structs and one-dimensional `T[]`;
 - `List<T>`, `LinkedList<T>`, `Queue<T>`, and `Stack<T>`;

@@ -10,19 +10,19 @@ Sample:
   Protobuf: 375 bytes
   Msgpack:  524 bytes
 MediaContent:
-  Fory:     340 bytes
+  Fory:     362 bytes
   Protobuf: 301 bytes
   Msgpack:  400 bytes
 NumericStructList:
-  Fory:     819 bytes
+  Fory:     855 bytes
   Protobuf: 1900 bytes
   Msgpack:  1766 bytes
 SampleList:
-  Fory:     7599 bytes
+  Fory:     7663 bytes
   Protobuf: 7560 bytes
   Msgpack:  10486 bytes
 MediaContentList:
-  Fory:     5774 bytes
+  Fory:     5851 bytes
   Protobuf: 6080 bytes
   Msgpack:  8006 bytes
 ============================================
@@ -38,19 +38,19 @@ Sample:
   Protobuf: 375 bytes
   Msgpack:  524 bytes
 MediaContent:
-  Fory:     340 bytes
+  Fory:     362 bytes
   Protobuf: 301 bytes
   Msgpack:  400 bytes
 NumericStructList:
-  Fory:     819 bytes
+  Fory:     855 bytes
   Protobuf: 1900 bytes
   Msgpack:  1766 bytes
 SampleList:
-  Fory:     7599 bytes
+  Fory:     7663 bytes
   Protobuf: 7560 bytes
   Msgpack:  10486 bytes
 MediaContentList:
-  Fory:     5774 bytes
+  Fory:     5851 bytes
   Protobuf: 6080 bytes
   Msgpack:  8006 bytes
 ============================================
@@ -66,19 +66,19 @@ Sample:
   Protobuf: 375 bytes
   Msgpack:  524 bytes
 MediaContent:
-  Fory:     340 bytes
+  Fory:     362 bytes
   Protobuf: 301 bytes
   Msgpack:  400 bytes
 NumericStructList:
-  Fory:     819 bytes
+  Fory:     855 bytes
   Protobuf: 1900 bytes
   Msgpack:  1766 bytes
 SampleList:
-  Fory:     7599 bytes
+  Fory:     7663 bytes
   Protobuf: 7560 bytes
   Msgpack:  10486 bytes
 MediaContentList:
-  Fory:     5774 bytes
+  Fory:     5851 bytes
   Protobuf: 6080 bytes
   Msgpack:  8006 bytes
 ============================================
@@ -94,19 +94,19 @@ Sample:
   Protobuf: 375 bytes
   Msgpack:  524 bytes
 MediaContent:
-  Fory:     340 bytes
+  Fory:     362 bytes
   Protobuf: 301 bytes
   Msgpack:  400 bytes
 NumericStructList:
-  Fory:     819 bytes
+  Fory:     855 bytes
   Protobuf: 1900 bytes
   Msgpack:  1766 bytes
 SampleList:
-  Fory:     7599 bytes
+  Fory:     7663 bytes
   Protobuf: 7560 bytes
   Msgpack:  10486 bytes
 MediaContentList:
-  Fory:     5774 bytes
+  Fory:     5851 bytes
   Protobuf: 6080 bytes
   Msgpack:  8006 bytes
 ============================================
@@ -122,19 +122,19 @@ Sample:
   Protobuf: 375 bytes
   Msgpack:  524 bytes
 MediaContent:
-  Fory:     340 bytes
+  Fory:     362 bytes
   Protobuf: 301 bytes
   Msgpack:  400 bytes
 NumericStructList:
-  Fory:     819 bytes
+  Fory:     855 bytes
   Protobuf: 1900 bytes
   Msgpack:  1766 bytes
 SampleList:
-  Fory:     7599 bytes
+  Fory:     7663 bytes
   Protobuf: 7560 bytes
   Msgpack:  10486 bytes
 MediaContentList:
-  Fory:     5774 bytes
+  Fory:     5851 bytes
   Protobuf: 6080 bytes
   Msgpack:  8006 bytes
 ============================================
@@ -142,185 +142,185 @@ goos: darwin
 goarch: arm64
 pkg: github.com/apache/fory/benchmarks/go
 cpu: Apple M4 Pro
-BenchmarkFory_NumericStruct_Serialize-12              	15385461	        78.49 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_NumericStruct_Serialize-12              	14953550	        78.78 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_NumericStruct_Serialize-12              	15520209	        76.33 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_NumericStruct_Serialize-12              	15806354	        76.43 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_NumericStruct_Serialize-12              	15314667	        78.51 ns/op	       0 B/op	       0 allocs/op
-BenchmarkProtobuf_NumericStruct_Serialize-12          	 8704411	       138.0 ns/op	     192 B/op	       2 allocs/op
-BenchmarkProtobuf_NumericStruct_Serialize-12          	 8522941	       138.8 ns/op	     192 B/op	       2 allocs/op
-BenchmarkProtobuf_NumericStruct_Serialize-12          	 8285118	       138.9 ns/op	     192 B/op	       2 allocs/op
-BenchmarkProtobuf_NumericStruct_Serialize-12          	 8818959	       139.6 ns/op	     192 B/op	       2 allocs/op
-BenchmarkProtobuf_NumericStruct_Serialize-12          	 8463876	       139.6 ns/op	     192 B/op	       2 allocs/op
-BenchmarkMsgpack_NumericStruct_Serialize-12           	 4396588	       274.9 ns/op	     240 B/op	       3 allocs/op
-BenchmarkMsgpack_NumericStruct_Serialize-12           	 4438035	       272.7 ns/op	     240 B/op	       3 allocs/op
-BenchmarkMsgpack_NumericStruct_Serialize-12           	 4352302	       272.0 ns/op	     240 B/op	       3 allocs/op
-BenchmarkMsgpack_NumericStruct_Serialize-12           	 4346308	       277.3 ns/op	     240 B/op	       3 allocs/op
-BenchmarkMsgpack_NumericStruct_Serialize-12           	 4361384	       275.5 ns/op	     240 B/op	       3 allocs/op
-BenchmarkFory_NumericStruct_Deserialize-12            	12784374	        95.10 ns/op	      48 B/op	       1 allocs/op
-BenchmarkFory_NumericStruct_Deserialize-12            	12615007	        94.35 ns/op	      48 B/op	       1 allocs/op
-BenchmarkFory_NumericStruct_Deserialize-12            	12597256	        94.07 ns/op	      48 B/op	       1 allocs/op
-BenchmarkFory_NumericStruct_Deserialize-12            	12663748	        93.35 ns/op	      48 B/op	       1 allocs/op
-BenchmarkFory_NumericStruct_Deserialize-12            	12668444	        94.05 ns/op	      48 B/op	       1 allocs/op
-BenchmarkProtobuf_NumericStruct_Deserialize-12        	 9892239	       157.3 ns/op	      96 B/op	       1 allocs/op
-BenchmarkProtobuf_NumericStruct_Deserialize-12        	 6950502	       152.1 ns/op	      96 B/op	       1 allocs/op
-BenchmarkProtobuf_NumericStruct_Deserialize-12        	 7466115	       210.2 ns/op	      96 B/op	       1 allocs/op
-BenchmarkProtobuf_NumericStruct_Deserialize-12        	 6987369	       156.1 ns/op	      96 B/op	       1 allocs/op
-BenchmarkProtobuf_NumericStruct_Deserialize-12        	10052640	       119.0 ns/op	      96 B/op	       1 allocs/op
-BenchmarkMsgpack_NumericStruct_Deserialize-12         	 2397518	       502.5 ns/op	      96 B/op	       2 allocs/op
-BenchmarkMsgpack_NumericStruct_Deserialize-12         	 2379376	       501.1 ns/op	      96 B/op	       2 allocs/op
-BenchmarkMsgpack_NumericStruct_Deserialize-12         	 2390596	       500.8 ns/op	      96 B/op	       2 allocs/op
-BenchmarkMsgpack_NumericStruct_Deserialize-12         	 2387790	       504.9 ns/op	      96 B/op	       2 allocs/op
-BenchmarkMsgpack_NumericStruct_Deserialize-12         	 2404051	       562.5 ns/op	      96 B/op	       2 allocs/op
-BenchmarkFory_NumericStructList_Serialize-12          	 1000000	      1081 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_NumericStructList_Serialize-12          	 1000000	      1021 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_NumericStructList_Serialize-12          	 1293205	       947.2 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_NumericStructList_Serialize-12          	 1278226	       929.6 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_NumericStructList_Serialize-12          	 1316396	       912.8 ns/op	       0 B/op	       0 allocs/op
-BenchmarkProtobuf_NumericStructList_Serialize-12      	  467838	      2594 ns/op	    4192 B/op	      23 allocs/op
-BenchmarkProtobuf_NumericStructList_Serialize-12      	  462572	      2743 ns/op	    4192 B/op	      23 allocs/op
-BenchmarkProtobuf_NumericStructList_Serialize-12      	  453700	      2589 ns/op	    4192 B/op	      23 allocs/op
-BenchmarkProtobuf_NumericStructList_Serialize-12      	  460408	      2607 ns/op	    4192 B/op	      23 allocs/op
-BenchmarkProtobuf_NumericStructList_Serialize-12      	  452139	      2594 ns/op	    4192 B/op	      23 allocs/op
-BenchmarkMsgpack_NumericStructList_Serialize-12       	  247603	      4879 ns/op	    4106 B/op	       8 allocs/op
-BenchmarkMsgpack_NumericStructList_Serialize-12       	  249087	      4844 ns/op	    4106 B/op	       8 allocs/op
-BenchmarkMsgpack_NumericStructList_Serialize-12       	  248340	      5142 ns/op	    4106 B/op	       8 allocs/op
-BenchmarkMsgpack_NumericStructList_Serialize-12       	  206158	      5846 ns/op	    4106 B/op	       8 allocs/op
-BenchmarkMsgpack_NumericStructList_Serialize-12       	  238311	      4970 ns/op	    4106 B/op	       8 allocs/op
-BenchmarkFory_NumericStructList_Deserialize-12        	 1311939	       932.1 ns/op	    1072 B/op	       3 allocs/op
-BenchmarkFory_NumericStructList_Deserialize-12        	 1313912	       937.1 ns/op	    1072 B/op	       3 allocs/op
-BenchmarkFory_NumericStructList_Deserialize-12        	 1315593	       915.4 ns/op	    1072 B/op	       3 allocs/op
-BenchmarkFory_NumericStructList_Deserialize-12        	 1311540	       927.6 ns/op	    1072 B/op	       3 allocs/op
-BenchmarkFory_NumericStructList_Deserialize-12        	 1292565	       919.9 ns/op	    1072 B/op	       3 allocs/op
-BenchmarkProtobuf_NumericStructList_Deserialize-12    	  447052	      2745 ns/op	    3512 B/op	      28 allocs/op
-BenchmarkProtobuf_NumericStructList_Deserialize-12    	  429406	      2743 ns/op	    3512 B/op	      28 allocs/op
-BenchmarkProtobuf_NumericStructList_Deserialize-12    	  438819	      2706 ns/op	    3512 B/op	      28 allocs/op
-BenchmarkProtobuf_NumericStructList_Deserialize-12    	  447928	      2785 ns/op	    3512 B/op	      28 allocs/op
-BenchmarkProtobuf_NumericStructList_Deserialize-12    	  447502	      2721 ns/op	    3512 B/op	      28 allocs/op
-BenchmarkMsgpack_NumericStructList_Deserialize-12     	  122101	      9764 ns/op	    2193 B/op	       7 allocs/op
-BenchmarkMsgpack_NumericStructList_Deserialize-12     	  123258	      9896 ns/op	    2193 B/op	       7 allocs/op
-BenchmarkMsgpack_NumericStructList_Deserialize-12     	  121612	      9738 ns/op	    2193 B/op	       7 allocs/op
-BenchmarkMsgpack_NumericStructList_Deserialize-12     	  124760	      9670 ns/op	    2193 B/op	       7 allocs/op
-BenchmarkMsgpack_NumericStructList_Deserialize-12     	  125086	      9698 ns/op	    2193 B/op	       7 allocs/op
-BenchmarkFory_Sample_Serialize-12                     	 8696760	       147.5 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_Sample_Serialize-12                     	 8567470	       181.8 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_Sample_Serialize-12                     	 8293867	       139.5 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_Sample_Serialize-12                     	 8486005	       140.6 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_Sample_Serialize-12                     	 8506568	       139.6 ns/op	       0 B/op	       0 allocs/op
-BenchmarkProtobuf_Sample_Serialize-12                 	 3011733	       387.9 ns/op	     704 B/op	       2 allocs/op
-BenchmarkProtobuf_Sample_Serialize-12                 	 3108796	       390.8 ns/op	     704 B/op	       2 allocs/op
-BenchmarkProtobuf_Sample_Serialize-12                 	 2547630	       393.6 ns/op	     704 B/op	       2 allocs/op
-BenchmarkProtobuf_Sample_Serialize-12                 	 3026661	       392.1 ns/op	     704 B/op	       2 allocs/op
-BenchmarkProtobuf_Sample_Serialize-12                 	 3128582	       395.9 ns/op	     704 B/op	       2 allocs/op
-BenchmarkMsgpack_Sample_Serialize-12                  	  777014	      1553 ns/op	    2321 B/op	       7 allocs/op
-BenchmarkMsgpack_Sample_Serialize-12                  	  775314	      1520 ns/op	    2321 B/op	       7 allocs/op
-BenchmarkMsgpack_Sample_Serialize-12                  	  757838	      1525 ns/op	    2321 B/op	       7 allocs/op
-BenchmarkMsgpack_Sample_Serialize-12                  	  802612	      1757 ns/op	    2321 B/op	       7 allocs/op
-BenchmarkMsgpack_Sample_Serialize-12                  	  790094	      1549 ns/op	    2321 B/op	       7 allocs/op
-BenchmarkFory_Sample_Deserialize-12                   	 4167534	       327.9 ns/op	     676 B/op	       9 allocs/op
-BenchmarkFory_Sample_Deserialize-12                   	 3184602	       338.0 ns/op	     676 B/op	       9 allocs/op
-BenchmarkFory_Sample_Deserialize-12                   	 3629605	       301.8 ns/op	     676 B/op	       9 allocs/op
-BenchmarkFory_Sample_Deserialize-12                   	 4008093	       302.2 ns/op	     676 B/op	       9 allocs/op
-BenchmarkFory_Sample_Deserialize-12                   	 3992972	       306.0 ns/op	     676 B/op	       9 allocs/op
-BenchmarkProtobuf_Sample_Deserialize-12               	 2527548	       477.1 ns/op	     708 B/op	       9 allocs/op
-BenchmarkProtobuf_Sample_Deserialize-12               	 2476074	       474.8 ns/op	     708 B/op	       9 allocs/op
-BenchmarkProtobuf_Sample_Deserialize-12               	 2532358	       475.8 ns/op	     708 B/op	       9 allocs/op
-BenchmarkProtobuf_Sample_Deserialize-12               	 2408528	       473.0 ns/op	     708 B/op	       9 allocs/op
-BenchmarkProtobuf_Sample_Deserialize-12               	 2482132	       475.9 ns/op	     708 B/op	       9 allocs/op
-BenchmarkMsgpack_Sample_Deserialize-12                	  415698	      2893 ns/op	    1576 B/op	      38 allocs/op
-BenchmarkMsgpack_Sample_Deserialize-12                	  417212	      2950 ns/op	    1576 B/op	      38 allocs/op
-BenchmarkMsgpack_Sample_Deserialize-12                	  424497	      2879 ns/op	    1576 B/op	      38 allocs/op
-BenchmarkMsgpack_Sample_Deserialize-12                	  417026	      2953 ns/op	    1576 B/op	      38 allocs/op
-BenchmarkMsgpack_Sample_Deserialize-12                	  418338	      2919 ns/op	    1576 B/op	      38 allocs/op
-BenchmarkFory_SampleList_Serialize-12                 	  599605	      2041 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_SampleList_Serialize-12                 	  582406	      2046 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_SampleList_Serialize-12                 	  563160	      2029 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_SampleList_Serialize-12                 	  607074	      2067 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_SampleList_Serialize-12                 	  613364	      2018 ns/op	       0 B/op	       0 allocs/op
-BenchmarkProtobuf_SampleList_Serialize-12             	  145861	      8291 ns/op	   14816 B/op	      23 allocs/op
-BenchmarkProtobuf_SampleList_Serialize-12             	  150979	      7938 ns/op	   14816 B/op	      23 allocs/op
-BenchmarkProtobuf_SampleList_Serialize-12             	  144135	      8049 ns/op	   14816 B/op	      23 allocs/op
-BenchmarkProtobuf_SampleList_Serialize-12             	  149202	      8469 ns/op	   14816 B/op	      23 allocs/op
-BenchmarkProtobuf_SampleList_Serialize-12             	  152338	      7927 ns/op	   14816 B/op	      23 allocs/op
-BenchmarkMsgpack_SampleList_Serialize-12              	   43825	     27705 ns/op	   32793 B/op	      11 allocs/op
-BenchmarkMsgpack_SampleList_Serialize-12              	   43051	     29707 ns/op	   32793 B/op	      11 allocs/op
-BenchmarkMsgpack_SampleList_Serialize-12              	   42046	     27699 ns/op	   32793 B/op	      11 allocs/op
-BenchmarkMsgpack_SampleList_Serialize-12              	   42596	     37501 ns/op	   32793 B/op	      11 allocs/op
-BenchmarkMsgpack_SampleList_Serialize-12              	   42518	     27909 ns/op	   32793 B/op	      11 allocs/op
-BenchmarkFory_SampleList_Deserialize-12               	  249300	      4817 ns/op	   13952 B/op	     163 allocs/op
-BenchmarkFory_SampleList_Deserialize-12               	  245127	      5156 ns/op	   13952 B/op	     163 allocs/op
-BenchmarkFory_SampleList_Deserialize-12               	  247790	      4943 ns/op	   13952 B/op	     163 allocs/op
-BenchmarkFory_SampleList_Deserialize-12               	  249534	      4934 ns/op	   13952 B/op	     163 allocs/op
-BenchmarkFory_SampleList_Deserialize-12               	  239244	      5126 ns/op	   13952 B/op	     163 allocs/op
-BenchmarkProtobuf_SampleList_Deserialize-12           	  111327	     10797 ns/op	   20872 B/op	     188 allocs/op
-BenchmarkProtobuf_SampleList_Deserialize-12           	  109178	     10919 ns/op	   20872 B/op	     188 allocs/op
-BenchmarkProtobuf_SampleList_Deserialize-12           	   92876	     12674 ns/op	   20872 B/op	     188 allocs/op
-BenchmarkProtobuf_SampleList_Deserialize-12           	  108414	     10816 ns/op	   20872 B/op	     188 allocs/op
-BenchmarkProtobuf_SampleList_Deserialize-12           	  114196	     10460 ns/op	   20872 B/op	     188 allocs/op
-BenchmarkMsgpack_SampleList_Deserialize-12            	   20566	     58400 ns/op	   37251 B/op	     727 allocs/op
-BenchmarkMsgpack_SampleList_Deserialize-12            	   20526	     65792 ns/op	   37251 B/op	     727 allocs/op
-BenchmarkMsgpack_SampleList_Deserialize-12            	   20550	     58213 ns/op	   37251 B/op	     727 allocs/op
-BenchmarkMsgpack_SampleList_Deserialize-12            	   19180	     58170 ns/op	   37251 B/op	     727 allocs/op
-BenchmarkMsgpack_SampleList_Deserialize-12            	   20426	     60118 ns/op	   37251 B/op	     727 allocs/op
-BenchmarkFory_MediaContent_Serialize-12               	 4481811	       268.2 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_MediaContent_Serialize-12               	 4470292	       269.4 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_MediaContent_Serialize-12               	 4524715	       269.0 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_MediaContent_Serialize-12               	 4516789	       270.0 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_MediaContent_Serialize-12               	 4391221	       267.3 ns/op	       0 B/op	       0 allocs/op
-BenchmarkProtobuf_MediaContent_Serialize-12           	 2135143	       544.6 ns/op	    1144 B/op	      11 allocs/op
-BenchmarkProtobuf_MediaContent_Serialize-12           	 2160157	       561.0 ns/op	    1144 B/op	      11 allocs/op
-BenchmarkProtobuf_MediaContent_Serialize-12           	 2221641	       545.3 ns/op	    1144 B/op	      11 allocs/op
-BenchmarkProtobuf_MediaContent_Serialize-12           	 2214582	       565.7 ns/op	    1144 B/op	      11 allocs/op
-BenchmarkProtobuf_MediaContent_Serialize-12           	 2115079	       571.6 ns/op	    1144 B/op	      11 allocs/op
-BenchmarkMsgpack_MediaContent_Serialize-12            	 1380163	       869.0 ns/op	    1168 B/op	       6 allocs/op
-BenchmarkMsgpack_MediaContent_Serialize-12            	 1380481	       874.4 ns/op	    1168 B/op	       6 allocs/op
-BenchmarkMsgpack_MediaContent_Serialize-12            	 1369536	       873.7 ns/op	    1168 B/op	       6 allocs/op
-BenchmarkMsgpack_MediaContent_Serialize-12            	 1376877	       881.8 ns/op	    1168 B/op	       6 allocs/op
-BenchmarkMsgpack_MediaContent_Serialize-12            	 1381296	       875.1 ns/op	    1168 B/op	       6 allocs/op
-BenchmarkFory_MediaContent_Deserialize-12             	 2537758	       474.9 ns/op	     656 B/op	      13 allocs/op
-BenchmarkFory_MediaContent_Deserialize-12             	 2491048	       478.2 ns/op	     656 B/op	      13 allocs/op
-BenchmarkFory_MediaContent_Deserialize-12             	 2500486	       520.6 ns/op	     656 B/op	      13 allocs/op
-BenchmarkFory_MediaContent_Deserialize-12             	 2419058	       495.7 ns/op	     656 B/op	      13 allocs/op
-BenchmarkFory_MediaContent_Deserialize-12             	 2404918	       492.4 ns/op	     656 B/op	      13 allocs/op
-BenchmarkProtobuf_MediaContent_Deserialize-12         	 1852849	       647.5 ns/op	    1088 B/op	      21 allocs/op
-BenchmarkProtobuf_MediaContent_Deserialize-12         	 1865282	       638.1 ns/op	    1088 B/op	      21 allocs/op
-BenchmarkProtobuf_MediaContent_Deserialize-12         	 1873513	       649.3 ns/op	    1088 B/op	      21 allocs/op
-BenchmarkProtobuf_MediaContent_Deserialize-12         	 1853527	       635.6 ns/op	    1088 B/op	      21 allocs/op
-BenchmarkProtobuf_MediaContent_Deserialize-12         	 1729706	       815.8 ns/op	    1088 B/op	      21 allocs/op
-BenchmarkMsgpack_MediaContent_Deserialize-12          	  801156	      1553 ns/op	     896 B/op	      17 allocs/op
-BenchmarkMsgpack_MediaContent_Deserialize-12          	  787426	      1520 ns/op	     896 B/op	      17 allocs/op
-BenchmarkMsgpack_MediaContent_Deserialize-12          	  750510	      1538 ns/op	     896 B/op	      17 allocs/op
-BenchmarkMsgpack_MediaContent_Deserialize-12          	  803448	      1543 ns/op	     896 B/op	      17 allocs/op
-BenchmarkMsgpack_MediaContent_Deserialize-12          	  780190	      1549 ns/op	     896 B/op	      17 allocs/op
-BenchmarkFory_MediaContentList_Serialize-12           	  304236	      4158 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_MediaContentList_Serialize-12           	  300002	      4008 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_MediaContentList_Serialize-12           	  301590	      4026 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_MediaContentList_Serialize-12           	  304356	      3955 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFory_MediaContentList_Serialize-12           	  305937	      4006 ns/op	       0 B/op	       0 allocs/op
-BenchmarkProtobuf_MediaContentList_Serialize-12       	  113460	     10919 ns/op	   22848 B/op	     203 allocs/op
-BenchmarkProtobuf_MediaContentList_Serialize-12       	  105204	     12060 ns/op	   22848 B/op	     203 allocs/op
-BenchmarkProtobuf_MediaContentList_Serialize-12       	  112503	     10890 ns/op	   22848 B/op	     203 allocs/op
-BenchmarkProtobuf_MediaContentList_Serialize-12       	  110593	     10468 ns/op	   22848 B/op	     203 allocs/op
-BenchmarkProtobuf_MediaContentList_Serialize-12       	  112423	     10939 ns/op	   22848 B/op	     203 allocs/op
-BenchmarkMsgpack_MediaContentList_Serialize-12        	   77541	     15641 ns/op	   16881 B/op	      30 allocs/op
-BenchmarkMsgpack_MediaContentList_Serialize-12        	   77178	     16293 ns/op	   16880 B/op	      30 allocs/op
-BenchmarkMsgpack_MediaContentList_Serialize-12        	   73228	     16168 ns/op	   16880 B/op	      30 allocs/op
-BenchmarkMsgpack_MediaContentList_Serialize-12        	   71780	     16275 ns/op	   16880 B/op	      30 allocs/op
-BenchmarkMsgpack_MediaContentList_Serialize-12        	   77145	     17553 ns/op	   16881 B/op	      30 allocs/op
-BenchmarkFory_MediaContentList_Deserialize-12         	  146653	      8254 ns/op	   13040 B/op	     243 allocs/op
-BenchmarkFory_MediaContentList_Deserialize-12         	  145420	      8133 ns/op	   13040 B/op	     243 allocs/op
-BenchmarkFory_MediaContentList_Deserialize-12         	  148918	      8145 ns/op	   13040 B/op	     243 allocs/op
-BenchmarkFory_MediaContentList_Deserialize-12         	  141998	      8498 ns/op	   13040 B/op	     243 allocs/op
-BenchmarkFory_MediaContentList_Deserialize-12         	  138174	      8893 ns/op	   13040 B/op	     243 allocs/op
-BenchmarkProtobuf_MediaContentList_Deserialize-12     	   90056	     13521 ns/op	   25400 B/op	     428 allocs/op
-BenchmarkProtobuf_MediaContentList_Deserialize-12     	   82902	     13638 ns/op	   25400 B/op	     428 allocs/op
-BenchmarkProtobuf_MediaContentList_Deserialize-12     	   91242	     14083 ns/op	   25400 B/op	     428 allocs/op
-BenchmarkProtobuf_MediaContentList_Deserialize-12     	   85706	     13089 ns/op	   25400 B/op	     428 allocs/op
-BenchmarkProtobuf_MediaContentList_Deserialize-12     	   91342	     13588 ns/op	   25400 B/op	     428 allocs/op
-BenchmarkMsgpack_MediaContentList_Deserialize-12      	   33295	     31198 ns/op	   20058 B/op	     307 allocs/op
-BenchmarkMsgpack_MediaContentList_Deserialize-12      	   40077	     31423 ns/op	   20058 B/op	     307 allocs/op
-BenchmarkMsgpack_MediaContentList_Deserialize-12      	   39219	     30604 ns/op	   20058 B/op	     307 allocs/op
-BenchmarkMsgpack_MediaContentList_Deserialize-12      	   39799	     30377 ns/op	   20058 B/op	     307 allocs/op
-BenchmarkMsgpack_MediaContentList_Deserialize-12      	   39267	     32439 ns/op	   20058 B/op	     307 allocs/op
+BenchmarkFory_NumericStruct_Serialize-12              	22048402	        54.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFory_NumericStruct_Serialize-12              	22058012	        54.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFory_NumericStruct_Serialize-12              	22176328	        55.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFory_NumericStruct_Serialize-12              	22106401	        54.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFory_NumericStruct_Serialize-12              	22254522	        54.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkProtobuf_NumericStruct_Serialize-12          	 8963738	       131.3 ns/op	     192 B/op	       2 allocs/op
+BenchmarkProtobuf_NumericStruct_Serialize-12          	 9236372	       129.2 ns/op	     192 B/op	       2 allocs/op
+BenchmarkProtobuf_NumericStruct_Serialize-12          	 9132246	       129.2 ns/op	     192 B/op	       2 allocs/op
+BenchmarkProtobuf_NumericStruct_Serialize-12          	 9175611	       131.4 ns/op	     192 B/op	       2 allocs/op
+BenchmarkProtobuf_NumericStruct_Serialize-12          	 8954976	       131.1 ns/op	     192 B/op	       2 allocs/op
+BenchmarkMsgpack_NumericStruct_Serialize-12           	 4606771	       264.5 ns/op	     240 B/op	       3 allocs/op
+BenchmarkMsgpack_NumericStruct_Serialize-12           	 4461562	       261.8 ns/op	     240 B/op	       3 allocs/op
+BenchmarkMsgpack_NumericStruct_Serialize-12           	 4631194	       261.1 ns/op	     240 B/op	       3 allocs/op
+BenchmarkMsgpack_NumericStruct_Serialize-12           	 4468142	       264.8 ns/op	     240 B/op	       3 allocs/op
+BenchmarkMsgpack_NumericStruct_Serialize-12           	 4402513	       264.9 ns/op	     240 B/op	       3 allocs/op
+BenchmarkFory_NumericStruct_Deserialize-12            	16227700	        74.24 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_NumericStruct_Deserialize-12            	16269540	        73.24 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_NumericStruct_Deserialize-12            	16324466	        73.70 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_NumericStruct_Deserialize-12            	16199805	        73.64 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_NumericStruct_Deserialize-12            	16368146	        73.67 ns/op	      48 B/op	       1 allocs/op
+BenchmarkProtobuf_NumericStruct_Deserialize-12        	10233286	       116.3 ns/op	      96 B/op	       1 allocs/op
+BenchmarkProtobuf_NumericStruct_Deserialize-12        	10415528	       116.1 ns/op	      96 B/op	       1 allocs/op
+BenchmarkProtobuf_NumericStruct_Deserialize-12        	10308709	       116.5 ns/op	      96 B/op	       1 allocs/op
+BenchmarkProtobuf_NumericStruct_Deserialize-12        	10203318	       117.5 ns/op	      96 B/op	       1 allocs/op
+BenchmarkProtobuf_NumericStruct_Deserialize-12        	10256920	       117.0 ns/op	      96 B/op	       1 allocs/op
+BenchmarkMsgpack_NumericStruct_Deserialize-12         	 2358616	       495.9 ns/op	      96 B/op	       2 allocs/op
+BenchmarkMsgpack_NumericStruct_Deserialize-12         	 2273918	       518.9 ns/op	      96 B/op	       2 allocs/op
+BenchmarkMsgpack_NumericStruct_Deserialize-12         	 2373148	       505.9 ns/op	      96 B/op	       2 allocs/op
+BenchmarkMsgpack_NumericStruct_Deserialize-12         	 2408899	       501.9 ns/op	      96 B/op	       2 allocs/op
+BenchmarkMsgpack_NumericStruct_Deserialize-12         	 2372222	       502.2 ns/op	      96 B/op	       2 allocs/op
+BenchmarkFory_NumericStructList_Serialize-12          	 1796719	       660.7 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_NumericStructList_Serialize-12          	 1756392	       647.7 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_NumericStructList_Serialize-12          	 1818304	       659.1 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_NumericStructList_Serialize-12          	 1822184	       652.0 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_NumericStructList_Serialize-12          	 1813196	       665.8 ns/op	      48 B/op	       1 allocs/op
+BenchmarkProtobuf_NumericStructList_Serialize-12      	  493580	      2430 ns/op	    4192 B/op	      23 allocs/op
+BenchmarkProtobuf_NumericStructList_Serialize-12      	  498306	      2463 ns/op	    4192 B/op	      23 allocs/op
+BenchmarkProtobuf_NumericStructList_Serialize-12      	  469477	      2432 ns/op	    4192 B/op	      23 allocs/op
+BenchmarkProtobuf_NumericStructList_Serialize-12      	  495613	      2431 ns/op	    4192 B/op	      23 allocs/op
+BenchmarkProtobuf_NumericStructList_Serialize-12      	  503056	      2422 ns/op	    4192 B/op	      23 allocs/op
+BenchmarkMsgpack_NumericStructList_Serialize-12       	  255328	      4788 ns/op	    4106 B/op	       8 allocs/op
+BenchmarkMsgpack_NumericStructList_Serialize-12       	  250656	      4784 ns/op	    4106 B/op	       8 allocs/op
+BenchmarkMsgpack_NumericStructList_Serialize-12       	  248538	      4766 ns/op	    4106 B/op	       8 allocs/op
+BenchmarkMsgpack_NumericStructList_Serialize-12       	  249808	      4798 ns/op	    4106 B/op	       8 allocs/op
+BenchmarkMsgpack_NumericStructList_Serialize-12       	  251359	      4699 ns/op	    4106 B/op	       8 allocs/op
+BenchmarkFory_NumericStructList_Deserialize-12        	 1442926	       831.6 ns/op	    1072 B/op	       3 allocs/op
+BenchmarkFory_NumericStructList_Deserialize-12        	 1442542	       831.3 ns/op	    1072 B/op	       3 allocs/op
+BenchmarkFory_NumericStructList_Deserialize-12        	 1321963	       831.6 ns/op	    1072 B/op	       3 allocs/op
+BenchmarkFory_NumericStructList_Deserialize-12        	 1440138	       829.4 ns/op	    1072 B/op	       3 allocs/op
+BenchmarkFory_NumericStructList_Deserialize-12        	 1434574	       846.8 ns/op	    1072 B/op	       3 allocs/op
+BenchmarkProtobuf_NumericStructList_Deserialize-12    	  487072	      2443 ns/op	    3512 B/op	      28 allocs/op
+BenchmarkProtobuf_NumericStructList_Deserialize-12    	  491452	      2447 ns/op	    3512 B/op	      28 allocs/op
+BenchmarkProtobuf_NumericStructList_Deserialize-12    	  484132	      2477 ns/op	    3512 B/op	      28 allocs/op
+BenchmarkProtobuf_NumericStructList_Deserialize-12    	  486200	      2449 ns/op	    3512 B/op	      28 allocs/op
+BenchmarkProtobuf_NumericStructList_Deserialize-12    	  483763	      2520 ns/op	    3512 B/op	      28 allocs/op
+BenchmarkMsgpack_NumericStructList_Deserialize-12     	  124959	      9614 ns/op	    2193 B/op	       7 allocs/op
+BenchmarkMsgpack_NumericStructList_Deserialize-12     	  124986	      9663 ns/op	    2193 B/op	       7 allocs/op
+BenchmarkMsgpack_NumericStructList_Deserialize-12     	  124622	      9564 ns/op	    2193 B/op	       7 allocs/op
+BenchmarkMsgpack_NumericStructList_Deserialize-12     	  124821	      9517 ns/op	    2193 B/op	       7 allocs/op
+BenchmarkMsgpack_NumericStructList_Deserialize-12     	  126458	      9558 ns/op	    2193 B/op	       7 allocs/op
+BenchmarkFory_Sample_Serialize-12                     	 9952366	       120.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFory_Sample_Serialize-12                     	 9720504	       120.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFory_Sample_Serialize-12                     	 9936180	       121.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFory_Sample_Serialize-12                     	 9867582	       120.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFory_Sample_Serialize-12                     	 9773203	       121.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkProtobuf_Sample_Serialize-12                 	 3359570	       354.6 ns/op	     704 B/op	       2 allocs/op
+BenchmarkProtobuf_Sample_Serialize-12                 	 3318685	       354.4 ns/op	     704 B/op	       2 allocs/op
+BenchmarkProtobuf_Sample_Serialize-12                 	 3402387	       354.2 ns/op	     704 B/op	       2 allocs/op
+BenchmarkProtobuf_Sample_Serialize-12                 	 3316545	       361.8 ns/op	     704 B/op	       2 allocs/op
+BenchmarkProtobuf_Sample_Serialize-12                 	 3286450	       367.4 ns/op	     704 B/op	       2 allocs/op
+BenchmarkMsgpack_Sample_Serialize-12                  	  756360	      1487 ns/op	    2321 B/op	       7 allocs/op
+BenchmarkMsgpack_Sample_Serialize-12                  	  797206	      1486 ns/op	    2321 B/op	       7 allocs/op
+BenchmarkMsgpack_Sample_Serialize-12                  	  804738	      1462 ns/op	    2321 B/op	       7 allocs/op
+BenchmarkMsgpack_Sample_Serialize-12                  	  797922	      1468 ns/op	    2321 B/op	       7 allocs/op
+BenchmarkMsgpack_Sample_Serialize-12                  	  832318	      1463 ns/op	    2321 B/op	       7 allocs/op
+BenchmarkFory_Sample_Deserialize-12                   	 4585981	       255.6 ns/op	     676 B/op	       9 allocs/op
+BenchmarkFory_Sample_Deserialize-12                   	 4675981	       255.6 ns/op	     676 B/op	       9 allocs/op
+BenchmarkFory_Sample_Deserialize-12                   	 4639005	       258.4 ns/op	     676 B/op	       9 allocs/op
+BenchmarkFory_Sample_Deserialize-12                   	 4741363	       254.5 ns/op	     676 B/op	       9 allocs/op
+BenchmarkFory_Sample_Deserialize-12                   	 4678129	       255.8 ns/op	     676 B/op	       9 allocs/op
+BenchmarkProtobuf_Sample_Deserialize-12               	 2786370	       433.2 ns/op	     708 B/op	       9 allocs/op
+BenchmarkProtobuf_Sample_Deserialize-12               	 2750157	       430.1 ns/op	     708 B/op	       9 allocs/op
+BenchmarkProtobuf_Sample_Deserialize-12               	 2780458	       458.7 ns/op	     708 B/op	       9 allocs/op
+BenchmarkProtobuf_Sample_Deserialize-12               	 2428318	       444.5 ns/op	     708 B/op	       9 allocs/op
+BenchmarkProtobuf_Sample_Deserialize-12               	 2688910	       444.6 ns/op	     708 B/op	       9 allocs/op
+BenchmarkMsgpack_Sample_Deserialize-12                	  439947	      2734 ns/op	    1576 B/op	      38 allocs/op
+BenchmarkMsgpack_Sample_Deserialize-12                	  447328	      2717 ns/op	    1576 B/op	      38 allocs/op
+BenchmarkMsgpack_Sample_Deserialize-12                	  438544	      2716 ns/op	    1576 B/op	      38 allocs/op
+BenchmarkMsgpack_Sample_Deserialize-12                	  442526	      2706 ns/op	    1576 B/op	      38 allocs/op
+BenchmarkMsgpack_Sample_Deserialize-12                	  442413	      2686 ns/op	    1576 B/op	      38 allocs/op
+BenchmarkFory_SampleList_Serialize-12                 	  566211	      2039 ns/op	     288 B/op	       1 allocs/op
+BenchmarkFory_SampleList_Serialize-12                 	  578923	      2040 ns/op	     288 B/op	       1 allocs/op
+BenchmarkFory_SampleList_Serialize-12                 	  579772	      2075 ns/op	     288 B/op	       1 allocs/op
+BenchmarkFory_SampleList_Serialize-12                 	  593736	      2058 ns/op	     288 B/op	       1 allocs/op
+BenchmarkFory_SampleList_Serialize-12                 	  580461	      2063 ns/op	     288 B/op	       1 allocs/op
+BenchmarkProtobuf_SampleList_Serialize-12             	  167936	      7038 ns/op	   14816 B/op	      23 allocs/op
+BenchmarkProtobuf_SampleList_Serialize-12             	  168691	      6922 ns/op	   14816 B/op	      23 allocs/op
+BenchmarkProtobuf_SampleList_Serialize-12             	  168943	      6961 ns/op	   14816 B/op	      23 allocs/op
+BenchmarkProtobuf_SampleList_Serialize-12             	  175226	      6935 ns/op	   14816 B/op	      23 allocs/op
+BenchmarkProtobuf_SampleList_Serialize-12             	  175560	      6861 ns/op	   14816 B/op	      23 allocs/op
+BenchmarkMsgpack_SampleList_Serialize-12              	   45961	     26219 ns/op	   32792 B/op	      11 allocs/op
+BenchmarkMsgpack_SampleList_Serialize-12              	   46327	     26028 ns/op	   32792 B/op	      11 allocs/op
+BenchmarkMsgpack_SampleList_Serialize-12              	   44845	     25843 ns/op	   32793 B/op	      11 allocs/op
+BenchmarkMsgpack_SampleList_Serialize-12              	   45948	     26155 ns/op	   32793 B/op	      11 allocs/op
+BenchmarkMsgpack_SampleList_Serialize-12              	   46552	     26023 ns/op	   32792 B/op	      11 allocs/op
+BenchmarkFory_SampleList_Deserialize-12               	  265274	      4393 ns/op	   13952 B/op	     163 allocs/op
+BenchmarkFory_SampleList_Deserialize-12               	  270634	      4439 ns/op	   13952 B/op	     163 allocs/op
+BenchmarkFory_SampleList_Deserialize-12               	  268773	      4376 ns/op	   13952 B/op	     163 allocs/op
+BenchmarkFory_SampleList_Deserialize-12               	  268900	      4430 ns/op	   13952 B/op	     163 allocs/op
+BenchmarkFory_SampleList_Deserialize-12               	  268454	      4427 ns/op	   13952 B/op	     163 allocs/op
+BenchmarkProtobuf_SampleList_Deserialize-12           	  129838	      9336 ns/op	   20872 B/op	     188 allocs/op
+BenchmarkProtobuf_SampleList_Deserialize-12           	  129367	      9273 ns/op	   20872 B/op	     188 allocs/op
+BenchmarkProtobuf_SampleList_Deserialize-12           	  127551	      9996 ns/op	   20872 B/op	     188 allocs/op
+BenchmarkProtobuf_SampleList_Deserialize-12           	  123700	      9720 ns/op	   20872 B/op	     188 allocs/op
+BenchmarkProtobuf_SampleList_Deserialize-12           	  125986	      9641 ns/op	   20872 B/op	     188 allocs/op
+BenchmarkMsgpack_SampleList_Deserialize-12            	   22058	     54683 ns/op	   37251 B/op	     727 allocs/op
+BenchmarkMsgpack_SampleList_Deserialize-12            	   22000	     53942 ns/op	   37251 B/op	     727 allocs/op
+BenchmarkMsgpack_SampleList_Deserialize-12            	   22323	     53936 ns/op	   37251 B/op	     727 allocs/op
+BenchmarkMsgpack_SampleList_Deserialize-12            	   22395	     54215 ns/op	   37251 B/op	     727 allocs/op
+BenchmarkMsgpack_SampleList_Deserialize-12            	   22155	     53893 ns/op	   37251 B/op	     727 allocs/op
+BenchmarkFory_MediaContent_Serialize-12               	 4720441	       257.8 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_MediaContent_Serialize-12               	 4677813	       256.8 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_MediaContent_Serialize-12               	 4663876	       257.4 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_MediaContent_Serialize-12               	 4563858	       258.3 ns/op	      48 B/op	       1 allocs/op
+BenchmarkFory_MediaContent_Serialize-12               	 4684438	       257.4 ns/op	      48 B/op	       1 allocs/op
+BenchmarkProtobuf_MediaContent_Serialize-12           	 2540131	       483.0 ns/op	    1144 B/op	      11 allocs/op
+BenchmarkProtobuf_MediaContent_Serialize-12           	 2528174	       471.4 ns/op	    1144 B/op	      11 allocs/op
+BenchmarkProtobuf_MediaContent_Serialize-12           	 2564924	       472.3 ns/op	    1144 B/op	      11 allocs/op
+BenchmarkProtobuf_MediaContent_Serialize-12           	 2504013	       472.9 ns/op	    1144 B/op	      11 allocs/op
+BenchmarkProtobuf_MediaContent_Serialize-12           	 2551820	       482.0 ns/op	    1144 B/op	      11 allocs/op
+BenchmarkMsgpack_MediaContent_Serialize-12            	 1498474	       807.0 ns/op	    1168 B/op	       6 allocs/op
+BenchmarkMsgpack_MediaContent_Serialize-12            	 1495797	       808.8 ns/op	    1168 B/op	       6 allocs/op
+BenchmarkMsgpack_MediaContent_Serialize-12            	 1513142	       809.3 ns/op	    1168 B/op	       6 allocs/op
+BenchmarkMsgpack_MediaContent_Serialize-12            	 1510410	       809.4 ns/op	    1168 B/op	       6 allocs/op
+BenchmarkMsgpack_MediaContent_Serialize-12            	 1501597	       820.0 ns/op	    1168 B/op	       6 allocs/op
+BenchmarkFory_MediaContent_Deserialize-12             	 2872570	       422.5 ns/op	     656 B/op	      13 allocs/op
+BenchmarkFory_MediaContent_Deserialize-12             	 2838810	       420.0 ns/op	     656 B/op	      13 allocs/op
+BenchmarkFory_MediaContent_Deserialize-12             	 2818161	       425.1 ns/op	     656 B/op	      13 allocs/op
+BenchmarkFory_MediaContent_Deserialize-12             	 2772471	       429.5 ns/op	     656 B/op	      13 allocs/op
+BenchmarkFory_MediaContent_Deserialize-12             	 2795403	       426.3 ns/op	     656 B/op	      13 allocs/op
+BenchmarkProtobuf_MediaContent_Deserialize-12         	 2154655	       560.8 ns/op	    1088 B/op	      21 allocs/op
+BenchmarkProtobuf_MediaContent_Deserialize-12         	 2131860	       564.7 ns/op	    1088 B/op	      21 allocs/op
+BenchmarkProtobuf_MediaContent_Deserialize-12         	 2128532	       560.8 ns/op	    1088 B/op	      21 allocs/op
+BenchmarkProtobuf_MediaContent_Deserialize-12         	 2126889	       562.1 ns/op	    1088 B/op	      21 allocs/op
+BenchmarkProtobuf_MediaContent_Deserialize-12         	 2114772	       564.3 ns/op	    1088 B/op	      21 allocs/op
+BenchmarkMsgpack_MediaContent_Deserialize-12          	  848928	      1422 ns/op	     896 B/op	      17 allocs/op
+BenchmarkMsgpack_MediaContent_Deserialize-12          	  850116	      1408 ns/op	     896 B/op	      17 allocs/op
+BenchmarkMsgpack_MediaContent_Deserialize-12          	  847324	      1424 ns/op	     896 B/op	      17 allocs/op
+BenchmarkMsgpack_MediaContent_Deserialize-12          	  830918	      1422 ns/op	     896 B/op	      17 allocs/op
+BenchmarkMsgpack_MediaContent_Deserialize-12          	  851023	      1420 ns/op	     896 B/op	      17 allocs/op
+BenchmarkFory_MediaContentList_Serialize-12           	  286959	      4177 ns/op	    1120 B/op	      21 allocs/op
+BenchmarkFory_MediaContentList_Serialize-12           	  286754	      4239 ns/op	    1120 B/op	      21 allocs/op
+BenchmarkFory_MediaContentList_Serialize-12           	  281565	      4186 ns/op	    1120 B/op	      21 allocs/op
+BenchmarkFory_MediaContentList_Serialize-12           	  285084	      4179 ns/op	    1120 B/op	      21 allocs/op
+BenchmarkFory_MediaContentList_Serialize-12           	  290010	      4108 ns/op	    1120 B/op	      21 allocs/op
+BenchmarkProtobuf_MediaContentList_Serialize-12       	  132528	      9121 ns/op	   22848 B/op	     203 allocs/op
+BenchmarkProtobuf_MediaContentList_Serialize-12       	  130459	      9076 ns/op	   22848 B/op	     203 allocs/op
+BenchmarkProtobuf_MediaContentList_Serialize-12       	  127272	      9106 ns/op	   22848 B/op	     203 allocs/op
+BenchmarkProtobuf_MediaContentList_Serialize-12       	  128955	      9462 ns/op	   22848 B/op	     203 allocs/op
+BenchmarkProtobuf_MediaContentList_Serialize-12       	  131900	      9070 ns/op	   22848 B/op	     203 allocs/op
+BenchmarkMsgpack_MediaContentList_Serialize-12        	   83436	     14480 ns/op	   16880 B/op	      30 allocs/op
+BenchmarkMsgpack_MediaContentList_Serialize-12        	   83728	     14436 ns/op	   16880 B/op	      30 allocs/op
+BenchmarkMsgpack_MediaContentList_Serialize-12        	   83997	     14310 ns/op	   16880 B/op	      30 allocs/op
+BenchmarkMsgpack_MediaContentList_Serialize-12        	   84308	     14375 ns/op	   16880 B/op	      30 allocs/op
+BenchmarkMsgpack_MediaContentList_Serialize-12        	   82885	     14530 ns/op	   16880 B/op	      30 allocs/op
+BenchmarkFory_MediaContentList_Deserialize-12         	  145394	      7719 ns/op	   13040 B/op	     243 allocs/op
+BenchmarkFory_MediaContentList_Deserialize-12         	  157838	      7526 ns/op	   13040 B/op	     243 allocs/op
+BenchmarkFory_MediaContentList_Deserialize-12         	  154821	      7502 ns/op	   13040 B/op	     243 allocs/op
+BenchmarkFory_MediaContentList_Deserialize-12         	  157782	      7555 ns/op	   13040 B/op	     243 allocs/op
+BenchmarkFory_MediaContentList_Deserialize-12         	  161598	      7542 ns/op	   13040 B/op	     243 allocs/op
+BenchmarkProtobuf_MediaContentList_Deserialize-12     	  105784	     11472 ns/op	   25400 B/op	     428 allocs/op
+BenchmarkProtobuf_MediaContentList_Deserialize-12     	  104074	     11597 ns/op	   25400 B/op	     428 allocs/op
+BenchmarkProtobuf_MediaContentList_Deserialize-12     	  103701	     11524 ns/op	   25400 B/op	     428 allocs/op
+BenchmarkProtobuf_MediaContentList_Deserialize-12     	  102218	     11472 ns/op	   25400 B/op	     428 allocs/op
+BenchmarkProtobuf_MediaContentList_Deserialize-12     	  105387	     11515 ns/op	   25400 B/op	     428 allocs/op
+BenchmarkMsgpack_MediaContentList_Deserialize-12      	   42776	     27946 ns/op	   20058 B/op	     307 allocs/op
+BenchmarkMsgpack_MediaContentList_Deserialize-12      	   42944	     27855 ns/op	   20058 B/op	     307 allocs/op
+BenchmarkMsgpack_MediaContentList_Deserialize-12      	   42837	     27976 ns/op	   20058 B/op	     307 allocs/op
+BenchmarkMsgpack_MediaContentList_Deserialize-12      	   43257	     27886 ns/op	   20058 B/op	     307 allocs/op
+BenchmarkMsgpack_MediaContentList_Deserialize-12      	   42781	     28241 ns/op	   20058 B/op	     307 allocs/op
 PASS
-ok  	github.com/apache/fory/benchmarks/go	268.327s
+ok  	github.com/apache/fory/benchmarks/go	258.432s

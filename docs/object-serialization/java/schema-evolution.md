@@ -27,7 +27,7 @@ In many systems, the schema of a class used for serialization may change over ti
 
 ### Default Mode
 
-Fory defaults to compatible mode in both Java native mode (`xlang=false`) and xlang mode. This default is safer for independently deployed services because writer and reader schemas can diverge during rolling upgrades or across language implementations.
+Fory defaults to compatible mode in both Java native mode (`xlang=false`) and xlang mode. This default is safer for independently deployed services because writer and reader schemas can diverge during rolling upgrades or across Fory implementations in different languages.
 
 For payloads whose reader and writer schemas never differ, see
 [Same-Schema Optimization](#same-schema-optimization).
@@ -266,5 +266,5 @@ public class SameSchemaMessage {
 ## Related Topics
 
 - [Configuration](configuration.md) - All ForyBuilder options
-- [Xlang Serialization](xlang.md) - xlang mode
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - xlang mode
 - [Troubleshooting](troubleshooting.md) - Common schema issues

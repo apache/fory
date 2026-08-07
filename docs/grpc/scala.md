@@ -371,7 +371,7 @@ Server-streaming, client-streaming, and bidirectional server methods use
 grpc-java `StreamObserver` APIs because streaming completion, request flow
 control, cancellation, and backpressure follow grpc-java behavior.
 
-## gRPC Runtime Behavior
+## gRPC Stack Behavior
 
 The generated service code only replaces request and response serialization.
 All normal gRPC operational features still belong to grpc-java:

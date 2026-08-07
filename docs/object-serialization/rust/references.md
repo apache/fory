@@ -208,6 +208,6 @@ for child in &decoded.lock().unwrap().children {
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md) - Supported types
+- [Basic Serialization](basic-serialization.md) - Supported types
 - [Polymorphism](polymorphism.md) - Trait objects with Rc/Arc
 - [Configuration](configuration.md) - Reference tracking options

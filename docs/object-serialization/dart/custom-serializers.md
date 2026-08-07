@@ -140,5 +140,5 @@ Skipping this step causes back-references to that object to resolve to `null`.
 
 - [Type Registration](type-registration.md)
 - [External-Type Serialization](external-types.md)
-- [Xlang Serialization](xlang.md)
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability)
 - [Troubleshooting](troubleshooting.md)

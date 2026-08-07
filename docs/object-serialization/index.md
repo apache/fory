@@ -1,5 +1,5 @@
 ---
-title: Object Serialization
+title: Introduction
 sidebar_position: 0
 id: index
 license: |
@@ -24,27 +24,44 @@ collections, polymorphic values, and optional shared references.
 
 ## Choose a mode
 
-| Mode   | Use it when                                          | Start here                   |
-| ------ | ---------------------------------------------------- | ---------------------------- |
-| Xlang  | Bytes cross runtime boundaries                       | [Xlang mode](xlang/index.md) |
-| Native | Every writer and reader uses the same runtime family | [Native mode](native.md)     |
+| Mode            | Use it when                                                 | Start here                        |
+| --------------- | ----------------------------------------------------------- | --------------------------------- |
+| Xlang (default) | Bytes cross language boundaries                             | [Xlang Serialization](xlang.md)   |
+| Native          | Every writer and reader uses one Fory implementation family | [Native serialization](native.md) |
 
 Xlang and native are the only object-serialization modes. Row Format is a random-access analytical
 representation, and Fory JSON is a Java JSON codec; use the
 [format chooser](../introduction/choose-a-format.md) when object reconstruction is not your goal.
 
-## Browse by runtime
+## Read the concepts and modes
 
-Choose a runtime to find its installation route, lifecycle, exact APIs, configuration, type
+Read these pages before choosing the Fory API for a language:
+
+1. [Core Concepts](core-concepts.md) explains object graphs, types, schemas, references,
+   polymorphism, and schema evolution across both modes.
+2. [Xlang Serialization](xlang.md) explains the portable format used by default and the rules that
+   Fory implementations in different languages must share.
+3. [Native Serialization](native.md) explains when an implementation-specific native format is
+   appropriate.
+
+## Browse by language
+
+Choose a language to find its installation route, lifecycle, exact APIs, configuration, type
 registration, schema behavior, extensions, platforms, and troubleshooting:
 
-[Browse supported runtimes](runtimes.md)
-
-## Security
-
-Before decoding externally supplied bytes, read [Object Serialization Security](security.md). It
-covers accepted-type policy, registration, resource limits, transport responsibilities, and
-negative verification for both modes.
+| Language              | Modes                | Documentation                                        |
+| --------------------- | -------------------- | ---------------------------------------------------- |
+| Java                  | xlang and native     | [Java guide](./java/index.md)                        |
+| Python                | xlang and native     | [Python guide](./python/index.md)                    |
+| C++                   | xlang and native     | [C++ guide](./cpp/index.md)                          |
+| Go                    | xlang and native     | [Go guide](./go/index.md)                            |
+| Rust                  | xlang and native     | [Rust guide](./rust/index.md)                        |
+| JavaScript/TypeScript | xlang                | [JavaScript/TypeScript guide](./javascript/index.md) |
+| C#                    | xlang                | [C# guide](./csharp/index.md)                        |
+| Swift                 | xlang                | [Swift guide](./swift/index.md)                      |
+| Dart                  | xlang                | [Dart guide](./dart/index.md)                        |
+| Scala                 | xlang and JVM native | [Scala guide](./scala/index.md)                      |
+| Kotlin                | xlang and JVM native | [Kotlin guide](./kotlin/index.md)                    |
 
 ## Specifications
 

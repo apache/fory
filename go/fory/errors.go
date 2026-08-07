@@ -96,21 +96,21 @@ func panicIfEnabled(err Error) Error {
 }
 
 // Ok returns true if no error occurred
-func (e Error) Ok() bool {
+func (e *Error) Ok() bool {
 	return e.kind == ErrKindOK
 }
 
 // HasError returns true if an error occurred
-func (e Error) HasError() bool {
+func (e *Error) HasError() bool {
 	return e.kind != ErrKindOK
 }
 
 // Kind returns the error kind for fast dispatch
-func (e Error) Kind() ErrorKind {
+func (e *Error) Kind() ErrorKind {
 	return e.kind
 }
 
-func (e Error) reverseStackString() string {
+func (e *Error) reverseStackString() string {
 	if len(e.stack) == 0 {
 		return ""
 	}

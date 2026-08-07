@@ -61,7 +61,7 @@ impl Animal for Cat {
 register_trait_type!(Animal, Dog, Cat);
 ```
 
-The concrete list contains runtime value types. Each type must also be
+The concrete list contains concrete Rust value types. Each type must also be
 registered with the `Fory` instance:
 
 ```rust

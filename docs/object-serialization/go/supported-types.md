@@ -354,7 +354,7 @@ data, _ := f.Serialize(status)
 | `time.Time`     | Instant    | datetime  | -                  | -              |
 | `time.Duration` | Duration   | timedelta | -                  | -              |
 
-See [Xlang Serialization](xlang.md) for detailed mapping.
+See [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) for detailed mapping.
 
 ## Unsupported Types
 
@@ -370,5 +370,5 @@ Attempting to serialize these types will result in an error.
 ## Related Topics
 
 - [Type Registration](type-registration.md)
-- [Xlang Serialization](xlang.md)
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability)
 - [References](references.md)

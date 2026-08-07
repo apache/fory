@@ -156,21 +156,23 @@ options; see [Configuration](configuration.md).
 
 ## Documentation
 
-| Topic                                        | Description                                             |
-| -------------------------------------------- | ------------------------------------------------------- |
-| [Basic Serialization](core-api.md)           | Core APIs and everyday usage                            |
-| [Configuration](configuration.md)            | Fory options, compatible mode, limits, and HPS          |
-| [Type Registration](type-registration.md)    | Numeric IDs, names, decorators, and schema registration |
-| [Schema Metadata](schema-metadata.md)        | Type builders, field options, and decorators            |
-| [Supported Types](supported-types.md)        | Primitive, collection, time, enum, and struct mappings  |
-| [References](references.md)                  | Shared references and circular object graphs            |
-| [Schema Evolution](schema-evolution.md)      | Compatible mode and evolving structs                    |
-| [Xlang Serialization](xlang.md)              | Interop guidance and mapping rules                      |
-| [Fory IDL Compiler](../../compiler/index.md) | Generate TypeScript models from `.fdl` schemas          |
-| [gRPC Support](../../grpc/javascript.md)     | Node.js gRPC and browser gRPC-Web generated clients     |
-| [Troubleshooting](troubleshooting.md)        | Common issues, limits, and debugging tips               |
+| Topic                                         | Description                                             |
+| --------------------------------------------- | ------------------------------------------------------- |
+| [Basic Serialization](basic-serialization.md) | Default xlang APIs, usage, and interoperability         |
+| [Configuration](configuration.md)             | Fory options, compatible mode, limits, and HPS          |
+| [Type Registration](type-registration.md)     | Numeric IDs, names, decorators, and schema registration |
+| [Schema Metadata](schema-metadata.md)         | Type builders, field options, and decorators            |
+| [Supported Types](supported-types.md)         | Primitive, collection, time, enum, and struct mappings  |
+| [References](references.md)                   | Shared references and circular object graphs            |
+| [Schema Evolution](schema-evolution.md)       | Compatible mode and evolving structs                    |
+| [Fory IDL Compiler](../../compiler/index.md)  | Generate TypeScript models from `.fdl` schemas          |
+| [gRPC Support](../../grpc/javascript.md)      | Node.js gRPC and browser gRPC-Web generated clients     |
+| [Troubleshooting](troubleshooting.md)         | Common issues, limits, and debugging tips               |
 
 ## Related Resources
 
 - [Xlang Serialization Specification](../../specification/xlang_serialization_spec.md)
 - [Xlang Type Mapping](../../specification/xlang_type_mapping.md)
+
+Before decoding bytes from outside the application trust boundary, read
+[JavaScript/TypeScript Security](security.md).

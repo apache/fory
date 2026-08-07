@@ -282,4 +282,4 @@ func TestMySerializer(t *testing.T) {
 
 - [Type Registration](type-registration.md)
 - [Supported Types](supported-types.md)
-- [Xlang Serialization](xlang.md)
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability)

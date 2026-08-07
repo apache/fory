@@ -19,19 +19,23 @@ license: |
   limitations under the License.
 ---
 
-| Format        | Use it when                                                   | Start here                                                     |
-| ------------- | ------------------------------------------------------------- | -------------------------------------------------------------- |
-| Xlang binary  | Data crosses language boundaries                              | [Cross-language guide](../object-serialization/xlang/index.md) |
-| Native binary | Producer and consumer are in the same language                | Language guide                                                 |
-| Row format    | You need random field access or analytics-style partial reads | [Row format spec](../row-format/index.md)                      |
-| Fory JSON     | Java applications need high-performance standard JSON         | [Fory JSON guide](../json/index.md)                            |
+| Format or mode | Data model                           | Use it when                                                   | Interoperability                                                            | Start here                                               |
+| -------------- | ------------------------------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Xlang binary   | Portable object graphs               | Data crosses language boundaries                              | Shared wire format across supported Fory implementations                    | [Cross-language guide](../object-serialization/xlang.md) |
+| Native binary  | Language-native object graphs        | Producer and consumer use one Fory implementation family      | One Fory implementation family only                                         | [Object Serialization](../object-serialization/index.md) |
+| Row Format     | Random-access binary rows            | You need random field access or analytics-style partial reads | Standard Row is shared by Java, Python, C++, and Rust; Compact is Java-only | [Row Format guide](../row-format/index.md)               |
+| Fory JSON      | Standard JSON mapped to Java objects | Java applications need high-performance standard JSON         | Standard JSON text                                                          | [Fory JSON guide](../json/index.md)                      |
 
-For Java, Scala, Kotlin, Python, C++, Go, and Rust, use native mode for
-same-language traffic. It avoids xlang's cross-language type mapping and
+Xlang and native are sibling modes of Object Serialization. Use them when the receiver needs to
+reconstruct an object graph. Row Format and Fory JSON are separate formats, not additional Object
+Serialization modes.
+
+For Java, Scala, Kotlin, Python, C++, Go, and Rust, use native mode for traffic
+within one Fory implementation family. It avoids xlang's cross-language type mapping and
 metadata constraints, stays closer to each language's native type system, and
 supports broader language-specific object graphs. Use it when both producer and
-consumer are in the same language family and you want the native object model
-rather than a portable cross-language schema.
+consumer use the same native wire format and you want the native object model rather than a
+portable cross-language schema.
 
 For Java/JVM-only systems, native mode is the replacement path for JDK
 serialization, Kryo, FST, Hessian, and Java-only Protocol Buffers payloads. For
@@ -59,3 +63,12 @@ Choose xlang or native mode when you need to reconstruct object graphs. Choose R
 trusted analytical data that benefits from random field access. Choose Fory JSON for standard JSON
 in Java applications. Use Fory IDL and the compiler when multiple teams need one schema-first
 contract; it generates models that use the relevant Fory capability.
+
+## Related capabilities
+
+[Fory IDL and the compiler](../compiler/index.md) generate native models for supported languages.
+Service definitions can also generate [Fory gRPC](../grpc/index.md) code. Neither capability defines
+another serialization format.
+
+Protocol implementers should follow the normative format documentation under
+[Specifications](../specification/xlang_serialization_spec.md).

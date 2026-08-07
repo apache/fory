@@ -53,20 +53,22 @@ See [Java Features](../java/index.md#features) for complete feature list.
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>1.5.0</version>
+  <version>1.6.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("org.apache.fory:fory-kotlin:1.5.0")
+implementation("org.apache.fory:fory-kotlin:1.6.0")
 ```
 
 ### JDK25+
 
-Kotlin uses the Fory Java core when running. On JDK25+, open `java.lang.invoke`
-to Fory. Use `ALL-UNNAMED` when Fory is on the classpath:
+Kotlin uses the Fory Java core when running. On JDK25+, opening `java.lang.invoke` to Fory core is
+also recommended. It avoids the current-JDK Unsafe fallback and is required when Unsafe
+access is disabled or unavailable, including with `--sun-misc-unsafe-memory-access=deny`. Use
+`ALL-UNNAMED` when Fory is on the classpath:
 
 ```bash
 --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
@@ -117,7 +119,7 @@ See [Configuration](configuration.md) for Kotlin builder setup and [Java Native 
 Fory Kotlin is built on top of Fory Java. Most configuration options, features, and concepts from Fory Java apply directly to Kotlin. Refer to the Java documentation for:
 
 - [Configuration](../java/configuration.md) - All ForyBuilder options
-- [Basic Serialization](../java/core-api.md) - Serialization patterns and APIs
+- [Basic Serialization](../java/basic-serialization.md) - Serialization patterns and APIs
 - [Type Registration](../java/type-registration.md) - Class registration and security
 - [Schema Evolution](../java/schema-evolution.md) - Forward/backward compatibility
 - [Custom Serializers](../java/custom-serializers.md) - Implement custom serializers
@@ -126,7 +128,7 @@ Fory Kotlin is built on top of Fory Java. Most configuration options, features, 
 
 ## Kotlin-Specific Documentation
 
-- [Xlang Serialization](xlang.md) - Kotlin APIs for direct cross-language object serialization
+- [Basic Serialization](basic-serialization.md) - Models, APIs, and interoperability in the default xlang mode
 - [Configuration](configuration.md) - Kotlin-specific Fory setup requirements
 - [Native Serialization](native.md) - Serializing Kotlin types in JVM-native mode
 - [Schema Metadata](schema-metadata.md) - Kotlin annotations, nullability, references, and integer metadata
@@ -134,3 +136,6 @@ Fory Kotlin is built on top of Fory Java. Most configuration options, features, 
 - [Static Generated Serializers](static-generated-serializers.md) - KSP xlang/schema serializer generation
 - [Kotlin gRPC Support](../../grpc/kotlin.md) - Coroutine stubs and service bases for Fory IDL services
 - [Android Support](../java/android.md) - Android setup, R8 behavior, and release-build validation
+
+Before decoding bytes from outside the application trust boundary, read
+[Kotlin Security](security.md).

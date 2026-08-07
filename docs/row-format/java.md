@@ -43,14 +43,14 @@ For Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
-  <version>1.5.0</version>
+  <version>1.6.0</version>
 </dependency>
 ```
 
 For Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-format:1.5.0")
+implementation("org.apache.fory:fory-format:1.6.0")
 ```
 
 ## Basic Usage
@@ -279,6 +279,6 @@ Parent decoded = encoder.fromRow(row);
 
 ## Related Topics
 
-- [Xlang Serialization](../object-serialization/java/xlang.md) - xlang mode
+- [Cross-Language Interoperability](../object-serialization/java/basic-serialization.md#cross-language-interoperability) - xlang mode
 - [Java Advanced Features](../object-serialization/java/advanced-features.md) - Zero-copy object serialization
 - [Row Format Specification](https://fory.apache.org/docs/specification/row_format_spec) - Protocol details

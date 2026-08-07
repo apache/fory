@@ -19,7 +19,10 @@ license: |
   limitations under the License.
 ---
 
-Fory JavaScript/TypeScript packages are published on npm. The core package works without native acceleration; the optional `@apache-fory/hps` Node.js fast path requires Node.js 20 or later. Keep Fory packages in one application on compatible versions.
+Fory JavaScript/TypeScript provides xlang Object Serialization, generated
+models, Node.js gRPC, and browser gRPC-Web clients. Packages are published on
+npm. The core package works without native acceleration; the optional
+`@apache-fory/hps` Node.js fast path requires Node.js 20 or later.
 
 ## Verify the Toolchain
 
@@ -28,12 +31,51 @@ node --version
 npm --version
 ```
 
-## Choose a Capability
+## Object Serialization
 
-| Capability                  | Package or tool                                  | Continue with                                                                                                                                      |
-| --------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Object Serialization        | `@apache-fory/core`; optional `@apache-fory/hps` | [JavaScript/TypeScript object serialization](../object-serialization/javascript/index.md) and [xlang](../object-serialization/javascript/xlang.md) |
-| Schema and generated models | `fory-compiler`                                  | [Fory IDL and Compiler](../compiler/index.md)                                                                                                      |
-| Fory gRPC                   | generated Node.js or gRPC-Web companions         | [JavaScript gRPC](../grpc/javascript.md)                                                                                                           |
+Install the core package:
 
-Each capability guide owns its exact install command, environment-specific setup, and first runnable example.
+```bash
+npm install @apache-fory/core@1.6.0
+```
+
+Define a schema and run an xlang round trip:
+
+```js title="example.cjs"
+const { default: Fory, Type } = require("@apache-fory/core");
+
+const userType = Type.struct(
+  { typeName: "example.User" },
+  {
+    id: Type.int64(),
+    name: Type.string(),
+  },
+);
+
+const fory = new Fory();
+const { serialize, deserialize } = fory.register(userType);
+
+const bytes = serialize({ id: 1n, name: "Alice" });
+console.log(deserialize(bytes));
+```
+
+```bash
+node example.cjs
+```
+
+JavaScript uses xlang mode. Continue with
+[JavaScript/TypeScript Object Serialization](../object-serialization/javascript/index.md),
+[xlang types](../object-serialization/javascript/basic-serialization.md#cross-language-interoperability),
+[configuration](../object-serialization/javascript/configuration.md), and
+[schema evolution](../object-serialization/javascript/schema-evolution.md).
+
+For the optional Node.js string fast path, install the matching package version:
+
+```bash
+npm install @apache-fory/core@1.6.0 @apache-fory/hps@1.6.0
+```
+
+## Other Capabilities
+
+- **Fory IDL and Compiler** generates TypeScript interfaces, schemas, and registration helpers. See [Compiler Getting Started](../compiler/getting-started.md) and the [JavaScript generated-code guide](../compiler/generated-code/javascript.md).
+- **Fory gRPC** supports Node.js gRPC and browser gRPC-Web transports with Fory-encoded messages. See [JavaScript gRPC](../grpc/javascript.md).

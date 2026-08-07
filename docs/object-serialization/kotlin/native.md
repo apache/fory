@@ -20,7 +20,7 @@ license: |
 ---
 
 This page covers serialization of Kotlin-specific JVM types in native mode. For
-cross-language Kotlin models, use [Kotlin Xlang Serialization](xlang.md).
+cross-language Kotlin models, use [Kotlin Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability).
 
 When compatible mode is enabled, Kotlin readers use the JVM compatible-read rules for selected
 scalar field type changes. A matched field can read between `Boolean`, `String`, numeric scalars,
@@ -190,7 +190,7 @@ The following types work with the default Fory Java implementation:
 
 Use `ForyKotlin.builder()` for Kotlin-specific types such as unsigned values, ranges, and `Duration`.
 
-Use native mode for Kotlin/JVM-only traffic that needs Kotlin data classes,
-nullable types, ranges, unsigned values, or Kotlin collections on the JVM runtime
-path. Choose registration and thread-safety settings for the application in
+Use native mode for Kotlin/JVM-only traffic with Kotlin data classes, nullable
+types, ranges, unsigned values, or Kotlin collections. Choose registration and
+thread-safety settings for the application in
 [Kotlin Configuration](configuration.md).

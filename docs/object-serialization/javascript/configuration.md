@@ -113,7 +113,7 @@ const fory = new Fory({
 });
 ```
 
-Explicit non-positive values are rejected when the runtime is created.
+Explicit non-positive values are rejected when the Fory instance is created.
 
 String, binary, and dedicated dense primitive array payloads keep their normal
 byte-size checks and do not consume this graph budget. Raise the limit only for
@@ -140,24 +140,11 @@ Leave this unset unless you run on Node.js 20+ and have benchmarked your workloa
 
 ## Security
 
-Security-related configuration:
-
-- Register only the expected schemas before deserializing untrusted payloads.
-- Set `maxDepth` for the maximum nesting depth your service accepts.
-- Set `maxGraphMemoryBytes` as an approximate gate for collection, map, array, struct, and
-  object-heavy payloads. It is not an exact heap cap; leaf values are gated by remaining input
-  bytes.
-- Keep `maxTypeFields` and `maxTypeMetaBytes` at their defaults unless the data
-  is not malicious and a trusted peer sends larger remote metadata.
-- Keep `maxSchemaVersionsPerType` and
-  `maxAverageSchemaVersionsPerType` at their defaults unless the data is not
-  malicious and a trusted peer sends many remote schema versions.
-- Prefer explicit `Type.struct(...)` schemas over `Type.any()` for untrusted input.
-- Pass `hps` only from the official package version you deploy with Fory.
+See [JavaScript/TypeScript Security](security.md) for trust boundaries, safe reader configuration, and verification.
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md)
+- [Basic Serialization](basic-serialization.md)
 - [Schema Metadata](schema-metadata.md)
 - [Schema Evolution](schema-evolution.md)
 - [References](references.md)

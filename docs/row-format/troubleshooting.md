@@ -31,5 +31,5 @@ handles only for rows that share that schema.
 
 ## A nested value appears to require full deserialization
 
-Use the row, array, and map accessors directly. Call the runtime encoder's object reconstruction API
-only for the subtree that must become an object.
+Use the row, array, and map accessors directly. Call the selected Fory Row encoder's object
+reconstruction API only for the subtree that must become an object.

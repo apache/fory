@@ -24,10 +24,11 @@ GitHub issues or pull requests for security reports.
 
 ## Security Models
 
-User-facing guidance is product-specific:
+User-facing guidance is capability- and runtime-specific:
 
-- [Object Serialization Security](docs/object-serialization/security.md)
+- [Object Serialization runtime guides](docs/object-serialization/index.md) (each runtime section
+  ends with its own Security page)
 - [Fory JSON Security](docs/json/security.md)
 
 For detailed implementation classification rules for untrusted deserialization, see the
-[Deserialization Security Model](docs/object-serialization/deserialization-security-model.md).
+[Deserialization Security Model](docs/security/deserialization.md).

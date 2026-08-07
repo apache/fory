@@ -343,5 +343,5 @@ go func() {
 ## Related Topics
 
 - [Configuration](configuration.md)
-- [Basic Serialization](core-api.md)
+- [Basic Serialization](basic-serialization.md)
 - [Troubleshooting](troubleshooting.md)

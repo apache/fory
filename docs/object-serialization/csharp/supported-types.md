@@ -107,11 +107,11 @@ Dynamic object payloads via `Serialize<object?>` / `Deserialize<object?>` suppor
 ## Notes
 
 - User-defined types should be registered explicitly.
-- For cross-language usage, follow the [xlang guide](../xlang/index.md).
+- For cross-language usage, follow the [cross-language interoperability guide](../xlang.md).
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md)
+- [Basic Serialization](basic-serialization.md)
 - [External Types](external-types.md)
 - [Type Registration](type-registration.md)
-- [Xlang Serialization](xlang.md)
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability)

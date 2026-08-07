@@ -52,8 +52,7 @@ targets: [
 ## Guide Contents
 
 - [Configuration](configuration.md)
-- [Basic Serialization](core-api.md)
-- [Xlang Serialization](xlang.md)
+- [Basic Serialization](basic-serialization.md)
 - [Schema Metadata](schema-metadata.md)
 - [Type Registration](type-registration.md)
 - [External-Type Serialization](external-types.md)
@@ -84,3 +83,6 @@ let output: User = try fory.deserialize(data)
 
 assert(input == output)
 ```
+
+Before decoding bytes from outside the application trust boundary, read
+[Swift Security](security.md).

@@ -19,7 +19,9 @@ license: |
   limitations under the License.
 ---
 
-Fory Rust is published on crates.io. The workspace minimum supported Rust version is 1.70 and uses the Rust 2021 edition. Use one compatible Fory release across every peer in an application.
+Fory Rust provides xlang and native Object Serialization, standard Row Format,
+generated models, and Fory gRPC. The public `fory` crate is published on
+crates.io, supports Rust 1.70 or later, and uses the Rust 2021 edition.
 
 ## Verify the Toolchain
 
@@ -28,13 +30,47 @@ rustc --version
 cargo --version
 ```
 
-## Choose a Capability
+## Object Serialization
 
-| Capability                  | Crate or tool                                 | Continue with                                                                                                                                                                      |
-| --------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Object Serialization        | `fory`                                        | [Rust object serialization](../object-serialization/rust/index.md), then choose [xlang](../object-serialization/rust/xlang.md) or [native](../object-serialization/rust/native.md) |
-| Standard Row Format         | `fory`                                        | [Rust Row Format](../row-format/rust.md)                                                                                                                                           |
-| Schema and generated models | `fory-compiler`                               | [Fory IDL and Compiler](../compiler/index.md)                                                                                                                                      |
-| Fory gRPC                   | generated companions plus `tonic` and `bytes` | [Rust gRPC](../grpc/rust.md)                                                                                                                                                       |
+Add the public crate:
 
-Each capability guide owns its exact dependency declaration and first runnable example.
+```toml title="Cargo.toml"
+[dependencies]
+fory = "1.6.0"
+```
+
+```rust
+use fory::{Error, Fory, ForyStruct};
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct User {
+    id: i64,
+    name: String,
+}
+
+fn main() -> Result<(), Error> {
+    let mut fory = Fory::builder().xlang(true).build();
+    fory.register::<User>(1)?;
+
+    let user = User {
+        id: 1,
+        name: "Alice".to_string(),
+    };
+    let bytes = fory.serialize(&user)?;
+    let decoded: User = fory.deserialize(&bytes)?;
+    assert_eq!(user, decoded);
+    Ok(())
+}
+```
+
+Use [xlang mode](../object-serialization/rust/basic-serialization.md#cross-language-interoperability) for cross-language data
+and [native mode](../object-serialization/rust/native.md) for Rust-only data.
+Continue with [Rust Object Serialization](../object-serialization/rust/index.md),
+[configuration](../object-serialization/rust/configuration.md), and
+[type registration](../object-serialization/rust/type-registration.md).
+
+## Other Capabilities
+
+- **Row Format** provides zero-copy views over trusted analytical data using the standard Fory Row layout. See [Rust Row Format](../row-format/rust.md).
+- **Fory IDL and Compiler** generates Rust models and registration helpers. See [Compiler Getting Started](../compiler/getting-started.md) and the [Rust generated-code guide](../compiler/generated-code/rust.md).
+- **Fory gRPC** uses tonic transports with Fory-encoded messages. See [Rust gRPC](../grpc/rust.md).

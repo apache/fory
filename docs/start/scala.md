@@ -19,7 +19,9 @@ license: |
   limitations under the License.
 ---
 
-Fory Scala artifacts are published to Maven Central for Scala 2.13 and Scala 3. Schema-generated Scala sources and macro-derived xlang serializers require Scala 3. The runtime uses Fory Java, so keep all Fory artifacts on the same release.
+Fory Scala provides binary Object Serialization, generated models, and Fory
+gRPC. The Fory Scala artifact supports Scala 2.13 and Scala 3; generated Scala
+models require Scala 3.
 
 ## Verify the Toolchain
 
@@ -29,12 +31,48 @@ scala -version
 sbt --version
 ```
 
-## Choose a Capability
+## Object Serialization
 
-| Capability                  | Artifact or tool                            | Continue with                                                                                                                                                                          |
-| --------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Object Serialization        | `fory-scala_2.13` or `fory-scala_3`         | [Scala object serialization](../object-serialization/scala/index.md), then choose [xlang](../object-serialization/scala/xlang.md) or [native](../object-serialization/scala/native.md) |
-| Schema and generated models | `fory-compiler`; Scala 3 output             | [Fory IDL and Compiler](../compiler/index.md)                                                                                                                                          |
-| Fory gRPC                   | Scala 3 generated companions plus grpc-java | [Scala gRPC](../grpc/scala.md)                                                                                                                                                         |
+Add the Fory Scala library to `build.sbt`:
 
-Each capability guide owns its exact Maven or sbt declaration and first runnable example.
+```sbt
+ThisBuild / scalaVersion := "3.3.1"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.6.0"
+```
+
+Create `src/main/scala/ScalaExample.scala`:
+
+```scala
+import org.apache.fory.Fory
+import org.apache.fory.scala.ForyScala
+
+case class User(id: Long, name: String)
+
+object ScalaExample {
+  def main(args: Array[String]): Unit = {
+    val fory: Fory = ForyScala.builder()
+      .withXlang(true)
+      .build()
+    fory.register(classOf[User], 1)
+
+    val bytes = fory.serialize(User(1, "Alice"))
+    val decoded = fory.deserialize(bytes).asInstanceOf[User]
+    println(decoded.name)
+  }
+}
+```
+
+```bash
+sbt run
+```
+
+Use xlang mode when a peer uses a different Fory implementation family; use native mode for data
+within the JVM Fory implementation family. Continue with
+[Scala Object Serialization](../object-serialization/scala/index.md),
+[xlang](../object-serialization/scala/basic-serialization.md#cross-language-interoperability), or
+[native mode](../object-serialization/scala/native.md).
+
+## Other Capabilities
+
+- **Fory IDL and Compiler** generates Scala 3 models and registration helpers. See [Compiler Getting Started](../compiler/getting-started.md) and the [Scala generated-code guide](../compiler/generated-code/scala.md).
+- **Fory gRPC** uses grpc-java transports with Fory-encoded messages. See [Scala gRPC](../grpc/scala.md).

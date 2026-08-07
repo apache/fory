@@ -112,7 +112,7 @@ Fory fory = Fory.Builder()
 ```
 
 The default limit is a fixed `128 MiB` for all root input forms. A positive value overrides the
-default. Explicit non-positive values are rejected when the runtime is created. Skipped leaf values
+default. Explicit non-positive values are rejected when the Fory instance is created. Skipped leaf values
 are still gated by remaining input bytes: if the unread input does not contain enough bytes, Fory
 will not read or create that leaf value.
 
@@ -200,19 +200,10 @@ ThreadSafeFory fory = Fory.Builder()
 
 ## Security
 
-Security-related configuration:
-
-- Register only the expected types before deserializing untrusted payloads.
-- Use `CheckStructVersion(true)` with `Compatible(false)` for intentional same-schema payloads.
-- Set `MaxDepth(...)` to reject unexpectedly deep dynamic object graphs.
-- Set `MaxGraphMemoryBytes(...)` as an approximate gate for collection, map, array, struct, and
-  object-heavy payloads. It is not an exact heap cap; leaf values are gated by remaining input bytes.
-- Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
-  trusted peer sends larger metadata or many schema versions.
-- Prefer generated or registered concrete models over broad dynamic fields for untrusted input.
+See [C# Security](security.md) for trust boundaries, safe reader configuration, and verification.
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md)
+- [Basic Serialization](basic-serialization.md)
 - [Schema Evolution](schema-evolution.md)
 - [Thread Safety](thread-safety.md)

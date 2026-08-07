@@ -23,7 +23,7 @@ Python native serialization is the Python-only wire mode selected with `xlang=Fa
 every writer and reader is Python and the payload should follow Python's object model instead of
 the portable xlang type system.
 
-Use [Xlang Serialization](xlang.md), the default Python mode, when bytes must be read
+Use [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability), the default Python mode, when bytes must be read
 by Java, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin,
 or another non-Python Fory implementation.
 
@@ -186,7 +186,7 @@ Keep the payload in native mode. Xlang mode does not execute Python `__reduce__`
 
 ## Related Topics
 
-- [Xlang Serialization](xlang.md) - Cross-language Python payloads
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - Cross-language Python payloads
 - [Configuration](configuration.md) - Python `Fory` options
 - [Out-of-Band Serialization](out-of-band.md) - Zero-copy buffer support
 - [Configuration](configuration.md#security) - Deserialization policies

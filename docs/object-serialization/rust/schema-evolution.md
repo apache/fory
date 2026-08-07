@@ -278,5 +278,5 @@ assert_eq!(data, decoded);
 
 - [Configuration](configuration.md) - Compatible mode settings
 - [Polymorphism](polymorphism.md) - Trait objects with schema evolution
-- [Xlang Serialization](xlang.md) - Schema evolution across languages
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - Schema evolution across languages
 - [External-Type Serialization](external-types.md) - Compatible schemas for third-party values

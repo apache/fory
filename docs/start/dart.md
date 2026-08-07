@@ -19,7 +19,9 @@ license: |
   limitations under the License.
 ---
 
-Fory Dart is published on pub.dev and requires Dart SDK 3.7 or later. Generated serializers use `build_runner`. Keep Fory packages and generated code in one application on compatible versions.
+Fory Dart provides xlang Object Serialization, generated models, and Fory gRPC.
+It is published on pub.dev, requires Dart 3.7 or later, and uses `build_runner`
+to generate serializers.
 
 ## Verify the Toolchain
 
@@ -28,12 +30,62 @@ dart --version
 dart pub --help
 ```
 
-## Choose a Capability
+## Object Serialization
 
-| Capability                  | Package or tool                          | Continue with                                                                                                         |
-| --------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Object Serialization        | `fory` plus `build_runner`               | [Dart object serialization](../object-serialization/dart/index.md) and [xlang](../object-serialization/dart/xlang.md) |
-| Schema and generated models | `fory-compiler`                          | [Fory IDL and Compiler](../compiler/index.md)                                                                         |
-| Fory gRPC                   | generated companions plus `package:grpc` | [Dart gRPC](../grpc/dart.md)                                                                                          |
+Add Fory and the generator to `pubspec.yaml`:
 
-Each capability guide owns its exact `pubspec.yaml`, generation command, and first runnable example.
+```yaml
+dependencies:
+  fory: 1.6.0
+
+dev_dependencies:
+  build_runner: ^2.4.0
+```
+
+Create `lib/person.dart`:
+
+```dart
+import 'package:fory/fory.dart';
+
+part 'person.fory.dart';
+
+@ForyStruct()
+class Person {
+  Person();
+
+  @ForyField(type: Int64Type())
+  int id = 0;
+  String name = '';
+}
+
+void main() {
+  final fory = Fory();
+  PersonForyModule.register(fory, Person, name: 'example.Person');
+
+  final input = Person()
+    ..id = 1
+    ..name = 'Alice';
+  final bytes = fory.serialize(input);
+  final decoded = fory.deserialize<Person>(bytes);
+  print(decoded.name);
+}
+```
+
+Generate the serializer and run the example:
+
+```bash
+dart pub get
+dart run build_runner build
+dart run lib/person.dart
+```
+
+Dart uses xlang mode. Continue with
+[Dart Object Serialization](../object-serialization/dart/index.md),
+[code generation](../object-serialization/dart/code-generation.md),
+[web support](../object-serialization/dart/web-platform-support.md), and
+[schema evolution](../object-serialization/dart/schema-evolution.md).
+
+## Other Capabilities
+
+- **Fory IDL and Compiler** generates Dart models and registration helpers. See [Compiler Getting Started](../compiler/getting-started.md) and the [Dart generated-code guide](../compiler/generated-code/dart.md).
+- **Fory gRPC** uses package:grpc transports with Fory-encoded messages. See [Dart gRPC](../grpc/dart.md).

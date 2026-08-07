@@ -18,9 +18,9 @@ license: |
   limitations under the License.
 ---
 
-import JumpGeneratedFile from "@site/docs/images/jmp_generate_file.png";
-import VscodeDebugFory from "@site/docs/images/vscode_debug_fory.jpg";
-import VscodeSelectDebugRun from "@site/docs/images/vscode_select_debug_run.png";
+import JumpGeneratedFile from "@site/docs/development/jmp_generate_file.png";
+import VscodeDebugFory from "@site/docs/development/vscode_debug_fory.jpg";
+import VscodeSelectDebugRun from "@site/docs/development/vscode_select_debug_run.png";
 
 ## Debugging C++
 

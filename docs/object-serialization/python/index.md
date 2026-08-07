@@ -147,12 +147,11 @@ Use xlang mode for cross-language payloads and dataclass schemas shared with oth
 
 Use native mode for Python-only traffic. Native mode is selected with `xlang=False` and owns pickle/cloudpickle-style behavior such as functions, lambdas, classes, methods, `__reduce__`, `__getstate__`, and out-of-band pickle protocol 5 buffers. It is optimized for Python's type system and supports a broader Python object surface than xlang mode, so use it when replacing pickle or cloudpickle. Compatible mode is enabled by default. Set `compatible=False` only when every reader and writer uses the same Python class schema and you want faster serialization and smaller size.
 
-See [Native Serialization](native.md) for Python-only serialization details and [Xlang Serialization](xlang.md) for Python xlang registration and interoperability rules.
+See [Native Serialization](native.md) for Python-only serialization details and [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) for Python xlang registration and interoperability rules.
 
 ## Next Steps
 
-- [Basic Serialization](core-api.md) - Basic usage patterns
-- [Xlang Serialization](xlang.md) - xlang mode
+- [Basic Serialization](basic-serialization.md) - Default xlang APIs and interoperability
 - [Native Serialization](native.md) - Python-only serialization
 - [Configuration](configuration.md) - Fory parameters, modes, and security
 - [Type Registration](type-registration.md) - User-defined type registration
@@ -167,3 +166,6 @@ See [Native Serialization](native.md) for Python-only serialization details and 
 - **PyPI**: https://pypi.org/project/pyfory/
 - **Issues**: https://github.com/apache/fory/issues
 - **Slack**: https://join.slack.com/t/fory-project/shared_invite/zt-36g0qouzm-kcQSvV_dtfbtBKHRwT5gsw
+
+Before decoding bytes from outside the application trust boundary, read
+[Python Security](security.md).

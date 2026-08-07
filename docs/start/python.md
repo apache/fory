@@ -19,7 +19,9 @@ license: |
   limitations under the License.
 ---
 
-Python packages are published on PyPI. `pyfory` supports Python 3.8 and later on Linux, macOS, and Windows. Use one compatible Fory release across every peer in an application.
+`pyfory` provides binary Object Serialization and Row Format. Fory IDL can also
+generate Python models and gRPC companions. The package supports Python 3.8 and
+later on Linux, macOS, and Windows.
 
 ## Verify the Toolchain
 
@@ -28,13 +30,45 @@ python --version
 python -m pip --version
 ```
 
-## Choose a Capability
+## Object Serialization
 
-| Capability                  | Package or extra       | Continue with                                                                                                                                                                              |
-| --------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Object Serialization        | `pyfory`               | [Python object serialization](../object-serialization/python/index.md), then choose [xlang](../object-serialization/python/xlang.md) or [native](../object-serialization/python/native.md) |
-| Row Format                  | `pyfory[format]`       | [Python Row Format](../row-format/python.md)                                                                                                                                               |
-| Schema and generated models | `fory-compiler`        | [Fory IDL and Compiler](../compiler/index.md)                                                                                                                                              |
-| Fory gRPC                   | `pyfory` plus `grpcio` | [Python gRPC](../grpc/python.md)                                                                                                                                                           |
+Install the released package:
 
-Each capability guide owns its exact install command and first runnable example.
+```bash
+python -m pip install pyfory==1.6.0
+```
+
+Run an xlang round trip:
+
+```python
+from dataclasses import dataclass
+
+import pyfory
+
+
+@dataclass
+class User:
+    name: str
+    age: pyfory.Int32
+
+
+fory = pyfory.Fory(xlang=True, ref=True)
+fory.register(User, type_id=1)
+
+data = fory.serialize(User("Alice", 30))
+decoded = fory.deserialize(data)
+print(decoded)
+```
+
+Use [xlang mode](../object-serialization/python/basic-serialization.md#cross-language-interoperability) for cross-language
+data. Use [native mode](../object-serialization/python/native.md) for Python-only
+objects, including Python callables and serialization hooks. Continue with the
+[Python guide](../object-serialization/python/index.md),
+[configuration](../object-serialization/python/configuration.md), and
+[type registration](../object-serialization/python/type-registration.md).
+
+## Other Capabilities
+
+- **Row Format** provides zero-copy field access for trusted analytical data. See [Python Row Format](../row-format/python.md).
+- **Fory IDL and Compiler** generates Python models and registration helpers. See [Compiler Getting Started](../compiler/getting-started.md) and the [Python generated-code guide](../compiler/generated-code/python.md).
+- **Fory gRPC** uses grpcio transports with Fory-encoded messages. See [Python gRPC](../grpc/python.md).

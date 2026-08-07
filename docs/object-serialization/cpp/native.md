@@ -23,7 +23,7 @@ C++ native serialization is the C++-only wire mode selected with `.xlang(false)`
 writer and reader is C++ and the payload should follow C++ type behavior instead of the portable
 xlang type system.
 
-Use [Xlang Serialization](xlang.md), the default C++ mode, when
+Use [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability), the default C++ mode, when
 bytes must be read by Java, Python, Go, Rust, JavaScript/TypeScript, C#, Swift,
 Dart, Scala, Kotlin, or another non-C++ Fory implementation.
 
@@ -206,9 +206,9 @@ Enable `.track_ref(true)` and verify the graph uses supported pointer patterns.
 
 ## Related Topics
 
-- [Xlang Serialization](xlang.md) - Cross-language C++ payloads
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - Cross-language C++ payloads
 - [Configuration](configuration.md) - Builder options
-- [Basic Serialization](core-api.md) - Object graph serialization
+- [Basic Serialization](basic-serialization.md) - Object graph serialization
 - [Supported Types](supported-types.md) - C++ type support
 - [Polymorphic Serialization](polymorphism.md) - Polymorphic object models
 - [Schema Evolution](schema-evolution.md) - Compatible mode

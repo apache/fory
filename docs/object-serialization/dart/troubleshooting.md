@@ -217,7 +217,7 @@ separate protobuf service endpoint for generic protobuf clients.
 ## Related Topics
 
 - [Struct Inheritance](inheritance.md)
-- [Xlang Serialization](xlang.md)
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability)
 - [Code Generation](code-generation.md)
 - [Custom Serializers](custom-serializers.md)
 - [Web Platform Support](web-platform-support.md)

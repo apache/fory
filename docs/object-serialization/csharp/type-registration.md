@@ -94,7 +94,7 @@ fory.Register<Order>(101);
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md)
+- [Basic Serialization](basic-serialization.md)
 - [External Types](external-types.md)
 - [Custom Serializers](custom-serializers.md)
-- [Xlang Serialization](xlang.md)
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability)

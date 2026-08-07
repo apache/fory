@@ -95,7 +95,7 @@ needed, and the provider package does not need to be exported or opened to Fory.
 methods and fields are not supported.
 
 Only configurations returned by a provider receive generated codecs. The default configuration is
-not generated implicitly. If a codegen-enabled runtime configuration was not included, Fory JSON
+not generated implicitly. If a codegen-enabled `ForyJson` configuration was not included, Fory JSON
 uses its prepared interpreted codecs and logs one process-wide warning recommending a reachable
 `@ForyJsonProvider`. `withCodegen(false)` explicitly selects interpreted codecs and does not request
 generated-codec lookup. Asynchronous compilation is disabled in a native executable.
@@ -132,17 +132,17 @@ it does for a direct `JsonType` model. A provider configuration generates the Mi
 target only when that exact Mixin is registered in the returned `ForyJson`.
 
 Only one source is enabled for an exact target in a built `ForyJson`. Later registration replaces
-an earlier source for subsequent `build()` calls; a runtime keeps the immutable snapshot it was
+an earlier source for subsequent `build()` calls; each built `ForyJson` instance keeps the immutable snapshot it was
 built with.
 
 ## Type Discovery and Construction
 
 The `fory-json` artifact activates its Native Image Feature automatically. `@JsonType` is not
-inherited, so annotate every concrete runtime model. An annotated base with a class-literal
+inherited, so annotate every concrete application model. An annotated base with a class-literal
 `@JsonSubTypes` table registers its listed subtypes automatically. Dedicated supported containers,
 including `EnumMap` and `EnumSet`, use their built-in factories. Other reachable concrete
 `Collection` and `Map` root types require a public no-argument constructor. A class referenced only
-by a runtime string is not reachable;
+by a class name resolved at runtime is not reachable;
 `JsonSubTypes.Type.className` is therefore unsupported in a native image.
 
 Do not add application reflection configuration as a replacement for the generated configuration.

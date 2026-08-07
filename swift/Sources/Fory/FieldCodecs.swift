@@ -1408,7 +1408,7 @@ private func readPackedArrayPayload<ElementCodec: FieldCodec>(
 ) throws -> [ElementCodec.Target]? {
     if ElementCodec.self == BoolCodec.self {
         return uncheckedPackedArrayCast(
-            try readPrimitiveArray(context, reserveGraphStorage: reserveGraphStorage) as [Bool],
+            try readBoolPrimitiveArray(context, reserveGraphStorage: reserveGraphStorage),
             to: ElementCodec.Target.self)
     }
     if ElementCodec.self == Int8Codec.self {
@@ -1423,12 +1423,12 @@ private func readPackedArrayPayload<ElementCodec: FieldCodec>(
     }
     if ElementCodec.self == Int32FixedCodec.self {
         return uncheckedPackedArrayCast(
-            try readPrimitiveArray(context, reserveGraphStorage: reserveGraphStorage) as [Int32],
+            try readInt32PrimitiveArray(context, reserveGraphStorage: reserveGraphStorage),
             to: ElementCodec.Target.self)
     }
     if ElementCodec.self == Int64FixedCodec.self {
         return uncheckedPackedArrayCast(
-            try readPrimitiveArray(context, reserveGraphStorage: reserveGraphStorage) as [Int64],
+            try readInt64PrimitiveArray(context, reserveGraphStorage: reserveGraphStorage),
             to: ElementCodec.Target.self)
     }
     if ElementCodec.self == IntFixedCodec.self {
@@ -1473,12 +1473,12 @@ private func readPackedArrayPayload<ElementCodec: FieldCodec>(
     }
     if ElementCodec.self == FloatCodec.self {
         return uncheckedPackedArrayCast(
-            try readPrimitiveArray(context, reserveGraphStorage: reserveGraphStorage) as [Float],
+            try readFloatPrimitiveArray(context, reserveGraphStorage: reserveGraphStorage),
             to: ElementCodec.Target.self)
     }
     if ElementCodec.self == DoubleCodec.self {
         return uncheckedPackedArrayCast(
-            try readPrimitiveArray(context, reserveGraphStorage: reserveGraphStorage) as [Double],
+            try readDoublePrimitiveArray(context, reserveGraphStorage: reserveGraphStorage),
             to: ElementCodec.Target.self)
     }
     return nil

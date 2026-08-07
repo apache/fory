@@ -175,5 +175,5 @@ for buffer_obj in buffer_objects:
 ## Related Topics
 
 - [NumPy Integration](numpy-integration.md) - NumPy array serialization
-- [Basic Serialization](core-api.md) - Standard serialization
+- [Basic Serialization](basic-serialization.md) - Standard serialization
 - [Configuration](configuration.md) - Fory parameters

@@ -135,4 +135,4 @@ fory.register(MyClass, name="com.example.MyClass", serializer=MySerializer(fory.
 
 - [Type Registration](type-registration.md) - Registration patterns
 - [Configuration](configuration.md) - Fory parameters
-- [Xlang Serialization](xlang.md) - type registration and schema rules for xlang
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - type registration and schema rules for xlang

@@ -108,7 +108,7 @@ auto fory = Fory::builder()
 
 The default limit is a fixed `128 MiB` for byte-array, `Buffer`, and stream
 roots. Positive values override the default. Explicit non-positive values are
-rejected when the runtime is created.
+rejected when the Fory instance is created.
 
 This budget is an approximate lower-bound estimate for materialized graph
 owners, mainly collections, maps, arrays, structs, and objects. It is not an
@@ -252,20 +252,10 @@ auto fory = Fory::builder().build_thread_safe();  // Returns ThreadSafeFory
 
 ## Security
 
-Security-related configuration:
-
-- Register all structs and polymorphic implementations before deserializing untrusted payloads.
-- Use `check_struct_version(true)` with `compatible(false)` for intentional same-schema payloads.
-- Keep `max_graph_memory_bytes(...)` at the fixed `128 MiB` default for most inputs, or set a
-  positive value for a trusted workload that needs a different collection/map/struct gate.
-- Keep `max_dyn_depth(...)` as low as your model permits to reject unexpectedly deep polymorphic
-  graphs.
-- Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
-  trusted peer sends larger metadata or many schema versions.
-- Prefer concrete fields over broad polymorphic fields for untrusted input.
+See [C++ Security](security.md) for trust boundaries, safe reader configuration, and verification.
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md) - Using configured Fory
-- [Xlang Serialization](xlang.md) - xlang mode details
+- [Basic Serialization](basic-serialization.md) - Using configured Fory
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - xlang mode details
 - [Type Registration](type-registration.md) - Registering types

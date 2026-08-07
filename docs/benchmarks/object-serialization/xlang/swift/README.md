@@ -2,12 +2,9 @@
 
 This benchmark compares serialization and deserialization throughput for Apache Fory, Protocol Buffers, and JSON in Swift.
 
-## Benchmark Products
+## Benchmark Scope
 
-The ordinary/xlang cases are built by `swift-benchmark`. External-type and
-carrier comparisons are built by the separate `swift-external-benchmark`
-product, so building the ordinary product does not compile those models or
-serializer specializations.
+The results below cover the ordinary/xlang cases run by `swift-benchmark`. External-type and carrier comparisons use the separate `swift-external-benchmark` executable and are included only when requested.
 
 ## Throughput Plot
 
@@ -17,9 +14,9 @@ serializer specializations.
 
 | Key                   | Value                         |
 | --------------------- | ----------------------------- |
-| Timestamp             | 2026-05-08T09:05:32Z          |
+| Timestamp             | 2026-08-04T09:52:12Z          |
 | OS                    | Version 15.7.2 (Build 24G325) |
-| Host                  | macbook-pro.local             |
+| Host                  | MacBook-Pro.local             |
 | CPU Cores (Logical)   | 12                            |
 | Memory (GB)           | 48.00                         |
 | Duration per case (s) | 3                             |
@@ -28,18 +25,18 @@ serializer specializations.
 
 | Datatype          | Operation   |   Fory TPS | Protobuf TPS | JSON TPS | Fastest      |
 | ----------------- | ----------- | ---------: | -----------: | -------: | ------------ |
-| NumericStruct     | Serialize   |  9,435,623 |    6,175,939 |  408,960 | fory (1.53x) |
-| NumericStruct     | Deserialize | 11,037,225 |    6,842,676 |  328,302 | fory (1.61x) |
-| Sample            | Serialize   |  3,596,835 |    1,257,100 |   79,781 | fory (2.86x) |
-| Sample            | Deserialize |    982,255 |      733,588 |   41,274 | fory (1.34x) |
-| MediaContent      | Serialize   |  1,561,376 |      609,896 |   98,677 | fory (2.56x) |
-| MediaContent      | Deserialize |    523,836 |      395,202 |   70,528 | fory (1.33x) |
-| NumericStructList | Serialize   |  2,910,846 |      918,363 |   82,965 | fory (3.17x) |
-| NumericStructList | Deserialize |  2,436,636 |      701,656 |   69,353 | fory (3.47x) |
-| SampleList        | Serialize   |    694,557 |      202,040 |   16,679 | fory (3.44x) |
-| SampleList        | Deserialize |    187,109 |      131,947 |    8,236 | fory (1.42x) |
-| MediaContentList  | Serialize   |    348,238 |       98,007 |   18,698 | fory (3.55x) |
-| MediaContentList  | Deserialize |    104,990 |       74,422 |   16,298 | fory (1.41x) |
+| NumericStruct     | Serialize   | 14,759,606 |    7,572,190 |  481,278 | fory (1.95x) |
+| NumericStruct     | Deserialize | 18,155,795 |    7,317,942 |  377,802 | fory (2.48x) |
+| Sample            | Serialize   |  5,633,231 |    1,380,130 |  102,372 | fory (4.08x) |
+| Sample            | Deserialize |  1,509,740 |      916,626 |   52,897 | fory (1.65x) |
+| MediaContent      | Serialize   |  2,987,821 |      784,863 |  111,200 | fory (3.81x) |
+| MediaContent      | Deserialize |  1,072,345 |      549,726 |   97,799 | fory (1.95x) |
+| NumericStructList | Serialize   |  5,515,769 |    1,093,924 |   93,635 | fory (5.04x) |
+| NumericStructList | Deserialize |  2,598,609 |      746,527 |   76,161 | fory (3.48x) |
+| SampleList        | Serialize   |  1,201,868 |      220,772 |   20,772 | fory (5.44x) |
+| SampleList        | Deserialize |    286,949 |      161,192 |   10,777 | fory (1.78x) |
+| MediaContentList  | Serialize   |    657,276 |      118,004 |   22,744 | fory (5.57x) |
+| MediaContentList  | Deserialize |    215,726 |       99,445 |   19,521 | fory (2.17x) |
 
 ## Serialized Size (bytes)
 

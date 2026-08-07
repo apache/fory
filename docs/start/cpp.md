@@ -19,7 +19,9 @@ license: |
   limitations under the License.
 ---
 
-Fory C++ is consumed from the Apache Fory source tree. It requires a C++17 compiler and supports CMake 3.16 or later and Bazel 8 or later. Pin one Fory release or commit across every peer in an application.
+Fory C++ provides binary Object Serialization, Row Format, generated models,
+and Fory gRPC. It requires a C++17 compiler and supports CMake 3.16 or later
+and Bazel 8 or later.
 
 ## Verify the Toolchain
 
@@ -29,13 +31,75 @@ cmake --version
 # or: bazel --version
 ```
 
-## Choose a Capability
+## Object Serialization
 
-| Capability                  | Build target                                        | Continue with                                                                                                                                                                  |
-| --------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Object Serialization        | `fory::serialization` or `//cpp/fory/serialization` | [C++ object serialization](../object-serialization/cpp/index.md), then choose [xlang](../object-serialization/cpp/xlang.md) or [native](../object-serialization/cpp/native.md) |
-| Row Format                  | C++ Row and encoder targets                         | [C++ Row Format](../row-format/cpp.md)                                                                                                                                         |
-| Schema and generated models | `fory-compiler`                                     | [Fory IDL and Compiler](../compiler/index.md)                                                                                                                                  |
-| Fory gRPC                   | generated companions plus gRPC C++                  | [C++ gRPC](../grpc/cpp.md)                                                                                                                                                     |
+Use xlang mode for data shared with Fory implementations in other languages or native mode for
+C++-only data. Fetch a released source tree and link the serialization target:
 
-The selected capability guide owns its exact CMake or Bazel setup and first runnable example.
+```cmake title="CMakeLists.txt"
+cmake_minimum_required(VERSION 3.16)
+project(fory_example LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+include(FetchContent)
+FetchContent_Declare(
+  fory
+  GIT_REPOSITORY https://github.com/apache/fory.git
+  GIT_TAG v1.6.0
+  SOURCE_SUBDIR cpp
+)
+FetchContent_MakeAvailable(fory)
+
+add_executable(fory_example main.cc)
+target_link_libraries(fory_example PRIVATE fory::serialization)
+```
+
+```cpp title="main.cc"
+#include <cassert>
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "fory/serialization/fory.h"
+
+struct User {
+  int64_t id;
+  std::string name;
+
+  bool operator==(const User &other) const {
+    return id == other.id && name == other.name;
+  }
+};
+FORY_STRUCT(User, id, name);
+
+int main() {
+  auto fory = fory::serialization::Fory::builder().xlang(true).build();
+  fory.register_struct<User>(1);
+
+  auto bytes = fory.serialize(User{1, "Alice"});
+  assert(bytes.ok());
+  std::vector<uint8_t> data = std::move(bytes).value();
+  auto decoded = fory.deserialize<User>(data);
+  assert(decoded.ok());
+  User user = std::move(decoded).value();
+  assert(user.id == 1 && user.name == "Alice");
+}
+```
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+./build/fory_example
+```
+
+See [C++ Object Serialization](../object-serialization/cpp/index.md) for Bazel,
+Windows, error handling, and thread-safe instances; then continue to
+[xlang](../object-serialization/cpp/basic-serialization.md#cross-language-interoperability) or
+[native mode](../object-serialization/cpp/native.md).
+
+## Other Capabilities
+
+- **Row Format** provides random and partial field access for trusted analytical data. See [C++ Row Format](../row-format/cpp.md).
+- **Fory IDL and Compiler** generates C++ models and registration helpers. See [Compiler Getting Started](../compiler/getting-started.md) and the [C++ generated-code guide](../compiler/generated-code/cpp.md).
+- **Fory gRPC** uses gRPC C++ transports with Fory-encoded messages. See [C++ gRPC](../grpc/cpp.md).

@@ -279,7 +279,7 @@ with grpc.insecure_channel("localhost:50051") as channel:
 
 Sync streaming follows the normal `grpcio` iterator and generator conventions.
 
-## gRPC Runtime Behavior
+## gRPC Stack Behavior
 
 The generated service companion only supplies Fory serialization callbacks.
 Operational behavior remains standard `grpcio` behavior:

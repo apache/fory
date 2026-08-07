@@ -314,6 +314,8 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
     public let registerByName: Bool
     public let fields: [FieldInfo]
     public let compressed: Bool
+    /// The protocol-defined 52-bit schema identity. Equal values identify the same schema,
+    /// so readers do not need to compare the field array again.
     public let headerHash: UInt64
 
     internal var readDataAlwaysAdvances: Bool {

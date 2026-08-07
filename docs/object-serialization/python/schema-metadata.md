@@ -320,7 +320,7 @@ class Counters:
 ```
 
 For `values`, map keys are written as fixed-width int32 values and each nested list element is
-written as tagged int64. Runtime type inference is used only for dynamic or unknown container
+written as tagged int64. Value-based type inference is used only for dynamic or unknown container
 schemas.
 
 In compatible mode, readers consume field bytes using the remote schema metadata. Python assigns the
@@ -524,6 +524,6 @@ class User:
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md) - Getting started with Fory serialization
+- [Basic Serialization](basic-serialization.md) - Getting started with Fory serialization
 - [Schema Evolution](schema-evolution.md) - Compatible mode and schema evolution
-- [Xlang Serialization](xlang.md) - Interoperability with Java, Rust, C++, Go
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - Interoperability with Java, Rust, C++, Go

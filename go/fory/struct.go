@@ -370,61 +370,68 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 		buf.Reserve(s.fieldGroup.MaxVarintSize + 8)
 		offset := buf.WriterIndex()
 
-		for _, field := range s.fieldGroup.PrimitiveVarintFields {
-			fieldPtr := unsafe.Add(ptr, field.Offset)
-			optInfo := optionalInfo{}
-			if field.Kind == FieldKindOptional && field.Meta != nil {
-				optInfo = field.Meta.OptionalInfo
-			}
-			switch field.DispatchId {
-			case PrimitiveVarint32DispatchId:
-				v, ok := loadFieldValue[int32](field.Kind, fieldPtr, optInfo)
-				if !ok {
-					v = 0
-				}
+		if s.fieldGroup.PlainVarint32ValueFields {
+			for _, field := range s.fieldGroup.PrimitiveVarintFields {
+				v := *(*int32)(unsafe.Add(ptr, field.Offset))
 				offset += buf.UnsafePutVarInt32(offset, v)
-			case PrimitiveVarint64DispatchId:
-				v, ok := loadFieldValue[int64](field.Kind, fieldPtr, optInfo)
-				if !ok {
-					v = 0
+			}
+		} else {
+			for _, field := range s.fieldGroup.PrimitiveVarintFields {
+				fieldPtr := unsafe.Add(ptr, field.Offset)
+				optInfo := optionalInfo{}
+				if field.Kind == FieldKindOptional && field.Meta != nil {
+					optInfo = field.Meta.OptionalInfo
 				}
-				offset += buf.UnsafePutVarInt64(offset, v)
-			case PrimitiveIntDispatchId:
-				v, ok := loadFieldValue[int](field.Kind, fieldPtr, optInfo)
-				if !ok {
-					v = 0
+				switch field.DispatchId {
+				case PrimitiveVarint32DispatchId:
+					v, ok := loadFieldValue[int32](field.Kind, fieldPtr, optInfo)
+					if !ok {
+						v = 0
+					}
+					offset += buf.UnsafePutVarInt32(offset, v)
+				case PrimitiveVarint64DispatchId:
+					v, ok := loadFieldValue[int64](field.Kind, fieldPtr, optInfo)
+					if !ok {
+						v = 0
+					}
+					offset += buf.UnsafePutVarInt64(offset, v)
+				case PrimitiveIntDispatchId:
+					v, ok := loadFieldValue[int](field.Kind, fieldPtr, optInfo)
+					if !ok {
+						v = 0
+					}
+					offset += buf.UnsafePutVarInt64(offset, int64(v))
+				case PrimitiveVarUint32DispatchId:
+					v, ok := loadFieldValue[uint32](field.Kind, fieldPtr, optInfo)
+					if !ok {
+						v = 0
+					}
+					offset += buf.UnsafePutVarUint32(offset, v)
+				case PrimitiveVarUint64DispatchId:
+					v, ok := loadFieldValue[uint64](field.Kind, fieldPtr, optInfo)
+					if !ok {
+						v = 0
+					}
+					offset += buf.UnsafePutVarUint64(offset, v)
+				case PrimitiveUintDispatchId:
+					v, ok := loadFieldValue[uint](field.Kind, fieldPtr, optInfo)
+					if !ok {
+						v = 0
+					}
+					offset += buf.UnsafePutVarUint64(offset, uint64(v))
+				case PrimitiveTaggedInt64DispatchId:
+					v, ok := loadFieldValue[int64](field.Kind, fieldPtr, optInfo)
+					if !ok {
+						v = 0
+					}
+					offset += buf.UnsafePutTaggedInt64(offset, v)
+				case PrimitiveTaggedUint64DispatchId:
+					v, ok := loadFieldValue[uint64](field.Kind, fieldPtr, optInfo)
+					if !ok {
+						v = 0
+					}
+					offset += buf.UnsafePutTaggedUint64(offset, v)
 				}
-				offset += buf.UnsafePutVarInt64(offset, int64(v))
-			case PrimitiveVarUint32DispatchId:
-				v, ok := loadFieldValue[uint32](field.Kind, fieldPtr, optInfo)
-				if !ok {
-					v = 0
-				}
-				offset += buf.UnsafePutVarUint32(offset, v)
-			case PrimitiveVarUint64DispatchId:
-				v, ok := loadFieldValue[uint64](field.Kind, fieldPtr, optInfo)
-				if !ok {
-					v = 0
-				}
-				offset += buf.UnsafePutVarUint64(offset, v)
-			case PrimitiveUintDispatchId:
-				v, ok := loadFieldValue[uint](field.Kind, fieldPtr, optInfo)
-				if !ok {
-					v = 0
-				}
-				offset += buf.UnsafePutVarUint64(offset, uint64(v))
-			case PrimitiveTaggedInt64DispatchId:
-				v, ok := loadFieldValue[int64](field.Kind, fieldPtr, optInfo)
-				if !ok {
-					v = 0
-				}
-				offset += buf.UnsafePutTaggedInt64(offset, v)
-			case PrimitiveTaggedUint64DispatchId:
-				v, ok := loadFieldValue[uint64](field.Kind, fieldPtr, optInfo)
-				if !ok {
-					v = 0
-				}
-				offset += buf.UnsafePutTaggedUint64(offset, v)
 			}
 		}
 		// Update writer index ONCE after all varint fields
@@ -1577,7 +1584,15 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 					*(*int32)(unsafe.Add(ptr, field.Offset)) = buf.UnsafeReadVarint32(err)
 				}
 			} else {
-				for _, field := range s.fieldGroup.PrimitiveVarintFields {
+				fields := s.fieldGroup.PrimitiveVarintFields
+				i := 0
+				for i < len(fields) && buf.remaining() >= 8 {
+					field := &fields[i]
+					*(*int32)(unsafe.Add(ptr, field.Offset)) = buf.UnsafeReadVarint32(err)
+					i++
+				}
+				for ; i < len(fields); i++ {
+					field := &fields[i]
 					*(*int32)(unsafe.Add(ptr, field.Offset)) = buf.ReadVarint32(err)
 				}
 			}

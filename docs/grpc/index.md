@@ -1,5 +1,5 @@
 ---
-title: Fory gRPC
+title: Overview
 sidebar_position: 1
 id: index
 license: |
@@ -25,7 +25,7 @@ the Fory compiler. The payload marshaller uses Fory rather than protobuf message
 ## When to Use It
 
 Use Fory gRPC when every peer is generated from the same Fory IDL, protobuf IDL, or FlatBuffers IDL
-contract and supports the matching Fory runtime. Use ordinary protobuf gRPC when generic protobuf
+contract and supports the matching Fory implementation for its language. Use ordinary protobuf gRPC when generic protobuf
 clients, reflection tools, or protobuf message bytes are required.
 
 ## Schema Frontends
@@ -45,7 +45,7 @@ project build.
 
 1. Define messages and services in a supported compiler frontend.
 2. Generate models and gRPC companions with `foryc`.
-3. Add the normal gRPC dependencies for the selected runtime.
+3. Add the normal gRPC dependencies for the selected language.
 4. Implement the generated server base and call the generated client.
 5. Verify unary and streaming calls between generated peers.
 
@@ -54,9 +54,53 @@ generation with `--grpc-python-mode=sync`. JavaScript uses `@grpc/grpc-js` for
 Node.js; browser clients are generated separately with `--grpc-web` and use
 `grpc-web`.
 
-## Runtime Guides
+## Architecture
 
-| Runtime               | Guide                                 |
+Generated service companions use normal gRPC servers, channels, method descriptors, deadlines,
+status codes, interceptors, and streaming APIs. Fory-generated marshallers encode and decode the
+generated request and response models.
+
+### Ownership Boundary
+
+Fory can generate service companions for application-provided gRPC implementations. Those companions
+provide Fory serialization for request and response objects; the application and gRPC stack still
+own listeners, channels, credentials, authentication, authorization, deadlines, retries, and
+transport lifecycle.
+
+Fory packages do not add a gRPC implementation as a hard dependency. The application selects and
+configures its gRPC libraries.
+
+### Generated Service Surface
+
+The compiler emits language-idiomatic service bases, clients or stubs, method metadata, and Fory
+marshallers. Model generation is documented under
+[Generated Code](../compiler/generated-code/index.md); the language pages document server and client
+integration.
+
+## Interoperability
+
+Fory gRPC peers interoperate only when they use the same generated service contract, matching Fory
+type identities, and compatible generated model schemas.
+
+### Protocol Boundary
+
+The transport is gRPC, but the message bytes are Fory payloads. Generic protobuf clients and server
+reflection tools cannot decode those payloads as protobuf messages. Generate every peer through a
+supported Fory compiler frontend.
+
+### Verification
+
+Test at least one unary call and every streaming shape used by the service. A protobuf
+`UNIMPLEMENTED` or decode failure usually means the peer used an ordinary protobuf stub or a
+different generated service contract.
+
+## Language Guides
+
+Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin have documented gRPC
+companions. Use the [support matrix](../introduction/support-matrix.md) and the selected language page
+for current dependencies and streaming support.
+
+| Language              | Guide                                 |
 | --------------------- | ------------------------------------- |
 | Java                  | [Java](java.md)                       |
 | Python                | [Python](python.md)                   |
@@ -69,6 +113,3 @@ Node.js; browser clients are generated separately with `--grpc-web` and use
 | Scala                 | [Scala](scala.md)                     |
 | Kotlin                | [Kotlin](kotlin.md)                   |
 | Swift                 | [Swift](swift.md)                     |
-
-See [Architecture](architecture.md) for payload and transport ownership and
-[Interoperability](interoperability.md) for peer compatibility.

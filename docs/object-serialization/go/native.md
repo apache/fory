@@ -23,7 +23,7 @@ Go native serialization is the Go-only wire mode selected with `fory.WithXlang(f
 when every writer and reader is a Go service and the payload should follow Go's type system instead
 of the portable xlang type system.
 
-Use [Xlang Serialization](xlang.md), the default Go mode, when bytes must be read by
+Use [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability), the default Go mode, when bytes must be read by
 Java, Python, C++, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin,
 or another non-Go Fory implementation.
 
@@ -210,7 +210,7 @@ The default `Fory` instance reuses its buffer. Copy the byte slice or use `threa
 
 ## Related Topics
 
-- [Xlang Serialization](xlang.md) - Cross-language Go payloads
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - Cross-language Go payloads
 - [Configuration](configuration.md) - Go options
 - [Type Registration](type-registration.md) - Struct and enum registration
 - [References](references.md) - Shared and circular references

@@ -192,31 +192,4 @@ For xlang payloads, call `withCompatible(false)` only after verifying that every
 
 ## Security
 
-Scala uses the Java configuration surface. Keep class registration enabled for production
-and any untrusted payload source:
-
-```scala
-val fory = ForyScala.builder()
-  .requireClassRegistration(true)
-  .withMaxDepth(50)
-  .withMaxGraphMemoryBytes(128L * 1024 * 1024)
-  .withMaxUnbackedContainerItems(8192)
-  .withMaxTypeFields(512)
-  .withMaxTypeMetaBytes(4096)
-  .build()
-```
-
-Security-related configuration:
-
-- Keep `requireClassRegistration(true)` and register application classes or generated modules.
-- Use `withMaxDepth(...)` to reject unexpectedly deep object graphs.
-- Use `withMaxGraphMemoryBytes(...)` as an approximate gate for collection, map, array, struct, and
-  object-heavy payloads. It is not an exact heap cap; leaf values are gated by remaining input
-  bytes.
-- Keep `withMaxUnbackedContainerItems(...)` at `8192` unless trusted compact codecs require a
-  larger root allowance. Zero rejects every unbacked item.
-- Keep `withMaxTypeFields(...)`, `withMaxTypeMetaBytes(...)`, and the remote schema-version limits
-  at their defaults unless the data is not malicious and a trusted peer sends larger metadata or
-  many schema versions.
-- Follow [Java Configuration](../java/configuration.md#security) for allow-listing and unknown-class
-  controls.
+See [Scala Security](security.md) for trust boundaries, safe reader configuration, and verification.

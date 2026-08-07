@@ -1,5 +1,5 @@
 ---
-title: Getting Started
+title: Overview
 sidebar_position: 0
 id: index
 license: |
@@ -19,16 +19,29 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory™ releases are available both as source artifacts and language-specific packages.
+Start with a language page below. Each page includes a release-pinned installation,
+a runnable object-serialization round trip, the modes available for that language,
+and a short path into every additional Fory capability available there.
 
-For source downloads, see the Apache Fory™ [download](https://fory.apache.org/download) page.
+Apache Fory™ releases are available as source artifacts and language-specific
+packages. For source downloads, see the Apache Fory™
+[download](https://fory.apache.org/download) page.
 
-## Choose a Runtime
+## First Five Minutes
 
-Each runtime setup page checks the toolchain and routes to the capabilities that
-runtime supports:
+1. Choose the language used by your application.
+2. Install the package shown on that language page.
+3. Run its minimal serialize/deserialize example.
+4. Select xlang mode for cross-language data or native mode for data handled by one Fory
+   implementation family when both are available.
+5. Continue to the capability guide for production configuration and advanced APIs.
 
-| Runtime               | Setup                                  |
+## Choose a Language
+
+Each language page provides a release-pinned installation snippet, a minimal
+round trip for an application project, and the next capability-specific steps:
+
+| Language              | Setup                                  |
 | --------------------- | -------------------------------------- |
 | Java                  | [Java](java.md)                        |
 | Python                | [Python](python.md)                    |
@@ -42,21 +55,17 @@ runtime supports:
 | Scala                 | [Scala](scala.md)                      |
 | Kotlin                | [Kotlin](kotlin.md)                    |
 
-## Choose a Capability
+## What You Can Build
 
-| Need                                | Continue with                                            |
-| ----------------------------------- | -------------------------------------------------------- |
-| Reconstruct object graphs           | [Object Serialization](../object-serialization/index.md) |
-| Random or partial analytical access | [Row Format](../row-format/index.md)                     |
-| Exchange standard JSON from Java    | [Fory JSON](../json/index.md)                            |
-| Generate models from a schema       | [Fory IDL and Compiler](../compiler/index.md)            |
-| Use generated models over gRPC      | [Fory gRPC](../grpc/index.md)                            |
+| Capability           | Use it for                                                                     | Available languages                                              | Detailed guide                                           |
+| -------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------- |
+| Object Serialization | Reconstruct object graphs, including shared references and schema changes      | All languages                                                    | [Object Serialization](../object-serialization/index.md) |
+| Row Format           | Trusted analytical data with zero-copy, random, or partial field access        | Java, Python, C++, Rust                                          | [Row Format](../row-format/index.md)                     |
+| Fory JSON            | High-performance standard JSON mapping                                         | Java                                                             | [Fory JSON](../json/index.md)                            |
+| Fory IDL             | Generate native models and serializers from Fory, protobuf, or FlatBuffers IDL | All languages                                                    | [Fory IDL and Compiler](../compiler/index.md)            |
+| Fory gRPC            | Use generated models over normal gRPC transports with Fory-encoded messages    | Java, Python, C++, Go, Rust, JavaScript, C#, Dart, Scala, Kotlin | [Fory gRPC](../grpc/index.md)                            |
 
-Object Serialization then asks you to choose xlang mode for portable
-cross-language payloads or native mode for same-runtime payloads. Use
-[Choose a Format](../introduction/choose-a-format.md) when that product decision
-is not yet clear.
-
-The selected capability guide owns its exact dependency and first successful
-task. Schema compatibility settings and production configuration are
-runtime-specific.
+Object Serialization uses xlang mode for portable cross-language data. Java,
+Python, C++, Go, Rust, Scala, and Kotlin also offer native mode for data handled by one Fory
+implementation family. Use [Choose a Format](../introduction/choose-a-format.md)
+when you have not yet chosen a format.

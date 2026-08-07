@@ -76,6 +76,6 @@ supported; Fory rejects unresolved refs instead of returning a partial union.
 ## Related Topics
 
 - [Configuration](configuration.md)
-- [Basic Serialization](core-api.md)
+- [Basic Serialization](basic-serialization.md)
 - [External Types](external-types.md)
 - [Thread Safety](thread-safety.md)

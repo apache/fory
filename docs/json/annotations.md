@@ -28,7 +28,7 @@ Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotat
 
 `JsonType` asks the annotation processor to generate direct property and creator operations plus
 exact retention rules on the JVM and Android. It is not inherited, so annotate each eligible
-concrete model that needs a generated companion on those runtimes. A directly annotated
+concrete model that needs a generated companion on those platforms. A directly annotated
 `JsonValue` Record also receives a companion for its value accessor and canonical constructor.
 Ordinary unannotated classes may still use reflection; on Android they need application-authored
 exact R8 rules. Android-desugared Records require processor-generated operations from either a
@@ -692,7 +692,7 @@ entry has a case-sensitive logical JSON name and exactly one trusted Java type s
 
 `className` is useful when an API JAR must not depend on an implementation JAR. It is resolved by
 the fixed builder class loader when the table is built. JSON input never supplies a Java class name
-and cannot add entries. Runtime registration and open subtype discovery are not supported.
+and cannot add entries. Post-build subtype registration and open subtype discovery are not supported.
 
 The default `PROPERTY` inclusion writes an inline discriminator as the first output member:
 

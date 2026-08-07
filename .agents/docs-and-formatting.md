@@ -37,7 +37,7 @@ Load this file when changing documentation, public APIs, protocol specs, benchma
 - Keep user-facing configuration text action focused. Do not put cache ownership,
   cold/hot path, publish ordering, exact-local schema bypass, or TypeDef/TypeMeta routing
   invariants there; put implementation invariants in `docs/specification/xlang_implementation_guide.md`,
-  security classifications in `docs/object-serialization/deserialization-security-model.md`, and agent-only workflow rules in
+  security classifications in `docs/security/deserialization.md`, and agent-only workflow rules in
   `.agents/**`.
 - Documentation examples should use normal explicit imports, avoid unused imports, and keep common Fory types unqualified where that is the idiom.
 - Generated Markdown under `docs/benchmarks/**` should satisfy markdownlint blank-line rules at generation time: no repeated blank lines and no extra blank line after final content.

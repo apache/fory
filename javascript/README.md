@@ -114,7 +114,7 @@ Readers can skip unknown fields and tolerate missing ones, supporting rolling up
 Full documentation is available at [fory.apache.org](https://fory.apache.org):
 
 - [JavaScript Serialization Guide](https://fory.apache.org/docs/object-serialization/javascript)
-- [Xlang Serialization](https://fory.apache.org/docs/object-serialization/javascript/xlang)
+- [Basic Serialization](https://fory.apache.org/docs/object-serialization/javascript/basic-serialization)
 - [Supported Types](https://fory.apache.org/docs/object-serialization/javascript/supported-types)
 - [Schema Evolution](https://fory.apache.org/docs/object-serialization/javascript/schema-evolution)
 - [Xlang Serialization Spec](https://fory.apache.org/docs/specification/xlang_serialization_spec)

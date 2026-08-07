@@ -28,7 +28,7 @@ payloads.
 Native serialization in this page means Fory's `xlang=false` wire mode. It is separate from GraalVM
 native image support, which is covered in [GraalVM Native Image](graalvm.md).
 
-Use [Xlang Serialization](xlang.md), the default Java mode, when bytes must be read by
+Use [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability), the default Java mode, when bytes must be read by
 non-Java Fory implementations.
 
 ## When To Use Native Serialization
@@ -326,8 +326,8 @@ Use `JavaSerializer.serializedByJDK(...)` only at the mixed-format boundary, the
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md) - Xlang-first Java quickstart
-- [Xlang Serialization](xlang.md) - Cross-language Java payloads
+- [Basic Serialization](basic-serialization.md) - Xlang-first Java quickstart
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - Cross-language Java payloads
 - [Configuration](configuration.md) - Java builder options
 - [Schema Evolution](schema-evolution.md) - compatible mode and same-schema optimization
 - [Type Registration](type-registration.md) - Registration and security

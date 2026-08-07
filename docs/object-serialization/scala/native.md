@@ -21,7 +21,7 @@ license: |
 
 This page covers serialization of Scala-specific JVM types in native mode. For
 cross-language Scala models, use the xlang path described in
-[Xlang Serialization](xlang.md).
+[Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability).
 
 When compatible mode is enabled, Scala readers use the JVM compatible-read rules for selected
 scalar field type changes. A matched field can read between `Boolean`, `String`, numeric scalars,
@@ -178,6 +178,6 @@ val employee = Employee(
 println(fory.deserialize(fory.serialize(employee)))
 ```
 
-Use native mode for Scala/JVM-only traffic that needs Scala case classes,
-collections, tuples, options, or enums on the JVM runtime path. See
+Use native mode for Scala/JVM-only traffic with Scala case classes, collections,
+tuples, options, or enums. See
 [Scala Configuration](configuration.md) for production builder settings.

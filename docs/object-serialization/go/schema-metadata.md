@@ -389,5 +389,5 @@ type Session struct {
 ## Related Topics
 
 - [References](references.md)
-- [Basic Serialization](core-api.md)
+- [Basic Serialization](basic-serialization.md)
 - [Schema Evolution](schema-evolution.md)

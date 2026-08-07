@@ -139,11 +139,11 @@ For comprehensive documentation, see the [Fory Go Guide](https://fory.apache.org
 Topics covered:
 
 - [Configuration](https://fory.apache.org/docs/object-serialization/go/configuration) - Options and settings
-- [Basic Serialization](https://fory.apache.org/docs/object-serialization/go/core-api) - Core APIs and usage patterns
+- [Basic Serialization](https://fory.apache.org/docs/object-serialization/go/basic-serialization) - Core APIs and usage patterns
 - [Type Registration](https://fory.apache.org/docs/object-serialization/go/type-registration) - Registering types for serialization
 - [Supported Types](https://fory.apache.org/docs/object-serialization/go/supported-types) - Complete type support reference
 - [References](https://fory.apache.org/docs/object-serialization/go/references) - Circular references and shared objects
 - [Schema Evolution](https://fory.apache.org/docs/object-serialization/go/schema-evolution) - Forward/backward compatibility
-- [Xlang Serialization](https://fory.apache.org/docs/object-serialization/go/xlang) - Multi-language serialization
+- [Basic Serialization](https://fory.apache.org/docs/object-serialization/go/basic-serialization) - Default xlang APIs and interoperability
 - [Thread Safety](https://fory.apache.org/docs/object-serialization/go/thread-safety) - Concurrent usage patterns
 - [Troubleshooting](https://fory.apache.org/docs/object-serialization/go/troubleshooting) - Common issues and solutions

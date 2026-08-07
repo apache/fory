@@ -295,6 +295,6 @@ Currently not supported:
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md) - Using these types
+- [Basic Serialization](basic-serialization.md) - Using these types
 - [Type Registration](type-registration.md) - Registering types
-- [Xlang Serialization](xlang.md) - Cross-language compatibility
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - Cross-language compatibility

@@ -126,7 +126,7 @@ collection/map/struct gate:
 final fory = Fory(maxGraphMemoryBytes: 256 * 1024 * 1024);
 ```
 
-Explicit non-positive values are rejected when the runtime is created.
+Explicit non-positive values are rejected when the Fory instance is created.
 
 ### `maxUnbackedContainerItems`
 
@@ -162,19 +162,10 @@ When Fory is used to communicate between services written in different languages
 
 ## Security
 
-Security-related configuration:
-
-- Register only the expected generated models before deserializing untrusted payloads.
-- Use `checkStructVersion: true` with `compatible: false` for intentional same-schema payloads.
-- Set `maxDepth` to reject unexpectedly deep payload shapes.
-- Keep `maxGraphMemoryBytes` at the default for most inputs, or set an explicit positive byte gate
-  for known trusted collection/map/struct-heavy payloads.
-- Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
-  trusted peer sends larger metadata or many schema versions.
-- Prefer generated schemas and explicit field metadata over broad dynamic fields for untrusted input.
+See [Dart Security](security.md) for trust boundaries, safe reader configuration, and verification.
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md)
+- [Basic Serialization](basic-serialization.md)
 - [Schema Evolution](schema-evolution.md)
-- [Xlang Serialization](xlang.md)
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability)

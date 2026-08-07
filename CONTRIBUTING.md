@@ -42,7 +42,7 @@ Key points:
 
 ## Testing
 
-For environmental requirements, please check [DEVELOPMENT.md](./docs/development/building.md).
+For environmental requirements, see the [Development guide](./docs/development/index.md).
 
 ### Python
 
@@ -229,7 +229,7 @@ To use Jetbrains IDEA IDE for Java Development, you need to configure the projec
 And due to the usage of `sun.misc.Unsafe` API, which is not visible in Java 11+, you need to configure java compiler with `--releaese` option disabled.
 
 <div align="center">
-  <img width="65%" alt="" src="docs/images/idea_jdk11.png"><br>
+  <img width="65%" alt="" src="docs/images/idea-jdk11.png"><br>
 </div>
 
 ## Website
@@ -244,4 +244,4 @@ If you want write a blog, or update other contents about the website, please sub
 
 ## Development
 
-For more information, please refer to [Development Guide](./docs/development/building.md).
+For more information, see the [Development guide](./docs/development/index.md).

@@ -169,4 +169,4 @@ When the same model is defined in multiple languages:
 - [Code Generation](code-generation.md)
 - [External-Type Serialization](external-types.md)
 - [Schema Evolution](schema-evolution.md)
-- [Xlang Serialization](xlang.md)
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability)

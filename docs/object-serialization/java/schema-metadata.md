@@ -710,7 +710,7 @@ public class User {
 
 ## Related Topics
 
-- [Basic Serialization](core-api.md) - Getting started with Fory serialization
+- [Basic Serialization](basic-serialization.md) - Getting started with Fory serialization
 - [Configuration](configuration.md) - `ForyBuilder` options
 - [Schema Evolution](schema-evolution.md) - Compatible mode and schema evolution
-- [Xlang Serialization](xlang.md) - Interoperability with Python, Rust, C++, Go
+- [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) - Interoperability with Python, Rust, C++, Go

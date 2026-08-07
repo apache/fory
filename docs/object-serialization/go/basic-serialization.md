@@ -1,0 +1,835 @@
+---
+title: Basic Serialization
+sidebar_position: 1
+id: basic-serialization
+license: |
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+---
+
+This guide covers the core serialization APIs in the default xlang mode for Fory Go.
+
+## Creating a Fory Instance
+
+Create a Fory instance and register your types before serialization:
+
+```go
+import "github.com/apache/fory/go/fory"
+
+f := fory.New(fory.WithXlang(true))
+
+// Register struct with a type ID
+f.RegisterStruct(User{}, 1)
+f.RegisterStruct(Order{}, 2)
+
+// Or register with a name (more flexible, less prone to ID conflicts, but higher serialization cost)
+f.RegisterStructByName(User{}, "example.User")
+
+// Register enum types
+f.RegisterEnum(Color(0), 3)
+```
+
+`fory.New()` uses xlang mode with compatible schema evolution. The example sets
+`fory.WithXlang(true)` explicitly so the mode choice is visible. For Go-only
+payloads that need native mode, configure `fory.WithXlang(false)` explicitly in
+the native-mode examples.
+
+**Important**: The Fory instance should be reused across serialization calls. Creating a new instance involves allocating internal buffers, type caches, and resolvers, which is expensive. The default Fory instance is not thread-safe; for concurrent usage, use the thread-safe wrapper (see [Thread Safety](thread-safety.md)).
+
+See [Type Registration](type-registration.md) for more details.
+
+## Core API
+
+### Serialize and Deserialize
+
+The primary API for serialization:
+
+```go
+// Serialize any value
+data, err := f.Serialize(value)
+if err != nil {
+    // Handle error
+}
+
+// Deserialize into target
+var result MyType
+err = f.Deserialize(data, &result)
+if err != nil {
+    // Handle error
+}
+```
+
+### Marshal and Unmarshal
+
+Aliases for `Serialize` and `Deserialize` (familiar to Go developers):
+
+```go
+data, err := f.Marshal(value)
+err = f.Unmarshal(data, &result)
+```
+
+## Serializing Primitives
+
+```go
+// Integers
+data, _ := f.Serialize(int64(42))
+var i int64
+f.Deserialize(data, &i)  // i = 42
+
+// Floats
+data, _ = f.Serialize(float64(3.14))
+var fl float64
+f.Deserialize(data, &fl)  // fl = 3.14
+
+// Strings
+data, _ = f.Serialize("hello")
+var s string
+f.Deserialize(data, &s)  // s = "hello"
+
+// Booleans
+data, _ = f.Serialize(true)
+var b bool
+f.Deserialize(data, &b)  // b = true
+```
+
+## Serializing Collections
+
+### Slices
+
+```go
+// String slice
+strs := []string{"a", "b", "c"}
+data, _ := f.Serialize(strs)
+
+var result []string
+f.Deserialize(data, &result)
+// result = ["a", "b", "c"]
+
+// Integer slice
+nums := []int64{1, 2, 3}
+data, _ = f.Serialize(nums)
+
+var intResult []int64
+f.Deserialize(data, &intResult)
+// intResult = [1, 2, 3]
+```
+
+### Maps
+
+```go
+// String to string map
+m := map[string]string{"key": "value"}
+data, _ := f.Serialize(m)
+
+var result map[string]string
+f.Deserialize(data, &result)
+// result = {"key": "value"}
+
+// String to int map
+m2 := map[string]int64{"count": 42}
+data, _ = f.Serialize(m2)
+
+var result2 map[string]int64
+f.Deserialize(data, &result2)
+// result2 = {"count": 42}
+```
+
+## Serializing Structs
+
+### Basic Struct Serialization
+
+Only **exported fields** (starting with uppercase) are serialized:
+
+```go
+type User struct {
+    ID       int64   // Serialized
+    Name     string  // Serialized
+    password string  // NOT serialized (unexported)
+}
+
+f.RegisterStruct(User{}, 1)
+
+user := &User{ID: 1, Name: "Alice", password: "secret"}
+data, _ := f.Serialize(user)
+
+var result User
+f.Deserialize(data, &result)
+// result.ID = 1, result.Name = "Alice", result.password = ""
+```
+
+### Nested Structs
+
+```go
+type Address struct {
+    City    string
+    Country string
+}
+
+type Person struct {
+    Name    string
+    Address Address
+}
+
+f.RegisterStruct(Address{}, 1)
+f.RegisterStruct(Person{}, 2)
+
+person := &Person{
+    Name: "Alice",
+    Address: Address{City: "NYC", Country: "USA"},
+}
+
+data, _ := f.Serialize(person)
+
+var result Person
+f.Deserialize(data, &result)
+// result.Address.City = "NYC"
+```
+
+### Pointer Fields
+
+```go
+type Node struct {
+    Value int32
+    Child *Node
+}
+
+// Use WithTrackRef for pointer fields
+f := fory.New(fory.WithXlang(true), fory.WithTrackRef(true))
+f.RegisterStruct(Node{}, 1)
+
+root := &Node{
+    Value: 1,
+    Child: &Node{Value: 2, Child: nil},
+}
+
+data, _ := f.Serialize(root)
+
+var result Node
+f.Deserialize(data, &result)
+// result.Child.Value = 2
+```
+
+## Streaming API
+
+For scenarios where you want to control the buffer:
+
+### SerializeTo
+
+Serialize to an existing buffer:
+
+```go
+buf := fory.NewByteBuffer(nil)
+
+// Serialize multiple values to same buffer
+f.SerializeTo(buf, value1)
+f.SerializeTo(buf, value2)
+
+// Get all serialized data
+data := buf.GetByteSlice(0, buf.WriterIndex())
+```
+
+### DeserializeFrom
+
+Deserialize from an existing buffer:
+
+```go
+buf := fory.NewByteBuffer(data)
+
+var result1, result2 MyType
+f.DeserializeFrom(buf, &result1)
+f.DeserializeFrom(buf, &result2)
+```
+
+## Generic API (Type-Safe)
+
+Fory Go provides generic functions for type-safe serialization:
+
+```go
+import "github.com/apache/fory/go/fory"
+
+type User struct {
+    ID   int64
+    Name string
+}
+
+// Type-safe serialization
+user := &User{ID: 1, Name: "Alice"}
+data, err := fory.Serialize(f, user)
+
+// Type-safe deserialization
+var result User
+err = fory.Deserialize(f, data, &result)
+```
+
+The generic API:
+
+- Infers type at compile time
+- Provides better type safety
+- May offer performance benefits
+
+## Error Handling
+
+Always check errors from serialization operations:
+
+```go
+data, err := f.Serialize(value)
+if err != nil {
+    switch e := err.(type) {
+    case fory.Error:
+        fmt.Printf("Fory error: %s (kind: %d)\n", e.Error(), e.Kind())
+    default:
+        fmt.Printf("Unknown error: %v\n", err)
+    }
+    return
+}
+
+err = f.Deserialize(data, &result)
+if err != nil {
+    // Handle deserialization error
+}
+```
+
+Common error kinds:
+
+- `ErrKindBufferOutOfBound`: Read/write beyond buffer bounds
+- `ErrKindTypeMismatch`: Type ID mismatch during deserialization
+- `ErrKindUnknownType`: Unknown type encountered
+- `ErrKindMaxDepthExceeded`: Recursion depth limit exceeded
+- `ErrKindHashMismatch`: Struct hash mismatch (schema changed)
+
+See [Troubleshooting](troubleshooting.md) for error resolution.
+
+## Nil Handling
+
+### Nil Pointers
+
+```go
+var ptr *User = nil
+data, _ := f.Serialize(ptr)
+
+var result *User
+f.Deserialize(data, &result)
+// result = nil
+```
+
+### Empty Collections
+
+```go
+// Nil slice
+var slice []string = nil
+data, _ := f.Serialize(slice)
+
+var result []string
+f.Deserialize(data, &result)
+// result = nil
+
+// Empty slice (different from nil)
+empty := []string{}
+data, _ = f.Serialize(empty)
+
+f.Deserialize(data, &result)
+// result = [] (empty, not nil)
+```
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/apache/fory/go/fory"
+)
+
+type Order struct {
+    ID       int64
+    Customer string
+    Items    []Item
+    Total    float64
+}
+
+type Item struct {
+    Name     string
+    Quantity int32
+    Price    float64
+}
+
+func main() {
+    f := fory.New(fory.WithXlang(true))
+    f.RegisterStruct(Order{}, 1)
+    f.RegisterStruct(Item{}, 2)
+
+    order := &Order{
+        ID:       12345,
+        Customer: "Alice",
+        Items: []Item{
+            {Name: "Widget", Quantity: 2, Price: 9.99},
+            {Name: "Gadget", Quantity: 1, Price: 24.99},
+        },
+        Total: 44.97,
+    }
+
+    // Serialize
+    data, err := f.Serialize(order)
+    if err != nil {
+        panic(err)
+    }
+    fmt.Printf("Serialized %d bytes\n", len(data))
+
+    // Deserialize
+    var result Order
+    if err := f.Deserialize(data, &result); err != nil {
+        panic(err)
+    }
+
+    fmt.Printf("Order ID: %d\n", result.ID)
+    fmt.Printf("Customer: %s\n", result.Customer)
+    fmt.Printf("Items: %d\n", len(result.Items))
+    fmt.Printf("Total: %.2f\n", result.Total)
+}
+```
+
+## Cross-Language Interoperability
+
+The default xlang format is shared by all Fory implementations. The following sections cover its cross-language type mapping, type identity, and interoperability requirements.
+
+Fory Go enables seamless data exchange with Java, Python, C++, Rust,
+JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. This guide covers
+xlang compatibility and type mapping.
+
+### Xlang Configuration
+
+Go defaults to xlang mode with compatible schema evolution. Set the mode explicitly in xlang examples:
+
+```go
+f := fory.New(fory.WithXlang(true))
+```
+
+### Type Registration for Xlang
+
+Use consistent type IDs across all languages:
+
+#### Go
+
+```go
+type User struct {
+    ID   int64
+    Name string
+}
+
+f := fory.New(fory.WithXlang(true))
+f.RegisterStruct(User{}, 1)
+data, _ := f.Serialize(&User{ID: 1, Name: "Alice"})
+```
+
+#### Java
+
+```java
+public class User {
+    public long id;
+    public String name;
+}
+Fory fory = Fory.builder().withXlang(true).build();
+fory.register(User.class, 1);
+User user = fory.deserialize(data, User.class);
+```
+
+#### Python
+
+```python
+from dataclasses import dataclass
+import pyfory
+
+@dataclass
+class User:
+    id: pyfory.Int64
+    name: str
+
+fory = pyfory.Fory(xlang=True)
+fory.register(User, type_id=1)
+user = fory.deserialize(data)
+```
+
+### Type Mapping
+
+See [Type Mapping Specification](../../specification/xlang_type_mapping.md) for detailed type mappings across all languages.
+
+### Field Ordering
+
+Cross-language serialization requires consistent field ordering. Fory sorts fields by their snake_case names alphabetically.
+
+Go field names are converted to snake_case for sorting:
+
+```go
+type Example struct {
+    UserID    int64   // -> user_id
+    FirstName string  // -> first_name
+    Age       int32   // -> age
+}
+
+// Sorted order: age, first_name, user_id
+```
+
+Ensure other languages use matching field names that produce the same snake_case ordering, or use field IDs for explicit control:
+
+```go
+type Example struct {
+    UserID    int64  `fory:"id=0"`
+    FirstName string `fory:"id=1"`
+    Age       int32  `fory:"id=2"`
+}
+```
+
+### Examples
+
+#### Go to Java
+
+**Go (Serializer)**:
+
+```go
+type Order struct {
+    ID       int64
+    Customer string
+    Total    float64
+    Items    []string
+}
+
+f := fory.New(fory.WithXlang(true))
+f.RegisterStruct(Order{}, 1)
+
+order := &Order{
+    ID:       12345,
+    Customer: "Alice",
+    Total:    99.99,
+    Items:    []string{"Widget", "Gadget"},
+}
+data, _ := f.Serialize(order)
+// Send 'data' to Java service
+```
+
+**Java (Deserializer)**:
+
+```java
+public class Order {
+    public long id;
+    public String customer;
+    public double total;
+    public List<String> items;
+}
+
+Fory fory = Fory.builder().withXlang(true).build();
+fory.register(Order.class, 1);
+
+Order order = fory.deserialize(data, Order.class);
+```
+
+#### Python to Go
+
+**Python (Serializer)**:
+
+```python
+from dataclasses import dataclass
+import pyfory
+
+@dataclass
+class Message:
+    id: pyfory.Int64
+    content: str
+    timestamp: pyfory.Int64
+
+fory = pyfory.Fory(xlang=True)
+fory.register(Message, type_id=1)
+
+msg = Message(id=1, content="Hello from Python", timestamp=1234567890)
+data = fory.serialize(msg)
+```
+
+**Go (Deserializer)**:
+
+```go
+type Message struct {
+    ID        int64
+    Content   string
+    Timestamp int64
+}
+
+f := fory.New(fory.WithXlang(true))
+f.RegisterStruct(Message{}, 1)
+
+var msg Message
+f.Deserialize(data, &msg)
+fmt.Println(msg.Content)  // "Hello from Python"
+```
+
+#### Nested Structures
+
+Cross-language nested structures require all types to be registered:
+
+### Lists and Dense Arrays
+
+Go slices are ordinary `list<T>` carriers unless a field tag explicitly requests
+the dense `array<T>` schema. Use `array<T>` only for one-dimensional bool or
+numeric data.
+
+| Fory schema       | Go carrier and tag sketch                              |
+| ----------------- | ------------------------------------------------------ |
+| `list<int32>`     | `[]int32` / `fory:"type=list(element=int32)"`          |
+| `array<bool>`     | `[]bool` / `fory:"type=array(element=bool)"`           |
+| `array<int8>`     | `[]int8` / `fory:"type=array(element=int8)"`           |
+| `array<int16>`    | `[]int16` / `fory:"type=array(element=int16)"`         |
+| `array<int32>`    | `[]int32` / `fory:"type=array(element=int32)"`         |
+| `array<int64>`    | `[]int64` / `fory:"type=array(element=int64)"`         |
+| `array<uint8>`    | `[]uint8` / `fory:"type=array(element=uint8)"`         |
+| `array<uint16>`   | `[]uint16` / `fory:"type=array(element=uint16)"`       |
+| `array<uint32>`   | `[]uint32` / `fory:"type=array(element=uint32)"`       |
+| `array<uint64>`   | `[]uint64` / `fory:"type=array(element=uint64)"`       |
+| `array<float16>`  | `[]float16.Float16` / `type=array(element=float16)`    |
+| `array<bfloat16>` | `[]bfloat16.BFloat16` / `type=array(element=bfloat16)` |
+| `array<float32>`  | `[]float32` / `fory:"type=array(element=float32)"`     |
+| `array<float64>`  | `[]float64` / `fory:"type=array(element=float64)"`     |
+
+**Go**:
+
+```go
+type Address struct {
+    Street  string
+    City    string
+    Country string
+}
+
+type Company struct {
+    Name    string
+    Address Address
+}
+
+f := fory.New(fory.WithXlang(true))
+f.RegisterStruct(Address{}, 1)
+f.RegisterStruct(Company{}, 2)
+```
+
+**Java**:
+
+```java
+public class Address {
+    public String street;
+    public String city;
+    public String country;
+}
+
+public class Company {
+    public String name;
+    public Address address;
+}
+
+fory.register(Address.class, 1);
+fory.register(Company.class, 2);
+```
+
+### Common Issues
+
+#### Field Name Mismatch
+
+Go uses PascalCase, other languages may use camelCase or snake_case. Fields are matched by their snake_case conversion:
+
+```go
+// Go
+type User struct {
+    FirstName string  // -> first_name
+}
+
+// Java - field name converted to snake_case must match
+public class User {
+    public String firstName;  // -> first_name (matches)
+}
+```
+
+#### Type Interpretation
+
+Go unsigned types map to Java signed types with the same bit pattern:
+
+```go
+var value uint64 = 18446744073709551615  // Max uint64
+```
+
+Java's `long` holds the same bits but interprets as -1. Use `Long.toUnsignedString()` in Java if unsigned interpretation is needed.
+
+#### Nil vs Null
+
+Go nil slices/maps serialize differently based on configuration:
+
+```go
+var slice []string = nil
+// In xlang mode: serializes based on nullable configuration
+```
+
+Ensure other languages handle null appropriately.
+
+### Interoperability Best Practices
+
+1. **Use consistent type IDs**: Same numeric ID for the same type across all languages
+2. **Register all types**: Including nested struct types
+3. **Match field ordering**: Use same snake_case names or explicit field IDs
+4. **Test cross-language**: Run integration tests early and often
+5. **Handle type differences**: Be aware of signed/unsigned interpretation differences
+
+### Related Guides
+
+- [Type Registration](type-registration.md)
+- [Supported Types](supported-types.md)
+- [Schema Evolution](schema-evolution.md)
+- [Xlang Serialization Specification](../../specification/xlang_serialization_spec.md)
+- [Type Mapping Specification](../../specification/xlang_type_mapping.md)
+
+### Built-in values
+
+```go
+package main
+
+import forygo "github.com/apache/fory/go/fory"
+import "fmt"
+
+func main() {
+  list := []any{true, false, "str", -1.1, 1, make([]int32, 10), make([]float64, 20)}
+  fory := forygo.NewFory(forygo.WithXlang(true))
+  bytes, err := fory.Marshal(list)
+  if err != nil {
+    panic(err)
+  }
+  var newValue any
+  // bytes can be deserialized by other languages
+  if err := fory.Unmarshal(bytes, &newValue); err != nil {
+    panic(err)
+  }
+  fmt.Println(newValue)
+  dict := map[string]any{
+    "k1": "v1",
+    "k2": list,
+    "k3": -1,
+  }
+  bytes, err = fory.Marshal(dict)
+  if err != nil {
+    panic(err)
+  }
+  // bytes can be deserialized by other languages
+  if err := fory.Unmarshal(bytes, &newValue); err != nil {
+    panic(err)
+  }
+  fmt.Println(newValue)
+}
+```
+
+### Custom values
+
+```go
+package main
+
+import forygo "github.com/apache/fory/go/fory"
+import "fmt"
+
+func main() {
+  type SomeClass1 struct {
+    F1 any
+    F2 map[int8]int32
+  }
+
+  type SomeClass2 struct {
+    F1  any
+    F2  string
+    F3  []any
+    F4  map[int8]int32
+    F5  int8
+    F6  int16
+    F7  int32
+    F8  int64
+    F9  float32
+    F10 float64
+    F11 []int16
+    F12 []int16
+  }
+  serializer := forygo.NewFory(forygo.WithXlang(true))
+  if err := serializer.RegisterStructByName(SomeClass1{}, "example.SomeClass1"); err != nil {
+    panic(err)
+  }
+  if err := serializer.RegisterStructByName(SomeClass2{}, "example.SomeClass2"); err != nil {
+    panic(err)
+  }
+  obj1 := &SomeClass1{F1: true, F2: map[int8]int32{-1: 2}}
+  obj := &SomeClass2{
+    F1:  obj1,
+    F2:  "abc",
+    F3:  []any{"abc", "abc"},
+    F4:  map[int8]int32{1: 2},
+    F5:  127,
+    F6:  32767,
+    F7:  2147483647,
+    F8:  9223372036854775807,
+    F9:  1.0 / 2,
+    F10: 1.0 / 3.0,
+    F11: []int16{1, 2},
+    F12: []int16{-1, 4},
+  }
+  bytes, err := serializer.Marshal(obj)
+  if err != nil {
+    panic(err)
+  }
+  var newValue any
+  // bytes can be deserialized by other languages
+  if err := serializer.Unmarshal(bytes, &newValue); err != nil {
+    panic(err)
+  }
+  fmt.Println(newValue)
+}
+```
+
+### Shared and circular references
+
+```go
+package main
+
+import forygo "github.com/apache/fory/go/fory"
+import "fmt"
+
+func main() {
+  type SomeClass struct {
+    F1 *SomeClass
+    F2 map[string]string
+    F3 map[string]string
+  }
+  fory := forygo.NewFory(forygo.WithXlang(true), forygo.WithTrackRef(true))
+  if err := fory.RegisterStruct(SomeClass{}, 65); err != nil {
+    panic(err)
+  }
+  value := &SomeClass{F2: map[string]string{"k1": "v1", "k2": "v2"}}
+  value.F3 = value.F2
+  value.F1 = value
+  bytes, err := fory.Marshal(value)
+  if err != nil {
+    panic(err)
+  }
+  var newValue any
+  // bytes can be deserialized by other languages
+  if err := fory.Unmarshal(bytes, &newValue); err != nil {
+    panic(err)
+  }
+  fmt.Println(newValue)
+}
+```
+
+## Related Topics
+
+- [Configuration](configuration.md)
+- [Type Registration](type-registration.md)
+- [Supported Types](supported-types.md)
+- [References](references.md)

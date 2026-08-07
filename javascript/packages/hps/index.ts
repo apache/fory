@@ -35,7 +35,7 @@ const build = () => {
         return _serializeString(dist, v, offset, 0);
       },
     };
-  } catch (error) {
+  } catch {
     return null;
   }
 };

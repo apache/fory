@@ -9,11 +9,11 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - `.agents/docs-and-formatting.md`: documentation, specification, and markdown rules.
 - `.agents/ci-and-pr.md`: code review workflow, CI triage, PR expectations, and commit conventions.
 - `.agents/testing/integration-tests.md`: `integration_tests/` prerequisites, regeneration rules, and commands.
-- `docs/object-serialization/security.md`: user-facing security guidance for binary object
-  serialization.
+- `docs/security/index.md`: contributor-facing security model index. This directory is internal
+  documentation and is intentionally excluded from the website sync.
+- `docs/security/threat-model.md`: project trust boundaries and downstream responsibilities.
+- `docs/security/deserialization.md`: implementation boundaries for untrusted deserialization.
 - `docs/json/security.md`: user-facing security guidance for Fory JSON.
-- `docs/object-serialization/deserialization-security-model.md`: implementation boundaries for
-  untrusted deserialization classification.
 - `.agents/languages/java.md`
 - `.agents/languages/csharp.md`
 - `.agents/languages/cpp.md`
@@ -34,7 +34,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Respect ownership. Keep logic, state, and helpers in their natural owner, and do not move serializer-local, context-local, runtime-type-local, or protocol-local problems into global utilities.
 - Check the spec before implementation. For wire behavior and xlang mapping, use the specs as the source of truth and never copy one runtime's bug into another runtime just to make tests pass.
 - Do not make assumptions about runtime behavior, ownership, registration, metadata construction, protocol semantics, or test coverage. Read the current code, owning docs/specs, and relevant tests before making a design judgment or implementation decision. If the evidence is incomplete, inspect more or state the uncertainty explicitly instead of filling gaps from memory or analogy with another runtime.
-- For untrusted deserialization, read `docs/object-serialization/deserialization-security-model.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve backing/output capacity from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent. Root graph memory reservation is accounting only and may happen before that byte check, but it must not replace the byte check.
+- For untrusted deserialization, read `docs/security/deserialization.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve backing/output capacity from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent. Root graph memory reservation is accounting only and may happen before that byte check, but it must not replace the byte check.
 - Malformed input must surface as a controlled root-operation error and still run
   root cleanup, but the exact exception type, error code, message, detection
   layer, and detection point are not contracts unless a public API or
@@ -139,7 +139,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
   or map entry may instead advance because of ref, null, or type envelopes; name those derived
   facts `fieldReadAlwaysAdvances`, `elementReadAlwaysAdvances`, or `entryReadAlwaysAdvances` rather
   than conflating them with `readData`.
-- For remote TypeDef/TypeMeta reads, the checked metadata cache is the only owner of remote "already validated" state. Cache hit means the header was previously parsed, body/hash-validated, policy-checked, and published by that cache, so the hot path must skip the body and use cached metadata without extra validation, hashing, limit checks, exact-local checks, allocation, or policy work. A known expected local TypeDef/TypeMeta header/hash match is a local-schema hit, not a remote cache miss: it may skip the body and use the local TypeInfo/TypeMeta without schema-version counting or cache publish. Cache miss is the only path that parses and validates non-local metadata, enforces limits, performs exact-local byte comparison when needed, and publishes remote metadata to the cache. Do not add nullable accepted-header fields, sentinel headers, per-TypeInfo markers, pending metadata state, parallel header-low/header-high slots, or parallel acceptance state for this decision. If a runtime needs a metadata hit hint, cache the concrete checked metadata owner object, such as the TypeInfo, TypeDef, or TypeMeta used by that runtime, and compare its validated header identity directly.
+- For remote TypeDef/TypeMeta reads, the checked metadata cache is the only owner of remote "already validated" state. Cache hit means the header was previously parsed, body/hash-validated, policy-checked, and published by that cache, so the hot path must skip the body and use cached metadata without extra validation, hashing, limit checks, exact-local checks, allocation, or policy work. The protocol-defined 52-bit TypeDef/TypeMeta header hash is the unique schema identity, so a known expected local header/hash match is a local-schema hit and must not recompare field arrays or metadata bodies. It may skip the body and use the local TypeInfo/TypeMeta without schema-version counting or cache publish. Cache miss is the only path that parses and validates non-local metadata, enforces limits, and publishes remote metadata to the cache. Do not add nullable accepted-header fields, sentinel headers, per-TypeInfo markers, pending metadata state, parallel header-low/header-high slots, or parallel acceptance state for this decision. If a runtime needs a metadata hit hint, cache the concrete checked metadata owner object, such as the TypeInfo, TypeDef, or TypeMeta used by that runtime, and compare its validated header identity directly.
 - When a user corrects a non-obvious invariant, encode it in the nearest source comment before continuing, and also update `AGENTS.md`, `.agents/**`, docs, or specs when the rule is reusable beyond one file. Do not rely only on chat history, task notes, commit messages, or benchmark logs for corrections that protect security, protocol behavior, ownership, naming, or hot-path performance.
 - Reject semantic hacks. Do not bypass broken semantics by deleting cases, simplifying callers, adding coercion hooks, or using workaround fallbacks; fix the underlying bug and prove it with focused tests.
 - Protect hot paths. Avoid per-call allocations, callback objects, result tuples or records, unnecessary runtime branches, and wrapper-class substitutions in hot codec/runtime paths; prefer conditional imports and allocation-free concrete implementations where they fit the language.
@@ -331,7 +331,8 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 
 ## Security
 
-User-facing security guidance lives only under Object Serialization and Fory JSON. Read
-`docs/object-serialization/security.md` or `docs/json/security.md` for the selected product. Before
-reporting or changing allocation, stream filling, skip, reference, metadata, or policy validation
-behavior, read `docs/object-serialization/deserialization-security-model.md`.
+User-facing object-serialization security guidance lives in each runtime directory, such as
+`docs/object-serialization/java/security.md`; Fory JSON guidance lives in `docs/json/security.md`.
+Contributor-facing security models remain under `docs/security/` and are excluded from the website.
+Before reporting or changing allocation, stream filling, skip, reference, metadata, or policy
+validation behavior, read `docs/security/deserialization.md`.

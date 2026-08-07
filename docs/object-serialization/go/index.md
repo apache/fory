@@ -91,7 +91,7 @@ Use xlang mode for cross-language payloads and schemas shared with other Fory im
 
 Use native mode for Go-only traffic. Native mode is selected with `fory.WithXlang(false)` and keeps Go object serialization in Go-native form. It is optimized for Go structs, pointers, interfaces, and Go-specific type behavior that does not need a portable xlang mapping. Compatible mode is enabled by default. Set `fory.WithCompatible(false)` only when every reader and writer uses the same Go struct schema and you want faster serialization and smaller size.
 
-See [Xlang Serialization](xlang.md) for Go xlang registration and interoperability rules, and [Native Serialization](native.md) for Go-only payloads.
+See [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) for Go xlang registration and interoperability rules, and [Native Serialization](native.md) for Go-only payloads.
 
 ## Configuration
 
@@ -133,28 +133,30 @@ data, _ := f.Serialize(&User{ID: 1, Name: "Alice"})
 // 'data' can be deserialized by Java, Python, etc.
 ```
 
-See [Xlang Serialization](xlang.md) for type mapping and compatibility details.
+See [Cross-Language Interoperability](basic-serialization.md#cross-language-interoperability) for type mapping and compatibility details.
 
 ## Documentation
 
-| Topic                                       | Description                            |
-| ------------------------------------------- | -------------------------------------- |
-| [Basic Serialization](core-api.md)          | Core APIs and usage patterns           |
-| [Xlang Serialization](xlang.md)             | Multi-language serialization           |
-| [Native Serialization](native.md)           | Go-only serialization                  |
-| [Configuration](configuration.md)           | Options and settings                   |
-| [Schema Metadata](schema-metadata.md)       | Field-level configuration              |
-| [Type Registration](type-registration.md)   | Registering types for serialization    |
-| [Supported Types](supported-types.md)       | Complete type support reference        |
-| [References](references.md)                 | Circular references and shared objects |
-| [Schema Evolution](schema-evolution.md)     | Forward/backward compatibility         |
-| [Custom Serializers](custom-serializers.md) | Extend serialization behavior          |
-| [Thread Safety](thread-safety.md)           | Concurrent usage patterns              |
-| [gRPC Support](../../grpc/go.md)            | Fory payloads over grpc-go             |
-| [Troubleshooting](troubleshooting.md)       | Common issues and solutions            |
+| Topic                                         | Description                             |
+| --------------------------------------------- | --------------------------------------- |
+| [Basic Serialization](basic-serialization.md) | Default xlang APIs and interoperability |
+| [Native Serialization](native.md)             | Go-only serialization                   |
+| [Configuration](configuration.md)             | Options and settings                    |
+| [Schema Metadata](schema-metadata.md)         | Field-level configuration               |
+| [Type Registration](type-registration.md)     | Registering types for serialization     |
+| [Supported Types](supported-types.md)         | Complete type support reference         |
+| [References](references.md)                   | Circular references and shared objects  |
+| [Schema Evolution](schema-evolution.md)       | Forward/backward compatibility          |
+| [Custom Serializers](custom-serializers.md)   | Extend serialization behavior           |
+| [Thread Safety](thread-safety.md)             | Concurrent usage patterns               |
+| [gRPC Support](../../grpc/go.md)              | Fory payloads over grpc-go              |
+| [Troubleshooting](troubleshooting.md)         | Common issues and solutions             |
 
 ## Related Resources
 
 - [Xlang Serialization Specification](../../specification/xlang_serialization_spec.md)
 - [Xlang Type Mapping](../../specification/xlang_type_mapping.md)
 - [GitHub Repository](https://github.com/apache/fory)
+
+Before decoding bytes from outside the application trust boundary, read
+[Go Security](security.md).

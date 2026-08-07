@@ -504,6 +504,6 @@ int32_t id = row.get_int32(0);
 ## Related Topics
 
 - [C++ Row example](https://github.com/apache/fory/tree/main/examples/cpp/hello_row) - Complete runnable example
-- [Basic Serialization](../object-serialization/cpp/core-api.md) - Object graph serialization
+- [Basic Serialization](../object-serialization/cpp/basic-serialization.md) - Object graph serialization
 - [C++ Object Serialization Configuration](../object-serialization/cpp/configuration.md) - Builder options
 - [C++ Object Serialization Supported Types](../object-serialization/cpp/supported-types.md) - Object serialization types

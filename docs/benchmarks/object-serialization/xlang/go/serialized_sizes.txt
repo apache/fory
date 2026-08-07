@@ -9,19 +9,19 @@ Sample:
   Protobuf: 375 bytes
   Msgpack:  524 bytes
 MediaContent:
-  Fory:     340 bytes
+  Fory:     362 bytes
   Protobuf: 301 bytes
   Msgpack:  400 bytes
 NumericStructList:
-  Fory:     819 bytes
+  Fory:     855 bytes
   Protobuf: 1900 bytes
   Msgpack:  1766 bytes
 SampleList:
-  Fory:     7599 bytes
+  Fory:     7663 bytes
   Protobuf: 7560 bytes
   Msgpack:  10486 bytes
 MediaContentList:
-  Fory:     5774 bytes
+  Fory:     5851 bytes
   Protobuf: 6080 bytes
   Msgpack:  8006 bytes
 ============================================

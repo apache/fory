@@ -1,12 +1,12 @@
 <div align="center">
-  <img width="65%" alt="Apache Fory logo" src="docs/images/logo/fory-horizontal.png"><br>
+  <img width="65%" alt="Apache Fory logo" src="docs/images/fory-logo.png"><br>
 </div>
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/apache/fory/ci.yml?branch=main&style=for-the-badge&label=GITHUB%20ACTIONS&logo=github)](https://github.com/apache/fory/actions/workflows/ci.yml)
 [![Slack Channel](https://img.shields.io/badge/slack-join-3f0e40?logo=slack&style=for-the-badge)](https://join.slack.com/t/fory-project/shared_invite/zt-36g0qouzm-kcQSvV_dtfbtBKHRwT5gsw)
 [![X](https://img.shields.io/badge/@ApacheFory-follow-blue?logo=x&style=for-the-badge)](https://x.com/ApacheFory)
 [![Maven Version](https://img.shields.io/maven-central/v/org.apache.fory/fory-core?style=for-the-badge)](https://search.maven.org/#search|gav|1|g:"org.apache.fory"%20AND%20a:"fory-core")
-[![Crates.io](https://img.shields.io/badge/crates.io-v1.5.0-blue?logo=rust&style=for-the-badge)](https://crates.io/crates/fory)
+[![Crates.io](https://img.shields.io/badge/crates.io-v1.6.0-blue?logo=rust&style=for-the-badge)](https://crates.io/crates/fory)
 [![PyPI](https://img.shields.io/pypi/v/pyfory.svg?logo=PyPI&style=for-the-badge)](https://pypi.org/project/pyfory/)
 [![npm](https://img.shields.io/npm/v/%40apache-fory%2Fcore?logo=npm&style=for-the-badge)](https://www.npmjs.com/package/@apache-fory/core)
 [![NuGet](https://img.shields.io/nuget/v/Apache.Fory?logo=nuget&style=for-the-badge)](https://www.nuget.org/packages/Apache.Fory)
@@ -150,18 +150,19 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.5.0</version>
+  <version>1.6.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```gradle
-implementation "org.apache.fory:fory-core:1.5.0"
+implementation "org.apache.fory:fory-core:1.6.0"
 ```
 
-On JDK25+, open `java.lang.invoke` to Fory. Use `ALL-UNNAMED` when Fory is on
-the classpath:
+On JDK25+, opening `java.lang.invoke` to Fory core is also recommended. It avoids the
+current-JDK Unsafe fallback and is required when Unsafe access is disabled or unavailable, including
+with `--sun-misc-unsafe-memory-access=deny`. Use `ALL-UNNAMED` when Fory is on the classpath:
 
 ```bash
 --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
@@ -178,7 +179,7 @@ Use the Fory core module name when Fory is on the module path:
 sbt:
 
 ```scala
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.5.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.6.0"
 ```
 
 **Kotlin**
@@ -186,7 +187,7 @@ libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.5.0"
 Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-kotlin:1.5.0")
+implementation("org.apache.fory:fory-kotlin:1.6.0")
 ```
 
 Maven:
@@ -195,7 +196,7 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>1.5.0</version>
+  <version>1.6.0</version>
 </dependency>
 ```
 
@@ -217,7 +218,7 @@ pip install "pyfory[format]"
 
 ```toml
 [dependencies]
-fory = "1.5.0"
+fory = "1.6.0"
 ```
 
 **C++**
@@ -229,7 +230,7 @@ include(FetchContent)
 FetchContent_Declare(
   fory
   GIT_REPOSITORY https://github.com/apache/fory.git
-  GIT_TAG v1.5.0
+  GIT_TAG v1.6.0
   SOURCE_SUBDIR cpp
 )
 FetchContent_MakeAvailable(fory)
@@ -240,8 +241,8 @@ Bazel:
 
 ```bazel
 # MODULE.bazel
-bazel_dep(name = "fory", version = "1.5.0")
-git_override(module_name = "fory", remote = "https://github.com/apache/fory.git", commit = "v1.5.0")
+bazel_dep(name = "fory", version = "1.6.0")
+git_override(module_name = "fory", remote = "https://github.com/apache/fory.git", commit = "v1.6.0")
 
 # BUILD
 deps = ["@fory//cpp/fory/serialization:fory_serialization"]
@@ -274,13 +275,13 @@ npm install @apache-fory/core @apache-fory/hps
 **C#**
 
 ```bash
-dotnet add package Apache.Fory --version 1.5.0
+dotnet add package Apache.Fory --version 1.6.0
 ```
 
 **Dart**
 
 ```bash
-dart pub add fory:^1.5.0
+dart pub add fory:^1.6.0
 dart pub add dev:build_runner
 ```
 
@@ -290,7 +291,7 @@ Add Fory to `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/apache/fory.git", exact: "1.5.0")
+  .package(url: "https://github.com/apache/fory.git", exact: "1.6.0")
 ],
 targets: [
   .target(
@@ -305,19 +306,19 @@ serializer setup.
 
 **Development From Source**
 
-See [docs/development/building.md](docs/development/building.md).
+See [docs/development/index.md](docs/development/index.md).
 
 Snapshots for Java, Scala, and Kotlin are available from
 `https://repository.apache.org/snapshots/` with the matching `-SNAPSHOT` version.
 
 ## Choose a Serialization Format
 
-| Format        | Use it when                                                   | Start here                                              |
-| ------------- | ------------------------------------------------------------- | ------------------------------------------------------- |
-| Xlang binary  | Data crosses language boundaries                              | [Xlang guide](docs/object-serialization/xlang/index.md) |
-| Native binary | Producer and consumer are in the same runtime family          | [Native guide](docs/object-serialization/native.md)     |
-| Row format    | You need random field access or analytics-style partial reads | [Row Format](docs/row-format/index.md)                  |
-| Fory JSON     | Java applications need high-performance standard JSON         | [Fory JSON](java/fory-json/README.md)                   |
+| Format                 | Use it when                                                   | Start here                                                            |
+| ---------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Xlang binary (default) | Data crosses language boundaries                              | [Cross-language interoperability](docs/object-serialization/xlang.md) |
+| Native binary          | Producer and consumer are in the same runtime family          | [Native guide](docs/object-serialization/native.md)                   |
+| Row format             | You need random field access or analytics-style partial reads | [Row Format](docs/row-format/index.md)                                |
+| Fory JSON              | Java applications need high-performance standard JSON         | [Fory JSON](java/fory-json/README.md)                                 |
 
 For Java, Scala, Kotlin, Python, C++, Go, and Rust, use native mode for
 same-language traffic. It avoids xlang's cross-language type mapping and
@@ -616,7 +617,7 @@ fun main() {
 ```
 
 For shared/circular references, polymorphism, numeric IDs versus names, and
-type-mapping rules, see the [cross-language guide](docs/object-serialization/xlang) and
+type-mapping rules, see the [cross-language guide](docs/object-serialization/xlang.md) and
 [type mapping specification](docs/specification/xlang_type_mapping.md).
 
 ## Native Serialization
@@ -840,14 +841,14 @@ Add Fory JSON to your project:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-json</artifactId>
-  <version>1.5.0</version>
+  <version>1.6.0</version>
 </dependency>
 ```
 
 **Gradle**
 
 ```gradle
-implementation "org.apache.fory:fory-json:1.5.0"
+implementation "org.apache.fory:fory-json:1.6.0"
 ```
 
 Keep all Fory modules in the same application on the same version.
@@ -909,11 +910,11 @@ security, and platform guides.
 | Dart                  | [docs/object-serialization/dart](docs/object-serialization/dart)                       | [View](https://fory.apache.org/docs/object-serialization/dart/)        |
 | Scala                 | [docs/object-serialization/scala](docs/object-serialization/scala)                     | [View](https://fory.apache.org/docs/object-serialization/scala/)       |
 | Kotlin                | [docs/object-serialization/kotlin](docs/object-serialization/kotlin)                   | [View](https://fory.apache.org/docs/object-serialization/kotlin/)      |
-| Cross-language xlang  | [docs/object-serialization/xlang](docs/object-serialization/xlang)                     | [View](https://fory.apache.org/docs/object-serialization/xlang/)       |
+| Cross-language xlang  | [docs/object-serialization/xlang.md](docs/object-serialization/xlang.md)               | [View](https://fory.apache.org/docs/object-serialization/xlang)        |
 | Schema IDL/compiler   | [docs/compiler](docs/compiler)                                                         | [View](https://fory.apache.org/docs/compiler/)                         |
 | GraalVM native image  | [docs/object-serialization/java/graalvm.md](docs/object-serialization/java/graalvm.md) | [View](https://fory.apache.org/docs/object-serialization/java/graalvm) |
 | Android               | [docs/object-serialization/java/android.md](docs/object-serialization/java/android.md) | [View](https://fory.apache.org/docs/object-serialization/java/android) |
-| Development           | [docs/development/building.md](docs/development/building.md)                           | [View](docs/development/building.md)                                   |
+| Development           | [docs/development/index.md](docs/development/index.md)                                 | [View](docs/development/index.md)                                      |
 
 **Specifications**
 
@@ -934,7 +935,7 @@ security, and platform guides.
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and
-[docs/development/building.md](docs/development/building.md) before sending pull requests. Bug
+[docs/development/index.md](docs/development/index.md) before sending pull requests. Bug
 reports, docs fixes, tests, benchmarks, and implementation improvements are welcome.
 
 ## License

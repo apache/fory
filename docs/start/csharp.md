@@ -19,7 +19,9 @@ license: |
   limitations under the License.
 ---
 
-Fory C# is published on NuGet as `Apache.Fory` and requires the .NET 8 SDK or later. The package includes the runtime and source generator for `ForyStruct` types. Use one compatible Fory release across every peer in an application.
+Fory C# provides xlang Object Serialization, generated models, and Fory gRPC.
+The `Apache.Fory` NuGet package requires .NET 8 or later and includes both the
+serialization library and source generator.
 
 ## Verify the Toolchain
 
@@ -27,12 +29,53 @@ Fory C# is published on NuGet as `Apache.Fory` and requires the .NET 8 SDK or la
 dotnet --version
 ```
 
-## Choose a Capability
+## Object Serialization
 
-| Capability                  | Package or tool                                  | Continue with                                                                                                           |
-| --------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| Object Serialization        | `Apache.Fory`                                    | [C# object serialization](../object-serialization/csharp/index.md) and [xlang](../object-serialization/csharp/xlang.md) |
-| Schema and generated models | `fory-compiler`                                  | [Fory IDL and Compiler](../compiler/index.md)                                                                           |
-| Fory gRPC                   | generated companions plus gRPC .NET dependencies | [C# gRPC](../grpc/csharp.md)                                                                                            |
+Create a console project and add the released package:
 
-Each capability guide owns its exact package declaration and first runnable example.
+```bash
+dotnet new console -n ForyExample
+cd ForyExample
+dotnet add package Apache.Fory --version 1.6.0
+```
+
+Replace `Program.cs` with:
+
+```csharp
+using Apache.Fory;
+
+[ForyStruct]
+public sealed class User
+{
+    public long Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+public static class Program
+{
+    public static void Main()
+    {
+        Fory fory = Fory.Builder().Build();
+        fory.Register<User>(1);
+
+        byte[] bytes = fory.Serialize(new User { Id = 1, Name = "Alice" });
+        User decoded = fory.Deserialize<User>(bytes);
+        Console.WriteLine(decoded.Name);
+    }
+}
+```
+
+```bash
+dotnet run
+```
+
+C# uses xlang mode. Continue with
+[C# Object Serialization](../object-serialization/csharp/index.md),
+[xlang types](../object-serialization/csharp/basic-serialization.md#cross-language-interoperability),
+[configuration](../object-serialization/csharp/configuration.md), and
+[schema evolution](../object-serialization/csharp/schema-evolution.md).
+
+## Other Capabilities
+
+- **Fory IDL and Compiler** generates C# models and registration helpers. See [Compiler Getting Started](../compiler/getting-started.md) and the [C# generated-code guide](../compiler/generated-code/csharp.md).
+- **Fory gRPC** uses normal .NET gRPC transports with Fory-encoded messages. See [C# gRPC](../grpc/csharp.md).

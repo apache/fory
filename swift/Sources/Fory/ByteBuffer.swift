@@ -18,12 +18,17 @@
 import Foundation
 
 public final class ByteBuffer {
+    // Buffer state access is synchronous and never re-entered while borrowed. Overlapping access is
+    // invalid because unchecked exclusivity removes Swift's runtime enforcement on these hot paths.
     @usableFromInline
+    @exclusivity(unchecked)
     internal var storage: [UInt8]
 
     @usableFromInline
+    @exclusivity(unchecked)
     internal var cursor: Int
 
+    @exclusivity(unchecked)
     private var dataBridge = Data()
 
     @inlinable
@@ -175,26 +180,6 @@ public final class ByteBuffer {
                     }
                     destinationBase.copyMemory(from: sourceBase, byteCount: byteCount)
                 }
-            }
-        }
-        return dataBridge
-    }
-
-    @usableFromInline
-    @inline(__always)
-    internal func materializeData(
-        byteCount: Int,
-        _ body: (UnsafeMutablePointer<UInt8>) -> Void
-    ) -> Data {
-        if dataBridge.count != byteCount {
-            dataBridge.count = byteCount
-        }
-        if byteCount > 0 {
-            dataBridge.withUnsafeMutableBytes { destination in
-                guard let base = destination.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                    return
-                }
-                body(base)
             }
         }
         return dataBridge
@@ -837,7 +822,36 @@ public final class ByteBuffer {
             guard let base = buffer.baseAddress else {
                 return nil
             }
-            let utf8Bytes = UnsafeBufferPointer(start: base.advanced(by: start), count: count)
+            let utf8Base = base.advanced(by: start)
+            let utf8Bytes = UnsafeBufferPointer(start: utf8Base, count: count)
+            var index = 0
+            var isASCII = true
+            // An ASCII byte has a clear high bit, so this mask checks eight bytes at once
+            // regardless of native byte order. The bounded loop makes the unaligned load safe.
+            while index <= count - MemoryLayout<UInt64>.size {
+                let word = UnsafeRawPointer(utf8Base.advanced(by: index))
+                    .loadUnaligned(as: UInt64.self)
+                if word & 0x8080_8080_8080_8080 != 0 {
+                    isASCII = false
+                    break
+                }
+                index += MemoryLayout<UInt64>.size
+            }
+            if isASCII {
+                while index < count {
+                    if utf8Bytes[index] >= 0x80 {
+                        isASCII = false
+                        break
+                    }
+                    index += 1
+                }
+            }
+            if isASCII {
+                return String(decoding: utf8Bytes, as: UTF8.self)
+            }
+            if #available(macOS 15.0, iOS 18.0, *) {
+                return String(validating: utf8Bytes, as: UTF8.self)
+            }
             return String(bytes: utf8Bytes, encoding: .utf8)
         }
         guard let decoded else {
