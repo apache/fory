@@ -166,7 +166,10 @@ class SwiftServiceMixin:
             "// @unchecked Sendable: a transient per-message carrier handed to a single",
             "// consumer and (de)serialized synchronously, never shared across threads,",
             "// so grpc-swift's async APIs can move it under Swift 6 strict concurrency.",
-            f"struct {base}Message<Value: Serializer>: GRPCPayload, @unchecked Sendable {{",
+            (
+                f"struct {base}Message<Value: Serializer>: GRPCPayload, @unchecked Sendable"
+                " where Value.Target == Value {"
+            ),
             "    let value: Value",
             "    init(_ value: Value) { self.value = value }",
             "    init(serializedByteBuffer buffer: inout NIOCore.ByteBuffer) throws {",
@@ -241,7 +244,10 @@ class SwiftServiceMixin:
 
     def _streaming_response_context(self, base: str) -> list[str]:
         return [
-            f"public struct {base}StreamingResponseContext<Response: Serializer> {{",
+            (
+                f"public struct {base}StreamingResponseContext<Response: Serializer>"
+                " where Response.Target == Response {"
+            ),
             f"    fileprivate let base: StreamingResponseCallContext<{base}Message<Response>>",
             "    public var eventLoop: EventLoop { base.eventLoop }",
             "    @discardableResult",
@@ -253,7 +259,10 @@ class SwiftServiceMixin:
 
     def _unary_response_context(self, base: str) -> list[str]:
         return [
-            f"public struct {base}UnaryResponseContext<Response: Serializer> {{",
+            (
+                f"public struct {base}UnaryResponseContext<Response: Serializer>"
+                " where Response.Target == Response {"
+            ),
             f"    fileprivate let base: UnaryResponseCallContext<{base}Message<Response>>",
             "    public var eventLoop: EventLoop { base.eventLoop }",
             "    public func respond(_ response: Response) {",
@@ -265,7 +274,10 @@ class SwiftServiceMixin:
     def _async_response_stream(self, base: str) -> list[str]:
         return [
             _ASYNC_AVAILABLE,
-            f"public struct {base}AsyncResponseStream<Response: Serializer> {{",
+            (
+                f"public struct {base}AsyncResponseStream<Response: Serializer>"
+                " where Response.Target == Response {"
+            ),
             f"    fileprivate let base: GRPCAsyncResponseStreamWriter<{base}Message<Response>>",
             "    public func send(_ response: Response) async throws {",
             f"        try await base.send({base}Message(response))",
@@ -276,7 +288,10 @@ class SwiftServiceMixin:
     def _async_request_stream(self, base: str) -> list[str]:
         return [
             _ASYNC_AVAILABLE,
-            f"public struct {base}AsyncRequestStream<Request: Serializer>: AsyncSequence {{",
+            (
+                f"public struct {base}AsyncRequestStream<Request: Serializer>: AsyncSequence"
+                " where Request.Target == Request {"
+            ),
             "    public typealias Element = Request",
             f"    fileprivate let base: GRPCAsyncRequestStream<{base}Message<Request>>",
             "    public struct AsyncIterator: AsyncIteratorProtocol {",
@@ -294,7 +309,10 @@ class SwiftServiceMixin:
     def _client_response_stream(self, base: str) -> list[str]:
         return [
             _ASYNC_AVAILABLE,
-            f"public struct {base}ResponseStream<Response: Serializer>: AsyncSequence {{",
+            (
+                f"public struct {base}ResponseStream<Response: Serializer>: AsyncSequence"
+                " where Response.Target == Response {"
+            ),
             "    public typealias Element = Response",
             f"    fileprivate let base: GRPCAsyncResponseStream<{base}Message<Response>>",
             "    public struct AsyncIterator: AsyncIteratorProtocol {",
