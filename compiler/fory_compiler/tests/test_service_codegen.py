@@ -980,7 +980,8 @@ def test_swift_grpc_fory_marshaller():
     assert set(files) == {"demo/greeter/GreeterGrpc.swift"}
     content = files["demo/greeter/GreeterGrpc.swift"]
     assert (
-        "struct Demo_Greeter_GreeterMessage<Value: Serializer>: GRPCPayload" in content
+        "struct Demo_Greeter_GreeterMessage<Value: Serializer & Sendable>: GRPCPayload"
+        in content
     )
     assert "enum ForyRuntime {" in content
     assert "Thread.current.threadDictionary" in content
@@ -2492,7 +2493,7 @@ def test_csharp_grpc_dotnet_fixture(tmp_path: Path):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_swift_grpc_common_root_package_collision():
+def test_swift_common_root_package_emits_shared_namespace_enum():
     # Two schemas that share a top-level package component each emit `public enum
     # Demo`, an invalid redeclaration when compiled into one Swift module. This is a
     # model-generator limitation, not gRPC specific; gRPC companions inherit it, and
