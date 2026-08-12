@@ -1,3 +1,7 @@
+## 1.6.1
+
+- Release Apache Fory Dart 1.6.1.
+
 ## 1.7.0-dev
 
 - Start the next development cycle after the 1.6.0 release.

@@ -36,7 +36,7 @@ npm --version
 Install the core package:
 
 ```bash
-npm install @apache-fory/core@1.6.0
+npm install @apache-fory/core@1.6.1
 ```
 
 Define a schema and run an xlang round trip:
@@ -72,7 +72,7 @@ JavaScript uses xlang mode. Continue with
 For the optional Node.js string fast path, install the matching package version:
 
 ```bash
-npm install @apache-fory/core@1.6.0 @apache-fory/hps@1.6.0
+npm install @apache-fory/core@1.6.1 @apache-fory/hps@1.6.1
 ```
 
 ## Other Capabilities
