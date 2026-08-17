@@ -17,13 +17,13 @@
  */
 
 val foryVersion = "1.7.0-SNAPSHOT"
-val scala213Version = "2.13.15"
+val scala213Version = "2.13.18"
 val repositoryRoot = Def.setting((ThisBuild / baseDirectory).value.getParentFile)
 
 ThisBuild / apacheSonatypeProjectProfile := "fory"
 ThisBuild / version := foryVersion
 ThisBuild / scalaVersion := scala213Version
-ThisBuild / crossScalaVersions := Seq(scala213Version, "3.3.1")
+ThisBuild / crossScalaVersions := Seq(scala213Version, "3.3.8")
 
 val localForyResolver =
   sys.props
@@ -68,8 +68,8 @@ lazy val foryScala = Project(id = "fory-scala", base = file("fory-scala"))
     Compile / javacOptions ++= Seq("--release", "8"),
     libraryDependencies ++= Seq(
       "org.apache.fory" % "fory-core" % foryVersion,
-      "org.scalatest" %% "scalatest" % "3.2.19" % Test,
-      "dev.zio" %% "zio" % "2.1.7" % Test,
+      "org.scalatest" %% "scalatest" % "3.2.20" % Test,
+      "dev.zio" %% "zio" % "2.1.26" % Test,
     ),
   )
 
@@ -85,7 +85,7 @@ lazy val foryJsonScala = Project(id = "fory-json-scala", base = file("fory-json-
         else Nil
       Seq(
         "org.apache.fory" % "fory-json" % foryVersion,
-        "org.scalatest" %% "scalatest" % "3.2.19" % Test,
+        "org.scalatest" %% "scalatest" % "3.2.20" % Test,
       ) ++ reflect
     },
   )
