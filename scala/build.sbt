@@ -65,6 +65,7 @@ lazy val foryScala = Project(id = "fory-scala", base = file("fory-scala"))
   .settings(commonSettings)
   .settings(
     name := "fory-scala",
+    Compile / javacOptions ++= Seq("--release", "8"),
     libraryDependencies ++= Seq(
       "org.apache.fory" % "fory-core" % foryVersion,
       "org.scalatest" %% "scalatest" % "3.2.19" % Test,
