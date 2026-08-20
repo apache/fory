@@ -178,10 +178,21 @@ public final class SchemaHistory {
       Class<?> beanClass,
       UnaryOperator<Schema> schemaTransform,
       Map<Class<?>, SchemaHistory> built) {
-    SchemaHistory memoized = built.get(beanClass);
-    if (memoized != null) {
+    if (built.containsKey(beanClass)) {
+      SchemaHistory memoized = built.get(beanClass);
+      // A null memo entry marks a build in progress: this bean's history reaches back to itself,
+      // which only removed-field declarations can do (live-field cycles are rejected by
+      // inferSchema's cycle check before build() runs). The historical schema would be cyclic.
+      if (memoized == null) {
+        throw new IllegalStateException(
+            "Circular schema history for "
+                + beanClass.getName()
+                + ": a removed field reaches back to a bean whose history is still being built. "
+                + "Row format does not support circular references.");
+      }
       return memoized;
     }
+    built.put(beanClass, null);
     ForySchema schemaAnn = beanClass.getAnnotation(ForySchema.class);
     Class<?> removedFieldsClass = schemaAnn == null ? void.class : schemaAnn.removedFields();
 
@@ -196,10 +207,10 @@ public final class SchemaHistory {
     // contributes a key site and a value site independently. The inner schema substitutes back into
     // the same site at materialization time.
     //
-    // This recursion needs no cycle guard. TypeInference.inferField calls ctx.checkNoCycle on every
-    // bean it descends into, and RowCodecBuilder runs inferSchema in its constructor before build()
-    // reaches here, so a self-referential bean is already rejected. Recursion depth is bounded by
-    // the acyclic nesting of distinct versioned bean types.
+    // Live-field cycles are rejected before build() runs: TypeInference.inferField calls
+    // ctx.checkNoCycle on every bean it descends into, and RowCodecBuilder runs inferSchema in its
+    // constructor. Removed fields never pass through inferSchema, so a cycle reachable only through
+    // a removed-field declaration is caught by the in-progress memo entry above instead.
     for (FieldEntry fe : all) {
       collectNestedSites(beanClass, fe.typeRef, schemaTransform, built, fe.nestedSites);
     }

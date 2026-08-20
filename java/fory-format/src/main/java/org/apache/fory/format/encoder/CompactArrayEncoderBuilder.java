@@ -35,11 +35,6 @@ class CompactArrayEncoderBuilder extends ArrayEncoderBuilder {
   }
 
   CompactArrayEncoderBuilder(
-      final TypeRef<?> clsType, final TypeRef<?> beanType, final String rowCodecSuffix) {
-    super(clsType, beanType, rowCodecSuffix);
-  }
-
-  CompactArrayEncoderBuilder(
       final TypeRef<?> clsType,
       final TypeRef<?> beanType,
       final String classSuffix,
