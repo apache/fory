@@ -265,11 +265,16 @@ public class TypeInference {
 
   /**
    * Infer a single named field from its Java type, used by schema-evolution code paths that need to
-   * reconstruct historical fields by name and type without going through a Java member.
+   * reconstruct historical fields by name and type without going through a Java member. {@code
+   * enclosingType} is the bean class declaring the field, so bean-scoped custom codecs resolve
+   * exactly as they do when {@link #inferSchema} walks the live bean; pass {@code void.class} for a
+   * top-level array/map element, which has no enclosing bean and matches only enclosing-agnostic
+   * registrations.
    */
-  static Field inferNamedField(String name, TypeRef<?> typeRef) {
+  static Field inferNamedField(String name, TypeRef<?> typeRef, Class<?> enclosingType) {
     TypeResolutionContext ctx =
-        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
+        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true)
+            .appendTypePath(enclosingType);
     return inferField(name, typeRef, ctx);
   }
 

@@ -29,6 +29,7 @@ import lombok.Data;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.annotation.ForySchema;
 import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
@@ -1185,6 +1186,84 @@ public class SchemaEvolutionTest {
     Assert.assertEquals(out.getId(), "w1");
     // The v1 payload encoded balance as AmountV1 (cents only); the v2 codec projects it.
     Assert.assertEquals(out.getBalance().cents, 500L);
+  }
+
+  static final class MoneyCentsCodec implements CustomCodec<Money, Long> {
+    @Override
+    public Field getForyField(String fieldName) {
+      return DataTypes.notNullField(fieldName, DataTypes.int64());
+    }
+
+    @Override
+    public Long encode(Money value) {
+      return value.cents;
+    }
+
+    @Override
+    public Money decode(Long cents) {
+      return new Money(cents);
+    }
+
+    @Override
+    public TypeRef<Long> encodedType() {
+      return TypeRef.of(Long.class);
+    }
+  }
+
+  @Data
+  public static class LedgerV1 {
+    private String id;
+    private Money balance;
+  }
+
+  @Data
+  public static class LedgerV2 {
+    private String id;
+    private Money balance;
+
+    @ForyVersion(since = 2)
+    private String note;
+  }
+
+  /**
+   * A bean-scoped custom codec whose encoded type is not a versioned bean, so no nested-site
+   * substitution rewrites the field. Historical field reconstruction must resolve the codec with
+   * the declaring bean as the enclosing type, exactly as live inference does; a miss reconstructs
+   * the field from the raw domain type instead of the codec's declaration. The compact format
+   * exposes the divergence: the codec declares a non-nullable fixed int64 slot, while the missed
+   * reconstruction yields a nullable variable-width struct, so the projection reader's layout no
+   * longer matches the bytes the writer produced.
+   */
+  @Test
+  public void evolvingBeanWithScalarCodec() {
+    Encoders.registerCustomCodec(LedgerV1.class, Money.class, new MoneyCentsCodec());
+    Encoders.registerCustomCodec(LedgerV2.class, Money.class, new MoneyCentsCodec());
+
+    RowEncoder<LedgerV1> writer =
+        Encoders.buildBeanCodec(LedgerV1.class)
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    RowEncoder<LedgerV2> reader =
+        Encoders.buildBeanCodec(LedgerV2.class)
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+
+    LedgerV1 in = new LedgerV1();
+    in.setId("l1");
+    in.setBalance(new Money(250));
+
+    LedgerV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), "l1");
+    Assert.assertEquals(out.getBalance().cents, 250L);
+    Assert.assertNull(out.getNote());
+
+    // The evolution-enabled encoder's public schema must carry the codec's declared column type,
+    // not a reconstruction from the raw domain type; int64Field validates the declared type.
+    Assert.assertEquals(writer.schema().int64Field("balance").get(writer.toRow(in)), 250L);
   }
 
   /**
