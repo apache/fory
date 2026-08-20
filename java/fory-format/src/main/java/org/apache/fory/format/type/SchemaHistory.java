@@ -60,7 +60,7 @@ public final class SchemaHistory {
   private static final int FIRST_VERSION = 1;
 
   /** FNV-1a 64-bit offset basis, the seed for every strict-hash mix in this class. */
-  private static final long FNV_OFFSET_BASIS = 1469598103934665603L;
+  private static final long FNV_OFFSET_BASIS = 0xcbf29ce484222325L;
 
   /** One entry in a {@link SchemaHistory}. */
   public static final class VersionedSchema {
@@ -205,7 +205,7 @@ public final class SchemaHistory {
     }
 
     validateNoNameCollision(all);
-    SchemaHistory history = enumerate(beanClass.getName(), all, schemaTransform);
+    SchemaHistory history = enumerate(beanClass.getName(), beanClass, all, schemaTransform);
     built.put(beanClass, history);
     return history;
   }
@@ -229,16 +229,21 @@ public final class SchemaHistory {
         void.class, elementType, schemaTransform, new HashMap<>(), element.nestedSites);
     List<FieldEntry> all = new ArrayList<>(1);
     all.add(element);
-    return enumerate("element " + elementType, all, schemaTransform);
+    return enumerate("element " + elementType, void.class, all, schemaTransform);
   }
 
   /**
    * Enumerate every distinct historical schema for {@code all} over its version boundaries and the
    * cross-product of nested bean versions, returning a {@link SchemaHistory}. {@code label} names
-   * the owner for collision diagnostics.
+   * the owner for collision diagnostics; {@code enclosing} is the bean class declaring the fields
+   * ({@code void.class} for a top-level element), so custom-codec lookups during field
+   * reconstruction match the live inference path.
    */
   private static SchemaHistory enumerate(
-      String label, List<FieldEntry> all, UnaryOperator<Schema> schemaTransform) {
+      String label,
+      Class<?> enclosing,
+      List<FieldEntry> all,
+      UnaryOperator<Schema> schemaTransform) {
     // Materialize a schema at every version V where the field set changes — both "since" and
     // "until" boundaries qualify, because either adds or removes a field from the active set.
     // FIRST_VERSION is always materialized even when every field declares since >= 2: a payload
@@ -296,7 +301,7 @@ public final class SchemaHistory {
         List<Field> fields = new ArrayList<>(activeEntries.size());
         Set<String> liveNames = new HashSet<>();
         for (FieldEntry fe : activeEntries) {
-          Field current = TypeInference.inferNamedField(fe.name, fe.typeRef);
+          Field current = TypeInference.inferNamedField(fe.name, fe.typeRef, enclosing);
           // Substitute each nested versioned site (a direct field, list element, map value, or map
           // key) with the version this combination chose for its bean class, keeping every
           // collection/map wrapper intact. A map can have both a key site and a value site, which

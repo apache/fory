@@ -366,6 +366,42 @@ public class ImplementInterfaceTest {
     Assert.assertEquals(deserializedBean.f1().get("k").f1(), 42);
   }
 
+  public interface KeyMapOuter {
+    Map<ListInner, String> f1();
+  }
+
+  static class KeyMapOuterImpl implements KeyMapOuter {
+    private final Map<ListInner, String> f1;
+
+    KeyMapOuterImpl(final Map<ListInner, String> f1) {
+      this.f1 = f1;
+    }
+
+    @Override
+    public Map<ListInner, String> f1() {
+      return f1;
+    }
+  }
+
+  /**
+   * Interface bean as a map key. The key side of {@code isSupported} threads the resolution context
+   * the same way as the value side, so the interface must synthesize as a bean here too.
+   */
+  @Test
+  public void testMapKeyInterface() {
+    final Map<ListInner, String> map = new HashMap<>();
+    map.put(new ListInnerImpl(42), "v");
+    final KeyMapOuter bean1 = new KeyMapOuterImpl(map);
+    final RowEncoder<KeyMapOuter> encoder = Encoders.bean(KeyMapOuter.class);
+    final BinaryRow row = encoder.toRow(bean1);
+    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final KeyMapOuter deserializedBean = encoder.fromRow(row);
+    final Map.Entry<ListInner, String> entry = deserializedBean.f1().entrySet().iterator().next();
+    Assert.assertEquals(entry.getKey().f1(), 42);
+    Assert.assertEquals(entry.getValue(), "v");
+  }
+
   public interface Value extends Comparable<Value> {
     int v();
 
