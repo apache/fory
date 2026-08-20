@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -21,15 +20,15 @@ import os
 import platform
 import re
 import sys
+import time
 from collections import defaultdict
-from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from plot_style import (  # noqa: E402
+from plot_style import (
     BAR_EDGE_COLOR,
     GROUP_BAR_WIDTH,
     GROUP_X,
@@ -72,6 +71,8 @@ DATATYPE_ORDER = [
     "mediacontentlist",
 ]
 OPERATIONS = ["serialize", "deserialize"]
+PAIR_CASE_PREFIXES = ("external_", "carrier_", "dynamic_")
+PAIR_VARIANTS = ["self", "selected"]
 UNIT_TO_NS = {
     "ps": 1e-3,
     "ns": 1.0,
@@ -134,9 +135,9 @@ def get_system_info(log_file):
         info["CPU Cores (Logical)"] = psutil.cpu_count(logical=True)
         info["Total RAM (GB)"] = round(psutil.virtual_memory().total / (1024**3), 2)
     if os.path.exists(log_file):
-        info["Benchmark Date"] = datetime.fromtimestamp(
-            os.path.getmtime(log_file)
-        ).isoformat(timespec="seconds")
+        info["Benchmark Date"] = time.strftime(
+            "%Y-%m-%dT%H:%M:%S", time.localtime(os.path.getmtime(log_file))
+        )
     return info
 
 
@@ -155,11 +156,20 @@ def load_benchmark_results(log_file):
         re.DOTALL,
     )
     results = defaultdict(lambda: defaultdict(dict))
+    pair_results = defaultdict(lambda: defaultdict(dict))
 
     with open(log_file, "r", encoding="utf-8") as file:
         content = file.read()
 
     for datatype, benchmark_name, measurement in pattern.findall(content):
+        time_ns = parse_time_ns(measurement)
+        if datatype.startswith(PAIR_CASE_PREFIXES):
+            if "_" not in benchmark_name:
+                continue
+            variant, operation = benchmark_name.split("_", 1)
+            if variant in PAIR_VARIANTS and operation in OPERATIONS:
+                pair_results[datatype][operation][variant] = time_ns
+            continue
         if datatype not in DATATYPE_ORDER:
             continue
         if "_" not in benchmark_name:
@@ -167,9 +177,8 @@ def load_benchmark_results(log_file):
         serializer, operation = benchmark_name.split("_", 1)
         if serializer not in SERIALIZER_ORDER or operation not in OPERATIONS:
             continue
-        time_ns = parse_time_ns(measurement)
         results[datatype][operation][serializer] = time_ns
-    return results
+    return results, pair_results
 
 
 def load_serialized_sizes(size_file):
@@ -207,6 +216,10 @@ def format_size_value(value):
 
 def format_tps_tick(tps, _position):
     return format_throughput_tick(tps, _position)
+
+
+def pair_case_title(case):
+    return case.replace("_", " ").title()
 
 
 def plot_throughput_grid_subplot(ax, results, datatype):
@@ -278,15 +291,24 @@ def generate_plots(results, output_dir):
     return throughput_path
 
 
-def write_report(system_info, results, sizes, output_dir, plot_prefix):
+def write_report(system_info, results, pair_results, sizes, output_dir, plot_prefix):
+    pair_rows = []
+    for case in pair_results:
+        for operation in OPERATIONS:
+            self_time = pair_results[case][operation].get("self", 0)
+            selected_time = pair_results[case][operation].get("selected", 0)
+            if self_time > 0 and selected_time > 0:
+                pair_rows.append((case, operation, self_time, selected_time))
+
     report = [
         "# Rust Benchmark Performance Report\n\n",
-        f"_Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_\n\n",
+        f"_Generated on {time.strftime('%Y-%m-%d %H:%M:%S')}_\n\n",
         "## How to Generate This Report\n\n",
         "```bash\n",
         "cd benchmarks/rust\n",
-        "cargo bench --bench serialization_bench 2>&1 | tee results/cargo_bench.log\n",
-        "cargo run --release --bin fory_profiler -- --print-all-serialized-sizes | tee results/serialized_sizes.txt\n",
+        "cargo bench --manifest-path xlang/Cargo.toml --bench serialization_bench 2>&1 | tee results/cargo_bench.log\n",
+        "cargo bench --manifest-path local/Cargo.toml --bench external_type_bench 2>&1 | tee -a results/cargo_bench.log\n",
+        "cargo run --release --manifest-path xlang/Cargo.toml --bin fory_profiler -- --print-all-serialized-sizes | tee results/serialized_sizes.txt\n",
         "python benchmark_report.py --log-file results/cargo_bench.log --size-file results/serialized_sizes.txt --output-dir results\n",
         "```\n\n",
         "## Benchmark Plot\n\n",
@@ -359,6 +381,27 @@ def write_report(system_info, results, sizes, output_dir, plot_prefix):
                 + f" | {fastest} |\n"
             )
 
+    if pair_rows:
+        report.append("\n### External-Type and Carrier Comparisons\n\n")
+        report.append(
+            "These comparisons use equivalent schemas, wire work, and benchmark configuration. "
+            "The selected lane uses an external structural serializer, custom serializer, carrier "
+            "serializer, or registered external target as named by the case. The self lane uses "
+            "the equivalent self-provided target. Lower time is better.\n\n"
+        )
+        report.append(
+            "| Case | Operation | Self-provided (ns) | Selected (ns) | Selected delta |\n"
+        )
+        report.append(
+            "|------|-----------|--------------------|---------------|----------------|\n"
+        )
+        for case, operation, self_time, selected_time in pair_rows:
+            delta = (selected_time / self_time - 1) * 100
+            report.append(
+                f"| {pair_case_title(case)} | {operation.capitalize()} | "
+                f"{self_time:.1f} | {selected_time:.1f} | {delta:+.2f}% |\n"
+            )
+
     if sizes:
         report.append("\n### Serialized Data Sizes (bytes)\n\n")
         report.append("| Datatype | fory | protobuf | msgpack |\n")
@@ -385,12 +428,17 @@ def write_report(system_info, results, sizes, output_dir, plot_prefix):
 
 def main():
     args = parse_args()
-    results = load_benchmark_results(args.log_file)
+    results, pair_results = load_benchmark_results(args.log_file)
     sizes = load_serialized_sizes(args.size_file)
     system_info = get_system_info(args.log_file)
     generate_plots(results, args.output_dir)
     report_path = write_report(
-        system_info, results, sizes, args.output_dir, args.plot_prefix
+        system_info,
+        results,
+        pair_results,
+        sizes,
+        args.output_dir,
+        args.plot_prefix,
     )
     print(f"✅ Plots saved in: {args.output_dir}")
     print(f"📄 Markdown report generated at: {report_path}")

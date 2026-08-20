@@ -15,227 +15,131 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::buffer::{Reader, Writer};
+use crate::context::{ReadContext, WriteContext};
+use crate::error::Error;
+use crate::serializer::util::read_basic_type_info;
+use crate::serializer::Serializer;
+use crate::type_id::TypeId;
 use crate::types::bfloat16::bfloat16;
 use crate::types::float16::float16;
-
-use crate::buffer::{Reader, Writer};
-use crate::context::ReadContext;
-use crate::context::WriteContext;
-use crate::error::Error;
-use crate::resolver::TypeResolver;
-use crate::serializer::util::read_basic_type_info;
-use crate::serializer::{ForyDefault, Serializer};
-use crate::type_id::TypeId;
+use std::sync::Arc;
 
 macro_rules! impl_num_serializer {
-    ($ty:ty, $writer:expr, $reader:expr, $field_type:expr) => {
+    (
+        $ty:ty,
+        $writer:expr,
+        $reader:expr,
+        $type_id:expr,
+        $default:expr
+    ) => {
         impl Serializer for $ty {
+            type Target = Self;
+
+            const READ_DATA_ALWAYS_ADVANCES: bool = true;
+
             #[inline(always)]
-            fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-                $writer(&mut context.writer, *self);
+            fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+                $writer(&mut context.writer, *value);
                 Ok(())
             }
 
             #[inline(always)]
-            fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+            fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
                 $reader(&mut context.reader)
             }
-            #[inline]
-            fn fory_read_data_as_send_sync_any(
+
+            #[inline(always)]
+            fn default_value(_: &mut ReadContext) -> Result<Self, Error> {
+                Ok($default)
+            }
+
+            #[inline(always)]
+            fn read_arc_any(
                 context: &mut ReadContext,
-            ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-            where
-                Self: Sized + ForyDefault,
-            {
-                Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-                    context,
-                )?))
+            ) -> Result<Arc<dyn std::any::Any + Send + Sync>, Error> {
+                Ok(Arc::new(Self::read_data(context)?))
             }
 
             #[inline(always)]
-            fn fory_reserved_space() -> usize {
-                std::mem::size_of::<$ty>()
+            fn reserved_space() -> usize {
+                std::mem::size_of::<Self>()
             }
 
             #[inline(always)]
-            fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-                Ok($field_type)
+            fn static_type_id() -> TypeId {
+                $type_id
             }
 
             #[inline(always)]
-            fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-                Ok($field_type)
-            }
-
-            #[inline(always)]
-            fn fory_static_type_id() -> TypeId {
-                $field_type
-            }
-
-            #[inline(always)]
-            fn as_any(&self) -> &dyn std::any::Any {
-                self
-            }
-
-            #[inline(always)]
-            fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-                context.writer.write_var_u32($field_type as u32);
+            fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+                context.writer.write_var_u32($type_id as u32);
                 Ok(())
             }
 
             #[inline(always)]
-            fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+            fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
                 read_basic_type_info::<Self>(context)
-            }
-        }
-        impl ForyDefault for $ty {
-            #[inline(always)]
-            fn fory_default() -> Self {
-                0 as $ty
             }
         }
     };
 }
 
-impl_num_serializer!(i8, Writer::write_i8, Reader::read_i8, TypeId::INT8);
-impl_num_serializer!(i16, Writer::write_i16, Reader::read_i16, TypeId::INT16);
+impl_num_serializer!(i8, Writer::write_i8, Reader::read_i8, TypeId::INT8, 0);
+impl_num_serializer!(i16, Writer::write_i16, Reader::read_i16, TypeId::INT16, 0);
 impl_num_serializer!(
     i32,
     Writer::write_var_i32,
     Reader::read_var_i32,
-    TypeId::VARINT32
+    TypeId::VARINT32,
+    0
 );
 impl_num_serializer!(
     i64,
     Writer::write_var_i64,
     Reader::read_var_i64,
-    TypeId::VARINT64
+    TypeId::VARINT64,
+    0
 );
-impl_num_serializer!(f32, Writer::write_f32, Reader::read_f32, TypeId::FLOAT32);
-impl_num_serializer!(f64, Writer::write_f64, Reader::read_f64, TypeId::FLOAT64);
-
-// Custom implementation for float16 (cannot use 0 as float16)
-impl Serializer for float16 {
-    #[inline(always)]
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        Writer::write_f16(&mut context.writer, *self);
-        Ok(())
-    }
-    #[inline(always)]
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        Reader::read_f16(&mut context.reader)
-    }
-    #[inline]
-    fn fory_read_data_as_send_sync_any(
-        context: &mut ReadContext,
-    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-            context,
-        )?))
-    }
-    #[inline(always)]
-    fn fory_reserved_space() -> usize {
-        std::mem::size_of::<float16>()
-    }
-    #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::FLOAT16)
-    }
-    #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::FLOAT16)
-    }
-    #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
-        TypeId::FLOAT16
-    }
-    #[inline(always)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    #[inline(always)]
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_u32(TypeId::FLOAT16 as u32);
-        Ok(())
-    }
-    #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        read_basic_type_info::<Self>(context)
-    }
-}
-
-impl ForyDefault for float16 {
-    #[inline(always)]
-    fn fory_default() -> Self {
-        float16::ZERO
-    }
-}
-
-impl Serializer for bfloat16 {
-    #[inline(always)]
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        Writer::write_bf16(&mut context.writer, *self);
-        Ok(())
-    }
-    #[inline(always)]
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        Reader::read_bf16(&mut context.reader)
-    }
-    #[inline]
-    fn fory_read_data_as_send_sync_any(
-        context: &mut ReadContext,
-    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-            context,
-        )?))
-    }
-    #[inline(always)]
-    fn fory_reserved_space() -> usize {
-        std::mem::size_of::<bfloat16>()
-    }
-    #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::BFLOAT16)
-    }
-    #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::BFLOAT16)
-    }
-    #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
-        TypeId::BFLOAT16
-    }
-    #[inline(always)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    #[inline(always)]
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_u32(TypeId::BFLOAT16 as u32);
-        Ok(())
-    }
-    #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        read_basic_type_info::<Self>(context)
-    }
-}
-
-impl ForyDefault for bfloat16 {
-    #[inline(always)]
-    fn fory_default() -> Self {
-        bfloat16::ZERO
-    }
-}
-impl_num_serializer!(i128, Writer::write_i128, Reader::read_i128, TypeId::INT128);
+impl_num_serializer!(
+    f32,
+    Writer::write_f32,
+    Reader::read_f32,
+    TypeId::FLOAT32,
+    0.0
+);
+impl_num_serializer!(
+    f64,
+    Writer::write_f64,
+    Reader::read_f64,
+    TypeId::FLOAT64,
+    0.0
+);
+impl_num_serializer!(
+    float16,
+    Writer::write_f16,
+    Reader::read_f16,
+    TypeId::FLOAT16,
+    float16::ZERO
+);
+impl_num_serializer!(
+    bfloat16,
+    Writer::write_bf16,
+    Reader::read_bf16,
+    TypeId::BFLOAT16,
+    bfloat16::ZERO
+);
+impl_num_serializer!(
+    i128,
+    Writer::write_i128,
+    Reader::read_i128,
+    TypeId::INT128,
+    0
+);
 impl_num_serializer!(
     isize,
     Writer::write_isize,
     Reader::read_isize,
-    TypeId::ISIZE
+    TypeId::ISIZE,
+    0
 );

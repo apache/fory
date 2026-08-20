@@ -25,6 +25,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableList;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -82,9 +83,64 @@ public class TypeDefTest extends ForyTestBase {
     private Map map3;
   }
 
+  static class StringMap extends HashMap<String, String> {}
+
+  static class StringMapHolder {
+    private StringMap values;
+  }
+
+  static class StringList extends ArrayList<String> {}
+
+  static class StringListHolder {
+    private StringList values;
+  }
+
+  static class SelfList extends ArrayList<SelfList> {}
+
+  static class SelfListHolder {
+    private SelfList values;
+  }
+
+  static class SelfMap extends HashMap<SelfMap, SelfMap> {}
+
+  static class SelfMapHolder {
+    private SelfMap values;
+  }
+
+  static class BoundedCollectionHolder<T extends Collection<T>> {
+    private T values;
+  }
+
+  static class MultiParamMap<A, K, V> extends HashMap<K, V> {}
+
+  static class MultiParamMapHolder {
+    private MultiParamMap<Object, String, List<String>> values;
+  }
+
+  static class MultiParamList<A, B, E> extends ArrayList<E> {}
+
+  static class MultiParamListHolder {
+    private MultiParamList<Object, Long, String> values;
+  }
+
+  static class SwappedMap<K, V> extends HashMap<V, K> {}
+
+  static class NestedElementList<E> extends ArrayList<List<E>> {}
+
+  static class RemappedContainerHolder {
+    private SwappedMap<String, Integer> map;
+    private NestedElementList<String> list;
+  }
+
   @Test
   public void testTypeDefSerialization() throws NoSuchFieldException {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     {
       TypeDef typeDef =
           TypeDef.buildTypeDef(
@@ -133,7 +189,13 @@ public class TypeDefTest extends ForyTestBase {
 
   @Test
   public void testDuplicateFieldsClass() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     {
       TypeDef typeDef =
           TypeDef.buildTypeDef(
@@ -154,7 +216,13 @@ public class TypeDefTest extends ForyTestBase {
 
   @Test
   public void testContainerClass() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     List<Field> fields = ReflectionUtils.getFields(ContainerClass.class, true);
     TypeDef typeDef =
         TypeDef.buildTypeDef((ClassResolver) fory.getTypeResolver(), ContainerClass.class, fields);
@@ -165,6 +233,112 @@ public class TypeDefTest extends ForyTestBase {
     TypeDef typeDef1 = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
     assertEquals(typeDef1.getClassName(), typeDef.getClassName());
     assertEquals(typeDef1, typeDef);
+  }
+
+  @Test
+  public void testInheritedMapFieldTypes() {
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), StringMapHolder.class);
+
+    FieldTypes.MapFieldType mapType =
+        (FieldTypes.MapFieldType) typeDef.getFieldsInfo().get(0).getFieldType();
+    assertEquals(mapType.getKeyType().getTypeId(), Types.STRING);
+    assertEquals(mapType.getValueType().getTypeId(), Types.STRING);
+  }
+
+  @Test
+  public void testInheritedCollectionFieldType() {
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), StringListHolder.class);
+
+    FieldTypes.CollectionFieldType collectionType =
+        (FieldTypes.CollectionFieldType) typeDef.getFieldsInfo().get(0).getFieldType();
+    assertEquals(collectionType.getElementType().getTypeId(), Types.STRING);
+  }
+
+  @Test
+  public void testRecursiveContainerFieldTypes() {
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+
+    TypeDef listTypeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), SelfListHolder.class);
+    FieldTypes.CollectionFieldType listType =
+        (FieldTypes.CollectionFieldType) listTypeDef.getFieldsInfo().get(0).getFieldType();
+    assertEquals(listType.getElementType().getTypeId(), ClassResolver.EMPTY_OBJECT_ID);
+
+    TypeDef mapTypeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), SelfMapHolder.class);
+    FieldTypes.MapFieldType mapType =
+        (FieldTypes.MapFieldType) mapTypeDef.getFieldsInfo().get(0).getFieldType();
+    assertEquals(mapType.getKeyType().getTypeId(), ClassResolver.EMPTY_OBJECT_ID);
+    assertEquals(mapType.getValueType().getTypeId(), ClassResolver.EMPTY_OBJECT_ID);
+
+    TypeDef boundedTypeDef =
+        TypeDef.buildTypeDef(fory.getTypeResolver(), BoundedCollectionHolder.class);
+    FieldTypes.CollectionFieldType boundedType =
+        (FieldTypes.CollectionFieldType) boundedTypeDef.getFieldsInfo().get(0).getFieldType();
+    assertEquals(boundedType.getElementType().getTypeId(), ClassResolver.EMPTY_OBJECT_ID);
+  }
+
+  @Test
+  public void testMultiParamContainerFieldTypes() {
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+
+    TypeDef mapTypeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), MultiParamMapHolder.class);
+    FieldTypes.MapFieldType mapType =
+        (FieldTypes.MapFieldType) mapTypeDef.getFieldsInfo().get(0).getFieldType();
+    assertEquals(mapType.getKeyType().getTypeId(), Types.STRING);
+    FieldTypes.CollectionFieldType valueType =
+        (FieldTypes.CollectionFieldType) mapType.getValueType();
+    assertEquals(valueType.getElementType().getTypeId(), Types.STRING);
+
+    TypeDef listTypeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), MultiParamListHolder.class);
+    FieldTypes.CollectionFieldType listType =
+        (FieldTypes.CollectionFieldType) listTypeDef.getFieldsInfo().get(0).getFieldType();
+    assertEquals(listType.getElementType().getTypeId(), Types.STRING);
+  }
+
+  @Test
+  public void testContainerTypeRebuild() {
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Map<String, Descriptor> descriptors =
+        Descriptor.getDescriptorsMap(RemappedContainerHolder.class);
+
+    Descriptor mapDescriptor = descriptors.get("map");
+    FieldTypes.MapFieldType mapType =
+        (FieldTypes.MapFieldType) FieldTypes.buildFieldType(fory.getTypeResolver(), mapDescriptor);
+    FieldTypes.MapFieldType remoteMapType =
+        new FieldTypes.MapFieldType(
+            mapType.getTypeId(),
+            !mapType.nullable(),
+            mapType.trackingRef(),
+            mapType.getKeyType(),
+            mapType.getValueType());
+    Descriptor rebuiltMap =
+        new FieldInfo(RemappedContainerHolder.class.getName(), "map", remoteMapType)
+            .toDescriptor(fory.getTypeResolver(), mapDescriptor);
+    List<TypeRef<?>> rebuiltMapTypes = rebuiltMap.getTypeRef().getTypeArguments();
+    assertEquals(rebuiltMapTypes.size(), 2);
+    assertEquals(rebuiltMapTypes.get(0).getRawType(), Integer.class);
+    assertEquals(rebuiltMapTypes.get(1).getRawType(), String.class);
+
+    Descriptor listDescriptor = descriptors.get("list");
+    FieldTypes.CollectionFieldType listType =
+        (FieldTypes.CollectionFieldType)
+            FieldTypes.buildFieldType(fory.getTypeResolver(), listDescriptor);
+    FieldTypes.CollectionFieldType remoteListType =
+        new FieldTypes.CollectionFieldType(
+            listType.getTypeId(),
+            !listType.nullable(),
+            listType.trackingRef(),
+            listType.getElementType());
+    Descriptor rebuiltList =
+        new FieldInfo(RemappedContainerHolder.class.getName(), "list", remoteListType)
+            .toDescriptor(fory.getTypeResolver(), listDescriptor);
+    List<TypeRef<?>> rebuiltListTypes = rebuiltList.getTypeRef().getTypeArguments();
+    assertEquals(rebuiltListTypes.size(), 1);
+    TypeRef<?> rebuiltElementType = rebuiltListTypes.get(0);
+    assertEquals(rebuiltElementType.getRawType(), List.class);
+    assertEquals(rebuiltElementType.getTypeArguments().size(), 1);
+    assertEquals(rebuiltElementType.getTypeArguments().get(0).getRawType(), String.class);
   }
 
   @Test

@@ -23,10 +23,10 @@ private let secondsPerDay = 86_400.0
 
 @ForyStruct
 private struct DateMacroHolder {
-    var day: LocalDate = .foryDefault()
+    var day: LocalDate = LocalDate()
 
-    var instant: Date = .foryDefault()
-    var timestamp: Date = .foryDefault()
+    var instant: Date = Date(timeIntervalSince1970: 0)
+    var timestamp: Date = Date(timeIntervalSince1970: 0)
 }
 
 private func midnightUTC(epochDay: Int32) -> Date {
@@ -139,7 +139,7 @@ func dateAndTimestampContextHelpersUseExpectedWireProtocols() throws {
 @Test
 func dateAndTimestampMacroFieldRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(DateMacroHolder.self, id: 901)
+    try fory.register(DateMacroHolder.self, id: 901)
 
     let value = DateMacroHolder(
         day: localDate(20_001),

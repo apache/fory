@@ -35,6 +35,7 @@ import kotlin.time.TimedValue;
 import kotlin.uuid.Uuid;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
+import org.apache.fory.codegen.GeneratedClassNames;
 import org.apache.fory.config.Config;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.resolver.TypeResolver;
@@ -316,33 +317,7 @@ public class KotlinSerializers {
   }
 
   private static String generatedSerializerBinaryName(Class<?> cls) {
-    String binaryName = cls.getName();
-    int packageEnd = binaryName.lastIndexOf('.');
-    if (packageEnd < 0) {
-      return escapeBinarySimpleName(binaryName) + XLANG_GENERATED_SERIALIZER_SUFFIX;
-    }
-    return binaryName.substring(0, packageEnd)
-        + "."
-        + escapeBinarySimpleName(binaryName.substring(packageEnd + 1))
-        + XLANG_GENERATED_SERIALIZER_SUFFIX;
-  }
-
-  private static String escapeBinarySimpleName(String binarySimpleName) {
-    StringBuilder builder = new StringBuilder(binarySimpleName.length() + 32);
-    for (int index = 0; index < binarySimpleName.length(); ) {
-      int codePoint = binarySimpleName.codePointAt(index);
-      if (codePoint == '$') {
-        builder.append('_');
-      } else if (codePoint == '_') {
-        builder.append("_u_");
-      } else if (Character.isJavaIdentifierPart(codePoint)) {
-        builder.appendCodePoint(codePoint);
-      } else {
-        builder.append("_x").append(Integer.toHexString(codePoint)).append('_');
-      }
-      index += Character.charCount(codePoint);
-    }
-    return builder.toString();
+    return GeneratedClassNames.withSuffix(cls.getName(), XLANG_GENERATED_SERIALIZER_SUFFIX);
   }
 
   @SuppressWarnings("unchecked")

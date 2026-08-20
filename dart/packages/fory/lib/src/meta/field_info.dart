@@ -20,9 +20,21 @@
 import 'package:fory/src/meta/field_type.dart';
 
 final class FieldInfo {
+  /// The local source name used in diagnostics.
+  ///
+  /// Remote fields use their textual wire identity because no Dart source
+  /// declaration exists.
   final String name;
+
+  /// The protocol's textual id-or-name form used for encoding and hashing.
+  ///
+  /// Compatible matching uses [id] for tagged fields and this value only for
+  /// untagged fields, so the two identity domains remain distinct.
   final String identifier;
+
+  /// The numeric wire tag for a tagged field.
   final int? id;
+
   final FieldType fieldType;
 
   const FieldInfo({

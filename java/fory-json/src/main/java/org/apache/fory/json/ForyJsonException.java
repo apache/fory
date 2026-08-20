@@ -21,7 +21,13 @@ package org.apache.fory.json;
 
 import org.apache.fory.exception.ForyException;
 
-/** Runtime exception raised by Fory JSON readers, writers, and metadata builders. */
+/**
+ * Root runtime exception for JSON syntax, mapping, codec, generated-code, and resource-limit
+ * failures reported by Fory JSON.
+ *
+ * <p>User exceptions thrown by custom code may retain their own type; this exception identifies
+ * failures owned and contextualized by the JSON runtime itself.
+ */
 public class ForyJsonException extends ForyException {
   public ForyJsonException(String message) {
     super(message);

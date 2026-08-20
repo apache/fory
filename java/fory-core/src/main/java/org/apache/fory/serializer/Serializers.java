@@ -817,6 +817,11 @@ public class Serializers {
 
     @Override
     public Object read(ReadContext readContext) {
+      // EmptyObjectSerializer materializes a fresh Object instance. Charge the
+      // portable lower-bound owner size; Java exposes no standard object-layout API
+      // without an agent, and this graph budget must not reject based on larger
+      // JVM-specific layouts.
+      readContext.reserveGraphMemory(8);
       return new Object();
     }
   }

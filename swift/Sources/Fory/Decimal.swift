@@ -225,17 +225,17 @@ extension Decimal {
 }
 
 extension Decimal: Serializer {
-    public static func foryDefault() -> Decimal {
+    public static func defaultValue(_ context: ReadContext) throws -> Decimal {
         .zero
     }
 
     public static var staticTypeId: TypeId {
         .decimal
     }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        let state = foundationDecimalWireState(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        let state = foundationDecimalWireState(value)
         context.buffer.writeVarInt32(state.scale)
         if let small = smallUnscaledValueForWire(state) {
             let header = encodeDecimalZigZag64(small) << 1
@@ -253,7 +253,7 @@ extension Decimal: Serializer {
         context.buffer.writeBytes(state.magnitude)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Decimal {
+    public static func readData(_ context: ReadContext) throws -> Decimal {
         let scale = try context.buffer.readVarInt32()
         let header = try context.buffer.readVarUInt64()
         if (header & 1) == 0 {
@@ -268,10 +268,18 @@ extension Decimal: Serializer {
 
         let meta = header >> 1
         let signum: Int8 = (meta & 1) == 0 ? 1 : -1
-        let length = Int(meta >> 1)
-        guard length > 0 else {
-            throw ForyError.invalidData("invalid decimal magnitude length \(length)")
+        let rawLength = meta >> 1
+        guard rawLength > 0 else {
+            throw ForyError.invalidData("invalid decimal magnitude length \(rawLength)")
         }
+        // Foundation.Decimal has eight 16-bit mantissa words. Check the unsigned
+        // wire length before native conversion or copying an attacker-sized body.
+        guard rawLength <= UInt64(decimalMaxMagnitudeBytes) else {
+            throw ForyError.invalidData(
+                "decimal magnitude with \(rawLength) bytes exceeds Foundation.Decimal precision"
+            )
+        }
+        let length = Int(rawLength)
         let magnitudeBytes = try context.buffer.readBytes(count: length)
         guard magnitudeBytes[length - 1] != 0 else {
             throw ForyError.invalidData("non-canonical decimal magnitude bytes: trailing zero byte")

@@ -37,6 +37,7 @@ INT64_TYPE_ID = TypeId.VARINT64
 FLOAT64_TYPE_ID = TypeId.FLOAT64
 BOOL_TYPE_ID = TypeId.BOOL
 STRING_TYPE_ID = TypeId.STRING
+_MAX_GRAPH_MEMORY_BYTES = (1 << 63) - 1
 
 
 def _mix64(x: int) -> int:
@@ -470,6 +471,10 @@ class ReadContext:
         "field_nullable",
         "policy",
         "max_depth",
+        "_max_graph_memory_bytes",
+        "_remaining_graph_memory_bytes",
+        "_max_unbacked_container_items",
+        "remaining_unbacked_container_items",
         "ref_reader",
         "meta_string_reader",
         "meta_share_context",
@@ -490,6 +495,10 @@ class ReadContext:
         self.field_nullable = config.field_nullable
         self.policy = config.policy
         self.max_depth = config.max_depth
+        self._max_graph_memory_bytes = config.max_graph_memory_bytes
+        self._remaining_graph_memory_bytes = 0
+        self._max_unbacked_container_items = config.max_unbacked_container_items
+        self.remaining_unbacked_container_items = 0
         self.ref_reader = MapRefReader() if self.track_ref else NoRefReader()
         self.meta_string_reader = MetaStringReader(type_resolver.shared_registry)
         self.meta_share_context = MetaShareReadContext() if config.scoped_meta_share_enabled else None
@@ -511,8 +520,7 @@ class ReadContext:
             raise ValueError(f"Readable byte count {length} is negative")
         if length == 0:
             return
-        reader_index = self.buffer.get_reader_index()
-        self.buffer.check_bound(reader_index, length)
+        self.buffer.ensure_readable(length)
 
     def prepare(
         self,
@@ -525,9 +533,12 @@ class ReadContext:
         self.buffers = iter(buffers) if buffers is not None else None
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
+        self._remaining_graph_memory_bytes = self._max_graph_memory_bytes
+        self.remaining_unbacked_container_items = self._max_unbacked_container_items
         self.depth = 0
 
     def reset(self):
+        buffer = self.buffer
         self.ref_reader.reset()
         self.meta_string_reader.reset()
         if self.meta_share_context is not None:
@@ -538,7 +549,42 @@ class ReadContext:
         self.buffers = None
         self.unsupported_objects = None
         self.peer_out_of_band_enabled = False
+        self._remaining_graph_memory_bytes = 0
+        self.remaining_unbacked_container_items = 0
         self.depth = 0
+        if buffer is not None:
+            buffer.shrink_input_buffer()
+
+    def reserve_graph_memory(self, num_bytes):
+        if num_bytes < 0:
+            raise ValueError("Estimated graph memory is negative")
+        if num_bytes > _MAX_GRAPH_MEMORY_BYTES:
+            raise ValueError("Estimated graph memory overflow")
+        remaining = self._remaining_graph_memory_bytes
+        if num_bytes > remaining:
+            used = self._max_graph_memory_bytes - remaining
+            raise ValueError(
+                f"Estimated graph memory budget exceeded: requested {num_bytes} bytes, "
+                f"used {used} bytes, limit {self._max_graph_memory_bytes} bytes. "
+                "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
+            )
+        self._remaining_graph_memory_bytes = remaining - num_bytes
+
+    def reserve_unbacked_container_items(self, num_items):
+        remaining = self.remaining_unbacked_container_items
+        if num_items > remaining:
+            self._raise_unbacked_container_items(num_items, remaining)
+        self.remaining_unbacked_container_items = remaining - num_items
+
+    def _raise_unbacked_container_items(self, num_items, remaining):
+        if num_items < 0:
+            raise ValueError("Unbacked container item count is negative")
+        used = self._max_unbacked_container_items - remaining
+        raise ValueError(
+            f"Unbacked container item budget exceeded: requested {num_items} items, "
+            f"used {used} items, limit {self._max_unbacked_container_items} items. "
+            "Increase Fory(..., max_unbacked_container_items=...) for trusted larger payloads."
+        )
 
     def add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj
@@ -611,7 +657,8 @@ class ReadContext:
         return self.read_non_ref(serializer=serializer)
 
     def read_nullable(self, serializer=None):
-        if self.buffer.read_int8() == NULL_FLAG:
+        head_flag = self.buffer.read_int8()
+        if head_flag == NULL_FLAG:
             return None
         return self.read_non_ref(serializer=serializer)
 

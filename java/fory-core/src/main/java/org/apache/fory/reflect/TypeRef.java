@@ -95,12 +95,37 @@ public class TypeRef<T> {
       TypeExtMeta typeExtMeta,
       List<TypeRef<?>> typeArguments,
       TypeRef<?> componentType) {
+    this(type, typeExtMeta, typeArguments, componentType, true);
+  }
+
+  private TypeRef(
+      Type type,
+      TypeExtMeta typeExtMeta,
+      List<TypeRef<?>> typeArguments,
+      TypeRef<?> componentType,
+      boolean normalizeArgs) {
+    this(type, typeExtMeta, typeArguments, componentType, normalizeArgs, null);
+  }
+
+  private TypeRef(
+      Type type,
+      TypeExtMeta typeExtMeta,
+      List<TypeRef<?>> typeArguments,
+      TypeRef<?> componentType,
+      boolean normalizeArgs,
+      Set<Class<?>> activeContainerTypes) {
     this.type = type;
     this.typeExtMeta = typeExtMeta;
     this.typeArguments =
         typeArguments == null
             ? null
-            : immutableTypeArguments(normalizeContainerTypeArguments(type, typeArguments));
+            : immutableTypeArguments(
+                normalizeArgs
+                    ? normalizeContainerTypeArguments(
+                        type,
+                        typeArguments,
+                        activeContainerTypes == null ? new HashSet<>() : activeContainerTypes)
+                    : typeArguments);
     this.componentType = componentType;
     this.hasTypeExtMeta = hasNestedTypeExtMeta(typeExtMeta, this.typeArguments, componentType);
   }
@@ -144,53 +169,127 @@ public class TypeRef<T> {
     return new TypeRef<>(type, typeExtMeta, typeArguments, componentType);
   }
 
+  /** Builds a container type whose arguments are normalized semantic element/key/value types. */
+  @Internal
+  public static <T> TypeRef<T> ofSemanticTypeArguments(
+      Type type,
+      TypeExtMeta typeExtMeta,
+      List<TypeRef<?>> typeArguments,
+      TypeRef<?> componentType) {
+    // Hierarchy normalization interprets arguments as raw declaration parameters. Callers of this
+    // factory already carry semantic element/key/value types and must not normalize them again.
+    return new TypeRef<>(type, typeExtMeta, typeArguments, componentType, false);
+  }
+
+  /** Builds a generated type whose arguments still follow the raw class declaration. */
+  @Internal
+  public static <T> TypeRef<T> ofDeclaredTypeArguments(
+      Class<T> rawType,
+      TypeExtMeta typeExtMeta,
+      List<TypeRef<?>> typeArguments,
+      TypeRef<?> componentType) {
+    return ofDeclaredTypeArguments(rawType, typeExtMeta, typeArguments, componentType, null);
+  }
+
+  /** Builds a generated member type whose arguments still follow the source declaration. */
+  @Internal
+  public static <T> TypeRef<T> ofDeclaredTypeArguments(
+      Class<T> rawType,
+      TypeExtMeta typeExtMeta,
+      List<TypeRef<?>> typeArguments,
+      TypeRef<?> componentType,
+      TypeRef<?> ownerType) {
+    List<TypeRef<?>> normalizedArguments = typeArguments;
+    Type declaredType = rawType;
+    if (typeArguments != null) {
+      Type[] argumentTypes = new Type[typeArguments.size()];
+      for (int i = 0; i < typeArguments.size(); i++) {
+        argumentTypes[i] = typeArguments.get(i).getType();
+      }
+      declaredType =
+          new ParameterizedTypeImpl(
+              ownerType == null ? null : ownerType.getType(), rawType, argumentTypes);
+      normalizedArguments = normalizeContainerTypeArguments(declaredType, typeArguments);
+    }
+    // Keep declaration arguments in the Java Type for owner-variable resolution, while explicit
+    // arguments carry normalized element/key/value semantics and type-use metadata.
+    return new TypeRef<>(declaredType, typeExtMeta, normalizedArguments, componentType, false);
+  }
+
   @Internal
   public static <T> TypeRef<T> ofTypeUse(Object typeUse) {
     return TypeUseMetadata.typeRef(typeUse);
   }
 
   private static List<TypeRef<?>> immutableTypeArguments(List<TypeRef<?>> typeArguments) {
-    return typeArguments == null
-        ? null
-        : Collections.unmodifiableList(new ArrayList<>(typeArguments));
+    if (typeArguments == null) {
+      return null;
+    }
+    if (typeArguments.isEmpty()) {
+      return Collections.emptyList();
+    }
+    return Collections.unmodifiableList(new ArrayList<>(typeArguments));
   }
 
   private static List<TypeRef<?>> normalizeContainerTypeArguments(
       Type type, List<TypeRef<?>> typeArguments) {
-    if (typeArguments.isEmpty()) {
+    return normalizeContainerTypeArguments(type, typeArguments, new HashSet<>());
+  }
+
+  private static List<TypeRef<?>> normalizeContainerTypeArguments(
+      Type type, List<TypeRef<?>> typeArguments, Set<Class<?>> activeContainerTypes) {
+    Class<?> rawType = TypeUtils.getRawType(type);
+    boolean mapLike = isMapLike(rawType);
+    if (!mapLike && !isIterableLike(rawType)) {
       return typeArguments;
     }
-    Class<?> rawType = TypeUtils.getRawType(type);
-    if (isMapLike(rawType)) {
-      return normalizeMapTypeArguments(type, rawType, typeArguments);
+    // Inherited element/key/value types can form mutual cycles across container classes. A repeated
+    // raw owner has no finite semantic argument tree, so terminate that branch explicitly.
+    if (!activeContainerTypes.add(rawType)) {
+      return Collections.emptyList();
     }
-    if (isIterableLike(rawType)) {
-      return normalizeIterableTypeArguments(type, rawType, typeArguments);
+    try {
+      if (mapLike) {
+        return normalizeMapTypeArguments(type, rawType, typeArguments, activeContainerTypes);
+      }
+      return normalizeIterableTypeArguments(type, rawType, typeArguments, activeContainerTypes);
+    } finally {
+      activeContainerTypes.remove(rawType);
     }
-    return typeArguments;
   }
 
   private static List<TypeRef<?>> normalizeIterableTypeArguments(
-      Type type, Class<?> rawType, List<TypeRef<?>> typeArguments) {
+      Type type,
+      Class<?> rawType,
+      List<TypeRef<?>> typeArguments,
+      Set<Class<?>> activeContainerTypes) {
     if (!hasFullExplicitRawArgs(type, rawType, typeArguments)) {
       return typeArguments;
     }
+    TypeRef<?> elementType = rawIterableElementType(rawType);
     return Collections.singletonList(
         resolveTypeVariables(
-            rawIterableElementType(rawType).getType(),
-            explicitTypeVarRefs(rawType, typeArguments)));
+            elementType.getType(),
+            explicitTypeVarRefs(type, rawType, typeArguments),
+            rawType,
+            activeContainerTypes));
   }
 
   private static List<TypeRef<?>> normalizeMapTypeArguments(
-      Type type, Class<?> rawType, List<TypeRef<?>> typeArguments) {
+      Type type,
+      Class<?> rawType,
+      List<TypeRef<?>> typeArguments,
+      Set<Class<?>> activeContainerTypes) {
     if (!hasFullExplicitRawArgs(type, rawType, typeArguments)) {
       return typeArguments;
     }
     Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = rawMapKeyValueTypes(rawType);
-    Map<TypeVariableKey, TypeRef<?>> typeVarRefs = explicitTypeVarRefs(rawType, typeArguments);
+    Map<TypeVariableKey, TypeRef<?>> typeVarRefs =
+        explicitTypeVarRefs(type, rawType, typeArguments);
     return Arrays.asList(
-        resolveTypeVariables(keyValueType.f0.getType(), typeVarRefs),
-        resolveTypeVariables(keyValueType.f1.getType(), typeVarRefs));
+        resolveTypeVariables(keyValueType.f0.getType(), typeVarRefs, rawType, activeContainerTypes),
+        resolveTypeVariables(
+            keyValueType.f1.getType(), typeVarRefs, rawType, activeContainerTypes));
   }
 
   private static boolean hasFullExplicitRawArgs(
@@ -201,9 +300,12 @@ public class TypeRef<T> {
   }
 
   private static Map<TypeVariableKey, TypeRef<?>> explicitTypeVarRefs(
-      Class<?> rawType, List<TypeRef<?>> typeArguments) {
-    TypeVariable<?>[] variables = rawType.getTypeParameters();
+      Type type, Class<?> rawType, List<TypeRef<?>> typeArguments) {
     Map<TypeVariableKey, TypeRef<?>> typeVarRefs = new HashMap<>();
+    for (Map.Entry<TypeVariableKey, Type> entry : resolveTypeMappings(type).entrySet()) {
+      typeVarRefs.put(entry.getKey(), TypeRef.of(entry.getValue()));
+    }
+    TypeVariable<?>[] variables = rawType.getTypeParameters();
     for (int i = 0; i < variables.length; i++) {
       typeVarRefs.put(new TypeVariableKey(variables[i]), typeArguments.get(i));
     }
@@ -241,37 +343,81 @@ public class TypeRef<T> {
   }
 
   private static TypeRef<?> resolveTypeVariables(
-      Type type, Map<TypeVariableKey, TypeRef<?>> typeVarRefs) {
+      Type type,
+      Map<TypeVariableKey, TypeRef<?>> typeVarRefs,
+      Class<?> containerRawType,
+      Set<Class<?>> activeContainerTypes) {
     if (type instanceof TypeVariable) {
       TypeRef<?> typeRef = typeVarRefs.get(new TypeVariableKey((TypeVariable<?>) type));
       return typeRef == null ? TypeRef.of(type) : typeRef;
+    }
+    if (type instanceof WildcardType) {
+      WildcardType wildcardType = (WildcardType) type;
+      Type[] upperBounds =
+          resolveTypeVariables(
+              wildcardType.getUpperBounds(), typeVarRefs, containerRawType, activeContainerTypes);
+      Type[] lowerBounds =
+          resolveTypeVariables(
+              wildcardType.getLowerBounds(), typeVarRefs, containerRawType, activeContainerTypes);
+      return TypeRef.of(new WildcardTypeImpl(upperBounds, lowerBounds));
     }
     if (type instanceof ParameterizedType) {
       ParameterizedType parameterizedType = (ParameterizedType) type;
       Type ownerType = parameterizedType.getOwnerType();
       Type resolvedOwnerType =
-          ownerType == null ? null : resolveTypeVariables(ownerType, typeVarRefs).getType();
+          ownerType == null
+              ? null
+              : resolveTypeVariables(ownerType, typeVarRefs, containerRawType, activeContainerTypes)
+                  .getType();
       Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();
       List<TypeRef<?>> resolvedArguments = new ArrayList<>(actualTypeArguments.length);
       Type[] resolvedTypes = new Type[actualTypeArguments.length];
       for (int i = 0; i < actualTypeArguments.length; i++) {
-        TypeRef<?> resolvedType = resolveTypeVariables(actualTypeArguments[i], typeVarRefs);
+        TypeRef<?> resolvedType =
+            resolveTypeVariables(
+                actualTypeArguments[i], typeVarRefs, containerRawType, activeContainerTypes);
         resolvedArguments.add(resolvedType);
         resolvedTypes[i] = resolvedType.getType();
       }
-      return TypeRef.of(
+      ParameterizedType resolvedType =
           new ParameterizedTypeImpl(
-              resolvedOwnerType, parameterizedType.getRawType(), resolvedTypes),
-          null,
-          resolvedArguments,
-          null);
+              resolvedOwnerType, parameterizedType.getRawType(), resolvedTypes);
+      if (resolvedType.getRawType() == containerRawType) {
+        // Self-referential containers have no finite normalized argument tree. Keep the resolved
+        // element type, such as Box<?> or Box<String>, without expanding its collection element
+        // arguments again.
+        return ofResolvedTypeArgs(resolvedType, Collections.emptyList());
+      }
+      return new TypeRef<>(resolvedType, null, resolvedArguments, null, true, activeContainerTypes);
     }
     if (type instanceof GenericArrayType) {
       TypeRef<?> componentType =
-          resolveTypeVariables(((GenericArrayType) type).getGenericComponentType(), typeVarRefs);
+          resolveTypeVariables(
+              ((GenericArrayType) type).getGenericComponentType(),
+              typeVarRefs,
+              containerRawType,
+              activeContainerTypes);
       return TypeRef.of(newArrayType(componentType.getType()), null, null, componentType);
     }
     return TypeRef.of(type);
+  }
+
+  private static Type[] resolveTypeVariables(
+      Type[] types,
+      Map<TypeVariableKey, TypeRef<?>> typeVarRefs,
+      Class<?> containerRawType,
+      Set<Class<?>> activeContainerTypes) {
+    Type[] resolvedTypes = new Type[types.length];
+    for (int i = 0; i < types.length; i++) {
+      resolvedTypes[i] =
+          resolveTypeVariables(types[i], typeVarRefs, containerRawType, activeContainerTypes)
+              .getType();
+    }
+    return resolvedTypes;
+  }
+
+  private static TypeRef<?> ofResolvedTypeArgs(Type type, List<TypeRef<?>> typeArguments) {
+    return new TypeRef<>(type, null, typeArguments, null, false);
   }
 
   private static boolean isMapLike(Class<?> rawType) {
@@ -396,6 +542,8 @@ public class TypeRef<T> {
       builder.append('#').append(typeExtMeta.typeId());
       builder.append(':').append(typeExtMeta.nullable() ? '1' : '0');
       builder.append(':').append(typeExtMeta.trackingRef() ? '1' : '0');
+      builder.append(':').append(typeExtMeta.nullableWrapper() ? '1' : '0');
+      builder.append(':').append(typeExtMeta.covariant() ? '1' : '0');
     }
     if (typeArguments != null && !typeArguments.isEmpty()) {
       builder.append('<');

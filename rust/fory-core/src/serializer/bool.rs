@@ -15,76 +15,59 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::context::ReadContext;
-use crate::context::WriteContext;
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
-use crate::serializer::{ForyDefault, Serializer};
+use crate::serializer::Serializer;
 use crate::type_id::TypeId;
-use std::mem;
+use std::sync::Arc;
 
 impl Serializer for bool {
+    type Target = Self;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
+
     #[inline(always)]
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_u8(if *self { 1 } else { 0 });
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        context.writer.write_u8(u8::from(*value));
         Ok(())
     }
 
     #[inline(always)]
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+    fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
         Ok(context.reader.read_u8()? == 1)
     }
-    #[inline]
-    fn fory_read_data_as_send_sync_any(
+
+    #[inline(always)]
+    fn default_value(_: &mut ReadContext) -> Result<Self, Error> {
+        Ok(false)
+    }
+
+    #[inline(always)]
+    fn read_arc_any(
         context: &mut ReadContext,
-    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-            context,
-        )?))
+    ) -> Result<Arc<dyn std::any::Any + Send + Sync>, Error> {
+        Ok(Arc::new(Self::read_data(context)?))
     }
 
     #[inline(always)]
-    fn fory_reserved_space() -> usize {
-        mem::size_of::<i32>()
+    fn reserved_space() -> usize {
+        std::mem::size_of::<i32>()
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::BOOL)
-    }
-
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::BOOL)
-    }
-
-    fn fory_static_type_id() -> TypeId {
+    fn static_type_id() -> TypeId {
         TypeId::BOOL
     }
 
     #[inline(always)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    #[inline(always)]
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+    fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
         context.writer.write_u8(TypeId::BOOL as u8);
         Ok(())
     }
 
     #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+    fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         read_basic_type_info::<Self>(context)
-    }
-}
-
-impl ForyDefault for bool {
-    #[inline(always)]
-    fn fory_default() -> Self {
-        false
     }
 }

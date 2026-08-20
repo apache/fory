@@ -220,23 +220,6 @@ public sealed class Fory
     }
 
     /// <summary>
-    /// Deserializes a value from the head of a framed sequence and advances the sequence.
-    /// </summary>
-    /// <typeparam name="T">Target type.</typeparam>
-    /// <param name="payload">Input sequence. On success, sliced past the consumed frame.</param>
-    /// <returns>Deserialized value.</returns>
-    public T Deserialize<T>(ref ReadOnlySequence<byte> payload)
-    {
-        byte[] bytes = payload.ToArray();
-        ByteReader reader = _readContext.Reader;
-        reader.Reset(bytes);
-        T value = DeserializeFromReader<T>(reader);
-        payload = payload.Slice(reader.Cursor);
-        return value;
-    }
-
-
-    /// <summary>
     /// Writes the frame header for a payload.
     /// </summary>
     /// <param name="writer">Destination writer.</param>
@@ -273,24 +256,36 @@ public sealed class Fory
             : $"unsupported root header bitmap 0x{bitmap:X2}");
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private T DeserializeFromReader<T>(ByteReader reader)
+    internal T DeserializeFromReader<T>(ByteReader reader)
     {
-        ReadHead(reader);
-        Serializer<T> serializer = _typeResolver.GetSerializer<T>();
         ReadContext readContext = _readContext;
         readContext.ResetFor(reader);
-        RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
-        T value = serializer.Read(readContext, refMode, true);
-        readContext.RefReader.Reset();
-        readContext._typeMetaType = null;
-        readContext._typeMeta = null;
-        readContext._typeMetaByType?.ClearKeys();
-        readContext._readTypeInfoByType.ClearKeys();
-        readContext._reservedRefIds.Clear();
-        readContext._cachedTypeMetaType = null;
-        readContext._cachedTypeMeta = null;
-        readContext._currentDynamicReadDepth = 0;
-        return value;
+        readContext._remainingGraphMemoryBytes = Config.MaxGraphMemoryBytes;
+        readContext._remainingUnbackedContainerItems = Config.MaxUnbackedContainerItems;
+        try
+        {
+            ReadHead(reader);
+            Serializer<T> serializer = _typeResolver.GetSerializer<T>();
+            RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
+            T value = serializer.Read(readContext, refMode, true);
+            readContext.RefReader.Reset();
+            readContext._typeMetaType = null;
+            readContext._typeMeta = null;
+            readContext._typeMetaByType?.ClearKeys();
+            readContext._readTypeInfoByType.ClearKeys();
+            readContext._cachedTypeMetaType = null;
+            readContext._cachedTypeMeta = null;
+            readContext.ResetReadDepth();
+            readContext._remainingUnbackedContainerItems = 0;
+            return value;
+        }
+        catch
+        {
+            // Failed roots can leave partially published refs, metadata refs, or graph-budget state.
+            // Keep the success path minimal, but fully reset failed reads before this context is reused.
+            readContext.Reset();
+            throw;
+        }
     }
 
 }

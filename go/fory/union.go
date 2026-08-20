@@ -207,10 +207,7 @@ func (s *UnionSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool,
 			return
 		}
 		if refID < int32(NotNullValueFlag) {
-			obj := ctx.RefResolver().GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
-			}
+			assignReadRef(ctx, refID, value)
 			return
 		}
 	case RefModeNullOnly:
@@ -227,7 +224,7 @@ func (s *UnionSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool,
 
 // ReadData deserializes union payload (case_id + case_value).
 func (s *UnionSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	if ctx.HasError() {
+	if ctx.HasError() || !ctx.enterDepth() {
 		return
 	}
 	if err := s.initialize(ctx.TypeResolver()); err != nil {
@@ -277,6 +274,7 @@ func (s *UnionSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		return
 	}
 	setter.ForyUnionSet(caseID, caseValue)
+	ctx.decDepth()
 }
 
 // ReadWithTypeInfo deserializes with pre-read type info.
@@ -440,11 +438,20 @@ func readUnionOverrideValue(ctx *ReadContext, info *unionCaseInfo) (any, bool) {
 		return nil, false
 	}
 	if refID < int32(NotNullValueFlag) {
-		obj := ctx.RefResolver().GetReadObject(refID)
-		if obj.IsValid() {
-			return obj.Interface(), true
+		if refID == int32(NullFlag) {
+			return nil, true
 		}
-		return nil, true
+		obj := ctx.RefResolver().GetReadObject(refID)
+		if !obj.IsValid() {
+			ctx.SetError(InvalidRefIdError(refID))
+			return nil, false
+		}
+		if !obj.Type().AssignableTo(info.type_) {
+			ctx.SetError(DeserializationErrorf(
+				"union reference type %v is not assignable to %v", obj.Type(), info.type_))
+			return nil, false
+		}
+		return obj.Interface(), true
 	}
 
 	typeID := TypeId(buf.ReadUint8(ctx.Err()))

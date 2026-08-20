@@ -56,6 +56,7 @@ export interface SerializerGenerator {
 
   getType(): number;
   getTypeId(): number | undefined;
+  readDataAlwaysAdvances(): boolean;
 }
 
 export enum RefStateType {
@@ -68,9 +69,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     protected typeInfo: TypeInfo,
     protected builder: CodecBuilder,
     protected scope: Scope,
-  ) {
-
-  }
+  ) {}
 
   abstract getFixedSize(): number;
 
@@ -115,7 +114,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     const noneedWrite = this.scope.uniqueName("noneedWrite");
     return `
       let ${noneedWrite} = false;
-      ${this.writeRefOrNull(accessor, expr => `${noneedWrite} = ${expr}`)}
+      ${this.writeRefOrNull(accessor, (expr) => `${noneedWrite} = ${expr}`)}
       if (!${noneedWrite}) {
         ${this.writeNoRef(accessor)}
       }
@@ -161,9 +160,10 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     void accessor;
     const typeId = this.getTypeId();
     const userTypeId = this.typeInfo.userTypeId;
-    const userTypeStmt = TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
-      ? this.builder.writer.writeVarUint32Small7(userTypeId)
-      : "";
+    const userTypeStmt =
+      TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
+        ? this.builder.writer.writeVarUint32Small7(userTypeId)
+        : "";
     return `
       ${this.builder.writer.writeUint8(typeId)};
       ${userTypeStmt}
@@ -186,6 +186,17 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     return this.getTypeId();
   }
 
+  readDataAlwaysAdvances(): boolean {
+    const typeId = this.getTypeId();
+    return (
+      typeId !== TypeId.UNKNOWN &&
+      typeId !== TypeId.NONE &&
+      !TypeId.structType(typeId!) &&
+      typeId !== TypeId.EXT &&
+      typeId !== TypeId.NAMED_EXT
+    );
+  }
+
   abstract read(assignStmt: (v: string) => string, refState: string): string;
 
   readWithDepth(assignStmt: (v: string) => string, refState: string): string {
@@ -193,7 +204,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     return `
       ${this.builder.getReadContextName()}.incReadDepth();
       let ${result};
-      ${this.read(v => `${result} = ${v}`, refState)};
+      ${this.read((v) => `${result} = ${v}`, refState)};
       ${this.builder.getReadContextName()}.decReadDepth();
       ${assignStmt(result)};
     `;
@@ -201,9 +212,10 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
 
   readTypeInfo(): string {
     const typeId = this.getTypeId();
-    const readUserTypeStmt = TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
-      ? `${this.builder.reader.readVarUint32Small7()};`
-      : "";
+    const readUserTypeStmt =
+      TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
+        ? `${this.builder.reader.readVarUint32Small7()};`
+        : "";
     return `
       ${this.builder.reader.readUint8()};
       ${readUserTypeStmt}
@@ -226,7 +238,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
         switch (${refFlag}) {
             case ${RefFlags.NotNullValueFlag}:
             case ${RefFlags.RefValueFlag}:
-                ${this.readWithDepth(v => `${result} = ${v}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                ${this.readWithDepth((v) => `${result} = ${v}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                 break;
             case ${RefFlags.RefFlag}:
                 ${result} = ${this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32())};
@@ -307,27 +319,29 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
         ${this.writeNoRef("v")}
       };
       const writeRefOrNull = (v) => {
-        ${this.writeRefOrNull("v", expr => `return ${expr};`)}
+        ${this.writeRefOrNull("v", (expr) => `return ${expr};`)}
       };
       const writeTypeInfo = (v) => {
         ${this.writeTypeInfo("v")}
       };
       const read = (fromRef) => {
-        ${this.read(assignStmt => `return ${assignStmt}`, "fromRef")}
+        ${this.read((assignStmt) => `return ${assignStmt}`, "fromRef")}
       };
       const readRef = () => {
-        ${this.readRef(assignStmt => `return ${assignStmt}`)}
+        ${this.readRef((assignStmt) => `return ${assignStmt}`)}
       };
       const readRefWithoutTypeInfo = () => {
-        ${this.readRefWithoutTypeInfo(assignStmt => `return ${assignStmt}`)}
+        ${this.readRefWithoutTypeInfo((assignStmt) => `return ${assignStmt}`)}
       };
       const readNoRef = (fromRef) => {
-        ${this.readNoRef(assignStmt => `return ${assignStmt}`, "fromRef")}
+        ${this.readNoRef((assignStmt) => `return ${assignStmt}`, "fromRef")}
       };
       const readTypeInfo = () => {
         ${this.readTypeInfo()}
       };
     `;
+    // Append read-only capability metadata so existing writer properties keep
+    // their object-layout order on serialization hot paths.
     return `
         return function (typeResolver, external, typeInfo, options) {
             ${this.scope.generate()}
@@ -353,6 +367,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
               readRefWithoutTypeInfo,
               readNoRef,
               readTypeInfo,
+              readDataAlwaysAdvances: ${this.readDataAlwaysAdvances()},
             };
         }
         `;

@@ -9,10 +9,11 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - `.agents/docs-and-formatting.md`: documentation, specification, and markdown rules.
 - `.agents/ci-and-pr.md`: code review workflow, CI triage, PR expectations, and commit conventions.
 - `.agents/testing/integration-tests.md`: `integration_tests/` prerequisites, regeneration rules, and commands.
-- `docs/security/index.md`: security model index.
-- `docs/security/threat-model.md`: project-level trust boundaries, non-goals,
-  and downstream responsibilities.
-- `docs/security/deserialization.md`: security boundaries for untrusted deserialization classification.
+- `docs/security/index.md`: contributor-facing security model index. This directory is internal
+  documentation and is intentionally excluded from the website sync.
+- `docs/security/threat-model.md`: project trust boundaries and downstream responsibilities.
+- `docs/security/deserialization.md`: implementation boundaries for untrusted deserialization.
+- `docs/json/security.md`: user-facing security guidance for Fory JSON.
 - `.agents/languages/java.md`
 - `.agents/languages/csharp.md`
 - `.agents/languages/cpp.md`
@@ -29,15 +30,130 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 ## Agent Operating Rules
 
 - Preserve architecture. Do not introduce new layers, parallel flows, or public APIs unless explicitly requested; prefer local repair in the existing owner over shared-infra expansion, and stop if a fix conflicts with an ADR, spec, or invariant.
+- Do not change an existing `RefReader`/`RefWriter` architecture or API to support compatible skip. Compatible skip must not add alternate reference slots or tables, alternate reference lookup or publication methods, or forwarding APIs in read/write contexts, builders, serializers, or generated-code plumbing. Keep ordinary reference publication and lookup unchanged and resolve the case in the existing compatible generated owner. For an authorized removed-field read of an unregistered Struct, the empty object created by the skip reader is that path's final owner: publish that same object for `RefValue`, consume the Struct fields, and let later `RefFlag` values resolve to it. This preserves reference numbering and identity without registering the Struct; an independent dynamic root still requires normal registration. Do not add parallel reference state, a sentinel, a rejection, or a common-path branch for this case.
 - Respect ownership. Keep logic, state, and helpers in their natural owner, and do not move serializer-local, context-local, runtime-type-local, or protocol-local problems into global utilities.
 - Check the spec before implementation. For wire behavior and xlang mapping, use the specs as the source of truth and never copy one runtime's bug into another runtime just to make tests pass.
 - Do not make assumptions about runtime behavior, ownership, registration, metadata construction, protocol semantics, or test coverage. Read the current code, owning docs/specs, and relevant tests before making a design judgment or implementation decision. If the evidence is incomplete, inspect more or state the uncertainty explicitly instead of filling gaps from memory or analogy with another runtime.
-- For untrusted deserialization, read `docs/security/deserialization.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent.
-- For remote TypeDef/TypeMeta reads, the checked metadata cache is the only owner of remote "already validated" state. Cache hit means the header was previously parsed, body/hash-validated, policy-checked, and published by that cache, so the hot path must skip the body and use cached metadata without extra validation, hashing, limit checks, exact-local checks, allocation, or policy work. A known expected local TypeDef/TypeMeta header/hash match is a local-schema hit, not a remote cache miss: it may skip the body and use the local TypeInfo/TypeMeta without schema-version counting or cache publish. Cache miss is the only path that parses and validates non-local metadata, enforces limits, performs exact-local byte comparison when needed, and publishes remote metadata to the cache. Do not add nullable accepted-header fields, sentinel headers, per-TypeInfo markers, pending metadata state, parallel header-low/header-high slots, or parallel acceptance state for this decision. If a runtime needs a metadata hit hint, cache the concrete checked metadata owner object, such as the TypeInfo, TypeDef, or TypeMeta used by that runtime, and compare its validated header identity directly.
+- For untrusted deserialization, read `docs/security/deserialization.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve backing/output capacity from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent. Root graph memory reservation is accounting only and may happen before that byte check, but it must not replace the byte check.
+- Malformed input must surface as a controlled root-operation error and still run
+  root cleanup, but the exact exception type, error code, message, detection
+  layer, and detection point are not contracts unless a public API or
+  specification explicitly says otherwise. An existing bounded downstream
+  buffer, type, reference, depth, or serializer error is sufficient. Do not add
+  hot-path branches, helper APIs, allocations, or generated-code expansion
+  solely to make an error earlier, more specific, or more uniform, and do not
+  write tests that force such error normalization.
+- Never add a reader-side check solely to produce a more precise malformed-input
+  error. Retain or add a check only when the unchecked path has a concrete
+  consequence such as a crash, panic, undefined behavior, out-of-bounds access,
+  disproportionate work, no progress, persistent state pollution, or a real
+  type or policy violation. If a necessary check is reachable from a hot or
+  generated path, keep the success path to a primitive branch and move exception
+  creation, message formatting, and other failure work into a cold no-inline
+  helper when the language supports it. A bounds-safe downstream operation that
+  already raises a controlled root error is sufficient; do not duplicate it for
+  error precision.
+- Before reporting or fixing a robustness finding, prove that the current path
+  causes at least one concrete consequence: crash, panic, undefined behavior,
+  or out-of-bounds access; disproportionate allocation, CPU work, or stream
+  growth; a no-progress loop; persistent state, reference-table, or cache
+  pollution; later-root corruption or a failed-root cleanup leak; or a concrete
+  type, registration, callable, or deserialization-policy violation. Protocol
+  strictness alone is out of scope. Do not change code merely because a
+  malformed or noncanonical flag, enum value, marker, length form, or reserved
+  value is accepted, rejected late, decoded differently, or produces a less
+  precise error.
+- Arbitrary-precision binary Decimal codecs accept only scales in
+  `[-10_000, 10_000]` and an absolute unscaled magnitude of at most `10_000`
+  binary bytes. The Java standalone `BigInteger` serializer uses the same
+  magnitude limit. This is a value-range rule, not a wire-format change:
+  `magnitude` means the canonical unsigned bytes of the absolute value, not a
+  signed two's-complement prefix, protocol headers, decimal digits, or the Fory
+  JSON `10_000`-character limit. Readers must validate the range before
+  allocating magnitude storage, constructing arbitrary-precision values, or
+  expanding scale, while retaining the existing readable-byte, negative-length,
+  overflow, and canonical checks. Writers must validate symmetrically before
+  emitting any part of the value and before materializing an oversized
+  magnitude. Compare scale directly with both bounds; do not use `abs(scale)`,
+  which can overflow for the minimum integer. Fixed-range Decimal carriers keep
+  their stricter native ranges and reject oversized magnitudes before copying or
+  construction. Compatible scalar conversion keeps its independent `256`-digit
+  and scale/output-expansion limits.
+- Root deserialization graph memory budgets are approximate gates for materialized graph owners,
+  not exact heap accounting, input byte accounting, or raw element counts. `maxGraphMemoryBytes`
+  defaults to fixed `128 MiB`; positive values override the default; explicit non-positive values
+  are invalid and must be rejected at config/Fory creation. Do not add a disabled-budget sentinel
+  path, derive this budget from root input size, or split known-length and stream root behavior.
+  Read context/read state owns only raw byte reservation with `reserveGraphMemory(bytes)`; it must
+  not expose counted arithmetic helpers or collection, map, array, struct, or object semantic
+  reservation APIs. Do not add any non-memory-budget read-context/read-state API for this feature,
+  including ref-publication controls, temporary-owner controls, serializer-owner controls,
+  conversion helpers, or APIs that encode what kind of value is being materialized. Root facades may
+  set/reset the per-operation budget, but they must not pre-reserve root type, root self bytes, or
+  root value storage. Because the budget is fixed per root, read state must not mirror the
+  configured max into a second active-limit field; use the existing config or one configured max
+  field plus the mutable remaining budget. Concrete serializers and generated serializers own
+  counted formulas, overflow checks, allocation-owner decisions, and reference publication timing
+  for their allocation path. Reserve self storage exactly once at the owner that stores or allocates
+  the value: reference/object runtimes reserve parent owner self cost plus reference storage and
+  every referenced heap owner reserves its own shallow self cost when materialized; inline/value
+  runtimes reserve value storage only in the holder or materializer that actually owns that storage,
+  such as collection, map, set, array, smart-pointer, box, dynamic boxing, or reference-object field
+  storage owners. Value serializers do not reserve their own self storage, including root and
+  generated struct/product read paths. Collection, map, set, and reference-array owners reserve
+  nonzero shallow self cost only when that runtime materializes an independent reference/backing
+  owner, plus backing/reference/inline storage. Struct, record, POJO, compatible, generated, and
+  dynamic object owners reserve a nonzero shallow self cost plus shallow field storage only in
+  reference-object runtimes or dynamic/boxed materialization paths; inline/value struct serializers
+  do not self-charge. Reference fields use 4 bytes when reference size is not cheap or reliable to
+  query; primitive/value fields use their storage width. Parents do not recursively include child
+  object, collection, map, string, binary, or primitive dense-array contents. Skip enum/union as
+  separate owners and skip dedicated string, binary, primitive scalar, primitive array, and
+  primitive dense-array leaf owners unless a runtime-specific owner rule includes them. Java Fory
+  core primitive arrays reserve their array header plus primitive storage once from the validated
+  logical length; primitive-list serializers additionally reserve the list's shallow owner. Java
+  Fory JSON primitive arrays decoded from JSON arrays reserve their array header plus primitive
+  storage in 1024-element batches and at the tail; a `byte[]` handled by a JSON binary or Base64
+  codec remains a binary leaf.
+  Leaf values skipped by the graph budget must remain gated by
+  byte-availability checks on the unread input; if remaining bytes are insufficient, the leaf value
+  must not be read or created. Actual process memory can be higher than the graph budget. Do not
+  guess allocator, bucket-table, node, debug, or map-entry overhead unless it is a documented
+  lower-bound owner allocation. Do not add dynamic stream bytes-read accounting or nested hot-path
+  cleanup just for this budget.
+- Count-driven collection and map reads use one root-shared unbacked-container item allowance.
+  The public language-equivalent `maxUnbackedContainerItems` default is `8192`; values are
+  non-negative and zero is strict. For an exact repeated body that is compile-time or generated
+  proven to consume at least one byte, retain the direct loop and proportional readable-count gate
+  with no allowance access, cursor snapshot, or periodic branch. Before count-derived allocation
+  for an uncertain body, require readable bytes for `max(0, count - remaining allowance)` without
+  replacing graph-memory accounting. In the existing single collection loop, settle actual body
+  progress every 1024 completed elements and at the tail; maps settle only at their existing chunk
+  boundaries, with one entry counted as one item. Compatible skip shares the same root allowance
+  but invents no graph owner. Root reset alone clears the allowance. Writers must continue to emit
+  valid compact empty bodies; do not reject, pad, split, or change wire encoding for this reader
+  policy. Do not add an outer batching loop, probe reads, `isEmptyType`, or RefReader/RefWriter APIs.
+- Name the serializer or codec progress capability after the operation it proves: use each
+  language's idiomatic form of `readDataAlwaysAdvances`, with no body-named compatibility alias.
+  This fact describes only the serializer-owned `readData` operation. A field, collection element,
+  or map entry may instead advance because of ref, null, or type envelopes; name those derived
+  facts `fieldReadAlwaysAdvances`, `elementReadAlwaysAdvances`, or `entryReadAlwaysAdvances` rather
+  than conflating them with `readData`.
+- For remote TypeDef/TypeMeta reads, the checked metadata cache is the only owner of remote "already validated" state. Cache hit means the header was previously parsed, body/hash-validated, policy-checked, and published by that cache, so the hot path must skip the body and use cached metadata without extra validation, hashing, limit checks, exact-local checks, allocation, or policy work. The protocol-defined 52-bit TypeDef/TypeMeta header hash is the unique schema identity, so a known expected local header/hash match is a local-schema hit and must not recompare field arrays or metadata bodies. It may skip the body and use the local TypeInfo/TypeMeta without schema-version counting or cache publish. Cache miss is the only path that parses and validates non-local metadata, enforces limits, and publishes remote metadata to the cache. Do not add nullable accepted-header fields, sentinel headers, per-TypeInfo markers, pending metadata state, parallel header-low/header-high slots, or parallel acceptance state for this decision. If a runtime needs a metadata hit hint, cache the concrete checked metadata owner object, such as the TypeInfo, TypeDef, or TypeMeta used by that runtime, and compare its validated header identity directly.
 - When a user corrects a non-obvious invariant, encode it in the nearest source comment before continuing, and also update `AGENTS.md`, `.agents/**`, docs, or specs when the rule is reusable beyond one file. Do not rely only on chat history, task notes, commit messages, or benchmark logs for corrections that protect security, protocol behavior, ownership, naming, or hot-path performance.
 - Reject semantic hacks. Do not bypass broken semantics by deleting cases, simplifying callers, adding coercion hooks, or using workaround fallbacks; fix the underlying bug and prove it with focused tests.
 - Protect hot paths. Avoid per-call allocations, callback objects, result tuples or records, unnecessary runtime branches, and wrapper-class substitutions in hot codec/runtime paths; prefer conditional imports and allocation-free concrete implementations where they fit the language.
-- Keep public APIs minimal. Public APIs must match user ownership and mental model, not internal implementation details; generated flows stay type-owned, while manual serializer registration stays explicit.
+- Decoder depth and the generic-type stack paired with that depth use root-operation failure cleanup. Nested decoders decrement depth and pop generic types only after successful child reads; do not add nested `try/finally` to restore them after exceptions. The root operation's `finally`/reset must clear both decoder depth and the generic-type stack.
+- Keep public APIs minimal. Public APIs must match user ownership and mental model, not internal implementation details; generated flows stay type-owned, while custom serializer registration stays explicit.
+- A Fory instance may register types or serializers only before its first root
+  serialization or deserialization operation. Starting either operation
+  permanently freezes that instance's registry, including when the operation
+  fails. Every later registration attempt must fail before mutating resolver
+  maps, generated descriptors, metadata, serializers, or caches. Do not support
+  post-use registration through cache invalidation, descriptor refresh,
+  serializer rebinding, metadata rebuilding, or other late-registration
+  machinery. Registration-order finalization before the first root operation
+  remains registration-owned and must not create a runtime invalidation path.
 - Use semantic naming only. Name things after protocol or domain concepts, not history, runtime origin, or workaround style; avoid vague names such as `Internal`, `java_style_*`, `Runtime`, `Session`, `Plan`, `Payload`, or `Binding` when they do not name the real concept. Keep class, method, function, and variable names concise; do not encode the whole scenario or implementation history into one identifier. Never name a class or method with a `Plan` suffix; use the real domain concept instead. For Fory codec/read APIs, do not use generic `payload` naming; name the exact owner and data shape, such as bytes, body, frame, field, string, list, map, compressed bytes, or primitive-array encoding.
 - Keep one implementation path. Do not keep parallel helpers, serializers, harnesses, wrappers, or registration flows for the same concept; extend the existing owner path instead of inventing another one.
 - Follow current scope exactly. The latest explicit user instruction overrides earlier plans, and when scope narrows, remove leaked out-of-scope edits immediately.
@@ -49,7 +165,8 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 
 ## Design Integrity Gates
 
-- Record all core design and decisions in the owning docs when they belong there, especially under `docs/guide/**` or `docs/specification/**`.
+- Record all core design and decisions in the owning docs when they belong there, especially under
+  `docs/object-serialization/**`, the relevant capability directory, or `docs/specification/**`.
 - Do not allow implementation drift from the design document.
 - Do not compromise design decisions to make implementation easier.
 - Do not leave workaround code behind.
@@ -82,6 +199,8 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Add comments only when behavior is hard to understand or an algorithm is non-obvious.
 - Do not remove existing code comments unless they are stale, misleading, redundant, or no longer necessary after the change.
 - Only add tests that verify internal behaviors or fix specific bugs; do not create unnecessary tests unless requested.
+- Do not add unit tests for repository scripts. Validate scripts through their owning execution or
+  integration workflow instead of maintaining a parallel script-test suite.
 - Do not add cleanup-sentinel tests that only pin deleted APIs or removed fields.
 - Tests must exercise the actual code you wrote or changed. Do not write tests that pass by exercising a pre-existing code path that produces similar-looking results. Before writing a test, identify the exact new code path (annotation, codegen output, new API) and verify the test would fail if that code path were removed. When the change involves codegen or annotations, the test must use those annotations on real structs, run through the codegen pipeline, and verify the generated output drives the expected runtime behavior.
 - Keep test method names concise. Name the behavior under test without encoding the whole scenario or expected result in the method name.
@@ -105,10 +224,12 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 
 ## Source of Truth
 
-- Primary references: `README.md`, `CONTRIBUTING.md`, `docs/DEVELOPMENT.md`, and language guides under `docs/guide/`.
+- Primary references: `README.md`, `CONTRIBUTING.md`, `docs/development/building.md`, and the
+  capability-first documentation under `docs/`.
 - Protocol changes require reading and updating the relevant specs in `docs/specification/**` and aligning the relevant cross-language tests.
 - If instructions conflict, follow the most specific module docs and call out the conflict.
-- `docs/DEVELOPMENT.md` plus updates under `docs/guide/` and `docs/benchmarks/` are synced to `apache/fory-site`; other website content belongs there.
+- The `docs/` tree is the canonical source for the website's Introduction, Getting Started,
+  Benchmarks, capability guides, development guides, and separate Specification surface.
 - When benchmark logic, scripts, configuration, or compared serializers change, rerun the relevant benchmarks and refresh the artifacts under `docs/benchmarks/**`.
 
 ## Shared Engineering Expectations
@@ -116,6 +237,10 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Favor zero-copy techniques, JIT or codegen opportunities, and cache-friendly memory access patterns in performance-critical paths.
 - Keep hot paths allocation-minimal. Avoid per-call or per-element object allocation, boxing, wrapper round-trips, callbacks, iterator carriers, or holder objects unless there is a measured reason and no lower-allocation design preserves the same behavior.
 - Keep hot-path control flow direct and predictable. Hoist repeated buffer/cache/state lookups into locals for multi-step operations, keep cold rebuild or restoration logic on slow branches, and avoid tiny forwarding helpers that only obscure the owner.
+- When a language supports cold and no-inline annotations, mark cold entrances reachable from
+  serialization hot paths so error construction, cache misses, schema mismatches, unsupported
+  capabilities, and other slow work cannot be inlined into the hot path. Do not mark successful
+  dynamic dispatch cold.
 - In unified native/xlang hot paths, branch only where the wire format or protocol behavior actually differs. Do not add mode booleans or mode-specific helper parameters for equivalent behavior.
 - Public APIs must be well-documented and easy to understand. When adding a public API, write source-level API documentation in the owning code.
 - Implement comprehensive error handling with meaningful messages.
@@ -156,12 +281,22 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Run applicable test commands in a subagent with a thinking budget one level lower than the main task budget, using medium when the current budget is unclear, unless the change is docs-only or the user explicitly asks to run them locally.
 - Reuse the same test subagent for repeated runs within one task and subsystem so it keeps failure context; create a fresh subagent when switching unrelated subsystems or when prior context may be stale or misleading.
 - Use `integration_tests/` for cross-language compatibility validation when behavior crosses runtimes.
-- If xlang behavior or type mapping changes, run `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.CSharpXlangTest`, `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and `org.apache.fory.xlang.PythonXlangTest`.
-- If Swift xlang behavior changes, run `org.apache.fory.xlang.SwiftXlangTest` too.
+- For a runtime-local xlang implementation or fixture change that does not alter the shared
+  protocol, type mapping, wire semantics, or another runtime, run only that runtime's Java-driven
+  xlang suite. For example, a Rust-only implementation change runs
+  `org.apache.fory.xlang.RustXlangTest`; do not run unrelated language peers merely because the
+  feature operates in xlang mode.
+- Run the full xlang matrix only when the shared protocol, type mapping, wire semantics, or
+  cross-runtime behavior changes:
+  `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.CSharpXlangTest`,
+  `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and
+  `org.apache.fory.xlang.PythonXlangTest`. Include `org.apache.fory.xlang.SwiftXlangTest` when the
+  shared change affects Swift or when Swift xlang behavior itself changes.
 - For performance regressions or optimizations, profile or otherwise measure the current branch and a fresh `apache/main` baseline before changing code; optimize the measured hotspot, not guessed code.
 - When comparing benchmark results against `apache/main`, use a separate sibling worktree named `fory-benchmark-baseline` by default. Before creating a new worktree, check whether `../fory-benchmark-baseline` already exists and reuse it to avoid repeated benchmark dependency rebuilds. Always fetch and sync that baseline worktree to the latest `apache/main` before measuring it, and store benchmark result files under that worktree so older runs remain available as reference data. Treat stored benchmark results as historical references, not truth, because machine load and benchmark variance change over time. Create a different baseline worktree only when explicitly requested.
 - Before benchmarking a checked-out version, install or build the required Fory packages for that version, such as the Java artifacts, Python package, and the target runtime package needed by the benchmark.
 - Run and close old/new benchmark comparisons for exactly one language at a time. If that language has a slowdown greater than 1%, keep working only on that language until the slowdown is within 1% before moving to the next language.
+- Within one language, compare benchmarks case-by-case in adjacent old/new pairs: run one case on fresh `apache/main`, then immediately run the same case on the current branch before moving to the next case. Do not batch all baseline cases and then all current cases, because machine load drift makes that comparison noisier.
 - Treat a same-benchmark slowdown greater than 1% as unresolved until the retained median is within 1% of the baseline. Faster results are acceptable only after verifying that generated code, benchmark shape, safety checks, and protocol semantics did not skip required work. Do not add artificial slowdowns or benchmark-shape changes to force a match.
 - Do not change protocol behavior, benchmark payloads, or public APIs solely to manufacture performance wins.
 - For performance work, run the relevant benchmark immediately after each change and report the command plus before/after numbers.
@@ -198,8 +333,8 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 
 ## Security
 
-Security models start at `docs/security/index.md`. Read
-`docs/security/threat-model.md` for project-level trust boundaries, non-goals,
-and downstream responsibilities. For untrusted deserialization, read
-`docs/security/deserialization.md` before reporting or changing allocation,
-stream filling, skip, reference, metadata, or policy validation behavior.
+User-facing object-serialization security guidance lives in each runtime directory, such as
+`docs/object-serialization/java/security.md`; Fory JSON guidance lives in `docs/json/security.md`.
+Contributor-facing security models remain under `docs/security/` and are excluded from the website.
+Before reporting or changing allocation, stream filling, skip, reference, metadata, or policy
+validation behavior, read `docs/security/deserialization.md`.

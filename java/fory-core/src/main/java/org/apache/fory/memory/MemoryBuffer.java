@@ -77,6 +77,7 @@ public final class MemoryBuffer {
   private static final int LONG_ARRAY_OFFSET;
   private static final int FLOAT_ARRAY_OFFSET;
   private static final int DOUBLE_ARRAY_OFFSET;
+  private static final long BUFFER_ADDRESS_FIELD_OFFSET;
 
   // GraalVM native-image recognizes arrayBaseOffset only when the call stores directly into the
   // target static field. Keep these assignments in this shape so native images recompute heap array
@@ -91,6 +92,7 @@ public final class MemoryBuffer {
       LONG_ARRAY_OFFSET = 0;
       FLOAT_ARRAY_OFFSET = 0;
       DOUBLE_ARRAY_OFFSET = 0;
+      BUFFER_ADDRESS_FIELD_OFFSET = -1;
     } else {
       BOOLEAN_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(boolean[].class);
       BYTE_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(byte[].class);
@@ -100,28 +102,23 @@ public final class MemoryBuffer {
       LONG_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(long[].class);
       FLOAT_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(float[].class);
       DOUBLE_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(double[].class);
+      try {
+        Field addressField = Buffer.class.getDeclaredField("address");
+        // GraalVM native-image only recomputes a hosted object field offset when this call stores
+        // directly into its final static owner. Do not route it through a helper or local offset.
+        BUFFER_ADDRESS_FIELD_OFFSET = UNSAFE.objectFieldOffset(addressField);
+        checkArgument(BUFFER_ADDRESS_FIELD_OFFSET != 0);
+      } catch (NoSuchFieldException e) {
+        throw new IllegalStateException(e);
+      }
     }
   }
 
   /** Limits each raw Unsafe copy to let large copies hit safepoint polls between chunks. */
   private static final long UNSAFE_COPY_THRESHOLD = 1024L * 1024L;
 
-  private static final long BUFFER_ADDRESS_FIELD_OFFSET =
-      AndroidSupport.IS_ANDROID ? -1 : bufferAddressFieldOffset();
-
   // Global allocator instance that can be customized
   private static volatile MemoryAllocator globalAllocator = new DefaultMemoryAllocator();
-
-  private static long bufferAddressFieldOffset() {
-    try {
-      Field addressField = Buffer.class.getDeclaredField("address");
-      long offset = UNSAFE.objectFieldOffset(addressField);
-      checkArgument(offset != 0);
-      return offset;
-    } catch (NoSuchFieldException e) {
-      throw new IllegalStateException(e);
-    }
-  }
 
   private static boolean unaligned() {
     String arch = System.getProperty("os.arch", "");

@@ -79,16 +79,16 @@ public enum TypeId: UInt32, CaseIterable, Sendable {
     public var isUserTypeKind: Bool {
         switch self {
         case .enumType,
-             .namedEnum,
-             .structType,
-             .compatibleStruct,
-             .namedStruct,
-             .namedCompatibleStruct,
-             .ext,
-             .namedExt,
-             .union,
-             .typedUnion,
-             .namedUnion:
+            .namedEnum,
+            .structType,
+            .compatibleStruct,
+            .namedStruct,
+            .namedCompatibleStruct,
+            .ext,
+            .namedExt,
+            .union,
+            .typedUnion,
+            .namedUnion:
             return true
         default:
             return false
@@ -98,15 +98,32 @@ public enum TypeId: UInt32, CaseIterable, Sendable {
     public static func needsTypeInfoForField(_ typeId: TypeId) -> Bool {
         switch typeId {
         case .structType,
-             .compatibleStruct,
-             .namedStruct,
-             .namedCompatibleStruct,
-             .ext,
-             .namedExt,
-             .unknown:
+            .compatibleStruct,
+            .namedStruct,
+            .namedCompatibleStruct,
+            .ext,
+            .namedExt,
+            .unknown:
             return true
         default:
             return false
+        }
+    }
+
+    @inline(__always)
+    internal var readDataAlwaysAdvances: Bool {
+        switch self {
+        case .unknown,
+            .structType,
+            .compatibleStruct,
+            .namedStruct,
+            .namedCompatibleStruct,
+            .ext,
+            .namedExt,
+            .none:
+            return false
+        default:
+            return true
         }
     }
 

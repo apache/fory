@@ -65,6 +65,7 @@ func (s byteSliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bo
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s byteSliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -135,6 +136,7 @@ func (s boolSliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bo
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s boolSliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -173,6 +175,7 @@ func (s int8SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bo
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s int8SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -211,6 +214,7 @@ func (s int16SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType b
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s int16SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -249,6 +253,7 @@ func (s int32SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType b
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s int32SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -287,6 +292,7 @@ func (s int64SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType b
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s int64SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -325,6 +331,7 @@ func (s uint16SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s uint16SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -363,6 +370,7 @@ func (s uint32SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s uint32SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -401,6 +409,7 @@ func (s uint64SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s uint64SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -439,6 +448,7 @@ func (s float32SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s float32SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -477,6 +487,7 @@ func (s float64SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s float64SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -525,6 +536,7 @@ func (s intSliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType boo
 		}
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s intSliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -575,6 +587,7 @@ func (s uintSliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bo
 		}
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s uintSliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -638,6 +651,7 @@ func (s stringSliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s stringSliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -652,6 +666,9 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		return
 	}
 	ptr := (*[]string)(value.Addr().UnsafePointer())
+	if !reserveStringSlice(ctx, length) {
+		return
+	}
 	if length == 0 {
 		*ptr = make([]string, 0)
 		return
@@ -702,7 +719,7 @@ func stringSliceValue(value reflect.Value) []string {
 // ============================================================================
 // Exported helper functions for primitive slice serialization (ARRAY protocol)
 // These functions write: size_bytes + binary_data
-// They are used by struct serializers and generated code
+// They are used by struct serializers.
 // ============================================================================
 
 // WriteByteSlice writes []byte to buffer using ARRAY protocol
@@ -1180,6 +1197,7 @@ func (s float16SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s float16SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -1424,6 +1442,33 @@ func WriteStringSlice(buf *ByteBuffer, value []string, hasGenerics bool) {
 // ReadStringSlice reads []string from buffer using LIST protocol
 func ReadStringSlice(buf *ByteBuffer, err *Error) []string {
 	length := buf.ReadLength(err)
+	return readStringSliceBody(buf, err, length)
+}
+
+func readStringSlice(ctx *ReadContext) []string {
+	length := ctx.buffer.ReadLength(ctx.Err())
+	if ctx.HasError() {
+		return nil
+	}
+	if !reserveStringSlice(ctx, length) {
+		return nil
+	}
+	return readStringSliceBody(ctx.buffer, ctx.Err(), length)
+}
+
+func reserveStringSlice(ctx *ReadContext, length int) bool {
+	if length < 0 {
+		ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
+		return false
+	}
+	if int64(length) > stringMaxLength {
+		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, stringElementBytes))
+		return false
+	}
+	return ctx.ReserveGraphMemory(int64(graphSliceOwnerBytes) + int64(length)*int64(stringElementBytes))
+}
+
+func readStringSliceBody(buf *ByteBuffer, err *Error, length int) []string {
 	if length == 0 {
 		return make([]string, 0)
 	}
@@ -1492,6 +1537,7 @@ func (s bfloat16SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readTyp
 		return
 	}
 	s.ReadData(ctx, value)
+	publishOuterSliceRef(ctx, refMode, value)
 }
 
 func (s bfloat16SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {

@@ -20,7 +20,15 @@
 module org.apache.fory.json {
   requires org.apache.fory.core;
   requires static java.sql;
+  requires static com.google.common;
+  requires static org.graalvm.nativeimage;
+  requires static org.graalvm.sdk;
 
   exports org.apache.fory.json;
   exports org.apache.fory.json.annotation;
+  exports org.apache.fory.json.codec;
+  exports org.apache.fory.json.meta;
+  exports org.apache.fory.json.reader;
+  exports org.apache.fory.json.resolver;
+  exports org.apache.fory.json.writer;
 }

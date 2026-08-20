@@ -1,12 +1,12 @@
 <div align="center">
-  <img width="65%" alt="Apache Fory logo" src="docs/images/logo/fory-horizontal.png"><br>
+  <img width="65%" alt="Apache Fory logo" src="docs/images/fory-logo.png"><br>
 </div>
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/apache/fory/ci.yml?branch=main&style=for-the-badge&label=GITHUB%20ACTIONS&logo=github)](https://github.com/apache/fory/actions/workflows/ci.yml)
 [![Slack Channel](https://img.shields.io/badge/slack-join-3f0e40?logo=slack&style=for-the-badge)](https://join.slack.com/t/fory-project/shared_invite/zt-36g0qouzm-kcQSvV_dtfbtBKHRwT5gsw)
 [![X](https://img.shields.io/badge/@ApacheFory-follow-blue?logo=x&style=for-the-badge)](https://x.com/ApacheFory)
 [![Maven Version](https://img.shields.io/maven-central/v/org.apache.fory/fory-core?style=for-the-badge)](https://search.maven.org/#search|gav|1|g:"org.apache.fory"%20AND%20a:"fory-core")
-[![Crates.io](https://img.shields.io/badge/crates.io-v1.3.0-blue?logo=rust&style=for-the-badge)](https://crates.io/crates/fory)
+[![Crates.io](https://img.shields.io/badge/crates.io-v1.6.1-blue?logo=rust&style=for-the-badge)](https://crates.io/crates/fory)
 [![PyPI](https://img.shields.io/pypi/v/pyfory.svg?logo=PyPI&style=for-the-badge)](https://pypi.org/project/pyfory/)
 [![npm](https://img.shields.io/npm/v/%40apache-fory%2Fcore?logo=npm&style=for-the-badge)](https://www.npmjs.com/package/@apache-fory/core)
 [![NuGet](https://img.shields.io/nuget/v/Apache.Fory?logo=nuget&style=for-the-badge)](https://www.nuget.org/packages/Apache.Fory)
@@ -34,13 +34,31 @@ references.
   directly in the schema, alongside numbers, strings, lists, maps, arrays,
   enums, structs, and unions. Define schemas once, then generate native domain
   objects for each language without forcing wrapper types into user code.
-- **Row-Format Random Access**: Read fields, arrays, and nested values without
-  rebuilding full objects, with zero-copy access and partial reads.
 - **Optimized Implementations**: Java JIT serializers and generated/static serializers
   in other language implementations keep hot paths fast and payloads compact.
 - **Language And Platform Support**: Java, Python, C++, Go, Rust,
   JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin, including GraalVM
   native image, Android, Dart VM/Flutter/web, and Node.js/browser JavaScript.
+
+For same-language workloads, Fory provides native serialization modes that
+support broader language-specific object models:
+
+- **Java Native Serialization**: A high-performance replacement for JDK
+  serialization, Hessian, Kryo, and FST in Java-only systems. It supports JDK
+  custom serialization semantics.
+- **Python Native Serialization**: A faster and more compact replacement for
+  `pickle` and `cloudpickle` in Python-only systems. It supports classes,
+  modules, functions, and custom object state, with fine-grained
+  deserialization controls through `DeserializationPolicy`.
+
+Fory also provides specialized formats for other data-processing requirements:
+
+- **Row Format**: Read fields, arrays, and nested values without rebuilding
+  complete objects, with zero-copy access and partial reads.
+- **[Fory JSON](java/fory-json/README.md)**: A Java JSON serialization framework built for maximum
+  throughput through runtime-generated codecs and optimized readers and
+  writers. Supports Java 8 and later on standard JDKs, GraalVM native images,
+  and Android, including Java 17 records.
 
 ## Performance
 
@@ -49,72 +67,72 @@ payloads than common serialization frameworks on representative workloads. Java
 has the broadest comparison set; the other charts show language-specific results
 across supported languages.
 
-**Java** [Benchmarks](docs/benchmarks/java)
+**Java** [Benchmarks](docs/benchmarks/index.md)
 
 In Java serialization benchmarks, Fory reaches up to **170x** the throughput of
 JDK serialization on selected workloads.
 
 <p align="center">
-<img src="docs/benchmarks/java/java_repo_serialization_throughput.png" width="95%" alt="Java serialization throughput">
+<img src="docs/benchmarks/object-serialization/native/java/java_repo_serialization_throughput.png" width="95%" alt="Java serialization throughput">
 </p>
 
 <p align="center">
-<img src="docs/benchmarks/java/java_repo_deserialization_throughput.png" width="95%" alt="Java deserialization throughput">
+<img src="docs/benchmarks/object-serialization/native/java/java_repo_deserialization_throughput.png" width="95%" alt="Java deserialization throughput">
 </p>
 
 <p align="center">
-<img src="docs/benchmarks/java/throughput.png" width="95%" alt="Java xlang throughput">
+<img src="docs/benchmarks/object-serialization/xlang/java/throughput.png" width="95%" alt="Java xlang throughput">
 </p>
 
 **Python** [Benchmarks](benchmarks/python)
 
 <p align="center">
-<img src="docs/benchmarks/python/throughput.png" width="95%" alt="Python serialization throughput">
+<img src="docs/benchmarks/object-serialization/xlang/python/throughput.png" width="95%" alt="Python serialization throughput">
 </p>
 
 **Rust** [Benchmarks](benchmarks/rust)
 
 <p align="center">
-<img src="docs/benchmarks/rust/throughput.png" width="95%" alt="Rust serialization throughput">
+<img src="docs/benchmarks/object-serialization/xlang/rust/throughput.png" width="95%" alt="Rust serialization throughput">
 </p>
 
 <details>
-<summary><strong>Benchmarks for <a href="benchmarks/cpp">C++</a>, <a href="benchmarks/go">Go</a>, <a href="docs/benchmarks/javascript">JavaScript/TypeScript</a>, <a href="docs/benchmarks/csharp">C#</a>, <a href="docs/benchmarks/swift">Swift</a>, and <a href="docs/benchmarks/dart">Dart</a></strong></summary>
+<summary><strong>Benchmarks for <a href="benchmarks/cpp">C++</a>, <a href="benchmarks/go">Go</a>, <a href="docs/benchmarks/object-serialization/xlang/javascript">JavaScript/TypeScript</a>, <a href="docs/benchmarks/object-serialization/xlang/csharp">C#</a>, <a href="docs/benchmarks/object-serialization/xlang/swift">Swift</a>, and <a href="docs/benchmarks/object-serialization/xlang/dart">Dart</a></strong></summary>
 
 **C++** [Benchmarks](benchmarks/cpp)
 
 <p align="center">
-<img src="docs/benchmarks/cpp/throughput.png" width="95%" alt="C++ serialization throughput">
+<img src="docs/benchmarks/object-serialization/xlang/cpp/throughput.png" width="95%" alt="C++ serialization throughput">
 </p>
 
 **Go** [Benchmarks](benchmarks/go)
 
 <p align="center">
-<img src="docs/benchmarks/go/throughput.png" width="95%" alt="Go serialization throughput">
+<img src="docs/benchmarks/object-serialization/xlang/go/throughput.png" width="95%" alt="Go serialization throughput">
 </p>
 
-**JavaScript/TypeScript** [Benchmarks](docs/benchmarks/javascript)
+**JavaScript/TypeScript** [Benchmarks](docs/benchmarks/object-serialization/xlang/javascript)
 
 <p align="center">
-<img src="docs/benchmarks/javascript/throughput.png" width="95%" alt="JavaScript serialization throughput">
+<img src="docs/benchmarks/object-serialization/xlang/javascript/throughput.png" width="95%" alt="JavaScript serialization throughput">
 </p>
 
-**C#** [Benchmarks](docs/benchmarks/csharp)
+**C#** [Benchmarks](docs/benchmarks/object-serialization/xlang/csharp)
 
 <p align="center">
-<img src="docs/benchmarks/csharp/throughput.png" width="95%" alt="C# serialization throughput">
+<img src="docs/benchmarks/object-serialization/xlang/csharp/throughput.png" width="95%" alt="C# serialization throughput">
 </p>
 
-**Swift** [Benchmarks](docs/benchmarks/swift)
+**Swift** [Benchmarks](docs/benchmarks/object-serialization/xlang/swift)
 
 <p align="center">
-<img src="docs/benchmarks/swift/throughput.png" width="95%" alt="Swift serialization throughput">
+<img src="docs/benchmarks/object-serialization/xlang/swift/throughput.png" width="95%" alt="Swift serialization throughput">
 </p>
 
-**Dart** [Benchmarks](docs/benchmarks/dart)
+**Dart** [Benchmarks](docs/benchmarks/object-serialization/xlang/dart)
 
 <p align="center">
-<img src="docs/benchmarks/dart/throughput.png" width="95%" alt="Dart serialization throughput">
+<img src="docs/benchmarks/object-serialization/xlang/dart/throughput.png" width="95%" alt="Dart serialization throughput">
 </p>
 
 </details>
@@ -132,18 +150,19 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.3.0</version>
+  <version>1.6.1</version>
 </dependency>
 ```
 
 Gradle:
 
 ```gradle
-implementation "org.apache.fory:fory-core:1.3.0"
+implementation "org.apache.fory:fory-core:1.6.1"
 ```
 
-On JDK25+, open `java.lang.invoke` to Fory. Use `ALL-UNNAMED` when Fory is on
-the classpath:
+On JDK25+, opening `java.lang.invoke` to Fory core is also recommended. It avoids the
+current-JDK Unsafe fallback and is required when Unsafe access is disabled or unavailable, including
+with `--sun-misc-unsafe-memory-access=deny`. Use `ALL-UNNAMED` when Fory is on the classpath:
 
 ```bash
 --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
@@ -160,7 +179,7 @@ Use the Fory core module name when Fory is on the module path:
 sbt:
 
 ```scala
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.3.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.6.1"
 ```
 
 **Kotlin**
@@ -168,7 +187,7 @@ libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.3.0"
 Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-kotlin:1.3.0")
+implementation("org.apache.fory:fory-kotlin:1.6.1")
 ```
 
 Maven:
@@ -177,7 +196,7 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>1.3.0</version>
+  <version>1.6.1</version>
 </dependency>
 ```
 
@@ -199,7 +218,7 @@ pip install "pyfory[format]"
 
 ```toml
 [dependencies]
-fory = "1.3.0"
+fory = "1.6.1"
 ```
 
 **C++**
@@ -211,7 +230,7 @@ include(FetchContent)
 FetchContent_Declare(
   fory
   GIT_REPOSITORY https://github.com/apache/fory.git
-  GIT_TAG v1.3.0
+  GIT_TAG v1.6.1
   SOURCE_SUBDIR cpp
 )
 FetchContent_MakeAvailable(fory)
@@ -222,8 +241,8 @@ Bazel:
 
 ```bazel
 # MODULE.bazel
-bazel_dep(name = "fory", version = "1.3.0")
-git_override(module_name = "fory", remote = "https://github.com/apache/fory.git", commit = "v1.3.0")
+bazel_dep(name = "fory", version = "1.6.1")
+git_override(module_name = "fory", remote = "https://github.com/apache/fory.git", commit = "v1.6.1")
 
 # BUILD
 deps = ["@fory//cpp/fory/serialization:fory_serialization"]
@@ -232,7 +251,7 @@ deps = ["@fory//cpp/fory/serialization:fory_serialization"]
 When building C++ with MSVC, enable the conforming preprocessor option
 `/Zc:preprocessor`; see the C++ installation guide for setup details.
 
-See the [C++ installation guide](https://fory.apache.org/docs/guide/cpp/#installation)
+See the [C++ installation guide](https://fory.apache.org/docs/object-serialization/cpp/#installation)
 for complete CMake, Bazel, and source-build details.
 
 **Go**
@@ -256,13 +275,13 @@ npm install @apache-fory/core @apache-fory/hps
 **C#**
 
 ```bash
-dotnet add package Apache.Fory --version 1.3.0
+dotnet add package Apache.Fory --version 1.6.1
 ```
 
 **Dart**
 
 ```bash
-dart pub add fory:^1.3.0
+dart pub add fory:^1.6.1
 dart pub add dev:build_runner
 ```
 
@@ -272,7 +291,7 @@ Add Fory to `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/apache/fory.git", exact: "1.3.0")
+  .package(url: "https://github.com/apache/fory.git", exact: "1.6.1")
 ],
 targets: [
   .target(
@@ -282,23 +301,24 @@ targets: [
 ]
 ```
 
-See the [Swift guide](https://fory.apache.org/docs/guide/swift/) for generated
+See the [Swift guide](https://fory.apache.org/docs/object-serialization/swift/) for generated
 serializer setup.
 
 **Development From Source**
 
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+See [docs/development/index.md](docs/development/index.md).
 
 Snapshots for Java, Scala, and Kotlin are available from
 `https://repository.apache.org/snapshots/` with the matching `-SNAPSHOT` version.
 
-## Choose Serialization Mode
+## Choose a Serialization Format
 
-| Mode        | Use it when                                                   | Start here                                               |
-| ----------- | ------------------------------------------------------------- | -------------------------------------------------------- |
-| Xlang mode  | Data crosses language boundaries                              | [Cross-language guide](docs/guide/xlang)                 |
-| Native mode | Producer and consumer are in the same language                | Language guide                                           |
-| Row format  | You need random field access or analytics-style partial reads | [Row format spec](docs/specification/row_format_spec.md) |
+| Format                 | Use it when                                                   | Start here                                                            |
+| ---------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Xlang binary (default) | Data crosses language boundaries                              | [Cross-language interoperability](docs/object-serialization/xlang.md) |
+| Native binary          | Producer and consumer are in the same runtime family          | [Native guide](docs/object-serialization/native.md)                   |
+| Row format             | You need random field access or analytics-style partial reads | [Row Format](docs/row-format/index.md)                                |
+| Fory JSON              | Java applications need high-performance standard JSON         | [Fory JSON](java/fory-json/README.md)                                 |
 
 For Java, Scala, Kotlin, Python, C++, Go, and Rust, use native mode for
 same-language traffic. It avoids xlang's cross-language type mapping and
@@ -542,7 +562,7 @@ Dart uses the xlang wire format directly. Generate the companion file before
 running:
 
 ```bash
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 ```
 
 **Swift**
@@ -597,7 +617,7 @@ fun main() {
 ```
 
 For shared/circular references, polymorphism, numeric IDs versus names, and
-type-mapping rules, see the [cross-language guide](docs/guide/xlang) and
+type-mapping rules, see the [cross-language guide](docs/object-serialization/xlang.md) and
 [type mapping specification](docs/specification/xlang_type_mapping.md).
 
 ## Native Serialization
@@ -680,11 +700,25 @@ val fory = ForyKotlin.builder()
 
 ## Schema IDL
 
-Fory IDL is Fory's schema language for shared data models. It supports
-references, nullable fields, lists, maps, arrays, enums, messages, and unions,
-and generates native data structures for Java, Python, C++, Go, Rust,
-JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Use it when multiple
-languages need one shared contract.
+Fory IDL is Fory's schema-first path for shared data models. Use it when
+multiple languages need one explicit contract, stable field identities, and
+generated native domain objects instead of manually coordinating equivalent
+types in every implementation.
+
+The schema supports primitive values, nullable fields, lists, maps, dense
+arrays, enums, messages, unions, imports, and first-class shared or circular
+references. The compiler generates idiomatic models and Fory integration for
+Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and
+Kotlin. It can also generate Fory-backed gRPC service companions for supported
+languages.
+
+Install the compiler from PyPI:
+
+```bash
+pip install fory-compiler
+```
+
+Define the shared model in `tree.fdl`:
 
 ```protobuf
 package tree;
@@ -698,7 +732,18 @@ message TreeNode {
 }
 ```
 
-See the [Fory IDL and compiler guide](https://fory.apache.org/docs/compiler).
+Generate native models for the languages used by your application:
+
+```bash
+foryc tree.fdl --lang java,python,rust --output ./generated
+```
+
+Generated types use each language's normal classes, structs, dataclasses,
+annotations, macros, or registration helpers, so application code works with
+native domain objects while all peers share the same Fory schema. See the
+[Fory IDL and compiler guide](https://fory.apache.org/docs/compiler) for the
+complete type system, language-specific output options, schema evolution, and
+gRPC generation.
 
 ## Row Format
 
@@ -756,33 +801,120 @@ int secondScore = scores.getInt32(1);
 ```
 
 For Java imports, nested structs, arrays/maps, Arrow integration, and partial
-deserialization, see the
-[Java row-format guide](https://fory.apache.org/docs/guide/java/row_format), the
-[Python row-format guide](docs/guide/python/row-format.md), and the
+deserialization, see the [Java row-format guide](docs/row-format/java.md),
+[Python row-format guide](docs/row-format/python.md),
+[C++ row-format guide](docs/row-format/cpp.md),
+[Rust row-format guide](docs/row-format/rust.md), and
 [row-format specification](docs/specification/row_format_spec.md).
+
+## Fory JSON
+
+Fory JSON is a thread-safe JSON serialization framework for Java, extensively
+optimized for maximum performance across JSON encoding, decoding, and Java
+object mapping. It supports Java 8 and later on standard JDKs, GraalVM native
+images, and Android, with Java records supported on Java 17 and later.
+
+**Performance**
+
+The benchmark compares fory-json with Jackson and Gson using String and UTF-8 byte APIs. The String
+group excludes UTF-8 conversion. Gson's byte results include its required String/UTF-8 conversion.
+Higher throughput is better. See the [full benchmark report](docs/benchmarks/json/java/) for more
+details.
+
+<p align="center">
+<img src="docs/benchmarks/json/java/string_throughput.png" width="49%" alt="Java JSON String throughput">
+<img src="docs/benchmarks/json/java/utf8_bytes_throughput.png" width="49%" alt="Java JSON UTF-8 bytes throughput">
+</p>
+
+| Representation | Operation   | fory-json ops/sec | Jackson ops/sec | Gson ops/sec |
+| -------------- | ----------- | ----------------: | --------------: | -----------: |
+| String         | Serialize   |         7,387,465 |       2,049,368 |    1,084,042 |
+| String         | Deserialize |         2,897,955 |       1,074,885 |      902,772 |
+| UTF-8 bytes    | Serialize   |        10,375,498 |       1,868,614 |    1,037,211 |
+| UTF-8 bytes    | Deserialize |         3,077,158 |       1,268,397 |      933,079 |
+
+Add Fory JSON to your project:
+
+**Maven**
+
+```xml
+<dependency>
+  <groupId>org.apache.fory</groupId>
+  <artifactId>fory-json</artifactId>
+  <version>1.6.1</version>
+</dependency>
+```
+
+**Gradle**
+
+```gradle
+implementation "org.apache.fory:fory-json:1.6.1"
+```
+
+Keep all Fory modules in the same application on the same version.
+
+**Quick Start**
+
+Build one `ForyJson` instance and reuse it across threads:
+
+```java
+import org.apache.fory.json.ForyJson;
+
+public final class JsonExample {
+  private static final ForyJson JSON = ForyJson.builder().build();
+
+  public static final class User {
+    public long id;
+    public String name;
+
+    public User() {}
+
+    public User(long id, String name) {
+      this.id = id;
+      this.name = name;
+    }
+  }
+
+  public static void main(String[] args) {
+    User input = new User(7, "Alice");
+
+    String text = JSON.toJson(input);
+    User fromText = JSON.fromJson(text, User.class);
+
+    byte[] bytes = JSON.toJsonBytes(input);
+    User fromBytes = JSON.fromJson(bytes, User.class);
+
+    System.out.println(fromText.name + " / " + fromBytes.name);
+  }
+}
+```
+
+Start with the [Fory JSON module README](java/fory-json/README.md), then use the
+[Fory JSON documentation](docs/json/index.md) for the complete mapping, annotation, codec,
+security, and platform guides.
 
 ## Documentation
 
 **User Guides**
 
-| Guide                 | Source                                                                       | Website                                                            |
-| --------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Java                  | [docs/guide/java](docs/guide/java)                                           | [View](https://fory.apache.org/docs/guide/java/)                   |
-| Python                | [docs/guide/python](docs/guide/python)                                       | [View](https://fory.apache.org/docs/guide/python/)                 |
-| Rust                  | [docs/guide/rust](docs/guide/rust)                                           | [View](https://fory.apache.org/docs/guide/rust/)                   |
-| C++                   | [docs/guide/cpp](docs/guide/cpp)                                             | [View](https://fory.apache.org/docs/guide/cpp/)                    |
-| Go                    | [docs/guide/go](docs/guide/go)                                               | [View](https://fory.apache.org/docs/guide/go/)                     |
-| JavaScript/TypeScript | [docs/guide/javascript](docs/guide/javascript)                               | [View](https://fory.apache.org/docs/guide/javascript/)             |
-| C#                    | [docs/guide/csharp](docs/guide/csharp)                                       | [View](https://fory.apache.org/docs/guide/csharp/)                 |
-| Swift                 | [docs/guide/swift](docs/guide/swift)                                         | [View](https://fory.apache.org/docs/guide/swift/)                  |
-| Dart                  | [docs/guide/dart](docs/guide/dart)                                           | [View](https://fory.apache.org/docs/guide/dart/)                   |
-| Scala                 | [docs/guide/scala](docs/guide/scala)                                         | [View](https://fory.apache.org/docs/guide/scala/)                  |
-| Kotlin                | [docs/guide/kotlin](docs/guide/kotlin)                                       | [View](https://fory.apache.org/docs/guide/kotlin/)                 |
-| Cross-language xlang  | [docs/guide/xlang](docs/guide/xlang)                                         | [View](https://fory.apache.org/docs/guide/xlang/)                  |
-| Schema IDL/compiler   | [docs/compiler](docs/compiler)                                               | [View](https://fory.apache.org/docs/compiler/)                     |
-| GraalVM native image  | [docs/guide/java/graalvm-support.md](docs/guide/java/graalvm-support.md)     | [View](https://fory.apache.org/docs/guide/java/graalvm_support)    |
-| Android               | [docs/guide/kotlin/android-support.md](docs/guide/kotlin/android-support.md) | [View](https://fory.apache.org/docs/guide/kotlin/android_support/) |
-| Development           | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)                                   | [View](docs/DEVELOPMENT.md)                                        |
+| Guide                 | Source                                                                                 | Website                                                                |
+| --------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Java                  | [docs/object-serialization/java](docs/object-serialization/java)                       | [View](https://fory.apache.org/docs/object-serialization/java/)        |
+| Python                | [docs/object-serialization/python](docs/object-serialization/python)                   | [View](https://fory.apache.org/docs/object-serialization/python/)      |
+| Rust                  | [docs/object-serialization/rust](docs/object-serialization/rust)                       | [View](https://fory.apache.org/docs/object-serialization/rust/)        |
+| C++                   | [docs/object-serialization/cpp](docs/object-serialization/cpp)                         | [View](https://fory.apache.org/docs/object-serialization/cpp/)         |
+| Go                    | [docs/object-serialization/go](docs/object-serialization/go)                           | [View](https://fory.apache.org/docs/object-serialization/go/)          |
+| JavaScript/TypeScript | [docs/object-serialization/javascript](docs/object-serialization/javascript)           | [View](https://fory.apache.org/docs/object-serialization/javascript/)  |
+| C#                    | [docs/object-serialization/csharp](docs/object-serialization/csharp)                   | [View](https://fory.apache.org/docs/object-serialization/csharp/)      |
+| Swift                 | [docs/object-serialization/swift](docs/object-serialization/swift)                     | [View](https://fory.apache.org/docs/object-serialization/swift/)       |
+| Dart                  | [docs/object-serialization/dart](docs/object-serialization/dart)                       | [View](https://fory.apache.org/docs/object-serialization/dart/)        |
+| Scala                 | [docs/object-serialization/scala](docs/object-serialization/scala)                     | [View](https://fory.apache.org/docs/object-serialization/scala/)       |
+| Kotlin                | [docs/object-serialization/kotlin](docs/object-serialization/kotlin)                   | [View](https://fory.apache.org/docs/object-serialization/kotlin/)      |
+| Cross-language xlang  | [docs/object-serialization/xlang.md](docs/object-serialization/xlang.md)               | [View](https://fory.apache.org/docs/object-serialization/xlang)        |
+| Schema IDL/compiler   | [docs/compiler](docs/compiler)                                                         | [View](https://fory.apache.org/docs/compiler/)                         |
+| GraalVM native image  | [docs/object-serialization/java/graalvm.md](docs/object-serialization/java/graalvm.md) | [View](https://fory.apache.org/docs/object-serialization/java/graalvm) |
+| Android               | [docs/object-serialization/java/android.md](docs/object-serialization/java/android.md) | [View](https://fory.apache.org/docs/object-serialization/java/android) |
+| Development           | [docs/development/index.md](docs/development/index.md)                                 | [View](docs/development/index.md)                                      |
 
 **Specifications**
 
@@ -803,7 +935,7 @@ deserialization, see the
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) before sending pull requests. Bug
+[docs/development/index.md](docs/development/index.md) before sending pull requests. Bug
 reports, docs fixes, tests, benchmarks, and implementation improvements are welcome.
 
 ## License

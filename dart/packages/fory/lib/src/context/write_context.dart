@@ -47,7 +47,7 @@ import 'package:fory/src/types/uint64.dart';
 
 /// Write-side serializer context.
 ///
-/// Generated and manual serializers receive this during a single serialization
+/// Generated and custom serializers receive this during a single serialization
 /// operation. Application code normally interacts with [Fory] instead of
 /// constructing contexts directly.
 final class WriteContext {

@@ -16,7 +16,7 @@
 # under the License.
 
 @cython.final
-cdef class BooleanSerializer(Serializer):
+cdef class BooleanSerializer(_PrimitiveSerializer):
     cpdef inline write(self, WriteContext write_context, value):
         write_context.write_bool(value)
 
@@ -25,7 +25,7 @@ cdef class BooleanSerializer(Serializer):
 
 
 @cython.final
-cdef class ByteSerializer(Serializer):
+cdef class ByteSerializer(_PrimitiveSerializer):
     cpdef inline write(self, WriteContext write_context, value):
         write_context.write_int8(value)
 
@@ -34,7 +34,7 @@ cdef class ByteSerializer(Serializer):
 
 
 @cython.final
-cdef class Int16Serializer(Serializer):
+cdef class Int16Serializer(_PrimitiveSerializer):
     cpdef inline write(self, WriteContext write_context, value):
         write_context.write_int16(value)
 
@@ -43,7 +43,7 @@ cdef class Int16Serializer(Serializer):
 
 
 @cython.final
-cdef class Int32Serializer(Serializer):
+cdef class Int32Serializer(_PrimitiveSerializer):
     cpdef inline write(self, WriteContext write_context, value):
         write_context.write_varint32(value)
 
@@ -52,7 +52,7 @@ cdef class Int32Serializer(Serializer):
 
 
 @cython.final
-cdef class Int64Serializer(Serializer):
+cdef class Int64Serializer(_PrimitiveSerializer):
     cpdef inline write(self, WriteContext write_context, value):
         write_context.write_varint64(value)
 
@@ -61,7 +61,7 @@ cdef class Int64Serializer(Serializer):
 
 
 @cython.final
-cdef class FixedInt32Serializer(Serializer):
+cdef class FixedInt32Serializer(_PrimitiveSerializer):
     """Serializer for fixed-width 32-bit signed integer (INT32 type_id=4)."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -72,7 +72,7 @@ cdef class FixedInt32Serializer(Serializer):
 
 
 @cython.final
-cdef class FixedInt64Serializer(Serializer):
+cdef class FixedInt64Serializer(_PrimitiveSerializer):
     """Serializer for fixed-width 64-bit signed integer (INT64 type_id=6)."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -83,7 +83,7 @@ cdef class FixedInt64Serializer(Serializer):
 
 
 @cython.final
-cdef class Varint32Serializer(Serializer):
+cdef class Varint32Serializer(_PrimitiveSerializer):
     """Serializer for VARINT32 type - variable-length encoded signed 32-bit integer."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -94,7 +94,7 @@ cdef class Varint32Serializer(Serializer):
 
 
 @cython.final
-cdef class Varint64Serializer(Serializer):
+cdef class Varint64Serializer(_PrimitiveSerializer):
     """Serializer for VARINT64 type - variable-length encoded signed 64-bit integer."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -105,7 +105,7 @@ cdef class Varint64Serializer(Serializer):
 
 
 @cython.final
-cdef class TaggedInt64Serializer(Serializer):
+cdef class TaggedInt64Serializer(_PrimitiveSerializer):
     """Serializer for TAGGED_INT64 type - tagged encoding for signed 64-bit integer."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -116,7 +116,7 @@ cdef class TaggedInt64Serializer(Serializer):
 
 
 @cython.final
-cdef class Uint8Serializer(Serializer):
+cdef class Uint8Serializer(_PrimitiveSerializer):
     """Serializer for UINT8 type - unsigned 8-bit integer."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -127,7 +127,7 @@ cdef class Uint8Serializer(Serializer):
 
 
 @cython.final
-cdef class Uint16Serializer(Serializer):
+cdef class Uint16Serializer(_PrimitiveSerializer):
     """Serializer for UINT16 type - unsigned 16-bit integer."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -138,7 +138,7 @@ cdef class Uint16Serializer(Serializer):
 
 
 @cython.final
-cdef class Uint32Serializer(Serializer):
+cdef class Uint32Serializer(_PrimitiveSerializer):
     """Serializer for UINT32 type - fixed-size unsigned 32-bit integer."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -149,7 +149,7 @@ cdef class Uint32Serializer(Serializer):
 
 
 @cython.final
-cdef class VarUint32Serializer(Serializer):
+cdef class VarUint32Serializer(_PrimitiveSerializer):
     """Serializer for VAR_UINT32 type - variable-length encoded unsigned 32-bit integer."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -160,7 +160,7 @@ cdef class VarUint32Serializer(Serializer):
 
 
 @cython.final
-cdef class Uint64Serializer(Serializer):
+cdef class Uint64Serializer(_PrimitiveSerializer):
     """Serializer for UINT64 type - fixed-size unsigned 64-bit integer."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -171,7 +171,7 @@ cdef class Uint64Serializer(Serializer):
 
 
 @cython.final
-cdef class VarUint64Serializer(Serializer):
+cdef class VarUint64Serializer(_PrimitiveSerializer):
     """Serializer for VAR_UINT64 type - variable-length encoded unsigned 64-bit integer."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -182,7 +182,7 @@ cdef class VarUint64Serializer(Serializer):
 
 
 @cython.final
-cdef class TaggedUint64Serializer(Serializer):
+cdef class TaggedUint64Serializer(_PrimitiveSerializer):
     """Serializer for TAGGED_UINT64 type - tagged encoding for unsigned 64-bit integer."""
 
     cpdef inline write(self, WriteContext write_context, value):
@@ -193,7 +193,7 @@ cdef class TaggedUint64Serializer(Serializer):
 
 
 @cython.final
-cdef class Float32Serializer(Serializer):
+cdef class Float32Serializer(_PrimitiveSerializer):
     cpdef inline write(self, WriteContext write_context, value):
         write_context.write_float(value)
 
@@ -202,7 +202,7 @@ cdef class Float32Serializer(Serializer):
 
 
 @cython.final
-cdef class Float64Serializer(Serializer):
+cdef class Float64Serializer(_PrimitiveSerializer):
     cpdef inline write(self, WriteContext write_context, value):
         write_context.write_double(value)
 
@@ -215,6 +215,7 @@ cdef class StringSerializer(Serializer):
     def __init__(self, type_resolver, type_, track_ref=False):
         super().__init__(type_resolver, type_)
         self.need_to_write_ref = track_ref
+        self.read_data_always_advances = True
 
     cpdef inline write(self, WriteContext write_context, value):
         write_context.write_string(value)
@@ -229,6 +230,10 @@ cdef int _base_date_ordinal = _base_date.toordinal()
 
 @cython.final
 cdef class DateSerializer(Serializer):
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
+
     cpdef inline write(self, WriteContext write_context, value):
         if type(value) is not datetime.date:
             raise TypeError(
@@ -256,6 +261,7 @@ cdef class TimestampSerializer(Serializer):
 
     def __init__(self, type_resolver, type_):
         super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
         self.win_platform = platform.system() == "Windows"
 
     cdef inline _get_timestamp(self, value):
@@ -298,6 +304,10 @@ cdef class TimestampSerializer(Serializer):
 
 @cython.final
 cdef class DurationSerializer(Serializer):
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
+
     cpdef inline write(self, WriteContext write_context, value):
         if type(value) is not datetime.timedelta:
             raise TypeError(

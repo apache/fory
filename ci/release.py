@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from __future__ import annotations
 
 import argparse
 import json
@@ -38,25 +39,90 @@ FORY_CORE_JDK25_ENTRY = (
     "META-INF/versions/25/org/apache/fory/reflect/InstanceFieldAccessors.class"
 )
 FORY_CORE_ACCESSOR = "org.apache.fory.reflect.InstanceFieldAccessors$InstanceAccessor"
+FORY_CORE_FEATURE = "org.apache.fory.platform.ForyGraalVMFeature"
+FORY_CORE_FEATURE_ENTRY = (
+    "META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.class"
+)
+FORY_CORE_FEATURE_SOURCE_ENTRY = (
+    "META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.java"
+)
+FORY_CORE_NATIVE_IMAGE_PROPERTIES = (
+    "META-INF/native-image/org.apache.fory/fory-core/native-image.properties"
+)
+GRAALVM_FEATURE_SERVICE_ENTRY = (
+    "META-INF/services/org.graalvm.nativeimage.hosted.Feature"
+)
 MAVEN_RELEASE_CMD = (
     "mvn -T10 clean deploy --no-transfer-progress -DskipTests -Papache-release"
 )
-SCALA_RELEASE_CMDS = (
+MAVEN_SNAPSHOT_CMD = (
+    "mvn -T10 clean deploy --no-transfer-progress -DskipTests "
+    "-Dgpg.skip=true -DretryFailedDeploymentCount=3 -Psnapshot-publication"
+)
+KOTLIN_RELEASE_PACKAGE_CMD = (
+    "mvn -T10 clean package --no-transfer-progress -DskipTests -Papache-release"
+)
+KOTLIN_RELEASE_DEPLOY_CMD = (
+    "mvn -T10 deploy --no-transfer-progress -DskipTests -Papache-release"
+)
+KOTLIN_SNAPSHOT_PACKAGE_CMD = (
+    "mvn -T10 clean package --no-transfer-progress -DskipTests "
+    "-Dgpg.skip=true -Psnapshot-publication"
+)
+KOTLIN_SNAPSHOT_DEPLOY_CMD = (
+    "mvn -T10 deploy --no-transfer-progress -DskipTests "
+    "-Dgpg.skip=true -DretryFailedDeploymentCount=3 -Psnapshot-publication"
+)
+SCALA_RELEASE_COMMANDS = (
     "sbt clean",
-    "sbt +publishSigned",
+    "sbt 'project fory-scala' +publishSigned",
+    "sbt 'project fory-json-scala' +publishSigned",
     "sbt sonatypePrepare",
     "sbt sonatypeBundleUpload",
 )
+SCALA_SNAPSHOT_COMMANDS = (
+    "sbt clean",
+    "sbt 'project fory-scala' +publish",
+    "sbt 'project fory-json-scala' +publish",
+)
+JVM_PUBLICATION_MODES = ("release", "snapshot")
+JVM_PUBLICATION_CREDENTIALS = ("NEXUS_USERNAME", "NEXUS_PASSWORD")
+KOTLIN_PUBLIC_ARTIFACTS = (
+    "fory-kotlin",
+    "fory-kotlin-ksp",
+    "fory-json-kotlin",
+    "fory-json-kotlin-ksp",
+)
+KOTLIN_MODULE_NAMES = {
+    "fory-json-kotlin": "org.apache.fory.json.kotlin",
+    "fory-json-kotlin-ksp": "org.apache.fory.json.kotlin.ksp",
+}
+KOTLIN_SERVICE_PROVIDERS = {
+    "fory-kotlin-ksp": "org.apache.fory.kotlin.ksp.ForyKotlinSymbolProcessorProvider",
+    "fory-json-kotlin-ksp": (
+        "org.apache.fory.json.kotlin.ksp.ForyJsonKotlinSymbolProcessorProvider"
+    ),
+}
 RELEASE_DOC_ROOTS = (
     "README.md",
     "java/README.md",
+    "java/fory-json/README.md",
+    "kotlin/README.md",
     "rust/README.md",
     "scala/README.md",
+    "scala/fory-scala/README.md",
+    "scala/fory-json-scala/README.md",
     "csharp/README.md",
     "swift/README.md",
     "dart/packages/fory/README.md",
+    "docs/introduction",
+    "docs/start",
+    "docs/object-serialization",
+    "docs/row-format",
+    "docs/json",
     "docs/compiler",
-    "docs/guide",
+    "docs/grpc",
+    "docs/development",
     "examples",
 )
 RELEASE_DOC_EXTS = (".md", ".example")
@@ -95,6 +161,7 @@ def build(v: str):
         f"git show-ref --verify --quiet refs/heads/{branch}",
         shell=True,
         capture_output=True,
+        check=False,
     )
     if result.returncode == 0:
         # Branch exists, checkout
@@ -133,10 +200,12 @@ def _check_release_version(v: str):
 
 
 def _check_all_committed():
-    proc = subprocess.run("git diff --quiet", capture_output=True, shell=True)
+    proc = subprocess.run(
+        "git diff --quiet", capture_output=True, shell=True, check=False
+    )
     result = proc.returncode
     if result != 0:
-        raise Exception(
+        raise RuntimeError(
             f"There are some uncommitted files: {proc.stdout}, please commit it."
         )
 
@@ -169,55 +238,85 @@ def verify(v):
     logger.info("Verified checksum successfully")
 
 
-def publish_jvm(languages="all"):
-    """Publish Java, Kotlin, and Scala artifacts."""
+def publish_jvm(languages="all", mode="release"):
+    """Publish Java, Kotlin, and Scala artifacts through one ordered JVM owner."""
     langs = _jvm_release_langs(languages)
+    _require_publication_authority(mode)
     _ensure_openjdk25()
+    if "java" not in langs:
+        _verify_fory_core_mr_jar()
     for lang in langs:
         if lang == "java":
-            _publish_java()
+            _publish_java(mode)
             _verify_fory_core_mr_jar()
         elif lang == "kotlin":
-            _publish_kotlin()
+            _publish_kotlin(mode)
         elif lang == "scala":
-            _publish_scala()
+            _publish_scala(mode)
         else:
             raise NotImplementedError(f"Unsupported JVM release language: {lang}")
-    _verify_fory_core_mr_jar()
-
-
-def publish_java():
-    publish_jvm("java")
-
-
-def publish_kotlin():
-    publish_jvm("kotlin")
-
-
-def publish_scala():
-    publish_jvm("scala")
 
 
 def _jvm_release_langs(languages):
     if languages in (None, "", "all"):
         return list(JVM_RELEASE_LANGS)
-    langs = [lang.strip() for lang in languages.split(",") if lang.strip()]
-    unsupported = [lang for lang in langs if lang not in JVM_RELEASE_LANGS]
+    selected = {lang.strip() for lang in languages.split(",") if lang.strip()}
+    if not selected:
+        raise ValueError("JVM release language selection is empty")
+    unsupported = sorted(selected.difference(JVM_RELEASE_LANGS))
     if unsupported:
         raise ValueError(f"Unsupported JVM release language(s): {unsupported}")
-    return langs
+    return [lang for lang in JVM_RELEASE_LANGS if lang in selected]
 
 
-def _publish_java():
-    _run_release_cmd(MAVEN_RELEASE_CMD, "java")
+def _require_publication_authority(mode):
+    if mode not in JVM_PUBLICATION_MODES:
+        raise ValueError(f"Unsupported JVM publication mode: {mode}")
+    missing = [name for name in JVM_PUBLICATION_CREDENTIALS if not os.environ.get(name)]
+    if missing:
+        raise RuntimeError(f"JVM {mode} publication requires: {', '.join(missing)}")
+    if mode == "release" and not _has_gpg_secret_key():
+        raise RuntimeError("JVM release publication requires a GPG secret key")
+    os.environ["SONATYPE_USERNAME"] = os.environ["NEXUS_USERNAME"]
+    os.environ["SONATYPE_PASSWORD"] = os.environ["NEXUS_PASSWORD"]
 
 
-def _publish_kotlin():
-    _run_release_cmd(MAVEN_RELEASE_CMD, "kotlin")
+def _has_gpg_secret_key():
+    gpg = shutil.which("gpg")
+    if not gpg:
+        return False
+    result = subprocess.run(
+        [gpg, "--batch", "--list-secret-keys", "--with-colons"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0 and any(
+        line.startswith("sec:") for line in result.stdout.splitlines()
+    )
 
 
-def _publish_scala():
-    for command in SCALA_RELEASE_CMDS:
+def _publish_java(mode="release"):
+    command = MAVEN_RELEASE_CMD if mode == "release" else MAVEN_SNAPSHOT_CMD
+    _run_release_cmd(command, "java")
+
+
+def _publish_kotlin(mode="release"):
+    if mode == "release":
+        package_command = KOTLIN_RELEASE_PACKAGE_CMD
+        deploy_command = KOTLIN_RELEASE_DEPLOY_CMD
+    else:
+        package_command = KOTLIN_SNAPSHOT_PACKAGE_CMD
+        deploy_command = KOTLIN_SNAPSHOT_DEPLOY_CMD
+    _run_release_cmd(package_command, "kotlin")
+    verify_kotlin_artifacts()
+    _run_release_cmd(deploy_command, "kotlin")
+
+
+def _publish_scala(mode="release"):
+    commands = SCALA_RELEASE_COMMANDS if mode == "release" else SCALA_SNAPSHOT_COMMANDS
+    for command in commands:
         _run_release_cmd(command, "scala")
 
 
@@ -288,9 +387,9 @@ def _brew_command():
 def _homebrew_prefix(brew, formula):
     proc = subprocess.run(
         [brew, "--prefix", formula],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if proc.returncode != 0:
         return None
@@ -313,7 +412,7 @@ def _read_java_runtime(java_cmd):
             [java_cmd, "-XshowSettings:properties", "-version"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            universal_newlines=True,
+            text=True,
             check=True,
         )
     except (OSError, subprocess.CalledProcessError):
@@ -361,20 +460,75 @@ def _java_props(output):
 
 def _verify_fory_core_mr_jar():
     jar_path = _fory_core_jar_path()
+    sources_jar_path = _fory_core_jar_path("sources")
     if not os.path.exists(jar_path):
         raise FileNotFoundError(
             f"Missing fory-core release jar: {jar_path}. "
             "Run the Java release before publishing Kotlin or Scala artifacts."
         )
+    if not os.path.exists(sources_jar_path):
+        raise FileNotFoundError(
+            f"Missing fory-core release sources jar: {sources_jar_path}. "
+            "Run the Java release before publishing Kotlin or Scala artifacts."
+        )
     with zipfile.ZipFile(jar_path) as jar:
-        names = set(jar.namelist())
+        names = jar.namelist()
         manifest = jar.read("META-INF/MANIFEST.MF").decode("utf-8")
+        if names.count(FORY_CORE_NATIVE_IMAGE_PROPERTIES) != 1:
+            raise RuntimeError(
+                f"{jar_path} must contain exactly one "
+                f"{FORY_CORE_NATIVE_IMAGE_PROPERTIES}"
+            )
+        native_image_properties = jar.read(FORY_CORE_NATIVE_IMAGE_PROPERTIES).decode(
+            "utf-8"
+        )
     if "Multi-Release: true" not in manifest:
         raise RuntimeError(f"{jar_path} is missing manifest Multi-Release: true")
     if "Build-Jdk-Spec: 25" not in manifest:
         raise RuntimeError(f"{jar_path} was not built with JDK 25")
     if FORY_CORE_JDK25_ENTRY not in names:
         raise RuntimeError(f"{jar_path} is missing {FORY_CORE_JDK25_ENTRY}")
+    feature_entries = [
+        name
+        for name in names
+        if name.endswith("org/apache/fory/platform/ForyGraalVMFeature.class")
+    ]
+    if feature_entries != [FORY_CORE_FEATURE_ENTRY]:
+        raise RuntimeError(
+            f"{jar_path} must contain only the MR17 GraalVM Feature; "
+            f"found {feature_entries}"
+        )
+    feature_service_entries = [
+        name for name in names if name.endswith(GRAALVM_FEATURE_SERVICE_ENTRY)
+    ]
+    if feature_service_entries:
+        raise RuntimeError(
+            f"{jar_path} contains obsolete Feature service metadata: "
+            f"{feature_service_entries}"
+        )
+    feature_options = re.findall(r"--features=[^\s\\]+", native_image_properties)
+    expected_feature_option = f"--features={FORY_CORE_FEATURE}"
+    if feature_options != [expected_feature_option]:
+        raise RuntimeError(
+            f"{FORY_CORE_NATIVE_IMAGE_PROPERTIES} must contain exactly "
+            f"{expected_feature_option}; found {feature_options}"
+        )
+    if "--initialize-at-build-time=" not in native_image_properties:
+        raise RuntimeError(
+            f"{FORY_CORE_NATIVE_IMAGE_PROPERTIES} is missing --initialize-at-build-time"
+        )
+    with zipfile.ZipFile(sources_jar_path) as sources_jar:
+        source_names = sources_jar.namelist()
+    feature_source_entries = [
+        name
+        for name in source_names
+        if name.endswith("org/apache/fory/platform/ForyGraalVMFeature.java")
+    ]
+    if feature_source_entries != [FORY_CORE_FEATURE_SOURCE_ENTRY]:
+        raise RuntimeError(
+            f"{sources_jar_path} must contain only the MR17 GraalVM Feature source; "
+            f"found {feature_source_entries}"
+        )
     javap = subprocess.run(
         [
             _java_tool("javap"),
@@ -384,27 +538,127 @@ def _verify_fory_core_mr_jar():
             jar_path,
             "-p",
             FORY_CORE_ACCESSOR,
+            FORY_CORE_FEATURE,
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        universal_newlines=True,
+        text=True,
         check=True,
     )
     if "java.lang.invoke.VarHandle" not in javap.stdout:
         raise RuntimeError(f"{FORY_CORE_ACCESSOR} is not the JDK25 VarHandle class")
     if "sun.misc.Unsafe" in javap.stdout:
         raise RuntimeError(f"{FORY_CORE_ACCESSOR} still exposes sun.misc.Unsafe")
-    logger.info("Verified fory-core Multi-Release JDK25 jar: %s", jar_path)
+    feature_declaration = rf"(?m)^final class {re.escape(FORY_CORE_FEATURE)}\b"
+    if not re.search(feature_declaration, javap.stdout):
+        raise RuntimeError(f"{FORY_CORE_FEATURE} must remain a non-public final class")
+    logger.info(
+        "Verified fory-core Multi-Release jars: %s, %s", jar_path, sources_jar_path
+    )
 
 
-def _fory_core_jar_path():
+def verify_kotlin_artifacts():
+    """Open every public Kotlin artifact and validate its publication surface."""
+    version = _read_kotlin_version()
+    for artifact in KOTLIN_PUBLIC_ARTIFACTS:
+        module_dir = os.path.join(PROJECT_ROOT_DIR, "kotlin", artifact)
+        target_dir = os.path.join(module_dir, "target")
+        binary_path = os.path.join(target_dir, f"{artifact}-{version}.jar")
+        sources_path = os.path.join(target_dir, f"{artifact}-{version}-sources.jar")
+        javadoc_path = os.path.join(target_dir, f"{artifact}-{version}-javadoc.jar")
+        pom_path = os.path.join(module_dir, "pom.xml")
+        for path in (binary_path, sources_path, javadoc_path, pom_path):
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"Missing Kotlin publication artifact: {path}")
+        ET.parse(pom_path)
+        with zipfile.ZipFile(binary_path) as binary:
+            binary_names = binary.namelist()
+            for required in (
+                "META-INF/LICENSE",
+                "META-INF/NOTICE",
+                "META-INF/DEPENDENCIES",
+            ):
+                if required not in binary_names:
+                    raise RuntimeError(f"{binary_path} is missing {required}")
+            if not any(name.endswith(".class") for name in binary_names):
+                raise RuntimeError(f"{binary_path} contains no classes")
+            for name in binary_names:
+                if not name.endswith(".class"):
+                    continue
+                class_bytes = binary.read(name)
+                major_version = int.from_bytes(class_bytes[6:8], "big")
+                if major_version != 52:
+                    raise RuntimeError(
+                        f"{binary_path}!/{name} is JVM class version {major_version}, expected 52"
+                    )
+            module_name = KOTLIN_MODULE_NAMES.get(artifact)
+            if module_name:
+                manifest = binary.read("META-INF/MANIFEST.MF").decode("utf-8")
+                if f"Automatic-Module-Name: {module_name}" not in manifest:
+                    raise RuntimeError(
+                        f"{binary_path} is missing Automatic-Module-Name: {module_name}"
+                    )
+            provider = KOTLIN_SERVICE_PROVIDERS.get(artifact)
+            if provider:
+                service_path = (
+                    "META-INF/services/"
+                    "com.google.devtools.ksp.processing.SymbolProcessorProvider"
+                )
+                if service_path not in binary_names:
+                    raise RuntimeError(f"{binary_path} is missing {service_path}")
+                providers = binary.read(service_path).decode("utf-8").splitlines()
+                providers = [line.strip() for line in providers if line.strip()]
+                if providers != [provider]:
+                    raise RuntimeError(
+                        f"{binary_path}!/{service_path} must contain only {provider}; "
+                        f"found {providers}"
+                    )
+        with zipfile.ZipFile(sources_path) as sources:
+            source_names = set(sources.namelist())
+        expected_sources = set()
+        for source_root in ("src/main/kotlin", "src/main/java"):
+            root = os.path.join(module_dir, source_root)
+            if not os.path.isdir(root):
+                continue
+            for directory, _, files in os.walk(root):
+                for filename in files:
+                    if not filename.endswith((".kt", ".java")):
+                        continue
+                    expected_sources.add(
+                        os.path.relpath(
+                            os.path.join(directory, filename), root
+                        ).replace(os.sep, "/")
+                    )
+        if not expected_sources:
+            raise RuntimeError(
+                f"{module_dir} contains no authored Kotlin or Java sources"
+            )
+        packaged_sources = {
+            name for name in source_names if name.endswith((".kt", ".java"))
+        }
+        if packaged_sources != expected_sources:
+            raise RuntimeError(
+                f"{sources_path} has an incomplete or stale source surface: "
+                f"{sorted(packaged_sources ^ expected_sources)}"
+            )
+        with zipfile.ZipFile(javadoc_path) as javadocs:
+            javadoc_names = javadocs.namelist()
+        if "index.html" not in javadoc_names or not any(
+            name.endswith(".html") and name != "index.html" for name in javadoc_names
+        ):
+            raise RuntimeError(f"{javadoc_path} contains no Kotlin API documentation")
+        logger.info("Verified Kotlin publication artifacts for %s", artifact)
+
+
+def _fory_core_jar_path(classifier=None):
     version = _read_java_version()
+    classifier_suffix = f"-{classifier}" if classifier else ""
     return os.path.join(
         PROJECT_ROOT_DIR,
         "java",
         "fory-core",
         "target",
-        f"fory-core-{version}.jar",
+        f"fory-core-{version}{classifier_suffix}.jar",
     )
 
 
@@ -417,6 +671,18 @@ def _read_java_version():
     version = root.findtext("m:version", namespaces=namespace)
     if artifact != "fory-parent" or packaging != "pom" or not version:
         raise ValueError("Cannot find java/fory parent version")
+    return version
+
+
+def _read_kotlin_version():
+    pom = os.path.join(PROJECT_ROOT_DIR, "kotlin", "pom.xml")
+    root = ET.parse(pom).getroot()
+    namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
+    artifact = root.findtext("m:artifactId", namespaces=namespace)
+    packaging = root.findtext("m:packaging", namespaces=namespace)
+    version = root.findtext("m:version", namespaces=namespace)
+    if artifact != "fory-kotlin-parent" or packaging != "pom" or not version:
+        raise ValueError("Cannot find kotlin/fory-kotlin-parent version")
     return version
 
 
@@ -454,7 +720,7 @@ def bump_version(**kwargs):
         elif lang == "kotlin":
             bump_kotlin_version(_normalize_java_version(new_version))
         elif lang == "rust":
-            bump_rust_version(new_version)
+            bump_rust_version(new_version, kwargs.get("release_version"))
         elif lang == "python":
             bump_python_version(new_version)
         elif lang == "javascript":
@@ -519,7 +785,6 @@ def bump_java_version(new_version):
         "java/fory-json",
         "java/fory-format",
         "java/fory-extensions",
-        "java/fory-graalvm-feature",
         "java/fory-test-core",
         "java/fory-testsuite",
         "java/fory-latest-jdk-tests",
@@ -565,14 +830,15 @@ def bump_python_version(new_version):
     )
 
 
-def bump_rust_version(new_version):
+def bump_rust_version(new_version, release_version=None):
     rust_version = _normalize_rust_version(new_version)
+    release_version = _resolve_release_doc_version(new_version, release_version)
     _bump_version("rust", "Cargo.toml", rust_version, _update_rust_version)
     _bump_version(
         "benchmarks/rust",
         "Cargo.toml",
         rust_version,
-        _update_cargo_package_version,
+        _update_rust_version,
     )
     _bump_version(
         "integration_tests/idl_tests/rust",
@@ -592,6 +858,12 @@ def bump_rust_version(new_version):
         rust_version,
         _update_cargo_lock_version,
     )
+    _bump_version(
+        "rust/fory/src",
+        "lib.rs",
+        release_version or rust_version,
+        _update_rust_doc_version,
+    )
 
 
 def bump_kotlin_version(new_version):
@@ -599,11 +871,36 @@ def bump_kotlin_version(new_version):
     for p in [
         "kotlin/fory-kotlin",
         "kotlin/fory-kotlin-ksp",
+        "kotlin/fory-json-kotlin",
+        "kotlin/fory-json-kotlin-ksp",
         "kotlin/fory-kotlin-tests",
+        "integration_tests/kotlin_json_corpus",
+        "integration_tests/graalvm_kotlin_tests",
         "integration_tests/grpc_tests/kotlin",
         "integration_tests/idl_tests/kotlin",
     ]:
         _bump_version(p, "pom.xml", new_version, _update_pom_parent_version)
+    for file in ["build.gradle", "README.md"]:
+        _bump_version(
+            "integration_tests/android_tests",
+            file,
+            new_version,
+            _update_android_kotlin_version,
+        )
+    _bump_version(
+        "benchmarks/kotlin",
+        "gradle.properties",
+        new_version,
+        _update_kotlin_benchmark_version,
+    )
+    for path, file in [
+        ("kotlin/fory-json-kotlin", "README.md"),
+        ("kotlin/fory-json-kotlin-ksp", "README.md"),
+        ("docs/json", "kotlin.md"),
+        ("docs/json", "getting-started.md"),
+        ("docs/start", "kotlin.md"),
+    ]:
+        _bump_version(path, file, new_version, _update_release_doc_lines)
 
 
 def bump_cpp_version(new_version):
@@ -622,7 +919,6 @@ def bump_go_version(new_version):
         "integration_tests/idl_tests/go",
     ]:
         _bump_version(p, "go.mod", new_version, _update_go_mod_version)
-    _bump_version("go/fory/cmd/fory", "main.go", new_version, _update_go_cli_version)
 
 
 def bump_dart_version(new_version):
@@ -669,7 +965,7 @@ def bump_csharp_version(new_version):
         _update_csharp_readme_package_version,
     )
     _bump_version(
-        "docs/guide/csharp",
+        "docs/object-serialization/csharp",
         "index.md",
         release_version or new_version,
         _update_csharp_readme_package_version,
@@ -741,11 +1037,29 @@ def _update_pom_parent_version(lines, new_version):
 def _update_android_tests_dependency_version(lines, new_version):
     for index, line in enumerate(lines):
         lines[index] = re.sub(
-            r"(org\.apache\.fory:fory-(?:core|annotation-processor):)[^'`)\s]+",
+            r"(org\.apache\.fory:fory-(?:core|json|annotation-processor):)[^'`)\s]+",
             r"\g<1>" + new_version,
             line,
         )
     return lines
+
+
+def _update_android_kotlin_version(lines, new_version):
+    for index, line in enumerate(lines):
+        lines[index] = re.sub(
+            r"(org\.apache\.fory:(?:fory-json-kotlin(?:-ksp)?|kotlin-json-corpus):)[^'`)\s]+",
+            r"\g<1>" + new_version,
+            line,
+        )
+    return lines
+
+
+def _update_kotlin_benchmark_version(lines, new_version):
+    for index, line in enumerate(lines):
+        if line.startswith("foryVersion="):
+            lines[index] = f"foryVersion={new_version}\n"
+            return lines
+    raise ValueError("No foryVersion entry found in Kotlin benchmark properties")
 
 
 def _update_scala_version(lines, v):
@@ -871,6 +1185,14 @@ def _update_cargo_lock_version(lines, v: str):
     return lines
 
 
+def _update_rust_doc_version(lines, v: str):
+    for index, line in enumerate(lines):
+        if re.match(r'^//!\s+fory\s*=\s*"', line):
+            lines[index] = re.sub(r'"[^"]+"', f'"{v}"', line, count=1)
+            break
+    return lines
+
+
 def _update_cmake_project_version(lines, v: str):
     cmake_version = _normalize_cmake_version(v)
     in_project = False
@@ -919,17 +1241,6 @@ def _update_go_mod_version(lines, v: str):
     return lines
 
 
-def _update_go_cli_version(lines, v: str):
-    v = v.strip()
-    if v.startswith("v"):
-        v = v[1:]
-    for index, line in enumerate(lines):
-        if line.startswith("const version = "):
-            lines[index] = f'const version = "{v}"\n'
-            return lines
-    raise ValueError("No Go CLI version constant found")
-
-
 def _update_pubspec_version(lines, v: str):
     for index, line in enumerate(lines):
         if re.match(r"^version\s*:", line):
@@ -951,9 +1262,7 @@ def _update_dart_readme_dependency_version(lines, v: str):
 
 
 def _update_dart_changelog(lines, v: str, workspace=False):
-    v = v.strip()
-    if v.startswith("v"):
-        v = v[1:]
+    v = _strip_version_prefix(v)
     heading = f"## {v}\n"
     if workspace:
         body = [
@@ -967,6 +1276,8 @@ def _update_dart_changelog(lines, v: str, workspace=False):
     start_index = -1
     for index, line in enumerate(lines):
         if heading_pattern.match(line):
+            if line == heading:
+                return lines
             start_index = index
             break
     if start_index == -1:
@@ -977,7 +1288,17 @@ def _update_dart_changelog(lines, v: str, workspace=False):
         if re.match(r"^##\s+", lines[index]):
             end_index = index
             break
-    return lines[:start_index] + [heading] + body + lines[end_index:]
+    updated = list(lines)
+    updated[start_index] = heading
+    dev_cycle = re.compile(
+        r"^- Start the next (?:Dart workspace )?development cycle after "
+        r"the \S+ release\.\s*$"
+    )
+    for index in range(start_index + 1, end_index):
+        if dev_cycle.match(updated[index]):
+            updated[index] = body[1]
+            break
+    return updated
 
 
 def _update_dart_dev_changelog(lines, v: str, release_version: str, workspace=False):
@@ -985,8 +1306,10 @@ def _update_dart_dev_changelog(lines, v: str, release_version: str, workspace=Fa
     if workspace:
         body = [
             "\n",
-            "- Start the next Dart workspace development cycle after the "
-            f"{release_version} release.\n",
+            (
+                "- Start the next Dart workspace development cycle after the "
+                f"{release_version} release.\n"
+            ),
             "\n",
         ]
     else:
@@ -995,20 +1318,10 @@ def _update_dart_dev_changelog(lines, v: str, release_version: str, workspace=Fa
             f"- Start the next development cycle after the {release_version} release.\n",
             "\n",
         ]
-    start_index = -1
-    for index, line in enumerate(lines):
+    for line in lines:
         if line == heading:
-            start_index = index
-            break
-    if start_index == -1:
-        return [heading] + body + lines
-
-    end_index = len(lines)
-    for index in range(start_index + 1, len(lines)):
-        if re.match(r"^##\s+", lines[index]):
-            end_index = index
-            break
-    return lines[:start_index] + [heading] + body + lines[end_index:]
+            return lines
+    return [heading] + body + lines
 
 
 def _update_csharp_props_version(lines, v: str):
@@ -1050,7 +1363,7 @@ def _update_swift_readme_dependency_version(lines, v: str):
     raise ValueError("No Swift Package dependency snippet for apache/fory.git found")
 
 
-def bump_release_doc_versions(new_version: str, release_version: str = None):
+def bump_release_doc_versions(new_version: str, release_version: str | None = None):
     release_version = _resolve_release_doc_version(new_version, release_version)
     if not release_version:
         logger.info("Skip release documentation version update for %s", new_version)
@@ -1059,7 +1372,7 @@ def bump_release_doc_versions(new_version: str, release_version: str = None):
         _update_release_doc_file(file, release_version)
 
 
-def _resolve_release_doc_version(new_version: str, release_version: str = None):
+def _resolve_release_doc_version(new_version: str, release_version: str | None = None):
     if release_version:
         release_version = _strip_version_prefix(release_version)
         if not _is_release_version(release_version):
@@ -1145,6 +1458,19 @@ def _update_release_doc_lines(lines, release_version):
 
 
 def _update_release_doc_line(line, release_version):
+    scoped_patterns = (
+        r"(\bpyfory(?:\[[^\]]+\])?==)" + VERSION_PATTERN,
+        r"(\bgithub\.com/apache/fory/go/fory@v)" + VERSION_PATTERN,
+        r"(@apache-fory/(?:core|hps)@)" + VERSION_PATTERN,
+    )
+    scoped_update = line
+    has_scoped_dependency = False
+    for pattern in scoped_patterns:
+        if re.search(pattern, scoped_update):
+            has_scoped_dependency = True
+        scoped_update = re.sub(pattern, r"\g<1>" + release_version, scoped_update)
+    if has_scoped_dependency:
+        return scoped_update
     if not _is_release_doc_line(line):
         return line
     if "crates.io-v" in line:
@@ -1202,9 +1528,7 @@ def _normalize_java_version(v: str) -> str:
 
 
 def _normalize_go_version(v: str) -> str:
-    v = v.strip()
-    if v.startswith("v"):
-        v = v[1:]
+    v = _strip_version_prefix(v)
     v = re.sub(r"-(alpha|beta|rc)(\d+)$", r"-\1.\2", v)
     if re.search(r"(?i)-(alpha|beta)\.0$", v):
         return f"v{v}"
@@ -1223,9 +1547,7 @@ def _normalize_go_version(v: str) -> str:
 
 
 def _normalize_cmake_version(v: str) -> str:
-    v = v.strip()
-    if v.startswith("v"):
-        v = v[1:]
+    v = _strip_version_prefix(v)
     v = re.split(r"[-+]", v, maxsplit=1)[0]
     return v
 
@@ -1255,9 +1577,7 @@ def _normalize_js_version(v: str) -> str:
 
 
 def _is_release_version(v: str) -> bool:
-    v = v.strip()
-    if v.startswith("v"):
-        v = v[1:]
+    v = _strip_version_prefix(v)
     return re.match(r"^\d+\.\d+\.\d+$", v) is not None
 
 
@@ -1333,30 +1653,23 @@ def _parse_args():
         default="all",
         help="comma separated JVM languages: java,kotlin,scala",
     )
+    publish_jvm_parser.add_argument(
+        "--mode",
+        choices=JVM_PUBLICATION_MODES,
+        default="release",
+        help="release stages signed artifacts; snapshot publishes unsigned snapshots",
+    )
     publish_jvm_parser.set_defaults(func=publish_jvm)
 
-    publish_java_parser = subparsers.add_parser(
-        "publish_java",
-        description="Publish Java artifacts",
+    verify_kotlin_parser = subparsers.add_parser(
+        "verify_kotlin_artifacts",
+        description="Verify Kotlin binary, source, API documentation, and POM artifacts",
     )
-    publish_java_parser.set_defaults(func=publish_java)
-
-    publish_kotlin_parser = subparsers.add_parser(
-        "publish_kotlin",
-        description="Publish Kotlin artifacts",
-    )
-    publish_kotlin_parser.set_defaults(func=publish_kotlin)
-
-    publish_scala_parser = subparsers.add_parser(
-        "publish_scala",
-        description="Publish Scala artifacts",
-    )
-    publish_scala_parser.set_defaults(func=publish_scala)
+    verify_kotlin_parser.set_defaults(func=verify_kotlin_artifacts)
 
     args = parser.parse_args()
     arg_dict = dict(vars(args))
     del arg_dict["func"]
-    print(arg_dict)
     args.func(**arg_dict)
 
 

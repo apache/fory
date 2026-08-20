@@ -1,0 +1,350 @@
+[
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.foryFromJsonBytes",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 3318893.391568216,
+      "scoreError": 38387.28448699275,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  },
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.foryFromJsonString",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 3771279.877394124,
+      "scoreError": 24022.44981324859,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  },
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.foryToJsonBytes",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 9485122.241809543,
+      "scoreError": 389806.29923327826,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  },
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.foryToJsonString",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 6760588.439072061,
+      "scoreError": 54595.97697333433,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  },
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.jacksonFromJsonBytes",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 1080452.8479462112,
+      "scoreError": 24089.40104978718,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  },
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.jacksonFromJsonString",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 960361.5901450468,
+      "scoreError": 8161.349699108629,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  },
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.jacksonToJsonBytes",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 1761718.933247129,
+      "scoreError": 34735.119977300055,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  },
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.jacksonToJsonString",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 1955854.87305796,
+      "scoreError": 37257.23058240209,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  },
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.jsoniterFromJsonBytes",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 2391923.4543758444,
+      "scoreError": 181924.61893445626,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  },
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.jsoniterFromJsonString",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 2350296.6557386126,
+      "scoreError": 127256.9665232785,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  },
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.jsoniterToJsonBytes",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 2745567.0435188385,
+      "scoreError": 1391488.088001239,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  },
+  {
+    "jmhVersion": "1.37",
+    "benchmark": "org.apache.fory.benchmark.json.MediaContentBenchmark.jsoniterToJsonString",
+    "mode": "thrpt",
+    "threads": 1,
+    "forks": 1,
+    "jvm": "/opt/homebrew/Cellar/openjdk/26.0.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+    "jvmArgs": [
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+    ],
+    "jdkVersion": "26.0.1",
+    "vmName": "OpenJDK 64-Bit Server VM",
+    "vmVersion": "26.0.1",
+    "warmupIterations": 2,
+    "warmupTime": "1 s",
+    "warmupBatchSize": 1,
+    "measurementIterations": 2,
+    "measurementTime": "1 s",
+    "measurementBatchSize": 1,
+    "primaryMetric": {
+      "score": 2748996.506356555,
+      "scoreError": 37852.358972850256,
+      "scoreUnit": "ops/s"
+    },
+    "secondaryMetrics": {},
+    "alternatingRounds": 3,
+    "aggregation": "median"
+  }
+]

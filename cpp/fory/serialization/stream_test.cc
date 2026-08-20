@@ -70,6 +70,12 @@ struct SharedIntPair {
   FORY_STRUCT(SharedIntPair, first, second);
 };
 
+struct StreamEmptyStruct {
+  FORY_STRUCT(StreamEmptyStruct);
+};
+
+static_assert(!read_data_always_advances_v<StreamEmptyStruct>);
+
 class OneByteStreamBuf final : public std::streambuf {
 public:
   explicit OneByteStreamBuf(std::vector<uint8_t> data)
@@ -200,6 +206,57 @@ TEST(StreamSerializationTest, StructRoundTrip) {
   auto result = fory.deserialize<StreamEnvelope>(stream);
   ASSERT_TRUE(result.ok()) << result.error().to_string();
   EXPECT_EQ(result.value(), original);
+}
+
+TEST(StreamSerializationTest, CompactionPreservesUnbackedProgress) {
+  constexpr uint32_t kPrefixSize = 5000;
+  constexpr size_t kElementCount = 1025;
+  auto writer =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  ASSERT_TRUE(writer.register_struct<StreamEmptyStruct>(4).ok());
+  std::vector<StreamEmptyStruct> values(kElementCount);
+  auto bytes = writer.serialize(values);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+  // Enter the collection with a physical reader index above the compaction
+  // threshold. The first empty Struct read then discards that prefix while the
+  // guarded loop's byte checkpoint is active. The trailing byte satisfies the
+  // allocation gate without backing any element body.
+  std::vector<uint8_t> input(kPrefixSize, 0);
+  input.insert(input.end(), bytes->begin(), bytes->end());
+  input.push_back(0);
+
+  auto decode = [&](Fory &reader) {
+    OneByteIStream source(input);
+    StdInputStream stream(source, 16);
+    auto skipped = stream.skip(kPrefixSize);
+    EXPECT_TRUE(skipped.ok()) << skipped.error().to_string();
+    auto decoded = reader.deserialize<std::vector<StreamEmptyStruct>>(stream);
+    EXPECT_GT(stream.get_buffer().logical_reader_index(),
+              stream.get_buffer().reader_index());
+    return decoded;
+  };
+
+  auto allowed_reader = Fory::builder()
+                            .xlang(true)
+                            .compatible(false)
+                            .track_ref(false)
+                            .max_unbacked_container_items(kElementCount)
+                            .build();
+  ASSERT_TRUE(allowed_reader.register_struct<StreamEmptyStruct>(4).ok());
+  auto allowed = decode(allowed_reader);
+  ASSERT_TRUE(allowed.ok()) << allowed.error().to_string();
+  EXPECT_EQ(allowed->size(), kElementCount);
+
+  auto limited_reader = Fory::builder()
+                            .xlang(true)
+                            .compatible(false)
+                            .track_ref(false)
+                            .max_unbacked_container_items(kElementCount - 1)
+                            .build();
+  ASSERT_TRUE(limited_reader.register_struct<StreamEmptyStruct>(4).ok());
+  auto rejected = decode(limited_reader);
+  EXPECT_FALSE(rejected.ok());
 }
 
 TEST(StreamSerializationTest, SequentialDeserializeFromSingleStream) {

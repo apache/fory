@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::mem;
 use std::ptr;
 
 const MAX_HASH32: u64 = (1 << 31) - 1;
@@ -477,8 +476,11 @@ pub fn murmurhash3_x64_128(bytes: &[u8], seed: u64) -> (u64, u64) {
     let (mut h1, mut h2) = (seed, seed);
 
     for i in 0..block_count as usize {
-        let b64: &[u64] = unsafe { mem::transmute(bytes) };
-        let (mut k1, mut k2) = (b64[i * 2], b64[i * 2 + 1]);
+        let offset = i * read_size as usize;
+        // Input byte slices can be arbitrarily aligned. Read MurmurHash3 blocks
+        // as explicit little-endian bytes instead of forming an aligned u64 slice.
+        let mut k1 = u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap());
+        let mut k2 = u64::from_le_bytes(bytes[offset + 8..offset + 16].try_into().unwrap());
 
         k1 = k1.wrapping_mul(c1);
         k1 = k1.rotate_left(31);
@@ -649,6 +651,12 @@ mod test_hash {
     fn test_large_data() {
         assert!(murmurhash3_x64_128("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Etiam at consequat massa. Cras eleifend pellentesque ex, at dignissim libero maximus ut. Sed eget nulla felis".as_bytes(), 0)
             == (9455322759164802692, 17863277201603478371));
+    }
+
+    #[test]
+    fn test_unaligned_full_block() {
+        let data = b"x123456789abcdef1";
+        assert!(murmurhash3_x64_128(&data[1..], 0) == (9259082041050667785, 12459473952842597282));
     }
 }
 

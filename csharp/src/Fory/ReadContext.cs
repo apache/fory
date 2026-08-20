@@ -15,11 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Runtime.CompilerServices;
+
 namespace Apache.Fory;
 
 public sealed class ReadContext
 {
-    private const int MinRemoteTypeMetaLimit = 8192;
+    private const long MinRemoteTypeMetaVersions = 8192;
+    private const int MaxRemoteTypeMetaKeys = 8192;
 
     private readonly ReusableArray<TypeMeta> _typeMetaRefs = new();
     private readonly UInt64Map<TypeMeta> _typeMetasByHeader = new();
@@ -29,17 +32,18 @@ public sealed class ReadContext
     private readonly List<MetaString> _readMetaStrings = [];
 
     internal readonly UInt64Map<TypeInfo> _readTypeInfoByType = new();
-    internal readonly List<uint> _reservedRefIds = [];
     private readonly int _maxDynamicReadDepth;
     internal Type? _typeMetaType;
     internal TypeMeta? _typeMeta;
     internal UInt64Map<TypeMeta>? _typeMetaByType;
     internal Type? _cachedTypeMetaType;
     internal TypeMeta? _cachedTypeMeta;
-    internal int _currentDynamicReadDepth;
+    private int _remainingDynamicReadDepth;
     private readonly Dictionary<object, int> _remoteSchemaVersionsByType = [];
     private readonly Config _config;
-    private int _totalAcceptedSchemaVersions;
+    private long _totalAcceptedSchemaVersions;
+    internal long _remainingGraphMemoryBytes;
+    internal long _remainingUnbackedContainerItems;
 
     public ReadContext(
         ByteReader reader,
@@ -55,6 +59,7 @@ public sealed class ReadContext
         CheckStructVersion = config.CheckStructVersion;
         RefReader = new RefReader();
         _maxDynamicReadDepth = config.MaxDepth;
+        _remainingDynamicReadDepth = _maxDynamicReadDepth;
         _config = config;
     }
 
@@ -68,7 +73,101 @@ public sealed class ReadContext
 
     public bool CheckStructVersion { get; }
 
-    internal RefReader RefReader { get; }
+    /// <summary>
+    /// Low-level reference table reader used by generated and concrete serializers.
+    /// </summary>
+    public RefReader RefReader { get; }
+
+    /// <summary>
+    /// Reserves estimated graph memory for the current root deserialization.
+    /// </summary>
+    /// <remarks>
+    /// Serializer owners compute owner-specific formulas and pass raw bytes here. This
+    /// accounting does not replace byte-availability checks before backing allocation.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveGraphMemory(long bytes)
+    {
+        long remaining = _remainingGraphMemoryBytes - bytes;
+        // Failed root reads reset this context, so keep the common valid reserve to one subtract and
+        // one store; invalid or exceeded reserves repair nothing and throw from the cold path.
+        _remainingGraphMemoryBytes = remaining;
+        if ((bytes | remaining) < 0)
+        {
+            ThrowInvalidGraphMemoryReserve(bytes, remaining + bytes);
+            return;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveGraphMemory(int bytes)
+    {
+        long remaining = _remainingGraphMemoryBytes - bytes;
+        _remainingGraphMemoryBytes = remaining;
+        if (((long)bytes | remaining) < 0)
+        {
+            ThrowInvalidGraphMemoryReserve(bytes, remaining + bytes);
+            return;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveGraphMemory(uint bytes)
+    {
+        long remaining = _remainingGraphMemoryBytes - bytes;
+        _remainingGraphMemoryBytes = remaining;
+        if (remaining < 0)
+        {
+            ThrowInvalidGraphMemoryReserve(bytes, remaining + bytes);
+            return;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ThrowInvalidGraphMemoryReserve(long bytes, long remaining)
+    {
+        if (bytes < 0)
+        {
+            throw new InvalidDataException("graph memory estimate overflows");
+        }
+
+        throw new InvalidDataException(
+            $"estimated graph memory request {bytes} bytes exceeds MaxGraphMemoryBytes remaining budget {remaining} bytes out of effective limit {_config.MaxGraphMemoryBytes} bytes");
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void CheckUnbackedContainerAllocation(int count)
+    {
+        long requiredReadable = count - _remainingUnbackedContainerItems;
+        if (requiredReadable > 0)
+        {
+            Reader.CheckBound((int)requiredReadable);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void SettleUnbackedContainerItems(int items, int bytesRead)
+    {
+        int unbackedItems = items - bytesRead;
+        if (unbackedItems <= 0)
+        {
+            return;
+        }
+
+        long remaining = _remainingUnbackedContainerItems - unbackedItems;
+        _remainingUnbackedContainerItems = remaining;
+        if (remaining < 0)
+        {
+            ThrowUnbackedContainerLimit();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ThrowUnbackedContainerLimit()
+    {
+        throw new InvalidDataException(
+            $"count-driven container work exceeds MaxUnbackedContainerItems {_config.MaxUnbackedContainerItems}");
+    }
 
     internal void ResetFor(ByteReader reader)
     {
@@ -130,6 +229,9 @@ public sealed class ReadContext
 
     internal bool TryGetTypeMetaByHeader(ulong header, out TypeMeta typeMeta)
     {
+        // This map is the sole accepted-metadata owner. Remote entries are published only after
+        // cold validation and limit checks; exact-local entries are published only after byte
+        // identity is proven. A hit therefore skips parsing, validation, and accounting.
         // UInt64Map reserves ulong.MaxValue as its empty-slot marker. A valid
         // cached TypeMeta header cannot use reserved global-header bits, but an
         // attacker-controlled cache lookup can happen before cold-path header
@@ -179,7 +281,16 @@ public sealed class ReadContext
         {
             throw new InvalidDataException("remote metadata is missing type identity");
         }
-        _remoteSchemaVersionsByType.TryGetValue(typeKey, out int versionsForType);
+        bool hasTypeKey =
+            _remoteSchemaVersionsByType.TryGetValue(typeKey, out int versionsForType);
+        if (!hasTypeKey &&
+            _remoteSchemaVersionsByType.Count >= MaxRemoteTypeMetaKeys)
+        {
+            throw new InvalidDataException(
+                $"Remote TypeMeta logical type limit exceeded: {_remoteSchemaVersionsByType.Count} >= {MaxRemoteTypeMetaKeys}. " +
+                "The data may be malicious.");
+        }
+
         int maxSchemaVersionsPerType = _config.MaxSchemaVersionsPerType;
         if (versionsForType >= maxSchemaVersionsPerType)
         {
@@ -188,14 +299,12 @@ public sealed class ReadContext
                 "The data may be malicious. If the data is not malicious, please increase MaxSchemaVersionsPerType.");
         }
 
-        int acceptedTypeCount = versionsForType == 0
+        long acceptedTypeCount = !hasTypeKey
             ? _remoteSchemaVersionsByType.Count + 1
             : _remoteSchemaVersionsByType.Count;
         int maxAverageSchemaVersionsPerType = _config.MaxAverageSchemaVersionsPerType;
-        long globalLimit = Math.Max(
-            MinRemoteTypeMetaLimit,
-            (long)acceptedTypeCount * maxAverageSchemaVersionsPerType);
-        if (_totalAcceptedSchemaVersions >= globalLimit)
+        if (_totalAcceptedSchemaVersions >= MinRemoteTypeMetaVersions &&
+            _totalAcceptedSchemaVersions / acceptedTypeCount >= maxAverageSchemaVersionsPerType)
         {
             throw new InvalidDataException(
                 $"Remote schema version limit exceeded: {_totalAcceptedSchemaVersions} metadata versions for " +
@@ -300,7 +409,7 @@ public sealed class ReadContext
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     internal TypeMeta DecodeTypeMeta()
     {
-        return TypeMeta.Decode(Reader, _config.MaxTypeFields, _config.MaxTypeMetaBytes);
+        return TypeMeta.Decode(Reader, _config.MaxTypeFields, _config.MaxTypeMetaBytes, _config.MaxDepth);
     }
 
     internal void StoreTypeMeta(Type type, TypeMeta typeMeta)
@@ -404,45 +513,37 @@ public sealed class ReadContext
         _readTypeInfoByType.Remove(TypeMapKey.Get(type));
     }
 
-    public void StoreRef(object? value)
-    {
-        if (_reservedRefIds.Count == 0)
-        {
-            return;
-        }
-
-        RefReader.StoreRefAt(_reservedRefIds[^1], value);
-    }
-
-    internal void SetReservedRefId(uint refId)
-    {
-        _reservedRefIds.Add(refId);
-    }
-
-    internal void ClearReservedRefId()
-    {
-        if (_reservedRefIds.Count > 0)
-        {
-            _reservedRefIds.RemoveAt(_reservedRefIds.Count - 1);
-        }
-    }
-
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void IncreaseReadDepth()
     {
-        _currentDynamicReadDepth += 1;
-        if (_currentDynamicReadDepth > _maxDynamicReadDepth)
+        // Keep a countdown so the successful nested hot path needs one state load/store and a
+        // sign check. Failed roots retain the negative value until root-owned reset restores it.
+        int remaining = _remainingDynamicReadDepth - 1;
+        _remainingDynamicReadDepth = remaining;
+        if (remaining < 0)
         {
-            throw new InvalidDataException(
-                $"maximum dynamic object nesting depth ({_maxDynamicReadDepth}) exceeded. current depth: {_currentDynamicReadDepth}");
+            ThrowReadDepthExceeded(_maxDynamicReadDepth - remaining);
         }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ThrowReadDepthExceeded(int depth)
+    {
+        throw new InvalidDataException(
+            $"maximum dynamic object nesting depth ({_maxDynamicReadDepth}) exceeded. current depth: {depth}");
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void DecreaseReadDepth()
     {
-        if (_currentDynamicReadDepth > 0)
-        {
-            _currentDynamicReadDepth -= 1;
-        }
+        _remainingDynamicReadDepth += 1;
+    }
+
+    internal int CurrentReadDepth => _maxDynamicReadDepth - _remainingDynamicReadDepth;
+
+    internal void ResetReadDepth()
+    {
+        _remainingDynamicReadDepth = _maxDynamicReadDepth;
     }
 
     internal void Reset()
@@ -452,13 +553,13 @@ public sealed class ReadContext
         _typeMeta = null;
         _typeMetaByType?.ClearKeys();
         _readTypeInfoByType.ClearKeys();
-        _reservedRefIds.Clear();
         _cachedTypeMetaType = null;
         _cachedTypeMeta = null;
-        _currentDynamicReadDepth = 0;
+        ResetReadDepth();
         _firstTypeMetaRef = null;
         _hasFirstTypeMetaRef = false;
         _typeMetaRefs.Clear();
         _readMetaStrings.Clear();
+        _remainingUnbackedContainerItems = 0;
     }
 }

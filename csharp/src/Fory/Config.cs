@@ -28,6 +28,8 @@ public sealed class Config
         bool compatible,
         bool checkStructVersion,
         int maxDepth,
+        long maxGraphMemoryBytes,
+        long maxUnbackedContainerItems,
         int maxTypeFields,
         int maxTypeMetaBytes,
         int maxSchemaVersionsPerType,
@@ -53,11 +55,21 @@ public sealed class Config
         {
             throw new ArgumentOutOfRangeException(nameof(maxAverageSchemaVersionsPerType), "MaxAverageSchemaVersionsPerType must be greater than 0.");
         }
+        if (maxGraphMemoryBytes <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxGraphMemoryBytes), "MaxGraphMemoryBytes must be greater than 0.");
+        }
+        if (maxUnbackedContainerItems < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxUnbackedContainerItems), "MaxUnbackedContainerItems must be non-negative.");
+        }
 
         TrackRef = trackRef;
         Compatible = compatible;
         CheckStructVersion = checkStructVersion;
         MaxDepth = maxDepth;
+        MaxGraphMemoryBytes = maxGraphMemoryBytes;
+        MaxUnbackedContainerItems = maxUnbackedContainerItems;
         MaxTypeFields = maxTypeFields;
         MaxTypeMetaBytes = maxTypeMetaBytes;
         MaxSchemaVersionsPerType = maxSchemaVersionsPerType;
@@ -80,9 +92,26 @@ public sealed class Config
     public bool CheckStructVersion { get; }
 
     /// <summary>
-    /// Gets the maximum allowed nesting depth for dynamic object payload reads.
+    /// Gets the maximum allowed nesting depth for recursive value reads and received TypeMeta field types.
     /// </summary>
     public int MaxDepth { get; }
+
+    /// <summary>
+    /// Gets the approximate graph-memory gate for one root deserialization.
+    /// </summary>
+    /// <remarks>
+    /// The estimate mainly covers materialized collections, maps, arrays, structs, and objects. It
+    /// skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays;
+    /// those remain gated by byte-availability checks on the unread input. Actual process memory can
+    /// be higher than this value.
+    /// </remarks>
+    public long MaxGraphMemoryBytes { get; }
+
+    /// <summary>
+    /// Gets the maximum count-driven collection and map items that may be read without
+    /// proportional input progress during one root deserialization.
+    /// </summary>
+    public long MaxUnbackedContainerItems { get; }
 
     /// <summary>
     /// Gets the maximum accepted field count in one received struct TypeMeta.
@@ -114,6 +143,8 @@ public sealed class ForyBuilder
     private bool? _compatible;
     private bool _checkStructVersion;
     private int _maxDepth = 20;
+    private long _maxGraphMemoryBytes = 128L * 1024 * 1024;
+    private long _maxUnbackedContainerItems = 8192;
     private int _maxTypeFields = 512;
     private int _maxTypeMetaBytes = 4096;
     private int _maxSchemaVersionsPerType = 10;
@@ -153,7 +184,7 @@ public sealed class ForyBuilder
     }
 
     /// <summary>
-    /// Sets the maximum supported dynamic object nesting depth during deserialization.
+    /// Sets the maximum supported recursive value and received TypeMeta field-type nesting depth.
     /// </summary>
     /// <param name="value">Depth limit. Must be greater than <c>0</c>.</param>
     /// <returns>The same builder instance.</returns>
@@ -166,6 +197,43 @@ public sealed class ForyBuilder
         }
 
         _maxDepth = value;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the approximate graph-memory gate for one root deserialization.
+    /// </summary>
+    /// <remarks>
+    /// The estimate mainly covers materialized collections, maps, arrays, structs, and objects. It
+    /// skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays;
+    /// those remain gated by byte-availability checks on the unread input. Actual process memory can
+    /// be higher than this value.
+    /// </remarks>
+    public ForyBuilder MaxGraphMemoryBytes(long value)
+    {
+        if (value <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "MaxGraphMemoryBytes must be greater than 0.");
+        }
+
+        _maxGraphMemoryBytes = value;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the maximum count-driven collection and map items that may be read without
+    /// proportional input progress during one root deserialization.
+    /// </summary>
+    /// <param name="value">Root allowance. Must be non-negative; zero is strict.</param>
+    /// <returns>The same builder instance.</returns>
+    public ForyBuilder MaxUnbackedContainerItems(long value)
+    {
+        if (value < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "MaxUnbackedContainerItems must be non-negative.");
+        }
+
+        _maxUnbackedContainerItems = value;
         return this;
     }
 
@@ -235,6 +303,8 @@ public sealed class ForyBuilder
             compatible: compatible,
             checkStructVersion: compatible ? false : _checkStructVersion,
             maxDepth: _maxDepth,
+            maxGraphMemoryBytes: _maxGraphMemoryBytes,
+            maxUnbackedContainerItems: _maxUnbackedContainerItems,
             maxTypeFields: _maxTypeFields,
             maxTypeMetaBytes: _maxTypeMetaBytes,
             maxSchemaVersionsPerType: _maxSchemaVersionsPerType,

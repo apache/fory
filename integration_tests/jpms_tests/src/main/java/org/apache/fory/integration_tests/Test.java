@@ -21,6 +21,11 @@ package org.apache.fory.integration_tests;
 
 import org.apache.fory.Fory;
 import org.apache.fory.format.encoder.Encoders;
+import org.apache.fory.integration.kotlin.json.corpus.KotlinJsonCorpus;
+import org.apache.fory.integration.kotlin.json.corpus.PlatformAccount;
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.kotlin.ForyJsonKotlin;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.test.bean.Foo;
 
 /**
@@ -34,5 +39,23 @@ public class Test {
     fory.serialize(Foo.create());
 
     Encoders.bean(Foo.class, fory);
+
+    verifyKotlinJson();
+  }
+
+  static void verifyKotlinJson() {
+    ForyJson json = ForyJsonKotlin.builder().withAsyncCompilation(false).build();
+    TypeRef<PlatformAccount> accountType = KotlinJsonCorpus.accountType();
+    PlatformAccount value = new PlatformAccount(37, "jpms", "default-label");
+    PlatformAccount decoded = json.fromJson(json.toJson(value, accountType), accountType);
+    if (!value.equals(decoded)) {
+      throw new AssertionError("Kotlin JSON JPMS round trip failed: " + decoded);
+    }
+    PlatformAccount defaulted = json.fromJson("{\"id\":1,\"name\":\"default\"}", accountType);
+    if (defaulted.getId() != 1
+        || !"default".equals(defaulted.getName())
+        || !"corpus-default".equals(defaulted.getLabel())) {
+      throw new AssertionError("Kotlin JSON JPMS default constructor bridge was not used");
+    }
   }
 }

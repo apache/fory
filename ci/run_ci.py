@@ -54,23 +54,21 @@ logging.basicConfig(
 #   USE_PYTHON_RUST       - Rust implementation
 #   USE_PYTHON_JAVASCRIPT - JavaScript implementation
 #   USE_PYTHON_JAVA       - Java implementation
-#   USE_PYTHON_KOTLIN     - Kotlin implementation
 #   USE_PYTHON_PYTHON     - Python implementation
 #   USE_PYTHON_GO         - Go implementation
 #   USE_PYTHON_FORMAT     - Format implementation
 #
 # By default, JavaScript, Rust, and C++ use the Python implementation,
-# while Java, Kotlin, Python, Go, and Format use the shell script implementation.
+# while Java, Python, Go, and Format use the shell script implementation.
 
 # Environment variables to control which languages use the Python implementation
 # Default to the status quo before migration:
 # - JavaScript, Rust, and C++ use Python implementation
-# - Java, Kotlin, Python, Go, and Format use shell script implementation
+# - Java, Python, Go, and Format use shell script implementation
 USE_PYTHON_CPP = os.environ.get("USE_PYTHON_CPP", "1") == "1"
 USE_PYTHON_RUST = os.environ.get("USE_PYTHON_RUST", "1") == "1"
 USE_PYTHON_JAVASCRIPT = os.environ.get("USE_PYTHON_JAVASCRIPT", "1") == "1"
 USE_PYTHON_JAVA = os.environ.get("USE_PYTHON_JAVA", "0") == "1"
-USE_PYTHON_KOTLIN = os.environ.get("USE_PYTHON_KOTLIN", "0") == "1"
 USE_PYTHON_PYTHON = os.environ.get("USE_PYTHON_PYTHON", "0") == "1"
 USE_PYTHON_GO = os.environ.get("USE_PYTHON_GO", "0") == "1"
 USE_PYTHON_FORMAT = os.environ.get("USE_PYTHON_FORMAT", "0") == "1"
@@ -319,14 +317,10 @@ def parse_args():
             "windows_java21",
             "integration_tests",
             "graalvm",
+            "graalvm_json_tests",
         ],
         default=None,
         help="Java version to use for testing",
-    )
-    java_parser.add_argument(
-        "--release",
-        action="store_true",
-        help="Release to Maven Central",
     )
     java_parser.add_argument(
         "--install-jdks",
@@ -346,6 +340,12 @@ def parse_args():
         description="Run Kotlin CI",
         help="Run Kotlin CI",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    kotlin_parser.add_argument(
+        "--task",
+        choices=("tests", "install-json", "install-kotlin", "native-json"),
+        default="tests",
+        help="Kotlin CI task to execute",
     )
     kotlin_parser.set_defaults(func=kotlin.run)
 
@@ -406,13 +406,8 @@ def parse_args():
                 return
             # Map Python version argument to shell script command
             version = arg_dict.get("version", "17")
-            release = arg_dict.get("release", False)
-
-            if release:
-                logging.info("Release mode requested - using Python implementation")
-                func(**arg_dict)
             # For windows_java21 on Windows, use the Python implementation directly
-            elif version == "windows_java21" and is_windows():
+            if version == "windows_java21" and is_windows():
                 logging.info(
                     "Using Python implementation for windows_java21 on Windows"
                 )
@@ -423,6 +418,8 @@ def parse_args():
                 run_shell_script("windows_java21")
             elif version == "graalvm":
                 run_shell_script("graalvm_test")
+            elif version == "graalvm_json_tests":
+                run_shell_script("graalvm_json_tests")
             else:
                 run_shell_script(f"java{version}")
     elif command == "cpp":
@@ -445,10 +442,7 @@ def parse_args():
         else:
             run_shell_script("javascript")
     elif command == "kotlin":
-        if USE_PYTHON_KOTLIN:
-            func()
-        else:
-            run_shell_script("kotlin")
+        func(**arg_dict)
     elif command == "python":
         if USE_PYTHON_PYTHON:
             func()

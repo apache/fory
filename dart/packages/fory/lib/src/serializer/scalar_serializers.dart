@@ -33,6 +33,11 @@ import 'package:fory/src/types/decimal.dart';
 final BigInt _decimalSmallMin = -(BigInt.one << 62);
 final BigInt _decimalSmallMax = (BigInt.one << 62) - BigInt.one;
 
+// Wire Decimal bounds are independent of the 256-digit limit used only by
+// compatible scalar conversion.
+const int _maxDecimalMagnitudeBytes = 10_000;
+const int _maxDecimalScale = 10_000;
+
 bool _canUseSmallDecimalEncoding(BigInt value) {
   return value >= _decimalSmallMin && value <= _decimalSmallMax;
 }
@@ -51,11 +56,20 @@ Uint8List _decimalMagnitudeToCanonicalLittleEndian(BigInt magnitude) {
 }
 
 BigInt _decimalMagnitudeFromCanonicalLittleEndian(Uint8List magnitudeBytes) {
-  var magnitude = BigInt.zero;
-  for (var index = magnitudeBytes.length - 1; index >= 0; index -= 1) {
-    magnitude = (magnitude << 8) | BigInt.from(magnitudeBytes[index]);
+  if (magnitudeBytes.isEmpty) {
+    return BigInt.zero;
   }
-  return magnitude;
+  final hexBytes = Uint8List(magnitudeBytes.length * 2);
+  var outputIndex = 0;
+  for (var index = magnitudeBytes.length - 1; index >= 0; index -= 1) {
+    final byte = magnitudeBytes[index];
+    final high = byte >>> 4;
+    final low = byte & 0x0f;
+    hexBytes[outputIndex] = high < 10 ? 0x30 + high : 0x57 + high;
+    hexBytes[outputIndex + 1] = low < 10 ? 0x30 + low : 0x57 + low;
+    outputIndex += 2;
+  }
+  return BigInt.parse(String.fromCharCodes(hexBytes), radix: 16);
 }
 
 Uint64 _zigZagEncodeInt64(Int64 value) {
@@ -70,6 +84,22 @@ Int64 _zigZagDecodeInt64(Uint64 encoded) {
     return decoded;
   }
   return -(decoded + 1);
+}
+
+@pragma('vm:never-inline')
+Never _throwDecimalScaleOutOfRange(int scale) {
+  throw StateError(
+    'Decimal scale $scale exceeds supported range '
+    '[-$_maxDecimalScale, $_maxDecimalScale].',
+  );
+}
+
+@pragma('vm:never-inline')
+Never _throwDecimalMagnitudeTooLarge(int length) {
+  throw StateError(
+    'Decimal magnitude length $length exceeds limit '
+    '$_maxDecimalMagnitudeBytes.',
+  );
 }
 
 final class NoneSerializer extends Serializer<Null> {
@@ -160,18 +190,28 @@ final class DecimalSerializer extends Serializer<Decimal> {
   }
 
   static void writePayload(WriteContext context, Decimal value) {
-    final buffer = context.buffer;
+    final scale = value.scale;
+    // Compare directly because abs(scale) can overflow for the minimum int.
+    if (scale < -_maxDecimalScale || scale > _maxDecimalScale) {
+      _throwDecimalScaleOutOfRange(scale);
+    }
     final unscaled = value.unscaledValue;
-    buffer.writeVarInt32(value.scale);
     if (_canUseSmallDecimalEncoding(unscaled)) {
+      final buffer = context.buffer;
+      buffer.writeVarInt32(scale);
       final zigZag = _zigZagEncodeInt64(Int64.fromBigInt(unscaled));
       buffer.writeVarUint64(zigZag << 1);
       return;
     }
 
-    final magnitudeBytes = _decimalMagnitudeToCanonicalLittleEndian(
-      unscaled.abs(),
-    );
+    final magnitude = unscaled.abs();
+    final magnitudeLength = (magnitude.bitLength + 7) >>> 3;
+    if (magnitudeLength > _maxDecimalMagnitudeBytes) {
+      _throwDecimalMagnitudeTooLarge(magnitudeLength);
+    }
+    final buffer = context.buffer;
+    buffer.writeVarInt32(scale);
+    final magnitudeBytes = _decimalMagnitudeToCanonicalLittleEndian(magnitude);
     final sign = unscaled.isNegative ? 1 : 0;
     final meta = (magnitudeBytes.length << 1) | sign;
     buffer.writeVarUint64(Uint64((meta << 1) | 1));
@@ -180,6 +220,10 @@ final class DecimalSerializer extends Serializer<Decimal> {
 
   static Decimal readPayload(ReadContext context) {
     final scale = context.buffer.readVarInt32();
+    // Compare directly because abs(scale) can overflow for the minimum int.
+    if (scale < -_maxDecimalScale || scale > _maxDecimalScale) {
+      _throwDecimalScaleOutOfRange(scale);
+    }
     final header = context.buffer.readVarUint64();
     if ((header.low32 & 1) == 0) {
       final zigZag = header >>> 1;
@@ -187,9 +231,14 @@ final class DecimalSerializer extends Serializer<Decimal> {
     }
 
     final meta = header >>> 1;
+    // Keep Uint64-to-int overflow rejection before applying the smaller wire
+    // resource limit.
     final length = (meta >>> 1).toInt();
     if (length <= 0) {
       throw StateError('Invalid decimal magnitude length $length.');
+    }
+    if (length > _maxDecimalMagnitudeBytes) {
+      _throwDecimalMagnitudeTooLarge(length);
     }
     context.buffer.checkReadableBytes(length);
     final magnitudeBytes = context.buffer.copyBytes(length);

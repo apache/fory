@@ -93,11 +93,16 @@ f := fory.New(fory.WithXlang(false), fory.WithCompatible(false))
 // Set maximum nesting depth
 f := fory.New(fory.WithMaxDepth(20))
 
+// Set maximum estimated graph memory for one root read
+f := fory.New(fory.WithMaxGraphMemoryBytes(256 * 1024 * 1024))
+// The value must be positive.
+
 // Combine multiple options
 f := fory.New(
     fory.WithXlang(true),
     fory.WithTrackRef(true),
     fory.WithMaxDepth(20),
+    fory.WithMaxGraphMemoryBytes(256 * 1024 * 1024),
 )
 ```
 
@@ -129,17 +134,16 @@ go func() { f.Serialize(value2) }()
 
 ## Documentation
 
-For comprehensive documentation, see the [Fory Go Guide](https://fory.apache.org/docs/guide/go/).
+For comprehensive documentation, see the [Fory Go Guide](https://fory.apache.org/docs/object-serialization/go/).
 
 Topics covered:
 
-- [Configuration](https://fory.apache.org/docs/guide/go/configuration) - Options and settings
-- [Basic Serialization](https://fory.apache.org/docs/guide/go/basic-serialization) - Core APIs and usage patterns
-- [Type Registration](https://fory.apache.org/docs/guide/go/type-registration) - Registering types for serialization
-- [Supported Types](https://fory.apache.org/docs/guide/go/supported-types) - Complete type support reference
-- [References](https://fory.apache.org/docs/guide/go/references) - Circular references and shared objects
-- [Schema Evolution](https://fory.apache.org/docs/guide/go/schema-evolution) - Forward/backward compatibility
-- [Cross-Language](https://fory.apache.org/docs/guide/go/cross-language) - Multi-language serialization
-- [Code Generation](https://fory.apache.org/docs/guide/go/codegen) - Experimental AOT code generation
-- [Thread Safety](https://fory.apache.org/docs/guide/go/thread-safety) - Concurrent usage patterns
-- [Troubleshooting](https://fory.apache.org/docs/guide/go/troubleshooting) - Common issues and solutions
+- [Configuration](https://fory.apache.org/docs/object-serialization/go/configuration) - Options and settings
+- [Basic Serialization](https://fory.apache.org/docs/object-serialization/go/basic-serialization) - Core APIs and usage patterns
+- [Type Registration](https://fory.apache.org/docs/object-serialization/go/type-registration) - Registering types for serialization
+- [Supported Types](https://fory.apache.org/docs/object-serialization/go/supported-types) - Complete type support reference
+- [References](https://fory.apache.org/docs/object-serialization/go/references) - Circular references and shared objects
+- [Schema Evolution](https://fory.apache.org/docs/object-serialization/go/schema-evolution) - Forward/backward compatibility
+- [Basic Serialization](https://fory.apache.org/docs/object-serialization/go/basic-serialization) - Default xlang APIs and interoperability
+- [Thread Safety](https://fory.apache.org/docs/object-serialization/go/thread-safety) - Concurrent usage patterns
+- [Troubleshooting](https://fory.apache.org/docs/object-serialization/go/troubleshooting) - Common issues and solutions

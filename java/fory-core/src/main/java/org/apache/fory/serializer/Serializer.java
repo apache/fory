@@ -213,4 +213,9 @@ public abstract class Serializer<T> {
   public boolean isImmutable() {
     return immutable;
   }
+
+  /** Returns whether every successful non-null {@code readData} call consumes input. */
+  public boolean readDataAlwaysAdvances() {
+    return false;
+  }
 }

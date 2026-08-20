@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace fory {
@@ -170,6 +171,133 @@ struct NodeWithParent {
   std::vector<std::shared_ptr<NodeWithParent>> children;
   FORY_STRUCT(NodeWithParent, value, parent, children);
 };
+
+struct WeakDepthNode {
+  int32_t value = 0;
+  SharedWeak<WeakDepthNode> next;
+  FORY_STRUCT(WeakDepthNode, value, next);
+};
+
+struct WeakDepthHolder {
+  SharedWeak<WeakDepthNode> first;
+  std::vector<std::shared_ptr<WeakDepthNode>> owners;
+  FORY_STRUCT(WeakDepthHolder, first, owners);
+};
+
+std::vector<std::shared_ptr<WeakDepthNode>> make_weak_depth_nodes() {
+  auto first = std::make_shared<WeakDepthNode>();
+  first->value = 1;
+  auto second = std::make_shared<WeakDepthNode>();
+  second->value = 2;
+  first->next = SharedWeak<WeakDepthNode>::from(second);
+  return {std::move(first), std::move(second)};
+}
+
+TEST(WeakPtrSerializerTest, RejectsResolvedTypeMismatch) {
+  Config config;
+  config.track_ref = true;
+  ReadContext ctx(config, std::make_unique<TypeResolver>());
+  ctx.ref_reader().store_shared_ref_at(0, std::make_shared<int32_t>(42));
+  Buffer buffer;
+  buffer.write_int8(REF_FLAG);
+  buffer.write_var_uint32(0);
+  ctx.attach(buffer);
+
+  auto result =
+      Serializer<SharedWeak<SimpleStruct>>::read(ctx, RefMode::Tracking, false);
+
+  EXPECT_TRUE(result.expired());
+  ASSERT_TRUE(ctx.has_error());
+  EXPECT_EQ(ctx.error().code(), ErrorCode::InvalidRef);
+  EXPECT_NE(ctx.error().message().find("Reference type mismatch"),
+            std::string::npos);
+}
+
+TEST(WeakPtrSerializerTest, RejectsForwardTypeMismatch) {
+  RefReader ref_reader;
+  uint32_t ref_id = ref_reader.reserve_ref_id();
+  SharedWeak<SimpleStruct> result;
+  detail::add_weak_update_callback(ref_reader, ref_id, result);
+  ref_reader.store_shared_ref_at(ref_id, std::make_shared<int32_t>(42));
+  Error error;
+  ref_reader.resolve_callbacks(error);
+
+  ASSERT_FALSE(error.ok());
+  EXPECT_EQ(error.code(), ErrorCode::InvalidRef);
+  EXPECT_NE(error.message().find("Reference type mismatch"), std::string::npos);
+  EXPECT_TRUE(result.expired());
+}
+
+TEST(WeakPtrSerializerTest, WeakDepthLimit) {
+  auto writer = Fory::builder()
+                    .xlang(true)
+                    .compatible(false)
+                    .track_ref(true)
+                    .max_dyn_depth(10)
+                    .build();
+  auto reader = Fory::builder()
+                    .xlang(true)
+                    .compatible(false)
+                    .track_ref(true)
+                    .max_dyn_depth(1)
+                    .build();
+  ASSERT_TRUE(writer.register_struct<WeakDepthNode>(104).ok());
+  ASSERT_TRUE(writer.register_struct<WeakDepthHolder>(105).ok());
+  ASSERT_TRUE(reader.register_struct<WeakDepthNode>(104).ok());
+  ASSERT_TRUE(reader.register_struct<WeakDepthHolder>(105).ok());
+
+  auto nodes = make_weak_depth_nodes();
+  WeakDepthHolder deep;
+  deep.first = SharedWeak<WeakDepthNode>::from(nodes.front());
+  deep.owners = nodes;
+  auto deep_bytes = writer.serialize(deep);
+  ASSERT_TRUE(deep_bytes.ok()) << deep_bytes.error().to_string();
+
+  auto rejected = reader.deserialize<WeakDepthHolder>(deep_bytes.value());
+  ASSERT_FALSE(rejected.ok());
+  EXPECT_EQ(rejected.error().code(), ErrorCode::DepthExceed);
+
+  WeakDepthHolder shallow;
+  shallow.owners.push_back(std::make_shared<WeakDepthNode>());
+  shallow.owners.front()->value = 3;
+  shallow.first = SharedWeak<WeakDepthNode>::from(shallow.owners.front());
+  auto shallow_bytes = writer.serialize(shallow);
+  ASSERT_TRUE(shallow_bytes.ok()) << shallow_bytes.error().to_string();
+
+  auto decoded = reader.deserialize<WeakDepthHolder>(shallow_bytes.value());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  ASSERT_EQ(decoded->owners.size(), 1U);
+  EXPECT_EQ(decoded->first.upgrade(), decoded->owners.front());
+}
+
+TEST(WeakPtrSerializerTest, TypedWeakDepthLimit) {
+  auto writer = Fory::builder()
+                    .xlang(true)
+                    .compatible(false)
+                    .track_ref(true)
+                    .max_dyn_depth(10)
+                    .build();
+  auto reader = Fory::builder()
+                    .xlang(true)
+                    .compatible(false)
+                    .track_ref(true)
+                    .max_dyn_depth(1)
+                    .build();
+  ASSERT_TRUE(writer.register_struct<WeakDepthNode>(104).ok());
+  ASSERT_TRUE(reader.register_struct<WeakDepthNode>(104).ok());
+
+  auto nodes = make_weak_depth_nodes();
+  std::vector<std::shared_ptr<WeakDepthNode>> source{nodes.front(),
+                                                     nodes.front()};
+  auto bytes = writer.serialize(source);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+  using Target =
+      std::tuple<SharedWeak<WeakDepthNode>, std::shared_ptr<WeakDepthNode>>;
+  auto rejected = reader.deserialize<Target>(bytes.value());
+  ASSERT_FALSE(rejected.ok());
+  EXPECT_EQ(rejected.error().code(), ErrorCode::DepthExceed);
+}
 
 // ============================================================================
 // Serialization Tests

@@ -18,6 +18,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Apache.Fory;
@@ -106,17 +107,72 @@ public sealed class TypeResolver
 
     private readonly Dictionary<uint, TypeInfo> _byUserTypeId = [];
     private readonly Dictionary<(string NamespaceName, string TypeName), TypeInfo> _byTypeName = [];
-    private readonly UInt64Map<TypeMeta> _validatedTypeMetaByType = new();
-
     private readonly UInt64Map<TypeInfo> _typeInfos = new();
     private ulong _versionHash;
     private bool _finalized;
 
+    /// <summary>
+    /// Registers a generated enum or union serializer factory for a runtime target type.
+    /// This method is called by source-generated module initializers.
+    /// </summary>
+    /// <typeparam name="T">Runtime target type.</typeparam>
+    /// <typeparam name="TSerializer">Generated serializer type.</typeparam>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when another generated serializer already owns the target type.
+    /// </exception>
     public static void RegisterGenerated<T, TSerializer>()
         where TSerializer : Serializer<T>, new()
     {
-        Type type = typeof(T);
-        GeneratedFactories[type] = static _ => TypeInfo.Create(typeof(T), new TSerializer());
+        RegisterGeneratedFactory(
+            typeof(T),
+            static _ => TypeInfo.Create(
+                typeof(T),
+                new TSerializer(),
+                evolving: true,
+                readDataAlwaysAdvances: true));
+    }
+
+    /// <summary>
+    /// Registers a generated structural serializer factory for a runtime target type.
+    /// This method is called by source-generated module initializers.
+    /// </summary>
+    /// <typeparam name="T">Runtime target type.</typeparam>
+    /// <typeparam name="TSerializer">Generated serializer type.</typeparam>
+    /// <param name="evolving">Generated structural schema-evolution setting.</param>
+    /// <param name="readDataAlwaysAdvances">Whether every successful generated ReadData call consumes input.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when another generated serializer already owns the target type.
+    /// </exception>
+    public static void RegisterGeneratedStruct<T, TSerializer>(
+        bool evolving,
+        bool readDataAlwaysAdvances)
+        where TSerializer : Serializer<T>, new()
+    {
+        Func<TypeResolver, TypeInfo> factory = (evolving, readDataAlwaysAdvances) switch
+        {
+            (true, true) => static _ => TypeInfo.Create(typeof(T), new TSerializer(), true, true),
+            (true, false) => static _ => TypeInfo.Create(typeof(T), new TSerializer(), true, false),
+            (false, true) => static _ => TypeInfo.Create(typeof(T), new TSerializer(), false, true),
+            _ => static _ => TypeInfo.Create(typeof(T), new TSerializer(), false, false),
+        };
+        RegisterGeneratedFactory(typeof(T), factory);
+    }
+
+    private static void RegisterGeneratedFactory(
+        Type type,
+        Func<TypeResolver, TypeInfo> factory)
+    {
+        if (!GeneratedFactories.TryAdd(type, factory))
+        {
+            ThrowDuplicateGeneratedSerializer(type);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowDuplicateGeneratedSerializer(Type type)
+    {
+        throw new InvalidOperationException(
+            $"a generated serializer is already registered for target type {type}");
     }
 
     private static UInt64Map<Type> CreateTypeMap(params (Type Key, Type Value)[] entries)
@@ -203,6 +259,11 @@ public sealed class TypeResolver
         return typeInfo.ReadDataObject(context);
     }
 
+    internal object? ReadDataObject(TypeInfo typeInfo, ReadContext context, uint refId)
+    {
+        return typeInfo.ReadReservedRefDataObject(context, refId);
+    }
+
     public void WriteObject(
         TypeInfo typeInfo,
         WriteContext context,
@@ -219,6 +280,151 @@ public sealed class TypeResolver
         return typeInfo.ReadObject(context, refMode, readTypeInfo);
     }
 
+    /// <summary>
+    /// Reads one recursively materializing typed child after resolving its reference envelope.
+    /// </summary>
+    /// <remarks>
+    /// This is runtime support for generated serializers. Null and existing-reference edges do not
+    /// advance nesting depth because they do not materialize another payload.
+    /// </remarks>
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    public T ReadNested<T>(ReadContext context, RefMode refMode, bool readTypeInfo)
+    {
+        if (typeof(T).IsValueType)
+        {
+            return ReadNestedValue(GetSerializer<T>(), context, refMode, readTypeInfo);
+        }
+
+        return (T)ReadNested(GetTypeInfo<T>(), context, refMode, readTypeInfo)!;
+    }
+
+    private T ReadNestedValue<T>(
+        Serializer<T> serializer,
+        ReadContext context,
+        RefMode refMode,
+        bool readTypeInfo)
+    {
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return serializer.DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<T>(
+                        context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            ReadTypeInfo(serializer, context);
+                        }
+
+                        context.IncreaseReadDepth();
+                        object? value = GetTypeInfo<T>()
+                            .ReadReservedRefDataObject(context, refId);
+                        context.DecreaseReadDepth();
+                        return (T)value!;
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            ReadTypeInfo(serializer, context);
+        }
+
+        context.IncreaseReadDepth();
+        T result = serializer.ReadData(context);
+        context.DecreaseReadDepth();
+        return result;
+    }
+
+    /// <summary>
+    /// Reads one recursively materializing typed child body with no reference or type envelope.
+    /// </summary>
+    /// <remarks>This is runtime support for generated serializers.</remarks>
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    public T ReadNestedData<T>(ReadContext context)
+    {
+        return ReadNestedData(GetSerializer<T>(), context);
+    }
+
+    /// <summary>
+    /// Reads one recursively materializing typed child body with a resolved serializer.
+    /// </summary>
+    /// <remarks>This is runtime support for generated serializers.</remarks>
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    public T ReadNestedData<T>(Serializer<T> serializer, ReadContext context)
+    {
+        context.IncreaseReadDepth();
+        T value = serializer.ReadData(context);
+        context.DecreaseReadDepth();
+        return value;
+    }
+
+    internal object? ReadNested(TypeInfo typeInfo, ReadContext context, RefMode refMode, bool readTypeInfo)
+    {
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return typeInfo.DefaultObject;
+                case RefFlag.Ref:
+                    {
+                        uint refId = context.RefReader.ReadRefId(context.Reader);
+                        object? value = context.RefReader.GetRefValue(refId);
+                        if (value is null && typeInfo.IsNullableType)
+                        {
+                            return null;
+                        }
+
+                        if (value is not null && typeInfo.Type.IsInstanceOfType(value))
+                        {
+                            return value;
+                        }
+
+                        throw new RefException($"ref_id {refId} has unexpected runtime type");
+                    }
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            ReadTypeInfo(typeInfo, context);
+                        }
+
+                        context.IncreaseReadDepth();
+                        object? value = typeInfo.ReadReservedRefDataObject(context, refId);
+                        context.DecreaseReadDepth();
+                        return value;
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            ReadTypeInfo(typeInfo, context);
+        }
+
+        context.IncreaseReadDepth();
+        object? result = typeInfo.ReadDataObject(context);
+        context.DecreaseReadDepth();
+        return result;
+    }
+
     internal void WriteTypeInfo(TypeInfo typeInfo, WriteContext context)
     {
         WriteTypeInfoCore(typeInfo.Type, typeInfo, context);
@@ -226,6 +432,13 @@ public sealed class TypeResolver
 
     internal void ReadTypeInfo(TypeInfo typeInfo, ReadContext context)
     {
+        Type? nullableType = Nullable.GetUnderlyingType(typeInfo.Type);
+        if (nullableType is not null)
+        {
+            ReadTypeInfoCore(nullableType, GetTypeInfo(nullableType), context);
+            return;
+        }
+
         ReadTypeInfoCore(typeInfo.Type, typeInfo, context);
     }
 
@@ -354,7 +567,6 @@ public sealed class TypeResolver
     {
         _finalized = false;
         _versionHash = 0;
-        _validatedTypeMetaByType.ClearKeys();
     }
 
     private void EnsureFinalizedVersion()
@@ -636,7 +848,12 @@ public sealed class TypeResolver
             MetaStringEncoder.TypeName);
     }
 
-    internal void ReadTypeInfo<T>(Serializer<T> serializer, ReadContext context)
+    /// <summary>
+    /// Reads and validates type metadata for the specified serializer without reading the value body.
+    /// </summary>
+    /// <param name="serializer">Serializer that owns the expected type metadata.</param>
+    /// <param name="context">Read context.</param>
+    public void ReadTypeInfo<T>(Serializer<T> serializer, ReadContext context)
     {
         Type type = typeof(T);
         if (type == typeof(object))
@@ -698,24 +915,15 @@ public sealed class TypeResolver
             typeId == TypeId.CompatibleStruct)
         {
             TypeMeta remoteTypeMeta;
-            if (context.TryReadTypeMetaRef(out int index, out remoteTypeMeta))
-            {
-                if (!HasValidatedTypeMeta(info, remoteTypeMeta))
-                {
-                    ValidateRemoteTypeMeta(remoteTypeMeta, info, typeId, assignFieldIds: true, context);
-                }
-            }
-            else
+            // Operation-local refs point only to metadata already accepted by the checked header
+            // cache, so only a miss enters the cold validation and publication path.
+            if (!context.TryReadTypeMetaRef(out int index, out remoteTypeMeta))
             {
                 ulong header = context.Reader.ReadUInt64();
                 if (context.TryGetTypeMetaByHeader(header, out remoteTypeMeta))
                 {
                     TypeMeta.SkipBody(context.Reader, header);
                     context.StoreTypeMetaRef(remoteTypeMeta, index);
-                    if (!HasValidatedTypeMeta(info, remoteTypeMeta))
-                    {
-                        ValidateRemoteTypeMeta(remoteTypeMeta, info, typeId, assignFieldIds: true, context);
-                    }
                 }
                 else
                 {
@@ -748,24 +956,13 @@ public sealed class TypeResolver
             case TypeId.NamedCompatibleStruct:
                 {
                     TypeMeta remoteTypeMeta;
-                    if (context.TryReadTypeMetaRef(out int index, out remoteTypeMeta))
-                    {
-                        if (!HasValidatedTypeMeta(info, remoteTypeMeta))
-                        {
-                            ValidateRemoteTypeMeta(remoteTypeMeta, info, typeId, assignFieldIds: true, context);
-                        }
-                    }
-                    else
+                    if (!context.TryReadTypeMetaRef(out int index, out remoteTypeMeta))
                     {
                         ulong header = context.Reader.ReadUInt64();
                         if (context.TryGetTypeMetaByHeader(header, out remoteTypeMeta))
                         {
                             TypeMeta.SkipBody(context.Reader, header);
                             context.StoreTypeMetaRef(remoteTypeMeta, index);
-                            if (!HasValidatedTypeMeta(info, remoteTypeMeta))
-                            {
-                                ValidateRemoteTypeMeta(remoteTypeMeta, info, typeId, assignFieldIds: true, context);
-                            }
                         }
                         else
                         {
@@ -817,24 +1014,13 @@ public sealed class TypeResolver
     {
         if (compatible)
         {
-            if (context.TryReadTypeMetaRef(out int index, out TypeMeta remoteTypeMeta))
-            {
-                if (!HasValidatedTypeMeta(typeInfo, remoteTypeMeta))
-                {
-                    ValidateRemoteTypeMeta(remoteTypeMeta, typeInfo, wireTypeId, assignFieldIds: false, context);
-                }
-            }
-            else
+            if (!context.TryReadTypeMetaRef(out int index, out TypeMeta remoteTypeMeta))
             {
                 ulong header = context.Reader.ReadUInt64();
                 if (context.TryGetTypeMetaByHeader(header, out remoteTypeMeta))
                 {
                     TypeMeta.SkipBody(context.Reader, header);
                     context.StoreTypeMetaRef(remoteTypeMeta, index);
-                    if (!HasValidatedTypeMeta(typeInfo, remoteTypeMeta))
-                    {
-                        ValidateRemoteTypeMeta(remoteTypeMeta, typeInfo, wireTypeId, assignFieldIds: false, context);
-                    }
                 }
                 else
                 {
@@ -885,15 +1071,12 @@ public sealed class TypeResolver
         int typeMetaStart = context.Reader.Cursor;
         TypeMeta remoteTypeMeta = context.DecodeTypeMeta();
         int typeMetaEnd = context.Reader.Cursor;
-        if (!HasValidatedTypeMeta(typeInfo, remoteTypeMeta))
-        {
-            ValidateRemoteTypeMeta(
-                remoteTypeMeta,
-                typeInfo,
-                wireTypeId,
-                assignFieldIds,
-                context);
-        }
+        ValidateRemoteTypeMeta(
+            remoteTypeMeta,
+            typeInfo,
+            wireTypeId,
+            assignFieldIds,
+            context);
         if (context.MatchesExactLocalTypeMeta(remoteTypeMeta, typeMetaStart, typeMetaEnd))
         {
             context.StoreExactLocalTypeMeta(header, remoteTypeMeta);
@@ -925,8 +1108,6 @@ public sealed class TypeResolver
         {
             remoteTypeMeta.EnsureAssignedFieldIds(TypeMetaFields(typeInfo, context.TrackRef));
         }
-
-        SetValidatedTypeMeta(typeInfo, remoteTypeMeta);
     }
 
     internal static TypeId ResolveWireTypeId(
@@ -982,10 +1163,17 @@ public sealed class TypeResolver
         return actualWireType == expected;
     }
 
+    private object? ReadRegisteredValue(TypeInfo typeInfo, ReadContext context, TypeMeta? typeMeta)
+    {
+        return ReadRegisteredValue(typeInfo, context, typeMeta, hasRef: false, refId: 0);
+    }
+
     private object? ReadRegisteredValue(
         TypeInfo typeInfo,
         ReadContext context,
-        TypeMeta? typeMeta)
+        TypeMeta? typeMeta,
+        bool hasRef,
+        uint refId)
     {
         if (typeMeta is not null)
         {
@@ -993,7 +1181,7 @@ public sealed class TypeResolver
             context.StoreTypeMeta(typeInfo.Type, typeMeta);
         }
 
-        return ReadObject(typeInfo, context, RefMode.None, false);
+        return hasRef ? ReadDataObject(typeInfo, context, refId) : ReadObject(typeInfo, context, RefMode.None, false);
     }
 
     internal TypeInfo ReadAnyTypeInfo(ReadContext context)
@@ -1088,33 +1276,53 @@ public sealed class TypeResolver
 
     internal object? ReadAnyValue(TypeInfo typeInfo, ReadContext context)
     {
-        TypeId wireTypeId = typeInfo.WireTypeId
-                            ?? throw new InvalidDataException($"missing read wire type for {typeInfo.Type}");
+        return ReadAnyValue(typeInfo, context, hasRef: false, refId: 0);
+    }
+
+    internal object? ReadAnyValue(TypeInfo typeInfo, ReadContext context, uint refId)
+    {
         // ReadAnyValue is the shared self-describing payload entry for object/Any,
         // UnknownCase, and compatible field skipping. The Any envelope is not a
         // nesting boundary; only payloads that can recursively contain values
         // advance depth. If a nested read fails, the root context reset owns
         // cleanup of partially advanced depth and type-info state.
+        return ReadAnyValue(typeInfo, context, hasRef: true, refId);
+    }
+
+    internal void SkipAnyValue(TypeInfo typeInfo, ReadContext context)
+    {
+        // Untracked compatible skips must not create or reserve a discarded CLR box. RefValue
+        // skips use ReadAnyValue instead because their box is published to the reference table.
+        TypeId wireTypeId = typeInfo.WireTypeId
+                            ?? throw new InvalidDataException($"missing read wire type for {typeInfo.Type}");
         switch (wireTypeId)
         {
             case TypeId.Int32:
-                return context.Reader.ReadInt32();
+                _ = context.Reader.ReadInt32();
+                return;
             case TypeId.Int64:
-                return context.Reader.ReadInt64();
+                _ = context.Reader.ReadInt64();
+                return;
             case TypeId.TaggedInt64:
-                return context.Reader.ReadTaggedInt64();
+                _ = context.Reader.ReadTaggedInt64();
+                return;
             case TypeId.UInt32:
-                return context.Reader.ReadUInt32();
+                _ = context.Reader.ReadUInt32();
+                return;
             case TypeId.UInt64:
-                return context.Reader.ReadUInt64();
+                _ = context.Reader.ReadUInt64();
+                return;
             case TypeId.TaggedUInt64:
-                return context.Reader.ReadTaggedUInt64();
+                _ = context.Reader.ReadTaggedUInt64();
+                return;
             case TypeId.List:
             case TypeId.Set:
             case TypeId.Union:
-                return ReadNestedAnyData(typeInfo, context);
+                _ = ReadNestedAnyData(typeInfo, context, hasRef: false, refId: 0);
+                return;
             case TypeId.Map:
-                return ReadNestedAnyMap(context);
+                _ = ReadNestedAnyMap(context, hasRef: false, refId: 0);
+                return;
             case TypeId.Struct:
             case TypeId.Ext:
             case TypeId.TypedUnion:
@@ -1123,29 +1331,92 @@ public sealed class TypeResolver
             case TypeId.NamedUnion:
             case TypeId.CompatibleStruct:
             case TypeId.NamedCompatibleStruct:
-                return ReadNestedRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta());
+                SkipNestedRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta());
+                return;
             case TypeId.Enum:
             case TypeId.NamedEnum:
-                return ReadRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta());
+                SkipRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta());
+                return;
             case TypeId.None:
-                return null;
+                return;
             default:
-                return ReadDataObject(typeInfo, context);
+                typeInfo.SkipDataObject(context);
+                return;
         }
     }
 
-    private object? ReadNestedAnyData(TypeInfo typeInfo, ReadContext context)
+    private object? ReadAnyValue(TypeInfo typeInfo, ReadContext context, bool hasRef, uint refId)
+    {
+        TypeId wireTypeId = typeInfo.WireTypeId
+                            ?? throw new InvalidDataException($"missing read wire type for {typeInfo.Type}");
+        switch (wireTypeId)
+        {
+            case TypeId.Int32:
+                return StoreBoxedAny(context, hasRef, refId, context.Reader.ReadInt32());
+            case TypeId.Int64:
+                return StoreBoxedAny(context, hasRef, refId, context.Reader.ReadInt64());
+            case TypeId.TaggedInt64:
+                return StoreBoxedAny(context, hasRef, refId, context.Reader.ReadTaggedInt64());
+            case TypeId.UInt32:
+                return StoreBoxedAny(context, hasRef, refId, context.Reader.ReadUInt32());
+            case TypeId.UInt64:
+                return StoreBoxedAny(context, hasRef, refId, context.Reader.ReadUInt64());
+            case TypeId.TaggedUInt64:
+                return StoreBoxedAny(context, hasRef, refId, context.Reader.ReadTaggedUInt64());
+            case TypeId.List:
+            case TypeId.Set:
+            case TypeId.Union:
+                return ReadNestedAnyData(typeInfo, context, hasRef, refId);
+            case TypeId.Map:
+                return ReadNestedAnyMap(context, hasRef, refId);
+            case TypeId.Struct:
+            case TypeId.Ext:
+            case TypeId.TypedUnion:
+            case TypeId.NamedStruct:
+            case TypeId.NamedExt:
+            case TypeId.NamedUnion:
+            case TypeId.CompatibleStruct:
+            case TypeId.NamedCompatibleStruct:
+                return ReadNestedRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta(), hasRef, refId);
+            case TypeId.Enum:
+            case TypeId.NamedEnum:
+                return ReadRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta(), hasRef, refId);
+            case TypeId.None:
+                return null;
+            default:
+                return hasRef ? ReadDataObject(typeInfo, context, refId) : ReadDataObject(typeInfo, context);
+        }
+    }
+
+    private static object StoreBoxedAny<T>(
+        ReadContext context,
+        bool hasRef,
+        uint refId,
+        T value)
+        where T : struct
+    {
+        context.ReserveGraphMemory(TypeInfo.BoxedValueBytes<T>());
+        object boxed = value;
+        if (hasRef)
+        {
+            context.RefReader.StoreRefAt(refId, boxed);
+        }
+
+        return boxed;
+    }
+
+    private object? ReadNestedAnyData(TypeInfo typeInfo, ReadContext context, bool hasRef, uint refId)
     {
         context.IncreaseReadDepth();
-        object? value = ReadDataObject(typeInfo, context);
+        object? value = hasRef ? ReadDataObject(typeInfo, context, refId) : ReadDataObject(typeInfo, context);
         context.DecreaseReadDepth();
         return value;
     }
 
-    private object ReadNestedAnyMap(ReadContext context)
+    private object ReadNestedAnyMap(ReadContext context, bool hasRef, uint refId)
     {
         context.IncreaseReadDepth();
-        object value = DynamicContainerCodec.ReadMapPayload(context);
+        object value = hasRef ? DynamicContainerCodec.ReadMapPayload(context, refId) : DynamicContainerCodec.ReadMapPayload(context);
         context.DecreaseReadDepth();
         return value;
     }
@@ -1153,12 +1424,38 @@ public sealed class TypeResolver
     private object? ReadNestedRegisteredValue(
         TypeInfo typeInfo,
         ReadContext context,
+        TypeMeta? typeMeta,
+        bool hasRef,
+        uint refId)
+    {
+        context.IncreaseReadDepth();
+        object? value = ReadRegisteredValue(typeInfo, context, typeMeta, hasRef, refId);
+        context.DecreaseReadDepth();
+        return value;
+    }
+
+    private void SkipNestedRegisteredValue(
+        TypeInfo typeInfo,
+        ReadContext context,
         TypeMeta? typeMeta)
     {
         context.IncreaseReadDepth();
-        object? value = ReadRegisteredValue(typeInfo, context, typeMeta);
+        SkipRegisteredValue(typeInfo, context, typeMeta);
         context.DecreaseReadDepth();
-        return value;
+    }
+
+    private void SkipRegisteredValue(
+        TypeInfo typeInfo,
+        ReadContext context,
+        TypeMeta? typeMeta)
+    {
+        if (typeMeta is not null)
+        {
+            typeMeta.EnsureAssignedFieldIds(TypeMetaFields(typeInfo, context.TrackRef));
+            context.StoreTypeMeta(typeInfo.Type, typeMeta);
+        }
+
+        typeInfo.SkipDataObject(context);
     }
 
     private TypeInfo ResolveAnyTypeInfoFromMeta(TypeId wireTypeId, TypeMeta typeMeta, bool compatible)
@@ -1288,196 +1585,9 @@ public sealed class TypeResolver
         return false;
     }
 
-    private static byte[] ReadBinary(ReadContext context)
-    {
-        uint length = context.Reader.ReadVarUInt32();
-        return context.Reader.ReadBytes(checked((int)length));
-    }
-
-    private static bool[] ReadBoolArray(ReadContext context)
-    {
-        int count = checked((int)context.Reader.ReadVarUInt32());
-        context.Reader.CheckBound(count);
-        bool[] values = new bool[count];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = context.Reader.ReadUInt8() != 0;
-        }
-
-        return values;
-    }
-
-    private static sbyte[] ReadInt8Array(ReadContext context)
-    {
-        int count = checked((int)context.Reader.ReadVarUInt32());
-        context.Reader.CheckBound(count);
-        sbyte[] values = new sbyte[count];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = context.Reader.ReadInt8();
-        }
-
-        return values;
-    }
-
-    private static short[] ReadInt16Array(ReadContext context)
-    {
-        int byteSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((byteSize & 1) != 0)
-        {
-            throw new InvalidDataException("int16 array byte size mismatch");
-        }
-
-        context.Reader.CheckBound(byteSize);
-        short[] values = new short[byteSize / 2];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = context.Reader.ReadInt16();
-        }
-
-        return values;
-    }
-
-    private static int[] ReadInt32Array(ReadContext context)
-    {
-        int byteSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((byteSize & 3) != 0)
-        {
-            throw new InvalidDataException("int32 array byte size mismatch");
-        }
-
-        context.Reader.CheckBound(byteSize);
-        int[] values = new int[byteSize / 4];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = context.Reader.ReadInt32();
-        }
-
-        return values;
-    }
-
-    private static long[] ReadInt64Array(ReadContext context)
-    {
-        int byteSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((byteSize & 7) != 0)
-        {
-            throw new InvalidDataException("int64 array byte size mismatch");
-        }
-
-        context.Reader.CheckBound(byteSize);
-        long[] values = new long[byteSize / 8];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = context.Reader.ReadInt64();
-        }
-
-        return values;
-    }
-
-    private static ushort[] ReadUInt16Array(ReadContext context)
-    {
-        int byteSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((byteSize & 1) != 0)
-        {
-            throw new InvalidDataException("uint16 array byte size mismatch");
-        }
-
-        context.Reader.CheckBound(byteSize);
-        ushort[] values = new ushort[byteSize / 2];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = context.Reader.ReadUInt16();
-        }
-
-        return values;
-    }
-
-    private static uint[] ReadUInt32Array(ReadContext context)
-    {
-        int byteSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((byteSize & 3) != 0)
-        {
-            throw new InvalidDataException("uint32 array byte size mismatch");
-        }
-
-        context.Reader.CheckBound(byteSize);
-        uint[] values = new uint[byteSize / 4];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = context.Reader.ReadUInt32();
-        }
-
-        return values;
-    }
-
-    private static ulong[] ReadUInt64Array(ReadContext context)
-    {
-        int byteSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((byteSize & 7) != 0)
-        {
-            throw new InvalidDataException("uint64 array byte size mismatch");
-        }
-
-        context.Reader.CheckBound(byteSize);
-        ulong[] values = new ulong[byteSize / 8];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = context.Reader.ReadUInt64();
-        }
-
-        return values;
-    }
-
-    private static float[] ReadFloat32Array(ReadContext context)
-    {
-        int byteSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((byteSize & 3) != 0)
-        {
-            throw new InvalidDataException("float32 array byte size mismatch");
-        }
-
-        context.Reader.CheckBound(byteSize);
-        float[] values = new float[byteSize / 4];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = context.Reader.ReadFloat32();
-        }
-
-        return values;
-    }
-
-    private static double[] ReadFloat64Array(ReadContext context)
-    {
-        int byteSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((byteSize & 7) != 0)
-        {
-            throw new InvalidDataException("float64 array byte size mismatch");
-        }
-
-        context.Reader.CheckBound(byteSize);
-        double[] values = new double[byteSize / 8];
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = context.Reader.ReadFloat64();
-        }
-
-        return values;
-    }
-
     private static bool WireTypeNeedsUserTypeId(TypeId typeId)
     {
         return typeId is TypeId.Enum or TypeId.Struct or TypeId.Ext or TypeId.TypedUnion;
-    }
-
-    private bool HasValidatedTypeMeta(TypeInfo info, TypeMeta remoteTypeMeta)
-    {
-        return _validatedTypeMetaByType.TryGetValue(TypeMapKey.Get(info.Type), out TypeMeta? validated) &&
-               ReferenceEquals(validated, remoteTypeMeta);
-    }
-
-    private void SetValidatedTypeMeta(TypeInfo info, TypeMeta remoteTypeMeta)
-    {
-        _validatedTypeMetaByType.Set(TypeMapKey.Get(info.Type), remoteTypeMeta);
     }
 
     private static void ValidateTypeMeta(
@@ -1672,6 +1782,31 @@ public sealed class TypeResolver
         {
             return generatedFactory(this);
         }
+
+        TypeInfo typeInfo = CreateFrameworkBinding(type);
+        if (Nullable.GetUnderlyingType(type) is not null)
+        {
+            // Nullable<T>.ReadData delegates to the currently registered T serializer. Keep the
+            // fact conservative because T may have an explicitly registered zero-byte codec.
+            return typeInfo;
+        }
+
+        if (typeInfo.BuiltInTypeId is TypeId builtInTypeId &&
+            builtInTypeId is not TypeId.Unknown and not TypeId.None)
+        {
+            return typeInfo.WithAdvancingReadData();
+        }
+
+        if (typeInfo.UserTypeKind is UserTypeKind.Enum or UserTypeKind.TypedUnion)
+        {
+            return typeInfo.WithAdvancingReadData();
+        }
+
+        return typeInfo;
+    }
+
+    private TypeInfo CreateFrameworkBinding(Type type)
+    {
 
         if (type == typeof(bool))
         {

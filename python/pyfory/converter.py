@@ -21,7 +21,14 @@ import math
 import struct as _struct
 
 from pyfory.serialization import _bfloat16_from_bits, _bfloat16_to_bits, _float16_from_bits, _float16_to_bits
-from pyfory.serializer import ForyArrayFieldSerializer, PyArraySerializer, Serializer, _is_numpy_1d_array_serializer
+from pyfory.serializer import (
+    ForyArrayFieldSerializer,
+    PyArraySerializer,
+    Serializer,
+    _decimal_from_parts,
+    _is_numpy_1d_array_serializer,
+    _read_decimal_parts,
+)
 from pyfory.types import TypeId
 
 try:
@@ -55,6 +62,33 @@ _NUMERIC_TYPE_IDS = _SIGNED_INT_TYPE_IDS | _UNSIGNED_INT_TYPE_IDS | _FLOAT_TYPE_
 _SCALAR_CONVERSION_TYPE_IDS = _NUMERIC_TYPE_IDS | frozenset((TypeId.BOOL, TypeId.STRING))
 _MAX_COMPATIBLE_DECIMAL_DIGITS = 256
 _MAX_COMPATIBLE_NUMERIC_TEXT_LENGTH = 320
+_DECIMAL_ZERO_CHUNK_DIGITS = 18
+_DECIMAL_ZERO_CHUNK = 10**_DECIMAL_ZERO_CHUNK_DIGITS
+_MAX_COMPATIBLE_DECIMAL_MAGNITUDE = 10**_MAX_COMPATIBLE_DECIMAL_DIGITS
+_MAX_REDUCIBLE_DECIMAL_MAGNITUDE = 10 ** (2 * _MAX_COMPATIBLE_DECIMAL_DIGITS)
+_REFERENCE_BYTES = _struct.calcsize("P")
+_LIST_OWNER_BYTES = 4 * _REFERENCE_BYTES
+_MIN_LIST_ELEMENT_BYTES = {
+    TypeId.BOOL: 1,
+    TypeId.INT8: 1,
+    TypeId.INT16: 2,
+    TypeId.INT32: 4,
+    TypeId.VARINT32: 1,
+    TypeId.INT64: 8,
+    TypeId.VARINT64: 1,
+    TypeId.TAGGED_INT64: 4,
+    TypeId.UINT8: 1,
+    TypeId.UINT16: 2,
+    TypeId.UINT32: 4,
+    TypeId.VAR_UINT32: 1,
+    TypeId.UINT64: 8,
+    TypeId.VAR_UINT64: 1,
+    TypeId.TAGGED_UINT64: 4,
+    TypeId.FLOAT16: 2,
+    TypeId.BFLOAT16: 2,
+    TypeId.FLOAT32: 4,
+    TypeId.FLOAT64: 8,
+}
 
 
 def supports_compatible_scalar_conversion(remote_type_id: int, local_type_id: int) -> bool:
@@ -175,6 +209,55 @@ def _canonical_decimal(value: decimal.Decimal) -> decimal.Decimal:
         integer = int(text)
         return decimal.Decimal(-integer if sign else integer)
     return decimal.Decimal((sign, tuple(digits), exponent))
+
+
+def _compatible_decimal_from_parts(scale: int, unscaled: int) -> decimal.Decimal:
+    if unscaled == 0:
+        return decimal.Decimal(0)
+
+    negative = unscaled < 0
+    magnitude = abs(unscaled)
+    if scale < 0:
+        integer_zero_digits = -scale
+        if integer_zero_digits > _MAX_COMPATIBLE_DECIMAL_DIGITS:
+            raise ValueError("decimal exceeds compatible conversion limit")
+        magnitude_limit = 10 ** (_MAX_COMPATIBLE_DECIMAL_DIGITS - integer_zero_digits)
+        if magnitude >= magnitude_limit:
+            raise ValueError("decimal exceeds compatible conversion limit")
+        magnitude *= 10**integer_zero_digits
+        return _decimal_from_parts(0, -magnitude if negative else magnitude)
+    if scale == 0:
+        if magnitude >= _MAX_COMPATIBLE_DECIMAL_MAGNITUDE:
+            raise ValueError("decimal exceeds compatible conversion limit")
+        return _decimal_from_parts(0, -magnitude if negative else magnitude)
+
+    required_zero_digits = max(scale - _MAX_COMPATIBLE_DECIMAL_DIGITS, 0)
+    if required_zero_digits:
+        # A nonzero value divisible by 10**n has more than 3*n bits. This
+        # prevents an attacker-controlled scale from creating a power larger
+        # than the byte-proven magnitude before divisibility is known.
+        if required_zero_digits * 3 >= magnitude.bit_length():
+            raise ValueError("decimal exceeds compatible conversion limit")
+        factor = 10**required_zero_digits
+        magnitude, remainder = divmod(magnitude, factor)
+        if remainder:
+            raise ValueError("decimal exceeds compatible conversion limit")
+        scale -= required_zero_digits
+
+    if magnitude >= _MAX_REDUCIBLE_DECIMAL_MAGNITUDE:
+        raise ValueError("decimal exceeds compatible conversion limit")
+    while scale >= _DECIMAL_ZERO_CHUNK_DIGITS:
+        quotient, remainder = divmod(magnitude, _DECIMAL_ZERO_CHUNK)
+        if remainder:
+            break
+        magnitude = quotient
+        scale -= _DECIMAL_ZERO_CHUNK_DIGITS
+    while scale and magnitude % 10 == 0:
+        magnitude //= 10
+        scale -= 1
+    if magnitude >= _MAX_COMPATIBLE_DECIMAL_MAGNITUDE:
+        raise ValueError("decimal exceeds compatible conversion limit")
+    return _decimal_from_parts(scale, -magnitude if negative else magnitude)
 
 
 def _is_negative_zero(value: float) -> bool:
@@ -362,7 +445,7 @@ def compatible_scalar_convert(value, remote_type_id: int, local_type_id: int):
     raise ValueError(f"type id {local_type_id} is not a compatible scalar target")
 
 
-def _read_compatible_scalar_value(read_context, remote_serializer, remote_type_id: int):
+def _read_compatible_scalar_value(read_context, remote_serializer, remote_type_id: int, local_type_id: int):
     if remote_type_id == TypeId.BOOL:
         raw = read_context.read_uint8()
         if raw == 0:
@@ -370,15 +453,15 @@ def _read_compatible_scalar_value(read_context, remote_serializer, remote_type_i
         if raw == 1:
             return True
         raise ValueError("bool byte must be encoded as 0 or 1")
+    if remote_type_id == TypeId.DECIMAL and local_type_id != TypeId.DECIMAL:
+        return _compatible_decimal_from_parts(*_read_decimal_parts(read_context))
     return remote_serializer.read(read_context)
 
 
-def _scalar_conversion_error(field_name: str, remote_type_id: int, local_type_id: int, value, cause: Exception):
+def _scalar_conversion_error(field_name: str, remote_type_id: int, local_type_id: int, cause: Exception):
     from pyfory.error import ForyInvalidDataError
 
-    raise ForyInvalidDataError(
-        f"Cannot convert compatible field {field_name!r} from type {remote_type_id} to type {local_type_id}: {value!r}"
-    ) from cause
+    raise ForyInvalidDataError(f"Cannot convert compatible field {field_name!r} from type {remote_type_id} to type {local_type_id}") from cause
 
 
 class CompatibleScalarFieldSerializer(Serializer):
@@ -389,17 +472,17 @@ class CompatibleScalarFieldSerializer(Serializer):
         self.remote_type_id = remote_type_id
         self.local_type_id = local_type_id
         self.field_name = field_name
+        self.read_data_always_advances = remote_serializer.read_data_always_advances
 
     def write(self, write_context, value):
         raise NotImplementedError("compatible scalar field serializer is read-only")
 
     def read(self, read_context):
-        value = None
         try:
-            value = _read_compatible_scalar_value(read_context, self.remote_serializer, self.remote_type_id)
+            value = _read_compatible_scalar_value(read_context, self.remote_serializer, self.remote_type_id, self.local_type_id)
             return compatible_scalar_convert(value, self.remote_type_id, self.local_type_id)
         except (ValueError, OverflowError, decimal.InvalidOperation) as exc:
-            _scalar_conversion_error(self.field_name, self.remote_type_id, self.local_type_id, value, exc)
+            _scalar_conversion_error(self.field_name, self.remote_type_id, self.local_type_id, exc)
 
 
 class CompatibleArrayToListFieldSerializer(Serializer):
@@ -408,21 +491,28 @@ class CompatibleArrayToListFieldSerializer(Serializer):
         self.remote_array_serializer = remote_array_serializer
         self.elem_serializer = elem_serializer
         self.need_to_write_ref = False
+        self.read_data_always_advances = remote_array_serializer.read_data_always_advances
 
     def write(self, buffer, value):
         raise TypeError("compatible array-to-list field serializer is read-only")
 
     def read(self, read_context):
-        return list(self.remote_array_serializer.read(read_context))
+        values = self.remote_array_serializer.read(read_context)
+        read_context.reserve_graph_memory(_LIST_OWNER_BYTES + len(values) * _REFERENCE_BYTES)
+        return list(values)
 
 
 class CompatibleListToArrayFieldSerializer(Serializer):
-    def __init__(self, type_resolver, target_serializer, elem_serializer, field_name=None):
+    def __init__(self, type_resolver, target_serializer, elem_serializer, remote_elem_type_id, field_name=None):
         super().__init__(type_resolver, target_serializer.type_)
         self.target_serializer = target_serializer
         self.elem_serializer = elem_serializer
+        # Use the remote encoding width so compact varints remain valid while
+        # fixed-width elements prove the full dense target allocation.
+        self.min_elem_bytes = _MIN_LIST_ELEMENT_BYTES[remote_elem_type_id]
         self.field_name = field_name or "<array>"
         self.need_to_write_ref = False
+        self.read_data_always_advances = True
 
     def write(self, buffer, value):
         raise TypeError("compatible list-to-array field serializer is read-only")
@@ -467,7 +557,7 @@ class CompatibleListToArrayFieldSerializer(Serializer):
                 f"Field {self.field_name!r} requires declared same-type list elements for array<T> compatible read",
             )
 
-        read_context.check_readable_bytes(length)
+        read_context.check_readable_bytes(length * self.min_elem_bytes)
         target = self._new_target(length)
         append = None if np is not None and _is_numpy_1d_array_serializer(self.target_serializer) else target.append
         for index in range(length):

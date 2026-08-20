@@ -67,15 +67,15 @@ final class BenchmarkSuite {
     private let jsonEncoder = JSONEncoder()
     private let jsonDecoder = JSONDecoder()
 
-    init(config: BenchmarkConfig) {
+    init(config: BenchmarkConfig) throws {
         self.config = config
         self.foryWriter = Fory(ref: false, compatible: true)
         self.foryReader = Fory(ref: false, compatible: true)
-        registerV1Types(foryWriter)
+        try registerV1Types(foryWriter)
         if config.schemaMismatch {
-            registerV2Types(foryReader)
+            try registerV2Types(foryReader)
         } else {
-            registerV1Types(foryReader)
+            try registerV1Types(foryReader)
         }
     }
 
@@ -152,26 +152,26 @@ final class BenchmarkSuite {
         )
     }
 
-    private func registerV1Types(_ fory: Fory) {
-        fory.register(NumericStruct.self, id: 1)
-        fory.register(Sample.self, id: 2)
-        fory.register(Media.self, id: 3)
-        fory.register(Image.self, id: 4)
-        fory.register(MediaContent.self, id: 5)
-        fory.register(NumericStructList.self, id: 6)
-        fory.register(SampleList.self, id: 7)
-        fory.register(MediaContentList.self, id: 8)
+    private func registerV1Types(_ fory: Fory) throws {
+        try fory.register(NumericStruct.self, id: 1)
+        try fory.register(Sample.self, id: 2)
+        try fory.register(Media.self, id: 3)
+        try fory.register(Image.self, id: 4)
+        try fory.register(MediaContent.self, id: 5)
+        try fory.register(NumericStructList.self, id: 6)
+        try fory.register(SampleList.self, id: 7)
+        try fory.register(MediaContentList.self, id: 8)
     }
 
-    private func registerV2Types(_ fory: Fory) {
-        fory.register(NumericStructV2.self, id: 1)
-        fory.register(SampleV2.self, id: 2)
-        fory.register(MediaV2.self, id: 3)
-        fory.register(ImageV2.self, id: 4)
-        fory.register(MediaContentV2.self, id: 5)
-        fory.register(NumericStructListV2.self, id: 6)
-        fory.register(SampleListV2.self, id: 7)
-        fory.register(MediaContentListV2.self, id: 8)
+    private func registerV2Types(_ fory: Fory) throws {
+        try fory.register(NumericStructV2.self, id: 1)
+        try fory.register(SampleV2.self, id: 2)
+        try fory.register(MediaV2.self, id: 3)
+        try fory.register(ImageV2.self, id: 4)
+        try fory.register(MediaContentV2.self, id: 5)
+        try fory.register(NumericStructListV2.self, id: 6)
+        try fory.register(SampleListV2.self, id: 7)
+        try fory.register(MediaContentListV2.self, id: 8)
     }
 
     private func shouldRun(_ dataKind: DataKind, _ serializer: SerializerKind) -> Bool {
@@ -190,7 +190,7 @@ final class BenchmarkSuite {
         validateMismatch: (TRead, T) -> Bool,
         entries: inout [BenchmarkEntry],
         sizeEntries: inout [SizeEntry]
-    ) throws {
+    ) throws where T.Target == T, TRead.Target == TRead {
         if let filter = config.dataFilter, filter != dataKind {
             return
         }
@@ -353,7 +353,7 @@ final class BenchmarkSuite {
         var localSink = 0
 
         benchmarkLoop: while true {
-            for _ in 0 ..< 256 {
+            for _ in 0..<256 {
                 localSink &+= try body()
                 iterations += 1
             }

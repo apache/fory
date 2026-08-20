@@ -303,7 +303,8 @@ final class IdlRoundTripTests: XCTestCase {
         }
     }
 
-    private func roundTrip<T: Serializer>(_ fory: Fory, value: T) throws -> T {
+    private func roundTrip<T: Serializer>(_ fory: Fory, value: T) throws -> T
+    where T.Target == T {
         let payload = try fory.serialize(value)
         return try fory.deserialize(payload)
     }
@@ -313,7 +314,7 @@ final class IdlRoundTripTests: XCTestCase {
         env: String,
         expected: T,
         assertRoundTrip: (T, T) throws -> Void
-    ) throws {
+    ) throws where T.Target == T {
         guard let path = ProcessInfo.processInfo.environment[env], !path.isEmpty else {
             return
         }
@@ -707,8 +708,8 @@ final class IdlRoundTripTests: XCTestCase {
             timestampValue: Date(timeIntervalSince1970: 1704164645),
             messageValue: AnyExample.AnyInner(name: "inner"),
             unionValue: AnyExample.AnyUnion.text("union"),
-            listValue: ["alpha", "beta"],
-            mapValue: ["k1": "v1", "k2": "v2"]
+            listValue: ["alpha", "beta"] as [Any],
+            mapValue: ["k1": "v1", "k2": "v2"] as [String: Any]
         )
     }
 
@@ -720,8 +721,8 @@ final class IdlRoundTripTests: XCTestCase {
             timestampValue: Date(timeIntervalSince1970: 1704164645),
             messageValue: AnyExamplePb.AnyInner(name: "inner"),
             unionValue: AnyExamplePb.AnyUnion(kind: .text("proto-union")),
-            listValue: ["alpha", "beta"],
-            mapValue: ["k1": "v1", "k2": "v2"]
+            listValue: ["alpha", "beta"] as [Any],
+            mapValue: ["k1": "v1", "k2": "v2"] as [String: Any]
         )
     }
 

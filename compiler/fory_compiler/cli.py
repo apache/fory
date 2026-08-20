@@ -718,6 +718,7 @@ def compile_file(
     grpc_python_mode: str = "async",
     *,
     generated_outputs: Optional[Dict[Path, Path]] = None,
+    generated_cpp_namespaces: Optional[Dict[str, Tuple[Path, str]]] = None,
 ) -> bool:
     """Compile a single IDL file with import resolution.
 
@@ -726,10 +727,13 @@ def compile_file(
         lang_output_dirs: Dictionary mapping language name to output directory
         import_paths: List of import search paths
         generated_outputs: output file path -> source IDL path
+        generated_cpp_namespaces: C++ namespace -> source IDL path and package
     """
     file_path = file_path.resolve()
     if generated_outputs is None:
         generated_outputs = {}
+    if generated_cpp_namespaces is None:
+        generated_cpp_namespaces = {}
     print(f"Compiling {file_path}...")
 
     # Parse and resolve imports
@@ -802,11 +806,35 @@ def compile_file(
             print(f"Error: {e}", file=sys.stderr)
             return False
 
-        if lang in {"rust", "csharp", "javascript"}:
+        if lang == "cpp":
+            # Handle this kind of collision here:
+            # Different IDL package names can sanitize to the same C++ namespace.
+            # For example, `package std` and `package std_` both emit `namespace std_ { ... }`.
+            # If both generated headers are directly or transitively included in one
+            # header file of source file, they define helpers with the same qualified names,
+            # such as `register_types` and `detail::get_fory`. Those duplicate definitions
+            # violate the ODR and cause compilation errors.
+            namespace = generator.get_namespace()
+            package = schema.package or ""
+            previous = generated_cpp_namespaces.get(namespace)
+            if previous is not None and previous[1] != package:
+                previous_source, previous_package = previous
+                print(
+                    f"Error: C++ namespace collision: packages "
+                    f"{previous_package!r} and {package!r} both map to "
+                    f"namespace {namespace!r} "
+                    f"({previous_source} and {file_path})",
+                    file=sys.stderr,
+                )
+                return False
+            generated_cpp_namespaces[namespace] = (file_path, package)
+
+        if lang in {"rust", "csharp", "javascript", "cpp"}:
             # Special error handling for languages with run-wide generated path
             # validation.
             display_lang = {
                 "csharp": "C#",
+                "cpp": "C++",
                 "javascript": "JavaScript",
             }.get(lang, lang.capitalize())
             output_targets: List[Path] = []
@@ -814,7 +842,7 @@ def compile_file(
                 target = (lang_output / f.path).resolve()
                 # Reject overwriting existing non-generated files
                 if (
-                    lang in {"rust", "csharp"}
+                    lang in {"rust", "csharp", "cpp"}
                     and target.exists()
                     and not is_generated_file(target)
                 ):
@@ -857,6 +885,7 @@ def compile_file_recursive(
     resolve_cache: Dict[Path, Schema],
     go_module_root: Optional[Path],
     generated_outputs: Dict[Path, Path],
+    generated_cpp_namespaces: Dict[str, Tuple[Path, str]],
     grpc: bool = False,
     grpc_web: bool = False,
     grpc_python_mode: str = "async",
@@ -924,6 +953,7 @@ def compile_file_recursive(
             resolve_cache,
             go_module_root,
             generated_outputs,
+            generated_cpp_namespaces,
             grpc,
             grpc_web,
             grpc_python_mode,
@@ -945,6 +975,7 @@ def compile_file_recursive(
         grpc_web,
         grpc_python_mode,
         generated_outputs=generated_outputs,
+        generated_cpp_namespaces=generated_cpp_namespaces,
     )
     if ok:
         generated.add(file_path)
@@ -1048,6 +1079,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
     generated: Set[Path] = set()
     resolve_cache: Dict[Path, Schema] = {}
     generated_outputs: Dict[Path, Path] = {}
+    generated_cpp_namespaces: Dict[str, Tuple[Path, str]] = {}
     for file_path in args.files:
         if not file_path.exists():
             print(f"Error: File not found: {file_path}", file=sys.stderr)
@@ -1068,6 +1100,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
                 resolve_cache,
                 None,
                 generated_outputs,
+                generated_cpp_namespaces,
                 args.grpc,
                 args.grpc_web,
                 grpc_python_mode,

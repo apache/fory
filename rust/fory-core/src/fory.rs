@@ -22,7 +22,6 @@ use crate::ensure;
 use crate::error::Error;
 use crate::resolver::RefMode;
 use crate::resolver::TypeResolver;
-use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
 use crate::type_id::config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_OUT_OF_BAND_FLAG};
 use crate::type_id::SIZE_OF_REF_AND_TYPE;
@@ -33,6 +32,12 @@ use std::sync::OnceLock;
 
 /// Global counter to assign unique IDs to each Fory instance.
 static FORY_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[cold]
+#[inline(never)]
+fn final_type_resolver_error(error: &Error) -> Error {
+    Error::type_error(format!("Failed to build type resolver: {error}"))
+}
 
 thread_local! {
     /// Thread-local storage for WriteContext instances with fast path caching.
@@ -258,6 +263,27 @@ impl ForyBuilder {
     /// ```
     pub fn track_ref(mut self, track_ref: bool) -> Self {
         self.config.track_ref = track_ref;
+        self
+    }
+
+    /// Sets the approximate graph-memory gate for one root deserialization.
+    ///
+    /// Mainly gates materialized collections, maps, arrays, structs, and objects. Leaf values are
+    /// gated by unread input bytes instead, and actual process memory can be higher. Defaults to
+    /// 128 MiB. Values must be positive byte limits.
+    pub fn max_graph_memory_bytes(mut self, max_bytes: usize) -> Self {
+        assert!(
+            max_bytes > 0,
+            "max_graph_memory_bytes must be in [1, usize::MAX]"
+        );
+        self.config.max_graph_memory_bytes = max_bytes;
+        self
+    }
+
+    /// Sets the root allowance for collection elements and map entries not
+    /// backed by newly consumed input bytes. Defaults to 8192. Zero is strict.
+    pub fn max_unbacked_container_items(mut self, max_items: usize) -> Self {
+        self.config.max_unbacked_container_items = max_items;
         self
     }
 
@@ -514,6 +540,8 @@ impl Fory {
     ///
     /// returns [`Error::NotAllowed`] when the resolver snapshot has already been
     /// built (i.e after the first `serialize` / `deserialize` call).
+    #[cold]
+    #[inline(never)]
     fn check_registration_allowed(&self) -> Result<(), Error> {
         if self.final_type_resolver.get().is_some() {
             return Err(Error::not_allowed(
@@ -526,6 +554,10 @@ impl Fory {
     }
 
     /// Serializes a value of type `T` into a byte vector.
+    ///
+    /// This is for ordinary roots whose value type selects its own serializer
+    /// through `T: Serializer<Target = T>`. For an external target whose
+    /// serializer is a separate type, use [`serialize_with`](Self::serialize_with).
     ///
     /// # Type Parameters
     ///
@@ -553,9 +585,24 @@ impl Fory {
     /// let point = Point { x: 10, y: 20 };
     /// let bytes = fory.serialize(&point).unwrap();
     /// ```
-    pub fn serialize<T: Serializer>(&self, record: &T) -> Result<Vec<u8>, Error> {
+    pub fn serialize<T>(&self, record: &T) -> Result<Vec<u8>, Error>
+    where
+        T: Serializer<Target = T>,
+    {
+        self.serialize_with::<T>(record)
+    }
+
+    /// Serializes a value using the explicitly selected serializer.
+    ///
+    /// `record` must be exactly [`Serializer::Target`] for `S`. Register `S`
+    /// first when it is an independently registered structural or custom serializer. Fory-owned
+    /// carrier serializers compose their child serializers and are not registered.
+    pub fn serialize_with<S>(&self, record: &S::Target) -> Result<Vec<u8>, Error>
+    where
+        S: Serializer,
+    {
         self.with_write_context(
-            |context| match self.serialize_with_context(record, context) {
+            |context| match self.serialize_with_context::<S>(record, context) {
                 Ok(_) => {
                     let result = context.writer.dump();
                     context.writer.reset();
@@ -570,6 +617,11 @@ impl Fory {
     }
 
     /// Serializes a value of type `T` into the provided byte buffer.
+    ///
+    /// This is for ordinary roots whose value type selects its own serializer
+    /// through `T: Serializer<Target = T>`. For an external target whose
+    /// serializer is a separate type, use
+    /// [`serialize_to_with`](Self::serialize_to_with).
     ///
     /// The serialized data is appended to the end of the buffer by default.
     /// To write from a specific position, resize the buffer before calling this method.
@@ -687,11 +739,24 @@ impl Fory {
     /// fory.serialize_to(&mut buf, &point).unwrap();
     /// assert_eq!(buf.capacity(), initial_capacity);  // Still no reallocation
     /// ```
-    pub fn serialize_to<T: Serializer>(
+    pub fn serialize_to<T>(&self, buf: &mut Vec<u8>, record: &T) -> Result<usize, Error>
+    where
+        T: Serializer<Target = T>,
+    {
+        self.serialize_to_with::<T>(buf, record)
+    }
+
+    /// Serializes a value into a buffer using the explicitly selected serializer.
+    ///
+    /// This is the buffer-writing counterpart of [`serialize_with`](Self::serialize_with).
+    pub fn serialize_to_with<S>(
         &self,
         buf: &mut Vec<u8>,
-        record: &T,
-    ) -> Result<usize, Error> {
+        record: &S::Target,
+    ) -> Result<usize, Error>
+    where
+        S: Serializer,
+    {
         let start = buf.len();
         self.with_write_context(|context| {
             // Context from thread-local would be 'static. but context hold the buffer through `writer` field,
@@ -700,7 +765,7 @@ impl Fory {
             // So it's safe to make buf live to the end of this method.
             let outlive_buffer = unsafe { mem::transmute::<&mut Vec<u8>, &mut Vec<u8>>(buf) };
             context.attach_writer(Writer::from_buffer(outlive_buffer));
-            let result = self.serialize_with_context(record, context);
+            let result = self.serialize_with_context::<S>(record, context);
             let written_size = context.writer.len() - start;
             context.detach_writer();
             match result {
@@ -711,14 +776,13 @@ impl Fory {
     }
 
     /// Gets the final type resolver, building it lazily on first access.
-    #[inline(always)]
+    #[cold]
+    #[inline(never)]
     fn get_final_type_resolver(&self) -> Result<&TypeResolver, Error> {
         let result = self
             .final_type_resolver
             .get_or_init(|| self.type_resolver.build_final_type_resolver());
-        result
-            .as_ref()
-            .map_err(|e| Error::type_error(format!("Failed to build type resolver: {}", e)))
+        result.as_ref().map_err(final_type_resolver_error)
     }
 
     /// Executes a closure with mutable access to a WriteContext for this Fory instance.
@@ -750,23 +814,23 @@ impl Fory {
 
     /// Serializes a value of type `T` into a byte vector.
     #[inline(always)]
-    fn serialize_with_context<T: Serializer>(
+    fn serialize_with_context<S: Serializer>(
         &self,
-        record: &T,
+        record: &S::Target,
         context: &mut WriteContext,
     ) -> Result<(), Error> {
-        let result = self.serialize_with_context_inner::<T>(record, context);
+        let result = self.serialize_with_context_inner::<S>(record, context);
         context.reset();
         result
     }
 
     #[inline(always)]
-    fn serialize_with_context_inner<T: Serializer>(
+    fn serialize_with_context_inner<S: Serializer>(
         &self,
-        record: &T,
+        record: &S::Target,
         context: &mut WriteContext,
     ) -> Result<(), Error> {
-        self.write_head::<T>(&mut context.writer);
+        self.write_head::<S>(&mut context.writer);
         // Use RefMode based on config:
         // - If track_ref is enabled, use RefMode::Tracking for the root object
         // - Otherwise, use RefMode::NullOnly which writes NOT_NULL_VALUE_FLAG
@@ -776,24 +840,28 @@ impl Fory {
             RefMode::NullOnly
         };
         // TypeMeta is written inline during serialization (streaming protocol)
-        <T as Serializer>::fory_write(record, context, ref_mode, true, false)?;
+        S::write(record, context, ref_mode, true)?;
         Ok(())
     }
 
-    /// Registers a struct type with a numeric type ID for serialization.
+    /// Registers a structural serializer with a numeric type ID.
+    ///
+    /// This accepts ordinary and external structural serializers for structs
+    /// and enum-category types.
     ///
     /// # Type Parameters
     ///
-    /// * `T` - The struct type to register. Must implement `StructSerializer`, `Serializer`, and `ForyDefault`.
+    /// * `S` - The structural serializer to register.
     ///
     /// # Arguments
     ///
     /// * `id` - A unique numeric identifier for the type. This ID is used in the serialized format
     ///   to identify the type during deserialization.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// May panic if the type ID conflicts with an already registered type.
+    /// Returns an error when the serializer category, target, type ID, or
+    /// another registration identity conflicts with an existing registration.
     ///
     /// # Examples
     ///
@@ -807,30 +875,27 @@ impl Fory {
     /// let mut fory = Fory::builder().xlang(true).build();
     /// fory.register::<User>(100).unwrap();
     /// ```
-    pub fn register<T: 'static + StructSerializer + Serializer + ForyDefault>(
-        &mut self,
-        id: u32,
-    ) -> Result<(), Error> {
+    pub fn register<S: StructSerializer>(&mut self, id: u32) -> Result<(), Error> {
         self.check_registration_allowed()?;
-        self.type_resolver.register::<T>(id)
+        self.type_resolver.register::<S>(id)
     }
 
-    /// Register a union type with a numeric type ID.
+    /// Registers an xlang-compatible union serializer with a numeric type ID.
     ///
-    /// This is intended for union-compatible enums generated by the compiler.
-    pub fn register_union<T: 'static + StructSerializer + Serializer + ForyDefault>(
-        &mut self,
-        id: u32,
-    ) -> Result<(), Error> {
+    /// The serializer may be generated by derive or by the schema compiler.
+    pub fn register_union<S: StructSerializer>(&mut self, id: u32) -> Result<(), Error> {
         self.check_registration_allowed()?;
-        self.type_resolver.register_union::<T>(id)
+        self.type_resolver.register_union::<S>(id)
     }
 
-    /// Registers a struct type with a qualified type name for xlang serialization.
+    /// Registers a structural serializer with a qualified type name.
+    ///
+    /// This accepts ordinary and external structural serializers for structs
+    /// and enum-category types.
     ///
     /// # Type Parameters
     ///
-    /// * `T` - The struct type to register. Must implement `StructSerializer`, `Serializer`, and `ForyDefault`.
+    /// * `S` - The structural serializer to register.
     ///
     /// # Arguments
     ///
@@ -859,30 +924,24 @@ impl Fory {
     /// let mut fory = Fory::builder().xlang(true).build();
     /// fory.register_by_name::<User>("com.example.User").unwrap();
     /// ```
-    pub fn register_by_name<T: 'static + StructSerializer + Serializer + ForyDefault>(
-        &mut self,
-        name: &str,
-    ) -> Result<(), Error> {
+    pub fn register_by_name<S: StructSerializer>(&mut self, name: &str) -> Result<(), Error> {
         self.check_registration_allowed()?;
-        self.type_resolver.register_by_name::<T>(name)
+        self.type_resolver.register_by_name::<S>(name)
     }
 
-    /// Register a union type with a qualified type name.
+    /// Registers an xlang-compatible union serializer with a qualified name.
     ///
-    /// This is intended for union-compatible enums generated by the compiler.
-    pub fn register_union_by_name<T: 'static + StructSerializer + Serializer + ForyDefault>(
-        &mut self,
-        name: &str,
-    ) -> Result<(), Error> {
+    /// The serializer may be generated by derive or by the schema compiler.
+    pub fn register_union_by_name<S: StructSerializer>(&mut self, name: &str) -> Result<(), Error> {
         self.check_registration_allowed()?;
-        self.type_resolver.register_union_by_name::<T>(name)
+        self.type_resolver.register_union_by_name::<S>(name)
     }
 
-    /// Registers a custom serializer type with a numeric type ID.
+    /// Registers a custom serializer with a numeric type ID.
     ///
     /// # Type Parameters
     ///
-    /// * `T` - The type to register. Must implement `Serializer` and `ForyDefault`.
+    /// * `S` - The custom EXT serializer to register.
     ///   Unlike `register()`, this does not require `StructSerializer`, making it suitable
     ///   for non-struct types or types with custom serialization logic.
     ///
@@ -892,10 +951,8 @@ impl Fory {
     ///
     /// # Use Cases
     ///
-    /// Use this method to register:
-    /// - Enum types with custom serialization
-    /// - Wrapper types
-    /// - Types with hand-written `Serializer` implementations
+    /// Use this method for a custom serializer that declares the EXT
+    /// wire category and implements opaque, hand-written serialization for its target.
     ///
     /// # Examples
     ///
@@ -903,21 +960,18 @@ impl Fory {
     /// use fory_core::Fory;
     ///
     /// let mut fory = Fory::builder().xlang(false).build();
-    /// fory.register_serializer::<MyCustomType>(200).unwrap();
+    /// fory.register_serializer::<UuidSerializer>(200).unwrap();
     /// ```
-    pub fn register_serializer<T: Serializer + ForyDefault>(
-        &mut self,
-        id: u32,
-    ) -> Result<(), Error> {
+    pub fn register_serializer<S: Serializer>(&mut self, id: u32) -> Result<(), Error> {
         self.check_registration_allowed()?;
-        self.type_resolver.register_serializer::<T>(id)
+        self.type_resolver.register_serializer::<S>(id)
     }
 
-    /// Registers a custom serializer type with a qualified type name.
+    /// Registers a custom serializer with a qualified type name.
     ///
     /// # Type Parameters
     ///
-    /// * `T` - The type to register. Must implement `Serializer` and `ForyDefault`.
+    /// * `S` - The custom EXT serializer to register.
     ///
     /// # Arguments
     ///
@@ -928,19 +982,16 @@ impl Fory {
     /// This is the named equivalent of `register_serializer()`, preferred for
     /// xlang serialization scenarios.
     ///
-    pub fn register_serializer_by_name<T: Serializer + ForyDefault>(
-        &mut self,
-        name: &str,
-    ) -> Result<(), Error> {
+    pub fn register_serializer_by_name<S: Serializer>(&mut self, name: &str) -> Result<(), Error> {
         self.check_registration_allowed()?;
-        self.type_resolver.register_serializer_by_name::<T>(name)
+        self.type_resolver.register_serializer_by_name::<S>(name)
     }
 
     /// Writes the serialization header to the writer.
     #[inline(always)]
-    pub fn write_head<T: Serializer>(&self, writer: &mut Writer) {
+    pub fn write_head<S: Serializer>(&self, writer: &mut Writer) {
         const HEAD_SIZE: usize = 10;
-        writer.reserve(T::fory_reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
+        writer.reserve(S::reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
         let bitmap = if self.config.xlang {
             IS_CROSS_LANGUAGE_FLAG
         } else {
@@ -953,7 +1004,7 @@ impl Fory {
     ///
     /// # Type Parameters
     ///
-    /// * `T` - The target type to deserialize into. Must implement `Serializer` and `ForyDefault`.
+    /// * `T` - A local target type whose serializer is selected by the type itself.
     ///
     /// # Arguments
     ///
@@ -984,11 +1035,27 @@ impl Fory {
     /// let bytes = fory.serialize(&point).unwrap();
     /// let deserialized: Point = fory.deserialize(&bytes).unwrap();
     /// ```
-    pub fn deserialize<T: Serializer + ForyDefault>(&self, bf: &[u8]) -> Result<T, Error> {
+    pub fn deserialize<T>(&self, bf: &[u8]) -> Result<T, Error>
+    where
+        T: Serializer<Target = T>,
+    {
+        self.deserialize_with::<T>(bf)
+    }
+
+    /// Deserializes a value using the explicitly selected serializer.
+    ///
+    /// The result is exactly [`Serializer::Target`] for `S`. Its wire bytes must
+    /// have been written with the same serializer or a schema-compatible peer.
+    pub fn deserialize_with<S>(&self, bf: &[u8]) -> Result<S::Target, Error>
+    where
+        S: Serializer,
+    {
         self.with_read_context(|context| {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
             context.attach_reader(Reader::new(outlive_buffer));
-            let result = self.deserialize_with_context(context);
+            context.remaining_graph_memory_bytes = self.config.max_graph_memory_bytes;
+            context.remaining_unbacked_container_items = self.config.max_unbacked_container_items;
+            let result = self.deserialize_with_context::<S>(context);
             context.detach_reader();
             result
         })
@@ -1003,7 +1070,7 @@ impl Fory {
     ///
     /// # Type Parameters
     ///
-    /// * `T` - The target type to deserialize into. Must implement `Serializer` and `ForyDefault`.
+    /// * `T` - A local target type whose serializer is selected by the type itself.
     ///
     /// # Arguments
     ///
@@ -1042,16 +1109,28 @@ impl Fory {
     /// let mut reader = Reader::new(&buf);
     /// let deserialized: Point = fory.deserialize_from(&mut reader).unwrap();
     /// ```
-    pub fn deserialize_from<T: Serializer + ForyDefault>(
-        &self,
-        reader: &mut Reader,
-    ) -> Result<T, Error> {
+    pub fn deserialize_from<T>(&self, reader: &mut Reader) -> Result<T, Error>
+    where
+        T: Serializer<Target = T>,
+    {
+        self.deserialize_from_with::<T>(reader)
+    }
+
+    /// Deserializes from a reader using the explicitly selected serializer.
+    ///
+    /// This is the reader-based counterpart of [`deserialize_with`](Self::deserialize_with).
+    pub fn deserialize_from_with<S>(&self, reader: &mut Reader) -> Result<S::Target, Error>
+    where
+        S: Serializer,
+    {
         self.with_read_context(|context| {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
             let mut new_reader = Reader::new(outlive_buffer);
             new_reader.set_cursor(reader.cursor);
             context.attach_reader(new_reader);
-            let result = self.deserialize_with_context(context);
+            context.remaining_graph_memory_bytes = self.config.max_graph_memory_bytes;
+            context.remaining_unbacked_container_items = self.config.max_unbacked_container_items;
+            let result = self.deserialize_with_context::<S>(context);
             let end = context.detach_reader().get_cursor();
             reader.set_cursor(end);
             result
@@ -1086,20 +1165,20 @@ impl Fory {
     }
 
     #[inline(always)]
-    fn deserialize_with_context<T: Serializer + ForyDefault>(
+    fn deserialize_with_context<S: Serializer>(
         &self,
         context: &mut ReadContext,
-    ) -> Result<T, Error> {
-        let result = self.deserialize_with_context_inner::<T>(context);
+    ) -> Result<S::Target, Error> {
+        let result = self.deserialize_with_context_inner::<S>(context);
         context.reset();
         result
     }
 
     #[inline(always)]
-    fn deserialize_with_context_inner<T: Serializer + ForyDefault>(
+    fn deserialize_with_context_inner<S: Serializer>(
         &self,
         context: &mut ReadContext,
-    ) -> Result<T, Error> {
+    ) -> Result<S::Target, Error> {
         self.read_head(&mut context.reader)?;
         // Use RefMode based on config:
         // - If track_ref is enabled, use RefMode::Tracking for the root object
@@ -1109,8 +1188,7 @@ impl Fory {
         } else {
             RefMode::NullOnly
         };
-        // TypeMeta is read inline during deserialization (streaming protocol)
-        let result = <T as Serializer>::fory_read(context, ref_mode, true);
+        let result = S::read(context, ref_mode, true);
         context.ref_reader.resolve_callbacks();
         result
     }

@@ -40,6 +40,14 @@ pub struct Config {
     /// When enabled, shared references and circular references are tracked
     /// and preserved during serialization/deserialization.
     pub track_ref: bool,
+    /// Approximate graph-memory gate for one root deserialization.
+    /// Mainly gates materialized collections, maps, arrays, structs, and objects.
+    /// Leaf values are gated by unread input bytes instead, and actual process
+    /// memory can be higher. Defaults to 128 MiB. Value must be a positive byte limit.
+    pub max_graph_memory_bytes: usize,
+    /// Root allowance for collection elements and map entries not backed by one
+    /// newly consumed input byte. Zero is a strict limit.
+    pub max_unbacked_container_items: usize,
     /// Maximum accepted field count in one received struct TypeMeta.
     pub max_type_fields: u32,
     /// Maximum accepted body size in one received TypeMeta.
@@ -61,6 +69,8 @@ impl Default for Config {
             max_dyn_depth: 5,
             check_struct_version: false,
             track_ref: false,
+            max_graph_memory_bytes: 128 * 1024 * 1024,
+            max_unbacked_container_items: 8192,
             max_type_fields: 512,
             max_type_meta_bytes: 4096,
             max_schema_versions_per_type: 10,
@@ -121,6 +131,18 @@ impl Config {
     #[inline(always)]
     pub fn is_track_ref(&self) -> bool {
         self.track_ref
+    }
+
+    /// Get the approximate graph-memory gate per root deserialization.
+    #[inline(always)]
+    pub fn max_graph_memory_bytes(&self) -> usize {
+        self.max_graph_memory_bytes
+    }
+
+    /// Get the root allowance for container items not backed by input bytes.
+    #[inline(always)]
+    pub fn max_unbacked_container_items(&self) -> usize {
+        self.max_unbacked_container_items
     }
 
     /// Get maximum accepted field count in one received struct TypeMeta.

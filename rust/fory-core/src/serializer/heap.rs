@@ -15,68 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::context::ReadContext;
-use crate::context::WriteContext;
-use crate::error::Error;
-use crate::resolver::TypeResolver;
-use crate::serializer::collection::{
-    read_collection_data, read_collection_type_info, write_collection_data,
-    write_collection_type_info,
-};
-
-use crate::serializer::{ForyDefault, Serializer};
-use crate::type_id::TypeId;
 use std::collections::BinaryHeap;
-use std::mem;
 
-impl<T: Serializer + ForyDefault + Ord> Serializer for BinaryHeap<T> {
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        write_collection_data(self, context, false)
-    }
+impl_collection_carrier_codec!(
+    BinaryHeapCodec,
+    BinaryHeap,
+    SET,
+    zst_no_backing = true,
+    bounds = [Ord]
+);
 
-    fn fory_write_data_generic(
-        &self,
-        context: &mut WriteContext,
-        has_generics: bool,
-    ) -> Result<(), Error> {
-        write_collection_data(self, context, has_generics)
-    }
-
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        write_collection_type_info(context, TypeId::SET as u32)
-    }
-
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        read_collection_data(context)
-    }
-
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        read_collection_type_info(context, TypeId::SET as u32)
-    }
-
-    fn fory_reserved_space() -> usize {
-        mem::size_of::<i32>()
-    }
-
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::SET)
-    }
-
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::SET)
-    }
-
-    fn fory_static_type_id() -> TypeId {
-        TypeId::SET
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
-impl<T: Ord> ForyDefault for BinaryHeap<T> {
-    fn fory_default() -> Self {
-        BinaryHeap::new()
-    }
-}
+impl_single_carrier_serializer!(
+    BinaryHeapSerializer,
+    BinaryHeap,
+    BinaryHeapCodec,
+    wrapper = false,
+    bounds = [Ord]
+);

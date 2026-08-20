@@ -220,6 +220,24 @@ void main() {
       }
     });
 
+    test('reads utf16 roots from byte subviews', () {
+      const value = '你';
+      final frame = _utf16RootBuffer(value).toBytes();
+      final fory = Fory();
+
+      for (final offset in const <int>[1, 2]) {
+        final backing = Uint8List(offset + frame.length);
+        backing.setRange(offset, backing.length, frame);
+        final bytes = Uint8List.sublistView(backing, offset, backing.length);
+
+        expect(
+          fory.deserialize<String>(bytes),
+          equals(value),
+          reason: 'subview offset $offset',
+        );
+      }
+    });
+
     test('round-trips string collections with mixed content', () {
       final fory = Fory();
       final values = <String>[
@@ -305,6 +323,16 @@ Uint8List _utf16LeBytes(String value) {
     view.setUint16(index * 2, codeUnits[index], Endian.little);
   }
   return bytes;
+}
+
+Buffer _utf16RootBuffer(String value) {
+  final bytes = _utf16LeBytes(value);
+  return Buffer()
+    ..writeUint8(0x01)
+    ..writeByte(-1)
+    ..writeVarUint32Small7(TypeIds.string)
+    ..writeVarUint36Small((bytes.length << 2) | stringUtf16Encoding)
+    ..writeBytes(bytes);
 }
 
 String _repeat(String value, int count) =>

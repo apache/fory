@@ -23,6 +23,8 @@ are imported through `pyfory.serialization`. This module is the pure-Python
 fallback only.
 """
 
+import struct
+
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 from pyfory._serializer import Serializer, StringSerializer
 from pyfory.resolver import NOT_NULL_VALUE_FLAG, NULL_FLAG
@@ -33,6 +35,29 @@ COLL_TRACKING_REF = 0b1
 COLL_HAS_NULL = 0b10
 COLL_IS_DECL_ELEMENT_TYPE = 0b100
 COLL_IS_SAME_TYPE = 0b1000
+_REFERENCE_BYTES = struct.calcsize("P")
+# Lower-bound shallow owner costs for retained Python collection objects. Element, key, and value
+# slots are charged separately by count below; these are not Fory wire header sizes.
+_LIST_OWNER_BYTES = 4 * _REFERENCE_BYTES
+_TUPLE_OWNER_BYTES = 3 * _REFERENCE_BYTES
+_DICT_OWNER_BYTES = 8 * _REFERENCE_BYTES
+_UNBACKED_CONTAINER_CHECK_INTERVAL = 1024
+
+
+def _raise_invalid_map_chunk_size(chunk_size, remaining):
+    raise ValueError(f"Invalid map chunk size {chunk_size}, remaining entries {remaining}")
+
+
+def _ensure_container_allocation(read_context, count):
+    required = count - read_context.remaining_unbacked_container_items
+    if required > 0:
+        read_context.check_readable_bytes(required)
+
+
+def _settle_unbacked_container_items(read_context, completed, start_index):
+    consumed = read_context.get_reader_index() - start_index
+    if completed > consumed:
+        read_context.reserve_unbacked_container_items(completed - consumed)
 
 
 def _needs_element_type_info(type_id):
@@ -47,6 +72,8 @@ def _needs_element_type_info(type_id):
 
 
 class CollectionSerializer(Serializer):
+    owner_bytes = _LIST_OWNER_BYTES
+
     __slots__ = (
         "elem_serializer",
         "elem_tracking_ref",
@@ -56,6 +83,7 @@ class CollectionSerializer(Serializer):
 
     def __init__(self, type_resolver, type_, elem_serializer=None, elem_tracking_ref=None):
         super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
         self.elem_serializer = elem_serializer
         if elem_tracking_ref is not None:
             self.elem_tracking_ref = 1 if elem_tracking_ref else 0
@@ -176,25 +204,40 @@ class CollectionSerializer(Serializer):
 
     def read(self, read_context):
         length = read_context.read_var_uint32()
-        collection_ = self.new_instance(read_context, self.type_)
+        read_context.reserve_graph_memory(self.owner_bytes + length * _REFERENCE_BYTES)
         if length == 0:
-            return collection_
+            return self.new_instance(read_context, self.type_)
         collect_flag = read_context.read_int8()
         # IMPORTANT: collection readers must obey the ref/null bits written on
         # the wire, not the local Python element annotation or runtime type
         # that may imply a different ref policy. Shared xlang tests
         # intentionally deserialize one ref policy and then serialize another
         # local payload. DO NOT REMOVE this comment.
+        serializer = None
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if (collect_flag & COLL_IS_DECL_ELEMENT_TYPE) == 0:
                 typeinfo = self.type_resolver.read_type_info(read_context)
                 serializer = typeinfo.serializer
             else:
                 serializer = self.elem_serializer
+        element_read_always_advances = (
+            (collect_flag & (COLL_TRACKING_REF | COLL_HAS_NULL)) != 0
+            or (collect_flag & COLL_IS_SAME_TYPE) == 0
+            or serializer.read_data_always_advances
+        )
+        if element_read_always_advances:
+            read_context.check_readable_bytes(length)
+        else:
+            _ensure_container_allocation(read_context, length)
+        collection_ = self.new_instance(read_context, self.type_)
+        if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if (collect_flag & COLL_TRACKING_REF) != 0:
                 self._read_same_type_ref(read_context, length, collection_, serializer)
             elif (collect_flag & COLL_HAS_NULL) == 0:
-                self._read_same_type_no_ref(read_context, length, collection_, serializer)
+                if element_read_always_advances:
+                    self._read_same_type_no_ref(read_context, length, collection_, serializer)
+                else:
+                    self._read_same_type_no_ref_guarded(read_context, length, collection_, serializer)
             else:
                 self._read_same_type_has_null(read_context, length, collection_, serializer)
         else:
@@ -211,6 +254,21 @@ class CollectionSerializer(Serializer):
         read_context.increase_depth()
         for _ in range(length):
             self._add_element(collection_, read_context.read_no_ref(serializer=serializer))
+        read_context.decrease_depth()
+
+    def _read_same_type_no_ref_guarded(self, read_context, length, collection_, serializer):
+        read_context.increase_depth()
+        window_start = read_context.get_reader_index()
+        window_items = 0
+        for _ in range(length):
+            self._add_element(collection_, read_context.read_no_ref(serializer=serializer))
+            window_items += 1
+            if window_items == _UNBACKED_CONTAINER_CHECK_INTERVAL:
+                _settle_unbacked_container_items(read_context, window_items, window_start)
+                window_start = read_context.get_reader_index()
+                window_items = 0
+        if window_items:
+            _settle_unbacked_container_items(read_context, window_items, window_start)
         read_context.decrease_depth()
 
     def _read_same_type_has_null(self, read_context, length, collection_, serializer):
@@ -273,6 +331,8 @@ class ListSerializer(CollectionSerializer):
 
 
 class TupleSerializer(CollectionSerializer):
+    owner_bytes = _TUPLE_OWNER_BYTES
+
     def new_instance(self, read_context, type_):
         return []
 
@@ -332,10 +392,17 @@ class MapSerializer(Serializer):
         value_serializer=None,
         key_tracking_ref=None,
         value_tracking_ref=None,
+        key_write_type_info=False,
+        value_write_type_info=False,
     ):
         super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
         self.key_serializer = key_serializer
         self.value_serializer = value_serializer
+        # Compatible evolving child schemas need dynamic write framing, while this
+        # reader must still accept declared chunks from an exact peer.
+        self.key_write_serializer = None if key_write_type_info else key_serializer
+        self.value_write_serializer = None if value_write_type_info else value_serializer
         self.key_tracking_ref = False
         self.value_tracking_ref = False
         if key_serializer is not None:
@@ -354,8 +421,8 @@ class MapSerializer(Serializer):
             return
         type_resolver = self.type_resolver
         ref_writer = write_context.ref_writer
-        key_serializer = self.key_serializer
-        value_serializer = self.value_serializer
+        key_serializer = self.key_write_serializer
+        value_serializer = self.value_write_serializer
 
         items_iter = iter(obj.items())
         key, value = next(items_iter)
@@ -447,14 +514,25 @@ class MapSerializer(Serializer):
                     has_next = False
                     break
 
-            key_serializer = self.key_serializer
-            value_serializer = self.value_serializer
+            key_serializer = self.key_write_serializer
+            value_serializer = self.value_write_serializer
             write_context.put_uint8(chunk_size_offset, chunk_size)
             write_context.exit_flush_barrier()
             write_context.try_flush()
 
     def read(self, read_context):
         size = read_context.read_var_uint32()
+        read_context.reserve_graph_memory(_DICT_OWNER_BYTES + size * 2 * _REFERENCE_BYTES)
+        if size:
+            if (
+                self.key_write_serializer is not None
+                and self.key_write_serializer.read_data_always_advances
+                or self.value_write_serializer is not None
+                and self.value_write_serializer.read_data_always_advances
+            ):
+                read_context.check_readable_bytes(size)
+            else:
+                _ensure_container_allocation(read_context, size)
         map_ = {}
         ref_reader = read_context.ref_reader
         read_context.reference(map_)
@@ -516,10 +594,17 @@ class MapSerializer(Serializer):
             key_is_declared_type = (chunk_header & KEY_DECL_TYPE) != 0
             value_is_declared_type = (chunk_header & VALUE_DECL_TYPE) != 0
             chunk_size = read_context.read_uint8()
+            if chunk_size == 0 or chunk_size > size:
+                _raise_invalid_map_chunk_size(chunk_size, size)
             if not key_is_declared_type:
                 key_serializer = self.type_resolver.read_type_info(read_context).serializer
             if not value_is_declared_type:
                 value_serializer = self.type_resolver.read_type_info(read_context).serializer
+            entry_read_always_advances = (
+                track_key_ref or track_value_ref or key_serializer.read_data_always_advances or value_serializer.read_data_always_advances
+            )
+            if not entry_read_always_advances:
+                chunk_start = read_context.get_reader_index()
             for _ in range(chunk_size):
                 if track_key_ref:
                     ref_id = ref_reader.try_preserve_ref_id(read_context)
@@ -541,6 +626,8 @@ class MapSerializer(Serializer):
                     value = self._read_obj_no_ref(value_serializer, read_context)
                 map_[key] = value
                 size -= 1
+            if not entry_read_always_advances:
+                _settle_unbacked_container_items(read_context, chunk_size, chunk_start)
             if size != 0:
                 chunk_header = read_context.read_uint8()
         read_context.decrease_depth()

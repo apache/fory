@@ -222,7 +222,11 @@ class TypeDefDecoder {
       boolean useTagID = encodingFlags == 3;
       int fieldNameSize = (header >>> 2) & 0b1111;
       if (fieldNameSize == FIELD_NAME_SIZE_THRESHOLD) {
-        fieldNameSize += buffer.readVarUInt32Small7();
+        int extendedSize = buffer.readVarUInt32Small7();
+        if (extendedSize < 0 || extendedSize > Integer.MAX_VALUE - fieldNameSize - 1) {
+          throw new DeserializationException("Invalid TypeDef field name size");
+        }
+        fieldNameSize += extendedSize;
       }
       fieldNameSize += 1;
       boolean nullable = (header & 0b10) != 0;

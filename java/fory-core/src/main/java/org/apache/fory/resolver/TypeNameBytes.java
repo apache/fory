@@ -20,15 +20,17 @@
 package org.apache.fory.resolver;
 
 import java.util.Arrays;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.meta.EncodedMetaString;
 
-class TypeNameBytes {
+@Internal
+public final class TypeNameBytes {
   private final long packageHash;
   private final long classNameHash;
   private final byte[] packageBytes;
   private final byte[] classNameBytes;
 
-  TypeNameBytes(EncodedMetaString packageBytes, EncodedMetaString classNameBytes) {
+  public TypeNameBytes(EncodedMetaString packageBytes, EncodedMetaString classNameBytes) {
     this.packageHash = packageBytes.hash;
     this.classNameHash = classNameBytes.hash;
     this.packageBytes = packageBytes.bytes;

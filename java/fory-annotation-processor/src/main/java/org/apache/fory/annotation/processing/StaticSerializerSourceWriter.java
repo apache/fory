@@ -21,6 +21,11 @@ package org.apache.fory.annotation.processing;
 
 final class StaticSerializerSourceWriter {
   private static final int DISPATCH_GROUP_SIZE = 8;
+  private static final String WRITER_PACKAGE =
+      StaticSerializerSourceWriter.class.getPackage().getName();
+  private static final String PROCESSOR_SUFFIX = ".annotation.processing";
+  private static final String FORY_PACKAGE =
+      WRITER_PACKAGE.substring(0, WRITER_PACKAGE.length() - PROCESSOR_SUFFIX.length());
 
   private final SourceStruct struct;
   private final StringBuilder builder = new StringBuilder(16384);
@@ -53,25 +58,37 @@ final class StaticSerializerSourceWriter {
     builder.append("import java.util.Arrays;\n");
     builder.append("import java.util.Collections;\n");
     builder.append("import java.util.List;\n");
-    builder.append("import org.apache.fory.annotation.ForyField;\n");
-    builder.append("import org.apache.fory.context.CopyContext;\n");
-    builder.append("import org.apache.fory.context.ReadContext;\n");
-    builder.append("import org.apache.fory.context.WriteContext;\n");
-    builder.append("import org.apache.fory.memory.MemoryBuffer;\n");
-    builder.append("import org.apache.fory.meta.TypeDef;\n");
-    builder.append("import org.apache.fory.meta.TypeExtMeta;\n");
-    builder.append("import org.apache.fory.reflect.FieldAccessor;\n");
+    appendImport("annotation.ForyField");
+    appendImport("context.CopyContext");
+    appendImport("context.ReadContext");
+    appendImport("context.WriteContext");
+    appendImport("memory.MemoryBuffer");
+    appendImport("meta.TypeDef");
+    appendImport("meta.TypeExtMeta");
+    appendImport("reflect.FieldAccessor");
     if (!struct.record) {
-      builder.append("import org.apache.fory.reflect.ObjectInstantiator;\n");
+      appendImport("reflect.ObjectInstantiator");
     }
-    builder.append("import org.apache.fory.resolver.TypeResolver;\n");
-    builder.append("import org.apache.fory.serializer.FieldGroups;\n");
-    builder.append("import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;\n");
-    builder.append("import org.apache.fory.serializer.StaticGeneratedStructSerializer;\n");
-    builder.append("import org.apache.fory.serializer.converter.FieldConverters;\n");
-    builder.append("import org.apache.fory.type.Descriptor;\n");
-    builder.append("import org.apache.fory.type.DispatchId;\n");
-    builder.append("import org.apache.fory.type.Types;\n\n");
+    appendImport("resolver.TypeResolver");
+    appendImport("serializer.FieldGroups");
+    builder
+        .append("import ")
+        .append(foryClass("serializer.FieldGroups"))
+        .append(".SerializationFieldInfo;\n");
+    appendImport("serializer.StaticGeneratedStructSerializer");
+    appendImport("serializer.converter.FieldConverters");
+    appendImport("type.Descriptor");
+    appendImport("type.DispatchId");
+    appendImport("type.Types");
+    builder.append('\n');
+  }
+
+  private void appendImport(String relativeName) {
+    builder.append("import ").append(foryClass(relativeName)).append(";\n");
+  }
+
+  private static String foryClass(String relativeName) {
+    return FORY_PACKAGE + "." + relativeName;
   }
 
   private void writeClassStart() {
@@ -106,6 +123,7 @@ final class StaticSerializerSourceWriter {
     }
     builder.append("  private final int classVersionHash;\n");
     builder.append("  private final boolean sameSchemaCompatible;\n\n");
+    builder.append("  private final boolean readDataAlwaysAdvances;\n\n");
   }
 
   private void writeDescriptors() {
@@ -152,6 +170,7 @@ final class StaticSerializerSourceWriter {
 
   private void writeConstructors() {
     builder.append("  public ").append(struct.serializerName).append("() {\n");
+    builder.append("    // Descriptor-only constructor; see StaticGeneratedStructSerializer.\n");
     builder.append("    super();\n");
     builder.append("    this.allFields = null;\n");
     builder.append("    this.allFieldIds = null;\n");
@@ -166,13 +185,18 @@ final class StaticSerializerSourceWriter {
     }
     builder.append("    this.classVersionHash = 0;\n");
     builder.append("    this.sameSchemaCompatible = false;\n");
+    builder
+        .append("    this.readDataAlwaysAdvances = ")
+        .append(struct.readDataAlwaysAdvances)
+        .append(";\n");
     builder.append("  }\n\n");
     builder
         .append("  public ")
         .append(struct.serializerName)
         .append("(TypeResolver typeResolver, Class<?> type) {\n");
     builder.append("    super(typeResolver, type);\n");
-    writeConstructorBody("buildFieldGroups(DESCRIPTORS)", "false");
+    writeConstructorBody(
+        "buildFieldGroups(DESCRIPTORS)", "false", Boolean.toString(struct.readDataAlwaysAdvances));
     builder.append("  }\n\n");
     builder
         .append("  public ")
@@ -181,11 +205,15 @@ final class StaticSerializerSourceWriter {
     builder.append("    super(typeResolver, type, typeDef, DESCRIPTORS);\n");
     writeConstructorBody(
         "buildLocalFieldGroups(DESCRIPTORS)",
-        "typeDef != null && !HAS_NESTED_COMPATIBLE_STRUCT_FIELDS && typeDef.getId() == TypeDef.buildTypeDef(typeResolver, type).getId()");
+        "typeDef != null && !HAS_NESTED_COMPATIBLE_STRUCT_FIELDS && typeDef.getId() == TypeDef.buildTypeDef(typeResolver, type).getId()",
+        "typeDef.readDataAlwaysAdvances()");
     builder.append("  }\n\n");
   }
 
-  private void writeConstructorBody(String fieldGroupsExpression, String sameSchemaExpression) {
+  private void writeConstructorBody(
+      String fieldGroupsExpression,
+      String sameSchemaExpression,
+      String readDataAlwaysAdvancesExpression) {
     builder.append("    FieldGroups fieldGroups = ").append(fieldGroupsExpression).append(";\n");
     builder.append("    this.allFields = fieldGroups.allFields;\n");
     builder.append("    this.allFieldIds = localFieldIds(allFields, DESCRIPTORS);\n");
@@ -214,6 +242,10 @@ final class StaticSerializerSourceWriter {
     builder.append(
         "    this.classVersionHash = typeResolver.checkClassVersion() ? computeClassVersionHash(DESCRIPTORS) : 0;\n");
     builder.append("    this.sameSchemaCompatible = ").append(sameSchemaExpression).append(";\n");
+    builder
+        .append("    this.readDataAlwaysAdvances = ")
+        .append(readDataAlwaysAdvancesExpression)
+        .append(";\n");
   }
 
   private void writeSerializerMethods() {
@@ -239,6 +271,10 @@ final class StaticSerializerSourceWriter {
     builder.append("    }\n");
     builder.append("    return readSchemaConsistent(readContext);\n");
     builder.append("  }\n\n");
+    builder.append("  @Override\n");
+    builder.append("  public final boolean readDataAlwaysAdvances() {\n");
+    builder.append("    return readDataAlwaysAdvances;\n");
+    builder.append("  }\n\n");
   }
 
   private void writeSchemaConsistentRead() {
@@ -262,9 +298,11 @@ final class StaticSerializerSourceWriter {
             .append(";\n");
       }
       appendSchemaConsistentRecordLoop();
+      appendGraphMemoryReserve();
       appendRecordConstruction("record", "field", 4);
       builder.append("    return record;\n");
     } else {
+      appendGraphMemoryReserve();
       builder
           .append("    ")
           .append(struct.typeName)
@@ -794,6 +832,13 @@ final class StaticSerializerSourceWriter {
     return meta.substring(start + prefix.length(), end);
   }
 
+  private void appendGraphMemoryReserve() {
+    builder
+        .append("    readContext.reserveGraphMemory(")
+        .append(struct.graphMemoryBytes)
+        .append(");\n");
+  }
+
   private void writeCompatibleRead() {
     builder.append("  @Override\n");
     builder
@@ -803,6 +848,7 @@ final class StaticSerializerSourceWriter {
     builder.append("    if (sameSchemaCompatible) {\n");
     builder.append("      return readSchemaConsistent(readContext);\n");
     builder.append("    }\n");
+    appendGraphMemoryReserve();
     if (struct.record) {
       for (SourceField field : struct.fields) {
         builder
@@ -1097,26 +1143,11 @@ final class StaticSerializerSourceWriter {
       case "java.math.BigDecimal":
         helper = "readDecimalTarget";
         break;
-      case "org.apache.fory.type.unsigned.UInt8":
-        helper = "readUInt8Target";
-        break;
-      case "org.apache.fory.type.unsigned.UInt16":
-        helper = "readUInt16Target";
-        break;
-      case "org.apache.fory.type.unsigned.UInt32":
-        helper = "readUInt32Target";
-        break;
-      case "org.apache.fory.type.unsigned.UInt64":
-        helper = "readUInt64Target";
-        break;
-      case "org.apache.fory.type.Float16":
-        helper = "readFloat16Target";
-        break;
-      case "org.apache.fory.type.BFloat16":
-        helper = "readBFloat16Target";
-        break;
       default:
-        return null;
+        helper = foryScalarReadHelper(field.erasedType);
+        if (helper == null) {
+          return null;
+        }
     }
     return "FieldConverters."
         + helper
@@ -1125,6 +1156,28 @@ final class StaticSerializerSourceWriter {
         + ", "
         + localFieldInfo
         + ")";
+  }
+
+  private static String foryScalarReadHelper(String typeName) {
+    if (typeName.equals(foryClass("type.unsigned.UInt8"))) {
+      return "readUInt8Target";
+    }
+    if (typeName.equals(foryClass("type.unsigned.UInt16"))) {
+      return "readUInt16Target";
+    }
+    if (typeName.equals(foryClass("type.unsigned.UInt32"))) {
+      return "readUInt32Target";
+    }
+    if (typeName.equals(foryClass("type.unsigned.UInt64"))) {
+      return "readUInt64Target";
+    }
+    if (typeName.equals(foryClass("type.Float16"))) {
+      return "readFloat16Target";
+    }
+    if (typeName.equals(foryClass("type.BFloat16"))) {
+      return "readBFloat16Target";
+    }
+    return null;
   }
 
   private void appendDebugWrite(String stage, String fieldInfoName, int indent) {

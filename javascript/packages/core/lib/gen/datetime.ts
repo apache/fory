@@ -109,7 +109,9 @@ class DateSerializerGenerator extends BaseSerializerGenerator {
 
   read(accessor: (expr: string) => string): string {
     const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
-    return accessor(`new Date(${epoch} + (Number(${this.builder.reader.readVarInt64()}) * (24 * 60 * 60) * 1000))`);
+    return accessor(
+      `new Date(${epoch} + (Number(${this.builder.reader.readVarInt64()}) * (24 * 60 * 60) * 1000))`,
+    );
   }
 
   getFixedSize(): number {

@@ -21,7 +21,7 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { Serializer, TypeId } from "../type";
+import { RefFlags, Serializer, TypeId } from "../type";
 import { Scope } from "./scope";
 import { TypeMeta } from "../meta/TypeMeta";
 import { ReadContext, WriteContext } from "../context";
@@ -43,7 +43,12 @@ export class AnyHelper {
 
     function tryUpdateSerializer(serializer: Serializer | undefined | null, typeMeta: TypeMeta) {
       if (!serializer) {
-        return readContext.genSerializerByTypeMetaRuntime(typeMeta);
+        if (readContext.isCompatible() && TypeId.structType(typeMeta.getTypeId())) {
+          return typeResolver.getUnknownStructSerializer(typeMeta);
+        }
+        throw new Error(
+          `can't find serializer for TypeMeta ${typeMeta.getNs()}$${typeMeta.getTypeName()}`,
+        );
       }
       const hash = serializer.getHash();
       if (hash !== typeMeta.getHash()) {
@@ -138,6 +143,17 @@ class AnySerializerGenerator extends BaseSerializerGenerator {
   write(accessor: string): string {
     return `
       ${this.writerSerializer}.write(${accessor});;
+    `;
+  }
+
+  writeRef(accessor: string): string {
+    return `
+      if (${accessor} === null || ${accessor} === undefined) {
+        ${this.builder.writer.writeInt8(RefFlags.NullFlag)}
+      } else {
+        ${this.writerSerializer} = ${this.builder.getExternal(AnyHelper.name)}.getSerializer(${this.builder.getWriteContextName()}, ${accessor});
+        ${this.writerSerializer}.writeRef(${accessor});
+      }
     `;
   }
 

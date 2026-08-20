@@ -181,8 +181,21 @@ inline Tuple read_tuple_elements_heterogeneous(ReadContext &ctx,
 }
 
 /// Read tuple elements without type info (xlang/compatible mode, homogeneous)
-template <typename Tuple, size_t... Is>
+template <bool HasTypeInfo, RefMode Mode, typename T>
+inline T read_tuple_homogeneous_value(ReadContext &ctx,
+                                      const TypeInfo *type_info) {
+  if constexpr (HasTypeInfo) {
+    return Serializer<T>::read_with_type_info(ctx, Mode, *type_info);
+  }
+  if constexpr (Mode != RefMode::None) {
+    return Serializer<T>::read(ctx, Mode, false);
+  }
+  return Serializer<T>::read_data(ctx);
+}
+
+template <bool HasTypeInfo, RefMode Mode, typename Tuple, size_t... Is>
 inline Tuple read_tuple_elements_homogeneous(ReadContext &ctx, uint32_t length,
+                                             const TypeInfo *type_info,
                                              std::index_sequence<Is...>) {
   Tuple result;
   uint32_t index = 0;
@@ -194,7 +207,9 @@ inline Tuple read_tuple_elements_homogeneous(ReadContext &ctx, uint32_t length,
           return;
         using ElemType = std::tuple_element_t<Is, Tuple>;
         if (index < length) {
-          std::get<Is>(result) = Serializer<ElemType>::read_data(ctx);
+          std::get<Is>(result) =
+              read_tuple_homogeneous_value<HasTypeInfo, Mode, ElemType>(
+                  ctx, type_info);
           ++index;
         }
         // If index >= length, use default-constructed value
@@ -203,12 +218,35 @@ inline Tuple read_tuple_elements_homogeneous(ReadContext &ctx, uint32_t length,
 
   // skip any extra elements beyond tuple size
   using ElemType = tuple_first_type_t<Tuple>;
+  if constexpr (Serializer<ElemType>::type_id == TypeId::NONE) {
+    return result;
+  }
   while (index < length && !ctx.has_error()) {
-    Serializer<ElemType>::read_data(ctx);
+    (void)read_tuple_homogeneous_value<HasTypeInfo, Mode, ElemType>(ctx,
+                                                                    type_info);
     ++index;
   }
 
   return result;
+}
+
+template <bool HasTypeInfo, typename Tuple, size_t... Is>
+inline Tuple read_tuple_homogeneous(ReadContext &ctx, uint32_t length,
+                                    bool track_ref, bool has_null,
+                                    const TypeInfo *type_info,
+                                    std::index_sequence<Is...> indices) {
+  if (track_ref) {
+    return read_tuple_elements_homogeneous<HasTypeInfo, RefMode::Tracking,
+                                           Tuple>(ctx, length, type_info,
+                                                  indices);
+  }
+  if (has_null) {
+    return read_tuple_elements_homogeneous<HasTypeInfo, RefMode::NullOnly,
+                                           Tuple>(ctx, length, type_info,
+                                                  indices);
+  }
+  return read_tuple_elements_homogeneous<HasTypeInfo, RefMode::None, Tuple>(
+      ctx, length, type_info, indices);
 }
 
 // ============================================================================
@@ -394,16 +432,29 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
     }
 
     bool is_same_type = (bitmap & COLL_IS_SAME_TYPE) != 0;
-
     if (is_same_type) {
+      bool is_decl_type = (bitmap & COLL_DECL_ELEMENT_TYPE) != 0;
+      bool track_ref = (bitmap & COLL_TRACKING_REF) != 0;
+      bool has_null = (bitmap & COLL_HAS_NULL) != 0;
       // Read element type info once
-      ctx.read_any_type_info(ctx.error());
-      if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return TupleType{};
+      if (!is_decl_type) {
+        using ElemType = tuple_first_type_t<TupleType>;
+        const TypeInfo *elem_type_info;
+        if constexpr (Serializer<ElemType>::type_id == TypeId::UNKNOWN) {
+          // Dynamic targets validate the concrete TypeInfo when their selected
+          // serializer resolves it to the declared base type.
+          elem_type_info = ctx.read_any_type_info(ctx.error());
+        } else {
+          elem_type_info = read_collection_element_type_info<ElemType>(ctx);
+        }
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return TupleType{};
+        }
+        return read_tuple_homogeneous<true, TupleType>(
+            ctx, length, track_ref, has_null, elem_type_info, IndexSeq{});
       }
-
-      return read_tuple_elements_homogeneous<TupleType>(ctx, length,
-                                                        IndexSeq{});
+      return read_tuple_homogeneous<false, TupleType>(
+          ctx, length, track_ref, has_null, nullptr, IndexSeq{});
     } else {
       return read_tuple_elements_heterogeneous<TupleType>(ctx, length,
                                                           IndexSeq{});

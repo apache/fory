@@ -61,6 +61,7 @@ import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.reflect.TypeUseMetadata;
 import org.apache.fory.serializer.scala.SingletonCollectionSerializer;
 import org.apache.fory.serializer.scala.SingletonMapSerializer;
 import org.apache.fory.serializer.scala.SingletonObjectSerializer;
@@ -126,12 +127,16 @@ public class AndroidJvmRoundTripTest {
     Assert.assertTrue(AndroidSupport.IS_ANDROID);
 
     Field nameField = TypeUseStruct.class.getDeclaredField("name");
-    TypeExtMeta nameMeta = TypeRef.ofTypeUse(nameField.getAnnotatedType()).getTypeExtMeta();
+    TypeExtMeta nameMeta =
+        TypeRef.ofTypeUse(TypeUseMetadata.fieldTypeUse(nameField)).getTypeExtMeta();
     Assert.assertTrue(nameMeta.nullable());
 
     Field codesField = TypeUseStruct.class.getDeclaredField("codes");
     TypeExtMeta elementMeta =
-        TypeRef.ofTypeUse(codesField.getAnnotatedType()).getTypeArguments().get(0).getTypeExtMeta();
+        TypeRef.ofTypeUse(TypeUseMetadata.fieldTypeUse(codesField))
+            .getTypeArguments()
+            .get(0)
+            .getTypeExtMeta();
     Assert.assertEquals(elementMeta.typeId(), Types.INT32);
     Assert.assertFalse(elementMeta.trackingRef());
   }

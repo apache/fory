@@ -43,6 +43,7 @@ import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.Preconditions;
@@ -63,7 +64,7 @@ public class UnmodifiableSerializers {
         SOURCE_COLLECTION_ACCESSOR =
             FieldAccessor.createAccessor(Class.forName(clsName).getDeclaredField("c"));
       } catch (Exception e) {
-        LOG.info("Could not access source collection field in {}", clsName);
+        LOG.infoOnce("Could not access source collection field in {}", clsName);
         throw new RuntimeException(e);
       }
       clsName = "java.util.Collections$UnmodifiableMap";
@@ -72,7 +73,7 @@ public class UnmodifiableSerializers {
         SOURCE_MAP_ACCESSOR =
             FieldAccessor.createAccessor(Class.forName(clsName).getDeclaredField("m"));
       } catch (Exception e) {
-        LOG.info("Could not access source map field in {}", clsName);
+        LOG.infoOnce("Could not access source map field in {}", clsName);
         throw new RuntimeException(e);
       }
     }
@@ -82,12 +83,14 @@ public class UnmodifiableSerializers {
       extends CollectionSerializer<Collection> {
     private final Function factory;
     private final FieldAccessor sourceAccessor;
+    private final int ownerBytes;
 
     public UnmodifiableCollectionSerializer(
         TypeResolver typeResolver, Class cls, Function factory, FieldAccessor sourceAccessor) {
       super(typeResolver, cls, false);
       this.factory = factory;
       this.sourceAccessor = sourceAccessor;
+      ownerBytes = GraphMemoryEstimates.shallowObjectBytes(cls);
     }
 
     @Override
@@ -111,7 +114,9 @@ public class UnmodifiableSerializers {
 
     @Override
     public Collection read(ReadContext readContext) {
-      return (Collection) factory.apply(readContext.readRef());
+      Object source = readContext.readRef();
+      readContext.reserveGraphMemory(ownerBytes);
+      return (Collection) factory.apply(source);
     }
 
     @Override
@@ -138,12 +143,14 @@ public class UnmodifiableSerializers {
   public static final class UnmodifiableMapSerializer extends MapSerializer<Map> {
     private final Function factory;
     private final FieldAccessor sourceAccessor;
+    private final int ownerBytes;
 
     public UnmodifiableMapSerializer(
         TypeResolver typeResolver, Class cls, Function factory, FieldAccessor sourceAccessor) {
       super(typeResolver, cls, false);
       this.factory = factory;
       this.sourceAccessor = sourceAccessor;
+      ownerBytes = GraphMemoryEstimates.shallowObjectBytes(cls);
     }
 
     @Override
@@ -184,7 +191,9 @@ public class UnmodifiableSerializers {
 
     @Override
     public Map read(ReadContext readContext) {
-      return (Map) factory.apply(readContext.readRef());
+      Object source = readContext.readRef();
+      readContext.reserveGraphMemory(ownerBytes);
+      return (Map) factory.apply(source);
     }
   }
 

@@ -131,6 +131,48 @@ private:
   explicit NestedChoice(Values value) : values_(std::move(value)) {}
 };
 
+class EmptyListChoice final {
+public:
+  using Values = std::vector<std::monostate>;
+
+  EmptyListChoice() = default;
+  static EmptyListChoice values(Values value) {
+    return EmptyListChoice(std::move(value));
+  }
+  uint32_t fory_case_id() const noexcept { return 1; }
+  template <class Visitor> decltype(auto) visit(Visitor &&vis) const {
+    return std::forward<Visitor>(vis)(values_);
+  }
+
+private:
+  Values values_;
+  explicit EmptyListChoice(Values value) : values_(std::move(value)) {}
+};
+
+struct EmptyMapKey {
+  int32_t id = 0;
+  bool operator<(const EmptyMapKey &other) const { return id < other.id; }
+  FORY_STRUCT(EmptyMapKey);
+};
+
+class EmptyMapChoice final {
+public:
+  using Values = std::map<EmptyMapKey, EmptyMapKey>;
+
+  EmptyMapChoice() = default;
+  static EmptyMapChoice values(Values value) {
+    return EmptyMapChoice(std::move(value));
+  }
+  uint32_t fory_case_id() const noexcept { return 1; }
+  template <class Visitor> decltype(auto) visit(Visitor &&vis) const {
+    return std::forward<Visitor>(vis)(values_);
+  }
+
+private:
+  Values values_;
+  explicit EmptyMapChoice(Values value) : values_(std::move(value)) {}
+};
+
 class Partial final {
 public:
   Partial() = default;
@@ -160,6 +202,11 @@ FORY_UNION(NestedChoice,
            (values, NestedChoice::Values,
             fory::F(1).map(fory::T::uint32().fixed(),
                            fory::T::list(fory::T::uint64().tagged()))));
+FORY_UNION(EmptyListChoice, (values, EmptyListChoice::Values,
+                             fory::F(1).list(fory::T::scalar())));
+FORY_UNION(EmptyMapChoice,
+           (values, EmptyMapChoice::Values,
+            fory::F(1).map(fory::T::scalar(), fory::T::scalar())));
 
 } // namespace macro_test
 
@@ -224,6 +271,32 @@ TEST(NamespaceMacros, NestedUnionPayloadSpec) {
       fory.deserialize<macro_test::NestedChoice>(bytes->data(), bytes->size());
   ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
   EXPECT_EQ(macro_test::NestedChoice::values(values), decoded.value());
+}
+
+TEST(NamespaceMacros, UnionUnbackedContainers) {
+  auto fory = Fory::builder()
+                  .xlang(true)
+                  .compatible(false)
+                  .track_ref(false)
+                  .max_unbacked_container_items(2)
+                  .build();
+  ASSERT_TRUE(fory.register_struct<macro_test::EmptyMapKey>(1003).ok());
+  ASSERT_TRUE(fory.register_union<macro_test::EmptyListChoice>(1004).ok());
+  ASSERT_TRUE(fory.register_union<macro_test::EmptyMapChoice>(1005).ok());
+
+  auto list = macro_test::EmptyListChoice::values({{}, {}, {}});
+  auto bytes = fory.serialize(list);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  EXPECT_FALSE(fory.deserialize<macro_test::EmptyListChoice>(*bytes).ok());
+
+  macro_test::EmptyMapChoice::Values values;
+  values.emplace(macro_test::EmptyMapKey{1}, macro_test::EmptyMapKey{1});
+  values.emplace(macro_test::EmptyMapKey{2}, macro_test::EmptyMapKey{2});
+  values.emplace(macro_test::EmptyMapKey{3}, macro_test::EmptyMapKey{3});
+  auto map = macro_test::EmptyMapChoice::values(std::move(values));
+  bytes = fory.serialize(map);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  EXPECT_FALSE(fory.deserialize<macro_test::EmptyMapChoice>(*bytes).ok());
 }
 
 TEST(NamespaceMacros, EnumInAndOutOfClass) {

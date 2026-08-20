@@ -37,6 +37,10 @@ let package = Package(
             dependencies: ["ForyMacro"],
             path: "Sources/Fory"
         ),
+        .target(
+            name: "ForyExternalModels",
+            path: "Tests/ForyExternalModels"
+        ),
         .executableTarget(
             name: "ForyXlangTests",
             dependencies: ["Fory"],
@@ -47,6 +51,7 @@ let package = Package(
             dependencies: [
                 "Fory",
                 "ForyMacro",
+                "ForyExternalModels",
                 .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax")
             ],
             path: "Tests/ForyTests"

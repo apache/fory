@@ -67,27 +67,43 @@
 //!
 //! ### `#[derive(ForyRow)]`
 //!
-//! Generates row-based serialization code for structs. This macro implements
-//! the `Row` trait, enabling zero-copy deserialization for maximum performance.
+//! Generates Standard Row Format serialization and borrowed field views for a
+//! named struct. The macro implements `RowValue` and the root `Row` marker.
+//! Enums, unions, tuple structs, and unit structs are rejected at compile time.
 //!
 //! **Supported Types:**
-//! - Structs with named fields only
-//! - All field types must implement the `Row` trait
+//! - Fixed values: `bool`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`, `Date`,
+//!   `Timestamp`, and `Duration`
+//! - Variable values: `String` and `&str`, binary `Vec<u8>` and `&[u8]`, fixed
+//!   and variable arrays, `BTreeMap`, and other derived row structs
+//! - `Option<T>` for nullable fields and array elements
+//! - Every field type must implement `RowValue`
 //!
 //! **Example:**
 //! ```rust
+//! use fory_core::error::Error;
+//! use fory_core::row::{from_row, to_row};
 //! use fory_derive::ForyRow;
-//! use std::collections::BTreeMap;
 //!
 //! #[derive(ForyRow)]
 //! struct UserProfile {
 //!     id: i64,
 //!     username: String,
-//!     email: String,
-//!     scores: Vec<i32>,
-//!     preferences: BTreeMap<String, String>,
-//!     is_active: bool,
+//!     email: Option<String>,
 //! }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let bytes = to_row(&UserProfile {
+//!     id: 7,
+//!     username: "fory".to_owned(),
+//!     email: None,
+//! })?;
+//! let view = from_row::<UserProfile>(&bytes)?;
+//! assert_eq!(view.id()?, 7);
+//! assert_eq!(view.username()?, "fory");
+//! assert_eq!(view.email()?, None);
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Generated Code
@@ -103,10 +119,11 @@
 //! ### For `#[derive(ForyRow)]`
 //!
 //! The macro generates:
-//! - `Row` trait implementation
-//! - A getter struct for zero-copy field access
-//! - Field accessor methods that return references to the underlying data
-//! - Efficient serialization without object allocation
+//! - A `RowValue` implementation and a root `Row` marker implementation
+//! - A borrowed view type whose visibility matches the source struct
+//! - `RowView` backing-byte access and cheap `Copy`/`Clone` views
+//! - One declaration-order field method preserving each source field's visibility
+//! - Field methods returning `Result<<Field as RowValue>::View<'_>, Error>`
 //!
 //! ## Attributes
 //!
@@ -119,18 +136,23 @@
 //!   generated serializer, retaining compatibility with previous releases.
 //! - **`#[fory(generate_default)]`**: Enables the macro to generate `Default` implementation.
 //!   By default, `ForyStruct` does NOT generate `impl Default` to avoid conflicts with existing
-//!   `Default` implementations. Use this attribute when you want the macro to generate both
-//!   `ForyDefault` and `Default` for you.
-//! - **`#[fory(default)]`**: Marks the default `ForyUnion` variant. `ForyUnion` requires exactly
-//!   one default variant so schema evolution and null fallback have an explicit owner.
+//!   `Default` implementations. This attribute is not valid with `target`.
+//! - **`#[fory(target = path::Type)]`**: Makes the derived declaration an external structural
+//!   serializer for the target type. Generated code accesses and constructs the target directly;
+//!   the serializer declaration itself is never instantiated.
+//! - **`#[fory(with = SerializerType)]`**: Selects a serializer whose target is the exact field
+//!   value node. Use carrier serializers for exact wrapper or container nodes, and use `list`,
+//!   `map`, or `tuple` metadata to select serializers recursively at child nodes.
+//! - **`#[fory(default)]`**: Marks the fallible deserialization default `ForyUnion` variant.
+//!   `ForyUnion` requires exactly one default variant.
 //!
 //! ## Field Types
 //!
-//! Both macros support a wide range of field types:
+//! The object-format derives support a wide range of field types:
 //!
 //! **Primitive Types:**
 //! - `bool`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`
-//! - `String`, `&str` (in row format)
+//! - `String`
 //! - `Vec<u8>` for binary data
 //!
 //! **Collections:**
@@ -145,7 +167,11 @@
 //! - `chrono::NaiveDate`, `chrono::NaiveDateTime`, and `chrono::Duration` when the `chrono` feature is enabled
 //!
 //! **Custom Types:**
-//! - Any type that implements `Serializer` (for `Fory`) or `Row` (for `ForyRow`)
+//! - Any type that implements `Serializer`
+//!
+//! `ForyRow` uses the separate, exact type set documented under its macro
+//! section. A row field implements `RowValue`; only derived structs, arrays,
+//! and maps implement the root `Row` marker.
 //!
 //! Derived structs, enums, and unions can be used behind
 //! `Arc<dyn Any + Send + Sync>` when the concrete type satisfies `Send + Sync`.
@@ -187,13 +213,14 @@
 //! ## Performance Considerations
 //!
 //! - **`Fory`**: Best for complex object graphs with references and nested structures
-//! - **`ForyRow`**: Best for high-throughput scenarios requiring zero-copy access
+//! - **`ForyRow`**: Provides lazy, borrowed access to Standard Row Format data
 //! - Both macros generate optimized code with minimal runtime overhead
-//! - Field access in row format is extremely fast as it involves no allocations
 
 use fory_row::derive_row;
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Fields, LitBool};
+use syn::{
+    parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Fields, LitBool, Type,
+};
 
 mod fory_row;
 mod object;
@@ -239,7 +266,11 @@ pub fn proc_macro_derive_fory_enum(input: proc_macro::TokenStream) -> TokenStrea
     derive_serializer(input)
 }
 
-/// Derive macro for tagged union serialization.
+/// Derives serialization for data-carrying Rust enums.
+///
+/// Xlang-compatible unit and single-payload variants use the Fory `UNION`
+/// representation. Native multi-field tuple and named variants use the native
+/// `ENUM` representation.
 #[proc_macro_derive(ForyUnion, attributes(fory))]
 pub fn proc_macro_derive_fory_union(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -262,24 +293,36 @@ fn derive_serializer(input: DeriveInput) -> TokenStream {
     object::derive_serializer(&input, attrs, runtime_root)
 }
 
-/// Derive macro for row-based serialization.
+/// Derive macro for Standard Row Format serialization.
 ///
-/// This macro generates code to implement the `Row` trait for the annotated
-/// type, enabling zero-copy deserialization for maximum performance in
-/// high-throughput scenarios.
+/// This macro accepts named structs whose fields implement `RowValue`. It
+/// implements `RowValue` and the root `Row` marker, preserves field declaration
+/// order, and generates a borrowed view with field methods that return `Result`.
 ///
 /// # Example
 ///
 /// ```rust
+/// use fory_core::error::Error;
+/// use fory_core::row::{from_row, to_row};
 /// use fory_derive::ForyRow;
 ///
 /// #[derive(ForyRow)]
 /// struct UserProfile {
 ///     id: i64,
 ///     username: String,
-///     email: String,
-///     is_active: bool,
+///     email: Option<String>,
 /// }
+///
+/// # fn main() -> Result<(), Error> {
+/// let bytes = to_row(&UserProfile {
+///     id: 7,
+///     username: "fory".to_owned(),
+///     email: None,
+/// })?;
+/// let view = from_row::<UserProfile>(&bytes)?;
+/// assert_eq!(view.username()?, "fory");
+/// # Ok(())
+/// # }
 /// ```
 #[proc_macro_derive(ForyRow)]
 pub fn proc_macro_derive_fory_row(input: proc_macro::TokenStream) -> TokenStream {
@@ -296,6 +339,7 @@ pub(crate) struct ForyAttrs {
     pub debug_enabled: bool,
     pub generate_default: bool,
     pub evolving: Option<bool>,
+    pub target: Option<Type>,
 }
 
 /// Parse fory attributes and return ForyAttrs
@@ -303,6 +347,7 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
     let mut debug_flag: Option<bool> = None;
     let mut generate_default_flag: Option<bool> = None;
     let mut evolving_flag: Option<bool> = None;
+    let mut target: Option<Type> = None;
 
     for attr in attrs {
         if attr.path().is_ident("fory") {
@@ -358,6 +403,14 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
                         Some(_) => evolving_flag,
                         None => Some(value),
                     };
+                } else if meta.path.is_ident("target") {
+                    if target.is_some() {
+                        return Err(syn::Error::new(
+                            meta.path.span(),
+                            "duplicate `target` attribute",
+                        ));
+                    }
+                    target = Some(meta.value()?.parse()?);
                 } else {
                     return Err(meta.error("unsupported type-level fory attribute"));
                 }
@@ -366,9 +419,56 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
         }
     }
 
+    if let Some(target) = &target {
+        if generate_default_flag == Some(true) {
+            return Err(syn::Error::new(
+                target.span(),
+                "`generate_default` is not valid for an external structural serializer",
+            ));
+        }
+    }
+
     Ok(ForyAttrs {
         debug_enabled: debug_flag.unwrap_or(false),
         generate_default: generate_default_flag.unwrap_or(false),
         evolving: evolving_flag,
+        target,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use quote::ToTokens;
+    use syn::parse_quote;
+
+    #[test]
+    fn parses_external_target() {
+        let input: DeriveInput = parse_quote! {
+            #[fory(target = external::User)]
+            struct UserSerializer {
+                name: String,
+            }
+        };
+        let attrs = parse_fory_attrs(&input.attrs).unwrap();
+        assert_eq!(
+            attrs.target.unwrap().to_token_stream().to_string(),
+            "external :: User"
+        );
+    }
+
+    #[test]
+    fn rejects_external_std_default() {
+        let input: DeriveInput = parse_quote! {
+            #[fory(target = external::User, generate_default)]
+            struct UserSerializer {
+                name: String,
+            }
+        };
+        let err = match parse_fory_attrs(&input.attrs) {
+            Ok(_) => panic!("external structural serializers must reject `generate_default`"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("generate_default` is not valid"));
+    }
 }

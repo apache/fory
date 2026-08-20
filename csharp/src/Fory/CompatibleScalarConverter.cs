@@ -608,7 +608,12 @@ public static class CompatibleScalarConverter
 
     private static ForyDecimal ReadDecimal(ReadContext context)
     {
-        (int scale, BigInteger unscaled) = DecimalCodec.Read(context.Reader);
+        (int scale, BigInteger unscaled) =
+            DecimalCodec.Read(
+                context.Reader,
+                DecimalCodec.MinScale,
+                DecimalCodec.MaxScale,
+                DecimalCodec.MaxMagnitudeBytes);
         return new ForyDecimal(unscaled, scale);
     }
 
@@ -1066,21 +1071,6 @@ public static class CompatibleScalarConverter
         return FromDouble(value, remote, local, fieldName);
     }
 
-    private static DecimalValue FromSystemDecimal(decimal value)
-    {
-        int[] bits = decimal.GetBits(value);
-        BigInteger unscaled =
-            ((BigInteger)(uint)bits[2] << 64) |
-            ((BigInteger)(uint)bits[1] << 32) |
-            (uint)bits[0];
-        if ((bits[3] & unchecked((int)0x8000_0000)) != 0)
-        {
-            unscaled = BigInteger.Negate(unscaled);
-        }
-
-        return new DecimalValue(unscaled, (bits[3] >> 16) & 0xFF, false);
-    }
-
     private static DecimalValue FromHalf(Half value, TypeId remote, TypeId local, string fieldName)
     {
         ushort bits = BitConverter.HalfToUInt16Bits(value);
@@ -1337,6 +1327,32 @@ public static class CompatibleScalarConverter
             scale = 0;
         }
 
+        if (scale > MaxCompatibleDecimalDigits && !unscaled.IsZero)
+        {
+            int excessScale = checked((int)(scale - MaxCompatibleDecimalDigits));
+            if (excessScale >= DecimalDigitUpperBound(unscaled))
+            {
+                normalized = default;
+                return false;
+            }
+
+            // An accepted value can retain at most 256 fractional digits. Strip all excess
+            // scale at once so attacker-controlled trailing zeros cannot cause one full-width
+            // BigInteger division per zero.
+            BigInteger quotient = BigInteger.DivRem(
+                unscaled,
+                BigInteger.Pow(10, excessScale),
+                out BigInteger remainder);
+            if (!remainder.IsZero)
+            {
+                normalized = default;
+                return false;
+            }
+
+            unscaled = quotient;
+            scale -= excessScale;
+        }
+
         while (scale > 0 && !unscaled.IsZero)
         {
             BigInteger remainder;
@@ -1420,6 +1436,14 @@ public static class CompatibleScalarConverter
         }
 
         return magnitude.ToString(CultureInfo.InvariantCulture).Length;
+    }
+
+    private static long DecimalDigitUpperBound(BigInteger value)
+    {
+        long bitLength = BigInteger.Abs(value).GetBitLength();
+        // 30103 / 100000 is slightly greater than log10(2), so this cannot
+        // underestimate the decimal digit count.
+        return (bitLength * 30_103 + 99_999) / 100_000;
     }
 
     private static TypeId NormalizeScalarTypeId(uint typeId)

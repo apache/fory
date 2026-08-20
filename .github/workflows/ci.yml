@@ -57,8 +57,10 @@ jobs:
       cpp: ${{ steps.filter.outputs.cpp }}
       cpp_code: ${{ steps.filter.outputs.cpp_code }}
       java_code: ${{ steps.filter.outputs.java_code }}
+      android: ${{ steps.filter.outputs.android }}
       python: ${{ steps.filter.outputs.python }}
       graalvm: ${{ steps.filter.outputs.graalvm }}
+      graalvm_kotlin: ${{ steps.filter.outputs.graalvm_kotlin }}
       rust: ${{ steps.filter.outputs.rust }}
       swift: ${{ steps.filter.outputs.swift }}
       javascript: ${{ steps.filter.outputs.javascript }}
@@ -78,8 +80,10 @@ jobs:
             echo "cpp=true" >> "$GITHUB_OUTPUT"
             echo "cpp_code=true" >> "$GITHUB_OUTPUT"
             echo "java_code=true" >> "$GITHUB_OUTPUT"
+            echo "android=true" >> "$GITHUB_OUTPUT"
             echo "python=true" >> "$GITHUB_OUTPUT"
             echo "graalvm=true" >> "$GITHUB_OUTPUT"
+            echo "graalvm_kotlin=true" >> "$GITHUB_OUTPUT"
             echo "rust=true" >> "$GITHUB_OUTPUT"
             echo "swift=true" >> "$GITHUB_OUTPUT"
             echo "javascript=true" >> "$GITHUB_OUTPUT"
@@ -121,16 +125,28 @@ jobs:
             echo "java_code=false" >> "$GITHUB_OUTPUT"
           fi
 
+          if grep -Eq '^(\.github/workflows/ci\.yml$|ci/run_ci\.(py|sh)$|ci/tasks/(common|kotlin)\.py$|java/(pom\.xml$|fory-(core|json|annotation-processor)/)|kotlin/|integration_tests/(kotlin_json_corpus|android_tests)/)' <<< "$changed_files"; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "android=false" >> "$GITHUB_OUTPUT"
+          fi
+
           if grep -Eq '^(python/)' <<< "$changed_files"; then
             echo "python=true" >> "$GITHUB_OUTPUT"
           else
             echo "python=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^(java/|integration_tests/graalvm_tests/)' <<< "$changed_files"; then
+          if grep -Eq '^(\.github/workflows/ci\.yml$|ci/run_ci\.(py|sh)$|ci/tasks/(common|java)\.py$|java/|integration_tests/graalvm_tests/)' <<< "$changed_files"; then
             echo "graalvm=true" >> "$GITHUB_OUTPUT"
           else
             echo "graalvm=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(\.github/workflows/ci\.yml$|ci/run_ci\.(py|sh)$|ci/tasks/(common|kotlin)\.py$|java/(pom\.xml$|fory-(core|json|annotation-processor)/)|kotlin/|integration_tests/(kotlin_json_corpus|graalvm_kotlin_tests)/)' <<< "$changed_files"; then
+            echo "graalvm_kotlin=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "graalvm_kotlin=false" >> "$GITHUB_OUTPUT"
           fi
 
           if grep -Eq '^(rust/)' <<< "$changed_files"; then
@@ -151,7 +167,7 @@ jobs:
             echo "javascript=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^(java/|kotlin/)' <<< "$changed_files"; then
+          if grep -Eq '^(\.github/workflows/(ci\.yml|release-jvm-snapshot\.yaml)$|ci/run_ci\.(py|sh)$|ci/tasks/(common|java|kotlin)\.py$|ci/release\.py$|java/(pom\.xml$|fory-(core|json|annotation-processor)/)|kotlin/|integration_tests/(kotlin_json_corpus|graalvm_kotlin_tests|jpms_tests|grpc_tests/kotlin|idl_tests/kotlin)/)' <<< "$changed_files"; then
             echo "kotlin=true" >> "$GITHUB_OUTPUT"
           else
             echo "kotlin=false" >> "$GITHUB_OUTPUT"
@@ -287,7 +303,7 @@ jobs:
   android:
     name: Android Instrumented Tests API ${{ matrix.api-level }}
     needs: changes
-    if: needs.changes.outputs.java_code == 'true'
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -300,6 +316,10 @@ jobs:
         with:
           java-version: 17
           distribution: "temurin"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - name: Cache Maven local repository
         uses: actions/cache@v4
         with:
@@ -311,17 +331,15 @@ jobs:
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e
         with:
           gradle-version: "8.13"
-      - name: Install Fory Java artifacts
-        run: |
-          cd java
-          mvn -T16 --no-transfer-progress -pl fory-core,fory-annotation-processor -am install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Install Fory Java and Kotlin JSON artifacts
+        run: python ./ci/run_ci.py kotlin --task install-json
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Run Android instrumented tests
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
@@ -329,7 +347,9 @@ jobs:
           working-directory: integration_tests/android_tests
           script: |
             yes | sdkmanager "platforms;android-${{ matrix.api-level }}" "build-tools;35.0.0"
-            gradle --no-daemon --stacktrace connectedCheck
+            # API 26 owns the rule gate; share one Gradle startup with its debug instrumentation.
+            if [ "${{ matrix.api-level }}" = "26" ]; then gradle --no-daemon --stacktrace -PforyTestBuildType=debug verifyKotlinJsonRules connectedCheck; fi
+            gradle --no-daemon --stacktrace -PforyTestBuildType=release connectedCheck
       - name: Upload Android Test Report
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -435,6 +455,13 @@ jobs:
           fi
           cd swift
           swiftlint lint --config .swiftlint.yml
+      - name: Run Swift format check
+        run: |
+          if ! command -v swift-format >/dev/null; then
+            brew install swift-format
+          fi
+          cd swift
+          swift-format lint --configuration .swift-format --recursive --strict Sources Tests Package.swift
 
   swift_xlang:
     name: Swift Xlang Test
@@ -453,20 +480,36 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Compute Swift package cache key
+        id: swift-package-cache
+        run: |
+          {
+            swift --version
+            xcodebuild -version
+          } > "$RUNNER_TEMP/swift-toolchain.txt"
+          cat "$RUNNER_TEMP/swift-toolchain.txt"
+          echo "toolchain=$(shasum -a 256 "$RUNNER_TEMP/swift-toolchain.txt" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - name: Cache Swift package dependencies and build artifacts
+        id: swift-build-cache
         uses: actions/cache@v4
         with:
           path: |
             ~/.swiftpm
             ~/Library/Caches/org.swift.swiftpm
             swift/.build
-          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-xlang-release-${{ steps.swift-package-cache.outputs.toolchain }}-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-swiftpm-
+            ${{ runner.os }}-${{ runner.arch }}-swiftpm-xlang-release-${{ steps.swift-package-cache.outputs.toolchain }}-
       - name: Prebuild Swift xlang peer for cache reuse
         run: |
           cd swift
+          if [[ "${{ steps.swift-build-cache.outputs.cache-hit }}" == "true" && -x .build/release/ForyXlangTests ]]; then
+            echo "Using cached Swift xlang peer at swift/.build/release/ForyXlangTests"
+            echo "FORY_SWIFT_PEER_PREBUILT=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
           swift build -c release --disable-automatic-resolution --product ForyXlangTests
+          echo "FORY_SWIFT_PEER_PREBUILT=1" >> "$GITHUB_ENV"
       - name: Run Swift Xlang Test
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
@@ -500,19 +543,36 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Generate Swift IDL test code
         run: python ./integration_tests/idl_tests/generate_idl.py --lang swift
+      - name: Compute Swift IDL package cache key
+        id: swift-idl-package-cache
+        run: |
+          {
+            swift --version
+            xcodebuild -version
+          } > "$RUNNER_TEMP/swift-toolchain.txt"
+          cat "$RUNNER_TEMP/swift-toolchain.txt"
+          echo "toolchain=$(shasum -a 256 "$RUNNER_TEMP/swift-toolchain.txt" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - name: Cache Swift IDL package build artifacts
+        id: swift-idl-build-cache
         uses: actions/cache@v4
         with:
           path: |
             integration_tests/idl_tests/swift/idl_package/.build
             integration_tests/idl_tests/swift/idl_package/.swiftpm
-          key: ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-${{ hashFiles('integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Package.resolved', 'swift/Package.swift', 'swift/Package.resolved', 'swift/Sources/ForyMacro/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-idl-debug-${{ steps.swift-idl-package-cache.outputs.toolchain }}-${{ hashFiles('integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Package.resolved', 'integration_tests/idl_tests/swift/idl_package/Sources/**', 'integration_tests/idl_tests/swift/idl_package/Tests/**', 'swift/Package.swift', 'swift/Package.resolved', 'swift/Sources/**') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-
+            ${{ runner.os }}-${{ runner.arch }}-swiftpm-idl-debug-${{ steps.swift-idl-package-cache.outputs.toolchain }}-
       - name: Prebuild Swift IDL package
         run: |
           cd integration_tests/idl_tests/swift/idl_package
+          if [[ "${{ steps.swift-idl-build-cache.outputs.cache-hit }}" == "true" && -f .build/fory-swift-idl-prebuilt ]]; then
+            echo "Using cached Swift IDL package build artifacts"
+            echo "FORY_SWIFT_IDL_PREBUILT=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
           swift build --disable-automatic-resolution --build-tests
+          touch .build/fory-swift-idl-prebuilt
+          echo "FORY_SWIFT_IDL_PREBUILT=1" >> "$GITHUB_ENV"
       - name: Run Swift IDL package tests
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
@@ -535,7 +595,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java-version: ["17", "21", "25"]
+        java-version: ["17", "25"]
     steps:
       - uses: actions/checkout@v5
       - uses: graalvm/setup-graalvm@6f3fa030c4b8f77c1f554a860f593a654538fa38 # 1.5.6
@@ -551,13 +611,59 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Set up Python3.8
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.8
-      - name: Build native image and run
+      - name: Build JPMS native image and run
         shell: bash
-        run: python ./ci/run_ci.py java --version graalvm
+        run: ./ci/run_ci.sh graalvm_test
+
+  graalvm_json:
+    name: GraalVM JSON CI
+    needs: changes
+    if: needs.changes.outputs.graalvm == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java-version: ["17", "25"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: graalvm/setup-graalvm@6f3fa030c4b8f77c1f554a860f593a654538fa38 # 1.5.6
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: "graalvm"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: "true"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Build JSON JPMS native image and run
+        shell: bash
+        run: ./ci/run_ci.sh graalvm_json_tests
+
+  graalvm_kotlin_json:
+    name: GraalVM Kotlin JSON CI
+    needs: changes
+    if: needs.changes.outputs.graalvm_kotlin == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: graalvm/setup-graalvm@6f3fa030c4b8f77c1f554a860f593a654538fa38 # 1.5.6
+        with:
+          java-version: "25"
+          distribution: "graalvm"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: "true"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Build and run Kotlin JSON native image
+        run: python ./ci/run_ci.py kotlin --task native-json
 
   kotlin:
     name: Kotlin CI
@@ -568,7 +674,7 @@ jobs:
       MY_VAR: "PATH"
     strategy:
       matrix:
-        java-version: ["8", "11", "17", "21"]
+        java-version: ["8", "11", "17", "21", "25", "26"]
     steps:
       - uses: actions/checkout@v5
       - name: Set up JDK ${{ matrix.java-version }}
@@ -583,12 +689,10 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Set up Python 3.8
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: 3.8
-      - name: Install fory java
-        run: python ./ci/run_ci.py java --install-jdks --install-fory
+          python-version: 3.11
       - name: Run Kotlin CI
         run: python ./ci/run_ci.py kotlin
 
@@ -604,7 +708,7 @@ jobs:
         with:
           java-version: 11
           distribution: "temurin"
-      - uses: sbt/setup-sbt@2e222825582620cc38d2a54e674f3c01b7c14f5d # v1.1.24
+      - uses: sbt/setup-sbt@8feba82adc7f01ddcf8165b86f778bdb5b82cebc # v1.5.7
         with:
           disk-cache: false
       - name: Install fory java
@@ -631,7 +735,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@2e222825582620cc38d2a54e674f3c01b7c14f5d # v1.1.24
+      - uses: sbt/setup-sbt@8feba82adc7f01ddcf8165b86f778bdb5b82cebc # v1.5.7
         with:
           disk-cache: false
       - name: Run Scala Xlang Test
@@ -659,7 +763,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@2e222825582620cc38d2a54e674f3c01b7c14f5d # v1.1.24
+      - uses: sbt/setup-sbt@8feba82adc7f01ddcf8165b86f778bdb5b82cebc # v1.5.7
         with:
           disk-cache: false
       - name: Install Fory Java
@@ -815,6 +919,51 @@ jobs:
           cd integration_tests/grpc_tests/java
           mvn -T16 --no-transfer-progress -Dtest=RustGrpcTest test
 
+  grpc_java_cpp_tests:
+    name: Java/C++ gRPC Tests
+    needs: changes
+    if: >
+      needs.changes.outputs.grpc_tests == 'true' ||
+      needs.changes.outputs.cpp_code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: "pip"
+      - name: Install gRPC C++ development package
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libgrpc++-dev protobuf-compiler-grpc
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Install Java artifacts for gRPC tests
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Generate gRPC test sources
+        run: python integration_tests/grpc_tests/generate_grpc.py
+      - name: Build C++ gRPC peer
+        run: |
+          cmake -S integration_tests/grpc_tests/cpp -B integration_tests/grpc_tests/cpp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build integration_tests/grpc_tests/cpp/build --parallel
+      - name: Run Java/C++ gRPC tests
+        run: |
+          cd integration_tests/grpc_tests/java
+          mvn -T16 --no-transfer-progress -Dtest=CppGrpcTest test
+
   grpc_java_kotlin_tests:
     name: Java/Kotlin gRPC Tests
     needs: changes
@@ -876,7 +1025,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Dart
-        uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c  # v1.7.1
+        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
         with:
           sdk: stable
       - name: Cache Maven local repository
@@ -1678,11 +1827,15 @@ jobs:
         run: |
           (
             cd dart/packages/fory
-            dart run build_runner build --delete-conflicting-outputs
+            dart run build_runner build
+          )
+          (
+            cd dart/packages/inheritance-test-models
+            dart run build_runner build
           )
           (
             cd dart/packages/fory-test
-            dart run build_runner build --delete-conflicting-outputs
+            dart run build_runner build
           )
       - name: Run Dart Xlang Test
         env:
@@ -1717,16 +1870,37 @@ jobs:
         run: |
           (
             cd dart/packages/fory
-            dart run build_runner build --delete-conflicting-outputs
+            dart run build_runner build
+          )
+          (
+            cd dart/packages/inheritance-test-models
+            dart run build_runner build
           )
           (
             cd dart/packages/fory-test
-            dart run build_runner build --delete-conflicting-outputs
+            dart run build_runner build
           )
-      - name: Run tests
+      - name: Run VM tests
+        run: |
+          (
+            cd dart/packages/fory
+            dart test
+          )
+          (
+            cd dart/packages/fory-test
+            dart test
+          )
+      - name: Run inheritance AOT and JavaScript smoke
         run: |
           cd dart/packages/fory-test
-          dart test
+          dart compile exe \
+            -o "$RUNNER_TEMP/fory_inheritance_smoke" \
+            tool/inheritance_smoke.dart
+          "$RUNNER_TEMP/fory_inheritance_smoke"
+          dart compile js --fatal-warnings --no-source-maps -O2 \
+            -o "$RUNNER_TEMP/fory_inheritance_smoke.js" \
+            tool/inheritance_smoke.dart
+          node "$RUNNER_TEMP/fory_inheritance_smoke.js"
       - name: Run web tests
         run: |
           cd dart/packages/fory
@@ -1846,7 +2020,7 @@ jobs:
       - name: Generate Flutter smoke code
         run: |
           cd "$FLUTTER_SMOKE_DIR"
-          dart run build_runner build --delete-conflicting-outputs
+          dart run build_runner build
       - name: Run Flutter smoke tests
         run: |
           cd "$FLUTTER_SMOKE_DIR"
@@ -1907,12 +2081,26 @@ jobs:
           ref: main
           path: fory-site
 
-      - name: Set up Node.js 20.x
+      - name: Set up Node.js 24.x
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 24.x
           cache: npm
           cache-dependency-path: fory-site/package-lock.json
+
+      - name: Install fory-site dependencies
+        working-directory: fory-site
+        run: npm ci --prefer-offline --fund=false
+
+      - name: Restore Docusaurus cache
+        uses: actions/cache@v4
+        with:
+          path: fory-site/node_modules/.cache
+          key: ${{ runner.os }}-node24-docusaurus-${{ hashFiles('fory-site/package-lock.json') }}
+
+      - name: Test fory-site validator
+        working-directory: fory
+        run: python3 -m unittest ci.test_validate_fory_site_sync
 
       - name: Sync files and validate site build
         run: |

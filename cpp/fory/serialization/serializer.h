@@ -66,6 +66,38 @@ inline bool is_little_endian_system() {
   return *reinterpret_cast<uint8_t *>(&test) == 1;
 }
 
+namespace detail {
+
+FORY_ALWAYS_INLINE bool
+settle_unbacked_container_items(ReadContext &ctx, size_t completed_items,
+                                uint64_t start_position) {
+  const uint64_t consumed =
+      ctx.buffer().logical_reader_index() - start_position;
+  if (consumed >= completed_items) {
+    return true;
+  }
+  return ctx.reserve_unbacked_container_items(completed_items -
+                                              static_cast<size_t>(consumed));
+}
+
+FORY_NOINLINE inline bool
+fail_map_chunk_size(ReadContext &ctx, uint8_t chunk_size, uint64_t remaining) {
+  ctx.set_error(Error::invalid_data(
+      "Map chunk size must be between 1 and remaining size " +
+      std::to_string(remaining) + ": " + std::to_string(chunk_size)));
+  return false;
+}
+
+FORY_ALWAYS_INLINE bool
+check_map_chunk_size(ReadContext &ctx, uint8_t chunk_size, uint64_t remaining) {
+  if (FORY_PREDICT_FALSE(chunk_size == 0 || chunk_size > remaining)) {
+    return fail_map_chunk_size(ctx, chunk_size, remaining);
+  }
+  return true;
+}
+
+} // namespace detail
+
 // ============================================================================
 // Header Reading
 // ============================================================================
@@ -131,9 +163,17 @@ FORY_ALWAYS_INLINE bool read_null_only_flag(ReadContext &ctx,
   if (flag == NULL_FLAG) {
     return false;
   }
-  // NotNullValue or RefValue both mean "continue reading" for non-trackable
-  // types
-  if (flag == NOT_NULL_VALUE_FLAG || flag == REF_VALUE_FLAG) {
+  if (flag == NOT_NULL_VALUE_FLAG) {
+    return true;
+  }
+  if (flag == REF_VALUE_FLAG) {
+    // A non-reference local value cannot publish an owner for this slot, but
+    // the sender still assigned the slot. Preserve its ID before nested
+    // reference owners allocate so later back-references retain wire numbering.
+    // NullOnly is used for per-value null envelopes and does not own a slot.
+    if (ref_mode == RefMode::Tracking && ctx.track_ref()) {
+      ctx.ref_reader().reserve_ref_id();
+    }
     return true;
   }
   if (flag == REF_FLAG) {
@@ -168,6 +208,31 @@ inline bool type_id_matches(uint32_t actual, uint32_t expected) {
            actual == static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT);
   }
   return actual == expected;
+}
+
+/// Resolve a declared polymorphic target before materializing the wire type.
+template <typename T>
+inline Harness::ReadAsFn resolve_polymorphic_reader(ReadContext &ctx,
+                                                    const TypeInfo *type_info) {
+  if (FORY_PREDICT_FALSE(type_info->harness.find_read_as_fn == nullptr)) {
+    ctx.set_error(
+        Error::type_error("No C++ type information for polymorphic read"));
+    return nullptr;
+  }
+  const std::type_info &target = typeid(T);
+  Harness::ReadAsFn read_as;
+  if (FORY_PREDICT_TRUE(type_info->cached_read_target == &target)) {
+    read_as = type_info->cached_read_as_fn;
+  } else {
+    read_as = type_info->harness.find_read_as_fn(target);
+    type_info->cached_read_as_fn = read_as;
+    type_info->cached_read_target = &target;
+  }
+  if (FORY_PREDICT_FALSE(read_as == nullptr)) {
+    ctx.set_error(Error::type_error(
+        "Wire type is not compatible with the polymorphic target"));
+  }
+  return read_as;
 }
 
 // ============================================================================

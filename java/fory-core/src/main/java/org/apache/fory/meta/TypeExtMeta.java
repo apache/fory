@@ -26,6 +26,7 @@ public class TypeExtMeta {
   private final boolean nullable;
   private final boolean trackingRef;
   private final boolean nullableWrapper;
+  private final boolean covariant;
 
   public static TypeExtMeta of(int typeId, boolean nullable, boolean trackingRef) {
     return new TypeExtMeta(typeId, nullable, trackingRef);
@@ -36,15 +37,34 @@ public class TypeExtMeta {
     return new TypeExtMeta(typeId, nullable, trackingRef, nullableWrapper);
   }
 
+  public static TypeExtMeta of(
+      int typeId,
+      boolean nullable,
+      boolean trackingRef,
+      boolean nullableWrapper,
+      boolean covariant) {
+    return new TypeExtMeta(typeId, nullable, trackingRef, nullableWrapper, covariant);
+  }
+
   TypeExtMeta(int typeId, boolean nullable, boolean trackingRef) {
     this(typeId, nullable, trackingRef, false);
   }
 
   TypeExtMeta(int typeId, boolean nullable, boolean trackingRef, boolean nullableWrapper) {
+    this(typeId, nullable, trackingRef, nullableWrapper, false);
+  }
+
+  TypeExtMeta(
+      int typeId,
+      boolean nullable,
+      boolean trackingRef,
+      boolean nullableWrapper,
+      boolean covariant) {
     this.typeId = typeId;
     this.nullable = nullable;
     this.trackingRef = trackingRef;
     this.nullableWrapper = nullableWrapper;
+    this.covariant = covariant;
   }
 
   public int typeId() {
@@ -64,6 +84,11 @@ public class TypeExtMeta {
     return nullableWrapper;
   }
 
+  /** Whether this declared occurrence is the producer of a covariant type projection. */
+  public boolean covariant() {
+    return covariant;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -76,12 +101,13 @@ public class TypeExtMeta {
     return typeId == that.typeId
         && nullable == that.nullable
         && trackingRef == that.trackingRef
-        && nullableWrapper == that.nullableWrapper;
+        && nullableWrapper == that.nullableWrapper
+        && covariant == that.covariant;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(typeId, nullable, trackingRef, nullableWrapper);
+    return Objects.hash(typeId, nullable, trackingRef, nullableWrapper, covariant);
   }
 
   @Override
@@ -95,6 +121,8 @@ public class TypeExtMeta {
         + trackingRef
         + ", nullableWrapper="
         + nullableWrapper
+        + ", covariant="
+        + covariant
         + '}';
   }
 }

@@ -17,24 +17,27 @@
 
 """Rust code generator."""
 
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from __future__ import annotations
 
-from fory_compiler.generators.services.rust import RustServiceGeneratorMixin
-from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from pathlib import Path
+from typing import ClassVar
+
+from fory_compiler.frontend.base import FrontendError
 from fory_compiler.frontend.utils import parse_idl_file
+from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.services.rust import RustServiceGeneratorMixin
 from fory_compiler.ir.ast import (
-    Message,
+    ArrayType,
     Enum,
-    Union,
     Field,
     FieldType,
-    PrimitiveType,
-    NamedType,
     ListType,
-    ArrayType,
     MapType,
+    Message,
+    NamedType,
+    PrimitiveType,
     Schema,
+    Union,
     thread_safe_pointer_enabled,
 )
 from fory_compiler.ir.types import PrimitiveKind
@@ -48,7 +51,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
     RUST_ANY_TYPE = "::std::sync::Arc<dyn ::std::any::Any + Send + Sync>"
 
     # Mapping from FDL primitive types to Rust types
-    PRIMITIVE_MAP = {
+    PRIMITIVE_MAP: ClassVar[dict[PrimitiveKind, str]] = {
         PrimitiveKind.BOOL: "bool",
         PrimitiveKind.INT8: "i8",
         PrimitiveKind.INT16: "i16",
@@ -68,13 +71,13 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         PrimitiveKind.ANY: RUST_ANY_TYPE,
     }
 
-    FORY_TEMPORAL_MAP = {
+    FORY_TEMPORAL_MAP: ClassVar[dict[PrimitiveKind, str]] = {
         PrimitiveKind.DATE: "::fory::Date",
         PrimitiveKind.TIMESTAMP: "::fory::Timestamp",
         PrimitiveKind.DURATION: "::fory::Duration",
     }
 
-    CHRONO_TEMPORAL_MAP = {
+    CHRONO_TEMPORAL_MAP: ClassVar[dict[PrimitiveKind, str]] = {
         PrimitiveKind.DATE: "::chrono::NaiveDate",
         PrimitiveKind.TIMESTAMP: "::chrono::NaiveDateTime",
         PrimitiveKind.DURATION: "::chrono::Duration",
@@ -95,7 +98,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
     # Strict and reserved keywords defined in Rust (https://doc.rust-lang.org/reference/keywords.html).
     # Weak keywords are intentionally excluded because they are usable outside their special syntax contexts.
-    RUST_RAW_IDENTIFIER_KEYWORDS = {
+    RUST_RAW_IDENTIFIER_KEYWORDS: ClassVar[set[str]] = {
         "as",
         "async",
         "await",
@@ -148,7 +151,13 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
     # Reserved identifiers in Rust (https://doc.rust-lang.org/reference/identifiers.html#railroad-RESERVED_RAW_IDENTIFIER).
     # These tokens are invalid even with an `r#` prefix, so escape them by suffixing `_` instead.
-    RUST_RESERVED_IDENTIFIERS = {"_", "self", "Self", "super", "crate"}
+    RUST_RESERVED_IDENTIFIERS: ClassVar[set[str]] = {
+        "_",
+        "self",
+        "Self",
+        "super",
+        "crate",
+    }
 
     def sanitize_identifier(self, normalized: str) -> str:
         """Escape an already-normalized Rust name."""
@@ -164,7 +173,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         """Convert an IDL name to a sanitized Rust snake_case identifier."""
         return self.sanitize_identifier(self.to_snake_case(source))
 
-    def get_top_level_module_identifier(self, package: Optional[str]) -> str:
+    def get_top_level_module_identifier(self, package: str | None) -> str:
         """Get the Rust module identifier used to reference one schema file."""
         # e.g. `foo.bar` defined in the IDL will be `foo_bar` in the generated Rust code.
         module_name = package.replace(".", "_") if package else "generated"
@@ -194,7 +203,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             self._cache_key(field)
         ]
 
-    def _cache_key(self, node: object) -> Tuple[object, ...]:
+    def _cache_key(self, node: object) -> tuple[object, ...]:
         """Get a cache key for an IR node."""
         # Use the location as the key due to its stability.
         location = node.location
@@ -205,7 +214,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             location.column,
         )
 
-    def _package_for_source_file(self, file_path: str) -> Optional[str]:
+    def _package_for_source_file(self, file_path: str) -> str | None:
         """Get the package name that a file declares."""
         source_key = str(Path(file_path).resolve())
         schema_source_key = str(Path(self.schema.source_file).resolve())
@@ -224,7 +233,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             return self.schema
         # `node` belongs to an imported schema.
         if not hasattr(self, "_source_schema_cache"):
-            self._source_schema_cache: Dict[str, Schema] = {}
+            self._source_schema_cache: dict[str, Schema] = {}
         if source_key in self._source_schema_cache:
             return self._source_schema_cache[source_key]
         enums = [
@@ -266,7 +275,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
     def _local_top_level_types(
         self, schema: Schema
-    ) -> Tuple[List[Enum], List[Union], List[Message]]:
+    ) -> tuple[list[Enum], list[Union], list[Message]]:
         """Get top-level types that are declared directly in the schema file."""
         schema_source_key = str(Path(schema.source_file).resolve())
         enums = [
@@ -286,9 +295,9 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         ]
         return enums, unions, messages
 
-    def _resolve_message_path(self, schema: Schema, parts: List[str]) -> List[Message]:
+    def _resolve_message_path(self, schema: Schema, parts: list[str]) -> list[Message]:
         """Resolve a dotted message path to the concrete message lineage."""
-        lineage: List[Message] = []
+        lineage: list[Message] = []
         scope = self._local_top_level_types(schema)[2]
         for part in parts:
             match = next((message for message in scope if message.name == part), None)
@@ -301,7 +310,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
     def _allocate_scoped_identifier(
         self,
         normalized_name: str,
-        used_names: Dict[str, str],
+        used_names: dict[str, str],
         scope: str,
         source_name: str,
     ) -> str:
@@ -319,10 +328,10 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         return escaped
 
     def _allocate_scoped_type_identifiers(
-        self, type_defs: List[object], scope: str
+        self, type_defs: list[object], scope: str
     ) -> None:
         """Allocate unique sanitized identifiers for type declarations in the scope and cache the results."""
-        used_names: Dict[str, str] = {}
+        used_names: dict[str, str] = {}
         for type_def in type_defs:
             self._type_identifier_cache[self._cache_key(type_def)] = (
                 self._allocate_scoped_identifier(
@@ -334,10 +343,10 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             )
 
     def _allocate_scoped_module_identifiers(
-        self, messages: List[Message], scope: str
+        self, messages: list[Message], scope: str
     ) -> None:
         """Allocate unique sanitized identifiers for nested-type modules in the scope and cache the results."""
-        used_names: Dict[str, str] = {}
+        used_names: dict[str, str] = {}
         for message in messages:
             self._module_identifier_cache[self._cache_key(message)] = (
                 self._allocate_scoped_identifier(
@@ -350,8 +359,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
     def _allocate_scoped_enum_identifiers(self, enum: Enum) -> None:
         """Allocate unique sanitized variant names for the generated enum and cache the results."""
-        used_names: Dict[str, str] = {}
-        allocated: Dict[Tuple[object, ...], str] = {}
+        used_names: dict[str, str] = {}
+        allocated: dict[tuple[object, ...], str] = {}
         for value in enum.values:
             allocated[self._cache_key(value)] = self._allocate_scoped_identifier(
                 self.to_pascal_case(self.strip_enum_prefix(enum.name, value.name)),
@@ -363,8 +372,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
     def _allocate_scoped_union_identifiers(self, union: Union) -> None:
         """Allocate unique sanitized variant names for the generated union and cache the results."""
-        used_names: Dict[str, str] = {}
-        allocated: Dict[Tuple[object, ...], str] = {}
+        used_names: dict[str, str] = {}
+        allocated: dict[tuple[object, ...], str] = {}
         for field in union.fields:
             allocated[self._cache_key(field)] = self._allocate_scoped_identifier(
                 self.to_pascal_case(field.name),
@@ -376,8 +385,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
     def _allocate_scoped_message_identifiers(self, message: Message) -> None:
         """Allocate all scoped names that belong to the message."""
-        used_fields: Dict[str, str] = {}
-        field_names: Dict[Tuple[object, ...], str] = {}
+        used_fields: dict[str, str] = {}
+        field_names: dict[tuple[object, ...], str] = {}
         for field in message.fields:
             field_names[self._cache_key(field)] = self._allocate_scoped_identifier(
                 self.to_snake_case(field.name),
@@ -386,7 +395,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
                 field.name,
             )
         self._field_identifier_cache[self._cache_key(message)] = field_names
-        nested_types: List[object] = (
+        nested_types: list[object] = (
             list(message.nested_enums)
             + list(message.nested_unions)
             + list(message.nested_messages)
@@ -407,38 +416,18 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
     def _ensure_name_caches(self, schema: Schema) -> None:
         """Construct the naming caches once for a schema file."""
         if not hasattr(self, "_named_schema_ids"):
-            # Init everything.
-            self._named_schema_ids: Set[int] = set()
-            self._type_identifier_cache: Dict[Tuple[object, ...], str] = {}
-            self._module_identifier_cache: Dict[Tuple[object, ...], str] = {}
-            self._field_identifier_cache: Dict[
-                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            # Rust gRPC naming caches are initialized by the service generator.
+            self._named_schema_ids: set[int] = set()
+            self._type_identifier_cache: dict[tuple[object, ...], str] = {}
+            self._module_identifier_cache: dict[tuple[object, ...], str] = {}
+            self._field_identifier_cache: dict[
+                tuple[object, ...], dict[tuple[object, ...], str]
             ] = {}
-            self._enum_value_identifier_cache: Dict[
-                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            self._enum_value_identifier_cache: dict[
+                tuple[object, ...], dict[tuple[object, ...], str]
             ] = {}
-            self._union_case_identifier_cache: Dict[
-                Tuple[object, ...], Dict[Tuple[object, ...], str]
-            ] = {}
-            self._named_service_schema_ids: Set[int] = set()
-            self._service_trait_identifier_cache: Dict[Tuple[object, ...], str] = {}
-            self._service_client_module_identifier_cache: Dict[
-                Tuple[object, ...], str
-            ] = {}
-            self._service_server_module_identifier_cache: Dict[
-                Tuple[object, ...], str
-            ] = {}
-            self._service_name_constant_identifier_cache: Dict[
-                Tuple[object, ...], str
-            ] = {}
-            self._rpc_method_identifier_cache: Dict[
-                Tuple[object, ...], Dict[Tuple[object, ...], str]
-            ] = {}
-            self._rpc_stream_type_identifier_cache: Dict[
-                Tuple[object, ...], Dict[Tuple[object, ...], str]
-            ] = {}
-            self._rpc_path_constant_identifier_cache: Dict[
-                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            self._union_case_identifier_cache: dict[
+                tuple[object, ...], dict[tuple[object, ...], str]
             ] = {}
         schema_id = id(schema)
         if schema_id in self._named_schema_ids:
@@ -459,7 +448,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             self._allocate_scoped_message_identifiers(message)
         self._named_schema_ids.add(schema_id)
 
-    def generate(self) -> List[GeneratedFile]:
+    def generate(self) -> list[GeneratedFile]:
         """Generate Rust files for the schema."""
         files = []
 
@@ -487,14 +476,14 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             return (
                 Path(location.file).resolve() != Path(self.schema.source_file).resolve()
             )
-        except Exception:
+        except (OSError, RuntimeError):
             return location.file != self.schema.source_file
 
     def split_imported_types(
-        self, items: List[object]
-    ) -> Tuple[List[object], List[object]]:
-        imported: List[object] = []
-        local: List[object] = []
+        self, items: list[object]
+    ) -> tuple[list[object], list[object]]:
+        imported: list[object] = []
+        local: list[object] = []
         for item in items:
             if self.is_imported_type(item):
                 imported.append(item)
@@ -502,18 +491,18 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
                 local.append(item)
         return imported, local
 
-    def _load_schema(self, file_path: str) -> Optional[Schema]:
+    def _load_schema(self, file_path: str) -> Schema | None:
         if not file_path:
             return None
         if not hasattr(self, "_schema_cache"):
             self._schema_cache = {}
-        cache: Dict[Path, Schema] = self._schema_cache
+        cache: dict[Path, Schema] = self._schema_cache
         path = Path(file_path).resolve()
         if path in cache:
             return cache[path]
         try:
             schema = parse_idl_file(path)
-        except Exception:
+        except (FrontendError, OSError, ValueError):
             return None
         cache[path] = schema
         return schema
@@ -531,8 +520,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
     def _record_imported_module(
         self,
-        module_sources: Dict[str, str],
-        ordered_modules: List[str],
+        module_sources: dict[str, str],
+        ordered_modules: list[str],
         module: str,
         source: str,
     ) -> None:
@@ -548,8 +537,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         module_sources[module] = source
         ordered_modules.append(module)
 
-    def _collect_imported_modules(self) -> List[str]:
-        modules: Dict[str, str] = {}
+    def _collect_imported_modules(self) -> list[str]:
+        modules: dict[str, str] = {}
         for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
             if not self.is_imported_type(type_def):
                 continue
@@ -562,8 +551,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
                     f"{source!r} both map to Rust module {module!r}"
                 )
             modules[module] = source
-        ordered: List[str] = []
-        module_sources: Dict[str, str] = {}
+        ordered: list[str] = []
+        module_sources: dict[str, str] = {}
         base_dir = Path(self.schema.source_file).resolve().parent
         for imp in self.schema.imports:
             resolved_path = getattr(imp, "resolved_path", None)
@@ -599,7 +588,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         type_path = self.schema.resolve_type_name(type_name)
         if "." in type_path:
             parts = type_path.split(".")
-            parents: List[str] = []
+            parents: list[str] = []
             schema = self._schema_for_node(type_def)
             parent_messages = self._resolve_message_path(schema, parts[:-1])
             if parent_messages:
@@ -612,7 +601,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             return f"crate::{module}::{path}"
         return f"crate::{module}::{self.get_type_identifier(type_def)}"
 
-    def generate_bytes_impl(self, type_name: str) -> List[str]:
+    def generate_bytes_impl(self, type_name: str) -> list[str]:
         lines = []
         lines.append(f"impl {type_name} {{")
         lines.append(
@@ -697,7 +686,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         )
 
     def get_registration_type_name(
-        self, name: str, parent_stack: Optional[List[Message]] = None
+        self, name: str, parent_stack: list[Message] | None = None
     ) -> str:
         """Build dot-qualified type name for registration."""
         parts = [parent.name for parent in parent_stack or []] + [name]
@@ -705,14 +694,14 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             return parts[0]
         return ".".join(parts)
 
-    def get_module_path(self, parent_stack: Optional[List[Message]]) -> str:
+    def get_module_path(self, parent_stack: list[Message] | None) -> str:
         """Build module path from parent message names."""
         if not parent_stack:
             return ""
         return "::".join(self.get_module_identifier(parent) for parent in parent_stack)
 
     def get_type_path(
-        self, type_def: object, parent_stack: Optional[List[Message]]
+        self, type_def: object, parent_stack: list[Message] | None
     ) -> str:
         """Build a type path for nested types from the root module."""
         module_path = self.get_module_path(parent_stack)
@@ -723,8 +712,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
     def build_relative_type_name(
         self,
-        current_parents: List[Message],
-        target_parents: List[Message],
+        current_parents: list[Message],
+        target_parents: list[Message],
         type_name: str,
     ) -> str:
         """Build a type path relative to the current module."""
@@ -746,7 +735,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             return "::".join(parts + [type_name])
         return type_name
 
-    def indent_lines(self, lines: List[str], level: int) -> List[str]:
+    def indent_lines(self, lines: list[str], level: int) -> list[str]:
         """Indent a list of lines by the given level."""
         prefix = self.indent_str * level
         return [f"{prefix}{line}" if line else line for line in lines]
@@ -754,8 +743,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
     def generate_enum(
         self,
         enum: Enum,
-        parent_stack: Optional[List[Message]] = None,
-    ) -> List[str]:
+        parent_stack: list[Message] | None = None,
+    ) -> list[str]:
         """Generate a Rust enum."""
         lines = []
 
@@ -785,10 +774,10 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
     def generate_union(
         self,
         union: Union,
-        parent_stack: Optional[List[Message]] = None,
-    ) -> List[str]:
+        parent_stack: list[Message] | None = None,
+    ) -> list[str]:
         """Generate a Rust tagged union."""
-        lines: List[str] = []
+        lines: list[str] = []
 
         union_name = self.get_type_identifier(union)
         comment = self.format_type_id_comment(union, "//")
@@ -833,7 +822,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         lines.append("}")
         lines.append("")
 
-        if union.fields:
+        if self.union_supports_trait(union, "Default", parent_stack):
             default_field = union.fields[0]
             default_variant = self.get_union_case_identifier(union, default_field)
             default_pointer_type = self.get_field_pointer_type(default_field)
@@ -852,7 +841,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             lines.append(f"impl ::std::default::Default for {union_name} {{")
             lines.append("    fn default() -> Self {")
             lines.append(
-                f"        Self::{default_variant}(<{default_type} as ::fory::ForyDefault>::fory_default())"
+                f"        Self::{default_variant}(<{default_type} as ::std::default::Default>::default())"
             )
             lines.append("    }")
             lines.append("}")
@@ -875,8 +864,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
     def generate_message(
         self,
         message: Message,
-        parent_stack: Optional[List[Message]] = None,
-    ) -> List[str]:
+        parent_stack: list[Message] | None = None,
+    ) -> list[str]:
         """Generate a Rust struct."""
         lines = []
 
@@ -952,7 +941,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         return False
 
     def field_needs_safe_debug(
-        self, field: Field, parent_stack: Optional[List[Message]] = None
+        self, field: Field, parent_stack: list[Message] | None = None
     ) -> bool:
         return (
             self.field_has_ref(field)
@@ -966,10 +955,10 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             self.field_needs_safe_debug(field, lineage) for field in message.fields
         )
 
-    def _lineage_for_message(self, message: Message) -> List[Message]:
-        lineage: List[Message] = []
+    def _lineage_for_message(self, message: Message) -> list[Message]:
+        lineage: list[Message] = []
 
-        def visit(current: Message, parents: List[Message]) -> bool:
+        def visit(current: Message, parents: list[Message]) -> bool:
             if current is message:
                 lineage.extend(parents + [current])
                 return True
@@ -983,8 +972,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
                 break
         return lineage
 
-    def _parent_stack_for_type(self, type_def: object) -> List[Message]:
-        def visit(current: Message, parents: List[Message]) -> Optional[List[Message]]:
+    def _parent_stack_for_type(self, type_def: object) -> list[Message]:
+        def visit(current: Message, parents: list[Message]) -> list[Message] | None:
             if current is type_def:
                 return parents
             for nested_union in current.nested_unions:
@@ -1009,11 +998,9 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         self,
         union: Union,
         trait: str,
-        parent_stack: Optional[List[Message]] = None,
-        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+        parent_stack: list[Message] | None = None,
+        visiting: set[tuple[str, str, int]] | None = None,
     ) -> bool:
-        if trait == "Default":
-            return bool(union.fields)
         if visiting is None:
             visiting = set()
         key = ("union", trait, id(union))
@@ -1021,10 +1008,15 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             return False
         visiting.add(key)
         lineage = parent_stack or []
-        result = all(
-            self.field_supports_trait(field, trait, lineage, visiting)
-            for field in union.fields
-        )
+        if trait == "Default":
+            result = bool(union.fields) and self.field_supports_trait(
+                union.fields[0], trait, lineage, visiting
+            )
+        else:
+            result = all(
+                self.field_supports_trait(field, trait, lineage, visiting)
+                for field in union.fields
+            )
         visiting.remove(key)
         return result
 
@@ -1032,7 +1024,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         self,
         message: Message,
         trait: str,
-        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+        visiting: set[tuple[str, str, int]] | None = None,
     ) -> bool:
         if trait == "Debug":
             return True
@@ -1054,8 +1046,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         self,
         field: Field,
         trait: str,
-        parent_stack: Optional[List[Message]] = None,
-        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+        parent_stack: list[Message] | None = None,
+        visiting: set[tuple[str, str, int]] | None = None,
     ) -> bool:
         if trait == "Default" and field.optional:
             return True
@@ -1116,8 +1108,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         self,
         field_type: FieldType,
         trait: str,
-        parent_stack: Optional[List[Message]] = None,
-        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+        parent_stack: list[Message] | None = None,
+        visiting: set[tuple[str, str, int]] | None = None,
         weak_ref: bool = False,
     ) -> bool:
         if weak_ref:
@@ -1136,7 +1128,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         self,
         named_type: object,
         trait: str,
-        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+        visiting: set[tuple[str, str, int]] | None = None,
     ) -> bool:
         if visiting is None:
             return False
@@ -1150,20 +1142,22 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         self,
         field_type: FieldType,
         trait: str,
-        parent_stack: Optional[List[Message]] = None,
-        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+        parent_stack: list[Message] | None = None,
+        visiting: set[tuple[str, str, int]] | None = None,
     ) -> bool:
         if isinstance(field_type, PrimitiveType):
             if field_type.kind == PrimitiveKind.ANY:
                 return False
-            if trait in ("Eq", "Hash") and field_type.kind in (
-                PrimitiveKind.FLOAT16,
-                PrimitiveKind.BFLOAT16,
-                PrimitiveKind.FLOAT32,
-                PrimitiveKind.FLOAT64,
-            ):
-                return False
-            return True
+            return not (
+                trait in ("Eq", "Hash")
+                and field_type.kind
+                in (
+                    PrimitiveKind.FLOAT16,
+                    PrimitiveKind.BFLOAT16,
+                    PrimitiveKind.FLOAT32,
+                    PrimitiveKind.FLOAT64,
+                )
+            )
         if isinstance(field_type, ListType):
             if trait == "Default":
                 return True
@@ -1211,7 +1205,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         return False
 
     def resolve_named_type(
-        self, type_name: str, parent_stack: Optional[List[Message]] = None
+        self, type_name: str, parent_stack: list[Message] | None = None
     ) -> object:
         if "." in type_name:
             return self.schema.get_type(type_name)
@@ -1226,9 +1220,9 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         escaped = value.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
 
-    def generate_debug_impl(self, message: Message) -> List[str]:
+    def generate_debug_impl(self, message: Message) -> list[str]:
         """Generate a Debug impl that avoids recursive ref expansion."""
-        lines: List[str] = []
+        lines: list[str] = []
         type_name = self.get_type_identifier(message)
         lines.append(f"impl ::std::fmt::Debug for {type_name} {{")
         lines.append(
@@ -1273,9 +1267,9 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
     def generate_nested_module(
         self,
         message: Message,
-        parent_stack: Optional[List[Message]] = None,
+        parent_stack: list[Message] | None = None,
         indent: int = 0,
-    ) -> List[str]:
+    ) -> list[str]:
         """Generate a nested Rust module containing message nested types."""
         if (
             not message.nested_enums
@@ -1284,7 +1278,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         ):
             return []
 
-        lines: List[str] = []
+        lines: list[str] = []
         ind = self.indent_str * indent
         module_name = self.get_module_identifier(message)
         lines.append(f"{ind}pub mod {module_name} {{")
@@ -1326,8 +1320,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
     def generate_field(
         self,
         field: Field,
-        parent_stack: Optional[List[Message]] = None,
-    ) -> List[str]:
+        parent_stack: list[Message] | None = None,
+    ) -> list[str]:
         """Generate a struct field."""
         lines = []
 
@@ -1368,7 +1362,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
         return lines
 
-    def get_encoding_attr(self, field_type: FieldType) -> Optional[str]:
+    def get_encoding_attr(self, field_type: FieldType) -> str | None:
         """Return an encoding attribute for integer primitives."""
         if not isinstance(field_type, PrimitiveType):
             return None
@@ -1378,7 +1372,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             return "encoding = tagged"
         return None
 
-    def get_nested_field_attr(self, field_type: FieldType) -> Optional[str]:
+    def get_nested_field_attr(self, field_type: FieldType) -> str | None:
         """Return nested list/map field configuration."""
         if (
             isinstance(field_type, PrimitiveType)
@@ -1406,9 +1400,9 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
                 return f"map({', '.join(parts)})"
         return None
 
-    def get_payload_field_attr(self, field: Field) -> Optional[str]:
+    def get_payload_field_attr(self, field: Field) -> str | None:
         """Return Rust derive metadata for a union payload field."""
-        attrs: List[str] = []
+        attrs: list[str] = []
         nested_attr = self.get_nested_field_attr(field.field_type)
         if nested_attr:
             attrs.append(nested_attr)
@@ -1422,8 +1416,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             attrs.append("ref = true")
         return ", ".join(attrs) if attrs else None
 
-    def get_nested_value_attrs(self, field_type: FieldType) -> List[str]:
-        attrs: List[str] = []
+    def get_nested_value_attrs(self, field_type: FieldType) -> list[str]:
+        attrs: list[str] = []
         if isinstance(field_type, PrimitiveType):
             encoding = self.get_encoding_attr(field_type)
             if encoding:
@@ -1434,7 +1428,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         return attrs
 
     def is_union_type(
-        self, field_type: FieldType, parent_stack: Optional[List[Message]]
+        self, field_type: FieldType, parent_stack: list[Message] | None
     ) -> bool:
         if not isinstance(field_type, NamedType):
             return False
@@ -1457,7 +1451,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         ref: bool = False,
         element_optional: bool = False,
         element_ref: bool = False,
-        parent_stack: Optional[List[Message]] = None,
+        parent_stack: list[Message] | None = None,
         pointer_type: str = "::std::sync::Arc",
     ) -> str:
         """Generate Rust type string."""
@@ -1561,7 +1555,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         self,
         type_name: str,
         type_def: object,
-        parent_stack: Optional[List[Message]] = None,
+        parent_stack: list[Message] | None = None,
     ) -> str:
         """Resolve nested type names to module-qualified Rust identifiers."""
         current_parents = (parent_stack or [])[:-1]
@@ -1598,9 +1592,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             return True
         if isinstance(field.field_type, ListType) and field.element_ref:
             return True
-        if isinstance(field.field_type, MapType) and field.field_type.value_ref:
-            return True
-        return False
+        return isinstance(field.field_type, MapType) and field.field_type.value_ref
 
     def get_field_pointer_type(self, field: Field) -> str:
         if isinstance(field.field_type, ListType) and field.element_ref:
@@ -1618,7 +1610,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
             return "::fory::ArcWeak" if weak_ref else "::std::sync::Arc"
         return "::fory::RcWeak" if weak_ref else "::std::rc::Rc"
 
-    def generate_registration(self) -> List[str]:
+    def generate_registration(self) -> list[str]:
         """Generate the Fory registration function."""
         lines = []
 
@@ -1649,8 +1641,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
         return lines
 
-    def generate_fory_helpers(self) -> List[str]:
-        lines: List[str] = []
+    def generate_fory_helpers(self) -> list[str]:
+        lines: list[str] = []
         lines.append("mod detail {")
         lines.append("    use super::*;")
         lines.append("")
@@ -1679,9 +1671,9 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
     def generate_enum_registration(
         self,
-        lines: List[str],
+        lines: list[str],
         enum: Enum,
-        parent_stack: Optional[List[Message]],
+        parent_stack: list[Message] | None,
     ):
         """Generate registration code for an enum."""
         type_name = self.get_type_path(enum, parent_stack)
@@ -1697,9 +1689,9 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
     def generate_message_registration(
         self,
-        lines: List[str],
+        lines: list[str],
         message: Message,
-        parent_stack: Optional[List[Message]],
+        parent_stack: list[Message] | None,
     ):
         """Generate registration code for a message and its nested types."""
         type_name = self.get_type_path(message, parent_stack)
@@ -1733,9 +1725,9 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
 
     def generate_union_registration(
         self,
-        lines: List[str],
+        lines: list[str],
         union: Union,
-        parent_stack: Optional[List[Message]],
+        parent_stack: list[Message] | None,
     ):
         """Generate registration code for a union."""
         type_name = self.get_type_path(union, parent_stack)

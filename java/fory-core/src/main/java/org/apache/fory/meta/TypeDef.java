@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.CompatibleCodecBuilder;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.exception.DeserializationException;
@@ -78,12 +79,21 @@ public class TypeDef implements Serializable {
   // be same too.
   private final long id;
   private final byte[] encoded;
+  private final boolean readDataAlwaysAdvances;
 
   TypeDef(ClassSpec classSpec, List<FieldInfo> fieldsInfo, long id, byte[] encoded) {
     this.classSpec = classSpec;
     this.fieldsInfo = fieldsInfo;
     this.id = id;
     this.encoded = encoded;
+    boolean readDataAlwaysAdvances = false;
+    for (FieldInfo fieldInfo : fieldsInfo) {
+      if (fieldInfo.getFieldType().fieldReadAlwaysAdvances()) {
+        readDataAlwaysAdvances = true;
+        break;
+      }
+    }
+    this.readDataAlwaysAdvances = readDataAlwaysAdvances;
   }
 
   public static void skipTypeDef(MemoryBuffer buffer, long id) {
@@ -135,6 +145,12 @@ public class TypeDef implements Serializable {
 
   public int getFieldCount() {
     return fieldsInfo.size();
+  }
+
+  /** Returns whether this exact schema's {@code readData} operation always consumes input. */
+  @Internal
+  public boolean readDataAlwaysAdvances() {
+    return readDataAlwaysAdvances;
   }
 
   public boolean isNamed() {
@@ -335,6 +351,13 @@ public class TypeDef implements Serializable {
     return NativeTypeDefDecoder.decodeTypeDef((ClassResolver) resolver, buffer, header);
   }
 
+  /** Decode a native class definition without resolving its root class. */
+  @Internal
+  public static TypeDef readTypeDefWithoutRootClass(ClassResolver resolver, byte[] encoded) {
+    MemoryBuffer buffer = MemoryBuffer.fromByteArray(encoded);
+    return NativeTypeDefDecoder.decodeTypeDef(resolver, buffer, buffer.readInt64(), false);
+  }
+
   /** Read encoded class definition bytes from buffer. */
   public static byte[] readTypeDefBytes(TypeResolver resolver, MemoryBuffer buffer, long header) {
     if (resolver.isCrossLanguage()) {
@@ -367,8 +390,24 @@ public class TypeDef implements Serializable {
 
   private List<Descriptor> buildDescriptors(
       TypeResolver resolver, Class<?> cls, Collection<Descriptor> fieldDescriptors) {
+    boolean isXlang = resolver.isCrossLanguage();
     Map<String, Descriptor> descriptorsMap = new HashMap<>();
     Map<Short, Descriptor> fieldIdToDescriptorMap = new HashMap<>();
+    Map<String, Descriptor> xlangNameDescriptors = null;
+
+    if (isXlang) {
+      xlangNameDescriptors = new HashMap<>();
+      // Xlang TypeDef flattens inherited fields and does not encode their Java declaring class.
+      // Reuse the encoder's shadow/collision selection so name-based fields bind by the same
+      // language-neutral identifier on both the schema and local descriptor sides.
+      List<Descriptor> xlangDescriptors =
+          TypeDefEncoder.dropShadowedXlangNameFields(cls, new ArrayList<>(fieldDescriptors));
+      for (Descriptor descriptor : xlangDescriptors) {
+        if (!descriptor.hasForyFieldId()) {
+          xlangNameDescriptors.put(descriptor.getSnakeCaseName(), descriptor);
+        }
+      }
+    }
 
     for (Descriptor descriptor : fieldDescriptors) {
       String fullName = descriptor.getDeclaringClass() + "." + descriptor.getName();
@@ -390,7 +429,6 @@ public class TypeDef implements Serializable {
       }
     }
     List<Descriptor> descriptors = new ArrayList<>(fieldsInfo.size());
-    boolean isXlang = resolver.isCrossLanguage();
     Collection<Descriptor> remoteDescriptors = null;
     Map<String, Descriptor> remoteDescriptorsMap = null;
     Map<Short, Descriptor> remoteFieldIdToDescriptorMap = null;
@@ -400,15 +438,16 @@ public class TypeDef implements Serializable {
       Descriptor descriptor;
       if (fieldInfo.hasFieldId()) {
         descriptor = fieldIdToDescriptorMap.get(fieldInfo.getFieldId());
+      } else if (isXlang) {
+        descriptor =
+            xlangNameDescriptors.get(
+                StringUtils.lowerCamelToLowerUnderscore(fieldInfo.getFieldName()));
       } else {
         String fieldName = fieldInfo.getFieldName();
         String definedClass = fieldInfo.getDefinedClass();
+        // Match the wire declaring-class name before any compatibility fallback attempts to
+        // resolve that name as a class.
         descriptor = descriptorsMap.get(definedClass + "." + fieldName);
-        if (descriptor == null && isXlang) {
-          descriptor =
-              descriptorsMap.get(
-                  definedClass + "." + StringUtils.lowerCamelToLowerUnderscore(fieldName));
-        }
       }
       boolean remoteOnly = false;
       if (descriptor == null) {
@@ -490,7 +529,9 @@ public class TypeDef implements Serializable {
 
   private Collection<Descriptor> tryLoadRemoteDescriptors(
       TypeResolver resolver, Class<?> localCls) {
-    if (resolver.isCrossLanguage() || !(resolver instanceof ClassResolver)) {
+    if (resolver.isCrossLanguage()
+        || !(resolver instanceof ClassResolver)
+        || UnknownClass.isUnknowClass(localCls)) {
       return null;
     }
     try {
@@ -512,7 +553,9 @@ public class TypeDef implements Serializable {
 
   private Collection<Descriptor> tryLoadDescriptorsForClassName(
       TypeResolver resolver, String className, Class<?> localCls) {
-    if (resolver.isCrossLanguage() || !(resolver instanceof ClassResolver)) {
+    if (resolver.isCrossLanguage()
+        || !(resolver instanceof ClassResolver)
+        || UnknownClass.isUnknowClass(localCls)) {
       return null;
     }
     try {

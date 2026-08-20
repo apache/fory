@@ -25,6 +25,7 @@ publish = false
 
 [dependencies]
 fory = { path = "../../fory" }
+fory-external-model = { path = "../external-model" }
 
 [features]
 default = []

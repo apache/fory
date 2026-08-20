@@ -52,6 +52,7 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.CodegenSerializer;
 import org.apache.fory.serializer.CompatibleSerializer;
+import org.apache.fory.serializer.FieldGroups;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
@@ -155,6 +156,11 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
     this.defaultValueFields = defaultValueFields;
   }
 
+  @Override
+  protected boolean generatedReadDataAlwaysAdvances() {
+    return typeDef.readDataAlwaysAdvances();
+  }
+
   // Must be static to be shared across the whole process life.
   private static final Map<Long, Integer> idGenerator = new ConcurrentHashMap<>();
 
@@ -212,7 +218,9 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
     decodeCode = decodeCode == null ? "" : decodeCode;
     decodeCode =
         StringUtils.format(
-            "${bufferType} ${buffer} = ${readContext}.getBuffer();\n${code}",
+            "${prefix}${bufferType} ${buffer} = ${readContext}.getBuffer();\n${code}",
+            "prefix",
+            decodePrefixCode(),
             "bufferType",
             ctx.type(MemoryBuffer.class),
             "buffer",
@@ -341,6 +349,9 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
   protected Expression deserializeField(
       Expression buffer, Descriptor descriptor, Function<Expression, Expression> callback) {
     FieldConverter<?> converter = descriptor.getFieldConverter();
+    if (shouldSkipField(descriptor)) {
+      return skipField(descriptor);
+    }
     if (converter == null) {
       return super.deserializeField(buffer, descriptor, callback);
     }
@@ -349,6 +360,36 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
         targetValue != null,
         "Unsupported compatible scalar converter target " + FieldConverters.toType(converter));
     return new Expression.ListExpression(targetValue, callback.apply(targetValue));
+  }
+
+  @Override
+  protected Expression deserializeGroupForRecord(
+      List<Descriptor> group, Expression bean, Expression buffer) {
+    Expression.ListExpression expressions = new Expression.ListExpression();
+    for (Descriptor descriptor : group) {
+      if (shouldSkipField(descriptor)) {
+        expressions.add(skipField(descriptor));
+        continue;
+      }
+      TypeRef<?> castTypeRef = readValueTypeRef(descriptor);
+      Expression value = deserializeField(buffer, descriptor, expression -> expression);
+      expressions.add(setFieldValue(bean, descriptor, tryInlineCast(value, castTypeRef)));
+    }
+    return expressions;
+  }
+
+  private boolean shouldSkipField(Descriptor descriptor) {
+    return descriptor.getField() == null
+        && descriptor.getFieldConverter() == null
+        && !descriptor.getRawType().isPrimitive();
+  }
+
+  private Expression skipField(Descriptor descriptor) {
+    return new Expression.Invoke(
+        new Expression.Reference("this", TypeRef.of(GeneratedCompatibleSerializer.class), false),
+        "skipField",
+        readContextRef(),
+        remoteFieldInfo(descriptor));
   }
 
   @Override
@@ -521,13 +562,10 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
 
   public static SerializationFieldInfo[] buildRemoteFieldInfos(
       TypeResolver typeResolver, Class<?> cls, TypeDef typeDef) {
-    List<Descriptor> descriptors =
-        typeResolver.createDescriptorGrouper(typeDef, cls).getSortedDescriptors();
-    SerializationFieldInfo[] fieldInfos = new SerializationFieldInfo[descriptors.size()];
-    for (int i = 0; i < descriptors.size(); i++) {
-      fieldInfos[i] = new SerializationFieldInfo(typeResolver, descriptors.get(i));
-    }
-    return fieldInfos;
+    DescriptorGrouper grouper = typeResolver.createDescriptorGrouper(typeDef, cls);
+    // Generated skip helpers dispatch from SerializationFieldInfo.codecCategory. Preserve the
+    // grouper's category instead of rebuilding every remote field as OTHER.
+    return FieldGroups.buildFieldInfos(typeResolver, grouper).allFields;
   }
 
   public static SerializationFieldInfo[] buildLocalFieldInfosByRemoteOrder(

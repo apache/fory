@@ -1,12 +1,12 @@
 # Apache Fory™ Rust
 
-[![Crates.io](https://img.shields.io/badge/crates.io-v1.3.0-blue?logo=rust)](https://crates.io/crates/fory)
+[![Crates.io](https://img.shields.io/badge/crates.io-v1.6.1-blue?logo=rust)](https://crates.io/crates/fory)
 [![Documentation](https://docs.rs/fory/badge.svg)](https://docs.rs/fory)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/apache/fory/blob/main/LICENSE)
 
 **Apache Fory™** is a blazing fast multi-language serialization framework powered by **JIT compilation** and **zero-copy** techniques, providing up to **ultra-fast performance** while maintaining ease of use and safety.
 
-The Rust implementation provides versatile and high-performance serialization with automatic memory management and compile-time type safety. It defaults to xlang mode for cross-language payloads; use native mode with `.xlang(false)` for Rust-only traffic when you need Rust-specific object features such as trait objects and shared-reference patterns.
+The Rust implementation provides versatile and high-performance serialization with automatic memory management and compile-time type safety. It defaults to xlang mode for cross-language payloads; use native mode with `.xlang(false)` for Rust-only traffic and native-only data shapes. Trait objects and `dyn Any` also work in xlang mode when every selected concrete target has an xlang-compatible structural or EXT identity.
 
 ## Why Apache Fory™ Rust?
 
@@ -17,15 +17,15 @@ The Rust implementation provides versatile and high-performance serialization wi
 - **Polymorphic**: Serialize trait objects with `Box<dyn Trait>`, `Rc<dyn Trait>`, and `Arc<dyn Trait>`
 - **Schema Evolution**: Compatible mode for independent schema changes
 - **Reduced-Precision Types**: `Float16` and `BFloat16` scalars with `Vec<Float16>` / `Vec<BFloat16>` arrays
-- **Two Formats**: Object graph serialization and zero-copy row-based format
+- **Two Formats**: Object graph serialization and the Standard Row Format shared with Java, C++, and Python
 
 ## Crates
 
 | Crate                                                                       | Description                                               | Version                                       |
 | --------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------- |
-| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | User-facing API, runtime types, and derive macros         | [1.3.0](https://crates.io/crates/fory)        |
-| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Lower-level runtime crate for advanced integrations       | [1.3.0](https://crates.io/crates/fory-core)   |
-| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Lower-level procedural macro crate for direct runtime use | [1.3.0](https://crates.io/crates/fory-derive) |
+| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | User-facing API, runtime types, and derive macros         | [1.6.1](https://crates.io/crates/fory)        |
+| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Lower-level runtime crate for advanced integrations       | [1.6.1](https://crates.io/crates/fory-core)   |
+| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Lower-level procedural macro crate for direct runtime use | [1.6.1](https://crates.io/crates/fory-derive) |
 
 Most applications should depend on `fory` only. It re-exports the derive
 macros and the public runtime types needed by generated code. Use `fory-core`
@@ -38,7 +38,7 @@ Add Apache Fory™ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fory = "1.3.0"
+fory = "1.6.1"
 ```
 
 ### Basic Example
@@ -242,11 +242,14 @@ for child in &decoded.borrow().children {
 }
 ```
 
-### 3. Native-Mode Trait Object Serialization
+### 3. Trait Object Serialization
 
 Apache Fory™ supports polymorphic serialization through trait objects, enabling dynamic dispatch and type flexibility. This is essential for plugin systems, heterogeneous collections, and extensible architectures.
 
-The examples in this section use native mode because Rust trait objects and `dyn Any` dispatch are Rust runtime features.
+The examples in this section use native mode. The same trait-object and `dyn Any`
+carriers work in xlang mode when every selected concrete target has an
+xlang-compatible structural or EXT identity; the Rust trait or erased-carrier
+identity is not written to the wire.
 
 **Supported trait object types:**
 
@@ -265,17 +268,16 @@ the erased payload.
 Generic containers such as `Vec<T>`, `HashMap<K, V>`, `HashSet<T>`, and
 `LinkedList<T>` are not supported directly as top-level erased `Any` payloads
 behind any of those carriers. This also includes primitive vector encodings such
-as `Vec<u8>`. Wrap the container in a registered derived type when it needs to
-travel behind an erased `Any` carrier.
+as `Vec<u8>`. Wrap the container in a registered derived type, or register an
+exact-target custom serializer when an opaque EXT/NAMED_EXT representation is
+appropriate.
 
 **Basic Trait Object Serialization Example:**
 
 ```rust
-use fory::{Fory, register_trait_type};
-use fory::Serializer;
-use fory::{ForyEnum, ForyStruct, ForyUnion};
+use fory::{register_trait_type, Fory, ForyObject, ForyStruct};
 
-trait Animal: Serializer {
+trait Animal: ForyObject {
     fn speak(&self) -> String;
     fn name(&self) -> &str;
 }
@@ -399,15 +401,15 @@ Apache Fory™ supports three types of enum variants with full schema evolution 
 
 - Efficient varint encoding for variant ordinals
 - Schema evolution support (add/remove variants, add/remove fields)
-- Default variant support with `#[default]`
+- Default variant support with `#[fory(default)]`
 - Automatic type mismatch handling
 
 ```rust
-use fory::{Fory, ForyEnum, ForyStruct, ForyUnion};
+use fory::{Fory, ForyUnion};
 
-#[derive(Default, ForyStruct, Debug, PartialEq)]
+#[derive(ForyUnion, Debug, PartialEq)]
 enum Value {
-    #[default]
+    #[fory(default)]
     Null,
     Bool(bool),
     Number(f64),
@@ -433,7 +435,7 @@ assert_eq!(value, decoded);
 
 **Best practices:**
 
-- Always mark a default variant with `#[default]`
+- Always mark a default variant with `#[fory(default)]`
 - Named variants provide better evolution than unnamed
 - Use compatible mode for cross-version communication
 
@@ -470,77 +472,67 @@ let decoded: (i32, String, bool, Vec<i32>) = fory.deserialize(&bytes)?;
 assert_eq!(data, decoded);
 ```
 
-### 7. Native-Mode Custom Serializers
+### 7. Custom Serializers
 
-For types that don't support `#[derive(ForyStruct)]`, implement the `Serializer` trait manually. This is useful for:
+For a type that needs an opaque encoding, implement a custom `Serializer`. A
+separate serializer type can also target a type from another crate; see the
+[external-type serialization guide](../docs/object-serialization/rust/external-types.md).
+Custom serializers work in native and xlang modes when the chosen EXT identity
+and opaque body format are supported by every peer. The example below uses
+native mode.
 
-- External types from other crates
 - Types with special serialization requirements
 - Existing data format compatibility
-- Performance-critical custom encoding
+- Performance-critical opaque encoding
 
 ```rust
-use fory::{Fory, ReadContext, WriteContext, Serializer, ForyDefault, Error};
-use std::any::Any;
+use fory::{Error, Fory, ReadContext, Serializer, WriteContext};
 
-#[derive(Debug, PartialEq, Default)]
-struct CustomType {
+#[derive(Debug, PartialEq)]
+struct Point {
     value: i32,
-    name: String,
 }
 
-impl Serializer for CustomType {
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
-        context.writer.write_i32(self.value);
-        context.writer.write_var_u32(self.name.len() as u32);
-        context.writer.write_utf8_string(&self.name);
+impl Serializer for Point {
+    type Target = Self;
+
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        context.writer.write_i32(value.value);
+        Ok(())
     }
 
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        let value = context.reader.read_i32();
-        let len = context.reader.read_var_u32() as usize;
-        let name = context.reader.read_utf8_string(len);
-        Ok(Self { value, name })
-    }
-
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> u32 {
-        Self::fory_get_type_id(type_resolver)
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl ForyDefault for CustomType {
-    fn fory_default() -> Self {
-        Self::default()
+    fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        Ok(Self {
+            value: context.reader.read_i32()?,
+        })
     }
 }
 
 let mut fory = Fory::builder().xlang(false).build();
-fory.register_serializer::<CustomType>(100)?;
+fory.register_serializer::<Point>(100)?;
 
-let custom = CustomType {
+let point = Point {
     value: 42,
-    name: "test".to_string(),
 };
-let bytes = fory.serialize(&custom)?;
-let decoded: CustomType = fory.deserialize(&bytes)?;
-assert_eq!(custom, decoded);
+let bytes = fory.serialize(&point)?;
+let decoded: Point = fory.deserialize(&bytes)?;
+assert_eq!(point, decoded);
 ```
 
-### 7. Row-Based Serialization
+Custom serializers implement the body-only `write_data` and `read_data`
+operations. Fory's complete-value `write` and `read` operations add reference
+and type-information framing.
 
-Apache Fory™ provides a high-performance **row format** for zero-copy deserialization. Unlike traditional object serialization that reconstructs entire objects in memory, row format enables **random access** to fields directly from binary data without full deserialization.
+### 8. Standard Row Format
+
+Apache Fory™ Rust implements the Standard Row Format shared with Java, C++, and Python. `from_row` returns a borrowed view, so applications can validate and access selected fields or collection elements without reconstructing the complete value.
 
 **Key benefits:**
 
-- **Zero-copy access**: Read fields without allocating or copying data
-- **Partial deserialization**: Access only the fields you need
-- **Memory-mapped files**: Work with data larger than RAM
-- **Cache-friendly**: Sequential memory layout for better CPU cache utilization
-- **Lazy evaluation**: Defer expensive operations until field access
+- **Zero-copy access**: Read strings, binary values, and nested structures through borrowed views
+- **Selective access**: Read only the fields or collection elements the application needs
+- **Cross-language rows**: Exchange the same binary layout with Java, C++, and Python
+- **Bounds-checked reads**: Malformed offsets, sizes, counts, and UTF-8 return `Error`
 
 **When to use row format:**
 
@@ -548,74 +540,54 @@ Apache Fory™ provides a high-performance **row format** for zero-copy deserial
 - Large datasets where only a subset of fields is needed
 - Memory-constrained environments
 - High-throughput data pipelines
-- Reading from memory-mapped files or shared memory
-
-**How it works:**
-
-- Fields are encoded in a binary row with fixed offsets for primitives
-- Variable-length data (strings, collections) stored with offset pointers
-- Null bitmap tracks which fields are present
-- Nested structures supported through recursive row encoding
+- Standard Row Format interchange with other Fory implementations
 
 ```rust
-use fory::{to_row, from_row};
-use fory::ForyRow;
-use std::collections::BTreeMap;
+use fory::{from_row, to_row, Error, ForyRow, RowView};
 
 #[derive(ForyRow)]
 struct UserProfile {
     id: i64,
     username: String,
-    email: String,
+    email: Option<String>,
     scores: Vec<i32>,
-    preferences: BTreeMap<String, String>,
     is_active: bool,
 }
 
-let profile = UserProfile {
-    id: 12345,
-    username: "alice".to_string(),
-    email: "alice@example.com".to_string(),
-    scores: vec![95, 87, 92, 88],
-    preferences: BTreeMap::from([
-        ("theme".to_string(), "dark".to_string()),
-        ("language".to_string(), "en".to_string()),
-    ]),
-    is_active: true,
-};
+fn main() -> Result<(), Error> {
+    let bytes = to_row(&UserProfile {
+        id: 12345,
+        username: "alice".to_string(),
+        email: None,
+        scores: vec![95, 87, 92, 88],
+        is_active: true,
+    })?;
 
-// Serialize to row format
-let row_data = to_row(&profile).unwrap();
+    let row = from_row::<UserProfile>(&bytes)?;
+    assert_eq!(row.id()?, 12345);
+    assert_eq!(row.username()?, "alice");
+    assert_eq!(row.email()?, None);
+    assert!(row.is_active()?);
 
-// Zero-copy deserialization - no object allocation!
-let row = from_row::<UserProfile>(&row_data);
-
-// Access fields directly from binary data
-assert_eq!(row.id(), 12345);
-assert_eq!(row.username(), "alice");
-assert_eq!(row.email(), "alice@example.com");
-assert_eq!(row.is_active(), true);
-
-// Access collections efficiently
-let scores = row.scores();
-assert_eq!(scores.size(), 4);
-assert_eq!(scores.get(0).unwrap(), 95);
-assert_eq!(scores.get(1).unwrap(), 87);
-
-let prefs = row.preferences();
-assert_eq!(prefs.keys().size(), 2);
-assert_eq!(prefs.keys().get(0).unwrap(), "language");
-assert_eq!(prefs.values().get(0).unwrap(), "en");
+    let scores = row.scores()?;
+    assert_eq!(scores.len(), 4);
+    assert_eq!(scores.get(1)?, 87);
+    assert_eq!(
+        scores.iter().collect::<Result<Vec<_>, _>>()?,
+        [95, 87, 92, 88]
+    );
+    assert_eq!(row.as_bytes(), bytes);
+    Ok(())
+}
 ```
 
-**Performance comparison:**
+`#[derive(ForyRow)]` supports named structs, including generic structs, and encodes fields in source declaration order. `Option<T>` supplies field or array-element nullability without changing `T`'s slot width. Generated field methods, array access and iteration, and map indexed access return `Result`, validating variable ranges and UTF-8 when accessed. Immutable views are cheap `Copy` values, and the `RowView` trait exposes their exact encoded slice through `as_bytes`.
 
-| Operation            | Object Format                 | Row Format                      |
-| -------------------- | ----------------------------- | ------------------------------- |
-| Full deserialization | Allocates all objects         | Zero allocation                 |
-| Single field access  | Full deserialization required | Direct offset read              |
-| Memory usage         | Full object graph in memory   | Only accessed fields in memory  |
-| Suitable for         | Small objects, full access    | Large objects, selective access |
+Supported fixed-width values are `bool`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`, `Date`, `Timestamp`, and `Duration`. Supported variable-width values are UTF-8 `String`/`&str`, binary `Vec<u8>`/`&[u8]`, fixed and dynamic arrays over supported element types, `BTreeMap`, nested derived structs, and `Option<T>`. `Vec<u8>` uses the binary encoding rather than the Standard Array encoding. `Float16` and `Decimal` are not supported by Row Format because the standard specification does not define complete interoperable encodings for them.
+
+Standard rows use an 8-byte-aligned null bitmap and one 8-byte slot per struct field. Fixed-width fields are stored little-endian in their slots. Variable-width slots encode the little-endian `u64` value `(relative_offset << 32) | size`; variable bodies and array slot regions have zero padding to 8-byte alignment. Standard arrays use natural-width storage for fixed elements, and maps contain complete key and value arrays.
+
+`to_row` accepts derived structs, supported arrays, and `BTreeMap` roots. `to_row_into` writes the same bytes into a reusable caller-owned `Vec<u8>` and clears partial output on error. Scalar, string, binary, and `Option<T>` values are field or element values rather than standalone roots. See the [Rust Row Format guide](../docs/row-format/rust.md) and [Row Format specification](../docs/specification/row_format_spec.md) for details.
 
 ## Cross-Language Serialization
 
@@ -640,7 +612,7 @@ See [xlang_type_mapping.md](https://fory.apache.org/docs/specification/xlang_typ
 
 Apache Fory™ Rust is designed for maximum performance:
 
-- **Zero-Copy Deserialization**: Row format enables direct memory access without copying
+- **Selective Zero-Copy Access**: Row Format returns borrowed views for direct field and element access
 - **Buffer Pre-allocation**: Minimizes memory allocations during serialization
 - **Compact Encoding**: Variable-length encoding for space efficiency
 - **Little-Endian**: Optimized for modern CPU architectures
@@ -650,16 +622,16 @@ Run benchmarks:
 
 ```bash
 cd benchmarks/rust
-cargo bench
+./run.sh
 ```
 
 ## Documentation
 
-- **[User Guide](https://fory.apache.org/docs/guide/rust/)** - Comprehensive user documentation
+- **[User Guide](https://fory.apache.org/docs/object-serialization/rust/)** - Comprehensive user documentation
 - **[API Documentation](https://docs.rs/fory)** - Complete API reference
 - **[Protocol Specification](https://fory.apache.org/docs/specification/xlang_serialization_spec)** - Serialization protocol details
 - **[Type Mapping](https://fory.apache.org/docs/specification/xlang_type_mapping)** - Cross-language type mappings
-- **[Source](https://github.com/apache/fory/tree/main/docs/guide/rust)** - Source code for doc
+- **[Source](https://github.com/apache/fory/tree/main/docs/object-serialization/rust)** - Source code for doc
 
 ## Use Cases
 
@@ -671,7 +643,7 @@ cargo bench
 - Schema evolution with compatible mode
 - Graph-like data structures with circular references
 
-### Row-Based Serialization
+### Standard Row Format
 
 - High-throughput data processing
 - Analytics workloads requiring fast field access

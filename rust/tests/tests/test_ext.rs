@@ -17,8 +17,7 @@
 
 use fory_core::error::Error;
 use fory_core::fory::Fory;
-use fory_core::resolver::TypeResolver;
-use fory_core::serializer::{ForyDefault, Serializer};
+use fory_core::serializer::Serializer;
 use fory_core::{ReadContext, WriteContext};
 use fory_derive::ForyStruct;
 
@@ -46,40 +45,25 @@ fn test_duplicate_impl() {
 
 #[test]
 fn test_use() {
-    use fory_core::{read_data, write_data};
     #[derive(Debug, PartialEq)]
     struct Item {
         f1: i32,
         f2: i8,
     }
 
-    impl ForyDefault for Item {
-        fn fory_default() -> Self {
-            Self { f1: 0, f2: 0 }
-        }
-    }
-
     impl Serializer for Item {
-        fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-            write_data(&self.f1, context)
+        type Target = Self;
+
+        fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_i32(value.f1);
+            Ok(())
         }
 
-        fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
             Ok(Self {
-                f1: read_data(context)?,
+                f1: context.reader.read_i32()?,
                 f2: 0,
             })
-        }
-
-        fn fory_type_id_dyn(
-            &self,
-            type_resolver: &TypeResolver,
-        ) -> Result<fory_core::TypeId, fory_core::error::Error> {
-            Self::fory_get_type_id(type_resolver)
-        }
-
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
         }
     }
     let mut fory = Fory::builder().compatible(true).xlang(true).build();

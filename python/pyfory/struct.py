@@ -24,6 +24,8 @@ import enum
 import inspect
 import logging
 import os
+import reprlib
+import struct
 import sys
 import typing
 from typing import List, Dict
@@ -80,6 +82,13 @@ from pyfory import (
 
 logger = logging.getLogger(__name__)
 
+_REFERENCE_BYTES = struct.calcsize("P")
+# Lower-bound shallow owner costs for retained Python struct shapes. Normal objects retain an
+# instance dict for field storage; slotted objects store field references in object slots.
+_SLOTTED_STRUCT_OWNER_BYTES = 4 * _REFERENCE_BYTES
+_DICT_BACKED_STRUCT_OWNER_BYTES = 4 * _REFERENCE_BYTES
+_INSTANCE_DICT_OWNER_BYTES = 8 * _REFERENCE_BYTES
+
 _MISSING_DEFAULT_INT_TYPES = {
     int,
     TypeId.INT8,
@@ -105,6 +114,59 @@ _MISSING_DEFAULT_FLOAT_TYPES = {
     TypeId.FLOAT32,
     TypeId.FLOAT64,
 }
+
+_BASIC_FIELD_SERIALIZERS = (
+    BooleanSerializer,
+    ByteSerializer,
+    Int16Serializer,
+    Int32Serializer,
+    Int64Serializer,
+    Float32Serializer,
+    Float64Serializer,
+    StringSerializer,
+)
+
+
+class UnknownStruct:
+    """Framework-owned value for a checked remote Struct without a local class."""
+
+    __slots__ = ("type_def", "_values")
+
+    def __init__(self, type_def):
+        self.type_def = type_def
+        self._values = {}
+
+    def __getitem__(self, key):
+        return self._values[key]
+
+    def get(self, key, default=None):
+        return self._values.get(key, default)
+
+    def items(self):
+        return self._values.items()
+
+    def keys(self):
+        return self._values.keys()
+
+    def values(self):
+        return self._values.values()
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self):
+        return len(self._values)
+
+    def __contains__(self, key):
+        return key in self._values
+
+    @reprlib.recursive_repr()
+    def __repr__(self):
+        type_def = self.type_def
+        namespace = getattr(type_def, "namespace", "")
+        typename = getattr(type_def, "typename", "")
+        name = f"{namespace}.{typename}" if namespace else typename
+        return f"UnknownStruct({name!r}, {self._values!r})"
 
 
 @dataclasses.dataclass
@@ -132,6 +194,149 @@ class FieldInfo:
     field_type: object = None  # Recursive TypeDef schema node for this field
     assign: bool = True  # Whether a remote field value may be assigned locally
     validation_field_type: object = None  # Local schema used for compatible-read validation
+
+
+class UnknownStructSerializer(Serializer):
+    """Schema-driven serializer for the fixed :class:`UnknownStruct` owner."""
+
+    __slots__ = (
+        "type_def",
+        "_field_names",
+        "_field_types",
+        "_field_serializers",
+        "_basic_fields",
+        "_dynamic_fields",
+        "_serializers_by_type_def",
+        "_graph_memory_bytes",
+    )
+
+    def __init__(self, type_resolver, type_def=None):
+        super().__init__(type_resolver, UnknownStruct)
+        self.type_def = type_def
+        self._field_names = ()
+        self._field_types = ()
+        self._field_serializers = ()
+        self._basic_fields = ()
+        self._dynamic_fields = ()
+        self._serializers_by_type_def = {} if type_def is None else None
+        self._graph_memory_bytes = 0
+        if type_def is None:
+            return
+        self._validate_type_def(type_def)
+        self._field_names = tuple(field.name for field in type_def.fields)
+        self._field_types = tuple(field.field_type for field in type_def.fields)
+        serializers = tuple(field_type.create_serializer(type_resolver, None) for field_type in self._field_types)
+        for field_type, serializer in zip(self._field_types, serializers):
+            if serializer is None and not is_polymorphic_type(field_type.type_id):
+                raise TypeNotCompatibleError(f"Missing compatible field codec for type id {field_type.type_id}")
+        self._field_serializers = serializers
+        self._dynamic_fields = tuple(is_polymorphic_type(field_type.type_id) for field_type in self._field_types)
+        self._basic_fields = tuple(
+            not dynamic and isinstance(serializer, _BASIC_FIELD_SERIALIZERS) for dynamic, serializer in zip(self._dynamic_fields, serializers)
+        )
+        self.read_data_always_advances = any(
+            field_type.is_nullable or field_type.is_tracking_ref or dynamic or (serializer is not None and serializer.read_data_always_advances)
+            for field_type, serializer, dynamic in zip(self._field_types, serializers, self._dynamic_fields)
+        )
+        field_count = len(self._field_names)
+        self._graph_memory_bytes = (
+            _SLOTTED_STRUCT_OWNER_BYTES + 2 * _REFERENCE_BYTES + _INSTANCE_DICT_OWNER_BYTES + field_count * 2 * _REFERENCE_BYTES
+        )
+
+    @staticmethod
+    def _validate_type_def(type_def):
+        from pyfory.meta.typedef import TypeDef, is_struct_typedef_kind
+
+        if type(type_def) is not TypeDef:
+            raise TypeError("UnknownStruct requires a framework TypeDef")
+        if not is_struct_typedef_kind(type_def.type_id) or not TypeId.is_type_share_meta(type_def.type_id):
+            raise TypeError("UnknownStruct requires a shared Struct TypeDef")
+        if type(type_def.encoded) is not bytes or len(type_def.encoded) < 8:
+            raise TypeError("UnknownStruct requires an encoded TypeDef")
+
+    def _serializer_for(self, type_def):
+        self._validate_type_def(type_def)
+        serializer = self._serializers_by_type_def.get(type_def.encoded)
+        if serializer is None:
+            serializer = UnknownStructSerializer(self.type_resolver, type_def)
+            self._serializers_by_type_def[type_def.encoded] = serializer
+        return serializer
+
+    def _check_value(self, value):
+        if type(value) is not UnknownStruct:
+            raise TypeError("UnknownStructSerializer requires an UnknownStruct value")
+        if value.type_def.encoded != self.type_def.encoded:
+            raise TypeError("UnknownStruct value does not match serializer TypeDef")
+        values = value._values
+        if type(values) is not dict or len(values) != len(self._field_names):
+            raise TypeError("UnknownStruct fields do not match its TypeDef")
+        for name in self._field_names:
+            if name not in values:
+                raise TypeError(f"UnknownStruct field {name!r} is missing")
+        return values
+
+    def write(self, write_context, value):
+        if self.type_def is None:
+            if type(value) is not UnknownStruct:
+                raise TypeError("UnknownStructSerializer requires an UnknownStruct value")
+            serializer = self._serializer_for(value.type_def)
+            values = serializer._check_value(value)
+            self.type_resolver._write_unknown_struct_type_info(write_context, serializer.type_def)
+            serializer._write_fields(write_context, values)
+            return
+        values = self._check_value(value)
+        self._write_fields(write_context, values)
+
+    def _write_fields(self, write_context, values):
+        for index, name in enumerate(self._field_names):
+            field_type = self._field_types[index]
+            serializer = self._field_serializers[index]
+            value = values[name]
+            dynamic = self._dynamic_fields[index]
+            if self._basic_fields[index]:
+                if field_type.is_nullable:
+                    if value is None:
+                        write_context.write_int8(NULL_FLAG)
+                        continue
+                    write_context.write_int8(NOT_NULL_VALUE_FLAG)
+                serializer.write(write_context, value)
+            elif field_type.is_tracking_ref:
+                write_context.write_ref(value, serializer=None if dynamic else serializer)
+            else:
+                if field_type.is_nullable:
+                    if value is None:
+                        write_context.write_int8(NULL_FLAG)
+                        continue
+                    write_context.write_int8(NOT_NULL_VALUE_FLAG)
+                write_context.write_no_ref(value, serializer=None if dynamic else serializer)
+        write_context.try_flush()
+
+    def read(self, read_context):
+        if self.type_def is None:
+            raise TypeError("Generic UnknownStruct serializer cannot read a value body")
+        owner = UnknownStruct(self.type_def)
+        read_context.reserve_graph_memory(self._graph_memory_bytes)
+        # Publish the exact final owner before reading children. Ordinary
+        # RefFlag values then resolve cycles without alternate reference state.
+        read_context.reference(owner)
+        values = owner._values
+        for index, name in enumerate(self._field_names):
+            field_type = self._field_types[index]
+            serializer = self._field_serializers[index]
+            dynamic = self._dynamic_fields[index]
+            if self._basic_fields[index]:
+                if field_type.is_nullable and read_context.read_int8() == NULL_FLAG:
+                    value = None
+                else:
+                    value = serializer.read(read_context)
+            elif field_type.is_tracking_ref:
+                value = read_context.read_ref(serializer=None if dynamic else serializer)
+            elif field_type.is_nullable and read_context.read_int8() == NULL_FLAG:
+                value = None
+            else:
+                value = read_context.read_no_ref(serializer=None if dynamic else serializer)
+            values[name] = value
+        return owner
 
 
 def _is_abstract_type(type_hint: type) -> bool:
@@ -375,16 +580,7 @@ def build_default_values_factory(type_resolver, type_hints, dc_fields=()):
 
 
 class DataClassSerializer(Serializer):
-    _BASIC_SERIALIZERS = (
-        BooleanSerializer,
-        ByteSerializer,
-        Int16Serializer,
-        Int32Serializer,
-        Int64Serializer,
-        Float32Serializer,
-        Float64Serializer,
-        StringSerializer,
-    )
+    _BASIC_SERIALIZERS = _BASIC_FIELD_SERIALIZERS
 
     def __init__(
         self,
@@ -496,6 +692,19 @@ class DataClassSerializer(Serializer):
             and isinstance(self._serializers[index], self._BASIC_SERIALIZERS)
             for index, field_name in enumerate(self._field_names)
         ]
+        self.read_data_always_advances = not self.type_resolver.compatible or any(
+            self._basic_field_flags[index]
+            or self._nullable_fields.get(field_name, False)
+            or self._ref_fields.get(field_name, False)
+            or self._dynamic_fields.get(field_name, False)
+            or (self._serializers[index] is not None and self._serializers[index].read_data_always_advances)
+            for index, field_name in enumerate(self._field_names)
+        )
+        if self._has_slots:
+            self._graph_memory_bytes = _SLOTTED_STRUCT_OWNER_BYTES + len(self._field_names) * _REFERENCE_BYTES
+        else:
+            # Dict-backed instances retain an instance dict with key and value references per field.
+            self._graph_memory_bytes = _DICT_BACKED_STRUCT_OWNER_BYTES + _INSTANCE_DICT_OWNER_BYTES + len(self._field_names) * 2 * _REFERENCE_BYTES
 
     def _get_field_names(self, clz):
         if hasattr(clz, "__dict__"):
@@ -651,6 +860,7 @@ class DataClassSerializer(Serializer):
                 raise TypeNotCompatibleError(
                     f"Hash {hash_} is not consistent with {self._hash} for type {self.type_}",
                 )
+        read_context.reserve_graph_memory(self._graph_memory_bytes)
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         obj_dict = obj.__dict__ if not self._has_slots else None
@@ -663,7 +873,7 @@ class DataClassSerializer(Serializer):
                 is_basic = self._basic_field_flags[index]
                 is_compatible_scalar_field = self._compatible_scalar_field_flags[index]
                 if field_name not in self._current_class_field_names or not self._assign_fields[index]:
-                    self._read_missing_field_value(
+                    self._read_field_value(
                         read_context,
                         serializer,
                         is_nullable,
@@ -748,33 +958,7 @@ class DataClassSerializer(Serializer):
                     obj_dict[field_name] = value
                 else:
                     setattr(obj, field_name, value)
-        read_context.shrink_input_buffer()
         return obj
-
-    def _read_missing_field_value(
-        self,
-        read_context,
-        serializer,
-        is_nullable,
-        is_dynamic,
-        is_basic,
-        is_tracking_ref,
-        is_compatible_scalar_field,
-    ):
-        previous = self.type_resolver._allow_unregistered_typedef
-        self.type_resolver._allow_unregistered_typedef = True
-        try:
-            return self._read_field_value(
-                read_context,
-                serializer,
-                is_nullable,
-                is_dynamic,
-                is_basic,
-                is_tracking_ref,
-                is_compatible_scalar_field,
-            )
-        finally:
-            self.type_resolver._allow_unregistered_typedef = previous
 
 
 class DataClassStubSerializer(DataClassSerializer):

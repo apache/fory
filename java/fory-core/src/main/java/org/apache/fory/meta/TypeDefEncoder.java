@@ -75,8 +75,7 @@ class TypeDefEncoder {
         resolver, type, buildFieldsInfoFromDescriptors(resolver, type, descriptors));
   }
 
-  private static List<Descriptor> dropShadowedXlangNameFields(
-      Class<?> type, List<Descriptor> descriptors) {
+  static List<Descriptor> dropShadowedXlangNameFields(Class<?> type, List<Descriptor> descriptors) {
     List<Descriptor> result = new ArrayList<>(descriptors.size());
     Map<String, Integer> nameFieldIndex = new HashMap<>();
     for (Descriptor descriptor : descriptors) {

@@ -15,219 +15,410 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use super::codec::{
+    codec_read_type_info, codec_read_type_info_static, codec_ref_mode, codec_write_type_info,
+    field_ref_mode, Codec,
+};
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::{RefFlag, RefMode};
-use crate::resolver::{TypeInfo, TypeResolver};
-use crate::serializer::{ForyDefault, Serializer};
+use crate::meta::FieldType;
+use crate::resolver::{RefFlag, RefMode, TypeInfo, TypeResolver};
+use crate::serializer::Serializer;
 use crate::type_id::TypeId;
+use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
-impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> {
-    fn fory_is_shared_ref() -> bool {
-        true
+pub struct ArcCodec<T, C, const NULLABLE: bool, const TRACK_REF: bool>(PhantomData<(T, C)>);
+
+#[cold]
+#[inline(never)]
+fn shared_arc_child() -> Error {
+    Error::not_allowed("Arc<T> where T is a shared ref type is not allowed")
+}
+
+#[cold]
+#[inline(never)]
+fn missing_arc_ref(ref_id: u32) -> Error {
+    Error::invalid_ref(format!("Arc reference {ref_id} not found"))
+}
+
+#[inline(always)]
+fn check_child<T: 'static, C: Serializer<Target = T>>() -> Result<(), Error> {
+    // Nested shared owners would compete for reference framing and identity
+    // while both wrappers remain transparent on the wire.
+    if C::IS_SHARED_REF {
+        Err(shared_arc_child())
+    } else {
+        Ok(())
     }
-    fn fory_write(
-        &self,
+}
+
+#[inline(always)]
+fn reserve_arc<T>(context: &mut ReadContext) -> Result<(), Error> {
+    let bytes = std::mem::size_of::<T>();
+    if bytes != 0 {
+        context.reserve_graph_memory(bytes)?;
+    }
+    Ok(())
+}
+
+#[inline(always)]
+fn write_inner<T: 'static, C: Serializer<Target = T>>(
+    value: &T,
+    context: &mut WriteContext,
+    write_type_info: bool,
+) -> Result<(), Error> {
+    check_child::<T, C>()?;
+    C::write(value, context, RefMode::None, write_type_info)
+}
+
+#[inline(always)]
+fn write_inner_with_type_info<T: 'static, C: Serializer<Target = T>>(
+    value: &T,
+    context: &mut WriteContext,
+    type_info: &Rc<TypeInfo>,
+) -> Result<(), Error> {
+    check_child::<T, C>()?;
+    C::write_with_type_info(value, context, RefMode::None, type_info)
+}
+
+#[inline(always)]
+fn write_inner_field<T: 'static, C: Codec<T>>(
+    value: &T,
+    context: &mut WriteContext,
+    write_type_info: bool,
+    has_generics: bool,
+) -> Result<(), Error> {
+    check_child::<T, C>()?;
+    C::write_with_mode(value, context, RefMode::None, write_type_info, has_generics)
+}
+
+#[inline(always)]
+fn write_inner_field_with_type_info<T: 'static, C: Codec<T>>(
+    value: &T,
+    context: &mut WriteContext,
+    type_info: &Rc<TypeInfo>,
+    has_generics: bool,
+) -> Result<(), Error> {
+    check_child::<T, C>()?;
+    <C as Codec<T>>::write_with_type_info(value, context, RefMode::None, type_info, has_generics)
+}
+
+#[inline(always)]
+fn write_ref<T>(value: &Arc<T>, context: &mut WriteContext, ref_mode: RefMode) -> bool {
+    match ref_mode {
+        RefMode::None => true,
+        RefMode::NullOnly => {
+            context.writer.write_i8(RefFlag::NotNullValue as i8);
+            true
+        }
+        RefMode::Tracking => !context
+            .ref_writer
+            .try_write_arc_ref(&mut context.writer, value),
+    }
+}
+
+#[inline(always)]
+fn read_inner<T: 'static, C: Serializer<Target = T>>(
+    context: &mut ReadContext,
+    read_type_info: bool,
+    type_info: Option<&Rc<TypeInfo>>,
+) -> Result<T, Error> {
+    check_child::<T, C>()?;
+    reserve_arc::<T>(context)?;
+    if let Some(type_info) = type_info {
+        return C::read_with_type_info(context, RefMode::None, type_info);
+    }
+    if read_type_info {
+        C::read_type_info(context)?;
+    }
+    C::read_data(context)
+}
+
+#[inline(always)]
+fn read_inner_with_type<T: 'static, C: Codec<T>>(
+    context: &mut ReadContext,
+    remote_field_type: &FieldType,
+) -> Result<T, Error> {
+    check_child::<T, C>()?;
+    reserve_arc::<T>(context)?;
+    // The Arc envelope owns only reference framing. A compatible
+    // metadata-bearing child still owns its inline TypeInfo before its body,
+    // while declared carrier children consume the remote schema directly.
+    if codec_read_type_info::<T, C>(context, remote_field_type) {
+        return C::read(context, RefMode::None, true);
+    }
+    C::read_data_with_type(context, remote_field_type)
+}
+
+impl<T, C, const NULLABLE: bool, const TRACK_REF: bool> Serializer
+    for ArcCodec<T, C, NULLABLE, TRACK_REF>
+where
+    T: Send + Sync + 'static,
+    C: Serializer<Target = T>,
+{
+    type Target = Arc<T>;
+
+    #[inline(always)]
+    fn reserved_space() -> usize {
+        4
+    }
+
+    #[inline(always)]
+    fn write_data(value: &Arc<T>, context: &mut WriteContext) -> Result<(), Error> {
+        write_inner::<T, C>(value, context, false)
+    }
+
+    #[inline(always)]
+    fn read_data(context: &mut ReadContext) -> Result<Arc<T>, Error> {
+        Ok(Arc::new(read_inner::<T, C>(context, false, None)?))
+    }
+
+    #[inline(always)]
+    fn write(
+        value: &Arc<T>,
+        context: &mut WriteContext,
+        ref_mode: RefMode,
+        write_type_info: bool,
+    ) -> Result<(), Error> {
+        if !write_ref(value, context, ref_mode) {
+            return Ok(());
+        }
+        write_inner::<T, C>(value, context, write_type_info)
+    }
+
+    #[inline(always)]
+    fn write_type_info_value(
+        context: &mut WriteContext,
+        target_type_id: std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        C::write_type_info_value(context, target_type_id)
+    }
+
+    #[inline(always)]
+    fn write_with_type_info(
+        value: &Arc<T>,
+        context: &mut WriteContext,
+        ref_mode: RefMode,
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<(), Error> {
+        if !write_ref(value, context, ref_mode) {
+            return Ok(());
+        }
+        write_inner_with_type_info::<T, C>(value, context, type_info)
+    }
+
+    #[inline(always)]
+    fn read(
+        context: &mut ReadContext,
+        ref_mode: RefMode,
+        read_type_info: bool,
+    ) -> Result<Arc<T>, Error> {
+        read_arc::<T, C>(context, ref_mode, read_type_info, None)
+    }
+
+    #[inline(always)]
+    fn read_with_type_info(
+        context: &mut ReadContext,
+        ref_mode: RefMode,
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<Arc<T>, Error> {
+        read_arc::<T, C>(context, ref_mode, false, Some(type_info))
+    }
+
+    #[inline(always)]
+    fn default_value(context: &mut ReadContext) -> Result<Arc<T>, Error> {
+        check_child::<T, C>()?;
+        reserve_arc::<T>(context)?;
+        Ok(Arc::new(C::default_value(context)?))
+    }
+
+    #[inline(always)]
+    fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        C::write_type_info(context)
+    }
+
+    #[inline(always)]
+    fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        C::read_type_info(context)
+    }
+
+    #[inline(always)]
+    fn static_type_id() -> TypeId {
+        C::static_type_id()
+    }
+
+    const IS_POLYMORPHIC: bool = C::IS_POLYMORPHIC;
+
+    const IS_SHARED_REF: bool = true;
+
+    const IS_WRAPPER: bool = true;
+
+    const REQUIRES_SCOPED_ACCESS: bool = C::REQUIRES_SCOPED_ACCESS;
+
+    #[inline(always)]
+    fn dynamic_type_id(value: &Arc<T>) -> Result<Option<std::any::TypeId>, Error> {
+        C::dynamic_type_id(value)
+    }
+}
+
+impl<T, C, const NULLABLE: bool, const TRACK_REF: bool> Codec<Arc<T>>
+    for ArcCodec<T, C, NULLABLE, TRACK_REF>
+where
+    T: Send + Sync + 'static,
+    C: Codec<T>,
+{
+    #[inline(always)]
+    fn field_type(type_resolver: &TypeResolver) -> Result<FieldType, Error> {
+        let mut field_type = C::field_type(type_resolver)?;
+        field_type.nullable = NULLABLE;
+        field_type.track_ref = TRACK_REF;
+        Ok(field_type)
+    }
+
+    #[inline(always)]
+    fn write_field(value: &Arc<T>, context: &mut WriteContext) -> Result<(), Error> {
+        Self::write_with_mode(
+            value,
+            context,
+            codec_ref_mode::<T, C, NULLABLE, TRACK_REF>(),
+            codec_write_type_info::<T, C>(context),
+            true,
+        )
+    }
+
+    #[inline(always)]
+    fn read_field(context: &mut ReadContext) -> Result<Arc<T>, Error> {
+        <Self as Serializer>::read(
+            context,
+            codec_ref_mode::<T, C, NULLABLE, TRACK_REF>(),
+            codec_read_type_info_static::<T, C>(context),
+        )
+    }
+
+    #[inline(always)]
+    fn read_data_with_type(
+        context: &mut ReadContext,
+        remote_data_type: &FieldType,
+    ) -> Result<Arc<T>, Error> {
+        check_child::<T, C>()?;
+        reserve_arc::<T>(context)?;
+        Ok(Arc::new(C::read_data_with_type(context, remote_data_type)?))
+    }
+
+    #[inline(always)]
+    fn read_field_with_type(
+        context: &mut ReadContext,
+        remote_field_type: &FieldType,
+    ) -> Result<Arc<T>, Error> {
+        read_arc_with_type::<T, C>(
+            context,
+            field_ref_mode(remote_field_type),
+            remote_field_type,
+        )
+    }
+
+    #[inline(always)]
+    fn write_with_mode(
+        value: &Arc<T>,
         context: &mut WriteContext,
         ref_mode: RefMode,
         write_type_info: bool,
         has_generics: bool,
     ) -> Result<(), Error> {
-        match ref_mode {
-            RefMode::None => {
-                // No ref flag - write inner directly
-                if write_type_info {
-                    T::fory_write_type_info(context)?;
-                }
-                T::fory_write_data_generic(self, context, has_generics)
-            }
-            RefMode::NullOnly => {
-                // Only null check, no ref tracking
-                context.writer.write_i8(RefFlag::NotNullValue as i8);
-                if write_type_info {
-                    T::fory_write_type_info(context)?;
-                }
-                T::fory_write_data_generic(self, context, has_generics)
-            }
-            RefMode::Tracking => {
-                // Full ref tracking with RefWriter
-                if context
-                    .ref_writer
-                    .try_write_arc_ref(&mut context.writer, self)
-                {
-                    // Already written as ref - done
-                    return Ok(());
-                }
-                // First occurrence - write type info and data
-                if write_type_info {
-                    T::fory_write_type_info(context)?;
-                }
-                T::fory_write_data_generic(self, context, has_generics)
-            }
+        if !write_ref(value, context, ref_mode) {
+            return Ok(());
         }
+        write_inner_field::<T, C>(value, context, write_type_info, has_generics)
     }
 
-    fn fory_write_data_generic(
-        &self,
+    #[inline(always)]
+    fn write_with_type_info(
+        value: &Arc<T>,
         context: &mut WriteContext,
+        ref_mode: RefMode,
+        type_info: &Rc<TypeInfo>,
         has_generics: bool,
     ) -> Result<(), Error> {
-        if T::fory_is_shared_ref() {
-            return Err(Error::not_allowed(
-                "Arc<T> where T is a shared ref type is not allowed for serialization.",
-            ));
+        if !write_ref(value, context, ref_mode) {
+            return Ok(());
         }
-        T::fory_write_data_generic(&**self, context, has_generics)
+        write_inner_field_with_type_info::<T, C>(value, context, type_info, has_generics)
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        self.fory_write_data_generic(context, false)
-    }
-
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        T::fory_write_type_info(context)
-    }
-
-    fn fory_read(
+    #[inline(always)]
+    fn read_type_info_value(
         context: &mut ReadContext,
-        ref_mode: RefMode,
-        read_type_info: bool,
-    ) -> Result<Self, Error> {
-        read_arc(context, ref_mode, read_type_info, None)
-    }
-
-    fn fory_read_with_type_info(
-        context: &mut ReadContext,
-        ref_mode: RefMode,
-        typeinfo: Rc<TypeInfo>,
-    ) -> Result<Self, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        read_arc(context, ref_mode, false, Some(typeinfo))
-    }
-
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        if T::fory_is_shared_ref() {
-            return Err(Error::not_allowed(
-                "Arc<T> where T is a shared ref type is not allowed for deserialization.",
-            ));
-        }
-        let inner = T::fory_read_data(context)?;
-        Ok(Arc::new(inner))
-    }
-
-    #[inline]
-    fn fory_read_data_as_send_sync_any(
-        context: &mut ReadContext,
-    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-            context,
-        )?))
-    }
-
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        T::fory_read_type_info(context)
-    }
-
-    fn fory_reserved_space() -> usize {
-        // Arc is a shared ref, so we just need space for the ref tracking
-        // We don't recursively compute inner type's space to avoid infinite recursion
-        4
-    }
-
-    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<TypeId, Error> {
-        T::fory_get_type_id(type_resolver)
-    }
-
-    fn fory_get_type_info(type_resolver: &TypeResolver) -> Result<Rc<TypeInfo>, Error> {
-        T::fory_get_type_info(type_resolver)
-    }
-
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
-        (**self).fory_type_id_dyn(type_resolver)
-    }
-
-    fn fory_static_type_id() -> TypeId {
-        T::fory_static_type_id()
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
+    ) -> Result<super::codec::CodecReadType, Error> {
+        C::read_type_info_value(context)
     }
 }
 
-fn read_arc<T: Serializer + ForyDefault + 'static>(
+macro_rules! read_arc_owner {
+    ($context:ident, $ref_mode:expr, $read_inner:expr, $default:expr) => {
+        match $ref_mode {
+            RefMode::None => Ok(Arc::new($read_inner?)),
+            RefMode::NullOnly => {
+                if $context.reader.read_i8()? == RefFlag::Null as i8 {
+                    return $default;
+                }
+                Ok(Arc::new($read_inner?))
+            }
+            RefMode::Tracking => match $context.ref_reader.read_ref_flag(&mut $context.reader)? {
+                RefFlag::Null => $default,
+                RefFlag::Ref => {
+                    let ref_id = $context.ref_reader.read_ref_id(&mut $context.reader)?;
+                    $context
+                        .ref_reader
+                        .get_arc_ref::<T>(ref_id)
+                        .ok_or_else(|| missing_arc_ref(ref_id))
+                }
+                RefFlag::NotNullValue => Ok(Arc::new($read_inner?)),
+                RefFlag::RefValue => {
+                    let ref_id = $context.ref_reader.reserve_ref_id();
+                    let value = Arc::new($read_inner?);
+                    $context.ref_reader.store_arc_ref_at(ref_id, value.clone());
+                    Ok(value)
+                }
+            },
+        }
+    };
+}
+
+#[inline(always)]
+fn read_arc<T: Send + Sync + 'static, C: Serializer<Target = T>>(
     context: &mut ReadContext,
     ref_mode: RefMode,
     read_type_info: bool,
-    typeinfo: Option<Rc<TypeInfo>>,
+    type_info: Option<&Rc<TypeInfo>>,
 ) -> Result<Arc<T>, Error> {
-    match ref_mode {
-        RefMode::None => {
-            // No ref flag - read inner directly
-            let inner = read_arc_inner::<T>(context, read_type_info, typeinfo)?;
-            Ok(Arc::new(inner))
-        }
-        RefMode::NullOnly => {
-            // Read NotNullValue flag (Null not allowed for Arc)
-            let ref_flag = context.reader.read_i8()?;
-            if ref_flag == RefFlag::Null as i8 {
-                return Err(Error::invalid_ref("Arc cannot be null"));
-            }
-            let inner = read_arc_inner::<T>(context, read_type_info, typeinfo)?;
-            Ok(Arc::new(inner))
-        }
-        RefMode::Tracking => {
-            // Full ref tracking
-            let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
-            match ref_flag {
-                RefFlag::Null => Err(Error::invalid_ref("Arc cannot be null")),
-                RefFlag::Ref => {
-                    let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
-                    context.ref_reader.get_arc_ref::<T>(ref_id).ok_or_else(|| {
-                        Error::invalid_ref(format!("Arc reference {ref_id} not found"))
-                    })
-                }
-                RefFlag::NotNullValue => {
-                    let inner = read_arc_inner::<T>(context, read_type_info, typeinfo)?;
-                    Ok(Arc::new(inner))
-                }
-                RefFlag::RefValue => {
-                    let ref_id = context.ref_reader.reserve_ref_id();
-                    let inner = read_arc_inner::<T>(context, read_type_info, typeinfo)?;
-                    let arc = Arc::new(inner);
-                    context.ref_reader.store_arc_ref_at(ref_id, arc.clone());
-                    Ok(arc)
-                }
-            }
-        }
-    }
+    read_arc_owner!(
+        context,
+        ref_mode,
+        read_inner::<T, C>(context, read_type_info, type_info),
+        <ArcCodec<T, C, false, false> as Serializer>::default_value(context)
+    )
 }
 
-fn read_arc_inner<T: Serializer + ForyDefault + 'static>(
+#[inline(always)]
+fn read_arc_with_type<T: Send + Sync + 'static, C: Codec<T>>(
     context: &mut ReadContext,
-    read_type_info: bool,
-    typeinfo: Option<Rc<TypeInfo>>,
-) -> Result<T, Error> {
-    // Read type info if needed, then read data directly
-    // No recursive ref handling needed since Arc<T> only wraps allowed types
-    if let Some(typeinfo) = typeinfo {
-        return T::fory_read_with_type_info(context, RefMode::None, typeinfo);
-    }
-    if read_type_info {
-        T::fory_read_type_info(context)?;
-    }
-    T::fory_read_data(context)
+    ref_mode: RefMode,
+    remote_field_type: &FieldType,
+) -> Result<Arc<T>, Error> {
+    read_arc_owner!(
+        context,
+        ref_mode,
+        read_inner_with_type::<T, C>(context, remote_field_type),
+        <ArcCodec<T, C, false, false> as Serializer>::default_value(context)
+    )
 }
 
-impl<T: ForyDefault> ForyDefault for Arc<T> {
-    fn fory_default() -> Self {
-        Arc::new(T::fory_default())
-    }
-}
+impl_single_carrier_serializer!(
+    ArcSerializer,
+    Arc,
+    ArcCodec,
+    wrapper = true,
+    bounds = [Send + Sync]
+);

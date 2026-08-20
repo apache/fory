@@ -22,7 +22,6 @@ package org.apache.fory.json.data;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.URI;
-import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -53,6 +52,5 @@ public final class CoreScalarFields {
   public OptionalInt optionalInt = OptionalInt.of(4);
   public TimeZone timeZone = TimeZone.getTimeZone("UTC");
   public URI uri = URI.create("https://fory.apache.org/json");
-  public URL url = JsonTestData.url("https://fory.apache.org/");
   public UUID uuid = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
 }

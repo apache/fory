@@ -19,6 +19,7 @@
 
 package org.apache.fory.resolver;
 
+import org.apache.fory.codegen.GeneratedClassNames;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -36,7 +37,7 @@ public class StaticGeneratedSerializerRegistryTest {
     Assert.assertEquals(
         StaticGeneratedSerializerRegistry.generatedSerializerBinaryName(
             "com.example.Outer$Inner", StaticGeneratedSerializerRegistry.Mode.XLANG),
-        "com.example.Outer_Inner_ForySerializer");
+        "com.example.Outer_d_Inner_ForySerializer");
     Assert.assertEquals(
         StaticGeneratedSerializerRegistry.generatedSerializerBinaryName(
             "com.example.Outer_Inner", StaticGeneratedSerializerRegistry.Mode.XLANG),
@@ -49,5 +50,13 @@ public class StaticGeneratedSerializerRegistryTest {
         StaticGeneratedSerializerRegistry.generatedSerializerBinaryName(
             "com.example.Outer-Inner", StaticGeneratedSerializerRegistry.Mode.XLANG),
         "com.example.Outer_x2d_Inner_ForySerializer");
+    Assert.assertNotEquals(
+        StaticGeneratedSerializerRegistry.generatedSerializerBinaryName(
+            "com.example.A$u_X", StaticGeneratedSerializerRegistry.Mode.XLANG),
+        StaticGeneratedSerializerRegistry.generatedSerializerBinaryName(
+            "com.example.A_u$X", StaticGeneratedSerializerRegistry.Mode.XLANG));
+    Assert.assertEquals(
+        GeneratedClassNames.escapeBinaryName("com_example.Outer$Inner"),
+        "com_u_example.Outer_d_Inner");
   }
 }

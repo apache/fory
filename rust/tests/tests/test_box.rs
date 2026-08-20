@@ -127,9 +127,18 @@ fn test_box_option() {
         .expect("Should deserialize Box<Option<String>>");
     assert_eq!(*value, *deserialized);
 
-    // Note: Box<Option<None>> is not supported due to the way Option's serializer works
-    // The Option serializer expects None cases to be handled at the serialize() level,
-    // not at the write() level, but Box calls write() directly on the inner type.
+    let value: Box<Option<String>> = Box::new(None);
+    let bin = fory.serialize(&value).unwrap();
+    let deserialized: Box<Option<String>> = fory.deserialize(&bin).unwrap();
+    assert_eq!(*value, *deserialized);
+
+    let values = vec![
+        Box::new(Some("present".to_string())),
+        Box::new(None::<String>),
+    ];
+    let bin = fory.serialize(&values).unwrap();
+    let deserialized: Vec<Box<Option<String>>> = fory.deserialize(&bin).unwrap();
+    assert_eq!(values, deserialized);
 }
 
 #[test]

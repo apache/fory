@@ -19,12 +19,77 @@
 
 package org.apache.fory.android;
 
+import android.content.pm.ApplicationInfo;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public class ForyAndroidInstrumentedTest {
+  @Test
+  public void plainJsonReflectionWithoutRules() {
+    ApplicationInfo applicationInfo =
+        InstrumentationRegistry.getInstrumentation().getTargetContext().getApplicationInfo();
+    AndroidJsonScenarios.plainReflectionWithoutRules(
+        (applicationInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0);
+  }
+
+  @Test
+  public void manualPlainJsonRules() {
+    AndroidJsonScenarios.manualPlainRules();
+  }
+
+  @Test
+  public void generatedPlainJsonRules() {
+    AndroidJsonScenarios.generatedPlainRules();
+  }
+
+  @Test
+  public void generatedRecordJson() {
+    AndroidJsonScenarios.generatedRecord();
+  }
+
+  @Test
+  public void generatedValueRecordJson() {
+    AndroidJsonScenarios.generatedValueRecord();
+  }
+
+  @Test
+  public void jsonFormatTimezone() {
+    AndroidJsonScenarios.generatedFormatTimezone();
+  }
+
+  @Test
+  public void generatedJsonValidator() {
+    AndroidJsonScenarios.generatedValidator();
+  }
+
+  @Test
+  public void manualJsonCodecs() {
+    AndroidJsonScenarios.manualCodecs();
+  }
+
+  @Test
+  public void generatedJsonCodecs() {
+    AndroidJsonScenarios.generatedCodecs();
+  }
+
+  @Test
+  public void generatedJsonUnwrapped() {
+    AndroidJsonScenarios.generatedUnwrapped();
+  }
+
+  @Test
+  public void generatedJsonMixin() {
+    AndroidJsonScenarios.generatedMixin();
+  }
+
+  @Test
+  public void kotlinJsonMetadataSurvivesMinification() {
+    AndroidKotlinJsonScenarios.metadataSurvivesMinification();
+  }
+
   @Test
   public void androidRuntimeDisablesCodegenAndUnsafeCopies() {
     AndroidForyRuntimeScenarios.androidRuntimeDisablesCodegenAndUnsafeCopies();

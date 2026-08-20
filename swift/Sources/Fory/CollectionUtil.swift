@@ -43,6 +43,15 @@ final class ReusableArray<Element> {
         used = 0
     }
 
+    /// Release the used prefix while retaining the allocation for later roots.
+    @inline(never)
+    func resetReleasingUsedElements() {
+        for index in 0..<used {
+            storage.advanced(by: index).pointee = defaultValue
+        }
+        used = 0
+    }
+
     @inline(__always)
     func push(_ value: Element) {
         if used == capacity {
@@ -67,7 +76,7 @@ final class ReusableArray<Element> {
         let newCapacity = capacity << 1
         let newStorage = UnsafeMutablePointer<Element>.allocate(capacity: newCapacity)
         newStorage.initialize(repeating: defaultValue, count: newCapacity)
-        for index in 0 ..< used {
+        for index in 0..<used {
             newStorage.advanced(by: index).pointee = storage.advanced(by: index).pointee
         }
         storage.deinitialize(count: capacity)

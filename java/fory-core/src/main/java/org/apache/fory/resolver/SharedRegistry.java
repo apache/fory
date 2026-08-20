@@ -60,6 +60,7 @@ public final class SharedRegistry {
   private static final int MAX_CACHED_ENCODED_META_STRING_LENGTH = 2048;
   private static final int MAX_CACHED_TYPE_CHECKER_CLASSES = 8192;
   private static final int MIN_REMOTE_TYPE_DEF_LIMIT = 8192;
+  private static final int MAX_REMOTE_TYPE_DEF_KEYS = 8192;
 
   final ConcurrentIdentityMap<Class<?>, TypeDef> typeDefMap = new ConcurrentIdentityMap<>();
   final ConcurrentIdentityMap<Class<?>, TypeDef> currentLayerTypeDef =
@@ -206,14 +207,6 @@ public final class SharedRegistry {
     acceptedTypeCheckerClasses.clear();
   }
 
-  void clearCheckerCacheForClass(String className) {
-    acceptedTypeCheckerClasses.remove(className);
-  }
-
-  void clearCheckerCacheForPrefix(String prefix) {
-    acceptedTypeCheckerClasses.keySet().removeIf(className -> className.startsWith(prefix));
-  }
-
   TypeDef getOrCreateTypeDef(TypeDef typeDef) {
     long id = typeDef.getId();
     TypeDef existing = typeDefById.get(id);
@@ -253,6 +246,14 @@ public final class SharedRegistry {
 
   private int checkRemoteTypeLimit(Object remoteTypeKey) {
     int versionsForType = remoteTypeDefVersionsByType.getOrDefault(remoteTypeKey, 0);
+    if (versionsForType == 0 && remoteTypeDefVersionsByType.size() >= MAX_REMOTE_TYPE_DEF_KEYS) {
+      throw new ForyException(
+          "Remote type limit exceeded: "
+              + remoteTypeDefVersionsByType.size()
+              + " accepted remote types >= "
+              + MAX_REMOTE_TYPE_DEF_KEYS
+              + ". The data may be malicious.");
+    }
     int maxSchemaVersionsPerType = maxSchemaVersionsPerType();
     if (versionsForType >= maxSchemaVersionsPerType) {
       throw new ForyException(

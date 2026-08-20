@@ -19,26 +19,56 @@
 
 import 'package:fory/src/annotation/type_spec.dart';
 
+/// Configures serialization for the storage field on which it is declared.
+///
+/// Field metadata remains attached to its declaration when an ordinary
+/// `ForyStruct` inherits the field. [ignore] is the declaration-owned,
+/// per-field omission option. A concrete child may separately omit all
+/// ancestor-declared private storage through
+/// `ForyStruct.ignoreInheritedPrivateFields`.
 final class ForyField {
-  final bool skip;
+  /// Whether to omit this field from the serialized schema.
+  ///
+  /// This is the only declaration-owned way to omit an ordinary instance
+  /// storage field. Ignored storage still contributes to shallow graph-memory
+  /// accounting.
+  final bool ignore;
+
+  /// The stable numeric field identity used for schema evolution.
   final int? id;
+
+  /// An optional override for the field's inferred nullability.
   final bool? nullable;
+
+  /// Whether references through this field preserve object identity.
   final bool ref;
+
+  /// Whether values carry their concrete runtime type.
   final bool? dynamic;
+
+  /// An optional exact wire-type description.
   final TypeSpec? type;
 
+  /// Creates field-level serialization metadata.
   const ForyField({
-    this.skip = false,
+    this.ignore = false,
     this.id,
     this.nullable,
     this.ref = false,
     this.dynamic,
     this.type,
-  });
+  }) : assert(
+         !ignore ||
+             (id == null &&
+                 nullable == null &&
+                 !ref &&
+                 dynamic == null &&
+                 type == null),
+         'Ignored fields cannot define wire metadata.',
+       );
 }
 
 final class ListField {
-  final bool skip;
   final int? id;
   final bool? nullable;
   final bool ref;
@@ -46,7 +76,6 @@ final class ListField {
   final TypeSpec? element;
 
   const ListField({
-    this.skip = false,
     this.id,
     this.nullable,
     this.ref = false,
@@ -56,7 +85,6 @@ final class ListField {
 }
 
 final class ArrayField {
-  final bool skip;
   final int? id;
   final bool? nullable;
   final bool ref;
@@ -64,7 +92,6 @@ final class ArrayField {
   final TypeSpec element;
 
   const ArrayField({
-    this.skip = false,
     this.id,
     this.nullable,
     this.ref = false,
@@ -74,7 +101,6 @@ final class ArrayField {
 }
 
 final class SetField {
-  final bool skip;
   final int? id;
   final bool? nullable;
   final bool ref;
@@ -82,7 +108,6 @@ final class SetField {
   final TypeSpec? element;
 
   const SetField({
-    this.skip = false,
     this.id,
     this.nullable,
     this.ref = false,
@@ -92,7 +117,6 @@ final class SetField {
 }
 
 final class MapField {
-  final bool skip;
   final int? id;
   final bool? nullable;
   final bool ref;
@@ -101,7 +125,6 @@ final class MapField {
   final TypeSpec? value;
 
   const MapField({
-    this.skip = false,
     this.id,
     this.nullable,
     this.ref = false,

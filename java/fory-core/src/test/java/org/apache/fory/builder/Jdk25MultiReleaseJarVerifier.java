@@ -38,19 +38,24 @@ import java.util.jar.JarFile;
 /** Verifies the packaged JDK25 multi-release class graph. */
 public final class Jdk25MultiReleaseJarVerifier {
   private static final String VERSION_25_PREFIX = "META-INF/versions/25/";
-  private static final String FORY_CLASS_PREFIX = "org/apache/fory/";
-  private static final String SHADED_CLASS_PREFIX = "org/apache/fory/shaded/";
+  private static final String BUILDER_PACKAGE =
+      Jdk25MultiReleaseJarVerifier.class.getPackage().getName();
+  private static final String FORY_PACKAGE =
+      BUILDER_PACKAGE.substring(0, BUILDER_PACKAGE.length() - ".builder".length());
+  private static final String FORY_CLASS_PREFIX = FORY_PACKAGE.replace('.', '/') + "/";
+  private static final String SHADED_CLASS_PREFIX = FORY_CLASS_PREFIX + "shaded/";
   private static final String[] FORBIDDEN_CONSTANTS = {"sun/misc/Unsafe", "sun.misc.Unsafe"};
+  private static final String UNSAFE_OPS_CLASS = FORY_CLASS_PREFIX + "platform/UnsafeOps.class";
   private static final String[] REQUIRED_VERSION_25_CLASSES = {
     "module-info.class",
-    "org/apache/fory/memory/LittleEndian.class",
-    "org/apache/fory/memory/MemoryBuffer.class",
-    "org/apache/fory/platform/internal/_Lookup.class",
-    "org/apache/fory/platform/internal/_UnsafeUtils.class",
-    "org/apache/fory/builder/UnsafeCodegenSupport.class",
-    "org/apache/fory/reflect/InstanceFieldAccessors.class",
-    "org/apache/fory/reflect/UnsafeObjectInstantiator.class",
-    "org/apache/fory/serializer/PlatformStringUtils.class"
+    foryClassFile("memory/LittleEndian"),
+    foryClassFile("memory/MemoryBuffer"),
+    foryClassFile("platform/internal/_Lookup"),
+    foryClassFile("platform/internal/_UnsafeUtils"),
+    foryClassFile("builder/UnsafeCodegenSupport"),
+    foryClassFile("reflect/InstanceFieldAccessors"),
+    foryClassFile("reflect/UnsafeObjectInstantiator"),
+    foryClassFile("serializer/PlatformStringUtils")
   };
 
   private Jdk25MultiReleaseJarVerifier() {}
@@ -97,12 +102,16 @@ public final class Jdk25MultiReleaseJarVerifier {
     return name.startsWith(FORY_CLASS_PREFIX) && !name.startsWith(SHADED_CLASS_PREFIX);
   }
 
+  private static String foryClassFile(String relativeName) {
+    return FORY_CLASS_PREFIX + relativeName + ".class";
+  }
+
   private static void verifyRequiredClasses(
       Map<String, byte[]> rootClasses, Map<String, byte[]> version25Classes, List<String> out) {
-    if (rootClasses.containsKey("org/apache/fory/platform/UnsafeOps.class")) {
+    if (rootClasses.containsKey(UNSAFE_OPS_CLASS)) {
       out.add("Root UnsafeOps class must not be packaged");
     }
-    if (version25Classes.containsKey("org/apache/fory/platform/UnsafeOps.class")) {
+    if (version25Classes.containsKey(UNSAFE_OPS_CLASS)) {
       out.add("JDK25 UnsafeOps class must not be packaged");
     }
     for (String requiredClass : REQUIRED_VERSION_25_CLASSES) {

@@ -15,221 +15,236 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::context::ReadContext;
-use crate::context::WriteContext;
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::TypeResolver;
-use crate::resolver::{RefFlag, RefMode};
-use crate::serializer::{ForyDefault, Serializer};
+use crate::resolver::{RefMode, TypeInfo};
+use crate::serializer::codec::OptionCodec;
+use crate::serializer::Serializer;
 use crate::type_id::TypeId;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
-impl<T: Serializer + ForyDefault> Serializer for Option<T> {
+/// Fory-owned static composition for `Option<S::Target>`.
+pub struct OptionSerializer<S>(PhantomData<fn() -> S>);
+
+type RootSerializer<S> = OptionCodec<<S as Serializer>::Target, S, false>;
+
+impl<S: Serializer> Serializer for OptionSerializer<S> {
+    type Target = Option<S::Target>;
+
     #[inline(always)]
-    fn fory_write(
-        &self,
+    fn write_data(value: &Self::Target, context: &mut WriteContext) -> Result<(), Error> {
+        <RootSerializer<S> as Serializer>::write_data(value, context)
+    }
+
+    #[inline(always)]
+    fn read_data(context: &mut ReadContext) -> Result<Self::Target, Error> {
+        <RootSerializer<S> as Serializer>::read_data(context)
+    }
+
+    #[inline(always)]
+    fn default_value(context: &mut ReadContext) -> Result<Self::Target, Error> {
+        <RootSerializer<S> as Serializer>::default_value(context)
+    }
+
+    #[inline(always)]
+    fn write(
+        value: &Self::Target,
         context: &mut WriteContext,
         ref_mode: RefMode,
         write_type_info: bool,
-        has_generics: bool,
     ) -> Result<(), Error> {
-        match ref_mode {
-            RefMode::None => {
-                // Write inner directly, no null check
-                if let Some(v) = self {
-                    T::fory_write(v, context, RefMode::None, write_type_info, has_generics)
-                } else {
-                    // None with RefMode::None is a protocol error
-                    Err(Error::invalid_data("Option::None with RefMode::None"))
-                }
-            }
-            RefMode::NullOnly => {
-                if let Some(v) = self {
-                    context.writer.write_i8(RefFlag::NotNullValue as i8);
-                    T::fory_write(v, context, RefMode::None, write_type_info, has_generics)
-                } else {
-                    context.writer.write_i8(RefFlag::Null as i8);
-                    Ok(())
-                }
-            }
-            RefMode::Tracking => {
-                // Only handle null here, pass Tracking to inner for ref handling
-                if let Some(v) = self {
-                    // DON'T write flag here - inner (e.g. Rc) handles RefValue/Ref flags
-                    T::fory_write(v, context, RefMode::Tracking, write_type_info, has_generics)
-                } else {
-                    context.writer.write_i8(RefFlag::Null as i8);
-                    Ok(())
-                }
-            }
-        }
+        <RootSerializer<S> as Serializer>::write(value, context, ref_mode, write_type_info)
     }
 
     #[inline(always)]
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        if let Some(v) = self {
-            T::fory_write_data(v, context)
-        } else {
-            unreachable!("write should be call by serialize")
-        }
+    fn write_type_info_value(
+        context: &mut WriteContext,
+        target_type_id: std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        <RootSerializer<S> as Serializer>::write_type_info_value(context, target_type_id)
     }
 
     #[inline(always)]
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        T::fory_write_type_info(context)
+    fn write_with_type_info(
+        value: &Self::Target,
+        context: &mut WriteContext,
+        ref_mode: RefMode,
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<(), Error> {
+        <RootSerializer<S> as Serializer>::write_with_type_info(value, context, ref_mode, type_info)
     }
 
-    fn fory_read(
+    #[inline(always)]
+    fn read(
         context: &mut ReadContext,
         ref_mode: RefMode,
         read_type_info: bool,
-    ) -> Result<Self, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        match ref_mode {
-            RefMode::None => {
-                // Read inner directly, no null check
-                Ok(Some(T::fory_read(context, RefMode::None, read_type_info)?))
-            }
-            RefMode::NullOnly => {
-                let ref_flag = context.reader.read_i8()?;
-                if ref_flag == RefFlag::Null as i8 {
-                    return Ok(None);
-                }
-                // NotNullValue - read inner without ref handling
-                Ok(Some(T::fory_read(context, RefMode::None, read_type_info)?))
-            }
-            RefMode::Tracking => {
-                let ref_flag = context.reader.read_i8()?;
-                if ref_flag == RefFlag::Null as i8 {
-                    return Ok(None);
-                }
-                // Rewind to let inner type handle the ref flag (RefValue/Ref)
-                context.reader.move_back(1);
-                Ok(Some(T::fory_read(
-                    context,
-                    RefMode::Tracking,
-                    read_type_info,
-                )?))
-            }
-        }
+    ) -> Result<Self::Target, Error> {
+        <RootSerializer<S> as Serializer>::read(context, ref_mode, read_type_info)
     }
 
-    fn fory_read_with_type_info(
+    #[inline(always)]
+    fn read_with_type_info(
         context: &mut ReadContext,
         ref_mode: RefMode,
-        type_info: Rc<crate::TypeInfo>,
-    ) -> Result<Self, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        match ref_mode {
-            RefMode::None => {
-                if T::fory_is_polymorphic() {
-                    Ok(Some(T::fory_read_with_type_info(
-                        context,
-                        RefMode::None,
-                        type_info,
-                    )?))
-                } else {
-                    Ok(Some(T::fory_read_data(context)?))
-                }
-            }
-            RefMode::NullOnly => {
-                let ref_flag = context.reader.read_i8()?;
-                if ref_flag == RefFlag::Null as i8 {
-                    return Ok(None);
-                }
-                if T::fory_is_polymorphic() {
-                    Ok(Some(T::fory_read_with_type_info(
-                        context,
-                        RefMode::None,
-                        type_info,
-                    )?))
-                } else {
-                    Ok(Some(T::fory_read_data(context)?))
-                }
-            }
-            RefMode::Tracking => {
-                let ref_flag = context.reader.read_i8()?;
-                if ref_flag == RefFlag::Null as i8 {
-                    return Ok(None);
-                }
-                // Rewind to let inner type handle the ref flag
-                context.reader.move_back(1);
-                Ok(Some(T::fory_read_with_type_info(
-                    context,
-                    RefMode::Tracking,
-                    type_info,
-                )?))
-            }
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<Self::Target, Error> {
+        <RootSerializer<S> as Serializer>::read_with_type_info(context, ref_mode, type_info)
+    }
+
+    #[inline(always)]
+    fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        <RootSerializer<S> as Serializer>::write_type_info(context)
+    }
+
+    #[inline(always)]
+    fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        <RootSerializer<S> as Serializer>::read_type_info(context)
+    }
+
+    #[inline(always)]
+    fn static_type_id() -> TypeId {
+        <RootSerializer<S> as Serializer>::static_type_id()
+    }
+
+    #[inline(always)]
+    fn reserved_space() -> usize {
+        <RootSerializer<S> as Serializer>::reserved_space()
+    }
+
+    const IS_OPTIONAL: bool = true;
+
+    const IS_POLYMORPHIC: bool = <RootSerializer<S> as Serializer>::IS_POLYMORPHIC;
+
+    const IS_SHARED_REF: bool = <RootSerializer<S> as Serializer>::IS_SHARED_REF;
+
+    const IS_WRAPPER: bool = true;
+
+    const REQUIRES_SCOPED_ACCESS: bool = S::REQUIRES_SCOPED_ACCESS;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = S::READ_DATA_ALWAYS_ADVANCES;
+
+    #[inline(always)]
+    fn is_none(value: &Self::Target) -> bool {
+        value.is_none()
+    }
+
+    #[inline(always)]
+    fn dynamic_type_id(value: &Self::Target) -> Result<Option<std::any::TypeId>, Error> {
+        match value {
+            Some(value) => S::dynamic_type_id(value),
+            None => Ok(None),
         }
-    }
-
-    #[inline(always)]
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        if T::fory_is_polymorphic() {
-            Ok(Some(T::fory_read(context, RefMode::None, true)?))
-        } else {
-            Ok(Some(T::fory_read_data(context)?))
-        }
-    }
-
-    #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        T::fory_read_type_info(context)
-    }
-
-    #[inline(always)]
-    fn fory_reserved_space() -> usize {
-        std::mem::size_of::<T>()
-    }
-
-    #[inline(always)]
-    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<TypeId, Error> {
-        T::fory_get_type_id(type_resolver)
-    }
-
-    #[inline(always)]
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
-        match self {
-            Some(val) => val.fory_type_id_dyn(type_resolver),
-            None => T::fory_get_type_id(type_resolver),
-        }
-    }
-
-    #[inline(always)]
-    fn fory_is_option() -> bool {
-        true
-    }
-
-    #[inline(always)]
-    fn fory_is_none(&self) -> bool {
-        self.is_none()
-    }
-
-    #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
-        T::fory_static_type_id()
-    }
-
-    fn fory_is_wrapper_type() -> bool
-    where
-        Self: Sized,
-    {
-        true
-    }
-
-    #[inline(always)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 
-impl<T: ForyDefault> ForyDefault for Option<T> {
+impl<T> Serializer for Option<T>
+where
+    T: Serializer<Target = T>,
+{
+    type Target = Self;
+
     #[inline(always)]
-    fn fory_default() -> Self {
-        None
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        OptionSerializer::<T>::write_data(value, context)
+    }
+
+    #[inline(always)]
+    fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        OptionSerializer::<T>::read_data(context)
+    }
+
+    #[inline(always)]
+    fn default_value(context: &mut ReadContext) -> Result<Self, Error> {
+        OptionSerializer::<T>::default_value(context)
+    }
+
+    #[inline(always)]
+    fn write(
+        value: &Self,
+        context: &mut WriteContext,
+        ref_mode: RefMode,
+        write_type_info: bool,
+    ) -> Result<(), Error> {
+        OptionSerializer::<T>::write(value, context, ref_mode, write_type_info)
+    }
+
+    #[inline(always)]
+    fn write_type_info_value(
+        context: &mut WriteContext,
+        target_type_id: std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        OptionSerializer::<T>::write_type_info_value(context, target_type_id)
+    }
+
+    #[inline(always)]
+    fn write_with_type_info(
+        value: &Self,
+        context: &mut WriteContext,
+        ref_mode: RefMode,
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<(), Error> {
+        OptionSerializer::<T>::write_with_type_info(value, context, ref_mode, type_info)
+    }
+
+    #[inline(always)]
+    fn read(
+        context: &mut ReadContext,
+        ref_mode: RefMode,
+        read_type_info: bool,
+    ) -> Result<Self, Error> {
+        OptionSerializer::<T>::read(context, ref_mode, read_type_info)
+    }
+
+    #[inline(always)]
+    fn read_with_type_info(
+        context: &mut ReadContext,
+        ref_mode: RefMode,
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<Self, Error> {
+        OptionSerializer::<T>::read_with_type_info(context, ref_mode, type_info)
+    }
+
+    #[inline(always)]
+    fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        OptionSerializer::<T>::write_type_info(context)
+    }
+
+    #[inline(always)]
+    fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        OptionSerializer::<T>::read_type_info(context)
+    }
+
+    #[inline(always)]
+    fn static_type_id() -> TypeId {
+        OptionSerializer::<T>::static_type_id()
+    }
+
+    #[inline(always)]
+    fn reserved_space() -> usize {
+        OptionSerializer::<T>::reserved_space()
+    }
+
+    const IS_OPTIONAL: bool = true;
+
+    const IS_POLYMORPHIC: bool = OptionSerializer::<T>::IS_POLYMORPHIC;
+
+    const IS_SHARED_REF: bool = OptionSerializer::<T>::IS_SHARED_REF;
+
+    const IS_WRAPPER: bool = true;
+
+    const REQUIRES_SCOPED_ACCESS: bool = OptionSerializer::<T>::REQUIRES_SCOPED_ACCESS;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = T::READ_DATA_ALWAYS_ADVANCES;
+
+    #[inline(always)]
+    fn is_none(value: &Self) -> bool {
+        value.is_none()
+    }
+
+    #[inline(always)]
+    fn dynamic_type_id(value: &Self) -> Result<Option<std::any::TypeId>, Error> {
+        OptionSerializer::<T>::dynamic_type_id(value)
     }
 }

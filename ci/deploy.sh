@@ -74,22 +74,6 @@ bump_javascript_version() {
   python "$ROOT/ci/release.py" bump_version -l javascript -version "$1"
 }
 
-deploy_jars() {
-  local java_version java_major
-  java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')
-  if [[ "$java_version" == 1.* ]]; then
-    java_major=$(echo "$java_version" | cut -d. -f2)
-  else
-    java_major=$(echo "$java_version" | cut -d. -f1)
-  fi
-  if [[ "$java_major" -lt 25 ]]; then
-    echo "Java releases must run on JDK25+ so MR-JAR entries are packaged"
-    exit 1
-  fi
-  cd "$ROOT/java"
-  mvn -T10 clean deploy --no-transfer-progress -DskipTests -Prelease
-}
-
 build_pyfory() {
   echo "$($PYTHON_CMD -V), path $(which "$PYTHON_CMD")"
   install_pyarrow
@@ -150,25 +134,13 @@ build_pyfory() {
 }
 
 install_pyarrow() {
-  $PIP_CMD install pyarrow numpy
+  # Newer PyArrow and NumPy Linux wheels require manylinux_2_28.
+  if [[ ${PLAT:-} == manylinux2014_* ]]; then
+    $PIP_CMD install "pyarrow<21" "numpy<2.3"
+  else
+    $PIP_CMD install pyarrow numpy
+  fi
 }
 
-deploy_scala() {
-  echo "Start to build jars"
-  sbt +publishSigned
-  echo "Start to prepare upload"
-  sbt sonatypePrepare
-  echo "Start to upload jars"
-  sbt sonatypeBundleUpload
-  echo "Deploy scala jars succeed!"
-}
-
-case "$1" in
-java) # Deploy jars to maven repository.
-  deploy_jars
-  ;;
-*)
-  echo "Execute command $*"
-  "$@"
-  ;;
-esac
+echo "Execute command $*"
+"$@"

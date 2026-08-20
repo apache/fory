@@ -20,6 +20,9 @@
 module org.apache.fory.integration_tests {
   requires org.apache.fory.core;
   requires org.apache.fory.format;
+  requires org.apache.fory.json;
+  requires org.apache.fory.json.kotlin;
+  requires org.apache.fory.integration.kotlin.json.corpus;
   requires org.apache.fory.test.core;
 
   // we can't really test any classes from this module because it only contains test-classes

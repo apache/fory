@@ -20,6 +20,7 @@
 #pragma once
 
 #include "fory/serialization/serializer.h"
+#include <cassert>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,36 +29,54 @@ namespace fory {
 namespace serialization {
 
 // ============================================================================
-// Helper for polymorphic deserialization
+// Helpers for polymorphic smart pointers
 // ============================================================================
 
-/// Reads polymorphic data using the appropriate harness function based on mode.
-/// In compatible mode, uses read_compatible_fn if available to handle schema
-/// evolution. Otherwise, uses read_data_fn for direct deserialization.
-/// Returns nullptr and sets ctx.error() on failure.
-inline void *read_polymorphic_harness_data(ReadContext &ctx,
-                                           const TypeInfo *type_info) {
-  if (ctx.is_compatible()) {
-    if (!type_info->harness.read_compatible_fn) {
-      ctx.set_error(Error::type_error(
-          "No harness read_compatible function for polymorphic type "
-          "deserialization in compatible mode"));
-      return nullptr;
-    }
-    return type_info->harness.read_compatible_fn(ctx, type_info);
-  }
-  if (!type_info->harness.read_data_fn) {
-    ctx.set_error(Error::type_error(
-        "No harness read function for polymorphic type deserialization"));
+template <typename T>
+inline void write_polymorphic_harness_data(const T &value, WriteContext &ctx,
+                                           bool has_generics,
+                                           Harness::WriteDataFn writer) {
+  assert(writer != nullptr);
+  // A smart pointer may address an offset base subobject, while the dynamic
+  // TypeInfo owns a concrete writer. Recover the complete object before that
+  // writer casts the erased address back to its concrete type.
+  writer(dynamic_cast<const void *>(std::addressof(value)), ctx, has_generics);
+}
+
+FORY_ALWAYS_INLINE void
+write_polymorphic_harness_data(const void *complete_value, WriteContext &ctx,
+                               const TypeInfo &type_info, bool has_generics) {
+  // Root callers capture this address beside typeid before resolver calls so
+  // optimized builds can share the object's RTTI lookup.
+  type_info.harness.write_data_fn(complete_value, ctx, has_generics);
+}
+
+/// Reads polymorphic data through a target-validated harness function.
+/// The reader must be resolved before it runs because the wire can select any
+/// registered type and harness reads may materialize application objects.
+template <typename T>
+inline T *read_polymorphic_harness_data(ReadContext &ctx,
+                                        const TypeInfo *type_info,
+                                        Harness::ReadAsFn read_as) {
+  assert(read_as != nullptr);
+  return static_cast<T *>(read_as(ctx, type_info));
+}
+
+template <typename T>
+inline T *read_polymorphic_harness_data(ReadContext &ctx,
+                                        const TypeInfo *type_info) {
+  Harness::ReadAsFn read_as = resolve_polymorphic_reader<T>(ctx, type_info);
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;
   }
-  return type_info->harness.read_data_fn(ctx);
+  return read_polymorphic_harness_data<T>(ctx, type_info, read_as);
 }
 
 /// Overload for TypeInfo reference.
-inline void *read_polymorphic_harness_data(ReadContext &ctx,
-                                           const TypeInfo &type_info) {
-  return read_polymorphic_harness_data(ctx, &type_info);
+template <typename T>
+inline T *read_polymorphic_harness_data(ReadContext &ctx,
+                                        const TypeInfo &type_info) {
+  return read_polymorphic_harness_data<T>(ctx, &type_info);
 }
 
 // ============================================================================
@@ -140,17 +159,12 @@ template <typename T> struct Serializer<std::optional<T>> {
       return std::optional<T>(std::move(value));
     }
 
-    const uint32_t flag_pos = ctx.buffer().reader_index();
-    int8_t flag = ctx.read_int8(ctx.error());
-    if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return std::nullopt;
-    }
-
-    if (flag == NULL_FLAG) {
-      return std::optional<T>(std::nullopt);
-    }
-
     if constexpr (inner_is_nullable) {
+      const uint32_t flag_pos = ctx.buffer().reader_index();
+      int8_t flag = ctx.read_int8(ctx.error());
+      if (FORY_PREDICT_FALSE(ctx.has_error()) || flag == NULL_FLAG) {
+        return std::nullopt;
+      }
       // Rewind so the inner serializer can consume the reference metadata.
       ctx.buffer().reader_index(flag_pos);
       // Pass ref_mode directly - let inner serializer handle ref tracking
@@ -160,11 +174,7 @@ template <typename T> struct Serializer<std::optional<T>> {
       }
       return std::optional<T>(std::move(value));
     }
-
-    if (flag != NOT_NULL_VALUE_FLAG && flag != REF_VALUE_FLAG) {
-      ctx.set_error(
-          Error::invalid_ref("Unexpected reference flag for std::optional: " +
-                             std::to_string(static_cast<int>(flag))));
+    if (!read_null_only_flag(ctx, ref_mode)) {
       return std::nullopt;
     }
 
@@ -189,17 +199,12 @@ template <typename T> struct Serializer<std::optional<T>> {
       return std::optional<T>(std::move(value));
     }
 
-    const uint32_t flag_pos = ctx.buffer().reader_index();
-    int8_t flag = ctx.read_int8(ctx.error());
-    if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return std::nullopt;
-    }
-
-    if (flag == NULL_FLAG) {
-      return std::optional<T>(std::nullopt);
-    }
-
     if constexpr (inner_is_nullable) {
+      const uint32_t flag_pos = ctx.buffer().reader_index();
+      int8_t flag = ctx.read_int8(ctx.error());
+      if (FORY_PREDICT_FALSE(ctx.has_error()) || flag == NULL_FLAG) {
+        return std::nullopt;
+      }
       // Rewind so the inner serializer can consume the reference metadata.
       ctx.buffer().reader_index(flag_pos);
       // Pass ref_mode directly - let inner serializer handle ref tracking
@@ -209,11 +214,7 @@ template <typename T> struct Serializer<std::optional<T>> {
       }
       return std::optional<T>(std::move(value));
     }
-
-    if (flag != NOT_NULL_VALUE_FLAG && flag != REF_VALUE_FLAG) {
-      ctx.set_error(
-          Error::invalid_ref("Unexpected reference flag for std::optional: " +
-                             std::to_string(static_cast<int>(flag))));
+    if (!read_null_only_flag(ctx, ref_mode)) {
       return std::nullopt;
     }
 
@@ -236,6 +237,9 @@ template <typename T> struct Serializer<std::optional<T>> {
 // ============================================================================
 // std::shared_ptr serializer
 // ============================================================================
+
+// Guarded pointee reads release depth only after successful materialization;
+// failed root operations own resetting the accumulated depth.
 
 // Helper to get type_id for shared_ptr without instantiating Serializer for
 // polymorphic types
@@ -263,6 +267,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
                 "shared_ptr of nullable types "
                 "(optional/shared_ptr/unique_ptr/weak_ptr) is not supported. "
                 "Use the wrapper type directly instead.");
+  static_assert(!std::is_polymorphic_v<T> || std::has_virtual_destructor_v<T>,
+                "polymorphic shared_ptr element types require a virtual "
+                "destructor");
 
   static constexpr TypeId type_id =
       SharedPtrTypeIdHelper<T, std::is_polymorphic_v<T>>::value;
@@ -300,6 +307,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       }
       // For polymorphic types, serialize the concrete type dynamically
       if constexpr (is_polymorphic) {
+        const void *concrete_ptr = dynamic_cast<const void *>(ptr.get());
         std::type_index concrete_type_id = std::type_index(typeid(*ptr));
         auto type_info_res =
             ctx.type_resolver().get_type_info(concrete_type_id);
@@ -316,8 +324,8 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
             return;
           }
         }
-        const void *value_ptr = ptr.get();
-        type_info->harness.write_data_fn(value_ptr, ctx, has_generics);
+        write_polymorphic_harness_data(concrete_ptr, ctx, *type_info,
+                                       has_generics);
       } else {
         // T is guaranteed to be a value type by static_assert.
         Serializer<T>::write(*ptr, ctx, RefMode::None, write_type);
@@ -341,6 +349,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
 
     // For polymorphic types, serialize the concrete type dynamically
     if constexpr (is_polymorphic) {
+      const void *concrete_ptr = dynamic_cast<const void *>(ptr.get());
       // get the concrete type_index from the actual object
       std::type_index concrete_type_id = std::type_index(typeid(*ptr));
 
@@ -362,10 +371,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         }
       }
 
-      // Call the harness with the raw pointer (which points to DerivedType)
-      // The harness will static_cast it back to the concrete type
-      const void *value_ptr = ptr.get();
-      type_info->harness.write_data_fn(value_ptr, ctx, has_generics);
+      // The harness expects the complete concrete object address.
+      write_polymorphic_harness_data(concrete_ptr, ctx, *type_info,
+                                     has_generics);
     } else {
       // T is guaranteed to be a value type by static_assert.
       Serializer<T>::write(*ptr, ctx, RefMode::None, write_type);
@@ -382,6 +390,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
 
     // For polymorphic types, use harness to serialize the concrete type
     if constexpr (std::is_polymorphic_v<T>) {
+      const void *concrete_ptr = dynamic_cast<const void *>(ptr.get());
       std::type_index concrete_type_id = std::type_index(typeid(*ptr));
       auto type_info_res = ctx.type_resolver().get_type_info(concrete_type_id);
       if (!type_info_res.ok()) {
@@ -389,11 +398,37 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         return;
       }
       const TypeInfo *type_info = type_info_res.value();
-      const void *value_ptr = ptr.get();
-      type_info->harness.write_data_fn(value_ptr, ctx, false);
+      write_polymorphic_harness_data(concrete_ptr, ctx, *type_info, false);
     } else {
       Serializer<T>::write_data(*ptr, ctx);
     }
+  }
+
+  static inline void write_with_data(const std::shared_ptr<T> &ptr,
+                                     WriteContext &ctx, RefMode ref_mode,
+                                     Harness::WriteDataFn writer,
+                                     bool has_generics = false) {
+    static_assert(std::is_polymorphic_v<T>);
+    if (ref_mode == RefMode::None) {
+      if (FORY_PREDICT_FALSE(!ptr)) {
+        ctx.set_error(Error::invalid("std::shared_ptr requires ref_mode != "
+                                     "RefMode::None to encode null state"));
+        return;
+      }
+    } else {
+      if (!ptr) {
+        ctx.write_int8(NULL_FLAG);
+        return;
+      }
+      if (ctx.track_ref()) {
+        if (ctx.ref_writer().try_write_shared_ref(ctx, ptr)) {
+          return;
+        }
+      } else {
+        ctx.write_int8(NOT_NULL_VALUE_FLAG);
+      }
+    }
+    write_polymorphic_harness_data(*ptr, ctx, has_generics, writer);
   }
 
   static inline void write_data_generic(const std::shared_ptr<T> &ptr,
@@ -406,6 +441,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
 
     // For polymorphic types, use harness to serialize the concrete type
     if constexpr (std::is_polymorphic_v<T>) {
+      const void *concrete_ptr = dynamic_cast<const void *>(ptr.get());
       std::type_index concrete_type_id = std::type_index(typeid(*ptr));
       auto type_info_res = ctx.type_resolver().get_type_info(concrete_type_id);
       if (!type_info_res.ok()) {
@@ -413,8 +449,8 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         return;
       }
       const TypeInfo *type_info = type_info_res.value();
-      const void *value_ptr = ptr.get();
-      type_info->harness.write_data_fn(value_ptr, ctx, has_generics);
+      write_polymorphic_harness_data(concrete_ptr, ctx, *type_info,
+                                     has_generics);
     } else {
       Serializer<T>::write_data_generic(*ptr, ctx, has_generics);
     }
@@ -444,21 +480,41 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
                 "Cannot use monomorphic deserialization for abstract type"));
             return nullptr;
           } else {
+            auto depth_res = ctx.increase_dyn_depth();
+            if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+              ctx.set_error(std::move(depth_res).error());
+              return nullptr;
+            }
+            if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+              return nullptr;
+            }
             T value = Serializer<T>::read(ctx, RefMode::None, false);
             if (ctx.has_error()) {
               return nullptr;
             }
-            return std::make_shared<T>(std::move(value));
+            auto result = std::make_shared<T>(std::move(value));
+            ctx.decrease_dyn_depth();
+            return result;
           }
         }
       } else {
         // T is guaranteed to be a value type (not pointer or nullable wrapper)
         // by static_assert, so no inner ref metadata needed.
+        auto depth_res = ctx.increase_dyn_depth();
+        if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+          ctx.set_error(std::move(depth_res).error());
+          return nullptr;
+        }
+        if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+          return nullptr;
+        }
         T value = Serializer<T>::read(ctx, RefMode::None, read_type);
         if (ctx.has_error()) {
           return nullptr;
         }
-        return std::make_shared<T>(std::move(value));
+        auto result = std::make_shared<T>(std::move(value));
+        ctx.decrease_dyn_depth();
+        return result;
       }
     }
 
@@ -505,7 +561,6 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       }
       reserved_ref_id = ctx.ref_reader().reserve_ref_id();
     }
-
     // For polymorphic types, read type info AFTER handling ref flags
     if constexpr (is_polymorphic) {
       if (read_type) {
@@ -516,7 +571,6 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
           ctx.set_error(std::move(depth_res).error());
           return nullptr;
         }
-        DynDepthGuard dyn_depth_guard(ctx);
 
         // Read type info from stream to get the concrete type
         const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
@@ -525,15 +579,15 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         }
 
         // Use the harness to deserialize the concrete type
-        void *raw_ptr = read_polymorphic_harness_data(ctx, type_info);
+        T *obj_ptr = read_polymorphic_harness_data<T>(ctx, type_info);
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return nullptr;
         }
-        T *obj_ptr = static_cast<T *>(raw_ptr);
         auto result = std::shared_ptr<T>(obj_ptr);
         if (is_first_occurrence) {
           ctx.ref_reader().store_shared_ref_at(reserved_ref_id, result);
         }
+        ctx.decrease_dyn_depth();
         return result;
       } else {
         // Monomorphic path: read_type=false means field is marked monomorphic
@@ -546,6 +600,14 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         } else {
           // For circular references: pre-allocate and store BEFORE reading
           if (is_first_occurrence) {
+            auto depth_res = ctx.increase_dyn_depth();
+            if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+              ctx.set_error(std::move(depth_res).error());
+              return nullptr;
+            }
+            if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+              return nullptr;
+            }
             auto result = std::make_shared<T>();
             ctx.ref_reader().store_shared_ref_at(reserved_ref_id, result);
             T value = Serializer<T>::read(ctx, RefMode::None, false);
@@ -553,13 +615,24 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
               return nullptr;
             }
             *result = std::move(value);
+            ctx.decrease_dyn_depth();
             return result;
           } else {
+            auto depth_res = ctx.increase_dyn_depth();
+            if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+              ctx.set_error(std::move(depth_res).error());
+              return nullptr;
+            }
+            if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+              return nullptr;
+            }
             T value = Serializer<T>::read(ctx, RefMode::None, false);
             if (ctx.has_error()) {
               return nullptr;
             }
-            return std::make_shared<T>(std::move(value));
+            auto result = std::make_shared<T>(std::move(value));
+            ctx.decrease_dyn_depth();
+            return result;
           }
         }
       }
@@ -572,6 +645,14 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       // references (like self_ref pointing back to the parent) to resolve.
       if (is_first_occurrence) {
         // Pre-allocate with default construction and store immediately
+        auto depth_res = ctx.increase_dyn_depth();
+        if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+          ctx.set_error(std::move(depth_res).error());
+          return nullptr;
+        }
+        if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+          return nullptr;
+        }
         auto result = std::make_shared<T>();
         ctx.ref_reader().store_shared_ref_at(reserved_ref_id, result);
         // Read struct data - forward refs can now find this object
@@ -581,41 +662,81 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         }
         // Move-assign the read value into the pre-allocated object
         *result = std::move(value);
+        ctx.decrease_dyn_depth();
         return result;
       } else {
         // Not first occurrence, just read and wrap
+        auto depth_res = ctx.increase_dyn_depth();
+        if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+          ctx.set_error(std::move(depth_res).error());
+          return nullptr;
+        }
+        if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+          return nullptr;
+        }
         T value = Serializer<T>::read(ctx, RefMode::None, read_type);
         if (ctx.has_error()) {
           return nullptr;
         }
-        return std::make_shared<T>(std::move(value));
+        auto result = std::make_shared<T>(std::move(value));
+        ctx.decrease_dyn_depth();
+        return result;
       }
     }
   }
 
+  template <bool HasReader = false>
   static inline std::shared_ptr<T>
   read_with_type_info(ReadContext &ctx, RefMode ref_mode,
-                      const TypeInfo &type_info) {
+                      const TypeInfo &type_info,
+                      Harness::ReadAsFn checked_reader = nullptr) {
     constexpr bool is_polymorphic = std::is_polymorphic_v<T>;
+    if constexpr (HasReader) {
+      assert(checked_reader != nullptr);
+    }
 
     // Handle ref_mode == RefMode::None case (similar to Rust)
     if (ref_mode == RefMode::None) {
       // For polymorphic types, use the harness to deserialize the concrete type
       if constexpr (is_polymorphic) {
-        void *raw_ptr = read_polymorphic_harness_data(ctx, type_info);
+        auto depth_res = ctx.increase_dyn_depth();
+        if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+          ctx.set_error(std::move(depth_res).error());
+          return nullptr;
+        }
+
+        T *obj_ptr;
+        if constexpr (HasReader) {
+          obj_ptr =
+              read_polymorphic_harness_data<T>(ctx, &type_info, checked_reader);
+        } else {
+          obj_ptr = read_polymorphic_harness_data<T>(ctx, type_info);
+        }
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return nullptr;
         }
-        T *obj_ptr = static_cast<T *>(raw_ptr);
-        return std::shared_ptr<T>(obj_ptr);
+        auto result = std::shared_ptr<T>(obj_ptr);
+        // Failed nested reads retain depth; only the root operation resets it.
+        ctx.decrease_dyn_depth();
+        return result;
       } else {
         // T is guaranteed to be a value type by static_assert.
+        auto depth_res = ctx.increase_dyn_depth();
+        if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+          ctx.set_error(std::move(depth_res).error());
+          return nullptr;
+        }
+        if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+          return nullptr;
+        }
         T value =
             Serializer<T>::read_with_type_info(ctx, RefMode::None, type_info);
         if (ctx.has_error()) {
           return nullptr;
         }
-        return std::make_shared<T>(std::move(value));
+        auto result = std::make_shared<T>(std::move(value));
+        ctx.decrease_dyn_depth();
+        return result;
       }
     }
 
@@ -671,24 +792,37 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         ctx.set_error(std::move(depth_res).error());
         return nullptr;
       }
-      DynDepthGuard dyn_depth_guard(ctx);
 
       // Use the harness to deserialize the concrete type
-      void *raw_ptr = read_polymorphic_harness_data(ctx, type_info);
+      T *obj_ptr;
+      if constexpr (HasReader) {
+        obj_ptr =
+            read_polymorphic_harness_data<T>(ctx, &type_info, checked_reader);
+      } else {
+        obj_ptr = read_polymorphic_harness_data<T>(ctx, type_info);
+      }
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return nullptr;
       }
-      T *obj_ptr = static_cast<T *>(raw_ptr);
       auto result = std::shared_ptr<T>(obj_ptr);
       if (flag == REF_VALUE_FLAG) {
         ctx.ref_reader().store_shared_ref_at(reserved_ref_id, result);
       }
+      ctx.decrease_dyn_depth();
       return result;
     } else {
       // T is guaranteed to be a value type by static_assert.
       // For circular references: pre-allocate and store BEFORE reading
       const bool is_first_occurrence = flag == REF_VALUE_FLAG;
       if (is_first_occurrence) {
+        auto depth_res = ctx.increase_dyn_depth();
+        if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+          ctx.set_error(std::move(depth_res).error());
+          return nullptr;
+        }
+        if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+          return nullptr;
+        }
         auto result = std::make_shared<T>();
         ctx.ref_reader().store_shared_ref_at(reserved_ref_id, result);
         T value =
@@ -697,19 +831,33 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
           return nullptr;
         }
         *result = std::move(value);
+        ctx.decrease_dyn_depth();
         return result;
       } else {
+        auto depth_res = ctx.increase_dyn_depth();
+        if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+          ctx.set_error(std::move(depth_res).error());
+          return nullptr;
+        }
+        if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+          return nullptr;
+        }
         T value =
             Serializer<T>::read_with_type_info(ctx, RefMode::None, type_info);
         if (ctx.has_error()) {
           return nullptr;
         }
-        return std::make_shared<T>(std::move(value));
+        auto result = std::make_shared<T>(std::move(value));
+        ctx.decrease_dyn_depth();
+        return result;
       }
     }
   }
 
   static inline std::shared_ptr<T> read_data(ReadContext &ctx) {
+    if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+      return nullptr;
+    }
     T value = Serializer<T>::read_data(ctx);
     if (ctx.has_error()) {
       return nullptr;
@@ -748,6 +896,9 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
                 "unique_ptr of nullable types "
                 "(optional/shared_ptr/unique_ptr/weak_ptr) is not supported. "
                 "Use the wrapper type directly instead.");
+  static_assert(!std::is_polymorphic_v<T> || std::has_virtual_destructor_v<T>,
+                "polymorphic unique_ptr element types require a virtual "
+                "destructor");
 
   static constexpr TypeId type_id =
       UniquePtrTypeIdHelper<T, std::is_polymorphic_v<T>>::value;
@@ -766,6 +917,7 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
       }
       // For polymorphic types, serialize the concrete type dynamically
       if constexpr (is_polymorphic) {
+        const void *concrete_ptr = dynamic_cast<const void *>(ptr.get());
         std::type_index concrete_type_id = std::type_index(typeid(*ptr));
         auto type_info_res =
             ctx.type_resolver().get_type_info(concrete_type_id);
@@ -782,8 +934,8 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
             return;
           }
         }
-        const void *value_ptr = ptr.get();
-        type_info->harness.write_data_fn(value_ptr, ctx, has_generics);
+        write_polymorphic_harness_data(concrete_ptr, ctx, *type_info,
+                                       has_generics);
       } else {
         // T is guaranteed to be a value type by static_assert.
         Serializer<T>::write(*ptr, ctx, RefMode::None, write_type);
@@ -801,6 +953,7 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
 
     // For polymorphic types, serialize the concrete type dynamically
     if constexpr (is_polymorphic) {
+      const void *concrete_ptr = dynamic_cast<const void *>(ptr.get());
       std::type_index concrete_type_id = std::type_index(typeid(*ptr));
       auto type_info_res = ctx.type_resolver().get_type_info(concrete_type_id);
       if (!type_info_res.ok()) {
@@ -816,8 +969,8 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
           return;
         }
       }
-      const void *value_ptr = ptr.get();
-      type_info->harness.write_data_fn(value_ptr, ctx, has_generics);
+      write_polymorphic_harness_data(concrete_ptr, ctx, *type_info,
+                                     has_generics);
     } else {
       // T is guaranteed to be a value type by static_assert.
       Serializer<T>::write(*ptr, ctx, RefMode::None, write_type);
@@ -833,6 +986,7 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
     }
     // For polymorphic types, use harness to serialize the concrete type
     if constexpr (std::is_polymorphic_v<T>) {
+      const void *concrete_ptr = dynamic_cast<const void *>(ptr.get());
       std::type_index concrete_type_id = std::type_index(typeid(*ptr));
       auto type_info_res = ctx.type_resolver().get_type_info(concrete_type_id);
       if (!type_info_res.ok()) {
@@ -840,11 +994,31 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
         return;
       }
       const TypeInfo *type_info = type_info_res.value();
-      const void *value_ptr = ptr.get();
-      type_info->harness.write_data_fn(value_ptr, ctx, false);
+      write_polymorphic_harness_data(concrete_ptr, ctx, *type_info, false);
     } else {
       Serializer<T>::write_data(*ptr, ctx);
     }
+  }
+
+  static inline void write_with_data(const std::unique_ptr<T> &ptr,
+                                     WriteContext &ctx, RefMode ref_mode,
+                                     Harness::WriteDataFn writer,
+                                     bool has_generics = false) {
+    static_assert(std::is_polymorphic_v<T>);
+    if (ref_mode == RefMode::None) {
+      if (FORY_PREDICT_FALSE(!ptr)) {
+        ctx.set_error(Error::invalid("std::unique_ptr requires ref_mode != "
+                                     "RefMode::None to encode null state"));
+        return;
+      }
+    } else {
+      if (!ptr) {
+        ctx.write_int8(NULL_FLAG);
+        return;
+      }
+      ctx.write_int8(NOT_NULL_VALUE_FLAG);
+    }
+    write_polymorphic_harness_data(*ptr, ctx, has_generics, writer);
   }
 
   static inline void write_data_generic(const std::unique_ptr<T> &ptr,
@@ -856,6 +1030,7 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
     }
     // For polymorphic types, use harness to serialize the concrete type
     if constexpr (std::is_polymorphic_v<T>) {
+      const void *concrete_ptr = dynamic_cast<const void *>(ptr.get());
       std::type_index concrete_type_id = std::type_index(typeid(*ptr));
       auto type_info_res = ctx.type_resolver().get_type_info(concrete_type_id);
       if (!type_info_res.ok()) {
@@ -863,8 +1038,8 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
         return;
       }
       const TypeInfo *type_info = type_info_res.value();
-      const void *value_ptr = ptr.get();
-      type_info->harness.write_data_fn(value_ptr, ctx, has_generics);
+      write_polymorphic_harness_data(concrete_ptr, ctx, *type_info,
+                                     has_generics);
     } else {
       Serializer<T>::write_data_generic(*ptr, ctx, has_generics);
     }
@@ -894,20 +1069,40 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
                 "Cannot use monomorphic deserialization for abstract type"));
             return nullptr;
           } else {
+            auto depth_res = ctx.increase_dyn_depth();
+            if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+              ctx.set_error(std::move(depth_res).error());
+              return nullptr;
+            }
+            if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+              return nullptr;
+            }
             T value = Serializer<T>::read(ctx, RefMode::None, false);
             if (ctx.has_error()) {
               return nullptr;
             }
-            return std::make_unique<T>(std::move(value));
+            auto result = std::make_unique<T>(std::move(value));
+            ctx.decrease_dyn_depth();
+            return result;
           }
         }
       } else {
         // T is guaranteed to be a value type by static_assert.
+        auto depth_res = ctx.increase_dyn_depth();
+        if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+          ctx.set_error(std::move(depth_res).error());
+          return nullptr;
+        }
+        if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+          return nullptr;
+        }
         T value = Serializer<T>::read(ctx, RefMode::None, read_type);
         if (ctx.has_error()) {
           return nullptr;
         }
-        return std::make_unique<T>(std::move(value));
+        auto result = std::make_unique<T>(std::move(value));
+        ctx.decrease_dyn_depth();
+        return result;
       }
     }
 
@@ -925,7 +1120,6 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
                              std::to_string(static_cast<int>(flag))));
       return nullptr;
     }
-
     // For polymorphic types, read type info AFTER handling ref flags
     if constexpr (is_polymorphic) {
       if (read_type) {
@@ -936,7 +1130,6 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
           ctx.set_error(std::move(depth_res).error());
           return nullptr;
         }
-        DynDepthGuard dyn_depth_guard(ctx);
 
         // Read type info from stream to get the concrete type
         const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
@@ -945,11 +1138,11 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
         }
 
         // Use the harness to deserialize the concrete type
-        void *raw_ptr = read_polymorphic_harness_data(ctx, type_info);
+        T *obj_ptr = read_polymorphic_harness_data<T>(ctx, type_info);
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return nullptr;
         }
-        T *obj_ptr = static_cast<T *>(raw_ptr);
+        ctx.decrease_dyn_depth();
         return std::unique_ptr<T>(obj_ptr);
       } else {
         // Monomorphic path: read_type=false means field is marked monomorphic
@@ -960,46 +1153,95 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
               "Cannot use monomorphic deserialization for abstract type"));
           return nullptr;
         } else {
+          auto depth_res = ctx.increase_dyn_depth();
+          if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+            ctx.set_error(std::move(depth_res).error());
+            return nullptr;
+          }
+          if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+            return nullptr;
+          }
           T value = Serializer<T>::read(ctx, RefMode::None, false);
           if (ctx.has_error()) {
             return nullptr;
           }
-          return std::make_unique<T>(std::move(value));
+          auto result = std::make_unique<T>(std::move(value));
+          ctx.decrease_dyn_depth();
+          return result;
         }
       }
     } else {
       // T is guaranteed to be a value type by static_assert.
+      auto depth_res = ctx.increase_dyn_depth();
+      if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+        ctx.set_error(std::move(depth_res).error());
+        return nullptr;
+      }
+      if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+        return nullptr;
+      }
       T value = Serializer<T>::read(ctx, RefMode::None, read_type);
       if (ctx.has_error()) {
         return nullptr;
       }
-      return std::make_unique<T>(std::move(value));
+      auto result = std::make_unique<T>(std::move(value));
+      ctx.decrease_dyn_depth();
+      return result;
     }
   }
 
+  template <bool HasReader = false>
   static inline std::unique_ptr<T>
   read_with_type_info(ReadContext &ctx, RefMode ref_mode,
-                      const TypeInfo &type_info) {
+                      const TypeInfo &type_info,
+                      Harness::ReadAsFn checked_reader = nullptr) {
     constexpr bool is_polymorphic = std::is_polymorphic_v<T>;
+    if constexpr (HasReader) {
+      assert(checked_reader != nullptr);
+    }
 
     // Handle ref_mode == RefMode::None case (similar to Rust)
     if (ref_mode == RefMode::None) {
       // For polymorphic types, use the harness to deserialize the concrete type
       if constexpr (is_polymorphic) {
-        void *raw_ptr = read_polymorphic_harness_data(ctx, type_info);
+        auto depth_res = ctx.increase_dyn_depth();
+        if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+          ctx.set_error(std::move(depth_res).error());
+          return nullptr;
+        }
+
+        T *obj_ptr;
+        if constexpr (HasReader) {
+          obj_ptr =
+              read_polymorphic_harness_data<T>(ctx, &type_info, checked_reader);
+        } else {
+          obj_ptr = read_polymorphic_harness_data<T>(ctx, type_info);
+        }
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return nullptr;
         }
-        T *obj_ptr = static_cast<T *>(raw_ptr);
-        return std::unique_ptr<T>(obj_ptr);
+        auto result = std::unique_ptr<T>(obj_ptr);
+        // Failed nested reads retain depth; only the root operation resets it.
+        ctx.decrease_dyn_depth();
+        return result;
       } else {
         // T is guaranteed to be a value type by static_assert.
+        auto depth_res = ctx.increase_dyn_depth();
+        if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+          ctx.set_error(std::move(depth_res).error());
+          return nullptr;
+        }
+        if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+          return nullptr;
+        }
         T value =
             Serializer<T>::read_with_type_info(ctx, RefMode::None, type_info);
         if (ctx.has_error()) {
           return nullptr;
         }
-        return std::make_unique<T>(std::move(value));
+        auto result = std::make_unique<T>(std::move(value));
+        ctx.decrease_dyn_depth();
+        return result;
       }
     }
 
@@ -1026,27 +1268,45 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
         ctx.set_error(std::move(depth_res).error());
         return nullptr;
       }
-      DynDepthGuard dyn_depth_guard(ctx);
 
       // Use the harness to deserialize the concrete type
-      void *raw_ptr = read_polymorphic_harness_data(ctx, type_info);
+      T *obj_ptr;
+      if constexpr (HasReader) {
+        obj_ptr =
+            read_polymorphic_harness_data<T>(ctx, &type_info, checked_reader);
+      } else {
+        obj_ptr = read_polymorphic_harness_data<T>(ctx, type_info);
+      }
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return nullptr;
       }
-      T *obj_ptr = static_cast<T *>(raw_ptr);
+      ctx.decrease_dyn_depth();
       return std::unique_ptr<T>(obj_ptr);
     } else {
       // T is guaranteed to be a value type by static_assert.
+      auto depth_res = ctx.increase_dyn_depth();
+      if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+        ctx.set_error(std::move(depth_res).error());
+        return nullptr;
+      }
+      if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+        return nullptr;
+      }
       T value =
           Serializer<T>::read_with_type_info(ctx, RefMode::None, type_info);
       if (ctx.has_error()) {
         return nullptr;
       }
-      return std::make_unique<T>(std::move(value));
+      auto result = std::make_unique<T>(std::move(value));
+      ctx.decrease_dyn_depth();
+      return result;
     }
   }
 
   static inline std::unique_ptr<T> read_data(ReadContext &ctx) {
+    if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+      return nullptr;
+    }
     T value = Serializer<T>::read_data(ctx);
     if (ctx.has_error()) {
       return nullptr;

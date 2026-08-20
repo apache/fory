@@ -19,6 +19,13 @@
 
 const DECIMAL_SMALL_MIN = -(1n << 62n);
 const DECIMAL_SMALL_MAX = (1n << 62n) - 1n;
+export const DECIMAL_MAX_MAGNITUDE_BYTES = 10_000;
+export const DECIMAL_MAX_SCALE = 10_000;
+// Compare against the exclusive bit-width bound before constructing magnitude bytes.
+const DECIMAL_MAGNITUDE_LIMIT = 1n << BigInt(DECIMAL_MAX_MAGNITUDE_BYTES * 8);
+const DECIMAL_NEGATIVE_MAGNITUDE_LIMIT = -DECIMAL_MAGNITUDE_LIMIT;
+const HEX_BYTES = Array.from({ length: 256 }, (_, value) => value.toString(16).padStart(2, "0"));
+const HEX_CHUNK_BYTES = 4096;
 
 export class Decimal {
   readonly unscaledValue: bigint;
@@ -38,9 +45,9 @@ export class Decimal {
 
   equals(other: unknown): boolean {
     return (
-      other instanceof Decimal
-      && other.scale === this.scale
-      && other.unscaledValue === this.unscaledValue
+      other instanceof Decimal &&
+      other.scale === this.scale &&
+      other.unscaledValue === this.unscaledValue
     );
   }
 
@@ -63,6 +70,9 @@ export class DecimalCodec {
   }
 
   static toCanonicalLittleEndianMagnitude(value: bigint): Uint8Array {
+    if (value <= DECIMAL_NEGATIVE_MAGNITUDE_LIMIT || value >= DECIMAL_MAGNITUDE_LIMIT) {
+      throw new Error(`Decimal magnitude exceeds ${DECIMAL_MAX_MAGNITUDE_BYTES} bytes.`);
+    }
     let magnitude = value < 0n ? -value : value;
     if (magnitude === 0n) {
       throw new Error("Zero must use the small decimal encoding.");
@@ -76,10 +86,19 @@ export class DecimalCodec {
   }
 
   static fromCanonicalLittleEndianMagnitude(bytes: Uint8Array): bigint {
-    let magnitude = 0n;
-    for (let i = bytes.length - 1; i >= 0; i--) {
-      magnitude = (magnitude << 8n) | BigInt(bytes[i]);
+    if (bytes.length === 0) {
+      return 0n;
     }
-    return magnitude;
+    const chunks = new Array<string>(Math.ceil(bytes.length / HEX_CHUNK_BYTES));
+    let chunkIndex = 0;
+    for (let end = bytes.length; end > 0; end -= HEX_CHUNK_BYTES) {
+      const start = Math.max(0, end - HEX_CHUNK_BYTES);
+      const chunk = new Array<string>(end - start);
+      for (let i = end - 1, j = 0; i >= start; i--, j++) {
+        chunk[j] = HEX_BYTES[bytes[i]];
+      }
+      chunks[chunkIndex++] = chunk.join("");
+    }
+    return BigInt(`0x${chunks.join("")}`);
   }
 }

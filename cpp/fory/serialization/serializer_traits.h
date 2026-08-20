@@ -31,6 +31,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -281,6 +282,34 @@ struct is_generic_type<std::tuple<Ts...>> : std::true_type {};
 
 template <typename T>
 inline constexpr bool is_generic_type_v = is_generic_type<T>::value;
+
+template <typename T> struct is_std_array : std::false_type {};
+
+template <typename T, size_t N>
+struct is_std_array<std::array<T, N>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_std_array_v = is_std_array<T>::value;
+
+// A custom serializer opts into the unguarded homogeneous-container path by
+// declaring a true compile-time constant. Framework serializers that always
+// read a length or scalar body are proven from their concrete target type.
+template <typename T, typename = void>
+struct declared_read_data_always_advances : std::false_type {};
+
+template <typename T>
+struct declared_read_data_always_advances<
+    T, std::void_t<decltype(Serializer<T>::read_data_always_advances)>>
+    : std::bool_constant<Serializer<T>::read_data_always_advances> {};
+
+template <typename T>
+inline constexpr bool read_data_always_advances_v =
+    declared_read_data_always_advances<T>::value || std::is_arithmetic_v<T> ||
+    std::is_enum_v<T> || std::is_same_v<T, std::string> ||
+    std::is_same_v<T, std::u16string> || std::is_same_v<T, std::u32string> ||
+    is_std_array_v<T> || is_variant_v<T> || is_vector_v<T> || is_list_v<T> ||
+    is_deque_v<T> || is_forward_list_v<T> || is_map_like_v<T> ||
+    is_set_like_v<T>;
 
 // ============================================================================
 // Polymorphic Type Detection

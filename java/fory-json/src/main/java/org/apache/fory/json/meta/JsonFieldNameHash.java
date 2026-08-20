@@ -19,6 +19,20 @@
 
 package org.apache.fory.json.meta;
 
+/**
+ * Internal field-name key shared by concrete readers and metadata lookup tables.
+ *
+ * <p>Non-empty names of at most eight nonzero Latin1 code units use their bytes packed from least
+ * to most significant. All other names use an FNV-1a-style hash over the decoded UTF-16 code units.
+ * Object metadata owners that dispatch only by this key reject duplicate keys before publishing
+ * their lookup tables, allowing readers to dispatch without materializing a String. An untrusted
+ * input collision grants no additional field or enum capability because the input could select the
+ * same target by sending its canonical JSON name.
+ *
+ * <p>For both inline-property and wrapper inclusions, closed-subtype lookup uses this key only to
+ * select a candidate. It still compares the complete decoded discriminator property and logical
+ * subtype name before selecting a class.
+ */
 public final class JsonFieldNameHash {
   public static final long MAGIC_HASH_CODE = 0xcbf29ce484222325L;
   public static final long MAGIC_PRIME = 0x100000001b3L;

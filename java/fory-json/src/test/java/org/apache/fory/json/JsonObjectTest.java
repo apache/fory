@@ -20,7 +20,13 @@
 package org.apache.fory.json;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertThrows;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +34,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.apache.fory.json.data.BoxedScalars;
+import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.data.DeclaredParentField;
 import org.apache.fory.json.data.DirectionalIgnore;
 import org.apache.fory.json.data.FirstIntField;
@@ -36,21 +42,63 @@ import org.apache.fory.json.data.MethodsIgnored;
 import org.apache.fory.json.data.ParentValue;
 import org.apache.fory.json.data.PrivateFields;
 import org.apache.fory.json.data.PublicFields;
+import org.apache.fory.platform.JdkVersion;
+import org.testng.SkipException;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonObjectTest extends ForyJsonTestModels {
+  @Factory(dataProvider = "enableCodegen")
+  public JsonObjectTest(boolean codegen) {
+    super(codegen);
+  }
+
   @Test
-  public void writePublicFields() {
-    ForyJson json = ForyJson.builder().build();
-    assertEquals(json.toJson(new PublicFields()), "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
+  public void writeJsonToOutputStream() {
+    ForyJson json = newJson();
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    json.writeJsonTo(new PublicFields(), output);
     assertEquals(
-        new String(json.toJsonBytes(new PublicFields()), StandardCharsets.UTF_8),
+        new String(output.toByteArray(), StandardCharsets.UTF_8),
         "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
+
+    output.reset();
+    json.writeJsonTo(null, output);
+    assertEquals(new String(output.toByteArray(), StandardCharsets.UTF_8), "null");
+
+    OutputStream failing =
+        new OutputStream() {
+          @Override
+          public void write(int b) throws IOException {
+            throw new IOException("closed");
+          }
+
+          @Override
+          public void write(byte[] b, int off, int len) throws IOException {
+            throw new IOException("closed");
+          }
+        };
+    assertThrows(ForyJsonException.class, () -> json.writeJsonTo(new PublicFields(), failing));
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  @Test
+  public void typedWriteValidation() {
+    ForyJson json = newJson();
+    assertEquals(json.toJson(7, int.class), "7");
+    assertEquals(new String(json.toJsonBytes(7, int.class), StandardCharsets.UTF_8), "7");
+    assertThrows(IllegalArgumentException.class, () -> json.toJson(null, int.class));
+    assertThrows(IllegalArgumentException.class, () -> json.toJson("x", (Class) Integer.class));
+    assertThrows(IllegalArgumentException.class, () -> json.toJson(null, void.class));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> json.toJson(new PublicFields(), (Class<PublicFields>) null));
+    assertThrows(NullPointerException.class, () -> json.writeJsonTo(7, int.class, null));
   }
 
   @Test
   public void writeFirstIntGenerated() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected = "{\"count\":2,\"name\":\"first\"}";
     assertEquals(json.toJson(new FirstIntField()), expected);
     assertEquals(
@@ -60,7 +108,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void sharedFacadeThreads() throws Exception {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected = "{\"active\":true,\"id\":7,\"name\":\"fory\"}";
     int threads = 8;
     int iterations = 200;
@@ -74,14 +122,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
                 () -> {
                   start.await();
                   for (int i = 0; i < iterations; i++) {
-                    assertEquals(json.toJson(new PublicFields()), expected);
-                    assertEquals(
-                        new String(json.toJsonBytes(new PublicFields()), StandardCharsets.UTF_8),
-                        expected);
-                    PublicFields value = json.fromJson(expected, PublicFields.class);
-                    assertEquals(value.name, "fory");
-                    assertEquals(value.id, 7);
-                    assertEquals(value.active, true);
+                    assertFacadeRoundTrip(json, expected);
                   }
                   return null;
                 }));
@@ -96,45 +137,93 @@ public class JsonObjectTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void useGeneratedWriter() {
-    ForyJson json = ForyJson.builder().build();
-    assertEquals(json.toJson(new PublicFields()), "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
-    assertGeneratedWhenSupported(json, PublicFields.class);
+  public void sharedFacadeVirtualThreads() throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 21) {
+      throw new SkipException("Virtual threads require JDK 21+");
+    }
+    ForyJson json = newJson();
+    String expected = "{\"active\":true,\"id\":7,\"name\":\"fory\"}";
+    Method newExecutor = Executors.class.getMethod("newVirtualThreadPerTaskExecutor");
+    ExecutorService executor = (ExecutorService) newExecutor.invoke(null);
+    List<Future<?>> futures = new ArrayList<>();
+    try {
+      Future<?> affinity =
+          executor.submit(
+              () -> {
+                Object first = JsonTestSupport.currentTypeResolver(json);
+                assertSame(JsonTestSupport.currentTypeResolver(json), first);
+              });
+      affinity.get();
+      for (int task = 0; task < 64; task++) {
+        futures.add(
+            executor.submit(
+                () -> {
+                  for (int i = 0; i < 20; i++) {
+                    assertFacadeRoundTrip(json, expected);
+                  }
+                }));
+      }
+      for (Future<?> future : futures) {
+        future.get();
+      }
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   @Test
-  public void disableGeneratedWriter() {
-    ForyJson json = ForyJson.builder().withCodegen(false).build();
-    assertEquals(json.toJson(new PublicFields()), "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
-    PublicFields fields =
-        json.fromJson("{\"active\":false,\"id\":8,\"name\":\"json\"}", PublicFields.class);
-    assertEquals(fields.active, false);
-    assertEquals(fields.id, 8);
-    assertEquals(fields.name, "json");
-    BoxedScalars scalars =
+  public void publicFieldPaths() {
+    ForyJson json = newJson();
+    String expected = "{\"active\":true,\"id\":7,\"name\":\"fory\"}";
+    assertEquals(json.toJson(new PublicFields()), expected);
+    assertEquals(
+        new String(json.toJsonBytes(new PublicFields()), StandardCharsets.UTF_8), expected);
+
+    PublicFields latin1 = json.fromJson(expected, PublicFields.class);
+    assertEquals(latin1.active, true);
+    assertEquals(latin1.id, 7);
+    assertEquals(latin1.name, "fory");
+
+    PublicFields utf16 =
         json.fromJson(
-            "{\"bool\":true,\"byteValue\":2,\"charValue\":\"x\",\"doubleValue\":2.5,"
-                + "\"floatValue\":1.5,\"intValue\":4,\"longValue\":5,\"shortValue\":3}",
-            BoxedScalars.class);
-    assertEquals(scalars.byteValue, Byte.valueOf((byte) 2));
-    assertEquals(scalars.shortValue, Short.valueOf((short) 3));
-    assertEquals(json.hasGeneratedWriter(PublicFields.class), false);
+            "{\"ignored\":\"" + ZH_TEXT + "\",\"active\":false,\"id\":8,\"name\":\"json\"}",
+            PublicFields.class);
+    assertEquals(utf16.active, false);
+    assertEquals(utf16.id, 8);
+    assertEquals(utf16.name, "json");
+
+    PublicFields utf8 =
+        json.fromJson(expected.getBytes(StandardCharsets.UTF_8), PublicFields.class);
+    assertEquals(utf8.active, true);
+    assertEquals(utf8.id, 7);
+    assertEquals(utf8.name, "fory");
+    assertGeneratedWhenSupported(json, PublicFields.class);
+  }
+
+  private static void assertFacadeRoundTrip(ForyJson json, String expected) {
+    assertEquals(json.toJson(new PublicFields()), expected);
+    assertEquals(
+        new String(json.toJsonBytes(new PublicFields()), StandardCharsets.UTF_8), expected);
+    PublicFields value = json.fromJson(expected, PublicFields.class);
+    assertEquals(value.name, "fory");
+    assertEquals(value.id, 7);
+    assertEquals(value.active, true);
   }
 
   @Test
   public void writeNullFields() {
-    ForyJson json = ForyJson.builder().writeNullFields(true).build();
+    ForyJson json = newJsonBuilder().writeNullFields(true).build();
     assertEquals(
         json.toJson(new PublicFields()),
-        "{\"active\":true,\"id\":7,\"missing\":null,\"name\":\"fory\"}");
+        "{\"active\":true,\"id\":7,\"name\":\"fory\",\"missing\":null}");
   }
 
   @Test
-  public void ignoreMethods() {
-    ForyJson json = ForyJson.builder().build();
+  public void fieldOnlyModeIgnoresMethods() {
+    ForyJson json = newJsonBuilder().withFieldMode(true).build();
     assertEquals(
         json.toJson(new MethodsIgnored()),
-        "{\"hidden\":\"hidden\",\"setterCalls\":0,\"value\":\"field\"}");
+        "{\"setterCalls\":0,\"value\":\"field\",\"hidden\":\"hidden\"}");
     MethodsIgnored value =
         json.fromJson("{\"hidden\":\"json\",\"value\":\"json\"}", MethodsIgnored.class);
     assertEquals(hiddenValue(value), "json");
@@ -144,7 +233,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void writeDeclaredFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected = "{\"id\":11,\"name\":\"private\"}";
     assertEquals(json.toJson(new PrivateFields()), expected);
     assertEquals(
@@ -161,13 +250,13 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void writeDirectionalIgnore() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new DirectionalIgnore()), "{\"writeOnly\":2}");
   }
 
   @Test
   public void writeDeclaredObjectFieldType() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected = "{\"value\":{\"parent\":1}}";
     assertEquals(json.toJson(new DeclaredParentField()), expected);
     assertEquals(
@@ -180,7 +269,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void readPublicFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     PublicFields fields =
         json.fromJson(
             "{\"unknown\":[1,true,{\"x\":\"y\"}],\"name\":\"fory\",\"id\":7,\"active\":true}",
@@ -192,7 +281,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void readUtf8Bytes() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     byte[] bytes =
         "{\"name\":\"\uD83D\uDE00\u1234\",\"id\":8,\"active\":false}"
             .getBytes(StandardCharsets.UTF_8);
@@ -204,11 +293,55 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void readDirectionalIgnore() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     DirectionalIgnore value =
         json.fromJson("{\"both\":7,\"writeOnly\":8,\"readOnly\":9}", DirectionalIgnore.class);
     assertEquals(value.both, 1);
     assertEquals(value.writeOnly, 2);
     assertEquals(value.readOnly, 9);
+  }
+
+  @Test
+  public void methodIgnore() {
+    ForyJson json = newJson();
+    MethodIgnored value = new MethodIgnored();
+    assertEquals(json.toJson(value), "{\"visible\":1}");
+    MethodIgnored decoded =
+        json.fromJson("{\"hidden\":9,\"inputOnly\":8,\"visible\":7}", MethodIgnored.class);
+    assertEquals(decoded.hidden, 2);
+    assertEquals(decoded.inputOnly, 8);
+    assertEquals(decoded.visible, 7);
+  }
+
+  public static final class MethodIgnored {
+    public int hidden = 2;
+    public int inputOnly = 3;
+    public int visible = 1;
+
+    @JsonIgnore
+    public int getHidden() {
+      return hidden;
+    }
+
+    public void setHidden(int hidden) {
+      this.hidden = hidden;
+    }
+
+    @JsonIgnore(ignoreRead = false)
+    public int getInputOnly() {
+      return inputOnly;
+    }
+
+    public void setInputOnly(int inputOnly) {
+      this.inputOnly = inputOnly;
+    }
+
+    public int getVisible() {
+      return visible;
+    }
+
+    public void setVisible(int visible) {
+      this.visible = visible;
+    }
   }
 }

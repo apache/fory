@@ -1,8 +1,8 @@
 {
   "name": "@apache-fory/hps",
-  "version": "1.4.0-alpha.0",
+  "version": "1.7.0-alpha.0",
   "description": "Apache Fory™ nodejs high-performance suite",
-  "homepage": "https://fory.apache.org/docs/guide/javascript",
+  "homepage": "https://fory.apache.org/docs/object-serialization/javascript",
   "main": "dist/index.js",
   "files": [
     "dist",
@@ -17,12 +17,16 @@
     "prepublishOnly": "npm run build"
   },
   "license": "Apache-2.0",
-  "repository": "git@github.com:apache/fory.git",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apache/fory.git",
+    "directory": "javascript/packages/hps"
+  },
   "dependencies": {
     "bindings": "~1.2.1",
     "fs-extra": "^11.3.0",
     "nan": "^2.22.0",
-    "node-gyp": "^11.0.0"
+    "node-gyp": "^12.1.0"
   },
   "engines": {
     "node": "^20.0.0"

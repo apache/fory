@@ -53,7 +53,7 @@ pub enum RefMode {
 
     /// Only null check without reference tracking.
     /// Write: NullFlag (-3) for None, NotNullValueFlag (-1) for Some.
-    /// Read: Read flag and return ForyDefault on null.
+    /// Read: Read the flag and use the selected serializer's default on null.
     NullOnly = 1,
 
     /// Full reference tracking with circular reference support.
@@ -272,6 +272,9 @@ impl RefReader {
     #[inline(always)]
     pub fn reserve_ref_id(&mut self) -> u32 {
         let ref_id = self.refs.len() as u32;
+        // Skipped values reserve their producer ref id but intentionally stay
+        // unresolved. A later Ref to this slot must fail downcast instead of
+        // aliasing the next materialized object.
         self.refs.push(Box::new(()));
         ref_id
     }

@@ -67,6 +67,8 @@ public class GraalvmSupport {
   private static final String GRAAL_IMAGE_CODE_KEY = "org.graalvm.nativeimage.imagecode";
   private static final String GRAAL_IMAGE_BUILDTIME = "buildtime";
   private static final String GRAAL_IMAGE_RUNTIME = "runtime";
+  private static final String GUAVA_SERIALIZERS_CLASS =
+      CollectionSerializers.class.getPackage().getName() + ".GuavaCollectionSerializers";
 
   private static final Map<Integer, GraalvmClassRegistry> GRAALVM_REGISTRY =
       new ConcurrentHashMap<>();
@@ -106,17 +108,12 @@ public class GraalvmSupport {
     registerDefaultSerializerClass(BufferSerializers.ByteBufferSerializer.class);
     registerDefaultSerializerClass(MapSerializers.StringKeyMapSerializer.class);
     registerDefaultSerializerClassIfPresent(
-        "org.apache.fory.serializer.collection.GuavaCollectionSerializers"
-            + "$ImmutableIntArraySerializer");
+        GUAVA_SERIALIZERS_CLASS + "$ImmutableIntArraySerializer");
     registerDefaultSerializerClassIfPresent(
-        "org.apache.fory.serializer.collection.GuavaCollectionSerializers"
-            + "$ImmutableMapFormSerializer");
+        GUAVA_SERIALIZERS_CLASS + "$ImmutableMapFormSerializer");
     registerDefaultSerializerClassIfPresent(
-        "org.apache.fory.serializer.collection.GuavaCollectionSerializers"
-            + "$ImmutableBiMapFormSerializer");
-    registerDefaultSerializerClassIfPresent(
-        "org.apache.fory.serializer.collection.GuavaCollectionSerializers"
-            + "$HashBasedTableSerializer");
+        GUAVA_SERIALIZERS_CLASS + "$ImmutableBiMapFormSerializer");
+    registerDefaultSerializerClassIfPresent(GUAVA_SERIALIZERS_CLASS + "$HashBasedTableSerializer");
     registerDefaultSerializerClass(ChildContainerSerializers.ChildArrayListSerializer.class);
     registerDefaultSerializerClass(ChildContainerSerializers.ChildCollectionSerializer.class);
     registerDefaultSerializerClass(ChildContainerSerializers.ChildMapSerializer.class);

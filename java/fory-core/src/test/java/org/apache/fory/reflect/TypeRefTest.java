@@ -25,6 +25,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.WildcardType;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -104,7 +105,45 @@ public class TypeRefTest extends ForyTestBase {
 
   static class MultiParamList<A, E> extends ArrayList<E> {}
 
+  static class Box<T> extends AbstractList<Box<?>> {
+    @Override
+    public Box<?> get(int index) {
+      return null;
+    }
+
+    @Override
+    public int size() {
+      return 0;
+    }
+  }
+
+  static class RecursiveBox<T> extends AbstractList<RecursiveBox<T>> {
+    @Override
+    public RecursiveBox<T> get(int index) {
+      return null;
+    }
+
+    @Override
+    public int size() {
+      return 0;
+    }
+  }
+
   static class MultiParamMap<A, K, V> extends HashMap<K, V> {}
+
+  static class SwappedMap<K, V> extends HashMap<V, K> {}
+
+  static class NestedElementList<E> extends ArrayList<List<E>> {}
+
+  static class ParamA<T> extends ArrayList<ParamB<T>> {}
+
+  static class ParamB<T> extends ArrayList<ParamA<T>> {}
+
+  static class Owner<T> {
+    class Values<E> extends ArrayList<Map<T, E>> {}
+  }
+
+  static class WildcardList<T> extends ArrayList<List<? extends T>> {}
 
   static class StringKeyMap<V> extends HashMap<String, V> {}
 
@@ -155,6 +194,144 @@ public class TypeRefTest extends ForyTestBase {
     Assert.assertEquals(fixedKeyMapGenericType.getTypeParametersCount(), 2);
     Assert.assertEquals(fixedKeyMapGenericType.getTypeParameter0().getCls(), String.class);
     Assert.assertEquals(fixedKeyMapGenericType.getTypeParameter1().getCls(), List.class);
+
+    TypeRef<?> generatedMapType =
+        TypeRef.ofDeclaredTypeArguments(
+            MultiParamMap.class,
+            null,
+            Arrays.asList(
+                TypeRef.of(String.class), TypeRef.of(Long.class), TypeRef.of(Integer.class)),
+            null);
+    Assert.assertEquals(generatedMapType.getTypeArguments().size(), 2);
+    Assert.assertEquals(generatedMapType.getTypeArguments().get(0), TypeRef.of(Long.class));
+    Assert.assertEquals(generatedMapType.getTypeArguments().get(1), TypeRef.of(Integer.class));
+
+    TypeRef<?> generatedListType =
+        TypeRef.ofDeclaredTypeArguments(
+            MultiParamList.class,
+            null,
+            Arrays.asList(TypeRef.of(String.class), TypeRef.of(Integer.class)),
+            null);
+    Assert.assertEquals(generatedListType.getTypeArguments().size(), 1);
+    Assert.assertEquals(generatedListType.getTypeArguments().get(0), TypeRef.of(Integer.class));
+
+    TypeRef<?> generatedSwappedMap =
+        TypeRef.ofDeclaredTypeArguments(
+            SwappedMap.class,
+            null,
+            Arrays.asList(TypeRef.of(String.class), TypeRef.of(Integer.class)),
+            null);
+    Assert.assertEquals(
+        generatedSwappedMap.getTypeArguments(),
+        Arrays.asList(TypeRef.of(Integer.class), TypeRef.of(String.class)));
+    TypeRef<?> rebuiltSwappedMap =
+        TypeRef.of(SwappedMap.class, null, generatedSwappedMap.getTypeArguments(), null);
+    Assert.assertEquals(
+        rebuiltSwappedMap.getTypeArguments(), generatedSwappedMap.getTypeArguments());
+
+    TypeRef<?> generatedNestedList =
+        TypeRef.ofDeclaredTypeArguments(
+            NestedElementList.class, null, Arrays.asList(TypeRef.of(String.class)), null);
+    Assert.assertEquals(
+        generatedNestedList.getTypeArguments(), Arrays.asList(new TypeRef<List<String>>() {}));
+    TypeRef<?> rebuiltNestedList =
+        TypeRef.of(NestedElementList.class, null, generatedNestedList.getTypeArguments(), null);
+    Assert.assertEquals(
+        rebuiltNestedList.getTypeArguments(), generatedNestedList.getTypeArguments());
+
+    TypeRef<?> semanticSwappedMap =
+        TypeUtils.mapOf(
+            SwappedMap.class, TypeRef.of(Integer.class), TypeRef.of(String.class), null);
+    Assert.assertEquals(
+        semanticSwappedMap.getTypeArguments(),
+        Arrays.asList(TypeRef.of(Integer.class), TypeRef.of(String.class)));
+    TypeRef<?> semanticNestedList =
+        TypeUtils.collectionOf(NestedElementList.class, new TypeRef<List<String>>() {}, null);
+    Assert.assertEquals(
+        semanticNestedList.getTypeArguments(), Arrays.asList(new TypeRef<List<String>>() {}));
+  }
+
+  @Test
+  public void testMutualContainerType() {
+    TypeRef<?> type = new TypeRef<ParamA<String>>() {};
+    assertMutualContainerType(type);
+    Assert.assertNotNull(GenericType.build(type));
+
+    TypeRef<?> generatedType =
+        TypeRef.ofDeclaredTypeArguments(
+            ParamA.class, null, Arrays.asList(TypeRef.of(String.class)), null);
+    assertMutualContainerType(generatedType);
+    Assert.assertNotNull(GenericType.build(generatedType));
+  }
+
+  private static void assertMutualContainerType(TypeRef<?> type) {
+    TypeRef<?> paramB = type.getTypeArguments().get(0);
+    Assert.assertEquals(paramB.getRawType(), ParamB.class);
+    TypeRef<?> paramA = paramB.getTypeArguments().get(0);
+    Assert.assertEquals(paramA.getRawType(), ParamA.class);
+    Assert.assertTrue(paramA.getTypeArguments().isEmpty());
+  }
+
+  @Test
+  public void testOwnerContainerType() {
+    assertOwnerContainerType(new TypeRef<Owner<String>.Values<Integer>>() {});
+
+    TypeRef<?> ownerType =
+        TypeRef.ofDeclaredTypeArguments(
+            Owner.class, null, Arrays.asList(TypeRef.of(String.class)), null);
+    TypeRef<?> generatedType =
+        TypeRef.ofDeclaredTypeArguments(
+            Owner.Values.class, null, Arrays.asList(TypeRef.of(Integer.class)), null, ownerType);
+    assertOwnerContainerType(generatedType);
+  }
+
+  private static void assertOwnerContainerType(TypeRef<?> type) {
+    TypeRef<?> elementType = TypeUtils.getElementType(type);
+    Assert.assertEquals(elementType.getRawType(), Map.class);
+    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(elementType);
+    Assert.assertEquals(keyValueType.f0.getRawType(), String.class);
+    Assert.assertEquals(keyValueType.f1.getRawType(), Integer.class);
+  }
+
+  @Test
+  public void testWildcardContainerType() {
+    assertWildcardContainerType(new TypeRef<WildcardList<String>>() {});
+    TypeRef<?> generatedType =
+        TypeRef.ofDeclaredTypeArguments(
+            WildcardList.class, null, Arrays.asList(TypeRef.of(String.class)), null);
+    assertWildcardContainerType(generatedType);
+  }
+
+  private static void assertWildcardContainerType(TypeRef<?> type) {
+    TypeRef<?> listType = TypeUtils.getElementType(type);
+    Assert.assertEquals(listType.getRawType(), List.class);
+    TypeRef<?> wildcardType = listType.getTypeArguments().get(0);
+    Assert.assertTrue(wildcardType.isWildcard());
+    Assert.assertEquals(wildcardType.resolveWildcard().getRawType(), String.class);
+  }
+
+  @Test
+  public void testSelfElementType() {
+    TypeRef<?> boxType = new TypeRef<Box<String>>() {};
+    Assert.assertEquals(boxType.getTypeArguments().size(), 1);
+    TypeRef<?> boxElementType = boxType.getTypeArguments().get(0);
+    Assert.assertEquals(boxElementType.getRawType(), Box.class);
+    Assert.assertTrue(boxElementType.getType() instanceof ParameterizedType);
+    Type boxArgument = ((ParameterizedType) boxElementType.getType()).getActualTypeArguments()[0];
+    Assert.assertTrue(boxArgument instanceof WildcardType);
+    Assert.assertEquals(TypeUtils.getElementType(boxType), boxElementType);
+    Assert.assertNotEquals(boxElementType, TypeRef.of(String.class));
+
+    GenericType boxGenericType = GenericType.build(boxType);
+    Assert.assertEquals(boxGenericType.getTypeParametersCount(), 1);
+    Assert.assertEquals(boxGenericType.getTypeParameter0().getTypeRef(), boxElementType);
+    Assert.assertEquals(boxGenericType.getTypeParameter0().getTypeParametersCount(), 0);
+
+    TypeRef<?> recursiveBoxType = new TypeRef<RecursiveBox<String>>() {};
+    TypeRef<?> recursiveElementType = new TypeRef<RecursiveBox<String>>() {};
+    Assert.assertEquals(recursiveBoxType.getTypeArguments().size(), 1);
+    Assert.assertEquals(recursiveBoxType.getTypeArguments().get(0), recursiveElementType);
+    Assert.assertEquals(TypeUtils.getElementType(recursiveBoxType), recursiveElementType);
   }
 
   @Test
@@ -217,6 +394,24 @@ public class TypeRefTest extends ForyTestBase {
   }
 
   @Test
+  public void testTypeKeyMetadata() {
+    TypeRef<?> plain =
+        TypeRef.of(String.class, TypeExtMeta.of(Types.UNKNOWN, false, false, false, false));
+    TypeRef<?> wrapped =
+        TypeRef.of(String.class, TypeExtMeta.of(Types.UNKNOWN, false, false, true, false));
+    TypeRef<?> covariant =
+        TypeRef.of(String.class, TypeExtMeta.of(Types.UNKNOWN, false, false, false, true));
+    TypeRef<?> both =
+        TypeRef.of(String.class, TypeExtMeta.of(Types.UNKNOWN, false, false, true, true));
+    assertNotEquals(plain.getTypeKey(), wrapped.getTypeKey());
+    assertNotEquals(plain.getTypeKey(), covariant.getTypeKey());
+    assertNotEquals(plain.getTypeKey(), both.getTypeKey());
+    assertNotEquals(wrapped.getTypeKey(), covariant.getTypeKey());
+    assertNotEquals(wrapped.getTypeKey(), both.getTypeKey());
+    assertNotEquals(covariant.getTypeKey(), both.getTypeKey());
+  }
+
+  @Test
   public void testScalaContainerTypeRefNormalization() throws Exception {
     if (!ScalaTypes.SCALA_AVAILABLE) {
       throw new SkipException("Scala is not available on the Java test classpath");
@@ -250,7 +445,7 @@ public class TypeRefTest extends ForyTestBase {
   }
 
   @Test
-  public void testTypeUseMetadataKeepsNullableOwnership() throws Exception {
+  public void typeUseMetadataKeepsNullableOwner() throws Exception {
     Field nicknameField = TypeUseMetadataStruct.class.getDeclaredField("nickname");
     TypeRef<?> nicknameType = TypeRef.ofTypeUse(nicknameField.getAnnotatedType());
     TypeExtMeta nicknameMeta = nicknameType.getTypeExtMeta();

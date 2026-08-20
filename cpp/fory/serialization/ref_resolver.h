@@ -97,13 +97,12 @@ private:
 
 class RefReader {
 public:
-  using UpdateCallback = std::function<void(const RefReader &)>;
+  using UpdateCallback = std::function<void(const RefReader &, Error &)>;
 
   RefReader() = default;
 
   template <typename T> uint32_t store_shared_ref(std::shared_ptr<T> ptr) {
-    // Store as shared_ptr<void> for type erasure, maintaining reference count
-    refs_.emplace_back(std::shared_ptr<void>(ptr, ptr.get()));
+    refs_.push_back(RefSlot{std::shared_ptr<void>(ptr, ptr.get()), &typeid(T)});
     return static_cast<uint32_t>(refs_.size() - 1);
   }
 
@@ -112,8 +111,7 @@ public:
     if (ref_id >= refs_.size()) {
       refs_.resize(ref_id + 1);
     }
-    // Store as shared_ptr<void> for type erasure
-    refs_[ref_id] = std::shared_ptr<void>(ptr, ptr.get());
+    refs_[ref_id] = RefSlot{std::shared_ptr<void>(ptr, ptr.get()), &typeid(T)};
   }
 
   template <typename T>
@@ -123,26 +121,40 @@ public:
                                            std::to_string(ref_id)));
     }
 
-    const std::shared_ptr<void> &stored = refs_[ref_id];
+    const RefSlot &slot = refs_[ref_id];
+    const std::shared_ptr<void> &stored = slot.ptr;
     if (!stored) {
       return Unexpected(Error::invalid_ref("Reference not resolved: " +
                                            std::to_string(ref_id)));
     }
 
-    // Alias constructor: create shared_ptr<T> that shares ownership with stored
-    // This works for polymorphic types because the void* points to the actual
-    // derived object
+    const std::type_info &requested_type = typeid(T);
+    // The stored void* is only safe to reinterpret as the same C++ static type
+    // that materialized the slot. Reject mismatches before a forged ref id can
+    // turn one shared_ptr<T> owner into an unrelated shared_ptr<U>.
+    if (slot.type == nullptr ||
+        (slot.type != &requested_type && !(*slot.type == requested_type))) {
+      std::string stored_type =
+          slot.type == nullptr ? "<unknown>" : slot.type->name();
+      return Unexpected(Error::invalid_ref(
+          "Reference type mismatch for ID " + std::to_string(ref_id) +
+          ": stored " + stored_type + ", requested " + requested_type.name()));
+    }
+
     return std::shared_ptr<T>(stored, static_cast<T *>(stored.get()));
   }
 
   template <typename T>
   void add_update_callback(uint32_t ref_id, std::shared_ptr<T> *target) {
-    callbacks_.emplace_back([ref_id, target](const RefReader &reader) {
-      auto ref_result = reader.template get_shared_ref<T>(ref_id);
-      if (ref_result.ok()) {
-        *target = ref_result.value();
-      }
-    });
+    callbacks_.emplace_back(
+        [ref_id, target](const RefReader &reader, Error &error) {
+          auto ref_result = reader.template get_shared_ref<T>(ref_id);
+          if (FORY_PREDICT_FALSE(!ref_result.ok())) {
+            error = std::move(ref_result).error();
+            return;
+          }
+          *target = ref_result.value();
+        });
   }
 
   /// Add a callback that will be invoked when references are resolved.
@@ -158,15 +170,24 @@ public:
     callbacks_.emplace_back(std::move(callback));
   }
 
-  void resolve_callbacks() {
+  void resolve_callbacks(Error &error) {
+    if (callbacks_.empty()) {
+      return;
+    }
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      callbacks_.clear();
+      return;
+    }
     for (const auto &cb : callbacks_) {
-      cb(*this);
+      cb(*this, error);
+      if (FORY_PREDICT_FALSE(!error.ok())) {
+        break;
+      }
     }
     callbacks_.clear();
   }
 
   void reset() {
-    resolve_callbacks();
     refs_.clear();
     callbacks_.clear();
   }
@@ -187,8 +208,17 @@ public:
     return static_cast<uint32_t>(refs_.size() - 1);
   }
 
+  bool is_pending_ref(uint32_t ref_id) const {
+    return ref_id < refs_.size() && !refs_[ref_id].ptr;
+  }
+
 private:
-  std::vector<std::shared_ptr<void>> refs_;
+  struct RefSlot {
+    std::shared_ptr<void> ptr;
+    const std::type_info *type = nullptr;
+  };
+
+  std::vector<RefSlot> refs_;
   std::vector<UpdateCallback> callbacks_;
 };
 

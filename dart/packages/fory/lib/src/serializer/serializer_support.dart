@@ -258,6 +258,18 @@ Object? readCompatibleField(ReadContext context, FieldInfo field) {
       fieldType,
     );
   }
+  if (_compatibleFieldCarriesTypeInfo(fieldType.typeId)) {
+    // Compatible struct/ext fields do not retain a declared child identity in
+    // TypeDef. Their value carries TypeInfo, so a parsed Object host type must
+    // not resolve through an unrelated local Object registration.
+    if (fieldType.ref) {
+      return context.readRef();
+    }
+    if (fieldType.nullable) {
+      return context.readNullable();
+    }
+    return context.readNonRef();
+  }
   final declaredTypeInfo = _compatibleFieldDeclaredTypeInfo(
     context.typeResolver,
     field,
@@ -302,6 +314,14 @@ Object? readCompatibleField(ReadContext context, FieldInfo field) {
   }
   return context.readResolvedValue(resolved, fieldType);
 }
+
+bool _compatibleFieldCarriesTypeInfo(int typeId) =>
+    typeId == TypeIds.struct ||
+    typeId == TypeIds.compatibleStruct ||
+    typeId == TypeIds.namedStruct ||
+    typeId == TypeIds.namedCompatibleStruct ||
+    typeId == TypeIds.ext ||
+    typeId == TypeIds.namedExt;
 
 TypeInfo? _compatibleFieldDeclaredTypeInfo(
   TypeResolver resolver,

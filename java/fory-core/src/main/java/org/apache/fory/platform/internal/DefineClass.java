@@ -49,10 +49,11 @@ public class DefineClass {
     Preconditions.checkNotNull(loader);
     Preconditions.checkArgument(JdkVersion.MAJOR_VERSION >= 8);
     if (neighbor != null && JdkVersion.MAJOR_VERSION >= 9) {
-      // classes in bytecode must be in same package as lookup class.
-      MethodHandles.Lookup lookup = MethodHandles.lookup();
-      _JDKAccess.addReads(_JDKAccess.getModule(DefineClass.class), _JDKAccess.getModule(neighbor));
-      lookup = _Lookup.privateLookupIn(neighbor, lookup);
+      // A normal privateLookupIn would make ordinary generated classes depend on the application
+      // package being open to Fory. The target-class trusted lookup defines the class in the
+      // neighbor's loader, runtime package, module, and protection domain without that user-facing
+      // module contract. Classes in bytecode must still be in the neighbor's package.
+      MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(neighbor);
       return _Lookup.defineClass(lookup, bytecodes);
     }
     if (classloaderDefineClassHandle == null) {

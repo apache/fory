@@ -25,10 +25,19 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import lombok.Data;
+import org.apache.fory.Fory;
+import org.apache.fory.annotation.ForyEnumId;
+import org.apache.fory.annotation.ForyField;
+import org.apache.fory.annotation.ForyStruct;
+import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.TestUtils;
+import org.testng.Assert;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 
@@ -384,5 +393,198 @@ public class CSharpXlangTest extends XlangTestBase {
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testListArrayCompatibleRead(boolean enableCodegen) throws java.io.IOException {
     super.testListArrayCompatibleRead(enableCodegen);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testCSharpExternalId(boolean enableCodegen) throws IOException {
+    Fory fory =
+        Fory.builder().withXlang(true).withCompatible(true).withCodegen(enableCodegen).build();
+    registerExternalById(fory);
+    assertExternalRoundTrip(fory, "test_csharp_external_id");
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testCSharpExternalName(boolean enableCodegen) throws IOException {
+    Fory fory =
+        Fory.builder().withXlang(true).withCompatible(false).withCodegen(enableCodegen).build();
+    registerExternalByName(fory);
+    assertExternalRoundTrip(fory, "test_csharp_external_name");
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testCSharpOrdinaryInheritanceId(boolean enableCodegen) throws IOException {
+    Fory fory =
+        Fory.builder().withXlang(true).withCompatible(true).withCodegen(enableCodegen).build();
+    fory.register(CSharpOrdinaryInheritance.class, 1311);
+    CSharpOrdinaryInheritance value = new CSharpOrdinaryInheritance();
+    value.identifier = 17;
+    value.name = "ordinary";
+    value.score = 19;
+
+    MemoryBuffer buffer = MemoryUtils.buffer(128);
+    fory.serialize(buffer, value);
+    ExecutionContext ctx =
+        prepareExecution(
+            "test_csharp_ordinary_inheritance_id", buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+
+    Assert.assertEquals(
+        (CSharpOrdinaryInheritance) fory.deserialize(readBuffer(ctx.dataFile())), value);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testCSharpExternalInheritanceName(boolean enableCodegen) throws IOException {
+    Fory fory =
+        Fory.builder().withXlang(true).withCompatible(false).withCodegen(enableCodegen).build();
+    fory.register(CSharpExternalInheritance.class, "csharp.inheritance.ExternalLeaf");
+    CSharpExternalInheritance value = new CSharpExternalInheritance();
+    value.identifier = 23;
+    value.secret = "external";
+    value.publicValue = 31;
+    value.leafName = "leaf";
+
+    MemoryBuffer buffer = MemoryUtils.buffer(128);
+    fory.serialize(buffer, value);
+    ExecutionContext ctx =
+        prepareExecution(
+            "test_csharp_external_inheritance_name", buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+
+    Assert.assertEquals(
+        (CSharpExternalInheritance) fory.deserialize(readBuffer(ctx.dataFile())), value);
+  }
+
+  @SuppressWarnings("unchecked")
+  private void assertExternalRoundTrip(Fory fory, String caseName) throws IOException {
+    CSharpExternalUser user = newExternalUser(7, "root");
+
+    CSharpExternalPoint point = new CSharpExternalPoint();
+    point.x = 3;
+    point.y = -4;
+
+    CSharpExternalStatus status = CSharpExternalStatus.DONE;
+
+    CSharpExternalHolder holder = new CSharpExternalHolder();
+    holder.users = Arrays.asList(newExternalUser(11, "holder-a"), newExternalUser(12, "holder-b"));
+    holder.usersByName = new LinkedHashMap<>();
+    holder.usersByName.put("first", newExternalUser(13, "map-a"));
+    holder.usersByName.put("second", newExternalUser(14, "map-b"));
+
+    List<CSharpExternalUser> users =
+        Arrays.asList(newExternalUser(21, "list-a"), newExternalUser(22, "list-b"));
+    Map<String, CSharpExternalUser> usersByName = new LinkedHashMap<>();
+    usersByName.put("left", newExternalUser(31, "root-map-a"));
+    usersByName.put("right", newExternalUser(32, "root-map-b"));
+
+    MemoryBuffer buffer = MemoryUtils.buffer(256);
+    fory.serialize(buffer, user);
+    fory.serialize(buffer, point);
+    fory.serialize(buffer, status);
+    fory.serialize(buffer, holder);
+    fory.serialize(buffer, users);
+    fory.serialize(buffer, usersByName);
+
+    ExecutionContext ctx = prepareExecution(caseName, buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+
+    MemoryBuffer result = readBuffer(ctx.dataFile());
+    Assert.assertEquals((CSharpExternalUser) fory.deserialize(result), user);
+    Assert.assertEquals((CSharpExternalPoint) fory.deserialize(result), point);
+    Assert.assertEquals((CSharpExternalStatus) fory.deserialize(result), status);
+    Assert.assertEquals((CSharpExternalHolder) fory.deserialize(result), holder);
+    Assert.assertEquals((List<CSharpExternalUser>) fory.deserialize(result), users);
+    Assert.assertEquals((Map<String, CSharpExternalUser>) fory.deserialize(result), usersByName);
+    Assert.assertEquals(result.remaining(), 0);
+  }
+
+  private static CSharpExternalUser newExternalUser(int id, String name) {
+    CSharpExternalUser user = new CSharpExternalUser();
+    user.id = id;
+    user.name = name;
+    return user;
+  }
+
+  private static void registerExternalById(Fory fory) {
+    fory.register(CSharpExternalUser.class, 1301);
+    fory.register(CSharpExternalPoint.class, 1302);
+    fory.register(CSharpExternalStatus.class, 1303);
+    fory.register(CSharpExternalHolder.class, 1304);
+  }
+
+  private static void registerExternalByName(Fory fory) {
+    fory.register(CSharpExternalUser.class, "csharp.external.User");
+    fory.register(CSharpExternalPoint.class, "csharp.external.Point");
+    fory.register(CSharpExternalStatus.class, "csharp.external.Status");
+    fory.register(CSharpExternalHolder.class, "csharp.external.Holder");
+  }
+
+  @Data
+  @ForyStruct
+  static class CSharpExternalUser {
+    @ForyField(id = 1)
+    int id;
+
+    @ForyField(id = 2)
+    String name;
+  }
+
+  @Data
+  @ForyStruct
+  static class CSharpExternalPoint {
+    @ForyField(id = 1)
+    int x;
+
+    @ForyField(id = 2)
+    int y;
+  }
+
+  enum CSharpExternalStatus {
+    @ForyEnumId(0)
+    UNKNOWN,
+
+    @ForyEnumId(7)
+    READY,
+
+    @ForyEnumId(23)
+    DONE,
+  }
+
+  @Data
+  @ForyStruct
+  static class CSharpExternalHolder {
+    @ForyField(id = 1)
+    List<CSharpExternalUser> users;
+
+    @ForyField(id = 2)
+    Map<String, CSharpExternalUser> usersByName;
+  }
+
+  @Data
+  @ForyStruct
+  static class CSharpOrdinaryInheritance {
+    @ForyField(id = 1)
+    int identifier;
+
+    @ForyField(id = 2)
+    String name;
+
+    @ForyField(id = 3)
+    long score;
+  }
+
+  @Data
+  @ForyStruct
+  static class CSharpExternalInheritance {
+    @ForyField(id = 1)
+    long identifier;
+
+    @ForyField(id = 2)
+    String secret;
+
+    @ForyField(id = 3)
+    int publicValue;
+
+    @ForyField(id = 4)
+    String leafName;
   }
 }

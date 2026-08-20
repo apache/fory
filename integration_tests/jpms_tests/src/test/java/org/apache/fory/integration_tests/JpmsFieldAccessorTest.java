@@ -41,6 +41,11 @@ public class JpmsFieldAccessorTest {
   private static final String VAR_HANDLE = "java.lang.invoke.VarHandle";
 
   @Test
+  public void testModuleConsumer() {
+    org.apache.fory.integration_tests.Test.verifyKotlinJson();
+  }
+
+  @Test
   public void testPrivateFieldAccess() throws Exception {
     PrivateFieldBean bean = new PrivateFieldBean(7);
     Field field = PrivateFieldBean.class.getDeclaredField("value");

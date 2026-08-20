@@ -428,6 +428,136 @@ def test_decimal_codec_rejects_non_canonical_big_payloads():
         serializer.read(trailing_zero_payload)
 
 
+@pytest.mark.parametrize(
+    ("scale", "accepted"),
+    [
+        (-(1 << 31), False),
+        (-10_001, False),
+        (-10_000, True),
+        (10_000, True),
+        (10_001, False),
+        ((1 << 31) - 1, False),
+    ],
+)
+def test_decimal_writer_scale_limit(scale, accepted):
+    fory = Fory(xlang=True, compatible=False, ref=False)
+    value = decimal.Decimal((0, (1,), -scale))
+    if not accepted:
+        with pytest.raises(ValueError, match="Decimal scale"):
+            fory.serialize(value)
+        return
+    decoded = fory.deserialize(fory.serialize(value))
+    assert decoded.as_tuple() == value.as_tuple()
+
+
+@pytest.mark.parametrize(
+    ("scale", "accepted"),
+    [
+        (-(1 << 31), False),
+        (-10_001, False),
+        (-10_000, True),
+        (10_000, True),
+        (10_001, False),
+        ((1 << 31) - 1, False),
+    ],
+)
+def test_decimal_reader_scale_limit(scale, accepted):
+    fory = Fory(xlang=True, compatible=False, ref=False)
+    serializer = DecimalSerializer(fory.type_resolver, decimal.Decimal)
+    buffer = Buffer.allocate(32)
+    buffer.write_varint32(scale)
+    scale_end = buffer.get_writer_index()
+    if accepted:
+        buffer.write_var_uint64(4)
+    buffer.set_reader_index(0)
+    fory.read_context.prepare(buffer)
+    try:
+        if not accepted:
+            with pytest.raises(ValueError, match="Decimal scale"):
+                serializer.read(fory.read_context)
+            assert buffer.get_reader_index() == scale_end
+            return
+        decoded = serializer.read(fory.read_context)
+        assert decoded.as_tuple() == decimal.Decimal((0, (1,), -scale)).as_tuple()
+    finally:
+        fory.read_context.reset()
+
+
+@pytest.mark.parametrize(
+    ("magnitude_length", "accepted"),
+    [
+        (10_000, True),
+        (10_001, False),
+    ],
+)
+def test_decimal_writer_magnitude_limit(magnitude_length, accepted):
+    fory = Fory(xlang=True, compatible=False, ref=False)
+    if accepted:
+        value = decimal.Decimal((1 << (8 * magnitude_length)) - 1)
+        assert len(value.as_tuple().digits) == 24_083
+    else:
+        value = decimal.Decimal(1 << (8 * (magnitude_length - 1)))
+    if not accepted:
+        with pytest.raises(ValueError, match="Decimal magnitude length"):
+            fory.serialize(value)
+        return
+    assert fory.deserialize(fory.serialize(value)) == value
+
+
+def test_decimal_writer_keeps_buffer():
+    fory = Fory(xlang=True, compatible=False, ref=False)
+    serializer = DecimalSerializer(fory.type_resolver, decimal.Decimal)
+    buffer = Buffer.allocate(32)
+    buffer.write_bytes(b"prefix")
+    writer_index = buffer.get_writer_index()
+    before = buffer.to_bytes()
+    value = decimal.Decimal(1 << (8 * 10_000))
+    with pytest.raises(ValueError, match="Decimal magnitude length 10001"):
+        serializer.write(buffer, value)
+    assert buffer.get_writer_index() == writer_index
+    assert buffer.to_bytes() == before
+
+
+def test_decimal_writer_digit_precheck():
+    fory = Fory(xlang=True, compatible=False, ref=False)
+    serializer = DecimalSerializer(fory.type_resolver, decimal.Decimal)
+    value = decimal.Decimal((0, (1,) + (0,) * 24_083, 0))
+    assert len(value.as_tuple().digits) == 24_084
+    with pytest.raises(ValueError, match="24084 digits"):
+        serializer.write(Buffer.allocate(32), value)
+
+
+@pytest.mark.parametrize(
+    ("magnitude_length", "accepted"),
+    [
+        (10_000, True),
+        (10_001, False),
+    ],
+)
+def test_decimal_reader_magnitude_limit(magnitude_length, accepted):
+    fory = Fory(xlang=True, compatible=False, ref=False)
+    serializer = DecimalSerializer(fory.type_resolver, decimal.Decimal)
+    magnitude = bytearray(magnitude_length)
+    magnitude[-1] = 1
+    buffer = Buffer.allocate(magnitude_length + 32)
+    buffer.write_varint32(0)
+    buffer.write_var_uint64(((magnitude_length << 1) << 1) | 1)
+    magnitude_offset = buffer.get_writer_index()
+    buffer.write_bytes(bytes(magnitude))
+    buffer.set_reader_index(0)
+    fory.read_context.prepare(buffer)
+    try:
+        if not accepted:
+            with pytest.raises(ValueError, match="Decimal magnitude length"):
+                serializer.read(fory.read_context)
+            assert buffer.get_reader_index() == magnitude_offset
+            return
+        decoded = serializer.read(fory.read_context)
+        assert decoded == decimal.Decimal(1 << (8 * (magnitude_length - 1)))
+    finally:
+        fory.read_context.reset()
+
+
 def test_decimal_rejects_non_finite_values():
     fory = Fory(xlang=True, compatible=False, ref=False)
     serializer = DecimalSerializer(fory.type_resolver, decimal.Decimal)
@@ -676,6 +806,40 @@ def test_register_py_serializer():
 
     fory.register_type(A, serializer=Serializer(fory.type_resolver, RegisterClass))
     assert fory.deserialize(fory.serialize(RegisterClass(100))).f1 == 100
+
+
+@pytest.mark.parametrize("registration", ["id", "name"])
+def test_replace_registered_serializer(registration):
+    @dataclass
+    class Value:
+        value: pyfory.Int32
+
+    class ReplacementSerializer(pyfory.Serializer):
+        def __init__(self, type_resolver):
+            super().__init__(type_resolver, Value)
+            self.write_count = 0
+            self.read_count = 0
+
+        def write(self, write_context, value):
+            self.write_count += 1
+            write_context.write_int32(value.value + 17)
+
+        def read(self, read_context):
+            self.read_count += 1
+            return Value(read_context.read_int32() - 17)
+
+    fory = Fory(xlang=True, ref=False, compatible=False)
+    if registration == "id":
+        fory.register_type(Value, type_id=701)
+    else:
+        fory.register_type(Value, name="test.ReplacedValue")
+    replacement = ReplacementSerializer(fory.type_resolver)
+
+    fory.register_serializer(Value, replacement)
+
+    assert fory.type_resolver.get_serializer(Value) is replacement
+    assert fory.deserialize(fory.serialize(Value(25))) == Value(25)
+    assert (replacement.write_count, replacement.read_count) == (1, 1)
 
 
 class A:

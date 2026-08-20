@@ -22,7 +22,7 @@ use num_bigint::BigInt;
 
 fn compatible_fory<T>(type_id: u32) -> Fory
 where
-    T: fory_core::Serializer + fory_core::StructSerializer + fory_core::ForyDefault,
+    T: fory_core::StructSerializer<Target = T>,
 {
     let mut fory = Fory::builder().xlang(false).compatible(true).build();
     fory.register::<T>(type_id).unwrap();
@@ -31,8 +31,8 @@ where
 
 fn convert<W, R>(type_id: u32, value: &W) -> Result<R, Error>
 where
-    W: fory_core::Serializer + fory_core::StructSerializer + fory_core::ForyDefault,
-    R: fory_core::Serializer + fory_core::StructSerializer + fory_core::ForyDefault,
+    W: fory_core::StructSerializer<Target = W>,
+    R: fory_core::StructSerializer<Target = R>,
 {
     let writer = compatible_fory::<W>(type_id);
     let reader = compatible_fory::<R>(type_id);
@@ -306,6 +306,55 @@ fn decimal_guardrails() {
     )
     .unwrap_err();
     assert!(matches!(err, Error::InvalidData(_)), "{err}");
+
+    let trailing_zero_digits = 9_000u32;
+    let trailing_zero_factor = BigInt::from(10).pow(trailing_zero_digits);
+    let decoded: TextValue = convert(
+        12_079,
+        &DecimalValue {
+            value: Decimal::new(
+                BigInt::from(-12_345) * &trailing_zero_factor,
+                trailing_zero_digits as i32 + 2,
+            ),
+        },
+    )
+    .unwrap();
+    assert_eq!(decoded.value, "-123.45");
+
+    let boundary_digits = "1".repeat(256);
+    let decoded: TextValue = convert(
+        12_080,
+        &DecimalValue {
+            value: Decimal::new(
+                BigInt::parse_bytes(boundary_digits.as_bytes(), 10).unwrap()
+                    * &trailing_zero_factor,
+                trailing_zero_digits as i32,
+            ),
+        },
+    )
+    .unwrap();
+    assert_eq!(decoded.value, boundary_digits);
+
+    let oversized_digits = "1".repeat(4_096);
+    let err = convert::<DecimalValue, TextValue>(
+        12_081,
+        &DecimalValue {
+            value: Decimal::new(
+                BigInt::parse_bytes(oversized_digits.as_bytes(), 10).unwrap()
+                    * trailing_zero_factor,
+                trailing_zero_digits as i32,
+            ),
+        },
+    )
+    .unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            Error::InvalidData(message)
+                if message.ends_with("converted decimal exceeds compatible conversion bounds")
+        ),
+        "{err}"
+    );
 }
 
 #[test]

@@ -23,6 +23,7 @@ rust-version.workspace = true
 description = "Apache Fory: Blazingly fast multi-language serialization framework with trait objects and reference support."
 license-file = "../../LICENSE"
 readme = "../README.md"
+homepage = "https://fory.apache.org"
 repository = "https://github.com/apache/fory"
 keywords = ["serialization", "serde", "trait-object", "zero-copy", "schema-evolution"]
 categories = ["encoding"]
@@ -38,6 +39,7 @@ syn = { default-features = false, version = "2.0", features = [
     "parsing",
     "proc-macro",
     "derive",
+    "fold",
     "printing",
 ] }
 quote = { default-features = false, version = "1.0" }

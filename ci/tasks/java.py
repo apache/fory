@@ -19,7 +19,7 @@ import logging
 import os
 import subprocess
 import re
-from . import common
+from . import common, kotlin
 
 
 def get_jdk_major_version():
@@ -151,6 +151,7 @@ def install_jdk25_fory_artifacts():
         common.exec_cmd("mvn -T10 -B --no-transfer-progress -Pjmh -DskipTests install")
         logging.info("Verify JPMS tests on JDK25")
         os.environ.pop("JDK_JAVA_OPTIONS", None)
+        kotlin.install_artifacts(include_corpus=True)
         common.cd_project_subdir("integration_tests/jpms_tests")
         common.exec_cmd("mvn -T10 -B --no-transfer-progress clean test")
     finally:
@@ -264,6 +265,7 @@ def run_jdk17_plus(java_version="17"):
         common.exec_cmd("mvn -T10 --batch-mode --no-transfer-progress clean install")
         os.environ.pop("JDK_JAVA_OPTIONS", None)
         logging.info(f"Executing JDK{java_version} JPMS tests")
+        kotlin.install_artifacts(include_corpus=True)
         common.cd_project_subdir("integration_tests/jpms_tests")
         common.exec_cmd("mvn -T10 --batch-mode --no-transfer-progress clean test")
     else:
@@ -352,9 +354,9 @@ def run_integration_tests():
     logging.info("Executing fory integration tests succeeds")
 
 
-def run_graalvm_test():
-    """Run GraalVM tests."""
-    logging.info("Start GraalVM tests")
+def run_graalvm_tests(main_class):
+    """Build and run JPMS GraalVM tests."""
+    logging.info(f"Start GraalVM tests for {main_class}")
     java_major = get_jdk_major_version()
     if java_major is not None and java_major >= 25:
         os.environ["JDK_JAVA_OPTIONS"] = " ".join(jdk25_javac_options())
@@ -362,62 +364,44 @@ def run_graalvm_test():
         os.environ.pop("JDK_JAVA_OPTIONS", None)
 
     common.cd_project_subdir("java")
+    # Java CI owns test/source jar verification. GraalVM jobs install only the
+    # production multi-release jars consumed by native-image.
     common.exec_cmd(
-        "mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-testsuite'"
+        "mvn -T10 -B --no-transfer-progress clean package install:install "
+        "-pl .,fory-test-core,fory-core,fory-json,fory-annotation-processor "
+        "-Dmaven.test.skip=true "
+        "-Dmaven.source.skip=true -Dmaven.javadoc.skip=true"
     )
 
-    logging.info("Start to build graalvm native image")
+    logging.info(f"Start to build GraalVM JPMS native image for {main_class}")
     common.cd_project_subdir("integration_tests/graalvm_tests")
-    common.exec_cmd("mvn -DskipTests=true --no-transfer-progress -Pnative package")
+    common.exec_cmd(
+        f"mvn -DmainClass={main_class} -DskipTests=true "
+        "-Dassembly.skipAssembly=true --no-transfer-progress "
+        "-Pnative-module clean package"
+    )
 
-    logging.info("Built graalvm native image")
-    logging.info("Start to run graalvm native image")
-    common.exec_cmd("./target/main")
-
-    logging.info("Execute graalvm tests succeed!")
-
-
-def run_release():
-    """Release to Maven Central."""
-    logging.info("Starting release to Maven Central with Java")
-    java_major = get_jdk_major_version()
-    if java_major is None or java_major < 25:
-        raise RuntimeError(
-            "Java releases must run on JDK25+ so MR-JAR entries are packaged"
-        )
-    common.cd_project_subdir("java")
-
-    previous_jdk_options = os.environ.get("JDK_JAVA_OPTIONS")
-    os.environ["JDK_JAVA_OPTIONS"] = " ".join(jdk25_javac_options())
-    try:
-        # Clean and install without tests first
-        logging.info("Cleaning and installing dependencies")
-        common.exec_cmd("mvn -T10 -B --no-transfer-progress clean install -DskipTests")
-
-        # Deploy to Maven Central
-        logging.info("Deploying to Maven Central")
-        common.exec_cmd(
-            "mvn -T10 -B --no-transfer-progress clean deploy -Dgpg.skip -DskipTests -Papache-release"
-        )
-    finally:
-        if previous_jdk_options is None:
-            os.environ.pop("JDK_JAVA_OPTIONS", None)
-        else:
-            os.environ["JDK_JAVA_OPTIONS"] = previous_jdk_options
-
-    logging.info("Release to Maven Central completed successfully")
+    logging.info("Built GraalVM JPMS native image")
+    logging.info("Start to run GraalVM JPMS native image")
+    common.exec_cmd("./target/main-module")
+    logging.info(f"Execute GraalVM tests for {main_class} succeed!")
 
 
-def run(version=None, release=False, install_jdks=False, install_fory=False):
+def run_graalvm_test():
+    run_graalvm_tests("org.apache.fory.graalvm.Main")
+
+
+def run_graalvm_json_tests():
+    run_graalvm_tests("org.apache.fory.graalvm.ForyJsonExample")
+
+
+def run(version=None, install_jdks=False, install_fory=False):
     """Run Java CI tasks based on the specified Java version."""
     if install_jdks:
         globals()["install_jdks"]()
     if install_fory:
         globals()["install_fory"]()
-    if release:
-        logging.info("Release mode enabled - will release to Maven Repository")
-        run_release()
-    elif version == "8":
+    if version == "8":
         run_java8()
     elif version == "11":
         run_java11()
@@ -435,3 +419,5 @@ def run(version=None, release=False, install_jdks=False, install_fory=False):
         run_integration_tests()
     elif version == "graalvm":
         run_graalvm_test()
+    elif version == "graalvm_json_tests":
+        run_graalvm_json_tests()

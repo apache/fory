@@ -40,26 +40,7 @@ namespace serialization {
 
 // Forward declarations
 class TypeResolver;
-class ReadContext;
 class TypeMeta;
-
-/// RAII helper to automatically decrease dynamic depth when leaving scope.
-/// Used for tracking nested polymorphic type deserialization depth.
-class DynDepthGuard {
-public:
-  explicit DynDepthGuard(ReadContext &ctx) : ctx_(ctx) {}
-
-  ~DynDepthGuard();
-
-  // Non-copyable, non-movable
-  DynDepthGuard(const DynDepthGuard &) = delete;
-  DynDepthGuard &operator=(const DynDepthGuard &) = delete;
-  DynDepthGuard(DynDepthGuard &&) = delete;
-  DynDepthGuard &operator=(DynDepthGuard &&) = delete;
-
-private:
-  ReadContext &ctx_;
-};
 
 /// write context for serialization operations.
 ///
@@ -375,12 +356,10 @@ private:
   OutputStream *output_stream_ = nullptr;
 
   // Meta sharing state (for streaming inline TypeMeta)
-  // Maps TypeInfo* to index for reference tracking - uses map size as counter
+  // The first TypeInfo has index 0; the map stores later types at size + 1.
   util::FlatIntMap<uint64_t, uint32_t> write_type_info_index_map_;
   // Fast path for the common single-type stream: avoid hash map lookups.
   const TypeInfo *first_type_info_ = nullptr;
-  bool has_first_type_info_ = false;
-  bool type_info_index_map_active_ = false;
 };
 
 /// Read context for deserialization operations.
@@ -478,13 +457,14 @@ public:
   /// Check if reference tracking is enabled.
   inline bool track_ref() const { return config_->track_ref; }
 
-  /// get maximum allowed dynamic nesting depth for polymorphic types.
+  /// Get the maximum nesting depth for polymorphic and static smart-pointer
+  /// pointee reads.
   inline uint32_t max_dyn_depth() const { return config_->max_dyn_depth; }
 
-  /// get current dynamic nesting depth.
+  /// Get the current protected deserialization nesting depth.
   inline uint32_t current_dyn_depth() const { return current_dyn_depth_; }
 
-  /// Increase dynamic nesting depth by 1.
+  /// Increase protected deserialization nesting depth by 1.
   ///
   /// @return Error if max dynamic depth exceeded, success otherwise.
   inline Result<void, Error> increase_dyn_depth() {
@@ -497,11 +477,36 @@ public:
     return Result<void, Error>();
   }
 
-  /// Decrease dynamic nesting depth by 1.
+  /// Decrease dynamic nesting depth by 1 after the nested body succeeds.
+  ///
+  /// Failed nested reads retain their depth until the root operation resets
+  /// this context.
   inline void decrease_dyn_depth() {
     if (current_dyn_depth_ > 0) {
       current_dyn_depth_--;
     }
+  }
+
+  FORY_ALWAYS_INLINE bool reserve_graph_memory(size_t bytes) {
+    const size_t remaining = remaining_graph_memory_bytes_;
+    if (FORY_PREDICT_FALSE(bytes > remaining)) {
+      return set_graph_memory_exceeded(bytes, remaining);
+    }
+    remaining_graph_memory_bytes_ = remaining - bytes;
+    return true;
+  }
+
+  FORY_ALWAYS_INLINE size_t remaining_unbacked_container_items() const {
+    return remaining_unbacked_container_items_;
+  }
+
+  FORY_ALWAYS_INLINE bool reserve_unbacked_container_items(size_t items) {
+    const size_t remaining = remaining_unbacked_container_items_;
+    if (FORY_PREDICT_FALSE(items > remaining)) {
+      return set_unbacked_container_items_exceeded(items, remaining);
+    }
+    remaining_unbacked_container_items_ = remaining - items;
+    return true;
   }
 
   // ===========================================================================
@@ -659,9 +664,14 @@ public:
   inline const Config &config() const { return *config_; }
 
 private:
+  friend class Fory;
+
   FORY_NOINLINE Result<std::string, Error>
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
+  FORY_NOINLINE bool set_graph_memory_exceeded(size_t bytes, size_t remaining);
+  FORY_NOINLINE bool set_unbacked_container_items_exceeded(size_t items,
+                                                           size_t remaining);
 
   // Error state - accumulated during deserialization, checked at the end
   Error error_;
@@ -671,6 +681,8 @@ private:
   std::unique_ptr<TypeResolver> type_resolver_;
   RefReader ref_reader_;
   uint32_t current_dyn_depth_;
+  size_t remaining_graph_memory_bytes_ = 0;
+  size_t remaining_unbacked_container_items_ = 0;
 
   // Meta sharing state (for compatible mode)
   // Persistent cache storage for TypeInfo objects keyed by meta header.
@@ -688,11 +700,8 @@ private:
   // Dynamic meta strings used for named type/class info.
   meta::MetaStringTable meta_string_table_;
   fory::flat_hash_map<std::string, uint32_t> remote_schema_versions_by_type_;
-  size_t total_accepted_schema_versions_ = 0;
+  uint64_t total_accepted_schema_versions_ = 0;
 };
-
-/// Implementation of DynDepthGuard destructor
-inline DynDepthGuard::~DynDepthGuard() { ctx_.decrease_dyn_depth(); }
 
 } // namespace serialization
 } // namespace fory

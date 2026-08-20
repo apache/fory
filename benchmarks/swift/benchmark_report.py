@@ -26,12 +26,13 @@ import os
 import sys
 from collections import defaultdict
 from pathlib import Path
+from typing import Optional
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from plot_style import (  # noqa: E402
+from plot_style import (
     BAR_EDGE_COLOR,
     GROUP_BAR_WIDTH,
     GROUP_X,
@@ -78,6 +79,10 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         default="results",
         help="Directory for report output",
+    )
+    parser.add_argument(
+        "--external-json-file",
+        help="Optional isolated external-type benchmark JSON output",
     )
     parser.add_argument(
         "--plot-prefix",
@@ -240,8 +245,10 @@ def winner_cell(throughputs: dict) -> str:
     return f"{best_serializer} ({ratio:.2f}x)"
 
 
+# Optional[...] keeps this script parseable on Python 3.8.
 def write_report(
     payload: dict,
+    external_payload: Optional[dict],  # noqa: UP045
     results: dict,
     throughput_plot: str,
     output_dir: str,
@@ -256,6 +263,14 @@ def write_report(
     lines.append(
         "This benchmark compares serialization and deserialization throughput for "
         "Apache Fory, Protocol Buffers, and JSON in Swift."
+    )
+    lines.append("")
+    lines.append("## Benchmark Scope")
+    lines.append("")
+    lines.append(
+        "The results below cover the ordinary/xlang cases run by `swift-benchmark`. "
+        "External-type and carrier comparisons use the separate "
+        "`swift-external-benchmark` executable and are included only when requested."
     )
     lines.append("")
     lines.append("## Throughput Plot")
@@ -323,15 +338,39 @@ def write_report(
             + f"{format_size(entry.get('json'))} |"
         )
 
+    if external_payload is not None:
+        lines.append("")
+        lines.append("## External-Type Serialization")
+        lines.append("")
+        lines.append(
+            "These cases run in the isolated `swift-external-benchmark` executable."
+        )
+        lines.append("")
+        lines.append("| Case | Operation | TPS | ns/op | Bytes |")
+        lines.append("| --- | --- | ---: | ---: | ---: |")
+        external_entries = sorted(
+            external_payload.get("benchmarks", []),
+            key=lambda entry: (
+                str(entry.get("dataType", "")),
+                str(entry.get("operation", "")),
+            ),
+        )
+        for entry in external_entries:
+            lines.append(
+                "| "
+                + f"{entry.get('dataType', '-')} | "
+                + f"{str(entry.get('operation', '-')).capitalize()} | "
+                + f"{format_tps(entry.get('opsPerSec'))} | "
+                + f"{float(entry.get('nsPerOp', 0.0)):,.2f} | "
+                + f"{format_size(entry.get('bytes'))} |"
+            )
+
     report_path = os.path.join(output_dir, "README.md")
-    legacy_report_path = os.path.join(output_dir, "REPORT.md")
     report_text = "\n".join(lines) + "\n"
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report_text)
-    with open(legacy_report_path, "w", encoding="utf-8") as f:
-        f.write(report_text)
 
-    format_markdown_with_prettier(report_path, legacy_report_path)
+    format_markdown_with_prettier(report_path)
 
     return report_path
 
@@ -341,10 +380,18 @@ def main() -> int:
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     payload = load_json(args.json_file)
+    external_payload = (
+        load_json(args.external_json_file) if args.external_json_file else None
+    )
     results = collect_results(payload)
     throughput_plot = render_plot(results, args.output_dir)
     report = write_report(
-        payload, results, throughput_plot, args.output_dir, args.plot_prefix
+        payload,
+        external_payload,
+        results,
+        throughput_plot,
+        args.output_dir,
+        args.plot_prefix,
     )
 
     print(f"Generated report: {report}")

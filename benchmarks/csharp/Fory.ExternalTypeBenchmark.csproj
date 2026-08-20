@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="ExternalEquivalenceBenchmark.cs" />
+    <Compile Include="ExternalEquivalenceModels.cs" />
+    <Compile Include="ExternalEquivalenceProgram.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="./Fory.ExternalBenchmarkTypes/Fory.ExternalBenchmarkTypes.csproj" />
+    <ProjectReference Include="../../csharp/src/Fory/Fory.csproj" />
+    <ProjectReference Include="../../csharp/src/Fory.Generator/Fory.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

@@ -326,6 +326,44 @@ void main() {
       }
     });
 
+    test('generated raw varint reads stop at writerIndex', () {
+      final fory = Fory();
+      _registerSignedFields(fory);
+      final zeroBytes = fory.serialize(SignedFields());
+      final firstFieldBytes = fory.serialize(
+        SignedFields()..i64Fixed = Int64(1),
+      );
+      var bodyOffset = 0;
+      while (zeroBytes[bodyOffset] == firstFieldBytes[bodyOffset]) {
+        bodyOffset += 1;
+      }
+      final buffer =
+          Buffer(64)
+            ..writeBytes(zeroBytes.sublist(0, bodyOffset))
+            ..writeInt64(Int64(0))
+            ..writeInt64FromInt(0)
+            ..writeInt32(0)
+            ..writeVarInt64(Int64(0))
+            ..writeVarInt64(Int64(0))
+            ..writeVarInt64FromInt(0)
+            ..writeVarInt64FromInt(0)
+            ..writeTaggedInt64(Int64(0))
+            ..writeTaggedInt64FromInt(0)
+            ..writeUint8(0x80);
+      final hiddenOffset = buffer.toBytes().length;
+      final storage = bufferBytes(buffer);
+      storage[hiddenOffset] = 0;
+      storage.fillRange(hiddenOffset + 1, hiddenOffset + 6, 0xfd);
+      final fullStorage = bufferBytes(buffer);
+
+      expect(
+        () => fory.deserializeFrom<SignedFields>(buffer),
+        throwsA(anything),
+      );
+      expect(bufferReaderIndex(buffer), lessThanOrEqualTo(hiddenOffset));
+      expect(bufferBytes(buffer), same(fullStorage));
+    });
+
     test(
       'web rejects JS-unsafe Dart int fields instead of corrupting bytes',
       () {

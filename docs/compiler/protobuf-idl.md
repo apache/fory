@@ -1,7 +1,7 @@
 ---
 title: Protobuf IDL Support
-sidebar_position: 10
-id: protobuf_idl_support
+sidebar_position: 5
+id: protobuf-idl
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -356,7 +356,7 @@ migrate first.
 
 ## Performance References
 
-- Benchmarks: https://fory.apache.org/docs/introduction/benchmark
+- Benchmarks: https://fory.apache.org/docs/benchmarks/
 - Benchmark code: https://github.com/apache/fory/tree/main/benchmarks
 
 ## Summary

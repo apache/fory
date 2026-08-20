@@ -113,6 +113,40 @@ func TestSkipPrimitiveConsumesExactEncoding(t *testing.T) {
 	}
 }
 
+func TestSkipStringConsumesExactEncoding(t *testing.T) {
+	tests := []struct {
+		name     string
+		encoding uint64
+		body     []byte
+	}{
+		{name: "latin1", encoding: encodingLatin1, body: []byte{0xe9}},
+		{name: "utf16", encoding: encodingUTF16LE, body: []byte{'A', 0, 'B', 0}},
+		{name: "utf8", encoding: encodingUTF8, body: []byte("世界")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := New(WithXlang(true), WithCompatible(false))
+			buf := NewByteBuffer(nil)
+			buf.WriteVaruint36Small(uint64(len(tc.body))<<2 | tc.encoding)
+			buf.WriteBinary(tc.body)
+			wantIndex := buf.WriterIndex()
+			buf.WriteByte(0x7f)
+
+			f.readCtx.SetData(buf.Bytes())
+			skipValue(
+				f.readCtx,
+				FieldDef{typeSpec: NewSimpleTypeSpec(STRING), nullable: true},
+				false,
+				false,
+				nil,
+			)
+			require.NoError(t, f.readCtx.CheckError())
+			require.Equal(t, wantIndex, f.readCtx.Buffer().ReaderIndex())
+			require.Equal(t, byte(0x7f), f.readCtx.Buffer().ReadByte(f.readCtx.Err()))
+		})
+	}
+}
+
 func TestSkipMapRejectsInvalidChunkSize(t *testing.T) {
 	f := New(WithXlang(true), WithCompatible(false))
 	buf := NewByteBuffer(nil)
@@ -129,4 +163,84 @@ func TestSkipMapRejectsInvalidChunkSize(t *testing.T) {
 		},
 	)
 	require.Error(t, f.readCtx.CheckError())
+}
+
+func TestSkipTrackedValueReservesRefId(t *testing.T) {
+	f := New(WithXlang(true), WithCompatible(true), WithTrackRef(true))
+	buf := NewByteBuffer(nil)
+	buf.WriteInt8(RefValueFlag)
+	buf.WriteLength(0)
+
+	f.readCtx.SetData(buf.Bytes())
+	skipValue(
+		f.readCtx,
+		FieldDef{
+			typeSpec: NewCollectionTypeSpec(LIST, NewSimpleTypeSpec(STRING)),
+			trackRef: true,
+		},
+		true,
+		false,
+		nil,
+	)
+	require.NoError(t, f.readCtx.CheckError())
+
+	resolver := f.readCtx.RefResolver()
+	require.Len(t, resolver.readObjects, 1)
+	require.Empty(t, resolver.readRefIds)
+
+	nextRefId, err := resolver.PreserveRefId()
+	require.NoError(t, err)
+	require.Equal(t, int32(1), nextRefId)
+}
+
+func TestSkippedRefPreservesNumbering(t *testing.T) {
+	f := New(WithXlang(true), WithCompatible(true), WithTrackRef(true))
+	buf := NewByteBuffer(nil)
+	buf.WriteInt8(RefValueFlag)
+	f.readCtx.SetData(buf.Bytes())
+	require.True(t, consumeSkippedRefFlag(f.readCtx, true))
+	require.NoError(t, f.readCtx.CheckError())
+	require.Len(t, f.refResolver.readObjects, 1)
+	require.False(t, f.refResolver.readObjects[0].IsValid())
+
+	buf = NewByteBuffer(nil)
+	buf.WriteInt8(RefFlag)
+	buf.WriteVarUint32(0)
+	buf.WriteByte(0x7f)
+	f.readCtx.SetData(buf.Bytes())
+	require.False(t, consumeSkippedRefFlag(f.readCtx, true))
+	require.NoError(t, f.readCtx.CheckError())
+	require.Equal(t, byte(0x7f), f.readCtx.Buffer().ReadByte(f.readCtx.Err()))
+}
+
+func TestSkipCollectionConsumesNullElementFlag(t *testing.T) {
+	tests := []struct {
+		name   string
+		header byte
+	}{
+		{name: "same_type_declared", header: CollectionDeclSameType | CollectionHasNull},
+		{name: "element_type_per_value", header: CollectionHasNull},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := New(WithXlang(true), WithCompatible(false))
+			buf := NewByteBuffer(nil)
+			buf.WriteLength(1)
+			buf.WriteByte(tc.header)
+			buf.WriteInt8(NullFlag)
+			buf.WriteByte(0x7f)
+
+			f.readCtx.SetData(buf.Bytes())
+			skipCollection(
+				f.readCtx,
+				FieldDef{
+					typeSpec: NewCollectionTypeSpec(LIST, NewSimpleTypeSpec(INT32)),
+					nullable: true,
+				},
+			)
+			require.NoError(t, f.readCtx.CheckError())
+			require.Equal(t, byte(0x7f), f.readCtx.Buffer().ReadByte(f.readCtx.Err()))
+		})
+	}
 }

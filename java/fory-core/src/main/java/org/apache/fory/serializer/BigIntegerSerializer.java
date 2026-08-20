@@ -55,6 +55,10 @@ public final class BigIntegerSerializer extends ImmutableSerializer<BigInteger>
 
   private void writeNative(WriteContext writeContext, BigInteger value) {
     MemoryBuffer buffer = writeContext.getBuffer();
+    if (DecimalSerializer.magnitudeExceedsLimit(value)) {
+      throw new IllegalArgumentException(
+          "BigInteger magnitude exceeds " + DecimalSerializer.MAX_MAGNITUDE_BYTES + " bytes");
+    }
     byte[] bytes = value.toByteArray();
     buffer.writeVarUInt32Small7(bytes.length);
     buffer.writeBytes(bytes);
@@ -65,6 +69,11 @@ public final class BigIntegerSerializer extends ImmutableSerializer<BigInteger>
     int len = buffer.readVarUInt32Small7();
     checkBinaryBodyLength(len);
     buffer.checkReadableBytes(len);
+    if (len == DecimalSerializer.MAX_MAGNITUDE_BYTES + 1
+        && DecimalSerializer.magnitudeExceedsLimit(buffer, len)) {
+      throw new DeserializationException(
+          "BigInteger magnitude exceeds " + DecimalSerializer.MAX_MAGNITUDE_BYTES + " bytes");
+    }
     byte[] bytes = buffer.readBytes(len);
     return new BigInteger(bytes);
   }
@@ -81,5 +90,14 @@ public final class BigIntegerSerializer extends ImmutableSerializer<BigInteger>
     if (len <= 0) {
       throw new DeserializationException("BigInteger body length must be positive: " + len);
     }
+    if (len > DecimalSerializer.MAX_MAGNITUDE_BYTES + 1) {
+      throw new DeserializationException(
+          "BigInteger magnitude exceeds " + DecimalSerializer.MAX_MAGNITUDE_BYTES + " bytes");
+    }
+  }
+
+  @Override
+  public boolean readDataAlwaysAdvances() {
+    return true;
   }
 }

@@ -37,7 +37,7 @@ pytest -v -s pyfory/tests/test_serializer.py
 
 ```bash
 cd python
-pip install ruff
+pip install ruff==0.15.22
 ruff format .
 ruff check --fix .
 ```

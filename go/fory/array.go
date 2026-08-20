@@ -22,40 +22,25 @@ import (
 )
 
 // writeArrayRefAndType handles reference and type writing for array serializers.
-// Arrays are value types, so ref handling is simpler than slices.
-// Returns true if the value was already written, false if data should be written.
-func writeArrayRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, value reflect.Value, typeId TypeId) bool {
+// Arrays are value types, so they never produce back-references.
+func writeArrayRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, typeId TypeId) {
 	if refMode != RefModeNone {
-		// Arrays are value types, just write NotNullValueFlag
 		ctx.Buffer().WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
 		ctx.Buffer().WriteUint8(uint8(typeId))
 	}
-	return false
 }
 
 // readArrayRefAndType handles reference and type reading for array serializers.
 // Returns true if a reference was resolved (value already set), false if data should be read.
 func readArrayRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value reflect.Value) bool {
-	buf := ctx.Buffer()
-	err := ctx.Err()
-	if refMode != RefModeNone {
-		refID, refErr := ctx.RefResolver().TryPreserveRefId(buf)
-		if refErr != nil {
-			ctx.SetError(FromError(refErr))
-			return false
-		}
-		if refID < int32(NotNullValueFlag) {
-			obj := ctx.RefResolver().GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
-			}
-			return true
-		}
+	done := readSliceOrArrayRef(ctx, refMode, value)
+	if done || ctx.HasError() {
+		return done
 	}
 	if readType {
-		typeID := uint32(buf.ReadUint8(err))
+		typeID := uint32(ctx.Buffer().ReadUint8(ctx.Err()))
 		if ctx.HasError() {
 			return false
 		}
@@ -65,50 +50,6 @@ func readArrayRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value
 		}
 	}
 	return false
-}
-
-// Array serializers
-
-type arraySerializer struct{}
-
-func (s arraySerializer) WriteData(ctx *WriteContext, value reflect.Value) {
-	buf := ctx.Buffer()
-	length := value.Len()
-	buf.WriteVarUint32(uint32(length))
-	for i := 0; i < length; i++ {
-		elem := value.Index(i)
-		buf.WriteInt8(NotNullValueFlag)
-		_ = elem
-	}
-}
-
-func (s arraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, LIST)
-	if ctx.HasError() {
-		return
-	}
-	s.WriteData(ctx, value)
-}
-
-func (s arraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	buf := ctx.Buffer()
-	err := ctx.Err()
-	length := int(buf.ReadVarUint32(err))
-	for i := 0; i < length; i++ {
-		_ = buf.ReadInt8(err)
-	}
-}
-
-func (s arraySerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readArrayRefAndType(ctx, refMode, readType, value)
-	if done || ctx.HasError() {
-		return
-	}
-	s.ReadData(ctx, value)
-}
-
-func (s arraySerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
-	s.Read(ctx, refMode, false, false, value)
 }
 
 // arrayConcreteValueSerializer serialize an array/*array
@@ -121,6 +62,7 @@ type arrayConcreteValueSerializer struct {
 func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	length := value.Len()
 	buf := ctx.Buffer()
+	ctxErr := ctx.Err()
 
 	// Write length
 	buf.WriteVarUint32(uint32(length))
@@ -133,6 +75,7 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 	hasNull := false
 	elemType := s.type_.Elem()
 	isPointerElem := elemType.Kind() == reflect.Ptr
+	var firstNonNull reflect.Value
 
 	// Check for null values (only for pointer element types)
 	if isPointerElem {
@@ -140,36 +83,43 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 			elem := value.Index(i)
 			if elem.IsNil() {
 				hasNull = true
+			} else if !firstNonNull.IsValid() {
+				firstNonNull = elem.Elem()
+			}
+			if hasNull && firstNonNull.IsValid() {
 				break
 			}
 		}
 	}
 
+	// Preserve the existing value-based lookup for ordinary writes. Only an
+	// all-null pointer array needs the registered static element descriptor.
+	var elemTypeInfo *TypeInfo
+	var typeErr error
+	if isPointerElem {
+		if firstNonNull.IsValid() {
+			elemTypeInfo, typeErr = ctx.TypeResolver().GetTypeInfo(firstNonNull, true)
+		} else {
+			elemTypeInfo = ctx.TypeResolver().getTypeInfoByType(elemType.Elem())
+			if elemTypeInfo == nil {
+				elemTypeInfo, typeErr = ctx.TypeResolver().GetTypeInfo(reflect.Zero(elemType.Elem()), true)
+			}
+		}
+	} else {
+		elemTypeInfo, typeErr = ctx.TypeResolver().GetTypeInfo(value.Index(0), true)
+	}
+	if typeErr != nil {
+		ctxErr.SetError(typeErr)
+		return
+	}
+	trackRefs := ctx.TrackRef() && s.referencable
 	if hasNull {
 		collectFlag |= CollectionHasNull
 	}
-	if ctx.TrackRef() && s.referencable {
+	if trackRefs {
 		collectFlag |= CollectionTrackingRef
 	}
 	buf.WriteInt8(int8(collectFlag))
-
-	// Write element type info
-	var elemTypeInfo *TypeInfo
-	if length > 0 {
-		// Get type info for the first non-nil element
-		for i := 0; i < length; i++ {
-			elem := value.Index(i)
-			if isPointerElem {
-				if !elem.IsNil() {
-					elemTypeInfo, _ = ctx.TypeResolver().getTypeInfo(elem.Elem(), true)
-					break
-				}
-			} else {
-				elemTypeInfo, _ = ctx.TypeResolver().getTypeInfo(elem, true)
-				break
-			}
-		}
-	}
 
 	// Write element type info (handles namespaced types)
 	var internalTypeID uint32
@@ -177,14 +127,12 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 		internalTypeID = elemTypeInfo.TypeID
 	}
 	if elemTypeInfo != nil {
-		ctx.TypeResolver().WriteTypeInfo(buf, elemTypeInfo, ctx.Err())
+		ctx.TypeResolver().WriteTypeInfo(buf, elemTypeInfo, ctxErr)
 	} else {
 		buf.WriteUint8(uint8(internalTypeID))
 	}
 
 	// Write elements
-	trackRefs := (collectFlag & CollectionTrackingRef) != 0
-
 	for i := 0; i < length; i++ {
 		elem := value.Index(i)
 
@@ -207,6 +155,12 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 			if ctx.HasError() {
 				return
 			}
+		} else if hasNull {
+			buf.WriteInt8(NotNullValueFlag)
+			s.elemSerializer.WriteData(ctx, elem)
+			if ctx.HasError() {
+				return
+			}
 		} else {
 			s.elemSerializer.WriteData(ctx, elem)
 			if ctx.HasError() {
@@ -217,7 +171,7 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 }
 
 func (s *arrayConcreteValueSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, LIST)
+	writeArrayRefAndType(ctx, refMode, writeType, LIST)
 	if ctx.HasError() {
 		return
 	}
@@ -225,6 +179,9 @@ func (s *arrayConcreteValueSerializer) Write(ctx *WriteContext, refMode RefMode,
 }
 
 func (s *arrayConcreteValueSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	if ctx.HasError() || !ctx.enterDepth() {
+		return
+	}
 	buf := ctx.Buffer()
 	err := ctx.Err()
 	length := int(buf.ReadVarUint32(err))
@@ -237,6 +194,7 @@ func (s *arrayConcreteValueSerializer) ReadData(ctx *ReadContext, value reflect.
 	}
 
 	var trackRefs bool
+	var hasNull bool
 	if length > 0 {
 		// Read collection flags (same format as slices)
 		collectFlag := buf.ReadInt8(err)
@@ -245,21 +203,52 @@ func (s *arrayConcreteValueSerializer) ReadData(ctx *ReadContext, value reflect.
 		}
 
 		// Read element type info if present
+		trackRefs = (collectFlag & CollectionTrackingRef) != 0
+		hasNull = (collectFlag & CollectionHasNull) != 0
 		if (collectFlag & CollectionIsSameType) != 0 {
 			if (collectFlag & CollectionIsDeclElementType) == 0 {
 				ctx.TypeResolver().ReadTypeInfo(buf, err)
 			}
 		}
+	}
 
-		trackRefs = (collectFlag & CollectionTrackingRef) != 0
+	elementReadAlwaysAdvances := trackRefs || hasNull || serializerReadDataAlwaysAdvances(s.elemSerializer)
+	if !elementReadAlwaysAdvances {
+		checkpoint := buf.logicalReaderIndex()
+		for i := 0; i < length; i++ {
+			elem := value.Index(i)
+			s.elemSerializer.ReadData(ctx, elem)
+			if ctx.HasError() {
+				return
+			}
+			if (i+1)&(unbackedContainerCheckInterval-1) == 0 {
+				if !ctx.settleUnbackedContainerItems(unbackedContainerCheckInterval, checkpoint) {
+					return
+				}
+				checkpoint = buf.logicalReaderIndex()
+			}
+		}
+		if tail := length & (unbackedContainerCheckInterval - 1); tail != 0 {
+			if !ctx.settleUnbackedContainerItems(tail, checkpoint) {
+				return
+			}
+		}
+		ctx.decDepth()
+		return
 	}
 
 	for i := 0; i < length && i < value.Len(); i++ {
 		elem := value.Index(i)
 
-		// When tracking refs, the element serializer handles ref flags
 		if trackRefs {
+			// When tracking refs, the element serializer handles ref flags
 			s.elemSerializer.Read(ctx, RefModeTracking, false, false, elem)
+		} else if hasNull {
+			flag := buf.ReadInt8(err)
+			if flag == NullFlag {
+				continue
+			}
+			s.elemSerializer.ReadData(ctx, elem)
 		} else {
 			s.elemSerializer.ReadData(ctx, elem)
 		}
@@ -267,6 +256,7 @@ func (s *arrayConcreteValueSerializer) ReadData(ctx *ReadContext, value reflect.
 			return
 		}
 	}
+	ctx.decDepth()
 }
 
 func (s *arrayConcreteValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
@@ -278,62 +268,50 @@ func (s *arrayConcreteValueSerializer) Read(ctx *ReadContext, refMode RefMode, r
 	if ctx.HasError() {
 		return
 	}
-	if refMode != RefModeNone {
-		ctx.RefResolver().Reference(value)
-	}
 }
 
 func (s *arrayConcreteValueSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
 	s.Read(ctx, refMode, false, false, value)
 }
 
-// arrayDynSerializer wraps sliceDynSerializer for arrays with interface element types.
-// It converts arrays to slices and delegates to sliceDynSerializer.
+// arrayDynSerializer reuses slice wire logic for arrays with interface elements.
+// Writes reuse its indexing path while reads target the caller-owned array directly.
 type arrayDynSerializer struct {
-	sliceSerializer sliceDynSerializer
+	// Keep a pointer to the delegated slice serializer so array dynamic reads do not copy
+	// slice serializer state.
+	sliceSerializer *sliceDynSerializer
 }
 
-func newArrayDynSerializer(elemType reflect.Type) (arrayDynSerializer, error) {
+func newArrayDynSerializer(elemType reflect.Type) (*arrayDynSerializer, error) {
 	sliceSer, err := newSliceDynSerializer(elemType)
 	if err != nil {
-		return arrayDynSerializer{}, err
+		return nil, err
 	}
-	return arrayDynSerializer{sliceSerializer: sliceSer}, nil
+	return &arrayDynSerializer{sliceSerializer: sliceSer}, nil
 }
 
-func (s arrayDynSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
-	// Convert array to slice and forward to sliceDynSerializer
-	slice := value.Slice(0, value.Len())
-	s.sliceSerializer.WriteData(ctx, slice)
+func (s *arrayDynSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	// The delegated writer only indexes the sequence. Passing the array directly
+	// also supports unaddressable arrays obtained from interface values; slicing
+	// such an array would panic.
+	s.sliceSerializer.WriteData(ctx, value)
 }
 
-func (s arrayDynSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, LIST)
+func (s *arrayDynSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	writeArrayRefAndType(ctx, refMode, writeType, LIST)
 	if ctx.HasError() {
 		return
 	}
 	s.WriteData(ctx, value)
 }
 
-func (s arrayDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	// Create a temp slice to read into, then copy back to array
-	sliceType := reflect.SliceOf(value.Type().Elem())
-	tempSlice := reflect.MakeSlice(sliceType, value.Len(), value.Len())
-	s.sliceSerializer.readData(ctx, tempSlice, value.Len())
-	if ctx.HasError() {
-		return
-	}
-	// Copy elements from temp slice to array
-	copyLen := tempSlice.Len()
-	if copyLen > value.Len() {
-		copyLen = value.Len()
-	}
-	for i := 0; i < copyLen; i++ {
-		value.Index(i).Set(tempSlice.Index(i))
-	}
+func (s *arrayDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	// The shared array ref path publishes the slice wire owner before children
+	// can resolve back-references.
+	s.sliceSerializer.readData(ctx, value, value.Len())
 }
 
-func (s arrayDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+func (s *arrayDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
 	done := readArrayRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
 		return
@@ -341,7 +319,7 @@ func (s arrayDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType boo
 	s.ReadData(ctx, value)
 }
 
-func (s arrayDynSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+func (s *arrayDynSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
 	s.Read(ctx, refMode, false, false, value)
 }
 
@@ -363,7 +341,7 @@ func (s byteArraySerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 }
 
 func (s byteArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, BINARY)
+	writeArrayRefAndType(ctx, refMode, writeType, BINARY)
 	if ctx.HasError() {
 		return
 	}

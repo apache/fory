@@ -21,8 +21,6 @@ use std::rc::Rc;
 
 const PI_F64: f64 = std::f64::consts::PI;
 
-type ComplexNestedTuple = ((Vec<i32>, Option<String>), (Rc<bool>, (i32, f64)));
-
 // Test homogeneous tuples with primitive types
 #[test]
 fn test_homogeneous_tuple_i32() {
@@ -222,9 +220,9 @@ fn test_homogeneous_tuple_unsigned() {
 fn test_tuple_type_id() {
     use fory_core::serializer::Serializer;
     use fory_core::type_id::TypeId;
-    assert_eq!(<(i32, i32)>::fory_static_type_id(), TypeId::LIST);
-    assert_eq!(<(i32, String)>::fory_static_type_id(), TypeId::LIST);
-    assert_eq!(<(i32,)>::fory_static_type_id(), TypeId::LIST);
+    assert_eq!(<(i32, i32)>::static_type_id(), TypeId::LIST);
+    assert_eq!(<(i32, String)>::static_type_id(), TypeId::LIST);
+    assert_eq!(<(i32,)>::static_type_id(), TypeId::LIST);
 }
 
 // Test tuples in xlang mode
@@ -301,7 +299,8 @@ fn run_struct_with_complex_tuple_fields(xlang: bool) {
         // Tuple with Rc (shared_ptr)
         with_rc: (Rc<i32>, Rc<String>),
         // Complex nested tuple with collections and options
-        complex_nested: ComplexNestedTuple,
+        #[allow(clippy::type_complexity)]
+        complex_nested: ((Vec<i32>, Option<String>), (Rc<bool>, (i32, f64))),
     }
 
     let mut fory = Fory::builder().xlang(xlang).compatible(xlang).build();

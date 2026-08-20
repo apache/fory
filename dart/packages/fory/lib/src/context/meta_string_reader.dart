@@ -22,7 +22,6 @@ import 'dart:typed_data';
 import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/meta/meta_string.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
-import 'package:fory/src/types/int64.dart';
 
 typedef _MetaStringWords =
     ({int length, int word0, int word1, int word2, int word3});
@@ -31,10 +30,6 @@ typedef _MetaStringWords =
 final class MetaStringReader {
   final TypeResolver _typeResolver;
   final List<EncodedMetaString> _dynamicReadMetaStrings = <EncodedMetaString>[];
-  final Map<Int64, EncodedMetaString> _bigMetaStrings =
-      <Int64, EncodedMetaString>{};
-  final Map<int, List<EncodedMetaString>> _smallMetaStrings =
-      <int, List<EncodedMetaString>>{};
 
   MetaStringReader(this._typeResolver);
 
@@ -70,22 +65,22 @@ final class MetaStringReader {
     EncodedMetaString? expected,
   ) {
     final hash = buffer.readInt64();
-    buffer.checkReadableBytes(length);
-    if (expected != null && expected.hash == hash) {
+    final encoding = (hash & 0xff).toInt();
+    final start = bufferReaderIndex(buffer);
+    if (expected != null &&
+        expected.encoding == encoding &&
+        expected.length == length &&
+        expected.hash == hash &&
+        bufferMatchesBytes(buffer, start, expected.bytes)) {
       buffer.skip(length);
       return expected;
     }
-    final cached = _bigMetaStrings[hash];
-    if (cached != null) {
-      buffer.skip(length);
-      return cached;
+    buffer.checkReadableBytes(length);
+    final encoded = EncodedMetaString(buffer.copyBytes(length), encoding);
+    if (encoded.hash != hash) {
+      _throwInvalidMetaStringHash();
     }
-    final encoded = _typeResolver.internEncodedMetaString(
-      buffer.copyBytes(length),
-      encoding: (hash & 0xff).toInt(),
-    );
-    _bigMetaStrings[hash] = encoded;
-    return encoded;
+    return _typeResolver.canonicalizeEncodedMetaString(encoded);
   }
 
   EncodedMetaString _readSmallMetaString(
@@ -107,54 +102,17 @@ final class MetaStringReader {
         expected.matchesPacked(encoding, length, word0, word1, word2, word3)) {
       return expected;
     }
-    final hash = _smallMetaStringHash(
-      encoding,
-      length,
-      word0,
-      word1,
-      word2,
-      word3,
-    );
-    final bucket = _smallMetaStrings[hash];
-    if (bucket != null) {
-      for (final cached in bucket) {
-        if (cached.matchesPacked(
-          encoding,
-          length,
-          word0,
-          word1,
-          word2,
-          word3,
-        )) {
-          return cached;
-        }
-      }
-    }
-    final encoded = _typeResolver.internEncodedMetaString(
+    final encoded = EncodedMetaString(
       _materializeMetaStringWords(words),
-      encoding: encoding,
+      encoding,
     );
-    (bucket ?? (_smallMetaStrings[hash] = <EncodedMetaString>[])).add(encoded);
-    return encoded;
+    return _typeResolver.canonicalizeEncodedMetaString(encoded);
   }
 }
 
-int _smallMetaStringHash(
-  int encoding,
-  int length,
-  int word0,
-  int word1,
-  int word2,
-  int word3,
-) {
-  var hash = 0x811c9dc5;
-  hash = (hash ^ encoding) * 0x01000193;
-  hash = (hash ^ length) * 0x01000193;
-  hash = (hash ^ word0) * 0x01000193;
-  hash = (hash ^ word1) * 0x01000193;
-  hash = (hash ^ word2) * 0x01000193;
-  hash = (hash ^ word3) * 0x01000193;
-  return hash;
+@pragma('vm:never-inline')
+Never _throwInvalidMetaStringHash() {
+  throw StateError('Invalid meta-string hash.');
 }
 
 _MetaStringWords _readMetaStringWords(Buffer buffer, int length) {

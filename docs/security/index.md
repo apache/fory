@@ -9,7 +9,7 @@ samples, issue timelines, or implementation history.
 
 Security model documents describe how Fory should classify and prevent security
 risks while preserving the performance characteristics expected from Fory
-serialization runtimes.
+serialization implementations.
 
 ## Models
 

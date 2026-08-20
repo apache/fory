@@ -17,21 +17,21 @@
 
 """Fory IDL compiler for Apache Fory."""
 
-__version__ = "1.4.0.dev0"
+__version__ = "1.7.0.dev0"
 
-from fory_compiler.ir.ast import Schema, Message, Enum, Field, EnumValue, Import
-from fory_compiler.frontend.fdl import FDLFrontend
 from fory_compiler.frontend.fbs import FBSFrontend
+from fory_compiler.frontend.fdl import FDLFrontend
 from fory_compiler.frontend.proto import ProtoFrontend
+from fory_compiler.ir.ast import Enum, EnumValue, Field, Import, Message, Schema
 
 __all__ = [
-    "Schema",
-    "Message",
     "Enum",
-    "Field",
     "EnumValue",
-    "Import",
-    "FDLFrontend",
     "FBSFrontend",
+    "FDLFrontend",
+    "Field",
+    "Import",
+    "Message",
     "ProtoFrontend",
+    "Schema",
 ]

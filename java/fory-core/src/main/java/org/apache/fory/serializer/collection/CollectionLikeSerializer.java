@@ -37,6 +37,7 @@ import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.util.Preconditions;
@@ -46,11 +47,18 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
+  private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+  private static final int UNBACKED_CHECK_INTERVAL = 1024;
+
   private MethodHandle constructor;
   private int numElements;
+  private final int collectionOwnerBytes;
   protected final Config config;
   protected final boolean supportCodegenHook;
+  // Compatible reads may cache remote schema metadata; local writes and copies retain the
+  // original local holder and must not reuse read state.
   protected final TypeInfoHolder elementTypeInfoHolder;
+  protected final TypeInfoHolder elementTypeInfoReadHolder;
   protected final TypeResolver typeResolver;
 
   // For subclass whose element type are instantiated already, such as
@@ -68,19 +76,31 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
 
   public CollectionLikeSerializer(
       TypeResolver typeResolver, Class<T> cls, boolean supportCodegenHook) {
-    super(typeResolver.getConfig(), cls);
-    this.config = typeResolver.getConfig();
-    this.supportCodegenHook = supportCodegenHook;
-    elementTypeInfoHolder = typeResolver.nilTypeInfoHolder();
-    this.typeResolver = typeResolver;
+    this(typeResolver, cls, supportCodegenHook, false);
   }
 
   public CollectionLikeSerializer(
       TypeResolver typeResolver, Class<T> cls, boolean supportCodegenHook, boolean immutable) {
+    this(
+        typeResolver,
+        cls,
+        supportCodegenHook,
+        immutable,
+        GraphMemoryEstimates.shallowObjectBytes(cls));
+  }
+
+  protected CollectionLikeSerializer(
+      TypeResolver typeResolver,
+      Class<T> cls,
+      boolean supportCodegenHook,
+      boolean immutable,
+      int collectionOwnerBytes) {
     super(typeResolver.getConfig(), cls, immutable);
     this.config = typeResolver.getConfig();
+    this.collectionOwnerBytes = collectionOwnerBytes;
     this.supportCodegenHook = supportCodegenHook;
     elementTypeInfoHolder = typeResolver.nilTypeInfoHolder();
+    elementTypeInfoReadHolder = typeResolver.nilTypeInfoHolder();
     this.typeResolver = typeResolver;
   }
 
@@ -432,7 +452,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
 
   @Override
   public T read(ReadContext readContext) {
-    Collection collection = newCollection(readContext);
+    Collection collection = newCollection(readContext, false);
     int numElements = getAndClearNumElements();
     if (numElements != 0) {
       readElements(readContext, collection, numElements);
@@ -458,10 +478,13 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
    *
    * <p>without default constructor, created list will have elementData as null, adding elements
    * will raise NPE.
+   *
+   * @param elementReadAlwaysAdvances whether the generated declared element operation always
+   *     consumes input
    */
-  public Collection newCollection(ReadContext readContext) {
+  public Collection newCollection(ReadContext readContext, boolean elementReadAlwaysAdvances) {
     MemoryBuffer buffer = readContext.getBuffer();
-    numElements = readCollectionSize(buffer);
+    numElements = readCollectionSize(readContext, buffer, elementReadAlwaysAdvances);
     if (AndroidSupport.IS_ANDROID) {
       try {
         Constructor<?> constructor = type.getDeclaredConstructor();
@@ -547,8 +570,8 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
 
   /**
    * Get and reset numElements of deserializing collection. Should be called after {@link
-   * #newCollection(ReadContext)}. Nested read may overwrite this element, reset is necessary to
-   * avoid use wrong value by mistake.
+   * #newCollection(ReadContext, boolean)}. Nested read may overwrite this element, reset is
+   * necessary to avoid use wrong value by mistake.
    */
   public int getAndClearNumElements() {
     int size = numElements;
@@ -560,10 +583,19 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     this.numElements = numElements;
   }
 
-  protected final int readCollectionSize(MemoryBuffer buffer) {
+  protected final int readCollectionSize(
+      ReadContext readContext, MemoryBuffer buffer, boolean elementReadAlwaysAdvances) {
     int numElements = buffer.readVarUInt32Small7();
     checkCollectionSize(numElements);
-    buffer.checkReadableBytes(numElements);
+    if (elementReadAlwaysAdvances) {
+      buffer.checkReadableBytes(numElements);
+    } else {
+      int requiredReadable = numElements - readContext.remainingUnbackedContainerItems();
+      if (requiredReadable > 0) {
+        buffer.checkReadableBytes(requiredReadable);
+      }
+    }
+    readContext.reserveGraphMemory(collectionOwnerBytes + (long) numElements * REFERENCE_BYTES);
     return numElements;
   }
 
@@ -629,7 +661,8 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       Serializer serializer;
       TypeResolver typeResolver = this.typeResolver;
       if ((flags & CollectionFlags.IS_DECL_ELEMENT_TYPE) != CollectionFlags.IS_DECL_ELEMENT_TYPE) {
-        serializer = typeResolver.readTypeInfo(readContext, elementTypeInfoHolder).getSerializer();
+        serializer =
+            typeResolver.readTypeInfo(readContext, elementTypeInfoReadHolder).getSerializer();
       } else {
         serializer = elemGenericType.getSerializer(typeResolver);
       }
@@ -649,8 +682,12 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       }
     } else {
       if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
-        for (int i = 0; i < numElements; i++) {
-          collection.add(serializer.read(readContext, RefMode.NONE));
+        if (serializer.readDataAlwaysAdvances()) {
+          for (int i = 0; i < numElements; i++) {
+            collection.add(serializer.read(readContext, RefMode.NONE));
+          }
+        } else {
+          readUnbackedSameTypeElements(readContext, serializer, collection, numElements);
         }
       } else {
         MemoryBuffer buffer = readContext.getBuffer();
@@ -664,6 +701,36 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       }
     }
     readContext.decreaseDepth();
+  }
+
+  private static <T extends Collection> void readUnbackedSameTypeElements(
+      ReadContext readContext, Serializer serializer, T collection, int numElements) {
+    MemoryBuffer buffer = readContext.getBuffer();
+    int checkpoint = buffer.readerIndex();
+    for (int i = 0; i < numElements; i++) {
+      collection.add(serializer.read(readContext, RefMode.NONE));
+      int completed = i + 1;
+      if ((completed & (UNBACKED_CHECK_INTERVAL - 1)) == 0) {
+        int current = buffer.readerIndex();
+        int consumed = current - checkpoint;
+        if (consumed < UNBACKED_CHECK_INTERVAL) {
+          readContext.reserveUnbackedContainerItems(UNBACKED_CHECK_INTERVAL - consumed);
+        }
+        checkpoint = current;
+      }
+    }
+    int tail = numElements & (UNBACKED_CHECK_INTERVAL - 1);
+    if (tail != 0) {
+      int consumed = buffer.readerIndex() - checkpoint;
+      if (consumed < tail) {
+        readContext.reserveUnbackedContainerItems(tail - consumed);
+      }
+    }
+  }
+
+  @Override
+  public final boolean readDataAlwaysAdvances() {
+    return true;
   }
 
   /** Read elements whose type are different. */

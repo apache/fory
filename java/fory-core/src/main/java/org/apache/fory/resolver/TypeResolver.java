@@ -93,6 +93,8 @@ import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.serializer.UnknownClass.UnknownEmptyStruct;
 import org.apache.fory.serializer.UnknownClass.UnknownStruct;
 import org.apache.fory.serializer.UnknownClassSerializers;
+import org.apache.fory.serializer.collection.CollectionSerializers;
+import org.apache.fory.serializer.collection.MapSerializers;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorBuilder;
 import org.apache.fory.type.DescriptorGrouper;
@@ -263,19 +265,19 @@ public abstract class TypeResolver {
 
   /** Registers a class by name with an auto-assigned user ID. */
   public void register(String className) {
-    register(loadClass(className));
+    register(loadClassFromLoader(className));
   }
 
   /** Registers a class by name with a user-specified ID. */
   public void register(String className, long classId) {
-    register(loadClass(className), classId);
+    register(loadClassFromLoader(className), classId);
   }
 
   /**
    * Registers a class by name with a namespace and type name. The type name must not contain `.`.
    */
   public void register(String className, String namespace, String typeName) {
-    register(loadClass(className), namespace, typeName);
+    register(loadClassFromLoader(className), namespace, typeName);
   }
 
   /**
@@ -773,7 +775,7 @@ public abstract class TypeResolver {
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
-        typeInfo = readSharedClassTypeInfo(readContext, null);
+        typeInfo = readSharedClassTypeInfo(readContext, null, typeInfoCache);
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
@@ -782,7 +784,7 @@ public abstract class TypeResolver {
         if (!metaContextShareEnabled) {
           typeInfo = readTypeInfoFromBytes(readContext, typeInfoCache, typeId);
         } else {
-          typeInfo = readSharedClassTypeInfo(readContext, null);
+          typeInfo = readSharedClassTypeInfo(readContext, null, typeInfoCache);
         }
         break;
       case Types.LIST:
@@ -1136,7 +1138,10 @@ public abstract class TypeResolver {
     TypeInfo typeInfo;
     if (!typeDef.isStructSchemaKind()
         && !UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
-      typeInfo = getTypeInfo(cls);
+      typeInfo =
+          typeDef.getFieldsInfo().isEmpty()
+              ? getTypeInfo(cls)
+              : getMetaSharedTypeInfo(typeDef, cls);
     } else if (ClassResolver.useReplaceResolveSerializer(cls)) {
       // For classes with writeReplace/readResolve, use their natural serializer
       // (ReplaceResolveSerializer) instead of CompatibleSerializer
@@ -1193,6 +1198,14 @@ public abstract class TypeResolver {
       if ((Types.isExtType(streamTypeId) && !Types.isExtType(localTypeInfo.typeId))
           || (Types.isUnionType(streamTypeId) && !Types.isUnionType(localTypeInfo.typeId))) {
         throw new SerializerUnregisteredException(typeDef.getClassName());
+      }
+      Serializer<?> serializer = newMetaSharedExtSerializer(cls, typeDef, localTypeInfo);
+      if (serializer != null) {
+        TypeInfo typeInfo =
+            new TypeInfo(this, cls, null, localTypeInfo.typeId, typeDef.getClassSpec().userTypeId);
+        typeInfo.typeDef = typeDef;
+        typeInfo.setSerializer(this, serializer);
+        return typeInfo;
       }
       return localTypeInfo;
     }
@@ -1261,7 +1274,7 @@ public abstract class TypeResolver {
         sc = CompatibleSerializer.class;
       } else if (sc == null && GraalvmSupport.isGraalRuntime()) {
         sc = CompatibleSerializer.class;
-        LOG.warn(
+        LOG.warnOnce(
             "Can't generate class at runtime in graalvm for class def {}, use {} instead",
             typeDef,
             sc);
@@ -1299,6 +1312,22 @@ public abstract class TypeResolver {
       typeInfo.setSerializer(this, Serializers.newSerializer(this, cls, sc));
     }
     return typeInfo;
+  }
+
+  private Serializer<?> newMetaSharedExtSerializer(
+      Class<?> cls, TypeDef typeDef, TypeInfo localTypeInfo) {
+    if (typeDef.getFieldsInfo().isEmpty()) {
+      return null;
+    }
+    Serializer<?> serializer = localTypeInfo.getSerializer();
+    Class<?> serializerClass = serializer.getClass();
+    if (serializerClass == CollectionSerializers.DefaultJavaCollectionSerializer.class) {
+      return new CollectionSerializers.DefaultJavaCollectionSerializer<>(this, cls, typeDef);
+    }
+    if (serializerClass == MapSerializers.DefaultJavaMapSerializer.class) {
+      return new MapSerializers.DefaultJavaMapSerializer<>(this, cls, typeDef);
+    }
+    return null;
   }
 
   private Serializer<?> newGeneratedCompatibleSerializer(
@@ -1402,24 +1431,44 @@ public abstract class TypeResolver {
     return loadClass(className, isEnum, arrayDims, config.deserializeUnknownClass());
   }
 
-  final Class<?> loadClass(String className) {
+  @Internal
+  public Class<?> loadClass(String className) {
     return loadClass(className, false, -1, false);
   }
 
   final Class<?> loadClass(
       String className, boolean isEnum, int arrayDims, boolean deserializeUnknownClass) {
-    // Remote TypeDef/TypeMeta paths reach class materialization through this owner. Keep
-    // name-level checks before Class.forName so rejected metadata cannot force arbitrary class
-    // loading.
-    if (!checkType(className)) {
-      throw new InsecureException(
-          String.format("Class %s is forbidden for serialization.", className));
-    }
-    DisallowedList.checkNotInDisallowedList(className);
+    // Exact registeredClasses hits are trusted for both ID and name registrations; after a miss,
+    // never reverse-map class-keyed state to infer another accepted name.
     Class<?> cls = extRegistry.registeredClasses.get(className);
     if (cls != null) {
       return cls;
     }
+    if (config.requireClassRegistration() && !DefaultJdkClassAllowList.contains(className)) {
+      if (deserializeUnknownClass) {
+        return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
+      }
+      throw new InsecureException(String.format("Class %s is not registered.", className));
+    }
+    if (!checkType(className)) {
+      throw new InsecureException(
+          String.format("Class %s is forbidden for deserialization.", className));
+    }
+    DisallowedList.checkNotInDisallowedList(className);
+    try {
+      return loadClassFromLoader(className);
+    } catch (IllegalStateException e) {
+      if (deserializeUnknownClass) {
+        if (!config.suppressClassRegistrationWarnings()) {
+          LOG.warnOnce(e.getMessage());
+        }
+        return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
+      }
+      throw e;
+    }
+  }
+
+  protected final Class<?> loadClassFromLoader(String className) {
     try {
       return Class.forName(className, false, extRegistry.classLoader);
     } catch (ClassNotFoundException e) {
@@ -1430,10 +1479,6 @@ public abstract class TypeResolver {
             String.format(
                 "Class %s not found from classloaders [%s, %s]",
                 className, extRegistry.classLoader, Thread.currentThread().getContextClassLoader());
-        if (deserializeUnknownClass) {
-          LOG.warn(msg);
-          return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
-        }
         throw new IllegalStateException(msg, ex);
       }
     }
@@ -2220,11 +2265,16 @@ public abstract class TypeResolver {
   }
 
   public void setTypeChecker(TypeChecker typeChecker) {
-    sharedRegistry.clearCheckerCache();
-    extRegistry.typeChecker = typeChecker == null ? DEFAULT_TYPE_CHECKER : typeChecker;
-    if (extRegistry.typeChecker instanceof AllowListChecker && this instanceof ClassResolver) {
-      ((AllowListChecker) extRegistry.typeChecker).addListener((ClassResolver) this);
+    TypeChecker newChecker = typeChecker == null ? DEFAULT_TYPE_CHECKER : typeChecker;
+    if (newChecker instanceof AllowListChecker) {
+      ((AllowListChecker) newChecker).addListener(this);
     }
+    TypeChecker oldChecker = extRegistry.typeChecker;
+    if (oldChecker != newChecker && oldChecker instanceof AllowListChecker) {
+      ((AllowListChecker) oldChecker).removeListener(this);
+    }
+    sharedRegistry.clearCheckerCache();
+    extRegistry.typeChecker = newChecker;
   }
 
   final boolean checkType(String className) {
@@ -2244,14 +2294,6 @@ public abstract class TypeResolver {
 
   final void clearCheckerCache() {
     sharedRegistry.clearCheckerCache();
-  }
-
-  final void clearCheckerCacheForClass(String className) {
-    sharedRegistry.clearCheckerCacheForClass(className);
-  }
-
-  final void clearCheckerCacheForPrefix(String prefix) {
-    sharedRegistry.clearCheckerCacheForPrefix(prefix);
   }
 
   public void registerSerializerFactory(SerializerFactory serializerFactory) {
@@ -2412,7 +2454,7 @@ public abstract class TypeResolver {
     int userIdGenerator = 0;
     final ArrayList<SerializerFactory> serializerFactories = new ArrayList<>();
     final LongMap<TypeInfo> typeInfoByTypeDefId = new LongMap<>(2, 0.5f);
-    // cache absTypeInfo, support customized serializer for abstract or interface.
+    // cache absTypeInfo, support custom serializer for abstract or interface.
     // IdentityHashMap is more memory efficient than fory IdentityMap, and this is not in hotpath
     // for query
     final IdentityHashMap<Class<?>, TypeInfo> abstractTypeInfo = new IdentityHashMap<>();

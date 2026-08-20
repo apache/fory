@@ -19,7 +19,7 @@
 //!
 //! By default, `ForyStruct` does NOT generate `impl Default` to avoid conflicts
 //! with existing `Default` implementations. Use `#[fory(generate_default)]` when
-//! you want the macro to generate both `ForyDefault` and `Default` for you.
+//! you want the macro to generate `Default` for you.
 
 use fory_core::fory::Fory;
 use fory_derive::{ForyEnum, ForyStruct};

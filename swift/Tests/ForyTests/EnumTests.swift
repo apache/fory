@@ -67,7 +67,7 @@ private struct StructWithEnum: Equatable {
 
 @ForyStruct
 private struct StructWithUnion: Equatable {
-    var unionField: StringOrLong = .foryDefault()
+    var unionField: StringOrLong = .text("")
 }
 
 @ForyUnion
@@ -77,7 +77,6 @@ private indirect enum Token: Equatable {
     case plus
     case number(Int64)
     case ident(String)
-    case assign(target: String, value: Int32)
     case other(Int64?)
     case child(Token)
     case map([String: Token])
@@ -90,8 +89,13 @@ func enumTypeIdClassification() {
 }
 
 @Test
-func unionDefaultUsesKnownCase() {
-    #expect(ForwardStringOrLong.foryDefault() == .text(""))
+func unionDefaultUsesKnownCase() throws {
+    let context = ReadContext(
+        buffer: ByteBuffer(),
+        typeResolver: TypeResolver(config: Config(trackRef: false)),
+        config: Config(trackRef: false)
+    )
+    #expect(try ForwardStringOrLong.defaultValue(context) == .text(""))
 }
 
 @Test
@@ -99,7 +103,7 @@ func unionCaseIdZeroIsKnownCase() throws {
     let buffer = ByteBuffer()
     let typeResolver = TypeResolver(config: Config(trackRef: false))
     let writeContext = WriteContext(buffer: buffer, typeResolver: typeResolver, trackRef: false)
-    try ForwardStringOrLong.text("zero").foryWriteData(writeContext, hasGenerics: false)
+    try ForwardStringOrLong.writeData(.text("zero"), writeContext)
     buffer.flip()
     #expect(try buffer.readVarUInt32() == 0)
     buffer.flip()
@@ -109,14 +113,14 @@ func unionCaseIdZeroIsKnownCase() throws {
         config: Config(trackRef: false)
     )
 
-    #expect(try ForwardStringOrLong.foryReadData(context) == .text("zero"))
+    #expect(try ForwardStringOrLong.readData(context) == .text("zero"))
 }
 
 @Test
 func structWithEnumFieldRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(Color.self, id: 100)
-    fory.register(StructWithEnum.self, id: 101)
+    try fory.register(Color.self, id: 100)
+    try fory.register(StructWithEnum.self, id: 101)
 
     let value = StructWithEnum(name: "test", color: .green, value: 42)
     let data = try fory.serialize(value)
@@ -126,12 +130,13 @@ func structWithEnumFieldRoundTrip() throws {
 
 @Test
 func idEnumDoesNotUseTypeMetaLimits() throws {
-    let fory = Fory(config: .init(
-        trackRef: false,
-        compatible: true,
-        maxTypeMetaBytes: 1,
-        maxSchemaVersionsPerType: 1))
-    fory.register(Color.self, id: 100)
+    let fory = Fory(
+        config: .init(
+            trackRef: false,
+            compatible: true,
+            maxTypeMetaBytes: 1,
+            maxSchemaVersionsPerType: 1))
+    try fory.register(Color.self, id: 100)
 
     let data = try fory.serialize(Color.green)
     let decoded: Color = try fory.deserialize(data)
@@ -140,12 +145,13 @@ func idEnumDoesNotUseTypeMetaLimits() throws {
 
 @Test
 func idUnionDoesNotUseTypeMetaLimits() throws {
-    let fory = Fory(config: .init(
-        trackRef: false,
-        compatible: true,
-        maxTypeMetaBytes: 1,
-        maxSchemaVersionsPerType: 1))
-    fory.register(StringOrLong.self, id: 101)
+    let fory = Fory(
+        config: .init(
+            trackRef: false,
+            compatible: true,
+            maxTypeMetaBytes: 1,
+            maxSchemaVersionsPerType: 1))
+    try fory.register(StringOrLong.self, id: 101)
 
     let data = try fory.serialize(StringOrLong.text("hello"))
     let decoded: StringOrLong = try fory.deserialize(data)
@@ -155,8 +161,8 @@ func idUnionDoesNotUseTypeMetaLimits() throws {
 @Test
 func taggedUnionXlangRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(StringOrLong.self, id: 300)
-    fory.register(StructWithUnion.self, id: 301)
+    try fory.register(StringOrLong.self, id: 300)
+    try fory.register(StructWithUnion.self, id: 301)
 
     let first = StructWithUnion(unionField: .text("hello"))
     let second = StructWithUnion(unionField: .number(42))
@@ -174,7 +180,7 @@ func taggedUnionXlangRoundTrip() throws {
 @Test
 func taggedUnionPayloadFieldCodecsRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(FixedPayloadEvent.self, id: 302)
+    try fory.register(FixedPayloadEvent.self, id: 302)
 
     let values: [FixedPayloadEvent] = [
         .created("item"),
@@ -189,7 +195,7 @@ func taggedUnionPayloadFieldCodecsRoundTrip() throws {
 @Test
 func mixedEnumShapesRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(Token.self, id: 1000)
+    try fory.register(Token.self, id: 1000)
 
     let nestedMap: [String: Token] = [
         "one": .number(1),
@@ -201,7 +207,6 @@ func mixedEnumShapesRoundTrip() throws {
         .plus,
         .number(1),
         .ident("foo"),
-        .assign(target: "bar", value: 42),
         .other(42),
         .other(nil),
         .child(.child(.other(nil))),
@@ -211,4 +216,82 @@ func mixedEnumShapesRoundTrip() throws {
     let data = try fory.serialize(tokens)
     let decoded: [Token] = try fory.deserialize(data)
     #expect(decoded == tokens)
+}
+
+@Test
+func unionDepthOnlyCountsDynamicUnknownPayload() throws {
+    let writer = Fory(config: .init(trackRef: false, maxDepth: 8))
+    try writer.register(Token.self, id: 1001)
+    let value = Token.child(.child(.ident("leaf")))
+    let bytes = try writer.serialize(value)
+
+    let staticReader = Fory(config: .init(trackRef: false, maxDepth: 0))
+    try staticReader.register(Token.self, id: 1001)
+    let decoded: Token = try staticReader.deserialize(bytes)
+    #expect(decoded == value)
+
+    func unknownContext(maxDepth: Int) -> ReadContext {
+        let buffer = ByteBuffer()
+        buffer.writeVarUInt32(77)
+        buffer.writeInt8(RefFlag.notNullValue.rawValue)
+        buffer.writeUInt8(UInt8(TypeId.varint32.rawValue))
+        buffer.writeVarInt32(9)
+        let config = Config(compatible: false, maxDepth: maxDepth)
+        let context = ReadContext(
+            buffer: buffer,
+            typeResolver: TypeResolver(config: config),
+            config: config
+        )
+        context.remainingGraphMemoryBytes = Int(config.maxGraphMemoryBytes)
+        return context
+    }
+
+    do {
+        let _: ForwardStringOrLong = try ForwardStringOrLong.readData(
+            unknownContext(maxDepth: 0)
+        )
+        Issue.record("expected maxDepth failure")
+    } catch ForyError.invalidData(let message) {
+        #expect(message.contains("maxDepth"))
+    }
+
+    let unknown = try ForwardStringOrLong.readData(unknownContext(maxDepth: 1))
+    guard case .unknown(let payload) = unknown else {
+        Issue.record("expected unknown union case")
+        return
+    }
+    #expect(payload.caseId == 77)
+    #expect(payload.value as? Int32 == 9)
+}
+
+@Test
+func unknownScalarReplayDepthBoundary() throws {
+    let value = ForwardStringOrLong.unknown(
+        UnknownCase(
+            caseId: 77,
+            typeId: TypeId.varint32.rawValue,
+            value: Int32(9)
+        ))
+
+    let blocked = Fory(config: .init(trackRef: false, compatible: false, maxDepth: 0))
+    try blocked.register(ForwardStringOrLong.self, id: 1002)
+    do {
+        _ = try blocked.serialize(value)
+        Issue.record("expected maxDepth failure")
+    } catch ForyError.invalidData(let message) {
+        #expect(message.contains("maxDepth"))
+    }
+
+    let boundary = Fory(config: .init(trackRef: false, compatible: false, maxDepth: 1))
+    try boundary.register(ForwardStringOrLong.self, id: 1002)
+    let decoded: ForwardStringOrLong = try boundary.deserialize(
+        boundary.serialize(value)
+    )
+    guard case .unknown(let payload) = decoded else {
+        Issue.record("expected unknown union case")
+        return
+    }
+    #expect(payload.caseId == 77)
+    #expect(payload.typeId == TypeId.varint32.rawValue)
+    #expect(payload.value as? Int32 == 9)
 }

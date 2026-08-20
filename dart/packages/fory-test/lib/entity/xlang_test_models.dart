@@ -23,12 +23,12 @@ import 'dart:typed_data';
 
 import 'package:fory/fory.dart';
 
-import 'xlang_test_manual.dart' as manual;
+import 'xlang_test_custom.dart' as custom;
 
 part 'xlang_test_models.fory.dart';
 
 void registerXlangType(Fory fory, Type type, {int? id, String? name}) {
-  if (manual.registerXlangManualType(fory, type, id: id, name: name)) {
+  if (custom.registerXlangCustomType(fory, type, id: id, name: name)) {
     return;
   }
   XlangTestModelsForyModule.register(fory, type, id: id, name: name);

@@ -92,43 +92,62 @@ Result<void, Error> FieldType::write_to(Buffer &buffer, bool write_flag,
 Result<FieldType, Error> FieldType::read_from(Buffer &buffer, bool read_flag,
                                               bool nullable_val,
                                               bool ref_tracking_val) {
-  Error error;
-  uint32_t header =
-      read_flag ? buffer.read_var_uint32(error) : buffer.read_uint8(error);
-  if (FORY_PREDICT_FALSE(!error.ok())) {
-    return Unexpected(std::move(error));
+  struct ParseFrame {
+    FieldType field_type;
+    uint8_t remaining_generics;
+  };
+
+  // A capped TypeMeta body can still encode thousands of nested container
+  // schemas, so input bytes rather than the native call stack bound parsing.
+  std::vector<ParseFrame> stack;
+  bool nested = false;
+  while (true) {
+    Error error;
+    const uint32_t header = nested ? buffer.read_var_uint32(error)
+                                   : (read_flag ? buffer.read_var_uint32(error)
+                                                : buffer.read_uint8(error));
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      return Unexpected(std::move(error));
+    }
+
+    const bool header_has_flags = nested || read_flag;
+    const uint32_t tid = header_has_flags ? header >> 2 : header;
+    const bool null = header_has_flags ? (header & 0b10) != 0 : nullable_val;
+    const bool ref_track =
+        header_has_flags ? (header & 0b01) != 0 : ref_tracking_val;
+
+    FieldType completed(tid, null, ref_track);
+    completed.user_type_id = kInvalidUserTypeId;
+
+    uint8_t generic_count = 0;
+    if (tid == static_cast<uint32_t>(TypeId::LIST) ||
+        tid == static_cast<uint32_t>(TypeId::SET)) {
+      generic_count = 1;
+    } else if (tid == static_cast<uint32_t>(TypeId::MAP)) {
+      generic_count = 2;
+    }
+
+    if (generic_count != 0) {
+      stack.push_back({std::move(completed), generic_count});
+      nested = true;
+      continue;
+    }
+
+    while (!stack.empty()) {
+      ParseFrame &parent = stack.back();
+      parent.field_type.add_generic(std::move(completed));
+      --parent.remaining_generics;
+      if (parent.remaining_generics != 0) {
+        break;
+      }
+      completed = std::move(parent.field_type);
+      stack.pop_back();
+    }
+    if (stack.empty()) {
+      return completed;
+    }
+    nested = true;
   }
-
-  uint32_t tid;
-  bool null;
-  bool ref_track;
-  if (read_flag) {
-    // Header layout: type_id:N bits | nullable:1 bit | track_ref:1 bit
-    tid = header >> 2;
-    null = (header & 0b10) != 0;
-    ref_track = (header & 0b01) != 0;
-  } else {
-    tid = header;
-    null = nullable_val;
-    ref_track = ref_tracking_val;
-  }
-
-  FieldType ft(tid, null, ref_track);
-  ft.user_type_id = kInvalidUserTypeId;
-
-  // Read generics for list/set/map
-  if (tid == static_cast<uint32_t>(TypeId::LIST) ||
-      tid == static_cast<uint32_t>(TypeId::SET)) {
-    FORY_TRY(generic, FieldType::read_from(buffer, true, false));
-    ft.add_generic(std::move(generic));
-  } else if (tid == static_cast<uint32_t>(TypeId::MAP)) {
-    FORY_TRY(key, FieldType::read_from(buffer, true, false));
-    FORY_TRY(val, FieldType::read_from(buffer, true, false));
-    ft.add_generic(std::move(key));
-    ft.add_generic(std::move(val));
-  }
-
-  return ft;
 }
 
 // ============================================================================
@@ -542,6 +561,107 @@ read_meta_name(Buffer &buffer, const MetaStringDecoder &decoder,
   return result;
 }
 
+Result<std::unique_ptr<TypeMeta>, Error>
+parse_type_meta_body(Buffer &body, const TypeMeta *local_type_info,
+                     int64_t meta_hash, uint32_t max_type_fields) {
+  Error error;
+  const uint8_t meta_header = body.read_uint8(error);
+  if (FORY_PREDICT_FALSE(!error.ok())) {
+    return Unexpected(std::move(error));
+  }
+
+  uint32_t type_id = 0;
+  uint32_t user_type_id = kInvalidUserTypeId;
+  std::string namespace_str;
+  std::string type_name;
+  bool register_by_name = false;
+  size_t num_fields = 0;
+
+  if ((meta_header & STRUCT_TYPEDEF_FLAG) != 0) {
+    register_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0;
+    const bool compatible = (meta_header & COMPATIBLE_TYPEDEF_FLAG) != 0;
+    if (register_by_name) {
+      type_id = static_cast<uint32_t>(
+          compatible ? TypeId::NAMED_COMPATIBLE_STRUCT : TypeId::NAMED_STRUCT);
+    } else {
+      type_id = static_cast<uint32_t>(compatible ? TypeId::COMPATIBLE_STRUCT
+                                                 : TypeId::STRUCT);
+    }
+    num_fields = meta_header & SMALL_NUM_FIELDS_THRESHOLD;
+    if (num_fields == SMALL_NUM_FIELDS_THRESHOLD) {
+      const uint32_t extra = body.read_var_uint32(error);
+      if (FORY_PREDICT_FALSE(!error.ok())) {
+        return Unexpected(std::move(error));
+      }
+      num_fields += extra;
+    }
+    FORY_RETURN_IF_ERROR(check_type_meta_fields(num_fields, max_type_fields));
+  } else {
+    if (FORY_PREDICT_FALSE((meta_header & NON_STRUCT_RESERVED_BITS_MASK) !=
+                           0)) {
+      return Unexpected(Error::invalid_data("Invalid TypeMeta kind header"));
+    }
+    FORY_TRY(decoded_type_id,
+             type_id_from_type_meta_kind(meta_header & 0b1111));
+    type_id = decoded_type_id;
+    register_by_name = is_namespaced_type(static_cast<TypeId>(type_id));
+  }
+
+  if (register_by_name) {
+    static const MetaStringDecoder k_namespace_decoder('.', '_');
+    static const MetaStringDecoder k_type_name_decoder('$', '_');
+
+    FORY_TRY(ns,
+             read_meta_name(body, k_namespace_decoder, k_namespace_encodings,
+                            sizeof(k_namespace_encodings) /
+                                sizeof(k_namespace_encodings[0])));
+    namespace_str = std::move(ns);
+
+    FORY_TRY(tn,
+             read_meta_name(body, k_type_name_decoder, k_type_name_encodings,
+                            sizeof(k_type_name_encodings) /
+                                sizeof(k_type_name_encodings[0])));
+    type_name = std::move(tn);
+  } else {
+    const uint32_t uid = body.read_var_uint32(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      return Unexpected(std::move(error));
+    }
+    user_type_id = uid;
+  }
+
+  if (FORY_PREDICT_FALSE(num_fields > body.remaining_size())) {
+    return Unexpected(
+        Error::invalid_data("TypeMeta field count exceeds remaining metadata"));
+  }
+  std::vector<FieldInfo> field_infos;
+  field_infos.reserve(num_fields);
+  for (size_t i = 0; i < num_fields; ++i) {
+    FORY_TRY(field, FieldInfo::from_bytes(body));
+    field_infos.push_back(std::move(field));
+  }
+
+  // Remote fields are already in sender data order and must not be re-sorted.
+  if (local_type_info != nullptr) {
+    FORY_RETURN_IF_ERROR(
+        TypeMeta::assign_field_ids(local_type_info, field_infos));
+  }
+  if (FORY_PREDICT_FALSE(body.remaining_size() != 0)) {
+    return Unexpected(Error::invalid_data(
+        "TypeMeta parser did not consume declared meta size"));
+  }
+
+  auto meta = std::make_unique<TypeMeta>();
+  meta->hash = meta_hash;
+  meta->type_id = type_id;
+  meta->user_type_id = user_type_id;
+  meta->namespace_str = std::move(namespace_str);
+  meta->type_name = std::move(type_name);
+  meta->register_by_name = register_by_name;
+  meta->field_infos = std::move(field_infos);
+  return meta;
+}
+
 } // namespace
 
 TypeMeta TypeMeta::from_fields(uint32_t tid, const std::string &ns,
@@ -646,9 +766,6 @@ Result<std::vector<uint8_t>, Error> TypeMeta::to_bytes() const {
 Result<std::unique_ptr<TypeMeta>, Error>
 TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info,
                      uint32_t max_type_fields, uint32_t max_type_meta_bytes) {
-  size_t start_pos = buffer.reader_index();
-
-  // Read global binary header
   Error error;
   int64_t header;
   buffer.read_bytes(&header, sizeof(header), error);
@@ -656,128 +773,34 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info,
     return Unexpected(std::move(error));
   }
 
-  size_t header_size = sizeof(header);
-  uint64_t header_bits = static_cast<uint64_t>(header);
+  const uint64_t header_bits = static_cast<uint64_t>(header);
   FORY_RETURN_IF_ERROR(validate_type_meta_header(header_bits));
-  FORY_TRY(meta_size, read_type_meta_size(buffer, header_bits, &header_size));
+  FORY_TRY(meta_size, read_type_meta_size(buffer, header_bits, nullptr));
   FORY_RETURN_IF_ERROR(
       check_type_meta_body_size(meta_size, max_type_meta_bytes));
-  int64_t meta_hash = static_cast<int64_t>(header_bits >> TYPE_META_HASH_SHIFT);
-  uint32_t body_start = static_cast<uint32_t>(start_pos + header_size);
+  const int64_t meta_hash =
+      static_cast<int64_t>(header_bits >> TYPE_META_HASH_SHIFT);
+  const uint32_t body_start = buffer.reader_index();
   // The size cap is not byte-availability proof. Ensure the declared body is
-  // readable before any parsing, copying, or cached metadata publication.
+  // readable before making a zero-copy view that cannot reach later root data.
   if (FORY_PREDICT_FALSE(!buffer.ensure_readable(meta_size, error))) {
     return Unexpected(std::move(error));
   }
-  // Read meta header
-  uint8_t meta_header = buffer.read_uint8(error);
-  if (FORY_PREDICT_FALSE(!error.ok())) {
-    return Unexpected(std::move(error));
-  }
-
-  uint32_t type_id = 0;
-  uint32_t user_type_id = kInvalidUserTypeId;
-  std::string namespace_str;
-  std::string type_name;
-  bool register_by_name = false;
-  size_t num_fields = 0;
-
-  if ((meta_header & STRUCT_TYPEDEF_FLAG) != 0) {
-    register_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0;
-    bool compatible = (meta_header & COMPATIBLE_TYPEDEF_FLAG) != 0;
-    if (register_by_name) {
-      type_id = static_cast<uint32_t>(
-          compatible ? TypeId::NAMED_COMPATIBLE_STRUCT : TypeId::NAMED_STRUCT);
-    } else {
-      type_id = static_cast<uint32_t>(compatible ? TypeId::COMPATIBLE_STRUCT
-                                                 : TypeId::STRUCT);
+  Buffer body(buffer.data() + body_start, meta_size, false);
+  auto meta_result =
+      parse_type_meta_body(body, local_type_info, meta_hash, max_type_fields);
+  if (FORY_PREDICT_FALSE(!meta_result.ok())) {
+    Error parse_error = std::move(meta_result).error();
+    if (parse_error.code() == ErrorCode::BufferOutOfBound) {
+      return Unexpected(
+          Error::invalid_data("TypeMeta parser exceeded declared meta size"));
     }
-    num_fields = meta_header & SMALL_NUM_FIELDS_THRESHOLD;
-    if (num_fields == SMALL_NUM_FIELDS_THRESHOLD) {
-      uint32_t extra = buffer.read_var_uint32(error);
-      if (FORY_PREDICT_FALSE(!error.ok())) {
-        return Unexpected(std::move(error));
-      }
-      num_fields += extra;
-    }
-    FORY_RETURN_IF_ERROR(check_type_meta_fields(num_fields, max_type_fields));
-  } else {
-    if (FORY_PREDICT_FALSE((meta_header & NON_STRUCT_RESERVED_BITS_MASK) !=
-                           0)) {
-      return Unexpected(Error::invalid_data("Invalid TypeMeta kind header"));
-    }
-    FORY_TRY(decoded_type_id,
-             type_id_from_type_meta_kind(meta_header & 0b1111));
-    type_id = decoded_type_id;
-    register_by_name = is_namespaced_type(static_cast<TypeId>(type_id));
+    return Unexpected(std::move(parse_error));
   }
-
-  if (register_by_name) {
-    static const MetaStringDecoder k_namespace_decoder('.', '_');
-    static const MetaStringDecoder k_type_name_decoder('$', '_');
-
-    FORY_TRY(ns,
-             read_meta_name(buffer, k_namespace_decoder, k_namespace_encodings,
-                            sizeof(k_namespace_encodings) /
-                                sizeof(k_namespace_encodings[0])));
-    namespace_str = std::move(ns);
-
-    FORY_TRY(tn,
-             read_meta_name(buffer, k_type_name_decoder, k_type_name_encodings,
-                            sizeof(k_type_name_encodings) /
-                                sizeof(k_type_name_encodings[0])));
-    type_name = std::move(tn);
-  } else {
-    uint32_t uid = buffer.read_var_uint32(error);
-    if (FORY_PREDICT_FALSE(!error.ok())) {
-      return Unexpected(std::move(error));
-    }
-    user_type_id = uid;
-  }
-
-  // Read field infos
-  if (FORY_PREDICT_FALSE(num_fields > buffer.remaining_size())) {
-    return Unexpected(
-        Error::invalid_data("TypeMeta field count exceeds remaining metadata"));
-  }
-  std::vector<FieldInfo> field_infos;
-  field_infos.reserve(num_fields);
-  for (size_t i = 0; i < num_fields; ++i) {
-    FORY_TRY(field, FieldInfo::from_bytes(buffer));
-    field_infos.push_back(std::move(field));
-  }
-
-  // NOTE: Do NOT sort remote fields! They are already in the sender's sorted
-  // order, which matches the data order. Re-sorting would cause misalignment
-  // with the serialized data.
-
-  // Assign field IDs by comparing with local type
-  if (local_type_info != nullptr) {
-    FORY_RETURN_IF_ERROR(assign_field_ids(local_type_info, field_infos));
-  }
-
-  size_t current_pos = buffer.reader_index();
-  size_t expected_end_pos = start_pos + header_size + meta_size;
-  if (FORY_PREDICT_FALSE(current_pos > expected_end_pos)) {
-    return Unexpected(Error::invalid_data(
-        "TypeMeta parser consumed beyond declared meta size"));
-  }
-  if (FORY_PREDICT_FALSE(current_pos < expected_end_pos)) {
-    return Unexpected(Error::invalid_data(
-        "TypeMeta parser did not consume declared meta size"));
-  }
+  auto meta = std::move(meta_result).value();
   FORY_RETURN_IF_ERROR(
-      validate_type_meta_hash(buffer, body_start, meta_size, header_bits));
-
-  auto meta = std::make_unique<TypeMeta>();
-  meta->hash = meta_hash;
-  meta->type_id = type_id;
-  meta->user_type_id = user_type_id;
-  meta->namespace_str = std::move(namespace_str);
-  meta->type_name = std::move(type_name);
-  meta->register_by_name = register_by_name;
-  meta->field_infos = std::move(field_infos);
-
+      validate_type_meta_hash(body, 0, meta_size, header_bits));
+  buffer.reader_index(body_start + meta_size);
   return meta;
 }
 
@@ -785,124 +808,37 @@ Result<std::unique_ptr<TypeMeta>, Error>
 TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header,
                                  uint32_t max_type_fields,
                                  uint32_t max_type_meta_bytes) {
-  uint64_t header_bits = static_cast<uint64_t>(header);
+  const uint64_t header_bits = static_cast<uint64_t>(header);
   FORY_RETURN_IF_ERROR(validate_type_meta_header(header_bits));
   FORY_TRY(meta_size, read_type_meta_size(buffer, header_bits, nullptr));
   FORY_RETURN_IF_ERROR(
       check_type_meta_body_size(meta_size, max_type_meta_bytes));
-  int64_t meta_hash = static_cast<int64_t>(header_bits >> TYPE_META_HASH_SHIFT);
+  const int64_t meta_hash =
+      static_cast<int64_t>(header_bits >> TYPE_META_HASH_SHIFT);
 
-  uint32_t start_pos = buffer.reader_index();
+  const uint32_t body_start = buffer.reader_index();
   Error error;
   // The size cap is not byte-availability proof. Ensure the declared body is
-  // readable before any parsing, copying, or cached metadata publication.
+  // readable before making a zero-copy view that cannot reach later root data.
   if (FORY_PREDICT_FALSE(!buffer.ensure_readable(meta_size, error))) {
     return Unexpected(std::move(error));
   }
 
-  // Read meta header
-  uint8_t meta_header = buffer.read_uint8(error);
-  if (FORY_PREDICT_FALSE(!error.ok())) {
-    return Unexpected(std::move(error));
-  }
-
-  uint32_t type_id = 0;
-  uint32_t user_type_id = kInvalidUserTypeId;
-  std::string namespace_str;
-  std::string type_name;
-  bool register_by_name = false;
-  size_t num_fields = 0;
-
-  if ((meta_header & STRUCT_TYPEDEF_FLAG) != 0) {
-    register_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0;
-    bool compatible = (meta_header & COMPATIBLE_TYPEDEF_FLAG) != 0;
-    if (register_by_name) {
-      type_id = static_cast<uint32_t>(
-          compatible ? TypeId::NAMED_COMPATIBLE_STRUCT : TypeId::NAMED_STRUCT);
-    } else {
-      type_id = static_cast<uint32_t>(compatible ? TypeId::COMPATIBLE_STRUCT
-                                                 : TypeId::STRUCT);
+  Buffer body(buffer.data() + body_start, meta_size, false);
+  auto meta_result =
+      parse_type_meta_body(body, nullptr, meta_hash, max_type_fields);
+  if (FORY_PREDICT_FALSE(!meta_result.ok())) {
+    Error parse_error = std::move(meta_result).error();
+    if (parse_error.code() == ErrorCode::BufferOutOfBound) {
+      return Unexpected(
+          Error::invalid_data("TypeMeta parser exceeded declared meta size"));
     }
-    num_fields = meta_header & SMALL_NUM_FIELDS_THRESHOLD;
-    if (num_fields == SMALL_NUM_FIELDS_THRESHOLD) {
-      uint32_t extra = buffer.read_var_uint32(error);
-      if (FORY_PREDICT_FALSE(!error.ok())) {
-        return Unexpected(std::move(error));
-      }
-      num_fields += extra;
-    }
-    FORY_RETURN_IF_ERROR(check_type_meta_fields(num_fields, max_type_fields));
-  } else {
-    if (FORY_PREDICT_FALSE((meta_header & NON_STRUCT_RESERVED_BITS_MASK) !=
-                           0)) {
-      return Unexpected(Error::invalid_data("Invalid TypeMeta kind header"));
-    }
-    FORY_TRY(decoded_type_id,
-             type_id_from_type_meta_kind(meta_header & 0b1111));
-    type_id = decoded_type_id;
-    register_by_name = is_namespaced_type(static_cast<TypeId>(type_id));
+    return Unexpected(std::move(parse_error));
   }
-
-  if (register_by_name) {
-    static const MetaStringDecoder k_namespace_decoder('.', '_');
-    static const MetaStringDecoder k_type_name_decoder('$', '_');
-
-    FORY_TRY(ns,
-             read_meta_name(buffer, k_namespace_decoder, k_namespace_encodings,
-                            sizeof(k_namespace_encodings) /
-                                sizeof(k_namespace_encodings[0])));
-    namespace_str = std::move(ns);
-
-    FORY_TRY(tn,
-             read_meta_name(buffer, k_type_name_decoder, k_type_name_encodings,
-                            sizeof(k_type_name_encodings) /
-                                sizeof(k_type_name_encodings[0])));
-    type_name = std::move(tn);
-  } else {
-    uint32_t uid = buffer.read_var_uint32(error);
-    if (FORY_PREDICT_FALSE(!error.ok())) {
-      return Unexpected(std::move(error));
-    }
-    user_type_id = uid;
-  }
-
-  // Read field infos
-  if (FORY_PREDICT_FALSE(num_fields > buffer.remaining_size())) {
-    return Unexpected(
-        Error::invalid_data("TypeMeta field count exceeds remaining metadata"));
-  }
-  std::vector<FieldInfo> field_infos;
-  field_infos.reserve(num_fields);
-  for (size_t i = 0; i < num_fields; ++i) {
-    FORY_TRY(field, FieldInfo::from_bytes(buffer));
-    field_infos.push_back(std::move(field));
-  }
-
-  // NOTE: Do NOT sort remote fields! They are already in the sender's sorted
-  // order, which matches the data order.
-
-  size_t current_pos = buffer.reader_index();
-  size_t expected_end_pos = static_cast<size_t>(start_pos) + meta_size;
-  if (FORY_PREDICT_FALSE(current_pos > expected_end_pos)) {
-    return Unexpected(Error::invalid_data(
-        "TypeMeta parser consumed beyond declared meta size"));
-  }
-  if (FORY_PREDICT_FALSE(current_pos < expected_end_pos)) {
-    return Unexpected(Error::invalid_data(
-        "TypeMeta parser did not consume declared meta size"));
-  }
+  auto meta = std::move(meta_result).value();
   FORY_RETURN_IF_ERROR(
-      validate_type_meta_hash(buffer, start_pos, meta_size, header_bits));
-
-  auto meta = std::make_unique<TypeMeta>();
-  meta->hash = meta_hash;
-  meta->type_id = type_id;
-  meta->user_type_id = user_type_id;
-  meta->namespace_str = std::move(namespace_str);
-  meta->type_name = std::move(type_name);
-  meta->register_by_name = register_by_name;
-  meta->field_infos = std::move(field_infos);
-
+      validate_type_meta_hash(body, 0, meta_size, header_bits));
+  buffer.reader_index(body_start + meta_size);
   return meta;
 }
 
@@ -1727,8 +1663,10 @@ encode_meta_string(const std::string &value, bool is_namespace) {
     cached->bytes = std::move(result.bytes);
   }
 
-  // Compute hash if needed (for now, just use 0)
-  cached->hash = 0;
+  if (cached->bytes.size() > 16) {
+    cached->hash = compute_meta_string_hash(
+        cached->bytes, static_cast<MetaEncoding>(cached->encoding));
+  }
 
   return cached;
 }

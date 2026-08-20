@@ -23,6 +23,9 @@ included:
 excluded:
   - .build
 
+disabled_rules:
+  - opening_brace
+
 identifier_name:
   min_length:
     warning: 2

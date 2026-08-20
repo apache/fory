@@ -18,7 +18,10 @@
 import dataclasses
 from typing import Union
 
-from pyfory import Fory
+import pytest
+
+from pyfory import Buffer, Fory, Serializer
+from pyfory.union import UnionSerializer
 
 
 def test_union_basic_types():
@@ -218,3 +221,27 @@ def test_union_cross_language():
     deserialized = fory.deserialize(serialized)
     assert deserialized == "test"
     assert type(deserialized) is str
+
+
+def test_union_failure_depth_reset():
+    class FailingSerializer(Serializer):
+        def write(self, write_context, value):
+            write_context.write_int8(1)
+
+        def read(self, read_context):
+            read_context.read_int8()
+            raise ValueError("failed union child")
+
+    fory = Fory(xlang=False, ref=False, compatible=False)
+    union_serializer = UnionSerializer(fory.type_resolver, object, {})
+    failing_serializer = FailingSerializer(fory.type_resolver, object)
+    fory.read_context.prepare(Buffer(b"\x01"))
+
+    with pytest.raises(ValueError, match="failed union child"):
+        union_serializer._read_case_value(fory.read_context, failing_serializer)
+    assert fory.read_context.depth == 1
+    fory.reset_read()
+    assert fory.read_context.depth == 0
+
+    assert fory.deserialize(fory.serialize(42)) == 42
+    assert fory.read_context.depth == 0

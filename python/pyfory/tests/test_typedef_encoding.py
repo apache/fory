@@ -22,13 +22,16 @@ Tests for xlang TypeDef implementation.
 import array
 import enum
 from dataclasses import dataclass, make_dataclass
-from typing import List, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+# Fory resolves these model annotations at runtime, so keep Python 3.8-compatible typing aliases.
 
 import pytest
 
 import pyfory
-import pyfory.meta.typedef_decoder as typedef_decoder
-from pyfory.serialization import Buffer
+from pyfory.meta import typedef as typedef_module
+from pyfory.meta import typedef_decoder
+from pyfory.serialization import Buffer, ENABLE_FORY_CYTHON_SERIALIZATION
 from pyfory.meta.typedef import (
     TypeDef,
     FieldInfo,
@@ -38,6 +41,8 @@ from pyfory.meta.typedef import (
     DynamicFieldType,
     FIELD_NAME_ENCODINGS,
     COMPRESS_META_FLAG,
+    REGISTER_BY_NAME_FLAG,
+    STRUCT_TYPEDEF_FLAG,
     META_SIZE_MASKS,
     TYPEDEF_HASH_MASK,
     TYPEDEF_HASH_SHIFT,
@@ -52,6 +57,7 @@ from pyfory.meta.typedef_encoder import (
 )
 from pyfory.meta.typedef_decoder import decode_typedef
 from pyfory.serializer import PyArraySerializer
+from pyfory.converter import CompatibleListToArrayFieldSerializer
 from pyfory.types import TypeId
 from pyfory.union import UnionSerializer
 from pyfory import Fory
@@ -203,6 +209,16 @@ class NestedInt32ArrayPayload:
     payload: List[pyfory.Array[pyfory.Int32]]
 
 
+@dataclass
+class SharedDagRemotePayload:
+    payload: Any = pyfory.field(ref=True)
+
+
+@dataclass
+class SharedDagLocalPayload:
+    payload: List[List[List[List[pyfory.Int64]]]] = pyfory.field(ref=True)
+
+
 def test_collection_field_type():
     """Test collection field type creation and serialization."""
     element_type = FieldType(TypeId.INT32, True, True, False)
@@ -316,6 +332,41 @@ def test_encode_decode_typedef():
             assert field.field_type.is_nullable == typedef.fields[i].field_type.is_nullable
 
 
+def test_unknown_typedef_binds_fixed_owner(monkeypatch):
+    @dataclass
+    class RemoteDynamicType:
+        value: int
+
+    class BlockDynamicClassPolicy(pyfory.DeserializationPolicy):
+        def __init__(self):
+            self.calls = []
+
+        def authorize_instantiation(self, cls, **kwargs):
+            self.calls.append((cls, kwargs))
+            raise ValueError("dynamic class blocked")
+
+    writer = Fory(xlang=True, compatible=True)
+    writer.register(RemoteDynamicType, name="example.DynamicType")
+    typedef = encode_typedef(writer.type_resolver, RemoteDynamicType)
+    policy = BlockDynamicClassPolicy()
+    reader = Fory(xlang=True, compatible=True, strict=True, policy=policy)
+
+    def reject_dataclass(*args, **kwargs):
+        raise AssertionError("remote TypeDef must not generate a class")
+
+    decoded = decode_typedef(Buffer(typedef.encoded), reader.type_resolver)
+    assert decoded.cls is None
+    assert policy.calls == []
+
+    monkeypatch.setattr("pyfory.registry.dataclasses.make_dataclass", reject_dataclass)
+    type_id, _ = writer.type_resolver.get_registered_type_ids(RemoteDynamicType)
+    typeinfo = _read_remote_typedef(reader, type_id, typedef.encoded)
+
+    assert typeinfo.cls is pyfory.UnknownStruct
+    assert typeinfo.type_def.cls is pyfory.UnknownStruct
+    assert policy.calls == []
+
+
 def test_decode_typedef_rejects_parsed_body_with_mismatched_hash():
     fory = Fory(xlang=True, compatible=False)
     fory.register(SimpleTypeDef, name="example.SimpleTypeDef")
@@ -341,6 +392,15 @@ def test_decode_typedef_rejects_hash_consistent_malformed_body():
     encoded = prepend_header(b"\x00", False)
 
     with pytest.raises(Exception):
+        decode_typedef(Buffer(encoded), fory.type_resolver)
+
+
+def test_namespace_encoding():
+    fory = Fory(xlang=True, compatible=False)
+    body = bytes([STRUCT_TYPEDEF_FLAG | REGISTER_BY_NAME_FLAG, 0b11])
+    encoded = prepend_header(body, False)
+
+    with pytest.raises(ValueError, match="Invalid TypeDef namespace encoding"):
         decode_typedef(Buffer(encoded), fory.type_resolver)
 
 
@@ -473,6 +533,171 @@ def test_remote_schema_limit_keeps_unknown_types_separate(xlang):
 
     _read_remote_typedef(reader, first_type_id, first_typedef)
     _read_remote_typedef(reader, second_type_id, second_typedef)
+
+
+def test_remote_type_key_cap():
+    from pyfory.registry import (
+        _MAX_REMOTE_TYPE_DEF_KEYS,
+        SharedRegistry,
+        TypeResolver,
+    )
+
+    config = Fory(
+        xlang=True,
+        strict=False,
+        compatible=True,
+    ).config
+    resolver = TypeResolver(config, shared_registry=SharedRegistry())
+    for index in range(_MAX_REMOTE_TYPE_DEF_KEYS):
+        type_key = ("security", f"Accepted{index}")
+        resolver._check_remote_type_def_key(type_key)
+        resolver._record_remote_type_def(type_key)
+
+    existing_key = ("security", "Accepted0")
+    resolver._check_remote_type_def_key(existing_key)
+    accepted_before = dict(resolver._remote_schema_versions_by_type)
+    total_before = resolver._total_accepted_schema_versions
+    cache_before = dict(resolver._meta_shared_type_info)
+
+    remote = make_dataclass("RejectedRemote", [("value", int)])
+    _, encoded = _remote_typedef(
+        True,
+        "security.RejectedRemote",
+        remote,
+    )
+    buffer = Buffer(encoded)
+    header = buffer.read_int64()
+    with pytest.raises(ValueError, match="key limit"):
+        resolver._read_uncached_type_info(buffer, header)
+
+    assert resolver._remote_schema_versions_by_type == accepted_before
+    assert resolver._total_accepted_schema_versions == total_before
+    assert resolver._meta_shared_type_info == cache_before
+    assert header not in resolver._meta_shared_type_info
+
+    resolver._record_remote_type_def(existing_key)
+    assert len(resolver._remote_schema_versions_by_type) == _MAX_REMOTE_TYPE_DEF_KEYS
+    assert resolver._remote_schema_versions_by_type[existing_key] == 2
+    assert resolver._total_accepted_schema_versions == total_before + 1
+
+
+def test_remote_average_limit_boundary():
+    from pyfory.registry import (
+        _MAX_REMOTE_TYPE_DEF_KEYS,
+        SharedRegistry,
+        TypeResolver,
+    )
+
+    config = Fory(
+        xlang=True,
+        strict=False,
+        compatible=True,
+        max_average_schema_versions_per_type=3,
+    ).config
+    resolver = TypeResolver(config, shared_registry=SharedRegistry())
+    resolver._remote_schema_versions_by_type.update({("security", f"Average{index}"): 3 for index in range(_MAX_REMOTE_TYPE_DEF_KEYS - 1)})
+    boundary_key = ("security", "AverageBoundary")
+    resolver._remote_schema_versions_by_type[boundary_key] = 2
+    resolver._total_accepted_schema_versions = _MAX_REMOTE_TYPE_DEF_KEYS * 3 - 1
+
+    resolver._check_remote_type_def_key(boundary_key)
+    resolver._remote_schema_versions_by_type[boundary_key] = 3
+    resolver._total_accepted_schema_versions += 1
+
+    with pytest.raises(ValueError, match="average"):
+        resolver._check_remote_type_def_key(boundary_key)
+
+
+def test_remote_key_cap_cache_hit():
+    from pyfory.registry import (
+        _MAX_REMOTE_TYPE_DEF_KEYS,
+        SharedRegistry,
+        TypeResolver,
+    )
+
+    config = Fory(
+        xlang=True,
+        strict=False,
+        compatible=True,
+    ).config
+    resolver = TypeResolver(config, shared_registry=SharedRegistry())
+    resolver._remote_schema_versions_by_type.update({("security", f"Cached{index}"): 1 for index in range(_MAX_REMOTE_TYPE_DEF_KEYS)})
+    resolver._total_accepted_schema_versions = _MAX_REMOTE_TYPE_DEF_KEYS
+    remote = make_dataclass("CachedRemote", [("value", int)])
+    _, encoded = _remote_typedef(
+        True,
+        "security.CachedRemote",
+        remote,
+    )
+    header = Buffer(encoded).read_int64()
+    cached_typeinfo = object()
+    resolver._meta_shared_type_info[header] = cached_typeinfo
+    buffer = Buffer(encoded)
+
+    assert resolver._read_and_build_type_info(buffer) is cached_typeinfo
+    assert buffer.get_reader_index() == len(encoded)
+    assert len(resolver._remote_schema_versions_by_type) == (_MAX_REMOTE_TYPE_DEF_KEYS)
+    assert resolver._total_accepted_schema_versions == _MAX_REMOTE_TYPE_DEF_KEYS
+
+
+@pytest.mark.skipif(
+    ENABLE_FORY_CYTHON_SERIALIZATION,
+    reason="pure TypeResolver regression",
+)
+def test_remote_key_cap_exact_hit():
+    from pyfory.registry import _MAX_REMOTE_TYPE_DEF_KEYS
+
+    reader = Fory(
+        xlang=True,
+        strict=False,
+        compatible=True,
+    )
+    reader.register(SimpleTypeDef, name="security.ExactLocal")
+    resolver = reader.type_resolver
+    resolver._remote_schema_versions_by_type.update({("security", f"Existing{index}"): 1 for index in range(_MAX_REMOTE_TYPE_DEF_KEYS)})
+    resolver._total_accepted_schema_versions = _MAX_REMOTE_TYPE_DEF_KEYS
+    type_id, _ = resolver.get_registered_type_ids(SimpleTypeDef)
+    encoded = encode_typedef(resolver, SimpleTypeDef).encoded
+
+    typeinfo = _read_remote_typedef(reader, type_id, encoded)
+
+    assert typeinfo.cls is SimpleTypeDef
+    assert len(resolver._remote_schema_versions_by_type) == (_MAX_REMOTE_TYPE_DEF_KEYS)
+    assert resolver._total_accepted_schema_versions == _MAX_REMOTE_TYPE_DEF_KEYS
+
+
+@pytest.mark.skipif(
+    ENABLE_FORY_CYTHON_SERIALIZATION,
+    reason="pure TypeResolver regression",
+)
+def test_unknown_typedef_cached_and_counted():
+    from pyfory.registry import SharedRegistry, TypeResolver
+
+    remote = make_dataclass("CachedUnknown", [("value", int)])
+    _, encoded = _remote_typedef(
+        True,
+        "security.CachedUnknown",
+        remote,
+    )
+    config = Fory(
+        xlang=True,
+        strict=True,
+        compatible=True,
+    ).config
+    resolver = TypeResolver(config, shared_registry=SharedRegistry())
+    resolver.initialize()
+    buffer = Buffer(encoded)
+    header = buffer.read_int64()
+
+    typeinfo = resolver._read_uncached_type_info(buffer, header)
+
+    assert typeinfo.decode_namespace() == "security"
+    assert typeinfo.decode_typename() == "CachedUnknown"
+    assert typeinfo.cls is pyfory.UnknownStruct
+    assert typeinfo.type_def.cls is pyfory.UnknownStruct
+    assert resolver._meta_shared_type_info[header] is typeinfo
+    assert resolver._remote_schema_versions_by_type == {("security", "CachedUnknown"): 1}
+    assert resolver._total_accepted_schema_versions == 1
 
 
 @pytest.mark.parametrize("xlang", [False, True])
@@ -747,6 +972,20 @@ def _register_int32_payload(fory, cls):
     fory.register(cls, name="example.Int32Sequence")
 
 
+def _shared_list_dag(leaf, depth):
+    value = leaf
+    for _ in range(depth):
+        value = [value, value]
+    return value
+
+
+def _nested_list_field_type(element_type, depth):
+    field_type = element_type
+    for _ in range(depth):
+        field_type = CollectionFieldType(TypeId.LIST, True, False, True, field_type)
+    return field_type
+
+
 def _pyarray_int32_value(values):
     for typecode, (_itemsize, _ftype, type_id) in PyArraySerializer.typecode_dict.items():
         if type_id == TypeId.INT32_ARRAY:
@@ -838,6 +1077,40 @@ def test_compatible_varint_int32_list_assigns_to_array():
     assert list(decoded.payload) == [-1, 2, 3]
 
 
+@pytest.mark.parametrize(
+    "remote_type_id, expected_bytes",
+    [
+        (TypeId.FLOAT64, 24),
+        (TypeId.VARINT32, 3),
+    ],
+)
+def test_list_array_readable_byte_proof(remote_type_id, expected_bytes):
+    class TargetSerializer:
+        type_ = list
+
+    class ReadContext:
+        def read_var_uint32(self):
+            return 3
+
+        def read_int8(self):
+            return 0b1100
+
+        def check_readable_bytes(self, num_bytes):
+            assert num_bytes == expected_bytes
+            raise RuntimeError("readable bytes checked before allocation")
+
+    fory = Fory(xlang=True, compatible=True)
+    serializer = CompatibleListToArrayFieldSerializer(
+        fory.type_resolver,
+        TargetSerializer(),
+        None,
+        remote_type_id,
+    )
+
+    with pytest.raises(RuntimeError, match="checked before allocation"):
+        serializer.read(ReadContext())
+
+
 def test_compatible_int32_array_assigns_to_list():
     writer = Fory(xlang=True, compatible=True)
     reader = Fory(xlang=True, compatible=True)
@@ -908,6 +1181,130 @@ def test_nested_list_array_mismatch_rejects():
 
     with pytest.raises(TypeNotCompatibleError):
         reader.deserialize(writer.serialize(NestedInt32ListPayload(payload=[[1, 2], [3]])))
+
+
+def test_assignable_top_level_scalars():
+    int_type = FieldType(TypeId.INT32, True, False, False)
+    binary_type = FieldType(TypeId.BINARY, True, False, False)
+    uint8_array_type = FieldType(TypeId.UINT8_ARRAY, True, False, False)
+
+    assert typedef_module.is_value_assignable(7, int_type)
+    assert not typedef_module.is_value_assignable(1 << 31, int_type)
+    assert not typedef_module.is_value_assignable(None, int_type)
+    assert typedef_module.coerce_assignable_value(7, int_type) == 7
+    assert typedef_module.coerce_assignable_value(bytearray(b"x"), binary_type) == b"x"
+    _assert_uint8_array_value(
+        typedef_module.coerce_assignable_value(b"\x01\xff", uint8_array_type),
+        [1, 255],
+    )
+
+
+def test_assignable_shared_dag_is_linear(monkeypatch):
+    depth = 7
+    field_type = _nested_list_field_type(FieldType(TypeId.BINARY, True, False, False), depth)
+    value = _shared_list_dag(bytearray(b"x"), depth)
+    validation_calls = 0
+    coercion_calls = 0
+    validate = typedef_module._is_value_assignable
+    coerce = typedef_module._coerce_assignable_value
+
+    def count_validation(*args):
+        nonlocal validation_calls
+        validation_calls += 1
+        return validate(*args)
+
+    def count_coercion(*args):
+        nonlocal coercion_calls
+        coercion_calls += 1
+        return coerce(*args)
+
+    monkeypatch.setattr(typedef_module, "_is_value_assignable", count_validation)
+    monkeypatch.setattr(typedef_module, "_coerce_assignable_value", count_coercion)
+
+    assert typedef_module.is_value_assignable(value, field_type)
+    owners = []
+    node = value
+    for _ in range(depth):
+        owners.append(node)
+        node = node[0]
+
+    converted = typedef_module.coerce_assignable_value(value, field_type)
+
+    assert validation_calls == 1 + 2 * depth
+    assert coercion_calls == 1 + 2 * depth
+    node = converted
+    for owner in owners:
+        assert node is owner
+        assert node[0] is node[1]
+        node = node[0]
+    assert type(node) is bytes
+
+
+def test_coerce_builtin_owners_in_place():
+    binary_type = FieldType(TypeId.BINARY, True, False, False)
+    set_type = CollectionFieldType(TypeId.SET, True, False, True, binary_type)
+    map_type = MapFieldType(
+        TypeId.MAP,
+        True,
+        False,
+        True,
+        FieldType(TypeId.STRING, True, False, False),
+        binary_type,
+    )
+    values = {memoryview(b"x")}
+    mapping = {"payload": bytearray(b"x")}
+
+    assert typedef_module.coerce_assignable_value(values, set_type) is values
+    assert type(next(iter(values))) is bytes
+    assert typedef_module.coerce_assignable_value(mapping, map_type) is mapping
+    assert type(mapping["payload"]) is bytes
+
+    shared = (bytearray(b"x"),)
+    pairs = [shared, shared]
+    list_type = _nested_list_field_type(binary_type, 2)
+    converted = typedef_module.coerce_assignable_value(pairs, list_type)
+    assert converted is pairs
+    assert converted[0] is converted[1]
+    assert type(converted[0]) is list
+    assert type(converted[0][0]) is bytes
+
+
+def test_compatible_shared_dag_identity(monkeypatch):
+    writer = Fory(xlang=True, compatible=True, ref=True)
+    writer.register(SharedDagRemotePayload, name="example.SharedDagPayload")
+    leaf = [7]
+    payload = writer.serialize(SharedDagRemotePayload(payload=_shared_list_dag(leaf, 3)))
+
+    validation_calls = 0
+    coercion_calls = 0
+    validate = typedef_module._is_value_assignable
+    coerce = typedef_module._coerce_assignable_value
+
+    def count_validation(*args):
+        nonlocal validation_calls
+        validation_calls += 1
+        return validate(*args)
+
+    def count_coercion(*args):
+        nonlocal coercion_calls
+        coercion_calls += 1
+        return coerce(*args)
+
+    monkeypatch.setattr(typedef_module, "_is_value_assignable", count_validation)
+    monkeypatch.setattr(typedef_module, "_coerce_assignable_value", count_coercion)
+    reader = Fory(xlang=True, compatible=True, ref=True)
+    reader.register(SharedDagLocalPayload, name="example.SharedDagPayload")
+
+    decoded = reader.deserialize(payload)
+
+    assert isinstance(decoded, SharedDagLocalPayload)
+    node = decoded.payload
+    for _ in range(3):
+        assert node[0] is node[1]
+        node = node[0]
+    assert node == [7]
+    assert validation_calls == 8
+    assert coercion_calls == 8
 
 
 if __name__ == "__main__":

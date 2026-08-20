@@ -42,10 +42,20 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class NativeTypeDefEncoderTest {
+  private static final int FIELD_TYPE_MAX_DEPTH = 50;
+  private static final int DEEP_TYPE_META_BYTES = 16384;
+  private static final int NATIVE_MAP_KIND = 1;
+  private static final int NATIVE_OBJECT_HEADER = 0;
 
   @Test
   public void testBasicTypeDef() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     Class<TypeDefTest.TestFieldsOrderClass1> type = TypeDefTest.TestFieldsOrderClass1.class;
     List<FieldInfo> fieldsInfo = buildFieldsInfo((ClassResolver) fory.getTypeResolver(), type);
     MemoryBuffer buffer =
@@ -63,7 +73,13 @@ public class NativeTypeDefEncoderTest {
         new Class[] {
           MapFields.class, BeanA.class, Struct.createStructClass("TestBigMetaEncoding", 5)
         }) {
-      Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .withMetaShare(true)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
       TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), type);
       TypeDef typeDef1 =
           TypeDef.readTypeDef(
@@ -84,6 +100,144 @@ public class NativeTypeDefEncoderTest {
         () -> FieldTypes.FieldType.read(buffer, fory.getTypeResolver()));
   }
 
+  @Test
+  public void testFieldTypeDepth() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withCompatible(false)
+            .withMaxDepth(FIELD_TYPE_MAX_DEPTH)
+            .withMaxTypeMetaBytes(DEEP_TYPE_META_BYTES)
+            .build();
+    MemoryBuffer buffer = deepMapFieldType(FIELD_TYPE_MAX_DEPTH, NATIVE_OBJECT_HEADER);
+    FieldTypes.FieldType fieldType =
+        FieldTypes.FieldType.read(buffer, fory.getTypeResolver(), false, false, NATIVE_MAP_KIND);
+
+    for (int i = 0; i < FIELD_TYPE_MAX_DEPTH; i++) {
+      Assert.assertTrue(fieldType instanceof FieldTypes.MapFieldType);
+      FieldTypes.MapFieldType mapType = (FieldTypes.MapFieldType) fieldType;
+      Assert.assertTrue(mapType.getKeyType() instanceof FieldTypes.ObjectFieldType);
+      fieldType = mapType.getValueType();
+    }
+    Assert.assertTrue(fieldType instanceof FieldTypes.ObjectFieldType);
+    Assert.assertEquals(buffer.remaining(), 0);
+
+    FieldTypes.FieldType descriptorFieldType =
+        FieldTypes.FieldType.read(
+            deepMapFieldType(FIELD_TYPE_MAX_DEPTH, NATIVE_OBJECT_HEADER),
+            fory.getTypeResolver(),
+            false,
+            false,
+            NATIVE_MAP_KIND);
+    TypeDef typeDef =
+        new TypeDef(
+            new ClassSpec(ExpectedType.class),
+            Collections.singletonList(
+                new FieldInfo(ExpectedType.class.getName(), "nested", descriptorFieldType)),
+            Long.MIN_VALUE,
+            new byte[0]);
+    Assert.assertEquals(
+        typeDef.getDescriptors(fory.getTypeResolver(), ExpectedType.class).size(), 1);
+
+    Assert.assertThrows(
+        DeserializationException.class,
+        () ->
+            FieldTypes.FieldType.read(
+                deepMapFieldType(FIELD_TYPE_MAX_DEPTH + 1, NATIVE_OBJECT_HEADER),
+                fory.getTypeResolver(),
+                false,
+                false,
+                NATIVE_MAP_KIND));
+  }
+
+  @Test
+  public void testMalformedDeepFieldType() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withCompatible(false)
+            .withMaxDepth(FIELD_TYPE_MAX_DEPTH)
+            .withMaxTypeMetaBytes(DEEP_TYPE_META_BYTES)
+            .build();
+
+    MemoryBuffer truncated = deepMapFieldType(FIELD_TYPE_MAX_DEPTH, -1);
+    Assert.assertThrows(
+        RuntimeException.class,
+        () ->
+            FieldTypes.FieldType.read(
+                truncated, fory.getTypeResolver(), false, false, NATIVE_MAP_KIND));
+
+    MemoryBuffer invalid = deepMapFieldType(FIELD_TYPE_MAX_DEPTH, 6 << 2);
+    Assert.assertThrows(
+        IllegalStateException.class,
+        () ->
+            FieldTypes.FieldType.read(
+                invalid, fory.getTypeResolver(), false, false, NATIVE_MAP_KIND));
+  }
+
+  private static MemoryBuffer deepMapFieldType(int depth, int terminalHeader) {
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(depth * 2);
+    for (int i = 0; i < depth; i++) {
+      buffer.writeByte(NATIVE_OBJECT_HEADER);
+      if (i + 1 < depth) {
+        buffer.writeByte(NATIVE_MAP_KIND << 2);
+      }
+    }
+    if (terminalHeader >= 0) {
+      buffer.writeByte(terminalHeader);
+    }
+    return MemoryBuffer.fromByteArray(buffer.getBytes(0, buffer.writerIndex()));
+  }
+
+  @Test
+  public void testUnresolvedRootClass() {
+    Fory rawWriter =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    byte[] rawTypeDef =
+        TypeDef.buildTypeDef(rawWriter.getTypeResolver(), ExpectedType.class).getEncoded();
+
+    Fory namedWriter =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    namedWriter.register(ExpectedType.class, "alias", "ExpectedType");
+    byte[] namedTypeDef =
+        TypeDef.buildTypeDef(namedWriter.getTypeResolver(), ExpectedType.class).getEncoded();
+    Fory namedReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    TypeDef namedRoot =
+        TypeDef.readTypeDefWithoutRootClass(
+            (ClassResolver) namedReader.getTypeResolver(), namedTypeDef);
+    Assert.assertEquals(namedRoot.getClassSpec().entireClassName, "alias.ExpectedType");
+    Assert.assertNull(namedRoot.getClassSpec().type);
+
+    Fory localReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    TypeDef unresolved =
+        TypeDef.readTypeDefWithoutRootClass(
+            (ClassResolver) localReader.getTypeResolver(), rawTypeDef);
+    Assert.assertEquals(unresolved.getClassSpec().entireClassName, ExpectedType.class.getName());
+    Assert.assertNull(unresolved.getClassSpec().type);
+  }
+
+  public static class ExpectedType implements Serializable {
+    private int value;
+  }
+
   @Data
   public static class Foo1 {
     private int f1;
@@ -96,7 +250,7 @@ public class NativeTypeDefEncoderTest {
     Fory fory =
         Fory.builder()
             .withXlang(false)
-            .requireClassRegistration(true)
+            .requireClassRegistration(false)
             .withCompatible(false)
             .build();
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Foo2.class);
@@ -108,7 +262,13 @@ public class NativeTypeDefEncoderTest {
 
   @Test
   public void testBigClassNameObject() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TypeDef typeDef =
         TypeDef.buildTypeDef(
             fory.getTypeResolver(),
@@ -288,7 +448,13 @@ public class NativeTypeDefEncoderTest {
 
   @Test
   public void testDecodeRejectsTrailingTypeDefBodyBytes() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Foo1.class);
     MemoryBuffer encoded = MemoryBuffer.fromByteArray(typeDef.getEncoded());
     long header = encoded.readInt64();
@@ -307,7 +473,13 @@ public class NativeTypeDefEncoderTest {
 
   @Test
   public void testDecodeRejectsParsedTypeDefWithMismatchedHash() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Foo1.class);
     MemoryBuffer encoded = MemoryBuffer.fromByteArray(typeDef.getEncoded());
     long header = encoded.readInt64();
@@ -321,7 +493,13 @@ public class NativeTypeDefEncoderTest {
 
   @Test
   public void testDecodeRejectsBodyOnlyHeaderHash() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Foo1.class);
     byte[] malformed = rewriteHeaderWithBodyOnlyHash(typeDef);
 
@@ -338,6 +516,80 @@ public class NativeTypeDefEncoderTest {
     MemoryBuffer encoded = NativeTypeDefEncoder.prependHeader(body, false);
     Assert.assertThrows(
         RuntimeException.class, () -> TypeDef.readTypeDef(fory.getTypeResolver(), encoded));
+  }
+
+  @Test
+  public void testRejectsNamespaceEncoding() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    MemoryBuffer body = MemoryBuffer.newHeapBuffer(3);
+    body.writeByte(NativeTypeDefEncoder.nativeKindCode(Types.NAMED_STRUCT) << 4);
+    body.writeVarUInt32Small7(0);
+    body.writeByte(0b11);
+    MemoryBuffer encoded = NativeTypeDefEncoder.prependHeader(body, false);
+
+    DeserializationException exception =
+        Assert.expectThrows(
+            DeserializationException.class,
+            () -> TypeDef.readTypeDef(fory.getTypeResolver(), encoded));
+    Assert.assertTrue(exception.getMessage().contains("namespace encoding"));
+  }
+
+  @Test
+  public void testRejectsExtendedNameSize() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    for (int extendedSize : new int[] {-1, Integer.MAX_VALUE}) {
+      MemoryBuffer body = MemoryBuffer.newHeapBuffer(8);
+      body.writeByte(NativeTypeDefEncoder.nativeKindCode(Types.NAMED_STRUCT) << 4);
+      body.writeVarUInt32Small7(0);
+      body.writeByte(NativeTypeDefEncoder.BIG_NAME_THRESHOLD << 2);
+      body.writeVarUInt32Small7(extendedSize);
+      MemoryBuffer encoded = NativeTypeDefEncoder.prependHeader(body, false);
+
+      DeserializationException exception =
+          Assert.expectThrows(
+              DeserializationException.class,
+              () -> TypeDef.readTypeDef(fory.getTypeResolver(), encoded));
+      Assert.assertTrue(exception.getMessage().contains("namespace size"));
+    }
+  }
+
+  @Test
+  public void testRejectsExtendedFieldNameSize() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    for (int extendedSize : new int[] {-1, Integer.MAX_VALUE}) {
+      MemoryBuffer body = MemoryBuffer.newHeapBuffer(16);
+      body.writeByte(NativeTypeDefEncoder.nativeKindCode(Types.STRUCT) << 4);
+      body.writeVarUInt32Small7(3);
+      body.writeUInt8(Types.STRUCT);
+      body.writeVarUInt32(0);
+      body.writeByte(7 << 4);
+      body.writeVarUInt32Small7(extendedSize);
+      MemoryBuffer encoded = NativeTypeDefEncoder.prependHeader(body, false);
+
+      DeserializationException exception =
+          Assert.expectThrows(
+              DeserializationException.class,
+              () -> TypeDef.readTypeDef(fory.getTypeResolver(), encoded));
+      Assert.assertTrue(exception.getMessage().contains("field name size"));
+    }
   }
 
   private static byte[] corruptEncodedBody(TypeDef typeDef, String needle) {
@@ -427,6 +679,47 @@ public class NativeTypeDefEncoderTest {
       Assert.assertEquals(c1.getId(), "123");
       Assert.assertEquals(c1.getName(), "test");
     }
+  }
+
+  @Test
+  public void testUnregisteredParentLayer() {
+    Fory writer = registeredChildFory();
+    Fory reader = registeredChildFory();
+    writer.register(ChildClass.class, 100);
+    reader.register(ChildClass.class, 100);
+    ClassResolver readerResolver = (ClassResolver) reader.getTypeResolver();
+    Assert.assertFalse(readerResolver.isRegisteredByName(BaseAbstractClass.class.getName()));
+
+    ChildClass child = new ChildClass();
+    child.setId("123");
+    child.setName("test");
+    ChildClass decoded = (ChildClass) reader.deserialize(writer.serialize(child));
+    Assert.assertEquals(decoded.getId(), "123");
+    Assert.assertEquals(decoded.getName(), "test");
+
+    TypeDef typeDef = TypeDef.buildTypeDef(writer.getTypeResolver(), ChildClass.class);
+    TypeDef decodedTypeDef =
+        TypeDef.readTypeDef(readerResolver, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+    FieldInfo parentField =
+        decodedTypeDef.getFieldsInfo().stream()
+            .filter(field -> field.getFieldName().equals("id"))
+            .findFirst()
+            .orElseThrow(AssertionError::new);
+    Assert.assertEquals(parentField.getDefinedClass(), BaseAbstractClass.class.getName());
+    Assert.assertEquals(decodedTypeDef.getClassSpec().type, ChildClass.class);
+  }
+
+  private static Fory registeredChildFory() {
+    return Fory.builder()
+        .withXlang(false)
+        .withRefTracking(false)
+        .withMetaShare(true)
+        .withScopedMetaShare(true)
+        .withCompatible(true)
+        .withDeserializeUnknownClass(false)
+        .withAsyncCompilation(false)
+        .requireClassRegistration(true)
+        .build();
   }
 
   @Data

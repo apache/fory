@@ -18,6 +18,7 @@
 package fory
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"strings"
@@ -254,10 +255,14 @@ func (td *TypeDef) buildTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, 
 		TypeID:       td.typeId,
 		UserTypeID:   td.userTypeId,
 		Serializer:   serializer,
+		ValueBytes:   0,
 		PkgPathBytes: td.nsName,
 		NameBytes:    td.typeName,
 		IsDynamic:    type_ == nil, // Mark as dynamic if type is unknown
 		TypeDef:      td,
+	}
+	if type_ != nil {
+		info.ValueBytes = int(type_.Size())
 	}
 	return info, nil
 }
@@ -290,9 +295,25 @@ func skipTypeDef(buffer *ByteBuffer, header int64, err *Error) {
 	// otherwise materialize that body.
 	sz := int(header & META_SIZE_MASK)
 	if sz == META_SIZE_MASK {
-		sz += int(buffer.ReadVarUint32(err))
+		extra := buffer.ReadVarUint32(err)
+		if err != nil && err.HasError() {
+			return
+		}
+		var ok bool
+		sz, ok = checkedTypeDefSize(sz, extra, uint64(MaxInt))
+		if !ok {
+			err.SetError(DeserializationError("TypeDef metadata size exceeds supported int range"))
+			return
+		}
 	}
 	buffer.Skip(sz, err)
+}
+
+func checkedTypeDefSize(size int, extra uint32, maxInt uint64) (int, bool) {
+	if uint64(size) > maxInt || uint64(extra) > maxInt-uint64(size) {
+		return 0, false
+	}
+	return size + int(extra), true
 }
 
 const BIG_NAME_THRESHOLD = 0b111111 // 6 bits for size when using 2 bits for encoding
@@ -383,7 +404,7 @@ func readTypeName(buffer *ByteBuffer, typeNameDecoder *meta.Decoder, err *Error)
 
 // buildTypeDef constructs a TypeDef from a value
 func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
-	infoPtr, err := fory.typeResolver.getTypeInfo(value, true)
+	infoPtr, err := fory.typeResolver.GetTypeInfo(value, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get type info for value %v: %w", value, err)
 	}
@@ -406,6 +427,10 @@ func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
 	}
 
 	typeDef.encoded = encoded
+	// Keep locally built metadata linked to the registered type owner so warmed
+	// writes and exact-local reads reuse the canonical TypeDef and serializer.
+	typeDef.cachedTypeInfo = infoPtr
+	infoPtr.TypeDef = typeDef
 	if DebugOutputEnabled {
 		fmt.Printf("[Go TypeDef BUILT] %s\n", typeDef.String())
 	}
@@ -534,14 +559,6 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 	}
 
 	return fieldDefs, nil
-}
-
-func getFieldTypeSerializer(fory *Fory, spec *TypeSpec) (Serializer, error) {
-	typeInfo, err := spec.getTypeInfo(fory)
-	if err != nil {
-		return nil, err
-	}
-	return typeInfo.Serializer, nil
 }
 
 func getFieldTypeSerializerWithResolver(resolver *TypeResolver, spec *TypeSpec) (Serializer, error) {
@@ -1047,7 +1064,13 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		registeredByName = (metaHeaderByte & RegisterByNameFlag) != 0
 		fieldCount = int(metaHeaderByte & SmallNumFieldsThreshold)
 		if fieldCount == SmallNumFieldsThreshold {
-			fieldCount += int(metaBuffer.ReadVarUint32(&metaErr))
+			extra := metaBuffer.ReadVarUint32(&metaErr)
+			if !metaErr.HasError() {
+				if uint64(extra) > uint64(MaxInt-fieldCount) {
+					return nil, fmt.Errorf("type metadata field count exceeds supported int range")
+				}
+				fieldCount += int(extra)
+			}
 		}
 		if metaErr.HasError() {
 			return nil, metaErr.TakeError()
@@ -1177,10 +1200,23 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		}
 
 		info, exists := fory.typeResolver.nsTypeToTypeInfo[nsTypeKey{nsBytes.Hashcode, nameBytes.Hashcode}]
+		if exists &&
+			(!sameMetaStringBytes(nsBytes, info.PkgPathBytes) ||
+				!sameMetaStringBytes(nameBytes, info.NameBytes)) {
+			// Hash lookup is only a candidate match; exact encoded identity is required.
+			info = nil
+			exists = false
+		}
 		if !exists {
 			// Try fallback: decode strings and look up by name
-			ns, _ := fory.typeResolver.namespaceDecoder.Decode(nsBytes.Data, nsBytes.Encoding)
-			typeName, _ := fory.typeResolver.typeNameDecoder.Decode(nameBytes.Data, nameBytes.Encoding)
+			ns, err := fory.typeResolver.namespaceDecoder.Decode(nsBytes.Data, nsBytes.Encoding)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode TypeDef namespace: %w", err)
+			}
+			typeName, err := fory.typeResolver.typeNameDecoder.Decode(nameBytes.Data, nameBytes.Encoding)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode TypeDef typename: %w", err)
+			}
 			nameKey := [2]string{ns, typeName}
 
 			if fallbackInfo, fallbackExists := fory.typeResolver.namedTypeToTypeInfo[nameKey]; fallbackExists {
@@ -1265,6 +1301,13 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		}
 	}
 	return typeDef, nil
+}
+
+func sameMetaStringBytes(left, right *MetaStringBytes) bool {
+	return left != nil &&
+		right != nil &&
+		left.Encoding == right.Encoding &&
+		bytes.Equal(left.Data, right.Data)
 }
 
 func buildTypeDefEncoded(header int64, metaSizeBits, extraMetaSize int, metaBytes []byte) []byte {

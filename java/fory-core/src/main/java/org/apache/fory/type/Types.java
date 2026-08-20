@@ -131,7 +131,7 @@ public class Types {
   /** A `compatible_struct` whose type mapping will be encoded as a name. */
   public static final int NAMED_COMPATIBLE_STRUCT = 30;
 
-  /** A type which will be serialized by a customized serializer. */
+  /** A type which will be serialized by a custom serializer. */
   public static final int EXT = 31;
 
   /** An `ext` type whose type mapping will be encoded as a name. */

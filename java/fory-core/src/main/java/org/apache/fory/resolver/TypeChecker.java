@@ -19,17 +19,16 @@
 
 package org.apache.fory.resolver;
 
-/**
- * Check whether class or objects of class should be serialized. If class checker will be invoked by
- * multiple {@link ClassResolver}, class checker should be thread safe.
- */
+/** Checks whether a class name may be serialized or deserialized. */
 public interface TypeChecker {
   /**
-   * Check whether class should be allowed for serialization.
+   * Check whether a class should be allowed. An array name received during deserialization is
+   * passed as its complete JVM descriptor. If this checker is used by multiple resolvers, it must
+   * be thread safe.
    *
    * @param resolver type resolver
-   * @param className full name of class
-   * @return true if class is allowed for serialization.
+   * @param className binary class name or complete JVM array descriptor
+   * @return true if the class is allowed
    */
   boolean checkType(TypeResolver resolver, String className);
 }

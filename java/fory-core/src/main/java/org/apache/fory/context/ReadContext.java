@@ -71,6 +71,8 @@ public final class ReadContext {
   private MetaReadContext metaReadContext;
   private boolean peerOutOfBandEnabled;
   private int depth;
+  private long remainingGraphMemoryBytes;
+  private int remainingUnbackedContainerItems;
 
   /**
    * Creates read-side runtime state for one {@code Fory} instance.
@@ -112,6 +114,8 @@ public final class ReadContext {
     this.buffer = buffer;
     this.peerOutOfBandEnabled = peerOutOfBandEnabled;
     this.outOfBandBuffers = outOfBandBuffers == null ? null : outOfBandBuffers.iterator();
+    remainingGraphMemoryBytes = config.maxGraphMemoryBytes();
+    remainingUnbackedContainerItems = config.maxUnbackedContainerItems();
   }
 
   /**
@@ -306,12 +310,75 @@ public final class ReadContext {
     buffer = null;
     outOfBandBuffers = null;
     peerOutOfBandEnabled = false;
+    generics.reset();
     depth = 0;
+    remainingGraphMemoryBytes = 0;
+    remainingUnbackedContainerItems = 0;
   }
 
   /** Returns the immutable runtime configuration for this context. */
   public Config getConfig() {
     return config;
+  }
+
+  public final void reserveGraphMemory(long bytes) {
+    long remaining = remainingGraphMemoryBytes;
+    long nextRemaining = remaining - bytes;
+    if ((bytes | nextRemaining) < 0) {
+      throwInvalidGraphMemory(bytes, remaining);
+    }
+    remainingGraphMemoryBytes = nextRemaining;
+  }
+
+  public final void reserveGraphMemory(int bytes) {
+    long remaining = remainingGraphMemoryBytes;
+    if (bytes < 0 || remaining < bytes) {
+      throwInvalidGraphMemory(bytes, remaining);
+    }
+    remainingGraphMemoryBytes = remaining - bytes;
+  }
+
+  /** Returns the remaining root allowance for container items not backed by input bytes. */
+  public final int remainingUnbackedContainerItems() {
+    return remainingUnbackedContainerItems;
+  }
+
+  /** Deducts completed container work that was not backed by input bytes. */
+  public final void reserveUnbackedContainerItems(int items) {
+    int remaining = remainingUnbackedContainerItems;
+    if (items < 0 || items > remaining) {
+      throwInvalidUnbackedContainerItems(items, remaining);
+    }
+    remainingUnbackedContainerItems = remaining - items;
+  }
+
+  private void throwInvalidUnbackedContainerItems(int items, int remaining) {
+    if (items < 0) {
+      throw new InsecureException(
+          "Unbacked container item request must be non-negative, but got " + items + '.');
+    }
+    throw new InsecureException(
+        "Container read work exceeds maxUnbackedContainerItems remaining budget "
+            + remaining
+            + " items out of effective limit "
+            + config.maxUnbackedContainerItems()
+            + ". If the data is trusted, increase "
+            + "ForyBuilder#withMaxUnbackedContainerItems.");
+  }
+
+  private void throwInvalidGraphMemory(long bytes, long remaining) {
+    if (bytes < 0) {
+      throw new InsecureException(
+          "Estimated graph memory must be non-negative, but got " + bytes + " bytes.");
+    }
+    throw new InsecureException(
+        "Estimated graph memory request "
+            + bytes
+            + " bytes exceeds maxGraphMemoryBytes remaining budget "
+            + remaining
+            + " bytes out of effective limit "
+            + config.maxGraphMemoryBytes()
+            + " bytes. If the data is trusted, increase ForyBuilder#withMaxGraphMemoryBytes.");
   }
 
   /** Returns the generics stack shared by the owning runtime. */
@@ -435,7 +502,12 @@ public final class ReadContext {
     this.depth = depth;
   }
 
-  /** Increases the logical object-graph depth by one and enforces the configured max depth. */
+  /**
+   * Increases the logical object-graph depth by one and enforces the configured max depth.
+   *
+   * <p>Nested decoders decrease depth only after a successful child read. Root-operation reset owns
+   * exceptional cleanup, so nested decoder paths must not use {@code try/finally} to restore depth.
+   */
   public void increaseDepth() {
     if ((depth += 1) > maxDepth) {
       throw new InsecureException(

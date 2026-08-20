@@ -83,7 +83,7 @@ export const TypeId = {
   NAMED_STRUCT: 29,
   // a `compatible_struct` whose type mapping will be encoded as a name.
   NAMED_COMPATIBLE_STRUCT: 30,
-  // a type which will be serialized by a customized serializer.
+  // a type which will be serialized by a custom serializer.
   EXT: 31,
   // an `ext` type whose type mapping will be encoded as a name.
   NAMED_EXT: 32,
@@ -174,12 +174,12 @@ export const TypeId = {
   },
   userDefinedType(id: number) {
     return (
-      this.structType(id)
-      || this.extType(id)
-      || this.enumType(id)
-      || id == TypeId.UNION
-      || id == TypeId.TYPED_UNION
-      || id == TypeId.NAMED_UNION
+      this.structType(id) ||
+      this.extType(id) ||
+      this.enumType(id) ||
+      id == TypeId.UNION ||
+      id == TypeId.TYPED_UNION ||
+      id == TypeId.NAMED_UNION
     );
   },
   isBuiltin(id: number) {
@@ -216,8 +216,7 @@ export const TypeId = {
     // NONE(36), DURATION(37), TIMESTAMP(38), DATE(39), DECIMAL(40), BINARY(41)
     if (typeId >= TypeId.NONE && typeId <= TypeId.BINARY) return true;
     // Typed arrays BOOL_ARRAY(43)..FLOAT64_ARRAY(56)
-    if (typeId >= TypeId.BOOL_ARRAY && typeId <= TypeId.FLOAT64_ARRAY)
-      return true;
+    if (typeId >= TypeId.BOOL_ARRAY && typeId <= TypeId.FLOAT64_ARRAY) return true;
     return false;
   },
 } as const;
@@ -236,6 +235,8 @@ export type CustomSerializer<T> = {
 export type Serializer<T = any> = {
   _initialized?: boolean;
   fixedSize: number;
+  /** Whether every successful serializer data read consumes at least one input byte. */
+  readDataAlwaysAdvances: boolean;
   getTypeInfo: () => TypeInfo;
   needToWriteRef: () => boolean;
   getTypeId: () => number;
@@ -292,6 +293,19 @@ export interface Config {
   ref: boolean;
   useSliceString: boolean;
   maxDepth?: number;
+  /**
+   * Approximate graph-memory gate for one root deserialization.
+   *
+   * Mainly gates materialized arrays, maps, sets, structs, and objects. Leaf
+   * values are gated by unread input bytes instead, and actual heap use can be
+   * higher.
+   */
+  maxGraphMemoryBytes: number;
+  /**
+   * Maximum collection elements and map entries in one root read whose bodies
+   * are not backed by input bytes. Zero is a strict limit.
+   */
+  maxUnbackedContainerItems: number;
   maxTypeFields: number;
   maxTypeMetaBytes: number;
   maxSchemaVersionsPerType: number;

@@ -19,288 +19,301 @@ import Foundation
 
 extension Bool: Serializer {
     public static var staticTypeId: TypeId { .bool }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> Bool { false }
+    public static func defaultValue(_ context: ReadContext) throws -> Bool { false }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeUInt8(self ? 1 : 0)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeUInt8(value ? 1 : 0)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Bool {
+    public static func readData(_ context: ReadContext) throws -> Bool {
         try context.buffer.readUInt8() != 0
     }
 }
 
 extension Int8: Serializer {
     public static var staticTypeId: TypeId { .int8 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> Int8 { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> Int8 { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeInt8(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeInt8(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Int8 {
+    public static func readData(_ context: ReadContext) throws -> Int8 {
         try context.buffer.readInt8()
     }
 }
 
 extension Int16: Serializer {
     public static var staticTypeId: TypeId { .int16 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> Int16 { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> Int16 { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeInt16(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeInt16(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Int16 {
+    public static func readData(_ context: ReadContext) throws -> Int16 {
         try context.buffer.readInt16()
     }
 }
 
 extension Int32: Serializer {
     public static var staticTypeId: TypeId { .varint32 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> Int32 { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> Int32 { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeVarInt32(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeVarInt32(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Int32 {
+    public static func readData(_ context: ReadContext) throws -> Int32 {
         try context.buffer.readVarInt32()
     }
 }
 
 extension Int64: Serializer {
     public static var staticTypeId: TypeId { .varint64 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> Int64 { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> Int64 { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeVarInt64(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeVarInt64(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Int64 {
+    public static func readData(_ context: ReadContext) throws -> Int64 {
         try context.buffer.readVarInt64()
     }
 }
 
 extension UInt8: Serializer {
     public static var staticTypeId: TypeId { .uint8 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> UInt8 { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> UInt8 { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeUInt8(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeUInt8(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> UInt8 {
+    public static func readData(_ context: ReadContext) throws -> UInt8 {
         try context.buffer.readUInt8()
     }
 }
 
 extension UInt16: Serializer {
     public static var staticTypeId: TypeId { .uint16 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> UInt16 { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> UInt16 { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeUInt16(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeUInt16(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> UInt16 {
+    public static func readData(_ context: ReadContext) throws -> UInt16 {
         try context.buffer.readUInt16()
     }
 }
 
 extension UInt32: Serializer {
     public static var staticTypeId: TypeId { .varUInt32 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> UInt32 { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> UInt32 { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeVarUInt32(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeVarUInt32(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> UInt32 {
+    public static func readData(_ context: ReadContext) throws -> UInt32 {
         try context.buffer.readVarUInt32()
     }
 }
 
 extension UInt64: Serializer {
     public static var staticTypeId: TypeId { .varUInt64 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> UInt64 { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> UInt64 { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeVarUInt64(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeVarUInt64(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> UInt64 {
+    public static func readData(_ context: ReadContext) throws -> UInt64 {
         try context.buffer.readVarUInt64()
     }
 }
 
 #if arch(arm64) || arch(x86_64)
-extension Int: Serializer {
-    public static var staticTypeId: TypeId { .varint64 }
+    extension Int: Serializer {
+        public static var staticTypeId: TypeId { .varint64 }
+        public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> Int { 0 }
+        public static func defaultValue(_ context: ReadContext) throws -> Int { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
-        context.writeStaticTypeInfo(staticTypeId)
+        public static func writeTypeInfo(_ context: WriteContext) throws {
+            context.writeStaticTypeInfo(staticTypeId)
+        }
+
+        public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+            try context.readStaticTypeInfo(staticTypeId)
+        }
+
+        public static func writeData(_ value: Self, _ context: WriteContext) throws {
+            context.buffer.writeVarInt64(Int64(value))
+        }
+
+        public static func readData(_ context: ReadContext) throws -> Int {
+            Int(try context.buffer.readVarInt64())
+        }
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
-        try context.readStaticTypeInfo(staticTypeId)
+    extension UInt: Serializer {
+        public static var staticTypeId: TypeId { .varUInt64 }
+        public static var readDataAlwaysAdvances: Bool { true }
+
+        public static func defaultValue(_ context: ReadContext) throws -> UInt { 0 }
+
+        public static func writeTypeInfo(_ context: WriteContext) throws {
+            context.writeStaticTypeInfo(staticTypeId)
+        }
+
+        public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+            try context.readStaticTypeInfo(staticTypeId)
+        }
+
+        public static func writeData(_ value: Self, _ context: WriteContext) throws {
+            context.buffer.writeVarUInt64(UInt64(value))
+        }
+
+        public static func readData(_ context: ReadContext) throws -> UInt {
+            UInt(try context.buffer.readVarUInt64())
+        }
     }
-
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeVarInt64(Int64(self))
-    }
-
-    public static func foryReadData(_ context: ReadContext) throws -> Int {
-        Int(try context.buffer.readVarInt64())
-    }
-}
-
-extension UInt: Serializer {
-    public static var staticTypeId: TypeId { .varUInt64 }
-
-    public static func foryDefault() -> UInt { 0 }
-
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
-        context.writeStaticTypeInfo(staticTypeId)
-    }
-
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
-        try context.readStaticTypeInfo(staticTypeId)
-    }
-
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeVarUInt64(UInt64(self))
-    }
-
-    public static func foryReadData(_ context: ReadContext) throws -> UInt {
-        UInt(try context.buffer.readVarUInt64())
-    }
-}
 #endif
 
 extension Float: Serializer {
     public static var staticTypeId: TypeId { .float32 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> Float { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> Float { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeFloat32(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeFloat32(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Float {
+    public static func readData(_ context: ReadContext) throws -> Float {
         try context.buffer.readFloat32()
     }
 }
 
 extension Double: Serializer {
     public static var staticTypeId: TypeId { .float64 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> Double { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> Double { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeFloat64(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeFloat64(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Double {
+    public static func readData(_ context: ReadContext) throws -> Double {
         try context.buffer.readFloat64()
     }
 }
@@ -312,46 +325,46 @@ public struct BFloat16: Serializer, Equatable, Hashable, Sendable {
         self.rawValue = rawValue
     }
 
-    public static func foryDefault() -> BFloat16 { .init() }
+    public static func defaultValue(_ context: ReadContext) throws -> BFloat16 { .init() }
     public static var staticTypeId: TypeId { .bfloat16 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.buffer.writeUInt16(rawValue)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeUInt16(value.rawValue)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> BFloat16 {
+    public static func readData(_ context: ReadContext) throws -> BFloat16 {
         .init(rawValue: try context.buffer.readUInt16())
     }
 }
 
 extension Float16: Serializer {
     public static var staticTypeId: TypeId { .float16 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> Float16 { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> Float16 { 0 }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.buffer.writeUInt16(bitPattern)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeUInt16(value.bitPattern)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Float16 {
+    public static func readData(_ context: ReadContext) throws -> Float16 {
         Float16(bitPattern: try context.buffer.readUInt16())
     }
 }
@@ -373,19 +386,20 @@ private func decodeLatin1(_ bytes: [UInt8]) -> String {
 
 extension String: Serializer {
     public static var staticTypeId: TypeId { .string }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> String { "" }
+    public static func defaultValue(_ context: ReadContext) throws -> String { "" }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        let utf8Bytes = self.utf8
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        let utf8Bytes = value.utf8
         let header = (UInt64(utf8Bytes.count) << 2) | StringEncoding.utf8.rawValue
         if utf8Bytes.withContiguousStorageIfAvailable({ contiguousBytes in
             let totalBytes = UnsafeUtil.varUInt64Size(header) + contiguousBytes.count
@@ -402,7 +416,7 @@ extension String: Serializer {
         context.buffer.writeBytes(utf8Bytes)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> String {
+    public static func readData(_ context: ReadContext) throws -> String {
         let header = try context.buffer.readVarUInt36Small()
         let encoding = header & 0x03
         let byteLength = Int(header >> 2)
@@ -436,14 +450,15 @@ extension String: Serializer {
 
 extension Data: Serializer {
     public static var staticTypeId: TypeId { .binary }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryDefault() -> Data { Data() }
+    public static func defaultValue(_ context: ReadContext) throws -> Data { Data() }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         let rawTypeID = try context.buffer.readVarUInt32()
         guard let typeID = TypeId(rawValue: rawTypeID) else {
             throw ForyError.invalidData("unknown type id \(rawTypeID)")
@@ -454,12 +469,12 @@ extension Data: Serializer {
         return nil
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeVarUInt32(UInt32(self.count))
-        context.buffer.writeData(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeVarUInt32(UInt32(value.count))
+        context.buffer.writeData(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Data {
+    public static func readData(_ context: ReadContext) throws -> Data {
         let length = try context.buffer.readVarUInt32()
         let byteLength = Int(length)
         try context.ensureRemainingBytes(byteLength, label: "binary")

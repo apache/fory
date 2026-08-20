@@ -39,7 +39,7 @@ func TestMetaStringResolver(t *testing.T) {
 	if bufErr.HasError() {
 		t.Fatalf("write failed: %v", bufErr.Error())
 	}
-	got1, _ := resolver.ReadMetaStringBytes(buffer, &bufErr)
+	got1 := resolver.ReadMetaStringBytes(buffer, &bufErr)
 	if got1.Hashcode != metaBytes1.Hashcode || !bytes.Equal(got1.Data, metaBytes1.Data) {
 		t.Errorf("Mismatch in English string")
 	}
@@ -51,7 +51,7 @@ func TestMetaStringResolver(t *testing.T) {
 	if bufErr.HasError() {
 		t.Fatalf("write failed: %v", bufErr.Error())
 	}
-	got2, _ := resolver.ReadMetaStringBytes(buffer, &bufErr)
+	got2 := resolver.ReadMetaStringBytes(buffer, &bufErr)
 	if got2.Hashcode != metaBytes2.Hashcode || !bytes.Equal(got2.Data, metaBytes2.Data) {
 		t.Errorf("Mismatch in custom data")
 	}
@@ -63,7 +63,7 @@ func TestMetaStringResolver(t *testing.T) {
 	if bufErr.HasError() {
 		t.Fatalf("write failed: %v", bufErr.Error())
 	}
-	got3, _ := resolver.ReadMetaStringBytes(buffer, &bufErr)
+	got3 := resolver.ReadMetaStringBytes(buffer, &bufErr)
 	if got3.Hashcode != metaBytes3.Hashcode || !bytes.Equal(got3.Data, metaBytes3.Data) {
 		t.Errorf("Mismatch in empty string")
 	}
@@ -75,7 +75,7 @@ func TestMetaStringResolver(t *testing.T) {
 	if bufErr.HasError() {
 		t.Fatalf("write failed: %v", bufErr.Error())
 	}
-	got4, _ := resolver.ReadMetaStringBytes(buffer, &bufErr)
+	got4 := resolver.ReadMetaStringBytes(buffer, &bufErr)
 	if got4.Hashcode != metaBytes4.Hashcode || !bytes.Equal(got4.Data, metaBytes4.Data) {
 		t.Errorf("Mismatch in Chinese string")
 	}
@@ -87,7 +87,7 @@ func TestMetaStringResolver(t *testing.T) {
 	if bufErr.HasError() {
 		t.Fatalf("write failed: %v", bufErr.Error())
 	}
-	got5, _ := resolver.ReadMetaStringBytes(buffer, &bufErr)
+	got5 := resolver.ReadMetaStringBytes(buffer, &bufErr)
 	if got5.Hashcode != metaBytes5.Hashcode || !bytes.Equal(got5.Data, metaBytes5.Data) {
 		t.Errorf("Mismatch in Japanese string")
 	}
@@ -100,7 +100,7 @@ func TestMetaStringResolver(t *testing.T) {
 	if bufErr.HasError() {
 		t.Fatalf("write failed: %v", bufErr.Error())
 	}
-	got6, _ := resolver.ReadMetaStringBytes(buffer, &bufErr)
+	got6 := resolver.ReadMetaStringBytes(buffer, &bufErr)
 	if got6.Hashcode != metaBytes6.Hashcode || !bytes.Equal(got6.Data, metaBytes6.Data) {
 		t.Errorf("Mismatch in long string")
 	}

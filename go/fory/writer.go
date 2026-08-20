@@ -220,7 +220,7 @@ func (c *WriteContext) WriteLength(length int) {
 }
 
 // ============================================================================
-// Typed Write Methods - Fastpath for codegen
+// Typed Write Methods
 // For primitive numeric types, use ctx.Buffer().WriteXXX()
 // For strings, use ctx.WriteString()
 // For slices/maps, use these methods which handle ref tracking
@@ -651,7 +651,7 @@ func (c *WriteContext) WriteValue(value reflect.Value, refMode RefMode, writeTyp
 	}
 
 	// Get type information and serializer for the value
-	typeInfo, err := c.typeResolver.getTypeInfo(value, true)
+	typeInfo, err := c.typeResolver.GetTypeInfo(value, true)
 	if err != nil {
 		c.SetError(SerializationErrorf("cannot get typeinfo for value %v: %v", value, err))
 		return

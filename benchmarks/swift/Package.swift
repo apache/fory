@@ -21,23 +21,27 @@ import PackageDescription
 let package = Package(
     name: "fory-swift-benchmark",
     platforms: [
-        .macOS(.v13),
+        .macOS(.v13)
     ],
     products: [
         .executable(
             name: "swift-benchmark",
             targets: ["SwiftBenchmark"]
         ),
+        .executable(
+            name: "swift-external-benchmark",
+            targets: ["ExternalSwiftBenchmark"]
+        )
     ],
     dependencies: [
         .package(name: "fory", path: "../.."),
-        .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.35.0"),
+        .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.35.0")
     ],
     targets: [
         .target(
             name: "SwiftBenchmarkProto",
             dependencies: [
-                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+                .product(name: "SwiftProtobuf", package: "swift-protobuf")
             ],
             path: "Sources/SwiftBenchmarkProto",
             exclude: ["bench.proto"]
@@ -46,9 +50,21 @@ let package = Package(
             name: "SwiftBenchmark",
             dependencies: [
                 .product(name: "Fory", package: "fory"),
-                "SwiftBenchmarkProto",
+                "SwiftBenchmarkProto"
             ],
             path: "Sources/SwiftBenchmark"
         ),
+        .target(
+            name: "ExternalBenchmarkModels",
+            path: "Sources/ExternalBenchmarkModels"
+        ),
+        .executableTarget(
+            name: "ExternalSwiftBenchmark",
+            dependencies: [
+                .product(name: "Fory", package: "fory"),
+                "ExternalBenchmarkModels"
+            ],
+            path: "Sources/ExternalSwiftBenchmark"
+        )
     ]
 )

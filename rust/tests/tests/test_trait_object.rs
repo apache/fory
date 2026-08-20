@@ -15,262 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use fory_core::fory::Fory;
-use fory_core::register_trait_type;
-use fory_core::resolver::RefFlag;
-use fory_core::serializer::Serializer;
-use fory_core::TypeId;
+use fory_core::{register_trait_type, Fory, ForyObject, Serializer};
 use fory_derive::ForyStruct;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-fn fory_compatible() -> Fory {
-    Fory::builder().xlang(false).compatible(true).build()
-}
-
-fn assert_erased_serializer_container_error(err: fory_core::Error) {
-    let message = err.to_string();
-    assert!(
-        message.contains("Type info for internal type not found")
-            || message.contains("not found in type_info registry")
-            || message.contains("ID harness not found"),
-        "unexpected error: {message}"
-    );
-}
-
-#[test]
-fn test_multiple_types_in_sequence() {
-    let fory = fory_compatible();
-
-    let original1 = 42i32;
-    let original2 = String::from("test");
-    let original3 = vec![1, 2, 3];
-
-    let val1: Box<dyn Serializer> = Box::new(original1);
-    let val2: Box<dyn Serializer> = Box::new(original2.clone());
-    let val3: Box<dyn Serializer> = Box::new(original3.clone());
-
-    let ser1 = fory.serialize(&val1).unwrap();
-    let ser2 = fory.serialize(&val2).unwrap();
-    let ser3 = fory.serialize(&val3).unwrap();
-
-    let de1_trait: Box<dyn Serializer> = fory.deserialize(&ser1).unwrap();
-    let de2_trait: Box<dyn Serializer> = fory.deserialize(&ser2).unwrap();
-    let de3_trait: Box<dyn Serializer> = fory.deserialize(&ser3).unwrap();
-
-    let de1_concrete: i32 = fory.deserialize(&ser1).unwrap();
-    let de2_concrete: String = fory.deserialize(&ser2).unwrap();
-    let de3_concrete: Vec<i32> = fory.deserialize(&ser3).unwrap();
-
-    assert_eq!(de1_concrete, original1);
-    assert_eq!(de2_concrete, original2);
-    assert_eq!(de3_concrete, original3);
-
-    assert_eq!(ser1, fory.serialize(&de1_trait).unwrap());
-    assert_eq!(ser2, fory.serialize(&de2_trait).unwrap());
-    assert_eq!(ser3, fory.serialize(&de3_trait).unwrap());
-}
-
-#[test]
-fn test_option_some_roundtrip() {
-    let fory = fory_compatible();
-
-    let original = Some(42);
-    let trait_obj: Box<dyn Serializer> = Box::new(original);
-    let serialized = fory.serialize(&trait_obj).unwrap();
-
-    let deserialized_trait: Box<dyn Serializer> = fory.deserialize(&serialized).unwrap();
-    let deserialized_concrete: Option<i32> = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized_concrete, original);
-    assert_eq!(fory.serialize(&deserialized_trait).unwrap(), serialized);
-}
-
-#[test]
-fn trait_object_map_set_payloads_rejected() {
-    let fory = fory_compatible();
-
-    let list: Box<dyn Serializer> = Box::new(vec!["one".to_string(), "two".to_string()]);
-    assert_erased_serializer_container_error(fory.serialize(&list).unwrap_err());
-
-    let representative_map: Box<dyn Serializer> = Box::new(HashMap::from([
-        ("one".to_string(), 1_i32),
-        ("two".to_string(), 2),
-    ]));
-    assert_erased_serializer_container_error(fory.serialize(&representative_map).unwrap_err());
-
-    let other_map: Box<dyn Serializer> = Box::new(HashMap::from([
-        ("one".to_string(), "first".to_string()),
-        ("two".to_string(), "second".to_string()),
-    ]));
-    assert_erased_serializer_container_error(fory.serialize(&other_map).unwrap_err());
-
-    let representative_set: Box<dyn Serializer> = Box::new(HashSet::from([1_i32, 2, 3]));
-    assert_erased_serializer_container_error(fory.serialize(&representative_set).unwrap_err());
-
-    let other_set: Box<dyn Serializer> = Box::new(HashSet::from([
-        "one".to_string(),
-        "two".to_string(),
-        "three".to_string(),
-    ]));
-    assert_erased_serializer_container_error(fory.serialize(&other_set).unwrap_err());
-}
-
-#[test]
-fn trait_object_map_values_reject_containers() {
-    let fory = fory_compatible();
-
-    let mut values: HashMap<String, Box<dyn Serializer>> = HashMap::new();
-    values.insert(
-        "map".to_string(),
-        Box::new(HashMap::from([("one".to_string(), 1_i32)])),
-    );
-    assert_erased_serializer_container_error(fory.serialize(&values).unwrap_err());
-
-    let mut values: HashMap<String, Box<dyn Serializer>> = HashMap::new();
-    values.insert("set".to_string(), Box::new(HashSet::from([1_i32, 2, 3])));
-    assert_erased_serializer_container_error(fory.serialize(&values).unwrap_err());
-}
-
-#[test]
-fn trait_object_container_type_ids_rejected_on_read() {
-    let fory = fory_compatible();
-
-    for type_id in [TypeId::LIST, TypeId::SET, TypeId::MAP] {
-        let bytes = vec![0, RefFlag::NotNullValue as i8 as u8, type_id as u8];
-        let result: Result<Box<dyn Serializer>, _> = fory.deserialize(&bytes);
-        let err = match result {
-            Ok(_) => panic!("expected erased container type id to fail"),
-            Err(err) => err,
-        };
-        assert_erased_serializer_container_error(err);
-    }
-}
-
-#[test]
-fn test_vec_of_trait_objects() {
-    let fory = fory_compatible();
-    let vec_of_trait_objects: Vec<Box<dyn Serializer>> = vec![
-        Box::new(42i32),
-        Box::new(String::from("hello")),
-        Box::new(2.71f64),
-    ];
-
-    let serialized = fory.serialize(&vec_of_trait_objects).unwrap();
-    let deserialized: Vec<Box<dyn Serializer>> = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.len(), 3);
-}
-
-#[test]
-fn test_hashmap_string_to_trait_objects() {
-    let fory = fory_compatible();
-
-    let mut map: HashMap<String, Box<dyn Serializer>> = HashMap::new();
-    map.insert(String::from("int"), Box::new(42i32));
-    map.insert(String::from("string"), Box::new(String::from("hello")));
-    map.insert(String::from("float"), Box::new(2.71f64));
-
-    let serialized = fory.serialize(&map).unwrap();
-    let deserialized: HashMap<String, Box<dyn Serializer>> = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.len(), 3);
-}
-
-#[derive(ForyStruct, Debug, PartialEq, Clone)]
-struct Person {
-    name: String,
-    age: i32,
-}
-
-#[derive(ForyStruct, Debug, PartialEq)]
-struct Company {
-    name: String,
-    employees: Vec<Person>,
-}
-
-#[test]
-fn test_fory_derived_struct_as_trait_object() {
-    let mut fory = fory_compatible();
-    fory.register::<Person>(5000).unwrap();
-
-    let person = Person {
-        name: String::from("Alice"),
-        age: 30,
-    };
-    let trait_obj: Box<dyn Serializer> = Box::new(person.clone());
-    let serialized = fory.serialize(&trait_obj).unwrap();
-
-    let deserialized_trait: Box<dyn Serializer> = fory.deserialize(&serialized).unwrap();
-    let deserialized_concrete: Person = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized_concrete.name, person.name);
-    assert_eq!(deserialized_concrete.age, person.age);
-
-    let reserialized = fory.serialize(&deserialized_trait).unwrap();
-    assert_eq!(serialized, reserialized);
-}
-
-#[test]
-fn test_vec_of_fory_derived_trait_objects() {
-    let mut fory = fory_compatible();
-    fory.register::<Person>(5000).unwrap();
-    fory.register::<Company>(5001).unwrap();
-
-    let vec_of_trait_objects: Vec<Box<dyn Serializer>> = vec![
-        Box::new(Person {
-            name: String::from("Alice"),
-            age: 30,
-        }),
-        Box::new(Company {
-            name: String::from("Acme"),
-            employees: vec![Person {
-                name: String::from("Bob"),
-                age: 25,
-            }],
-        }),
-        Box::new(42i32),
-    ];
-
-    let serialized = fory.serialize(&vec_of_trait_objects).unwrap();
-    let deserialized: Vec<Box<dyn Serializer>> = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.len(), 3);
-}
-
-#[test]
-fn test_hashmap_with_fory_derived_values() {
-    let mut fory = fory_compatible();
-    fory.register::<Person>(5000).unwrap();
-    fory.register::<Company>(5001).unwrap();
-
-    let mut map: HashMap<String, Box<dyn Serializer>> = HashMap::new();
-    map.insert(
-        String::from("person"),
-        Box::new(Person {
-            name: String::from("Alice"),
-            age: 30,
-        }),
-    );
-    map.insert(
-        String::from("company"),
-        Box::new(Company {
-            name: String::from("Acme"),
-            employees: vec![],
-        }),
-    );
-    map.insert(String::from("number"), Box::new(42i32));
-
-    let serialized = fory.serialize(&map).unwrap();
-    let deserialized: HashMap<String, Box<dyn Serializer>> = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.len(), 3);
-}
-
-// Tests for custom trait objects (Box<dyn CustomTrait>)
-
-trait Animal: Serializer {
-    fn speak(&self) -> String;
+trait Animal: ForyObject {
     fn name(&self) -> &str;
+    fn sound(&self) -> &str;
 }
 
 #[derive(ForyStruct, Debug, PartialEq)]
@@ -280,12 +31,12 @@ struct Dog {
 }
 
 impl Animal for Dog {
-    fn speak(&self) -> String {
-        "Woof!".to_string()
-    }
-
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn sound(&self) -> &str {
+        "woof"
     }
 }
 
@@ -296,361 +47,153 @@ struct Cat {
 }
 
 impl Animal for Cat {
-    fn speak(&self) -> String {
-        "Meow!".to_string()
-    }
-
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn sound(&self) -> &str {
+        "meow"
+    }
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct Fox {
+    name: String,
+}
+
+impl Animal for Fox {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn sound(&self) -> &str {
+        "ring-ding"
     }
 }
 
 register_trait_type!(Animal, Dog, Cat);
 
+#[allow(clippy::assertions_on_constants)]
+const _: () = {
+    assert!(<Box<dyn Animal> as Serializer>::IS_POLYMORPHIC);
+    assert!(<Box<dyn Animal> as Serializer>::IS_WRAPPER);
+    assert!(!<Box<dyn Animal> as Serializer>::REQUIRES_SCOPED_ACCESS);
+};
+
 #[derive(ForyStruct)]
 struct Zoo {
-    star_animal: Box<dyn Animal>,
+    featured: Box<dyn Animal>,
+    residents: Vec<Box<dyn Animal>>,
+    by_name: HashMap<String, Box<dyn Animal>>,
+}
+
+fn fory() -> Fory {
+    let mut fory = Fory::builder().xlang(false).compatible(true).build();
+    fory.register::<Dog>(8_001).unwrap();
+    fory.register::<Cat>(8_002).unwrap();
+    fory.register::<Fox>(8_003).unwrap();
+    fory.register::<Zoo>(8_004).unwrap();
+    fory
+}
+
+fn dog(name: &str) -> Box<dyn Animal> {
+    Box::new(Dog {
+        name: name.to_string(),
+        breed: "retriever".to_string(),
+    })
+}
+
+fn cat(name: &str) -> Box<dyn Animal> {
+    Box::new(Cat {
+        name: name.to_string(),
+        color: "orange".to_string(),
+    })
 }
 
 #[test]
-fn test_custom_trait_object_basic() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(8001).unwrap();
-    fory.register::<Cat>(8002).unwrap();
-    fory.register::<Zoo>(8003).unwrap();
+fn box_root_dispatches_targets() {
+    let fory = fory();
 
-    let zoo_dog = Zoo {
-        star_animal: Box::new(Dog {
-            name: "Buddy".to_string(),
-            breed: "Labrador".to_string(),
-        }),
-    };
+    let bytes = fory.serialize(&dog("Buddy")).unwrap();
+    let decoded: Box<dyn Animal> = fory.deserialize(&bytes).unwrap();
 
-    let zoo_cat = Zoo {
-        star_animal: Box::new(Cat {
-            name: "Whiskers".to_string(),
-            color: "Orange".to_string(),
-        }),
-    };
-
-    let serialized_dog = fory.serialize(&zoo_dog).unwrap();
-    let serialized_cat = fory.serialize(&zoo_cat).unwrap();
-
-    let deserialized_dog: Zoo = fory.deserialize(&serialized_dog).unwrap();
-    let deserialized_cat: Zoo = fory.deserialize(&serialized_cat).unwrap();
-
-    assert_eq!(deserialized_dog.star_animal.name(), "Buddy");
-    assert_eq!(deserialized_dog.star_animal.speak(), "Woof!");
-
-    assert_eq!(deserialized_cat.star_animal.name(), "Whiskers");
-    assert_eq!(deserialized_cat.star_animal.speak(), "Meow!");
-}
-
-trait Pet: Serializer {
-    fn pet_name(&self) -> &str;
-}
-
-impl Pet for Dog {
-    fn pet_name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl Pet for Cat {
-    fn pet_name(&self) -> &str {
-        &self.name
-    }
-}
-
-register_trait_type!(Pet, Dog, Cat);
-
-#[derive(ForyStruct)]
-struct PetOwner {
-    pets: Vec<Box<dyn Pet>>,
-    animals: Vec<Box<dyn Animal>>,
+    assert_eq!(decoded.name(), "Buddy");
+    assert_eq!(decoded.sound(), "woof");
+    assert!(decoded.as_ref().as_any().downcast_ref::<Dog>().is_some());
 }
 
 #[test]
-fn test_multiple_traits() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(8001).unwrap();
-    fory.register::<Cat>(8002).unwrap();
-    fory.register::<PetOwner>(9001).unwrap();
-
-    let owner = PetOwner {
-        pets: vec![
-            Box::new(Dog {
-                name: "Rex".to_string(),
-                breed: "German Shepherd".to_string(),
-            }),
-            Box::new(Cat {
-                name: "Luna".to_string(),
-                color: "Black".to_string(),
-            }),
-        ],
-        animals: vec![
-            Box::new(Dog {
-                name: "Rex".to_string(),
-                breed: "German Shepherd".to_string(),
-            }),
-            Box::new(Cat {
-                name: "Luna".to_string(),
-                color: "Black".to_string(),
-            }),
-        ],
+fn box_fields_and_carriers() {
+    let fory = fory();
+    let value = Zoo {
+        featured: cat("Mochi"),
+        residents: vec![dog("Rex"), cat("Luna")],
+        by_name: HashMap::from([
+            ("dog".to_string(), dog("Scout")),
+            ("cat".to_string(), cat("Miso")),
+        ]),
     };
 
-    let serialized = fory.serialize(&owner).unwrap();
-    let deserialized: PetOwner = fory.deserialize(&serialized).unwrap();
+    let bytes = fory.serialize(&value).unwrap();
+    let decoded: Zoo = fory.deserialize(&bytes).unwrap();
 
-    assert_eq!(deserialized.pets.len(), 2);
-    assert_eq!(deserialized.pets[0].pet_name(), "Rex");
-    assert_eq!(deserialized.pets[1].pet_name(), "Luna");
-    assert_eq!(deserialized.animals.len(), 2);
-    assert_eq!(deserialized.animals[0].name(), "Rex");
-    assert_eq!(deserialized.animals[0].speak(), "Woof!");
-    assert_eq!(deserialized.animals[1].name(), "Luna");
-    assert_eq!(deserialized.animals[1].speak(), "Meow!");
+    assert_eq!(decoded.featured.name(), "Mochi");
+    assert_eq!(decoded.featured.sound(), "meow");
+    assert_eq!(decoded.residents[0].name(), "Rex");
+    assert_eq!(decoded.residents[1].sound(), "meow");
+    assert_eq!(decoded.by_name["dog"].sound(), "woof");
+    assert_eq!(decoded.by_name["cat"].name(), "Miso");
 }
 
-// Tests for direct Vec<Box<dyn CustomTrait>> and HashMap<String, Box<dyn CustomTrait>>
-// These should work automatically now with the enhanced register_trait_type! macro
+#[test]
+fn dynamic_trait_collections() {
+    let fory = fory();
+
+    let homogeneous = vec![dog("Rex"), dog("Scout")];
+    let bytes = fory.serialize(&homogeneous).unwrap();
+    let decoded: Vec<Box<dyn Animal>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded[0].name(), "Rex");
+    assert_eq!(decoded[1].name(), "Scout");
+
+    let heterogeneous = HashMap::from([
+        ("dog".to_string(), dog("Buddy")),
+        ("cat".to_string(), cat("Mochi")),
+    ]);
+    let bytes = fory.serialize(&heterogeneous).unwrap();
+    let decoded: HashMap<String, Box<dyn Animal>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded["dog"].sound(), "woof");
+    assert_eq!(decoded["cat"].sound(), "meow");
+
+    let nested = HashMap::from([
+        ("dogs".to_string(), vec![dog("Max"), dog("Finn")]),
+        ("mixed".to_string(), vec![cat("Luna"), dog("Otis")]),
+    ]);
+    let bytes = fory.serialize(&nested).unwrap();
+    let decoded: HashMap<String, Vec<Box<dyn Animal>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded["dogs"][0].name(), "Max");
+    assert_eq!(decoded["dogs"][1].name(), "Finn");
+    assert_eq!(decoded["mixed"][0].sound(), "meow");
+    assert_eq!(decoded["mixed"][1].sound(), "woof");
+
+    let tuple = ("featured".to_string(), dog("Tuple"));
+    let bytes = fory.serialize(&tuple).unwrap();
+    let decoded: (String, Box<dyn Animal>) = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded.0, "featured");
+    assert_eq!(decoded.1.name(), "Tuple");
+}
 
 #[test]
-fn test_single_custom_trait_object_direct() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(8001).unwrap();
-    fory.register::<Cat>(8002).unwrap();
-
-    let animal: Box<dyn Animal> = Box::new(Dog {
-        name: "Rex".to_string(),
-        breed: "Golden Retriever".to_string(),
+fn unlisted_target_is_rejected() {
+    let fory = fory();
+    let value: Box<dyn Animal> = Box::new(Fox {
+        name: "Finn".to_string(),
     });
 
-    let serialized = fory.serialize(&animal).unwrap();
-    let deserialized: Box<dyn Animal> = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.name(), "Rex");
-    assert_eq!(deserialized.speak(), "Woof!");
-}
-
-#[test]
-fn test_vec_custom_trait_objects_direct() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(8001).unwrap();
-    fory.register::<Cat>(8002).unwrap();
-
-    let animals: Vec<Box<dyn Animal>> = vec![
-        Box::new(Dog {
-            name: "Rex".to_string(),
-            breed: "Golden Retriever".to_string(),
-        }),
-        Box::new(Cat {
-            name: "Whiskers".to_string(),
-            color: "Orange".to_string(),
-        }),
-        Box::new(Dog {
-            name: "Buddy".to_string(),
-            breed: "Labrador".to_string(),
-        }),
-    ];
-
-    let serialized = fory.serialize(&animals).unwrap();
-    let deserialized: Vec<Box<dyn Animal>> = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.len(), 3);
-    assert_eq!(deserialized[0].name(), "Rex");
-    assert_eq!(deserialized[0].speak(), "Woof!");
-    assert_eq!(deserialized[1].name(), "Whiskers");
-    assert_eq!(deserialized[1].speak(), "Meow!");
-    assert_eq!(deserialized[2].name(), "Buddy");
-    assert_eq!(deserialized[2].speak(), "Woof!");
-}
-
-#[test]
-fn test_hashmap_custom_trait_objects_direct() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(8001).unwrap();
-    fory.register::<Cat>(8002).unwrap();
-
-    let mut animal_map: std::collections::HashMap<String, Box<dyn Animal>> =
-        std::collections::HashMap::new();
-    animal_map.insert(
-        "pet1".to_string(),
-        Box::new(Dog {
-            name: "Max".to_string(),
-            breed: "German Shepherd".to_string(),
-        }),
+    let error = fory.serialize(&value).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("is not listed for application trait Animal"),
+        "{error}"
     );
-    animal_map.insert(
-        "pet2".to_string(),
-        Box::new(Cat {
-            name: "Luna".to_string(),
-            color: "Black".to_string(),
-        }),
-    );
-    animal_map.insert(
-        "pet3".to_string(),
-        Box::new(Dog {
-            name: "Charlie".to_string(),
-            breed: "Beagle".to_string(),
-        }),
-    );
-
-    let serialized = fory.serialize(&animal_map).unwrap();
-    let deserialized: std::collections::HashMap<String, Box<dyn Animal>> =
-        fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.len(), 3);
-    assert_eq!(deserialized.get("pet1").unwrap().name(), "Max");
-    assert_eq!(deserialized.get("pet1").unwrap().speak(), "Woof!");
-    assert_eq!(deserialized.get("pet2").unwrap().name(), "Luna");
-    assert_eq!(deserialized.get("pet2").unwrap().speak(), "Meow!");
-    assert_eq!(deserialized.get("pet3").unwrap().name(), "Charlie");
-    assert_eq!(deserialized.get("pet3").unwrap().speak(), "Woof!");
-}
-
-#[test]
-fn test_nested_custom_trait_object_collections() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(8001).unwrap();
-    fory.register::<Cat>(8002).unwrap();
-
-    // Test Vec<Vec<Box<dyn Animal>>>
-    let nested_animals: Vec<Vec<Box<dyn Animal>>> = vec![
-        vec![
-            Box::new(Dog {
-                name: "Dog1".to_string(),
-                breed: "Breed1".to_string(),
-            }),
-            Box::new(Cat {
-                name: "Cat1".to_string(),
-                color: "Color1".to_string(),
-            }),
-        ],
-        vec![Box::new(Dog {
-            name: "Dog2".to_string(),
-            breed: "Breed2".to_string(),
-        })],
-    ];
-
-    let serialized = fory.serialize(&nested_animals).unwrap();
-    let deserialized: Vec<Vec<Box<dyn Animal>>> = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.len(), 2);
-    assert_eq!(deserialized[0].len(), 2);
-    assert_eq!(deserialized[1].len(), 1);
-    assert_eq!(deserialized[0][0].name(), "Dog1");
-    assert_eq!(deserialized[0][0].speak(), "Woof!");
-    assert_eq!(deserialized[0][1].name(), "Cat1");
-    assert_eq!(deserialized[0][1].speak(), "Meow!");
-    assert_eq!(deserialized[1][0].name(), "Dog2");
-    assert_eq!(deserialized[1][0].speak(), "Woof!");
-}
-
-#[test]
-fn test_mixed_trait_object_collections() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(8001).unwrap();
-    fory.register::<Cat>(8002).unwrap();
-
-    // Test HashMap<String, Vec<Box<dyn Animal>>>
-    let mut groups: std::collections::HashMap<String, Vec<Box<dyn Animal>>> =
-        std::collections::HashMap::new();
-
-    groups.insert(
-        "dogs".to_string(),
-        vec![
-            Box::new(Dog {
-                name: "Rex".to_string(),
-                breed: "Husky".to_string(),
-            }),
-            Box::new(Dog {
-                name: "Max".to_string(),
-                breed: "Poodle".to_string(),
-            }),
-        ],
-    );
-
-    groups.insert(
-        "cats".to_string(),
-        vec![Box::new(Cat {
-            name: "Fluffy".to_string(),
-            color: "White".to_string(),
-        })],
-    );
-
-    let serialized = fory.serialize(&groups).unwrap();
-    let deserialized: std::collections::HashMap<String, Vec<Box<dyn Animal>>> =
-        fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.len(), 2);
-
-    let dogs = deserialized.get("dogs").unwrap();
-    assert_eq!(dogs.len(), 2);
-    assert_eq!(dogs[0].name(), "Rex");
-    assert_eq!(dogs[0].speak(), "Woof!");
-    assert_eq!(dogs[1].name(), "Max");
-    assert_eq!(dogs[1].speak(), "Woof!");
-
-    let cats = deserialized.get("cats").unwrap();
-    assert_eq!(cats.len(), 1);
-    assert_eq!(cats[0].name(), "Fluffy");
-    assert_eq!(cats[0].speak(), "Meow!");
-}
-
-#[test]
-fn test_empty_trait_object_collections() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(8001).unwrap();
-    fory.register::<Cat>(8002).unwrap();
-
-    // Test empty Vec<Box<dyn Animal>>
-    let empty_animals: Vec<Box<dyn Animal>> = vec![];
-    let serialized = fory.serialize(&empty_animals).unwrap();
-    let deserialized: Vec<Box<dyn Animal>> = fory.deserialize(&serialized).unwrap();
-    assert_eq!(deserialized.len(), 0);
-
-    // Test empty HashMap<String, Box<dyn Animal>>
-    let empty_map: std::collections::HashMap<String, Box<dyn Animal>> =
-        std::collections::HashMap::new();
-    let serialized = fory.serialize(&empty_map).unwrap();
-    let deserialized: std::collections::HashMap<String, Box<dyn Animal>> =
-        fory.deserialize(&serialized).unwrap();
-    assert_eq!(deserialized.len(), 0);
-}
-
-#[test]
-fn test_single_item_trait_object_collections() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(8001).unwrap();
-    fory.register::<Cat>(8002).unwrap();
-
-    // Test single item Vec<Box<dyn Animal>>
-    let single_animal: Vec<Box<dyn Animal>> = vec![Box::new(Dog {
-        name: "Solo".to_string(),
-        breed: "Bulldog".to_string(),
-    })];
-    let serialized = fory.serialize(&single_animal).unwrap();
-    let deserialized: Vec<Box<dyn Animal>> = fory.deserialize(&serialized).unwrap();
-    assert_eq!(deserialized.len(), 1);
-    assert_eq!(deserialized[0].name(), "Solo");
-    assert_eq!(deserialized[0].speak(), "Woof!");
-
-    // Test single item HashMap<String, Box<dyn Animal>>
-    let mut single_map: std::collections::HashMap<String, Box<dyn Animal>> =
-        std::collections::HashMap::new();
-    single_map.insert(
-        "only_pet".to_string(),
-        Box::new(Cat {
-            name: "Loner".to_string(),
-            color: "Gray".to_string(),
-        }),
-    );
-    let serialized = fory.serialize(&single_map).unwrap();
-    let deserialized: std::collections::HashMap<String, Box<dyn Animal>> =
-        fory.deserialize(&serialized).unwrap();
-    assert_eq!(deserialized.len(), 1);
-    assert_eq!(deserialized.get("only_pet").unwrap().name(), "Loner");
-    assert_eq!(deserialized.get("only_pet").unwrap().speak(), "Meow!");
 }

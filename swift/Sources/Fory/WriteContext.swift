@@ -22,6 +22,17 @@ private struct MetaStringCacheKey: Hashable {
     let bytes: [UInt8]
 }
 
+@inline(never)
+private func invalidDynamicDepth(_ maxDepth: Int) throws -> Never {
+    throw ForyError.invalidData("configured maxDepth \(maxDepth) is negative")
+}
+
+@inline(never)
+private func dynamicDepthExceeded(_ depth: Int, maxDepth: Int) throws -> Never {
+    throw ForyError.invalidData(
+        "dynamic Any nesting depth \(depth) exceeds configured maxDepth \(maxDepth)")
+}
+
 final class MetaStringWriteState {
     private var stringIndexByKey: [MetaStringCacheKey: UInt32] = [:]
     private var nextIndex: UInt32 = 0
@@ -62,11 +73,13 @@ public final class WriteContext {
     public let maxDepth: Int
     public let refWriter: RefWriter
     let metaStringWriteState: MetaStringWriteState
-    private let typeIndexBySwiftType = UInt64Map<UInt32>(initialCapacity: 8)
+    private let typeIndexBySerializer = UInt64Map<UInt32>(initialCapacity: 8)
     private var typeDefStateUsed = false
     private var metaStringWriteStateUsed = false
+    private var dynamicRefStateUsed = false
     private var dynamicAnyDepth = 0
     private var lastTypeInfo = TypeInfo.uncached
+    private var lastTargetTypeInfo = TypeInfo.uncached
 
     convenience init(
         buffer: ByteBuffer,
@@ -109,21 +122,20 @@ public final class WriteContext {
     @inline(__always)
     func enterDynamicAnyDepth() throws {
         if maxDepth < 0 {
-            throw ForyError.invalidData("configured maxDepth \(maxDepth) is negative")
+            try invalidDynamicDepth(maxDepth)
         }
         let nextDepth = dynamicAnyDepth + 1
         if nextDepth > maxDepth {
-            throw ForyError.invalidData(
-                "dynamic Any nesting depth \(nextDepth) exceeds configured maxDepth \(maxDepth)"
-            )
+            try dynamicDepthExceeded(nextDepth, maxDepth: maxDepth)
         }
         dynamicAnyDepth = nextDepth
     }
 
+    @usableFromInline
     @inline(__always)
-    func typeInfo<T: Serializer>(for type: T.Type) throws -> TypeInfo {
+    internal func typeInfo<T: Serializer>(for type: T.Type) throws -> TypeInfo {
         let typeID = ObjectIdentifier(type)
-        if lastTypeInfo.swiftTypeID == typeID {
+        if lastTypeInfo.serializerTypeID == typeID {
             return lastTypeInfo
         }
         let info = try typeResolver.requireTypeInfo(for: type)
@@ -132,7 +144,19 @@ public final class WriteContext {
     }
 
     @inline(__always)
-    func writeStaticTypeInfo(_ typeID: TypeId) {
+    func typeInfo(forTarget type: Any.Type) throws -> TypeInfo {
+        let typeID = ObjectIdentifier(type)
+        if lastTargetTypeInfo.targetTypeID == typeID {
+            return lastTargetTypeInfo
+        }
+        let info = try typeResolver.requireTypeInfo(forTarget: type)
+        lastTargetTypeInfo = info
+        return info
+    }
+
+    @usableFromInline
+    @inline(__always)
+    internal func writeStaticTypeInfo(_ typeID: TypeId) {
         buffer.writeUInt8(UInt8(truncatingIfNeeded: typeID.rawValue))
     }
 
@@ -143,18 +167,31 @@ public final class WriteContext {
         }
     }
 
+    @inline(__always)
+    func markDynamicRefStateUsed() {
+        dynamicRefStateUsed = true
+    }
+
     func writeTypeMeta(_ typeInfo: TypeInfo) throws {
+        let buffer = self.buffer
+        let typeIndexBySerializer = self.typeIndexBySerializer
+        let typeKey = UInt64(UInt(bitPattern: typeInfo.serializerTypeID))
         if !typeDefStateUsed {
+            // Reset keeps this flag paired with an empty index map, so the first TypeMeta in a
+            // root always owns index zero and does not need a general lookup.
             typeDefStateUsed = true
+            typeIndexBySerializer.set(0, for: typeKey)
+            buffer.writeUInt8(0)
+            if let typeDefBytes = typeInfo.typeDefBytes {
+                buffer.writeBytes(typeDefBytes)
+            }
+            return
         }
 
-        let typeIndexBySwiftType = self.typeIndexBySwiftType
-        let typeKey = UInt64(UInt(bitPattern: typeInfo.swiftTypeID))
-        let assignment = typeIndexBySwiftType.putIfAbsent(
-            UInt32(typeIndexBySwiftType.count),
+        let assignment = typeIndexBySerializer.putIfAbsent(
+            UInt32(typeIndexBySerializer.count),
             for: typeKey
         )
-        let buffer = self.buffer
         if assignment.inserted {
             let marker = assignment.value << 1
             if marker < 0x80 {
@@ -184,12 +221,13 @@ public final class WriteContext {
         if dynamicAnyDepth != 0 {
             dynamicAnyDepth = 0
         }
-        if trackRef {
+        if trackRef || dynamicRefStateUsed {
             refWriter.reset()
+            dynamicRefStateUsed = false
         }
         if typeDefStateUsed {
-            if !typeIndexBySwiftType.isEmpty {
-                typeIndexBySwiftType.clear()
+            if !typeIndexBySerializer.isEmpty {
+                typeIndexBySerializer.clear()
             }
             typeDefStateUsed = false
         }
@@ -197,87 +235,5 @@ public final class WriteContext {
             metaStringWriteState.reset()
             metaStringWriteStateUsed = false
         }
-    }
-}
-
-public extension WriteContext {
-    func writeAny(
-        _ value: Any?,
-        refMode: RefMode,
-        writeTypeInfo: Bool = true,
-        hasGenerics: Bool = false
-    ) throws {
-        try SerializableAny.wrapped(value).foryWrite(
-            self,
-            refMode: refMode,
-            writeTypeInfo: writeTypeInfo,
-            hasGenerics: hasGenerics
-        )
-    }
-
-    func writeListOfAny(
-        _ value: [Any]?,
-        refMode: RefMode,
-        writeTypeInfo: Bool = false,
-        hasGenerics: Bool = true
-    ) throws {
-        let wrapped = value?.map { SerializableAny.wrapped($0) }
-        try wrapped.foryWrite(
-            self,
-            refMode: refMode,
-            writeTypeInfo: writeTypeInfo,
-            hasGenerics: hasGenerics
-        )
-    }
-
-    func writeMapStringToAny(
-        _ value: [String: Any]?,
-        refMode: RefMode,
-        writeTypeInfo: Bool = false,
-        hasGenerics: Bool = true
-    ) throws {
-        let wrapped = value?.reduce(into: [String: SerializableAny]()) { result, pair in
-            result[pair.key] = SerializableAny.wrapped(pair.value)
-        }
-        try wrapped.foryWrite(
-            self,
-            refMode: refMode,
-            writeTypeInfo: writeTypeInfo,
-            hasGenerics: hasGenerics
-        )
-    }
-
-    func writeMapInt32ToAny(
-        _ value: [Int32: Any]?,
-        refMode: RefMode,
-        writeTypeInfo: Bool = false,
-        hasGenerics: Bool = true
-    ) throws {
-        let wrapped = value?.reduce(into: [Int32: SerializableAny]()) { result, pair in
-            result[pair.key] = SerializableAny.wrapped(pair.value)
-        }
-        try wrapped.foryWrite(
-            self,
-            refMode: refMode,
-            writeTypeInfo: writeTypeInfo,
-            hasGenerics: hasGenerics
-        )
-    }
-
-    func writeMapAnyHashableToAny(
-        _ value: [AnyHashable: Any]?,
-        refMode: RefMode,
-        writeTypeInfo: Bool = false,
-        hasGenerics: Bool = true
-    ) throws {
-        let wrapped = value?.reduce(into: [AnyHashable: SerializableAny]()) { result, pair in
-            result[pair.key] = SerializableAny.wrapped(pair.value)
-        }
-        try wrapped.foryWrite(
-            self,
-            refMode: refMode,
-            writeTypeInfo: writeTypeInfo,
-            hasGenerics: hasGenerics
-        )
     }
 }

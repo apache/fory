@@ -22,7 +22,7 @@ import 'package:fory/src/context/write_context.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:meta/meta.dart';
 
-/// Union-specific serializer base used by manual union serializers.
+/// Union-specific serializer base used by custom union serializers.
 ///
 /// The runtime owns the xlang wire contract:
 /// `case_id (varuint32) | case_value (Any-style payload)`.

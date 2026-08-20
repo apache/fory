@@ -15,91 +15,82 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::context::ReadContext;
-use crate::context::WriteContext;
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
-use crate::serializer::ForyDefault;
 use crate::serializer::Serializer;
 use crate::type_id::TypeId;
 use crate::types::{Date, Duration, Timestamp};
-use std::mem;
+use std::sync::Arc;
 
-impl Serializer for Timestamp {
-    #[inline(always)]
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_i64(self.seconds());
-        context.writer.write_u32(self.subsec_nanos());
-        Ok(())
-    }
+macro_rules! temporal_hooks {
+    ($ty:ty, $type_id:expr, $reserved:expr, $default:expr) => {
+        const READ_DATA_ALWAYS_ADVANCES: bool = true;
 
-    #[inline(always)]
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        let seconds = context.reader.read_i64()?;
-        let nanos = context.reader.read_u32()?;
-        Timestamp::new(seconds, nanos)
-    }
-    #[inline]
-    fn fory_read_data_as_send_sync_any(
-        context: &mut ReadContext,
-    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-            context,
-        )?))
-    }
+        #[inline(always)]
+        fn default_value(_: &mut ReadContext) -> Result<Self, Error> {
+            Ok($default)
+        }
 
-    #[inline(always)]
-    fn fory_reserved_space() -> usize {
-        mem::size_of::<i64>() + mem::size_of::<u32>()
-    }
+        #[inline(always)]
+        fn read_arc_any(
+            context: &mut ReadContext,
+        ) -> Result<Arc<dyn std::any::Any + Send + Sync>, Error> {
+            Ok(Arc::new(Self::read_data(context)?))
+        }
 
-    #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::TIMESTAMP)
-    }
+        #[inline(always)]
+        fn reserved_space() -> usize {
+            $reserved
+        }
 
-    #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::TIMESTAMP)
-    }
+        #[inline(always)]
+        fn static_type_id() -> TypeId {
+            $type_id
+        }
 
-    #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
-        TypeId::TIMESTAMP
-    }
+        #[inline(always)]
+        fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_u8($type_id as u8);
+            Ok(())
+        }
 
-    #[inline(always)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    #[inline(always)]
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_u8(TypeId::TIMESTAMP as u8);
-        Ok(())
-    }
-
-    #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        read_basic_type_info::<Self>(context)
-    }
+        #[inline(always)]
+        fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+            read_basic_type_info::<$ty>(context)
+        }
+    };
 }
 
-impl ForyDefault for Timestamp {
+impl Serializer for Timestamp {
+    type Target = Self;
+
     #[inline(always)]
-    fn fory_default() -> Self {
-        Timestamp::default()
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        context.writer.write_i64(value.seconds());
+        context.writer.write_u32(value.subsec_nanos());
+        Ok(())
     }
+
+    #[inline(always)]
+    fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        Timestamp::new(context.reader.read_i64()?, context.reader.read_u32()?)
+    }
+
+    temporal_hooks!(
+        Timestamp,
+        TypeId::TIMESTAMP,
+        std::mem::size_of::<i64>() + std::mem::size_of::<u32>(),
+        Timestamp::default()
+    );
 }
 
 impl Serializer for Date {
+    type Target = Self;
+
     #[inline(always)]
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        let days = self.epoch_days();
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        let days = value.epoch_days();
         if context.is_xlang() {
             context.writer.write_var_i64(days);
         } else {
@@ -112,7 +103,7 @@ impl Serializer for Date {
     }
 
     #[inline(always)]
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+    fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let days = if context.is_xlang() {
             context.reader.read_var_i64()?
         } else {
@@ -120,130 +111,31 @@ impl Serializer for Date {
         };
         Ok(Date::from_epoch_days(days))
     }
-    #[inline]
-    fn fory_read_data_as_send_sync_any(
-        context: &mut ReadContext,
-    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-            context,
-        )?))
-    }
 
-    #[inline(always)]
-    fn fory_reserved_space() -> usize {
-        9
-    }
-
-    #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::DATE)
-    }
-
-    #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::DATE)
-    }
-
-    #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
-        TypeId::DATE
-    }
-
-    #[inline(always)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    #[inline(always)]
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_u8(TypeId::DATE as u8);
-        Ok(())
-    }
-
-    #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        read_basic_type_info::<Self>(context)
-    }
-}
-
-impl ForyDefault for Date {
-    #[inline(always)]
-    fn fory_default() -> Self {
-        Date::default()
-    }
+    temporal_hooks!(Date, TypeId::DATE, 9, Date::default());
 }
 
 impl Serializer for Duration {
+    type Target = Self;
+
     #[inline(always)]
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_i64(self.seconds());
-        context.writer.write_i32(self.subsec_nanos() as i32);
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        context.writer.write_var_i64(value.seconds());
+        context.writer.write_i32(value.subsec_nanos() as i32);
         Ok(())
     }
 
     #[inline(always)]
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        let seconds = context.reader.read_var_i64()?;
-        let nanos = context.reader.read_i32()?;
-        Duration::new(seconds, nanos)
-    }
-    #[inline]
-    fn fory_read_data_as_send_sync_any(
-        context: &mut ReadContext,
-    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-            context,
-        )?))
+    fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        Duration::new(context.reader.read_var_i64()?, context.reader.read_i32()?)
     }
 
-    #[inline(always)]
-    fn fory_reserved_space() -> usize {
-        9 + mem::size_of::<i32>()
-    }
-
-    #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::DURATION)
-    }
-
-    #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::DURATION)
-    }
-
-    #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
-        TypeId::DURATION
-    }
-
-    #[inline(always)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    #[inline(always)]
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_u8(TypeId::DURATION as u8);
-        Ok(())
-    }
-
-    #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        read_basic_type_info::<Self>(context)
-    }
-}
-
-impl ForyDefault for Duration {
-    #[inline(always)]
-    fn fory_default() -> Self {
+    temporal_hooks!(
+        Duration,
+        TypeId::DURATION,
+        9 + std::mem::size_of::<i32>(),
         Duration::default()
-    }
+    );
 }
 
 #[cfg(feature = "chrono")]
@@ -252,198 +144,66 @@ mod chrono_support {
     use chrono::{Duration as ChronoDuration, NaiveDate, NaiveDateTime};
 
     impl Serializer for NaiveDateTime {
+        type Target = Self;
+
         #[inline(always)]
-        fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-            Timestamp::from(*self).fory_write_data(context)
+        fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+            Timestamp::write_data(&Timestamp::from(*value), context)
         }
 
         #[inline(always)]
-        fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-            Timestamp::fory_read_data(context)?.try_into()
-        }
-        #[inline]
-        fn fory_read_data_as_send_sync_any(
-            context: &mut ReadContext,
-        ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-        where
-            Self: Sized + ForyDefault,
-        {
-            Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-                context,
-            )?))
+        fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+            Timestamp::read_data(context)?.try_into()
         }
 
-        #[inline(always)]
-        fn fory_reserved_space() -> usize {
-            Timestamp::fory_reserved_space()
-        }
-
-        #[inline(always)]
-        fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-            Ok(TypeId::TIMESTAMP)
-        }
-
-        #[inline(always)]
-        fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-            Ok(TypeId::TIMESTAMP)
-        }
-
-        #[inline(always)]
-        fn fory_static_type_id() -> TypeId {
-            TypeId::TIMESTAMP
-        }
-
-        #[inline(always)]
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
-
-        #[inline(always)]
-        fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-            Timestamp::fory_write_type_info(context)
-        }
-
-        #[inline(always)]
-        fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-            read_basic_type_info::<Self>(context)
-        }
-    }
-
-    impl ForyDefault for NaiveDateTime {
-        #[inline(always)]
-        fn fory_default() -> Self {
+        temporal_hooks!(
+            NaiveDateTime,
+            TypeId::TIMESTAMP,
+            Timestamp::reserved_space(),
             NaiveDateTime::default()
-        }
+        );
     }
 
     impl Serializer for NaiveDate {
+        type Target = Self;
+
         #[inline(always)]
-        fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-            Date::from(*self).fory_write_data(context)
+        fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+            Date::write_data(&Date::from(*value), context)
         }
 
         #[inline(always)]
-        fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-            Date::fory_read_data(context)?.try_into()
-        }
-        #[inline]
-        fn fory_read_data_as_send_sync_any(
-            context: &mut ReadContext,
-        ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-        where
-            Self: Sized + ForyDefault,
-        {
-            Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-                context,
-            )?))
+        fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+            Date::read_data(context)?.try_into()
         }
 
-        #[inline(always)]
-        fn fory_reserved_space() -> usize {
-            Date::fory_reserved_space()
-        }
-
-        #[inline(always)]
-        fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-            Ok(TypeId::DATE)
-        }
-
-        #[inline(always)]
-        fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-            Ok(TypeId::DATE)
-        }
-
-        #[inline(always)]
-        fn fory_static_type_id() -> TypeId {
-            TypeId::DATE
-        }
-
-        #[inline(always)]
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
-
-        #[inline(always)]
-        fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-            Date::fory_write_type_info(context)
-        }
-
-        #[inline(always)]
-        fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-            read_basic_type_info::<Self>(context)
-        }
-    }
-
-    impl ForyDefault for NaiveDate {
-        #[inline(always)]
-        fn fory_default() -> Self {
+        temporal_hooks!(
+            NaiveDate,
+            TypeId::DATE,
+            Date::reserved_space(),
             NaiveDate::default()
-        }
+        );
     }
 
     impl Serializer for ChronoDuration {
+        type Target = Self;
+
         #[inline(always)]
-        fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-            Duration::try_from(*self)?.fory_write_data(context)
+        fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+            Duration::write_data(&Duration::try_from(*value)?, context)
         }
 
         #[inline(always)]
-        fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-            Duration::fory_read_data(context)?.try_into()
-        }
-        #[inline]
-        fn fory_read_data_as_send_sync_any(
-            context: &mut ReadContext,
-        ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-        where
-            Self: Sized + ForyDefault,
-        {
-            Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-                context,
-            )?))
+        fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+            Duration::read_data(context)?.try_into()
         }
 
-        #[inline(always)]
-        fn fory_reserved_space() -> usize {
-            Duration::fory_reserved_space()
-        }
-
-        #[inline(always)]
-        fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-            Ok(TypeId::DURATION)
-        }
-
-        #[inline(always)]
-        fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-            Ok(TypeId::DURATION)
-        }
-
-        #[inline(always)]
-        fn fory_static_type_id() -> TypeId {
-            TypeId::DURATION
-        }
-
-        #[inline(always)]
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
-
-        #[inline(always)]
-        fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-            Duration::fory_write_type_info(context)
-        }
-
-        #[inline(always)]
-        fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-            read_basic_type_info::<Self>(context)
-        }
-    }
-
-    impl ForyDefault for ChronoDuration {
-        #[inline(always)]
-        fn fory_default() -> Self {
+        temporal_hooks!(
+            ChronoDuration,
+            TypeId::DURATION,
+            Duration::reserved_space(),
             ChronoDuration::zero()
-        }
+        );
     }
 }
 
@@ -492,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn test_duration_normalizes_negative_nanoseconds() {
+    fn duration_negative_nanoseconds() {
         assert_eq!(
             Duration::new(0, -1).unwrap(),
             Duration::from_normalized(-1, 999_999_999).unwrap()
@@ -501,7 +261,7 @@ mod tests {
 
     #[cfg(feature = "chrono")]
     #[test]
-    fn test_chrono_temporal_feature_serialization() {
+    fn chrono_temporal_serialization() {
         use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveDateTime};
 
         let fory = Fory::builder().xlang(false).compatible(false).build();

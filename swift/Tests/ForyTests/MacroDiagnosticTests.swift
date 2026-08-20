@@ -23,6 +23,7 @@ import Testing
 private func foryMacros() -> [String: Macro.Type] {
     [
         "ForyStruct": ForyStructMacro.self,
+        "ForyEnum": ForyEnumMacro.self,
         "ForyUnion": ForyUnionMacro.self,
         "ForyField": ForyFieldMacro.self,
         "ForyCase": ForyCaseMacro.self,
@@ -64,11 +65,11 @@ func listFieldRejectsWrongArgumentLabel() {
         }
         """,
         expandedSource:
-        """
-        struct BadList {
-            var values: [Int32] = []
-        }
-        """,
+            """
+            struct BadList {
+                var values: [Int32] = []
+            }
+            """,
         message: "@ListField supports only the 'element' argument"
     )
 }
@@ -84,11 +85,11 @@ func mapFieldRequiresKeyOrValueHint() {
         }
         """,
         expandedSource:
-        """
-        struct BadMap {
-            var data: [Int32: Int32] = [:]
-        }
-        """,
+            """
+            struct BadMap {
+                var data: [Int32: Int32] = [:]
+            }
+            """,
         message: "@MapField requires a key or value hint"
     )
 }
@@ -104,11 +105,11 @@ func nestedIntegerHintsRejectUnsupportedEncoding() {
         }
         """,
         expandedSource:
-        """
-        struct BadEncoding {
-            var values: [Int32] = []
-        }
-        """,
+            """
+            struct BadEncoding {
+                var values: [Int32] = []
+            }
+            """,
         message: "@ForyField(encoding: .tagged) is not supported for Int32"
     )
 }
@@ -124,11 +125,11 @@ func fullTypeHintsRejectAliasShapeMismatch() {
         }
         """,
         expandedSource:
-        """
-        struct BadAlias {
-            var data: [Int32: [Int32?]] = [:]
-        }
-        """,
+            """
+            struct BadAlias {
+                var data: [Int32: [Int32?]] = [:]
+            }
+            """,
         message: "Fory field type hint .string does not match Swift type Int32"
     )
 }
@@ -146,12 +147,12 @@ func duplicateFieldIDsAreRejected() {
         }
         """,
         expandedSource:
-        """
-        struct BadIDs {
-            var first: Int32 = 0
-            var second: Int32 = 0
-        }
-        """,
+            """
+            struct BadIDs {
+                var first: Int32 = 0
+                var second: Int32 = 0
+            }
+            """,
         message: "duplicate @ForyField(id:) value 1 used by fields 'first' and 'second'"
     )
 }
@@ -169,12 +170,12 @@ func unionPayloadHintsMustMatchPayloadType() {
         }
         """,
         expandedSource:
-        """
-        enum BadUnion {
-            case unknown(UnknownCase)
-            case deleted(UInt32)
-        }
-        """,
+            """
+            enum BadUnion {
+                case unknown(UnknownCase)
+                case deleted(UInt32)
+            }
+            """,
         message: "Fory field type hint .uint64 does not match Swift type UInt32"
     )
 }
@@ -190,11 +191,11 @@ func unionRequiresUnknownCarrier() {
         }
         """,
         expandedSource:
-        """
-        enum BadUnion {
-            case dog(Dog)
-        }
-        """,
+            """
+            enum BadUnion {
+                case dog(Dog)
+            }
+            """,
         message: "@ForyUnion requires @ForyUnknownCase case unknown(UnknownCase)"
     )
 }
@@ -210,11 +211,11 @@ func unionRequiresRealCaseBeyondUnknown() {
         }
         """,
         expandedSource:
-        """
-        enum OnlyUnknown {
-            case unknown(UnknownCase)
-        }
-        """,
+            """
+            enum OnlyUnknown {
+                case unknown(UnknownCase)
+            }
+            """,
         message: "@ForyUnion requires at least one non-unknown case; unknown is a forward-compatibility carrier and cannot be the default"
     )
 }
@@ -235,15 +236,15 @@ func unionRejectsUnknownCaseLookalike() {
         }
         """,
         expandedSource:
-        """
-        enum Local {
-            struct UnknownCase {}
-        }
-        enum BadUnion {
-            case unknown(Local.UnknownCase)
-            case dog(Dog)
-        }
-        """,
+            """
+            enum Local {
+                struct UnknownCase {}
+            }
+            enum BadUnion {
+                case unknown(Local.UnknownCase)
+                case dog(Dog)
+            }
+            """,
         message: "@ForyUnion unknown case must be @ForyUnknownCase case unknown(UnknownCase)"
     )
 }
@@ -261,12 +262,12 @@ func unionRejectsUnknownMarkerWithWrongPayload() {
         }
         """,
         expandedSource:
-        """
-        enum BadUnion {
-            case unknown(String)
-            case dog(Dog)
-        }
-        """,
+            """
+            enum BadUnion {
+                case unknown(String)
+                case dog(Dog)
+            }
+            """,
         message: "@ForyUnion unknown case must be @ForyUnknownCase case unknown(UnknownCase)"
     )
 }
@@ -283,12 +284,287 @@ func unionUnknownRequiresMarker() {
         }
         """,
         expandedSource:
+            """
+            enum BadUnion {
+                case unknown(UnknownCase)
+                case dog(Dog)
+            }
+            """,
+        message: "@ForyUnion requires @ForyUnknownCase case unknown(UnknownCase)"
+    )
+}
+
+@Test
+func unionRejectsMultiplePayloadValues() {
+    assertForyDiagnostic(
         """
+        @ForyUnion
         enum BadUnion {
+            @ForyUnknownCase
             case unknown(UnknownCase)
-            case dog(Dog)
+            case assign(target: String, value: Int32)
         }
         """,
-        message: "@ForyUnion requires @ForyUnknownCase case unknown(UnknownCase)"
+        expandedSource:
+            """
+            enum BadUnion {
+                case unknown(UnknownCase)
+                case assign(target: String, value: Int32)
+            }
+            """,
+        message: "@ForyUnion cases support zero or exactly one associated value"
+    )
+}
+
+@Test
+func fieldRejectsSerializerConflict() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadField {
+            @ForyField(type: .string, with: String.self)
+            var value: String = ""
+        }
+        """,
+        expandedSource:
+            """
+            struct BadField {
+                var value: String = ""
+            }
+            """,
+        message: "@ForyField 'with' cannot be combined with 'encoding' or 'type'"
+    )
+}
+
+@Test
+func fieldRejectsEncodingAndTypeConflict() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadField {
+            @ForyField(encoding: .fixed, type: .int32())
+            var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            struct BadField {
+                var value: Int32 = 0
+            }
+            """,
+        message: "@ForyField cannot specify both 'encoding' and 'type'"
+    )
+}
+
+@Test
+func packedArrayRejectsSerializer() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadArray {
+            @ArrayField(element: .with(Int32.self))
+            var values: [Int32] = []
+        }
+        """,
+        expandedSource:
+            """
+            struct BadArray {
+                var values: [Int32] = []
+            }
+            """,
+        message: "array field hint requires a numeric or bool scalar element"
+    )
+}
+
+@Test
+func serializerExistentialRejected() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadValue {
+            var value: any Serializer
+        }
+        """,
+        expandedSource:
+            """
+            struct BadValue {
+                var value: any Serializer
+            }
+            """,
+        message:
+            "fields cannot use 'any Serializer' as an application value; select a concrete application protocol with DynamicSerializer"
+    )
+}
+
+@Test
+func ignoredFieldRequiresExternalTarget() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadIgnoredField {
+            @ForyField(ignore: true)
+            var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+                struct BadIgnoredField {
+                    var value: Int32 = 0
+                }
+            """,
+        message: "@ForyField(ignore:) is only supported by external @ForyStruct declarations"
+    )
+
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadExplicitFalse {
+            @ForyField(ignore: false)
+            var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            struct BadExplicitFalse {
+                var value: Int32 = 0
+            }
+            """,
+        message: "@ForyField(ignore:) is only supported by external @ForyStruct declarations"
+    )
+}
+
+@Test
+func ignoredFieldRequiresLiteral() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        struct BadIgnoredField {
+            @ForyField(ignore: enabled)
+            var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            struct BadIgnoredField {
+                var value: Int32 = 0
+            }
+            """,
+        message: "@ForyField ignore must be a boolean literal"
+    )
+}
+
+@Test
+func ignoredFieldRejectsWireOptions() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        struct BadIgnoredField {
+            @ForyField(id: 1, ignore: true)
+            var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            struct BadIgnoredField {
+                var value: Int32 = 0
+            }
+            """,
+        message: "@ForyField(ignore: true) cannot be combined with wire or nested field options"
+    )
+}
+
+@Test
+func ignoredFieldRejectsNestedOptions() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        struct BadIgnoredField {
+            @ForyField(ignore: true)
+            @ListField(element: .int32())
+            var value: [Int32] = []
+        }
+        """,
+        expandedSource:
+            """
+            struct BadIgnoredField {
+                var value: [Int32] = []
+            }
+            """,
+        message: "@ForyField(ignore: true) cannot be combined with wire or nested field options"
+    )
+}
+
+@Test
+func ignoredFieldShapeDiagnostics() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        final class BadStaticField {
+            @ForyField(ignore: true)
+            static var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            final class BadStaticField {
+                static var value: Int32 = 0
+            }
+            """,
+        message: "@ForyField(ignore:) requires a named instance stored property"
+    )
+
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        struct BadPatternField {
+            @ForyField(ignore: true)
+            var (first, second): (Int32, Int32) = (0, 0)
+        }
+        """,
+        expandedSource:
+            """
+            struct BadPatternField {
+                var (first, second): (Int32, Int32) = (0, 0)
+            }
+            """,
+        message: "@ForyField(ignore:) requires a named instance stored property"
+    )
+
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        final class BadComputedField {
+            @ForyField(ignore: true)
+            var value: Int32 {
+                0
+            }
+        }
+        """,
+        expandedSource:
+            """
+            final class BadComputedField {
+                var value: Int32 {
+                    0
+                }
+            }
+            """,
+        message: "@ForyField(ignore:) requires a named instance stored property"
+    )
+
+    assertForyDiagnostic(
+        """
+        @ForyStruct(target: External.self)
+        struct BadMultiBinding {
+            @ForyField(ignore: true)
+            var first: Int32 = 0, second: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            struct BadMultiBinding {
+                var first: Int32 = 0, second: Int32 = 0
+            }
+            """,
+        message: "Fory field annotations can only be used on a single stored property"
     )
 }

@@ -207,6 +207,27 @@ template <typename T> struct is_shared_weak<SharedWeak<T>> : std::true_type {};
 template <typename T>
 inline constexpr bool is_shared_weak_v = is_shared_weak<T>::value;
 
+namespace detail {
+
+template <typename T>
+inline void add_weak_update_callback(RefReader &ref_reader, uint32_t ref_id,
+                                     SharedWeak<T> &weak) {
+  // Capture a copy of the SharedWeak - it shares internal storage
+  SharedWeak<T> weak_copy = weak;
+  ref_reader.add_update_callback(
+      ref_id,
+      [weak_copy, ref_id](const RefReader &reader, Error &error) mutable {
+        auto ref_result = reader.template get_shared_ref<T>(ref_id);
+        if (FORY_PREDICT_FALSE(!ref_result.ok())) {
+          error = std::move(ref_result).error();
+          return;
+        }
+        weak_copy.update(std::weak_ptr<T>(ref_result.value()));
+      });
+}
+
+} // namespace detail
+
 // ============================================================================
 // Serializer<SharedWeak<T>>
 // ============================================================================
@@ -304,14 +325,32 @@ template <typename T> struct Serializer<SharedWeak<T>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return SharedWeak<T>();
     }
-
     switch (flag) {
-    case NULL_FLAG:
+    case NULL_FLAG: {
       // Null weak pointer
+      if (FORY_PREDICT_FALSE(
+              !ctx.reserve_graph_memory(sizeof(std::weak_ptr<T>)))) {
+        return SharedWeak<T>();
+      }
       return SharedWeak<T>();
+    }
 
     case REF_VALUE_FLAG: {
       // First occurrence - deserialize the object
+      // The holder owns only an inline shared_ptr handle. A successful
+      // SharedWeak result also retains its separately allocated Inner.
+      if (FORY_PREDICT_FALSE(
+              !ctx.reserve_graph_memory(sizeof(std::weak_ptr<T>)))) {
+        return SharedWeak<T>();
+      }
+      auto depth_res = ctx.increase_dyn_depth();
+      if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+        ctx.set_error(std::move(depth_res).error());
+        return SharedWeak<T>();
+      }
+      if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+        return SharedWeak<T>();
+      }
       uint32_t reserved_ref_id = ctx.ref_reader().reserve_ref_id();
 
       // Read type info if needed
@@ -333,7 +372,9 @@ template <typename T> struct Serializer<SharedWeak<T>> {
       ctx.ref_reader().store_shared_ref_at(reserved_ref_id, strong);
 
       // Return weak pointer to it
-      return SharedWeak<T>::from(strong);
+      auto result = SharedWeak<T>::from(strong);
+      ctx.decrease_dyn_depth();
+      return result;
     }
 
     case REF_FLAG: {
@@ -347,12 +388,25 @@ template <typename T> struct Serializer<SharedWeak<T>> {
       auto ref_result = ctx.ref_reader().template get_shared_ref<T>(ref_id);
       if (ref_result.ok()) {
         // Object already deserialized - return weak pointer to it
+        if (FORY_PREDICT_FALSE(
+                !ctx.reserve_graph_memory(sizeof(std::weak_ptr<T>)))) {
+          return SharedWeak<T>();
+        }
         return SharedWeak<T>::from(ref_result.value());
       }
 
-      // Forward reference - create empty weak and register callback
+      if (FORY_PREDICT_FALSE(!ctx.ref_reader().is_pending_ref(ref_id))) {
+        ctx.set_error(std::move(ref_result).error());
+        return SharedWeak<T>();
+      }
+
+      // Forward reference - create empty weak and register callback.
+      if (FORY_PREDICT_FALSE(
+              !ctx.reserve_graph_memory(sizeof(std::weak_ptr<T>)))) {
+        return SharedWeak<T>();
+      }
       SharedWeak<T> result;
-      add_weak_update_callback(ctx.ref_reader(), ref_id, result);
+      detail::add_weak_update_callback(ctx.ref_reader(), ref_id, result);
       return result;
     }
 
@@ -383,12 +437,28 @@ template <typename T> struct Serializer<SharedWeak<T>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return SharedWeak<T>();
     }
-
     switch (flag) {
-    case NULL_FLAG:
+    case NULL_FLAG: {
+      if (FORY_PREDICT_FALSE(
+              !ctx.reserve_graph_memory(sizeof(std::weak_ptr<T>)))) {
+        return SharedWeak<T>();
+      }
       return SharedWeak<T>();
+    }
 
     case REF_VALUE_FLAG: {
+      if (FORY_PREDICT_FALSE(
+              !ctx.reserve_graph_memory(sizeof(std::weak_ptr<T>)))) {
+        return SharedWeak<T>();
+      }
+      auto depth_res = ctx.increase_dyn_depth();
+      if (FORY_PREDICT_FALSE(!depth_res.ok())) {
+        ctx.set_error(std::move(depth_res).error());
+        return SharedWeak<T>();
+      }
+      if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+        return SharedWeak<T>();
+      }
       uint32_t reserved_ref_id = ctx.ref_reader().reserve_ref_id();
 
       // Read the data using type info
@@ -401,7 +471,9 @@ template <typename T> struct Serializer<SharedWeak<T>> {
       auto strong = std::make_shared<T>(std::move(data));
       ctx.ref_reader().store_shared_ref_at(reserved_ref_id, strong);
 
-      return SharedWeak<T>::from(strong);
+      auto result = SharedWeak<T>::from(strong);
+      ctx.decrease_dyn_depth();
+      return result;
     }
 
     case REF_FLAG: {
@@ -412,12 +484,25 @@ template <typename T> struct Serializer<SharedWeak<T>> {
 
       auto ref_result = ctx.ref_reader().template get_shared_ref<T>(ref_id);
       if (ref_result.ok()) {
+        if (FORY_PREDICT_FALSE(
+                !ctx.reserve_graph_memory(sizeof(std::weak_ptr<T>)))) {
+          return SharedWeak<T>();
+        }
         return SharedWeak<T>::from(ref_result.value());
       }
 
-      // Forward reference
+      if (FORY_PREDICT_FALSE(!ctx.ref_reader().is_pending_ref(ref_id))) {
+        ctx.set_error(std::move(ref_result).error());
+        return SharedWeak<T>();
+      }
+
+      // Forward reference.
+      if (FORY_PREDICT_FALSE(
+              !ctx.reserve_graph_memory(sizeof(std::weak_ptr<T>)))) {
+        return SharedWeak<T>();
+      }
       SharedWeak<T> result;
-      add_weak_update_callback(ctx.ref_reader(), ref_id, result);
+      detail::add_weak_update_callback(ctx.ref_reader(), ref_id, result);
       return result;
     }
 
@@ -438,22 +523,6 @@ template <typename T> struct Serializer<SharedWeak<T>> {
         "SharedWeak should be read using read() or read_with_type_info() to "
         "handle reference tracking properly"));
     return SharedWeak<T>();
-  }
-
-private:
-  /// Add a callback to update the weak pointer when the strong pointer becomes
-  /// available.
-  static void add_weak_update_callback(RefReader &ref_reader, uint32_t ref_id,
-                                       SharedWeak<T> &weak) {
-    // Capture a copy of the SharedWeak - it shares internal storage
-    SharedWeak<T> weak_copy = weak;
-    ref_reader.add_update_callback(
-        ref_id, [weak_copy, ref_id](const RefReader &reader) mutable {
-          auto ref_result = reader.template get_shared_ref<T>(ref_id);
-          if (ref_result.ok()) {
-            weak_copy.update(std::weak_ptr<T>(ref_result.value()));
-          }
-        });
   }
 };
 

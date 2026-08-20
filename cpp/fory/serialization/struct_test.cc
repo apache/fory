@@ -40,6 +40,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 // ============================================================================
@@ -307,6 +308,18 @@ struct UnsignedEncodingStruct {
               (tagged_u64, fory::F().tagged()));
 };
 
+struct TaggedIntStruct {
+  int64_t value;
+
+  FORY_STRUCT(TaggedIntStruct, (value, fory::F().tagged()));
+};
+
+struct TaggedUintStruct {
+  uint64_t value;
+
+  FORY_STRUCT(TaggedUintStruct, (value, fory::F().tagged()));
+};
+
 // String handling
 struct StringTestStruct {
   std::string empty;
@@ -471,6 +484,35 @@ struct OptionalNestedAnnotatedStruct {
   }
   FORY_STRUCT(OptionalNestedAnnotatedStruct,
               (values, fory::F().inner(T::list(T::varint()))));
+};
+
+struct UnbackedListField {
+  std::vector<std::monostate> values;
+  FORY_STRUCT(UnbackedListField, values);
+};
+
+struct ConfiguredUnbackedListField {
+  std::vector<std::monostate> values;
+  FORY_STRUCT(ConfiguredUnbackedListField,
+              (values, fory::F().list(T::scalar())));
+};
+
+struct UnbackedMapKey {
+  int32_t id = 0;
+  bool operator<(const UnbackedMapKey &other) const { return id < other.id; }
+  FORY_STRUCT(UnbackedMapKey);
+};
+
+struct ConfiguredUnbackedMapField {
+  std::map<UnbackedMapKey, UnbackedMapKey> values;
+  FORY_STRUCT(ConfiguredUnbackedMapField,
+              (values, fory::F().map(T::scalar(), T::scalar())));
+};
+
+struct ConfiguredPositiveListField {
+  std::vector<int32_t> values;
+  FORY_STRUCT(ConfiguredPositiveListField,
+              (values, fory::F().list(T::int32())));
 };
 
 struct ListArrayAnnotatedStruct {
@@ -819,6 +861,45 @@ TEST(StructComprehensiveTest, UnsignedEncodingsRoundTrip) {
   });
 }
 
+TEST(StructComprehensiveTest, TaggedIntTruncationFails) {
+  const bool compatible_modes[] = {false, true};
+  for (bool compatible : compatible_modes) {
+    SCOPED_TRACE(::testing::Message() << "compatible=" << compatible);
+    auto check_truncation = [&](auto original, uint32_t type_id,
+                                const char *kind) {
+      using StructType = decltype(original);
+      SCOPED_TRACE(::testing::Message() << "kind=" << kind);
+      auto fory = Fory::builder()
+                      .xlang(true)
+                      .compatible(compatible)
+                      .track_ref(false)
+                      .build();
+      ASSERT_TRUE(fory.register_struct<StructType>(type_id).ok());
+
+      auto serialized = fory.serialize(original);
+      ASSERT_TRUE(serialized.ok()) << serialized.error().to_string();
+      const std::vector<uint8_t> bytes = std::move(serialized).value();
+      ASSERT_GE(bytes.size(), 9u);
+      ASSERT_EQ(bytes[bytes.size() - 9] & 1u, 1u);
+      ASSERT_TRUE(fory.deserialize<StructType>(bytes).ok());
+
+      for (size_t missing_bytes = 1; missing_bytes <= 9; ++missing_bytes) {
+        SCOPED_TRACE(::testing::Message() << "missing_bytes=" << missing_bytes);
+        std::vector<uint8_t> truncated(bytes.begin(),
+                                       bytes.end() - missing_bytes);
+        auto result =
+            fory.deserialize<StructType>(truncated.data(), truncated.size());
+        ASSERT_FALSE(result.ok());
+        EXPECT_EQ(result.error().code(), ErrorCode::BufferOutOfBound);
+      }
+    };
+    check_truncation(TaggedIntStruct{std::numeric_limits<int64_t>::max()}, 612,
+                     "signed");
+    check_truncation(TaggedUintStruct{std::numeric_limits<uint64_t>::max()},
+                     613, "unsigned");
+  }
+}
+
 TEST(StructComprehensiveTest, UnsignedEncodingFieldMeta) {
   auto fory =
       Fory::builder().xlang(true).compatible(true).track_ref(false).build();
@@ -962,6 +1043,34 @@ TEST(StructComprehensiveTest, NamedStructElementTypeInfo) {
   EXPECT_EQ(items, deser_result.value());
 }
 
+TEST(StructComprehensiveTest, LongNamedStructElementTypeInfo) {
+  std::vector<NamedItem> items{{1, "alpha"}, {2, "beta"}};
+  const std::string namespace_name =
+      "org.apache.fory.serialization.longnamespace";
+  const std::string type_name = "RecursiveCollectionNode";
+
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  ASSERT_TRUE(fory.register_struct<NamedItem>(namespace_name, type_name).ok());
+  auto type_info = fory.type_resolver().get_type_info<NamedItem>();
+  ASSERT_TRUE(type_info.ok());
+  ASSERT_NE(type_info.value()->encoded_namespace, nullptr);
+  ASSERT_NE(type_info.value()->encoded_type_name, nullptr);
+  ASSERT_GT(type_info.value()->encoded_namespace->bytes.size(), 16);
+  ASSERT_GT(type_info.value()->encoded_type_name->bytes.size(), 16);
+  EXPECT_NE(type_info.value()->encoded_namespace->hash, 0);
+  EXPECT_NE(type_info.value()->encoded_type_name->hash, 0);
+
+  auto serialized = fory.serialize(items);
+  ASSERT_TRUE(serialized.ok()) << serialized.error().to_string();
+
+  std::vector<uint8_t> bytes = std::move(serialized).value();
+  auto deserialized =
+      fory.deserialize<std::vector<NamedItem>>(bytes.data(), bytes.size());
+  ASSERT_TRUE(deserialized.ok()) << deserialized.error().to_string();
+  EXPECT_EQ(items, deserialized.value());
+}
+
 TEST(StructComprehensiveTest, MapStructEmpty) {
   test_roundtrip(MapStruct{{}, {}, {}});
 }
@@ -1052,6 +1161,53 @@ TEST(StructComprehensiveTest, OptionalNestedAnnotation) {
   ASSERT_EQ(fields[0].field_type.generics.size(), 1);
   EXPECT_EQ(fields[0].field_type.generics[0].type_id,
             static_cast<uint32_t>(TypeId::VAR_UINT32));
+}
+
+TEST(StructComprehensiveTest, UnbackedContainerFields) {
+  auto fory = Fory::builder()
+                  .xlang(true)
+                  .compatible(false)
+                  .track_ref(false)
+                  .max_unbacked_container_items(2)
+                  .build();
+  ASSERT_TRUE(fory.register_struct<UnbackedListField>(610).ok());
+  ASSERT_TRUE(fory.register_struct<ConfiguredUnbackedListField>(611).ok());
+  ASSERT_TRUE(fory.register_struct<UnbackedMapKey>(612).ok());
+  ASSERT_TRUE(fory.register_struct<ConfiguredUnbackedMapField>(613).ok());
+
+  UnbackedListField list{{{}, {}, {}}};
+  auto bytes = fory.serialize(list);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  EXPECT_FALSE(fory.deserialize<UnbackedListField>(*bytes).ok());
+
+  ConfiguredUnbackedListField configured_list{{{}, {}, {}}};
+  bytes = fory.serialize(configured_list);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  EXPECT_FALSE(fory.deserialize<ConfiguredUnbackedListField>(*bytes).ok());
+
+  ConfiguredUnbackedMapField configured_map;
+  configured_map.values.emplace(UnbackedMapKey{1}, UnbackedMapKey{1});
+  configured_map.values.emplace(UnbackedMapKey{2}, UnbackedMapKey{2});
+  configured_map.values.emplace(UnbackedMapKey{3}, UnbackedMapKey{3});
+  bytes = fory.serialize(configured_map);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  EXPECT_FALSE(fory.deserialize<ConfiguredUnbackedMapField>(*bytes).ok());
+}
+
+TEST(StructComprehensiveTest, ConfiguredPositiveList) {
+  auto fory = Fory::builder()
+                  .xlang(true)
+                  .compatible(false)
+                  .track_ref(false)
+                  .max_unbacked_container_items(0)
+                  .build();
+  ASSERT_TRUE(fory.register_struct<ConfiguredPositiveListField>(614).ok());
+  ConfiguredPositiveListField value{{1, 2, 3}};
+  auto bytes = fory.serialize(value);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  auto decoded = fory.deserialize<ConfiguredPositiveListField>(*bytes);
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  EXPECT_EQ(decoded->values, value.values);
 }
 
 TEST(StructComprehensiveTest, ListAndArrayAnnotationsUseDistinctTypeIds) {

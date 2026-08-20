@@ -16,26 +16,13 @@
 // under the License.
 
 use crate::context::{ReadContext, WriteContext};
-use crate::ensure;
 use crate::error::Error;
-use crate::resolver::{RefFlag, RefMode};
-use crate::resolver::{TypeInfo, TypeResolver};
-use crate::serializer::util::write_dyn_data_generic;
-use crate::serializer::{ForyDefault, Serializer};
+use crate::resolver::{RefFlag, RefMode, TypeInfo};
+use crate::serializer::Serializer;
 use crate::type_id::TypeId;
 use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;
-
-#[inline(always)]
-fn resolve_registered_type_id(
-    type_resolver: &TypeResolver,
-    concrete_type_id: std::any::TypeId,
-) -> Result<TypeId, Error> {
-    type_resolver
-        .get_fory_type_id(concrete_type_id)
-        .ok_or_else(|| Error::type_error("Type not registered"))
-}
 
 #[inline]
 fn is_erased_any_container_type(type_id: TypeId) -> bool {
@@ -71,11 +58,9 @@ fn is_erased_any_container_type(type_id: TypeId) -> bool {
 #[inline(never)]
 fn unsupported_erased_any_container() -> Error {
     Error::type_error(
-        "List-, map-, and set-like containers cannot be used as top-level erased Any \
-        payloads via Box<dyn Any>, Rc<dyn Any>, or Arc<dyn Any + Send + Sync>. This \
-        includes Vec<T>, byte and numeric vectors, LinkedList<T>, HashSet<T>, and \
-        HashMap<K, V>. Wrap the container in a registered struct, enum, or union and \
-        use that wrapper as the erased payload.",
+        "built-in list, set, map, binary, and primitive-array values cannot be top-level erased \
+         Any or application-trait payloads; register an exact custom EXT serializer for the whole \
+         target or wrap it in a registered structural type",
     )
 }
 
@@ -83,17 +68,100 @@ fn unsupported_erased_any_container() -> Error {
 #[inline(never)]
 fn erased_any_type_info_error(err: Error) -> Error {
     Error::type_error(format!(
-        "{err}. Erased Any payloads require a registered concrete non-container type. \
-        Top-level list-, map-, and set-like containers such as Vec<T>, LinkedList<T>, \
-        HashSet<T>, and HashMap<K, V> are unsupported; wrap the container in a \
-        registered struct, enum, or union."
+        "{err}. Erased Any payloads require a registered concrete target"
     ))
 }
 
+#[cold]
+#[inline(never)]
+fn missing_dynamic_target() -> Error {
+    Error::type_error("dynamic target metadata has no checked local serializer registration")
+}
+
+#[cold]
+#[inline(never)]
+fn mismatched_dynamic_target(expected: std::any::TypeId, actual: std::any::TypeId) -> Error {
+    Error::type_error(format!(
+        "dynamic target metadata expected TypeId {:?}, got {:?}",
+        expected, actual,
+    ))
+}
+
+#[cold]
+#[inline(never)]
+fn missing_any_ref(owner: &'static str, ref_id: u32) -> Error {
+    Error::invalid_data(format!("{owner} reference {ref_id} not found"))
+}
+
+#[cold]
+#[inline(never)]
+fn box_any_null() -> Error {
+    Error::invalid_ref("Box<dyn Any> cannot be null")
+}
+
+#[cold]
+#[inline(never)]
+fn box_any_metadata() -> Error {
+    Error::invalid_data("Box<dyn Any> requires concrete type metadata")
+}
+
+#[cold]
+#[inline(never)]
+fn rc_any_null() -> Error {
+    Error::invalid_ref("Rc<dyn Any> cannot be null")
+}
+
+#[cold]
+#[inline(never)]
+fn rc_any_metadata() -> Error {
+    Error::invalid_data("Rc<dyn Any> requires concrete type metadata")
+}
+
+#[cold]
+#[inline(never)]
+fn arc_any_null() -> Error {
+    Error::invalid_ref("Arc<dyn Any + Send + Sync> cannot be null")
+}
+
+#[cold]
+#[inline(never)]
+fn arc_any_metadata() -> Error {
+    Error::invalid_data("Arc<dyn Any + Send + Sync> requires concrete type metadata")
+}
+
+#[doc(hidden)]
 #[inline]
-pub(crate) fn check_erased_any_payload_type(type_info: &TypeInfo) -> Result<(), Error> {
+pub fn check_erased_target_type(type_info: &TypeInfo) -> Result<(), Error> {
     if is_erased_any_container_type(type_info.get_type_id()) {
         return Err(unsupported_erased_any_container());
+    }
+    Ok(())
+}
+
+#[inline(always)]
+fn check_local_target(type_info: &TypeInfo) -> Result<(), Error> {
+    type_info
+        .get_harness()
+        .target_type_id()
+        .ok_or_else(missing_dynamic_target)
+        .map(|_| ())
+}
+
+#[inline(always)]
+fn check_resolved_target(
+    target_type_id: std::any::TypeId,
+    type_info: &TypeInfo,
+) -> Result<(), Error> {
+    check_erased_target_type(type_info)?;
+    let resolved_target_type_id = type_info
+        .get_harness()
+        .target_type_id()
+        .ok_or_else(missing_dynamic_target)?;
+    if resolved_target_type_id != target_type_id {
+        return Err(mismatched_dynamic_target(
+            resolved_target_type_id,
+            target_type_id,
+        ));
     }
     Ok(())
 }
@@ -101,82 +169,102 @@ pub(crate) fn check_erased_any_payload_type(type_info: &TypeInfo) -> Result<(), 
 #[inline]
 fn get_erased_any_type_info(
     context: &WriteContext,
-    concrete_type_id: &std::any::TypeId,
+    target_type_id: &std::any::TypeId,
 ) -> Result<Rc<TypeInfo>, Error> {
     let type_info = context
-        .get_type_info(concrete_type_id)
+        .get_target_type_info(target_type_id)
         .map_err(erased_any_type_info_error)?;
-    check_erased_any_payload_type(&type_info)?;
+    check_erased_target_type(&type_info)?;
     Ok(type_info)
 }
 
 #[inline]
 fn write_erased_any_type_info(
     context: &mut WriteContext,
-    concrete_type_id: std::any::TypeId,
+    target_type_id: std::any::TypeId,
 ) -> Result<Rc<TypeInfo>, Error> {
     let type_info = context
-        .write_any_type_info(TypeId::UNKNOWN as u32, concrete_type_id)
+        .get_target_type_info(&target_type_id)
         .map_err(erased_any_type_info_error)?;
-    check_erased_any_payload_type(&type_info)?;
-    Ok(type_info)
+    check_erased_target_type(&type_info)?;
+    context.write_resolved_type_info(TypeId::UNKNOWN as u32, type_info)
 }
 
-/// Helper function to deserialize to `Box<dyn Any>`
+#[inline(always)]
+fn write_any_body(value: &dyn Any, context: &mut WriteContext) -> Result<(), Error> {
+    let type_info = get_erased_any_type_info(context, &value.type_id())?;
+    write_resolved_any_body(value, context, &type_info)
+}
+
+#[inline(always)]
+fn write_resolved_any_body(
+    value: &dyn Any,
+    context: &mut WriteContext,
+    type_info: &Rc<TypeInfo>,
+) -> Result<(), Error> {
+    check_resolved_target(value.type_id(), type_info)?;
+    write_any_harness(value, context, type_info)
+}
+
+#[inline(always)]
+fn write_any_harness(
+    value: &dyn Any,
+    context: &mut WriteContext,
+    type_info: &Rc<TypeInfo>,
+) -> Result<(), Error> {
+    type_info.get_harness().write_data(value, context)
+}
+
+/// Reads a non-null `Box<dyn Any>` with concrete type metadata.
 pub fn deserialize_any_box(context: &mut ReadContext) -> Result<Box<dyn Any>, Error> {
-    context.inc_depth()?;
-    let ref_flag = context.reader.read_i8()?;
-    if ref_flag != RefFlag::NotNullValue as i8 {
-        return Err(Error::invalid_ref("Expected NotNullValue for Box<dyn Any>"));
-    }
-    let typeinfo = context.read_any_type_info()?;
-    check_erased_any_payload_type(&typeinfo)?;
-    let result = typeinfo
-        .get_harness()
-        .read_polymorphic_data(context, &typeinfo);
-    context.dec_depth();
-    result
-}
-
-impl ForyDefault for Box<dyn Any> {
-    fn fory_default() -> Self {
-        Box::new(())
-    }
+    read_box_any(context, RefMode::NullOnly, true, None)
 }
 
 impl Serializer for Box<dyn Any> {
-    fn fory_write(
-        &self,
+    type Target = Self;
+    #[inline(always)]
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        write_any_body(value.as_ref(), context)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn read_data(_: &mut ReadContext) -> Result<Self, Error> {
+        Err(Error::not_allowed(
+            "Box<dyn Any> requires concrete type metadata",
+        ))
+    }
+
+    #[inline(always)]
+    fn write_type_info_value(
+        context: &mut WriteContext,
+        target_type_id: std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        write_erased_any_type_info(context, target_type_id)
+    }
+
+    #[inline(always)]
+    fn write_with_type_info(
+        value: &Self,
+        context: &mut WriteContext,
+        ref_mode: RefMode,
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<(), Error> {
+        write_box_any_resolved(value.as_ref(), context, ref_mode, type_info)
+    }
+
+    #[inline(always)]
+    fn write(
+        value: &Self,
         context: &mut WriteContext,
         ref_mode: RefMode,
         write_type_info: bool,
-        has_generics: bool,
     ) -> Result<(), Error> {
-        write_box_any(
-            self.as_ref(),
-            context,
-            ref_mode,
-            write_type_info,
-            has_generics,
-        )
+        write_box_any(value.as_ref(), context, ref_mode, write_type_info)
     }
 
-    fn fory_write_data_generic(
-        &self,
-        context: &mut WriteContext,
-        has_generics: bool,
-    ) -> Result<(), Error> {
-        let concrete_type_id = (**self).type_id();
-        let typeinfo = get_erased_any_type_info(context, &concrete_type_id)?;
-        let serializer_fn = typeinfo.get_harness().get_write_data_fn();
-        serializer_fn(&**self, context, has_generics)
-    }
-
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        self.fory_write_data_generic(context, false)
-    }
-
-    fn fory_read(
+    #[inline(always)]
+    fn read(
         context: &mut ReadContext,
         ref_mode: RefMode,
         read_type_info: bool,
@@ -184,61 +272,37 @@ impl Serializer for Box<dyn Any> {
         read_box_any(context, ref_mode, read_type_info, None)
     }
 
-    fn fory_read_with_type_info(
+    #[inline(always)]
+    fn read_with_type_info(
         context: &mut ReadContext,
         ref_mode: RefMode,
-        type_info: Rc<TypeInfo>,
-    ) -> Result<Self, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<Self, Error> {
         read_box_any(context, ref_mode, false, Some(type_info))
     }
 
-    fn fory_read_data(_: &mut ReadContext) -> Result<Self, Error> {
-        Err(Error::not_allowed(
-            "fory_read_data should not be called directly on polymorphic Box<dyn Any> trait object",
-        ))
+    #[inline(always)]
+    fn write_type_info(_: &mut WriteContext) -> Result<(), Error> {
+        Ok(())
     }
 
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        Err(Error::type_error(
-            "Box<dyn Any> has no static type ID - use fory_type_id_dyn",
-        ))
+    #[inline(always)]
+    fn read_type_info(_: &mut ReadContext) -> Result<(), Error> {
+        Ok(())
     }
 
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
-        resolve_registered_type_id(type_resolver, (**self).type_id())
-    }
-
-    fn fory_concrete_type_id(&self) -> std::any::TypeId {
-        (**self).type_id()
-    }
-
-    fn fory_is_polymorphic() -> bool {
-        true
-    }
-
-    fn fory_is_shared_ref() -> bool {
-        false
-    }
-
-    fn fory_static_type_id() -> TypeId {
+    #[inline(always)]
+    fn static_type_id() -> TypeId {
         TypeId::UNKNOWN
     }
 
-    fn fory_write_type_info(_context: &mut WriteContext) -> Result<(), Error> {
-        // Box<dyn Any> is polymorphic - type info is written per element
-        Ok(())
-    }
+    const IS_POLYMORPHIC: bool = true;
 
-    fn fory_read_type_info(_context: &mut ReadContext) -> Result<(), Error> {
-        // Box<dyn Any> is polymorphic - type info is read per element
-        Ok(())
-    }
+    const IS_WRAPPER: bool = true;
 
-    fn as_any(&self) -> &dyn Any {
-        &**self
+    #[inline(always)]
+    fn dynamic_type_id(value: &Self) -> Result<Option<std::any::TypeId>, Error> {
+        Ok(Some(value.as_ref().type_id()))
     }
 }
 
@@ -247,99 +311,126 @@ pub fn write_box_any(
     context: &mut WriteContext,
     ref_mode: RefMode,
     write_type_info: bool,
-    has_generics: bool,
 ) -> Result<(), Error> {
+    let target_type_id = value.type_id();
+    let type_info = get_erased_any_type_info(context, &target_type_id)?;
     if ref_mode != RefMode::None {
         context.writer.write_i8(RefFlag::NotNullValue as i8);
     }
-    let concrete_type_id = value.type_id();
-    let typeinfo = if write_type_info {
-        write_erased_any_type_info(context, concrete_type_id)?
+    let type_info = if write_type_info {
+        context.write_resolved_type_info(TypeId::UNKNOWN as u32, type_info)?
     } else {
-        get_erased_any_type_info(context, &concrete_type_id)?
+        type_info
     };
-    let serializer_fn = typeinfo.get_harness().get_write_data_fn();
-    serializer_fn(value, context, has_generics)
+    write_any_harness(value, context, &type_info)
+}
+
+#[inline(always)]
+fn write_box_any_resolved(
+    value: &dyn Any,
+    context: &mut WriteContext,
+    ref_mode: RefMode,
+    type_info: &Rc<TypeInfo>,
+) -> Result<(), Error> {
+    check_resolved_target(value.type_id(), type_info)?;
+    if ref_mode != RefMode::None {
+        context.writer.write_i8(RefFlag::NotNullValue as i8);
+    }
+    write_any_harness(value, context, type_info)
 }
 
 pub fn read_box_any(
     context: &mut ReadContext,
     ref_mode: RefMode,
     read_type_info: bool,
-    type_info: Option<Rc<TypeInfo>>,
+    type_info: Option<&Rc<TypeInfo>>,
 ) -> Result<Box<dyn Any>, Error> {
     context.inc_depth()?;
-    let ref_flag = if ref_mode != RefMode::None {
-        context.reader.read_i8()?
-    } else {
-        RefFlag::NotNullValue as i8
-    };
-    if ref_flag != RefFlag::NotNullValue as i8 {
-        return Err(Error::invalid_data(
-            "Expected NotNullValue for Box<dyn Any>",
-        ));
-    }
-    let typeinfo = if let Some(type_info) = type_info {
-        type_info
-    } else {
-        ensure!(
-            read_type_info,
-            Error::invalid_data("Type info must be read for Box<dyn Any>")
-        );
-        context.read_any_type_info()?
-    };
-    check_erased_any_payload_type(&typeinfo)?;
-    let result = typeinfo
-        .get_harness()
-        .read_polymorphic_data(context, &typeinfo);
+    let value = (|| {
+        let ref_flag = if ref_mode != RefMode::None {
+            context.reader.read_i8()?
+        } else {
+            RefFlag::NotNullValue as i8
+        };
+        if ref_flag != RefFlag::NotNullValue as i8 {
+            return Err(box_any_null());
+        }
+        let owned_type_info;
+        let type_info = if let Some(type_info) = type_info {
+            type_info
+        } else if read_type_info {
+            owned_type_info = context.read_any_type_info()?;
+            &owned_type_info
+        } else {
+            return Err(box_any_metadata());
+        };
+        check_local_target(type_info)?;
+        check_erased_target_type(type_info)?;
+        type_info.get_harness().read_box_any(context, type_info)
+    })()?;
     context.dec_depth();
-    result
-}
-
-impl ForyDefault for Rc<dyn Any> {
-    fn fory_default() -> Self {
-        Rc::new(())
-    }
+    Ok(value)
 }
 
 impl Serializer for Rc<dyn Any> {
-    fn fory_write(
-        &self,
+    type Target = Self;
+    #[inline(always)]
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        write_any_body(value.as_ref(), context)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn read_data(_: &mut ReadContext) -> Result<Self, Error> {
+        Err(Error::not_allowed(
+            "Rc<dyn Any> requires concrete type metadata",
+        ))
+    }
+
+    #[inline(always)]
+    fn write_type_info_value(
+        context: &mut WriteContext,
+        target_type_id: std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        write_erased_any_type_info(context, target_type_id)
+    }
+
+    #[inline(always)]
+    fn write_with_type_info(
+        value: &Self,
+        context: &mut WriteContext,
+        ref_mode: RefMode,
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<(), Error> {
+        write_rc_any_resolved(value, context, ref_mode, type_info)
+    }
+
+    #[inline(always)]
+    fn write(
+        value: &Self,
         context: &mut WriteContext,
         ref_mode: RefMode,
         write_type_info: bool,
-        has_generics: bool,
     ) -> Result<(), Error> {
-        if ref_mode == RefMode::None
-            || !context
+        if ref_mode != RefMode::None
+            && context
                 .ref_writer
-                .try_write_rc_ref(&mut context.writer, self)
+                .try_write_rc_ref(&mut context.writer, value)
         {
-            let concrete_type_id: std::any::TypeId = (**self).type_id();
-            let typeinfo = if write_type_info {
-                write_erased_any_type_info(context, concrete_type_id)?
-            } else {
-                get_erased_any_type_info(context, &concrete_type_id)?
-            };
-            let write_data_fn = typeinfo.get_harness().get_write_data_fn();
-            write_data_fn(&**self, context, has_generics)?;
+            return Ok(());
         }
-        Ok(())
+        let target_type_id = value.as_ref().type_id();
+        let type_info = get_erased_any_type_info(context, &target_type_id)?;
+        let type_info = if write_type_info {
+            context.write_resolved_type_info(TypeId::UNKNOWN as u32, type_info)?
+        } else {
+            type_info
+        };
+        write_any_harness(value.as_ref(), context, &type_info)
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        write_dyn_data_generic(self, context, false)
-    }
-
-    fn fory_write_data_generic(
-        &self,
-        context: &mut WriteContext,
-        has_generics: bool,
-    ) -> Result<(), Error> {
-        write_dyn_data_generic(self, context, has_generics)
-    }
-
-    fn fory_read(
+    #[inline(always)]
+    fn read(
         context: &mut ReadContext,
         ref_mode: RefMode,
         read_type_info: bool,
@@ -347,68 +438,66 @@ impl Serializer for Rc<dyn Any> {
         read_rc_any(context, ref_mode, read_type_info, None)
     }
 
-    fn fory_read_with_type_info(
+    #[inline(always)]
+    fn read_with_type_info(
         context: &mut ReadContext,
         ref_mode: RefMode,
-        type_info: Rc<TypeInfo>,
-    ) -> Result<Self, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<Self, Error> {
         read_rc_any(context, ref_mode, false, Some(type_info))
     }
 
-    fn fory_read_data(_: &mut ReadContext) -> Result<Self, Error> {
-        Err(Error::not_allowed(
-            "fory_read_data should not be called directly on polymorphic Rc<dyn Any> trait object",
-        ))
+    #[inline(always)]
+    fn write_type_info(_: &mut WriteContext) -> Result<(), Error> {
+        Ok(())
     }
 
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        Err(Error::type_error(
-            "Rc<dyn Any> has no static type ID - use fory_type_id_dyn",
-        ))
+    #[inline(always)]
+    fn read_type_info(_: &mut ReadContext) -> Result<(), Error> {
+        Ok(())
     }
 
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
-        resolve_registered_type_id(type_resolver, (**self).type_id())
-    }
-
-    fn fory_concrete_type_id(&self) -> std::any::TypeId {
-        (**self).type_id()
-    }
-
-    fn fory_is_shared_ref() -> bool {
-        true
-    }
-    fn fory_is_polymorphic() -> bool {
-        true
-    }
-
-    fn fory_static_type_id() -> TypeId {
+    #[inline(always)]
+    fn static_type_id() -> TypeId {
         TypeId::UNKNOWN
     }
 
-    fn fory_write_type_info(_context: &mut WriteContext) -> Result<(), Error> {
-        // Rc<dyn Any> is polymorphic - type info is written per element
-        Ok(())
-    }
+    const IS_SHARED_REF: bool = true;
 
-    fn fory_read_type_info(_context: &mut ReadContext) -> Result<(), Error> {
-        // Rc<dyn Any> is polymorphic - type info is read per element
-        Ok(())
-    }
+    const IS_POLYMORPHIC: bool = true;
 
-    fn as_any(&self) -> &dyn Any {
-        &**self
+    const IS_WRAPPER: bool = true;
+
+    #[inline(always)]
+    fn dynamic_type_id(value: &Self) -> Result<Option<std::any::TypeId>, Error> {
+        Ok(Some(value.as_ref().type_id()))
     }
+}
+
+#[inline(always)]
+fn write_rc_any_resolved(
+    value: &Rc<dyn Any>,
+    context: &mut WriteContext,
+    ref_mode: RefMode,
+    type_info: &Rc<TypeInfo>,
+) -> Result<(), Error> {
+    let any = value.as_ref();
+    check_resolved_target(any.type_id(), type_info)?;
+    if ref_mode != RefMode::None
+        && context
+            .ref_writer
+            .try_write_rc_ref(&mut context.writer, value)
+    {
+        return Ok(());
+    }
+    write_any_harness(any, context, type_info)
 }
 
 pub fn read_rc_any(
     context: &mut ReadContext,
     ref_mode: RefMode,
     read_type_info: bool,
-    type_info: Option<Rc<TypeInfo>>,
+    type_info: Option<&Rc<TypeInfo>>,
 ) -> Result<Rc<dyn Any>, Error> {
     let ref_flag = if ref_mode != RefMode::None {
         context.ref_reader.read_ref_flag(&mut context.reader)?
@@ -416,95 +505,105 @@ pub fn read_rc_any(
         RefFlag::NotNullValue
     };
     match ref_flag {
-        RefFlag::Null => Err(Error::invalid_ref("Rc<dyn Any> cannot be null")),
+        RefFlag::Null => Err(rc_any_null()),
         RefFlag::Ref => {
             let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
             context
                 .ref_reader
                 .get_rc_ref::<dyn Any>(ref_id)
-                .ok_or_else(|| {
-                    Error::invalid_data(format!("Rc<dyn Any> reference {} not found", ref_id))
-                })
+                .ok_or_else(|| missing_any_ref("Rc<dyn Any>", ref_id))
         }
-        RefFlag::NotNullValue => {
-            context.inc_depth()?;
-            let typeinfo = if read_type_info {
-                context.read_any_type_info()?
-            } else {
-                type_info.ok_or_else(|| Error::type_error("No type info found for read"))?
-            };
-            check_erased_any_payload_type(&typeinfo)?;
-            let boxed = typeinfo
-                .get_harness()
-                .read_polymorphic_data(context, &typeinfo)?;
-            context.dec_depth();
-            Ok(Rc::<dyn Any>::from(boxed))
-        }
+        RefFlag::NotNullValue => read_new_rc_any(context, read_type_info, type_info),
         RefFlag::RefValue => {
             let ref_id = context.ref_reader.reserve_ref_id();
-            context.inc_depth()?;
-            let typeinfo = if read_type_info {
-                context.read_any_type_info()?
-            } else {
-                type_info.ok_or_else(|| Error::type_error("No type info found for read"))?
-            };
-            check_erased_any_payload_type(&typeinfo)?;
-            let boxed = typeinfo
-                .get_harness()
-                .read_polymorphic_data(context, &typeinfo)?;
-            context.dec_depth();
-            let rc: Rc<dyn Any> = Rc::from(boxed);
-            context.ref_reader.store_rc_ref_at(ref_id, rc.clone());
-            Ok(rc)
+            let value = read_new_rc_any(context, read_type_info, type_info)?;
+            context.ref_reader.store_rc_ref_at(ref_id, value.clone());
+            Ok(value)
         }
     }
 }
 
-impl ForyDefault for Arc<dyn Any + Send + Sync> {
-    fn fory_default() -> Self {
-        Arc::new(())
-    }
+fn read_new_rc_any(
+    context: &mut ReadContext,
+    read_type_info: bool,
+    type_info: Option<&Rc<TypeInfo>>,
+) -> Result<Rc<dyn Any>, Error> {
+    context.inc_depth()?;
+    let value = (|| {
+        let owned_type_info;
+        let type_info = if read_type_info {
+            owned_type_info = context.read_any_type_info()?;
+            &owned_type_info
+        } else {
+            type_info.ok_or_else(rc_any_metadata)?
+        };
+        check_local_target(type_info)?;
+        check_erased_target_type(type_info)?;
+        type_info.get_harness().read_rc_any(context, type_info)
+    })()?;
+    context.dec_depth();
+    Ok(value)
 }
 
 impl Serializer for Arc<dyn Any + Send + Sync> {
-    fn fory_write(
-        &self,
+    type Target = Self;
+    #[inline(always)]
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        write_any_body(value.as_ref(), context)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn read_data(_: &mut ReadContext) -> Result<Self, Error> {
+        Err(Error::not_allowed(
+            "Arc<dyn Any + Send + Sync> requires concrete type metadata",
+        ))
+    }
+
+    #[inline(always)]
+    fn write_type_info_value(
+        context: &mut WriteContext,
+        target_type_id: std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        write_erased_any_type_info(context, target_type_id)
+    }
+
+    #[inline(always)]
+    fn write_with_type_info(
+        value: &Self,
+        context: &mut WriteContext,
+        ref_mode: RefMode,
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<(), Error> {
+        write_arc_any_resolved(value, context, ref_mode, type_info)
+    }
+
+    #[inline(always)]
+    fn write(
+        value: &Self,
         context: &mut WriteContext,
         ref_mode: RefMode,
         write_type_info: bool,
-        has_generics: bool,
     ) -> Result<(), Error> {
-        if ref_mode == RefMode::None
-            || !context
+        if ref_mode != RefMode::None
+            && context
                 .ref_writer
-                .try_write_arc_ref(&mut context.writer, self)
+                .try_write_arc_ref(&mut context.writer, value)
         {
-            let value: &dyn Any = self.as_ref();
-            let concrete_type_id: std::any::TypeId = value.type_id();
-            let typeinfo = if write_type_info {
-                write_erased_any_type_info(context, concrete_type_id)?
-            } else {
-                get_erased_any_type_info(context, &concrete_type_id)?
-            };
-            let serializer_fn = typeinfo.get_harness().get_write_data_fn();
-            serializer_fn(value, context, has_generics)?;
+            return Ok(());
         }
-        Ok(())
+        let target_type_id = value.as_ref().type_id();
+        let type_info = get_erased_any_type_info(context, &target_type_id)?;
+        let type_info = if write_type_info {
+            context.write_resolved_type_info(TypeId::UNKNOWN as u32, type_info)?
+        } else {
+            type_info
+        };
+        write_any_harness(value.as_ref(), context, &type_info)
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        write_dyn_data_generic(self, context, false)
-    }
-
-    fn fory_write_data_generic(
-        &self,
-        context: &mut WriteContext,
-        has_generics: bool,
-    ) -> Result<(), Error> {
-        write_dyn_data_generic(self, context, has_generics)
-    }
-
-    fn fory_read(
+    #[inline(always)]
+    fn read(
         context: &mut ReadContext,
         ref_mode: RefMode,
         read_type_info: bool,
@@ -512,82 +611,66 @@ impl Serializer for Arc<dyn Any + Send + Sync> {
         read_arc_any(context, ref_mode, read_type_info, None)
     }
 
-    fn fory_read_with_type_info(
+    #[inline(always)]
+    fn read_with_type_info(
         context: &mut ReadContext,
         ref_mode: RefMode,
-        type_info: Rc<TypeInfo>,
-    ) -> Result<Self, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<Self, Error> {
         read_arc_any(context, ref_mode, false, Some(type_info))
     }
 
-    fn fory_read_data(_: &mut ReadContext) -> Result<Self, Error> {
-        Err(Error::not_allowed(
-            "fory_read_data should not be called directly on polymorphic Arc<dyn Any + Send + Sync> trait object"
-        ))
+    #[inline(always)]
+    fn write_type_info(_: &mut WriteContext) -> Result<(), Error> {
+        Ok(())
     }
 
-    fn fory_get_type_id(_type_resolver: &TypeResolver) -> Result<TypeId, Error> {
-        Err(Error::type_error(
-            "Arc<dyn Any + Send + Sync> has no static type ID - use fory_type_id_dyn",
-        ))
+    #[inline(always)]
+    fn read_type_info(_: &mut ReadContext) -> Result<(), Error> {
+        Ok(())
     }
 
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
-        resolve_registered_type_id(type_resolver, self.as_ref().type_id())
-    }
-
-    fn fory_concrete_type_id(&self) -> std::any::TypeId {
-        self.as_ref().type_id()
-    }
-
-    fn fory_is_polymorphic() -> bool {
-        true
-    }
-
-    fn fory_is_shared_ref() -> bool {
-        true
-    }
-    fn fory_static_type_id() -> TypeId {
+    #[inline(always)]
+    fn static_type_id() -> TypeId {
         TypeId::UNKNOWN
     }
 
-    fn fory_write_type_info(_context: &mut WriteContext) -> Result<(), Error> {
-        // Arc<dyn Any + Send + Sync> is polymorphic - type info is written per element
-        Ok(())
-    }
+    const IS_SHARED_REF: bool = true;
 
-    fn fory_read_type_info(_context: &mut ReadContext) -> Result<(), Error> {
-        // Arc<dyn Any + Send + Sync> is polymorphic - type info is read per element
-        Ok(())
-    }
+    const IS_POLYMORPHIC: bool = true;
 
-    fn fory_read_data_as_send_sync_any(
-        context: &mut ReadContext,
-    ) -> Result<Box<dyn Any + Send + Sync>, Error>
-    where
-        Self: Sized + ForyDefault,
+    const IS_WRAPPER: bool = true;
+
+    #[inline(always)]
+    fn dynamic_type_id(value: &Self) -> Result<Option<std::any::TypeId>, Error> {
+        Ok(Some(value.as_ref().type_id()))
+    }
+}
+
+#[inline(always)]
+fn write_arc_any_resolved(
+    value: &Arc<dyn Any + Send + Sync>,
+    context: &mut WriteContext,
+    ref_mode: RefMode,
+    type_info: &Rc<TypeInfo>,
+) -> Result<(), Error> {
+    let any = value.as_ref();
+    check_resolved_target(any.type_id(), type_info)?;
+    if ref_mode != RefMode::None
+        && context
+            .ref_writer
+            .try_write_arc_ref(&mut context.writer, value)
     {
-        Ok(crate::serializer::box_send_sync(read_arc_any(
-            context,
-            RefMode::None,
-            true,
-            None,
-        )?))
+        return Ok(());
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self.as_ref()
-    }
+    write_any_harness(any, context, type_info)
 }
 
 pub fn read_arc_any(
     context: &mut ReadContext,
     ref_mode: RefMode,
     read_type_info: bool,
-    type_info: Option<Rc<TypeInfo>>,
+    type_info: Option<&Rc<TypeInfo>>,
 ) -> Result<Arc<dyn Any + Send + Sync>, Error> {
     let ref_flag = if ref_mode != RefMode::None {
         context.ref_reader.read_ref_flag(&mut context.reader)?
@@ -595,55 +678,69 @@ pub fn read_arc_any(
         RefFlag::NotNullValue
     };
     match ref_flag {
-        RefFlag::Null => Err(Error::invalid_ref(
-            "Arc<dyn Any + Send + Sync> cannot be null",
-        )),
+        RefFlag::Null => Err(arc_any_null()),
         RefFlag::Ref => {
             let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
             context
                 .ref_reader
                 .get_arc_ref::<dyn Any + Send + Sync>(ref_id)
-                .ok_or_else(|| {
-                    Error::invalid_data(format!(
-                        "Arc<dyn Any + Send + Sync> reference {} not found",
-                        ref_id
-                    ))
-                })
+                .ok_or_else(|| missing_any_ref("Arc<dyn Any + Send + Sync>", ref_id))
         }
-        RefFlag::NotNullValue => {
-            context.inc_depth()?;
-            let typeinfo = if read_type_info {
-                context.read_any_type_info()?
-            } else {
-                type_info.ok_or_else(|| {
-                    Error::type_error("No type info found for read Arc<dyn Any + Send + Sync>")
-                })?
-            };
-            check_erased_any_payload_type(&typeinfo)?;
-            let boxed = typeinfo
-                .get_harness()
-                .read_polymorphic_data_as_send_sync_any(context, &typeinfo)?;
-            context.dec_depth();
-            Ok(Arc::<dyn Any + Send + Sync>::from(boxed))
-        }
+        RefFlag::NotNullValue => read_new_arc_any(context, read_type_info, type_info),
         RefFlag::RefValue => {
             let ref_id = context.ref_reader.reserve_ref_id();
-            context.inc_depth()?;
-            let typeinfo = if read_type_info {
-                context.read_any_type_info()?
-            } else {
-                type_info.ok_or_else(|| {
-                    Error::type_error("No type info found for read Arc<dyn Any + Send + Sync>")
-                })?
-            };
-            check_erased_any_payload_type(&typeinfo)?;
-            let boxed = typeinfo
-                .get_harness()
-                .read_polymorphic_data_as_send_sync_any(context, &typeinfo)?;
-            context.dec_depth();
-            let arc: Arc<dyn Any + Send + Sync> = Arc::from(boxed);
-            context.ref_reader.store_arc_ref_at(ref_id, arc.clone());
-            Ok(arc)
+            let value = read_new_arc_any(context, read_type_info, type_info)?;
+            context.ref_reader.store_arc_ref_at(ref_id, value.clone());
+            Ok(value)
         }
+    }
+}
+
+fn read_new_arc_any(
+    context: &mut ReadContext,
+    read_type_info: bool,
+    type_info: Option<&Rc<TypeInfo>>,
+) -> Result<Arc<dyn Any + Send + Sync>, Error> {
+    context.inc_depth()?;
+    let value = (|| {
+        let owned_type_info;
+        let type_info = if read_type_info {
+            owned_type_info = context.read_any_type_info()?;
+            &owned_type_info
+        } else {
+            type_info.ok_or_else(arc_any_metadata)?
+        };
+        check_local_target(type_info)?;
+        check_erased_target_type(type_info)?;
+        type_info.get_harness().read_arc_any(context, type_info)
+    })()?;
+    context.dec_depth();
+    Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Config, Reader, TypeResolver};
+
+    #[test]
+    fn failed_depth_waits_for_reset() {
+        let config = Config {
+            max_dyn_depth: 1,
+            ..Default::default()
+        };
+        let mut context = ReadContext::new(TypeResolver::default(), config);
+        let null = [RefFlag::Null as i8 as u8];
+        context.attach_reader(Reader::new(&null));
+
+        let error = read_box_any(&mut context, RefMode::Tracking, false, None).unwrap_err();
+        assert!(matches!(error, Error::InvalidRef(_)));
+        let error = read_box_any(&mut context, RefMode::Tracking, false, None).unwrap_err();
+        assert!(matches!(error, Error::DepthExceed(_)));
+
+        context.reset();
+        context.attach_reader(Reader::new(&null));
+        let error = read_box_any(&mut context, RefMode::Tracking, false, None).unwrap_err();
+        assert!(matches!(error, Error::InvalidRef(_)));
     }
 }

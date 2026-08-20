@@ -123,12 +123,14 @@ public class Descriptor {
     private final TypeExtMeta typeExtMeta;
     private final List<GeneratedType> typeArguments;
     private final GeneratedType componentType;
+    private final GeneratedType ownerType;
 
     private GeneratedType(
         Class<?> rawType,
         TypeExtMeta typeExtMeta,
         List<GeneratedType> typeArguments,
-        GeneratedType componentType) {
+        GeneratedType componentType,
+        GeneratedType ownerType) {
       this.rawType = Objects.requireNonNull(rawType);
       this.typeExtMeta = typeExtMeta;
       this.typeArguments =
@@ -136,12 +138,13 @@ public class Descriptor {
               ? java.util.Collections.emptyList()
               : java.util.Collections.unmodifiableList(new ArrayList<>(typeArguments));
       this.componentType = componentType;
+      this.ownerType = ownerType;
     }
   }
 
   @Internal
   public static GeneratedType generatedType(Class<?> rawType) {
-    return new GeneratedType(rawType, null, null, null);
+    return new GeneratedType(rawType, null, null, null, null);
   }
 
   @Internal
@@ -150,7 +153,17 @@ public class Descriptor {
       TypeExtMeta typeExtMeta,
       List<GeneratedType> typeArguments,
       GeneratedType componentType) {
-    return new GeneratedType(rawType, typeExtMeta, typeArguments, componentType);
+    return new GeneratedType(rawType, typeExtMeta, typeArguments, componentType, null);
+  }
+
+  @Internal
+  public static GeneratedType generatedType(
+      Class<?> rawType,
+      TypeExtMeta typeExtMeta,
+      List<GeneratedType> typeArguments,
+      GeneratedType componentType,
+      GeneratedType ownerType) {
+    return new GeneratedType(rawType, typeExtMeta, typeArguments, componentType, ownerType);
   }
 
   private static TypeRef<?> toTypeRef(GeneratedType generatedType) {
@@ -164,8 +177,21 @@ public class Descriptor {
     }
     TypeRef<?> componentType =
         generatedType.componentType == null ? null : toTypeRef(generatedType.componentType);
-    if (generatedType.typeExtMeta == null && typeArguments == null && componentType == null) {
+    TypeRef<?> ownerType =
+        generatedType.ownerType == null ? null : toTypeRef(generatedType.ownerType);
+    if (generatedType.typeExtMeta == null
+        && typeArguments == null
+        && componentType == null
+        && ownerType == null) {
       return TypeRef.of(generatedType.rawType);
+    }
+    if (typeArguments != null || ownerType != null) {
+      return TypeRef.ofDeclaredTypeArguments(
+          generatedType.rawType,
+          generatedType.typeExtMeta,
+          typeArguments == null ? java.util.Collections.emptyList() : typeArguments,
+          componentType,
+          ownerType);
     }
     return TypeRef.of(
         generatedType.rawType, generatedType.typeExtMeta, typeArguments, componentType);

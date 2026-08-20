@@ -56,7 +56,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.fory.builder.UnsafeCodegenSupport;
@@ -424,7 +423,7 @@ public interface Expression {
         return new ExprCode(null, TrueLiteral, defaultLiteral);
       } else {
         if (javaType == String.class) {
-          return new ExprCode(FalseLiteral, new LiteralValue("\"" + value + "\""));
+          return new ExprCode(FalseLiteral, new LiteralValue(stringLiteral((String) value)));
         } else if (javaType == Boolean.class || javaType == Integer.class) {
           return new ExprCode(null, FalseLiteral, new LiteralValue(javaType, value.toString()));
         } else if (javaType == Float.class) {
@@ -438,8 +437,7 @@ public interface Expression {
             return new ExprCode(
                 FalseLiteral, new LiteralValue(javaType, "Float.NEGATIVE_INFINITY"));
           } else {
-            return new ExprCode(
-                FalseLiteral, new LiteralValue(javaType, String.format(Locale.ROOT, "%fF", f)));
+            return new ExprCode(FalseLiteral, new LiteralValue(javaType, Float.toString(f) + "F"));
           }
         } else if (javaType == Double.class) {
           Double d = (Double) value;
@@ -452,8 +450,7 @@ public interface Expression {
             return new ExprCode(
                 FalseLiteral, new LiteralValue(javaType, "Double.NEGATIVE_INFINITY"));
           } else {
-            return new ExprCode(
-                FalseLiteral, new LiteralValue(javaType, String.format(Locale.ROOT, "%fD", d)));
+            return new ExprCode(FalseLiteral, new LiteralValue(javaType, Double.toString(d) + "D"));
           }
         } else if (javaType == Byte.class) {
           return new ExprCode(
@@ -483,6 +480,48 @@ public interface Expression {
           throw new UnsupportedOperationException("Unsupported type " + javaType);
         }
       }
+    }
+
+    private static String stringLiteral(String value) {
+      StringBuilder builder = new StringBuilder(value.length() + 2);
+      builder.append('"');
+      for (int i = 0; i < value.length(); i++) {
+        char c = value.charAt(i);
+        switch (c) {
+          case '\b':
+            builder.append("\\b");
+            break;
+          case '\t':
+            builder.append("\\t");
+            break;
+          case '\n':
+            builder.append("\\n");
+            break;
+          case '\f':
+            builder.append("\\f");
+            break;
+          case '\r':
+            builder.append("\\r");
+            break;
+          case '"':
+            builder.append("\\\"");
+            break;
+          case '\\':
+            builder.append("\\\\");
+            break;
+          default:
+            if (c < 0x20 || c == 0x7f) {
+              builder
+                  .append('\\')
+                  .append((char) ('0' + ((c >>> 6) & 0x7)))
+                  .append((char) ('0' + ((c >>> 3) & 0x7)))
+                  .append((char) ('0' + (c & 0x7)));
+            } else {
+              builder.append(c);
+            }
+        }
+      }
+      return builder.append('"').toString();
     }
 
     private static String charLiteral(char value) {
@@ -1597,7 +1636,7 @@ public interface Expression {
     }
   }
 
-  class NewArray extends AbstractExpression {
+  class NewArray extends Inlineable {
     private TypeRef<?> type;
     private Expression[] elements;
 
@@ -1662,59 +1701,35 @@ public interface Expression {
       Class<?> rawType = getRawType(type);
       String arrayType = getArrayType(rawType);
       String value = ctx.newName("arr");
+      String arrayValue;
       if (dims != null) {
         // multi-dimension array
         ExprCode dimsExprCode = dims.genCode(ctx);
         if (StringUtils.isNotBlank(dimsExprCode.code())) {
           codeBuilder.append(dimsExprCode.code()).append('\n');
         }
-        // "${arrType} ${value} = new ${elementType}[$?][$?]...
-        codeBuilder
-            .append(arrayType)
-            .append(' ')
-            .append(value)
-            .append(" = new ")
-            .append(ctx.type(elemType));
+        // "new ${elementType}[$?][$?]..."
+        StringBuilder arrayValueBuilder = new StringBuilder("new ").append(ctx.type(elemType));
         for (int i = 0; i < numDimensions; i++) {
           // dims is dimensions array, which store size of per dim.
           String idim = StringUtils.format("${dims}[${i}]", "dims", dimsExprCode.value(), "i", i);
-          codeBuilder.append('[').append(idim).append("]");
+          arrayValueBuilder.append('[').append(idim).append("]");
         }
-        codeBuilder.append(';');
+        arrayValue = arrayValueBuilder.toString();
       } else if (dim != null) {
         ExprCode dimExprCode = dim.genCode(ctx);
         if (StringUtils.isNotBlank(dimExprCode.code())) {
           codeBuilder.append(dimExprCode.code()).append('\n');
         }
+        StringBuilder arrayValueBuilder = new StringBuilder("new ").append(ctx.type(elemType));
+        arrayValueBuilder.append('[').append(dimExprCode.value()).append(']');
         if (numDimensions > 1) {
           // multi-dimension array
-          // "${arrType} ${value} = new ${elementType}[$?][][][]...
-          codeBuilder
-              .append(arrayType)
-              .append(' ')
-              .append(value)
-              .append(" = new ")
-              .append(ctx.type(elemType));
-          codeBuilder.append('[').append(dimExprCode.value()).append(']');
           for (int i = 1; i < numDimensions; i++) {
-            codeBuilder.append('[').append("]");
+            arrayValueBuilder.append('[').append("]");
           }
-          codeBuilder.append(';');
-        } else {
-          // one-dimension array
-          String code =
-              StringUtils.format(
-                  "${type} ${value} = new ${elemType}[${dim}];",
-                  "type",
-                  arrayType,
-                  "elemType",
-                  ctx.type(elemType),
-                  "value",
-                  value,
-                  "dim",
-                  dimExprCode.value());
-          codeBuilder.append(code);
         }
+        arrayValue = arrayValueBuilder.toString();
       } else {
         // create array with init value
         int len = elements.length;
@@ -1733,18 +1748,22 @@ public interface Expression {
           }
         }
 
-        String code =
+        arrayValue =
             StringUtils.format(
-                "${type} ${value} = new ${type} {${args}};",
-                "type",
-                arrayType,
-                "value",
-                value,
-                "args",
-                argsBuilder.toString());
-        codeBuilder.append(code);
+                "new ${type} {${args}}", "type", arrayType, "args", argsBuilder.toString());
       }
 
+      if (inlineCall) {
+        String code = StringUtils.isBlank(codeBuilder) ? null : codeBuilder.toString();
+        return new ExprCode(code, null, Code.variable(rawType, arrayValue));
+      }
+      codeBuilder
+          .append(arrayType)
+          .append(' ')
+          .append(value)
+          .append(" = ")
+          .append(arrayValue)
+          .append(';');
       return new ExprCode(codeBuilder.toString(), null, Code.variable(rawType, value));
     }
   }

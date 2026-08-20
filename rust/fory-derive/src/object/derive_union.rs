@@ -64,17 +64,19 @@ pub(crate) fn validate_input(input: &DeriveInput) -> syn::Result<()> {
     let default_count = data_enum
         .variants
         .iter()
-        .filter(|variant| is_fory_default_variant(&variant.attrs))
+        .filter(|variant| is_default_variant(&variant.attrs))
         .count();
     if default_count != 1 {
         return Err(syn::Error::new(
             input.ident.span(),
-            "ForyUnion requires exactly one #[fory(default)] variant for ForyDefault and Default semantics",
+            "ForyUnion requires exactly one #[fory(default)] variant for fallible serializer defaults",
         ));
     }
-    if data_enum.variants.iter().any(|variant| {
-        is_runtime_unknown_variant(variant) && is_fory_default_variant(&variant.attrs)
-    }) {
+    if data_enum
+        .variants
+        .iter()
+        .any(|variant| is_runtime_unknown_variant(variant) && is_default_variant(&variant.attrs))
+    {
         return Err(syn::Error::new(
             input.ident.span(),
             "ForyUnion Unknown case cannot be marked #[fory(default)]",
@@ -123,7 +125,7 @@ fn is_typed_adt_union(data_enum: &DataEnum) -> bool {
     has_payload_case
 }
 
-fn is_fory_default_variant(attrs: &[Attribute]) -> bool {
+fn is_default_variant(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| {
         attr.path().is_ident("fory") && {
             let mut is_default = false;

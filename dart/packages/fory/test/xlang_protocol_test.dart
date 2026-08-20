@@ -25,6 +25,7 @@ import 'package:fory/src/codegen/generated_registry.dart';
 import 'package:fory/src/context/meta_string_reader.dart';
 import 'package:fory/src/context/meta_string_writer.dart';
 import 'package:fory/src/meta/field_info.dart';
+import 'package:fory/src/meta/meta_string.dart';
 import 'package:fory/src/meta/type_def.dart';
 import 'package:fory/src/meta/type_meta.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
@@ -51,6 +52,24 @@ final class _SchemaRemoteA {}
 final class _SchemaRemoteB {}
 
 final class _SchemaRemoteC {}
+
+final class _DuplicateIdSchema {}
+
+final class _DuplicateNameSchema {}
+
+final class _InconsistentTagSchema {}
+
+final class _IdentityDomainLocal {}
+
+final class _IdentityDomainRemote {}
+
+final class _RemoteDuplicateIdLocal {}
+
+final class _RemoteDuplicateIdWriter {}
+
+final class _RemoteDuplicateNameLocal {}
+
+final class _RemoteDuplicateNameWriter {}
 
 final class _LateDartExt {}
 
@@ -108,12 +127,39 @@ GeneratedFieldInfo _generatedField(String name) => GeneratedFieldInfo(
   fieldType: _intFieldType,
 );
 
+GeneratedFieldInfo _taggedField(int id) => GeneratedFieldInfo(
+  name: 'tagged$id',
+  identifier: '$id',
+  id: id,
+  fieldType: _intFieldType,
+);
+
 GeneratedFieldInfo _generatedMapField(String name) => GeneratedFieldInfo(
   name: name,
   identifier: name,
   id: null,
   fieldType: _mapFieldType,
 );
+
+GeneratedFieldInfo _generatedNestedListField(String name, int depth) {
+  var fieldType = _intFieldType;
+  for (var index = 0; index < depth; index += 1) {
+    fieldType = GeneratedFieldType(
+      type: List<Object?>,
+      typeId: TypeIds.list,
+      nullable: false,
+      ref: true,
+      dynamic: false,
+      arguments: <GeneratedFieldType>[fieldType],
+    );
+  }
+  return GeneratedFieldInfo(
+    name: name,
+    identifier: name,
+    id: null,
+    fieldType: fieldType,
+  );
+}
 
 void _rememberSchema(Type type, List<GeneratedFieldInfo> fields) {
   GeneratedTypeCatalog.remember(
@@ -151,7 +197,7 @@ void _rememberLateHolder() {
 }
 
 Uint8List _lateHolderTypeDefBytes({required bool registerExtFirst}) {
-  final resolver = TypeResolver(const Config());
+  final resolver = TypeResolver(Config());
   _rememberLateHolder();
   if (registerExtFirst) {
     resolver.registerSerializer(
@@ -183,7 +229,7 @@ Uint8List _typeMetaBytes(
   String name,
   List<GeneratedFieldInfo> fields,
 ) {
-  final resolver = TypeResolver(const Config());
+  final resolver = TypeResolver(Config());
   _rememberSchema(type, fields);
   final parts = name.split('.');
   resolver.registerGenerated(
@@ -203,7 +249,7 @@ Uint8List _typeMetaBytes(
 }
 
 Uint8List _enumTypeMetaBytes(Type type, String name) {
-  final resolver = TypeResolver(const Config());
+  final resolver = TypeResolver(Config());
   _rememberEnum(type);
   final parts = name.split('.');
   resolver.registerGenerated(
@@ -230,6 +276,7 @@ TypeInfo _cachedTypeInfo(Int64 header) {
     supportsRef: false,
     needsRootRef: false,
     usesNestedTypeDefinitions: false,
+    readDataAlwaysAdvances: false,
     evolving: false,
     fields: const <FieldInfo>[],
     serializer: const _CacheTestSerializer(),
@@ -254,6 +301,110 @@ void _readTypeMeta(TypeResolver resolver, Uint8List bytes) {
     Buffer.wrap(bytes),
     sharedTypes: <TypeInfo>[],
     metaStringReader: MetaStringReader(resolver),
+  );
+}
+
+Buffer _metaStringWire(
+  EncodedMetaString encoded, {
+  Uint8List? body,
+  Int64? hash,
+}) {
+  final wireBody = body ?? encoded.bytes;
+  final buffer = Buffer()..writeVarUint32Small7(wireBody.length << 1);
+  if (wireBody.length > metaStringSmallThreshold) {
+    buffer.writeInt64(
+      hash ?? EncodedMetaString(wireBody, encoded.encoding).hash,
+    );
+  } else if (wireBody.isNotEmpty) {
+    buffer.writeByte(encoded.encoding);
+  }
+  buffer.writeBytes(wireBody);
+  return buffer;
+}
+
+Uint8List _rewriteTypeDefBody(
+  Uint8List typeMetaBytes,
+  void Function(Uint8List body) rewrite,
+) {
+  final source = Buffer.wrap(typeMetaBytes);
+  final typeId = source.readVarUint32Small7();
+  final marker = source.readVarUint32Small14();
+  if (marker != 0) {
+    throw StateError('Expected an inline TypeDef.');
+  }
+  final header = TypeHeader(source.readInt64());
+  final bodyLength = header.readMetaSize(source);
+  final body = Uint8List.fromList(source.readBytes(bodyLength));
+  if (source.readableBytes != 0) {
+    throw StateError('Expected one complete TypeDef.');
+  }
+  rewrite(body);
+
+  final result = Buffer();
+  result.writeVarUint32Small7(typeId);
+  result.writeVarUint32(marker);
+  result.writeInt64(typeDefHeader(body));
+  if (body.length >= 0xff) {
+    result.writeVarUint32(body.length - 0xff);
+  }
+  result.writeBytes(body);
+  return result.toBytes();
+}
+
+void _replaceUniqueBytes(
+  Uint8List bytes,
+  List<int> source,
+  List<int> replacement,
+) {
+  if (source.length != replacement.length) {
+    throw ArgumentError('Replacement byte lengths must match.');
+  }
+  var match = -1;
+  for (var offset = 0; offset <= bytes.length - source.length; offset += 1) {
+    var equal = true;
+    for (var index = 0; index < source.length; index += 1) {
+      if (bytes[offset + index] != source[index]) {
+        equal = false;
+        break;
+      }
+    }
+    if (!equal) {
+      continue;
+    }
+    if (match >= 0) {
+      throw StateError('Expected a unique byte sequence.');
+    }
+    match = offset;
+  }
+  if (match < 0) {
+    throw StateError('Byte sequence was not found.');
+  }
+  bytes.setRange(match, match + replacement.length, replacement);
+}
+
+Uint8List _duplicateTaggedTypeDef(Uint8List validBytes) {
+  const tagOneHeader = (3 << 6) | (1 << 2);
+  const tagTwoHeader = (3 << 6) | (2 << 2);
+  return _rewriteTypeDefBody(
+    validBytes,
+    (body) => _replaceUniqueBytes(
+      body,
+      const <int>[tagTwoHeader, TypeIds.int32],
+      const <int>[tagOneHeader, TypeIds.int32],
+    ),
+  );
+}
+
+Uint8List _duplicateNamedTypeDef(Uint8List validBytes) {
+  final first = encodeFieldNameMetaString('alpha');
+  final second = encodeFieldNameMetaString('bravo');
+  if (first.encoding != second.encoding ||
+      first.bytes.length != second.bytes.length) {
+    throw StateError('Test field names must use the same encoding shape.');
+  }
+  return _rewriteTypeDefBody(
+    validBytes,
+    (body) => _replaceUniqueBytes(body, second.bytes, first.bytes),
   );
 }
 
@@ -341,6 +492,24 @@ void main() {
       );
     });
 
+    test('rejects a trailing meta string escape', () {
+      expect(
+        () => decodeMetaString(
+          const <int>[0x74],
+          metaStringAllToLowerSpecialEncoding,
+          specialChar1: r'$',
+          specialChar2: '_',
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('trailing escape'),
+          ),
+        ),
+      );
+    });
+
     test('parsed TypeDef cache publishes beyond old implementation floor', () {
       final cache = ParsedTypeMetaCache();
       const oldImplementationFloor = 8192;
@@ -370,9 +539,285 @@ void main() {
       );
     });
 
+    test('canonicalizes an empty TypeDef namespace', () {
+      final reader = TypeResolver(Config());
+      final writer = TypeResolver(Config());
+      _rememberSchema(_SchemaLocal, <GeneratedFieldInfo>[]);
+      _rememberSchema(_SchemaRemoteA, <GeneratedFieldInfo>[]);
+      reader.registerGenerated(
+        _SchemaLocal,
+        namespace: '',
+        typeName: 'my_wrapper',
+      );
+      writer.registerGenerated(
+        _SchemaRemoteA,
+        namespace: '',
+        typeName: 'my_wrapper',
+      );
+      final buffer = Buffer();
+      writer.writeTypeMeta(
+        buffer,
+        writer.resolveUserByName('', 'my_wrapper'),
+        typeDefIds: LinkedHashMap<TypeDef, int>.identity(),
+        metaStringWriter: MetaStringWriter(),
+      );
+
+      _readTypeMeta(reader, buffer.toBytes());
+    });
+
+    test('rejects TypeDef field nesting beyond maxDepth', () {
+      final bytes = _typeMetaBytes(
+        _SchemaRemoteA,
+        'example.DeepField',
+        <GeneratedFieldInfo>[_generatedNestedListField('value', 3)],
+      );
+      final resolver = TypeResolver(Config(maxDepth: 2));
+
+      expect(
+        () => _readTypeMeta(resolver, bytes),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('TypeDef field depth exceeded'),
+          ),
+        ),
+      );
+    });
+
+    test('validates big meta-string identity before expected reuse', () {
+      final resolver = TypeResolver(Config());
+      final reader = MetaStringReader(resolver);
+      final expected = resolver.typeNameMetaString(
+        'LongExpectedTypeNameForIdentity',
+      );
+      final forgedBody = Uint8List.fromList(expected.bytes);
+      forgedBody[forgedBody.length - 1] ^= 1;
+
+      expect(
+        () => reader.readMetaString(
+          _metaStringWire(expected, body: forgedBody, hash: expected.hash),
+          expected,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('meta-string hash'),
+          ),
+        ),
+      );
+
+      reader.reset();
+      expect(reader.readMetaString(_metaStringWire(expected)), same(expected));
+    });
+
+    test('keeps unaccepted meta strings operation-local', () {
+      final resolver = TypeResolver(Config());
+      final reader = MetaStringReader(resolver);
+      final candidate = EncodedMetaString(
+        Uint8List.fromList(<int>[0x61, 0x62]),
+        metaStringUtf8Encoding,
+      );
+      final decoded = reader.readMetaString(_metaStringWire(candidate));
+
+      reader.reset();
+      final internedLater = resolver.internEncodedMetaString(
+        Uint8List.fromList(candidate.bytes),
+        encoding: candidate.encoding,
+      );
+      expect(internedLater, isNot(same(decoded)));
+
+      final accepted = resolver.fieldNameMetaString('known');
+      expect(reader.readMetaString(_metaStringWire(accepted)), same(accepted));
+    });
+
+    test('metadata limits require positive safe integers', () {
+      const unsafeInteger = 9007199254740992;
+      final factories = <Config Function(int)>[
+        (value) => Config(maxDepth: value),
+        (value) => Config(maxTypeFields: value),
+        (value) => Config(maxTypeMetaBytes: value),
+        (value) => Config(maxSchemaVersionsPerType: value),
+        (value) => Config(maxAverageSchemaVersionsPerType: value),
+      ];
+
+      for (final factory in factories) {
+        expect(() => factory(0), throwsA(isA<ArgumentError>()));
+        expect(() => factory(unsafeInteger), throwsA(isA<ArgumentError>()));
+      }
+    });
+
+    test('rejects duplicate local field ids', () {
+      final resolver = TypeResolver(Config());
+      _rememberSchema(_DuplicateIdSchema, <GeneratedFieldInfo>[
+        _taggedField(1),
+        _taggedField(1),
+      ]);
+
+      expect(
+        () => resolver.registerGenerated(
+          _DuplicateIdSchema,
+          namespace: 'example',
+          typeName: 'DuplicateId',
+        ),
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Duplicate field id 1'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects duplicate local field names', () {
+      final resolver = TypeResolver(Config());
+      _rememberSchema(_DuplicateNameSchema, <GeneratedFieldInfo>[
+        _generatedField('value'),
+        _generatedMapField('value'),
+      ]);
+
+      expect(
+        () => resolver.registerGenerated(
+          _DuplicateNameSchema,
+          namespace: 'example',
+          typeName: 'DuplicateName',
+        ),
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Duplicate field wire name value'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects inconsistent local tagged identity', () {
+      final resolver = TypeResolver(Config());
+      _rememberSchema(_InconsistentTagSchema, <GeneratedFieldInfo>[
+        const GeneratedFieldInfo(
+          name: 'tagged',
+          identifier: '2',
+          id: 1,
+          fieldType: _intFieldType,
+        ),
+      ]);
+
+      expect(
+        () => resolver.registerGenerated(
+          _InconsistentTagSchema,
+          namespace: 'example',
+          typeName: 'InconsistentTag',
+        ),
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('textual identifier 2, which must match field id 1'),
+          ),
+        ),
+      );
+    });
+
+    test('keeps tagged ids separate from field names', () {
+      const name = 'example.IdentityDomains';
+      final reader = TypeResolver(Config());
+      _rememberSchema(_IdentityDomainLocal, <GeneratedFieldInfo>[
+        _taggedField(1),
+        _generatedMapField('1'),
+      ]);
+      reader.registerGenerated(
+        _IdentityDomainLocal,
+        namespace: 'example',
+        typeName: 'IdentityDomains',
+      );
+      final remote = _typeMetaBytes(
+        _IdentityDomainRemote,
+        name,
+        <GeneratedFieldInfo>[_generatedMapField('1'), _taggedField(1)],
+      );
+
+      _readTypeMeta(reader, remote);
+    });
+
+    test('rejects duplicate remote field ids before caching', () {
+      const name = 'example.RemoteDuplicateId';
+      final reader = TypeResolver(Config(maxSchemaVersionsPerType: 1));
+      _rememberSchema(_RemoteDuplicateIdLocal, <GeneratedFieldInfo>[
+        _generatedField('value'),
+      ]);
+      reader.registerGenerated(
+        _RemoteDuplicateIdLocal,
+        namespace: 'example',
+        typeName: 'RemoteDuplicateId',
+      );
+      final valid = _typeMetaBytes(
+        _RemoteDuplicateIdWriter,
+        name,
+        <GeneratedFieldInfo>[_taggedField(1), _taggedField(2)],
+      );
+      final duplicate = _duplicateTaggedTypeDef(valid);
+
+      expect(
+        () => _readTypeMeta(reader, duplicate),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Duplicate field id 1'),
+          ),
+        ),
+      );
+      expect(
+        () => _readTypeMeta(reader, duplicate),
+        throwsA(isA<StateError>()),
+      );
+      _readTypeMeta(reader, valid);
+    });
+
+    test('rejects duplicate remote field names before caching', () {
+      const name = 'example.RemoteDuplicateName';
+      final reader = TypeResolver(Config(maxSchemaVersionsPerType: 1));
+      _rememberSchema(_RemoteDuplicateNameLocal, <GeneratedFieldInfo>[
+        _generatedField('value'),
+      ]);
+      reader.registerGenerated(
+        _RemoteDuplicateNameLocal,
+        namespace: 'example',
+        typeName: 'RemoteDuplicateName',
+      );
+      final valid = _typeMetaBytes(
+        _RemoteDuplicateNameWriter,
+        name,
+        <GeneratedFieldInfo>[
+          _generatedField('alpha'),
+          _generatedField('bravo'),
+        ],
+      );
+      final duplicate = _duplicateNamedTypeDef(valid);
+
+      expect(
+        () => _readTypeMeta(reader, duplicate),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Duplicate field wire name alpha'),
+          ),
+        ),
+      );
+      expect(
+        () => _readTypeMeta(reader, duplicate),
+        throwsA(isA<StateError>()),
+      );
+      _readTypeMeta(reader, valid);
+    });
+
     test('remote schema limit rejects extra versions', () {
       const name = 'example.Unknown';
-      final reader = TypeResolver(const Config(maxSchemaVersionsPerType: 1));
+      final reader = TypeResolver(Config(maxSchemaVersionsPerType: 1));
       _rememberSchema(_SchemaLocal, <GeneratedFieldInfo>[]);
       reader.registerGenerated(
         _SchemaLocal,
@@ -391,9 +836,81 @@ void main() {
       expect(() => _readTypeMeta(reader, second), throwsA(isA<StateError>()));
     });
 
+    test(
+      'caps persistent remote TypeDef logical keys',
+      () {
+        const keyLimit = 8192;
+        const firstId = 1000;
+        final reader = TypeResolver(Config());
+        final writer = TypeResolver(Config());
+        _rememberSchema(_SchemaLocal, <GeneratedFieldInfo>[]);
+        _rememberSchema(_SchemaRemoteA, <GeneratedFieldInfo>[
+          _generatedField('remoteValue'),
+        ]);
+
+        Uint8List writeRegisteredTypeMeta(TypeResolver resolver, int id) {
+          final buffer = Buffer();
+          resolver.writeTypeMeta(
+            buffer,
+            resolver.resolveUserById(id),
+            typeDefIds: LinkedHashMap<TypeDef, int>.identity(),
+            metaStringWriter: MetaStringWriter(),
+          );
+          return buffer.toBytes();
+        }
+
+        late Uint8List cachedBytes;
+        for (var index = 0; index < keyLimit; index += 1) {
+          final id = firstId + index;
+          reader.registerGenerated(_SchemaLocal, id: id);
+          writer.registerGenerated(_SchemaRemoteA, id: id);
+          final bytes = writeRegisteredTypeMeta(writer, id);
+          if (index == 0) {
+            cachedBytes = bytes;
+          }
+          _readTypeMeta(reader, bytes);
+        }
+
+        final rejectedId = firstId + keyLimit;
+        reader.registerGenerated(_SchemaLocal, id: rejectedId);
+        writer.registerGenerated(_SchemaRemoteA, id: rejectedId);
+        final rejectedBytes = writeRegisteredTypeMeta(writer, rejectedId);
+        final exceedsKeyLimit = throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('logical type limit'),
+          ),
+        );
+
+        expect(() => _readTypeMeta(reader, rejectedBytes), exceedsKeyLimit);
+        expect(() => _readTypeMeta(reader, rejectedBytes), exceedsKeyLimit);
+
+        // Checked-cache hits and exact-local TypeDefs do not consume or check
+        // the remote logical-key limit.
+        _readTypeMeta(reader, cachedBytes);
+        final localBytes = writeRegisteredTypeMeta(reader, rejectedId);
+        _readTypeMeta(reader, localBytes);
+
+        // A new version of an already accepted logical key remains governed by
+        // the existing per-type and average limits after the key cap is full.
+        final nextWriter = TypeResolver(Config());
+        _rememberSchema(_SchemaRemoteB, <GeneratedFieldInfo>[
+          _generatedField('nextValue'),
+        ]);
+        nextWriter.registerGenerated(_SchemaRemoteB, id: firstId);
+        _readTypeMeta(reader, writeRegisteredTypeMeta(nextWriter, firstId));
+
+        // Rejection and the exact-local hit above must not publish or count the
+        // rejected remote key.
+        expect(() => _readTypeMeta(reader, rejectedBytes), exceedsKeyLimit);
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
     test('named enum TypeDef uses metadata byte limit', () {
       const name = 'example.RemoteEnum';
-      final reader = TypeResolver(const Config(maxTypeMetaBytes: 1));
+      final reader = TypeResolver(Config(maxTypeMetaBytes: 1));
       _rememberEnum(_SchemaLocal);
       final bytes = _enumTypeMetaBytes(_SchemaRemoteA, name);
 
@@ -402,7 +919,7 @@ void main() {
 
     test('registered named enum TypeDef uses metadata byte limit', () {
       const name = 'example.RemoteEnum';
-      final reader = TypeResolver(const Config(maxTypeMetaBytes: 1));
+      final reader = TypeResolver(Config(maxTypeMetaBytes: 1));
       _rememberEnum(_SchemaLocal);
       reader.registerGenerated(
         _SchemaLocal,
@@ -416,7 +933,7 @@ void main() {
 
     test('exact local named enum TypeDef is accepted', () {
       const name = 'example.SharedEnum';
-      final reader = TypeResolver(const Config(maxSchemaVersionsPerType: 1));
+      final reader = TypeResolver(Config(maxSchemaVersionsPerType: 1));
       _rememberEnum(_SchemaLocal);
       reader.registerGenerated(
         _SchemaLocal,
@@ -429,7 +946,7 @@ void main() {
     });
 
     test('type meta field limit rejects large struct', () {
-      final reader = TypeResolver(const Config(maxTypeFields: 1));
+      final reader = TypeResolver(Config(maxTypeFields: 1));
       final bytes = _typeMetaBytes(
         _SchemaRemoteA,
         'example.TooManyFields',
@@ -443,7 +960,7 @@ void main() {
     });
 
     test('type meta body limit rejects large metadata', () {
-      final reader = TypeResolver(const Config(maxTypeMetaBytes: 1));
+      final reader = TypeResolver(Config(maxTypeMetaBytes: 1));
       final bytes = _typeMetaBytes(
         _SchemaRemoteA,
         'example.LargeTypeMeta',
@@ -454,7 +971,7 @@ void main() {
     });
 
     test('remote schema limit keeps unknown types separate', () {
-      final reader = TypeResolver(const Config(maxSchemaVersionsPerType: 1));
+      final reader = TypeResolver(Config(maxSchemaVersionsPerType: 1));
       _rememberSchema(_SchemaLocal, <GeneratedFieldInfo>[]);
       reader.registerGenerated(
         _SchemaLocal,
@@ -484,7 +1001,7 @@ void main() {
 
     test('failed remote schema does not consume schema limit', () {
       const name = 'example.Accepted';
-      final reader = TypeResolver(const Config(maxSchemaVersionsPerType: 1));
+      final reader = TypeResolver(Config(maxSchemaVersionsPerType: 1));
       _rememberSchema(_SchemaLocal, <GeneratedFieldInfo>[
         _generatedField('value'),
       ]);

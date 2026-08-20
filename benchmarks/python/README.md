@@ -21,7 +21,7 @@ cd benchmarks/python
 1. Generate Python protobuf bindings from `benchmarks/proto/bench.proto`
 2. Run `benchmark.py`
 3. Generate plots + markdown report via `benchmark_report.py`
-4. Copy report/plots to `docs/benchmarks/python`
+4. Copy report/plots to `docs/benchmarks/object-serialization/xlang/python`
 
 ### Common Options
 

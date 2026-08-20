@@ -15,667 +15,427 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Re-exports for use in macros - these are needed for macro expansion in user crates
-// Even though they appear unused in this file, they are used by the macro-generated code
+use std::any::Any;
 
-use crate::context::{ReadContext, WriteContext};
-use crate::ensure;
-use crate::error::Error;
-use crate::resolver::{TypeInfo, TypeResolver};
-use crate::serializer::{ForyDefault, Serializer};
-use crate::RefFlag;
-use crate::RefMode;
-use crate::TypeId;
-use std::rc::Rc;
-
-/// Helper macro for common type resolution and downcasting pattern
-#[macro_export]
-macro_rules! downcast_and_serialize {
-    ($any_ref:expr, $context:expr, $trait_name:ident, $($impl_type:ty),+) => {{
-        $(
-            if $any_ref.type_id() == std::any::TypeId::of::<$impl_type>() {
-                if let Some(concrete) = $any_ref.downcast_ref::<$impl_type>() {
-                    concrete.fory_write_data($context)?;
-                    return Ok(());
-                }
-            }
-        )*
-        return Err($crate::Error::type_error(format!("Failed to downcast to any registered type for trait {}", stringify!($trait_name))));
-    }};
+/// Object-safe access to a concrete target's [`Any`] identity.
+///
+/// Application traits serialized by [`crate::register_trait_type!`] extend this
+/// trait instead of extending [`crate::Serializer`].
+pub trait ForyObject: Any {
+    fn as_any(&self) -> &dyn Any;
 }
 
-/// Macro to register trait object conversions for custom traits.
+impl<T: Any> ForyObject for T {
+    #[inline(always)]
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Generates serializers for a closed set of concrete application-trait targets.
 ///
-/// This macro automatically generates serializers for `Box<dyn Trait>` trait objects.
-/// Due to Rust's orphan rules, only `Box<dyn Trait>` is supported for user-defined traits.
-/// For `Rc<dyn Trait>` and `Arc<dyn Trait>`, wrapper types are generated (e.g., `TraitRc`, `TraitArc`),
-/// either you use the wrapper types or use `Rc<dyn Any>` or
-/// `Arc<dyn Any + Send + Sync>` instead if it's not
-/// inside struct fields. For struct fields, you can use the `Rc<dyn Trait>`, `Arc<dyn Trait>` directly,
-/// fory will generate converters for `Rc<dyn Trait>` and `Arc<dyn Trait>` to convert to wrapper for
-///
-/// The macro generates:
-/// - `Serializer` implementation for `Box<dyn Trait>`
-/// - `Default` implementation for `Box<dyn Trait>` (uses first registered type)
-///
-/// **Note**: Your trait must extend the `Serializer` trait.
-/// The `as_any()` method is automatically provided by the `Serializer` trait.
-///
-/// # Example
+/// The listed types are runtime target types. Their registered ordinary serializer,
+/// external structural serializer, or custom serializer determines wire behavior.
 ///
 /// ```rust,ignore
-/// use fory::{register_trait_type, Fory, ForyStruct, Serializer};
+/// use fory::{register_trait_type, ForyObject};
 ///
-/// trait Animal: Serializer {
-///     fn speak(&self) -> String;
+/// trait Animal: ForyObject {
 ///     fn name(&self) -> &str;
 /// }
 ///
-/// #[derive(ForyStruct, Debug)]
-/// struct Dog { name: String }
+/// register_trait_type!(Animal, Dog, third_party::Cat);
+/// ```
 ///
-/// #[derive(ForyStruct, Debug)]
-/// struct Cat { name: String }
+/// Use `sync` when the application trait and all targets are `Send + Sync`:
 ///
-/// impl Animal for Dog {
-///     fn speak(&self) -> String { "Woof!".to_string() }
-///     fn name(&self) -> &str { &self.name }
-/// }
+/// ```rust,ignore
+/// register_trait_type!(sync Animal, Dog, third_party::Cat);
+/// ```
 ///
-/// impl Animal for Cat {
-///     fn speak(&self) -> String { "Meow!".to_string() }
-///     fn name(&self) -> &str { &self.name }
-/// }
+/// Generated serializer and codec names are private by default. Prefix the trait
+/// with a Rust visibility when those names must be exported:
 ///
-/// register_trait_type!(Animal, Dog, Cat);
-///
-/// # fn main() {
-/// let mut fory = Fory::builder().xlang(false).build();
-/// fory.register::<Dog>(100).unwrap();
-/// fory.register::<Cat>(101).unwrap();
-///
-/// let dog: Box<dyn Animal> = Box::new(Dog { name: "Rex".to_string() });
-/// let bytes = fory.serialize(&dog).unwrap();
-/// let decoded: Box<dyn Animal> = fory.deserialize(&bytes).unwrap();
-/// assert_eq!(decoded.name(), "Rex");
-/// # }
+/// ```rust,ignore
+/// register_trait_type!(pub Animal, Dog, third_party::Cat);
+/// register_trait_type!(pub sync SharedAnimal, Dog, third_party::Cat);
 /// ```
 #[macro_export]
 macro_rules! register_trait_type {
-    ($trait_name:ident, $($impl_type:ty),+ $(,)?) => {
-        // 1. Generate Box<dyn Trait> serializer (existing functionality)
-        // ForyDefault implementation using first registered type
-        impl $crate::serializer::ForyDefault for Box<dyn $trait_name> {
-            fn fory_default() -> Self {
-                Box::new(<$crate::register_trait_type!(@first_type $($impl_type),+) as $crate::serializer::ForyDefault>::fory_default())
-            }
-        }
-        $crate::generate_box_trait_codec!($trait_name);
-
-        // 2. Auto-generate Rc wrapper type and conversions
-        $crate::generate_smart_pointer_wrapper!(
-            std::rc::Rc,
-            Rc,
-            std::rc::Rc::get_mut,
-            $trait_name,
-            try_write_rc_ref,
-            get_rc_ref,
-            store_rc_ref,
-            $($impl_type),+
-        );
-        $crate::generate_smart_pointer_codec!(std::rc::Rc, Rc, $trait_name);
-
-        // 3. Auto-generate Arc wrapper type and conversions
-        $crate::generate_smart_pointer_wrapper!(
-            std::sync::Arc,
-            Arc,
-            std::sync::Arc::get_mut,
-            $trait_name,
-            try_write_arc_ref,
-            get_arc_ref,
-            store_arc_ref,
-            $($impl_type),+
-        );
-        $crate::generate_smart_pointer_codec!(std::sync::Arc, Arc, $trait_name);
-
-        // 4. Serializer implementation for Box<dyn Trait> (existing functionality)
-        impl $crate::Serializer for Box<dyn $trait_name> {
-            #[inline(always)]
-            fn fory_write(&self, context: &mut $crate::WriteContext, ref_mode: $crate::RefMode, write_type_info: bool, has_generics: bool) -> Result<(), $crate::Error> {
-                let any_ref = <dyn $trait_name as $crate::Serializer>::as_any(&**self);
-                $crate::serializer::write_box_any(any_ref, context, ref_mode, write_type_info, has_generics)
-            }
-
-            #[inline(always)]
-            fn fory_write_data(&self, context: &mut $crate::WriteContext) -> Result<(), $crate::Error> {
-                let any_ref = <dyn $trait_name as $crate::Serializer>::as_any(&**self);
-                $crate::serializer::write_box_any(any_ref, context, $crate::RefMode::None, false, false)
-            }
-
-            #[inline(always)]
-            fn fory_write_data_generic(&self, context: &mut $crate::WriteContext, has_generics: bool) -> Result<(), $crate::Error> {
-                let any_ref = <dyn $trait_name as $crate::Serializer>::as_any(&**self);
-                $crate::serializer::write_box_any(any_ref, context, $crate::RefMode::None, false, has_generics)
-            }
-
-            #[inline(always)]
-            fn fory_type_id_dyn(&self, type_resolver: &$crate::resolver::TypeResolver) -> Result<$crate::TypeId, $crate::Error> {
-                let any_ref = <dyn $trait_name as $crate::Serializer>::as_any(&**self);
-                let concrete_type_id = any_ref.type_id();
-                type_resolver
-                    .get_fory_type_id(concrete_type_id)
-                    .ok_or_else(|| $crate::Error::type_error("Type not registered for trait object"))
-            }
-
-            #[inline(always)]
-            fn fory_is_polymorphic() -> bool {
-                true
-            }
-
-            fn fory_write_type_info(_context: &mut $crate::WriteContext) -> Result<(), $crate::Error> {
-                $crate::not_allowed!("fory_write_type_info should not be called directly on polymorphic Box<dyn {}> trait object", stringify!($trait_name))
-            }
-
-            fn fory_read_type_info(_context: &mut $crate::ReadContext) -> Result<(), $crate::Error> {
-                $crate::not_allowed!("fory_read_type_info should not be called directly on polymorphic Box<dyn {}> trait object", stringify!($trait_name))
-            }
-
-            fn fory_read(context: &mut $crate::ReadContext, ref_mode: $crate::RefMode, read_type_info: bool) -> Result<Self, $crate::Error> {
-                let boxed_any = $crate::serializer::read_box_any(context, ref_mode, read_type_info, None)?;
-                $(
-                    if boxed_any.is::<$impl_type>() {
-                        let concrete = boxed_any.downcast::<$impl_type>()
-                            .map_err(|_| $crate::Error::type_error("Downcast failed"))?;
-                        let ptr = Box::new(*concrete);
-                        return Ok(Self::from(ptr));
-                    }
-                )*
-                Err($crate::Error::type_error(
-                    format!("Deserialized type does not implement trait {}", stringify!($trait_name))
-                ))
-            }
-
-            fn fory_read_with_type_info(
-                context: &mut $crate::ReadContext,
-                ref_mode: $crate::RefMode,
-                type_info: std::rc::Rc<$crate::TypeInfo>,
-            ) -> Result<Self, $crate::Error>
-            where
-                Self: Sized + $crate::ForyDefault,
-            {
-                let boxed_any = $crate::serializer::read_box_any(context, ref_mode, false, Some(type_info))?;
-                $(
-                    if boxed_any.is::<$impl_type>() {
-                        let concrete = boxed_any.downcast::<$impl_type>()
-                            .map_err(|_| $crate::Error::type_error("Downcast failed"))?;
-                        let ptr = Box::new(*concrete);
-                        return Ok(Self::from(ptr));
-                    }
-                )*
-                Err($crate::Error::type_error(
-                    format!("Deserialized type does not implement trait {}", stringify!($trait_name))
-                ))
-            }
-
-            fn fory_read_data(_context: &mut $crate::ReadContext) -> Result<Self, $crate::Error> {
-                // This should not be called for polymorphic types like Box<dyn Trait>
-                // The fory_read method handles the polymorphic dispatch
-                $crate::not_allowed!("fory_read_data should not be called directly on polymorphic Box<dyn {}> trait object", stringify!($trait_name))
-            }
-
-            fn fory_get_type_id(_type_resolver: &$crate::resolver::TypeResolver) -> Result<$crate::TypeId, $crate::Error> {
-                $crate::not_allowed!("fory_get_type_id should not be called directly on polymorphic Box<dyn {}> trait object", stringify!($trait_name))
-            }
-
-            #[inline(always)]
-            fn fory_static_type_id() -> $crate::TypeId {
-                $crate::TypeId::UNKNOWN
-            }
-
-            #[inline(always)]
-            fn fory_reserved_space() -> usize {
-                $crate::type_id::SIZE_OF_REF_AND_TYPE
-            }
-
-            #[inline(always)]
-            fn fory_concrete_type_id(&self) -> std::any::TypeId {
-                <dyn $trait_name as $crate::Serializer>::as_any(&**self).type_id()
-            }
-
-            #[inline(always)]
-            fn as_any(&self) -> &dyn std::any::Any {
-                <dyn $trait_name as $crate::Serializer>::as_any(&**self)
-            }
-        }
+    ($vis:vis sync $trait_name:ident, $($target:ty),+ $(,)?) => {
+        $crate::register_trait_type!(@dispatch $trait_name, $($target),+);
+        $crate::register_trait_type!(@box [$vis] $trait_name, $($target),+);
+        $crate::register_trait_type!(@rc [$vis] $trait_name, $($target),+);
+        $crate::register_trait_type!(@arc [$vis] $trait_name, $($target),+);
     };
 
-    // Helper to get first type for Default impl
-    (@first_type $first_type:ty $(, $rest:ty)*) => {
-        $first_type
+    ($vis:vis $trait_name:ident, $($target:ty),+ $(,)?) => {
+        $crate::register_trait_type!(@dispatch $trait_name, $($target),+);
+        $crate::register_trait_type!(@box [$vis] $trait_name, $($target),+);
+        $crate::register_trait_type!(@rc [$vis] $trait_name, $($target),+);
     };
-}
 
-/// Unified macro to generate smart pointer wrapper types for traits
-/// Supports both Rc and Arc pointer types
-#[macro_export]
-macro_rules! generate_smart_pointer_wrapper {
-    ($ptr_path:path, $ptr_name:ident, $get_mut:path, $trait_name:ident, $try_write_ref:ident, $get_ref:ident, $store_ref:ident, $($impl_type:ty),+ $(,)?) => {
+    (@dispatch $trait_name:ident, $($target:ty),+) => {
         $crate::paste::paste! {
-            #[derive(Clone)]
-            pub(crate) struct [<$trait_name $ptr_name>]($ptr_path<dyn $trait_name>);
+            #[allow(dead_code)]
+            struct [<$trait_name ForyDispatch>];
 
-            impl [<$trait_name $ptr_name>] {
-                pub(crate) fn new(inner: $ptr_path<dyn $trait_name>) -> Self {
-                    Self(inner)
-                }
-
-                pub(crate) fn into_inner(self) -> $ptr_path<dyn $trait_name> {
-                    self.0
-                }
-
-                pub(crate) fn unwrap(self) -> $ptr_path<dyn $trait_name> {
-                    self.0
-                }
-
-                pub(crate) fn as_ref(&self) -> &dyn $trait_name {
-                    &*self.0
-                }
-            }
-
-            impl std::ops::Deref for [<$trait_name $ptr_name>] {
-                type Target = dyn $trait_name;
-
-                fn deref(&self) -> &Self::Target {
-                    &*self.0
-                }
-            }
-
-            impl std::ops::DerefMut for [<$trait_name $ptr_name>] {
-                fn deref_mut(&mut self) -> &mut Self::Target {
-                    $get_mut(&mut self.0)
-                        .expect(&format!("Cannot get mutable reference to {} with multiple strong references", stringify!($ptr_name)))
-                }
-            }
-
-            impl From<$ptr_path<dyn $trait_name>> for [<$trait_name $ptr_name>] {
-                fn from(ptr: $ptr_path<dyn $trait_name>) -> Self {
-                    Self::new(ptr)
-                }
-            }
-
-            impl From<[<$trait_name $ptr_name>]> for $ptr_path<dyn $trait_name> {
-                fn from(wrapper: [<$trait_name $ptr_name>]) -> Self {
-                    wrapper.into_inner()
-                }
-            }
-
-            impl $crate::serializer::ForyDefault for [<$trait_name $ptr_name>] {
-                fn fory_default() -> Self {
-                    Self($ptr_path::new(<$crate::register_trait_type!(@first_type $($impl_type),+) as $crate::serializer::ForyDefault>::fory_default()))
-                }
-            }
-
-            impl std::fmt::Debug for [<$trait_name $ptr_name>] {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    let any_obj = <dyn $trait_name as $crate::Serializer>::as_any(&*self.0);
-                    $(
-                        if let Some(concrete) = any_obj.downcast_ref::<$impl_type>() {
-                            return write!(f, concat!(stringify!($trait_name), stringify!($ptr_name), "({:?})"), concrete);
-                        }
-                    )*
-                    write!(f, concat!(stringify!($trait_name), stringify!($ptr_name), "({:p})"), &*self.0)
-                }
-            }
-
-            $crate::impl_smart_pointer_serializer!(
-                [<$trait_name $ptr_name>],
-                $ptr_path<dyn $trait_name>,
-                $ptr_path::new,
-                $trait_name,
-                $try_write_ref,
-                $get_ref,
-                $store_ref,
-                $($impl_type),+
-            );
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! generate_smart_pointer_codec {
-    ($ptr_path:path, $ptr_name:ident, $trait_name:ident) => {
-        $crate::paste::paste! {
-            pub(crate) struct [<$trait_name $ptr_name Codec>]<const NULLABLE: bool, const TRACK_REF: bool>;
-
-            impl<const NULLABLE: bool, const TRACK_REF: bool>
-                $crate::serializer::codec::Codec<$ptr_path<dyn $trait_name>>
-                for [<$trait_name $ptr_name Codec>]<NULLABLE, TRACK_REF>
-            {
+            #[allow(dead_code)]
+            impl [<$trait_name ForyDispatch>] {
                 #[inline(always)]
-                fn field_type(
-                    _type_resolver: &$crate::resolver::TypeResolver,
-                ) -> Result<$crate::meta::FieldType, $crate::Error> {
-                    Ok($crate::meta::FieldType::new_with_ref(
-                        $crate::type_id::TypeId::UNKNOWN as u32,
-                        NULLABLE,
-                        TRACK_REF,
-                        Vec::new(),
-                    ))
+                fn any_ref(value: &dyn $trait_name) -> &dyn std::any::Any {
+                    <dyn $trait_name as $crate::ForyObject>::as_any(value)
                 }
 
                 #[inline(always)]
-                fn reserved_space() -> usize {
-                    <[<$trait_name $ptr_name>] as $crate::Serializer>::fory_reserved_space()
-                        + $crate::type_id::SIZE_OF_REF_AND_TYPE
-                }
-
-                #[inline(always)]
-                fn write_field(
-                    value: &$ptr_path<dyn $trait_name>,
-                    context: &mut $crate::WriteContext,
+                fn ensure_member(
+                    target_type_id: std::any::TypeId,
                 ) -> Result<(), $crate::Error> {
-                    let wrapper = [<$trait_name $ptr_name>]::from(value.clone());
-                    <[<$trait_name $ptr_name>] as $crate::Serializer>::fory_write(
-                        &wrapper,
-                        context,
-                        if TRACK_REF {
-                            $crate::RefMode::Tracking
-                        } else if NULLABLE {
-                            $crate::RefMode::NullOnly
-                        } else {
-                            $crate::RefMode::None
-                        },
-                        true,
-                        false,
-                    )
-                }
-
-                #[inline(always)]
-                fn read_field(
-                    context: &mut $crate::ReadContext,
-                ) -> Result<$ptr_path<dyn $trait_name>, $crate::Error> {
-                    Self::read_with_mode(
-                        context,
-                        if TRACK_REF {
-                            $crate::RefMode::Tracking
-                        } else if NULLABLE {
-                            $crate::RefMode::NullOnly
-                        } else {
-                            $crate::RefMode::None
-                        },
-                        true,
-                    )
-                }
-
-                #[inline(always)]
-                fn write_data(
-                    value: &$ptr_path<dyn $trait_name>,
-                    context: &mut $crate::WriteContext,
-                ) -> Result<(), $crate::Error> {
-                    let wrapper = [<$trait_name $ptr_name>]::from(value.clone());
-                    <[<$trait_name $ptr_name>] as $crate::Serializer>::fory_write_data(
-                        &wrapper,
-                        context,
-                    )
-                }
-
-                #[inline(always)]
-                fn read_data(
-                    context: &mut $crate::ReadContext,
-                ) -> Result<$ptr_path<dyn $trait_name>, $crate::Error> {
-                    Self::read_with_mode(context, $crate::RefMode::None, true)
-                }
-
-                #[inline(always)]
-                fn read_field_with_type(
-                    context: &mut $crate::ReadContext,
-                    remote_field_type: &$crate::meta::FieldType,
-                ) -> Result<$ptr_path<dyn $trait_name>, $crate::Error> {
-                    Self::read_with_mode(
-                        context,
-                        $crate::serializer::codec::field_ref_mode(remote_field_type),
-                        true,
-                    )
-                }
-
-                #[inline(always)]
-                fn write_with_mode(
-                    value: &$ptr_path<dyn $trait_name>,
-                    context: &mut $crate::WriteContext,
-                    ref_mode: $crate::RefMode,
-                    write_type_info: bool,
-                    has_generics: bool,
-                ) -> Result<(), $crate::Error> {
-                    let wrapper = [<$trait_name $ptr_name>]::from(value.clone());
-                    <[<$trait_name $ptr_name>] as $crate::Serializer>::fory_write(
-                        &wrapper,
-                        context,
-                        ref_mode,
-                        write_type_info,
-                        has_generics,
-                    )
-                }
-
-                #[inline(always)]
-                fn read_with_mode(
-                    context: &mut $crate::ReadContext,
-                    ref_mode: $crate::RefMode,
-                    read_type_info: bool,
-                ) -> Result<$ptr_path<dyn $trait_name>, $crate::Error> {
-                    let wrapper = <[<$trait_name $ptr_name>] as $crate::Serializer>::fory_read(
-                        context,
-                        ref_mode,
-                        read_type_info,
-                    )?;
-                    Ok($ptr_path::<dyn $trait_name>::from(wrapper))
-                }
-
-                #[inline(always)]
-                fn read_with_type_info(
-                    context: &mut $crate::ReadContext,
-                    ref_mode: $crate::RefMode,
-                    type_info: std::rc::Rc<$crate::TypeInfo>,
-                ) -> Result<$ptr_path<dyn $trait_name>, $crate::Error> {
-                    let wrapper =
-                        <[<$trait_name $ptr_name>] as $crate::Serializer>::fory_read_with_type_info(
-                            context,
-                            ref_mode,
-                            type_info,
-                        )?;
-                    Ok($ptr_path::<dyn $trait_name>::from(wrapper))
-                }
-
-                #[inline(always)]
-                fn default_value() -> $ptr_path<dyn $trait_name> {
-                    $ptr_path::<dyn $trait_name>::from(
-                        <[<$trait_name $ptr_name>] as $crate::ForyDefault>::fory_default(),
-                    )
-                }
-
-                #[inline(always)]
-                fn write_type_info(_context: &mut $crate::WriteContext) -> Result<(), $crate::Error> {
+                    if !($(target_type_id == std::any::TypeId::of::<$target>())||+) {
+                        return Err(Self::unlisted(target_type_id));
+                    }
                     Ok(())
                 }
 
                 #[inline(always)]
-                fn read_type_info(_context: &mut $crate::ReadContext) -> Result<(), $crate::Error> {
+                fn checked_any(
+                    value: &dyn $trait_name,
+                ) -> Result<&dyn std::any::Any, $crate::Error> {
+                    let any = Self::any_ref(value);
+                    Self::ensure_member(any.type_id())?;
+                    Ok(any)
+                }
+
+                #[inline(always)]
+                fn target_id(
+                    type_info: &$crate::TypeInfo,
+                ) -> Result<std::any::TypeId, $crate::Error> {
+                    type_info
+                        .get_harness()
+                        .target_type_id()
+                        .ok_or_else(Self::missing)
+                }
+
+                #[inline(always)]
+                fn check_type_info(
+                    target_type_id: std::any::TypeId,
+                    type_info: &$crate::TypeInfo,
+                ) -> Result<(), $crate::Error> {
+                    $crate::serializer::any::check_erased_target_type(type_info)?;
+                    let resolved_target_type_id = Self::target_id(type_info)?;
+                    if resolved_target_type_id != target_type_id {
+                        return Err(Self::downcast(
+                            resolved_target_type_id,
+                            target_type_id,
+                        ));
+                    }
                     Ok(())
                 }
 
                 #[inline(always)]
-                fn static_type_id() -> $crate::TypeId {
-                    $crate::TypeId::UNKNOWN
-                }
-
-                #[inline(always)]
-                fn is_polymorphic() -> bool {
-                    true
-                }
-
-                #[inline(always)]
-                fn is_shared_ref() -> bool {
-                    true
-                }
-
-                #[inline(always)]
-                fn concrete_type_id(value: &$ptr_path<dyn $trait_name>) -> std::any::TypeId {
-                    <dyn $trait_name as $crate::Serializer>::as_any(&**value).type_id()
-                }
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! generate_box_trait_codec {
-    ($trait_name:ident) => {
-        $crate::paste::paste! {
-            pub(crate) struct [<$trait_name BoxCodec>]<const NULLABLE: bool, const TRACK_REF: bool>;
-
-            impl<const NULLABLE: bool, const TRACK_REF: bool>
-                $crate::serializer::codec::Codec<Box<dyn $trait_name>>
-                for [<$trait_name BoxCodec>]<NULLABLE, TRACK_REF>
-            {
-                #[inline(always)]
-                fn field_type(
-                    _type_resolver: &$crate::resolver::TypeResolver,
-                ) -> Result<$crate::meta::FieldType, $crate::Error> {
-                    Ok($crate::meta::FieldType::new_with_ref(
-                        $crate::type_id::TypeId::UNKNOWN as u32,
-                        NULLABLE,
-                        TRACK_REF,
-                        Vec::new(),
-                    ))
-                }
-
-                #[inline(always)]
-                fn reserved_space() -> usize {
-                    <Box<dyn $trait_name> as $crate::Serializer>::fory_reserved_space()
-                        + $crate::type_id::SIZE_OF_REF_AND_TYPE
-                }
-
-                #[inline(always)]
-                fn write_field(
-                    value: &Box<dyn $trait_name>,
+                fn resolve_type_info(
                     context: &mut $crate::WriteContext,
-                ) -> Result<(), $crate::Error> {
-                    <Box<dyn $trait_name> as $crate::Serializer>::fory_write(
-                        value,
-                        context,
-                        if TRACK_REF {
-                            $crate::RefMode::Tracking
-                        } else if NULLABLE {
-                            $crate::RefMode::NullOnly
-                        } else {
-                            $crate::RefMode::None
-                        },
-                        true,
-                        false,
-                    )
+                    target_type_id: std::any::TypeId,
+                ) -> Result<std::rc::Rc<$crate::TypeInfo>, $crate::Error> {
+                    let type_info = context.get_target_type_info(&target_type_id)?;
+                    Self::check_type_info(target_type_id, &type_info)?;
+                    Ok(type_info)
                 }
 
                 #[inline(always)]
-                fn read_field(
-                    context: &mut $crate::ReadContext,
-                ) -> Result<Box<dyn $trait_name>, $crate::Error> {
-                    Self::read_with_mode(
-                        context,
-                        if TRACK_REF {
-                            $crate::RefMode::Tracking
-                        } else if NULLABLE {
-                            $crate::RefMode::NullOnly
-                        } else {
-                            $crate::RefMode::None
-                        },
-                        true,
-                    )
-                }
-
-                #[inline(always)]
-                fn write_data(
-                    value: &Box<dyn $trait_name>,
+                fn write_type_info_value(
                     context: &mut $crate::WriteContext,
-                ) -> Result<(), $crate::Error> {
-                    <Box<dyn $trait_name> as $crate::Serializer>::fory_write_data(
-                        value,
-                        context,
-                    )
-                }
-
-                #[inline(always)]
-                fn read_data(
-                    context: &mut $crate::ReadContext,
-                ) -> Result<Box<dyn $trait_name>, $crate::Error> {
-                    Self::read_with_mode(context, $crate::RefMode::None, true)
-                }
-
-                #[inline(always)]
-                fn read_field_with_type(
-                    context: &mut $crate::ReadContext,
-                    remote_field_type: &$crate::meta::FieldType,
-                ) -> Result<Box<dyn $trait_name>, $crate::Error> {
-                    Self::read_with_mode(
-                        context,
-                        $crate::serializer::codec::field_ref_mode(remote_field_type),
-                        true,
-                    )
-                }
-
-                #[inline(always)]
-                fn write_with_mode(
-                    value: &Box<dyn $trait_name>,
-                    context: &mut $crate::WriteContext,
-                    ref_mode: $crate::RefMode,
-                    write_type_info: bool,
-                    has_generics: bool,
-                ) -> Result<(), $crate::Error> {
-                    <Box<dyn $trait_name> as $crate::Serializer>::fory_write(
-                        value,
-                        context,
-                        ref_mode,
-                        write_type_info,
-                        has_generics,
-                    )
-                }
-
-                #[inline(always)]
-                fn read_with_mode(
-                    context: &mut $crate::ReadContext,
-                    ref_mode: $crate::RefMode,
-                    read_type_info: bool,
-                ) -> Result<Box<dyn $trait_name>, $crate::Error> {
-                    <Box<dyn $trait_name> as $crate::Serializer>::fory_read(
-                        context,
-                        ref_mode,
-                        read_type_info,
-                    )
-                }
-
-                #[inline(always)]
-                fn read_with_type_info(
-                    context: &mut $crate::ReadContext,
-                    ref_mode: $crate::RefMode,
-                    type_info: std::rc::Rc<$crate::TypeInfo>,
-                ) -> Result<Box<dyn $trait_name>, $crate::Error> {
-                    <Box<dyn $trait_name> as $crate::Serializer>::fory_read_with_type_info(
-                        context,
-                        ref_mode,
+                    target_type_id: std::any::TypeId,
+                ) -> Result<std::rc::Rc<$crate::TypeInfo>, $crate::Error> {
+                    Self::ensure_member(target_type_id)?;
+                    let type_info = Self::resolve_type_info(context, target_type_id)?;
+                    context.write_resolved_type_info(
+                        $crate::TypeId::UNKNOWN as u32,
                         type_info,
                     )
                 }
 
                 #[inline(always)]
-                fn default_value() -> Box<dyn $trait_name> {
-                    <Box<dyn $trait_name> as $crate::ForyDefault>::fory_default()
+                fn write_harness(
+                    any: &dyn std::any::Any,
+                    context: &mut $crate::WriteContext,
+                    type_info: &std::rc::Rc<$crate::TypeInfo>,
+                ) -> Result<(), $crate::Error> {
+                    type_info.get_harness().write_data(any, context)
                 }
 
                 #[inline(always)]
-                fn write_type_info(_context: &mut $crate::WriteContext) -> Result<(), $crate::Error> {
+                fn write_checked(
+                    any: &dyn std::any::Any,
+                    context: &mut $crate::WriteContext,
+                    write_type_info: bool,
+                ) -> Result<(), $crate::Error> {
+                    let type_info = Self::resolve_type_info(context, any.type_id())?;
+                    let type_info = if write_type_info {
+                        context.write_resolved_type_info(
+                            $crate::TypeId::UNKNOWN as u32,
+                            type_info,
+                        )?
+                    } else {
+                        type_info
+                    };
+                    Self::write_harness(any, context, &type_info)
+                }
+
+                #[inline(always)]
+                fn write_data(
+                    value: &dyn $trait_name,
+                    context: &mut $crate::WriteContext,
+                    write_type_info: bool,
+                ) -> Result<(), $crate::Error> {
+                    let any = Self::checked_any(value)?;
+                    Self::write_checked(any, context, write_type_info)
+                }
+
+                #[inline(always)]
+                fn read_box(
+                    context: &mut $crate::ReadContext,
+                    type_info: &std::rc::Rc<$crate::TypeInfo>,
+                ) -> Result<Box<dyn $trait_name>, $crate::Error> {
+                    let target_type_id = Self::target_id(type_info)?;
+                    $crate::serializer::any::check_erased_target_type(type_info)?;
+                    $(
+                        if target_type_id == std::any::TypeId::of::<$target>() {
+                            let erased = type_info
+                                .get_harness()
+                                .read_box_any(context, type_info)?;
+                            let concrete = erased.downcast::<$target>().map_err(|value| {
+                                Self::downcast(target_type_id, value.as_ref().type_id())
+                            })?;
+                            let value: Box<dyn $trait_name> = concrete;
+                            return Ok(value);
+                        }
+                    )+
+                    Err(Self::unlisted(target_type_id))
+                }
+
+                #[inline(always)]
+                fn read_rc(
+                    context: &mut $crate::ReadContext,
+                    type_info: &std::rc::Rc<$crate::TypeInfo>,
+                ) -> Result<std::rc::Rc<dyn $trait_name>, $crate::Error> {
+                    let target_type_id = Self::target_id(type_info)?;
+                    $crate::serializer::any::check_erased_target_type(type_info)?;
+                    $(
+                        if target_type_id == std::any::TypeId::of::<$target>() {
+                            let erased = type_info
+                                .get_harness()
+                                .read_rc_any(context, type_info)?;
+                            let concrete = erased.downcast::<$target>().map_err(|value| {
+                                Self::downcast(target_type_id, value.as_ref().type_id())
+                            })?;
+                            let value: std::rc::Rc<dyn $trait_name> = concrete;
+                            return Ok(value);
+                        }
+                    )+
+                    Err(Self::unlisted(target_type_id))
+                }
+
+                #[cold]
+                #[inline(never)]
+                fn unlisted(target_type_id: std::any::TypeId) -> $crate::Error {
+                    $crate::Error::type_error(format!(
+                        "target TypeId {:?} is not listed for application trait {}",
+                        target_type_id,
+                        stringify!($trait_name),
+                    ))
+                }
+
+                #[cold]
+                #[inline(never)]
+                fn missing() -> $crate::Error {
+                    $crate::Error::type_error(format!(
+                        "application trait {} metadata has no checked local target registration",
+                        stringify!($trait_name),
+                    ))
+                }
+
+                #[cold]
+                #[inline(never)]
+                fn downcast(
+                    expected: std::any::TypeId,
+                    actual: std::any::TypeId,
+                ) -> $crate::Error {
+                    $crate::Error::type_error(format!(
+                        "application trait {} expected target TypeId {:?}, got {:?}",
+                        stringify!($trait_name),
+                        expected,
+                        actual,
+                    ))
+                }
+
+                #[cold]
+                #[inline(never)]
+                fn missing_ref(ref_id: u32) -> $crate::Error {
+                    $crate::Error::invalid_data(format!(
+                        "dyn {} reference {} not found",
+                        stringify!($trait_name),
+                        ref_id,
+                    ))
+                }
+            }
+        }
+    };
+
+    (@box [$vis:vis] $trait_name:ident, $($target:ty),+) => {
+        $crate::paste::paste! {
+            #[allow(dead_code)]
+            impl [<$trait_name ForyDispatch>] {
+                #[cold]
+                #[inline(never)]
+                fn null_box_value() -> $crate::Error {
+                    $crate::Error::invalid_ref(concat!(
+                        "Box<dyn ",
+                        stringify!($trait_name),
+                        "> cannot be null",
+                    ))
+                }
+
+                #[cold]
+                #[inline(never)]
+                fn missing_box_metadata() -> $crate::Error {
+                    $crate::Error::invalid_data(concat!(
+                        "Box<dyn ",
+                        stringify!($trait_name),
+                        "> requires concrete type metadata",
+                    ))
+                }
+            }
+
+            impl $crate::Serializer for Box<dyn $trait_name> {
+                type Target = Self;
+                #[inline(always)]
+                fn write_data(
+                    value: &Self,
+                    context: &mut $crate::WriteContext,
+                ) -> Result<(), $crate::Error> {
+                    [<$trait_name ForyDispatch>]::write_data(
+                        value.as_ref(),
+                        context,
+                        false,
+                    )
+                }
+
+                #[cold]
+                #[inline(never)]
+                fn read_data(
+                    _context: &mut $crate::ReadContext,
+                ) -> Result<Self, $crate::Error> {
+                    Err($crate::Error::not_allowed(concat!(
+                        "Box<dyn ",
+                        stringify!($trait_name),
+                        "> requires concrete type metadata",
+                    )))
+                }
+
+                #[inline(always)]
+                fn write_type_info_value(
+                    context: &mut $crate::WriteContext,
+                    target_type_id: std::any::TypeId,
+                ) -> Result<std::rc::Rc<$crate::TypeInfo>, $crate::Error> {
+                    [<$trait_name ForyDispatch>]::write_type_info_value(
+                        context,
+                        target_type_id,
+                    )
+                }
+
+                #[inline(always)]
+                fn write_with_type_info(
+                    value: &Self,
+                    context: &mut $crate::WriteContext,
+                    ref_mode: $crate::RefMode,
+                    type_info: &std::rc::Rc<$crate::TypeInfo>,
+                ) -> Result<(), $crate::Error> {
+                    let any = [<$trait_name ForyDispatch>]::checked_any(value.as_ref())?;
+                    [<$trait_name ForyDispatch>]::check_type_info(any.type_id(), type_info)?;
+                    if ref_mode != $crate::RefMode::None {
+                        context.writer.write_i8($crate::RefFlag::NotNullValue as i8);
+                    }
+                    [<$trait_name ForyDispatch>]::write_harness(
+                        any,
+                        context,
+                        type_info,
+                    )
+                }
+
+                #[inline(always)]
+                fn write(
+                    value: &Self,
+                    context: &mut $crate::WriteContext,
+                    ref_mode: $crate::RefMode,
+                    write_type_info: bool,
+                ) -> Result<(), $crate::Error> {
+                    let any = [<$trait_name ForyDispatch>]::checked_any(value.as_ref())?;
+                    if ref_mode != $crate::RefMode::None {
+                        context.writer.write_i8($crate::RefFlag::NotNullValue as i8);
+                    }
+                    [<$trait_name ForyDispatch>]::write_checked(
+                        any,
+                        context,
+                        write_type_info,
+                    )
+                }
+
+                #[inline(always)]
+                fn read(
+                    context: &mut $crate::ReadContext,
+                    ref_mode: $crate::RefMode,
+                    read_type_info: bool,
+                ) -> Result<Self, $crate::Error> {
+                    context.inc_depth()?;
+                    let value = (|| {
+                        if ref_mode != $crate::RefMode::None
+                            && context.reader.read_i8()?
+                                != $crate::RefFlag::NotNullValue as i8
+                        {
+                            return Err([<$trait_name ForyDispatch>]::null_box_value());
+                        }
+                        if !read_type_info {
+                            return Err([<$trait_name ForyDispatch>]::missing_box_metadata());
+                        }
+                        let type_info = context.read_any_type_info()?;
+                        [<$trait_name ForyDispatch>]::read_box(context, &type_info)
+                    })()?;
+                    context.dec_depth();
+                    Ok(value)
+                }
+
+                #[inline(always)]
+                fn read_with_type_info(
+                    context: &mut $crate::ReadContext,
+                    ref_mode: $crate::RefMode,
+                    type_info: &std::rc::Rc<$crate::TypeInfo>,
+                ) -> Result<Self, $crate::Error> {
+                    context.inc_depth()?;
+                    let value = (|| {
+                        if ref_mode != $crate::RefMode::None
+                            && context.reader.read_i8()?
+                                != $crate::RefFlag::NotNullValue as i8
+                        {
+                            return Err([<$trait_name ForyDispatch>]::null_box_value());
+                        }
+                        [<$trait_name ForyDispatch>]::read_box(context, type_info)
+                    })()?;
+                    context.dec_depth();
+                    Ok(value)
+                }
+
+                #[inline(always)]
+                fn write_type_info(
+                    _context: &mut $crate::WriteContext,
+                ) -> Result<(), $crate::Error> {
                     Ok(())
                 }
 
                 #[inline(always)]
-                fn read_type_info(_context: &mut $crate::ReadContext) -> Result<(), $crate::Error> {
+                fn read_type_info(
+                    _context: &mut $crate::ReadContext,
+                ) -> Result<(), $crate::Error> {
                     Ok(())
                 }
 
@@ -685,409 +445,888 @@ macro_rules! generate_box_trait_codec {
                 }
 
                 #[inline(always)]
-                fn is_polymorphic() -> bool {
-                    true
+                fn reserved_space() -> usize {
+                    $crate::type_id::SIZE_OF_REF_AND_TYPE
+                }
+
+                const IS_POLYMORPHIC: bool = true;
+
+                const IS_WRAPPER: bool = true;
+
+                #[inline(always)]
+                fn dynamic_type_id(
+                    value: &Self,
+                ) -> Result<Option<std::any::TypeId>, $crate::Error> {
+                    Ok(Some(
+                        [<$trait_name ForyDispatch>]::any_ref(value.as_ref()).type_id(),
+                    ))
+                }
+            }
+
+            $crate::register_trait_type!(
+                @codec
+                [$vis]
+                [<$trait_name BoxCodec>],
+                Box<dyn $trait_name>,
+                Box<dyn $trait_name>
+            );
+        }
+    };
+
+    (@rc [$vis:vis] $trait_name:ident, $($target:ty),+) => {
+        $crate::paste::paste! {
+            #[allow(dead_code)]
+            impl [<$trait_name ForyDispatch>] {
+                #[cold]
+                #[inline(never)]
+                fn null_rc_value() -> $crate::Error {
+                    $crate::Error::invalid_ref(concat!(
+                        "Rc<dyn ",
+                        stringify!($trait_name),
+                        "> cannot be null",
+                    ))
+                }
+
+                #[cold]
+                #[inline(never)]
+                fn missing_rc_metadata() -> $crate::Error {
+                    $crate::Error::invalid_data(concat!(
+                        "Rc<dyn ",
+                        stringify!($trait_name),
+                        "> requires concrete type metadata",
+                    ))
+                }
+            }
+
+            #[allow(dead_code)]
+            #[doc = concat!("Serializer for `Rc<dyn ", stringify!($trait_name), ">`.")]
+            $vis struct [<$trait_name RcSerializer>](std::marker::PhantomData<()>);
+
+            impl $crate::Serializer for [<$trait_name RcSerializer>] {
+                type Target = std::rc::Rc<dyn $trait_name>;
+                #[inline(always)]
+                fn write_data(
+                    value: &Self::Target,
+                    context: &mut $crate::WriteContext,
+                ) -> Result<(), $crate::Error> {
+                    [<$trait_name ForyDispatch>]::write_data(
+                        value.as_ref(),
+                        context,
+                        false,
+                    )
+                }
+
+                #[cold]
+                #[inline(never)]
+                fn read_data(
+                    _context: &mut $crate::ReadContext,
+                ) -> Result<Self::Target, $crate::Error> {
+                    Err($crate::Error::not_allowed(concat!(
+                        "Rc<dyn ",
+                        stringify!($trait_name),
+                        "> requires concrete type metadata",
+                    )))
                 }
 
                 #[inline(always)]
-                fn concrete_type_id(value: &Box<dyn $trait_name>) -> std::any::TypeId {
-                    <dyn $trait_name as $crate::Serializer>::as_any(&**value).type_id()
+                fn write_type_info_value(
+                    context: &mut $crate::WriteContext,
+                    target_type_id: std::any::TypeId,
+                ) -> Result<std::rc::Rc<$crate::TypeInfo>, $crate::Error> {
+                    [<$trait_name ForyDispatch>]::write_type_info_value(
+                        context,
+                        target_type_id,
+                    )
+                }
+
+                #[inline(always)]
+                fn write_with_type_info(
+                    value: &Self::Target,
+                    context: &mut $crate::WriteContext,
+                    ref_mode: $crate::RefMode,
+                    type_info: &std::rc::Rc<$crate::TypeInfo>,
+                ) -> Result<(), $crate::Error> {
+                    let any = [<$trait_name ForyDispatch>]::checked_any(value.as_ref())?;
+                    [<$trait_name ForyDispatch>]::check_type_info(any.type_id(), type_info)?;
+                    if ref_mode != $crate::RefMode::None
+                        && context
+                            .ref_writer
+                            .try_write_rc_ref(&mut context.writer, value)
+                    {
+                        return Ok(());
+                    }
+                    [<$trait_name ForyDispatch>]::write_harness(
+                        any,
+                        context,
+                        type_info,
+                    )
+                }
+
+                #[inline(always)]
+                fn write(
+                    value: &Self::Target,
+                    context: &mut $crate::WriteContext,
+                    ref_mode: $crate::RefMode,
+                    write_type_info: bool,
+                ) -> Result<(), $crate::Error> {
+                    let any = [<$trait_name ForyDispatch>]::checked_any(value.as_ref())?;
+                    if ref_mode != $crate::RefMode::None
+                        && context
+                            .ref_writer
+                            .try_write_rc_ref(&mut context.writer, value)
+                    {
+                        return Ok(());
+                    }
+                    [<$trait_name ForyDispatch>]::write_checked(
+                        any,
+                        context,
+                        write_type_info,
+                    )
+                }
+
+                #[inline(always)]
+                fn read(
+                    context: &mut $crate::ReadContext,
+                    ref_mode: $crate::RefMode,
+                    read_type_info: bool,
+                ) -> Result<Self::Target, $crate::Error> {
+                    let ref_flag = if ref_mode != $crate::RefMode::None {
+                        context.ref_reader.read_ref_flag(&mut context.reader)?
+                    } else {
+                        $crate::RefFlag::NotNullValue
+                    };
+                    match ref_flag {
+                        $crate::RefFlag::Null => {
+                            Err([<$trait_name ForyDispatch>]::null_rc_value())
+                        }
+                        $crate::RefFlag::Ref => {
+                            let ref_id =
+                                context.ref_reader.read_ref_id(&mut context.reader)?;
+                            context
+                                .ref_reader
+                                .get_rc_ref::<dyn $trait_name>(ref_id)
+                                .ok_or_else(|| {
+                                    [<$trait_name ForyDispatch>]::missing_ref(ref_id)
+                                })
+                        }
+                        $crate::RefFlag::NotNullValue => {
+                            context.inc_depth()?;
+                            let value = (|| {
+                                if !read_type_info {
+                                    return Err(
+                                        [<$trait_name ForyDispatch>]::missing_rc_metadata()
+                                    );
+                                }
+                                let type_info = context.read_any_type_info()?;
+                                [<$trait_name ForyDispatch>]::read_rc(context, &type_info)
+                            })()?;
+                            context.dec_depth();
+                            Ok(value)
+                        }
+                        $crate::RefFlag::RefValue => {
+                            let ref_id = context.ref_reader.reserve_ref_id();
+                            context.inc_depth()?;
+                            let value = (|| {
+                                if !read_type_info {
+                                    return Err(
+                                        [<$trait_name ForyDispatch>]::missing_rc_metadata()
+                                    );
+                                }
+                                let type_info = context.read_any_type_info()?;
+                                [<$trait_name ForyDispatch>]::read_rc(context, &type_info)
+                            })()?;
+                            context.dec_depth();
+                            context.ref_reader.store_rc_ref_at(ref_id, value.clone());
+                            Ok(value)
+                        }
+                    }
+                }
+
+                #[inline(always)]
+                fn read_with_type_info(
+                    context: &mut $crate::ReadContext,
+                    ref_mode: $crate::RefMode,
+                    type_info: &std::rc::Rc<$crate::TypeInfo>,
+                ) -> Result<Self::Target, $crate::Error> {
+                    let ref_flag = if ref_mode != $crate::RefMode::None {
+                        context.ref_reader.read_ref_flag(&mut context.reader)?
+                    } else {
+                        $crate::RefFlag::NotNullValue
+                    };
+                    match ref_flag {
+                        $crate::RefFlag::Null => {
+                            Err([<$trait_name ForyDispatch>]::null_rc_value())
+                        }
+                        $crate::RefFlag::Ref => {
+                            let ref_id =
+                                context.ref_reader.read_ref_id(&mut context.reader)?;
+                            context
+                                .ref_reader
+                                .get_rc_ref::<dyn $trait_name>(ref_id)
+                                .ok_or_else(|| {
+                                    [<$trait_name ForyDispatch>]::missing_ref(ref_id)
+                                })
+                        }
+                        $crate::RefFlag::NotNullValue => {
+                            context.inc_depth()?;
+                            let value =
+                                [<$trait_name ForyDispatch>]::read_rc(context, type_info)?;
+                            context.dec_depth();
+                            Ok(value)
+                        }
+                        $crate::RefFlag::RefValue => {
+                            let ref_id = context.ref_reader.reserve_ref_id();
+                            context.inc_depth()?;
+                            let value =
+                                [<$trait_name ForyDispatch>]::read_rc(context, type_info)?;
+                            context.dec_depth();
+                            context.ref_reader.store_rc_ref_at(ref_id, value.clone());
+                            Ok(value)
+                        }
+                    }
+                }
+
+                #[inline(always)]
+                fn write_type_info(
+                    _context: &mut $crate::WriteContext,
+                ) -> Result<(), $crate::Error> {
+                    Ok(())
+                }
+
+                #[inline(always)]
+                fn read_type_info(
+                    _context: &mut $crate::ReadContext,
+                ) -> Result<(), $crate::Error> {
+                    Ok(())
+                }
+
+                #[inline(always)]
+                fn static_type_id() -> $crate::TypeId {
+                    $crate::TypeId::UNKNOWN
+                }
+
+                #[inline(always)]
+                fn reserved_space() -> usize {
+                    $crate::type_id::SIZE_OF_REF_AND_TYPE
+                }
+
+                const IS_POLYMORPHIC: bool = true;
+
+                const IS_SHARED_REF: bool = true;
+
+                const IS_WRAPPER: bool = true;
+
+                #[inline(always)]
+                fn dynamic_type_id(
+                    value: &Self::Target,
+                ) -> Result<Option<std::any::TypeId>, $crate::Error> {
+                    Ok(Some(
+                        [<$trait_name ForyDispatch>]::any_ref(value.as_ref()).type_id(),
+                    ))
                 }
             }
+
+            $crate::register_trait_type!(
+                @codec
+                [$vis]
+                [<$trait_name RcCodec>],
+                [<$trait_name RcSerializer>],
+                std::rc::Rc<dyn $trait_name>
+            );
         }
     };
-}
 
-/// Macro to read smart pointer trait objects (`Rc<dyn Trait>,` `Arc<dyn Trait>`)
-/// This macro handles ref tracking and directly constructs the trait object from concrete types
-#[macro_export]
-macro_rules! read_ptr_trait_object {
-    ($context:expr, $ref_mode:expr, $read_type_info:expr, $type_info:expr, $pointer_type:ty, $trait_name:ident, $constructor_expr:expr, $get_ref:ident, $store_ref:ident, $($impl_type:ty),+) => {{
-        let ref_flag = if $ref_mode != $crate::RefMode::None {
-            $context.ref_reader.read_ref_flag(&mut $context.reader)?
-        } else {
-            $crate::RefFlag::NotNullValue
-        };
-        match ref_flag {
-            $crate::RefFlag::Null => Err($crate::Error::invalid_ref(format!("smart pointer to dyn {} cannot be null", stringify!($trait_name)))),
-            $crate::RefFlag::Ref => {
-                let ref_id = $context.ref_reader.read_ref_id(&mut $context.reader)?;
-                let ptr_ref = $context.ref_reader.$get_ref::<dyn $trait_name>(ref_id)
-                    .ok_or_else(|| $crate::Error::invalid_data(format!("dyn {} reference {} not found", stringify!($trait_name), ref_id)))?;
-                Ok(Self::from(ptr_ref))
-            }
-            $crate::RefFlag::NotNullValue => {
-                $context.inc_depth()?;
-                let typeinfo = if $read_type_info {
-                    $context.read_any_type_info()?
-                } else {
-                    $type_info.ok_or_else(|| $crate::Error::type_error("No type info found for read"))?
-                };
-                let fory_type_id = typeinfo.get_type_id();
-                let user_type_id = typeinfo.get_user_type_id();
-                let registered_by_name = typeinfo.is_registered_by_name();
-                let namespace = typeinfo.get_namespace();
-                let type_name = typeinfo.get_type_name();
-                let matches_type = |local_info: &$crate::TypeInfo| -> bool {
-                    if registered_by_name {
-                        local_info.is_registered_by_name()
-                            && local_info.get_namespace().original == namespace.original
-                            && local_info.get_type_name().original == type_name.original
-                    } else if user_type_id != u32::MAX {
-                        local_info.get_user_type_id() == user_type_id
-                    } else {
-                        local_info.get_type_id() == fory_type_id
-                    }
-                };
-                $(
-                    if let Ok(local_info) = $context.get_type_resolver().get_type_info(&std::any::TypeId::of::<$impl_type>()) {
-                        if matches_type(&local_info) {
-                            let concrete_obj = <$impl_type as $crate::Serializer>::fory_read_data($context)?;
-                            $context.dec_depth();
-                            let ptr = $constructor_expr(concrete_obj) as $pointer_type;
-                            return Ok(Self::from(ptr));
-                        }
-                    }
-                )*
-                $context.dec_depth();
-                Err($crate::Error::type_error(format!(
-                    "Type ID {} not registered for trait {}",
-                    fory_type_id as u32,
-                    stringify!($trait_name)
-                )))
-            }
-            $crate::RefFlag::RefValue => {
-                $context.inc_depth()?;
-                let typeinfo = if $read_type_info {
-                    $context.read_any_type_info()?
-                } else {
-                    $type_info.ok_or_else(|| $crate::Error::type_error("No type info found for read"))?
-                };
-                let fory_type_id = typeinfo.get_type_id();
-                let user_type_id = typeinfo.get_user_type_id();
-                let registered_by_name = typeinfo.is_registered_by_name();
-                let namespace = typeinfo.get_namespace();
-                let type_name = typeinfo.get_type_name();
-                let matches_type = |local_info: &$crate::TypeInfo| -> bool {
-                    if registered_by_name {
-                        local_info.is_registered_by_name()
-                            && local_info.get_namespace().original == namespace.original
-                            && local_info.get_type_name().original == type_name.original
-                    } else if user_type_id != u32::MAX {
-                        local_info.get_user_type_id() == user_type_id
-                    } else {
-                        local_info.get_type_id() == fory_type_id
-                    }
-                };
-                $(
-                    if let Ok(local_info) = $context.get_type_resolver().get_type_info(&std::any::TypeId::of::<$impl_type>()) {
-                        if matches_type(&local_info) {
-                            let concrete_obj = <$impl_type as $crate::Serializer>::fory_read_data($context)?;
-                            $context.dec_depth();
-                            let ptr = $constructor_expr(concrete_obj) as $pointer_type;
-                            let wrapper = Self::from(ptr.clone());
-                            $context.ref_reader.$store_ref(ptr);
-                            return Ok(wrapper);
-                        }
-                    }
-                )*
-                $context.dec_depth();
-                Err($crate::Error::type_error(format!(
-                    "Type ID {} not registered for trait {}",
-                    fory_type_id as u32,
-                    stringify!($trait_name)
-                )))
-            }
-        }
-    }};
-}
+    (@arc [$vis:vis] $trait_name:ident, $($target:ty),+) => {
+        $crate::paste::paste! {
+            const _: () = {
+                fn assert_sync<T: ?Sized + Send + Sync>() {}
+                let _ = assert_sync::<dyn $trait_name>;
+                $(let _ = assert_sync::<$target>;)+
+            };
 
-/// Shared serializer implementation for smart pointer wrappers
-#[macro_export]
-macro_rules! impl_smart_pointer_serializer {
-    ($wrapper_name:ident, $pointer_type:ty, $constructor_expr:expr, $trait_name:ident, $try_write_ref:ident, $get_ref:ident, $store_ref:ident, $($impl_type:ty),+) => {
-        impl $crate::Serializer for $wrapper_name {
-            fn fory_write(&self, context: &mut $crate::WriteContext, ref_mode: $crate::RefMode, write_type_info: bool, has_generics: bool) -> Result<(), $crate::Error> {
-                if ref_mode == $crate::RefMode::None || !context.ref_writer.$try_write_ref(&mut context.writer, &self.0) {
-                    let any_obj = <dyn $trait_name as $crate::Serializer>::as_any(&*self.0);
-                    let concrete_type_id = any_obj.type_id();
-                    let typeinfo = if write_type_info {
-                         context.write_any_type_info($crate::TypeId::UNKNOWN as u32, concrete_type_id)?
-                    } else {
-                        context.get_type_info(&concrete_type_id)?
-                    };
-                    let serializer_fn = typeinfo.get_harness().get_write_data_fn();
-                    serializer_fn(any_obj, context, has_generics)?;
+            #[allow(dead_code)]
+            impl [<$trait_name ForyDispatch>] {
+                #[cold]
+                #[inline(never)]
+                fn null_arc_value() -> $crate::Error {
+                    $crate::Error::invalid_ref(concat!(
+                        "Arc<dyn ",
+                        stringify!($trait_name),
+                        "> cannot be null",
+                    ))
                 }
-                Ok(())
+
+                #[cold]
+                #[inline(never)]
+                fn missing_arc_metadata() -> $crate::Error {
+                    $crate::Error::invalid_data(concat!(
+                        "Arc<dyn ",
+                        stringify!($trait_name),
+                        "> requires concrete type metadata",
+                    ))
+                }
+
+                #[inline(always)]
+                fn read_arc(
+                    context: &mut $crate::ReadContext,
+                    type_info: &std::rc::Rc<$crate::TypeInfo>,
+                ) -> Result<std::sync::Arc<dyn $trait_name>, $crate::Error> {
+                    let target_type_id = Self::target_id(type_info)?;
+                    $crate::serializer::any::check_erased_target_type(type_info)?;
+                    $(
+                        if target_type_id == std::any::TypeId::of::<$target>() {
+                            let erased = type_info
+                                .get_harness()
+                                .read_arc_any(context, type_info)?;
+                            let concrete = erased.downcast::<$target>().map_err(|value| {
+                                Self::downcast(target_type_id, value.as_ref().type_id())
+                            })?;
+                            let value: std::sync::Arc<dyn $trait_name> = concrete;
+                            return Ok(value);
+                        }
+                    )+
+                    Err(Self::unlisted(target_type_id))
+                }
             }
 
-            fn fory_write_data(&self, context: &mut $crate::WriteContext) -> Result<(), $crate::Error> {
-                let any_obj = <dyn $trait_name as $crate::Serializer>::as_any(&*self.0);
-                $crate::downcast_and_serialize!(any_obj, context, $trait_name, $($impl_type),+)
+            #[allow(dead_code)]
+            #[doc = concat!("Serializer for `Arc<dyn ", stringify!($trait_name), ">`.")]
+            $vis struct [<$trait_name ArcSerializer>](std::marker::PhantomData<()>);
+
+            impl $crate::Serializer for [<$trait_name ArcSerializer>] {
+                type Target = std::sync::Arc<dyn $trait_name>;
+                #[inline(always)]
+                fn write_data(
+                    value: &Self::Target,
+                    context: &mut $crate::WriteContext,
+                ) -> Result<(), $crate::Error> {
+                    [<$trait_name ForyDispatch>]::write_data(
+                        value.as_ref(),
+                        context,
+                        false,
+                    )
+                }
+
+                #[cold]
+                #[inline(never)]
+                fn read_data(
+                    _context: &mut $crate::ReadContext,
+                ) -> Result<Self::Target, $crate::Error> {
+                    Err($crate::Error::not_allowed(concat!(
+                        "Arc<dyn ",
+                        stringify!($trait_name),
+                        "> requires concrete type metadata",
+                    )))
+                }
+
+                #[inline(always)]
+                fn write_type_info_value(
+                    context: &mut $crate::WriteContext,
+                    target_type_id: std::any::TypeId,
+                ) -> Result<std::rc::Rc<$crate::TypeInfo>, $crate::Error> {
+                    [<$trait_name ForyDispatch>]::write_type_info_value(
+                        context,
+                        target_type_id,
+                    )
+                }
+
+                #[inline(always)]
+                fn write_with_type_info(
+                    value: &Self::Target,
+                    context: &mut $crate::WriteContext,
+                    ref_mode: $crate::RefMode,
+                    type_info: &std::rc::Rc<$crate::TypeInfo>,
+                ) -> Result<(), $crate::Error> {
+                    let any = [<$trait_name ForyDispatch>]::checked_any(value.as_ref())?;
+                    [<$trait_name ForyDispatch>]::check_type_info(any.type_id(), type_info)?;
+                    if ref_mode != $crate::RefMode::None
+                        && context
+                            .ref_writer
+                            .try_write_arc_ref(&mut context.writer, value)
+                    {
+                        return Ok(());
+                    }
+                    [<$trait_name ForyDispatch>]::write_harness(
+                        any,
+                        context,
+                        type_info,
+                    )
+                }
+
+                #[inline(always)]
+                fn write(
+                    value: &Self::Target,
+                    context: &mut $crate::WriteContext,
+                    ref_mode: $crate::RefMode,
+                    write_type_info: bool,
+                ) -> Result<(), $crate::Error> {
+                    let any = [<$trait_name ForyDispatch>]::checked_any(value.as_ref())?;
+                    if ref_mode != $crate::RefMode::None
+                        && context
+                            .ref_writer
+                            .try_write_arc_ref(&mut context.writer, value)
+                    {
+                        return Ok(());
+                    }
+                    [<$trait_name ForyDispatch>]::write_checked(
+                        any,
+                        context,
+                        write_type_info,
+                    )
+                }
+
+                #[inline(always)]
+                fn read(
+                    context: &mut $crate::ReadContext,
+                    ref_mode: $crate::RefMode,
+                    read_type_info: bool,
+                ) -> Result<Self::Target, $crate::Error> {
+                    let ref_flag = if ref_mode != $crate::RefMode::None {
+                        context.ref_reader.read_ref_flag(&mut context.reader)?
+                    } else {
+                        $crate::RefFlag::NotNullValue
+                    };
+                    match ref_flag {
+                        $crate::RefFlag::Null => {
+                            Err([<$trait_name ForyDispatch>]::null_arc_value())
+                        }
+                        $crate::RefFlag::Ref => {
+                            let ref_id =
+                                context.ref_reader.read_ref_id(&mut context.reader)?;
+                            context
+                                .ref_reader
+                                .get_arc_ref::<dyn $trait_name>(ref_id)
+                                .ok_or_else(|| {
+                                    [<$trait_name ForyDispatch>]::missing_ref(ref_id)
+                                })
+                        }
+                        $crate::RefFlag::NotNullValue => {
+                            context.inc_depth()?;
+                            let value = (|| {
+                                if !read_type_info {
+                                    return Err(
+                                        [<$trait_name ForyDispatch>]::missing_arc_metadata()
+                                    );
+                                }
+                                let type_info = context.read_any_type_info()?;
+                                [<$trait_name ForyDispatch>]::read_arc(context, &type_info)
+                            })()?;
+                            context.dec_depth();
+                            Ok(value)
+                        }
+                        $crate::RefFlag::RefValue => {
+                            let ref_id = context.ref_reader.reserve_ref_id();
+                            context.inc_depth()?;
+                            let value = (|| {
+                                if !read_type_info {
+                                    return Err(
+                                        [<$trait_name ForyDispatch>]::missing_arc_metadata()
+                                    );
+                                }
+                                let type_info = context.read_any_type_info()?;
+                                [<$trait_name ForyDispatch>]::read_arc(context, &type_info)
+                            })()?;
+                            context.dec_depth();
+                            context.ref_reader.store_arc_ref_at(ref_id, value.clone());
+                            Ok(value)
+                        }
+                    }
+                }
+
+                #[inline(always)]
+                fn read_with_type_info(
+                    context: &mut $crate::ReadContext,
+                    ref_mode: $crate::RefMode,
+                    type_info: &std::rc::Rc<$crate::TypeInfo>,
+                ) -> Result<Self::Target, $crate::Error> {
+                    let ref_flag = if ref_mode != $crate::RefMode::None {
+                        context.ref_reader.read_ref_flag(&mut context.reader)?
+                    } else {
+                        $crate::RefFlag::NotNullValue
+                    };
+                    match ref_flag {
+                        $crate::RefFlag::Null => {
+                            Err([<$trait_name ForyDispatch>]::null_arc_value())
+                        }
+                        $crate::RefFlag::Ref => {
+                            let ref_id =
+                                context.ref_reader.read_ref_id(&mut context.reader)?;
+                            context
+                                .ref_reader
+                                .get_arc_ref::<dyn $trait_name>(ref_id)
+                                .ok_or_else(|| {
+                                    [<$trait_name ForyDispatch>]::missing_ref(ref_id)
+                                })
+                        }
+                        $crate::RefFlag::NotNullValue => {
+                            context.inc_depth()?;
+                            let value =
+                                [<$trait_name ForyDispatch>]::read_arc(context, type_info)?;
+                            context.dec_depth();
+                            Ok(value)
+                        }
+                        $crate::RefFlag::RefValue => {
+                            let ref_id = context.ref_reader.reserve_ref_id();
+                            context.inc_depth()?;
+                            let value =
+                                [<$trait_name ForyDispatch>]::read_arc(context, type_info)?;
+                            context.dec_depth();
+                            context.ref_reader.store_arc_ref_at(ref_id, value.clone());
+                            Ok(value)
+                        }
+                    }
+                }
+
+                #[inline(always)]
+                fn write_type_info(
+                    _context: &mut $crate::WriteContext,
+                ) -> Result<(), $crate::Error> {
+                    Ok(())
+                }
+
+                #[inline(always)]
+                fn read_type_info(
+                    _context: &mut $crate::ReadContext,
+                ) -> Result<(), $crate::Error> {
+                    Ok(())
+                }
+
+                #[inline(always)]
+                fn static_type_id() -> $crate::TypeId {
+                    $crate::TypeId::UNKNOWN
+                }
+
+                #[inline(always)]
+                fn reserved_space() -> usize {
+                    $crate::type_id::SIZE_OF_REF_AND_TYPE
+                }
+
+                const IS_POLYMORPHIC: bool = true;
+
+                const IS_SHARED_REF: bool = true;
+
+                const IS_WRAPPER: bool = true;
+
+                #[inline(always)]
+                fn dynamic_type_id(
+                    value: &Self::Target,
+                ) -> Result<Option<std::any::TypeId>, $crate::Error> {
+                    Ok(Some(
+                        [<$trait_name ForyDispatch>]::any_ref(value.as_ref()).type_id(),
+                    ))
+                }
             }
 
-            fn fory_read(context: &mut $crate::ReadContext, ref_mode: $crate::RefMode, read_type_info: bool) -> Result<Self, $crate::Error> {
-                $crate::read_ptr_trait_object!(
+            $crate::register_trait_type!(
+                @codec
+                [$vis]
+                [<$trait_name ArcCodec>],
+                [<$trait_name ArcSerializer>],
+                std::sync::Arc<dyn $trait_name>
+            );
+        }
+    };
+
+    (@codec [$vis:vis] $codec:ident, $provider:ty, $target:ty) => {
+        #[allow(dead_code)]
+        #[doc(hidden)]
+        $vis struct $codec<const NULLABLE: bool, const TRACK_REF: bool>;
+
+        impl<const NULLABLE: bool, const TRACK_REF: bool> $crate::Serializer
+            for $codec<NULLABLE, TRACK_REF>
+        {
+            type Target = $target;
+
+            #[inline(always)]
+            fn write_data(
+                value: &Self::Target,
+                context: &mut $crate::WriteContext,
+            ) -> Result<(), $crate::Error> {
+                <$provider as $crate::Serializer>::write_data(value, context)
+            }
+
+            #[inline(always)]
+            fn read_data(
+                context: &mut $crate::ReadContext,
+            ) -> Result<Self::Target, $crate::Error> {
+                <$provider as $crate::Serializer>::read_data(context)
+            }
+
+            #[inline(always)]
+            fn default_value(
+                context: &mut $crate::ReadContext,
+            ) -> Result<Self::Target, $crate::Error> {
+                <$provider as $crate::Serializer>::default_value(context)
+            }
+
+            #[inline(always)]
+            fn write(
+                value: &Self::Target,
+                context: &mut $crate::WriteContext,
+                ref_mode: $crate::RefMode,
+                write_type_info: bool,
+            ) -> Result<(), $crate::Error> {
+                <$provider as $crate::Serializer>::write(
+                    value,
+                    context,
+                    ref_mode,
+                    write_type_info,
+                )
+            }
+
+            #[inline(always)]
+            fn write_type_info_value(
+                context: &mut $crate::WriteContext,
+                target_type_id: std::any::TypeId,
+            ) -> Result<std::rc::Rc<$crate::TypeInfo>, $crate::Error> {
+                <$provider as $crate::Serializer>::write_type_info_value(
+                    context,
+                    target_type_id,
+                )
+            }
+
+            #[inline(always)]
+            fn write_with_type_info(
+                value: &Self::Target,
+                context: &mut $crate::WriteContext,
+                ref_mode: $crate::RefMode,
+                type_info: &std::rc::Rc<$crate::TypeInfo>,
+            ) -> Result<(), $crate::Error> {
+                <$provider as $crate::Serializer>::write_with_type_info(
+                    value,
+                    context,
+                    ref_mode,
+                    type_info,
+                )
+            }
+
+            #[inline(always)]
+            fn read(
+                context: &mut $crate::ReadContext,
+                ref_mode: $crate::RefMode,
+                read_type_info: bool,
+            ) -> Result<Self::Target, $crate::Error> {
+                <$provider as $crate::Serializer>::read(
                     context,
                     ref_mode,
                     read_type_info,
-                    None,
-                    $pointer_type,
-                    $trait_name,
-                    $constructor_expr,
-                    $get_ref,
-                    $store_ref,
-                    $($impl_type),+
                 )
             }
 
-            fn fory_read_with_type_info(context: &mut $crate::ReadContext, ref_mode: $crate::RefMode, type_info: std::rc::Rc<$crate::TypeInfo>) -> Result<Self, $crate::Error> {
-                $crate::read_ptr_trait_object!(
+            #[inline(always)]
+            fn read_with_type_info(
+                context: &mut $crate::ReadContext,
+                ref_mode: $crate::RefMode,
+                type_info: &std::rc::Rc<$crate::TypeInfo>,
+            ) -> Result<Self::Target, $crate::Error> {
+                <$provider as $crate::Serializer>::read_with_type_info(
                     context,
                     ref_mode,
-                    false,
-                    Some(type_info),
-                    $pointer_type,
-                    $trait_name,
-                    $constructor_expr,
-                    $get_ref,
-                    $store_ref,
-                    $($impl_type),+
+                    type_info,
                 )
             }
 
-            fn fory_read_data(context: &mut $crate::ReadContext) -> Result<Self, $crate::Error> {
-                $crate::not_allowed!("fory_read_data should not be called directly on polymorphic {} trait object", stringify!($pointer_type))
+            #[inline(always)]
+            fn write_type_info(
+                _context: &mut $crate::WriteContext,
+            ) -> Result<(), $crate::Error> {
+                Ok(())
             }
 
             #[inline(always)]
-            fn fory_get_type_id(_type_resolver: &$crate::resolver::TypeResolver) -> Result<$crate::TypeId, $crate::Error> {
-                Ok($crate::TypeId::STRUCT)
+            fn read_type_info(
+                _context: &mut $crate::ReadContext,
+            ) -> Result<(), $crate::Error> {
+                Ok(())
             }
 
             #[inline(always)]
-            fn fory_static_type_id() -> $crate::TypeId {
+            fn static_type_id() -> $crate::TypeId {
                 $crate::TypeId::UNKNOWN
             }
 
             #[inline(always)]
-            fn fory_write_type_info(_context: &mut $crate::WriteContext) -> Result<(), $crate::Error> {
-                Ok(())
+            fn reserved_space() -> usize {
+                <$provider as $crate::Serializer>::reserved_space()
+            }
+
+            const IS_OPTIONAL: bool = <$provider as $crate::Serializer>::IS_OPTIONAL;
+
+            const IS_POLYMORPHIC: bool = <$provider as $crate::Serializer>::IS_POLYMORPHIC;
+
+            const IS_SHARED_REF: bool = <$provider as $crate::Serializer>::IS_SHARED_REF;
+
+            const IS_WRAPPER: bool = <$provider as $crate::Serializer>::IS_WRAPPER;
+
+            const REQUIRES_SCOPED_ACCESS: bool =
+                <$provider as $crate::Serializer>::REQUIRES_SCOPED_ACCESS;
+
+            #[inline(always)]
+            fn dynamic_type_id(
+                value: &Self::Target,
+            ) -> Result<Option<std::any::TypeId>, $crate::Error> {
+                <$provider as $crate::Serializer>::dynamic_type_id(value)
+            }
+
+        }
+
+        impl<const NULLABLE: bool, const TRACK_REF: bool>
+            $crate::serializer::codec::Codec<$target>
+            for $codec<NULLABLE, TRACK_REF>
+        {
+            #[inline(always)]
+            fn field_type(
+                _type_resolver: &$crate::TypeResolver,
+            ) -> Result<$crate::meta::FieldType, $crate::Error> {
+                Ok($crate::meta::FieldType::new_with_ref(
+                    $crate::TypeId::UNKNOWN as u32,
+                    NULLABLE,
+                    TRACK_REF,
+                    Vec::new(),
+                ))
             }
 
             #[inline(always)]
-            fn fory_read_type_info(_context: &mut $crate::ReadContext) -> Result<(), $crate::Error>  {
-                Ok(())
+            fn field_reserved_space() -> usize {
+                <$provider as $crate::Serializer>::reserved_space()
+                    + $crate::type_id::SIZE_OF_REF_AND_TYPE
             }
 
             #[inline(always)]
-            fn fory_is_polymorphic() -> bool {
-                true
+            fn write_field(
+                value: &$target,
+                context: &mut $crate::WriteContext,
+            ) -> Result<(), $crate::Error> {
+                <$provider as $crate::Serializer>::write(
+                    value,
+                    context,
+                    if TRACK_REF {
+                        $crate::RefMode::Tracking
+                    } else if NULLABLE {
+                        $crate::RefMode::NullOnly
+                    } else {
+                        $crate::RefMode::None
+                    },
+                    true,
+                )
             }
 
             #[inline(always)]
-            fn fory_is_shared_ref() -> bool {
-                true
+            fn read_field(
+                context: &mut $crate::ReadContext,
+            ) -> Result<$target, $crate::Error> {
+                <$provider as $crate::Serializer>::read(
+                    context,
+                    if TRACK_REF {
+                        $crate::RefMode::Tracking
+                    } else if NULLABLE {
+                        $crate::RefMode::NullOnly
+                    } else {
+                        $crate::RefMode::None
+                    },
+                    true,
+                )
             }
 
             #[inline(always)]
-            fn fory_type_id_dyn(&self, type_resolver: &$crate::resolver::TypeResolver) -> Result<$crate::TypeId, $crate::Error> {
-                let any_obj = <dyn $trait_name as $crate::Serializer>::as_any(&*self.0);
-                let concrete_type_id = any_obj.type_id();
-                type_resolver
-                    .get_fory_type_id(concrete_type_id)
-                    .ok_or_else(|| $crate::Error::type_error("Type not registered for trait object"))
+            fn read_field_with_type(
+                context: &mut $crate::ReadContext,
+                remote_field_type: &$crate::meta::FieldType,
+            ) -> Result<$target, $crate::Error> {
+                <$provider as $crate::Serializer>::read(
+                    context,
+                    $crate::serializer::codec::field_ref_mode(remote_field_type),
+                    true,
+                )
             }
 
             #[inline(always)]
-            fn fory_concrete_type_id(&self) -> std::any::TypeId {
-                <dyn $trait_name as $crate::Serializer>::as_any(&*self.0).type_id()
+            fn write_with_mode(
+                value: &$target,
+                context: &mut $crate::WriteContext,
+                ref_mode: $crate::RefMode,
+                write_type_info: bool,
+                _has_generics: bool,
+            ) -> Result<(), $crate::Error> {
+                <$provider as $crate::Serializer>::write(
+                    value,
+                    context,
+                    ref_mode,
+                    write_type_info,
+                )
             }
 
             #[inline(always)]
-            fn as_any(&self) -> &dyn std::any::Any {
-                <dyn $trait_name as $crate::Serializer>::as_any(&*self.0)
+            fn write_with_type_info(
+                value: &$target,
+                context: &mut $crate::WriteContext,
+                ref_mode: $crate::RefMode,
+                type_info: &std::rc::Rc<$crate::TypeInfo>,
+                _has_generics: bool,
+            ) -> Result<(), $crate::Error> {
+                <$provider as $crate::Serializer>::write_with_type_info(
+                    value,
+                    context,
+                    ref_mode,
+                    type_info,
+                )
+            }
+
+            #[inline(always)]
+            fn read_type_info_value(
+                context: &mut $crate::ReadContext,
+            ) -> Result<$crate::serializer::codec::CodecReadType, $crate::Error> {
+                context
+                    .read_any_type_info()
+                    .map($crate::serializer::codec::CodecReadType::TypeInfo)
             }
         }
     };
 }
 
-/// Helper macros for automatic conversions in derive code
-/// These are used by fory-derive to generate transparent conversions
-///
-/// Convert field of type `Rc<dyn Trait>` to wrapper for serialization
-#[macro_export]
-macro_rules! wrap_rc {
-    ($field:expr, $trait_name:ident) => {
-        $crate::paste::paste! {
-            [<$trait_name Rc>]::from($field)
-        }
-    };
-}
+#[cfg(test)]
+mod tests {
+    use crate::{ForyObject, Serializer};
+    use std::rc::Rc;
+    use std::sync::Arc;
 
-/// Convert wrapper back to `Rc<dyn Trait>` for deserialization
-#[macro_export]
-macro_rules! unwrap_rc {
-    ($wrapper:expr, $trait_name:ident) => {
-        std::rc::Rc::<dyn $trait_name>::from($wrapper)
-    };
-}
+    trait PrivateAnimal: ForyObject {}
 
-/// Convert `Arc<dyn Trait>` to wrapper for serialization
-#[macro_export]
-macro_rules! wrap_arc {
-    ($field:expr, $trait_name:ident) => {
-        $crate::paste::paste! {
-            [<$trait_name Arc>]::from($field)
-        }
-    };
-}
+    struct PrivateDog;
 
-/// Convert `Vec<Rc<dyn Trait>>` to `Vec<wrapper>` for serialization
-#[macro_export]
-macro_rules! wrap_vec_rc {
-    ($vec:expr, $trait_name:ident) => {
-        $crate::paste::paste! {
-            $vec.into_iter().map(|item| [<$trait_name Rc>]::from(item)).collect()
-        }
-    };
-}
+    impl PrivateAnimal for PrivateDog {}
 
-impl Default for Box<dyn Serializer> {
-    fn default() -> Self {
-        Box::new(0)
-    }
-}
+    register_trait_type!(PrivateAnimal, PrivateDog);
 
-impl ForyDefault for Box<dyn Serializer> {
-    fn fory_default() -> Self {
-        Box::new(0)
-    }
-}
+    pub mod public_api {
+        use crate::ForyObject;
 
-impl Serializer for Box<dyn Serializer> {
-    #[inline(always)]
-    fn fory_concrete_type_id(&self) -> std::any::TypeId {
-        (**self).fory_concrete_type_id()
+        pub trait PublicAnimal: ForyObject {}
+
+        pub struct PublicDog;
+
+        impl PublicAnimal for PublicDog {}
+
+        register_trait_type!(pub PublicAnimal, PublicDog);
+
+        pub trait SharedAnimal: ForyObject + Send + Sync {}
+
+        impl SharedAnimal for PublicDog {}
+
+        register_trait_type!(pub sync SharedAnimal, PublicDog);
     }
 
-    fn fory_write(
-        &self,
-        context: &mut WriteContext,
-        ref_mode: RefMode,
-        write_type_info: bool,
-        has_generics: bool,
-    ) -> Result<(), Error> {
-        if ref_mode != RefMode::None {
-            context.writer.write_i8(RefFlag::NotNullValue as i8);
-        }
-        let fory_type_id_dyn = self.fory_type_id_dyn(context.get_type_resolver())?;
-        let concrete_type_id = (**self).fory_concrete_type_id();
-        if write_type_info {
-            context.write_any_type_info(fory_type_id_dyn as u32, concrete_type_id)?;
-        };
-        self.fory_write_data_generic(context, has_generics)
-    }
-
-    #[inline(always)]
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        self.fory_write_data_generic(context, false)
-    }
-
-    #[inline(always)]
-    fn fory_write_data_generic(
-        &self,
-        context: &mut WriteContext,
-        has_generics: bool,
-    ) -> Result<(), Error> {
-        (**self).fory_write_data_generic(context, has_generics)
-    }
-
-    #[inline(always)]
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
-        (**self).fory_type_id_dyn(type_resolver)
-    }
-
-    #[inline(always)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        (**self).as_any()
-    }
-
-    #[inline(always)]
-    fn fory_is_polymorphic() -> bool {
-        true
-    }
-
-    fn fory_write_type_info(_context: &mut WriteContext) -> Result<(), Error> {
-        Err(Error::not_allowed(
-            "Box<dyn Serializer> is polymorphic - can's write type info statically",
-        ))
-    }
-
-    #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        context.read_any_type_info()?;
-        Ok(())
-    }
-
-    #[inline(always)]
-    fn fory_read(
-        context: &mut ReadContext,
-        ref_mode: RefMode,
-        read_type_info: bool,
-    ) -> Result<Self, Error> {
-        read_box_seralizer(context, ref_mode, read_type_info, None)
-    }
-
-    #[inline(always)]
-    fn fory_read_with_type_info(
-        context: &mut ReadContext,
-        ref_mode: RefMode,
-        type_info: Rc<TypeInfo>,
-    ) -> Result<Self, Error>
+    fn assert_target<S, T>()
     where
-        Self: Sized + ForyDefault,
+        S: Serializer<Target = T>,
+        T: 'static,
     {
-        read_box_seralizer(context, ref_mode, false, Some(type_info))
     }
 
-    fn fory_read_data(_context: &mut ReadContext) -> Result<Self, Error> {
-        Err(Error::not_allowed(
-            "fory_read_data should not be called directly on Box<dyn Serializer>",
-        ))
+    #[test]
+    fn trait_visibility_forms_compile() {
+        assert_target::<PrivateAnimalRcSerializer, Rc<dyn PrivateAnimal>>();
+        assert_target::<public_api::PublicAnimalRcSerializer, Rc<dyn public_api::PublicAnimal>>();
+        assert_target::<public_api::SharedAnimalArcSerializer, Arc<dyn public_api::SharedAnimal>>();
     }
-}
-
-fn read_box_seralizer(
-    context: &mut ReadContext,
-    ref_mode: RefMode,
-    read_type_info: bool,
-    type_info: Option<Rc<TypeInfo>>,
-) -> Result<Box<dyn Serializer>, Error> {
-    context.inc_depth()?;
-    let ref_flag = if ref_mode != RefMode::None {
-        context.reader.read_i8()?
-    } else {
-        RefFlag::NotNullValue as i8
-    };
-    if ref_flag != RefFlag::NotNullValue as i8 {
-        return Err(Error::invalid_data(
-            "Expected NotNullValue for Box<dyn Serializer>",
-        ));
-    }
-    let typeinfo = if let Some(type_info) = type_info {
-        type_info
-    } else {
-        ensure!(
-            read_type_info,
-            Error::invalid_data("Type info must be read for Box<dyn Serializer>")
-        );
-        context.read_any_type_info()?
-    };
-    let harness = typeinfo.get_harness();
-    let boxed_any = harness.get_read_data_fn()(context)?;
-    let trait_object = harness.get_to_serializer()(boxed_any)?;
-    context.dec_depth();
-    Ok(trait_object)
 }

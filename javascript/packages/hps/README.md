@@ -59,7 +59,7 @@ If you are running in a browser or on a Node.js version below 20, skip this pack
 
 ## Documentation
 
-- [JavaScript Serialization Guide](https://fory.apache.org/docs/guide/javascript)
+- [JavaScript Serialization Guide](https://fory.apache.org/docs/object-serialization/javascript)
 - [Apache Fory GitHub](https://github.com/apache/fory)
 
 ## License

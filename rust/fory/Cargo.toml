@@ -22,6 +22,7 @@ version.workspace = true
 rust-version.workspace = true
 license.workspace = true
 readme.workspace = true
+homepage.workspace = true
 repository.workspace = true
 edition.workspace = true
 keywords.workspace = true

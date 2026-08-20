@@ -27,6 +27,13 @@ import java.util.Map;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.reflect.TypeRef;
 
+/**
+ * Cold-path helpers for resolving collection and map type arguments into concrete codec metadata.
+ *
+ * <p>Factories consume {@link TypeRef} values during codec construction and retain only resolved
+ * element, key, or value bindings needed during execution. These helpers therefore do not
+ * participate in per-element dispatch and are not a runtime type-policy owner.
+ */
 public final class CodecUtils {
   private CodecUtils() {}
 

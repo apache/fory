@@ -51,7 +51,7 @@ private func stringPayloadBytes(for value: String) throws -> [UInt8] {
         typeResolver: TypeResolver(config: Config(trackRef: false)),
         trackRef: false
     )
-    try value.foryWriteData(context, hasGenerics: false)
+    try String.writeData(value, context)
     return Array(context.buffer.storage.prefix(context.buffer.count))
 }
 
@@ -86,7 +86,7 @@ func stringSerializerRoundTripsUnicodeAndLengthBoundaries() throws {
             typeResolver: TypeResolver(config: Config(trackRef: false)),
             config: Config(trackRef: false)
         )
-        #expect(try String.foryReadData(context) == value)
+        #expect(try String.readData(context) == value)
     }
 }
 
@@ -96,28 +96,28 @@ func stringSerializerReadsUtf8Latin1AndUtf16Payloads() throws {
         payload: [0x63, 0x61, 0x66, 0xE9],
         encoding: .latin1
     )
-    #expect(try String.foryReadData(latin1Context) == "café")
+    #expect(try String.readData(latin1Context) == "café")
 
     let utf16Value = "你好😀"
     let utf16Context = makeStringReadContext(
         payload: utf16LittleEndianBytes(utf16Value),
         encoding: .utf16
     )
-    #expect(try String.foryReadData(utf16Context) == utf16Value)
+    #expect(try String.readData(utf16Context) == utf16Value)
 
     let utf8Value = "emoji 👩🏽‍💻"
     let utf8Context = makeStringReadContext(
         payload: Array(utf8Value.utf8),
         encoding: .utf8
     )
-    #expect(try String.foryReadData(utf8Context) == utf8Value)
+    #expect(try String.readData(utf8Context) == utf8Value)
 }
 
 @Test
 func stringSerializerRejectsInvalidPayloads() throws {
     let oddUTF16 = makeStringReadContext(payload: [0x41], encoding: .utf16)
     do {
-        _ = try String.foryReadData(oddUTF16)
+        _ = try String.readData(oddUTF16)
         #expect(Bool(false))
     } catch {
         #expect("\(error)".contains("utf16 byte length is not even"))
@@ -125,7 +125,7 @@ func stringSerializerRejectsInvalidPayloads() throws {
 
     let invalidUTF8 = makeStringReadContext(payload: [0xC3, 0x28], encoding: .utf8)
     do {
-        _ = try String.foryReadData(invalidUTF8)
+        _ = try String.readData(invalidUTF8)
         #expect(Bool(false))
     } catch {
         #expect("\(error)".contains("invalid UTF-8"))
@@ -139,7 +139,7 @@ func stringSerializerRejectsInvalidPayloads() throws {
         config: Config(trackRef: false)
     )
     do {
-        _ = try String.foryReadData(unsupportedEncoding)
+        _ = try String.readData(unsupportedEncoding)
         #expect(Bool(false))
     } catch {
         #expect("\(error)".contains("unsupported string encoding"))

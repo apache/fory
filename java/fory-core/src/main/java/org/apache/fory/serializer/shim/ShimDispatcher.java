@@ -77,7 +77,7 @@ public class ShimDispatcher {
     try {
       return Serializers.newSerializer(typeResolver, clazz, serializerClass);
     } catch (Throwable e) {
-      LOG.warn(
+      LOG.warnOnce(
           "Construct shim serializer failed for class [{}] with serializer class [{}]",
           className,
           serializerClass);

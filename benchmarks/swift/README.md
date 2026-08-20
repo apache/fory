@@ -39,6 +39,7 @@ Supported flags:
 - `--data <struct|sample|mediacontent|structlist|samplelist|mediacontentlist>`
 - `--serializer <fory|protobuf|json>`
 - `--duration <seconds>`
+- `--external`
 - `--no-report`
 - `--no-copy-docs`
 
@@ -56,6 +57,9 @@ Examples:
 
 # Skip report generation
 ./run.sh --no-report
+
+# Also run the isolated external-type serializer comparisons
+./run.sh --external
 ```
 
 ## Schema Mismatch Mode
@@ -71,13 +75,24 @@ int32 field is widened to int64.
 
 ```bash
 # Build benchmark
-swift build -c release
+swift build -c release --product swift-benchmark
 
 # Run benchmark executable
-swift run -c release swift-benchmark --duration 3 --output results/benchmark_results.json
+swift run -c release --skip-build swift-benchmark \
+  --duration 3 \
+  --output results/benchmark_results.json
+
+# Build and run external-type comparisons independently
+swift build -c release --product swift-external-benchmark
+swift run -c release --skip-build swift-external-benchmark \
+  --duration 3 \
+  --output results/external_benchmark_results.json
 
 # Generate markdown report and plot
-python3 benchmark_report.py --json-file results/benchmark_results.json --output-dir results
+python3 benchmark_report.py \
+  --json-file results/benchmark_results.json \
+  --external-json-file results/external_benchmark_results.json \
+  --output-dir results
 ```
 
 ## Output Files
@@ -85,8 +100,9 @@ python3 benchmark_report.py --json-file results/benchmark_results.json --output-
 After running `./run.sh`, the following files are generated in `benchmarks/swift/results/`:
 
 - `benchmark_results.json`: raw benchmark metrics and serialized-size comparison
+- `external_benchmark_results.json`: isolated external-type and carrier comparisons
 - `throughput.png`: throughput comparison plot
-- `README.md` and `REPORT.md`: markdown report with hardware/runtime info and result tables
+- `README.md`: markdown report with hardware/runtime info and result tables
 
 ## Notes
 
@@ -103,4 +119,6 @@ protoc \
 ```
 
 - The benchmark intentionally includes plain-model conversion for protobuf to mirror real-world usage.
+- `swift-benchmark` and `swift-external-benchmark` are separate executables. Building the ordinary
+  benchmark does not compile external-type models or serializer specializations.
 - Results vary across machines and runtime environments.

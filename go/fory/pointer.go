@@ -24,6 +24,7 @@ import (
 // ptrToValueSerializer serializes a pointer to a concrete (non-interface) value
 type ptrToValueSerializer struct {
 	valueSerializer Serializer
+	valueBytes      int
 }
 
 // ptrToInterfaceSerializer serializes a pointer to an interface value
@@ -69,7 +70,7 @@ func (s *ptrToValueSerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 			// Create a zero value for the underlying type and write it
 			zeroValue := reflect.New(value.Type().Elem()).Elem()
 			if writeType {
-				typeInfo, err := ctx.TypeResolver().getTypeInfo(zeroValue, true)
+				typeInfo, err := ctx.TypeResolver().GetTypeInfo(zeroValue, true)
 				if err != nil {
 					ctx.SetError(FromError(err))
 					return
@@ -84,7 +85,7 @@ func (s *ptrToValueSerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 	if writeType {
 		// Always use TypeResolver to get the correct TypeID from registered TypeInfo
 		// This ensures compatible mode uses NAMED_COMPATIBLE_STRUCT instead of NAMED_STRUCT
-		typeInfo, err := ctx.TypeResolver().getTypeInfo(value.Elem(), true)
+		typeInfo, err := ctx.TypeResolver().GetTypeInfo(value.Elem(), true)
 		if err != nil {
 			ctx.SetError(FromError(err))
 			return
@@ -139,7 +140,10 @@ func (s *ptrToValueSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Check if value is already allocated (for circular reference handling)
 	var newVal reflect.Value
 	if value.IsNil() {
-		// Allocate new value
+		// Pointer serializers reserve only when they allocate the pointed value.
+		if !ctx.ReserveGraphMemory(int64(s.valueBytes)) {
+			return
+		}
 		newVal = reflect.New(value.Type().Elem())
 		value.Set(newVal)
 	} else {
@@ -161,15 +165,12 @@ func (s *ptrToValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 	case RefModeTracking:
 		refID, refErr := ctx.RefResolver().TryPreserveRefId(buf)
 		if refErr != nil {
-			ctx.SetError(FromError(refErr))
+			ctxErr.SetError(refErr)
 			return
 		}
 		if refID < int32(NotNullValueFlag) {
 			// Reference found
-			obj := ctx.RefResolver().GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
-			}
+			assignReadRef(ctx, refID, value)
 			return
 		}
 	case RefModeNullOnly:
@@ -191,10 +192,21 @@ func (s *ptrToValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 		// Check if this is a struct type that needs type meta reading
 		if IsNamespacedType(internalTypeID) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
 			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
+			if ctxErr.HasError() {
+				return
+			}
 			// Use the serializer from TypeInfo which has the remote field definitions
-			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
+			serializer := serializerForConcreteType(value.Type().Elem(), typeInfo, ctxErr)
+			if ctxErr.HasError() {
+				return
+			}
+			if structSer, ok := serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
 				// Allocate the pointer value if needed
 				if value.IsNil() {
+					// Pointer serializers reserve only when they allocate the pointed value.
+					if !ctx.ReserveGraphMemory(int64(s.valueBytes)) {
+						return
+					}
 					value.Set(reflect.New(value.Type().Elem()))
 				}
 				ctx.RefResolver().Reference(value)
@@ -276,10 +288,7 @@ func (s *ptrToInterfaceSerializer) Read(ctx *ReadContext, refMode RefMode, readT
 		}
 		if refID < int32(NotNullValueFlag) {
 			// Reference found
-			obj := ctx.RefResolver().GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
-			}
+			assignReadRef(ctx, refID, value)
 			return
 		}
 	case RefModeNullOnly:

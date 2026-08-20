@@ -6,14 +6,72 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 
 - Run all Maven commands from within `java/`.
 - Changes under `java/` must pass code style checks and tests.
+- When changes are limited to `fory-json` or `fory-format`, do not run `fory-core`
+  tests. Install the changed module and its reactor dependencies with
+  `-am install -DskipTests`, then run `test` with only the changed module selected
+  and without `-am`. In particular, never use `-pl fory-json -am test` or
+  `-pl fory-format -am test`, because Maven propagates the test phase to
+  `fory-core`.
+- If tests already passed and the only later change is Maven Spotless formatting, do not rerun
+  tests solely because of that formatting pass. Verify formatting with `spotless:check` and inspect
+  the diff/status instead.
 - Fory Java requires JDK `17+`.
 - Run Java `spotless` with JDK `21+`. If the current runtime is lower than 21, export `JAVA_HOME` to a JDK 21 installation before running `mvn spotless:check` or `mvn spotless:apply`.
 - `fory-core` targets Java 8 bytecode and `fory-format` targets Java 11 bytecode. Do not use newer APIs in those modules.
+- `fory-json` must not depend on or reference `jdk.incubator.vector`, including production and
+  multi-release sources, module descriptors, Maven wiring, and optional runtime paths.
+- Put a `fory-json` optimization in the earliest multi-release overlay whose public JDK APIs
+  support it. In particular, `Math.multiplyHigh` and `VarHandle` implementations belong in the
+  Java 9 overlay, not the Java 25 overlay; keep only the Java 8 compatibility implementation in
+  the root sources.
+- JDK 9+ `fory-json` direct backing-array access must use static-final VarHandles. Do not restore
+  or benchmark Unsafe as a production optimization alternative.
 - Do not use wildcard imports.
 - Import config and annotation types instead of fully qualifying enum constants or annotation
   values; use qualified names only when a real name conflict requires it.
 - If you run temporary tests with `java -cp`, run `mvn -T16 install -DskipTests` first so local Fory jars are current.
 - `WriteContext`, `ReadContext`, and `CopyContext` must stay explicit. Do not reintroduce `ThreadLocal` or ambient runtime-context patterns.
+- Java root deserialization graph memory budgeting belongs to `ReadContext`
+  and is initialized by `Fory` root APIs. Public config is `maxGraphMemoryBytes`
+  with fixed `128 MiB` default. Positive explicit values override the default;
+  explicit non-positive values are invalid and must be rejected at config creation.
+  Byte-array, memory-buffer, and stream roots use the same configured/default
+  budget behavior. Root APIs reset the budget only; they must not pre-reserve
+  root type or root self bytes. Do not mirror the configured max into a second
+  active-limit field; use config plus mutable remaining budget. `ReadContext`
+  may expose only raw byte reservation;
+  collection, map, array, struct, and object formulas belong in the concrete
+  serializer or generated serializer owner. Java collection, map, and
+  object-array owners reserve nonzero shallow self cost plus reference storage;
+  referenced object serializers reserve their own nonzero shallow self memory
+  plus shallow field storage when materialized.
+  Unknown-length JSON collections and maps reserve reference storage in exact
+  1024-item batches before reading each batch's final child, then reserve the
+  remaining tail after the loop. Generated collection readers must use the same
+  batching; owner-specific paths such as object any-map reads keep their own
+  stronger timing.
+  Java Fory core primitive-array serializers reserve the portable array header
+  plus `length * primitive width` once after the existing readable-byte check
+  and before allocation. Primitive-list serializers reserve list shallow
+  storage, the array header, and primitive storage on the same schedule.
+  Compressed paths use the decompressed logical length; Float16/BFloat16 array
+  carriers also include their wrapper owner. Do not batch these known-length
+  core paths. A boxed-list conversion that first materializes a primitive array
+  keeps that pre-allocation reservation and adds only the positive difference
+  to the final list estimate; do not bypass the array reservation or charge
+  both full estimates.
+  Java JSON primitive-array codecs reserve the portable array header plus actual primitive storage.
+  Reserve primitive storage in exact 1024-element batches before each batch's final element and
+  reserve the tail before the returned array is allocated or published. Resolve custom primitive
+  component width once during codec construction. A `byte[]` handled by a binary or Base64 codec
+  remains a binary leaf.
+  Treat the option as an approximate collection/map/array/struct/object gate, not an exact heap
+  cap. Leaf values skipped by graph budgeting remain gated by unread input bytes.
+  Reference fields use the 4-byte fallback when the JVM reference size is not
+  queried cheaply; primitive fields use their encoded storage width. Preserve
+  existing `checkReadableBytes` guards before backing allocation or capacity
+  reservation. Do not add nested serializer-path `try/finally`, per-element
+  work, dynamic stream bytes-read accounting, or stale narrower-scope formulas.
 - Generated serializers must not retain runtime context fields. `Fory` should stay a root-operation facade rather than accumulating serializer or convenience state.
 - When the serializer class and constructor shape are known at the call site, prefer direct constructor lambdas or direct instantiation over reflective `Serializers.newSerializer(...)`.
 - For GraalVM, use `fory codegen` to generate serializers when building native images. Do not add reflection configuration except for JDK `proxy`.
@@ -31,6 +89,24 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   names before those name-level checks. Checks that require `Class<?>`,
   including `checkClassForDeserialization`, remain after loading; do not replace
   them with new string-only registration or security checks.
+- Treat exact `registeredClasses` hits as trusted for both ID and name registrations. An exact
+  checked name-cache hit is trusted too. After both exact lookups miss, reader-side class-name
+  resolution must not scan class-keyed state, use inverse registration, or compare
+  `Class.getName()` to infer another accepted name. Writer-side inverse lookup from an already owned
+  local `Class<?>` to its registered ID or name is valid and must not be copied into reader-side
+  miss handling. ObjectStream layer names do not use this reader-side miss path:
+  `ObjectStreamSerializer` owns its layer header and compares the complete wire name directly with
+  the remaining local slots. It resolves registered ID headers through the ID registry, skips
+  unmatched named sender layers as data-only metadata, and does not route layer names through
+  `ClassResolver.readClassInternal`. Inverse registration must not turn a missed input name into an
+  accepted class.
+- Keep JDK interface names that do not require explicit registration in
+  `DefaultJdkClassAllowList`. `TypeResolver.loadClass` and `ClassResolver.isSecure` must both use
+  this single owner. Keep custom `TypeChecker` and fixed disallowed-list checks on their existing
+  paths.
+- Enum constants with class bodies have synthetic runtime subclasses, but their TypeInfo, wire
+  class name, registration ID, and serializer belong to the declaring enum. Never register, cache,
+  emit, or reader-resolve the constant subclass as a separate serialized type.
 - Do not use `instanceof` in Java hot paths, including per-value, per-field, per-element,
   read/write/copy, resolver, serializer, codec, and buffer paths. Choose concrete
   implementations during cold setup or code generation, cache final/static-final shape decisions,
@@ -58,6 +134,34 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - In `MemoryBuffer` and `MemoryOps` hot paths, duplicate small straight-line copy/read/write logic
   when that keeps control flow direct. Do not add private helper indirection to hot paths just to
   reduce local code duplication; keep helpers for slow, cold, or error paths.
+- In JDK 25 Fory JSON C2-sensitive code, preserve measured, naturally large hot-method boundaries.
+  A method that exceeds HotSpot's 325-byte hot-inline limit through real representation, scalar,
+  array, collection, or generated-schema work is an independent subtree owner. Generated group
+  planning counts only its invocation bytecodes, not the callee's transitive body. Do not shrink
+  such a method into a wrapper, add its body back into the caller budget, or manufacture a boundary
+  with padding, `@DontInline`, `CompileCommand`, fake receivers, or JVM flags. Keep escape,
+  malformed-input, Unicode, arbitrary-length, and other cold fallback work in separate methods.
+- Generated Latin1 and UTF-8 JSON readers classify arbitrary-order known fields by a bounded raw
+  prefix and verify the complete compile-time field token in the generated slow owner. A prefix or
+  token miss must leave the name unread and use the existing hash/table path for escapes, aliases,
+  unknown names, collisions, and malformed input. Keep Any-property and UTF-16 readers on their
+  existing hash paths. Do not extract the classifier into an independent scanner owner, add a
+  declaration-order assumption, or replace complete token verification with prefix equality.
+- Generated UTF-8 object writers own their C2 boundaries in their actual emitted bytecode. A split
+  writer keeps object framing and the final declaration-order field range in public `writeUtf8`;
+  every preceding range is a direct private final helper. Cold source generation compiles each
+  candidate and requires the root and every helper to be strictly larger than HotSpot's 325-byte
+  hot-inline limit. Independently compiled String, scalar, child-object, and container leaves count
+  only as calls. If the schema cannot form at least two naturally large units, keep one direct
+  method. Do not replace these type-owned calls with interface receivers, shared profiles,
+  trampolines, padding, duplicate field logic, dummy branches, or field-count estimates.
+- Intentional hot-path source duplication is required when helper extraction loses local
+  buffer/cursor state or makes C2 layout depend on compilation order. In particular, Long read/write
+  paths may repeat Int parsing or formatting logic, and unrolled array lanes may repeat complete
+  signed/range dispatch. Do not deduplicate these blocks without generated-source, `javap`,
+  PrintInlining, LogCompilation, nmethod, allocation, intrinsic, and aggregate evidence that the
+  independent boundary and performance remain stable. Preserve the nearby source comments that
+  record the owner and failure mode.
 - In `MemoryBuffer` small-varint read/write hot paths, once Android has exited through the single
   `MemoryOps` call, keep JVM bulk loads/stores local with raw Unsafe operations instead of routing
   through branchful `_unsafeGet*` or `_unsafePut*` helpers. Add or preserve source comments that
@@ -72,18 +176,21 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - If changes touch GraalVM bootstrap, serializer retention, native-image metadata, or `ObjectStreamSerializer` GraalVM behavior, verify the native-image build and run the produced binary; a plain Java compile is insufficient.
 - Put latest-JDK or virtual-thread tests in the latest-JDK test modules with the matching compiler/profile floor, and centralize runtime-version probing in existing compatibility utilities.
 - For JDK25+ zero-Unsafe work, preserve serializer-family selection by type and configuration. Do not switch a type from `ObjectStreamSerializer` or another Fory serializer family to `JavaSerializer`, a JDK stream fallback, or any broad `java.* Serializable` fallback by JDK version or no-arg-constructor shape.
-- JDK25+ zero-Unsafe runtime support must distinguish launch shape. When Fory is on the module
-  path, use `--add-opens=java.base/java.lang.invoke=org.apache.fory.core`; when Fory is on the
-  classpath, use `--add-opens=java.base/java.lang.invoke=ALL-UNNAMED`. Missing this open is an
-  invalid access configuration, not a reason to open per-package JDK internals or switch
-  serializer/object-creation families. JPMS tests that validate named-module access should keep the
-  `org.apache.fory.core` target.
-- Do not probe JDK25+ trusted-lookup availability and turn `_JDKAccess` field-access booleans false when the required `java.base/java.lang.invoke` open is missing. Keep those access flags true on JDK25+ and let the owning trusted-lookup path raise the configuration error.
+- JDK25+ access must distinguish launch shape. Opening `java.base/java.lang.invoke` is not required
+  for normal launches while the current-JDK Unsafe fallback is available, but is recommended. It is
+  required for zero-Unsafe launches or when that fallback is unavailable. When Fory is on the
+  module path, target `org.apache.fory.core`; when Fory is on the classpath, target `ALL-UNNAMED`.
+  JPMS tests that validate named-module access should keep the `org.apache.fory.core` target.
+- Do not probe JDK25+ trusted-lookup availability and turn `_JDKAccess` field-access booleans false
+  when the optional `java.base/java.lang.invoke` open is missing. Keep those access flags true on
+  JDK25+ and let `_Lookup` try the direct access path followed by the current-JDK Unsafe fallback.
+  Raise the access error only when both paths are unavailable.
 - Keep JDK25+ unsafe-removal implementation invariants in agent/design docs and tests, not user guides. User guides should document user actions such as `--sun-misc-unsafe-memory-access=deny` and `java.base/java.lang.invoke` opens; do not expose internal serializer names, owner-model rationale, or avoided fallback strategies there.
 - JDK25+ user docs must not require application module package opens for Fory private-field access.
-  The only required platform open is `java.base/java.lang.invoke`, targeted to `ALL-UNNAMED` for
-  classpath runs or `org.apache.fory.core` for module-path runs; application module package opens
-  are not part of this design.
+  The only platform open Fory recommends is `java.base/java.lang.invoke`, targeted to `ALL-UNNAMED`
+  for classpath runs or `org.apache.fory.core` for module-path runs. Describe it as not required but
+  recommended for normal launches, and required when Unsafe access is disabled or unavailable.
+  Application module package opens are not part of this design.
 - JDK25+ final-field user docs must not tell ordinary classes to implement
   `java.io.Serializable`. Fory supports ordinary non-Serializable classes; mention
   `Serializable` only for JDK serialization hook examples or `java.*` serializability checks.
@@ -91,8 +198,9 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   classes to records, no-arg constructors, or custom serializers. Keep user docs focused on the
   supported runtime setup and normal class model.
 - Do not create a separate JDK25+ support user-guide page for the Java runtime setup unless the
-  user explicitly asks for one. Keep the `java.base/java.lang.invoke` open in install-facing docs
-  such as the Java/Kotlin/Scala install sections and README.
+  user explicitly asks for one. Keep guidance that opening `java.base/java.lang.invoke` is not
+  required but recommended in install-facing docs such as the Java/Kotlin/Scala install sections
+  and README.
 - JDK25+ zero-Unsafe final-field writes must use a true target-class trusted lookup from the original `IMPL_LOOKUP`, not `IMPL_LOOKUP.in(type)`. JDK26+ normal Fory final-field restoration must pass with `--illegal-final-field-mutation=deny` and must not require `--enable-final-field-mutation`.
 - For JDK25+ object creation, do not use `sun.reflect.ReflectionFactory`, `jdk.unsupported`, or an
   Unsafe-backed object instantiator. Normal JVM no-constructor construction must use the
@@ -101,8 +209,9 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   constructor validation. ObjectStream-compatible serializers own the separate
   `ParentNoArgCtrInstantiator` path and must keep Java serialization parent-constructor rules. The
   JDK25+ ReflectionFactory path uses trusted-lookup access to `jdk.internal.reflect.ReflectionFactory`
-  in `java.base` and must not require `--add-opens=java.base/jdk.internal.reflect=...`; the only
-  JDK25+ platform open remains `java.base/java.lang.invoke=org.apache.fory.core`. GraalVM JDK25+
+  in `java.base` and must not require `--add-opens=java.base/jdk.internal.reflect=...`;
+  `java.base/java.lang.invoke` remains the only platform open Fory may use, with the launch-shape
+  target described above. GraalVM JDK25+
   native-image ordinary serializers may use an `ObjectStreamClass.newInstance` MethodHandle only
   for the exact Serializable case where the serialization constructor class is `Object`; that
   preserves normal empty-instance semantics because no user superclass constructor can run. For
@@ -121,7 +230,13 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - `UnsafeObjectInstantiator` is the JDK8-24 Unsafe owner only. It must be a top-level instantiator
   with a Java25 multi-release stub that contains no Unsafe, ObjectStream, ReflectionFactory, or
   constructor-bypass implementation.
-- Keep the Java25 `_Lookup` overlay unless a future refactor can merge it without exposing Unsafe to the JDK25 class graph. Root `_Lookup` uses Unsafe for the JDK8-24 trusted-lookup fast path, while Java25 `_Lookup` uses the required `java.lang.invoke` open. `DefineClass` is root-owned; when Java25+ generated serializers need hidden nestmate class definition, it must use cached method handles and reflective `Lookup.ClassOption.NESTMATE` loading so Java 8 through Java 14 can still load the root class safely.
+- Keep the Java25 `_Lookup` overlay unless a future refactor can merge it without exposing Unsafe to
+  the JDK25 class graph. Root `_Lookup` uses Unsafe for the JDK8-24 trusted-lookup fast path, while
+  Java25 `_Lookup` first uses the optional `java.lang.invoke` open and falls back through the split
+  current-JDK Unsafe lookup when the open is absent. `DefineClass` is root-owned; when Java25+
+  generated serializers need hidden nestmate class definition, it must use cached method handles
+  and reflective `Lookup.ClassOption.NESTMATE` loading so Java 8 through Java 14 can still load the
+  root class safely.
 - Treat `ByteArrayOutputStream` and `ByteArrayInputStream` as ordinary streams on every JDK. Do
   not restore private-buffer wrapping for JDK8-24 performance, because that reintroduces
   `java.base/java.io` private-field ownership and module-open requirements.
@@ -168,12 +283,13 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   focused on field and array access, keep serialization hook discovery in serializer-owned code,
   and keep `_JDKAccess` limited to JDK lookup, module, function factory, and access-flag
   primitives.
-- JDK25+ serialization hook access must use the required trusted lookup from
-  `java.base/java.lang.invoke=org.apache.fory.core`. Keep `sun.reflect.ReflectionFactory` as a
-  JDK8-24 hook optimization only, and do not add per-type reflective escapes for hook invocation.
+- JDK25+ serialization hook access must use the trusted lookup obtained through the optional
+  `java.lang.invoke` open or the existing current-JDK Unsafe fallback. Keep
+  `sun.reflect.ReflectionFactory` as a JDK8-24 hook optimization only, and do not add per-type
+  reflective escapes for hook invocation.
 - JDK25+ `PlatformStringUtils` getter methods sit behind `StringSerializer` static-final access
-  gates. Do not add per-call access checks in those getters; missing module opens should fail at
-  trusted-lookup initialization or cold setup, not inside string hot paths.
+  gates. Do not add per-call access checks in those getters; failures after both direct lookup and
+  the current-JDK Unsafe fallback should surface during cold setup, not inside string hot paths.
 - `FieldAccessor` owns field-accessor dispatch. `RecordFieldAccessors` owns record field access,
   and `InstanceFieldAccessors` owns non-record instance field access. Do not reintroduce a
   `FieldAccessorFactory` layer. Treat `InstanceFieldAccessors` as package-owned implementation
@@ -241,7 +357,10 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   `BaseFory.registerConstructor(...)`. Java parameter names, `-parameters`, and
   `@ConstructorProperties` are not a Fory object-creation contract. Runtime serializers for
   ordinary classes must create an empty instance through `TypeResolver.getObjectInstantiator(Class)` and
-  set fields; records and source-generated Kotlin serializers are the constructor-owned paths.
+  set fields; records and source-generated Kotlin serializers are the constructor-owned paths. The
+  narrow exception is Fory JSON's explicit property-based `@JsonCreator`, whose complete read schema
+  is annotation-declared and whose generated readers call the selected public constructor or static
+  factory directly.
 - Source-generated constructor serializers must own their constructor metadata at generation time
   and call constructors directly. They must not depend on runtime `ObjectInstantiator` constructor-field
   metadata or varargs constructor calls.

@@ -53,7 +53,7 @@ private func timestampDate(seconds: Int64, nanos: UInt32) -> Date {
 private func localDateEpochDay(for date: Date) throws -> Int32 {
     let days = floor(date.timeIntervalSince1970 / secondsPerDay)
     guard days >= Double(Int32.min), days <= Double(Int32.max) else {
-        throw ForyError.encodingError("date epochDay is out of Int32 range")
+        throw dateEpochOutOfRange()
     }
     return Int32(days)
 }
@@ -79,7 +79,7 @@ private func writeScalarValue<T>(
     switch refMode {
     case .none:
         guard let value else {
-            throw ForyError.encodingError("nil value requires nullable ref mode")
+            throw nilScalarValue()
         }
         if typeInfo.write {
             context.writeStaticTypeInfo(typeInfo.id)
@@ -126,12 +126,12 @@ private func readScalarNullableValue<T>(
             let refID = try context.buffer.readVarUInt32()
             return try context.refReader.readRef(refID, as: T.self)
         default:
-            throw ForyError.refError("invalid ref flag \(rawFlag)")
+            throw invalidScalarRefFlag(rawFlag)
         }
     case .tracking:
         let rawFlag = try context.buffer.readInt8()
         guard let flag = RefFlag(rawValue: rawFlag) else {
-            throw ForyError.refError("invalid ref flag \(rawFlag)")
+            throw invalidScalarRefFlag(rawFlag)
         }
         switch flag {
         case .null:
@@ -156,16 +156,51 @@ private func readScalarNullableValue<T>(
 private func readTypeID(_ context: ReadContext, expectedTypeIDs: [TypeId]) throws -> TypeId {
     let rawTypeID = UInt32(try context.buffer.readUInt8())
     guard let actualTypeID = TypeId(rawValue: rawTypeID) else {
-        throw ForyError.invalidData("unknown type id \(rawTypeID)")
+        throw unknownScalarTypeID(rawTypeID)
     }
     if expectedTypeIDs.contains(actualTypeID) {
         return actualTypeID
     }
     if let expectedTypeID = expectedTypeIDs.first, expectedTypeIDs.count == 1 {
-        throw ForyError.typeMismatch(expected: expectedTypeID.rawValue, actual: rawTypeID)
+        throw scalarTypeMismatch(expected: expectedTypeID.rawValue, actual: rawTypeID)
     }
-    let expectedList = expectedTypeIDs.map(\.rawValue).map(String.init).joined(separator: ", ")
-    throw ForyError.invalidData("expected one of type ids [\(expectedList)], got \(rawTypeID)")
+    throw unexpectedScalarTypeIDs(expectedTypeIDs, actual: rawTypeID)
+}
+
+@inline(never)
+private func dateEpochOutOfRange() -> ForyError {
+    ForyError.encodingError("date epochDay is out of Int32 range")
+}
+
+@inline(never)
+private func invalidDateEpochDay() -> ForyError {
+    ForyError.invalidData("date epochDay is out of Int32 range")
+}
+
+@inline(never)
+private func nilScalarValue() -> ForyError {
+    ForyError.encodingError("nil value requires nullable ref mode")
+}
+
+@inline(never)
+private func invalidScalarRefFlag(_ rawFlag: Int8) -> ForyError {
+    ForyError.refError("invalid ref flag \(rawFlag)")
+}
+
+@inline(never)
+private func unknownScalarTypeID(_ rawTypeID: UInt32) -> ForyError {
+    ForyError.invalidData("unknown type id \(rawTypeID)")
+}
+
+@inline(never)
+private func scalarTypeMismatch(expected: UInt32, actual: UInt32) -> ForyError {
+    ForyError.typeMismatch(expected: expected, actual: actual)
+}
+
+@inline(never)
+private func unexpectedScalarTypeIDs(_ expected: [TypeId], actual: UInt32) -> ForyError {
+    let expectedList = expected.map(\.rawValue).map(String.init).joined(separator: ", ")
+    return ForyError.invalidData("expected one of type ids [\(expectedList)], got \(actual)")
 }
 
 /// A calendar date without time-of-day or timezone, encoded as Fory `date`.
@@ -222,28 +257,28 @@ public struct LocalDate: Serializer, Equatable, Hashable, Comparable {
         lhs.epochDay < rhs.epochDay
     }
 
-    public static func foryDefault() -> LocalDate {
+    public static func defaultValue(_ context: ReadContext) throws -> LocalDate {
         .init()
     }
 
     public static var staticTypeId: TypeId {
         .date
     }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        try context.writeLocalDate(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        try context.writeLocalDate(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> LocalDate {
+    public static func readData(_ context: ReadContext) throws -> LocalDate {
         try context.readLocalDate()
     }
 }
@@ -301,7 +336,7 @@ public extension ReadContext {
     @inline(__always)
     func readLocalDate() throws -> LocalDate {
         guard let epochDay = Int32(exactly: try buffer.readVarInt64()) else {
-            throw ForyError.invalidData("date epochDay is out of Int32 range")
+            throw invalidDateEpochDay()
         }
         return .init(epochDay: epochDay)
     }
@@ -324,7 +359,10 @@ public extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool
     ) throws -> Date {
-        try readNullableTimestamp(refMode: refMode, readTypeInfo: readTypeInfo) ?? Date.foryDefault()
+        if let value = try readNullableTimestamp(refMode: refMode, readTypeInfo: readTypeInfo) {
+            return value
+        }
+        return try Date.defaultValue(self)
     }
 
     @inline(__always)
@@ -345,30 +383,33 @@ public extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool
     ) throws -> LocalDate {
-        try readNullableLocalDate(refMode: refMode, readTypeInfo: readTypeInfo) ?? LocalDate.foryDefault()
+        if let value = try readNullableLocalDate(refMode: refMode, readTypeInfo: readTypeInfo) {
+            return value
+        }
+        return try LocalDate.defaultValue(self)
     }
 }
 
 extension Duration: Serializer {
-    public static func foryDefault() -> Duration {
+    public static func defaultValue(_ context: ReadContext) throws -> Duration {
         .zero
     }
 
     public static var staticTypeId: TypeId {
         .duration
     }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        let components = self.components
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        let components = value.components
         let nanos = components.attoseconds / 1_000_000_000
         let remainder = components.attoseconds % 1_000_000_000
         if remainder != 0 {
@@ -378,7 +419,7 @@ extension Duration: Serializer {
         context.buffer.writeInt32(Int32(nanos))
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Duration {
+    public static func readData(_ context: ReadContext) throws -> Duration {
         let seconds = try context.buffer.readVarInt64()
         let nanos = try context.buffer.readInt32()
         return .seconds(seconds) + .nanoseconds(Int64(nanos))
@@ -386,32 +427,32 @@ extension Duration: Serializer {
 }
 
 extension Date: Serializer {
-    public static func foryDefault() -> Date {
+    public static func defaultValue(_ context: ReadContext) throws -> Date {
         Date(timeIntervalSince1970: 0)
     }
 
     public static var staticTypeId: TypeId {
         .timestamp
     }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        try context.writeTimestamp(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        try context.writeTimestamp(value)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Date {
+    public static func readData(_ context: ReadContext) throws -> Date {
         try context.readTimestamp()
     }
 
-    public static func foryRead(
+    public static func read(
         _ context: ReadContext,
         refMode: RefMode,
         readTypeInfo: Bool

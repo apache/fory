@@ -18,7 +18,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(fory
-    VERSION 1.4.0
+    VERSION 1.7.0
     DESCRIPTION "Apache Fory - A blazingly fast multi-language serialization framework"
     LANGUAGES CXX
 )
@@ -122,6 +122,7 @@ add_subdirectory(fory/encoder)
 # Create main fory_serialization interface library (for users who only need serialization)
 add_library(fory_serialization_lib INTERFACE)
 target_link_libraries(fory_serialization_lib INTERFACE fory_serialization)
+set_target_properties(fory_serialization_lib PROPERTIES EXPORT_NAME serialization)
 add_library(fory::serialization ALIAS fory_serialization_lib)
 
 # Create main fory_row_format interface library (for users who need row format)

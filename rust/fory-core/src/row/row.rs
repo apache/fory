@@ -15,301 +15,343 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::types::{Date, Duration, Timestamp};
-use crate::{buffer::Writer, error::Error};
-use byteorder::{ByteOrder, LittleEndian};
 use std::collections::BTreeMap;
-use std::marker::PhantomData;
 
-use super::{
-    reader::{ArrayViewer, MapViewer},
-    writer::{ArrayWriter, MapWriter},
-};
+use crate::error::Error;
+use crate::types::{Date, Duration, Timestamp};
 
-pub trait Row<'a> {
-    type ReadResult;
+use super::reader::{ArrayView, MapView};
+use super::writer::{ArrayWriter, MapWriter, ValueWriter};
 
-    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error>;
+/// Static Row Format behavior for one schema value.
+///
+/// This trait is public because `ForyRow` implementations are generated in
+/// downstream crates. Most applications should derive `ForyRow` instead of
+/// implementing it directly.
+#[doc(hidden)]
+pub trait RowValue {
+    /// Zero-copy projection returned when this value is read.
+    type View<'a>;
 
-    fn cast(bytes: &'a [u8]) -> Self::ReadResult;
+    /// Natural fixed width, or `None` for an offset-addressed value.
+    const FIXED_SIZE: Option<usize>;
+
+    /// Writes exactly one value to its container-selected destination.
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error>;
+
+    /// Reads exactly one value from its container-resolved bytes.
+    fn read<'a>(bytes: &'a [u8]) -> Result<Self::View<'a>, Error>;
+
+    /// Returns true when this value should set its container null bit.
+    fn is_null(&self) -> bool {
+        false
+    }
+
+    /// Produces the projection for a set null bit.
+    fn read_null<'a>() -> Result<Self::View<'a>, Error> {
+        Err(Error::invalid_data(
+            "null row value cannot be read as a non-optional type",
+        ))
+    }
 }
 
-fn read_i8_from_bytes(bytes: &[u8]) -> i8 {
-    bytes[0] as i8
-}
+/// A self-contained Standard Row Format root.
+///
+/// Derived structs, arrays, and maps implement this marker. Scalar, string,
+/// binary, and optional values are field/element values rather than row roots.
+pub trait Row: RowValue {}
 
-macro_rules! impl_row_for_number {
-    ($tt: tt, $writer: expr ,$visitor: expr) => {
-        impl<'a> Row<'a> for $tt {
-            type ReadResult = Self;
+macro_rules! impl_fixed_row_value {
+    ($ty:ty, $size:expr) => {
+        impl RowValue for $ty {
+            type View<'a> = Self;
 
-            fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
-                $writer(writer, *v);
-                Ok(())
+            const FIXED_SIZE: Option<usize> = Some($size);
+
+            #[inline(always)]
+            fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+                writer.write_bytes(&self.to_le_bytes())
             }
 
-            fn cast(bytes: &[u8]) -> Self::ReadResult {
-                $visitor(bytes)
+            #[inline(always)]
+            fn read(bytes: &[u8]) -> Result<Self, Error> {
+                Ok(Self::from_le_bytes(read_fixed(bytes)?))
             }
         }
     };
 }
-impl_row_for_number!(i8, Writer::write_i8, read_i8_from_bytes);
-impl_row_for_number!(i16, Writer::write_i16, LittleEndian::read_i16);
-impl_row_for_number!(i32, Writer::write_i32, LittleEndian::read_i32);
-impl_row_for_number!(i64, Writer::write_i64, LittleEndian::read_i64);
-impl_row_for_number!(f32, Writer::write_f32, LittleEndian::read_f32);
-impl_row_for_number!(f64, Writer::write_f64, LittleEndian::read_f64);
 
-impl<'a> Row<'a> for String {
-    type ReadResult = &'a str;
+impl RowValue for bool {
+    type View<'a> = Self;
 
-    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
-        writer.write_bytes(v.as_bytes());
-        Ok(())
+    const FIXED_SIZE: Option<usize> = Some(1);
+
+    #[inline(always)]
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        writer.write_bytes(&[u8::from(*self)])
     }
 
-    fn cast(bytes: &'a [u8]) -> Self::ReadResult {
-        unsafe { std::str::from_utf8_unchecked(bytes) }
-    }
-}
-
-impl Row<'_> for bool {
-    type ReadResult = Self;
-
-    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
-        writer.write_u8(if *v { 1 } else { 0 });
-        Ok(())
-    }
-
-    fn cast(bytes: &[u8]) -> Self::ReadResult {
-        bytes[0] == 1
-    }
-}
-
-/// ArrayGetter for fixed-size arrays, wrapping the underlying ArrayViewer
-pub struct FixedArrayGetter<'a, T, const N: usize> {
-    array_data: ArrayViewer<'a>,
-    _marker: PhantomData<T>,
-}
-
-impl<'a, T: Row<'a>, const N: usize> FixedArrayGetter<'a, T, N> {
-    pub fn size(&self) -> usize {
-        self.array_data.num_elements()
-    }
-
-    pub fn get(&self, idx: usize) -> Result<T::ReadResult, Error> {
-        if idx >= self.array_data.num_elements() {
-            return Err(Error::buffer_out_of_bound(
-                idx,
-                1,
-                self.array_data.num_elements(),
-            ));
-        }
-        let bytes = self.array_data.get_field_bytes(idx);
-        Ok(<T as Row>::cast(bytes))
-    }
-}
-
-impl<'a, T: Row<'a>, const N: usize> Row<'a> for [T; N] {
-    type ReadResult = FixedArrayGetter<'a, T, N>;
-
-    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
-        let mut array_writer = ArrayWriter::new(N, writer)?;
-        for (idx, item) in v.iter().enumerate() {
-            let callback_info = array_writer.write_start(idx);
-            <T as Row>::write(item, array_writer.get_writer())?;
-            array_writer.write_end(callback_info);
-        }
-        Ok(())
-    }
-
-    fn cast(row: &'a [u8]) -> Self::ReadResult {
-        FixedArrayGetter {
-            array_data: ArrayViewer::new(row),
-            _marker: PhantomData::<T>,
+    #[inline(always)]
+    fn read(bytes: &[u8]) -> Result<Self, Error> {
+        match read_fixed::<1>(bytes)?[0] {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(Error::invalid_data("row boolean must be encoded as 0 or 1")),
         }
     }
 }
 
-impl Row<'_> for Date {
-    type ReadResult = Result<Date, Error>;
+impl RowValue for i8 {
+    type View<'a> = Self;
 
-    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
-        let days = i32::try_from(v.epoch_days()).map_err(|_| {
+    const FIXED_SIZE: Option<usize> = Some(1);
+
+    #[inline(always)]
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        writer.write_bytes(&self.to_le_bytes())
+    }
+
+    #[inline(always)]
+    fn read(bytes: &[u8]) -> Result<Self, Error> {
+        Ok(Self::from_le_bytes(read_fixed(bytes)?))
+    }
+}
+
+impl_fixed_row_value!(i16, 2);
+impl_fixed_row_value!(i32, 4);
+impl_fixed_row_value!(i64, 8);
+impl_fixed_row_value!(f32, 4);
+impl_fixed_row_value!(f64, 8);
+
+impl RowValue for String {
+    type View<'a> = &'a str;
+
+    const FIXED_SIZE: Option<usize> = None;
+
+    #[inline(always)]
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        writer.write_bytes(self.as_bytes())
+    }
+
+    #[inline]
+    fn read(bytes: &[u8]) -> Result<&str, Error> {
+        std::str::from_utf8(bytes).map_err(|_| Error::invalid_data("invalid UTF-8 in row string"))
+    }
+}
+
+impl RowValue for &str {
+    type View<'a> = &'a str;
+
+    const FIXED_SIZE: Option<usize> = None;
+
+    #[inline(always)]
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        writer.write_bytes(self.as_bytes())
+    }
+
+    #[inline]
+    fn read(bytes: &[u8]) -> Result<&str, Error> {
+        std::str::from_utf8(bytes).map_err(|_| Error::invalid_data("invalid UTF-8 in row string"))
+    }
+}
+
+impl RowValue for Vec<u8> {
+    type View<'a> = &'a [u8];
+
+    const FIXED_SIZE: Option<usize> = None;
+
+    #[inline(always)]
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        writer.write_bytes(self)
+    }
+
+    #[inline(always)]
+    fn read(bytes: &[u8]) -> Result<&[u8], Error> {
+        Ok(bytes)
+    }
+}
+
+impl RowValue for &[u8] {
+    type View<'a> = &'a [u8];
+
+    const FIXED_SIZE: Option<usize> = None;
+
+    #[inline(always)]
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        writer.write_bytes(self)
+    }
+
+    #[inline(always)]
+    fn read(bytes: &[u8]) -> Result<&[u8], Error> {
+        Ok(bytes)
+    }
+}
+
+impl<T: RowValue> RowValue for Option<T> {
+    type View<'a> = Option<T::View<'a>>;
+
+    const FIXED_SIZE: Option<usize> = T::FIXED_SIZE;
+
+    #[inline(always)]
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        match self {
+            Some(value) => value.write(writer),
+            None => Err(Error::invalid_data(
+                "a null row value must be written by its container",
+            )),
+        }
+    }
+
+    #[inline(always)]
+    fn read<'a>(bytes: &'a [u8]) -> Result<Self::View<'a>, Error> {
+        T::read(bytes).map(Some)
+    }
+
+    #[inline(always)]
+    fn is_null(&self) -> bool {
+        self.is_none()
+    }
+
+    #[inline(always)]
+    fn read_null<'a>() -> Result<Self::View<'a>, Error> {
+        Ok(None)
+    }
+}
+
+impl RowValue for Date {
+    type View<'a> = Self;
+
+    const FIXED_SIZE: Option<usize> = Some(4);
+
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        let days = i32::try_from(self.epoch_days()).map_err(|_| {
             Error::invalid_data(format!(
                 "row date day count {} exceeds date32 range",
-                v.epoch_days()
+                self.epoch_days()
             ))
         })?;
-        writer.write_i32(days);
-        Ok(())
+        writer.write_bytes(&days.to_le_bytes())
     }
 
-    fn cast(bytes: &[u8]) -> Self::ReadResult {
-        Ok(Date::from_epoch_days(i64::from(LittleEndian::read_i32(
+    fn read(bytes: &[u8]) -> Result<Self, Error> {
+        let days = i32::from_le_bytes(read_fixed(bytes)?);
+        Ok(Date::from_epoch_days(i64::from(days)))
+    }
+}
+
+impl RowValue for Timestamp {
+    type View<'a> = Self;
+
+    const FIXED_SIZE: Option<usize> = Some(8);
+
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        writer.write_bytes(&self.to_epoch_micros()?.to_le_bytes())
+    }
+
+    fn read(bytes: &[u8]) -> Result<Self, Error> {
+        Ok(Timestamp::from_epoch_micros(i64::from_le_bytes(
+            read_fixed(bytes)?,
+        )))
+    }
+}
+
+impl RowValue for Duration {
+    type View<'a> = Self;
+
+    const FIXED_SIZE: Option<usize> = Some(8);
+
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        writer.write_bytes(&self.to_micros()?.to_le_bytes())
+    }
+
+    fn read(bytes: &[u8]) -> Result<Self, Error> {
+        Ok(Duration::from_micros(i64::from_le_bytes(read_fixed(
             bytes,
-        ))))
+        )?)))
     }
 }
 
-impl Row<'_> for Timestamp {
-    type ReadResult = Result<Timestamp, Error>;
+impl<T: RowValue, const N: usize> RowValue for [T; N] {
+    type View<'a> = ArrayView<'a, T>;
 
-    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
-        writer.write_i64(v.to_epoch_micros()?);
-        Ok(())
-    }
+    const FIXED_SIZE: Option<usize> = None;
 
-    fn cast(bytes: &[u8]) -> Self::ReadResult {
-        Ok(Timestamp::from_epoch_micros(LittleEndian::read_i64(bytes)))
-    }
-}
-
-impl Row<'_> for Duration {
-    type ReadResult = Result<Duration, Error>;
-
-    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
-        writer.write_i64(v.to_micros()?);
-        Ok(())
-    }
-
-    fn cast(bytes: &[u8]) -> Self::ReadResult {
-        Ok(Duration::from_micros(LittleEndian::read_i64(bytes)))
-    }
-}
-
-impl<'a> Row<'a> for Vec<u8> {
-    type ReadResult = &'a [u8];
-
-    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
-        writer.write_bytes(v);
-        Ok(())
-    }
-
-    fn cast(bytes: &'a [u8]) -> Self::ReadResult {
-        bytes
-    }
-}
-
-pub struct ArrayGetter<'a, T> {
-    array_data: ArrayViewer<'a>,
-    _marker: PhantomData<T>,
-}
-
-#[allow(clippy::needless_lifetimes)]
-impl<'a, T: Row<'a>> ArrayGetter<'a, T> {
-    pub fn size(&self) -> usize {
-        self.array_data.num_elements()
-    }
-
-    pub fn get(&self, idx: usize) -> Result<T::ReadResult, Error> {
-        if idx >= self.array_data.num_elements() {
-            return Err(Error::buffer_out_of_bound(
-                idx,
-                1,
-                self.array_data.num_elements(),
-            ));
-        }
-        let bytes = self.array_data.get_field_bytes(idx);
-        Ok(<T as Row>::cast(bytes))
-    }
-}
-
-#[allow(clippy::needless_lifetimes)]
-impl<'a, T: Row<'a>> Row<'a> for Vec<T> {
-    type ReadResult = ArrayGetter<'a, T>;
-
-    fn write<'b>(v: &Self, writer: &mut Writer<'b>) -> Result<(), Error> {
-        let mut array_writer = ArrayWriter::new(v.len(), writer)?;
-        for (idx, item) in v.iter().enumerate() {
-            let callback_info = array_writer.write_start(idx);
-            <T as Row>::write(item, array_writer.get_writer())?;
-            array_writer.write_end(callback_info);
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        let mut array_writer = ArrayWriter::<T>::new(N, writer.into_variable()?)?;
+        for (index, value) in self.iter().enumerate() {
+            array_writer.write(index, value)?;
         }
         Ok(())
     }
 
-    fn cast(row: &'a [u8]) -> Self::ReadResult {
-        ArrayGetter {
-            array_data: ArrayViewer::new(row),
-            _marker: PhantomData::<T>,
+    fn read(bytes: &[u8]) -> Result<Self::View<'_>, Error> {
+        let view = ArrayView::new(bytes)?;
+        if view.len() != N {
+            return Err(Error::invalid_data(format!(
+                "row fixed array expected {N} elements, found {}",
+                view.len()
+            )));
         }
+        Ok(view)
     }
 }
 
-pub struct MapGetter<'a, T1, T2>
+impl<T: RowValue, const N: usize> Row for [T; N] {}
+
+impl<T: RowValue> RowValue for Vec<T> {
+    type View<'a> = ArrayView<'a, T>;
+
+    const FIXED_SIZE: Option<usize> = None;
+
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        let mut array_writer = ArrayWriter::<T>::new(self.len(), writer.into_variable()?)?;
+        for (index, value) in self.iter().enumerate() {
+            array_writer.write(index, value)?;
+        }
+        Ok(())
+    }
+
+    fn read(bytes: &[u8]) -> Result<Self::View<'_>, Error> {
+        ArrayView::new(bytes)
+    }
+}
+
+impl<T: RowValue> Row for Vec<T> {}
+
+impl<K, V> RowValue for BTreeMap<K, V>
 where
-    T1: Ord,
-    T2: Ord,
+    K: RowValue + Ord,
+    V: RowValue,
 {
-    map_data: MapViewer<'a>,
-    _key_marker: PhantomData<T1>,
-    _value_marker: PhantomData<T2>,
-}
+    type View<'a> = MapView<'a, K, V>;
 
-impl<'a, T1: Row<'a> + Ord, T2: Row<'a> + Ord> MapGetter<'a, T1, T2> {
-    pub fn to_btree_map(&'a self) -> Result<BTreeMap<T1::ReadResult, T2::ReadResult>, Error>
-    where
-        <T1 as Row<'a>>::ReadResult: Ord,
-    {
-        let mut map = BTreeMap::new();
-        let keys = self.keys();
-        let values = self.values();
+    const FIXED_SIZE: Option<usize> = None;
 
-        for i in 0..self.keys().size() {
-            map.insert(keys.get(i)?, values.get(i)?);
-        }
-        Ok(map)
+    fn write(&self, writer: ValueWriter<'_, '_>) -> Result<(), Error> {
+        let mut map_writer = MapWriter::new(writer.into_variable()?);
+        map_writer.write(self)
     }
 
-    pub fn keys(&'a self) -> ArrayGetter<'a, T1> {
-        ArrayGetter {
-            array_data: ArrayViewer::new(self.map_data.get_key_row()),
-            _marker: PhantomData::<T1>,
-        }
-    }
-
-    pub fn values(&'a self) -> ArrayGetter<'a, T2> {
-        ArrayGetter {
-            array_data: ArrayViewer::new(self.map_data.get_value_row()),
-            _marker: PhantomData::<T2>,
-        }
+    fn read(bytes: &[u8]) -> Result<Self::View<'_>, Error> {
+        MapView::new(bytes)
     }
 }
 
-#[allow(clippy::needless_lifetimes)]
-impl<'a, T1: Row<'a> + Ord, T2: Row<'a> + Ord> Row<'a> for BTreeMap<T1, T2> {
-    type ReadResult = MapGetter<'a, T1, T2>;
+impl<K, V> Row for BTreeMap<K, V>
+where
+    K: RowValue + Ord,
+    V: RowValue,
+{
+}
 
-    fn write<'b>(v: &Self, writer: &mut Writer<'b>) -> Result<(), Error> {
-        let mut map_writer = MapWriter::new(writer);
-        {
-            let callback_info = map_writer.write_start(0);
-            let mut array_writer = ArrayWriter::new(v.len(), map_writer.get_writer())?;
-            for (idx, item) in v.keys().enumerate() {
-                let callback_info = array_writer.write_start(idx);
-                <T1 as Row>::write(item, array_writer.get_writer())?;
-                array_writer.write_end(callback_info);
-            }
-            map_writer.write_end(callback_info);
-        }
-        {
-            let mut array_writer = ArrayWriter::new(v.len(), map_writer.get_writer())?;
-            for (idx, item) in v.values().enumerate() {
-                let callback_info = array_writer.write_start(idx);
-                <T2 as Row>::write(item, array_writer.get_writer())?;
-                array_writer.write_end(callback_info);
-            }
-        }
-        Ok(())
+fn read_fixed<const N: usize>(bytes: &[u8]) -> Result<[u8; N], Error> {
+    if bytes.len() != N {
+        return Err(Error::invalid_data(format!(
+            "row fixed-width value expected {N} bytes, found {}",
+            bytes.len()
+        )));
     }
-
-    fn cast(row: &'a [u8]) -> Self::ReadResult {
-        MapGetter {
-            map_data: MapViewer::new(row),
-            _key_marker: PhantomData::<T1>,
-            _value_marker: PhantomData::<T2>,
-        }
-    }
+    let mut value = [0u8; N];
+    value.copy_from_slice(bytes);
+    Ok(value)
 }

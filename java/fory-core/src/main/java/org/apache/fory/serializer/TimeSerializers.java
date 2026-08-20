@@ -58,6 +58,11 @@ public class TimeSerializers {
       super(config, type, needToWriteRef, false);
       this.config = config;
     }
+
+    @Override
+    public final boolean readDataAlwaysAdvances() {
+      return true;
+    }
   }
 
   public abstract static class ImmutableTimeSerializer<T> extends ImmutableSerializer<T> {
@@ -71,6 +76,11 @@ public class TimeSerializers {
     public ImmutableTimeSerializer(Config config, Class<T> type, boolean needToWriteRef) {
       super(config, type, needToWriteRef);
       this.config = config;
+    }
+
+    @Override
+    public final boolean readDataAlwaysAdvances() {
+      return true;
     }
   }
 

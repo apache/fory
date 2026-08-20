@@ -26,6 +26,11 @@ import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/collection_serializers.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
+const int _referenceBytes = 4;
+// Conservative lower bound for the retained Dart Map owner itself. Key/value slots are charged by
+// entry count below; this is not a Fory wire header or a Dart VM layout probe.
+const int _mapOwnerBytes = 8 * _referenceBytes;
+
 abstract final class MapFlags {
   static const int trackingKeyRef = 0x01;
   static const int keyHasNull = 0x02;
@@ -257,6 +262,7 @@ Map<K, V> readTypedMapPayload<K, V>(
   bool hasPreservedRef = false,
 }) {
   var remaining = context.buffer.readVarUint32();
+  context.reserveGraphMemory(_mapOwnerBytes + remaining * 2 * _referenceBytes);
   final declaredKeyTypeInfo =
       keyFieldType == null || keyFieldType.isDynamic
           ? null
@@ -297,17 +303,28 @@ Map<K, V> readTypedMapPayload<K, V>(
     final keyDeclared = (header & MapFlags.keyDeclaredType) != 0;
     final valueDeclared = (header & MapFlags.valueDeclaredType) != 0;
     final chunkSize = context.buffer.readUint8();
+    if (chunkSize == 0 || chunkSize > remaining) {
+      _throwInvalidMapChunk(chunkSize, remaining);
+    }
     final keyTypeInfo = keyDeclared ? null : context.readTypeMetaValue();
     final valueTypeInfo = valueDeclared ? null : context.readTypeMetaValue();
+    final resolvedKeyTypeInfo = keyDeclared ? declaredKeyTypeInfo : keyTypeInfo;
+    final resolvedValueTypeInfo =
+        valueDeclared ? declaredValueTypeInfo : valueTypeInfo;
     final tracksDepth =
-        ((keyDeclared ? declaredKeyTypeInfo : keyTypeInfo) != null &&
-            tracksNestedPayloadDepth(
-              keyDeclared ? declaredKeyTypeInfo! : keyTypeInfo!,
-            )) ||
-        ((valueDeclared ? declaredValueTypeInfo : valueTypeInfo) != null &&
-            tracksNestedPayloadDepth(
-              valueDeclared ? declaredValueTypeInfo! : valueTypeInfo!,
-            ));
+        (resolvedKeyTypeInfo != null &&
+            tracksNestedPayloadDepth(resolvedKeyTypeInfo)) ||
+        (resolvedValueTypeInfo != null &&
+            tracksNestedPayloadDepth(resolvedValueTypeInfo));
+    final guardUnbackedItems =
+        !keyTrackRef &&
+        !valueTrackRef &&
+        resolvedKeyTypeInfo != null &&
+        resolvedValueTypeInfo != null &&
+        !resolvedKeyTypeInfo.readDataAlwaysAdvances &&
+        !resolvedValueTypeInfo.readDataAlwaysAdvances;
+    final checkpoint =
+        guardUnbackedItems ? bufferReaderIndex(context.buffer) : 0;
     if (tracksDepth) {
       context.increaseDepth();
     }
@@ -342,12 +359,25 @@ Map<K, V> readTypedMapPayload<K, V>(
               );
       result[convertKey(key)] = convertValue(value);
     }
+    if (guardUnbackedItems) {
+      context.settleUnbackedContainerItems(
+        chunkSize,
+        bufferReaderIndex(context.buffer) - checkpoint,
+      );
+    }
     if (tracksDepth) {
       context.decreaseDepth();
     }
     remaining -= chunkSize;
   }
   return result;
+}
+
+@pragma('vm:never-inline')
+Never _throwInvalidMapChunk(int chunkSize, int remaining) {
+  throw StateError(
+    'Invalid map chunk size $chunkSize with $remaining entries remaining.',
+  );
 }
 
 void _writeNullChunk(

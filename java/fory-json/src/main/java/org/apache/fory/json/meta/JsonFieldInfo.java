@@ -20,20 +20,47 @@
 package org.apache.fory.json.meta;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Map;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.codec.CodecUtils;
+import org.apache.fory.json.codec.DirectUnboxedValueCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.codec.TransparentUnboxedValueCodec;
+import org.apache.fory.json.codec.UnboxedValueCodec;
 import org.apache.fory.json.reader.JsonReader;
+import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.reader.Utf16JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.JsonStringEscaper;
-import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.memory.NativeByteOrder;
+import org.apache.fory.reflect.TypeRef;
 
+/**
+ * Immutable member metadata shared by interpreted and generated object codecs.
+ *
+ * <p>One instance describes the independently resolved write source and read sink for a JSON
+ * member: reflected field or accessor, declared and raw type, semantic kind, and interpreted
+ * accessor. Construction also precomputes escaped field-name prefixes, enum tokens, boolean tokens,
+ * and the field-name hash for all concrete reader and writer representations. This moves encoding
+ * and classification out of per-object and per-field hot paths.
+ *
+ * <p>{@link #resolveTypes(JsonTypeResolver)} installs the resolved read and write {@link
+ * JsonTypeInfo} bindings after recursive object metadata has been published. Those bindings are the
+ * only mutable lifecycle phase. Generated classes are compiled independently from this stable
+ * metadata; generated instances are constructed bottom-up with final direct child capabilities. A
+ * canonical multi-object cycle instead captures the final child type-info slot owner. The complete
+ * graph is published under the resolver-local JIT lock.
+ */
 public final class JsonFieldInfo {
   private static final int KIND_BOOLEAN = 1;
   private static final int KIND_BYTE = 2;
@@ -49,34 +76,56 @@ public final class JsonFieldInfo {
   private static final int KIND_COLLECTION = 12;
   private static final int KIND_MAP = 13;
   private static final int KIND_OBJECT = 14;
+  private static final int KIND_CUSTOM_PRIMITIVE = 15;
+  private static final int KIND_RAW_STRING = 16;
+  private static final int KIND_NULL = 17;
+  private static final int KIND_UNBOXED = 18;
+  private static final int WRITE_NULL_MASK = Integer.MIN_VALUE;
+  private static final int REQUIRE_NON_NULL_MASK = 1 << 30;
+  private static final int READ_INDEX_MASK = REQUIRE_NON_NULL_MASK - 1;
   private static final byte[] TRUE_BYTES = "true".getBytes(StandardCharsets.ISO_8859_1);
   private static final byte[] FALSE_BYTES = "false".getBytes(StandardCharsets.ISO_8859_1);
 
   private final String name;
   private final Field writeField;
-  private final Type writeType;
+  private final Method writeGetter;
+  private final Field readField;
+  private final Method readSetter;
+  private final TypeRef<?> writeTypeRef;
   private final Class<?> writeRawType;
-  private final Type readType;
+  private final TypeRef<?> readTypeRef;
   private final Class<?> readRawType;
-  private final JsonFieldKind writeKind;
-  private final JsonFieldKind readKind;
-  private final int writeKindId;
+  private final JsonCodec codecAnnotation;
+  private final Class<? extends JsonValueCodec<?>> valueCodecClass;
+  private final JsonFormat formatAnnotation;
+  private final boolean writeUnboxedRequired;
+  private final boolean readUnboxedRequired;
+  private JsonFieldKind writeKind;
+  private JsonFieldKind readKind;
+  private int writeKindId;
+  private int readPrimitiveKindId;
+  private final int readCarrierKindId;
   private final JsonFieldAccessor writeAccessor;
   private final JsonFieldAccessor readAccessor;
-  private final Type writeElementType;
-  private final Type readElementType;
   private final Type writeMapValueType;
   private final Class<?> writeArrayComponentType;
   private final Class<?> writeElementRawType;
-  private final Class<?> readElementRawType;
   private final byte[] stringNamePrefix;
   private final byte[] stringCommaNamePrefix;
+  private final byte[] stringUtf16NamePrefix;
+  private final byte[] stringUtf16CommaNamePrefix;
   private final byte[] utf8NamePrefix;
   private final byte[] utf8CommaNamePrefix;
+  private final long utf8NamePrefixWord0;
+  private final long utf8NamePrefixWord1;
+  private final long utf8CommaNamePrefixWord0;
+  private final long utf8CommaNamePrefixWord1;
   private final byte[][] stringEnumValues;
   private final byte[][] stringElementEnumValues;
   private final byte[][] stringEnumNameValues;
   private final byte[][] stringEnumCommaValues;
+  private final byte[][] stringUtf16EnumNameValues;
+  private final byte[][] stringUtf16EnumCommaValues;
   private final byte[][] utf8EnumValues;
   private final byte[][] utf8ElementEnumValues;
   private final byte[][] utf8EnumNameValues;
@@ -85,55 +134,122 @@ public final class JsonFieldInfo {
   private final byte[] stringTrueCommaToken;
   private final byte[] stringFalseNameToken;
   private final byte[] stringFalseCommaToken;
+  private final byte[] stringUtf16TrueNameToken;
+  private final byte[] stringUtf16TrueCommaToken;
+  private final byte[] stringUtf16FalseNameToken;
+  private final byte[] stringUtf16FalseCommaToken;
   private final byte[] utf8TrueNameToken;
   private final byte[] utf8TrueCommaToken;
   private final byte[] utf8FalseNameToken;
   private final byte[] utf8FalseCommaToken;
   private final long nameHash;
-  private int readIndex = -1;
+  private int readIndexAndWriteNull;
   private JsonTypeInfo writeTypeInfo;
   private JsonTypeInfo readTypeInfo;
-  private JsonTypeInfo readElementTypeInfo;
+  private JsonTypeInfo readOccurrenceTypeInfo;
+  private UnboxedValueCodec writeUnboxedValueCodec;
+  private UnboxedValueCodec readUnboxedValueCodec;
 
   public JsonFieldInfo(
       String name,
+      boolean writeNull,
       Field writeField,
+      Method writeGetter,
       Field readField,
+      Method readSetter,
       JsonFieldAccessor writeAccessor,
-      JsonFieldAccessor readAccessor) {
+      JsonFieldAccessor readAccessor,
+      TypeRef<?> ownerType,
+      TypeRef<?> objectModelType,
+      JsonCodec codecAnnotation,
+      Class<? extends JsonValueCodec<?>> valueCodecClass,
+      JsonFormat formatAnnotation,
+      boolean rawValue) {
     this.name = name;
+    // Write-null, required-value, and read-index metadata become immutable with ObjectCodec.
+    // Packing both flags above the read index avoids enlarging every field-metadata object.
+    readIndexAndWriteNull = writeNull ? WRITE_NULL_MASK : 0;
     nameHash = JsonFieldNameHash.hash(name);
     this.writeField = writeField;
-    this.writeType = fieldType(writeField);
-    this.writeRawType = fieldRawType(writeField);
-    this.readType = fieldType(readField);
-    this.readRawType = fieldRawType(readField);
+    this.writeGetter = writeGetter;
+    this.readField = readField;
+    this.readSetter = readSetter;
+    Class<?> writeFallback = writeRawType(writeField, writeGetter);
+    Class<?> readFallback = readRawType(readField, readSetter);
+    TypeRef<?> resolvedObjectModelType = objectModelType;
+    writeUnboxedRequired =
+        requiresCarrier(
+            ownerType, writeType(writeField, writeGetter), writeFallback, resolvedObjectModelType);
+    readUnboxedRequired =
+        requiresCarrier(
+            ownerType, readType(readField, readSetter), readFallback, resolvedObjectModelType);
+    writeTypeRef =
+        writeFallback == null
+            ? null
+            : resolvedObjectModelType == null
+                ? resolveTypeRef(ownerType, writeType(writeField, writeGetter))
+                : resolvedObjectModelType;
+    this.writeRawType =
+        writeTypeRef == null
+            ? null
+            : writeUnboxedRequired ? writeFallback : writeTypeRef.getRawType();
+    readTypeRef =
+        readFallback == null
+            ? null
+            : resolvedObjectModelType == null
+                ? resolveTypeRef(ownerType, readType(readField, readSetter))
+                : resolvedObjectModelType;
+    this.readRawType =
+        readTypeRef == null ? null : readUnboxedRequired ? readFallback : readTypeRef.getRawType();
+    this.codecAnnotation = codecAnnotation;
+    this.valueCodecClass = valueCodecClass;
+    this.formatAnnotation = formatAnnotation;
     this.writeAccessor = writeAccessor;
     this.readAccessor = readAccessor;
     writeKind = writeRawType == null ? null : kind(writeRawType);
     readKind = readRawType == null ? null : kind(readRawType);
-    writeKindId = writeKind == null ? 0 : kindId(writeKind);
-    writeElementType =
-        writeKind == JsonFieldKind.COLLECTION ? CodecUtils.elementType(writeType) : null;
-    readElementType =
-        readKind == JsonFieldKind.COLLECTION ? CodecUtils.elementType(readType) : null;
-    writeMapValueType = writeKind == JsonFieldKind.MAP ? CodecUtils.mapValueType(writeType) : null;
+    writeKindId =
+        writeKind == null
+            ? 0
+            : writeRawType == void.class
+                ? KIND_NULL
+                : (rawValue ? KIND_RAW_STRING : kindId(writeKind));
+    readPrimitiveKindId = primitiveKindId(readRawType, readKind);
+    readCarrierKindId = readRawType == null ? 0 : primitiveKindId(readRawType, kind(readRawType));
+    Type resolvedWriteType = writeTypeRef == null ? null : writeTypeRef.getType();
+    Type writeElementType =
+        writeKind == JsonFieldKind.COLLECTION ? CodecUtils.elementType(resolvedWriteType) : null;
+    writeMapValueType =
+        writeKind == JsonFieldKind.MAP ? CodecUtils.mapValueType(resolvedWriteType) : null;
     writeArrayComponentType =
         writeKind == JsonFieldKind.ARRAY ? writeRawType.getComponentType() : null;
     writeElementRawType = writeElementType == null ? null : knownRawType(writeElementType);
-    readElementRawType = readElementType == null ? null : knownRawType(readElementType);
     String stringPrefix = JsonStringEscaper.escapedNamePrefix(name, true);
     String utf8Prefix = JsonStringEscaper.escapedNamePrefix(name, false);
     stringNamePrefix = stringPrefix.getBytes(StandardCharsets.ISO_8859_1);
     stringCommaNamePrefix = ("," + stringPrefix).getBytes(StandardCharsets.ISO_8859_1);
+    stringUtf16NamePrefix = toUtf16Bytes(stringNamePrefix);
+    stringUtf16CommaNamePrefix = toUtf16Bytes(stringCommaNamePrefix);
     utf8NamePrefix = utf8Prefix.getBytes(StandardCharsets.UTF_8);
     utf8CommaNamePrefix = ("," + utf8Prefix).getBytes(StandardCharsets.UTF_8);
+    utf8NamePrefixWord0 = packedPrefixWord(utf8NamePrefix, 0);
+    utf8NamePrefixWord1 = packedPrefixWord(utf8NamePrefix, Long.BYTES);
+    utf8CommaNamePrefixWord0 = packedPrefixWord(utf8CommaNamePrefix, 0);
+    utf8CommaNamePrefixWord1 = packedPrefixWord(utf8CommaNamePrefix, Long.BYTES);
     stringEnumValues = writeKind == JsonFieldKind.ENUM ? stringEnumValues(writeRawType) : null;
     stringEnumNameValues =
         writeKind == JsonFieldKind.ENUM ? fieldValues(stringNamePrefix, stringEnumValues) : null;
     stringEnumCommaValues =
         writeKind == JsonFieldKind.ENUM
             ? fieldValues(stringCommaNamePrefix, stringEnumValues)
+            : null;
+    stringUtf16EnumNameValues =
+        writeKind == JsonFieldKind.ENUM
+            ? utf16FieldValues(stringUtf16NamePrefix, stringEnumValues)
+            : null;
+    stringUtf16EnumCommaValues =
+        writeKind == JsonFieldKind.ENUM
+            ? utf16FieldValues(stringUtf16CommaNamePrefix, stringEnumValues)
             : null;
     stringElementEnumValues =
         writeElementRawType != null && writeElementRawType.isEnum()
@@ -153,6 +269,10 @@ public final class JsonFieldInfo {
       stringTrueCommaToken = join(stringCommaNamePrefix, TRUE_BYTES);
       stringFalseNameToken = join(stringNamePrefix, FALSE_BYTES);
       stringFalseCommaToken = join(stringCommaNamePrefix, FALSE_BYTES);
+      stringUtf16TrueNameToken = join(stringUtf16NamePrefix, toUtf16Bytes(TRUE_BYTES));
+      stringUtf16TrueCommaToken = join(stringUtf16CommaNamePrefix, toUtf16Bytes(TRUE_BYTES));
+      stringUtf16FalseNameToken = join(stringUtf16NamePrefix, toUtf16Bytes(FALSE_BYTES));
+      stringUtf16FalseCommaToken = join(stringUtf16CommaNamePrefix, toUtf16Bytes(FALSE_BYTES));
       utf8TrueNameToken = join(utf8NamePrefix, TRUE_BYTES);
       utf8TrueCommaToken = join(utf8CommaNamePrefix, TRUE_BYTES);
       utf8FalseNameToken = join(utf8NamePrefix, FALSE_BYTES);
@@ -162,6 +282,10 @@ public final class JsonFieldInfo {
       stringTrueCommaToken = null;
       stringFalseNameToken = null;
       stringFalseCommaToken = null;
+      stringUtf16TrueNameToken = null;
+      stringUtf16TrueCommaToken = null;
+      stringUtf16FalseNameToken = null;
+      stringUtf16FalseCommaToken = null;
       utf8TrueNameToken = null;
       utf8TrueCommaToken = null;
       utf8FalseNameToken = null;
@@ -173,44 +297,177 @@ public final class JsonFieldInfo {
     return name;
   }
 
+  /** Returns parent-local metadata with a transformed JSON name and the same Java member owner. */
+  public JsonFieldInfo withName(String transformedName, TypeRef<?> ownerType) {
+    JsonFieldInfo copy =
+        new JsonFieldInfo(
+            transformedName,
+            writeNull(),
+            writeField,
+            writeGetter,
+            readField,
+            readSetter,
+            writeAccessor,
+            readAccessor,
+            ownerType,
+            writeTypeRef != null ? writeTypeRef : readTypeRef,
+            codecAnnotation,
+            valueCodecClass,
+            formatAnnotation,
+            writesRawString());
+    copy.setReadIndex(readIndex());
+    if (requiresNonNullWrite()) {
+      copy.requireNonNullWrite();
+    }
+    return copy;
+  }
+
   public long nameHash() {
     return nameHash;
+  }
+
+  /** Returns the normalized null-write decision consumed by interpreted and generated writers. */
+  public boolean writeNull() {
+    return readIndexAndWriteNull < 0;
+  }
+
+  /** Makes a nullable language-model property explicit so output stays reconstructible. */
+  public void includeNullWrite() {
+    readIndexAndWriteNull |= WRITE_NULL_MASK;
+  }
+
+  /** Returns whether this field carries explicit Kotlin-style occurrence nullability. */
+  public boolean hasOccurrenceNullability() {
+    TypeRef<?> typeRef = writeTypeRef != null ? writeTypeRef : readTypeRef;
+    return typeRef != null && typeRef.getTypeExtMeta() != null;
+  }
+
+  /** Returns the cold-declared occurrence nullability. */
+  public boolean occurrenceNullable() {
+    TypeRef<?> typeRef = writeTypeRef != null ? writeTypeRef : readTypeRef;
+    return typeRef != null
+        && typeRef.getTypeExtMeta() != null
+        && typeRef.getTypeExtMeta().nullable();
+  }
+
+  /** Returns whether the logical occurrence itself owns a nullable transparent representation. */
+  public boolean occurrenceWrapsNull() {
+    TypeRef<?> typeRef = writeTypeRef != null ? writeTypeRef : readTypeRef;
+    return typeRef != null
+        && typeRef.getTypeExtMeta() != null
+        && typeRef.getTypeExtMeta().nullableWrapper();
+  }
+
+  /** Returns whether phase-two binding must prove an exact unboxed logical codec. */
+  public boolean requiresUnboxedBinding() {
+    return writeUnboxedRequired || readUnboxedRequired;
+  }
+
+  /** Returns whether the write source uses an exact unboxed carrier operation. */
+  public boolean writesUnboxedValue() {
+    return writeUnboxedValueCodec != null;
+  }
+
+  /** Returns whether the read sink uses an exact unboxed carrier operation. */
+  public boolean readsUnboxedValue() {
+    return readUnboxedValueCodec != null;
+  }
+
+  /** Returns the cold-bound write-side unboxed operation. */
+  public UnboxedValueCodec writeUnboxedValueCodec() {
+    return writeUnboxedValueCodec;
+  }
+
+  /** Returns the cold-bound read-side unboxed operation. */
+  public UnboxedValueCodec readUnboxedValueCodec() {
+    return readUnboxedValueCodec;
+  }
+
+  /** Returns the write-side exact transparent carrier operation, or {@code null}. */
+  public TransparentUnboxedValueCodec writeTransparentUnboxedValueCodec() {
+    return writeUnboxedValueCodec instanceof TransparentUnboxedValueCodec
+        ? (TransparentUnboxedValueCodec) writeUnboxedValueCodec
+        : null;
+  }
+
+  /** Returns the read-side exact transparent carrier operation, or {@code null}. */
+  public TransparentUnboxedValueCodec readTransparentUnboxedValueCodec() {
+    return readUnboxedValueCodec instanceof TransparentUnboxedValueCodec
+        ? (TransparentUnboxedValueCodec) readUnboxedValueCodec
+        : null;
+  }
+
+  /** Returns the write-side exact semantic leaf carrier operation, or {@code null}. */
+  public DirectUnboxedValueCodec writeDirectUnboxedValueCodec() {
+    return writeUnboxedValueCodec instanceof DirectUnboxedValueCodec
+        ? (DirectUnboxedValueCodec) writeUnboxedValueCodec
+        : null;
+  }
+
+  /** Returns the read-side exact semantic leaf carrier operation, or {@code null}. */
+  public DirectUnboxedValueCodec readDirectUnboxedValueCodec() {
+    return readUnboxedValueCodec instanceof DirectUnboxedValueCodec
+        ? (DirectUnboxedValueCodec) readUnboxedValueCodec
+        : null;
+  }
+
+  /** Marks an omitted null as invalid because construction requires this property. */
+  public void requireNonNullWrite() {
+    if (writeRawType == null || writeRawType.isPrimitive()) {
+      throw new IllegalStateException("Only reference properties can require a value");
+    }
+    readIndexAndWriteNull |= REQUIRE_NON_NULL_MASK;
+  }
+
+  /** Returns whether omission of a null value would make this schema unreadable. */
+  public boolean requiresNonNullWrite() {
+    return (readIndexAndWriteNull & REQUIRE_NON_NULL_MASK) != 0;
+  }
+
+  /** Throws the cold failure used by interpreted and generated writers. */
+  public void rejectNullWrite() {
+    throw new ForyJsonException("Required JSON property " + name + " cannot be null");
   }
 
   public Field writeField() {
     return writeField;
   }
 
+  public Method writeGetter() {
+    return writeGetter;
+  }
+
   public Type writeType() {
-    return writeType;
+    return writeTypeRef == null ? null : writeTypeRef.getType();
+  }
+
+  private static Type writeType(Field field, Method getter) {
+    return getter == null ? fieldType(field) : getter.getGenericReturnType();
   }
 
   public Class<?> writeRawType() {
     return writeRawType;
   }
 
+  private static Class<?> writeRawType(Field field, Method getter) {
+    return getter == null ? fieldRawType(field) : getter.getReturnType();
+  }
+
   public JsonFieldKind writeKind() {
     return writeKind;
+  }
+
+  /** Returns whether the write source is emitted as trusted raw JSON text. */
+  public boolean writesRawString() {
+    return writeKindId == KIND_RAW_STRING;
   }
 
   public JsonFieldAccessor writeAccessor() {
     return writeAccessor;
   }
 
-  public Type writeElementType() {
-    return writeElementType;
-  }
-
-  public Type readElementType() {
-    return readElementType;
-  }
-
   public Class<?> writeElementRawType() {
     return writeElementRawType;
-  }
-
-  public Class<?> readElementRawType() {
-    return readElementRawType;
   }
 
   public Type writeMapValueType() {
@@ -222,15 +479,27 @@ public final class JsonFieldInfo {
   }
 
   public Type readType() {
-    return readType;
+    return readTypeRef == null ? null : readTypeRef.getType();
+  }
+
+  private static Type readType(Field field, Method setter) {
+    return setter == null ? fieldType(field) : setter.getGenericParameterTypes()[0];
   }
 
   public Field readField() {
-    return readAccessor == null ? null : readAccessor.field();
+    return readField;
+  }
+
+  public Method readSetter() {
+    return readSetter;
   }
 
   public Class<?> readRawType() {
     return readRawType;
+  }
+
+  private static Class<?> readRawType(Field field, Method setter) {
+    return setter == null ? fieldRawType(field) : setter.getParameterTypes()[0];
   }
 
   public JsonFieldKind readKind() {
@@ -249,32 +518,462 @@ public final class JsonFieldInfo {
     return field == null ? null : field.getType();
   }
 
+  private static TypeRef<?> resolveTypeRef(TypeRef<?> ownerType, Type type) {
+    return type == null ? null : ownerType.resolveType(type);
+  }
+
+  private static boolean requiresCarrier(
+      TypeRef<?> ownerType, Type memberType, Class<?> carrier, TypeRef<?> logicalType) {
+    if (memberType == null || carrier == null || logicalType == null) {
+      return false;
+    }
+    boolean requiresCarrier = UnboxedValueCodec.requiresCarrier(carrier, logicalType);
+    if (!requiresCarrier) {
+      return false;
+    }
+    // A same-carrier semantic primitive still needs its canonical representation operation. An
+    // erased generic Object occurrence remains boxed when its substituted member type already
+    // matches the logical type; a true lowered value-class mismatch remains phase-two bound.
+    return carrier == logicalType.getRawType()
+        || !ownerType.resolveType(memberType).getType().equals(logicalType.getType());
+  }
+
   public void resolveTypes(JsonTypeResolver typeResolver) {
+    TypeRef<?> codecType = writeTypeRef == null ? readTypeRef : writeTypeRef;
+    boolean selectedCodec =
+        codecAnnotation != null || valueCodecClass != null || formatAnnotation != null;
+    if (selectedCodec && (writeUnboxedRequired || readUnboxedRequired)) {
+      throw new ForyJsonException(
+          "JSON property "
+              + name
+              + " cannot select a codec or format for the unboxed logical type "
+              + codecType);
+    }
+    JsonTypeInfo selectedTypeInfo =
+        codecAnnotation != null
+            ? typeResolver.getTypeInfo(codecType, codecAnnotation)
+            : valueCodecClass != null
+                ? typeResolver.getTypeInfo(codecType, valueCodecClass)
+                : formatAnnotation != null
+                    ? typeResolver.getTypeInfo(codecType, formatAnnotation)
+                    : null;
+    boolean rawString = writeKindId == KIND_RAW_STRING;
     if (writeRawType != null) {
-      writeTypeInfo = typeResolver.getTypeInfo(writeType, writeRawType);
+      JsonTypeInfo writeOccurrenceTypeInfo;
+      if (writeUnboxedRequired) {
+        JsonTypeInfo canonical = typeResolver.getTypeInfo(writeTypeRef);
+        writeUnboxedValueCodec = requireUnboxed(canonical, writeRawType, "write");
+        writeOccurrenceTypeInfo = canonical;
+        if (writeUnboxedValueCodec instanceof DirectUnboxedValueCodec) {
+          writeTypeInfo = canonical;
+        } else if (writeUnboxedValueCodec instanceof TransparentUnboxedValueCodec) {
+          writeTypeInfo = ((TransparentUnboxedValueCodec) writeUnboxedValueCodec).valueTypeInfo();
+        } else {
+          throw unsupportedUnboxed(writeRawType, "write");
+        }
+      } else {
+        writeTypeInfo =
+            selectedTypeInfo == null ? typeResolver.getTypeInfo(writeTypeRef) : selectedTypeInfo;
+        writeOccurrenceTypeInfo = writeTypeInfo;
+      }
+      if (!rawString && writeRawType != void.class) {
+        writeKind = writeTypeInfo.kind();
+        writeKindId = writeUnboxedValueCodec == null ? kindId(writeKind) : KIND_UNBOXED;
+      }
+      if (writeUnboxedValueCodec != null
+          && !writeOccurrenceTypeInfo.nullable()
+          && !writeOccurrenceTypeInfo.rejectsNull()) {
+        includeNullWrite();
+      }
     }
     if (readRawType != null) {
-      readTypeInfo = typeResolver.getTypeInfo(readType, readRawType);
-    }
-    if (readElementRawType != null) {
-      readElementTypeInfo = typeResolver.getTypeInfo(readElementType, readElementRawType);
+      if (readUnboxedRequired) {
+        JsonTypeInfo canonical = typeResolver.getTypeInfo(readTypeRef);
+        readUnboxedValueCodec = requireUnboxed(canonical, readRawType, "read");
+        readOccurrenceTypeInfo = canonical;
+        if (readUnboxedValueCodec instanceof DirectUnboxedValueCodec) {
+          readTypeInfo = canonical;
+        } else if (readUnboxedValueCodec instanceof TransparentUnboxedValueCodec) {
+          readTypeInfo = ((TransparentUnboxedValueCodec) readUnboxedValueCodec).valueTypeInfo();
+        } else {
+          throw unsupportedUnboxed(readRawType, "read");
+        }
+      } else {
+        readTypeInfo =
+            selectedTypeInfo == null ? typeResolver.getTypeInfo(readTypeRef) : selectedTypeInfo;
+        readOccurrenceTypeInfo = readTypeInfo;
+      }
+      readKind = readTypeInfo.kind();
+      readPrimitiveKindId =
+          readUnboxedValueCodec == null ? primitiveKindId(readRawType, readKind) : KIND_UNBOXED;
     }
   }
 
-  public void read(JsonReader reader, Object object, JsonTypeResolver typeResolver) {
-    readTypeInfo.codec().readField(reader, object, readAccessor, readTypeInfo, typeResolver);
+  private UnboxedValueCodec requireUnboxed(
+      JsonTypeInfo canonical, Class<?> carrier, String direction) {
+    UnboxedValueCodec operation = canonical.unboxedValueCodec();
+    if (operation == null || operation.carrierType() != carrier) {
+      throw new ForyJsonException(
+          "JSON property "
+              + name
+              + " has no exact "
+              + direction
+              + " unboxed carrier operation for "
+              + carrier.getName());
+    }
+    return operation;
   }
 
-  public Object readValue(JsonReader reader, JsonTypeResolver typeResolver) {
-    return readTypeInfo.codec().read(reader, readTypeInfo, typeResolver);
+  private ForyJsonException unsupportedUnboxed(Class<?> carrier, String direction) {
+    return new ForyJsonException(
+        "JSON property "
+            + name
+            + " has an unsupported "
+            + direction
+            + " unboxed carrier capability for "
+            + carrier.getName());
+  }
+
+  public void readLatin1(Latin1JsonReader reader, Object object) {
+    if (readOccurrenceNull(reader)) {
+      readAccessor.putObject(object, null);
+      return;
+    }
+    switch (readPrimitiveKindId) {
+      case KIND_BOOLEAN:
+        rejectPrimitiveNull(reader);
+        readAccessor.putBoolean(object, reader.readBoolean());
+        return;
+      case KIND_BYTE:
+        rejectPrimitiveNull(reader);
+        readAccessor.putByte(object, checkedByte(reader.readInt()));
+        return;
+      case KIND_SHORT:
+        rejectPrimitiveNull(reader);
+        readAccessor.putShort(object, checkedShort(reader.readInt()));
+        return;
+      case KIND_INT:
+        rejectPrimitiveNull(reader);
+        readAccessor.putInt(object, reader.readInt());
+        return;
+      case KIND_LONG:
+        rejectPrimitiveNull(reader);
+        readAccessor.putLong(object, reader.readLong());
+        return;
+      case KIND_FLOAT:
+        rejectPrimitiveNull(reader);
+        readAccessor.putFloat(object, reader.readFloat());
+        return;
+      case KIND_DOUBLE:
+        rejectPrimitiveNull(reader);
+        readAccessor.putDouble(object, reader.readDouble());
+        return;
+      case KIND_CHAR:
+        rejectPrimitiveNull(reader);
+        readAccessor.putChar(object, reader.readChar());
+        return;
+      case KIND_CUSTOM_PRIMITIVE:
+        readAccessor.putObject(
+            object, requirePrimitive(readTypeInfo.latin1Reader().readLatin1(reader)));
+        return;
+      case KIND_UNBOXED:
+        putCarrier(object, readUnboxedLatin1(reader));
+        return;
+      default:
+        readAccessor.putObject(object, readTypeInfo.latin1Reader().readLatin1(reader));
+    }
+  }
+
+  public Object readLatin1Value(Latin1JsonReader reader) {
+    if (readOccurrenceNull(reader)) {
+      return null;
+    }
+    if (readUnboxedValueCodec != null) {
+      return readUnboxedLatin1(reader);
+    }
+    Object value = readTypeInfo.latin1Reader().readLatin1(reader);
+    return readPrimitiveKindId == KIND_CUSTOM_PRIMITIVE ? requirePrimitive(value) : value;
+  }
+
+  public void readUtf16(Utf16JsonReader reader, Object object) {
+    if (readOccurrenceNull(reader)) {
+      readAccessor.putObject(object, null);
+      return;
+    }
+    switch (readPrimitiveKindId) {
+      case KIND_BOOLEAN:
+        rejectPrimitiveNull(reader);
+        readAccessor.putBoolean(object, reader.readBoolean());
+        return;
+      case KIND_BYTE:
+        rejectPrimitiveNull(reader);
+        readAccessor.putByte(object, checkedByte(reader.readInt()));
+        return;
+      case KIND_SHORT:
+        rejectPrimitiveNull(reader);
+        readAccessor.putShort(object, checkedShort(reader.readInt()));
+        return;
+      case KIND_INT:
+        rejectPrimitiveNull(reader);
+        readAccessor.putInt(object, reader.readInt());
+        return;
+      case KIND_LONG:
+        rejectPrimitiveNull(reader);
+        readAccessor.putLong(object, reader.readLong());
+        return;
+      case KIND_FLOAT:
+        rejectPrimitiveNull(reader);
+        readAccessor.putFloat(object, reader.readFloat());
+        return;
+      case KIND_DOUBLE:
+        rejectPrimitiveNull(reader);
+        readAccessor.putDouble(object, reader.readDouble());
+        return;
+      case KIND_CHAR:
+        rejectPrimitiveNull(reader);
+        readAccessor.putChar(object, reader.readChar());
+        return;
+      case KIND_CUSTOM_PRIMITIVE:
+        readAccessor.putObject(
+            object, requirePrimitive(readTypeInfo.utf16Reader().readUtf16(reader)));
+        return;
+      case KIND_UNBOXED:
+        putCarrier(object, readUnboxedUtf16(reader));
+        return;
+      default:
+        readAccessor.putObject(object, readTypeInfo.utf16Reader().readUtf16(reader));
+    }
+  }
+
+  public Object readUtf16Value(Utf16JsonReader reader) {
+    if (readOccurrenceNull(reader)) {
+      return null;
+    }
+    if (readUnboxedValueCodec != null) {
+      return readUnboxedUtf16(reader);
+    }
+    Object value = readTypeInfo.utf16Reader().readUtf16(reader);
+    return readPrimitiveKindId == KIND_CUSTOM_PRIMITIVE ? requirePrimitive(value) : value;
+  }
+
+  public void readUtf8(Utf8JsonReader reader, Object object) {
+    if (readOccurrenceNull(reader)) {
+      readAccessor.putObject(object, null);
+      return;
+    }
+    switch (readPrimitiveKindId) {
+      case KIND_BOOLEAN:
+        rejectPrimitiveNull(reader);
+        readAccessor.putBoolean(object, reader.readBoolean());
+        return;
+      case KIND_BYTE:
+        rejectPrimitiveNull(reader);
+        readAccessor.putByte(object, checkedByte(reader.readInt()));
+        return;
+      case KIND_SHORT:
+        rejectPrimitiveNull(reader);
+        readAccessor.putShort(object, checkedShort(reader.readInt()));
+        return;
+      case KIND_INT:
+        rejectPrimitiveNull(reader);
+        readAccessor.putInt(object, reader.readInt());
+        return;
+      case KIND_LONG:
+        rejectPrimitiveNull(reader);
+        readAccessor.putLong(object, reader.readLong());
+        return;
+      case KIND_FLOAT:
+        rejectPrimitiveNull(reader);
+        readAccessor.putFloat(object, reader.readFloat());
+        return;
+      case KIND_DOUBLE:
+        rejectPrimitiveNull(reader);
+        readAccessor.putDouble(object, reader.readDouble());
+        return;
+      case KIND_CHAR:
+        rejectPrimitiveNull(reader);
+        readAccessor.putChar(object, reader.readChar());
+        return;
+      case KIND_CUSTOM_PRIMITIVE:
+        readAccessor.putObject(
+            object, requirePrimitive(readTypeInfo.utf8Reader().readUtf8(reader)));
+        return;
+      case KIND_UNBOXED:
+        putCarrier(object, readUnboxedUtf8(reader));
+        return;
+      default:
+        readAccessor.putObject(object, readTypeInfo.utf8Reader().readUtf8(reader));
+    }
+  }
+
+  public Object readUtf8Value(Utf8JsonReader reader) {
+    if (readOccurrenceNull(reader)) {
+      return null;
+    }
+    if (readUnboxedValueCodec != null) {
+      return readUnboxedUtf8(reader);
+    }
+    Object value = readTypeInfo.utf8Reader().readUtf8(reader);
+    return readPrimitiveKindId == KIND_CUSTOM_PRIMITIVE ? requirePrimitive(value) : value;
+  }
+
+  private boolean readOccurrenceNull(JsonReader reader) {
+    if (!readOccurrenceTypeInfo.nullable() && !readOccurrenceTypeInfo.rejectsNull()) {
+      return false;
+    }
+    if (!reader.tryReadNull()) {
+      return false;
+    }
+    if (readOccurrenceTypeInfo.rejectsNull()) {
+      rejectNullRead();
+    }
+    return true;
+  }
+
+  /** Throws the cold failure used by interpreted and generated readers. */
+  public Object rejectNullRead() {
+    throw new ForyJsonException("JSON property " + name + " is not nullable");
+  }
+
+  /** Returns constructor-workspace metadata for this deferred mutable property. */
+  public JsonCreatorFieldInfo asCreatorField(int argumentIndex) {
+    return new JsonCreatorFieldInfo(
+        name,
+        argumentIndex,
+        readTypeRef,
+        readRawType,
+        codecAnnotation,
+        valueCodecClass,
+        formatAnnotation,
+        readUnboxedRequired);
+  }
+
+  /** Assigns one already decoded value through this property's validated read sink. */
+  public void putValue(Object object, Object value) {
+    if (readUnboxedValueCodec != null) {
+      putCarrier(object, value);
+      return;
+    }
+    switch (readPrimitiveKindId) {
+      case KIND_BOOLEAN:
+        readAccessor.putBoolean(object, ((Boolean) requirePrimitive(value)).booleanValue());
+        return;
+      case KIND_BYTE:
+        readAccessor.putByte(object, ((Byte) requirePrimitive(value)).byteValue());
+        return;
+      case KIND_SHORT:
+        readAccessor.putShort(object, ((Short) requirePrimitive(value)).shortValue());
+        return;
+      case KIND_INT:
+        readAccessor.putInt(object, ((Integer) requirePrimitive(value)).intValue());
+        return;
+      case KIND_LONG:
+        readAccessor.putLong(object, ((Long) requirePrimitive(value)).longValue());
+        return;
+      case KIND_FLOAT:
+        readAccessor.putFloat(object, ((Float) requirePrimitive(value)).floatValue());
+        return;
+      case KIND_DOUBLE:
+        readAccessor.putDouble(object, ((Double) requirePrimitive(value)).doubleValue());
+        return;
+      case KIND_CHAR:
+        readAccessor.putChar(object, ((Character) requirePrimitive(value)).charValue());
+        return;
+      case KIND_CUSTOM_PRIMITIVE:
+        readAccessor.putObject(object, requirePrimitive(value));
+        return;
+      default:
+        readAccessor.putObject(object, value);
+    }
+  }
+
+  private void putCarrier(Object object, Object value) {
+    switch (readCarrierKindId) {
+      case KIND_BOOLEAN:
+        readAccessor.putBoolean(object, ((Boolean) requirePrimitive(value)).booleanValue());
+        return;
+      case KIND_BYTE:
+        readAccessor.putByte(object, ((Byte) requirePrimitive(value)).byteValue());
+        return;
+      case KIND_SHORT:
+        readAccessor.putShort(object, ((Short) requirePrimitive(value)).shortValue());
+        return;
+      case KIND_INT:
+        readAccessor.putInt(object, ((Integer) requirePrimitive(value)).intValue());
+        return;
+      case KIND_LONG:
+        readAccessor.putLong(object, ((Long) requirePrimitive(value)).longValue());
+        return;
+      case KIND_FLOAT:
+        readAccessor.putFloat(object, ((Float) requirePrimitive(value)).floatValue());
+        return;
+      case KIND_DOUBLE:
+        readAccessor.putDouble(object, ((Double) requirePrimitive(value)).doubleValue());
+        return;
+      case KIND_CHAR:
+        readAccessor.putChar(object, ((Character) requirePrimitive(value)).charValue());
+        return;
+      default:
+        readAccessor.putObject(object, value);
+    }
+  }
+
+  private Object readUnboxedLatin1(Latin1JsonReader reader) {
+    return readUnboxedValueCodec.readLatin1Carrier(reader);
+  }
+
+  private Object readUnboxedUtf16(Utf16JsonReader reader) {
+    return readUnboxedValueCodec.readUtf16Carrier(reader);
+  }
+
+  private Object readUnboxedUtf8(Utf8JsonReader reader) {
+    return readUnboxedValueCodec.readUtf8Carrier(reader);
+  }
+
+  // A custom codec may return null, but primitive storage has no nullable representation. Keep
+  // this check at the field owner; built-in primitive fast paths never call it.
+  public Object requirePrimitive(Object value) {
+    if (value == null) {
+      throw primitiveNull();
+    }
+    return value;
+  }
+
+  private void rejectPrimitiveNull(JsonReader reader) {
+    if (reader.peekNull()) {
+      reader.readNull();
+      throw primitiveNull();
+    }
+  }
+
+  private ForyJsonException primitiveNull() {
+    return new ForyJsonException("Cannot read null into primitive " + readRawType);
+  }
+
+  private static short checkedShort(int value) {
+    if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
+      throw new ForyJsonException("Short overflow");
+    }
+    return (short) value;
+  }
+
+  private static byte checkedByte(int value) {
+    if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
+      throw new ForyJsonException("Byte overflow");
+    }
+    return (byte) value;
   }
 
   public int readIndex() {
-    return readIndex;
+    return readIndexAndWriteNull & READ_INDEX_MASK;
   }
 
   public void setReadIndex(int readIndex) {
-    this.readIndex = readIndex;
+    if (readIndex < 0 || readIndex > READ_INDEX_MASK) {
+      throw new IllegalArgumentException("Invalid JSON field read index " + readIndex);
+    }
+    readIndexAndWriteNull =
+        (readIndexAndWriteNull & (WRITE_NULL_MASK | REQUIRE_NON_NULL_MASK)) | readIndex;
   }
 
   public JsonTypeInfo writeTypeInfo() {
@@ -285,16 +984,20 @@ public final class JsonFieldInfo {
     return readTypeInfo;
   }
 
-  public JsonTypeInfo readElementTypeInfo() {
-    return readElementTypeInfo;
-  }
-
   public byte[] stringNamePrefix() {
     return stringNamePrefix;
   }
 
   public byte[] stringCommaNamePrefix() {
     return stringCommaNamePrefix;
+  }
+
+  public byte[] stringUtf16NamePrefix() {
+    return stringUtf16NamePrefix;
+  }
+
+  public byte[] stringUtf16CommaNamePrefix() {
+    return stringUtf16CommaNamePrefix;
   }
 
   public byte[] utf8NamePrefix() {
@@ -327,10 +1030,20 @@ public final class JsonFieldInfo {
     return (comma ? stringEnumCommaValues : stringEnumNameValues)[value.ordinal()];
   }
 
+  public byte[] stringUtf16EnumFieldValue(Enum<?> value, boolean comma) {
+    return (comma ? stringUtf16EnumCommaValues : stringUtf16EnumNameValues)[value.ordinal()];
+  }
+
   public byte[] stringBooleanFieldValue(boolean value, boolean comma) {
     return value
         ? (comma ? stringTrueCommaToken : stringTrueNameToken)
         : (comma ? stringFalseCommaToken : stringFalseNameToken);
+  }
+
+  public byte[] stringUtf16BooleanFieldValue(boolean value, boolean comma) {
+    return value
+        ? (comma ? stringUtf16TrueCommaToken : stringUtf16TrueNameToken)
+        : (comma ? stringUtf16FalseCommaToken : stringUtf16FalseNameToken);
   }
 
   public byte[] utf8ElementEnumValue(Enum<?> value) {
@@ -341,97 +1054,20 @@ public final class JsonFieldInfo {
     return stringElementEnumValues[value.ordinal()];
   }
 
-  public boolean write(JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
-    switch (writeKind) {
-      case BOOLEAN:
-        if (!writeRawType.isPrimitive()) {
-          return writeScalar(writer, object, index);
-        }
-        writer.writeComma(index);
-        writer.writeFieldName(this);
-        writer.writeBoolean(writeAccessor.getBoolean(object));
-        return true;
-      case BYTE:
-        if (!writeRawType.isPrimitive()) {
-          return writeScalar(writer, object, index);
-        }
-        writer.writeComma(index);
-        writer.writeFieldName(this);
-        writer.writeInt(writeAccessor.getByte(object));
-        return true;
-      case SHORT:
-        if (!writeRawType.isPrimitive()) {
-          return writeScalar(writer, object, index);
-        }
-        writer.writeComma(index);
-        writer.writeFieldName(this);
-        writer.writeInt(writeAccessor.getShort(object));
-        return true;
-      case INT:
-        if (!writeRawType.isPrimitive()) {
-          return writeScalar(writer, object, index);
-        }
-        writer.writeComma(index);
-        writer.writeFieldName(this);
-        writer.writeInt(writeAccessor.getInt(object));
-        return true;
-      case LONG:
-        if (!writeRawType.isPrimitive()) {
-          return writeScalar(writer, object, index);
-        }
-        writer.writeComma(index);
-        writer.writeFieldName(this);
-        writer.writeLong(writeAccessor.getLong(object));
-        return true;
-      case FLOAT:
-        if (!writeRawType.isPrimitive()) {
-          return writeScalar(writer, object, index);
-        }
-        writer.writeComma(index);
-        writer.writeFieldName(this);
-        writer.writeFloat(writeAccessor.getFloat(object));
-        return true;
-      case DOUBLE:
-        if (!writeRawType.isPrimitive()) {
-          return writeScalar(writer, object, index);
-        }
-        writer.writeComma(index);
-        writer.writeFieldName(this);
-        writer.writeDouble(writeAccessor.getDouble(object));
-        return true;
-      case CHAR:
-        if (!writeRawType.isPrimitive()) {
-          return writeScalar(writer, object, index);
-        }
-        writer.writeComma(index);
-        writer.writeFieldName(this);
-        writer.writeChar(writeAccessor.getChar(object));
-        return true;
-      case STRING:
-        return writeString(writer, object, index);
-      case ENUM:
-        return writeEnum(writer, object, index);
-      case ARRAY:
-        return writeArray(writer, object, typeResolver, index);
-      case COLLECTION:
-        return writeCollection(writer, object, typeResolver, index);
-      case MAP:
-        return writeMap(writer, object, typeResolver, index);
-      case OBJECT:
-        return writePojo(writer, object, typeResolver, index);
-      default:
-        return writeObject(writer, object, typeResolver, index);
-    }
-  }
-
-  public boolean writeString(
-      StringJsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  public boolean writeString(StringJsonWriter writer, Object object, int index) {
     switch (writeKindId) {
+      case KIND_NULL:
+        writer.writeFieldName(this, index);
+        writer.writeNull();
+        return true;
       case KIND_BOOLEAN:
         if (!writeRawType.isPrimitive()) {
           return writeStringScalar(writer, object, index);
         }
-        writer.writeRawValue(stringBooleanFieldValue(writeAccessor.getBoolean(object), index != 0));
+        boolean booleanValue = writeAccessor.getBoolean(object);
+        writer.writeRawValue(
+            stringBooleanFieldValue(booleanValue, index != 0),
+            stringUtf16BooleanFieldValue(booleanValue, index != 0));
         return true;
       case KIND_BYTE:
         if (!writeRawType.isPrimitive()) {
@@ -484,39 +1120,31 @@ public final class JsonFieldInfo {
         return true;
       case KIND_STRING:
         return writeStringText(writer, object, index);
+      case KIND_RAW_STRING:
+        return writeStringRaw(writer, object, index);
       case KIND_ENUM:
         return writeStringEnum(writer, object, index);
       case KIND_ARRAY:
-        return writeStringArray(writer, object, typeResolver, index);
+        return writeStringArray(writer, object, index);
       case KIND_COLLECTION:
-        return writeStringCollection(writer, object, typeResolver, index);
+        return writeStringCollection(writer, object, index);
       case KIND_MAP:
-        return writeStringMap(writer, object, typeResolver, index);
+        return writeStringMap(writer, object, index);
       case KIND_OBJECT:
-        return writeStringPojo(writer, object, typeResolver, index);
+        return writeStringPojo(writer, object, index);
+      case KIND_UNBOXED:
+        return writeStringUnboxed(writer, object, index);
       default:
-        return writeObject(writer, object, typeResolver, index);
+        return writeStringObject(writer, object, index);
     }
   }
 
-  private boolean writeString(JsonWriter writer, Object object, int index) {
-    String value = (String) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
-    }
-    writer.writeComma(index);
-    writer.writeFieldName(this);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writer.writeString(value);
-    }
-    return true;
-  }
-
-  public boolean writeUtf8(
-      Utf8JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  public boolean writeUtf8(Utf8JsonWriter writer, Object object, int index) {
     switch (writeKindId) {
+      case KIND_NULL:
+        writer.writeFieldName(this, index);
+        writer.writeNull();
+        return true;
       case KIND_BOOLEAN:
         if (!writeRawType.isPrimitive()) {
           return writeUtf8Scalar(writer, object, index);
@@ -574,48 +1202,49 @@ public final class JsonFieldInfo {
         return true;
       case KIND_STRING:
         return writeUtf8String(writer, object, index);
+      case KIND_RAW_STRING:
+        return writeUtf8Raw(writer, object, index);
       case KIND_ENUM:
         return writeUtf8Enum(writer, object, index);
       case KIND_ARRAY:
-        return writeUtf8Array(writer, object, typeResolver, index);
+        return writeUtf8Array(writer, object, index);
       case KIND_COLLECTION:
-        return writeUtf8Collection(writer, object, typeResolver, index);
+        return writeUtf8Collection(writer, object, index);
       case KIND_MAP:
-        return writeUtf8Map(writer, object, typeResolver, index);
+        return writeUtf8Map(writer, object, index);
       case KIND_OBJECT:
-        return writeUtf8Pojo(writer, object, typeResolver, index);
+        return writeUtf8Pojo(writer, object, index);
+      case KIND_UNBOXED:
+        return writeUtf8Unboxed(writer, object, index);
       default:
-        return writeUtf8Object(writer, object, typeResolver, index);
+        return writeUtf8Object(writer, object, index);
     }
   }
 
-  private boolean writeObject(
-      JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  private boolean writeStringObject(StringJsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
-    writer.writeComma(index);
-    writer.writeFieldName(this);
-    writeTypeInfo.codec().write(writer, value, typeResolver);
+    writer.writeFieldName(this, index);
+    writeTypeInfo.stringWriter().writeString(writer, value);
     return true;
   }
 
-  private boolean writeScalar(JsonWriter writer, Object object, int index) {
-    Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+  private boolean writeStringUnboxed(StringJsonWriter writer, Object object, int index) {
+    Object carrier = writeAccessor.getObject(object);
+    if (carrier == null && !writeNull()) {
+      return omitNullValue();
     }
-    writer.writeComma(index);
-    writer.writeFieldName(this);
-    writeScalarValue(writer, value);
+    writer.writeFieldName(this, index);
+    writeUnboxedValueCodec.writeStringCarrier(writer, carrier);
     return true;
   }
 
   private boolean writeStringScalar(StringJsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     if (value == null) {
       writer.writeFieldName(this, index);
@@ -624,7 +1253,10 @@ public final class JsonFieldInfo {
     }
     switch (writeKind) {
       case BOOLEAN:
-        writer.writeRawValue(stringBooleanFieldValue(((Boolean) value).booleanValue(), index != 0));
+        boolean booleanValue = ((Boolean) value).booleanValue();
+        writer.writeRawValue(
+            stringBooleanFieldValue(booleanValue, index != 0),
+            stringUtf16BooleanFieldValue(booleanValue, index != 0));
         return true;
       case BYTE:
         writer.writeIntField(
@@ -644,15 +1276,15 @@ public final class JsonFieldInfo {
         return true;
       default:
         writer.writeFieldName(this, index);
-        writeScalarValue(writer, value);
+        writeStringScalarValue(writer, value);
         return true;
     }
   }
 
   private boolean writeUtf8Scalar(Utf8JsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     if (value == null) {
       writer.writeFieldName(this, index);
@@ -680,15 +1312,15 @@ public final class JsonFieldInfo {
         return true;
       default:
         writer.writeFieldName(this, index);
-        writeScalarValue(writer, value);
+        writeUtf8ScalarValue(writer, value);
         return true;
     }
   }
 
   private boolean writeStringText(StringJsonWriter writer, Object object, int index) {
     String value = (String) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     if (value == null) {
       writer.writeFieldName(this, index);
@@ -699,81 +1331,77 @@ public final class JsonFieldInfo {
     return true;
   }
 
+  private boolean writeStringRaw(StringJsonWriter writer, Object object, int index) {
+    String value = (String) writeAccessor.getObject(object);
+    if (value == null && !writeNull()) {
+      return omitNullValue();
+    }
+    writer.writeFieldName(this, index);
+    if (value == null) {
+      writer.writeNull();
+    } else {
+      writer.writeRawValue(value);
+    }
+    return true;
+  }
+
   private boolean writeStringEnum(StringJsonWriter writer, Object object, int index) {
     Enum<?> value = (Enum<?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     if (value == null) {
       writer.writeFieldName(this, index);
       writer.writeNull();
     } else {
-      writer.writeRawValue(stringEnumFieldValue(value, index != 0));
+      writer.writeRawValue(
+          stringEnumFieldValue(value, index != 0), stringUtf16EnumFieldValue(value, index != 0));
     }
     return true;
   }
 
-  private boolean writeStringArray(
-      StringJsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  private boolean writeStringArray(StringJsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
+    // Field metadata owns omission only. Once present, the registered codec owns null semantics.
     writer.writeFieldName(this, index);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().writeString(writer, value, typeResolver);
-    }
+    writeTypeInfo.stringWriter().writeString(writer, value);
     return true;
   }
 
-  private boolean writeStringCollection(
-      StringJsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  private boolean writeStringCollection(StringJsonWriter writer, Object object, int index) {
     Collection<?> value = (Collection<?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     writer.writeFieldName(this, index);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().writeString(writer, value, typeResolver);
-    }
+    writeTypeInfo.stringWriter().writeString(writer, value);
     return true;
   }
 
-  private boolean writeStringMap(
-      StringJsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  private boolean writeStringMap(StringJsonWriter writer, Object object, int index) {
     Map<?, ?> value = (Map<?, ?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     writer.writeFieldName(this, index);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().writeString(writer, value, typeResolver);
-    }
+    writeTypeInfo.stringWriter().writeString(writer, value);
     return true;
   }
 
-  private boolean writeStringPojo(
-      StringJsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  private boolean writeStringPojo(StringJsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     writer.writeFieldName(this, index);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().writeString(writer, value, typeResolver);
-    }
+    writeTypeInfo.stringWriter().writeString(writer, value);
     return true;
   }
 
-  private void writeScalarValue(JsonWriter writer, Object value) {
+  private void writeStringScalarValue(StringJsonWriter writer, Object value) {
     if (value == null) {
       writer.writeNull();
       return;
@@ -808,50 +1436,106 @@ public final class JsonFieldInfo {
     }
   }
 
-  private boolean writeUtf8Object(
-      Utf8JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  private void writeUtf8ScalarValue(Utf8JsonWriter writer, Object value) {
+    if (value == null) {
+      writer.writeNull();
+      return;
+    }
+    switch (writeKind) {
+      case BOOLEAN:
+        writer.writeBoolean(((Boolean) value).booleanValue());
+        return;
+      case BYTE:
+        writer.writeInt(((Byte) value).intValue());
+        return;
+      case SHORT:
+        writer.writeInt(((Short) value).intValue());
+        return;
+      case INT:
+        writer.writeInt(((Integer) value).intValue());
+        return;
+      case LONG:
+        writer.writeLong(((Long) value).longValue());
+        return;
+      case FLOAT:
+        writer.writeFloat(((Float) value).floatValue());
+        return;
+      case DOUBLE:
+        writer.writeDouble(((Double) value).doubleValue());
+        return;
+      case CHAR:
+        writer.writeChar(((Character) value).charValue());
+        return;
+      default:
+        throw new ForyJsonException("Not a scalar JSON field " + name);
+    }
+  }
+
+  private boolean writeUtf8Object(Utf8JsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     writer.writeFieldName(this, index);
-    writeTypeInfo.codec().writeUtf8(writer, value, typeResolver);
+    writeTypeInfo.utf8Writer().writeUtf8(writer, value);
+    return true;
+  }
+
+  private boolean writeUtf8Unboxed(Utf8JsonWriter writer, Object object, int index) {
+    Object carrier = writeAccessor.getObject(object);
+    if (carrier == null && !writeNull()) {
+      return omitNullValue();
+    }
+    writer.writeFieldName(this, index);
+    writeUnboxedValueCodec.writeUtf8Carrier(writer, carrier);
     return true;
   }
 
   private boolean writeUtf8String(Utf8JsonWriter writer, Object object, int index) {
     String value = (String) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     if (value == null) {
       writer.writeFieldName(this, index);
       writer.writeNull();
+    } else if (index == 0) {
+      // Keep interpreted packable fields on the same concrete writer entry as generated codecs.
+      // A separate byte-array entry leaves the packed encoder cold until generated parents compile,
+      // allowing C2 to copy the complete encoder graph into those parents instead.
+      if (utf8NamePrefix.length <= Long.BYTES * 2) {
+        writer.writeStringField(
+            utf8NamePrefixWord0, utf8NamePrefixWord1, utf8NamePrefix.length, value);
+      } else {
+        writer.writeStringField(utf8NamePrefix, value);
+      }
+    } else if (utf8CommaNamePrefix.length <= Long.BYTES * 2) {
+      writer.writeStringField(
+          utf8CommaNamePrefixWord0, utf8CommaNamePrefixWord1, utf8CommaNamePrefix.length, value);
     } else {
-      writer.writeStringField(utf8NamePrefix, utf8CommaNamePrefix, index, value);
+      writer.writeStringField(utf8CommaNamePrefix, value);
     }
     return true;
   }
 
-  private boolean writeEnum(JsonWriter writer, Object object, int index) {
-    Enum<?> value = (Enum<?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+  private boolean writeUtf8Raw(Utf8JsonWriter writer, Object object, int index) {
+    String value = (String) writeAccessor.getObject(object);
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
-    writer.writeComma(index);
-    writer.writeFieldName(this);
+    writer.writeFieldName(this, index);
     if (value == null) {
       writer.writeNull();
     } else {
-      writer.writeString(value.name());
+      writer.writeRawValue(value);
     }
     return true;
   }
 
   private boolean writeUtf8Enum(Utf8JsonWriter writer, Object object, int index) {
     Enum<?> value = (Enum<?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     if (value == null) {
       writer.writeFieldName(this, index);
@@ -862,128 +1546,52 @@ public final class JsonFieldInfo {
     return true;
   }
 
-  private boolean writeArray(
-      JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  private boolean writeUtf8Array(Utf8JsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
-    writer.writeComma(index);
-    writer.writeFieldName(this);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().write(writer, value, typeResolver);
-    }
-    return true;
-  }
-
-  private boolean writeUtf8Array(
-      Utf8JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
-    Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
-    }
+    // Field metadata owns omission only. Once present, the registered codec owns null semantics.
     writer.writeFieldName(this, index);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().writeUtf8(writer, value, typeResolver);
-    }
+    writeTypeInfo.utf8Writer().writeUtf8(writer, value);
     return true;
   }
 
-  private boolean writeCollection(
-      JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  private boolean writeUtf8Collection(Utf8JsonWriter writer, Object object, int index) {
     Collection<?> value = (Collection<?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
-    }
-    writer.writeComma(index);
-    writer.writeFieldName(this);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().write(writer, value, typeResolver);
-    }
-    return true;
-  }
-
-  private boolean writeUtf8Collection(
-      Utf8JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
-    Collection<?> value = (Collection<?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     writer.writeFieldName(this, index);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().writeUtf8(writer, value, typeResolver);
-    }
+    writeTypeInfo.utf8Writer().writeUtf8(writer, value);
     return true;
   }
 
-  private boolean writeMap(
-      JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  private boolean writeUtf8Map(Utf8JsonWriter writer, Object object, int index) {
     Map<?, ?> value = (Map<?, ?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
-    }
-    writer.writeComma(index);
-    writer.writeFieldName(this);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().write(writer, value, typeResolver);
-    }
-    return true;
-  }
-
-  private boolean writeUtf8Map(
-      Utf8JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
-    Map<?, ?> value = (Map<?, ?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     writer.writeFieldName(this, index);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().writeUtf8(writer, value, typeResolver);
-    }
+    writeTypeInfo.utf8Writer().writeUtf8(writer, value);
     return true;
   }
 
-  private boolean writePojo(
-      JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
+  private boolean writeUtf8Pojo(Utf8JsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
-    }
-    writer.writeComma(index);
-    writer.writeFieldName(this);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().write(writer, value, typeResolver);
-    }
-    return true;
-  }
-
-  private boolean writeUtf8Pojo(
-      Utf8JsonWriter writer, Object object, JsonTypeResolver typeResolver, int index) {
-    Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
-      return false;
+    if (value == null && !writeNull()) {
+      return omitNullValue();
     }
     writer.writeFieldName(this, index);
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeTypeInfo.codec().writeUtf8(writer, value, typeResolver);
-    }
+    writeTypeInfo.utf8Writer().writeUtf8(writer, value);
     return true;
+  }
+
+  private boolean omitNullValue() {
+    if (requiresNonNullWrite()) {
+      rejectNullWrite();
+    }
+    return false;
   }
 
   private static JsonFieldKind kind(Class<?> rawType) {
@@ -1052,25 +1660,20 @@ public final class JsonFieldInfo {
     }
   }
 
+  private static int primitiveKindId(Class<?> rawType, JsonFieldKind kind) {
+    if (rawType == null || !rawType.isPrimitive() || kind == null) {
+      return 0;
+    }
+    if (kind == JsonFieldKind.OBJECT) {
+      return KIND_CUSTOM_PRIMITIVE;
+    }
+    int kindId = kindId(kind);
+    return kindId <= KIND_CHAR ? kindId : 0;
+  }
+
   private static Class<?> knownRawType(Type type) {
     Class<?> rawType = CodecUtils.rawType(type, null);
     return rawType == Object.class ? null : rawType;
-  }
-
-  private static boolean isScalarType(Class<?> rawType) {
-    return rawType == String.class
-        || rawType == Boolean.class
-        || rawType == Byte.class
-        || rawType == Short.class
-        || rawType == Integer.class
-        || rawType == Long.class
-        || rawType == Float.class
-        || rawType == Double.class
-        || rawType == Character.class
-        || rawType.isPrimitive()
-        || rawType.isArray()
-        || Collection.class.isAssignableFrom(rawType)
-        || Map.class.isAssignableFrom(rawType);
   }
 
   private static byte[][] enumValues(Class<?> enumType) {
@@ -1101,10 +1704,41 @@ public final class JsonFieldInfo {
     return fieldValues;
   }
 
+  private static byte[][] utf16FieldValues(byte[] utf16Prefix, byte[][] values) {
+    byte[][] fieldValues = new byte[values.length][];
+    for (int i = 0; i < values.length; i++) {
+      fieldValues[i] = join(utf16Prefix, toUtf16Bytes(values[i]));
+    }
+    return fieldValues;
+  }
+
   private static byte[] join(byte[] prefix, byte[] token) {
     byte[] joined = new byte[prefix.length + token.length];
     System.arraycopy(prefix, 0, joined, 0, prefix.length);
     System.arraycopy(token, 0, joined, prefix.length, token.length);
     return joined;
+  }
+
+  private static byte[] toUtf16Bytes(byte[] latin1) {
+    byte[] utf16 = new byte[latin1.length << 1];
+    if (NativeByteOrder.IS_LITTLE_ENDIAN) {
+      for (int i = 0, j = 0; i < latin1.length; i++, j += 2) {
+        utf16[j] = latin1[i];
+      }
+    } else {
+      for (int i = 0, j = 0; i < latin1.length; i++, j += 2) {
+        utf16[j + 1] = latin1[i];
+      }
+    }
+    return utf16;
+  }
+
+  private static long packedPrefixWord(byte[] prefix, int offset) {
+    long word = 0;
+    int end = Math.min(prefix.length, offset + Long.BYTES);
+    for (int i = offset; i < end; i++) {
+      word |= (prefix[i] & 0xffL) << ((i - offset) << 3);
+    }
+    return word;
   }
 }

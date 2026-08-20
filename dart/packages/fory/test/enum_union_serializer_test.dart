@@ -239,7 +239,7 @@ void main() {
   });
 
   group('union serializer', () {
-    test('round-trips manual union roots for every arm', () {
+    test('round-trips custom union roots for every arm', () {
       final fory = Fory();
       _registerEnumAndUnionTypes(fory);
 

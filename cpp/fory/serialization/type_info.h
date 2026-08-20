@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <typeinfo>
 #include <vector>
 
 namespace fory {
@@ -71,6 +72,9 @@ struct Harness {
       Result<std::vector<FieldInfo>, Error> (*)(TypeResolver &);
   using AnyWriteFn = void (*)(const std::any &value, WriteContext &ctx);
   using AnyReadFn = std::any (*)(ReadContext &ctx);
+  using ReadAsFn = void *(*)(ReadContext &ctx,
+                             const struct TypeInfo *type_info);
+  using FindReadAsFn = ReadAsFn (*)(const std::type_info &target);
 
   Harness() = default;
   Harness(WriteFn write, ReadFn read, WriteDataFn write_data,
@@ -85,7 +89,8 @@ struct Harness {
   bool valid() const {
     return write_fn != nullptr && read_fn != nullptr &&
            write_data_fn != nullptr && read_data_fn != nullptr &&
-           destroy_fn != nullptr && sorted_field_infos_fn != nullptr;
+           destroy_fn != nullptr && sorted_field_infos_fn != nullptr &&
+           find_read_as_fn != nullptr;
   }
 
   WriteFn write_fn = nullptr;
@@ -97,6 +102,10 @@ struct Harness {
   ReadCompatibleFn read_compatible_fn = nullptr;
   AnyWriteFn any_write_fn = nullptr;
   AnyReadFn any_read_fn = nullptr;
+  bool read_data_always_advances = false;
+  // Polymorphic smart-pointer reads resolve this before materializing the wire
+  // type so only declared C++ base relationships can reach an owning reader.
+  FindReadAsFn find_read_as_fn = nullptr;
 };
 
 // ============================================================================
@@ -132,6 +141,11 @@ struct TypeInfo {
   fory::flat_hash_map<std::string, size_t> name_to_index;
   std::vector<uint8_t> type_def;
   Harness harness;
+  // TypeInfo and its harness are immutable after registration. Cache the last
+  // read target so repeated root operations avoid walking the declared base
+  // graph; ThreadSafeFory uses distinct cloned TypeInfo owners per pooled Fory.
+  mutable const std::type_info *cached_read_target = nullptr;
+  mutable Harness::ReadAsFn cached_read_as_fn = nullptr;
   // Pre-encoded meta strings for efficient writing (avoids re-encoding on each
   // write)
   std::unique_ptr<CachedMetaString> encoded_namespace;

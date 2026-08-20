@@ -124,6 +124,8 @@ class Fory:
         "strict",
         "buffer",
         "max_depth",
+        "max_graph_memory_bytes",
+        "max_unbacked_container_items",
         "field_nullable",
         "policy",
     )
@@ -139,6 +141,8 @@ class Fory:
         max_type_meta_bytes: int = 4096,
         max_schema_versions_per_type: int = 10,
         max_average_schema_versions_per_type: int = 3,
+        max_graph_memory_bytes: int = 128 * 1024 * 1024,
+        max_unbacked_container_items: int = 8192,
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
@@ -158,8 +162,11 @@ class Fory:
                 circular references. When enabled, duplicate objects are stored once.
                 Disabled by default for better performance.
 
-            strict: Require type registration before serialization (default: True). When
-                disabled, unknown types can be deserialized, which may be insecure if
+            strict: Require registration before loading or instantiating application
+                classes (default: True). Compatible metadata for an unregistered remote
+                Struct uses the fixed data-only UnknownStruct carrier instead of loading
+                or generating the sender-named class. When strict mode is disabled,
+                dynamic application types can be deserialized, which may be insecure if
                 malicious code exists in __new__/__init__/__eq__/__hash__ methods.
                 **WARNING**: Only disable in trusted environments. When disabling strict
                 mode, you should provide a custom `policy` parameter to control which types
@@ -182,6 +189,16 @@ class Fory:
 
             max_average_schema_versions_per_type: Average remote metadata versions allowed
                 across accepted remote types.
+
+            max_graph_memory_bytes: Approximate graph-memory gate per root deserialization.
+                Mainly covers materialized collections, maps, arrays, structs, and objects. Leaf
+                values such as strings, binary, primitive scalars, and dense primitive arrays are
+                gated by unread input bytes instead, and actual process memory can be higher.
+                Defaults to 128 MiB and must be a positive byte limit.
+
+            max_unbacked_container_items: Maximum collection elements and map entries
+                whose repeated reads are not backed by input bytes in one root operation.
+                Defaults to 8192 and must be non-negative. Zero is a strict limit.
 
             policy: Custom deserialization policy for security checks. When provided,
                 it controls which types can be deserialized, overriding the default policy.
@@ -213,6 +230,12 @@ class Fory:
             raise ValueError("max_schema_versions_per_type must be a positive integer")
         if not isinstance(max_average_schema_versions_per_type, int) or max_average_schema_versions_per_type <= 0:
             raise ValueError("max_average_schema_versions_per_type must be a positive integer")
+        if not isinstance(max_graph_memory_bytes, int) or max_graph_memory_bytes <= 0 or max_graph_memory_bytes > (1 << 63) - 1:
+            raise ValueError("max_graph_memory_bytes must be in range [1, 9223372036854775807]")
+        if not isinstance(max_unbacked_container_items, int) or max_unbacked_container_items < 0 or max_unbacked_container_items > (1 << 63) - 1:
+            raise ValueError("max_unbacked_container_items must be in range [0, 9223372036854775807]")
+        self.max_graph_memory_bytes = max_graph_memory_bytes
+        self.max_unbacked_container_items = max_unbacked_container_items
         self.config = Config(
             xlang=xlang,
             track_ref=ref,
@@ -225,6 +248,8 @@ class Fory:
             max_type_meta_bytes=max_type_meta_bytes,
             max_schema_versions_per_type=max_schema_versions_per_type,
             max_average_schema_versions_per_type=max_average_schema_versions_per_type,
+            max_graph_memory_bytes=max_graph_memory_bytes,
+            max_unbacked_container_items=max_unbacked_container_items,
             field_nullable=field_nullable,
             policy=self.policy,
             meta_compressor=meta_compressor,

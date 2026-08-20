@@ -18,27 +18,27 @@
 import Foundation
 
 public enum RefFlag: Int8 {
-  case null = -3
-  case ref = -2
-  case notNullValue = -1
-  case refValue = 0
+    case null = -3
+    case ref = -2
+    case notNullValue = -1
+    case refValue = 0
 }
 
 public enum RefMode: UInt8, Equatable {
-  case none = 0
-  case nullOnly = 1
-  case tracking = 2
+    case none = 0
+    case nullOnly = 1
+    case tracking = 2
 
-  public static func from(nullable: Bool, trackRef: Bool) -> Self {
-    if trackRef {
-      return .tracking
+    public static func from(nullable: Bool, trackRef: Bool) -> Self {
+        if trackRef {
+            return .tracking
+        }
+        return nullable ? .nullOnly : .none
     }
-    return nullable ? .nullOnly : .none
-  }
 }
 
 public enum ForyHeaderFlag {
-  public static let isXlang: UInt8 = 0x01
-  public static let isOutOfBand: UInt8 = 0x02
-  public static let knownMask: UInt8 = isXlang | isOutOfBand
+    public static let isXlang: UInt8 = 0x01
+    public static let isOutOfBand: UInt8 = 0x02
+    public static let knownMask: UInt8 = isXlang | isOutOfBand
 }

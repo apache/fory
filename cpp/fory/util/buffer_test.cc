@@ -378,6 +378,24 @@ TEST(Buffer, StreamReadErrorWhenInsufficientData) {
   EXPECT_EQ(error.code(), ErrorCode::BufferOutOfBound);
 }
 
+TEST(Buffer, StreamGrowthStaysGeometricAcrossReads) {
+  std::string payload(8, '\x7');
+  std::istringstream source(payload);
+  StdInputStream stream(source, 4);
+  Buffer reader(stream);
+  Error error;
+
+  for (uint32_t i = 0; i < 4; ++i) {
+    EXPECT_EQ(reader.read_uint8(error), 7U);
+    ASSERT_TRUE(error.ok()) << error.to_string();
+  }
+  EXPECT_EQ(reader.size(), 4U);
+
+  EXPECT_EQ(reader.read_uint8(error), 7U);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  EXPECT_EQ(reader.size(), 8U);
+}
+
 TEST(Buffer, StreamFillDoubleGrowsFromBufferedBytes) {
   std::vector<uint8_t> raw(17, 0x7);
   OneByteIStream one_byte_stream(raw);

@@ -26,7 +26,7 @@ install_nodejs() {
 
 # Check for ruff
 if ! [ -x "$(command -v ruff)" ]; then
-    echo "ruff not installed. Install with: pip install ruff"
+    echo "ruff not installed. Install with: pip install ruff==0.15.22"
     exit 1
 fi
 
@@ -197,7 +197,7 @@ format_python() {
       git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs ruff check --fix
       echo "$(date)" "Python formatting done!"
     else
-      echo "ERROR: ruff is not installed! Install with: pip install ruff"
+      echo "ERROR: ruff is not installed! Install with: pip install ruff==0.15.22"
       exit 1
     fi
 }
@@ -237,6 +237,16 @@ format_swift() {
       echo "$(date)" "SwiftLint done!"
     else
       echo "WARNING: swiftlint is not installed, skip swift lint check"
+    fi
+
+    echo "$(date)" "swift-format check Swift files...."
+    if command -v swift-format >/dev/null; then
+      pushd "$ROOT/swift"
+      swift-format lint --configuration .swift-format --recursive --strict Sources Tests Package.swift
+      popd
+      echo "$(date)" "swift-format done!"
+    else
+      echo "WARNING: swift-format is not installed, skip swift-format check"
     fi
 }
 

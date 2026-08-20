@@ -293,7 +293,7 @@ func (t *TypeSpec) writeWithFlags(buffer *ByteBuffer, nullable bool, trackRef bo
 		value |= 0b01
 	}
 	buffer.WriteVarUint32Small7(value)
-	t.writeChildrenWithOwnFlags(buffer)
+	t.writeChildren(buffer)
 }
 
 func (t *TypeSpec) writeChildren(buffer *ByteBuffer) {
@@ -313,14 +313,6 @@ func (t *TypeSpec) writeChildren(buffer *ByteBuffer) {
 	}
 }
 
-func (t *TypeSpec) writeChildrenWithOwnFlags(buffer *ByteBuffer) {
-	t.writeChildren(buffer)
-}
-
-func (t *TypeSpec) getTypeInfo(fory *Fory) (TypeInfo, error) {
-	return t.getTypeInfoWithResolver(fory.typeResolver)
-}
-
 func (t *TypeSpec) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, error) {
 	if t == nil {
 		return TypeInfo{}, nil
@@ -333,7 +325,7 @@ func (t *TypeSpec) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, er
 	if err != nil {
 		return TypeInfo{}, err
 	}
-	return TypeInfo{Type: goType, TypeID: uint32(t.TypeID), Serializer: serializer}, nil
+	return TypeInfo{Type: goType, TypeID: uint32(t.TypeID), Serializer: serializer, ValueBytes: int(goType.Size())}, nil
 }
 
 func (t *TypeSpec) goTypeForResolver(resolver *TypeResolver) (reflect.Type, error) {
@@ -1807,7 +1799,7 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 		if err != nil {
 			return nil, err
 		}
-		return &ptrToValueSerializer{valueSerializer: inner}, nil
+		return &ptrToValueSerializer{valueSerializer: inner, valueBytes: int(goType.Elem().Size())}, nil
 	}
 	switch spec.TypeID {
 	case LIST:
@@ -1822,13 +1814,42 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 		if goType.Kind() == reflect.Slice && goType.Elem().Kind() == reflect.String {
 			return stringSliceSerializer{}, nil
 		}
-		if spec.Element == nil || spec.Element.TypeID == UNKNOWN || goType.Elem().Kind() == reflect.Interface {
+		if spec.Element == nil || spec.Element.TypeID == UNKNOWN {
 			switch goType.Kind() {
 			case reflect.Slice:
-				return resolver.GetSliceSerializer(goType)
+				return resolver.getSliceSerializer(goType)
 			case reflect.Array:
-				return resolver.GetArraySerializer(goType)
+				return resolver.getArraySerializer(goType)
 			}
+		}
+		if goType.Elem().Kind() == reflect.Interface {
+			elemType, err := spec.Element.goTypeForResolver(resolver)
+			if err != nil {
+				return nil, err
+			}
+			if elemType == nil {
+				return nil, fmt.Errorf("LIST element schema has no materialization type")
+			}
+			elemSerializer, err := serializerForTypeSpec(resolver, elemType, spec.Element)
+			if err != nil {
+				return nil, err
+			}
+			sliceSerializer, err := newSliceDynSerializer(goType.Elem())
+			if err != nil {
+				return nil, err
+			}
+			sliceSerializer.declaredElemType = elemType
+			sliceSerializer.declaredElemSerializer = elemSerializer
+			sliceSerializer.elemDeclType = !needsElemTypeInfo(spec.Element.TypeID)
+			if !sliceSerializer.elemDeclType {
+				sliceSerializer.declaredElemTypeInfo = resolver.getTypeInfoByType(elemType)
+			}
+			sliceSerializer.declaredElemReferencable = spec.Element.TrackRef
+			sliceSerializer.declaredElemBytes = int(elemType.Size())
+			if goType.Kind() == reflect.Array {
+				return &arrayDynSerializer{sliceSerializer: sliceSerializer}, nil
+			}
+			return sliceSerializer, nil
 		}
 		elemSerializer, err := serializerForTypeSpec(resolver, goType.Elem(), spec.Element)
 		if err != nil {
@@ -1837,35 +1858,87 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 		referencable := spec.Element != nil && spec.Element.TrackRef
 		return newDeclaredSliceSerializer(goType, elemSerializer, referencable)
 	case SET:
-		elemSerializer, err := serializerForTypeSpec(resolver, goType.Key(), spec.Element)
-		if err != nil {
-			return nil, err
+		elemType := goType.Key()
+		var elemSerializer Serializer
+		if spec.Element != nil && spec.Element.TypeID != UNKNOWN {
+			if elemType.Kind() == reflect.Interface {
+				schemaElemType, err := spec.Element.goTypeForResolver(resolver)
+				if err != nil {
+					return nil, err
+				}
+				if schemaElemType == nil {
+					return nil, fmt.Errorf("SET element schema has no materialization type")
+				}
+				elemType = schemaElemType
+			}
+			serializer, err := serializerForTypeSpec(resolver, elemType, spec.Element)
+			if err != nil {
+				return nil, err
+			}
+			elemSerializer = serializer
 		}
 		return setSerializer{
-			elemSerializer:   elemSerializer,
-			elemReferencable: spec.Element != nil && spec.Element.TrackRef,
-			hasGenerics:      true,
+			elemSerializer:       elemSerializer,
+			declaredElemType:     elemType,
+			declaredElemTypeInfo: resolver.getTypeInfoByType(elemType),
+			elemDeclType:         spec.Element == nil || !needsElemTypeInfo(spec.Element.TypeID),
+			elemReferencable:     spec.Element != nil && spec.Element.TrackRef,
+			hasGenerics:          true,
+			type_:                goType,
+			keyBytes:             int(goType.Key().Size()),
+			valueBytes:           int(goType.Elem().Size()),
+			declaredElemBytes:    int(elemType.Size()),
+			maxLength:            maxGraphCount(int(goType.Key().Size()) + int(goType.Elem().Size())),
 		}, nil
 	case MAP:
-		if spec.Key == nil || spec.Value == nil || spec.Key.TypeID == UNKNOWN || spec.Value.TypeID == UNKNOWN ||
-			goType.Key().Kind() == reflect.Interface || goType.Elem().Kind() == reflect.Interface {
-			return resolver.getSerializerByType(goType, true)
+		// Resolve children independently: a dynamic child does not erase the
+		// declared codec selected by the enclosing schema for its sibling.
+		keyType := goType.Key()
+		var keySerializer Serializer
+		if spec.Key != nil && spec.Key.TypeID != UNKNOWN {
+			if keyType.Kind() == reflect.Interface {
+				schemaKeyType, err := spec.Key.goTypeForResolver(resolver)
+				if err != nil {
+					return nil, err
+				}
+				keyType = schemaKeyType
+			}
+			serializer, err := serializerForTypeSpec(resolver, keyType, spec.Key)
+			if err != nil {
+				return nil, err
+			}
+			keySerializer = serializer
 		}
-		keySerializer, err := serializerForTypeSpec(resolver, goType.Key(), spec.Key)
-		if err != nil {
-			return nil, err
-		}
-		valueSerializer, err := serializerForTypeSpec(resolver, goType.Elem(), spec.Value)
-		if err != nil {
-			return nil, err
+		valueType := goType.Elem()
+		var valueSerializer Serializer
+		if spec.Value != nil && spec.Value.TypeID != UNKNOWN {
+			if valueType.Kind() == reflect.Interface {
+				schemaValueType, err := spec.Value.goTypeForResolver(resolver)
+				if err != nil {
+					return nil, err
+				}
+				valueType = schemaValueType
+			}
+			serializer, err := serializerForTypeSpec(resolver, valueType, spec.Value)
+			if err != nil {
+				return nil, err
+			}
+			valueSerializer = serializer
 		}
 		return mapSerializer{
-			type_:             goType,
-			keySerializer:     keySerializer,
-			valueSerializer:   valueSerializer,
-			keyReferencable:   spec.Key != nil && spec.Key.TrackRef,
-			valueReferencable: spec.Value != nil && spec.Value.TrackRef,
-			hasGenerics:       true,
+			type_:              goType,
+			declaredKeyType:    keyType,
+			declaredValueType:  valueType,
+			declaredKeyBytes:   int(keyType.Size()),
+			declaredValueBytes: int(valueType.Size()),
+			keySerializer:      keySerializer,
+			valueSerializer:    valueSerializer,
+			keyReferencable:    spec.Key != nil && spec.Key.TrackRef,
+			valueReferencable:  spec.Value != nil && spec.Value.TrackRef,
+			hasGenerics:        true,
+			keyBytes:           int(goType.Key().Size()),
+			valueBytes:         int(goType.Elem().Size()),
+			maxLength:          maxGraphCount(int(goType.Key().Size()) + int(goType.Elem().Size())),
 		}, nil
 	}
 	if serializer, ok, err := serializerForEncodedScalar(goType, spec.TypeID); ok || err != nil {
@@ -1874,9 +1947,9 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 	if isPrimitiveArrayType(spec.TypeID) || spec.TypeID == BINARY {
 		switch goType.Kind() {
 		case reflect.Slice:
-			return resolver.GetSliceSerializer(goType)
+			return resolver.getSliceSerializer(goType)
 		case reflect.Array:
-			return resolver.GetArraySerializer(goType)
+			return resolver.getArraySerializer(goType)
 		}
 	}
 	return resolver.getSerializerByType(goType, true)

@@ -22,6 +22,12 @@ from cpython.unicode cimport PyUnicode_InternFromString
 
 
 cdef uint8_t _BASIC_FIELD_NOT_INLINE = 0xFF
+cdef int64_t _STRUCT_REFERENCE_BYTES = sizeof(PyObject*)
+# Lower-bound shallow owner costs for retained Python struct shapes. Normal objects retain an
+# instance dict for field storage; slotted objects store field references in object slots.
+cdef int64_t _SLOTTED_STRUCT_OWNER_BYTES = 4 * sizeof(PyObject*)
+cdef int64_t _DICT_BACKED_STRUCT_OWNER_BYTES = 4 * sizeof(PyObject*)
+cdef int64_t _INSTANCE_DICT_OWNER_BYTES = 8 * sizeof(PyObject*)
 
 
 cdef struct FieldRuntimeInfo:
@@ -59,6 +65,7 @@ cdef class DataClassSerializer(Serializer):
     cdef tuple _serializer_owner
     cdef tuple _validation_field_type_owner
     cdef public dict _default_values_factory
+    cdef public int64_t _graph_memory_bytes
     cdef tuple _missing_field_defaults
     cdef public object _assign_fields
     cdef public object _assigned_field_names
@@ -175,6 +182,17 @@ cdef class DataClassSerializer(Serializer):
             self._default_values_factory = {}
         self._build_fastpath_metadata()
         self._build_missing_field_defaults()
+        if self._has_slots:
+            self._graph_memory_bytes = (
+                _SLOTTED_STRUCT_OWNER_BYTES + <int64_t>len(self._field_names) * _STRUCT_REFERENCE_BYTES
+            )
+        else:
+            # Dict-backed instances retain an instance dict with key and value references per field.
+            self._graph_memory_bytes = (
+                _DICT_BACKED_STRUCT_OWNER_BYTES
+                + _INSTANCE_DICT_OWNER_BYTES
+                + <int64_t>len(self._field_names) * 2 * _STRUCT_REFERENCE_BYTES
+            )
 
         if self._has_validation_fields:
             from pyfory.meta.typedef import coerce_assignable_value, is_value_assignable
@@ -273,6 +291,7 @@ cdef class DataClassSerializer(Serializer):
         self._field_runtime_infos.clear()
         self._has_missing_fields = False
         self._has_validation_fields = False
+        self.read_data_always_advances = not self.type_resolver.compatible
         current_fields = set(self._get_field_names(self.type_))
         self._field_runtime_infos.reserve(len(self._field_names))
         self._assign_fields = [
@@ -302,6 +321,17 @@ cdef class DataClassSerializer(Serializer):
             runtime_info.track_ref = 1 if is_tracking_ref else 0
             runtime_info.is_dynamic = 1 if is_dynamic else 0
             runtime_info.compatible_scalar = 1 if isinstance(serializer, CompatibleScalarFieldSerializer) else 0
+            if (
+                not self.read_data_always_advances
+                and (
+                    runtime_info.basic_type_id != _BASIC_FIELD_NOT_INLINE
+                    or is_nullable
+                    or is_tracking_ref
+                    or is_dynamic
+                    or (serializer is not None and serializer.read_data_always_advances)
+                )
+            ):
+                self.read_data_always_advances = True
             runtime_info.field_exists = 1 if field_name in current_fields else 0
             runtime_info.assign = 1 if assign else 0
             if runtime_info.field_exists == 0 or runtime_info.assign == 0:
@@ -422,6 +452,7 @@ cdef class DataClassSerializer(Serializer):
                     f"Hash {read_hash} is not consistent with {self._hash} for type {self.type_}"
                 )
 
+        read_context.reserve_graph_memory_c(self._graph_memory_bytes)
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         if self._has_slots:
@@ -434,7 +465,6 @@ cdef class DataClassSerializer(Serializer):
                 self._apply_missing_defaults_slots(obj)
             else:
                 self._apply_missing_defaults_dict(obj.__dict__)
-        read_context.buffer.shrink_input_buffer()
         return obj
 
     cdef inline void _read_dict(self, ReadContext read_context, object obj):
@@ -467,7 +497,7 @@ cdef class DataClassSerializer(Serializer):
             for i in range(field_count):
                 field_info = &self._field_runtime_infos[i]
                 if field_info.field_exists == 0 or field_info.assign == 0:
-                    self._read_missing_field_value(read_context, field_info)
+                    self._read_field_value(read_context, field_info)
                     continue
                 field_value = self._read_field_value(read_context, field_info)
                 field_name = <object>field_info.field_name
@@ -477,7 +507,7 @@ cdef class DataClassSerializer(Serializer):
         for i in range(field_count):
             field_info = &self._field_runtime_infos[i]
             if field_info.field_exists == 0 or field_info.assign == 0:
-                self._read_missing_field_value(read_context, field_info)
+                self._read_field_value(read_context, field_info)
                 continue
             field_value = self._read_field_value(read_context, field_info)
             field_name = <object>field_info.field_name
@@ -519,7 +549,7 @@ cdef class DataClassSerializer(Serializer):
             for i in range(field_count):
                 field_info = &self._field_runtime_infos[i]
                 if field_info.field_exists == 0 or field_info.assign == 0:
-                    self._read_missing_field_value(read_context, field_info)
+                    self._read_field_value(read_context, field_info)
                     continue
                 field_value = self._read_field_value(read_context, field_info)
                 field_name = <object>field_info.field_name
@@ -529,7 +559,7 @@ cdef class DataClassSerializer(Serializer):
         for i in range(field_count):
             field_info = &self._field_runtime_infos[i]
             if field_info.field_exists == 0 or field_info.assign == 0:
-                self._read_missing_field_value(read_context, field_info)
+                self._read_field_value(read_context, field_info)
                 continue
             field_value = self._read_field_value(read_context, field_info)
             field_name = <object>field_info.field_name
@@ -541,15 +571,6 @@ cdef class DataClassSerializer(Serializer):
                     field_name,
                     self._validate_or_default(field_name, field_value, field_info),
                 )
-
-    cdef inline object _read_missing_field_value(self, ReadContext read_context, FieldRuntimeInfo *field_info):
-        cdef object resolver = self.type_resolver.resolver
-        cdef object previous = resolver._allow_unregistered_typedef
-        resolver._allow_unregistered_typedef = True
-        try:
-            return self._read_field_value(read_context, field_info)
-        finally:
-            resolver._allow_unregistered_typedef = previous
 
     cdef inline object _read_field_value(self, ReadContext read_context, FieldRuntimeInfo *field_info):
         cdef uint8_t type_id = field_info.basic_type_id

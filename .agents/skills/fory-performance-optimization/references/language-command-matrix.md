@@ -9,6 +9,8 @@ Canonical runtime-specific rules now live under `../../../languages/*.md` and `.
 - Build: `swift build`
 - Tests: `swift test`
 - Lint: `swiftlint lint --config .swiftlint.yml`
+- Format check:
+  `swift-format lint --configuration .swift-format --recursive --strict Sources Tests Package.swift`
 - Benchmark: `cd benchmarks/swift && swift build -c release && ./.build/release/swift-benchmark --duration <N>`
 - Profile (macOS sample): run benchmark with long duration, then `sample <pid> 10 1 -mayDie -file /tmp/<name>.sample.txt`
 
@@ -17,7 +19,7 @@ Canonical runtime-specific rules now live under `../../../languages/*.md` and `.
 - Build: `bazel build //cpp/...`
 - Tests: `bazel test $(bazel query //cpp/...)`
 - Perf tests: `bazel test $(bazel query //cpp/fory/serialization/...)`
-- Profile: use repository-approved sampling tooling from `CONTRIBUTING.md` and `docs/cpp_debug.md`
+- Profile: use repository-approved sampling tooling from `CONTRIBUTING.md` and `docs/development/cpp-debugging.md`
 
 ## Java
 
@@ -77,7 +79,8 @@ Canonical runtime-specific rules now live under `../../../languages/*.md` and `.
 
 - Build: `sbt compile`
 - Tests: `sbt test`
-- Format: `sbt scalafmt`
+- Format: run the repo formatter from the repository root with `ci/format.sh`; the Scala module
+  does not currently wire a `scalafmt` sbt command.
 
 ## Cross-Language Xlang Verification
 

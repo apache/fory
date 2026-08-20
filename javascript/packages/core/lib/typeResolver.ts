@@ -17,7 +17,15 @@
  * under the License.
  */
 
-import { ForyTypeInfoSymbol, WithForyClsInfo, Serializer, TypeId, MaxInt32, MinInt32, Config } from "./type";
+import {
+  ForyTypeInfoSymbol,
+  WithForyClsInfo,
+  Serializer,
+  TypeId,
+  MaxInt32,
+  MinInt32,
+  Config,
+} from "./type";
 import { Gen } from "./gen";
 import { Dynamic, Type, TypeInfo } from "./typeInfo";
 import { ReadContext, WriteContext } from "./context";
@@ -25,6 +33,7 @@ import { Decimal } from "./types/decimal";
 import { BFloat16Array } from "./types/bfloat16";
 import { BoolArray } from "./types/boolArray";
 import { isFloat16Array } from "./types/float16";
+import { getUnknownTypeMeta, UnknownStructSerializer } from "./unknownStruct";
 
 const uninitSerialize = {
   _initialized: false,
@@ -81,6 +90,7 @@ const uninitSerialize = {
   readTypeInfo: () => {
     throw new Error("uninitSerialize");
   },
+  readDataAlwaysAdvances: false,
 };
 
 export default class TypeResolver {
@@ -116,6 +126,7 @@ export default class TypeResolver {
   private bfloat16ArraySerializer: null | Serializer = null;
   private float32ArraySerializer: null | Serializer = null;
   private float64ArraySerializer: null | Serializer = null;
+  private unknownStructSerializer!: UnknownStructSerializer;
 
   constructor(readonly config: Config) {
     this.trackingRef = config.ref;
@@ -124,6 +135,13 @@ export default class TypeResolver {
   bindContexts(writeContext: WriteContext, readContext: ReadContext) {
     this.writeContext = writeContext;
     this.readContext = readContext;
+    this.unknownStructSerializer = new UnknownStructSerializer(this, writeContext, readContext);
+  }
+
+  getUnknownStructSerializer(typeMeta?: import("./meta/TypeMeta").TypeMeta) {
+    return typeMeta === undefined
+      ? this.unknownStructSerializer
+      : this.unknownStructSerializer.bind(typeMeta);
   }
 
   isCompatible() {
@@ -154,7 +172,11 @@ export default class TypeResolver {
         if (TypeId.enumType(typeInfo.typeId)) {
           return true;
         }
-        if (typeInfo.typeId === TypeId.UNION || typeInfo.typeId === TypeId.TYPED_UNION || typeInfo.typeId === TypeId.NAMED_UNION) {
+        if (
+          typeInfo.typeId === TypeId.UNION ||
+          typeInfo.typeId === TypeId.TYPED_UNION ||
+          typeInfo.typeId === TypeId.NAMED_UNION
+        ) {
           return true;
         }
         if (this.isCompatible()) {
@@ -260,7 +282,7 @@ export default class TypeResolver {
         }
         return this.customSerializer.get(key);
       }
-      if (typeId <= 0xFF) {
+      if (typeId <= 0xff) {
         if (this.internalSerializer[typeId]) {
           Object.assign(this.internalSerializer[typeId], serializer);
         } else {
@@ -292,6 +314,7 @@ export default class TypeResolver {
   regenerateReadSerializer(typeInfo: TypeInfo) {
     const serializer = this.generateReadSerializer(typeInfo);
     return this.registerSerializer(typeInfo, {
+      readDataAlwaysAdvances: serializer.readDataAlwaysAdvances,
       getHash: serializer.getHash,
       getTypeInfo: serializer.getTypeInfo,
       read: serializer.read,
@@ -427,6 +450,10 @@ export default class TypeResolver {
 
     if (v instanceof Set) {
       return this.setSerializer;
+    }
+
+    if (getUnknownTypeMeta(v) !== undefined) {
+      return this.unknownStructSerializer;
     }
 
     if (typeof v === "object" && v !== null && ForyTypeInfoSymbol in v) {

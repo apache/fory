@@ -24,6 +24,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type invalidReadCountReader struct {
+	counts []int
+}
+
+func (r *invalidReadCountReader) Read([]byte) (int, error) {
+	count := r.counts[0]
+	r.counts = r.counts[1:]
+	return count, nil
+}
+
 func TestVarint(t *testing.T) {
 	err := &Error{}
 	for i := 1; i <= 32; i++ {
@@ -154,6 +164,34 @@ func TestStreamFillDoubleGrowsFromBufferedBytes(t *testing.T) {
 	require.True(t, err.HasError())
 	require.Less(t, cap(buf.data), 100)
 	require.LessOrEqual(t, cap(buf.data), 32)
+}
+
+func TestStreamFillRejectsInvalidReaderCount(t *testing.T) {
+	tests := []struct {
+		name   string
+		counts []int
+		want   string
+	}{
+		{name: "negative", counts: []int{-1, 2}, want: "-1"},
+		{name: "oversized", counts: []int{2}, want: "2"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			reader := &invalidReadCountReader{counts: append([]int(nil), tc.counts...)}
+			buf := NewByteBufferFromReader(reader, 1)
+			var err Error
+
+			require.NotPanics(t, func() {
+				require.False(t, buf.fill(1, &err))
+			})
+			require.Error(t, err.CheckError())
+			require.Contains(t, err.Error(), "invalid byte count")
+			require.Contains(t, err.Error(), tc.want)
+			require.Zero(t, buf.ReaderIndex())
+			require.Zero(t, buf.WriterIndex())
+			require.Empty(t, buf.data)
+		})
+	}
 }
 
 func TestReadCollectionLengthDoesNotTreatElementsAsBytes(t *testing.T) {

@@ -31,6 +31,8 @@ final class SourceStruct {
   final boolean record;
   final boolean debug;
   final boolean hasNestedCompatibleStructFields;
+  final boolean readDataAlwaysAdvances;
+  final int graphMemoryBytes;
   final List<SourceField> fields;
   final List<SourceField> recordConstructorFields;
 
@@ -41,6 +43,7 @@ final class SourceStruct {
       String serializerName,
       boolean record,
       boolean debug,
+      int graphMemoryBytes,
       List<SourceField> fields,
       List<SourceField> recordConstructorFields) {
     this.packageName = packageName;
@@ -49,14 +52,18 @@ final class SourceStruct {
     this.serializerName = serializerName;
     this.record = record;
     this.debug = debug;
+    this.graphMemoryBytes = graphMemoryBytes;
     this.fields = Collections.unmodifiableList(new ArrayList<>(fields));
     this.recordConstructorFields =
         Collections.unmodifiableList(new ArrayList<>(recordConstructorFields));
     boolean hasNestedStruct = false;
+    boolean readDataAlwaysAdvances = false;
     for (SourceField field : fields) {
       hasNestedStruct |= field.typeNode.hasNestedCompatibleStruct();
+      readDataAlwaysAdvances |= field.fieldReadAlwaysAdvances;
     }
     this.hasNestedCompatibleStructFields = hasNestedStruct;
+    this.readDataAlwaysAdvances = readDataAlwaysAdvances;
   }
 
   String qualifiedSerializerName() {

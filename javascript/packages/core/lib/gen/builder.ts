@@ -21,8 +21,7 @@ import { Scope } from "./scope";
 import TypeResolver from "../typeResolver";
 
 export class BinaryReaderBuilder {
-  constructor(private holder: string) {
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -154,8 +153,7 @@ export class BinaryReaderBuilder {
 }
 
 class BinaryWriterBuilder {
-  constructor(private holder: string) {
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -307,8 +305,10 @@ class BinaryWriterBuilder {
 }
 
 class ReferenceResolverBuilder {
-  constructor(private readHolder: string, private writeHolder: string) {
-  }
+  constructor(
+    private readHolder: string,
+    private writeHolder: string,
+  ) {}
 
   ownReadName() {
     return this.readHolder;
@@ -340,8 +340,7 @@ class ReferenceResolverBuilder {
 }
 
 class TypeResolverBuilder {
-  constructor(private holder: string) {
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -355,7 +354,7 @@ class TypeResolverBuilder {
   }
 
   getSerializerByName(name: string) {
-    return `${this.holder}.getSerializerByName("${name}")`;
+    return `${this.holder}.getSerializerByName(${CodecBuilder.sourceString(name)})`;
   }
 
   getSerializerByData(v: string) {
@@ -364,8 +363,10 @@ class TypeResolverBuilder {
 }
 
 class TypeMetaContextBuilder {
-  constructor(private writeHolder: string, private readHolder: string) {
-  }
+  constructor(
+    private writeHolder: string,
+    private readHolder: string,
+  ) {}
 
   writeTypeMeta(typeInfo: string, bytes: string) {
     return `${this.writeHolder}.writeTypeMeta(${typeInfo}, ${bytes})`;
@@ -376,9 +377,7 @@ class TypeMetaContextBuilder {
   }
 
   readNamedTypeMeta(typeId: number, namespace: string, typeName: string) {
-    const safeNamespace = CodecBuilder.replaceBackslashAndQuote(namespace);
-    const safeTypeName = CodecBuilder.replaceBackslashAndQuote(typeName);
-    return `${this.readHolder}.readNamedTypeMeta(${typeId}, "${safeNamespace}", "${safeTypeName}")`;
+    return `${this.readHolder}.readNamedTypeMeta(${typeId}, ${CodecBuilder.sourceString(namespace)}, ${CodecBuilder.sourceString(typeName)})`;
   }
 
   readCompatibleStructSerializer(localHash: string, original?: string) {
@@ -401,8 +400,7 @@ class MetaStringContextBuilder {
     private writeContextHolder: string,
     private readContextHolder: string,
     private writeHelperHolder: string,
-  ) {
-  }
+  ) {}
 
   writeBytes(bytes: string) {
     return `${this.writeContextHolder}.writeMetaStringBytes(${bytes})`;
@@ -417,11 +415,11 @@ class MetaStringContextBuilder {
   }
 
   encodeNamespace(input: string) {
-    return `${this.writeHelperHolder}.encodeNamespace("${input}")`;
+    return `${this.writeHelperHolder}.encodeNamespace(${CodecBuilder.sourceString(input)})`;
   }
 
   encodeTypeName(input: string) {
-    return `${this.writeHelperHolder}.encodeTypeName("${input}")`;
+    return `${this.writeHelperHolder}.encodeTypeName(${CodecBuilder.sourceString(input)})`;
   }
 }
 
@@ -433,7 +431,10 @@ export class CodecBuilder {
   readonly typeMetaResolver: TypeMetaContextBuilder;
   readonly metaStringResolver: MetaStringContextBuilder;
 
-  constructor(scope: Scope, readonly resolver: TypeResolver) {
+  constructor(
+    scope: Scope,
+    readonly resolver: TypeResolver,
+  ) {
     const writeContext = scope.declareByName("writeContext", "typeResolver.writeContext");
     const readContext = scope.declareByName("readContext", "typeResolver.readContext");
     const br = scope.declareByName("br", "readContext.reader");
@@ -452,34 +453,29 @@ export class CodecBuilder {
   }
 
   static isReserved(key: string) {
-    return /^(?:do|if|in|for|let|new|try|var|case|else|enum|eval|false|null|this|true|void|with|break|catch|class|const|super|throw|while|yield|delete|export|import|public|return|static|switch|typeof|default|extends|finally|package|private|continue|debugger|function|arguments|interface|protected|implements|instanceof)$/.test(key);
+    return /^(?:do|if|in|for|let|new|try|var|case|else|enum|eval|false|null|this|true|void|with|break|catch|class|const|super|throw|while|yield|delete|export|import|public|return|static|switch|typeof|default|extends|finally|package|private|continue|debugger|function|arguments|interface|protected|implements|instanceof)$/.test(
+      key,
+    );
   }
 
   static isDotPropAccessor(prop: string) {
     return /^[a-zA-Z_$][0-9a-zA-Z_$]*$/.test(prop);
   }
 
-  static replaceBackslashAndQuote(v: string) {
-    return v.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
-  }
-
-  static safeString(target: string) {
-    if (!CodecBuilder.isDotPropAccessor(target) || CodecBuilder.isReserved(target)) {
-      return `"${CodecBuilder.replaceBackslashAndQuote(target)}"`;
-    }
-    return `"${target}"`;
+  static sourceString(value: string) {
+    return JSON.stringify(value);
   }
 
   static safePropAccessor(prop: string) {
     if (!CodecBuilder.isDotPropAccessor(prop) || CodecBuilder.isReserved(prop)) {
-      return `["${CodecBuilder.replaceBackslashAndQuote(prop)}"]`;
+      return `[${CodecBuilder.sourceString(prop)}]`;
     }
     return `.${prop}`;
   }
 
   static safePropName(prop: string) {
     if (!CodecBuilder.isDotPropAccessor(prop) || CodecBuilder.isReserved(prop)) {
-      return `["${CodecBuilder.replaceBackslashAndQuote(prop)}"]`;
+      return `[${CodecBuilder.sourceString(prop)}]`;
     }
     return prop;
   }

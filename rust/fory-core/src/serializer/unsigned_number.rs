@@ -16,183 +16,112 @@
 // under the License.
 
 use crate::buffer::{Reader, Writer};
-use crate::context::ReadContext;
-use crate::context::WriteContext;
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
-use crate::serializer::{ForyDefault, Serializer};
+use crate::serializer::Serializer;
 use crate::type_id::TypeId;
+use std::sync::Arc;
 
-// Macro for xlang-compatible unsigned types (u8, u16, u32, u64)
-macro_rules! impl_xlang_unsigned_num_serializer {
-    ($ty:ty, $writer:expr, $reader:expr, $field_type:expr) => {
+macro_rules! impl_unsigned_serializer {
+    (
+        $ty:ty,
+        $writer:expr,
+        $reader:expr,
+        $type_id:expr,
+        $xlang:expr
+    ) => {
         impl Serializer for $ty {
-            #[inline(always)]
-            fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-                $writer(&mut context.writer, *self);
-                Ok(())
-            }
+            type Target = Self;
+
+            const READ_DATA_ALWAYS_ADVANCES: bool = true;
 
             #[inline(always)]
-            fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-                $reader(&mut context.reader)
-            }
-            #[inline]
-            fn fory_read_data_as_send_sync_any(
-                context: &mut ReadContext,
-            ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-            where
-                Self: Sized + ForyDefault,
-            {
-                Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-                    context,
-                )?))
-            }
-
-            #[inline(always)]
-            fn fory_reserved_space() -> usize {
-                std::mem::size_of::<$ty>()
-            }
-
-            #[inline(always)]
-            fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-                Ok($field_type)
-            }
-
-            #[inline(always)]
-            fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-                Ok($field_type)
-            }
-
-            #[inline(always)]
-            fn fory_static_type_id() -> TypeId {
-                $field_type
-            }
-
-            #[inline(always)]
-            fn as_any(&self) -> &dyn std::any::Any {
-                self
-            }
-
-            #[inline(always)]
-            fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-                context.writer.write_var_u32($field_type as u32);
-                Ok(())
-            }
-
-            #[inline(always)]
-            fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-                read_basic_type_info::<Self>(context)
-            }
-        }
-        impl ForyDefault for $ty {
-            #[inline(always)]
-            fn fory_default() -> Self {
-                0 as $ty
-            }
-        }
-    };
-}
-
-// Macro for Rust-specific unsigned types (u128, usize) - not supported in xlang mode
-macro_rules! impl_rust_unsigned_num_serializer {
-    ($ty:ty, $writer:expr, $reader:expr, $field_type:expr) => {
-        impl Serializer for $ty {
-            #[inline(always)]
-            fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-                if context.is_xlang() {
+            fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+                if !$xlang && context.is_xlang() {
                     return Err(Error::not_allowed(concat!(
                         stringify!($ty),
                         " is not supported in cross-language mode"
                     )));
                 }
-                $writer(&mut context.writer, *self);
+                $writer(&mut context.writer, *value);
                 Ok(())
             }
 
             #[inline(always)]
-            fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+            fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
                 $reader(&mut context.reader)
             }
-            #[inline]
-            fn fory_read_data_as_send_sync_any(
+
+            #[inline(always)]
+            fn default_value(_: &mut ReadContext) -> Result<Self, Error> {
+                Ok(0)
+            }
+
+            #[inline(always)]
+            fn read_arc_any(
                 context: &mut ReadContext,
-            ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-            where
-                Self: Sized + ForyDefault,
-            {
-                Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-                    context,
-                )?))
+            ) -> Result<Arc<dyn std::any::Any + Send + Sync>, Error> {
+                Ok(Arc::new(Self::read_data(context)?))
             }
 
             #[inline(always)]
-            fn fory_reserved_space() -> usize {
-                std::mem::size_of::<$ty>()
+            fn reserved_space() -> usize {
+                std::mem::size_of::<Self>()
             }
 
             #[inline(always)]
-            fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-                Ok($field_type)
+            fn static_type_id() -> TypeId {
+                $type_id
             }
 
             #[inline(always)]
-            fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-                Ok($field_type)
-            }
-
-            #[inline(always)]
-            fn fory_static_type_id() -> TypeId {
-                $field_type
-            }
-
-            #[inline(always)]
-            fn as_any(&self) -> &dyn std::any::Any {
-                self
-            }
-
-            #[inline(always)]
-            fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-                context.writer.write_var_u32($field_type as u32);
+            fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+                context.writer.write_var_u32($type_id as u32);
                 Ok(())
             }
 
             #[inline(always)]
-            fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+            fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
                 read_basic_type_info::<Self>(context)
-            }
-        }
-        impl ForyDefault for $ty {
-            #[inline(always)]
-            fn fory_default() -> Self {
-                0 as $ty
             }
         }
     };
 }
 
-// xlang-compatible unsigned types
-impl_xlang_unsigned_num_serializer!(u8, Writer::write_u8, Reader::read_u8, TypeId::UINT8);
-impl_xlang_unsigned_num_serializer!(u16, Writer::write_u16, Reader::read_u16, TypeId::UINT16);
-impl_xlang_unsigned_num_serializer!(
+impl_unsigned_serializer!(u8, Writer::write_u8, Reader::read_u8, TypeId::UINT8, true);
+impl_unsigned_serializer!(
+    u16,
+    Writer::write_u16,
+    Reader::read_u16,
+    TypeId::UINT16,
+    true
+);
+impl_unsigned_serializer!(
     u32,
     Writer::write_var_u32,
     Reader::read_var_u32,
-    TypeId::VAR_UINT32
+    TypeId::VAR_UINT32,
+    true
 );
-impl_xlang_unsigned_num_serializer!(
+impl_unsigned_serializer!(
     u64,
     Writer::write_var_u64,
     Reader::read_var_u64,
-    TypeId::VAR_UINT64
+    TypeId::VAR_UINT64,
+    true
 );
-
-// Rust-specific unsigned types (not supported in xlang mode)
-impl_rust_unsigned_num_serializer!(u128, Writer::write_u128, Reader::read_u128, TypeId::U128);
-impl_rust_unsigned_num_serializer!(
+impl_unsigned_serializer!(
+    u128,
+    Writer::write_u128,
+    Reader::read_u128,
+    TypeId::U128,
+    false
+);
+impl_unsigned_serializer!(
     usize,
     Writer::write_usize,
     Reader::read_usize,
-    TypeId::USIZE
+    TypeId::USIZE,
+    false
 );

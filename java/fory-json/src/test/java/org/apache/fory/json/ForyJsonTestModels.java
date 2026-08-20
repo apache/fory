@@ -50,8 +50,11 @@ import org.apache.fory.json.data.PrivateFields;
 import org.apache.fory.json.data.PublicFields;
 import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.json.data.UnicodeMatrix;
+import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.FieldAccessor;
 import org.testng.SkipException;
+import org.testng.annotations.DataProvider;
 
 public abstract class ForyJsonTestModels {
   protected static final String TWO_BYTE_TEXT = JsonTestData.TWO_BYTE_TEXT;
@@ -61,6 +64,40 @@ public abstract class ForyJsonTestModels {
   protected static final String COMBINING_TEXT = JsonTestData.COMBINING_TEXT;
   protected static final String ZH_TEXT = JsonTestData.ZH_TEXT;
   protected static final String EU_TEXT = JsonTestData.EU_TEXT;
+  private final boolean codegen;
+
+  protected ForyJsonTestModels() {
+    this(false);
+  }
+
+  protected ForyJsonTestModels(boolean codegen) {
+    this.codegen = codegen;
+  }
+
+  @DataProvider
+  public static Object[][] enableCodegen() {
+    return new Object[][] {{false}, {true}};
+  }
+
+  protected final ForyJsonBuilder newJsonBuilder() {
+    return newJsonBuilder(codegen);
+  }
+
+  protected final ForyJsonBuilder newJsonBuilder(boolean codegen) {
+    return ForyJson.builder().withCodegen(codegen).withAsyncCompilation(false);
+  }
+
+  protected final ForyJson newJson() {
+    return newJsonBuilder().build();
+  }
+
+  protected final ForyJson newJson(boolean codegen) {
+    return newJsonBuilder(codegen).build();
+  }
+
+  protected final boolean codegenEnabled() {
+    return codegen;
+  }
 
   protected static TokenValues tokenValue(int count, String name, List<String> tags, long total) {
     TokenValues value = new TokenValues();
@@ -268,8 +305,28 @@ public abstract class ForyJsonTestModels {
         json.fromJson(objectJson.getBytes(StandardCharsets.UTF_8), PublicFields.class).name, text);
   }
 
-  protected static void assertGeneratedWhenSupported(ForyJson json, Class<?> type) {
-    assertTrue(json.hasGeneratedWriter(type));
+  protected final void assertGeneratedWhenSupported(ForyJson json, Class<?> type) {
+    assertGeneratedWhenSupported(json, type, codegen);
+  }
+
+  protected final void assertGeneratedWhenSupported(ForyJson json, Class<?> type, boolean codegen) {
+    assertEquals(hasGeneratedCapability(json, type), codegen);
+  }
+
+  protected static boolean hasGeneratedCapability(ForyJson json, Class<?> type) {
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
+    resolver.lockJIT();
+    try {
+      JsonTypeInfo info = resolver.getTypeInfo(type, type);
+      Object owner = resolver.getObjectCodec(type);
+      return info.stringWriter() != owner
+          || info.utf8Writer() != owner
+          || info.latin1Reader() != owner
+          || info.utf16Reader() != owner
+          || info.utf8Reader() != owner;
+    } finally {
+      resolver.unlockJIT();
+    }
   }
 
   protected static String repeat(char ch, int length) {

@@ -28,6 +28,8 @@ final class Config {
   static const int defaultMaxTypeMetaBytes = 4096;
   static const int defaultMaxSchemaVersionsPerType = 10;
   static const int defaultMaxAverageSchemaVersionsPerType = 3;
+  static const int defaultMaxGraphMemoryBytes = 128 * 1024 * 1024;
+  static const int defaultMaxUnbackedContainerItems = 8192;
 
   /// Enables compatible struct encoding and decoding.
   ///
@@ -56,29 +58,81 @@ final class Config {
   /// types.
   final int maxAverageSchemaVersionsPerType;
 
+  /// Approximate graph-memory gate for one root deserialization.
+  ///
+  /// Mainly gates materialized lists, maps, arrays, structs, and objects. Leaf
+  /// values are gated by unread input bytes instead, and actual process memory
+  /// can be higher.
+  ///
+  /// Value must be a positive byte limit.
+  final int maxGraphMemoryBytes;
+
+  /// Maximum collection elements and map entries that may be read without
+  /// proportional input progress during one root deserialization.
+  ///
+  /// Value must be non-negative. Zero is a strict limit.
+  final int maxUnbackedContainerItems;
+
   /// Creates an immutable configuration object.
   ///
   /// Invalid numeric limits fail fast. When [compatible] is `true`,
   /// [checkStructVersion] is normalized to `false`.
-  const Config({
+  Config({
     this.compatible = true,
     bool checkStructVersion = true,
-    this.maxDepth = defaultMaxDepth,
-    this.maxTypeFields = defaultMaxTypeFields,
-    this.maxTypeMetaBytes = defaultMaxTypeMetaBytes,
-    this.maxSchemaVersionsPerType = defaultMaxSchemaVersionsPerType,
-    this.maxAverageSchemaVersionsPerType =
+    int maxDepth = defaultMaxDepth,
+    int maxTypeFields = defaultMaxTypeFields,
+    int maxTypeMetaBytes = defaultMaxTypeMetaBytes,
+    int maxSchemaVersionsPerType = defaultMaxSchemaVersionsPerType,
+    int maxAverageSchemaVersionsPerType =
         defaultMaxAverageSchemaVersionsPerType,
+    int maxGraphMemoryBytes = defaultMaxGraphMemoryBytes,
+    int maxUnbackedContainerItems = defaultMaxUnbackedContainerItems,
   }) : checkStructVersion = compatible ? false : checkStructVersion,
-       assert(maxDepth > 0, 'maxDepth must be positive'),
-       assert(maxTypeFields > 0, 'maxTypeFields must be positive'),
-       assert(maxTypeMetaBytes > 0, 'maxTypeMetaBytes must be positive'),
-       assert(
-         maxSchemaVersionsPerType > 0,
-         'maxSchemaVersionsPerType must be positive',
+       maxDepth = _positiveSafeInteger(maxDepth, 'maxDepth'),
+       maxTypeFields = _positiveSafeInteger(maxTypeFields, 'maxTypeFields'),
+       maxTypeMetaBytes = _positiveSafeInteger(
+         maxTypeMetaBytes,
+         'maxTypeMetaBytes',
        ),
-       assert(
-         maxAverageSchemaVersionsPerType > 0,
-         'maxAverageSchemaVersionsPerType must be positive',
+       maxSchemaVersionsPerType = _positiveSafeInteger(
+         maxSchemaVersionsPerType,
+         'maxSchemaVersionsPerType',
+       ),
+       maxAverageSchemaVersionsPerType = _positiveSafeInteger(
+         maxAverageSchemaVersionsPerType,
+         'maxAverageSchemaVersionsPerType',
+       ),
+       maxGraphMemoryBytes = _positiveSafeInteger(
+         maxGraphMemoryBytes,
+         'maxGraphMemoryBytes',
+       ),
+       maxUnbackedContainerItems = _nonNegativeSafeInteger(
+         maxUnbackedContainerItems,
+         'maxUnbackedContainerItems',
        );
+
+  static int _positiveSafeInteger(int value, String name) {
+    const maxSafeInteger = 9007199254740991;
+    if (value <= 0 || value > maxSafeInteger) {
+      throw ArgumentError.value(
+        value,
+        name,
+        'must be in range [1, $maxSafeInteger]',
+      );
+    }
+    return value;
+  }
+
+  static int _nonNegativeSafeInteger(int value, String name) {
+    const maxSafeInteger = 9007199254740991;
+    if (value < 0 || value > maxSafeInteger) {
+      throw ArgumentError.value(
+        value,
+        name,
+        'must be in range [0, $maxSafeInteger]',
+      );
+    }
+    return value;
+  }
 }

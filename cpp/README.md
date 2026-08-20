@@ -22,7 +22,7 @@ The C++ implementation provides high-performance serialization with compile-time
 Fory C++ demonstrates competitive performance compared to protobuf c++ serialization framework.
 
 <p align="center">
-<img src="../docs/benchmarks/cpp/throughput.png" width="95%">
+<img src="../docs/benchmarks/object-serialization/xlang/cpp/throughput.png" width="95%">
 </p>
 
 For more detailed benchmarks and methodology, see [C++ Benchmarks](../benchmarks/cpp).
@@ -413,10 +413,10 @@ bash ci/format.sh --cpp
 
 ## Documentation
 
-- **[User Guide](https://fory.apache.org/docs/guide/cpp)** - Comprehensive user documentation
+- **[User Guide](https://fory.apache.org/docs/object-serialization/cpp)** - Comprehensive user documentation
 - **[Protocol Specification](https://fory.apache.org/docs/specification/xlang_serialization_spec)** - Serialization protocol details
 - **[Type Mapping](https://fory.apache.org/docs/specification/xlang_type_mapping)** - Cross-language type mappings
-- **[Source](https://github.com/apache/fory/tree/main/docs/guide/cpp)** - Documentation source
+- **[Source](https://github.com/apache/fory/tree/main/docs/object-serialization/cpp)** - Documentation source
 
 ## Use Cases
 

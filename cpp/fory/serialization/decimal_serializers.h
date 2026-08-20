@@ -32,6 +32,11 @@
 namespace fory {
 namespace serialization {
 
+namespace detail {
+constexpr int32_t MAX_DECIMAL_SCALE = 10'000;
+constexpr size_t MAX_DECIMAL_MAGNITUDE_BYTES = 10'000;
+} // namespace detail
+
 inline void normalize_decimal_magnitude(std::vector<uint8_t> &magnitude_le) {
   while (!magnitude_le.empty() && magnitude_le.back() == 0) {
     magnitude_le.pop_back();
@@ -165,6 +170,7 @@ inline bool can_use_small_decimal_encoding(const Decimal &decimal,
 
 template <> struct Serializer<Decimal> {
   static constexpr TypeId type_id = TypeId::DECIMAL;
+  static constexpr bool read_data_always_advances = true;
 
   static inline void write_type_info(WriteContext &ctx) {
     ctx.write_uint8(static_cast<uint8_t>(type_id));
@@ -193,6 +199,26 @@ template <> struct Serializer<Decimal> {
   }
 
   static inline void write_data(const Decimal &value, WriteContext &ctx) {
+    if (FORY_PREDICT_FALSE(value.scale() < -detail::MAX_DECIMAL_SCALE ||
+                           value.scale() > detail::MAX_DECIMAL_SCALE)) {
+      ctx.set_error(Error::invalid_data(
+          "Decimal scale exceeds supported range [-10000, 10000]"));
+      return;
+    }
+    if (FORY_PREDICT_FALSE(
+            value.magnitude_le().size() >
+            static_cast<size_t>(std::numeric_limits<uint32_t>::max()))) {
+      ctx.set_error(Error::invalid_data(
+          "Decimal magnitude length exceeds uint32_t range"));
+      return;
+    }
+    if (FORY_PREDICT_FALSE(value.magnitude_le().size() >
+                           detail::MAX_DECIMAL_MAGNITUDE_BYTES)) {
+      ctx.set_error(Error::invalid_data(
+          "Decimal magnitude length exceeds supported limit 10000"));
+      return;
+    }
+
     ctx.write_var_int32(value.scale());
     int64_t small_value = 0;
     if (can_use_small_decimal_encoding(value, small_value)) {
@@ -203,12 +229,6 @@ template <> struct Serializer<Decimal> {
     if (value.is_zero()) {
       ctx.set_error(
           Error::invalid_data("Zero must use the small decimal encoding"));
-      return;
-    }
-    if (value.magnitude_le().size() >
-        static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
-      ctx.set_error(Error::invalid_data(
-          "Decimal magnitude length exceeds uint32_t range"));
       return;
     }
 
@@ -250,6 +270,12 @@ template <> struct Serializer<Decimal> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return Decimal();
     }
+    if (FORY_PREDICT_FALSE(scale < -detail::MAX_DECIMAL_SCALE ||
+                           scale > detail::MAX_DECIMAL_SCALE)) {
+      ctx.set_error(Error::invalid_data(
+          "Decimal scale exceeds supported range [-10000, 10000]"));
+      return Decimal();
+    }
     uint64_t header = ctx.read_var_uint64(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return Decimal();
@@ -267,6 +293,11 @@ template <> struct Serializer<Decimal> {
     if (length64 > std::numeric_limits<uint32_t>::max()) {
       ctx.set_error(Error::invalid_data("Invalid decimal magnitude length " +
                                         std::to_string(length64)));
+      return Decimal();
+    }
+    if (FORY_PREDICT_FALSE(length64 > detail::MAX_DECIMAL_MAGNITUDE_BYTES)) {
+      ctx.set_error(Error::invalid_data(
+          "Decimal magnitude length exceeds supported limit 10000"));
       return Decimal();
     }
 

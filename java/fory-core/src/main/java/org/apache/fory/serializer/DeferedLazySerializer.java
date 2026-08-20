@@ -51,6 +51,11 @@ public class DeferedLazySerializer extends Serializer {
     return getSerializer().read(readContext);
   }
 
+  @Override
+  public boolean readDataAlwaysAdvances() {
+    return getSerializer().readDataAlwaysAdvances();
+  }
+
   private Serializer getSerializer() {
     if (serializer == null) {
       Tuple2<Boolean, Serializer> tuple2 = serializerSupplier.get();

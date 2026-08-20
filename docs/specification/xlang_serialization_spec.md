@@ -52,15 +52,16 @@ This specification defines the Fory xlang binary format. The format is dynamic r
 - float32: a 32-bit floating point number.
 - float64: a 64-bit floating point number including NaN and Infinity.
 - string: a text string encoded using Latin1/UTF16/UTF-8 encoding.
-- enum: a data type consisting of a set of named values. Rust enum with non-predefined field values are not supported as
-  an enum.
+- enum: a data type consisting of a set of named values. A Rust data-carrying enum is not an xlang
+  enum. It may map to a union only when every case is representable as one union alternative value
+  or no value; multi-field tuple or named variants remain host-native shapes.
 - named_enum: an enum whose value will be serialized as the registered name.
 - struct: a dynamic(final) type serialized by Fory Struct serializer. i.e. it doesn't have subclasses. Suppose we're
   deserializing `List<SomeClass>`, we can save dynamic serializer dispatch since `SomeClass` is dynamic(final).
 - compatible_struct: a dynamic(final) type serialized by Fory compatible Struct serializer.
 - named_struct: a `struct` whose type mapping will be encoded as a name.
 - named_compatible_struct: a `compatible_struct` whose type mapping will be encoded as a name.
-- ext: a type which will be serialized by a customized serializer.
+- ext: a type which will be serialized by a custom serializer.
 - named_ext: an `ext` type whose type mapping will be encoded as a name.
 - list: a sequence of objects.
 - set: an unordered set of unique elements.
@@ -97,6 +98,62 @@ This specification defines the Fory xlang binary format. The format is dynamic r
 Note:
 
 - Unsigned integer types use the same byte sizes as their signed counterparts; the difference is in value interpretation. See [Type mapping](xlang_type_mapping.md) for language-specific type mappings.
+
+### Host external-type serialization
+
+A language binding MAY separate the host type that supplies serialization
+behavior from the host value type being serialized. That separation is not a
+wire identity.
+
+- An external structural serializer MUST emit the same STRUCT, ENUM, or UNION
+  schema and value bytes as an equivalent directly supported host type.
+- A host-native structural shape with no xlang mapping is outside this
+  specification and MAY be supported by a binding's separate native mode. The
+  binding MUST reject that shape when xlang mode is enabled; it MUST NOT discard
+  fields, coerce it to ENUM or UNION, synthesize an undeclared struct
+  alternative, or silently encode it as EXT. A Rust enum variant with multiple
+  tuple or named fields is such a host-native shape.
+- A binding-owned static carrier serializer recursively parameterized by child
+  serializers over an existing transparent, LIST, SET, MAP, host fixed-array, or
+  heterogeneous tuple/product shape MUST emit the same outer type ID, existing
+  generic `FieldType` shape, type metadata, reference framing, and value bytes
+  as the corresponding directly supported composition. The carrier serializer
+  is not a user wire identity; only selected user-type children use their
+  registered IDs or names.
+- That equivalence includes canonical specialized carrier mappings. For
+  example, a Rust vector carrier serializer over the canonical `i32` serializer
+  uses `INT32_ARRAY`, one over the canonical `u8` serializer uses BINARY, and one
+  over an external structural or custom serializer uses LIST. A nested carrier
+  MUST preserve the selected child type ID and recursive `FieldType`; serializer
+  composition
+  MUST NOT replace a canonical primitive-array or binary mapping with LIST.
+  Conversely, a Swift `Array` carrier serializer MUST remain LIST because that
+  is Swift's canonical statically selected `Array` mapping. Swift dense
+  `@ArrayField` and dynamic exact primitive-array mappings are separate
+  canonical selections; a serializer whose target happens to be numeric does
+  not acquire either mapping.
+- A heterogeneous tuple/product carrier serializer MUST preserve the binding's
+  existing direct tuple encoding and its existing xlang LIST encoding. Selected
+  child positions MUST NOT add a serializer name, position index, generic schema node,
+  or other marker that the directly supported tuple does not encode. Missing
+  and extra compatible positions follow the binding's ordinary tuple rules.
+- An absent or empty carrier branch that ordinarily accesses no child identity
+  or registration-backed metadata MUST NOT gain synthetic child metadata
+  solely to validate a selected serializer. Registration is required when the
+  normal schema or value path actually uses a registered child identity. A
+  declared-type child body continues to use its statically selected behavior
+  without adding a wire identity or repeated registration lookup; any
+  containing schema metadata owns the prior identity validation. The carrier
+  serializer itself remains unregistered in every case.
+- A custom serializer that is not the Fory implementation's
+  canonical implementation of an existing built-in MUST use the existing EXT
+  or NAMED_EXT form. This serializer-provider separation does not replace implementation-owned
+  built-in mappings.
+- Serializer-provider, external structural serializer, or generated-code type names MUST
+  NOT change the encoded type ID, registered user ID or name, TypeDef, field order, schema hash,
+  reference framing, or value bytes.
+- Registration and polymorphic dispatch MUST identify the serialized target
+  value, even when another host type supplies its behavior.
 
 ### Polymorphisms
 
@@ -204,7 +261,7 @@ metadata. The reader must decide from the collection payload: if the payload
 actually carries a null element, the local `array<T>` field must raise a
 compatible-read error. Null list elements must not be coerced to dense-array
 default values. Reference-tracked list-element framing is separate from
-nullable element schema. A runtime that cannot materialize ref-tracked list
+nullable element schema. A Fory implementation that cannot materialize ref-tracked list
 elements into a dense array without generic/reference paths may reject that
 field during compatible classification; if it accepts the field, reference
 payloads that cannot be represented as dense array element values must fail
@@ -1398,7 +1455,7 @@ else:
             fory.write_nullable(buffer, elem)
     else:
         for elem in elems:
-            fory.write_value(buffer, elem)
+            fory.write(buffer, elem)
 ```
 
 [`CollectionSerializer#writeElements`](https://github.com/apache/fory/blob/20a1a78b17a75a123a6f5b7094c06ff77defc0fe/java/fory-core/src/main/java/org/apache/fory/serializer/collection/CollectionLikeSerializer.java#L302)
@@ -1481,8 +1538,9 @@ The KV header is a single byte encoding metadata for both keys and values:
 
 #### Chunk Size
 
-- Maximum chunk size: 255 pairs (fits in 1 byte)
+- A non-null chunk size is from 1 through 255 pairs (fits in 1 byte); zero is invalid
 - When key or value is null, that entry is serialized as a separate chunk with implicit size 1 (chunk size byte is skipped)
+- For an entry with exactly one null side, the non-null side uses complete-field order: its reference envelope when present, then any type information not declared by the header, then its body
 - Reader tracks accumulated count against total map size to know when to stop reading chunks
 
 #### Why Chunk-Based Format?
@@ -1539,7 +1597,7 @@ Date represents a date without timezone. It is encoded as:
 - `days` (varint64): signed count of days since the Unix epoch (`1970-01-01`)
 
 The value is reconstructed as `LocalDate.ofEpochDay(days)` or the equivalent calendar-date constructor in
-the target language implementation.
+the target Fory implementation.
 
 This `varint64` encoding applies to xlang serialization only. Native, language-specific local-date
 encodings are unchanged.
@@ -1560,6 +1618,8 @@ The mathematical value is:
 
 - `scale` is encoded as signed varint32.
 - `scale` carries no extra flags or mode bits.
+- Arbitrary-precision decimal carriers accept only
+  `-10_000 <= scale <= 10_000`.
 
 #### Unscaled Header
 
@@ -1594,6 +1654,10 @@ Encoding:
 - `unscaledHeader = (meta << 1) | 1`
 - `payload = magnitude as canonical minimal little-endian bytes`
 
+For arbitrary-precision decimal carriers, `len` must not exceed `10_000`.
+This limit counts only the canonical unsigned binary bytes of `abs(unscaled)`;
+it does not count the header, decimal digits, or textual representations.
+
 Decoding:
 
 - `meta = unscaledHeader >>> 1`
@@ -1614,6 +1678,17 @@ Decoding:
 After decoding `scale` and `unscaled`, the decimal value is reconstructed as:
 
 `value = unscaled × 10^-scale`
+
+The scale and magnitude bounds are accepted-value limits, not changes to the
+wire encoding. Writers must reject values outside them, and readers must reject
+them before allocating the magnitude or constructing the decimal while still
+checking that an accepted body is readable and canonically encoded. A target
+with a fixed-range decimal carrier may impose a stricter native range.
+
+The compatible scalar conversion limits described earlier in this specification
+remain independent. In particular, conversion that formats plain text,
+rescales, quantizes, or otherwise expands output must retain its own expected
+output-length checks; the ordinary decimal scale bound does not replace them.
 
 ### struct
 
@@ -1740,6 +1815,9 @@ Rules:
 - A union schema MUST declare at least one schema-defined alternative. The
   unknown-case carrier used by some language bindings is implementation-provided and is
   omitted from the schema's alternative table.
+- Each schema-defined alternative contains exactly one declared value type or
+  `none`. Multiple logical fields require an explicitly declared struct value;
+  a binding MUST NOT synthesize that struct from a host enum variant.
 - Each union alternative MUST have a stable non-negative tag number (`= 0`, `= 1`, ...).
 - Tag numbers MUST be unique within the union and MUST NOT be reused.
 - Unknown-case carriers exposed by language bindings have no local schema tag of
@@ -1772,7 +1850,7 @@ A union payload is:
 ```
 
 `case_id` is the union alternative tag number.
-Runtime APIs MAY expose zero-based ordinal indexes for generic union carriers;
+Fory APIs MAY expose zero-based ordinal indexes for generic union carriers;
 those ordinals are valid wire `case_id` values when they are the schema's
 alternative IDs.
 
@@ -1797,7 +1875,7 @@ numeric type IDs, the type ID byte is the complete value type metadata and the
 payload writer MAY use the stored wire type ID to preserve fixed, variable, or
 tagged integer encodings when the decoded value has the expected concrete value type.
 These scalar numeric payloads are not reference-tracked, so their ref metadata
-is `NotNullValue`. Otherwise it MUST fall back to the language implementation's
+is `NotNullValue`. Otherwise it MUST fall back to the Fory implementation's
 ordinary polymorphic Any-value writer. Unknown carriers are implementation-provided
 forward-compatibility containers, not entries in the local schema case table;
 schema-defined union cases MAY use `0..N`. When an unknown carrier is written

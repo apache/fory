@@ -20,7 +20,7 @@ set -e
 export ENABLE_FORY_DEBUG_OUTPUT=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
-DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/cpp"
+DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/object-serialization/xlang/cpp"
 
 # Colors for output
 RED='\033[0;31m'
@@ -49,7 +49,7 @@ usage() {
     echo "                               Filter benchmark by serializer"
     echo "  --duration <seconds>         Minimum time to run each benchmark (e.g., 10, 30)"
     echo "  --debug                      Build with debug symbols and low optimization for profiling"
-    echo "  --no-copy-docs               Skip copying report/plots into docs/benchmarks/cpp"
+    echo "  --no-copy-docs               Skip copying report/plots into docs/benchmarks/object-serialization/xlang/cpp"
     echo "  --help                       Show this help message"
     echo ""
     echo "Examples:"

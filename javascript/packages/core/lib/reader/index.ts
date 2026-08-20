@@ -44,24 +44,16 @@ export class BinaryReader {
     // Reuse DataView when the underlying ArrayBuffer, byteOffset, and byteLength are unchanged.
     const buf = this.platformBuffer.buffer;
     if (
-      buf !== this.cachedArrayBuffer
-      || !this.dataView
-      || this.dataView.byteOffset !== this.platformBuffer.byteOffset
-      || this.dataView.byteLength !== this.byteLength
+      buf !== this.cachedArrayBuffer ||
+      !this.dataView ||
+      this.dataView.byteOffset !== this.platformBuffer.byteOffset ||
+      this.dataView.byteLength !== this.byteLength
     ) {
-      this.dataView = new DataView(
-        buf,
-        this.platformBuffer.byteOffset,
-        this.byteLength,
-      );
+      this.dataView = new DataView(buf, this.platformBuffer.byteOffset, this.byteLength);
       this.cachedArrayBuffer = buf;
     }
     if (this.sliceStringEnable) {
-      this.bigString = this.platformBuffer.toString(
-        "latin1",
-        0,
-        this.byteLength,
-      );
+      this.bigString = this.platformBuffer.toString("latin1", 0, this.byteLength);
     }
     this.cursor = 0;
   }
@@ -224,11 +216,7 @@ export class BinaryReader {
     if ((len & 1) !== 0) {
       throw new Error("UTF-16LE string length must be even");
     }
-    const result = this.platformBuffer.toString(
-      "utf16le",
-      this.cursor,
-      this.cursor + len,
-    );
+    const result = this.platformBuffer.toString("utf16le", this.cursor, this.cursor + len);
     this.cursor += len;
     return result;
   }
@@ -378,11 +366,7 @@ export class BinaryReader {
     }
   }
 
-  private continueReadVarUint32(
-    readIdx: number,
-    bulkRead: number,
-    value: number,
-  ): number {
+  private continueReadVarUint32(readIdx: number, bulkRead: number, value: number): number {
     readIdx++;
     value |= (bulkRead >>> 2) & 0x1fc000;
     if ((bulkRead & 0x800000) !== 0) {
@@ -422,11 +406,7 @@ export class BinaryReader {
     }
   }
 
-  private continueReadVarUint36(
-    readIdx: number,
-    fourByteValue: number,
-    result: number,
-  ): number {
+  private continueReadVarUint36(readIdx: number, fourByteValue: number, result: number): number {
     readIdx++;
     result |= (fourByteValue >>> 2) & 0x1fc000;
     if ((fourByteValue & 0x800000) !== 0) {

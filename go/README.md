@@ -2,7 +2,7 @@
 
 Fory is a blazingly fast multi-language serialization framework powered by just-in-time compilation and zero-copy.
 
-For comprehensive documentation, see the [Fory Go Guide](https://fory.apache.org/docs/guide/go/).
+For comprehensive documentation, see the [Fory Go Guide](https://fory.apache.org/docs/object-serialization/go/).
 
 Fory Go defaults to xlang mode for cross-language payloads. Use native mode
 with `fory.WithXlang(false)` for Go-only traffic when you want Go struct,
@@ -64,7 +64,7 @@ func main() {
 Fory Go demonstrates excellent performance compared to other go serialization frameworks.
 
 <p align="center">
-<img src="../docs/benchmarks/go/benchmark_combined.png" width="95%">
+<img src="../docs/benchmarks/object-serialization/xlang/go/throughput.png" width="95%">
 </p>
 
 For more detailed benchmarks and methodology, see [Go Benchmark](../benchmarks/go).

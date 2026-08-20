@@ -25,6 +25,7 @@ publish = false
 [dependencies]
 fory-core = { path = "../fory-core" }
 fory-derive = { path = "../fory-derive" }
+fory-external-model = { path = "../api-tests/external-model" }
 
 num-bigint = "0.4"
 

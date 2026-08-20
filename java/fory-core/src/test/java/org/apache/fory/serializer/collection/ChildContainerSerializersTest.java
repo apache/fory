@@ -21,6 +21,9 @@ package org.apache.fory.serializer.collection;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -48,10 +51,18 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.builder.LayerMarkerClassGenerator;
+import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.meta.TypeDef;
+import org.apache.fory.resolver.SharedRegistry;
+import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.CompatibleLayerSerializer;
+import org.apache.fory.serializer.CompatibleLayerSerializerBase;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.bean.Cyclic;
 import org.testng.Assert;
@@ -148,6 +159,67 @@ public class ChildContainerSerializersTest extends ForyTestBase {
         (Serializer<ChildArrayList>) fory.getTypeResolver().getSerializer(ChildArrayList.class);
 
     Assert.assertThrows(ForyException.class, () -> serializer.read(readContext));
+  }
+
+  @Test
+  public void testLayerMetadataIdentity() throws Exception {
+    Fory fory =
+        builder()
+            .withRefTracking(false)
+            .withCodegen(false)
+            .withCompatible(true)
+            .withMetaShare(true)
+            .build();
+    TypeResolver resolver = fory.getTypeResolver();
+    TypeDef localTypeDef = resolver.getTypeDef(ChildHashMap1.class, false);
+    TypeDef wrongTypeDef = resolver.getTypeDef(ChildHashMap2.class, false);
+    CompatibleLayerSerializerBase localSerializer =
+        new CompatibleLayerSerializer<>(
+            resolver,
+            ChildHashMap1.class,
+            localTypeDef,
+            LayerMarkerClassGenerator.getOrCreate(ChildHashMap1.class, 0));
+    Method readLayerSerializer =
+        ChildContainerSerializers.class.getDeclaredMethod(
+            "readLayerSerializer",
+            ReadContext.class,
+            TypeResolver.class,
+            CompatibleLayerSerializerBase.class);
+    readLayerSerializer.setAccessible(true);
+
+    MetaReadContext refMetaContext = new MetaReadContext();
+    refMetaContext.readTypeInfos.add(new TypeInfo(ChildHashMap2.class, wrongTypeDef));
+    MemoryBuffer refBuffer = MemoryUtils.buffer(16);
+    refBuffer.writeVarUInt32(1);
+    ReadContext refReadContext = fory.getReadContext();
+    refReadContext.setMetaReadContext(refMetaContext);
+    refReadContext.prepare(refBuffer, null, false);
+    InvocationTargetException refError =
+        Assert.expectThrows(
+            InvocationTargetException.class,
+            () -> readLayerSerializer.invoke(null, refReadContext, resolver, localSerializer));
+    Assert.assertTrue(refError.getCause() instanceof ForyException);
+
+    Field remoteTypeDefById = SharedRegistry.class.getDeclaredField("remoteTypeDefById");
+    remoteTypeDefById.setAccessible(true);
+    Map<Long, TypeDef> remoteTypeDefs =
+        (Map<Long, TypeDef>) remoteTypeDefById.get(resolver.getSharedRegistry());
+    Assert.assertFalse(remoteTypeDefs.containsKey(wrongTypeDef.getId()));
+
+    MetaReadContext bodyMetaContext = new MetaReadContext();
+    MemoryBuffer bodyBuffer = MemoryUtils.buffer(256);
+    bodyBuffer.writeVarUInt32(0);
+    wrongTypeDef.writeTypeDef(bodyBuffer);
+    ReadContext bodyReadContext = fory.getReadContext();
+    bodyReadContext.setMetaReadContext(bodyMetaContext);
+    bodyReadContext.prepare(bodyBuffer, null, false);
+    InvocationTargetException bodyError =
+        Assert.expectThrows(
+            InvocationTargetException.class,
+            () -> readLayerSerializer.invoke(null, bodyReadContext, resolver, localSerializer));
+    Assert.assertTrue(bodyError.getCause() instanceof ForyException);
+    Assert.assertFalse(remoteTypeDefs.containsKey(wrongTypeDef.getId()));
+    Assert.assertEquals(bodyMetaContext.readTypeInfos.size, 0);
   }
 
   @Test(dataProvider = "foryCopyConfig")

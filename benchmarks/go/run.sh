@@ -23,7 +23,7 @@ cd "$SCRIPT_DIR"
 
 # Output directory for results
 OUTPUT_DIR="$SCRIPT_DIR/results"
-DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/go"
+DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/object-serialization/xlang/go"
 mkdir -p "$OUTPUT_DIR"
 
 # Default values
@@ -70,7 +70,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --count <n>         Number of benchmark runs (default: 5)"
             echo "  --benchtime <dur>   Time for each benchmark (default: 1s)"
             echo "  --no-report         Skip report generation"
-            echo "  --no-copy-docs      Skip copying report/plots into docs/benchmarks/go"
+            echo "  --no-copy-docs      Skip copying report/plots into docs/benchmarks/object-serialization/xlang/go"
             echo "  -h, --help          Show this help message"
             echo ""
             echo "Examples:"

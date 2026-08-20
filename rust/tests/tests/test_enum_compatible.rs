@@ -462,7 +462,7 @@ fn test_enum_variant_type_change() {
     }
 
     let mut fory_v1 = Fory::builder().xlang(false).compatible(true).build();
-    fory_v1.register::<StatusV1>(6000).unwrap();
+    fory_v1.register_union::<StatusV1>(6000).unwrap();
 
     let mut fory_v2 = Fory::builder().xlang(false).compatible(true).build();
     fory_v2.register::<StatusV2>(6000).unwrap();
@@ -603,7 +603,7 @@ fn test_struct_with_enum_field_evolution() {
     }
 
     let mut fory_v1 = Fory::builder().xlang(false).compatible(true).build();
-    fory_v1.register::<StateV1>(7001).unwrap();
+    fory_v1.register_union::<StateV1>(7001).unwrap();
     fory_v1.register::<MessageV1>(7000).unwrap();
 
     let mut fory_v2 = Fory::builder().xlang(false).compatible(true).build();

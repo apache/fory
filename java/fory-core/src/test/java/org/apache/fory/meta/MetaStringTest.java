@@ -23,6 +23,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.AssertJUnit.assertSame;
 
 import org.apache.fory.util.StringUtils;
@@ -141,6 +142,20 @@ public class MetaStringTest {
     MetaStringDecoder decoder = new MetaStringDecoder('_', '$');
     String decoded = decoder.decode(metaString.getBytes(), metaString.getEncoding());
     assertEquals(decoded, "");
+  }
+
+  @Test
+  public void testTrailingEscape() {
+    MetaStringEncoder encoder = new MetaStringEncoder('_', '$');
+    MetaStringDecoder decoder = new MetaStringDecoder('_', '$');
+    byte[] encoded = encoder.encodeLowerSpecial("|");
+
+    IllegalArgumentException exception =
+        expectThrows(
+            IllegalArgumentException.class,
+            () -> decoder.decode(encoded, MetaString.Encoding.ALL_TO_LOWER_SPECIAL));
+    assertEquals(
+        exception.getMessage(), "Invalid ALL_TO_LOWER_SPECIAL meta string: trailing escape");
   }
 
   @Test

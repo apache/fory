@@ -21,6 +21,7 @@
 
 #include "fory/serialization/serializer.h"
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -81,14 +82,47 @@ struct MapReserver<MapType,
   static void reserve(MapType &map, uint32_t size) { map.reserve(size); }
 };
 
-template <typename MapType>
+template <size_t elem_bytes>
+inline bool reserve_map_storage(ReadContext &ctx, uint32_t length) {
+  if (FORY_PREDICT_FALSE(elem_bytes != 0 &&
+                         static_cast<size_t>(length) >
+                             std::numeric_limits<size_t>::max() / elem_bytes)) {
+    ctx.set_error(Error::invalid_data(
+        "graph memory estimate overflows: length=" + std::to_string(length) +
+        " elementBytes=" + std::to_string(elem_bytes)));
+    return false;
+  }
+  return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
+}
+
+template <bool EntryReadAlwaysAdvances = false, typename MapType>
 inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
   // Lazy error propagation may continue into later readers; do not let that
   // path retain attacker-controlled capacity after an earlier read failure.
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
-  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
+  using Key = typename MapType::key_type;
+  using Value = typename MapType::mapped_type;
+  // Portable lower-bound estimate only: ordered and unordered map node layouts
+  // vary across STL implementations, allocators, and debug modes.
+  static_assert(sizeof(Key) <=
+                    std::numeric_limits<size_t>::max() - sizeof(Value),
+                "map entry memory estimate overflows");
+  constexpr size_t elem_bytes = sizeof(Key) + sizeof(Value);
+  if (FORY_PREDICT_FALSE((!reserve_map_storage<elem_bytes>(ctx, length)))) {
+    return false;
+  }
+  uint32_t required_readable = length;
+  if constexpr (!EntryReadAlwaysAdvances) {
+    const size_t allowance = ctx.remaining_unbacked_container_items();
+    required_readable =
+        static_cast<size_t>(length) > allowance
+            ? static_cast<uint32_t>(static_cast<size_t>(length) - allowance)
+            : 0;
+  }
+  if (FORY_PREDICT_FALSE(
+          !ctx.buffer().ensure_readable(required_readable, ctx.error()))) {
     return false;
   }
   MapReserver<MapType>::reserve(map, length);
@@ -113,6 +147,140 @@ template <typename T> inline constexpr bool need_to_write_type_for_field() {
          tid == TypeId::NAMED_STRUCT ||
          tid == TypeId::NAMED_COMPATIBLE_STRUCT || tid == TypeId::EXT ||
          tid == TypeId::NAMED_EXT;
+}
+
+template <typename T>
+FORY_ALWAYS_INLINE const TypeInfo *read_map_type_info(ReadContext &ctx) {
+  const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return nullptr;
+  }
+  using ValueType = nullable_element_t<T>;
+  constexpr uint32_t expected =
+      static_cast<uint32_t>(Serializer<ValueType>::type_id);
+  if (FORY_PREDICT_FALSE(!type_id_matches(type_info->type_id, expected))) {
+    ctx.set_error(Error::type_mismatch(type_info->type_id, expected));
+    return nullptr;
+  }
+  return type_info;
+}
+
+template <bool HasTypeInfo, typename T>
+inline T read_map_value(ReadContext &ctx, bool read_ref,
+                        const TypeInfo *type_info,
+                        Harness::ReadAsFn reader = nullptr) {
+  if constexpr (is_polymorphic_v<T> &&
+                (is_std_shared_ptr_v<T> || is_std_unique_ptr_v<T>)) {
+    // Polymorphic callers always resolve the concrete TypeInfo before this
+    // dispatch; the four static key/value combinations are instantiated even
+    // though the no-TypeInfo branch is unreachable for this side.
+    return Serializer<T>::template read_with_type_info<true>(
+        ctx, read_ref ? RefMode::Tracking : RefMode::None, *type_info, reader);
+  } else if constexpr (HasTypeInfo) {
+    return Serializer<T>::read_with_type_info(
+        ctx, read_ref ? RefMode::Tracking : RefMode::None, *type_info);
+  } else if (read_ref) {
+    return Serializer<T>::read(ctx, RefMode::Tracking, false);
+  } else {
+    return Serializer<T>::read_data(ctx);
+  }
+}
+
+template <bool KeyHasTypeInfo, bool ValueHasTypeInfo, typename K, typename V,
+          typename MapType>
+inline void read_map_chunk_body(MapType &result, ReadContext &ctx,
+                                uint8_t chunk_size, bool key_read_ref,
+                                bool value_read_ref,
+                                const TypeInfo *key_type_info,
+                                const TypeInfo *value_type_info,
+                                Harness::ReadAsFn key_reader,
+                                Harness::ReadAsFn value_reader) {
+  for (uint8_t i = 0; i < chunk_size; ++i) {
+    K key = read_map_value<KeyHasTypeInfo, K>(ctx, key_read_ref, key_type_info,
+                                              key_reader);
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    V value = read_map_value<ValueHasTypeInfo, V>(
+        ctx, value_read_ref, value_type_info, value_reader);
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    result.emplace(std::move(key), std::move(value));
+  }
+}
+
+template <bool KeyHasTypeInfo, bool ValueHasTypeInfo, typename K, typename V,
+          typename MapType>
+inline void read_map_chunk(MapType &result, ReadContext &ctx,
+                           uint8_t chunk_size, bool key_read_ref,
+                           bool value_read_ref, const TypeInfo *key_type_info,
+                           const TypeInfo *value_type_info,
+                           Harness::ReadAsFn key_reader = nullptr,
+                           Harness::ReadAsFn value_reader = nullptr) {
+  if constexpr ((!KeyHasTypeInfo && read_data_always_advances_v<K>) ||
+                (!ValueHasTypeInfo && read_data_always_advances_v<V>)) {
+    read_map_chunk_body<KeyHasTypeInfo, ValueHasTypeInfo, K, V>(
+        result, ctx, chunk_size, key_read_ref, value_read_ref, key_type_info,
+        value_type_info, key_reader, value_reader);
+    return;
+  }
+
+  bool entry_read_always_advances = key_read_ref || value_read_ref;
+  if constexpr (KeyHasTypeInfo) {
+    entry_read_always_advances =
+        entry_read_always_advances ||
+        key_type_info->harness.read_data_always_advances;
+  }
+  if constexpr (ValueHasTypeInfo) {
+    entry_read_always_advances =
+        entry_read_always_advances ||
+        value_type_info->harness.read_data_always_advances;
+  }
+  if (entry_read_always_advances) {
+    read_map_chunk_body<KeyHasTypeInfo, ValueHasTypeInfo, K, V>(
+        result, ctx, chunk_size, key_read_ref, value_read_ref, key_type_info,
+        value_type_info, key_reader, value_reader);
+    return;
+  }
+
+  const uint64_t start = ctx.buffer().logical_reader_index();
+  read_map_chunk_body<KeyHasTypeInfo, ValueHasTypeInfo, K, V>(
+      result, ctx, chunk_size, key_read_ref, value_read_ref, key_type_info,
+      value_type_info, key_reader, value_reader);
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return;
+  }
+  (void)detail::settle_unbacked_container_items(ctx, chunk_size, start);
+}
+
+template <typename K, typename V, typename MapType>
+inline void read_selected_map_chunk(MapType &result, ReadContext &ctx,
+                                    uint8_t chunk_size, bool key_read_ref,
+                                    bool value_read_ref,
+                                    const TypeInfo *key_type_info,
+                                    const TypeInfo *value_type_info,
+                                    Harness::ReadAsFn key_reader = nullptr,
+                                    Harness::ReadAsFn value_reader = nullptr) {
+  if (key_type_info != nullptr) {
+    if (value_type_info != nullptr) {
+      read_map_chunk<true, true, K, V>(
+          result, ctx, chunk_size, key_read_ref, value_read_ref, key_type_info,
+          value_type_info, key_reader, value_reader);
+    } else {
+      read_map_chunk<true, false, K, V>(
+          result, ctx, chunk_size, key_read_ref, value_read_ref, key_type_info,
+          value_type_info, key_reader, value_reader);
+    }
+  } else if (value_type_info != nullptr) {
+    read_map_chunk<false, true, K, V>(
+        result, ctx, chunk_size, key_read_ref, value_read_ref, key_type_info,
+        value_type_info, key_reader, value_reader);
+  } else {
+    read_map_chunk<false, false, K, V>(
+        result, ctx, chunk_size, key_read_ref, value_read_ref, key_type_info,
+        value_type_info, key_reader, value_reader);
+  }
 }
 
 // ============================================================================
@@ -225,6 +393,10 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
   constexpr bool val_is_polymorphic = is_polymorphic_v<V>;
   constexpr bool key_is_shared_ref = is_shared_ref_v<K>;
   constexpr bool val_is_shared_ref = is_shared_ref_v<V>;
+  constexpr bool key_is_smart_ptr =
+      is_std_shared_ptr_v<K> || is_std_unique_ptr_v<K>;
+  constexpr bool val_is_smart_ptr =
+      is_std_shared_ptr_v<V> || is_std_unique_ptr_v<V>;
 
   const bool is_key_declared =
       has_generics && !need_to_write_type_for_field<K>();
@@ -239,6 +411,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
   // Track current chunk's types for polymorphic handling
   const TypeInfo *current_key_type_info = nullptr;
   const TypeInfo *current_val_type_info = nullptr;
+  Harness::WriteDataFn current_key_writer = nullptr;
+  Harness::WriteDataFn current_val_writer = nullptr;
 
   for (const auto &[key, value] : map) {
     // Check if key or value is null (for nullable types: optional, shared_ptr,
@@ -279,9 +453,16 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         }
         ctx.write_uint8(chunk_header);
 
-        // write ref flag first if tracking refs
-        if (write_ref) {
-          write_not_null_ref_flag(ctx, RefMode::NullOnly);
+        if constexpr (key_is_shared_ref) {
+          // A null-value entry is its own chunk, but its non-null key still
+          // participates in the map's root reference graph.
+          Serializer<K>::write(key, ctx,
+                               write_ref ? RefMode::Tracking : RefMode::None,
+                               !(chunk_header & DECL_KEY_TYPE), has_generics);
+          if (FORY_PREDICT_FALSE(ctx.has_error())) {
+            return;
+          }
+          continue;
         }
 
         // Then write type info if not declared
@@ -332,9 +513,16 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         }
         ctx.write_uint8(chunk_header);
 
-        // write ref flag first if tracking refs
-        if (write_ref) {
-          write_not_null_ref_flag(ctx, RefMode::NullOnly);
+        if constexpr (val_is_shared_ref) {
+          // A null-key entry is its own chunk, but its non-null value still
+          // participates in the map's root reference graph.
+          Serializer<V>::write(value, ctx,
+                               write_ref ? RefMode::Tracking : RefMode::None,
+                               !(chunk_header & DECL_VALUE_TYPE), has_generics);
+          if (FORY_PREDICT_FALSE(ctx.has_error())) {
+            return;
+          }
+          continue;
         }
 
         // Then write type info if not declared
@@ -498,13 +686,25 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       need_write_header = false;
       current_key_type_info = key_type_info;
       current_val_type_info = val_type_info;
+      if constexpr (key_is_polymorphic && key_is_smart_ptr) {
+        current_key_writer = key_type_info->harness.write_data_fn;
+      }
+      if constexpr (val_is_polymorphic && val_is_smart_ptr) {
+        current_val_writer = val_type_info->harness.write_data_fn;
+      }
     }
 
     // write key-value pair
     // For shared_ptr with ref tracking: write ref flag + data
     // For other types: null cases already handled via KEY_NULL/VALUE_NULL,
     // so just write data directly
-    if constexpr (key_is_shared_ref) {
+    if constexpr (key_is_polymorphic && key_is_smart_ptr) {
+      const RefMode ref_mode = key_is_shared_ref && ctx.track_ref()
+                                   ? RefMode::Tracking
+                                   : RefMode::None;
+      Serializer<K>::write_with_data(key, ctx, ref_mode, current_key_writer,
+                                     has_generics);
+    } else if constexpr (key_is_shared_ref) {
       if (ctx.track_ref()) {
         Serializer<K>::write(key, ctx, RefMode::Tracking, false, has_generics);
       } else {
@@ -518,7 +718,13 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       }
     }
 
-    if constexpr (val_is_shared_ref) {
+    if constexpr (val_is_polymorphic && val_is_smart_ptr) {
+      const RefMode ref_mode = val_is_shared_ref && ctx.track_ref()
+                                   ? RefMode::Tracking
+                                   : RefMode::None;
+      Serializer<V>::write_with_data(value, ctx, ref_mode, current_val_writer,
+                                     has_generics);
+    } else if constexpr (val_is_shared_ref) {
       if (ctx.track_ref()) {
         Serializer<V>::write(value, ctx, RefMode::Tracking, false,
                              has_generics);
@@ -542,6 +748,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       need_write_header = true;
       current_key_type_info = nullptr;
       current_val_type_info = nullptr;
+      current_key_writer = nullptr;
+      current_val_writer = nullptr;
     }
   }
 
@@ -569,7 +777,10 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
   if (length == 0) {
     return result;
   }
-  if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
+  constexpr bool entry_read_data_always_advances =
+      read_data_always_advances_v<K> || read_data_always_advances_v<V>;
+  if (FORY_PREDICT_FALSE(
+          !reserve_map<entry_read_data_always_advances>(result, ctx, length))) {
     return result;
   }
 
@@ -588,27 +799,17 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
       len_counter++;
       continue;
     }
+    // The selected non-null operation owns its complete flag -> TypeInfo ->
+    // body sequence. Do not preconsume the flag: a nullable wrapper may
+    // delegate it to an inner shared owner that must publish the sender ID.
     if (header & KEY_NULL) {
       // Null key, non-null value
-      // Java writes: header, then type info (if not declared), then value data
-      bool value_declared = (header & DECL_VALUE_TYPE) != 0;
-      bool track_value_ref = (header & TRACKING_VALUE_REF) != 0;
-
-      // Read type info if not declared
-      if (!value_declared) {
-        read_type_info<V>(ctx);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      }
-
-      // Read value - consume ref flag if tracking, then read data
-      V value;
-      if (track_value_ref) {
-        value = Serializer<V>::read(ctx, RefMode::Tracking, false);
-      } else {
-        value = Serializer<V>::read_data(ctx);
-      }
+      // Java writes: header, ref flag, type info, then value data.
+      const bool value_declared = (header & DECL_VALUE_TYPE) != 0;
+      const bool track_value_ref = (header & TRACKING_VALUE_REF) != 0;
+      V value = Serializer<V>::read(
+          ctx, track_value_ref ? RefMode::Tracking : RefMode::None,
+          !value_declared);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return MapType{};
       }
@@ -618,25 +819,12 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
     }
     if (header & VALUE_NULL) {
       // Non-null key, null value
-      // Java writes: header, then type info (if not declared), then key data
-      bool key_declared = (header & DECL_KEY_TYPE) != 0;
-      bool track_key_ref = (header & TRACKING_KEY_REF) != 0;
-
-      // Read type info if not declared
-      if (!key_declared) {
-        read_type_info<K>(ctx);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      }
-
-      // Read key - consume ref flag if tracking, then read data
-      K key;
-      if (track_key_ref) {
-        key = Serializer<K>::read(ctx, RefMode::Tracking, false);
-      } else {
-        key = Serializer<K>::read_data(ctx);
-      }
+      // Java writes: header, ref flag, type info, then key data.
+      const bool key_declared = (header & DECL_KEY_TYPE) != 0;
+      const bool track_key_ref = (header & TRACKING_KEY_REF) != 0;
+      K key = Serializer<K>::read(
+          ctx, track_key_ref ? RefMode::Tracking : RefMode::None,
+          !key_declared);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return MapType{};
       }
@@ -650,38 +838,48 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return MapType{};
     }
-
-    // Read type info if not declared
-    if (!(header & DECL_KEY_TYPE)) {
-      read_type_info<K>(ctx);
-      if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return MapType{};
-      }
-    }
-    if (!(header & DECL_VALUE_TYPE)) {
-      read_type_info<V>(ctx);
-      if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return MapType{};
-      }
-    }
-
-    uint32_t cur_len = len_counter + chunk_size;
-    if (cur_len > length) {
-      ctx.set_error(Error::invalid_data("Chunk size exceeds total map length"));
+    if (FORY_PREDICT_FALSE(!detail::check_map_chunk_size(
+            ctx, chunk_size, length - len_counter))) {
       return MapType{};
     }
 
-    // Read chunk_size pairs
-    for (uint8_t i = 0; i < chunk_size; ++i) {
-      K key = Serializer<K>::read_data(ctx);
+    // Read type info if not declared
+    const bool key_declared = (header & DECL_KEY_TYPE) != 0;
+    const bool value_declared = (header & DECL_VALUE_TYPE) != 0;
+    const bool track_key_ref = (header & TRACKING_KEY_REF) != 0;
+    const bool track_value_ref = (header & TRACKING_VALUE_REF) != 0;
+    const TypeInfo *key_type_info = nullptr;
+    const TypeInfo *value_type_info = nullptr;
+    if (!key_declared) {
+      key_type_info = read_map_type_info<K>(ctx);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return MapType{};
       }
-      V value = Serializer<V>::read_data(ctx);
+    }
+    if (!value_declared) {
+      value_type_info = read_map_type_info<V>(ctx);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return MapType{};
       }
-      result.emplace(std::move(key), std::move(value));
+    }
+
+    if (key_type_info == nullptr && value_type_info == nullptr &&
+        !track_key_ref && !track_value_ref) {
+      // Keep the fully declared local fast path identical to the original
+      // direct loop. Remote TypeInfo and sender ref modes take the selected
+      // operation path below once per chunk.
+      read_map_chunk<false, false, K, V>(result, ctx, chunk_size, false, false,
+                                         nullptr, nullptr);
+    } else if (!track_key_ref && !track_value_ref) {
+      read_selected_map_chunk<K, V>(result, ctx, chunk_size, false, false,
+                                    key_type_info, value_type_info);
+    } else {
+      read_selected_map_chunk<K, V>(result, ctx, chunk_size, track_key_ref,
+                                    track_value_ref, key_type_info,
+                                    value_type_info);
+    }
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return MapType{};
     }
 
     len_counter += chunk_size;
@@ -701,14 +899,19 @@ inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
   if (length == 0) {
     return result;
   }
-  if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
+  constexpr bool entry_read_data_always_advances =
+      read_data_always_advances_v<K> || read_data_always_advances_v<V>;
+  if (FORY_PREDICT_FALSE(
+          !reserve_map<entry_read_data_always_advances>(result, ctx, length))) {
     return result;
   }
 
   constexpr bool key_is_polymorphic = is_polymorphic_v<K>;
   constexpr bool val_is_polymorphic = is_polymorphic_v<V>;
-  constexpr bool key_is_shared_ref = is_shared_ref_v<K>;
-  constexpr bool val_is_shared_ref = is_shared_ref_v<V>;
+  constexpr bool key_is_smart_ptr =
+      is_std_shared_ptr_v<K> || is_std_unique_ptr_v<K>;
+  constexpr bool val_is_smart_ptr =
+      is_std_shared_ptr_v<V> || is_std_unique_ptr_v<V>;
 
   uint32_t len_counter = 0;
 
@@ -726,56 +929,19 @@ inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
       continue;
     }
 
+    // The selected non-null operation owns its complete flag -> TypeInfo ->
+    // body sequence. Do not preconsume the flag: a nullable wrapper may
+    // delegate it to an inner shared owner that must publish the sender ID.
     if (header & KEY_NULL) {
       // Null key, non-null value
       // Java writes: chunk_header, then ref_flag, then type_info, then data
-      bool track_value_ref = (header & TRACKING_VALUE_REF) != 0;
-      bool value_declared = (header & DECL_VALUE_TYPE) != 0;
-
-      // Consume ref flag first if tracking refs
-      bool has_value = true;
-      if (track_value_ref || val_is_shared_ref) {
-        has_value = read_null_only_flag(ctx, RefMode::NullOnly);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      }
-
-      if (!has_value) {
-        // Value is null reference
-        result.emplace(K{}, V{});
-        len_counter++;
-        continue;
-      }
-
-      // Now read type info if needed
-      const TypeInfo *value_type_info = nullptr;
-      if (!value_declared || val_is_polymorphic) {
-        if constexpr (val_is_polymorphic) {
-          value_type_info = read_polymorphic_type_info(ctx);
-          if (FORY_PREDICT_FALSE(ctx.has_error())) {
-            return MapType{};
-          }
-        } else {
-          read_type_info<V>(ctx);
-        }
-      }
-
-      // Read value data (ref flag already consumed above)
-      V value;
-      if constexpr (val_is_polymorphic) {
-        // For polymorphic types, use read_with_type_info
-        value = Serializer<V>::read_with_type_info(ctx, RefMode::None,
-                                                   *value_type_info);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      } else {
-        // Read data directly - ref flag already consumed
-        value = Serializer<V>::read_data(ctx);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
+      const bool track_value_ref = (header & TRACKING_VALUE_REF) != 0;
+      const bool value_declared = (header & DECL_VALUE_TYPE) != 0;
+      V value = Serializer<V>::read(
+          ctx, track_value_ref ? RefMode::Tracking : RefMode::None,
+          !value_declared);
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return MapType{};
       }
       // Insert with default-constructed key and the read value
       result.emplace(K{}, std::move(value));
@@ -786,52 +952,13 @@ inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
     if (header & VALUE_NULL) {
       // Non-null key, null value
       // Java writes: chunk_header, then ref_flag, then type_info, then data
-      bool track_key_ref = (header & TRACKING_KEY_REF) != 0;
-      bool key_declared = (header & DECL_KEY_TYPE) != 0;
-
-      // Consume ref flag first if tracking refs
-      bool has_key = true;
-      if (track_key_ref || key_is_shared_ref) {
-        has_key = read_null_only_flag(ctx, RefMode::NullOnly);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      }
-
-      if (!has_key) {
-        // Key is null reference
-        result.emplace(K{}, V{});
-        len_counter++;
-        continue;
-      }
-
-      // Now read type info if needed
-      const TypeInfo *key_type_info = nullptr;
-      if (!key_declared || key_is_polymorphic) {
-        if constexpr (key_is_polymorphic) {
-          key_type_info = read_polymorphic_type_info(ctx);
-          if (FORY_PREDICT_FALSE(ctx.has_error())) {
-            return MapType{};
-          }
-        } else {
-          read_type_info<K>(ctx);
-        }
-      }
-
-      // Read key data (ref flag already consumed above)
-      K key;
-      if constexpr (key_is_polymorphic) {
-        key = Serializer<K>::read_with_type_info(ctx, RefMode::None,
-                                                 *key_type_info);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      } else {
-        // Read data directly - ref flag already consumed
-        key = Serializer<K>::read_data(ctx);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
+      const bool track_key_ref = (header & TRACKING_KEY_REF) != 0;
+      const bool key_declared = (header & DECL_KEY_TYPE) != 0;
+      K key = Serializer<K>::read(
+          ctx, track_key_ref ? RefMode::Tracking : RefMode::None,
+          !key_declared);
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return MapType{};
       }
       // Insert with the read key and default-constructed value
       result.emplace(std::move(key), V{});
@@ -844,6 +971,10 @@ inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return MapType{};
     }
+    if (FORY_PREDICT_FALSE(!detail::check_map_chunk_size(
+            ctx, chunk_size, length - len_counter))) {
+      return MapType{};
+    }
     bool key_declared = (header & DECL_KEY_TYPE) != 0;
     bool value_declared = (header & DECL_VALUE_TYPE) != 0;
     bool track_key_ref = (header & TRACKING_KEY_REF) != 0;
@@ -852,6 +983,8 @@ inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
     // Read type info if not declared
     const TypeInfo *key_type_info = nullptr;
     const TypeInfo *value_type_info = nullptr;
+    Harness::ReadAsFn key_reader = nullptr;
+    Harness::ReadAsFn value_reader = nullptr;
 
     if (!key_declared || key_is_polymorphic) {
       if constexpr (key_is_polymorphic) {
@@ -859,8 +992,18 @@ inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return MapType{};
         }
+        if constexpr (key_is_smart_ptr) {
+          key_reader = resolve_polymorphic_reader<nullable_element_t<K>>(
+              ctx, key_type_info);
+          if (FORY_PREDICT_FALSE(ctx.has_error())) {
+            return MapType{};
+          }
+        }
       } else {
-        read_type_info<K>(ctx);
+        key_type_info = read_map_type_info<K>(ctx);
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return MapType{};
+        }
       }
     }
     if (!value_declared || val_is_polymorphic) {
@@ -869,15 +1012,19 @@ inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return MapType{};
         }
+        if constexpr (val_is_smart_ptr) {
+          value_reader = resolve_polymorphic_reader<nullable_element_t<V>>(
+              ctx, value_type_info);
+          if (FORY_PREDICT_FALSE(ctx.has_error())) {
+            return MapType{};
+          }
+        }
       } else {
-        read_type_info<V>(ctx);
+        value_type_info = read_map_type_info<V>(ctx);
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return MapType{};
+        }
       }
-    }
-
-    uint32_t cur_len = len_counter + chunk_size;
-    if (cur_len > length) {
-      ctx.set_error(Error::invalid_data("Chunk size exceeds total map length"));
-      return MapType{};
     }
 
     // Read chunk_size pairs.
@@ -886,59 +1033,16 @@ inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
     // type traits must NOT override that decision while reading. Shared xlang
     // tests intentionally deserialize one ref policy and then serialize
     // another local payload. DO NOT REMOVE this comment.
+    // A retained remote TypeInfo also selects the read operation for every
+    // value in this chunk; reading the header without using it misaligns
+    // compatible schemas with remote-only fields.
     bool key_read_ref = track_key_ref;
     bool val_read_ref = track_value_ref;
-
-    for (uint8_t i = 0; i < chunk_size; ++i) {
-      // Read key - use type info if available (polymorphic case)
-      K key;
-      if constexpr (key_is_polymorphic) {
-        // TRACKING_KEY_REF means full ref tracking for shared_ptr
-        key = Serializer<K>::read_with_type_info(
-            ctx, key_read_ref ? RefMode::Tracking : RefMode::None,
-            *key_type_info);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      } else if (key_read_ref) {
-        // TRACKING_KEY_REF means full ref tracking for shared_ptr
-        key = Serializer<K>::read(ctx, RefMode::Tracking, false);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      } else {
-        // No ref flag - read data directly
-        key = Serializer<K>::read_data(ctx);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      }
-
-      // Read value - use type info if available (polymorphic case)
-      V value;
-      if constexpr (val_is_polymorphic) {
-        // TRACKING_VALUE_REF means full ref tracking for shared_ptr
-        value = Serializer<V>::read_with_type_info(
-            ctx, val_read_ref ? RefMode::Tracking : RefMode::None,
-            *value_type_info);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      } else if (val_read_ref) {
-        // TRACKING_VALUE_REF means full ref tracking for shared_ptr
-        value = Serializer<V>::read(ctx, RefMode::Tracking, false);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      } else {
-        // No ref flag - read data directly
-        value = Serializer<V>::read_data(ctx);
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return MapType{};
-        }
-      }
-
-      result.emplace(std::move(key), std::move(value));
+    read_selected_map_chunk<K, V>(result, ctx, chunk_size, key_read_ref,
+                                  val_read_ref, key_type_info, value_type_info,
+                                  key_reader, value_reader);
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return MapType{};
     }
 
     len_counter += chunk_size;
@@ -1019,7 +1123,6 @@ struct Serializer<std::map<K, V, Args...>> {
     if (!has_value) {
       return MapType{};
     }
-
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -1081,6 +1184,21 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
   static constexpr TypeId type_id = TypeId::MAP;
   using MapType = std::unordered_map<K, V, Args...>;
 
+  static inline void write_type_info(WriteContext &ctx) {
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
+  }
+
+  static inline void read_type_info(ReadContext &ctx) {
+    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    if (!type_id_matches(type_info->type_id, static_cast<uint32_t>(type_id))) {
+      ctx.set_error(Error::type_mismatch(type_info->type_id,
+                                         static_cast<uint32_t>(type_id)));
+    }
+  }
+
   static inline void write(const MapType &map, WriteContext &ctx,
                            RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
@@ -1127,7 +1245,6 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
     if (!has_value) {
       return MapType{};
     }
-
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {

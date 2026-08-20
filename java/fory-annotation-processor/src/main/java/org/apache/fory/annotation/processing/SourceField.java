@@ -43,6 +43,7 @@ final class SourceField {
   final boolean nullable;
   final boolean trackingRef;
   final boolean hasTrackingRefMetadata;
+  final boolean fieldReadAlwaysAdvances;
   final String dynamic;
 
   SourceField(
@@ -63,6 +64,7 @@ final class SourceField {
       boolean nullable,
       boolean trackingRef,
       boolean hasTrackingRefMetadata,
+      boolean fieldReadAlwaysAdvances,
       String dynamic) {
     this.id = id;
     this.name = name;
@@ -81,6 +83,7 @@ final class SourceField {
     this.nullable = nullable;
     this.trackingRef = trackingRef;
     this.hasTrackingRefMetadata = hasTrackingRefMetadata;
+    this.fieldReadAlwaysAdvances = fieldReadAlwaysAdvances;
     this.dynamic = dynamic;
   }
 

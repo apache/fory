@@ -139,18 +139,11 @@ class CSharpServiceMixin:
             lines.append(f"{self.indent_str * 2}try")
             lines.append(f"{self.indent_str * 2}{{")
             lines.append(
-                f"{self.indent_str * 3}global::System.Buffers.ReadOnlySequence<byte> body = context.PayloadAsReadOnlySequence();"
+                f"{self.indent_str * 3}byte[] body = context.PayloadAsNewBuffer();"
             )
             lines.append(
-                f"{self.indent_str * 3}{type_ref} value = __Fory.Deserialize<{type_ref}>(ref body);"
+                f"{self.indent_str * 3}return __Fory.Deserialize<{type_ref}>(body);"
             )
-            lines.append(f"{self.indent_str * 3}if (!body.IsEmpty)")
-            lines.append(f"{self.indent_str * 3}{{")
-            lines.append(
-                f"{self.indent_str * 4}return __ThrowTrailingBody<{type_ref}>();"
-            )
-            lines.append(f"{self.indent_str * 3}}}")
-            lines.append(f"{self.indent_str * 3}return value;")
             lines.append(f"{self.indent_str * 2}}}")
             lines.append(
                 f"{self.indent_str * 2}catch (global::System.Exception error) when (error is not grpc::RpcException)"
@@ -466,12 +459,6 @@ class CSharpServiceMixin:
             f"{self.indent_str}private static T __ThrowDeserializeError<T>(global::System.Exception error)",
             f"{self.indent_str}{{",
             f'{self.indent_str * 2}throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Internal, $"Fory gRPC deserialization failed: {{error.Message}}"));',
-            f"{self.indent_str}}}",
-            "",
-            f"{self.indent_str}[{no_inline}]",
-            f"{self.indent_str}private static T __ThrowTrailingBody<T>()",
-            f"{self.indent_str}{{",
-            f'{self.indent_str * 2}throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Internal, "Fory gRPC message contained trailing bytes"));',
             f"{self.indent_str}}}",
             "",
             f"{self.indent_str}[{no_inline}]",

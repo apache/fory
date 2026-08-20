@@ -15,16 +15,20 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import sys
 import types
 
 import pytest
 from pyfory import Fory, DeserializationPolicy
+from pyfory.policy import DEFAULT_POLICY
 from pyfory.serializer import (
     FunctionSerializer,
     MethodSerializer,
     NativeFuncMethodSerializer,
+    ReduceSerializer,
     TypeSerializer,
 )
+from pyfory.type_util import load_class
 
 
 def policy_global_function():
@@ -46,6 +50,119 @@ policy_global_bound_method = policy_method_holder.run
 
 class PolicyGlobalClass:
     pass
+
+
+class PolicyHookMeta(type):
+    attribute_reads = []
+
+    def __getattribute__(cls, name):
+        if name in {"__module__", "__qualname__"}:
+            PolicyHookMeta.attribute_reads.append(name)
+        return super().__getattribute__(name)
+
+
+class PolicyHookClass(metaclass=PolicyHookMeta):
+    pass
+
+
+class PolicyNestedMeta(type):
+    nested_reads = 0
+
+    def __getattribute__(cls, name):
+        if name == "Nested":
+            PolicyNestedMeta.nested_reads += 1
+        return super().__getattribute__(name)
+
+
+class PolicyTypeOwner(metaclass=PolicyNestedMeta):
+    class Nested:
+        pass
+
+
+PolicyNestedClass = type.__getattribute__(PolicyTypeOwner, "__dict__")["Nested"]
+
+
+class PolicyDescriptor:
+    called = False
+
+    def __get__(self, instance, owner):
+        type(self).called = True
+        return PolicyHookClass
+
+
+class PolicyDescriptorOwner:
+    target = PolicyDescriptor()
+
+
+class PolicyDataMeta(type):
+    attribute_reads = []
+
+    @property
+    def __dict__(cls):
+        PolicyDataMeta.attribute_reads.append("__dict__")
+        return type.__dict__["__dict__"].__get__(cls, type(cls))
+
+    @property
+    def __mro__(cls):
+        PolicyDataMeta.attribute_reads.append("__mro__")
+        return type.__dict__["__mro__"].__get__(cls, type(cls))
+
+
+class PolicyDataOwner(metaclass=PolicyDataMeta):
+    class Nested:
+        pass
+
+
+PolicyDataNested = type.__dict__["__dict__"].__get__(PolicyDataOwner, PolicyDataMeta)["Nested"]
+
+
+class PolicyCallableObject:
+    class_reads = 0
+
+    @property
+    def __class__(self):
+        type(self).class_reads += 1
+        return type(self)
+
+    def __call__(self):
+        return None
+
+
+policy_callable_object = PolicyCallableObject()
+
+
+class PolicyClassMethodOwner:
+    @classmethod
+    def direct(cls):
+        return cls
+
+
+class PolicyClassMethodBase:
+    @classmethod
+    def inherited(cls):
+        return cls
+
+
+class PolicyClassMethodChild(PolicyClassMethodBase):
+    pass
+
+
+class PolicyReduceGlobal:
+    def __reduce__(self):
+        return f"{__name__}.policy_reduce_global"
+
+
+policy_reduce_global = PolicyReduceGlobal()
+
+
+class BlockPolicyHookClass(DeserializationPolicy):
+    def __init__(self):
+        self.classes = []
+
+    def validate_class(self, cls, is_local, **kwargs):
+        self.classes.append(cls)
+        if cls is PolicyHookClass:
+            raise ValueError("class blocked")
 
 
 class FakeReadContext:
@@ -777,6 +894,331 @@ def test_bound_method_policy_runs_before_getattribute_side_effect():
     assert not GuardedMethod.getattribute_called
 
 
+def test_type_policy_before_class_hook():
+    policy = BlockPolicyHookClass()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = TypeSerializer(fory.type_resolver, type)
+    read_context = FakeReadContext(policy, [0, __name__, "PolicyHookClass"])
+
+    PolicyHookMeta.attribute_reads.clear()
+    with pytest.raises(ValueError, match="class blocked"):
+        serializer.read(read_context)
+    assert PolicyHookMeta.attribute_reads == []
+    assert policy.classes == [PolicyHookClass]
+
+
+def test_function_policy_before_class_hook():
+    policy = BlockPolicyHookClass()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = FunctionSerializer(fory.type_resolver, type(policy_global_function))
+    read_context = FakeReadContext(policy, [1, __name__, "PolicyHookClass"])
+
+    PolicyHookMeta.attribute_reads.clear()
+    with pytest.raises(ValueError, match="class blocked"):
+        serializer._deserialize_function(read_context)
+    assert PolicyHookMeta.attribute_reads == []
+    assert policy.classes == [PolicyHookClass]
+
+
+def test_native_policy_before_class_hook():
+    policy = BlockPolicyHookClass()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = NativeFuncMethodSerializer(fory.type_resolver, type(policy_global_function))
+    read_context = FakeReadContext(policy, ["PolicyHookClass", True, __name__])
+
+    PolicyHookMeta.attribute_reads.clear()
+    with pytest.raises(ValueError, match="class blocked"):
+        serializer.read(read_context)
+    assert PolicyHookMeta.attribute_reads == []
+    assert policy.classes == [PolicyHookClass]
+
+
+def test_reduce_policy_before_class_hook():
+    policy = BlockPolicyHookClass()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = ReduceSerializer(fory.type_resolver, object)
+    read_context = FakeReadContext(policy, [])
+
+    PolicyHookMeta.attribute_reads.clear()
+    with pytest.raises(ValueError, match="class blocked"):
+        serializer._resolve_global_name(read_context, f"{__name__}.PolicyHookClass")
+    assert PolicyHookMeta.attribute_reads == []
+    assert policy.classes == [PolicyHookClass]
+
+
+def test_named_type_policy_before_owner_hook():
+    class BlockNestedPolicy(DeserializationPolicy):
+        def __init__(self):
+            self.classes = []
+
+        def validate_class(self, cls, is_local, **kwargs):
+            self.classes.append(cls)
+            if cls is PolicyNestedClass:
+                raise ValueError("nested class blocked")
+
+    policy = BlockNestedPolicy()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    from pyfory.registry import SharedRegistry, TypeResolver
+
+    resolver = TypeResolver(fory.config, shared_registry=SharedRegistry())
+    namespace = resolver.namespace_encoder.encode(__name__)
+    ns_metabytes = resolver.shared_registry.get_encoded_meta_string(namespace)
+    typename = resolver.typename_encoder.encode("PolicyTypeOwner.Nested")
+    type_metabytes = resolver.shared_registry.get_encoded_meta_string(typename)
+
+    PolicyNestedMeta.nested_reads = 0
+    with pytest.raises(ValueError, match="nested class blocked"):
+        resolver._load_metabytes_to_type_info(ns_metabytes, type_metabytes)
+    assert PolicyNestedMeta.nested_reads == 0
+    assert policy.classes == [PolicyTypeOwner, PolicyNestedClass]
+
+
+def test_custom_policy_skips_module_hook(monkeypatch):
+    module_name = f"{__name__}_dynamic"
+    module = types.ModuleType(module_name)
+    module_calls = []
+
+    def module_getattr(name):
+        module_calls.append(name)
+        return PolicyHookClass
+
+    module.__getattr__ = module_getattr
+    monkeypatch.setitem(sys.modules, module_name, module)
+
+    policy = BlockPolicyHookClass()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = TypeSerializer(fory.type_resolver, type)
+    read_context = FakeReadContext(policy, [0, module_name, "missing"])
+
+    with pytest.raises(AttributeError):
+        serializer.read(read_context)
+    assert module_calls == []
+    assert policy.classes == []
+
+
+def test_custom_policy_skips_descriptor():
+    class OwnerPolicy(DeserializationPolicy):
+        def validate_class(self, cls, is_local, **kwargs):
+            if cls is not PolicyDescriptorOwner:
+                raise ValueError("class blocked")
+
+    policy = OwnerPolicy()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = TypeSerializer(fory.type_resolver, type)
+    read_context = FakeReadContext(policy, [0, __name__, "PolicyDescriptorOwner.target"])
+
+    PolicyDescriptor.called = False
+    with pytest.raises(ValueError):
+        serializer.read(read_context)
+    assert not PolicyDescriptor.called
+
+
+def test_custom_policy_skips_metaclass_data():
+    class BlockNestedPolicy(DeserializationPolicy):
+        def __init__(self):
+            self.classes = []
+
+        def validate_class(self, cls, is_local, **kwargs):
+            self.classes.append(cls)
+            if cls is PolicyDataNested:
+                raise ValueError("nested class blocked")
+
+    policy = BlockNestedPolicy()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = TypeSerializer(fory.type_resolver, type)
+    read_context = FakeReadContext(policy, [0, __name__, "PolicyDataOwner.Nested"])
+
+    PolicyDataMeta.attribute_reads.clear()
+    with pytest.raises(ValueError, match="nested class blocked"):
+        serializer.read(read_context)
+    assert PolicyDataMeta.attribute_reads == []
+    assert policy.classes == [PolicyDataOwner, PolicyDataNested]
+
+
+def test_custom_policy_skips_module_data(monkeypatch):
+    class DataModule(types.ModuleType):
+        attribute_reads = 0
+
+        @property
+        def __dict__(self):
+            type(self).attribute_reads += 1
+            descriptor = types.ModuleType.__dict__["__dict__"]
+            return descriptor.__get__(self, type(self))
+
+    module_name = f"{__name__}_data"
+    module = DataModule(module_name)
+    descriptor = types.ModuleType.__dict__["__dict__"]
+    descriptor.__get__(module, DataModule)["target"] = PolicyHookClass
+    monkeypatch.setitem(sys.modules, module_name, module)
+
+    policy = BlockPolicyHookClass()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = TypeSerializer(fory.type_resolver, type)
+    read_context = FakeReadContext(policy, [0, module_name, "target"])
+
+    with pytest.raises(ValueError, match="class blocked"):
+        serializer.read(read_context)
+    assert DataModule.attribute_reads == 0
+
+
+def test_custom_policy_skips_class_data():
+    class BlockCallablePolicy(DeserializationPolicy):
+        def validate_function(self, func, is_local, **kwargs):
+            raise ValueError("callable blocked")
+
+    policy = BlockCallablePolicy()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = FunctionSerializer(fory.type_resolver, type(policy_global_function))
+    read_context = FakeReadContext(policy, [1, __name__, "policy_callable_object"])
+
+    PolicyCallableObject.class_reads = 0
+    with pytest.raises(ValueError, match="callable blocked"):
+        serializer._deserialize_function(read_context)
+    assert PolicyCallableObject.class_reads == 0
+
+
+@pytest.mark.parametrize(
+    ("module_name", "qualname", "owners", "method_type", "receiver"),
+    [
+        (
+            __name__,
+            "PolicyClassMethodOwner.direct",
+            (PolicyClassMethodOwner,),
+            types.MethodType,
+            PolicyClassMethodOwner,
+        ),
+        (
+            __name__,
+            "PolicyClassMethodChild.inherited",
+            (PolicyClassMethodChild, PolicyClassMethodBase),
+            types.MethodType,
+            PolicyClassMethodChild,
+        ),
+        (
+            "builtins",
+            "dict.fromkeys",
+            (dict,),
+            types.BuiltinMethodType,
+            dict,
+        ),
+    ],
+)
+def test_classmethod_policy_order(module_name, qualname, owners, method_type, receiver):
+    class CapturePolicy(DeserializationPolicy):
+        def __init__(self):
+            self.events = []
+
+        def validate_module(self, name, is_local, **kwargs):
+            self.events.append(("module", name, is_local))
+
+        def validate_class(self, cls, is_local, **kwargs):
+            self.events.append(("class", cls, is_local))
+
+        def authorize_instantiation(self, cls, **kwargs):
+            self.events.append(("authorize", cls, kwargs["method_name"]))
+
+        def validate_method(self, method, is_local, **kwargs):
+            method_self = object.__getattribute__(method, "__self__")
+            self.events.append(("method", type(method), method_self, is_local))
+
+    policy = CapturePolicy()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = FunctionSerializer(fory.type_resolver, type(policy_global_function))
+    read_context = FakeReadContext(policy, [1, module_name, qualname])
+
+    method = serializer._deserialize_function(read_context)
+    expected = [("module", module_name, False)]
+    expected.extend(("class", owner, False) for owner in owners)
+    expected.append(("authorize", method_type, qualname.rsplit(".", 1)[1]))
+    expected.append(("method", method_type, receiver, False))
+    assert policy.events == expected
+    assert type(method) is method_type
+
+
+def test_default_type_keeps_dynamic_lookup():
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
+    serializer = TypeSerializer(fory.type_resolver, type)
+    read_context = FakeReadContext(DEFAULT_POLICY, [0, __name__, "PolicyHookClass"])
+
+    PolicyHookMeta.attribute_reads.clear()
+    assert serializer.read(read_context) is PolicyHookClass
+    assert PolicyHookMeta.attribute_reads == ["__module__", "__qualname__"]
+
+
+def test_default_load_class_keeps_lookup():
+    PolicyNestedMeta.nested_reads = 0
+    assert load_class(f"{__name__}#PolicyTypeOwner.Nested", policy=DEFAULT_POLICY) is PolicyNestedClass
+    assert PolicyNestedMeta.nested_reads == 1
+
+
+def test_default_global_round_trips():
+    import time
+
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
+    for value in (PolicyGlobalClass, policy_global_function, time.time, policy_reduce_global):
+        assert fory.deserialize(fory.serialize(value)) is value
+
+
+def test_custom_policy_uses_target_locality(monkeypatch):
+    class CaptureLocalityPolicy(DeserializationPolicy):
+        def __init__(self):
+            self.modules = []
+            self.classes = []
+            self.functions = []
+
+        def validate_module(self, module_name, is_local, **kwargs):
+            self.modules.append((module_name, is_local))
+
+        def validate_class(self, cls, is_local, **kwargs):
+            self.classes.append((cls, is_local))
+
+        def validate_function(self, func, is_local, **kwargs):
+            self.functions.append((func, is_local))
+
+    module = sys.modules[__name__]
+    class_alias = "PolicyClass<locals>"
+    function_alias = "policy_function<locals>"
+    monkeypatch.setitem(module.__dict__, class_alias, PolicyGlobalClass)
+    monkeypatch.setitem(module.__dict__, function_alias, policy_global_function)
+
+    policy = CaptureLocalityPolicy()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+
+    type_serializer = TypeSerializer(fory.type_resolver, type)
+    assert type_serializer.read(FakeReadContext(policy, [0, __name__, class_alias])) is PolicyGlobalClass
+    assert policy.modules == [(__name__, False)]
+    assert policy.classes == [(PolicyGlobalClass, False)]
+
+    policy.modules.clear()
+    policy.classes.clear()
+    assert load_class(f"{__name__}#{class_alias}", policy=policy) is PolicyGlobalClass
+    assert policy.modules == [(__name__, False)]
+    assert policy.classes == [(PolicyGlobalClass, False)]
+
+    policy.modules.clear()
+    function_serializer = FunctionSerializer(fory.type_resolver, type(policy_global_function))
+    context = FakeReadContext(policy, [1, __name__, function_alias])
+    assert function_serializer._deserialize_function(context) is policy_global_function
+    assert policy.modules == [(__name__, False)]
+    assert policy.functions == [(policy_global_function, False)]
+
+    policy.modules.clear()
+    policy.functions.clear()
+    native_serializer = NativeFuncMethodSerializer(fory.type_resolver, type(policy_global_function))
+    context = FakeReadContext(policy, [function_alias, True, __name__])
+    assert native_serializer.read(context) is policy_global_function
+    assert policy.modules == [(__name__, False)]
+    assert policy.functions == [(policy_global_function, False)]
+
+    policy.modules.clear()
+    policy.classes.clear()
+    reduce_serializer = ReduceSerializer(fory.type_resolver, object)
+    context = FakeReadContext(policy, [])
+    assert reduce_serializer._resolve_global_name(context, f"{__name__}.{class_alias}") is PolicyGlobalClass
+    assert policy.modules == [(__name__, False)]
+    assert policy.classes == [(PolicyGlobalClass, False)]
+
+
 def test_type_global_path_reports_main_class_as_local():
     class CaptureClassPolicy(DeserializationPolicy):
         def __init__(self):
@@ -798,6 +1240,59 @@ def test_type_global_path_reports_main_class_as_local():
         assert policy.is_local_values == [True]
     finally:
         PolicyGlobalClass.__module__ = original_module
+
+
+def test_type_deserialization_rejects_non_class_before_policy():
+    class CaptureClassPolicy(DeserializationPolicy):
+        def __init__(self):
+            self.validate_class_calls = 0
+
+        def validate_class(self, cls, is_local, **kwargs):
+            self.validate_class_calls += 1
+
+    policy = CaptureClassPolicy()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = TypeSerializer(fory.type_resolver, type)
+    read_context = FakeReadContext(policy, [0, __name__, "policy_global_function"])
+
+    with pytest.raises(TypeError, match="resolved non-class object"):
+        serializer.read(read_context)
+    assert policy.validate_class_calls == 0
+
+
+def test_local_class_classmethod_policy():
+    def make_local_class():
+        class LocalClass:
+            @classmethod
+            def run(cls):
+                return "safe"
+
+        return LocalClass
+
+    class ClassMethodPolicy(DeserializationPolicy):
+        def __init__(self):
+            self.materializations = []
+            self.methods = []
+
+        def authorize_instantiation(self, cls, **kwargs):
+            if cls is types.MethodType:
+                self.materializations.append((cls, kwargs))
+
+        def validate_method(self, method, is_local, **kwargs):
+            self.methods.append((method, is_local))
+            raise ValueError("classmethod blocked")
+
+    writer = Fory(xlang=False, ref=True, strict=False, compatible=False)
+    policy = ClassMethodPolicy()
+    reader = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    data = writer.serialize(make_local_class())
+
+    with pytest.raises(ValueError, match="classmethod blocked"):
+        reader.deserialize(data)
+    assert policy.materializations == [(types.MethodType, {"method_name": "run"})]
+    assert len(policy.methods) == 1
+    assert isinstance(policy.methods[0][0], types.MethodType)
+    assert policy.methods[0][1] is True
 
 
 def test_function_bound_method_reports_receiver_locality_to_policy():
@@ -1020,7 +1515,7 @@ def test_global_function_deserialization_validates_module():
 
 
 def test_local_function_deserialization_validates_module():
-    """Test validate_module policy hook for local function deserialization."""
+    """Test local function code does not reclassify its module owner."""
 
     def local_function():
         return "safe"
@@ -1042,7 +1537,32 @@ def test_local_function_deserialization_validates_module():
     with pytest.raises(ValueError, match="local function module blocked"):
         fory.deserialize(fory.serialize(local_function))
     assert policy.validate_module_calls == 1
-    assert policy.is_local_values == [True]
+    assert policy.is_local_values == [False]
+
+
+def test_local_code_uses_module_locality():
+    class BlockRemoteModulePolicy(DeserializationPolicy):
+        def __init__(self):
+            self.module_calls = []
+            self.instantiation_calls = []
+
+        def validate_module(self, module_name, is_local, **kwargs):
+            self.module_calls.append((module_name, is_local))
+            if not is_local:
+                raise ValueError("remote module blocked")
+
+        def authorize_instantiation(self, cls, **kwargs):
+            self.instantiation_calls.append((cls, kwargs))
+
+    policy = BlockRemoteModulePolicy()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
+    serializer = FunctionSerializer(fory.type_resolver, type(policy_global_function))
+    read_context = FakeReadContext(policy, [2, "subprocess", "forged<locals>"])
+
+    with pytest.raises(ValueError, match="remote module blocked"):
+        serializer._deserialize_function(read_context)
+    assert policy.module_calls == [("subprocess", False)]
+    assert policy.instantiation_calls == []
 
 
 def test_native_function_deserialization_validates_module():

@@ -45,9 +45,10 @@ CodegenRegistry.registerExternal(CompatibleScalarConverter);
 export class Gen {
   static external = CodegenRegistry.getExternal();
 
-  constructor(private typeResolver: TypeResolver, private regOptions: { [key: string]: any } = {}) {
-
-  }
+  constructor(
+    private typeResolver: TypeResolver,
+    private regOptions: { [key: string]: any } = {},
+  ) {}
 
   private generate(typeInfo: TypeInfo) {
     const InnerGeneratorClass = CodegenRegistry.get(typeInfo.typeId);
@@ -55,7 +56,11 @@ export class Gen {
       throw new Error(`${typeInfo.typeId} generator not exists`);
     }
     const scope = new Scope();
-    const generator = new InnerGeneratorClass(typeInfo, new CodecBuilder(scope, this.typeResolver), scope);
+    const generator = new InnerGeneratorClass(
+      typeInfo,
+      new CodecBuilder(scope, this.typeResolver),
+      scope,
+    );
 
     const funcString = generator.toSerializer();
     if (this.typeResolver.config && this.typeResolver.config.hooks) {
@@ -85,10 +90,11 @@ export class Gen {
       if (this.isFullyGenerated(typeInfo)) {
         return;
       }
-      const options = (typeInfo).options;
-      const unionType = typeInfo.typeId === TypeId.UNION
-        || typeInfo.typeId === TypeId.TYPED_UNION
-        || typeInfo.typeId === TypeId.NAMED_UNION;
+      const options = typeInfo.options;
+      const unionType =
+        typeInfo.typeId === TypeId.UNION ||
+        typeInfo.typeId === TypeId.TYPED_UNION ||
+        typeInfo.typeId === TypeId.NAMED_UNION;
       if (unionType && options?.cases && Object.keys(options.cases).length > 0) {
         this.register(typeInfo);
         Object.values(options.cases).forEach((x) => {
@@ -119,14 +125,14 @@ export class Gen {
       this.traversalContainer(typeInfo.options!.inner!);
     }
     if (typeInfo.typeId === TypeId.SET) {
-      this.traversalContainer((typeInfo).options!.key!);
+      this.traversalContainer(typeInfo.options!.key!);
     }
     if (typeInfo.typeId === TypeId.MAP) {
       if (!typeInfo.options?.key || !typeInfo.options?.value) {
         throw new Error("map type must have key and value");
       }
-      this.traversalContainer((typeInfo).options!.key!);
-      this.traversalContainer((typeInfo).options!.value!);
+      this.traversalContainer(typeInfo.options!.key!);
+      this.traversalContainer(typeInfo.options!.value!);
     }
     if (typeInfo.options?.cases) {
       Object.values(typeInfo.options.cases).forEach((caseTypeInfo) => {

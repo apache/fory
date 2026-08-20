@@ -237,6 +237,50 @@ struct CompatibleArrayField {
               (values, fory::F(1).array(fory::T::int32())));
 };
 
+template <typename T> struct CountingAllocator {
+  using value_type = T;
+
+  CountingAllocator() noexcept = default;
+
+  template <typename U>
+  CountingAllocator(const CountingAllocator<U> &) noexcept {}
+
+  T *allocate(std::size_t count) {
+    ++allocation_count;
+    return std::allocator<T>{}.allocate(count);
+  }
+
+  void deallocate(T *data, std::size_t count) noexcept {
+    std::allocator<T>{}.deallocate(data, count);
+  }
+
+  inline static std::size_t allocation_count = 0;
+};
+
+template <typename T, typename U>
+bool operator==(const CountingAllocator<T> &, const CountingAllocator<U> &) {
+  return true;
+}
+
+template <typename T, typename U>
+bool operator!=(const CountingAllocator<T> &, const CountingAllocator<U> &) {
+  return false;
+}
+
+struct CompatibleDoubleListField {
+  std::vector<double> values;
+
+  FORY_STRUCT(CompatibleDoubleListField,
+              (values, fory::F(1).list(fory::T::float64())));
+};
+
+struct CompatibleDoubleArrayField {
+  std::vector<double, CountingAllocator<double>> values;
+
+  FORY_STRUCT(CompatibleDoubleArrayField,
+              (values, fory::F(1).array(fory::T::float64())));
+};
+
 struct CompatibleNullableListField {
   std::vector<std::optional<int32_t>> values;
 
@@ -275,6 +319,75 @@ struct CompatibleUnsignedExactV2 {
   uint64_t count = 0;
 
   FORY_STRUCT(CompatibleUnsignedExactV2, (id, fory::F(1)), (count, fory::F(2)));
+};
+
+struct SkippedRefItem {
+  int32_t value = 0;
+  FORY_STRUCT(SkippedRefItem, (value, fory::F(1)));
+};
+
+struct SkippedFieldRefWriter {
+  std::shared_ptr<SkippedRefItem> skipped;
+  std::shared_ptr<SkippedRefItem> kept;
+  std::shared_ptr<SkippedRefItem> alias;
+  FORY_STRUCT(SkippedFieldRefWriter, (skipped, fory::F(1)), (kept, fory::F(2)),
+              (alias, fory::F(3)));
+};
+
+struct SkippedFieldRefReader {
+  std::shared_ptr<SkippedRefItem> kept;
+  std::shared_ptr<SkippedRefItem> alias;
+  FORY_STRUCT(SkippedFieldRefReader, (kept, fory::F(2)), (alias, fory::F(3)));
+};
+
+struct SkippedListRefWriter {
+  std::vector<std::shared_ptr<SkippedRefItem>> skipped;
+  std::shared_ptr<SkippedRefItem> kept;
+  std::shared_ptr<SkippedRefItem> alias;
+  FORY_STRUCT(SkippedListRefWriter, (skipped, fory::F(1)), (kept, fory::F(2)),
+              (alias, fory::F(3)));
+};
+
+struct SkippedListRefReader {
+  std::shared_ptr<SkippedRefItem> kept;
+  std::shared_ptr<SkippedRefItem> alias;
+  FORY_STRUCT(SkippedListRefReader, (kept, fory::F(2)), (alias, fory::F(3)));
+};
+
+struct SkippedMapRefWriter {
+  std::map<int32_t, std::shared_ptr<SkippedRefItem>> skipped;
+  std::shared_ptr<SkippedRefItem> kept;
+  std::shared_ptr<SkippedRefItem> alias;
+  FORY_STRUCT(SkippedMapRefWriter, (skipped, fory::F(1)), (kept, fory::F(2)),
+              (alias, fory::F(3)));
+};
+
+struct SkippedMapRefReader {
+  std::shared_ptr<SkippedRefItem> kept;
+  std::shared_ptr<SkippedRefItem> alias;
+  FORY_STRUCT(SkippedMapRefReader, (kept, fory::F(2)), (alias, fory::F(3)));
+};
+
+struct RefTypeMismatchA {
+  int32_t value = 0;
+  FORY_STRUCT(RefTypeMismatchA, (value, fory::F(1)));
+};
+
+struct RefTypeMismatchB {
+  int32_t value = 0;
+  FORY_STRUCT(RefTypeMismatchB, (value, fory::F(1)));
+};
+
+struct RefTypeMismatchWriter {
+  std::shared_ptr<RefTypeMismatchA> first;
+  std::shared_ptr<RefTypeMismatchA> alias;
+  FORY_STRUCT(RefTypeMismatchWriter, (first, fory::F(1)), (alias, fory::F(2)));
+};
+
+struct RefTypeMismatchReader {
+  std::shared_ptr<RefTypeMismatchA> first;
+  std::shared_ptr<RefTypeMismatchB> alias;
+  FORY_STRUCT(RefTypeMismatchReader, (first, fory::F(1)), (alias, fory::F(2)));
 };
 
 struct ScalarBoolField {
@@ -666,6 +779,47 @@ TEST(SchemaEvolutionTest, ImmediateArrayFieldCanReadIntoListCarrier) {
   EXPECT_EQ(decoded.value().values, (std::vector<int32_t>{4, 5, 6}));
 }
 
+TEST(SchemaEvolutionTest, ListArrayChecksBodyBeforeReserve) {
+  auto writer = Fory::builder().compatible(true).xlang(true).build();
+  auto reader = Fory::builder()
+                    .compatible(true)
+                    .xlang(true)
+                    .max_graph_memory_bytes(1)
+                    .build();
+
+  constexpr uint32_t TYPE_ID = 1051;
+  ASSERT_TRUE(writer.register_struct<CompatibleDoubleListField>(TYPE_ID).ok());
+  ASSERT_TRUE(reader.register_struct<CompatibleDoubleArrayField>(TYPE_ID).ok());
+
+  auto bytes = writer.serialize(CompatibleDoubleListField{{1.0, 2.0}});
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  std::vector<uint8_t> payload = std::move(bytes).value();
+
+  CountingAllocator<double>::allocation_count = 0;
+  auto complete = reader.deserialize<CompatibleDoubleArrayField>(
+      payload.data(), payload.size());
+  ASSERT_TRUE(complete.ok()) << complete.error().to_string();
+  ASSERT_EQ(complete.value().values.size(), 2);
+  EXPECT_DOUBLE_EQ(complete.value().values[0], 1.0);
+  EXPECT_DOUBLE_EQ(complete.value().values[1], 2.0);
+  ASSERT_GT(CountingAllocator<double>::allocation_count, 0);
+
+  constexpr size_t retained_body_bytes = 2;
+  constexpr size_t removed_body_bytes =
+      2 * sizeof(double) - retained_body_bytes;
+  ASSERT_GT(payload.size(), removed_body_bytes);
+  payload.resize(payload.size() - removed_body_bytes);
+
+  CountingAllocator<double>::allocation_count = 0;
+  auto decoded = reader.deserialize<CompatibleDoubleArrayField>(payload.data(),
+                                                                payload.size());
+
+  ASSERT_FALSE(decoded.ok());
+  EXPECT_EQ(decoded.error().code(), ErrorCode::BufferOutOfBound);
+  EXPECT_NE(decoded.error().message().find(" + 16 > "), std::string::npos);
+  EXPECT_EQ(CountingAllocator<double>::allocation_count, 0);
+}
+
 TEST(SchemaEvolutionTest, NullableListElementsReadIntoArrayCarrier) {
   auto writer = Fory::builder().compatible(true).xlang(true).build();
   auto reader = Fory::builder().compatible(true).xlang(true).build();
@@ -729,6 +883,115 @@ TEST(SchemaEvolutionTest, ChangedSchemaReadsExactUnsignedFields) {
   ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
   EXPECT_EQ(decoded.value().id, value.id);
   EXPECT_EQ(decoded.value().count, value.count);
+}
+
+TEST(SchemaEvolutionTest, SkippedTrackedFieldKeepsRefIdsAligned) {
+  auto writer = Fory::builder().compatible(true).xlang(true).build();
+  auto reader = Fory::builder().compatible(true).xlang(true).build();
+
+  constexpr uint32_t ITEM_TYPE_ID = 1010;
+  constexpr uint32_t WRAPPER_TYPE_ID = 1011;
+  ASSERT_TRUE(writer.register_struct<SkippedRefItem>(ITEM_TYPE_ID).ok());
+  ASSERT_TRUE(reader.register_struct<SkippedRefItem>(ITEM_TYPE_ID).ok());
+  ASSERT_TRUE(
+      writer.register_struct<SkippedFieldRefWriter>(WRAPPER_TYPE_ID).ok());
+  ASSERT_TRUE(
+      reader.register_struct<SkippedFieldRefReader>(WRAPPER_TYPE_ID).ok());
+
+  auto kept = std::make_shared<SkippedRefItem>();
+  kept->value = 42;
+  auto skipped = std::make_shared<SkippedRefItem>();
+  skipped->value = 7;
+  auto bytes = writer.serialize(SkippedFieldRefWriter{skipped, kept, kept});
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  auto decoded = reader.deserialize<SkippedFieldRefReader>(
+      bytes.value().data(), bytes.value().size());
+
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  ASSERT_NE(decoded.value().kept, nullptr);
+  EXPECT_EQ(decoded.value().kept->value, 42);
+  EXPECT_EQ(decoded.value().kept, decoded.value().alias);
+}
+
+TEST(SchemaEvolutionTest, SkippedListElementsKeepRefIdsAligned) {
+  auto writer = Fory::builder().compatible(true).xlang(true).build();
+  auto reader = Fory::builder().compatible(true).xlang(true).build();
+
+  constexpr uint32_t ITEM_TYPE_ID = 1012;
+  constexpr uint32_t WRAPPER_TYPE_ID = 1013;
+  ASSERT_TRUE(writer.register_struct<SkippedRefItem>(ITEM_TYPE_ID).ok());
+  ASSERT_TRUE(reader.register_struct<SkippedRefItem>(ITEM_TYPE_ID).ok());
+  ASSERT_TRUE(
+      writer.register_struct<SkippedListRefWriter>(WRAPPER_TYPE_ID).ok());
+  ASSERT_TRUE(
+      reader.register_struct<SkippedListRefReader>(WRAPPER_TYPE_ID).ok());
+
+  auto kept = std::make_shared<SkippedRefItem>();
+  kept->value = 43;
+  auto skipped = std::make_shared<SkippedRefItem>();
+  skipped->value = 8;
+  auto bytes = writer.serialize(SkippedListRefWriter{{skipped}, kept, kept});
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  auto decoded = reader.deserialize<SkippedListRefReader>(bytes.value().data(),
+                                                          bytes.value().size());
+
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  ASSERT_NE(decoded.value().kept, nullptr);
+  EXPECT_EQ(decoded.value().kept->value, 43);
+  EXPECT_EQ(decoded.value().kept, decoded.value().alias);
+}
+
+TEST(SchemaEvolutionTest, SkippedMapValuesKeepRefIdsAligned) {
+  auto writer = Fory::builder().compatible(true).xlang(true).build();
+  auto reader = Fory::builder().compatible(true).xlang(true).build();
+
+  constexpr uint32_t ITEM_TYPE_ID = 1014;
+  constexpr uint32_t WRAPPER_TYPE_ID = 1015;
+  ASSERT_TRUE(writer.register_struct<SkippedRefItem>(ITEM_TYPE_ID).ok());
+  ASSERT_TRUE(reader.register_struct<SkippedRefItem>(ITEM_TYPE_ID).ok());
+  ASSERT_TRUE(
+      writer.register_struct<SkippedMapRefWriter>(WRAPPER_TYPE_ID).ok());
+  ASSERT_TRUE(
+      reader.register_struct<SkippedMapRefReader>(WRAPPER_TYPE_ID).ok());
+
+  auto kept = std::make_shared<SkippedRefItem>();
+  kept->value = 44;
+  auto skipped = std::make_shared<SkippedRefItem>();
+  skipped->value = 9;
+  auto bytes =
+      writer.serialize(SkippedMapRefWriter{{{1, skipped}}, kept, kept});
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  auto decoded = reader.deserialize<SkippedMapRefReader>(bytes.value().data(),
+                                                         bytes.value().size());
+
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  ASSERT_NE(decoded.value().kept, nullptr);
+  EXPECT_EQ(decoded.value().kept->value, 44);
+  EXPECT_EQ(decoded.value().kept, decoded.value().alias);
+}
+
+TEST(SchemaEvolutionTest, ReferenceTypeMismatchIsRejected) {
+  auto writer = Fory::builder().compatible(true).xlang(true).build();
+  auto reader = Fory::builder().compatible(true).xlang(true).build();
+
+  ASSERT_TRUE(writer.register_struct<RefTypeMismatchA>(1016).ok());
+  ASSERT_TRUE(reader.register_struct<RefTypeMismatchA>(1016).ok());
+  ASSERT_TRUE(reader.register_struct<RefTypeMismatchB>(1017).ok());
+  ASSERT_TRUE(writer.register_struct<RefTypeMismatchWriter>(1018).ok());
+  ASSERT_TRUE(reader.register_struct<RefTypeMismatchReader>(1018).ok());
+
+  auto shared = std::make_shared<RefTypeMismatchA>();
+  shared->value = 45;
+  auto bytes = writer.serialize(RefTypeMismatchWriter{shared, shared});
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+  auto decoded = reader.deserialize<RefTypeMismatchReader>(
+      bytes.value().data(), bytes.value().size());
+
+  ASSERT_FALSE(decoded.ok());
+  EXPECT_EQ(decoded.error().code(), ErrorCode::InvalidRef);
+  EXPECT_NE(decoded.error().message().find("Reference type mismatch"),
+            std::string::npos);
 }
 
 TEST(SchemaEvolutionTest, PimplPropertyNestedNamedStruct) {

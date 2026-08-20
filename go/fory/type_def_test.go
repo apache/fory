@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/apache/fory/go/fory/meta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -550,6 +551,34 @@ func TestReadSharedTypeMetaExactLocalPopulatesCache(t *testing.T) {
 	require.NotNil(t, typeInfo)
 }
 
+func TestCheckedTypeDefSize32BitLimit(t *testing.T) {
+	const maxInt32 = uint64(1<<31 - 1)
+	extraAtLimit := uint32(maxInt32 - META_SIZE_MASK)
+
+	size, ok := checkedTypeDefSize(META_SIZE_MASK, extraAtLimit, maxInt32)
+	require.True(t, ok)
+	require.Equal(t, int(maxInt32), size)
+
+	_, ok = checkedTypeDefSize(META_SIZE_MASK, extraAtLimit+1, maxInt32)
+	require.False(t, ok)
+	_, ok = checkedTypeDefSize(META_SIZE_MASK, ^uint32(0), maxInt32)
+	require.False(t, ok)
+}
+
+func TestSkipTypeDefExtendedSizeIntRange(t *testing.T) {
+	buffer := NewByteBuffer(nil)
+	buffer.WriteVarUint32(^uint32(0))
+	var err Error
+
+	skipTypeDef(buffer, META_SIZE_MASK, &err)
+	require.Error(t, err.CheckError())
+	if intSize == 32 {
+		require.Contains(t, err.Error(), "supported int range")
+	} else {
+		require.Equal(t, ErrKindBufferOutOfBound, err.Kind())
+	}
+}
+
 func TestRemoteSchemaLimitRejectsExtraVersions(t *testing.T) {
 	fory := NewFory(WithXlang(false), WithCompatible(true), WithMaxSchemaVersionsPerType(1))
 	first := remoteSchemaLimitTypeDef(t, SimpleStruct{}, "example.Shared")
@@ -695,6 +724,42 @@ func TestTypeDefRejectsFieldNameLengthBeyondMetadata(t *testing.T) {
 	_, err := decodeTypeDef(fory, frame, header)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "field name length")
+}
+
+func TestTypeDefRejectsMalformedName(t *testing.T) {
+	tests := []struct {
+		name     string
+		cacheHit bool
+	}{
+		{name: "cache miss"},
+		{name: "hash cache hit", cacheHit: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fory := NewFory(WithXlang(false), WithCompatible(false))
+			if test.cacheHit {
+				require.NoError(t, fory.RegisterStructByName(SimpleStruct{}, "example.SimpleStruct"))
+				info := fory.typeResolver.namedTypeToTypeInfo[[2]string{"example", "SimpleStruct"}]
+				require.NotNil(t, info)
+				key := nsTypeKey{
+					ComputeMetaStringHash(nil, meta.ALL_TO_LOWER_SPECIAL),
+					ComputeMetaStringHash([]byte{0x80}, meta.FIRST_TO_LOWER_SPECIAL),
+				}
+				fory.typeResolver.nsTypeToTypeInfo[key] = info
+			}
+
+			body := NewByteBuffer(nil)
+			body.WriteByte(StructTypeDefFlag | RegisterByNameFlag)
+			body.WriteByte(1)        // Empty namespace using ALL_TO_LOWER_SPECIAL.
+			body.WriteByte(1<<2 | 3) // One-byte typename using FIRST_TO_LOWER_SPECIAL.
+			body.WriteByte(0x80)
+			frame, header := typeDefTestFrame(t, body.Bytes(), false)
+
+			_, err := decodeTypeDef(fory, frame, header)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "missing first character")
+		})
+	}
 }
 
 func bodyOnlyTypeDefHeaderHash(data []byte) uint64 {

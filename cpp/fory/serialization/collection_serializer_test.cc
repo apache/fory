@@ -26,6 +26,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <variant>
 #include <vector>
 
 namespace fory {
@@ -65,6 +67,35 @@ struct VectorHomogeneousHolder {
   FORY_STRUCT(VectorHomogeneousHolder, dogs);
 };
 
+struct RemoteCollectionV1 {
+  int32_t value{};
+  int32_t removed{};
+  FORY_STRUCT(RemoteCollectionV1, value, removed);
+};
+
+struct RemoteCollectionV2 {
+  int32_t value{};
+  FORY_STRUCT(RemoteCollectionV2, value);
+};
+
+struct EmptyProgressStruct {
+  FORY_STRUCT(EmptyProgressStruct);
+};
+
+struct NestedEmptyProgressStruct {
+  EmptyProgressStruct value;
+  FORY_STRUCT(NestedEmptyProgressStruct, value);
+};
+
+struct PositiveProgressStruct {
+  int32_t value{};
+  FORY_STRUCT(PositiveProgressStruct, value);
+};
+
+static_assert(!read_data_always_advances_v<EmptyProgressStruct>);
+static_assert(!read_data_always_advances_v<NestedEmptyProgressStruct>);
+static_assert(read_data_always_advances_v<PositiveProgressStruct>);
+
 namespace {
 
 Fory create_fory() {
@@ -82,6 +113,84 @@ void register_types(Fory &fory) {
 // ============================================================================
 // Polymorphic Vector Tests
 // ============================================================================
+
+TEST(CollectionSerializerTest, RejectsMissingConcreteType) {
+  Config config;
+  ReadContext ctx(config, std::make_unique<TypeResolver>());
+  Buffer buffer;
+  buffer.write_uint8(COLL_IS_SAME_TYPE | COLL_DECL_ELEMENT_TYPE);
+  ctx.attach(buffer);
+
+  using Values = std::vector<std::shared_ptr<Animal>>;
+  auto result =
+      read_collection_data_slow<std::shared_ptr<Animal>, Values>(ctx, 1);
+
+  EXPECT_TRUE(result.empty());
+  ASSERT_TRUE(ctx.has_error());
+  EXPECT_EQ(ctx.error().code(), ErrorCode::InvalidData);
+  EXPECT_NE(ctx.error().message().find("concrete type information"),
+            std::string::npos);
+}
+
+TEST(CollectionSerializerTest, SameTypeUsesRemoteReadBinding) {
+  auto writer =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  auto reader =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  auto owner_reader =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(
+      writer.register_struct<RemoteCollectionV1>("remote", "Asymmetric").ok());
+  ASSERT_TRUE(
+      reader.register_struct<RemoteCollectionV2>("remote", "Asymmetric").ok());
+  ASSERT_TRUE(
+      owner_reader.register_struct<RemoteCollectionV2>("remote", "Asymmetric")
+          .ok());
+  using WriterRoot = std::tuple<std::vector<RemoteCollectionV1>, int32_t>;
+  using ReaderRoot = std::tuple<std::vector<RemoteCollectionV2>, int32_t>;
+  WriterRoot original{std::vector<RemoteCollectionV1>{{7, 70}, {9, 90}}, 11};
+  auto bytes = writer.serialize(original);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+  auto values = reader.deserialize<ReaderRoot>(*bytes);
+  ASSERT_TRUE(values.ok()) << values.error().to_string();
+  ASSERT_EQ(std::get<0>(*values).size(), 2U);
+  EXPECT_EQ(std::get<0>(*values)[0].value, 7);
+  EXPECT_EQ(std::get<0>(*values)[1].value, 9);
+  EXPECT_EQ(std::get<1>(*values), 11);
+
+  using OwnerRoot =
+      std::tuple<std::vector<std::shared_ptr<RemoteCollectionV2>>, int32_t>;
+  auto owners = owner_reader.deserialize<OwnerRoot>(*bytes);
+  ASSERT_TRUE(owners.ok()) << owners.error().to_string();
+  const auto &owner_values = std::get<0>(*owners);
+  ASSERT_EQ(owner_values.size(), 2U);
+  ASSERT_TRUE(owner_values[0]);
+  ASSERT_TRUE(owner_values[1]);
+  EXPECT_EQ(owner_values[0]->value, 7);
+  EXPECT_EQ(owner_values[1]->value, 9);
+  EXPECT_EQ(std::get<1>(*owners), 11);
+}
+
+TEST(CollectionSerializerTest, NestedValuePreservesReferenceIds) {
+  auto writer = create_fory();
+  auto reader = create_fory();
+  using Inner = std::vector<std::shared_ptr<int32_t>>;
+  using WriterValues = std::vector<std::shared_ptr<Inner>>;
+  using ReaderValues = std::vector<Inner>;
+  auto shared = std::make_shared<int32_t>(17);
+  WriterValues original{std::make_shared<Inner>(Inner{shared, shared})};
+  auto bytes = writer.serialize(original);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+  auto decoded = reader.deserialize<ReaderValues>(*bytes);
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  ASSERT_EQ(decoded->size(), 1U);
+  ASSERT_EQ((*decoded)[0].size(), 2U);
+  ASSERT_TRUE((*decoded)[0][0]);
+  EXPECT_EQ(*(*decoded)[0][0], 17);
+  EXPECT_EQ((*decoded)[0][0], (*decoded)[0][1]);
+}
 
 TEST(CollectionSerializerTest, VectorPolymorphicHeterogeneousElements) {
   auto fory = create_fory();
@@ -618,6 +727,47 @@ TEST(CollectionSerializerTest, ForwardListEmptyRoundTrip) {
 
   auto deserialized = std::move(deserialize_result).value();
   EXPECT_TRUE(deserialized.strings.empty());
+}
+
+TEST(CollectionSerializerTest, UnbackedItemBudget) {
+  Config config;
+  EXPECT_EQ(config.max_unbacked_container_items, 8192);
+  EXPECT_DEATH((void)Fory::builder().max_unbacked_container_items(-1),
+               "max_unbacked_container_items");
+
+  auto fory = Fory::builder()
+                  .xlang(true)
+                  .compatible(false)
+                  .track_ref(false)
+                  .max_unbacked_container_items(4)
+                  .build();
+
+  auto excessive = fory.serialize(std::vector<std::monostate>(5));
+  ASSERT_TRUE(excessive.ok()) << excessive.error().to_string();
+  auto rejected = fory.deserialize<std::vector<std::monostate>>(*excessive);
+  EXPECT_FALSE(rejected.ok());
+
+  auto allowed = fory.serialize(std::vector<std::monostate>(4));
+  ASSERT_TRUE(allowed.ok()) << allowed.error().to_string();
+  auto decoded = fory.deserialize<std::vector<std::monostate>>(*allowed);
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  EXPECT_EQ(decoded->size(), 4u);
+
+  auto positive_fory = Fory::builder()
+                           .xlang(true)
+                           .compatible(false)
+                           .track_ref(false)
+                           .max_unbacked_container_items(0)
+                           .build();
+  ASSERT_TRUE(positive_fory.register_struct<PositiveProgressStruct>(902).ok());
+  std::vector<PositiveProgressStruct> positive{{1}, {2}, {3}};
+  auto positive_bytes = positive_fory.serialize(positive);
+  ASSERT_TRUE(positive_bytes.ok()) << positive_bytes.error().to_string();
+  auto positive_decoded =
+      positive_fory.deserialize<std::vector<PositiveProgressStruct>>(
+          *positive_bytes);
+  ASSERT_TRUE(positive_decoded.ok()) << positive_decoded.error().to_string();
+  EXPECT_EQ(positive_decoded->size(), positive.size());
 }
 
 } // namespace

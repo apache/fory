@@ -187,6 +187,16 @@ TEST(StringUtilTest, TestUtf16HasSurrogatePairs) {
       utf16_has_surrogate_pairs(generate_random_utf16_string(300) + u"性能好"));
 }
 
+TEST(StringUtilTest, UnalignedUtf16Scan) {
+  std::array<uint8_t, 1 + 2 * sizeof(uint16_t)> storage{};
+  const std::array<uint16_t, 2> values = {0x0061, 0xD83D};
+  std::memcpy(storage.data() + 1, values.data(), sizeof(values));
+  const auto *unaligned =
+      reinterpret_cast<const uint16_t *>(storage.data() + 1);
+
+  EXPECT_TRUE(utf16_has_surrogate_pairs(unaligned, values.size()));
+}
+
 // Testing Basic Logic
 TEST(UTF16ToUTF8Test, BasicConversion) {
   std::u16string utf16 = u"Hello, 世界!";

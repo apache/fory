@@ -132,15 +132,15 @@ fn test_none_type_id() {
 #[test]
 fn test_phantom_data_uses_none_type_id() {
     assert_eq!(
-        <PhantomData<i32> as Serializer>::fory_static_type_id(),
+        <PhantomData<i32> as Serializer>::static_type_id(),
         TypeId::NONE
     );
     assert_eq!(
-        <PhantomData<String> as Serializer>::fory_static_type_id(),
+        <PhantomData<String> as Serializer>::static_type_id(),
         TypeId::NONE
     );
     assert_eq!(
-        <PhantomData<Vec<u8>> as Serializer>::fory_static_type_id(),
+        <PhantomData<Vec<u8>> as Serializer>::static_type_id(),
         TypeId::NONE
     );
 }
@@ -148,5 +148,5 @@ fn test_phantom_data_uses_none_type_id() {
 /// Test that unit type () uses NONE TypeId (empty/unit value with no data)
 #[test]
 fn test_unit_type_uses_none_type_id() {
-    assert_eq!(<() as Serializer>::fory_static_type_id(), TypeId::NONE);
+    assert_eq!(<() as Serializer>::static_type_id(), TypeId::NONE);
 }

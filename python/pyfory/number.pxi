@@ -888,7 +888,7 @@ cpdef object _bfloat16_array_from_buffer(object buffer):
 
 
 @cython.final
-cdef class Float16Serializer(Serializer):
+cdef class Float16Serializer(_PrimitiveSerializer):
     cpdef inline write(self, WriteContext write_context, value):
         write_context.write_uint16(_coerce_float16_bits(value))
 
@@ -1181,6 +1181,7 @@ cdef class Numpy1DArraySerializer(Serializer):
 
     def __init__(self, type_resolver, type_, dtype):
         super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
         import numpy as np
 
         self.dtype = dtype
@@ -1231,6 +1232,7 @@ cdef class _DenseArraySerializer(Serializer):
     def __init__(self, type_resolver, type_):
         super().__init__(type_resolver, type_)
         self.need_to_write_ref = False
+        self.read_data_always_advances = True
 
 
 @cython.final
@@ -1414,7 +1416,7 @@ cdef class Float16ArraySerializer(_DenseArraySerializer):
 
 
 @cython.final
-cdef class BFloat16Serializer(Serializer):
+cdef class BFloat16Serializer(_PrimitiveSerializer):
     cpdef inline write(self, WriteContext write_context, value):
         write_context.write_uint16(_coerce_bfloat16_bits(value))
 

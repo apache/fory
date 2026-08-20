@@ -19,17 +19,53 @@
 
 package org.apache.fory.json.meta;
 
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Member;
+import java.lang.reflect.Method;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import org.apache.fory.collection.ClassValueCache;
+import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.FieldAccessor;
 
+/**
+ * Uniform interpreted object-member access for fields, getters, and setters.
+ *
+ * <p>Field members delegate to Fory core's typed {@link FieldAccessor}. Method members cache a
+ * trusted {@code MethodHandle} on the JVM and retain reflective invocation only for Android. Typed
+ * primitive methods let interpreted object codecs avoid boxing for field-backed access, while
+ * generated codecs consume the original field or method metadata and emit direct expressions.
+ */
 public abstract class JsonFieldAccessor {
+  // The Feature calls the ordinary factories during analysis, so Native Image retains the same
+  // accessor instances later returned while runtime configurations build interpreted codecs.
+  private static final ClassValueCache<ConcurrentMap<Member, JsonFieldAccessor>> NATIVE_ACCESSORS =
+      ClassValueCache.newClassKeyCache(32);
+
   public Object getObject(Object target) {
     throw new UnsupportedOperationException();
   }
 
-  public abstract Field field();
+  public Field field() {
+    return null;
+  }
 
-  public abstract FieldAccessor coreAccessor();
+  public Method getter() {
+    return null;
+  }
+
+  public Method setter() {
+    return null;
+  }
+
+  public FieldAccessor coreAccessor() {
+    return null;
+  }
 
   public boolean getBoolean(Object target) {
     return (Boolean) getObject(target);
@@ -100,7 +136,40 @@ public abstract class JsonFieldAccessor {
   }
 
   public static JsonFieldAccessor forField(Field field) {
-    return new FieldJsonAccessor(FieldAccessor.createAccessor(field));
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return nativeAccessors(field).computeIfAbsent(field, JsonFieldAccessor::newFieldAccessor);
+    }
+    return newFieldAccessor(field);
+  }
+
+  public static JsonFieldAccessor forGetter(Method getter) {
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return nativeAccessors(getter).computeIfAbsent(getter, JsonFieldAccessor::newGetterAccessor);
+    }
+    return newGetterAccessor(getter);
+  }
+
+  public static JsonFieldAccessor forSetter(Method setter) {
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return nativeAccessors(setter).computeIfAbsent(setter, JsonFieldAccessor::newSetterAccessor);
+    }
+    return newSetterAccessor(setter);
+  }
+
+  private static ConcurrentMap<Member, JsonFieldAccessor> nativeAccessors(Member member) {
+    return NATIVE_ACCESSORS.get(member.getDeclaringClass(), ConcurrentHashMap::new);
+  }
+
+  private static JsonFieldAccessor newFieldAccessor(Member member) {
+    return new FieldJsonAccessor(FieldAccessor.createAccessor((Field) member));
+  }
+
+  private static JsonFieldAccessor newGetterAccessor(Member member) {
+    return new GetterJsonAccessor((Method) member);
+  }
+
+  private static JsonFieldAccessor newSetterAccessor(Member member) {
+    return new SetterJsonAccessor((Method) member);
   }
 
   private static final class FieldJsonAccessor extends JsonFieldAccessor {
@@ -209,5 +278,85 @@ public abstract class JsonFieldAccessor {
     public void putChar(Object target, char value) {
       accessor.putChar(target, value);
     }
+  }
+
+  private static final class GetterJsonAccessor extends JsonFieldAccessor {
+    private final Method getter;
+    private final MethodHandle getterHandle;
+
+    private GetterJsonAccessor(Method getter) {
+      this.getter = getter;
+      if (AndroidSupport.IS_ANDROID) {
+        getter.setAccessible(true);
+        getterHandle = null;
+      } else {
+        getterHandle = methodHandle(getter);
+      }
+    }
+
+    @Override
+    public Method getter() {
+      return getter;
+    }
+
+    @Override
+    public Object getObject(Object target) {
+      try {
+        if (AndroidSupport.IS_ANDROID) {
+          return getter.invoke(target);
+        }
+        return getterHandle.invoke(target);
+      } catch (Throwable e) {
+        throw accessException(getter, e);
+      }
+    }
+  }
+
+  private static final class SetterJsonAccessor extends JsonFieldAccessor {
+    private final Method setter;
+    private final MethodHandle setterHandle;
+
+    private SetterJsonAccessor(Method setter) {
+      this.setter = setter;
+      if (AndroidSupport.IS_ANDROID) {
+        setter.setAccessible(true);
+        setterHandle = null;
+      } else {
+        setterHandle = methodHandle(setter);
+      }
+    }
+
+    @Override
+    public Method setter() {
+      return setter;
+    }
+
+    @Override
+    public void putObject(Object target, Object value) {
+      try {
+        if (AndroidSupport.IS_ANDROID) {
+          setter.invoke(target, value);
+        } else {
+          setterHandle.invoke(target, value);
+        }
+      } catch (Throwable e) {
+        throw accessException(setter, e);
+      }
+    }
+  }
+
+  private static MethodHandle methodHandle(Method method) {
+    try {
+      return _JDKAccess._trustedLookup(method.getDeclaringClass()).unreflect(method);
+    } catch (IllegalAccessException e) {
+      throw accessException(method, e);
+    }
+  }
+
+  /** Preserves ordinary property-method failure semantics for generated direct calls. */
+  protected static ForyJsonException accessException(Method method, Throwable e) {
+    Throwable cause =
+        e instanceof InvocationTargetException ? ((InvocationTargetException) e).getCause() : e;
+    return new ForyJsonException("Cannot access JSON property method " + method, cause);
   }
 }

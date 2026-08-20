@@ -41,7 +41,7 @@ import 'package:fory/src/types/uint64.dart';
 
 /// Read-side serializer context.
 ///
-/// Generated and manual serializers receive this during a single
+/// Generated and custom serializers receive this during a single
 /// deserialization operation. Application code normally interacts with [Fory]
 /// instead of preparing contexts directly.
 final class ReadContext {
@@ -54,6 +54,8 @@ final class ReadContext {
   late Buffer _buffer;
   final List<TypeInfo> _sharedTypes = <TypeInfo>[];
   int _depth = 0;
+  int _remainingGraphMemoryBytes = 0;
+  int _remainingUnbackedContainerItems = 0;
 
   @internal
   ReadContext(
@@ -64,8 +66,11 @@ final class ReadContext {
   );
 
   @internal
+  @pragma('vm:prefer-inline')
   void prepare(Buffer buffer) {
     _buffer = buffer;
+    _remainingGraphMemoryBytes = config.maxGraphMemoryBytes;
+    _remainingUnbackedContainerItems = config.maxUnbackedContainerItems;
   }
 
   @internal
@@ -74,6 +79,8 @@ final class ReadContext {
     _refReader.reset();
     _metaStringReader.reset();
     _depth = 0;
+    _remainingGraphMemoryBytes = 0;
+    _remainingUnbackedContainerItems = 0;
   }
 
   /// The active input buffer for the current operation.
@@ -84,6 +91,65 @@ final class ReadContext {
 
   @internal
   RefReader get refReader => _refReader;
+
+  @internal
+  @pragma('vm:prefer-inline')
+  void reserveGraphMemory(int bytes) {
+    if (bytes < 0) {
+      _throwGraphMemoryOverflow(bytes);
+    }
+    if (bytes > _remainingGraphMemoryBytes) {
+      _throwGraphMemoryExceeded(bytes);
+    }
+    _remainingGraphMemoryBytes -= bytes;
+  }
+
+  @pragma('vm:never-inline')
+  Never _throwGraphMemoryOverflow(int bytes) {
+    throw StateError(
+      'maxGraphMemoryBytes overflow: requested $bytes estimated graph bytes.',
+    );
+  }
+
+  @pragma('vm:never-inline')
+  Never _throwGraphMemoryExceeded(int bytes) {
+    throw StateError(
+      'maxGraphMemoryBytes exceeded: requested $bytes estimated graph bytes, '
+      '$_remainingGraphMemoryBytes remaining, effective limit '
+      '${config.maxGraphMemoryBytes}.',
+    );
+  }
+
+  @internal
+  @pragma('vm:prefer-inline')
+  void checkUnbackedContainerAllocation(int count) {
+    final requiredReadable = count - _remainingUnbackedContainerItems;
+    if (requiredReadable > 0) {
+      _buffer.checkReadableBytes(requiredReadable);
+    }
+  }
+
+  @internal
+  @pragma('vm:prefer-inline')
+  void settleUnbackedContainerItems(int items, int bytesRead) {
+    final unbackedItems = items - bytesRead;
+    if (unbackedItems <= 0) {
+      return;
+    }
+    final remaining = _remainingUnbackedContainerItems - unbackedItems;
+    _remainingUnbackedContainerItems = remaining;
+    if (remaining < 0) {
+      _throwUnbackedContainerLimit();
+    }
+  }
+
+  @pragma('vm:never-inline')
+  Never _throwUnbackedContainerLimit() {
+    throw StateError(
+      'Count-driven container work exceeds maxUnbackedContainerItems '
+      '${config.maxUnbackedContainerItems}.',
+    );
+  }
 
   @internal
   @pragma('vm:prefer-inline')

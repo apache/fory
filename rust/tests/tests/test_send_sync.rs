@@ -19,8 +19,7 @@
 
 use fory_core::fory::Fory;
 use fory_core::{
-    read_data, write_data, Config, Error, ForyDefault, ReadContext, Serializer, TypeResolver,
-    WriteContext,
+    read_data, write_data, Config, Error, ReadContext, Serializer, TypeResolver, WriteContext,
 };
 use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
 use std::{
@@ -67,10 +66,10 @@ where
 
 fn assert_send_sync_reader_unsupported<T>()
 where
-    T: Serializer + ForyDefault,
+    T: Serializer,
 {
     let mut context = ReadContext::new(TypeResolver::default(), Config::default());
-    let result = T::fory_read_data_as_send_sync_any(&mut context);
+    let result = T::read_arc_any(&mut context);
     let err = match result {
         Ok(_) => panic!("expected send-sync Any reader to be unsupported"),
         Err(err) => err,
@@ -205,63 +204,41 @@ fn non_send_sync_carrier_reader_unsupported() {
 }
 
 #[test]
-fn manual_serializer_arc_any_read() {
+fn custom_serializer_arc_any_read() {
     #[derive(Clone, Debug, PartialEq)]
-    struct ManualValue {
+    struct CustomValue {
         id: i32,
         name: String,
     }
 
-    impl ForyDefault for ManualValue {
-        fn fory_default() -> Self {
-            Self {
-                id: 0,
-                name: String::new(),
-            }
-        }
-    }
+    impl Serializer for CustomValue {
+        type Target = Self;
 
-    impl Serializer for ManualValue {
-        fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-            write_data(&self.id, context)?;
-            write_data(&self.name, context)
+        fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+            write_data::<i32>(&value.id, context)?;
+            write_data::<String>(&value.name, context)
         }
 
-        fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
             Ok(Self {
-                id: read_data(context)?,
-                name: read_data(context)?,
+                id: read_data::<i32>(context)?,
+                name: read_data::<String>(context)?,
             })
         }
 
-        fn fory_read_data_as_send_sync_any(
-            context: &mut ReadContext,
-        ) -> Result<Box<dyn Any + Send + Sync>, Error> {
-            Ok(fory_core::serializer::box_send_sync(Self::fory_read_data(
-                context,
-            )?))
-        }
-
-        fn fory_type_id_dyn(
-            &self,
-            type_resolver: &TypeResolver,
-        ) -> Result<fory_core::TypeId, Error> {
-            Self::fory_get_type_id(type_resolver)
-        }
-
-        fn as_any(&self) -> &dyn Any {
-            self
+        fn read_arc_any(context: &mut ReadContext) -> Result<Arc<dyn Any + Send + Sync>, Error> {
+            Ok(Arc::new(Self::read_data(context)?))
         }
     }
 
     let mut fory = Fory::builder().xlang(false).compatible(false).build();
-    fory.register_serializer::<ManualValue>(910).unwrap();
+    fory.register_serializer::<CustomValue>(910).unwrap();
 
     assert_arc_any_roundtrip(
         &fory,
-        ManualValue {
+        CustomValue {
             id: 7,
-            name: "manual".to_string(),
+            name: "custom".to_string(),
         },
     );
 }

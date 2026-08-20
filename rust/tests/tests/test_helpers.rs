@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_core::{ForyDefault, Serializer};
+use fory_core::Serializer;
 use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ use std::sync::Arc;
 /// Generic helper function for roundtrip serialization testing
 pub fn test_roundtrip<T>(fory: &Fory, value: T)
 where
-    T: Serializer + ForyDefault + PartialEq + std::fmt::Debug,
+    T: Serializer<Target = T> + PartialEq + std::fmt::Debug,
 {
     let bytes = fory.serialize(&value).unwrap();
     let result: T = fory.deserialize(&bytes).unwrap();

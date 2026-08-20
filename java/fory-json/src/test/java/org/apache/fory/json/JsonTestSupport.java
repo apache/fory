@@ -1,0 +1,272 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.fory.json;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.Map;
+import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.reader.Utf16JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.resolver.CodecRegistry;
+import org.apache.fory.json.resolver.JsonSharedRegistry;
+import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.json.writer.StringJsonWriter;
+import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.serializer.StringSerializer;
+
+final class JsonTestSupport {
+  private static final String GENERATED_CODEC_SUFFIX = "ForyJsonCodec";
+  private static final JsonConfig CONFIG =
+      new JsonConfig(
+          false,
+          false,
+          false,
+          true,
+          PropertyNamingStrategy.LOWER_CAMEL_CASE,
+          JsonTestSupport.class.getClassLoader(),
+          ForyJson.DEFAULT_MAX_DEPTH,
+          ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES,
+          ForyJson.DEFAULT_MAX_GRAPH_MEMORY_BYTES,
+          1,
+          2 * 1024 * 1024,
+          new CodecRegistry(),
+          Collections.<Class<?>, Class<?>>emptyMap(),
+          new JsonCodecFactory[0],
+          Collections.<String>emptyList(),
+          Collections.<String>emptyList(),
+          null);
+  private static final JsonSharedRegistry REGISTRY = new JsonSharedRegistry(CONFIG);
+  private static final JsonValueCodec<Object> NULL_CODEC =
+      new JsonValueCodec<Object>() {
+        @Override
+        public void writeString(StringJsonWriter writer, Object value) {
+          writer.writeNull();
+        }
+
+        @Override
+        public void writeUtf8(Utf8JsonWriter writer, Object value) {
+          writer.writeNull();
+        }
+
+        @Override
+        public Object readLatin1(Latin1JsonReader reader) {
+          reader.skipValue();
+          return null;
+        }
+
+        @Override
+        public Object readUtf16(Utf16JsonReader reader) {
+          reader.skipValue();
+          return null;
+        }
+
+        @Override
+        public Object readUtf8(Utf8JsonReader reader) {
+          reader.skipValue();
+          return null;
+        }
+      };
+
+  static Utf8JsonWriter newUtf8Writer() {
+    return new Utf8JsonWriter(CONFIG, newResolver());
+  }
+
+  static Utf8JsonWriter newUtf8Writer(byte[] buffer) {
+    return new Utf8JsonWriter(CONFIG, newResolver(), buffer);
+  }
+
+  static StringJsonWriter newStringWriter() {
+    return new StringJsonWriter(CONFIG, newResolver());
+  }
+
+  static StringJsonWriter newStringWriter(byte[] buffer) {
+    return new StringJsonWriter(CONFIG, newResolver(), buffer);
+  }
+
+  static Utf8JsonReader newUtf8Reader(byte[] input) {
+    return new Utf8JsonReader(CONFIG, newResolver(), input);
+  }
+
+  static Latin1JsonReader newLatin1Reader(byte[] input) {
+    return new Latin1JsonReader(CONFIG, newResolver(), input);
+  }
+
+  static Latin1JsonReader newLatin1Reader(String input) {
+    return new Latin1JsonReader(CONFIG, newResolver(), input);
+  }
+
+  static Utf16JsonReader newUtf16Reader() {
+    return new Utf16JsonReader(CONFIG, newResolver());
+  }
+
+  static Utf16JsonReader newUtf16Reader(String input) {
+    return new Utf16JsonReader(CONFIG, newResolver(), input);
+  }
+
+  @SuppressWarnings("unchecked")
+  static <T> JsonValueCodec<T> nullCodec() {
+    return (JsonValueCodec<T>) NULL_CODEC;
+  }
+
+  static JsonTypeResolver currentTypeResolver(ForyJson json) {
+    return (JsonTypeResolver) currentStateField(json, "typeResolver");
+  }
+
+  @SuppressWarnings("unchecked")
+  static JsonTypeInfo runtimeTypeInfo(ForyJson json, Class<?> type) {
+    try {
+      Map<Class<?>, JsonTypeInfo> runtimeTypes =
+          (Map<Class<?>, JsonTypeInfo>) field(currentTypeResolver(json), "runtimeTypeInfos");
+      return runtimeTypes.get(type);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  static Object currentStateField(ForyJson json, String name) {
+    Object pooledState = acquire(json);
+    try {
+      Object state = field(pooledState, "state");
+      return field(state, name);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    } finally {
+      release(json, pooledState);
+    }
+  }
+
+  static int currentPooledStateIndex(ForyJson json) {
+    Object pooledState = acquire(json);
+    try {
+      Object[] slots = (Object[]) field(json, "slots");
+      for (int i = 0; i < slots.length; i++) {
+        if (slots[i] == pooledState) {
+          return i;
+        }
+      }
+      throw new AssertionError("Current operation did not borrow a pooled state");
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    } finally {
+      release(json, pooledState);
+    }
+  }
+
+  static Object pooledStateField(ForyJson json, int index, String name) {
+    try {
+      Object[] slots = (Object[]) field(json, "slots");
+      Object pooledState = slots[index];
+      Object state = field(pooledState, "state");
+      return field(state, name);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  static JsonSharedRegistry newSharedRegistry() {
+    return new JsonSharedRegistry(CONFIG);
+  }
+
+  static Class<?> generatedUtf8WriterClass(ForyJson json, Class<?> type) {
+    JsonTypeResolver resolver = currentTypeResolver(json);
+    Object owner = resolver.getObjectCodec(type);
+    Object codec = resolver.getTypeInfo(type, type).utf8Writer();
+    if (codec == owner) {
+      throw new AssertionError("No generated UTF-8 writer for " + type.getName());
+    }
+    return codec.getClass();
+  }
+
+  static Class<?> generatedUtf8WriterClass(ForyJson json, TypeRef<?> type) {
+    JsonTypeResolver resolver = currentTypeResolver(json);
+    JsonTypeInfo typeInfo = resolver.getTypeInfo(type);
+    Object owner = resolver.canonicalObjectCodec(typeInfo);
+    Object codec = typeInfo.utf8Writer();
+    if (owner == null || codec == owner) {
+      throw new AssertionError("No generated UTF-8 writer for " + type);
+    }
+    return codec.getClass();
+  }
+
+  static String generatedCodecIdentity(Class<?> generatedClass) {
+    String simpleName = generatedClass.getSimpleName();
+    int suffixStart = simpleName.lastIndexOf(GENERATED_CODEC_SUFFIX + "_");
+    if (suffixStart < 0) {
+      throw new AssertionError("Unexpected generated class " + generatedClass.getName());
+    }
+    String identity = simpleName.substring(suffixStart + GENERATED_CODEC_SUFFIX.length() + 1);
+    if (!identity.matches("[0-9a-f]{64}")) {
+      throw new AssertionError("Unexpected generated class " + generatedClass.getName());
+    }
+    return identity;
+  }
+
+  static String stringReaderPath(String input) {
+    return StringSerializer.isBytesBackedString()
+            && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(input))
+        ? "latin1"
+        : "utf16";
+  }
+
+  static int pooledStateCount(ForyJson json) {
+    try {
+      return ((Object[]) field(json, "slots")).length;
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  private static void release(ForyJson json, Object pooledState) {
+    try {
+      Method release = ForyJson.class.getDeclaredMethod("release", pooledState.getClass());
+      release.setAccessible(true);
+      release.invoke(json, pooledState);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  private static Object acquire(ForyJson json) {
+    try {
+      Method acquire = ForyJson.class.getDeclaredMethod("acquire");
+      acquire.setAccessible(true);
+      return acquire.invoke(json);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  private static JsonTypeResolver newResolver() {
+    return new JsonTypeResolver(REGISTRY);
+  }
+
+  private static Object field(Object owner, String name) throws ReflectiveOperationException {
+    Field field = owner.getClass().getDeclaredField(name);
+    field.setAccessible(true);
+    return field.get(owner);
+  }
+
+  private JsonTestSupport() {}
+}

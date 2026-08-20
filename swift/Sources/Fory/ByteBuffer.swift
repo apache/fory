@@ -18,12 +18,17 @@
 import Foundation
 
 public final class ByteBuffer {
+    // Buffer state access is synchronous and never re-entered while borrowed. Overlapping access is
+    // invalid because unchecked exclusivity removes Swift's runtime enforcement on these hot paths.
     @usableFromInline
+    @exclusivity(unchecked)
     internal var storage: [UInt8]
 
     @usableFromInline
+    @exclusivity(unchecked)
     internal var cursor: Int
 
+    @exclusivity(unchecked)
     private var dataBridge = Data()
 
     @inlinable
@@ -175,26 +180,6 @@ public final class ByteBuffer {
                     }
                     destinationBase.copyMemory(from: sourceBase, byteCount: byteCount)
                 }
-            }
-        }
-        return dataBridge
-    }
-
-    @usableFromInline
-    @inline(__always)
-    internal func materializeData(
-        byteCount: Int,
-        _ body: (UnsafeMutablePointer<UInt8>) -> Void
-    ) -> Data {
-        if dataBridge.count != byteCount {
-            dataBridge.count = byteCount
-        }
-        if byteCount > 0 {
-            dataBridge.withUnsafeMutableBytes { destination in
-                guard let base = destination.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                    return
-                }
-                body(base)
             }
         }
         return dataBridge
@@ -394,7 +379,7 @@ public final class ByteBuffer {
 
     @inlinable
     public func writeTaggedInt64(_ value: Int64) {
-        if (-1_073_741_824 ... 1_073_741_823).contains(value) {
+        if (-1_073_741_824...1_073_741_823).contains(value) {
             writeInt32(Int32(truncatingIfNeeded: value) << 1)
         } else {
             writeUInt8(0x01)
@@ -531,16 +516,12 @@ public final class ByteBuffer {
     @inline(__always)
     public func readUInt64() throws -> UInt64 {
         try checkBound(8)
-        let b0 = UInt64(byte(at: cursor))
-        let b1 = UInt64(byte(at: cursor + 1)) << 8
-        let b2 = UInt64(byte(at: cursor + 2)) << 16
-        let b3 = UInt64(byte(at: cursor + 3)) << 24
-        let b4 = UInt64(byte(at: cursor + 4)) << 32
-        let b5 = UInt64(byte(at: cursor + 5)) << 40
-        let b6 = UInt64(byte(at: cursor + 6)) << 48
-        let b7 = UInt64(byte(at: cursor + 7)) << 56
+        let offset = cursor
+        let value = storage.withUnsafeBytes {
+            $0.loadUnaligned(fromByteOffset: offset, as: UInt64.self)
+        }
         cursor += 8
-        return b0 | b1 | b2 | b3 | b4 | b5 | b6 | b7
+        return UInt64(littleEndian: value)
     }
 
     @inlinable
@@ -575,10 +556,7 @@ public final class ByteBuffer {
             let b3 = byte(at: offset + 3)
             if b3 < 0x80 {
                 cursor = offset + 4
-                return UInt32(b0 & 0x7F) |
-                    (UInt32(b1 & 0x7F) << 7) |
-                    (UInt32(b2 & 0x7F) << 14) |
-                    (UInt32(b3) << 21)
+                return UInt32(b0 & 0x7F) | (UInt32(b1 & 0x7F) << 7) | (UInt32(b2 & 0x7F) << 14) | (UInt32(b3) << 21)
             }
 
             let b4 = byte(at: offset + 4)
@@ -586,11 +564,7 @@ public final class ByteBuffer {
                 throw ForyError.encodingError("varuint32 overflow")
             }
             cursor = offset + 5
-            return UInt32(b0 & 0x7F) |
-                (UInt32(b1 & 0x7F) << 7) |
-                (UInt32(b2 & 0x7F) << 14) |
-                (UInt32(b3 & 0x7F) << 21) |
-                (UInt32(b4) << 28)
+            return UInt32(b0 & 0x7F) | (UInt32(b1 & 0x7F) << 7) | (UInt32(b2 & 0x7F) << 14) | (UInt32(b3 & 0x7F) << 21) | (UInt32(b4) << 28)
         }
 
         try checkBound(1)
@@ -618,10 +592,7 @@ public final class ByteBuffer {
         let b3 = byte(at: cursor + 3)
         if b3 < 0x80 {
             cursor += 4
-            return UInt32(b0 & 0x7F) |
-                (UInt32(b1 & 0x7F) << 7) |
-                (UInt32(b2 & 0x7F) << 14) |
-                (UInt32(b3) << 21)
+            return UInt32(b0 & 0x7F) | (UInt32(b1 & 0x7F) << 7) | (UInt32(b2 & 0x7F) << 14) | (UInt32(b3) << 21)
         }
 
         try checkBound(5)
@@ -630,11 +601,7 @@ public final class ByteBuffer {
             throw ForyError.encodingError("varuint32 overflow")
         }
         cursor += 5
-        return UInt32(b0 & 0x7F) |
-            (UInt32(b1 & 0x7F) << 7) |
-            (UInt32(b2 & 0x7F) << 14) |
-            (UInt32(b3 & 0x7F) << 21) |
-            (UInt32(b4) << 28)
+        return UInt32(b0 & 0x7F) | (UInt32(b1 & 0x7F) << 7) | (UInt32(b2 & 0x7F) << 14) | (UInt32(b3 & 0x7F) << 21) | (UInt32(b4) << 28)
     }
 
     @inlinable
@@ -658,77 +625,46 @@ public final class ByteBuffer {
             let b2 = byte(at: offset + 2)
             if b2 < 0x80 {
                 cursor = offset + 3
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2) << 14)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2) << 14)
             }
 
             let b3 = byte(at: offset + 3)
             if b3 < 0x80 {
                 cursor = offset + 4
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3) << 21)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3) << 21)
             }
 
             let b4 = byte(at: offset + 4)
             if b4 < 0x80 {
                 cursor = offset + 5
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4) << 28)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4) << 28)
             }
 
             let b5 = byte(at: offset + 5)
             if b5 < 0x80 {
                 cursor = offset + 6
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4 & 0x7F) << 28) |
-                    (UInt64(b5) << 35)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                    | (UInt64(b5) << 35)
             }
 
             let b6 = byte(at: offset + 6)
             if b6 < 0x80 {
                 cursor = offset + 7
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4 & 0x7F) << 28) |
-                    (UInt64(b5 & 0x7F) << 35) |
-                    (UInt64(b6) << 42)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                    | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6) << 42)
             }
 
             let b7 = byte(at: offset + 7)
             if b7 < 0x80 {
                 cursor = offset + 8
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4 & 0x7F) << 28) |
-                    (UInt64(b5 & 0x7F) << 35) |
-                    (UInt64(b6 & 0x7F) << 42) |
-                    (UInt64(b7) << 49)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                    | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7) << 49)
             }
 
             let b8 = byte(at: offset + 8)
             cursor = offset + 9
-            let low = UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21)
-            let high = (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5 & 0x7F) << 35) |
-                (UInt64(b6 & 0x7F) << 42) |
-                (UInt64(b7 & 0x7F) << 49) |
-                (UInt64(b8) << 56)
+            let low = UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21)
+            let high = (UInt64(b4 & 0x7F) << 28) | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7 & 0x7F) << 49) | (UInt64(b8) << 56)
             return low | high
         }
 
@@ -750,83 +686,52 @@ public final class ByteBuffer {
         let b2 = byte(at: cursor + 2)
         if b2 < 0x80 {
             cursor += 3
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2) << 14)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2) << 14)
         }
 
         try checkBound(4)
         let b3 = byte(at: cursor + 3)
         if b3 < 0x80 {
             cursor += 4
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3) << 21)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3) << 21)
         }
 
         try checkBound(5)
         let b4 = byte(at: cursor + 4)
         if b4 < 0x80 {
             cursor += 5
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4) << 28)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4) << 28)
         }
 
         try checkBound(6)
         let b5 = byte(at: cursor + 5)
         if b5 < 0x80 {
             cursor += 6
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5) << 35)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                | (UInt64(b5) << 35)
         }
 
         try checkBound(7)
         let b6 = byte(at: cursor + 6)
         if b6 < 0x80 {
             cursor += 7
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5 & 0x7F) << 35) |
-                (UInt64(b6) << 42)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6) << 42)
         }
 
         try checkBound(8)
         let b7 = byte(at: cursor + 7)
         if b7 < 0x80 {
             cursor += 8
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5 & 0x7F) << 35) |
-                (UInt64(b6 & 0x7F) << 42) |
-                (UInt64(b7) << 49)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7) << 49)
         }
 
         try checkBound(9)
         let b8 = byte(at: cursor + 8)
         cursor += 9
-        let low = UInt64(b0 & 0x7F) |
-            (UInt64(b1 & 0x7F) << 7) |
-            (UInt64(b2 & 0x7F) << 14) |
-            (UInt64(b3 & 0x7F) << 21)
-        let high = (UInt64(b4 & 0x7F) << 28) |
-            (UInt64(b5 & 0x7F) << 35) |
-            (UInt64(b6 & 0x7F) << 42) |
-            (UInt64(b7 & 0x7F) << 49) |
-            (UInt64(b8) << 56)
+        let low = UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21)
+        let high = (UInt64(b4 & 0x7F) << 28) | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7 & 0x7F) << 49) | (UInt64(b8) << 56)
         return low | high
     }
 
@@ -917,7 +822,36 @@ public final class ByteBuffer {
             guard let base = buffer.baseAddress else {
                 return nil
             }
-            let utf8Bytes = UnsafeBufferPointer(start: base.advanced(by: start), count: count)
+            let utf8Base = base.advanced(by: start)
+            let utf8Bytes = UnsafeBufferPointer(start: utf8Base, count: count)
+            var index = 0
+            var isASCII = true
+            // An ASCII byte has a clear high bit, so this mask checks eight bytes at once
+            // regardless of native byte order. The bounded loop makes the unaligned load safe.
+            while index <= count - MemoryLayout<UInt64>.size {
+                let word = UnsafeRawPointer(utf8Base.advanced(by: index))
+                    .loadUnaligned(as: UInt64.self)
+                if word & 0x8080_8080_8080_8080 != 0 {
+                    isASCII = false
+                    break
+                }
+                index += MemoryLayout<UInt64>.size
+            }
+            if isASCII {
+                while index < count {
+                    if utf8Bytes[index] >= 0x80 {
+                        isASCII = false
+                        break
+                    }
+                    index += 1
+                }
+            }
+            if isASCII {
+                return String(decoding: utf8Bytes, as: UTF8.self)
+            }
+            if #available(macOS 15.0, iOS 18.0, *) {
+                return String(validating: utf8Bytes, as: UTF8.self)
+            }
             return String(bytes: utf8Bytes, encoding: .utf8)
         }
         guard let decoded else {

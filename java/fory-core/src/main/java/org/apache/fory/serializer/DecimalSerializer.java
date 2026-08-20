@@ -30,6 +30,10 @@ import org.apache.fory.memory.MemoryBuffer;
 
 /** Serializer for {@link BigDecimal} in native and xlang modes. */
 public final class DecimalSerializer extends ImmutableSerializer<BigDecimal> implements Shareable {
+  static final int MAX_MAGNITUDE_BYTES = 10_000;
+  static final int MAX_MAGNITUDE_BITS = MAX_MAGNITUDE_BYTES * Byte.SIZE;
+  // Compare scale bounds directly because Math.abs(Integer.MIN_VALUE) overflows.
+  private static final int MAX_SCALE = 10_000;
   private static final BigInteger LONG_MIN = BigInteger.valueOf(Long.MIN_VALUE);
   private static final BigInteger LONG_MAX = BigInteger.valueOf(Long.MAX_VALUE);
   private final boolean xlang;
@@ -58,8 +62,17 @@ public final class DecimalSerializer extends ImmutableSerializer<BigDecimal> imp
 
   private void writeNative(WriteContext writeContext, BigDecimal value) {
     MemoryBuffer buffer = writeContext.getBuffer();
-    byte[] bytes = value.unscaledValue().toByteArray();
-    buffer.writeVarUInt32Small7(value.scale());
+    int scale = value.scale();
+    if (scale < -MAX_SCALE || scale > MAX_SCALE) {
+      throw new IllegalArgumentException("Decimal scale out of range: " + scale);
+    }
+    BigInteger unscaled = value.unscaledValue();
+    if (magnitudeExceedsLimit(unscaled)) {
+      throw new IllegalArgumentException(
+          "Decimal magnitude exceeds " + MAX_MAGNITUDE_BYTES + " bytes");
+    }
+    byte[] bytes = unscaled.toByteArray();
+    buffer.writeVarUInt32Small7(scale);
     buffer.writeVarUInt32Small7(value.precision());
     buffer.writeVarUInt32Small7(bytes.length);
     buffer.writeBytes(bytes);
@@ -68,10 +81,17 @@ public final class DecimalSerializer extends ImmutableSerializer<BigDecimal> imp
   private BigDecimal readNative(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
     int scale = buffer.readVarUInt32Small7();
+    if (scale < -MAX_SCALE || scale > MAX_SCALE) {
+      throw new DeserializationException("Decimal scale out of range: " + scale);
+    }
     int precision = buffer.readVarUInt32Small7();
     int len = buffer.readVarUInt32Small7();
     checkBinaryBodyLength(len);
     buffer.checkReadableBytes(len);
+    if (len == MAX_MAGNITUDE_BYTES + 1 && magnitudeExceedsLimit(buffer, len)) {
+      throw new DeserializationException(
+          "Decimal magnitude exceeds " + MAX_MAGNITUDE_BYTES + " bytes");
+    }
     byte[] bytes = buffer.readBytes(len);
     BigInteger bigInteger = new BigInteger(bytes);
     return new BigDecimal(bigInteger, scale, new MathContext(precision));
@@ -86,35 +106,46 @@ public final class DecimalSerializer extends ImmutableSerializer<BigDecimal> imp
   }
 
   static void writeXlangDecimal(MemoryBuffer buffer, int scale, BigInteger unscaled) {
-    buffer.writeVarInt32(scale);
+    if (scale < -MAX_SCALE || scale > MAX_SCALE) {
+      throw new IllegalArgumentException("Decimal scale out of range: " + scale);
+    }
     if (canUseSmallEncoding(unscaled)) {
       long smallValue = unscaled.longValue();
       long header = encodeZigZag64(smallValue) << 1;
+      buffer.writeVarInt32(scale);
       buffer.writeVarUInt64(header);
       return;
     }
 
+    if (magnitudeExceedsLimit(unscaled)) {
+      throw new IllegalArgumentException(
+          "Decimal magnitude exceeds " + MAX_MAGNITUDE_BYTES + " bytes");
+    }
     int sign = unscaled.signum() < 0 ? 1 : 0;
-    byte[] magnitudeBytes = toCanonicalLittleEndianMagnitude(unscaled.abs());
+    BigInteger abs = unscaled.abs();
+    byte[] magnitudeBytes = toCanonicalLittleEndianMagnitude(abs);
     long meta = (((long) magnitudeBytes.length) << 1) | sign;
     long header = (meta << 1) | 1L;
+    buffer.writeVarInt32(scale);
     buffer.writeVarUInt64(header);
     buffer.writeBytes(magnitudeBytes);
   }
 
   static BigDecimal readXlangDecimal(MemoryBuffer buffer) {
     int scale = buffer.readVarInt32();
+    if (scale < -MAX_SCALE || scale > MAX_SCALE) {
+      throw new IllegalArgumentException("Decimal scale out of range: " + scale);
+    }
     return new BigDecimal(readXlangUnscaled(buffer), scale);
   }
 
   static BigInteger readXlangBigInteger(MemoryBuffer buffer) {
     int scale = buffer.readVarInt32();
-    BigInteger unscaled = readXlangUnscaled(buffer);
     if (scale != 0) {
       throw new IllegalArgumentException(
           "Cannot deserialize xlang decimal with scale " + scale + " into BigInteger");
     }
-    return unscaled;
+    return readXlangUnscaled(buffer);
   }
 
   private static BigInteger readXlangUnscaled(MemoryBuffer buffer) {
@@ -128,6 +159,10 @@ public final class DecimalSerializer extends ImmutableSerializer<BigDecimal> imp
     if (lenLong <= 0 || lenLong > Integer.MAX_VALUE) {
       throw new IllegalArgumentException(
           "Invalid decimal magnitude length " + lenLong + " in xlang body");
+    }
+    if (lenLong > MAX_MAGNITUDE_BYTES) {
+      throw new IllegalArgumentException(
+          "Decimal magnitude length exceeds " + MAX_MAGNITUDE_BYTES + " bytes: " + lenLong);
     }
     int len = (int) lenLong;
     buffer.checkReadableBytes(len);
@@ -147,6 +182,38 @@ public final class DecimalSerializer extends ImmutableSerializer<BigDecimal> imp
     if (len <= 0) {
       throw new DeserializationException("Decimal body length must be positive: " + len);
     }
+    if (len > MAX_MAGNITUDE_BYTES + 1) {
+      throw new DeserializationException(
+          "Decimal magnitude exceeds " + MAX_MAGNITUDE_BYTES + " bytes");
+    }
+  }
+
+  static boolean magnitudeExceedsLimit(MemoryBuffer buffer, int len) {
+    int readerIndex = buffer.readerIndex();
+    byte first = buffer.getByte(readerIndex);
+    // Keep accepting redundant native sign extension. At this length, only a non-sign prefix or
+    // the exact negative power -2^(MAX_MAGNITUDE_BITS) has a magnitude above the limit.
+    if (first == 0) {
+      return false;
+    }
+    if (first == -1) {
+      for (int i = 1; i < len; i++) {
+        if (buffer.getByte(readerIndex + i) != 0) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  static boolean magnitudeExceedsLimit(BigInteger value) {
+    int bitLength = value.bitLength();
+    if (bitLength != MAX_MAGNITUDE_BITS) {
+      return bitLength > MAX_MAGNITUDE_BITS;
+    }
+    // BigInteger.bitLength() is one below abs().bitLength() only for negative powers of two.
+    // Check that shape solely at the limit so common negative values do not scan their words.
+    return value.signum() < 0 && value.getLowestSetBit() == MAX_MAGNITUDE_BITS;
   }
 
   private static boolean canUseSmallEncoding(BigInteger value) {
@@ -190,5 +257,10 @@ public final class DecimalSerializer extends ImmutableSerializer<BigDecimal> imp
       bigEndian[i] = littleEndian[littleEndian.length - 1 - i];
     }
     return bigEndian;
+  }
+
+  @Override
+  public boolean readDataAlwaysAdvances() {
+    return true;
   }
 }

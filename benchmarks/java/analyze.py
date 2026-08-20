@@ -30,7 +30,7 @@ import subprocess
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 repo_root = Path(dir_path).parent.parent
-java_benchmark_dir = repo_root / "docs/benchmarks/java"
+java_benchmark_dir = repo_root / "docs/benchmarks/object-serialization/native/java"
 java_benchmark_data_dir = java_benchmark_dir / "data"
 java_benchmark_readme = java_benchmark_dir / "README.md"
 
@@ -156,22 +156,22 @@ java_plot_combined_groups = [
 repo_plot_combined_groups = [
     {
         "alt": "Java Serialization Throughput",
-        "combined": "docs/benchmarks/java/java_repo_serialization_throughput.png",
+        "combined": "docs/benchmarks/object-serialization/native/java/java_repo_serialization_throughput.png",
         "sources": [
-            "docs/benchmarks/java/compatible/bench_serialize_compatible_STRUCT_to_directBuffer_tps.png",
-            "docs/benchmarks/java/compatible/bench_serialize_compatible_MEDIA_CONTENT_to_array_tps.png",
-            "docs/benchmarks/java/serialization/bench_serialize_MEDIA_CONTENT_to_array_tps.png",
-            "docs/benchmarks/java/serialization/bench_serialize_SAMPLE_to_array_tps.png",
+            "docs/benchmarks/object-serialization/native/java/compatible/bench_serialize_compatible_STRUCT_to_directBuffer_tps.png",
+            "docs/benchmarks/object-serialization/native/java/compatible/bench_serialize_compatible_MEDIA_CONTENT_to_array_tps.png",
+            "docs/benchmarks/object-serialization/native/java/serialization/bench_serialize_MEDIA_CONTENT_to_array_tps.png",
+            "docs/benchmarks/object-serialization/native/java/serialization/bench_serialize_SAMPLE_to_array_tps.png",
         ],
     },
     {
         "alt": "Java Deserialization Throughput",
-        "combined": "docs/benchmarks/java/java_repo_deserialization_throughput.png",
+        "combined": "docs/benchmarks/object-serialization/native/java/java_repo_deserialization_throughput.png",
         "sources": [
-            "docs/benchmarks/java/compatible/bench_deserialize_compatible_STRUCT_from_directBuffer_tps.png",
-            "docs/benchmarks/java/compatible/bench_deserialize_compatible_MEDIA_CONTENT_from_array_tps.png",
-            "docs/benchmarks/java/deserialization/bench_deserialize_MEDIA_CONTENT_from_array_tps.png",
-            "docs/benchmarks/java/deserialization/bench_deserialize_SAMPLE_from_array_tps.png",
+            "docs/benchmarks/object-serialization/native/java/compatible/bench_deserialize_compatible_STRUCT_from_directBuffer_tps.png",
+            "docs/benchmarks/object-serialization/native/java/compatible/bench_deserialize_compatible_MEDIA_CONTENT_from_array_tps.png",
+            "docs/benchmarks/object-serialization/native/java/deserialization/bench_deserialize_MEDIA_CONTENT_from_array_tps.png",
+            "docs/benchmarks/object-serialization/native/java/deserialization/bench_deserialize_SAMPLE_from_array_tps.png",
         ],
     },
 ]

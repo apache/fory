@@ -51,10 +51,7 @@ const Long = {
   MIN_VALUE: BigInt("-9223372036854775808"),
 };
 
-function decimal(
-  unscaledValue: string | bigint | number,
-  scale: number,
-): Decimal {
+function decimal(unscaledValue: string | bigint | number, scale: number): Decimal {
   return new Decimal(unscaledValue, scale);
 }
 
@@ -269,20 +266,11 @@ describe("bool", () => {
       const item = deserializedData[index];
       let serializedData;
       if (index === 11) {
-        serializedData = fory.serialize(
-          item,
-          fory.typeResolver.getSerializerById(TypeId.FLOAT32),
-        );
+        serializedData = fory.serialize(item, fory.typeResolver.getSerializerById(TypeId.FLOAT32));
       } else if (index === 12) {
-        serializedData = fory.serialize(
-          item,
-          fory.typeResolver.getSerializerById(TypeId.FLOAT64),
-        );
+        serializedData = fory.serialize(item, fory.typeResolver.getSerializerById(TypeId.FLOAT64));
       } else if (index === 14) {
-        serializedData = fory.serialize(
-          item,
-          fory.typeResolver.getSerializerById(TypeId.DATE),
-        );
+        serializedData = fory.serialize(item, fory.typeResolver.getSerializerById(TypeId.DATE));
       } else if (index === 15) {
         serializedData = fory.serialize(
           item,
@@ -294,10 +282,7 @@ describe("bool", () => {
           fory.typeResolver.getSerializerById(TypeId.BOOL_ARRAY),
         );
       } else if (index === 17) {
-        serializedData = fory.serialize(
-          item,
-          fory.typeResolver.getSerializerById(TypeId.BINARY),
-        );
+        serializedData = fory.serialize(item, fory.typeResolver.getSerializerById(TypeId.BINARY));
       } else if (index === 26) {
         serializedData = colorSerialize(item);
       } else {
@@ -815,8 +800,7 @@ describe("bool", () => {
     expect(outer.list_field).toBeTruthy();
     expect(outer.list_field.length).toBeGreaterThan(0);
     const shared = outer.list_field[0];
-    const setShared = outer.set_field.values().next()
-      .value as RefOverrideElement;
+    const setShared = outer.set_field.values().next().value as RefOverrideElement;
     expect(outer.list_field[1]).not.toBe(shared);
     expect(setShared).not.toBe(shared);
     expect(outer.map_field.get("k1")).not.toBe(shared);
@@ -1788,9 +1772,9 @@ describe("bool", () => {
 
     // Deserialize struct from Java
     let cursor = 0;
-    const deserializedStruct: InstanceType<
-      ReturnType<typeof buildClass>
-    > | null = fory.deserialize(content.subarray(cursor));
+    const deserializedStruct: InstanceType<ReturnType<typeof buildClass>> | null = fory.deserialize(
+      content.subarray(cursor),
+    );
     cursor += fory.readContext.reader.readGetCursor();
 
     if (deserializedStruct === null) {
@@ -1818,14 +1802,8 @@ describe("bool", () => {
     fory.register(RefInner);
 
     @Type.struct(502, {
-      inner1: Type.struct(501)
-        .setTrackingRef(true)
-        .setNullable(true)
-        .setDynamic(Dynamic.FALSE),
-      inner2: Type.struct(501)
-        .setTrackingRef(true)
-        .setNullable(true)
-        .setDynamic(Dynamic.FALSE),
+      inner1: Type.struct(501).setTrackingRef(true).setNullable(true).setDynamic(Dynamic.FALSE),
+      inner2: Type.struct(501).setTrackingRef(true).setNullable(true).setDynamic(Dynamic.FALSE),
     })
     class RefOuter {
       inner1: RefInner | null = null;

@@ -31,6 +31,8 @@ import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.meta.Encoders;
+import org.apache.fory.resolver.TypeInfo;
 import org.testng.annotations.Test;
 
 public class EnumSerializerTest extends ForyTestBase {
@@ -165,6 +167,23 @@ public class EnumSerializerTest extends ForyTestBase {
     assertEquals(EnumFoo.B, serDe(fory1, fory2, EnumFoo.B));
     assertEquals(EnumSubClass.A, serDe(fory1, fory2, EnumSubClass.A));
     assertEquals(EnumSubClass.B, serDe(fory1, fory2, EnumSubClass.B));
+  }
+
+  @Test
+  public void testEnumSubclassTypeInfo() {
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(EnumSubClass.A.getClass());
+    assertSame(typeInfo.getType(), EnumSubClass.class);
+    assertEquals(
+        Encoders.decodePkgAndClass(typeInfo.decodeNamespace(), typeInfo.decodeTypeName())
+            .entireClassName,
+        EnumSubClass.class.getName());
+
+    Fory writer = Fory.builder().withXlang(false).build();
+    Fory reader = Fory.builder().withXlang(false).build();
+    writer.register(EnumSubClass.class);
+    reader.register(EnumSubClass.class);
+    assertSame(serDe(writer, reader, EnumSubClass.A), EnumSubClass.A);
   }
 
   @Test(dataProvider = "foryCopyConfig")

@@ -19,8 +19,8 @@ Load this file when you need repo layout, protocol context, compiler guidance, o
 - `CLAUDE.md`: compatibility shim that points back to `AGENTS.md`
 - `README.md`: project overview and quick start
 - `CONTRIBUTING.md`: contributor workflow and environment notes
-- `docs/DEVELOPMENT.md`: development setup and build notes
-- `docs/cpp_debug.md`: C++ debugging guidance
+- `docs/development/building.md`: development setup and build notes
+- `docs/development/cpp-debugging.md`: C++ debugging guidance
 - `licenserc.toml`: license header configuration
 
 ## Protocol Overview
@@ -36,10 +36,10 @@ Apache Fory is a multi-language serialization framework with multiple wire forma
 
 - Primary references:
   - `docs/compiler/index.md`
-  - `docs/compiler/compiler-guide.md`
+  - `docs/compiler/cli.md`
   - `docs/compiler/schema-idl.md`
-  - `docs/compiler/type-system.md`
-  - `docs/compiler/generated-code.md`
+  - `docs/compiler/schema-idl.md#type-system`
+  - `docs/compiler/generated-code/index.md`
   - `docs/compiler/protobuf-idl.md`
   - `docs/compiler/flatbuffers-idl.md`
 - Compiler location: `compiler/`
@@ -80,6 +80,28 @@ Apache Fory is a multi-language serialization framework with multiple wire forma
   copy/decompression and before field-list allocation, and never add cache-hit or generated-reader
   hot-path work for them.
 
+## Root Graph Memory Budget Ownership
+
+Root graph memory budgeting is a read-state accounting feature only. Read context or equivalent
+read state may expose raw byte reservation and, when a runtime cannot reasonably avoid it,
+root-operation budget setup/reset. Root facades may reset the per-operation budget, but must not
+pre-reserve root type, root self bytes, or root value storage. It must not grow semantic APIs for
+collection, map, array, struct, object, temporary-owner, serializer-owner, conversion,
+counted-allocation, or ref-publication control. Concrete serializers and generated serializers own
+allocation formulas, overflow checks, allocation-owner decisions, and reference publication timing.
+Value serializers only read their data; the holder or materializer that stores, boxes, or allocates
+the value reserves the storage it owns.
+
+Treat `maxGraphMemoryBytes` and runtime-named equivalents as approximate gates, mainly for
+materialized collection, map, array, struct, and object owners. Actual process memory can be higher.
+Dedicated string, binary, primitive scalar, primitive array, and dense primitive-array leaf values
+are skipped unless a runtime-specific owner rule includes them. Java Fory core primitive arrays and
+primitive lists reserve their retained owners once from the validated logical length; compressed
+paths use the decompressed length. Java Fory JSON primitive arrays decoded from JSON arrays reserve
+their array header plus actual primitive storage; a `byte[]` handled by a JSON binary or Base64
+codec remains a binary leaf. Values skipped by this graph budget must remain gated by unread input
+bytes: if remaining bytes are insufficient, the value must not be read or created.
+
 ## Runtime Map
 
 ### Java
@@ -118,7 +140,6 @@ Apache Fory is a multi-language serialization framework with multiple wire forma
 - `go/fory/fory.go`: entry point
 - `go/fory/resolver.go`: shared and circular reference tracking
 - `go/fory/type.go`: type resolution and dispatch
-- `go/fory/codegen`: code generation support
 
 ### Rust
 

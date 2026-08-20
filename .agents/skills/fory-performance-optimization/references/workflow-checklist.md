@@ -16,9 +16,14 @@
 ## 3) Baseline
 
 - Benchmark current `HEAD` first.
-- Benchmark the requested reference commit once and persist numbers in a baseline file.
+- Persist the requested reference commit identity and built benchmark artifact; do not treat a stored
+  historical number as the baseline for a later comparison.
 - Use identical command, duration, and machine state for comparisons.
 - Run only one benchmark process at a time; never overlap benchmark commands.
+- Under high or variable load, run multiple short adjacent pairs in
+  `baseline, current, baseline, current` order. Do not lengthen one process or batch samples by side.
+- Record every pair, its command, load evidence, and result as it completes. Exclude only objectively
+  contaminated pairs, record why, and never select pairs by whether their delta is favorable.
 
 ## 4) Profiling
 
@@ -33,7 +38,10 @@
 - Keep API surface minimal and internal-first; avoid adding new public APIs unless explicitly required.
 - Remove touched legacy/dead code and stale docs instead of preserving compatibility scaffolding in perf rounds.
 - Run local build/test/lint for the touched language.
-- Run targeted benchmark sequentially (at least 2 runs).
+- Run targeted benchmark sequentially (at least 2 adjacent baseline/current pairs).
+- Use the paired-delta median and dispersion. Do not change code based on one pair, non-adjacent
+  results, or an objectively contaminated pair; wait for a cleaner window when no stable signal
+  remains.
 - Run one short full-suite sanity benchmark.
 - Keep or revert based on measured data.
 - Append full round entry to `tasks/perf_optimization_rounds.md`.
@@ -47,6 +55,7 @@
 ## Stop And Re-Plan Triggers
 
 - Results are non-deterministic across repeated sequential runs.
+- High host load prevents multiple short adjacent pairs from producing a stable retained signal.
 - Profile findings do not match expected bottleneck after a code change.
 - Proposed fix requires violating user constraints or protocol semantics.
 - Workspace state changed unexpectedly (reset/rebase/checkout); re-check `HEAD`.
@@ -60,4 +69,6 @@
 - Adding new public "performance" APIs that expose benchmark-driven shortcuts.
 - Preserving dead/legacy code/docs after optimization refactors.
 - Parallel before/after benchmarking on one machine.
+- Long single runs or side-batched runs on a busy machine when short adjacent pairs are available.
+- Optimizing from one pair, non-adjacent results, or a load-contaminated result.
 - Keeping speculative complexity without repeatable gains.

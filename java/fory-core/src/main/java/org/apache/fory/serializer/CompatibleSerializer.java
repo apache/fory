@@ -68,6 +68,7 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
   private final SerializationFieldInfo[] allFields;
   private final CompatibleCollectionArrayReader.ReadAction[] allCompatibleReadActions;
   private final boolean hasCompatibleCollectionArrayRead;
+  private final boolean readDataAlwaysAdvances;
   private final RecordInfo recordInfo;
   private Serializer<T> serializer;
   private final boolean hasDefaultValues;
@@ -137,6 +138,12 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
     }
     this.hasDefaultValues = hasDefaultValues;
     this.defaultValueFields = defaultValueFields;
+    readDataAlwaysAdvances = typeDef.readDataAlwaysAdvances();
+  }
+
+  @Override
+  public boolean readDataAlwaysAdvances() {
+    return readDataAlwaysAdvances;
   }
 
   /** Used by generated compatible serializers for top-level list/array compatible field reads. */
@@ -237,6 +244,7 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
 
   @Override
   public T read(ReadContext readContext) {
+    readContext.reserveGraphMemory(objectGraphMemoryBytes);
     if (isRecord) {
       Object[] fieldValues = new Object[allFields.length];
       if (hasCompatibleCollectionArrayRead) {

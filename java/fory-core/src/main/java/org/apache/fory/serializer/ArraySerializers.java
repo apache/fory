@@ -45,10 +45,30 @@ import org.apache.fory.util.Preconditions;
  * object-array paths avoid adapter allocation.
  */
 public final class ArraySerializers {
+  private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+  private static final int OBJECT_ARRAY_OWNER_BYTES = GraphMemoryEstimates.objectArrayBytes();
+  private static final int UNBACKED_CHECK_INTERVAL = 1024;
+
   private ArraySerializers() {}
 
   private static void throwInvalidObjectArraySize(int size) {
     throw new DeserializationException("Object array size must be non-negative: " + size);
+  }
+
+  private static int readObjectArraySize(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
+    int numElements = buffer.readVarUInt32Small7();
+    // Keep this as direct primitive branches. Object-array reads allocate immediately; using
+    // Preconditions.checkArgument here would add helper/varargs overhead on the valid path.
+    if (numElements < 0) {
+      throwInvalidObjectArraySize(numElements);
+    }
+    int requiredReadable = numElements - readContext.remainingUnbackedContainerItems();
+    if (requiredReadable > 0) {
+      buffer.checkReadableBytes(requiredReadable);
+    }
+    readContext.reserveGraphMemory(OBJECT_ARRAY_OWNER_BYTES + (long) numElements * REFERENCE_BYTES);
+    return numElements;
   }
 
   /**
@@ -89,7 +109,10 @@ public final class ArraySerializers {
   @SuppressWarnings({"unchecked", "rawtypes"})
   public static final class ObjectArraySerializer extends Serializer<Object[]> {
     private final TypeResolver typeResolver;
+    // Compatible reads may cache remote schema metadata; local writes and copies retain the
+    // original local holder and must not reuse read state.
     private final TypeInfoHolder elementTypeInfoHolder;
+    private final TypeInfoHolder elementTypeInfoReadHolder;
 
     public ObjectArraySerializer(TypeResolver typeResolver, Class<?> cls) {
       super(typeResolver.getConfig(), (Class) cls);
@@ -99,6 +122,7 @@ public final class ArraySerializers {
       }
       Preconditions.checkArgument(cls.isArray() && !cls.getComponentType().isPrimitive());
       elementTypeInfoHolder = typeResolver.nilTypeInfoHolder();
+      elementTypeInfoReadHolder = typeResolver.nilTypeInfoHolder();
     }
 
     @Override
@@ -128,21 +152,14 @@ public final class ArraySerializers {
 
     @Override
     public Object[] read(ReadContext readContext) {
-      MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUInt32Small7();
-      // Keep this as direct primitive branches. Object-array reads allocate immediately; using
-      // Preconditions.checkArgument here would add helper/varargs overhead on the valid path.
-      if (numElements < 0) {
-        throwInvalidObjectArraySize(numElements);
-      }
-      buffer.checkReadableBytes(numElements);
+      int numElements = readObjectArraySize(readContext);
       Object[] value = newArray(numElements);
       readContext.reference(value);
       if (numElements != 0) {
         readArrayElements(
             readContext,
             typeResolver,
-            elementTypeInfoHolder,
+            elementTypeInfoReadHolder,
             type.getComponentType(),
             value,
             numElements);
@@ -152,6 +169,11 @@ public final class ArraySerializers {
 
     private Object[] newArray(int numElements) {
       return (Object[]) Array.newInstance(type.getComponentType(), numElements);
+    }
+
+    @Override
+    public boolean readDataAlwaysAdvances() {
+      return true;
     }
   }
 
@@ -213,14 +235,7 @@ public final class ArraySerializers {
 
     @Override
     public Object[] read(ReadContext readContext) {
-      MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUInt32Small7();
-      // Keep this as direct primitive branches. Object-array reads allocate immediately; using
-      // Preconditions.checkArgument here would add helper/varargs overhead on the valid path.
-      if (numElements < 0) {
-        throwInvalidObjectArraySize(numElements);
-      }
-      buffer.checkReadableBytes(numElements);
+      int numElements = readObjectArraySize(readContext);
       Object[] value = newArray(numElements);
       readContext.reference(value);
       if (numElements != 0) {
@@ -236,6 +251,11 @@ public final class ArraySerializers {
 
     private Object[] newArray(int numElements) {
       return (Object[]) Array.newInstance(componentType, numElements);
+    }
+
+    @Override
+    public final boolean readDataAlwaysAdvances() {
+      return true;
     }
   }
 
@@ -519,8 +539,12 @@ public final class ArraySerializers {
         value[i] = serializer.read(readContext, RefMode.TRACKING);
       }
     } else if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
-      for (int i = 0; i < numElements; i++) {
-        value[i] = serializer.read(readContext, RefMode.NONE);
+      if (serializer.readDataAlwaysAdvances()) {
+        for (int i = 0; i < numElements; i++) {
+          value[i] = serializer.read(readContext, RefMode.NONE);
+        }
+      } else {
+        readUnbackedSameTypeArrayElements(readContext, serializer, value, numElements);
       }
     } else {
       MemoryBuffer buffer = readContext.getBuffer();
@@ -533,6 +557,31 @@ public final class ArraySerializers {
       }
     }
     readContext.decreaseDepth();
+  }
+
+  private static void readUnbackedSameTypeArrayElements(
+      ReadContext readContext, Serializer serializer, Object[] value, int numElements) {
+    MemoryBuffer buffer = readContext.getBuffer();
+    int checkpoint = buffer.readerIndex();
+    for (int i = 0; i < numElements; i++) {
+      value[i] = serializer.read(readContext, RefMode.NONE);
+      int completed = i + 1;
+      if ((completed & (UNBACKED_CHECK_INTERVAL - 1)) == 0) {
+        int current = buffer.readerIndex();
+        int consumed = current - checkpoint;
+        if (consumed < UNBACKED_CHECK_INTERVAL) {
+          readContext.reserveUnbackedContainerItems(UNBACKED_CHECK_INTERVAL - consumed);
+        }
+        checkpoint = current;
+      }
+    }
+    int tail = numElements & (UNBACKED_CHECK_INTERVAL - 1);
+    if (tail != 0) {
+      int consumed = buffer.readerIndex() - checkpoint;
+      if (consumed < tail) {
+        readContext.reserveUnbackedContainerItems(tail - consumed);
+      }
+    }
   }
 
   private static void readDifferentTypeArrayElements(
@@ -654,14 +703,7 @@ public final class ArraySerializers {
 
     @Override
     public Object[] read(ReadContext readContext) {
-      MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUInt32Small7();
-      // Keep this as direct primitive branches. Object-array reads allocate immediately; using
-      // Preconditions.checkArgument here would add helper/varargs overhead on the valid path.
-      if (numElements < 0) {
-        throwInvalidObjectArraySize(numElements);
-      }
-      buffer.checkReadableBytes(numElements);
+      int numElements = readObjectArraySize(readContext);
       Object[] value = newArray(numElements);
       readContext.reference(value);
       if (numElements != 0) {
@@ -678,6 +720,11 @@ public final class ArraySerializers {
 
     private Object[] newArray(int numElements) {
       return (Object[]) Array.newInstance(type.getComponentType(), numElements);
+    }
+
+    @Override
+    public boolean readDataAlwaysAdvances() {
+      return true;
     }
   }
 }

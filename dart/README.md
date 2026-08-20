@@ -3,7 +3,7 @@
 Apache Fory™ Dart is the Dart xlang implementation for Apache Fory™. It reads and
 writes Fory's cross-language wire format and works in both Dart and Flutter
 applications. Because Flutter prohibits `dart:mirrors`, Fory Dart uses static
-code generation for type handling.
+code generation for annotated models and external structural serializers.
 
 The publishable package lives at `packages/fory/`. See its
 [README](packages/fory/README.md) for the full user-facing documentation
@@ -11,13 +11,15 @@ including getting started, API reference, and code examples.
 
 ## Project Structure
 
-| Directory                        | Description                             |
-| -------------------------------- | --------------------------------------- |
-| `packages/fory/lib/`             | Core implementation and public API      |
-| `packages/fory/lib/src/codegen/` | Build-runner code generator             |
-| `packages/fory/example/`         | Annotated example with generated output |
-| `packages/fory/test/`            | Unit and integration tests              |
-| `test/`                          | Cross-language integration tests        |
+| Directory                             | Description                                         |
+| ------------------------------------- | --------------------------------------------------- |
+| `packages/fory/lib/`                  | Core implementation and public API                  |
+| `packages/fory/lib/src/codegen/`      | Build-runner code generator                         |
+| `packages/fory/example/`              | Annotated example with generated output             |
+| `packages/fory/test/`                 | Unit and integration tests                          |
+| `packages/external-type-test-models/` | Fory-free dependency models for external-type tests |
+| `packages/inheritance-test-models/`   | Cross-library inheritance test providers            |
+| `test/`                               | Cross-language integration tests                    |
 
 ## Type Mapping
 
@@ -80,7 +82,7 @@ class Person {
 ```
 
 ```bash
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 ```
 
 Serialize and deserialize:
@@ -92,6 +94,10 @@ PersonForyModule.register(fory, Person, name: 'example.Person');
 final bytes = fory.serialize(Person()..name = 'Ada'..age = 36);
 final roundTrip = fory.deserialize<Person>(bytes);
 ```
+
+Ordinary annotated classes serialize one flattened view of their concrete
+superclass and applied-mixin storage. See
+[Struct Inheritance](../docs/object-serialization/dart/inheritance.md) for details.
 
 ## Development
 
@@ -106,5 +112,5 @@ Run the code generator on the example:
 
 ```bash
 cd packages/fory
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 ```

@@ -42,7 +42,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Upgrade npm for trusted publishing
@@ -94,7 +94,7 @@ jobs:
           node <<'EOF'
           const fs = require("node:fs");
 
-          const expected = "git@github.com:apache/fory.git";
+          const expected = "https://github.com/apache/fory.git";
           const files = [
             "javascript/packages/core/package.json",
             "javascript/packages/hps/package.json"
@@ -102,7 +102,7 @@ jobs:
 
           for (const file of files) {
             const json = JSON.parse(fs.readFileSync(file, "utf8"));
-            const actual = json?.repository ?? "";
+            const actual = json?.repository?.url ?? "";
             if (actual !== expected) {
               console.error(
                 `Repository URL mismatch in ${file}: expected "${expected}", got "${actual}"`

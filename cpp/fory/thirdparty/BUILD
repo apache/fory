@@ -1,4 +1,4 @@
-load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 cc_library(
     name = "libmmh3",
@@ -15,6 +15,16 @@ cc_library(
     hdrs = ["flat_hash_map.h"],
     strip_include_prefix = "/cpp",
     visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "murmur_hash3_test",
+    srcs = ["MurmurHash3_test.cc"],
+    deps = [
+        ":libmmh3",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
 )
 
 cc_test(

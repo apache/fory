@@ -21,6 +21,7 @@ package org.apache.fory.meta;
 
 import static org.apache.fory.type.TypeUtils.COLLECTION_TYPE;
 import static org.apache.fory.type.TypeUtils.MAP_TYPE;
+import static org.apache.fory.type.TypeUtils.arrayClassName;
 import static org.apache.fory.type.TypeUtils.collectionOf;
 import static org.apache.fory.type.TypeUtils.getArrayComponentInfo;
 import static org.apache.fory.type.TypeUtils.getArrayDimensions;
@@ -31,7 +32,9 @@ import java.io.Serializable;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.fory.collection.BFloat16List;
 import org.apache.fory.collection.BoolList;
 import org.apache.fory.collection.Float16List;
@@ -47,6 +50,7 @@ import org.apache.fory.collection.UInt32List;
 import org.apache.fory.collection.UInt64List;
 import org.apache.fory.collection.UInt8List;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -104,6 +108,36 @@ public class FieldTypes {
   /** Build field type from generics, nested generics will be extracted too. */
   private static FieldType buildFieldType(
       TypeResolver resolver, Descriptor descriptor, GenericType genericType) {
+    return buildFieldType(resolver, descriptor, genericType, new HashSet<>());
+  }
+
+  private static FieldType buildFieldType(
+      TypeResolver resolver,
+      Descriptor descriptor,
+      GenericType genericType,
+      Set<String> activeTypes) {
+    TypeRef<?> typeRef = genericType.getTypeRef();
+    // TypeRef equality intentionally ignores explicit arguments without type-use metadata. Use its
+    // semantic key so generated List<List<T>> is not mistaken for a recursive List<T> branch.
+    String typeKey = typeRef.getTypeKey();
+    if (!activeTypes.add(typeKey)) {
+      Preconditions.checkState(descriptor == null);
+      // Raw, F-bounded, and mutually recursive container bindings do not always carry TypeRef's
+      // explicit-empty recursion marker. End the repeated schema branch as Object.
+      return buildFieldTypeNode(resolver, null, GenericType.build(Object.class), activeTypes);
+    }
+    try {
+      return buildFieldTypeNode(resolver, descriptor, genericType, activeTypes);
+    } finally {
+      activeTypes.remove(typeKey);
+    }
+  }
+
+  private static FieldType buildFieldTypeNode(
+      TypeResolver resolver,
+      Descriptor descriptor,
+      GenericType genericType,
+      Set<String> activeTypes) {
     Preconditions.checkNotNull(genericType);
     Field field = descriptor == null ? null : descriptor.getField();
     Class<?> rawType = genericType.getCls();
@@ -271,6 +305,7 @@ public class FieldTypes {
 
     if (COLLECTION_TYPE.isSupertypeOf(genericType.getTypeRef())
         || (isXlang && (resolver.isCollection(rawType) || resolver.isSet(rawType)))) {
+      TypeRef<?> elementType = getCollectionElementType(genericType);
       return new CollectionFieldType(
           typeId,
           nullable,
@@ -278,9 +313,11 @@ public class FieldTypes {
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              getTypeParameter(genericType, 0)));
+              resolver.buildGenericType(elementType),
+              activeTypes));
     } else if (MAP_TYPE.isSupertypeOf(genericType.getTypeRef())
         || (isXlang && resolver.isMap(rawType))) {
+      Tuple2<TypeRef<?>, TypeRef<?>> mapKeyValueType = getMapKeyValueType(genericType);
       return new MapFieldType(
           typeId,
           nullable,
@@ -288,11 +325,13 @@ public class FieldTypes {
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              getTypeParameter(genericType, 0)),
+              resolver.buildGenericType(mapKeyValueType.f0),
+              activeTypes),
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              getTypeParameter(genericType, 1)));
+              resolver.buildGenericType(mapKeyValueType.f1),
+              activeTypes));
     } else if (isUnionType || Union.class.isAssignableFrom(rawType)) {
       return new UnionFieldType(nullable, trackingRef);
     } else if (Types.isEnumType(typeId)) {
@@ -316,7 +355,7 @@ public class FieldTypes {
               typeId,
               nullable,
               trackingRef,
-              buildFieldType(resolver, null, GenericType.build(elemType)));
+              buildFieldType(resolver, null, GenericType.build(elemType), activeTypes));
         } else {
           // For native mode, use Java class IDs for arrays
           if (resolver.isRegisteredById(rawType)) {
@@ -327,7 +366,7 @@ public class FieldTypes {
               typeId,
               nullable,
               trackingRef,
-              buildFieldType(resolver, null, GenericType.build(arrayComponentInfo.f0)),
+              buildFieldType(resolver, null, GenericType.build(arrayComponentInfo.f0), activeTypes),
               arrayComponentInfo.f1);
         }
       }
@@ -339,11 +378,40 @@ public class FieldTypes {
     }
   }
 
-  private static GenericType getTypeParameter(GenericType genericType, int index) {
-    if (genericType.getTypeParametersCount() <= index) {
-      return GenericType.build(Object.class);
+  private static TypeRef<?> getCollectionElementType(GenericType genericType) {
+    TypeRef<?> typeRef = genericType.getTypeRef();
+    // An explicit empty argument list terminates self-referential container expansion.
+    if (typeRef.hasExplicitTypeArguments() && typeRef.getTypeArguments().isEmpty()) {
+      return TypeRef.of(Object.class);
     }
-    return genericType.getTypeParameters()[index];
+    if (COLLECTION_TYPE.isSupertypeOf(typeRef)) {
+      // TypeRef normalizes CollectionXXX<A, B, C> extends Collection<C> to semantic element C.
+      return TypeUtils.getElementType(typeRef);
+    }
+    if (genericType.getTypeParametersCount() >= 1) {
+      // Non-Java xlang collection types cannot use Java hierarchy resolution.
+      return genericType.getTypeParameters()[0].getTypeRef();
+    }
+    return TypeRef.of(Object.class);
+  }
+
+  private static Tuple2<TypeRef<?>, TypeRef<?>> getMapKeyValueType(GenericType genericType) {
+    TypeRef<?> typeRef = genericType.getTypeRef();
+    // An explicit empty argument list terminates self-referential container expansion.
+    if (typeRef.hasExplicitTypeArguments() && typeRef.getTypeArguments().isEmpty()) {
+      return Tuple2.of(TypeRef.of(Object.class), TypeRef.of(Object.class));
+    }
+    if (MAP_TYPE.isSupertypeOf(typeRef)) {
+      // TypeRef normalizes MapXXX<A, B, C> extends Map<B, C> to semantic key/value B/C.
+      return TypeUtils.getMapKeyValueType(typeRef);
+    }
+    if (genericType.getTypeParametersCount() >= 2) {
+      // Non-Java xlang map types cannot use Java hierarchy resolution.
+      return Tuple2.of(
+          genericType.getTypeParameters()[0].getTypeRef(),
+          genericType.getTypeParameters()[1].getTypeRef());
+    }
+    return Tuple2.of(TypeRef.of(Object.class), TypeRef.of(Object.class));
   }
 
   private static TypeExtMeta primitiveListInlineMeta(TypeRef<?> typeRef) {
@@ -402,6 +470,10 @@ public class FieldTypes {
 
     public int getTypeId() {
       return typeId;
+    }
+
+    boolean fieldReadAlwaysAdvances() {
+      return nullable || trackingRef;
     }
 
     private int typeKind() {
@@ -491,15 +563,7 @@ public class FieldTypes {
     }
 
     public static FieldType read(MemoryBuffer buffer, TypeResolver resolver) {
-      // Header format:
-      // - bit 0: trackingRef
-      // - bit 1: nullable
-      // - bits 2+: type kind
-      int header = buffer.readUInt8();
-      boolean trackingRef = (header & 0b1) != 0;
-      boolean nullable = (header & 0b10) != 0;
-      int kind = header >>> 2;
-      return read(buffer, resolver, nullable, trackingRef, kind);
+      return read(buffer, resolver, 0, resolver.getConfig().maxDepth());
     }
 
     /** Read field type info. */
@@ -509,27 +573,56 @@ public class FieldTypes {
         boolean nullable,
         boolean trackingRef,
         int kind) {
-      if (kind == 0) {
+      return read(
+          buffer, resolver, nullable, trackingRef, kind, 0, resolver.getConfig().maxDepth());
+    }
+
+    private static FieldType read(
+        MemoryBuffer buffer, TypeResolver resolver, int depth, int maxDepth) {
+      int header = buffer.readUInt8();
+      boolean trackingRef = (header & 0b1) != 0;
+      boolean nullable = (header & 0b10) != 0;
+      int kind = header >>> 2;
+      return read(buffer, resolver, nullable, trackingRef, kind, depth, maxDepth);
+    }
+
+    private static FieldType read(
+        MemoryBuffer buffer,
+        TypeResolver resolver,
+        boolean nullable,
+        boolean trackingRef,
+        int kind,
+        int depth,
+        int maxDepth) {
+      if (kind == KIND_OBJECT) {
         return new ObjectFieldType(Types.UNKNOWN, nullable, trackingRef);
-      } else if (kind == 1) {
+      } else if (kind == KIND_MAP) {
+        checkDepth(depth, maxDepth);
         return new MapFieldType(
-            -1, nullable, trackingRef, read(buffer, resolver), read(buffer, resolver));
-      } else if (kind == 2) {
-        return new CollectionFieldType(-1, nullable, trackingRef, read(buffer, resolver));
-      } else if (kind == 3) {
-        int dims = buffer.readVarUInt32Small7();
-        if (dims <= 0 || dims > MAX_ARRAY_DIMS) {
-          throw new DeserializationException("Invalid array dimensions in TypeDef: " + dims);
+            -1,
+            nullable,
+            trackingRef,
+            read(buffer, resolver, depth + 1, maxDepth),
+            read(buffer, resolver, depth + 1, maxDepth));
+      } else if (kind == KIND_COLLECTION) {
+        checkDepth(depth, maxDepth);
+        return new CollectionFieldType(
+            -1, nullable, trackingRef, read(buffer, resolver, depth + 1, maxDepth));
+      } else if (kind == KIND_ARRAY) {
+        int dimensions = buffer.readVarUInt32Small7();
+        if (dimensions <= 0 || dimensions > MAX_ARRAY_DIMS) {
+          throw new DeserializationException("Invalid array dimensions in TypeDef: " + dimensions);
         }
-        return new ArrayFieldType(-1, nullable, trackingRef, read(buffer, resolver), dims);
-      } else if (kind == 4) {
+        checkDepth(depth, maxDepth);
+        return new ArrayFieldType(
+            -1, nullable, trackingRef, read(buffer, resolver, depth + 1, maxDepth), dimensions);
+      } else if (kind == KIND_ENUM) {
         return new EnumFieldType(nullable, -1, -1);
-      } else if (kind == 5) {
+      } else if (kind == KIND_REGISTERED) {
         int actualTypeId = buffer.readUInt8();
         return new RegisteredFieldType(nullable, trackingRef, actualTypeId, -1);
-      } else {
-        throw new IllegalStateException("Unexpected field type kind: " + kind);
       }
+      throw new IllegalStateException("Unexpected field type kind: " + kind);
     }
 
     public final void writeCrossLanguage(MemoryBuffer buffer, boolean writeFlags) {
@@ -563,11 +656,7 @@ public class FieldTypes {
     }
 
     public static FieldType readCrossLanguage(MemoryBuffer buffer, XtypeResolver resolver) {
-      int typeId = buffer.readVarUInt32Small7();
-      boolean trackingRef = (typeId & 0b1) != 0;
-      boolean nullable = (typeId & 0b10) != 0;
-      typeId = typeId >>> 2;
-      return readCrossLanguage(buffer, resolver, typeId, nullable, trackingRef);
+      return readCrossLanguage(buffer, resolver, 0, resolver.getConfig().maxDepth());
     }
 
     public static FieldType readCrossLanguage(
@@ -576,18 +665,44 @@ public class FieldTypes {
         int typeId,
         boolean nullable,
         boolean trackingRef) {
+      return readCrossLanguage(
+          buffer, resolver, typeId, nullable, trackingRef, 0, resolver.getConfig().maxDepth());
+    }
+
+    private static FieldType readCrossLanguage(
+        MemoryBuffer buffer, XtypeResolver resolver, int depth, int maxDepth) {
+      int typeId = buffer.readVarUInt32Small7();
+      boolean trackingRef = (typeId & 0b1) != 0;
+      boolean nullable = (typeId & 0b10) != 0;
+      typeId = typeId >>> 2;
+      return readCrossLanguage(buffer, resolver, typeId, nullable, trackingRef, depth, maxDepth);
+    }
+
+    private static FieldType readCrossLanguage(
+        MemoryBuffer buffer,
+        XtypeResolver resolver,
+        int typeId,
+        boolean nullable,
+        boolean trackingRef,
+        int depth,
+        int maxDepth) {
       switch (typeId) {
         case Types.LIST:
         case Types.SET:
+          checkDepth(depth, maxDepth);
           return new CollectionFieldType(
-              typeId, nullable, trackingRef, readCrossLanguage(buffer, resolver));
+              typeId,
+              nullable,
+              trackingRef,
+              readCrossLanguage(buffer, resolver, depth + 1, maxDepth));
         case Types.MAP:
+          checkDepth(depth, maxDepth);
           return new MapFieldType(
               typeId,
               nullable,
               trackingRef,
-              readCrossLanguage(buffer, resolver),
-              readCrossLanguage(buffer, resolver));
+              readCrossLanguage(buffer, resolver, depth + 1, maxDepth),
+              readCrossLanguage(buffer, resolver, depth + 1, maxDepth));
         case Types.ENUM:
           return new EnumFieldType(nullable, typeId, -1);
         case Types.UNION:
@@ -617,6 +732,17 @@ public class FieldTypes {
           }
       }
     }
+
+    private static void checkDepth(int depth, int maxDepth) {
+      // Container nodes consume depth; a leaf after maxDepth containers remains valid.
+      if (depth >= maxDepth) {
+        throw new DeserializationException(
+            "Field type metadata nesting exceeds max depth "
+                + maxDepth
+                + ". The data may be malicious. If the data is not malicious, please increase "
+                + "ForyBuilder#withMaxDepth.");
+      }
+    }
   }
 
   /** Class for field type which is registered. */
@@ -628,6 +754,26 @@ public class FieldTypes {
 
     public int getTypeId() {
       return typeId;
+    }
+
+    @Override
+    boolean fieldReadAlwaysAdvances() {
+      if (super.fieldReadAlwaysAdvances()
+          || Types.isPrimitiveType(typeId)
+          || Types.isPrimitiveArray(typeId)) {
+        return true;
+      }
+      switch (typeId) {
+        case Types.STRING:
+        case Types.DURATION:
+        case Types.TIMESTAMP:
+        case Types.DATE:
+        case Types.DECIMAL:
+        case Types.BINARY:
+          return true;
+        default:
+          return false;
+      }
     }
 
     @Override
@@ -883,6 +1029,11 @@ public class FieldTypes {
     }
 
     @Override
+    boolean fieldReadAlwaysAdvances() {
+      return true;
+    }
+
+    @Override
     public TypeRef<?> toTypeToken(TypeResolver resolver, TypeRef<?> declared) {
       Class<?> declaredClass;
       TypeRef<?> declElementType;
@@ -911,7 +1062,7 @@ public class FieldTypes {
             && Objects.equals(declared.getTypeExtMeta(), extMeta)) {
           return declared;
         }
-        return TypeRef.of(
+        return TypeRef.ofSemanticTypeArguments(
             declared.getType(), extMeta, java.util.Collections.singletonList(elementType), null);
       }
       // Build array type from element type
@@ -995,6 +1146,11 @@ public class FieldTypes {
     }
 
     @Override
+    boolean fieldReadAlwaysAdvances() {
+      return true;
+    }
+
+    @Override
     public TypeRef<?> toTypeToken(TypeResolver classResolver, TypeRef<?> declared) {
       TypeRef<?> keyDecl = null;
       TypeRef<?> valueDecl = null;
@@ -1018,7 +1174,7 @@ public class FieldTypes {
             && Objects.equals(declared.getTypeExtMeta(), extMeta)) {
           return declared;
         }
-        return TypeRef.of(
+        return TypeRef.ofSemanticTypeArguments(
             declared.getType(), extMeta, java.util.Arrays.asList(keyTypeRef, valueTypeRef), null);
       }
       return mapOf(
@@ -1068,6 +1224,11 @@ public class FieldTypes {
     }
 
     @Override
+    boolean fieldReadAlwaysAdvances() {
+      return true;
+    }
+
+    @Override
     public TypeRef<?> toTypeToken(TypeResolver classResolver, TypeRef<?> declared) {
       if (declared != null) {
         return TypeRef.of(
@@ -1110,21 +1271,34 @@ public class FieldTypes {
     }
 
     @Override
+    boolean fieldReadAlwaysAdvances() {
+      return true;
+    }
+
+    @Override
     public TypeRef<?> toTypeToken(TypeResolver classResolver, TypeRef<?> declared) {
       while (declared != null && declared.isArray()) {
         declared = declared.getComponentType();
       }
       TypeRef<?> componentTypeRef = componentType.toTypeToken(classResolver, declared);
       Class<?> componentRawType = componentTypeRef.getRawType();
-      if (UnknownClass.class.isAssignableFrom(componentRawType)) {
-        return TypeRef.of(
-            UnknownClass.getUnknowClass(componentType instanceof EnumFieldType, dimensions, true),
-            typeExtMeta(typeId, nullable, trackingRef, declared));
-      } else {
-        return TypeRef.of(
-            Array.newInstance(componentRawType, new int[dimensions]).getClass(),
-            typeExtMeta(typeId, nullable, trackingRef, declared));
+      int totalDimensions =
+          dimensions + (componentRawType.isArray() ? getArrayDimensions(componentRawType) : 0);
+      if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(componentRawType))
+          && totalDimensions > 6) {
+        throw new InsecureException("Input-derived arrays cannot exceed 6 dimensions.");
       }
+      Class<?> arrayType;
+      if (classResolver.getConfig().requireClassRegistration() && totalDimensions <= 6) {
+        // The component was already resolved from exact trusted state. Derive only the bounded
+        // array shape here so a custom registration name is not replaced with Class.getName().
+        arrayType = Array.newInstance(componentRawType, new int[dimensions]).getClass();
+      } else {
+        // Non-strict reads must pass the complete descriptor to TypeChecker. Strict arrays above
+        // six dimensions reach loadClass only so an exact array registration can satisfy them.
+        arrayType = classResolver.loadClass(arrayClassName(componentRawType, dimensions));
+      }
+      return TypeRef.of(arrayType, typeExtMeta(typeId, nullable, trackingRef, declared));
     }
 
     @Override
@@ -1216,7 +1390,11 @@ public class FieldTypes {
       int typeId, boolean nullable, boolean trackingRef, TypeRef<?> declared) {
     TypeExtMeta declaredMeta = declared == null ? null : declared.getTypeExtMeta();
     return TypeExtMeta.of(
-        typeId, nullable, trackingRef, declaredMeta != null && declaredMeta.nullableWrapper());
+        typeId,
+        nullable,
+        trackingRef,
+        declaredMeta != null && declaredMeta.nullableWrapper(),
+        declaredMeta != null && declaredMeta.covariant());
   }
 
   /** Class for Union field type. Union types use declared type. */
@@ -1224,6 +1402,11 @@ public class FieldTypes {
 
     public UnionFieldType(boolean nullable, boolean trackingRef) {
       super(Types.UNION, -1, nullable, trackingRef);
+    }
+
+    @Override
+    boolean fieldReadAlwaysAdvances() {
+      return true;
     }
 
     @Override

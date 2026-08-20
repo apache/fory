@@ -1477,6 +1477,27 @@ private:
   static void *harness_read_compatible_adapter_abstract(ReadContext &ctx,
                                                         const TypeInfo *ti);
 
+  template <typename Source, typename Target>
+  static void *harness_struct_read_as(ReadContext &ctx,
+                                      const TypeInfo *type_info);
+
+  template <typename Source, typename Target>
+  static void *harness_exact_read_as(ReadContext &ctx,
+                                     const TypeInfo *type_info);
+
+  template <typename Source, typename Current, bool MatchAddress>
+  static Harness::ReadAsFn find_struct_read_impl(const std::type_info &target);
+
+  template <typename Source, typename Bases, bool MatchAddress,
+            size_t Index = 0>
+  static Harness::ReadAsFn find_base_read_impl(const std::type_info &target);
+
+  template <typename Source, typename Current>
+  static Harness::ReadAsFn find_struct_read(const std::type_info &target);
+
+  template <typename T>
+  static Harness::ReadAsFn find_exact_read(const std::type_info &target);
+
   static std::string make_name_key(const std::string &ns,
                                    const std::string &name);
   static uint64_t make_user_type_key(uint32_t type_id, uint32_t user_type_id);
@@ -1547,6 +1568,98 @@ inline void TypeResolver::check_registration_thread() {
       << "TypeResolver has been finalized, cannot register more types";
 }
 
+template <typename Source, typename Target>
+inline void *TypeResolver::harness_struct_read_as(ReadContext &ctx,
+                                                  const TypeInfo *type_info) {
+  static_assert(std::is_convertible_v<Source *, Target *>,
+                "polymorphic read target must be an accessible base");
+  if constexpr (std::is_abstract_v<Source> ||
+                !std::is_default_constructible_v<Source>) {
+    ctx.set_error(Error::type_error(
+        "Cannot deserialize abstract or non-default-constructible type"));
+    return nullptr;
+  } else {
+    void *value = ctx.is_compatible()
+                      ? harness_read_compatible_adapter<Source>(ctx, type_info)
+                      : harness_read_data_adapter<Source>(ctx);
+    return static_cast<Target *>(static_cast<Source *>(value));
+  }
+}
+
+template <typename Source, typename Target>
+inline void *TypeResolver::harness_exact_read_as(ReadContext &ctx,
+                                                 const TypeInfo *type_info) {
+  static_assert(std::is_convertible_v<Source *, Target *>,
+                "polymorphic read target must be an accessible base");
+  // Custom serializers own their wire compatibility and have no generated
+  // compatible reader. Their exact reader must use the same data entry point
+  // in both modes.
+  if (FORY_PREDICT_FALSE(type_info->harness.read_data_fn == nullptr)) {
+    ctx.set_error(Error::type_error(
+        "No harness read function for polymorphic type deserialization"));
+    return nullptr;
+  }
+  void *value = type_info->harness.read_data_fn(ctx);
+  return static_cast<Target *>(static_cast<Source *>(value));
+}
+
+template <typename Source, typename Bases, bool MatchAddress, size_t Index>
+inline Harness::ReadAsFn
+TypeResolver::find_base_read_impl(const std::type_info &target) {
+  if constexpr (Index == std::tuple_size_v<Bases>) {
+    return nullptr;
+  } else {
+    using BaseToken = std::tuple_element_t<Index, Bases>;
+    using Base = typename BaseToken::Type;
+    Harness::ReadAsFn read_as =
+        find_struct_read_impl<Source, Base, MatchAddress>(target);
+    if (read_as != nullptr) {
+      return read_as;
+    }
+    return find_base_read_impl<Source, Bases, MatchAddress, Index + 1>(target);
+  }
+}
+
+template <typename Source, typename Current, bool MatchAddress>
+inline Harness::ReadAsFn
+TypeResolver::find_struct_read_impl(const std::type_info &target) {
+  const std::type_info &current = typeid(Current);
+  const bool matches = MatchAddress ? &target == &current : target == current;
+  if (matches) {
+    if constexpr (std::is_convertible_v<Source *, Current *>) {
+      return &harness_struct_read_as<Source, Current>;
+    }
+    return nullptr;
+  }
+  using MetaDesc = decltype(meta::fory_field_info(std::declval<Current>()));
+  return find_base_read_impl<Source, typename MetaDesc::DirectBaseTypes,
+                             MatchAddress>(target);
+}
+
+template <typename Source, typename Current>
+inline Harness::ReadAsFn
+TypeResolver::find_struct_read(const std::type_info &target) {
+  // RTTI objects normally share an address. Search every declared base by
+  // address first so the hot path never calls type_info::operator==; repeat
+  // with portable equality only for types whose RTTI crosses DSO boundaries.
+  Harness::ReadAsFn read_as =
+      find_struct_read_impl<Source, Current, true>(target);
+  if (FORY_PREDICT_TRUE(read_as != nullptr)) {
+    return read_as;
+  }
+  return find_struct_read_impl<Source, Current, false>(target);
+}
+
+template <typename T>
+inline Harness::ReadAsFn
+TypeResolver::find_exact_read(const std::type_info &target) {
+  const std::type_info &current = typeid(T);
+  if (&target == &current || target == current) {
+    return &harness_exact_read_as<T, T>;
+  }
+  return nullptr;
+}
+
 namespace detail {
 
 template <typename T>
@@ -1569,6 +1682,9 @@ inline void any_write_adapter(const std::any &value, WriteContext &ctx) {
 }
 
 template <typename T> inline std::any any_read_adapter(ReadContext &ctx) {
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+    return std::any();
+  }
   T value = Serializer<T>::read_data(ctx);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return std::any();
@@ -2082,6 +2198,7 @@ Harness TypeResolver::make_struct_harness_impl(std::true_type) {
                   &TypeResolver::harness_read_compatible_adapter_abstract<T>);
   harness.any_write_fn = &detail::any_write_adapter<T>;
   harness.any_read_fn = &detail::any_read_adapter_abstract<T>;
+  harness.find_read_as_fn = &TypeResolver::find_struct_read<T, T>;
   return harness;
 }
 
@@ -2096,6 +2213,7 @@ Harness TypeResolver::make_struct_harness_impl(std::false_type) {
                   &TypeResolver::harness_read_compatible_adapter<T>);
   harness.any_write_fn = &detail::any_write_adapter<T>;
   harness.any_read_fn = &detail::any_read_adapter<T>;
+  harness.find_read_as_fn = &TypeResolver::find_struct_read<T, T>;
   return harness;
 }
 
@@ -2108,6 +2226,8 @@ template <typename T> Harness TypeResolver::make_serializer_harness() {
                   &TypeResolver::harness_empty_sorted_fields<T>);
   harness.any_write_fn = &detail::any_write_adapter<T>;
   harness.any_read_fn = &detail::any_read_adapter<T>;
+  harness.read_data_always_advances = read_data_always_advances_v<T>;
+  harness.find_read_as_fn = &TypeResolver::find_exact_read<T>;
   return harness;
 }
 
@@ -2123,6 +2243,9 @@ void TypeResolver::harness_write_adapter(const void *value, WriteContext &ctx,
 template <typename T>
 void *TypeResolver::harness_read_adapter(ReadContext &ctx, RefMode ref_mode,
                                          bool read_type_info) {
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+    return nullptr;
+  }
   T value = Serializer<T>::read(ctx, ref_mode, read_type_info);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;
@@ -2147,6 +2270,9 @@ void TypeResolver::harness_write_data_adapter(const void *value,
 
 template <typename T>
 void *TypeResolver::harness_read_data_adapter(ReadContext &ctx) {
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+    return nullptr;
+  }
   T value = Serializer<T>::read_data(ctx);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;
@@ -2169,6 +2295,9 @@ inline void TypeResolver::harness_destroy_adapter_noop(void *ptr) { (void)ptr; }
 template <typename T>
 void *TypeResolver::harness_read_compatible_adapter(ReadContext &ctx,
                                                     const TypeInfo *ti) {
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+    return nullptr;
+  }
   T value = Serializer<T>::read_compatible(ctx, ti);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;

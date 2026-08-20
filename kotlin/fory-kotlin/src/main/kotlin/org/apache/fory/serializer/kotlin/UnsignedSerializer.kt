@@ -33,6 +33,7 @@ import org.apache.fory.serializer.Shareable
 public class UByteSerializer(
   config: Config,
 ) : ImmutableSerializer<UByte>(config, UByte::class.java, false, true), Shareable {
+  override fun readDataAlwaysAdvances(): Boolean = true
 
   override fun write(writeContext: WriteContext, value: UByte) {
     writeContext.buffer.writeByte(value.toInt())
@@ -51,6 +52,8 @@ public class UByteSerializer(
 public class UShortSerializer(
   config: Config,
 ) : ImmutableSerializer<UShort>(config, UShort::class.java, false, true), Shareable {
+  override fun readDataAlwaysAdvances(): Boolean = true
+
   override fun write(writeContext: WriteContext, value: UShort) {
     writeContext.buffer.writeInt16(value.toShort())
   }
@@ -68,6 +71,7 @@ public class UShortSerializer(
 public class UIntSerializer(
   config: Config,
 ) : ImmutableSerializer<UInt>(config, UInt::class.java, false, true), Shareable {
+  override fun readDataAlwaysAdvances(): Boolean = true
 
   override fun write(writeContext: WriteContext, value: UInt) {
     writeContext.buffer.writeVarUInt32(value.toInt())
@@ -86,6 +90,8 @@ public class UIntSerializer(
 public class ULongSerializer(
   config: Config,
 ) : ImmutableSerializer<ULong>(config, ULong::class.java, false, true), Shareable {
+  override fun readDataAlwaysAdvances(): Boolean = true
+
   override fun write(writeContext: WriteContext, value: ULong) {
     writeContext.buffer.writeVarUInt64(value.toLong())
   }
