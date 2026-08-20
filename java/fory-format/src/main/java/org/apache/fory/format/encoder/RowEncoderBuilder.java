@@ -81,8 +81,9 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   /**
    * When non-null, this builder produces a decode-only projection codec: schema fields whose name
-   * is in {@code projectionLiveNames} are assigned to the bean as usual; others are decoded for
-   * offset arithmetic only and discarded. {@code toRow} on a projection codec throws.
+   * is in {@code projectionLiveNames} are assigned to the bean as usual; others are skipped
+   * entirely, which is safe because the row layout addresses every field by its fixed slot rather
+   * than by sequential reads. {@code toRow} on a projection codec throws.
    */
   private final Set<String> projectionLiveNames;
 
