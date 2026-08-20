@@ -113,11 +113,15 @@ public class ArrayCodecBuilder<C extends Collection<?>>
     // collision check is needed here (unlike the map codec's combined (key, value) hash).
     LongMap<BinaryArrayEncoder.ProjectionSource> projectionSources = new LongMap<>();
     String elementName = elementField.name();
+    // Capture the build-time loader so a projection's first-decode compile resolves classes exactly
+    // as the current codec's build-time compile did, whatever thread decodes first.
+    ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
       if (vs == current) {
         continue;
       }
-      projectionSources.put(vs.strictHash(), new ProjectionSource(elementClass, elementName, vs));
+      projectionSources.put(
+          vs.strictHash(), new ProjectionSource(elementClass, elementName, vs, classLoader));
     }
     final Function<BinaryArrayWriter, GeneratedArrayEncoder> currentFactory =
         generatedEncoderFactory();
@@ -145,12 +149,17 @@ public class ArrayCodecBuilder<C extends Collection<?>>
     private final Class<?> elementClass;
     private final String elementName;
     private final SchemaHistory.VersionedSchema version;
+    private final ClassLoader classLoader;
 
     ProjectionSource(
-        Class<?> elementClass, String elementName, SchemaHistory.VersionedSchema version) {
+        Class<?> elementClass,
+        String elementName,
+        SchemaHistory.VersionedSchema version,
+        ClassLoader classLoader) {
       this.elementClass = elementClass;
       this.elementName = elementName;
       this.version = version;
+      this.classLoader = classLoader;
     }
 
     @Override
@@ -159,10 +168,15 @@ public class ArrayCodecBuilder<C extends Collection<?>>
       // Generates the projection row codec for every nested versioned bean class in this
       // combination, both map key and value, so the array codec's references all resolve.
       Map<Class<?>, String> nestedSuffixes =
-          ProjectionRouting.nestedSuffixesFor(version, codecFormat);
+          ProjectionRouting.nestedSuffixesFor(version, codecFormat, classLoader);
       Class<?> arrayClass =
           Encoders.loadOrGenProjectionArrayCodecClass(
-              collectionType, TypeRef.of(elementClass), codecFormat, suffix, nestedSuffixes);
+              collectionType,
+              TypeRef.of(elementClass),
+              codecFormat,
+              suffix,
+              nestedSuffixes,
+              classLoader);
       MethodHandle ctor = Encoders.constructorHandleFor(arrayClass, GeneratedArrayEncoder.class);
       // forElement substitutes each chosen historical struct into its leaf, so the element field at
       // this combination is simply the single field of vs.schema(); wrap it back in the list field.

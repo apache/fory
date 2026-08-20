@@ -154,6 +154,9 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     List<SchemaHistory.VersionedSchema> valVersions = positionVersions(valHistory);
     List<SchemaHistory.VersionedSchema> keyVersions = positionVersions(keyHistory);
     LongMap<BinaryMapEncoder.ProjectionSource> projectionSources = new LongMap<>();
+    // Capture the build-time loader so a projection's first-decode compile resolves classes exactly
+    // as the current codec's build-time compile did, whatever thread decodes first.
+    ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     for (SchemaHistory.VersionedSchema valVs : valVersions) {
       for (SchemaHistory.VersionedSchema keyVs : keyVersions) {
         if (valVs == valCurrent && keyVs == keyCurrent) {
@@ -171,7 +174,9 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
                   + "Please file an issue with the key and value bean definitions.");
         }
         projectionSources.put(
-            hash, new ProjectionSource(valClass, keyClass, valVs, keyVs, valCurrent, keyCurrent));
+            hash,
+            new ProjectionSource(
+                valClass, keyClass, valVs, keyVs, valCurrent, keyCurrent, classLoader));
       }
     }
     final var currentFactory = generatedMapEncoder();
@@ -234,6 +239,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     private final SchemaHistory.VersionedSchema keyVs;
     private final SchemaHistory.VersionedSchema valCurrent;
     private final SchemaHistory.VersionedSchema keyCurrent;
+    private final ClassLoader classLoader;
 
     ProjectionSource(
         Class<?> valClass,
@@ -241,13 +247,15 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         SchemaHistory.VersionedSchema valVs,
         SchemaHistory.VersionedSchema keyVs,
         SchemaHistory.VersionedSchema valCurrent,
-        SchemaHistory.VersionedSchema keyCurrent) {
+        SchemaHistory.VersionedSchema keyCurrent,
+        ClassLoader classLoader) {
       this.valClass = valClass;
       this.keyClass = keyClass;
       this.valVs = valVs;
       this.keyVs = keyVs;
       this.valCurrent = valCurrent;
       this.keyCurrent = keyCurrent;
+      this.classLoader = classLoader;
     }
 
     /**
@@ -269,7 +277,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       Map<Class<?>, String> valNested = null;
       if (valVs != null && valVs != valCurrent) {
         valSuffix = ProjectionRouting.projectionSuffix(valVs);
-        valNested = ProjectionRouting.nestedSuffixesFor(valVs, codecFormat);
+        valNested = ProjectionRouting.nestedSuffixesFor(valVs, codecFormat, classLoader);
         histVal = projectedPositionField(currentVal, valVs);
       }
       Field currentKey = DataTypes.keyFieldForMap(field);
@@ -278,7 +286,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       Map<Class<?>, String> keyNested = null;
       if (keyVs != null && keyVs != keyCurrent) {
         keySuffix = ProjectionRouting.projectionSuffix(keyVs);
-        keyNested = ProjectionRouting.nestedSuffixesFor(keyVs, codecFormat);
+        keyNested = ProjectionRouting.nestedSuffixesFor(keyVs, codecFormat, classLoader);
         histKey = projectedPositionField(currentKey, keyVs);
       }
       Class<?> mapClass =
@@ -289,7 +297,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
               valSuffix,
               keySuffix,
               valNested,
-              keyNested);
+              keyNested,
+              classLoader);
       MethodHandle ctor = Encoders.constructorHandleFor(mapClass, GeneratedMapEncoder.class);
       Field histMapField = DataTypes.mapField(field.name(), histKey, histVal);
       try {

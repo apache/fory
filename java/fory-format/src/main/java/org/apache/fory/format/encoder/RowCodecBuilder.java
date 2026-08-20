@@ -106,11 +106,15 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     // throws on a real collision). No builder-side collision check is needed here, unlike the map
     // codec, whose key is a combined (key, value) hash computed outside SchemaHistory.
     final LongMap<BinaryRowEncoder.ProjectionSource> projectionSources = new LongMap<>();
+    // Capture the build-time loader so a projection's first-decode compile resolves classes exactly
+    // as the current codec's build-time compile did, whatever thread decodes first.
+    final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
       if (vs == currentVersion) {
         continue;
       }
-      projectionSources.put(vs.strictHash(), new ProjectionSource(beanClass, codecFormat, vs));
+      projectionSources.put(
+          vs.strictHash(), new ProjectionSource(beanClass, codecFormat, vs, classLoader));
     }
 
     final long currentHash = currentVersion.strictHash();
@@ -153,12 +157,17 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     private final Class<?> beanClass;
     private final Encoding codecFormat;
     private final SchemaHistory.VersionedSchema version;
+    private final ClassLoader classLoader;
 
     ProjectionSource(
-        Class<?> beanClass, Encoding codecFormat, SchemaHistory.VersionedSchema version) {
+        Class<?> beanClass,
+        Encoding codecFormat,
+        SchemaHistory.VersionedSchema version,
+        ClassLoader classLoader) {
       this.beanClass = beanClass;
       this.codecFormat = codecFormat;
       this.version = version;
+      this.classLoader = classLoader;
     }
 
     @Override
@@ -166,7 +175,7 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
       Schema historicalSchema = version.schema();
       String suffix = ProjectionRouting.projectionSuffix(version);
       Map<Class<?>, String> nestedSuffixes =
-          ProjectionRouting.nestedSuffixesFor(version, codecFormat);
+          ProjectionRouting.nestedSuffixesFor(version, codecFormat, classLoader);
       Class<?> projectionClass =
           Encoders.loadOrGenProjectionRowCodecClass(
               beanClass,
@@ -174,7 +183,8 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
               historicalSchema,
               version.liveFieldNames(),
               suffix,
-              nestedSuffixes);
+              nestedSuffixes,
+              classLoader);
       MethodHandle ctor = Encoders.constructorHandleFor(projectionClass, GeneratedRowEncoder.class);
       // The RowFactory depends only on the historical schema and codec format, so build it here
       // alongside the codec the first time this version is decoded.

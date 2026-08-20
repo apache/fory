@@ -335,7 +335,7 @@ public class Encoders {
                       codecBuilder::genCode);
                 })
             .toArray(CompileUnit[]::new);
-    return loadCls(compileUnits);
+    return loadCls(Thread.currentThread().getContextClassLoader(), compileUnits);
   }
 
   /**
@@ -343,7 +343,9 @@ public class Encoders {
    * current-version codec class is loaded separately by {@link #loadOrGenRowCodecClass}; this is
    * used by schema-evolution code paths to materialize a decoder for each older version. The {@code
    * nestedSuffixes} map directs codegen to the projection codec class to embed for each nested
-   * versioned bean type.
+   * versioned bean type. {@code classLoader} is the loader captured when the evolution encoder was
+   * built, so a first-decode compile resolves classes exactly as the build-time compile did
+   * regardless of the decoding thread's context classloader.
    */
   static Class<?> loadOrGenProjectionRowCodecClass(
       Class<?> beanClass,
@@ -351,7 +353,8 @@ public class Encoders {
       Schema historicalSchema,
       Set<String> liveNames,
       String classSuffix,
-      Map<Class<?>, String> nestedSuffixes) {
+      Map<Class<?>, String> nestedSuffixes,
+      ClassLoader classLoader) {
     final RowEncoderBuilder codecBuilder =
         codecFactory.newProjectionRowEncoder(
             TypeRef.of(beanClass), historicalSchema, liveNames, classSuffix, nestedSuffixes);
@@ -360,7 +363,7 @@ public class Encoders {
             CodeGenerator.getPackage(beanClass),
             codecBuilder.codecClassName(beanClass) + classSuffix,
             codecBuilder::genCode);
-    return loadCls(compileUnit);
+    return loadCls(classLoader, compileUnit);
   }
 
   static <B> Class<?> loadOrGenArrayCodecClass(
@@ -377,7 +380,7 @@ public class Encoders {
             codecBuilder.codecClassName(cls, prefix),
             codecBuilder::genCode);
 
-    return loadCls(compileUnit);
+    return loadCls(Thread.currentThread().getContextClassLoader(), compileUnit);
   }
 
   static <B> Class<?> loadOrGenProjectionArrayCodecClass(
@@ -385,7 +388,8 @@ public class Encoders {
       TypeRef<B> elementType,
       Encoding codecFactory,
       String classSuffix,
-      Map<Class<?>, String> nestedSuffixes) {
+      Map<Class<?>, String> nestedSuffixes,
+      ClassLoader classLoader) {
     Class<?> cls = getRawType(elementType);
     String prefix = TypeInference.inferTypeName(arrayCls);
     ArrayEncoderBuilder codecBuilder =
@@ -395,7 +399,7 @@ public class Encoders {
             CodeGenerator.getPackage(cls),
             codecBuilder.codecClassName(cls, prefix) + classSuffix,
             codecBuilder::genCode);
-    return loadCls(compileUnit);
+    return loadCls(classLoader, compileUnit);
   }
 
   static <K, V> Class<?> loadOrGenMapCodecClass(
@@ -428,7 +432,7 @@ public class Encoders {
             codecBuilder.codecClassName(cls, prefix),
             codecBuilder::genCode);
 
-    return loadCls(compileUnit);
+    return loadCls(Thread.currentThread().getContextClassLoader(), compileUnit);
   }
 
   static Class<?> loadOrGenProjectionMapCodecClass(
@@ -438,7 +442,8 @@ public class Encoders {
       String valCodecSuffix,
       String keyCodecSuffix,
       Map<Class<?>, String> valNestedSuffixes,
-      Map<Class<?>, String> keyNestedSuffixes) {
+      Map<Class<?>, String> keyNestedSuffixes,
+      ClassLoader classLoader) {
     Class<?> cls = getRawType(beanToken);
     String prefix = TypeInference.inferTypeName(mapCls);
     MapEncoderBuilder codecBuilder =
@@ -454,12 +459,11 @@ public class Encoders {
             CodeGenerator.getPackage(cls),
             codecBuilder.codecClassName(cls, prefix) + codecBuilder.mapClassSuffix(),
             codecBuilder::genCode);
-    return loadCls(compileUnit);
+    return loadCls(classLoader, compileUnit);
   }
 
-  private static Class<?> loadCls(CompileUnit... compileUnit) {
-    CodeGenerator codeGenerator =
-        CodeGenerator.getSharedCodeGenerator(Thread.currentThread().getContextClassLoader());
+  private static Class<?> loadCls(ClassLoader classLoaderHint, CompileUnit... compileUnit) {
+    CodeGenerator codeGenerator = CodeGenerator.getSharedCodeGenerator(classLoaderHint);
     ClassLoader classLoader = codeGenerator.compile(compileUnit);
     String className = compileUnit[0].getQualifiedClassName();
     try {

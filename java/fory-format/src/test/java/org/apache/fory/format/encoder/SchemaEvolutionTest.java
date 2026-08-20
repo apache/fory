@@ -19,12 +19,15 @@
 
 package org.apache.fory.format.encoder;
 
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import lombok.Data;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.annotation.ForySchema;
@@ -1264,6 +1267,41 @@ public class SchemaEvolutionTest {
     // The evolution-enabled encoder's public schema must carry the codec's declared column type,
     // not a reconstruction from the raw domain type; int64Field validates the declared type.
     Assert.assertEquals(writer.schema().int64Field("balance").get(writer.toRow(in)), 250L);
+  }
+
+  /**
+   * Projection codecs compile on the first decode of a historical hash, on whatever thread that
+   * happens. The compile must resolve classes with the loader captured when the encoder was built,
+   * not the decoding thread's context classloader, so a decode from an executor with an unrelated
+   * or null context classloader behaves exactly like a build-thread decode. The decode thread here
+   * carries a loader that can see neither Fory nor the bean classes.
+   */
+  @Test
+  public void projectionCompileUsesBuildTimeClassLoader() throws Exception {
+    RowEncoder<PersonV1> oldWriter = evolvingCodec(PersonV1.class);
+    RowEncoder<PersonV2> newReader = evolvingCodec(PersonV2.class);
+    PersonV1 in = new PersonV1();
+    in.setName("alice");
+    in.setAge(30);
+    byte[] bytes = oldWriter.encode(in);
+
+    CompletableFuture<PersonV2> result = new CompletableFuture<>();
+    Thread decoder =
+        new Thread(
+            () -> {
+              try {
+                result.complete(newReader.decode(bytes));
+              } catch (Throwable t) {
+                result.completeExceptionally(t);
+              }
+            });
+    decoder.setContextClassLoader(new URLClassLoader(new URL[0], null));
+    decoder.start();
+    decoder.join();
+    PersonV2 out = result.get();
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertEquals(out.getAge(), 30);
+    Assert.assertNull(out.getEmail());
   }
 
   /**

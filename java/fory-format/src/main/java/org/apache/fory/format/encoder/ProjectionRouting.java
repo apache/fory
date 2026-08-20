@@ -72,10 +72,12 @@ final class ProjectionRouting {
    * combination to arbitrary depth without re-deriving it from a version number.
    *
    * <p>Called when an outer combination is first compiled (its hash first decoded), so the inner
-   * classes are generated lazily alongside it rather than at builder time.
+   * classes are generated lazily alongside it rather than at builder time. {@code classLoader} is
+   * the loader captured when the evolution encoder was built; every lazily generated class compiles
+   * against it rather than the decoding thread's context classloader.
    */
   static Map<Class<?>, String> nestedSuffixesFor(
-      SchemaHistory.VersionedSchema vs, Encoding codecFormat) {
+      SchemaHistory.VersionedSchema vs, Encoding codecFormat, ClassLoader classLoader) {
     Map<Class<?>, String> out = new HashMap<>();
     for (Map.Entry<Class<?>, SchemaHistory.VersionedSchema> e : vs.nestedBeanSchemas().entrySet()) {
       Class<?> innerClass = e.getKey();
@@ -93,7 +95,8 @@ final class ProjectionRouting {
             innerVs.schema(),
             innerVs.liveFieldNames(),
             innerSuffix,
-            nestedSuffixesFor(innerVs, codecFormat));
+            nestedSuffixesFor(innerVs, codecFormat, classLoader),
+            classLoader);
       }
     }
     return out;
