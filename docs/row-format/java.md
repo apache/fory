@@ -344,6 +344,12 @@ The history method name matches the original live descriptor name. For field-bac
 (`age`, `tags`). For interface beans, where the live member is a getter with no backing field,
 it is the method name (`getAge`).
 
+A field handled by a custom codec evolves as its encoded representation. A codec that encodes
+to another type descends that type, so a versioned bean reachable only through the codec is
+still enumerated; a codec that supplies its own terminal `foryField` column replaces the whole
+field, so the declared type is never introspected and its members are invisible to the
+evolution walk.
+
 ### Wire format and limitations
 
 Producers and consumers must agree on the `withSchemaEvolution()` flag — they are not

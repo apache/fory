@@ -58,9 +58,9 @@ import org.apache.fory.util.StringUtils;
  * same declared schema: snake_case wire names, Fory type IDs, and the shape parameters a type ID
  * does not carry (decimal precision/scale, fixed-size binary width). The algorithm is specified in
  * {@code docs/specification/row_format_spec.md}. Versioned schemas additionally require the
- * canonical field order — ascending by wire name — which for Java coincides with the
- * member-name order the generated codecs bake in; beans whose member names sort differently by
- * wire name (literal underscores at case boundaries) are rejected at build time.
+ * canonical field order — ascending by wire name — which for Java coincides with the member-name
+ * order the generated codecs bake in; beans whose member names sort differently by wire name
+ * (literal underscores at case boundaries) are rejected at build time.
  */
 @Internal
 public final class SchemaHistory {
@@ -513,9 +513,23 @@ public final class SchemaHistory {
       if (raw == null) {
         return new Wrapper(WrapperKind.LEAF, null, null, null, null);
       }
-      TypeRef<?> encoded = encodedTypeOf(enclosing, raw, typeRef);
-      if (encoded != null) {
-        return new Wrapper(WrapperKind.ENCODED, raw, encoded, null, null);
+      // The same codec lookup inferField makes. A codec supplying its own terminal foryField
+      // replaces the whole column, so the declared type is never introspected as a bean and can
+      // carry no evolution site; classify it as a raw-less leaf instead of falling through to
+      // the bean descend, which would introspect a class the codec exists to hide (and may fail
+      // on it, e.g. libphonenumber's PhoneNumber under the canonical-order check). A codec
+      // encoding to a different type descends that encodedType(); an intercepting codec
+      // (encodedType == declared) falls through and descends the declared bean as usual.
+      CustomCodec<?, ?> codec =
+          CustomTypeEncoderRegistry.customTypeHandler().findCodec(enclosing, raw);
+      if (codec != null) {
+        if (codec.getForyField("") != null) {
+          return new Wrapper(WrapperKind.LEAF, null, null, null, null);
+        }
+        TypeRef<?> encoded = codec.encodedType();
+        if (encoded != null && !encoded.equals(typeRef)) {
+          return new Wrapper(WrapperKind.ENCODED, raw, encoded, null, null);
+        }
       }
       if (raw == Optional.class) {
         return new Wrapper(
@@ -667,24 +681,6 @@ public final class SchemaHistory {
    */
   private static TypeRef<?> elementTypeRef(TypeRef<?> typeRef, Class<?> raw) {
     return raw.isArray() ? typeRef.getComponentType() : TypeUtils.getElementType(typeRef);
-  }
-
-  /**
-   * The type a custom codec encodes {@code raw} into, when that codec replaces the field's encoding
-   * with a recursively-inferred struct — the same recursion {@link TypeInference#inferField} takes
-   * (find the codec for the enclosing/field pair, then descend its {@code encodedType()}). Returns
-   * null when no codec applies, when the codec supplies its own terminal {@code foryField} (which
-   * is never a versioned bean), or when the encoded type is the declared type itself. The evolution
-   * walk follows this so a versioned bean reachable only through a codec is still enumerated.
-   */
-  private static TypeRef<?> encodedTypeOf(Class<?> enclosing, Class<?> raw, TypeRef<?> typeRef) {
-    CustomCodec<?, ?> codec =
-        CustomTypeEncoderRegistry.customTypeHandler().findCodec(enclosing, raw);
-    if (codec == null || codec.getForyField("") != null) {
-      return null;
-    }
-    TypeRef<?> encoded = codec.encodedType();
-    return encoded == null || encoded.equals(typeRef) ? null : encoded;
   }
 
   /**

@@ -1270,6 +1270,85 @@ public class SchemaEvolutionTest {
   }
 
   /**
+   * A class the codec exists to hide, with member names whose wire-name order diverges from their
+   * member-name order (member 'codeSource_' sorts before 'code_', wire name 'code_source_' sorts
+   * after 'code_' — the libphonenumber PhoneNumber shape the canonical-order check rejects).
+   */
+  @Data
+  public static class Handle {
+    private long code_;
+    private long codeSource_;
+  }
+
+  static final class HandleCodec implements CustomCodec<Handle, String> {
+    @Override
+    public Field getForyField(String fieldName) {
+      return new Field(fieldName, DataTypes.utf8(), true);
+    }
+
+    @Override
+    public String encode(Handle value) {
+      return value.getCode_() + ":" + value.getCodeSource_();
+    }
+
+    @Override
+    public Handle decode(String value) {
+      int sep = value.indexOf(':');
+      Handle h = new Handle();
+      h.setCode_(Long.parseLong(value.substring(0, sep)));
+      h.setCodeSource_(Long.parseLong(value.substring(sep + 1)));
+      return h;
+    }
+
+    @Override
+    public TypeRef<String> encodedType() {
+      return TypeRef.of(String.class);
+    }
+  }
+
+  @Data
+  public static class ContactV1 {
+    private String id;
+    private Handle handle;
+  }
+
+  @Data
+  public static class ContactV2 {
+    private String id;
+    private Handle handle;
+
+    @ForyVersion(since = 2)
+    private String note;
+  }
+
+  /**
+   * A codec supplying its own terminal foryField replaces the whole column, so the evolution walk
+   * must not introspect the declared type as a bean: Handle's member names would fail the
+   * canonical-order check if it did.
+   */
+  @Test
+  public void terminalCodecFieldIsNotIntrospected() {
+    Encoders.registerCustomCodec(ContactV1.class, Handle.class, new HandleCodec());
+    Encoders.registerCustomCodec(ContactV2.class, Handle.class, new HandleCodec());
+
+    RowEncoder<ContactV1> writer = evolvingCodec(ContactV1.class);
+    RowEncoder<ContactV2> reader = evolvingCodec(ContactV2.class);
+
+    ContactV1 in = new ContactV1();
+    in.setId("c1");
+    Handle handle = new Handle();
+    handle.setCode_(7);
+    handle.setCodeSource_(9);
+    in.setHandle(handle);
+
+    ContactV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), "c1");
+    Assert.assertEquals(out.getHandle().getCode_(), 7L);
+    Assert.assertEquals(out.getHandle().getCodeSource_(), 9L);
+    Assert.assertNull(out.getNote());
+  }
+
+  /**
    * Projection codecs compile on the first decode of a historical hash, on whatever thread that
    * happens. The compile must resolve classes with the loader captured when the encoder was built,
    * not the decoding thread's context classloader, so a decode from an executor with an unrelated
