@@ -398,6 +398,7 @@ private enum ParsedEnumKind: Equatable {
 private struct ParsedEnumPayloadField {
     let label: String?
     let typeText: String
+    let typeID: UInt32
     let isOptional: Bool
     let hasDeclaredChildren: Bool
     let customCodecType: String?
@@ -527,6 +528,7 @@ private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl 
                         .init(
                             label: label,
                             typeText: payloadType,
+                            typeID: classification.typeID,
                             isOptional: optional.isOptional,
                             hasDeclaredChildren: hasDeclaredChildren,
                             customCodecType: customCodecType
@@ -823,19 +825,20 @@ private func buildTaggedUnionEnumDecls(
         var lines: [String] = ["case \(caseID):"]
         for (payloadIndex, payloadField) in enumCase.payload.enumerated() {
             if let codecType = payloadField.customCodecType {
-                if let serializerType = selectedLeafSerializerType(codecType) {
+                lines.append(
+                    "    let __value\(payloadIndex) = try \(codecType).readField(context, refMode: .tracking, readTypeInfo: true)"
+                )
+            } else {
+                if payloadField.typeID == MacroTypeId.structType {
                     lines.append(
-                        "    let __value\(payloadIndex) = try \(serializerType).read(context, refMode: .tracking, readTypeInfo: true)"
+                        "    let __value\(payloadIndex) = try SerializerCodec<\(payloadField.typeText)>"
+                            + ".readField(context, refMode: .tracking, readTypeInfo: true)"
                     )
                 } else {
                     lines.append(
-                        "    let __value\(payloadIndex) = try \(codecType).readField(context, refMode: .tracking, readTypeInfo: true)"
+                        "    let __value\(payloadIndex) = try \(payloadField.typeText).read(context, refMode: .tracking, readTypeInfo: true)"
                     )
                 }
-            } else {
-                lines.append(
-                    "    let __value\(payloadIndex) = try \(payloadField.typeText).read(context, refMode: .tracking, readTypeInfo: true)"
-                )
             }
         }
         let ctorArgs = enumCase.payload.enumerated().map { payloadIndex, payloadField in

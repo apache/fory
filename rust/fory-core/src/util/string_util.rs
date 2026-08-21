@@ -794,15 +794,12 @@ pub mod buffer_rw_string {
         if len % 2 != 0 {
             return Err(Error::encoding_error("UTF-16 length must be even"));
         }
-        unsafe {
-            let slice = std::slice::from_raw_parts(reader.bf.as_ptr().add(reader.cursor), len);
-            let units: Vec<u16> = slice
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                .collect();
-            reader.move_next(len);
-            Ok(String::from_utf16_lossy(&units))
-        }
+        let bytes = reader.read_bytes(len)?;
+        let units: Vec<u16> = bytes
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        Ok(String::from_utf16_lossy(&units))
     }
 
     #[inline]
@@ -1079,6 +1076,23 @@ pub mod buffer_rw_string {
                 assert_eq!(read_utf16_standard(&mut reader, bytes_len).unwrap(), s);
                 assert_eq!(read_utf16_standard(&mut reader, bytes_len).unwrap(), s);
             }
+        }
+
+        #[test]
+        fn utf16_truncated_read() {
+            let mut reader = Reader::new(&[0, 1]);
+
+            assert!(read_utf16_standard(&mut reader, 4).is_err());
+            assert_eq!(reader.get_cursor(), 0);
+        }
+
+        #[test]
+        fn utf16_length_overflow() {
+            let mut reader = Reader::new(&[0, 1]);
+            reader.skip(2).unwrap();
+
+            assert!(read_utf16_standard(&mut reader, usize::MAX - 1).is_err());
+            assert_eq!(reader.get_cursor(), 2);
         }
     }
 }

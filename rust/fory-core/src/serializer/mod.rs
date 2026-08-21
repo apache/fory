@@ -258,6 +258,15 @@ macro_rules! impl_single_carrier_serializer {
                     false,
                 > as $crate::serializer::Serializer>::REQUIRES_SCOPED_ACCESS;
 
+            #[inline(always)]
+            fn metadata_target_type_id() -> std::any::TypeId {
+                if $wrapper {
+                    S::metadata_target_type_id()
+                } else {
+                    std::any::TypeId::of::<Self::Target>()
+                }
+            }
+
             const READ_DATA_ALWAYS_ADVANCES: bool = <$codec<
                     S::Target,
                     S,
@@ -417,6 +426,11 @@ macro_rules! impl_single_carrier_serializer {
 
             const REQUIRES_SCOPED_ACCESS: bool =
                 <$provider<T> as $crate::serializer::Serializer>::REQUIRES_SCOPED_ACCESS;
+
+            #[inline(always)]
+            fn metadata_target_type_id() -> std::any::TypeId {
+                <$provider<T> as $crate::serializer::Serializer>::metadata_target_type_id()
+            }
 
             const READ_DATA_ALWAYS_ADVANCES: bool =
                 <$provider<T> as $crate::serializer::Serializer>::READ_DATA_ALWAYS_ADVANCES;

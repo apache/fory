@@ -161,42 +161,6 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
-            "    private bool __ForyMatchesTypeMeta(global::Apache.Fory.TypeMeta typeMeta, bool trackRef)");
-        sb.AppendLine("    {");
-        sb.AppendLine(
-            "        global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> expectedFields = TypeMetaFields(trackRef);");
-        sb.AppendLine("        if (typeMeta.Fields.Count != expectedFields.Count)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            return false;");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-        sb.AppendLine("        for (int i = 0; i < expectedFields.Count; i++)");
-        sb.AppendLine("        {");
-        sb.AppendLine(
-            "            global::Apache.Fory.TypeMetaFieldInfo remoteField = typeMeta.Fields[i];");
-        sb.AppendLine(
-            "            global::Apache.Fory.TypeMetaFieldInfo localField = expectedFields[i];");
-        sb.AppendLine("            if (remoteField.FieldId.HasValue && localField.FieldId.HasValue)");
-        sb.AppendLine("            {");
-        sb.AppendLine(
-            "                if (remoteField.FieldId.Value != localField.FieldId.Value || !remoteField.FieldType.Equals(localField.FieldType))");
-        sb.AppendLine("                {");
-        sb.AppendLine("                    return false;");
-        sb.AppendLine("                }");
-        sb.AppendLine();
-        sb.AppendLine("                continue;");
-        sb.AppendLine("            }");
-        sb.AppendLine(
-            "            if (remoteField.FieldName != localField.FieldName || !remoteField.FieldType.Equals(localField.FieldType))");
-        sb.AppendLine("            {");
-        sb.AppendLine("                return false;");
-        sb.AppendLine("            }");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-        sb.AppendLine("        return true;");
-        sb.AppendLine("    }");
-        sb.AppendLine();
-        sb.AppendLine(
             "    private static void __ForyEnsureTypeMetaCache(global::Apache.Fory.TypeResolver typeResolver)");
         sb.AppendLine("    {");
         sb.AppendLine("        ulong resolverVersion = typeResolver.VersionHash();");
@@ -227,7 +191,7 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
-            "    private bool __ForyMatchesCachedTypeMeta(global::Apache.Fory.TypeMeta typeMeta, bool trackRef, global::Apache.Fory.TypeResolver typeResolver)");
+            "    private static bool __ForyMatchesTypeMetaHash(global::Apache.Fory.TypeMeta typeMeta, bool trackRef, global::Apache.Fory.TypeResolver typeResolver)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (trackRef)");
         sb.AppendLine("        {");
@@ -239,12 +203,7 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine();
         sb.AppendLine("            __ForyEnsureTypeMetaCache(typeResolver);");
         sb.AppendLine();
-        sb.AppendLine("            bool matched = false;");
-        sb.AppendLine("            if (typeMeta.HeaderHash == __ForyRefTypeMetaHash)");
-        sb.AppendLine("            {");
-        sb.AppendLine("                matched = __ForyMatchesTypeMeta(typeMeta, true);");
-        sb.AppendLine("            }");
-        sb.AppendLine();
+        sb.AppendLine("            bool matched = typeMeta.HeaderHash == __ForyRefTypeMetaHash;");
         sb.AppendLine("            __ForyRefMeta = typeMeta;");
         sb.AppendLine("            __ForyRefMetaMatches = matched;");
         sb.AppendLine("            return matched;");
@@ -258,12 +217,7 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine();
         sb.AppendLine("        __ForyEnsureTypeMetaCache(typeResolver);");
         sb.AppendLine();
-        sb.AppendLine("        bool noTrackMatched = false;");
-        sb.AppendLine("        if (typeMeta.HeaderHash == __ForyNoRefTypeMetaHash)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            noTrackMatched = __ForyMatchesTypeMeta(typeMeta, false);");
-        sb.AppendLine("        }");
-        sb.AppendLine();
+        sb.AppendLine("        bool noTrackMatched = typeMeta.HeaderHash == __ForyNoRefTypeMetaHash;");
         sb.AppendLine("        __ForyNoRefMeta = typeMeta;");
         sb.AppendLine("        __ForyNoRefMetaMatches = noTrackMatched;");
         sb.AppendLine("        return noTrackMatched;");
@@ -500,7 +454,7 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine($"            {model.TargetTypeName} value = new {model.TargetTypeName}();");
         EmitRefPublication(sb, model, "value", 3);
 
-        sb.AppendLine("            bool __ForyExactTypeMeta = __ForyMatchesCachedTypeMeta(typeMeta, context.TrackRef, context.TypeResolver);");
+        sb.AppendLine("            bool __ForyExactTypeMeta = __ForyMatchesTypeMetaHash(typeMeta, context.TrackRef, context.TypeResolver);");
         sb.AppendLine("            if (__ForyAllFieldsBuiltIn && __ForyExactTypeMeta)");
         sb.AppendLine("            {");
         foreach (MemberModel member in model.SortedMembers)

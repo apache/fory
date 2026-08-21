@@ -25,7 +25,7 @@ use crate::context::WriteContext;
 use crate::error::Error;
 use crate::meta::FieldType;
 use crate::resolver::{RefFlag, RefMode};
-use crate::serializer::{core::read_value_type_info, Serializer};
+use crate::serializer::{core::read_group_type_info, core::read_value_type_info, Serializer};
 use crate::type_id::{self, need_to_write_type_for_field, PRIMITIVE_ARRAY_TYPES};
 
 pub const TRACKING_REF: u8 = 0b1;
@@ -512,7 +512,7 @@ pub fn read_collection_type_info(
 
 macro_rules! collection_read_type {
     (value, $T:ty, $S:ty, $context:expr) => {
-        read_value_type_info::<$S>($context)?
+        read_value_type_info::<$S, false>($context)?
     };
     (field, $T:ty, $C:ty, $context:expr) => {
         Some(<$C as Codec<$T>>::read_type_info_value($context)?)
@@ -729,7 +729,7 @@ where
                     C::read_field_with_type(context, &element_type)
                 );
             }
-            let type_info = context.read_any_type_info()?;
+            let type_info = read_group_type_info::<C, true>(context)?;
             let element_read_always_advances = ref_mode != RefMode::None
                 || (C::READ_DATA_ALWAYS_ADVANCES && type_info.has_exact_local_schema());
             check_collection_len::<T, COUNT_ALLOCATES, ZST_NO_BACKING>(
@@ -909,7 +909,7 @@ where
                 )
             }
         } else {
-            let type_info = context.read_any_type_info()?;
+            let type_info = read_group_type_info::<C, false>(context)?;
             let element_read_always_advances = elem_ref_mode != RefMode::None
                 || (C::READ_DATA_ALWAYS_ADVANCES && type_info.has_exact_local_schema());
             check_collection_len::<T, COUNT_ALLOCATES, ZST_NO_BACKING>(

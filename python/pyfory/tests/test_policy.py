@@ -20,6 +20,7 @@ import types
 
 import pytest
 from pyfory import Fory, DeserializationPolicy
+from pyfory.error import TypeUnregisteredError
 from pyfory.policy import DEFAULT_POLICY
 from pyfory.serializer import (
     FunctionSerializer,
@@ -178,6 +179,9 @@ class FakeReadContext:
 
     def read_string(self):
         return next(self._values)
+
+    def reserve_graph_memory(self, size):
+        pass
 
     def read_ref(self):
         return next(self._values)
@@ -1140,9 +1144,117 @@ def test_default_type_keeps_dynamic_lookup():
     serializer = TypeSerializer(fory.type_resolver, type)
     read_context = FakeReadContext(DEFAULT_POLICY, [0, __name__, "PolicyHookClass"])
 
+    assert fory.type_resolver._get_type_by_python_name("builtins", "int") is None
     PolicyHookMeta.attribute_reads.clear()
     assert serializer.read(read_context) is PolicyHookClass
     assert PolicyHookMeta.attribute_reads == ["__module__", "__qualname__"]
+
+
+def test_strict_registered_type():
+    fory = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    type_info = fory.register_type(PolicyGlobalClass)
+    assert fory.register_type(PolicyGlobalClass) is type_info
+    serializer = TypeSerializer(fory.type_resolver, type)
+    read_context = FakeReadContext(DEFAULT_POLICY, [0, __name__, "PolicyGlobalClass"])
+
+    assert serializer.read(read_context) is PolicyGlobalClass
+    assert fory.type_resolver._get_type_by_python_name("builtins", "int") is int
+
+
+def test_strict_duplicate_python_name():
+    first = type("DuplicateType", (), {"__module__": __name__})
+    second = type("DuplicateType", (), {"__module__": __name__})
+    fory = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    fory.register_type(first)
+    fory.register_type(second)
+    serializer = TypeSerializer(fory.type_resolver, type)
+    read_context = FakeReadContext(DEFAULT_POLICY, [0, __name__, "DuplicateType"])
+
+    with pytest.raises(TypeUnregisteredError, match="is not registered"):
+        serializer.read(read_context)
+
+
+def test_strict_local_type_rejected():
+    fory = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    serializer = TypeSerializer(fory.type_resolver, type)
+    read_context = FakeReadContext(DEFAULT_POLICY, [1])
+
+    with pytest.raises(TypeUnregisteredError, match="wire-defined local class"):
+        serializer.read(read_context)
+
+
+def test_strict_custom_type_policy():
+    class CaptureClassPolicy(DeserializationPolicy):
+        def __init__(self):
+            self.classes = []
+
+        def validate_class(self, cls, is_local, **kwargs):
+            self.classes.append((cls, is_local))
+
+    policy = CaptureClassPolicy()
+    fory = Fory(
+        xlang=False,
+        ref=True,
+        strict=True,
+        policy=policy,
+        compatible=False,
+    )
+    serializer = TypeSerializer(fory.type_resolver, type)
+    read_context = FakeReadContext(policy, [0, __name__, "PolicyGlobalClass"])
+
+    fory.register_type(PolicyGlobalClass)
+    assert fory.type_resolver._get_type_by_python_name(__name__, "PolicyGlobalClass") is None
+    assert serializer.read(read_context) is PolicyGlobalClass
+    assert policy.classes == [(PolicyGlobalClass, False)]
+
+
+def test_strict_bound_method_no_lookup():
+    class GuardedMethod:
+        getattribute_called = False
+
+        def __getattribute__(self, name):
+            if name == "run":
+                type(self).getattribute_called = True
+            return super().__getattribute__(name)
+
+        def run(self):
+            return "unsafe"
+
+    fory = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    obj = GuardedMethod()
+    serializers_and_values = (
+        (
+            FunctionSerializer(fory.type_resolver, types.FunctionType),
+            [0, obj, "run"],
+            [obj, "run"],
+        ),
+        (
+            NativeFuncMethodSerializer(fory.type_resolver, types.BuiltinMethodType),
+            ["run", False, obj],
+            ["run", False, obj],
+        ),
+        (
+            MethodSerializer(fory.type_resolver, types.MethodType),
+            [obj, "run"],
+            [obj, "run"],
+        ),
+    )
+
+    for serializer, values, expected_remaining in serializers_and_values:
+        read_context = FakeReadContext(DEFAULT_POLICY, values)
+        GuardedMethod.getattribute_called = False
+        with pytest.raises(TypeUnregisteredError, match="carrier"):
+            serializer.read(read_context)
+        assert not GuardedMethod.getattribute_called
+        assert list(read_context._values) == expected_remaining
+
+
+def test_strict_local_function_rejected():
+    fory = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    serializer = FunctionSerializer(fory.type_resolver, types.FunctionType)
+
+    with pytest.raises(TypeUnregisteredError, match="function carriers"):
+        serializer._deserialize_function(FakeReadContext(DEFAULT_POLICY, [2]))
 
 
 def test_default_load_class_keeps_lookup():

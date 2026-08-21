@@ -63,13 +63,14 @@ public class DeflaterMetaCompressorTest {
   }
 
   @Test(timeOut = 5_000)
-  public void testDecompressRejectsOutputAboveLimit() {
+  public void testDecompressOutputBoundary() {
     byte[] input = new byte[4096];
     byte[] compressed = compressor.compress(input, 0, input.length);
+    assertEquals(compressor.decompress(compressed, 0, compressed.length, input.length), input);
     InvalidDataException e =
         Assert.expectThrows(
             InvalidDataException.class,
-            () -> compressor.decompress(compressed, 0, compressed.length, 1024));
+            () -> compressor.decompress(compressed, 0, compressed.length, input.length - 1));
     assertTrue(e.getMessage().contains("maximum size"));
   }
 

@@ -291,6 +291,18 @@ function nonStructTypeId(kindCode: number): number {
       throw new Error(`unsupported TypeMeta kind code ${kindCode}`);
   }
 }
+// Package-internal key for binding a generated serializer to the concrete
+// local metadata owner built during code generation.
+export const localTypeMetaSymbol = Symbol("localTypeMeta");
+
+// Package-internal key for the concrete serializer selected when a TypeMeta is
+// first validated. Generic metadata hits dispatch through this owner directly.
+export const checkedTypeMetaSerializerSymbol = Symbol("checkedTypeMetaSerializer");
+
+// Package-internal key for the primitive wire type owned by a checked TypeMeta
+// serializer. Any reads compare this value without inspecting metadata again.
+export const checkedTypeMetaWireTypeIdSymbol = Symbol("checkedTypeMetaWireTypeId");
+
 export class TypeMeta {
   // The 52-bit TypeMeta header hash is the checked metadata identity. It is
   // precise in JS Number and already includes the low header bits as hash input;

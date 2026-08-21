@@ -22,6 +22,7 @@ package org.apache.fory.extension.meta;
 import com.github.luben.zstd.Zstd;
 import com.github.luben.zstd.ZstdException;
 import java.util.Arrays;
+import org.apache.fory.exception.InvalidDataException;
 import org.apache.fory.meta.MetaCompressor;
 
 public class ZstdMetaCompressor implements MetaCompressor {
@@ -48,7 +49,23 @@ public class ZstdMetaCompressor implements MetaCompressor {
 
   @Override
   public byte[] decompress(byte[] data, int offset, int size) {
-    int decompressedSize = (int) Zstd.getFrameContentSize(data, offset, size, false);
+    return decompress(data, offset, size, Integer.MAX_VALUE);
+  }
+
+  @Override
+  public byte[] decompress(byte[] data, int offset, int size, int maxOutputSize) {
+    // The frame content size is sender-controlled. Validate the long value before narrowing it or
+    // sizing the output array so a small frame cannot trigger a disproportionate allocation.
+    long declaredSize = Zstd.getFrameContentSize(data, offset, size, false);
+    if (declaredSize < 0 || declaredSize > maxOutputSize) {
+      throw new InvalidDataException(
+          "Declared decompressed TypeDef metadata size "
+              + declaredSize
+              + " is invalid or exceeds the maximum size "
+              + maxOutputSize
+              + ".");
+    }
+    int decompressedSize = (int) declaredSize;
     byte[] decompressedBytes = new byte[decompressedSize];
     long originalSize =
         Zstd.decompressByteArray(decompressedBytes, 0, decompressedSize, data, offset, size);

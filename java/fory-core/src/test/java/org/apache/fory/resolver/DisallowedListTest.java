@@ -52,6 +52,42 @@ public class DisallowedListTest extends ForyTestBase {
   }
 
   @Test
+  public void testCanonicalClassNames() throws ClassNotFoundException {
+    Set<String> disallowedClasses = DisallowedList.getDisallowedClasses();
+    String[] canonicalNames = {
+      java.lang.invoke.MethodHandle.class.getName(),
+      java.lang.invoke.MethodHandles.Lookup.class.getName(),
+      "java.lang.invoke.VarHandle",
+      Class.forName("javax.naming.spi.ContinuationContext").getName(),
+      "clojure.core$constantly",
+      "com.sun.corba.se.impl.presentation.rmi.InvocationHandlerFactoryImpl$CustomCompositeInvocationHandlerImpl",
+      "org.datanucleus.store.rdbms.datasource.dbcp.datasources.PerUserPoolDataSource",
+      "org.datanucleus.store.rdbms.datasource.dbcp.datasources.SharedPoolDataSource"
+    };
+    for (String className : canonicalNames) {
+      Assert.assertTrue(disallowedClasses.contains(className));
+      Assert.assertThrows(
+          InsecureException.class, () -> DisallowedList.checkNotInDisallowedList(className));
+    }
+
+    String[] invalidNames = {
+      "clojure.core",
+      "com.sun.corba.se.impl.presentation.rmi.InvocationHandlerFactoryImpl.CustomCompositeInvocationHandlerImpl",
+      "java.lang.invoke.MethodHandles.Lookup",
+      "java.lang.MethodHandle",
+      "java.lang.VarHandler",
+      "javax.naming.spi.ContinuationContext.getEnvironment",
+      "javax.naming.spi.ContinuationContext.getTargetContext"
+    };
+    for (String className : invalidNames) {
+      Assert.assertFalse(disallowedClasses.contains(className));
+    }
+    for (String className : disallowedClasses) {
+      Assert.assertFalse(className.endsWith(";"));
+    }
+  }
+
+  @Test
   public void testDisallowedListImmutable() {
     Set<String> disallowedClasses = DisallowedList.getDisallowedClasses();
     Assert.assertThrows(

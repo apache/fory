@@ -782,6 +782,12 @@ The 8-byte header is a little-endian uint64:
   then mask with `0xfffffffffffff000`. The final header is the masked hash bits OR-ed with the low
   12 header bits.
 
+The low-bit validity rules above apply when the high 52-bit identity is first validated on a cache
+miss. Once that 52-bit identity is known, a cache or expected-local hit does not validate the low
+flags again. It uses the current frame's size bits and optional size extension only to prove the
+current body is readable and skip it, then reuses the concrete checked or expected-local TypeDef
+owner for that identity.
+
 #### TypeDef body
 
 TypeDef body has a single layer (fields are flattened in class hierarchy order):
@@ -1021,6 +1027,9 @@ Reference:         | ((id + 1) << 1) | 1 |
 
 - Bit 0 of the header indicates: 0 = new string, 1 = reference to previous
 - Large strings (> 16 bytes) include 64-bit hash for content-based deduplication
+- That 64-bit wire hash alone is the checked cache identity for a large string. On a known-hash
+  hit, readers verify that the current frame length is readable and skip it without comparing the
+  length or body; only a cache miss reads the body and validates the hash.
 - Small strings use exact byte comparison
 
 ## Value Format

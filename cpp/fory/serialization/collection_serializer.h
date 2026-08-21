@@ -100,11 +100,22 @@ template <typename T> inline constexpr bool need_type_for_collection_elem() {
 template <typename T>
 FORY_ALWAYS_INLINE const TypeInfo *
 read_collection_element_type_info(ReadContext &ctx) {
-  const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
+  using ElemType = nullable_element_t<T>;
+  const TypeInfo *expected_type_info = nullptr;
+  if constexpr (is_user_type(Serializer<ElemType>::type_id)) {
+    auto expected_result =
+        ctx.type_resolver().template get_type_info<ElemType>();
+    if (FORY_PREDICT_FALSE(!expected_result.ok())) {
+      ctx.set_error(std::move(expected_result).error());
+      return nullptr;
+    }
+    expected_type_info = expected_result.value();
+  }
+  const TypeInfo *type_info =
+      ctx.read_any_type_info_owner(ctx.error(), expected_type_info);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;
   }
-  using ElemType = nullable_element_t<T>;
   constexpr uint32_t expected =
       static_cast<uint32_t>(Serializer<ElemType>::type_id);
   if (FORY_PREDICT_FALSE(!type_id_matches(type_info->type_id, expected))) {
@@ -796,7 +807,11 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
   const TypeInfo *elem_type_info = nullptr;
   Harness::ReadAsFn elem_reader = nullptr;
   if (is_same_type && !is_decl_type) {
-    elem_type_info = ctx.read_any_type_info(ctx.error());
+    if constexpr (elem_is_polymorphic) {
+      elem_type_info = ctx.read_any_type_info(ctx.error());
+    } else {
+      elem_type_info = read_collection_element_type_info<T>(ctx);
+    }
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return result;
     }

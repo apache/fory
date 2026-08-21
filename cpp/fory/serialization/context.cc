@@ -53,6 +53,13 @@ static const std::vector<MetaEncoding> k_type_name_encodings = {
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
     MetaEncoding::FIRST_TO_LOWER_SPECIAL};
 
+static constexpr uint32_t k_type_meta_hash_shift = 12;
+
+FORY_ALWAYS_INLINE int64_t type_meta_header_hash(int64_t header) {
+  return static_cast<int64_t>(static_cast<uint64_t>(header) >>
+                              k_type_meta_hash_shift);
+}
+
 // Note: encode_meta_string is now implemented in type_resolver.cc
 
 // ============================================================================
@@ -436,38 +443,28 @@ static const MetaStringDecoder k_type_name_decoder('$', '_');
 Result<const TypeInfo *, Error>
 ReadContext::read_enum_type_info(const std::type_index &type,
                                  uint32_t base_type_id) {
-  (void)type;
-  return read_enum_type_info(base_type_id);
+  FORY_TRY(expected_type_info, type_resolver_->get_type_info(type));
+  return read_enum_type_info_owner(expected_type_info, base_type_id);
 }
 
 Result<const TypeInfo *, Error>
 ReadContext::read_enum_type_info(uint32_t base_type_id) {
-  Error error;
-  uint32_t type_id = buffer_->read_uint8(error);
-  if (type_id == static_cast<uint32_t>(TypeId::ENUM)) {
-    uint32_t user_type_id = buffer_->read_var_uint32(error);
-    if (FORY_PREDICT_FALSE(!error.ok())) {
-      return Unexpected(std::move(error));
-    }
-    FORY_TRY(type_info,
-             type_resolver_->get_user_type_info_by_id(type_id, user_type_id));
-    return type_info;
-  } else if (type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
-    if (config_->compatible) {
-      // Read type meta inline using streaming protocol
-      return read_type_meta();
-    }
-    meta_string_table_active_ = true;
-    FORY_TRY(namespace_str,
-             meta_string_table_.read_string(*buffer_, k_namespace_decoder));
-    FORY_TRY(type_name,
-             meta_string_table_.read_string(*buffer_, k_type_name_decoder));
-    FORY_TRY(type_info,
-             type_resolver_->get_type_info_by_name(namespace_str, type_name));
-    return type_info;
-  }
+  return read_enum_type_info_owner(nullptr, base_type_id);
+}
 
-  return Unexpected(Error::type_mismatch(type_id, base_type_id));
+Result<const TypeInfo *, Error>
+ReadContext::read_enum_type_info_owner(const TypeInfo *expected_type_info,
+                                       uint32_t base_type_id) {
+  FORY_TRY(type_info, read_any_type_info_owner(expected_type_info));
+  const bool matches_enum =
+      base_type_id == static_cast<uint32_t>(TypeId::ENUM) &&
+      (type_info->type_id == static_cast<uint32_t>(TypeId::ENUM) ||
+       type_info->type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM));
+  if (FORY_PREDICT_FALSE(!matches_enum &&
+                         !type_id_matches(type_info->type_id, base_type_id))) {
+    return Unexpected(Error::type_mismatch(type_info->type_id, base_type_id));
+  }
+  return type_info;
 }
 
 static constexpr uint64_t k_min_remote_type_meta_limit = 8192;
@@ -534,7 +531,52 @@ void ReadContext::record_remote_type_meta(const std::string &type_key) {
   ++total_accepted_schema_versions_;
 }
 
+namespace {
+
+FORY_ALWAYS_INLINE bool has_local_meta_hash(const TypeInfo *type_info,
+                                            int64_t meta_hash) {
+  if (type_info == nullptr) {
+    return false;
+  }
+  if (type_info->type_meta != nullptr) {
+    return type_info->type_meta->hash == meta_hash;
+  }
+  if (type_info->type_def.size() < sizeof(int64_t)) {
+    return false;
+  }
+  int64_t local_header = 0;
+  std::memcpy(&local_header, type_info->type_def.data(), sizeof(local_header));
+  return type_meta_header_hash(local_header) == meta_hash;
+}
+
+FORY_NOINLINE Result<const TypeInfo *, Error> unexpected_type_meta_owner() {
+  return Unexpected(Error::type_error(
+      "Remote type metadata does not match the declared C++ type"));
+}
+
+FORY_ALWAYS_INLINE Result<const TypeInfo *, Error>
+require_expected_type(const TypeInfo *type_info,
+                      const TypeInfo *expected_type_info) {
+  if (FORY_PREDICT_FALSE(expected_type_info != nullptr &&
+                         type_info != expected_type_info)) {
+    return unexpected_type_meta_owner();
+  }
+  return type_info;
+}
+
+} // namespace
+
 Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
+  return read_type_meta_owner(nullptr);
+}
+
+bool ReadContext::matches_expected_type(const TypeInfo *concrete_owner,
+                                        const TypeInfo *expected_type_info) {
+  return expected_type_info == nullptr || concrete_owner == expected_type_info;
+}
+
+Result<const TypeInfo *, Error>
+ReadContext::read_type_meta_owner(const TypeInfo *expected_type_info) {
   Error error;
   // Read the index marker
   uint32_t index_marker = buffer_->read_var_uint32(error);
@@ -547,7 +589,17 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
 
   if (is_ref) {
     // Reference to previously read type
-    return get_type_info_by_index(index);
+    if (FORY_PREDICT_FALSE(index >= reading_type_infos_.size())) {
+      return Unexpected(Error::invalid(
+          "Meta index out of bounds: " + std::to_string(index) +
+          ", size: " + std::to_string(reading_type_infos_.size())));
+    }
+    const ReadTypeInfo &entry = reading_type_infos_[index];
+    if (FORY_PREDICT_FALSE(
+            !matches_expected_type(entry.concrete_owner, expected_type_info))) {
+      return unexpected_type_meta_owner();
+    }
+    return entry.type_info;
   }
 
   // New type - read TypeMeta inline
@@ -556,43 +608,61 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
   if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }
+  const int64_t meta_hash = type_meta_header_hash(meta_header);
 
-  // Check if we already parsed this type meta (cache lookup by header)
-  if (has_cached_meta_header_ && meta_header == cached_meta_header_) {
+  // The top 52 header bits are the protocol TypeMeta identity. The current
+  // frame's low bits only describe how to skip this frame's opaque body.
+  if (has_local_meta_hash(expected_type_info, meta_hash)) {
+    FORY_RETURN_NOT_OK(
+        TypeMeta::skip_bytes_for_validated_header(*buffer_, meta_header));
+    reading_type_infos_.push_back(
+        ReadTypeInfo{expected_type_info, expected_type_info});
+    return expected_type_info;
+  }
+
+  if (cached_meta_type_info_ != nullptr &&
+      cached_meta_type_info_->type_info.type_meta->hash == meta_hash) {
     // Header-cache hits intentionally skip without rehashing. Entries reach
     // this cache only after a successful TypeMeta parse and 52-bit
     // metadata-hash validation. Do not add body/hash/schema-limit/exact-local
     // checks here; the miss path owns them before publish.
-    const TypeInfo *cached = cached_meta_type_info_;
-    reading_type_infos_.push_back(cached);
+    const CachedTypeInfo *cached = cached_meta_type_info_;
+    if (FORY_PREDICT_FALSE(!matches_expected_type(cached->concrete_owner,
+                                                  expected_type_info))) {
+      return unexpected_type_meta_owner();
+    }
     FORY_RETURN_NOT_OK(
         TypeMeta::skip_bytes_for_validated_header(*buffer_, meta_header));
-    return cached;
+    const TypeInfo *type_info = &cached->type_info;
+    reading_type_infos_.push_back(
+        ReadTypeInfo{type_info, cached->concrete_owner});
+    return type_info;
   }
 
-  auto *cache_entry = parsed_type_infos_.find(meta_header);
+  auto *cache_entry = parsed_type_infos_.find(meta_hash);
   if (cache_entry != nullptr) {
     // Header-cache hits intentionally skip without rehashing. Entries reach
     // this cache only after a successful TypeMeta parse and 52-bit
     // metadata-hash validation. Do not add body/hash/schema-limit/exact-local
     // checks here; the miss path owns them before publish.
-    const TypeInfo *cached = cache_entry->second;
-    reading_type_infos_.push_back(cached);
-    has_cached_meta_header_ = true;
-    cached_meta_header_ = meta_header;
-    cached_meta_type_info_ = cached;
+    const CachedTypeInfo *cached = cache_entry->second;
+    if (FORY_PREDICT_FALSE(!matches_expected_type(cached->concrete_owner,
+                                                  expected_type_info))) {
+      return unexpected_type_meta_owner();
+    }
     FORY_RETURN_NOT_OK(
         TypeMeta::skip_bytes_for_validated_header(*buffer_, meta_header));
-    return cached;
+    cached_meta_type_info_ = cached;
+    const TypeInfo *type_info = &cached->type_info;
+    reading_type_infos_.push_back(
+        ReadTypeInfo{type_info, cached->concrete_owner});
+    return type_info;
   }
 
   // Not in cache - parse the TypeMeta
-  const uint32_t type_def_start =
-      buffer_->reader_index() - static_cast<uint32_t>(sizeof(int64_t));
   FORY_TRY(parsed_meta, TypeMeta::from_bytes_with_header(
                             *buffer_, meta_header, config_->max_type_fields,
                             config_->max_type_meta_bytes));
-  const uint32_t type_def_end = buffer_->reader_index();
 
   // Find local TypeInfo to get field_id mapping (optional for schema evolution)
   const TypeInfo *local_type_info = nullptr;
@@ -617,18 +687,15 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
     }
   }
 
+  if (expected_type_info != nullptr &&
+      !matches_expected_type(local_type_info, expected_type_info)) {
+    return unexpected_type_meta_owner();
+  }
+
   if (local_type_info) {
-    const auto &local_type_def = local_type_info->type_def;
-    const size_t remote_type_def_size =
-        static_cast<size_t>(type_def_end - type_def_start);
-    if (local_type_def.size() == remote_type_def_size &&
-        std::memcmp(local_type_def.data(), buffer_->data() + type_def_start,
-                    remote_type_def_size) == 0) {
-      parsed_type_infos_[meta_header] = local_type_info;
-      has_cached_meta_header_ = true;
-      cached_meta_header_ = meta_header;
-      cached_meta_type_info_ = local_type_info;
-      reading_type_infos_.push_back(local_type_info);
+    if (has_local_meta_hash(local_type_info, meta_hash)) {
+      reading_type_infos_.push_back(
+          ReadTypeInfo{local_type_info, local_type_info});
       return local_type_info;
     }
   }
@@ -636,7 +703,9 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
   FORY_TRY(remote_schema_key, check_remote_type_meta_limit(*parsed_meta));
 
   // Create TypeInfo with field_ids assigned
-  auto type_info = std::make_unique<TypeInfo>();
+  auto cached = std::make_unique<CachedTypeInfo>();
+  TypeInfo *type_info = &cached->type_info;
+  cached->concrete_owner = local_type_info;
   if (local_type_info) {
     // Have local type - assign field_ids by comparing schemas
     // Note: Extension types don't have type_meta (only structs do)
@@ -661,15 +730,15 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
     type_info->type_meta = std::move(parsed_meta);
   }
 
-  cached_type_infos_.push_back(std::move(type_info));
-  const TypeInfo *raw_ptr = cached_type_infos_.back().get();
-  parsed_type_infos_[meta_header] = raw_ptr;
-  has_cached_meta_header_ = true;
-  cached_meta_header_ = meta_header;
-  cached_meta_type_info_ = raw_ptr;
+  cached_type_infos_.push_back(std::move(cached));
+  const CachedTypeInfo *cached_ptr = cached_type_infos_.back().get();
+  const TypeInfo *raw_ptr = &cached_ptr->type_info;
+  parsed_type_infos_[meta_hash] = cached_ptr;
+  cached_meta_type_info_ = cached_ptr;
   record_remote_type_meta(remote_schema_key);
 
-  reading_type_infos_.push_back(raw_ptr);
+  reading_type_infos_.push_back(
+      ReadTypeInfo{raw_ptr, cached_ptr->concrete_owner});
   return raw_ptr;
 }
 
@@ -680,10 +749,15 @@ ReadContext::get_type_info_by_index(size_t index) const {
         "Meta index out of bounds: " + std::to_string(index) +
         ", size: " + std::to_string(reading_type_infos_.size())));
   }
-  return reading_type_infos_[index];
+  return reading_type_infos_[index].type_info;
 }
 
 Result<const TypeInfo *, Error> ReadContext::read_any_type_info() {
+  return read_any_type_info_owner(nullptr);
+}
+
+Result<const TypeInfo *, Error>
+ReadContext::read_any_type_info_owner(const TypeInfo *expected_type_info) {
   Error error;
   uint32_t type_id = buffer_->read_uint8(error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
@@ -700,19 +774,19 @@ Result<const TypeInfo *, Error> ReadContext::read_any_type_info() {
     }
     FORY_TRY(type_info,
              type_resolver_->get_user_type_info_by_id(type_id, user_type_id));
-    return type_info;
+    return require_expected_type(type_info, expected_type_info);
   }
   case TypeId::COMPATIBLE_STRUCT:
   case TypeId::NAMED_COMPATIBLE_STRUCT:
     // Read type meta inline using streaming protocol
-    return read_type_meta();
+    return read_type_meta_owner(expected_type_info);
   case TypeId::NAMED_ENUM:
   case TypeId::NAMED_EXT:
   case TypeId::NAMED_STRUCT:
   case TypeId::NAMED_UNION: {
     if (config_->compatible) {
       // Read type meta inline using streaming protocol
-      return read_type_meta();
+      return read_type_meta_owner(expected_type_info);
     }
     meta_string_table_active_ = true;
     FORY_TRY(namespace_str,
@@ -721,18 +795,24 @@ Result<const TypeInfo *, Error> ReadContext::read_any_type_info() {
              meta_string_table_.read_string(*buffer_, k_type_name_decoder));
     FORY_TRY(type_info,
              type_resolver_->get_type_info_by_name(namespace_str, type_name));
-    return type_info;
+    return require_expected_type(type_info, expected_type_info);
   }
   default: {
     // All types must be registered in type_resolver
     FORY_TRY(type_info, type_resolver_->get_type_info_by_id(type_id));
-    return type_info;
+    return require_expected_type(type_info, expected_type_info);
   }
   }
 }
 
 const TypeInfo *ReadContext::read_any_type_info(Error &error) {
-  auto result = read_any_type_info();
+  return read_any_type_info_owner(error, nullptr);
+}
+
+const TypeInfo *
+ReadContext::read_any_type_info_owner(Error &error,
+                                      const TypeInfo *expected_type_info) {
+  auto result = read_any_type_info_owner(expected_type_info);
   if (!result.ok()) {
     error = std::move(result).error();
     return nullptr;

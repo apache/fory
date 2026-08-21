@@ -165,20 +165,34 @@ public class MetaStringIOTest {
   }
 
   @Test
-  public void testCachedBigMetaStringReusesHeaderCache() {
+  public void testBigMetaStringHashHit() {
     SharedRegistry sharedRegistry = newSharedRegistry();
     MetaStringReader reader = new MetaStringReader(sharedRegistry);
     EncodedMetaString encodedMetaString = newGenericMetaString(StringUtils.random(32, 0));
-    MemoryBuffer buffer = MemoryUtils.buffer(128);
+    MemoryBuffer buffer = MemoryUtils.buffer(256);
 
     buffer.writeVarUInt32Small7(encodedMetaString.bytes.length << 1);
     buffer.writeInt64(encodedMetaString.hash);
     buffer.writeBytes(encodedMetaString.bytes);
+    int differentFrameLength = 24;
+    buffer.writeVarUInt32Small7(differentFrameLength << 1);
+    buffer.writeInt64(encodedMetaString.hash);
+    buffer.writeBytes(new byte[differentFrameLength]);
+
+    EncodedMetaString checked = reader.readMetaString(buffer);
     assertSame(
-        reader.readMetaString(buffer),
+        checked,
         sharedRegistry.getOrCreateEncodedMetaString(
             encodedMetaString.bytes, encodedMetaString.hash));
+    assertSame(reader.readMetaString(buffer), checked);
     assertEquals(buffer.readerIndex(), buffer.writerIndex());
+
+    MemoryBuffer callerCacheBuffer = MemoryUtils.buffer(64);
+    callerCacheBuffer.writeVarUInt32Small7(differentFrameLength << 1);
+    callerCacheBuffer.writeInt64(encodedMetaString.hash);
+    callerCacheBuffer.writeBytes(new byte[differentFrameLength]);
+    assertSame(reader.readMetaString(callerCacheBuffer, checked), checked);
+    assertEquals(callerCacheBuffer.readerIndex(), callerCacheBuffer.writerIndex());
   }
 
   @Test

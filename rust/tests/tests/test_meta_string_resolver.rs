@@ -236,36 +236,6 @@ fn rejects_forged_big_hash() {
 }
 
 #[test]
-fn big_hash_length_does_not_alias() {
-    let first = b"abcdefghijklmnopq";
-    let second = b"abcdefghijklmnopq\0";
-    let first_hash = meta_string_hash(first, Encoding::Utf8);
-    assert_ne!(first_hash, meta_string_hash(second, Encoding::Utf8));
-
-    let mut buffer = vec![];
-    let mut writer = Writer::from_buffer(&mut buffer);
-    write_big(&mut writer, first, first_hash);
-    write_big(&mut writer, second, first_hash);
-
-    let binding = writer.dump();
-    let mut reader = Reader::new(binding.as_slice());
-    let mut resolver = MetaStringReaderResolver::default();
-    assert_eq!(
-        resolver
-            .read_meta_string_bytes(&mut reader)
-            .unwrap()
-            .bytes
-            .as_slice(),
-        first
-    );
-    let err = resolver.read_meta_string_bytes(&mut reader).unwrap_err();
-    assert!(
-        err.to_string().contains("malformed meta string hash"),
-        "unexpected error: {err}"
-    );
-}
-
-#[test]
 fn small_zero_padding_does_not_alias() {
     let first = b"a";
     let second = b"a\0";
@@ -298,7 +268,7 @@ fn small_zero_padding_does_not_alias() {
 #[test]
 fn checked_big_hit_skips_body() {
     let bytes = b"checked_big_cache_hit";
-    let different_body = vec![0xff; bytes.len()];
+    let different_body = vec![0xff; bytes.len() + 1];
     let hash_code = meta_string_hash(bytes, Encoding::Utf8);
     let mut buffer = vec![];
     let mut writer = Writer::from_buffer(&mut buffer);
@@ -317,7 +287,7 @@ fn checked_big_hit_skips_body() {
     let mut truncated = vec![];
     let mut writer = Writer::from_buffer(&mut truncated);
     write_big(&mut writer, bytes, hash_code);
-    writer.write_var_u32((bytes.len() as u32) << 1);
+    writer.write_var_u32(((bytes.len() as u32) + 3) << 1);
     writer.write_i64(hash_code);
 
     let binding = writer.dump();

@@ -112,22 +112,13 @@ func registeredWireTypeNeedsUserTypeID(_ wireTypeID: TypeId) -> Bool {
 }
 
 @inline(never)
-private func encodedTypeDefHeader(_ bytes: [UInt8]) throws -> UInt64 {
-    guard bytes.count >= 8 else {
-        throw ForyError.invalidData("encoded compatible type metadata must include an 8-byte header")
-    }
-    let buffer = ByteBuffer(bytes: bytes)
-    return try buffer.readUInt64()
-}
-
-@inline(never)
 private func encodedTypeDefHeaderHash(_ bytes: [UInt8]) throws -> UInt64 {
     guard bytes.count >= 8 else {
         throw ForyError.invalidData("encoded compatible type metadata must include an 8-byte header")
     }
     let buffer = ByteBuffer(bytes: bytes)
     let header = try buffer.readUInt64()
-    return header >> 12
+    return typeMetaHashFromHeader(header)
 }
 
 private func fieldNeedsTypeInfo(_ fieldType: TypeMeta.FieldType) -> Bool {
@@ -285,7 +276,6 @@ public final class TypeInfo: @unchecked Sendable {
     public private(set) var typeMeta: TypeMeta?
     public var compatibleTypeMeta: TypeMeta? { remoteCompatibleTypeMeta ?? typeMeta }
     private(set) var typeDefBytes: [UInt8]?
-    private(set) var typeDefHeader: UInt64?
     public private(set) var typeDefHeaderHash: UInt64?
     public private(set) var typeDefHasUserTypeFields: Bool
     let isRefType: Bool
@@ -314,7 +304,6 @@ public final class TypeInfo: @unchecked Sendable {
         typeMeta: TypeMeta? = nil,
         compatibleTypeMeta: TypeMeta? = nil,
         typeDefBytes: [UInt8]? = nil,
-        typeDefHeader: UInt64? = nil,
         typeDefHeaderHash: UInt64? = nil,
         typeDefHasUserTypeFields: Bool = true,
         isRefType: Bool,
@@ -337,7 +326,6 @@ public final class TypeInfo: @unchecked Sendable {
         self.remoteCompatibleTypeMeta = compatibleTypeMeta
         self.typeMeta = typeMeta
         self.typeDefBytes = typeDefBytes
-        self.typeDefHeader = typeDefHeader
         self.typeDefHeaderHash = typeDefHeaderHash
         self.typeDefHasUserTypeFields = typeDefHasUserTypeFields
         self.isRefType = isRefType
@@ -439,7 +427,6 @@ public final class TypeInfo: @unchecked Sendable {
             typeMeta: typeInfo.typeMeta,
             compatibleTypeMeta: compatibleTypeMeta,
             typeDefBytes: typeInfo.typeDefBytes,
-            typeDefHeader: typeInfo.typeDefHeader,
             typeDefHeaderHash: typeInfo.typeDefHeaderHash,
             typeDefHasUserTypeFields: typeInfo.typeDefHasUserTypeFields,
             isRefType: typeInfo.isRefType,
@@ -528,7 +515,6 @@ public final class TypeInfo: @unchecked Sendable {
             fields: fields
         )
         let typeDefBytes = try typeMeta.encode()
-        let typeDefHeader = try encodedTypeDefHeader(typeDefBytes)
         let typeDefHeaderHash = try encodedTypeDefHeaderHash(typeDefBytes)
         self.typeMeta = try TypeMeta(
             typeID: compatibleWireTypeID.rawValue,
@@ -540,7 +526,6 @@ public final class TypeInfo: @unchecked Sendable {
             headerHash: typeDefHeaderHash
         )
         self.typeDefBytes = typeDefBytes
-        self.typeDefHeader = typeDefHeader
         self.typeDefHeaderHash = typeDefHeaderHash
         self.typeDefHasUserTypeFields = encodedTypeDefHasUserTypeFields(fields)
         self.typeMetaFieldsBuilder = nil
@@ -553,25 +538,35 @@ public final class TypeInfo: @unchecked Sendable {
 
     @inline(__always)
     func readDynamic(_ context: ReadContext, typeInfo: TypeInfo? = nil) throws -> Any {
-        // maxDepth bounds nested values selected through Any. Statically declared
-        // children follow their schema and must not consume this dynamic-only depth.
-        try context.enterDynamicAnyDepth()
+        try context.enterReadDepth()
         if dynamicBoxBytes != 0 {
             try context.reserveGraphMemory(dynamicBoxBytes)
         }
         let value = try readValue(context, typeInfo: typeInfo)
-        context.leaveDynamicAnyDepth()
+        context.leaveReadDepth()
         return value
     }
 
     @inline(__always)
     func readDeclared(_ context: ReadContext) throws -> Any {
-        // Compatible field metadata has already selected this serializer. Keep
-        // registered envelope semantics without counting a dynamic Any owner.
+        // TypeInfo dispatch bypasses SerializerCodec, so this owner accounts for
+        // the selected materialization exactly once, including compatible skips.
+        if isRefType {
+            let rawFlag = try context.buffer.readInt8()
+            context.buffer.moveBack(1)
+            if rawFlag != RefFlag.refValue.rawValue
+                && rawFlag != RefFlag.notNullValue.rawValue
+            {
+                return try readValue(context, typeInfo: nil)
+            }
+        }
+        try context.enterReadDepth()
         if dynamicBoxBytes != 0 {
             try context.reserveGraphMemory(dynamicBoxBytes)
         }
-        return try readValue(context, typeInfo: nil)
+        let value = try readValue(context, typeInfo: nil)
+        context.leaveReadDepth()
+        return value
     }
 
     @inline(__always)
@@ -597,19 +592,23 @@ public final class TypeInfo: @unchecked Sendable {
         guard let bodyReader else {
             throw ForyError.invalidData("type \(typeID) has no registered body reader")
         }
+        try context.enterReadDepth()
         if dynamicBoxBytes != 0 {
             try context.reserveGraphMemory(dynamicBoxBytes)
         }
+        let value: Any
         if context.compatible
             && (compatibleWireTypeID == .compatibleStruct
                 || compatibleWireTypeID == .namedCompatibleStruct)
         {
-            return try bodyReader(context, self)
+            value = try bodyReader(context, self)
+        } else if remoteCompatibleTypeMeta != nil {
+            value = try bodyReader(context, self)
+        } else {
+            value = try bodyReader(context, nil)
         }
-        if remoteCompatibleTypeMeta != nil {
-            return try bodyReader(context, self)
-        }
-        return try bodyReader(context, nil)
+        context.leaveReadDepth()
+        return value
     }
 }
 
@@ -631,7 +630,8 @@ final class TypeResolver {
     private var byTypeName: [TypeNameKey: TypeInfo] = [:]
     private var registeredTypeInfos: [TypeInfo] = []
     private var builtinTypeInfoByID: [TypeInfo?] = []
-    private var typeInfoByHeader = UInt64Map<TypeInfo>(initialCapacity: 64)
+    // Never key this cache by the complete header: its low 12 framing bits may vary on a hit.
+    private var typeInfoByHeaderHash = UInt64Map<TypeInfo>(initialCapacity: 64)
     private var remoteSchemaVersionsByType: [String: Int] = [:]
     private var totalAcceptedSchemaVersions = 0
 
@@ -1025,23 +1025,24 @@ final class TypeResolver {
     }
 
     @inline(__always)
-    func getTypeInfo(forHeader header: UInt64) -> TypeInfo? {
-        typeInfoByHeader.value(for: header)
+    func getTypeInfo(forHeaderHash headerHash: UInt64) -> TypeInfo? {
+        typeInfoByHeaderHash.value(for: headerHash)
     }
 
     @inline(never)
     func cacheTypeInfo(
         _ typeMeta: TypeMeta,
-        forHeader header: UInt64,
+        forHeaderHash headerHash: UInt64,
         localTypeInfo: TypeInfo,
-        exactLocal: Bool,
         config: Config
     ) throws -> TypeInfo {
-        if let cached = typeInfoByHeader.value(for: header) {
+        if let cached = typeInfoByHeaderHash.value(for: headerHash) {
             return cached
         }
-        if exactLocal {
-            typeInfoByHeader.set(localTypeInfo, for: header)
+        if localTypeInfo.typeDefHeaderHash == headerHash {
+            // A validated 52-bit hash is the complete schema identity. The local metadata bytes
+            // may use different current-frame low bits, so byte equality must not decide ownership.
+            // Local identity is not remote checked-cache state and must not be published there.
             return localTypeInfo
         }
         guard let localTypeMeta = localTypeInfo.typeMeta else {
@@ -1051,7 +1052,7 @@ final class TypeResolver {
         // Failed compatibility checks must not consult or mutate persistent remote accounting.
         let remoteSchemaKey = try checkRemoteTypeMetaLimit(typeMeta, config: config)
         let typeInfo = TypeInfo(dynamic: localTypeInfo, compatibleTypeMeta: canonicalTypeMeta)
-        typeInfoByHeader.set(typeInfo, for: header)
+        typeInfoByHeaderHash.set(typeInfo, for: headerHash)
         recordRemoteTypeMeta(remoteSchemaKey)
         return typeInfo
     }

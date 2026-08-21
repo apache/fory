@@ -376,22 +376,14 @@ class TypeMetaContextBuilder {
     return `${this.readHolder}.readTypeMeta()`;
   }
 
-  readNamedTypeMeta(typeId: number, namespace: string, typeName: string) {
-    return `${this.readHolder}.readNamedTypeMeta(${typeId}, ${CodecBuilder.sourceString(namespace)}, ${CodecBuilder.sourceString(typeName)})`;
+  readNamedTypeMeta(typeId: number, namespace: string, typeName: string, serializer?: string) {
+    const method = serializer === undefined ? "readNamedTypeMeta" : "readExpectedNamedTypeMeta";
+    const owner = serializer === undefined ? "" : `, ${serializer}`;
+    return `${this.readHolder}.${method}(${typeId}, ${CodecBuilder.sourceString(namespace)}, ${CodecBuilder.sourceString(typeName)}${owner})`;
   }
 
-  readCompatibleStructSerializer(localHash: string, original?: string) {
-    if (original) {
-      return `${this.readHolder}.readCompatibleStructSerializer(${localHash}, ${original})`;
-    }
-    return `${this.readHolder}.readCompatibleStructSerializer(${localHash})`;
-  }
-
-  genSerializerByTypeMetaRuntime(typeMeta: string, original?: string) {
-    if (original) {
-      return `${this.readHolder}.genSerializerByTypeMetaRuntime(${typeMeta}, ${original})`;
-    }
-    return `${this.readHolder}.genSerializerByTypeMetaRuntime(${typeMeta})`;
+  readCompatibleStructSerializer(localHash: string, original: string) {
+    return `${this.readHolder}.readCompatibleStructOwner(${localHash}, ${original})`;
   }
 }
 

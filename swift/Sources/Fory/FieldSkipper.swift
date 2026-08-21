@@ -492,17 +492,13 @@ extension ReadContext {
     }
 
     private func readSkippedUnion() throws -> Any {
-        // An unknown compatible union has no statically bound case payload here.
-        // Count this dynamic skip owner, then let the selected payload count its own
-        // TypeInfo materialization. Static union readers do not enter this path.
-        try enterDynamicAnyDepth()
         _ = try buffer.readVarUInt32()
-        let value = try DynamicSerializer<Any>.read(
+        // The selected TypeInfo owns the materialization depth. The skip itself
+        // must not charge the same recursive value a second time.
+        return try DynamicSerializer<Any>.read(
             self,
             refMode: .tracking,
             readTypeInfo: true
         )
-        leaveDynamicAnyDepth()
-        return value
     }
 }

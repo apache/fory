@@ -65,17 +65,14 @@ final class MetaStringReader {
     EncodedMetaString? expected,
   ) {
     final hash = buffer.readInt64();
-    final encoding = (hash & 0xff).toInt();
-    final start = bufferReaderIndex(buffer);
-    if (expected != null &&
-        expected.encoding == encoding &&
-        expected.length == length &&
-        expected.hash == hash &&
-        bufferMatchesBytes(buffer, start, expected.bytes)) {
+    buffer.checkReadableBytes(length);
+    // The wire hash is the protocol identity for an expected cache hit. The
+    // current frame length only bounds and skips its body.
+    if (expected != null && expected.hash == hash) {
       buffer.skip(length);
       return expected;
     }
-    buffer.checkReadableBytes(length);
+    final encoding = (hash & 0xff).toInt();
     final encoded = EncodedMetaString(buffer.copyBytes(length), encoding);
     if (encoded.hash != hash) {
       _throwInvalidMetaStringHash();

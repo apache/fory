@@ -75,8 +75,8 @@ public class TypeDef implements Serializable {
 
   private final ClassSpec classSpec;
   private final List<FieldInfo> fieldsInfo;
-  // Unique id for class def. If class def are same between processes, then the id will
-  // be same too.
+  // Complete wire header. Its top 52 bits are the schema identity; its low 12 bits describe the
+  // encoded frame.
   private final long id;
   private final byte[] encoded;
   private final boolean readDataAlwaysAdvances;
@@ -96,12 +96,18 @@ public class TypeDef implements Serializable {
     this.readDataAlwaysAdvances = readDataAlwaysAdvances;
   }
 
-  public static void skipTypeDef(MemoryBuffer buffer, long id) {
+  /** Returns the protocol-defined 52-bit schema identity from a wire header. */
+  @Internal
+  public static long headerHash(long header) {
+    return header >>> (Long.SIZE - NUM_HASH_BITS);
+  }
+
+  public static void skipTypeDef(MemoryBuffer buffer, long header) {
     // Header-cache hits intentionally treat the current body as opaque bytes and skip by the size
     // in the current header. Parsed TypeDefs are published to the cache only after successful body
     // parse and 52-bit metadata-hash validation; cache hits must not reparse, rehash, allocate, or
     // otherwise materialize that body.
-    int size = (int) (id & META_SIZE_MASKS);
+    int size = (int) (header & META_SIZE_MASKS);
     if (size == META_SIZE_MASKS) {
       int extendedSize = buffer.readVarUInt32Small14();
       if (extendedSize < 0 || extendedSize > Integer.MAX_VALUE - size) {
@@ -126,15 +132,30 @@ public class TypeDef implements Serializable {
     return classSpec;
   }
 
+  /** Returns this schema bound to the concrete root class accepted by its metadata owner. */
+  @Internal
+  public TypeDef bindRootClass(Class<?> rootClass) {
+    if (classSpec.type == rootClass) {
+      return this;
+    }
+    ClassSpec boundClassSpec =
+        new ClassSpec(
+            classSpec.entireClassName,
+            classSpec.isEnum,
+            classSpec.isArray,
+            classSpec.dimension,
+            classSpec.typeId,
+            classSpec.userTypeId);
+    boundClassSpec.type = rootClass;
+    return new TypeDef(boundClassSpec, fieldsInfo, id, encoded);
+  }
+
   /** Contain all fields info including all parent classes. */
   public List<FieldInfo> getFieldsInfo() {
     return fieldsInfo;
   }
 
-  /**
-   * Returns an unique id for class def. If class def are same between processes, then the id will
-   * be same too.
-   */
+  /** Returns the complete wire header; use {@link #headerHash(long)} for schema identity. */
   public long getId() {
     return id;
   }

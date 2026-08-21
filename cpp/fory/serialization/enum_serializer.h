@@ -73,13 +73,11 @@ struct Serializer<E, std::enable_if_t<std::is_enum_v<E>>> {
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
-    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    auto type_info_res = ctx.read_enum_type_info(
+        std::type_index(typeid(E)), static_cast<uint32_t>(type_id));
+    if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
+      ctx.set_error(std::move(type_info_res).error());
       return;
-    }
-    if (!type_id_matches(type_info->type_id, static_cast<uint32_t>(type_id))) {
-      ctx.set_error(Error::type_mismatch(type_info->type_id,
-                                         static_cast<uint32_t>(type_id)));
     }
   }
 
@@ -136,8 +134,7 @@ struct Serializer<E, std::enable_if_t<std::is_enum_v<E>>> {
       return E{};
     }
     if (read_type) {
-      // Use overload without type_index (fast path)
-      ctx.read_enum_type_info(static_cast<uint32_t>(type_id));
+      read_type_info(ctx);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return E{};
       }

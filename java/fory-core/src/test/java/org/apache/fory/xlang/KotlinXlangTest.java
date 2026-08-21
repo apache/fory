@@ -54,6 +54,7 @@ import org.testng.annotations.Test;
 @Test
 public class KotlinXlangTest extends XlangTestBase {
   private static final String STATIC_SERIALIZER_CASE = "static_serializer_round_trip";
+  private static final String FIELD_TYPE_GUARD_CASE = "generated_field_type_guard";
   private static final String DENSE_ARRAY_CASE = "dense_array_round_trip";
   private static final String UNSIGNED_COLLECTION_CASE = "unsigned_collection_round_trip";
   private static final File KOTLIN_DIR = new File("../../kotlin");
@@ -113,6 +114,7 @@ public class KotlinXlangTest extends XlangTestBase {
   @Override
   protected ExecutionContext prepareExecution(String caseName, byte[] payload) throws IOException {
     if (!STATIC_SERIALIZER_CASE.equals(caseName)
+        && !FIELD_TYPE_GUARD_CASE.equals(caseName)
         && !DENSE_ARRAY_CASE.equals(caseName)
         && !UNSIGNED_COLLECTION_CASE.equals(caseName)) {
       throw new SkipException(
@@ -134,6 +136,17 @@ public class KotlinXlangTest extends XlangTestBase {
     Assert.assertEquals(response.id, 4_294_967_294L);
     Assert.assertEquals(response.name, "kotlin-to-java");
     Assert.assertEquals(response.score, 987654321L);
+  }
+
+  @Test(groups = "xlang")
+  public void testGeneratedFieldTypeGuard() throws IOException {
+    ExecutionContext context = prepareExecution(FIELD_TYPE_GUARD_CASE, new byte[0]);
+    Assert.assertTrue(
+        TestUtils.executeCommand(
+            context.commandContext().command(),
+            60,
+            context.commandContext().environment(),
+            context.commandContext().workDir()));
   }
 
   @Test(groups = "xlang")

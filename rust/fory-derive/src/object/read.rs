@@ -243,7 +243,10 @@ pub fn gen_read() -> TokenStream {
             // Box/Rc/Arc/dynamic-box owners account for the storage they own.
             if context.is_compatible() {
                 let type_info = if read_type_info {
-                    context.read_any_type_info()?
+                    // Compatible structural mapping must retain unregistered remote TypeMeta.
+                    // A registered harness must own this concrete target before resolver state is
+                    // published; only an unregistered structural stub may be mapped or skipped.
+                    fory_core::serializer::struct_::read_compatible_type_info::<Self>(context)?
                 } else {
                     let provider_type_id = ::std::any::TypeId::of::<Self>();
                     context.get_provider_type_info(&provider_type_id)?
@@ -507,9 +510,8 @@ pub(crate) fn gen_read_compatible_target(
     } else {
         quote! {
             let remote_meta = type_info.get_type_meta_ref();
-            // Metadata resolution owns exact byte validation before publishing TypeInfo. Reusing
-            // that result avoids a local metadata lookup and must not be replaced by a hash-only
-            // schema decision.
+            // Metadata resolution selects the local schema by the validated 52-bit TypeMeta hash.
+            // Reusing that result avoids another local metadata lookup or body comparison.
             if type_info.has_exact_local_schema() {
                 return <Self as fory_core::Serializer>::read_data(context);
             }

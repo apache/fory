@@ -151,11 +151,22 @@ template <typename T> inline constexpr bool need_to_write_type_for_field() {
 
 template <typename T>
 FORY_ALWAYS_INLINE const TypeInfo *read_map_type_info(ReadContext &ctx) {
-  const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
+  using ValueType = nullable_element_t<T>;
+  const TypeInfo *expected_type_info = nullptr;
+  if constexpr (is_user_type(Serializer<ValueType>::type_id)) {
+    auto expected_result =
+        ctx.type_resolver().template get_type_info<ValueType>();
+    if (FORY_PREDICT_FALSE(!expected_result.ok())) {
+      ctx.set_error(std::move(expected_result).error());
+      return nullptr;
+    }
+    expected_type_info = expected_result.value();
+  }
+  const TypeInfo *type_info =
+      ctx.read_any_type_info_owner(ctx.error(), expected_type_info);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;
   }
-  using ValueType = nullable_element_t<T>;
   constexpr uint32_t expected =
       static_cast<uint32_t>(Serializer<ValueType>::type_id);
   if (FORY_PREDICT_FALSE(!type_id_matches(type_info->type_id, expected))) {

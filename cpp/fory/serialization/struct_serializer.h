@@ -4594,7 +4594,14 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
   /// Read and validate type info.
   /// This consumes the type_id and meta index from the buffer.
   static void read_type_info(ReadContext &ctx) {
-    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
+    auto type_info_res = ctx.type_resolver().template get_type_info<T>();
+    if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
+      ctx.set_error(std::move(type_info_res).error());
+      return;
+    }
+    const TypeInfo *expected = type_info_res.value();
+    const TypeInfo *type_info =
+        ctx.read_any_type_info_owner(ctx.error(), expected);
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -4779,7 +4786,14 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
           (void)remote_user_type_id;
           if (remote_has_meta) {
             // Read TypeMeta inline using streaming protocol
-            auto remote_type_info_res = ctx.read_type_meta();
+            auto local_type_info_res =
+                ctx.type_resolver().template get_type_info<T>();
+            if (!local_type_info_res.ok()) {
+              ctx.set_error(std::move(local_type_info_res).error());
+              return T{};
+            }
+            auto remote_type_info_res =
+                ctx.read_type_meta_owner(local_type_info_res.value());
             if (!remote_type_info_res.ok()) {
               ctx.set_error(std::move(remote_type_info_res).error());
               return T{};
@@ -4863,7 +4877,8 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
             }
           } else {
             // Named type - need to parse full type info
-            const TypeInfo *remote_info = ctx.read_any_type_info(ctx.error());
+            const TypeInfo *remote_info =
+                ctx.read_any_type_info_owner(ctx.error(), type_info);
             if (FORY_PREDICT_FALSE(ctx.has_error())) {
               return T{};
             }

@@ -28,6 +28,7 @@ import struct
 import types
 from typing import Tuple
 
+from pyfory.error import TypeUnregisteredError
 from pyfory.serialization import Buffer
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
 from pyfory.policy import DEFAULT_POLICY
@@ -191,6 +192,14 @@ def _validate_function_value(policy, func, is_local):
 def _authorize_callable_materialization(policy, callable_type, **kwargs):
     if policy is not DEFAULT_POLICY:
         policy.authorize_instantiation(callable_type, **kwargs)
+
+
+def _require_registered_reduce_type(type_resolver, callable_obj):
+    if not isinstance(callable_obj, type):
+        raise TypeUnregisteredError("Strict default policy requires a registered concrete reduce type.")
+    typeinfo = type_resolver.get_type_info(callable_obj, create=False)
+    if typeinfo is None or typeinfo.cls is not callable_obj:
+        raise TypeUnregisteredError("Strict default policy requires a registered concrete reduce type.")
 
 
 def _bind_static_method(obj, method_name):
@@ -1288,6 +1297,15 @@ class ReduceSerializer(Serializer):
             module_name, obj_name = global_name.rsplit(".", 1)
         else:
             module_name, obj_name = "builtins", global_name
+        if self.type_resolver.strict and policy is DEFAULT_POLICY:
+            # Authorize the wire-selected name before importing its module. Import hooks and module
+            # __getattr__ can execute code, so resolving an unregistered name is already too late.
+            if module_name == self.cls.__module__ and obj_name == self.cls.__name__:
+                return self.cls
+            raise TypeUnregisteredError(
+                f"Reduce global value {module_name}.{obj_name} is not the registered reduce owner. "
+                "Configure a DeserializationPolicy that explicitly authorizes it."
+            )
         try:
             obj = _resolve_validated_module_attr(
                 policy,
@@ -1363,6 +1381,10 @@ class ReduceSerializer(Serializer):
         elif reduce_data[0] == 1:
             # Case 2-5: Callable with args and optional state/items
             callable_obj = reduce_data[1]
+            if self.type_resolver.strict and read_context.policy is DEFAULT_POLICY:
+                # Callable carriers perform their own early checks, but this final gate also
+                # rejects callable instances and any future carrier before interception or call.
+                _require_registered_reduce_type(self.type_resolver, callable_obj)
             args = reduce_data[2] or ()
             state = reduce_data[3]
             listitems = reduce_data[4]
@@ -1438,12 +1460,24 @@ class TypeSerializer(Serializer):
 
     def read(self, read_context):
         class_type = read_context.read_int8()
+        policy = read_context.policy
 
         if class_type == 1:
+            if self.type_resolver.strict and policy is DEFAULT_POLICY:
+                raise TypeUnregisteredError(
+                    "Strict default policy does not allow a wire-defined local class. "
+                    "Configure a DeserializationPolicy that explicitly authorizes it."
+                )
             return self._deserialize_local_class(read_context)
         module_name = read_context.read_string()
         qualname = read_context.read_string()
-        policy = read_context.policy
+        if self.type_resolver.strict and policy is DEFAULT_POLICY:
+            # The registered concrete class, not the carrier `type`, owns this authorization.
+            # Resolve it from registration state before an attacker-selected import or getattr.
+            cls = self.type_resolver._get_type_by_python_name(module_name, qualname)
+            if cls is None:
+                raise TypeUnregisteredError(f"Python class {module_name}.{qualname} is not registered.")
+            return cls
         cls = _resolve_validated_module_qualname(policy, module_name, qualname)
         is_class = isinstance(cls, type) if policy is DEFAULT_POLICY else _is_class_static(cls)
         if not is_class:
@@ -1692,6 +1726,10 @@ class FunctionSerializer(Serializer):
         """Deserialize a function from its components."""
 
         func_type_id = read_context.read_int8()
+        if self.type_resolver.strict and read_context.policy is DEFAULT_POLICY:
+            # Registering the FunctionType carrier does not authorize a wire-selected function.
+            # Reject before reading any receiver, import name, or marshalled code.
+            raise TypeUnregisteredError("Strict default policy does not allow Python function carriers.")
         if func_type_id == 0:
             policy = read_context.policy
             _authorize_callable_materialization(policy, types.MethodType)
@@ -1813,6 +1851,9 @@ class NativeFuncMethodSerializer(Serializer):
             write_context.write_ref(obj)
 
     def read(self, read_context):
+        if self.type_resolver.strict and read_context.policy is DEFAULT_POLICY:
+            # Reject before reading the attacker-selected function or method name and receiver.
+            raise TypeUnregisteredError("Strict default policy does not allow native callable carriers.")
         name = read_context.read_string()
         if read_context.read_bool():
             module = read_context.read_string()
@@ -1854,6 +1895,9 @@ class MethodSerializer(Serializer):
         write_context.write_string(method_name)
 
     def read(self, read_context):
+        if self.type_resolver.strict and read_context.policy is DEFAULT_POLICY:
+            # Reject before reading an attacker-selected receiver or method name.
+            raise TypeUnregisteredError("Strict default policy does not allow method carriers.")
         _authorize_callable_materialization(read_context.policy, self.cls)
         instance = read_context.read_ref()
         method_name = read_context.read_string()

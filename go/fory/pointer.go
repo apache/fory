@@ -191,7 +191,8 @@ func (s *ptrToValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 		internalTypeID := TypeId(typeID)
 		// Check if this is a struct type that needs type meta reading
 		if IsNamespacedType(internalTypeID) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
-			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
+			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(
+				buf, typeID, value.Type().Elem(), ctxErr)
 			if ctxErr.HasError() {
 				return
 			}

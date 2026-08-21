@@ -87,11 +87,74 @@ func TestMetaStringResolverRejectsLargeBodyHashMismatch(t *testing.T) {
 	require.Empty(t, resolver.dynamicIDToEnumString)
 }
 
-func TestMetaStringResolverRejectsOversizedLengthBeforeAllocation(t *testing.T) {
+func TestLargeMetaStringHashCacheHit(t *testing.T) {
 	resolver := NewMetaStringResolver()
+	cachedData := []byte("0123456789abcdefg")
+	hashcode := ComputeMetaStringHash(cachedData, meta.UTF_8)
+
+	var cachedErr Error
+	cached := resolver.ReadMetaStringBytes(
+		largeMetaStringBuffer(len(cachedData), hashcode, cachedData), &cachedErr)
+	require.False(t, cachedErr.HasError())
+	require.NotNil(t, cached)
+
+	sameLengthBody := []byte("gfedcba9876543210")
+	sameLengthBuffer := largeMetaStringBuffer(len(sameLengthBody), hashcode, sameLengthBody)
+	var sameLengthErr Error
+	sameLength := resolver.ReadMetaStringBytes(sameLengthBuffer, &sameLengthErr)
+	require.False(t, sameLengthErr.HasError())
+	require.Same(t, cached, sameLength)
+	require.Equal(t, len(sameLengthBuffer.GetData()), sameLengthBuffer.ReaderIndex())
+
+	differentLengthBody := []byte("different large body length")
+	differentLengthBuffer := largeMetaStringBuffer(len(differentLengthBody), hashcode, differentLengthBody)
+	var differentLengthErr Error
+	differentLength := resolver.ReadMetaStringBytes(differentLengthBuffer, &differentLengthErr)
+	require.False(t, differentLengthErr.HasError())
+	require.Same(t, cached, differentLength)
+	require.Equal(t, len(differentLengthBuffer.GetData()), differentLengthBuffer.ReaderIndex())
+
+	oversizedBody := make([]byte, MaxInt16+1)
+	oversizedBuffer := largeMetaStringBuffer(len(oversizedBody), hashcode, oversizedBody)
+	var oversizedErr Error
+	oversized := resolver.ReadMetaStringBytes(oversizedBuffer, &oversizedErr)
+	require.False(t, oversizedErr.HasError())
+	require.Same(t, cached, oversized)
+	require.Equal(t, len(oversizedBuffer.GetData()), oversizedBuffer.ReaderIndex())
+	require.Len(t, resolver.dynamicIDToEnumString, 4)
+}
+
+func TestTruncatedLargeHashCacheHit(t *testing.T) {
+	resolver := NewMetaStringResolver()
+	cachedData := []byte("0123456789abcdefg")
+	hashcode := ComputeMetaStringHash(cachedData, meta.UTF_8)
+
+	var cachedErr Error
+	cached := resolver.ReadMetaStringBytes(
+		largeMetaStringBuffer(len(cachedData), hashcode, cachedData), &cachedErr)
+	require.False(t, cachedErr.HasError())
+	require.NotNil(t, cached)
+
+	truncated := largeMetaStringBuffer(len(cachedData), hashcode, cachedData[:len(cachedData)-1])
+	var truncatedErr Error
+	require.Nil(t, resolver.ReadMetaStringBytes(truncated, &truncatedErr))
+	require.Equal(t, ErrKindBufferOutOfBound, truncatedErr.Kind())
+	require.Len(t, resolver.dynamicIDToEnumString, 1)
+}
+
+func largeMetaStringBuffer(length int, hashcode int64, body []byte) *ByteBuffer {
 	buffer := NewByteBuffer(nil)
-	buffer.WriteVarUint32Small7(uint32(MaxInt16+1) << 1)
-	buffer.SetReaderIndex(0)
+	buffer.WriteVarUint32Small7(uint32(length) << 1)
+	buffer.WriteInt64(hashcode)
+	buffer.Write(body)
+	return NewByteBuffer(buffer.Bytes())
+}
+
+func TestOversizedMetaStringLength(t *testing.T) {
+	resolver := NewMetaStringResolver()
+	body := make([]byte, MaxInt16+1)
+	hashcode := ComputeMetaStringHash(body, meta.UTF_8)
+	buffer := largeMetaStringBuffer(len(body), hashcode, body)
 
 	var ctxErr Error
 	require.Nil(t, resolver.ReadMetaStringBytes(buffer, &ctxErr))

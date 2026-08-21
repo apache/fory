@@ -30,9 +30,15 @@ Java Fory JSON applications can enforce those rules with `JsonValidator` or in
 a `JsonCreator`, but the selected business invariant remains an application
 policy rather than a Fory protocol security boundary.
 
-This model also does not cover trusted in-memory formats. Row format and other
-memory-format paths are trusted-data paths unless a Fory implementation explicitly exposes
-them as untrusted deserialization APIs.
+This model also does not cover trusted in-memory formats. Row format accepts only trusted input and
+must not be used to process attacker-controlled or otherwise untrusted bytes. Other memory-format
+paths are trusted-data paths unless a Fory implementation explicitly exposes them as untrusted
+deserialization APIs.
+
+Rust `check_string_read(false)` is likewise an explicit trusted-input mode. It disables UTF-8
+validation for performance and may be used only when the application guarantees that encoded string
+bytes are valid UTF-8. The default checked mode remains part of the untrusted-deserialization
+boundary; the unchecked mode is not.
 
 ## Trust Boundaries
 
@@ -97,6 +103,17 @@ for that type. A serializer that Fory merely discovers or generates, and that
 is not reached through an explicitly selected static root or a registered
 enclosing owner, is serialization mechanics only and does not by itself
 authorize a dynamically selected class.
+
+An application-provided custom deserialization policy is itself an application-owned trust
+decision. In Python's reduce path, strict mode with the default policy requires registration-owned
+authorization for a wire-selected global name before importing or resolving it. When an
+application installs a custom policy, that
+policy's module, function, method, class, and reduce interception hooks own authorization of the
+resolved callable. A permissive custom policy may intentionally authorize an unregistered callable;
+strict mode does not override that explicit application policy.
+Python `strict=False` is likewise only for trusted input: callable authorization in that mode is
+the application's responsibility, and the default policy does not restore the strict registration
+boundary.
 
 Disabling registration or dynamic-type checks for trusted data is a caller
 configuration choice. That choice only removes the arbitrary-type materialization
@@ -632,7 +649,7 @@ handling, deserialization policy, or schema-evolution semantics. Failed or
 incompatible metadata must not consume schema-version limits, and metadata
 cache hits or generated field readers must not add validation, hashing,
 allocation, or policy work for these limits. The concrete sequence for metadata
-parsing, cache publishing, exact-local matching, and counting belongs to the
+parsing, cache publishing, local-header matching, and counting belongs to the
 [xlang implementation guide](../specification/xlang_implementation_guide.md).
 
 The checked metadata cache is the only owner of whether a received TypeDef or
@@ -640,11 +657,34 @@ TypeMeta header has already been validated. A metadata cache hit means the
 header was previously parsed, body/hash-validated, policy-checked, and
 published by the owning cache, so the reader must skip the remaining metadata
 body and use the cached metadata without repeating body validation, hash
-validation, limit checks, exact-local checks, or policy work. A metadata cache
-miss is the only path that parses the metadata body, validates its hash and
-shape, enforces metadata limits, performs exact-local byte comparison, and
-publishes to the cache. Do not add separate nullable flags, sentinel headers,
-per-TypeInfo acceptance markers, or parallel state to represent this decision.
+validation, limit checks, local-schema checks, or policy work. The
+protocol-defined 52-bit TypeDef/TypeMeta header hash is the unique schema
+identity. A known expected local header match is a local-schema hit and must
+skip the body without comparing field arrays or metadata bytes, publishing to
+the remote cache, or consuming a schema-version count. A metadata cache miss is
+the only path that parses the metadata body, validates its hash and shape, and
+enforces metadata limits. The low 12 header bits belong only to the current
+frame. A hit uses the current size and optional extension for bounds and skip
+without validating current reserved or compression flags; low-flag validation
+belongs to the first miss. After this first validation, the miss path may
+build local metadata when no local header was available before the parse. The
+validated received 52-bit hash alone is compared with that local header hash;
+equality selects the local owner without comparing encoded bytes or fields.
+Non-local metadata is then published to the remote cache. Do not add
+separate nullable flags, sentinel headers, per-TypeInfo acceptance markers, or
+parallel state to represent this decision.
+
+Checked MetaString caches follow the same ownership rule. A cache miss is the
+only path that reads and validates a new MetaString body before publishing it.
+The protocol-defined wire hash alone is the MetaString cache identity. A cache
+hit means that identity was already validated, so the reader checks that the
+current frame body is readable, skips its declared length, and uses the cached
+value without rehashing, comparing the length or body bytes, or repeating
+validation. A different body or length carrying the same hash is not a second
+protocol identity that the reader must reject; resolving it to the cached value
+is the defined cache semantics, not a cache-poisoning or policy-bypass defect.
+Do not add hit-time byte or length comparison or other parallel acceptance
+state for MetaString caches.
 
 Only metadata that is actually carried as a TypeDef or TypeMeta body is subject
 to metadata body and schema-version limits. Compatible named enum, ext, and

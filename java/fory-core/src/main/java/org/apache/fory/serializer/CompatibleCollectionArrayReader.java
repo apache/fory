@@ -64,6 +64,37 @@ final class CompatibleCollectionArrayReader {
   private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
   private static final int ARRAY_LIST_OWNER_BYTES =
       GraphMemoryEstimates.shallowObjectBytes(ArrayList.class);
+  private static final int PRIMITIVE_ARRAY_OWNER_BYTES = GraphMemoryEstimates.objectArrayBytes();
+  private static final int BOOL_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(BoolList.class);
+  private static final int INT8_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Int8List.class);
+  private static final int UINT8_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(UInt8List.class);
+  private static final int INT16_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Int16List.class);
+  private static final int UINT16_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(UInt16List.class);
+  private static final int INT32_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Int32List.class);
+  private static final int UINT32_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(UInt32List.class);
+  private static final int INT64_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Int64List.class);
+  private static final int UINT64_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(UInt64List.class);
+  private static final int FLOAT16_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Float16List.class);
+  private static final int BFLOAT16_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(BFloat16List.class);
+  private static final int FLOAT32_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Float32List.class);
+  private static final int FLOAT64_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Float64List.class);
+  private static final int FLOAT16_ARRAY_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Float16Array.class);
+  private static final int BFLOAT16_ARRAY_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(BFloat16Array.class);
 
   static final int READ_LIST_TO_ARRAY = 1;
   static final int READ_ARRAY_TO_LIST = 2;
@@ -615,9 +646,10 @@ final class CompatibleCollectionArrayReader {
                   + elementTypeId);
         }
       }
-      return readListPrimitiveElements(buffer, numElements, arrayTypeId, elementTypeId, hasNull);
+      return readListPrimitiveElements(
+          readContext, numElements, arrayTypeId, elementTypeId, hasNull);
     }
-    return readListPrimitiveElements(buffer, numElements, arrayTypeId, elementTypeId, false);
+    return readListPrimitiveElements(readContext, numElements, arrayTypeId, elementTypeId, false);
   }
 
   private static Object readListBodyAsListTarget(
@@ -626,7 +658,7 @@ final class CompatibleCollectionArrayReader {
     int numElements = buffer.readVarUInt32Small7();
     validateElementCount(numElements);
     if (numElements == 0) {
-      Object array = readListPrimitiveElements(buffer, 0, arrayTypeId, elementTypeId, false);
+      Object array = readListPrimitiveElements(readContext, 0, arrayTypeId, elementTypeId, false);
       return materializeTarget(readContext, array, arrayTypeId, targetType);
     }
     int flags = buffer.readByte();
@@ -663,7 +695,7 @@ final class CompatibleCollectionArrayReader {
       return readNullableListBoxedElements(readContext, numElements, arrayTypeId, elementTypeId);
     }
     Object array =
-        readListPrimitiveElements(buffer, numElements, arrayTypeId, elementTypeId, false);
+        readListPrimitiveElements(readContext, numElements, arrayTypeId, elementTypeId, false);
     return materializeTarget(readContext, array, arrayTypeId, targetType);
   }
 
@@ -673,6 +705,7 @@ final class CompatibleCollectionArrayReader {
     int elemSize = elementSize(arrayTypeId);
     validateBinarySize(byteSize, elemSize);
     buffer.checkReadableBytes(byteSize);
+    reservePrimitiveArray(readContext, byteSize / elemSize, elemSize);
     return readPrimitiveElements(buffer, byteSize, byteSize / elemSize, arrayTypeId);
   }
 
@@ -763,8 +796,14 @@ final class CompatibleCollectionArrayReader {
   }
 
   private static Object readListPrimitiveElements(
-      MemoryBuffer buffer, int numElements, int arrayTypeId, int elementTypeId, boolean hasNull) {
+      ReadContext readContext,
+      int numElements,
+      int arrayTypeId,
+      int elementTypeId,
+      boolean hasNull) {
+    MemoryBuffer buffer = readContext.getBuffer();
     buffer.checkReadableBytes(minReadablePrimitiveListBytes(numElements, elementTypeId, hasNull));
+    reservePrimitiveArray(readContext, numElements, elementSize(arrayTypeId));
     switch (elementTypeId) {
       case Types.BOOL:
         {
@@ -1058,12 +1097,14 @@ final class CompatibleCollectionArrayReader {
       return array;
     }
     if (targetType == Float16Array.class) {
+      readContext.reserveGraphMemory(FLOAT16_ARRAY_OWNER_BYTES);
       return Float16Array.wrapBits((short[]) array);
     }
     if (targetType == BFloat16Array.class) {
+      readContext.reserveGraphMemory(BFLOAT16_ARRAY_OWNER_BYTES);
       return BFloat16Array.wrapBits((short[]) array);
     }
-    Object primitiveList = materializePrimitiveList(array, arrayTypeId, targetType);
+    Object primitiveList = materializePrimitiveList(readContext, array, arrayTypeId, targetType);
     if (primitiveList != null) {
       return primitiveList;
     }
@@ -1111,34 +1152,86 @@ final class CompatibleCollectionArrayReader {
   }
 
   private static Object materializePrimitiveList(
-      Object array, int arrayTypeId, Class<?> targetType) {
+      ReadContext readContext, Object array, int arrayTypeId, Class<?> targetType) {
     switch (arrayTypeId) {
       case Types.BOOL_ARRAY:
-        return targetType == BoolList.class ? new BoolList((boolean[]) array) : null;
+        if (targetType == BoolList.class) {
+          readContext.reserveGraphMemory(BOOL_LIST_OWNER_BYTES);
+          return new BoolList((boolean[]) array);
+        }
+        return null;
       case Types.INT8_ARRAY:
-        return targetType == Int8List.class ? new Int8List((byte[]) array) : null;
+        if (targetType == Int8List.class) {
+          readContext.reserveGraphMemory(INT8_LIST_OWNER_BYTES);
+          return new Int8List((byte[]) array);
+        }
+        return null;
       case Types.UINT8_ARRAY:
-        return targetType == UInt8List.class ? new UInt8List((byte[]) array) : null;
+        if (targetType == UInt8List.class) {
+          readContext.reserveGraphMemory(UINT8_LIST_OWNER_BYTES);
+          return new UInt8List((byte[]) array);
+        }
+        return null;
       case Types.INT16_ARRAY:
-        return targetType == Int16List.class ? new Int16List((short[]) array) : null;
+        if (targetType == Int16List.class) {
+          readContext.reserveGraphMemory(INT16_LIST_OWNER_BYTES);
+          return new Int16List((short[]) array);
+        }
+        return null;
       case Types.UINT16_ARRAY:
-        return targetType == UInt16List.class ? new UInt16List((short[]) array) : null;
+        if (targetType == UInt16List.class) {
+          readContext.reserveGraphMemory(UINT16_LIST_OWNER_BYTES);
+          return new UInt16List((short[]) array);
+        }
+        return null;
       case Types.INT32_ARRAY:
-        return targetType == Int32List.class ? new Int32List((int[]) array) : null;
+        if (targetType == Int32List.class) {
+          readContext.reserveGraphMemory(INT32_LIST_OWNER_BYTES);
+          return new Int32List((int[]) array);
+        }
+        return null;
       case Types.UINT32_ARRAY:
-        return targetType == UInt32List.class ? new UInt32List((int[]) array) : null;
+        if (targetType == UInt32List.class) {
+          readContext.reserveGraphMemory(UINT32_LIST_OWNER_BYTES);
+          return new UInt32List((int[]) array);
+        }
+        return null;
       case Types.INT64_ARRAY:
-        return targetType == Int64List.class ? new Int64List((long[]) array) : null;
+        if (targetType == Int64List.class) {
+          readContext.reserveGraphMemory(INT64_LIST_OWNER_BYTES);
+          return new Int64List((long[]) array);
+        }
+        return null;
       case Types.UINT64_ARRAY:
-        return targetType == UInt64List.class ? new UInt64List((long[]) array) : null;
+        if (targetType == UInt64List.class) {
+          readContext.reserveGraphMemory(UINT64_LIST_OWNER_BYTES);
+          return new UInt64List((long[]) array);
+        }
+        return null;
       case Types.FLOAT16_ARRAY:
-        return targetType == Float16List.class ? new Float16List((short[]) array) : null;
+        if (targetType == Float16List.class) {
+          readContext.reserveGraphMemory(FLOAT16_LIST_OWNER_BYTES);
+          return new Float16List((short[]) array);
+        }
+        return null;
       case Types.BFLOAT16_ARRAY:
-        return targetType == BFloat16List.class ? new BFloat16List((short[]) array) : null;
+        if (targetType == BFloat16List.class) {
+          readContext.reserveGraphMemory(BFLOAT16_LIST_OWNER_BYTES);
+          return new BFloat16List((short[]) array);
+        }
+        return null;
       case Types.FLOAT32_ARRAY:
-        return targetType == Float32List.class ? new Float32List((float[]) array) : null;
+        if (targetType == Float32List.class) {
+          readContext.reserveGraphMemory(FLOAT32_LIST_OWNER_BYTES);
+          return new Float32List((float[]) array);
+        }
+        return null;
       case Types.FLOAT64_ARRAY:
-        return targetType == Float64List.class ? new Float64List((double[]) array) : null;
+        if (targetType == Float64List.class) {
+          readContext.reserveGraphMemory(FLOAT64_LIST_OWNER_BYTES);
+          return new Float64List((double[]) array);
+        }
+        return null;
       default:
         throw new IllegalArgumentException("Unsupported dense array type id " + arrayTypeId);
     }
@@ -1185,7 +1278,15 @@ final class CompatibleCollectionArrayReader {
   private static List<Object> materializeBoxedList(
       ReadContext readContext, Object array, int arrayTypeId) {
     int size = java.lang.reflect.Array.getLength(array);
-    readContext.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + (long) size * REFERENCE_BYTES);
+    long boxedListBytes = ARRAY_LIST_OWNER_BYTES + (long) size * REFERENCE_BYTES;
+    long primitiveArrayBytes = primitiveArrayBytes(size, elementSize(arrayTypeId));
+    long additionalBytes = boxedListBytes - primitiveArrayBytes;
+    // The compatible body reader already reserved the decoded primitive array before allocating
+    // it. Use that reservation as credit so conversion cannot bypass the allocation gate or charge
+    // both complete representations.
+    if (additionalBytes > 0) {
+      readContext.reserveGraphMemory(additionalBytes);
+    }
     ArrayList<Object> list = new ArrayList<>(size);
     switch (arrayTypeId) {
       case Types.BOOL_ARRAY:
@@ -1277,6 +1378,15 @@ final class CompatibleCollectionArrayReader {
       default:
         throw new IllegalArgumentException("Unsupported dense array type id " + arrayTypeId);
     }
+  }
+
+  private static void reservePrimitiveArray(
+      ReadContext readContext, int numElements, int elemSize) {
+    readContext.reserveGraphMemory(primitiveArrayBytes(numElements, elemSize));
+  }
+
+  private static long primitiveArrayBytes(int numElements, int elemSize) {
+    return PRIMITIVE_ARRAY_OWNER_BYTES + (long) numElements * elemSize;
   }
 
   private static void validateElementCount(int numElements) {

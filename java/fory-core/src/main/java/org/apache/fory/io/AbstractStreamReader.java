@@ -22,22 +22,32 @@ package org.apache.fory.io;
 import java.nio.ByteBuffer;
 import org.apache.fory.memory.MemoryBuffer;
 
-/** An abstract {@link ForyStreamReader} for subclass implementation convenience. */
+/**
+ * An abstract {@link ForyStreamReader} for subclass implementation convenience.
+ *
+ * <p>Data-loading methods throw by default. Subclasses must override every loading operation they
+ * support so that an inherited no-op cannot leave {@link MemoryBuffer} without the bytes required
+ * by a following read.
+ */
 public abstract class AbstractStreamReader implements ForyStreamReader {
   @Override
   public int fillBuffer(int minFillSize) {
-    return 0;
+    throw new IndexOutOfBoundsException("Subclasses must override fillBuffer");
   }
 
   @Override
-  public void readTo(byte[] dst, int dstIndex, int length) {}
+  public void readTo(byte[] dst, int dstIndex, int length) {
+    throw new IndexOutOfBoundsException("Subclasses must override readTo");
+  }
 
   @Override
-  public void readToByteBuffer(ByteBuffer dst, int length) {}
+  public void readToByteBuffer(ByteBuffer dst, int length) {
+    throw new IndexOutOfBoundsException("Subclasses must override readToByteBuffer");
+  }
 
   @Override
   public int readToByteBuffer(ByteBuffer dst) {
-    return 0;
+    throw new IndexOutOfBoundsException("Subclasses must override readToByteBuffer");
   }
 
   @Override

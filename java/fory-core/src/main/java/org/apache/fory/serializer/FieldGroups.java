@@ -190,6 +190,7 @@ public class FieldGroups {
     public final TypeInfo containerTypeInfo;
     public final Serializer<?> containerSerializerOverride;
     public final FieldCodecCategory codecCategory;
+    final boolean requiresFieldValueTypeCheck;
 
     public SerializationFieldInfo(TypeResolver resolver, Descriptor d) {
       this(resolver, d, FieldCodecCategory.OTHER);
@@ -305,6 +306,14 @@ public class FieldGroups {
           containerTypeInfo = null;
         }
       }
+      // Native container fields always read a wire-selected type unless a field serializer owns
+      // the body. This remains dynamic even when the declared container class is monomorphic;
+      // xlang containers and explicit field serializers select a fixed reader instead.
+      requiresFieldValueTypeCheck =
+          refMode == RefMode.TRACKING
+              || (codecCategory == FieldCodecCategory.CONTAINER
+                  ? !resolver.isCrossLanguage() && containerSerializerOverride == null
+                  : !useDeclaredTypeInfo);
     }
 
     private boolean needsClassInfoHolder(TypeResolver resolver, Class<?> cls) {

@@ -18,7 +18,12 @@
  */
 
 import type { ReadContext, WriteContext } from "./context";
-import { InnerFieldInfo, TypeMeta, refTrackingUnableTypeId } from "./meta/TypeMeta";
+import {
+  checkedTypeMetaWireTypeIdSymbol,
+  InnerFieldInfo,
+  TypeMeta,
+  refTrackingUnableTypeId,
+} from "./meta/TypeMeta";
 import { RefFlags, Serializer, TypeId } from "./type";
 import { Type, TypeInfo } from "./typeInfo";
 import { CollectionAnySerializer } from "./gen/collection";
@@ -170,6 +175,15 @@ export class UnknownStructSerializer implements Serializer {
     return this;
   }
 
+  createReadSerializer(typeMeta: TypeMeta, wireTypeId = typeMeta.getTypeId()): Serializer {
+    this.validateTypeMeta(typeMeta);
+    this.prepare(typeMeta);
+    // The shared fallback is mutable for writer lookup and nested legacy reads.
+    // A checked TypeMeta instead owns a stable schema-specific read serializer
+    // so cache hits can dispatch without rebinding or inspecting metadata.
+    return new BoundUnknownStructSerializer(this, typeMeta, wireTypeId);
+  }
+
   prepare(typeMeta: TypeMeta) {
     const owners = preparedOwners(typeMeta);
     let prepared = owners.get(this);
@@ -226,6 +240,14 @@ export class UnknownStructSerializer implements Serializer {
     if (typeMeta === undefined) {
       throw new Error("UnknownStruct TypeMeta is not bound");
     }
+    const result = this.readWithTypeMeta(typeMeta, fromRef);
+    // Nested shared reads may rebind this fallback serializer. Restore the
+    // enclosing schema for callers that retain the shared fallback owner.
+    this.boundTypeMeta = typeMeta;
+    return result;
+  };
+
+  readWithTypeMeta(typeMeta: TypeMeta, fromRef: boolean) {
     const prepared = this.prepare(typeMeta);
     const result = Object.create(null) as UnknownValue;
     Object.defineProperty(result, UNKNOWN_TYPE_META, { value: typeMeta });
@@ -236,12 +258,8 @@ export class UnknownStructSerializer implements Serializer {
     for (const field of prepared.fields) {
       result[field.name] = this.readField(field);
     }
-    // Nested unknown fields bind this shared serializer to their own TypeMeta.
-    // Restore the completed owner's schema so a homogeneous container can read
-    // its next body without repeating TypeInfo. Root cleanup owns failed reads.
-    this.boundTypeMeta = typeMeta;
     return result;
-  };
+  }
 
   readRef = () => this.readFramed(this, true);
   readRefWithoutTypeInfo = () => this.readFramed(this, false);
@@ -470,5 +488,101 @@ export class UnknownStructSerializer implements Serializer {
       }
     }
     return typeMeta;
+  }
+}
+
+class BoundUnknownStructSerializer implements Serializer {
+  readonly _initialized = true;
+  readonly fixedSize = 8;
+  readonly readDataAlwaysAdvances = false;
+  readonly [checkedTypeMetaWireTypeIdSymbol]: number;
+
+  constructor(
+    private readonly owner: UnknownStructSerializer,
+    private readonly typeMeta: TypeMeta,
+    wireTypeId: number,
+  ) {
+    this[checkedTypeMetaWireTypeIdSymbol] = wireTypeId;
+  }
+
+  needToWriteRef() {
+    return this.owner.needToWriteRef();
+  }
+
+  getTypeId() {
+    return this.typeMeta.getTypeId();
+  }
+
+  getUserTypeId() {
+    return this.typeMeta.getUserTypeId();
+  }
+
+  getTypeInfo() {
+    return this.owner.getTypeInfo();
+  }
+
+  getHash() {
+    return this.typeMeta.getHash();
+  }
+
+  getTypeMetaBytes() {
+    return this.typeMeta.toBytes();
+  }
+
+  write(value: any) {
+    return this.owner.write(value);
+  }
+
+  writeRef(value: any) {
+    return this.owner.writeRef(value);
+  }
+
+  writeNoRef(value: any) {
+    return this.owner.writeNoRef(value);
+  }
+
+  writeRefOrNull(value: any) {
+    return this.owner.writeRefOrNull(value);
+  }
+
+  writeTypeInfo(value: any) {
+    return this.owner.writeTypeInfo(value);
+  }
+
+  read(fromRef: boolean) {
+    return this.owner.readWithTypeMeta(this.typeMeta, fromRef);
+  }
+
+  readRef() {
+    return this.owner.readFramed(this, true);
+  }
+
+  readRefWithoutTypeInfo() {
+    return this.owner.readFramed(this, false);
+  }
+
+  readNoRef(fromRef: boolean) {
+    this.readTypeInfo();
+    return this.owner.readNested(this, fromRef, false);
+  }
+
+  readTypeInfo() {
+    const typeId = this.owner.readContext.reader.readUint8();
+    if (
+      typeId !== TypeId.COMPATIBLE_STRUCT &&
+      typeId !== TypeId.NAMED_COMPATIBLE_STRUCT &&
+      typeId !== TypeId.NAMED_STRUCT
+    ) {
+      throw new Error(`UnknownStruct requires compatible Struct TypeMeta, got ${typeId}`);
+    }
+    const serializer = (
+      this.owner.readContext as unknown as {
+        readTypeMetaSerializer(expectedWireTypeId: number): Serializer;
+      }
+    ).readTypeMetaSerializer(typeId);
+    if (serializer !== this) {
+      throw new Error("UnknownStruct TypeMeta owner mismatch");
+    }
+    return this;
   }
 }

@@ -39,7 +39,8 @@ Security-related configuration:
 
 - Register only the expected generated models before deserializing untrusted payloads.
 - Use `checkClassVersion` with `compatible: false` for intentional same-schema payloads.
-- Set `maxDepth` for the largest dynamic `Any` nesting depth your service accepts.
+- Set `maxDepth` for the largest nested user-value graph your service accepts. Static recursive
+  values, dynamic `Any` values, and compatible field skipping share the same root budget.
 - Set `maxGraphMemoryBytes` as an approximate gate for collection, map, array, struct, class, and
   object-heavy payloads. It is not an exact heap cap; leaf values are gated by remaining input
   bytes.

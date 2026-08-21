@@ -33,7 +33,7 @@ from cpython.dict cimport PyDict_Next
 from cpython.list cimport PyList_New, PyList_SET_ITEM
 from cpython.tuple cimport PyTuple_New, PyTuple_SET_ITEM
 from cpython.ref cimport Py_INCREF, Py_XDECREF
-from cpython.bytes cimport PyBytes_GET_SIZE
+from cpython.bytes cimport PyBytes_AS_STRING, PyBytes_GET_SIZE
 from libc.string cimport memcmp
 from pyfory.includes.libflat_hash_map cimport flat_hash_map
 from pyfory.includes.libutil cimport FlatIntMap
@@ -263,6 +263,7 @@ cdef class TypeResolver:
     cdef readonly dict _type_id_to_type_info
     cdef readonly dict _user_type_id_to_type_info
     cdef readonly dict _ns_type_to_type_info
+    cdef readonly dict _local_type_info_by_hash
     cdef readonly dict _meta_shared_type_info
     cdef vector[PyObject *] _c_registered_id_to_type_info
     cdef flat_hash_map[uint32_t, PyObject *] _c_user_type_id_to_type_info
@@ -297,6 +298,7 @@ cdef class TypeResolver:
         self._type_id_to_type_info = resolver._type_id_to_type_info
         self._user_type_id_to_type_info = resolver._user_type_id_to_type_info
         self._ns_type_to_type_info = resolver._ns_type_to_type_info
+        self._local_type_info_by_hash = resolver._local_type_info_by_hash
         self._meta_shared_type_info = resolver._meta_shared_type_info
         for typeinfo in resolver._types_info.values():
             self._populate_type_info(typeinfo)
@@ -393,6 +395,9 @@ cdef class TypeResolver:
     def get_type_info_by_name(self, namespace, typename):
         return self.resolver.get_type_info_by_name(namespace, typename)
 
+    def _get_type_by_python_name(self, module, qualname):
+        return self.resolver._get_type_by_python_name(module, qualname)
+
     def get_registered_name(self, cls):
         return self.resolver.get_registered_name(cls)
 
@@ -434,7 +439,9 @@ cdef class TypeResolver:
                     write_context.buffer, typeinfo.typename_bytes
                 )
 
-    cpdef inline TypeInfo read_type_info(self, ReadContext read_context):
+    cpdef inline TypeInfo read_type_info(
+        self, ReadContext read_context, TypeInfo expected_typeinfo=None
+    ):
         cdef Buffer buffer = read_context.buffer
         cdef uint8_t type_id = buffer.read_uint8()
         cdef TypeRegistrationKind reg_kind
@@ -447,7 +454,11 @@ cdef class TypeResolver:
             type_id == <uint8_t>TypeId.COMPATIBLE_STRUCT
             or type_id == <uint8_t>TypeId.NAMED_COMPATIBLE_STRUCT
         ):
-            return self.read_shared_type_meta(read_context, type_id=type_id)
+            return self.read_shared_type_meta(
+                read_context,
+                type_id=type_id,
+                expected_typeinfo=expected_typeinfo,
+            )
         if Fory_IsInternalTypeId(type_id):
             # Hot type-id reads must stay on the C caches. Internal ids are
             # populated during resolver initialization, so falling back into the
@@ -462,7 +473,11 @@ cdef class TypeResolver:
         reg_kind = get_type_registration_kind(<TypeId>type_id)
         if reg_kind == TypeRegistrationKind.BY_NAME:
             if self.meta_share:
-                return self.read_shared_type_meta(read_context, type_id=type_id)
+                return self.read_shared_type_meta(
+                    read_context,
+                    type_id=type_id,
+                    expected_typeinfo=expected_typeinfo,
+                )
             ns_metabytes = read_context.meta_string_reader.read_encoded_meta_string(
                 buffer
             )
@@ -587,7 +602,12 @@ cdef class TypeResolver:
         write_context.write_var_uint32(index << 1)
         write_context.write_bytes(encoded)
 
-    cpdef inline TypeInfo read_shared_type_meta(self, ReadContext read_context, type_id=None):
+    cpdef inline TypeInfo read_shared_type_meta(
+        self,
+        ReadContext read_context,
+        type_id=None,
+        TypeInfo expected_typeinfo=None,
+    ):
         cdef MetaShareReadContext meta_context = read_context.meta_share_context
         cdef uint32_t index_marker
         cdef uint32_t index
@@ -601,38 +621,102 @@ cdef class TypeResolver:
         index_marker = read_context.read_var_uint32()
         index = index_marker >> 1
         if index_marker & 1:
-            return meta_context.read_type_infos[index]
-        typeinfo = self._read_and_build_type_info(read_context.buffer)
+            typeinfo = meta_context.read_type_infos[index]
+            return self._require_type_info_owner(typeinfo, expected_typeinfo)
+        typeinfo = self._read_and_build_type_info(
+            read_context.buffer, expected_typeinfo
+        )
         meta_context.read_type_infos.append(typeinfo)
         return typeinfo
 
-    cdef inline TypeInfo _read_and_build_type_info(self, Buffer buffer):
-        cdef int64_t header = buffer.read_int64()
-        cdef TypeInfo typeinfo = self._meta_shared_type_info.get(header)
-        if typeinfo is not None:
-            # Header-cache hits intentionally skip without rehashing. Entries reach this cache only
-            # after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-            # body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
-            _skip_typedef_fast(buffer, header)
-            return typeinfo
-        return self._read_uncached_type_info(buffer, header)
+    cdef inline bint _matches_type_def_hash(
+        self, TypeInfo typeinfo, uint64_t hash_key
+    ) noexcept:
+        cdef object type_def
+        cdef bytes encoded
+        cdef const uint8_t *data
+        cdef uint64_t header
+        if typeinfo is None:
+            return False
+        type_def = typeinfo.type_def
+        if type_def is None:
+            return False
+        encoded = type_def.encoded
+        if type(encoded) is not bytes or PyBytes_GET_SIZE(encoded) < 8:
+            return False
+        data = <const uint8_t *>PyBytes_AS_STRING(encoded)
+        header = (
+            <uint64_t>data[0]
+            | (<uint64_t>data[1] << 8)
+            | (<uint64_t>data[2] << 16)
+            | (<uint64_t>data[3] << 24)
+            | (<uint64_t>data[4] << 32)
+            | (<uint64_t>data[5] << 40)
+            | (<uint64_t>data[6] << 48)
+            | (<uint64_t>data[7] << 56)
+        )
+        return header >> 12 == hash_key
 
-    cdef TypeInfo _read_uncached_type_info(self, Buffer buffer, int64_t header):
+    cdef inline TypeInfo _require_type_info_owner(
+        self, TypeInfo typeinfo, TypeInfo expected_typeinfo
+    ):
+        if (
+            expected_typeinfo is not None
+            and typeinfo.cls is not expected_typeinfo.cls
+        ):
+            raise TypeError("Type metadata owner does not match the declared type")
+        return typeinfo
+
+    cdef inline TypeInfo _read_and_build_type_info(
+        self, Buffer buffer, TypeInfo expected_typeinfo=None
+    ):
+        cdef int64_t header = buffer.read_int64()
+        cdef uint64_t hash_key = _typedef_hash_key(header)
+        cdef TypeInfo typeinfo
+        if self._matches_type_def_hash(expected_typeinfo, hash_key):
+            # A declared concrete owner outranks remote checked metadata. The
+            # current frame contributes only its bounded body length on this hit.
+            _skip_typedef_fast(buffer, header)
+            return expected_typeinfo
+        typeinfo = self._local_type_info_by_hash.get(hash_key)
+        if typeinfo is not None:
+            _skip_typedef_fast(buffer, header)
+            return self._require_type_info_owner(typeinfo, expected_typeinfo)
+        typeinfo = self._meta_shared_type_info.get(hash_key)
+        if typeinfo is not None:
+            # The top 52 bits are the protocol identity. On a hit the current low
+            # 12 bits only describe how much opaque frame data to bounds-check and skip.
+            _skip_typedef_fast(buffer, header)
+            return self._require_type_info_owner(typeinfo, expected_typeinfo)
+        return self._read_uncached_type_info(buffer, header, expected_typeinfo)
+
+    cdef TypeInfo _read_uncached_type_info(
+        self,
+        Buffer buffer,
+        int64_t header,
+        TypeInfo expected_typeinfo=None,
+    ):
         cdef TypeInfo typeinfo
         cdef object type_def
         cdef object type_key
         cdef object name
+        cdef int64_t local_header
+        cdef uint64_t hash_key = _typedef_hash_key(header)
         type_def = decode_typedef(buffer, self.resolver, header=header)
         typeinfo = self.resolver._local_type_info_for_typedef(type_def)
+        if expected_typeinfo is not None:
+            if typeinfo is None or typeinfo.cls is not expected_typeinfo.cls:
+                raise TypeError("Type metadata owner does not match the declared type")
         if typeinfo is not None:
             if typeinfo.type_def is None:
                 self.resolver._set_type_info(typeinfo)
-            if (
-                typeinfo.type_def is not None
-                and typeinfo.type_def.encoded == type_def.encoded
-            ):
-                self._meta_shared_type_info[header] = typeinfo
-                return typeinfo
+            if typeinfo.type_def is not None:
+                local_header = Buffer(typeinfo.type_def.encoded).read_int64()
+                if _typedef_hash_key(local_header) == hash_key:
+                    # Registration owns this expected local schema. It is not a
+                    # validated remote entry and must not enter the persistent cache.
+                    self._local_type_info_by_hash[hash_key] = typeinfo
+                    return typeinfo
         elif not is_struct_typedef_kind(type_def.type_id):
             name = (
                 type_def.namespace + "." + type_def.typename
@@ -650,7 +734,7 @@ cdef class TypeResolver:
         else:
             self.resolver._bind_local_type_def(type_def, typeinfo)
         typeinfo = self.resolver._build_type_info_from_typedef(type_def)
-        self._meta_shared_type_info[header] = typeinfo
+        self._meta_shared_type_info[hash_key] = typeinfo
         self.resolver._record_remote_type_def(type_key)
         return typeinfo
 
@@ -714,6 +798,11 @@ cdef inline bint _encoded_meta_string_matches(object left, object right):
         and left.length == right.length
         and left.data == right.data
     )
+
+
+cdef inline uint64_t _typedef_hash_key(int64_t header):
+    # Cast before shifting so signed headers keep their protocol-defined top 52 bits.
+    return (<uint64_t>header) >> 12
 
 
 cdef inline void _skip_typedef_fast(Buffer buffer, int64_t header):

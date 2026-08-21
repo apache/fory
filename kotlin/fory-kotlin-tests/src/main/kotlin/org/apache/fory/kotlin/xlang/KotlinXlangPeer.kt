@@ -237,6 +237,23 @@ public class KotlinMutableNode() {
 }
 
 @ForyStruct
+public class KotlinCheckedValue() {
+  @ForyField(id = 1) public var name: String = ""
+}
+
+@ForyStruct
+public class KotlinWrongValue() {
+  @ForyField(id = 1) public var name: String = ""
+}
+
+@ForyStruct
+public data class KotlinCheckedHolder
+constructor(
+  @ForyField(id = 1) public val id: Int,
+  @Ref @ForyField(id = 2, dynamic = ForyField.Dynamic.TRUE) public val value: KotlinCheckedValue?,
+)
+
+@ForyStruct
 public class KotlinCtorBackrefRoot
 constructor(@ForyField(id = 1) val child: KotlinCtorBackrefChild)
 
@@ -271,6 +288,7 @@ public fun main(args: Array<String>) {
   }
   when (args[0]) {
     "static_serializer_round_trip" -> staticSerializerRoundTrip(args[1])
+    "generated_field_type_guard" -> generatedFieldTypeGuard()
     "compatible_default_round_trip" -> compatibleDefaultRoundTrip()
     "constructor_backref_copy" -> constructorBackrefCopy()
     "dense_array_round_trip" -> denseArrayRoundTrip(args[1])
@@ -593,6 +611,55 @@ private fun staticSerializerRoundTrip(dataFile: String) {
   }
   checkUnionListBudget(emptyList())
   checkUnionListBudget(listOf(1u, 2u, UInt.MAX_VALUE))
+}
+
+private fun generatedFieldTypeGuard() {
+  val fory = newRefCompatibleFory()
+  fory.register<KotlinCheckedValue>("kotlin.CheckedValue")
+  fory.register<KotlinWrongValue>("kotlin.WrongValue")
+  fory.register<KotlinCheckedHolder>("kotlin.CheckedHolder")
+  val serializer = fory.getSerializer(KotlinCheckedHolder::class.java)
+  check(serializer is StaticGeneratedStructSerializer<*>)
+  val value = KotlinCheckedValue().also { it.name = "wire-value" }
+  val holder = KotlinCheckedHolder(1, value)
+  val decoded = fory.deserialize(fory.serialize(holder), KotlinCheckedHolder::class.java)
+  check(decoded.id == 1)
+  check(decoded.value?.name == "wire-value")
+
+  val fieldsById = serializer.javaClass.getDeclaredField("fieldsById")
+  fieldsById.isAccessible = true
+  val fields = fieldsById.get(serializer) as Array<*>
+  val setter =
+    serializer.javaClass.getDeclaredMethod(
+      "setFieldById",
+      KotlinCheckedHolder::class.java,
+      org.apache.fory.serializer.FieldGroups.SerializationFieldInfo::class.java,
+      Int::class.javaPrimitiveType,
+      Any::class.java,
+    )
+  setter.isAccessible = true
+  val failure =
+    runCatching { setter.invoke(serializer, holder, fields[1], 1, KotlinWrongValue()) }
+      .exceptionOrNull() ?: error("Generated Kotlin reader stored an incompatible field value")
+  check(hasStaticReadSetter(failure)) {
+    "Generated Kotlin field guard did not execute setReadFieldValue: $failure"
+  }
+}
+
+private fun hasStaticReadSetter(error: Throwable): Boolean {
+  var current: Throwable? = error
+  while (current != null) {
+    if (
+      current.stackTrace.any {
+        it.className == StaticGeneratedStructSerializer::class.java.name &&
+          it.methodName == "setReadFieldValue"
+      }
+    ) {
+      return true
+    }
+    current = current.cause
+  }
+  return false
 }
 
 private fun trackedDenseArrayRefs() {

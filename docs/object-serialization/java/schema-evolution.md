@@ -61,6 +61,15 @@ System.out.println(fory.deserialize(bytes));
 
 This compatible mode involves serializing class metadata into the serialized output. Despite Fory's use of sophisticated compression techniques to minimize overhead, there is still some additional space cost associated with class metadata.
 
+### Metadata Compression
+
+`DeflaterMetaCompressor` is the default metadata compressor. If a compatible reader uses a custom
+`MetaCompressor`, implement `decompress(byte[], int, int, int maxOutputSize)` and enforce the output
+limit before allocating the declared output, or incrementally during decompression. Custom
+compressors that only implement the unbounded three-argument method fail bounded metadata reads
+before decompression starts. See [Configuration](configuration.md#custom-metadata-compressors) for
+the required reader setup.
+
 ## Meta Sharing
 
 To further reduce metadata costs, Fory introduces a class metadata sharing mechanism, which allows the metadata to be sent to the deserialization process only once.

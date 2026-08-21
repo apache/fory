@@ -25,7 +25,10 @@ use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::meta::FieldType;
 use crate::resolver::{RefFlag, RefMode, TypeInfo, TypeResolver};
-use crate::serializer::Serializer;
+use crate::serializer::{
+    core::{check_group_type_info, read_group_type_info},
+    Serializer,
+};
 use crate::type_id::{TypeId, SIZE_OF_REF_AND_TYPE};
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -242,11 +245,21 @@ macro_rules! tuple_type_info_field {
     };
 }
 
+macro_rules! tuple_same_type_info {
+    (value, $context:expr; ($T:ident, $C:ident, $S:ident, $index:tt) $(, $rest:tt)*) => {
+        read_group_type_info::<$C, false>($context)
+    };
+    (field, $context:expr; ($T:ident, $C:ident, $S:ident, $index:tt) $(, $rest:tt)*) => {
+        read_group_type_info::<$C, true>($context)
+    };
+}
+
 macro_rules! tuple_read_node {
     (
         value,
         $T:ty,
         $C:ty,
+        $index:expr,
         $context:expr,
         $ref_mode:expr,
         $same_type:expr,
@@ -260,6 +273,11 @@ macro_rules! tuple_read_node {
         } else if $declared {
             <$C as Serializer>::read($context, $ref_mode, false)
         } else {
+            if $index != 0 {
+                check_group_type_info::<$C, false>(
+                    $type_info.as_ref().ok_or_else(missing_tuple_metadata)?,
+                )?;
+            }
             <$C as Serializer>::read_with_type_info(
                 $context,
                 $ref_mode,
@@ -271,6 +289,7 @@ macro_rules! tuple_read_node {
         field,
         $T:ty,
         $C:ty,
+        $_index:expr,
         $context:expr,
         $ref_mode:expr,
         $same_type:expr,
@@ -367,7 +386,10 @@ macro_rules! read_tuple_body {
             ref_mode
         );
         let type_info = if same_type && !declared {
-            Some(context.read_any_type_info()?)
+            Some(tuple_same_type_info!(
+                $layer, context;
+                $(($T, $C, $S, $index)),+
+            )?)
         } else {
             None
         };
@@ -383,6 +405,7 @@ macro_rules! read_tuple_body {
                     $layer,
                     $T,
                     $C,
+                    $index,
                     context,
                     ref_mode,
                     same_type,

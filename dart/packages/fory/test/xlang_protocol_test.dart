@@ -63,6 +63,34 @@ final class _IdentityDomainLocal {}
 
 final class _IdentityDomainRemote {}
 
+final class _ExpectedHeaderLocal {}
+
+final class _CachedHeaderLocal {}
+
+final class _CachedHeaderRemote {}
+
+final class _DynamicLocalValidation {}
+
+final class _DynamicLocalValidationRemote {}
+
+final class _DynamicLocalLarge {}
+
+final class _DynamicLocalLargeRemote {}
+
+final class _DynamicLocalOtherRemote {}
+
+final class _ExpectedOwnerA {}
+
+final class _ExpectedOwnerB {}
+
+final class _ExpectedOwnerRemoteB {}
+
+final class _ExpectedOwnerRemoteB2 {}
+
+final class _AlternateEnumLocal {}
+
+final class _AlternateEnumRemote {}
+
 final class _RemoteDuplicateIdLocal {}
 
 final class _RemoteDuplicateIdWriter {}
@@ -297,10 +325,143 @@ TypeInfo _cachedTypeInfo(Int64 header) {
 }
 
 void _readTypeMeta(TypeResolver resolver, Uint8List bytes) {
-  resolver.readTypeMeta(
-    Buffer.wrap(bytes),
+  _readTypeMetaBuffer(resolver, Buffer.wrap(bytes));
+}
+
+TypeInfo _readTypeMetaBuffer(
+  TypeResolver resolver,
+  Buffer buffer, {
+  TypeInfo? expected,
+}) {
+  return resolver.readTypeMeta(
+    buffer,
+    expectedNamedType: expected,
     sharedTypes: <TypeInfo>[],
     metaStringReader: MetaStringReader(resolver),
+  );
+}
+
+Buffer _typeDefFrame(
+  Uint8List encoded,
+  Uint8List body, {
+  int? declaredLength,
+  int? lowFlags,
+}) {
+  final source = Buffer.wrap(encoded);
+  final typeId = source.readVarUint32Small7();
+  final marker = source.readVarUint32Small14();
+  if (marker != 0) {
+    throw StateError('Expected an inline TypeDef.');
+  }
+  final originalHeader = source.readInt64();
+  final currentLength = declaredLength ?? body.length;
+  if (currentLength < 0) {
+    throw ArgumentError.value(currentLength, 'declaredLength');
+  }
+  final inlineLength = currentLength >= 0xff ? 0xff : currentLength;
+  final currentHeader = Int64.fromWords(
+    (originalHeader.low32 & 0xfffff000) |
+        ((lowFlags ?? originalHeader.low32) & 0x0f00) |
+        inlineLength,
+    originalHeader.high32Unsigned,
+  );
+  final frame =
+      Buffer()
+        ..writeVarUint32Small7(typeId)
+        ..writeVarUint32Small14(marker)
+        ..writeInt64(currentHeader);
+  if (inlineLength == 0xff) {
+    frame.writeVarUint32Small14(currentLength - 0xff);
+  }
+  frame.writeBytes(body);
+  return frame;
+}
+
+Uint8List _typeDefBody(Uint8List encoded) {
+  final source = Buffer.wrap(encoded);
+  source.readVarUint32Small7();
+  final marker = source.readVarUint32Small14();
+  if (marker != 0) {
+    throw StateError('Expected an inline TypeDef.');
+  }
+  final header = TypeHeader(source.readInt64());
+  final bodyLength = header.readMetaSize(source);
+  source.checkReadableBytes(bodyLength);
+  final body = Uint8List.fromList(source.readBytes(bodyLength));
+  if (source.readableBytes != 0) {
+    throw StateError('Expected one complete TypeDef.');
+  }
+  return body;
+}
+
+Buffer _extendTypeDefSizeEncoding(Uint8List encoded) {
+  final source = Buffer.wrap(encoded);
+  final typeId = source.readVarUint32Small7();
+  final marker = source.readVarUint32Small14();
+  if (marker != 0) {
+    throw StateError('Expected an inline TypeDef.');
+  }
+  final header = TypeHeader(source.readInt64());
+  final bodyLength = header.readMetaSize(source);
+  if ((header.value.low32 & 0xff) != 0xff) {
+    throw StateError('Expected an extended TypeDef size.');
+  }
+  source.checkReadableBytes(bodyLength);
+  final body = source.readBytes(bodyLength);
+  if (source.readableBytes != 0) {
+    throw StateError('Expected one complete TypeDef.');
+  }
+  final extraSize = Buffer()..writeVarUint32Small14(bodyLength - 0xff);
+  final extraBytes = Uint8List.fromList(extraSize.toBytes());
+  extraBytes[extraBytes.length - 1] |= 0x80;
+
+  return Buffer()
+    ..writeVarUint32Small7(typeId)
+    ..writeVarUint32Small14(marker)
+    ..writeInt64(header.value)
+    ..writeBytes(extraBytes)
+    ..writeUint8(0)
+    ..writeBytes(body);
+}
+
+({TypeResolver resolver, TypeInfo expectedA, TypeInfo registeredB})
+_ownerFixture({
+  int maxSchemaVersionsPerType = Config.defaultMaxSchemaVersionsPerType,
+}) {
+  final resolver = TypeResolver(
+    Config(maxSchemaVersionsPerType: maxSchemaVersionsPerType),
+  );
+  _rememberSchema(_ExpectedOwnerA, <GeneratedFieldInfo>[
+    _generatedField('aValue'),
+  ]);
+  _rememberSchema(_ExpectedOwnerB, <GeneratedFieldInfo>[
+    _generatedField('bValue'),
+  ]);
+  resolver.registerGenerated(
+    _ExpectedOwnerA,
+    namespace: 'example',
+    typeName: 'ExpectedOwnerA',
+  );
+  resolver.registerGenerated(
+    _ExpectedOwnerB,
+    namespace: 'example',
+    typeName: 'ExpectedOwnerB',
+  );
+  return (
+    resolver: resolver,
+    expectedA: resolver.resolvedRegisteredType(_ExpectedOwnerA),
+    registeredB: resolver.resolvedRegisteredType(_ExpectedOwnerB),
+  );
+}
+
+Uint8List _remoteOwnerBBytes() {
+  return _typeMetaBytes(
+    _ExpectedOwnerRemoteB,
+    'example.ExpectedOwnerB',
+    <GeneratedFieldInfo>[
+      _generatedField('bValue'),
+      _generatedField('remoteOnly'),
+    ],
   );
 }
 
@@ -532,6 +693,325 @@ void main() {
       expect(cache.lookup(aboveOldFloor), same(aboveOldFloorResolved));
     });
 
+    test('keys parsed TypeDef cache by top 52 bits', () {
+      final cache = ParsedTypeMetaCache();
+      final storedHeader = TypeHeader(Int64.fromWords(0x12345011, 0x23456789));
+      final stored = _cachedTypeInfo(storedHeader.value);
+      cache.remember(storedHeader, stored);
+      final distractorHeader = TypeHeader(
+        Int64.fromWords(0x12346022, 0x23456789),
+      );
+      cache.remember(distractorHeader, _cachedTypeInfo(distractorHeader.value));
+      final currentHeader = TypeHeader(Int64.fromWords(0x12345ffe, 0x23456789));
+
+      expect(cache.lookup(currentHeader), same(stored));
+    });
+
+    test('expected TypeDef top-52 hit ignores low flags', () {
+      final resolver = TypeResolver(Config());
+      _rememberSchema(_ExpectedHeaderLocal, <GeneratedFieldInfo>[
+        _generatedField('value'),
+      ]);
+      resolver.registerGenerated(
+        _ExpectedHeaderLocal,
+        namespace: 'example',
+        typeName: 'ExpectedHeader',
+      );
+      final expected = resolver.resolvedRegisteredType(_ExpectedHeaderLocal);
+      final encoded = Buffer();
+      resolver.writeTypeMeta(
+        encoded,
+        expected,
+        typeDefIds: LinkedHashMap<TypeDef, int>.identity(),
+        metaStringWriter: MetaStringWriter(),
+      );
+      final currentBody = Uint8List.fromList(<int>[0x11, 0x22, 0x33]);
+      final currentFrame = _typeDefFrame(
+        encoded.toBytes(),
+        currentBody,
+        lowFlags: 0x0f00,
+      );
+
+      expect(
+        _readTypeMetaBuffer(resolver, currentFrame, expected: expected),
+        same(expected),
+      );
+      expect(currentFrame.readableBytes, 0);
+    });
+
+    test('parsed TypeDef hit uses current frame bounds', () {
+      const name = 'example.CachedHeader';
+      final reader = TypeResolver(Config());
+      _rememberSchema(_CachedHeaderLocal, <GeneratedFieldInfo>[
+        _generatedField('value'),
+      ]);
+      reader.registerGenerated(
+        _CachedHeaderLocal,
+        namespace: 'example',
+        typeName: 'CachedHeader',
+      );
+      final encoded = _typeMetaBytes(
+        _CachedHeaderRemote,
+        name,
+        <GeneratedFieldInfo>[
+          _generatedField('value'),
+          _generatedField('remoteOnly'),
+        ],
+      );
+      final cached = _readTypeMetaBuffer(reader, Buffer.wrap(encoded));
+      final currentBody = Uint8List(0x100);
+      currentBody.fillRange(0, currentBody.length, 0x44);
+      final currentFrame = _typeDefFrame(
+        encoded,
+        currentBody,
+        lowFlags: 0x0f00,
+      );
+
+      expect(_readTypeMetaBuffer(reader, currentFrame), same(cached));
+      expect(currentFrame.readableBytes, 0);
+
+      final truncated = _typeDefFrame(
+        encoded,
+        Uint8List.fromList(<int>[0x66]),
+        declaredLength: 2,
+      );
+      expect(
+        () => _readTypeMetaBuffer(reader, truncated),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Insufficient readable bytes'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects shared TypeDef owner mismatch', () {
+      final fixture = _ownerFixture();
+      final buffer = Buffer();
+      final typeDefIds = LinkedHashMap<TypeDef, int>.identity();
+      final metaStringWriter = MetaStringWriter();
+      fixture.resolver.writeTypeMeta(
+        buffer,
+        fixture.registeredB,
+        typeDefIds: typeDefIds,
+        metaStringWriter: metaStringWriter,
+      );
+      fixture.resolver.writeTypeMeta(
+        buffer,
+        fixture.registeredB,
+        typeDefIds: typeDefIds,
+        metaStringWriter: metaStringWriter,
+      );
+      final sharedTypes = <TypeInfo>[];
+
+      expect(
+        fixture.resolver.readExpectedTypeDefMeta(
+          buffer,
+          fixture.registeredB,
+          sharedTypes: sharedTypes,
+        ),
+        same(fixture.registeredB),
+      );
+      expect(
+        () => fixture.resolver.readExpectedTypeDefMeta(
+          buffer,
+          fixture.expectedA,
+          sharedTypes: sharedTypes,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('owner mismatch'),
+          ),
+        ),
+      );
+      expect(sharedTypes, hasLength(1));
+    });
+
+    test('rejects cached TypeDef owner mismatch', () {
+      final fixture = _ownerFixture();
+      final encoded = _remoteOwnerBBytes();
+      final sharedTypes = <TypeInfo>[];
+      final metaStringReader = MetaStringReader(fixture.resolver);
+      final remoteB = fixture.resolver.readTypeMeta(
+        Buffer.wrap(encoded),
+        sharedTypes: sharedTypes,
+        metaStringReader: metaStringReader,
+      );
+      expect(identical(remoteB.type, fixture.registeredB.type), isTrue);
+      expect(remoteB.remoteTypeDef, isNotNull);
+      final hit = _typeDefFrame(
+        encoded,
+        Uint8List.fromList(<int>[0x11, 0x22, 0x33]),
+        lowFlags: 0x0f00,
+      );
+
+      expect(
+        () => fixture.resolver.readExpectedTypeDefMeta(
+          hit,
+          fixture.expectedA,
+          sharedTypes: sharedTypes,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('owner mismatch'),
+          ),
+        ),
+      );
+      expect(hit.readableBytes, 3);
+      expect(sharedTypes, hasLength(1));
+    });
+
+    test('rejects validated TypeDef owner mismatch', () {
+      final fixture = _ownerFixture(maxSchemaVersionsPerType: 1);
+      final encoded = _remoteOwnerBBytes();
+      final sharedTypes = <TypeInfo>[];
+
+      expect(
+        () => fixture.resolver.readExpectedTypeDefMeta(
+          Buffer.wrap(encoded),
+          fixture.expectedA,
+          sharedTypes: sharedTypes,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('owner mismatch'),
+          ),
+        ),
+      );
+      expect(sharedTypes, isEmpty);
+
+      final uncachedFlags = _typeDefFrame(
+        encoded,
+        _typeDefBody(encoded),
+        lowFlags: 0x0200,
+      );
+      expect(
+        () => _readTypeMetaBuffer(fixture.resolver, uncachedFlags),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('global header'),
+          ),
+        ),
+      );
+
+      final remoteVersion = _typeMetaBytes(
+        _ExpectedOwnerRemoteB2,
+        'example.ExpectedOwnerB',
+        <GeneratedFieldInfo>[
+          _generatedField('bValue'),
+          _generatedField('anotherRemoteOnly'),
+        ],
+      );
+      _readTypeMeta(fixture.resolver, remoteVersion);
+    });
+
+    test('validates dynamic local misses before reuse', () {
+      const name = 'example.DynamicValidation';
+      final reader = TypeResolver(Config());
+      final fields = <GeneratedFieldInfo>[_generatedField('value')];
+      _rememberSchema(_DynamicLocalValidation, fields);
+      reader.registerGenerated(
+        _DynamicLocalValidation,
+        namespace: 'example',
+        typeName: 'DynamicValidation',
+      );
+      final encoded = _typeMetaBytes(
+        _DynamicLocalValidationRemote,
+        name,
+        fields,
+      );
+      final body = _typeDefBody(encoded);
+      final fieldName = encodeFieldNameMetaString('value');
+      final changedName = encodeFieldNameMetaString('valuf');
+      if (fieldName.encoding != changedName.encoding ||
+          fieldName.length != changedName.length) {
+        throw StateError('Test field names must use the same encoding shape.');
+      }
+      _replaceUniqueBytes(body, fieldName.bytes, changedName.bytes);
+      final forgedBody = _typeDefFrame(encoded, body);
+
+      expect(
+        () => _readTypeMetaBuffer(reader, forgedBody),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('metadata hash'),
+          ),
+        ),
+      );
+
+      final forgedFlags = _typeDefFrame(
+        encoded,
+        _typeDefBody(encoded),
+        lowFlags: 0x0200,
+      );
+      expect(
+        () => _readTypeMetaBuffer(reader, forgedFlags),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('global header'),
+          ),
+        ),
+      );
+    });
+
+    test('lazy local TypeDef miss is not remote state', () {
+      const name = 'example.DynamicLarge';
+      final fields = List<GeneratedFieldInfo>.generate(
+        24,
+        (index) => _generatedField('longDynamicFieldName$index'),
+      );
+      final reader = TypeResolver(Config(maxSchemaVersionsPerType: 1));
+      _rememberSchema(_DynamicLocalLarge, fields);
+      reader.registerGenerated(
+        _DynamicLocalLarge,
+        namespace: 'example',
+        typeName: 'DynamicLarge',
+      );
+      final encoded = _typeMetaBytes(_DynamicLocalLargeRemote, name, fields);
+      final currentFrame = _extendTypeDefSizeEncoding(encoded);
+      final local = reader.resolvedRegisteredType(_DynamicLocalLarge);
+
+      expect(_readTypeMetaBuffer(reader, currentFrame), same(local));
+      expect(currentFrame.readableBytes, 0);
+
+      final uncachedFlags = _typeDefFrame(
+        encoded,
+        _typeDefBody(encoded),
+        lowFlags: 0x0200,
+      );
+      expect(
+        () => _readTypeMetaBuffer(reader, uncachedFlags),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('global header'),
+          ),
+        ),
+      );
+
+      final remoteVersion = _typeMetaBytes(
+        _DynamicLocalOtherRemote,
+        name,
+        <GeneratedFieldInfo>[...fields, _generatedField('remoteOnlyField')],
+      );
+      _readTypeMeta(reader, remoteVersion);
+    });
+
     test('TypeDef uses late registered field type', () {
       expect(
         _lateHolderTypeDefBytes(registerExtFirst: false),
@@ -585,31 +1065,47 @@ void main() {
       );
     });
 
-    test('validates big meta-string identity before expected reuse', () {
+    test('reuses expected big meta string by hash', () {
       final resolver = TypeResolver(Config());
       final reader = MetaStringReader(resolver);
       final expected = resolver.typeNameMetaString(
         'LongExpectedTypeNameForIdentity',
       );
-      final forgedBody = Uint8List.fromList(expected.bytes);
-      forgedBody[forgedBody.length - 1] ^= 1;
+      final differentBody = Uint8List(expected.length + 3);
+      differentBody.fillRange(0, differentBody.length, 0x78);
+      final buffer = _metaStringWire(
+        expected,
+        body: differentBody,
+        hash: expected.hash,
+      );
+
+      expect(reader.readMetaString(buffer, expected), same(expected));
+      expect(buffer.readableBytes, 0);
+    });
+
+    test('checks expected big meta string frame bounds', () {
+      final resolver = TypeResolver(Config());
+      final reader = MetaStringReader(resolver);
+      final expected = resolver.typeNameMetaString(
+        'LongExpectedTypeNameForIdentity',
+      );
+      final declaredLength = expected.length + 3;
+      final buffer =
+          Buffer()
+            ..writeVarUint32Small7(declaredLength << 1)
+            ..writeInt64(expected.hash)
+            ..writeBytes(expected.bytes);
 
       expect(
-        () => reader.readMetaString(
-          _metaStringWire(expected, body: forgedBody, hash: expected.hash),
-          expected,
-        ),
+        () => reader.readMetaString(buffer, expected),
         throwsA(
           isA<StateError>().having(
             (error) => error.toString(),
             'message',
-            contains('meta-string hash'),
+            contains('Insufficient readable bytes'),
           ),
         ),
       );
-
-      reader.reset();
-      expect(reader.readMetaString(_metaStringWire(expected)), same(expected));
     });
 
     test('keeps unaccepted meta strings operation-local', () {
@@ -943,6 +1439,50 @@ void main() {
       final bytes = _enumTypeMetaBytes(_SchemaLocal, name);
 
       _readTypeMeta(reader, bytes);
+    });
+
+    test('caches alternate non-struct TypeDef header', () {
+      const typeName = 'AlternateEnum';
+      final reader = TypeResolver(Config());
+      _rememberEnum(_AlternateEnumLocal);
+      reader.registerGenerated(
+        _AlternateEnumLocal,
+        namespace: '',
+        typeName: typeName,
+      );
+      final canonical = _enumTypeMetaBytes(_AlternateEnumRemote, '.$typeName');
+      final alternate = _rewriteTypeDefBody(canonical, (body) {
+        // All supported package-name encodings represent an empty namespace.
+        // The reader canonicalizes them to the same registered name owner.
+        expect(body[1], 0);
+        body[1] = 1;
+      });
+      final frame = Buffer.wrap(alternate);
+      expect(frame.readVarUint32Small7(), TypeIds.namedEnum);
+      expect(frame.readVarUint32Small14(), 0);
+      final remoteHeader = frame.readInt64();
+      final local = reader.resolvedRegisteredType(_AlternateEnumLocal);
+      expect(
+        TypeHeader.sameHash(local.cachedTypeDefHeader, remoteHeader),
+        isFalse,
+      );
+
+      final remote = _readTypeMetaBuffer(reader, Buffer.wrap(alternate));
+      expect(remote, isNot(same(local)));
+      expect(identical(remote.type, local.type), isTrue);
+      expect(remote.remoteTypeDef, isNotNull);
+      expect(
+        TypeHeader.sameHash(remote.cachedTypeDefHeader, remoteHeader),
+        isTrue,
+      );
+
+      final hit = _typeDefFrame(
+        alternate,
+        Uint8List.fromList(<int>[0x11, 0x22, 0x33]),
+        lowFlags: 0x0f00,
+      );
+      expect(_readTypeMetaBuffer(reader, hit), same(remote));
+      expect(hit.readableBytes, 0);
     });
 
     test('type meta field limit rejects large struct', () {

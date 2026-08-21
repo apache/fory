@@ -28,14 +28,25 @@ import org.apache.fory.exception.InvalidDataException;
 public interface MetaCompressor {
   byte[] compress(byte[] data, int offset, int size);
 
+  /**
+   * Decompress without an output-size bound. Callers processing untrusted data must use {@link
+   * #decompress(byte[], int, int, int)} instead.
+   */
   byte[] decompress(byte[] data, int offset, int size);
 
+  /**
+   * Decompress at most {@code maxOutputSize} bytes.
+   *
+   * <p>Implementations must enforce the bound incrementally or before sizing any allocation from
+   * metadata declared by the compressed input. Implementations which only provide the legacy
+   * unbounded overload fail this call before decompression starts.
+   *
+   * @throws InvalidDataException if bounded decompression is unsupported or the output would exceed
+   *     {@code maxOutputSize}
+   */
   default byte[] decompress(byte[] data, int offset, int size, int maxOutputSize) {
-    byte[] decompressed = decompress(data, offset, size);
-    if (decompressed.length > maxOutputSize) {
-      throw new InvalidDataException("Decompressed TypeDef metadata exceeds the maximum size.");
-    }
-    return decompressed;
+    throw new InvalidDataException(
+        "MetaCompressor does not implement bounded metadata decompression.");
   }
 
   /**

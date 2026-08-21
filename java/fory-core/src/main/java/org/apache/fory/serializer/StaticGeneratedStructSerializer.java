@@ -279,6 +279,14 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
     throw new ForyException("Generated field " + fieldInfo.getName() + " is not writable");
   }
 
+  protected final void setReadFieldValue(
+      Object targetObject, SerializationFieldInfo fieldInfo, Object fieldValue) {
+    if (!fieldInfo.isPrimitiveField) {
+      checkFieldValueType(fieldInfo, fieldValue);
+    }
+    setGeneratedFieldValue(targetObject, fieldInfo, fieldValue);
+  }
+
   protected final void writeBuildInFieldValue(
       WriteContext writeContext, SerializationFieldInfo fieldInfo, Object fieldValue) {
     // Some schema-built-in fields still use container-shaped Java accessors, such as

@@ -19,6 +19,7 @@ package fory
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"reflect"
 	"strings"
@@ -1319,6 +1320,17 @@ func buildTypeDefEncoded(header int64, metaSizeBits, extraMetaSize int, metaByte
 	}
 	buffer.WriteBinary(metaBytes)
 	return buffer.Bytes()
+}
+
+func typeDefIdentity(header int64) uint64 {
+	return uint64(header) >> (64 - NUM_HASH_BITS)
+}
+
+func encodedTypeDefIdentity(encoded []byte) (uint64, bool) {
+	if len(encoded) < 8 {
+		return 0, false
+	}
+	return typeDefIdentity(int64(binary.LittleEndian.Uint64(encoded))), true
 }
 
 func typeDefHeaderHash(data []byte, headerLowBits uint64) uint64 {

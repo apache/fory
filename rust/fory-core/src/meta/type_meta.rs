@@ -938,6 +938,11 @@ pub struct TypeMeta {
 }
 
 impl TypeMeta {
+    #[inline(always)]
+    pub(crate) fn header_hash(header: i64) -> i64 {
+        header >> TYPE_META_HASH_SHIFT
+    }
+
     pub fn new(
         type_id: u32,
         user_type_id: u32,
@@ -1308,7 +1313,7 @@ impl TypeMeta {
             return Err(Error::invalid_data("invalid TypeMeta metadata size"));
         }
         validate_type_meta_body_hash(header, body)?;
-        let meta_hash = header >> TYPE_META_HASH_SHIFT;
+        let meta_hash = Self::header_hash(header);
         meta.hash = meta_hash;
         Ok(meta)
     }
@@ -1324,7 +1329,9 @@ impl TypeMeta {
         // otherwise materialize that body.
         let mut meta_size = (header & META_SIZE_MASK) as usize;
         if meta_size == META_SIZE_MASK as usize {
-            meta_size += reader.read_var_u32()? as usize;
+            meta_size = meta_size
+                .checked_add(reader.read_var_u32()? as usize)
+                .ok_or_else(|| Error::invalid_data("invalid TypeMeta metadata size"))?;
         }
         reader.skip(meta_size)
     }
@@ -1361,7 +1368,7 @@ impl TypeMeta {
         }
         let meta_hash_shifted =
             type_meta_hash_bits(meta_writer.dump().as_slice(), header as u64) as i64;
-        let meta_hash = meta_hash_shifted >> TYPE_META_HASH_SHIFT;
+        let meta_hash = Self::header_hash(meta_hash_shifted);
         header |= meta_hash_shifted;
         result.write_i64(header);
         if meta_size >= META_SIZE_MASK {
