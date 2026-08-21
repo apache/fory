@@ -23,8 +23,19 @@ import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
 import { RefFlags, Serializer, TypeId } from "../type";
 import { Scope } from "./scope";
-import { TypeMeta } from "../meta/TypeMeta";
 import { ReadContext, WriteContext } from "../context";
+
+function buildNamedTypeKey(ns: string, typeName: string) {
+  return `${ns}$${typeName}`;
+}
+
+type TypeMetaReadContext = {
+  readTypeMetaSerializer(expectedWireTypeId: number): Serializer;
+};
+
+function readCheckedTypeMetaSerializer(readContext: ReadContext, expectedWireTypeId: number) {
+  return (readContext as unknown as TypeMetaReadContext).readTypeMetaSerializer(expectedWireTypeId);
+}
 
 export class AnyHelper {
   static detectSerializer(readContext: ReadContext) {
@@ -37,41 +48,14 @@ export class AnyHelper {
     }
     let serializer: Serializer | undefined;
 
-    function buildNamedTypeKey(ns: string, typeName: string) {
-      return `${ns}$${typeName}`;
-    }
-
-    function tryUpdateSerializer(serializer: Serializer | undefined | null, typeMeta: TypeMeta) {
-      if (!serializer) {
-        if (readContext.isCompatible() && TypeId.structType(typeMeta.getTypeId())) {
-          return typeResolver.getUnknownStructSerializer(typeMeta);
-        }
-        throw new Error(
-          `can't find serializer for TypeMeta ${typeMeta.getNs()}$${typeMeta.getTypeName()}`,
-        );
-      }
-      const hash = serializer.getHash();
-      if (hash !== typeMeta.getHash()) {
-        return readContext.genSerializerByTypeMetaRuntime(typeMeta, serializer);
-      }
-      return serializer;
-    }
-
     switch (typeId) {
       case TypeId.COMPATIBLE_STRUCT:
-        {
-          const typeMeta = readContext.readTypeMeta();
-          serializer = typeResolver.getSerializerById(typeId, typeMeta.getUserTypeId());
-          serializer = tryUpdateSerializer(serializer, typeMeta);
-        }
+        serializer = readCheckedTypeMetaSerializer(readContext, typeId);
         break;
       case TypeId.NAMED_ENUM:
       case TypeId.NAMED_UNION:
         if (readContext.isCompatible()) {
-          const typeMeta = readContext.readTypeMeta();
-          const ns = typeMeta.getNs();
-          const typeName = typeMeta.getTypeName();
-          serializer = typeResolver.getSerializerByName(buildNamedTypeKey(ns, typeName));
+          serializer = readCheckedTypeMetaSerializer(readContext, typeId);
         } else {
           const ns = readContext.readNamespace();
           const typeName = readContext.readTypeName();
@@ -80,10 +64,7 @@ export class AnyHelper {
         break;
       case TypeId.NAMED_EXT:
         if (readContext.isCompatible()) {
-          const typeMeta = readContext.readTypeMeta();
-          const ns = typeMeta.getNs();
-          const typeName = typeMeta.getTypeName();
-          serializer = typeResolver.getSerializerByName(buildNamedTypeKey(ns, typeName));
+          serializer = readCheckedTypeMetaSerializer(readContext, typeId);
         } else {
           const ns = readContext.readNamespace();
           const typeName = readContext.readTypeName();
@@ -93,12 +74,7 @@ export class AnyHelper {
       case TypeId.NAMED_STRUCT:
       case TypeId.NAMED_COMPATIBLE_STRUCT:
         if (readContext.isCompatible() || typeId === TypeId.NAMED_COMPATIBLE_STRUCT) {
-          const typeMeta = readContext.readTypeMeta();
-          const ns = typeMeta.getNs();
-          const typeName = typeMeta.getTypeName();
-          const named = buildNamedTypeKey(ns, typeName);
-          const namedSerializer = typeResolver.getSerializerByName(named);
-          serializer = tryUpdateSerializer(namedSerializer, typeMeta);
+          serializer = readCheckedTypeMetaSerializer(readContext, typeId);
         } else {
           const ns = readContext.readNamespace();
           const typeName = readContext.readTypeName();

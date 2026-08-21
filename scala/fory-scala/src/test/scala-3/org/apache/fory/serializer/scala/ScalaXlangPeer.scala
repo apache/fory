@@ -40,6 +40,7 @@ import org.apache.fory.annotation.ForyStruct.Evolution
 import org.apache.fory.collection.{BFloat16List, Float16List, Int32List}
 import org.apache.fory.config.{Int32Encoding, Int64Encoding, Language}
 import org.apache.fory.context.{ReadContext, WriteContext}
+import org.apache.fory.exception.InvalidDataException
 import org.apache.fory.memory.{MemoryBuffer, MemoryUtils}
 import org.apache.fory.meta.MetaCompressor
 import org.apache.fory.resolver.TypeResolver
@@ -436,7 +437,14 @@ object ScalaXlangPeer {
       result
     }
 
-    override def decompress(data: Array[Byte], offset: Int, size: Int): Array[Byte] = {
+    override def decompress(
+        data: Array[Byte],
+        offset: Int,
+        size: Int,
+        maxOutputSize: Int): Array[Byte] = {
+      if (size > maxOutputSize) {
+        throw new InvalidDataException("Metadata exceeds the maximum size.")
+      }
       val result = new Array[Byte](size)
       System.arraycopy(data, offset, result, 0, size)
       result

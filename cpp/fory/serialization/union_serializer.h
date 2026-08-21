@@ -1052,7 +1052,8 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
       return;
     }
     const TypeInfo *expected = type_info_res.value();
-    const TypeInfo *remote = ctx.read_any_type_info(ctx.error());
+    const TypeInfo *remote =
+        ctx.read_any_type_info_owner(ctx.error(), expected);
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }

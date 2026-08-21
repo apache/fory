@@ -21,7 +21,7 @@ import { CodecBuilder } from "./builder";
 import { RefFlags, TypeId } from "../type";
 import { Scope } from "./scope";
 import { TypeInfo } from "../typeInfo";
-import { refTrackingUnableTypeId } from "../meta/TypeMeta";
+import { refTrackingUnableTypeId, TypeMeta } from "../meta/TypeMeta";
 import { BinaryWriter } from "../writer";
 
 export const makeHead = (flag: RefFlags, typeId: number) => {
@@ -53,6 +53,7 @@ export interface SerializerGenerator {
   readEmbed(): any;
   getHash(): string;
   getTypeMetaBytes(): string;
+  getLocalTypeMeta(): TypeMeta | undefined;
 
   getType(): number;
   getTypeId(): number | undefined;
@@ -292,6 +293,10 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     return "undefined";
   }
 
+  getLocalTypeMeta(): TypeMeta | undefined {
+    return undefined;
+  }
+
   toSerializer() {
     this.scope.assertNameNotDuplicate("read");
     this.scope.assertNameNotDuplicate("readInner");
@@ -302,6 +307,30 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     this.scope.assertNameNotDuplicate("options");
     this.scope.assertNameNotDuplicate("typeInfo");
 
+    const localTypeMeta = this.getLocalTypeMeta();
+    if (localTypeMeta !== undefined) {
+      this.scope.assertNameNotDuplicate("serializer");
+      this.scope.assertNameNotDuplicate("localTypeMeta");
+      this.scope.assertNameNotDuplicate("localTypeMetaSymbol");
+      this.scope.assertNameNotDuplicate("checkedTypeMetaSerializerSymbol");
+      this.scope.assertNameNotDuplicate("checkedTypeMetaWireTypeIdSymbol");
+    }
+    const localTypeMetaParams =
+      localTypeMeta === undefined
+        ? ""
+        : ", localTypeMeta, localTypeMetaSymbol, checkedTypeMetaSerializerSymbol, checkedTypeMetaWireTypeIdSymbol";
+    const serializerDeclaration = localTypeMeta === undefined ? "" : "let serializer;";
+    const serializerAssignment = localTypeMeta === undefined ? "return" : "serializer =";
+    const serializerReturn =
+      localTypeMeta === undefined
+        ? ""
+        : `localTypeMeta[checkedTypeMetaSerializerSymbol] = serializer;
+           return serializer;`;
+    const localTypeMetaProperty =
+      localTypeMeta === undefined
+        ? ""
+        : `[localTypeMetaSymbol]: localTypeMeta,
+           [checkedTypeMetaWireTypeIdSymbol]: localTypeMeta.getTypeId(),`;
     const declare = `
       const getHash = () => {
         return ${this.getHash()};
@@ -343,10 +372,11 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     // Append read-only capability metadata so existing writer properties keep
     // their object-layout order on serialization hot paths.
     return `
-        return function (typeResolver, external, typeInfo, options) {
+        return function (typeResolver, external, typeInfo, options${localTypeMetaParams}) {
             ${this.scope.generate()}
+            ${serializerDeclaration}
             ${declare}
-            return {
+            ${serializerAssignment} {
               _initialized: true,
               fixedSize: ${this.getFixedSize()},
               needToWriteRef: () => ${this.needToWriteRef()},
@@ -368,7 +398,9 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
               readNoRef,
               readTypeInfo,
               readDataAlwaysAdvances: ${this.readDataAlwaysAdvances()},
+              ${localTypeMetaProperty}
             };
+            ${serializerReturn}
         }
         `;
   }

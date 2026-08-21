@@ -364,6 +364,13 @@ public class ThreadPoolFory extends AbstractThreadSafeFory {
     }
   }
 
+  /**
+   * Fixed-pool entry retained by its owning {@link ThreadPoolFory}.
+   *
+   * <p>Native Image initializes this class at build time so an application may retain a static
+   * fixed pool in the image heap. The class has no static state; pooled Fory instances enter the
+   * image only when the application constructs and retains that pool while building the image.
+   */
   private static final class PooledEntry {
     private final Fory fory;
     private final int homeIndex;

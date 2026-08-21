@@ -58,21 +58,21 @@ Apache Fory is a multi-language serialization framework with multiple wire forma
   versions; compatible named enum/ext/union metadata normally has one version but still counts
   against remote metadata total limits when it is sent as shared metadata. Pure id-based enum, ext,
   and typed-union values use type id plus user type id and must not be moved onto this metadata
-  cache path. Exact-local metadata bypass is not struct-only: after the existing type and
-  deserialization-policy checks for the selected local type, compare the original received encoded
-  bytes with the local encoded metadata bytes, and allow exact matches for struct and named
-  enum/ext/union metadata without consuming remote schema-version limits. Derive the local
-  exact-match candidate inside the metadata owner from the decoded `userTypeId` or
-  `(namespace, typeName)` identity; do not add caller-threaded expected-type parameters only for
-  this check in any runtime. Java and Python may lazy-build local metadata bytes only after this
-  identity lookup selects a local class and the existing class, registration, and deserialization
-  policy checks have run. When a typed read path already has a declared local type and validates the
-  decoded metadata identity against it, use that same local type for exact-local byte comparison and
-  cache publish; dynamic or Any paths resolve the local type from decoded metadata. A runtime may
-  also skip a received metadata body when the current declared type already owns an identical local
-  metadata header; that is a local-schema hit, not a remote cache publish, and it must not consume
-  schema-version limits. Other header-only skips are allowed only after the same owning remote
-  metadata cache has validated a previous body for that header.
+  cache path. The protocol-defined 52-bit TypeDef/TypeMeta header hash is the unique schema
+  identity. When the selected local type already owns the received header, that is a local-schema
+  hit: skip the body and use the local metadata without body comparison, cache publication, or
+  schema-version counting. A checked remote-cache hit likewise skips the body without rehashing,
+  byte comparison, repeated validation, or policy work. The low 12 bits describe only the current
+  frame; a hit uses its current size for bounds and skip without validating reserved or compression
+  flags. A cache miss is the only path that parses and validates a body. After that first
+  validation, a runtime may compare the received 52-bit hash with lazily built local metadata when
+  no local header was available before the parse; hash equality selects the local owner and may
+  bypass remote schema-version counting without a byte or field comparison.
+  Derive a miss-only local candidate inside the metadata owner from the decoded identity, after
+  existing class, registration, and policy checks. A statically declared reader may pass its
+  concrete expected owner so reference and cache hits can route by owner identity before publish;
+  do not thread expected-type parameters solely to repeat miss-time metadata validation. Do not add
+  parallel accepted-header state or retain metadata bytes to revalidate either path.
 - Remote metadata body and struct field-count limits are also cold-path resource controls.
   `maxTypeMetaBytes` limits one received TypeDef or TypeMeta body excluding the 8-byte header and
   extended-size varint; `maxTypeFields` limits one received struct metadata body's field count

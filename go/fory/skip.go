@@ -192,7 +192,7 @@ func SkipAnyValue(ctx *ReadContext, readRefFlag bool) {
 	case ENUM, NAMED_ENUM, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT, STRUCT, NAMED_STRUCT,
 		EXT, NAMED_EXT, TYPED_UNION, NAMED_UNION:
 		// Read type info using the shared meta reader when enabled.
-		typeInfo = ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeID, err)
+		typeInfo = ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeID, nil, err)
 		if ctx.HasError() {
 			return
 		}
@@ -226,7 +226,7 @@ func readTypeInfoForSkip(ctx *ReadContext, fieldTypeId TypeId) *TypeInfo {
 		return nil
 	}
 	// Use readTypeInfoWithTypeID which handles both namespaced and non-namespaced types correctly
-	typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeID, err)
+	typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeID, nil, err)
 	if ctx.HasError() {
 		return nil
 	}
@@ -237,7 +237,7 @@ func readTypeInfoForSkip(ctx *ReadContext, fieldTypeId TypeId) *TypeInfo {
 }
 
 func readKnownTypeInfoForSkip(ctx *ReadContext, typeID uint32) *TypeInfo {
-	typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeID, ctx.Err())
+	typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeID, nil, ctx.Err())
 	if ctx.HasError() {
 		return nil
 	}

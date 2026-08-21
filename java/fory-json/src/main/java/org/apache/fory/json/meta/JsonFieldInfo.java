@@ -25,6 +25,7 @@ import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Map;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonFormat;
@@ -1006,6 +1007,16 @@ public final class JsonFieldInfo {
 
   public byte[] utf8CommaNamePrefix() {
     return utf8CommaNamePrefix;
+  }
+
+  @Internal
+  public long utf8NamePrefixWord0() {
+    return utf8NamePrefixWord0;
+  }
+
+  @Internal
+  public long utf8NamePrefixWord1() {
+    return utf8NamePrefixWord1;
   }
 
   public byte[] utf8EnumValue(Enum<?> value) {

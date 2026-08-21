@@ -431,26 +431,18 @@ cdef class MetaStringReader:
                     self._c_owned_dynamic_encoded_meta_string_vec.push_back(encoded_meta_string_ptr)
         else:
             hashcode = buffer.read_int64()
-            if (hashcode & 0xFF) > 4:
-                raise ValueError(f"Unexpected encoding flag: {hashcode & 0xFF}")
             reader_index = buffer.get_reader_index()
             buffer.check_bound(reader_index, length)
             entry = self._c_hash_to_encoded_meta_string.find(hashcode)
             if entry != NULL and deref(entry).second != NULL:
-                cached_data = (<object> deref(entry).second).data
-                if (
-                    (<object> deref(entry).second).encoding == <uint8_t> (hashcode & 0xFF)
-                    and PyBytes_GET_SIZE(cached_data) == length
-                    and memcmp(
-                        <void *>(buffer.c_buffer.data() + reader_index),
-                        <void *> PyBytes_AS_STRING(cached_data),
-                        length,
-                    ) == 0
-                ):
-                    buffer.set_reader_index(reader_index + length)
-                    encoded_meta_string_ptr = deref(entry).second
-                    self._c_dynamic_id_to_encoded_meta_string_vec.push_back(encoded_meta_string_ptr)
-                    return <object> encoded_meta_string_ptr
+                # The checked cache owns this wire hash. Never validate, compare, or rehash a hit,
+                # including when the current frame length differs.
+                buffer.set_reader_index(reader_index + length)
+                encoded_meta_string_ptr = deref(entry).second
+                self._c_dynamic_id_to_encoded_meta_string_vec.push_back(encoded_meta_string_ptr)
+                return <object> encoded_meta_string_ptr
+            if (hashcode & 0xFF) > 4:
+                raise ValueError(f"Unexpected encoding flag: {hashcode & 0xFF}")
             MurmurHash3_x64_128(
                 <void *>(buffer.c_buffer.data() + reader_index),
                 length,

@@ -269,14 +269,6 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
     return targetObject;
   }
 
-  private void setFieldValue(T targetObject, SerializationFieldInfo fieldInfo, Object fieldValue) {
-    if (fieldInfo.fieldAccessor != null) {
-      fieldInfo.fieldAccessor.putObject(targetObject, fieldValue);
-    } else if (fieldInfo.fieldConverter != null) {
-      fieldInfo.fieldConverter.set(targetObject, fieldValue);
-    }
-  }
-
   private void readFields(ReadContext readContext, T targetObject) {
     MemoryBuffer buffer = readContext.getBuffer();
     RefReader refReader = readContext.getRefReader();
@@ -360,8 +352,9 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
           readContext, typeResolver, refReader, fieldInfo, buffer, targetObject);
       return;
     }
-    fieldAccessor.putObject(
-        targetObject, readField(readContext, refReader, generics, fieldInfo, buffer, action));
+    Object fieldValue = readField(readContext, refReader, generics, fieldInfo, buffer, action);
+    checkFieldValueType(fieldInfo, fieldValue);
+    fieldAccessor.putObject(targetObject, fieldValue);
   }
 
   private Object readField(

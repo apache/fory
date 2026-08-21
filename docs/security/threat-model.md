@@ -53,8 +53,19 @@ equivalent allow-list policy is the relevant gate. Generated serializer code is
 derived from checked type descriptors rather than from attacker-controlled byte
 contents.
 
+The `foryc` schema compiler is a build-time tool and is not invoked by runtime
+serialization or deserialization. Schema files and their package, namespace,
+and output-path options are trusted build inputs whose provenance and review
+belong to the application or build owner. Fory does not claim that running
+`foryc` on a hostile schema is safe. Applications must not pass untrusted schema
+files to `foryc` or compile generated source from an untrusted schema.
+
 The [deserialization security model](deserialization.md) defines how to
 classify these boundaries for untrusted deserialization paths.
+
+Row format is a trusted-input-only in-memory format. Applications must not use Row readers for
+attacker-controlled or otherwise untrusted bytes; Row decoding is outside Fory's untrusted binary
+deserialization guarantee.
 
 ## Non-Goals
 
@@ -62,6 +73,8 @@ Fory does not provide:
 
 - Encoded-data authenticity, integrity, confidentiality, signing, MACs, or
   encryption.
+- A sandbox for compiling hostile schema files or executing source generated
+  from them.
 - Transport security or protection for bytes while they are stored or moved
   outside Fory, including transport security for generated service companions.
 - Application-level authorization or validation for the business meaning of a

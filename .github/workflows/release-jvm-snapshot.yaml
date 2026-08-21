@@ -48,8 +48,22 @@ jobs:
       - uses: sbt/setup-sbt@8feba82adc7f01ddcf8165b86f778bdb5b82cebc # v1.5.7
         with:
           disk-cache: false
-      - name: Publish Java, Kotlin, and Scala snapshots
-        run: python ./ci/release.py publish_jvm --mode snapshot
+      - name: Publish Java and Kotlin snapshots
+        run: python ./ci/release.py publish_jvm -l java,kotlin --mode snapshot
         env:
           NEXUS_USERNAME: ${{ secrets.NEXUS_USER }}
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PW }}
+      # Maven local is a cache and may contain POM-only dependencies. Deploy
+      # only the current Fory artifacts to a complete repository for Scala.
+      - name: Prepare Fory Java artifacts for Scala
+        working-directory: java
+        run: >-
+          mvn -T10 deploy --no-transfer-progress -DskipTests
+          -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+          -DaltDeploymentRepository=fory-local::default::file://${RUNNER_TEMP}/fory-maven-repo
+      - name: Publish Scala snapshots
+        run: python ./ci/release.py publish_jvm -l scala --mode snapshot
+        env:
+          NEXUS_USERNAME: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PW }}
+          SBT_OPTS: -Dfory.maven.repo=file://${{ runner.temp }}/fory-maven-repo

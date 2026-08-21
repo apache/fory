@@ -16,8 +16,8 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_core::{Error, ReadContext, Serializer, WriteContext};
-use fory_derive::{ForyEnum, ForyStruct};
+use fory_core::{Error, ReadContext, RefMode, Serializer, WriteContext};
+use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 
@@ -838,4 +838,985 @@ fn test_struct_with_generic() {
         assert!(inner_test(fory).is_ok());
     }
     assert!(inner_test(&mut fory3).is_ok());
+}
+
+#[test]
+fn concrete_owner_rejects_meta_ref() {
+    // Each Vec body writes typed-group metadata. Pairing two groups in one root makes the second
+    // B a same-root TypeMeta reference that the malformed reader tries to consume as static A.
+    #[derive(Debug, PartialEq)]
+    struct Pair<T, U> {
+        first: T,
+        second: U,
+    }
+
+    struct PairSerializer<S1, S2>(PhantomData<(S1, S2)>);
+
+    impl<S1: Serializer, S2: Serializer> Serializer for PairSerializer<S1, S2> {
+        type Target = Pair<S1::Target, S2::Target>;
+
+        fn write_data(value: &Self::Target, context: &mut WriteContext) -> Result<(), Error> {
+            S1::write(&value.first, context, RefMode::None, true)?;
+            S2::write(&value.second, context, RefMode::None, true)
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<Self::Target, Error> {
+            Ok(Pair {
+                first: S1::read(context, RefMode::None, true)?,
+                second: S2::read(context, RefMode::None, true)?,
+            })
+        }
+    }
+
+    #[derive(ForyStruct, Debug, PartialEq)]
+    struct StructA {
+        value: i32,
+    }
+
+    #[derive(ForyStruct, Debug, PartialEq)]
+    struct StructB {
+        value: i32,
+    }
+
+    let mut direct_writer = Fory::builder().compatible(true).build();
+    direct_writer
+        .register_by_name::<StructB>("owner.CompatibleB")
+        .unwrap();
+    let foreign_root = direct_writer
+        .serialize_with::<StructB>(&StructB { value: 1 })
+        .unwrap();
+
+    let mut direct_good_writer = Fory::builder().compatible(true).build();
+    direct_good_writer
+        .register_by_name::<StructA>("owner.CompatibleA")
+        .unwrap();
+    let valid_root = direct_good_writer
+        .serialize_with::<StructA>(&StructA { value: 2 })
+        .unwrap();
+
+    let mut direct_reader = Fory::builder().compatible(true).build();
+    direct_reader
+        .register_by_name::<StructA>("owner.CompatibleA")
+        .unwrap();
+    direct_reader
+        .register_by_name::<StructB>("owner.CompatibleB")
+        .unwrap();
+    let error = direct_reader
+        .deserialize_with::<StructA>(&foreign_root)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+    assert_eq!(
+        direct_reader
+            .deserialize_with::<StructA>(&valid_root)
+            .unwrap(),
+        StructA { value: 2 }
+    );
+
+    type StructWireSerializer = PairSerializer<Vec<StructB>, Vec<StructB>>;
+    type StructLocalSerializer = PairSerializer<Vec<StructB>, Vec<StructA>>;
+
+    let mut struct_writer = Fory::builder().compatible(true).build();
+    struct_writer
+        .register_by_name::<StructB>("owner.StructB")
+        .unwrap();
+    struct_writer
+        .register_serializer_by_name::<StructWireSerializer>("owner.StructRoot")
+        .unwrap();
+    let malformed_struct = struct_writer
+        .serialize_with::<StructWireSerializer>(&Pair {
+            first: vec![StructB { value: 1 }],
+            second: vec![StructB { value: 2 }],
+        })
+        .unwrap();
+
+    let mut struct_good_writer = Fory::builder().compatible(true).build();
+    struct_good_writer
+        .register_by_name::<StructA>("owner.StructA")
+        .unwrap();
+    struct_good_writer
+        .register_by_name::<StructB>("owner.StructB")
+        .unwrap();
+    struct_good_writer
+        .register_serializer_by_name::<StructLocalSerializer>("owner.StructRoot")
+        .unwrap();
+    let valid_struct = struct_good_writer
+        .serialize_with::<StructLocalSerializer>(&Pair {
+            first: vec![StructB { value: 3 }],
+            second: vec![StructA { value: 4 }],
+        })
+        .unwrap();
+
+    let mut struct_reader = Fory::builder().compatible(true).build();
+    struct_reader
+        .register_by_name::<StructA>("owner.StructA")
+        .unwrap();
+    struct_reader
+        .register_by_name::<StructB>("owner.StructB")
+        .unwrap();
+    struct_reader
+        .register_serializer_by_name::<StructLocalSerializer>("owner.StructRoot")
+        .unwrap();
+    let error = struct_reader
+        .deserialize_with::<StructLocalSerializer>(&malformed_struct)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+    assert_eq!(
+        struct_reader
+            .deserialize_with::<StructLocalSerializer>(&valid_struct)
+            .unwrap(),
+        Pair {
+            first: vec![StructB { value: 3 }],
+            second: vec![StructA { value: 4 }],
+        }
+    );
+
+    // Schema-consistent generated structs in xlang mode still carry a named wire owner. A second
+    // StructB must not be consumed by declared StructA even when compatible mode is disabled.
+    type DirectStructWire = PairSerializer<StructB, StructB>;
+    type DirectStructLocal = PairSerializer<StructB, StructA>;
+
+    let mut xlang_writer = Fory::builder().compatible(false).xlang(true).build();
+    xlang_writer
+        .register_by_name::<StructB>("owner.DirectB")
+        .unwrap();
+    xlang_writer
+        .register_serializer_by_name::<DirectStructWire>("owner.DirectRoot")
+        .unwrap();
+    let named_foreign = xlang_writer
+        .serialize_with::<DirectStructWire>(&Pair {
+            first: StructB { value: 5 },
+            second: StructB { value: 6 },
+        })
+        .unwrap();
+
+    let mut xlang_reader = Fory::builder().compatible(false).xlang(true).build();
+    xlang_reader
+        .register_by_name::<StructA>("owner.DirectA")
+        .unwrap();
+    xlang_reader
+        .register_by_name::<StructB>("owner.DirectB")
+        .unwrap();
+    xlang_reader
+        .register_serializer_by_name::<DirectStructLocal>("owner.DirectRoot")
+        .unwrap();
+    let error = xlang_reader
+        .deserialize_with::<DirectStructLocal>(&named_foreign)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    let mut xlang_good_writer = Fory::builder().compatible(false).xlang(true).build();
+    xlang_good_writer
+        .register_by_name::<StructA>("owner.DirectA")
+        .unwrap();
+    xlang_good_writer
+        .register_by_name::<StructB>("owner.DirectB")
+        .unwrap();
+    xlang_good_writer
+        .register_serializer_by_name::<DirectStructLocal>("owner.DirectRoot")
+        .unwrap();
+    let valid_named = xlang_good_writer
+        .serialize_with::<DirectStructLocal>(&Pair {
+            first: StructB { value: 9 },
+            second: StructA { value: 10 },
+        })
+        .unwrap();
+    assert_eq!(
+        xlang_reader
+            .deserialize_with::<DirectStructLocal>(&valid_named)
+            .unwrap(),
+        Pair {
+            first: StructB { value: 9 },
+            second: StructA { value: 10 },
+        }
+    );
+
+    // The native schema-consistent path retains its compact user-type-id owner check.
+    let mut native_writer = Fory::builder().compatible(false).xlang(false).build();
+    native_writer.register::<StructB>(201).unwrap();
+    native_writer
+        .register_serializer::<DirectStructWire>(200)
+        .unwrap();
+    let native_foreign = native_writer
+        .serialize_with::<DirectStructWire>(&Pair {
+            first: StructB { value: 7 },
+            second: StructB { value: 8 },
+        })
+        .unwrap();
+
+    let mut native_reader = Fory::builder().compatible(false).xlang(false).build();
+    native_reader.register::<StructA>(202).unwrap();
+    native_reader.register::<StructB>(201).unwrap();
+    native_reader
+        .register_serializer::<DirectStructLocal>(200)
+        .unwrap();
+    let error = native_reader
+        .deserialize_with::<DirectStructLocal>(&native_foreign)
+        .unwrap_err();
+    assert!(error.to_string().contains("User type id mismatch"));
+
+    let mut named_native_writer = Fory::builder().compatible(false).xlang(false).build();
+    named_native_writer
+        .register_by_name::<StructB>("owner.NativeB")
+        .unwrap();
+    named_native_writer
+        .register_serializer_by_name::<DirectStructWire>("owner.NativeRoot")
+        .unwrap();
+    let named_native_foreign = named_native_writer
+        .serialize_with::<DirectStructWire>(&Pair {
+            first: StructB { value: 11 },
+            second: StructB { value: 12 },
+        })
+        .unwrap();
+
+    let mut named_native_reader = Fory::builder().compatible(false).xlang(false).build();
+    named_native_reader
+        .register_by_name::<StructA>("owner.NativeA")
+        .unwrap();
+    named_native_reader
+        .register_by_name::<StructB>("owner.NativeB")
+        .unwrap();
+    named_native_reader
+        .register_serializer_by_name::<DirectStructLocal>("owner.NativeRoot")
+        .unwrap();
+    let error = named_native_reader
+        .deserialize_with::<DirectStructLocal>(&named_native_foreign)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    #[derive(ForyEnum, Debug, Default, PartialEq)]
+    enum EnumA {
+        #[default]
+        Zero,
+        One,
+    }
+
+    #[derive(ForyEnum, Debug, Default, PartialEq)]
+    enum EnumB {
+        #[default]
+        Zero,
+        One,
+    }
+
+    type EnumWireSerializer = PairSerializer<EnumB, EnumB>;
+    type EnumLocalSerializer = PairSerializer<EnumB, EnumA>;
+
+    let mut enum_writer = Fory::builder().compatible(true).build();
+    enum_writer
+        .register_by_name::<EnumB>("owner.EnumB")
+        .unwrap();
+    enum_writer
+        .register_serializer_by_name::<EnumWireSerializer>("owner.EnumRoot")
+        .unwrap();
+    let malformed_enum = enum_writer
+        .serialize_with::<EnumWireSerializer>(&Pair {
+            first: EnumB::One,
+            second: EnumB::One,
+        })
+        .unwrap();
+
+    let mut enum_reader = Fory::builder().compatible(true).build();
+    enum_reader
+        .register_by_name::<EnumA>("owner.EnumA")
+        .unwrap();
+    enum_reader
+        .register_by_name::<EnumB>("owner.EnumB")
+        .unwrap();
+    enum_reader
+        .register_serializer_by_name::<EnumLocalSerializer>("owner.EnumRoot")
+        .unwrap();
+    let error = enum_reader
+        .deserialize_with::<EnumLocalSerializer>(&malformed_enum)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    type WrappedEnumWire = PairSerializer<Vec<Box<EnumB>>, Vec<Box<EnumB>>>;
+    type WrappedEnumLocal = PairSerializer<Vec<Box<EnumB>>, Vec<Box<EnumA>>>;
+
+    let mut enum_writer = Fory::builder().compatible(true).build();
+    enum_writer
+        .register_by_name::<EnumB>("owner.EnumB")
+        .unwrap();
+    enum_writer
+        .register_serializer_by_name::<WrappedEnumWire>("owner.WrappedEnumRoot")
+        .unwrap();
+    let malformed_enum = enum_writer
+        .serialize_with::<WrappedEnumWire>(&Pair {
+            first: vec![Box::new(EnumB::One)],
+            second: vec![Box::new(EnumB::One)],
+        })
+        .unwrap();
+
+    let mut enum_reader = Fory::builder().compatible(true).build();
+    enum_reader
+        .register_by_name::<EnumA>("owner.EnumA")
+        .unwrap();
+    enum_reader
+        .register_by_name::<EnumB>("owner.EnumB")
+        .unwrap();
+    enum_reader
+        .register_serializer_by_name::<WrappedEnumLocal>("owner.WrappedEnumRoot")
+        .unwrap();
+    let error = enum_reader
+        .deserialize_with::<WrappedEnumLocal>(&malformed_enum)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    #[derive(Debug)]
+    struct ExtA(i32);
+
+    #[derive(Debug)]
+    struct ExtB(i32);
+
+    impl Serializer for ExtA {
+        type Target = Self;
+
+        fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_i32(value.0);
+            Ok(())
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+            Ok(ExtA(context.reader.read_i32()?))
+        }
+    }
+
+    impl Serializer for ExtB {
+        type Target = Self;
+
+        fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_i32(value.0);
+            Ok(())
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+            Ok(ExtB(context.reader.read_i32()?))
+        }
+    }
+
+    type ExtWireSerializer = PairSerializer<ExtB, ExtB>;
+    type ExtLocalSerializer = PairSerializer<ExtB, ExtA>;
+
+    let mut ext_writer = Fory::builder().compatible(true).build();
+    ext_writer
+        .register_serializer_by_name::<ExtB>("owner.ExtB")
+        .unwrap();
+    ext_writer
+        .register_serializer_by_name::<ExtWireSerializer>("owner.ExtRoot")
+        .unwrap();
+    let malformed_ext = ext_writer
+        .serialize_with::<ExtWireSerializer>(&Pair {
+            first: ExtB(1),
+            second: ExtB(2),
+        })
+        .unwrap();
+
+    let mut ext_reader = Fory::builder().compatible(true).build();
+    ext_reader
+        .register_serializer_by_name::<ExtA>("owner.ExtA")
+        .unwrap();
+    ext_reader
+        .register_serializer_by_name::<ExtB>("owner.ExtB")
+        .unwrap();
+    ext_reader
+        .register_serializer_by_name::<ExtLocalSerializer>("owner.ExtRoot")
+        .unwrap();
+    let error = ext_reader
+        .deserialize_with::<ExtLocalSerializer>(&malformed_ext)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    type WrappedExtWire = PairSerializer<Vec<Option<ExtB>>, Vec<Option<ExtB>>>;
+    type WrappedExtLocal = PairSerializer<Vec<Option<ExtB>>, Vec<Option<ExtA>>>;
+
+    let mut ext_writer = Fory::builder().compatible(true).build();
+    ext_writer
+        .register_serializer_by_name::<ExtB>("owner.ExtB")
+        .unwrap();
+    ext_writer
+        .register_serializer_by_name::<WrappedExtWire>("owner.WrappedExtRoot")
+        .unwrap();
+    let malformed_ext = ext_writer
+        .serialize_with::<WrappedExtWire>(&Pair {
+            first: vec![Some(ExtB(1))],
+            second: vec![Some(ExtB(2))],
+        })
+        .unwrap();
+
+    let mut ext_reader = Fory::builder().compatible(true).build();
+    ext_reader
+        .register_serializer_by_name::<ExtA>("owner.ExtA")
+        .unwrap();
+    ext_reader
+        .register_serializer_by_name::<ExtB>("owner.ExtB")
+        .unwrap();
+    ext_reader
+        .register_serializer_by_name::<WrappedExtLocal>("owner.WrappedExtRoot")
+        .unwrap();
+    let error = ext_reader
+        .deserialize_with::<WrappedExtLocal>(&malformed_ext)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+}
+
+#[test]
+fn structural_wire_kind_rejected() {
+    #[derive(ForyStruct, Debug, PartialEq)]
+    struct StructTarget {
+        value: i32,
+    }
+
+    #[derive(Debug)]
+    struct UnknownExt(i32);
+
+    impl Serializer for UnknownExt {
+        type Target = Self;
+
+        fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_i32(value.0);
+            Ok(())
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+            Ok(Self(context.reader.read_i32()?))
+        }
+    }
+
+    #[derive(ForyEnum, Debug, Default)]
+    enum UnknownEnum {
+        #[default]
+        Value,
+    }
+
+    #[derive(ForyUnion, Debug)]
+    enum UnknownUnion {
+        #[fory(default)]
+        Value(i32),
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
+    }
+
+    let mut ext_writer = Fory::builder().compatible(true).build();
+    ext_writer
+        .register_serializer_by_name::<UnknownExt>("owner.StructTarget")
+        .unwrap();
+    let ext_bytes = ext_writer
+        .serialize_with::<UnknownExt>(&UnknownExt(1))
+        .unwrap();
+
+    let mut enum_writer = Fory::builder().compatible(true).build();
+    enum_writer
+        .register_by_name::<UnknownEnum>("remote.UnknownEnum")
+        .unwrap();
+    let enum_bytes = enum_writer
+        .serialize_with::<UnknownEnum>(&UnknownEnum::Value)
+        .unwrap();
+
+    let mut union_writer = Fory::builder().compatible(true).build();
+    union_writer
+        .register_union_by_name::<UnknownUnion>("remote.UnknownUnion")
+        .unwrap();
+    let union_bytes = union_writer
+        .serialize_with::<UnknownUnion>(&UnknownUnion::Value(2))
+        .unwrap();
+
+    struct RefWire;
+    #[derive(Debug)]
+    struct RefLocal;
+    struct RefWireSerializer;
+    struct RefLocalSerializer;
+
+    impl Serializer for RefWireSerializer {
+        type Target = RefWire;
+
+        fn write_data(_value: &RefWire, context: &mut WriteContext) -> Result<(), Error> {
+            UnknownExt::write(&UnknownExt(3), context, RefMode::None, true)?;
+            UnknownExt::write(&UnknownExt(4), context, RefMode::None, true)
+        }
+
+        fn read_data(_context: &mut ReadContext) -> Result<RefWire, Error> {
+            Ok(RefWire)
+        }
+    }
+
+    impl Serializer for RefLocalSerializer {
+        type Target = RefLocal;
+
+        fn write_data(_value: &RefLocal, _context: &mut WriteContext) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<RefLocal, Error> {
+            let type_info = context.read_any_type_info()?;
+            assert_eq!(
+                type_info.get_type_meta_ref().get_type_id(),
+                fory_core::TypeId::NAMED_EXT as u32
+            );
+            let _ = UnknownExt::read_data(context)?;
+            let _ = StructTarget::read(context, RefMode::None, true)?;
+            Ok(RefLocal)
+        }
+    }
+
+    let mut ref_writer = Fory::builder().compatible(true).build();
+    ref_writer
+        .register_serializer_by_name::<UnknownExt>("remote.CachedExt")
+        .unwrap();
+    ref_writer
+        .register_serializer_by_name::<RefWireSerializer>("owner.RefRoot")
+        .unwrap();
+    let ref_bytes = ref_writer
+        .serialize_with::<RefWireSerializer>(&RefWire)
+        .unwrap();
+
+    struct CacheWire;
+    #[derive(Debug)]
+    struct CacheLocal;
+    struct CacheWireSerializer;
+    struct CacheLocalSerializer;
+
+    impl Serializer for CacheWireSerializer {
+        type Target = CacheWire;
+
+        fn write_data(_value: &CacheWire, context: &mut WriteContext) -> Result<(), Error> {
+            UnknownExt::write(&UnknownExt(5), context, RefMode::None, true)
+        }
+
+        fn read_data(_context: &mut ReadContext) -> Result<CacheWire, Error> {
+            Ok(CacheWire)
+        }
+    }
+
+    impl Serializer for CacheLocalSerializer {
+        type Target = CacheLocal;
+
+        fn write_data(_value: &CacheLocal, _context: &mut WriteContext) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<CacheLocal, Error> {
+            let _ = StructTarget::read(context, RefMode::None, true)?;
+            Ok(CacheLocal)
+        }
+    }
+
+    let mut cache_writer = Fory::builder().compatible(true).build();
+    cache_writer
+        .register_serializer_by_name::<UnknownExt>("remote.CachedExt")
+        .unwrap();
+    cache_writer
+        .register_serializer_by_name::<CacheWireSerializer>("owner.CacheRoot")
+        .unwrap();
+    let cache_bytes = cache_writer
+        .serialize_with::<CacheWireSerializer>(&CacheWire)
+        .unwrap();
+
+    let mut valid_writer = Fory::builder().compatible(true).build();
+    valid_writer
+        .register_by_name::<StructTarget>("owner.StructTarget")
+        .unwrap();
+    let valid_bytes = valid_writer
+        .serialize_with::<StructTarget>(&StructTarget { value: 6 })
+        .unwrap();
+
+    let mut reader = Fory::builder().compatible(true).build();
+    reader
+        .register_by_name::<StructTarget>("owner.StructTarget")
+        .unwrap();
+    reader
+        .register_serializer_by_name::<RefLocalSerializer>("owner.RefRoot")
+        .unwrap();
+    reader
+        .register_serializer_by_name::<CacheLocalSerializer>("owner.CacheRoot")
+        .unwrap();
+
+    let error = reader
+        .deserialize_with::<StructTarget>(&ext_bytes)
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("kind does not match registered type metadata"));
+    for bytes in [&enum_bytes, &union_bytes] {
+        let error = reader.deserialize_with::<StructTarget>(bytes).unwrap_err();
+        assert!(error.to_string().contains("not structural metadata"));
+    }
+
+    let error = reader
+        .deserialize_with::<RefLocalSerializer>(&ref_bytes)
+        .unwrap_err();
+    assert!(error.to_string().contains("not structural metadata"));
+    let error = reader
+        .deserialize_with::<CacheLocalSerializer>(&cache_bytes)
+        .unwrap_err();
+    assert!(error.to_string().contains("not structural metadata"));
+    assert_eq!(
+        reader
+            .deserialize_with::<StructTarget>(&valid_bytes)
+            .unwrap(),
+        StructTarget { value: 6 }
+    );
+}
+
+#[test]
+fn static_owner_rejects_unknown_meta() {
+    use fory_core::serializer::{
+        ArcSerializer, ArraySerializer, RcSerializer, Tuple2Serializer, VecSerializer,
+    };
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    #[derive(ForyEnum, Debug, Default, PartialEq)]
+    enum EnumA {
+        #[default]
+        Zero,
+        One,
+    }
+
+    #[derive(ForyEnum, Debug, Default, PartialEq)]
+    enum EnumB {
+        #[default]
+        Zero,
+        One,
+    }
+
+    struct EnumASerializer;
+
+    impl Serializer for EnumASerializer {
+        type Target = EnumA;
+
+        fn write_data(value: &EnumA, context: &mut WriteContext) -> Result<(), Error> {
+            EnumA::write_data(value, context)
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<EnumA, Error> {
+            EnumA::read_data(context)
+        }
+
+        fn read_with_type_info(
+            context: &mut ReadContext,
+            ref_mode: RefMode,
+            type_info: &Rc<fory_core::TypeInfo>,
+        ) -> Result<EnumA, Error> {
+            EnumA::read_with_type_info(context, ref_mode, type_info)
+        }
+    }
+
+    struct EnumBSerializer;
+
+    impl Serializer for EnumBSerializer {
+        type Target = EnumB;
+
+        fn write_data(value: &EnumB, context: &mut WriteContext) -> Result<(), Error> {
+            EnumB::write_data(value, context)
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<EnumB, Error> {
+            EnumB::read_data(context)
+        }
+
+        fn read_with_type_info(
+            context: &mut ReadContext,
+            ref_mode: RefMode,
+            type_info: &Rc<fory_core::TypeInfo>,
+        ) -> Result<EnumB, Error> {
+            EnumB::read_with_type_info(context, ref_mode, type_info)
+        }
+    }
+
+    #[derive(ForyStruct, Debug)]
+    struct EnumWire {
+        #[fory(with = EnumBSerializer)]
+        value: EnumB,
+    }
+
+    #[derive(ForyStruct, Debug, PartialEq)]
+    struct EnumLocal {
+        #[fory(with = EnumASerializer)]
+        value: EnumA,
+    }
+
+    let mut enum_writer = Fory::builder().compatible(true).build();
+    enum_writer
+        .register_serializer_by_name::<EnumBSerializer>("owner.UnknownEnumB")
+        .unwrap();
+    enum_writer
+        .register_by_name::<EnumWire>("owner.EnumFieldRoot")
+        .unwrap();
+    let unknown_enum = enum_writer
+        .serialize(&EnumWire { value: EnumB::One })
+        .unwrap();
+
+    let mut enum_reader = Fory::builder().compatible(true).build();
+    enum_reader
+        .register_serializer_by_name::<EnumASerializer>("owner.EnumA")
+        .unwrap();
+    enum_reader
+        .register_by_name::<EnumLocal>("owner.EnumFieldRoot")
+        .unwrap();
+    let error = enum_reader
+        .deserialize::<EnumLocal>(&unknown_enum)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    #[derive(Debug)]
+    struct ExtA(i32);
+
+    #[derive(Debug)]
+    struct ExtB(i32);
+
+    #[derive(ForyStruct, Debug)]
+    struct GroupStructA {
+        value: i32,
+    }
+
+    #[derive(ForyStruct, Debug)]
+    struct GroupStructB {
+        value: i32,
+    }
+
+    struct ExtASerializer;
+
+    impl Serializer for ExtASerializer {
+        type Target = ExtA;
+
+        fn write_data(value: &ExtA, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_i32(value.0);
+            Ok(())
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<ExtA, Error> {
+            Ok(ExtA(context.reader.read_i32()?))
+        }
+    }
+
+    struct ExtBSerializer;
+
+    impl Serializer for ExtBSerializer {
+        type Target = ExtB;
+
+        fn write_data(value: &ExtB, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_i32(value.0);
+            Ok(())
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<ExtB, Error> {
+            Ok(ExtB(context.reader.read_i32()?))
+        }
+    }
+
+    #[derive(ForyStruct, Debug)]
+    struct ExtWire {
+        #[fory(with = ExtBSerializer)]
+        value: ExtB,
+    }
+
+    #[derive(ForyStruct, Debug)]
+    struct ExtLocal {
+        #[fory(with = ExtASerializer)]
+        value: ExtA,
+    }
+
+    let mut ext_writer = Fory::builder().compatible(true).build();
+    ext_writer
+        .register_serializer_by_name::<ExtBSerializer>("owner.UnknownExtB")
+        .unwrap();
+    ext_writer
+        .register_by_name::<ExtWire>("owner.ExtFieldRoot")
+        .unwrap();
+    let unknown_ext = ext_writer.serialize(&ExtWire { value: ExtB(7) }).unwrap();
+
+    let mut ext_reader = Fory::builder().compatible(true).build();
+    ext_reader
+        .register_serializer_by_name::<ExtASerializer>("owner.ExtA")
+        .unwrap();
+    ext_reader
+        .register_by_name::<ExtLocal>("owner.ExtFieldRoot")
+        .unwrap();
+    let error = ext_reader
+        .deserialize::<ExtLocal>(&unknown_ext)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    type RcWire = VecSerializer<RcSerializer<ExtBSerializer>>;
+    type RcLocal = VecSerializer<RcSerializer<ExtASerializer>>;
+
+    let mut rc_writer = Fory::builder().compatible(true).build();
+    rc_writer
+        .register_serializer_by_name::<ExtBSerializer>("owner.UnknownRcB")
+        .unwrap();
+    let unknown_rc = rc_writer
+        .serialize_with::<RcWire>(&vec![Rc::new(ExtB(8))])
+        .unwrap();
+
+    let mut rc_reader = Fory::builder().compatible(true).build();
+    rc_reader
+        .register_serializer_by_name::<ExtASerializer>("owner.RcA")
+        .unwrap();
+    let error = rc_reader
+        .deserialize_with::<RcLocal>(&unknown_rc)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    type ArcWire = ArraySerializer<ArcSerializer<ExtBSerializer>, 1>;
+    type ArcLocal = ArraySerializer<ArcSerializer<ExtASerializer>, 1>;
+
+    let mut arc_writer = Fory::builder().compatible(true).build();
+    arc_writer
+        .register_serializer_by_name::<ExtBSerializer>("owner.UnknownArcB")
+        .unwrap();
+    let unknown_arc = arc_writer
+        .serialize_with::<ArcWire>(&[Arc::new(ExtB(9))])
+        .unwrap();
+
+    let mut arc_reader = Fory::builder().compatible(true).build();
+    arc_reader
+        .register_serializer_by_name::<ExtASerializer>("owner.ArcA")
+        .unwrap();
+    let error = arc_reader
+        .deserialize_with::<ArcLocal>(&unknown_arc)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    struct SameTupleWriter;
+
+    impl Serializer for SameTupleWriter {
+        type Target = (ExtB, ExtB);
+
+        fn write_data(value: &Self::Target, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_var_u32(2);
+            context.writer.write_u8(0b1000);
+            ExtBSerializer::write_type_info(context)?;
+            ExtBSerializer::write_data(&value.0, context)?;
+            ExtBSerializer::write_data(&value.1, context)
+        }
+
+        fn read_data(_context: &mut ReadContext) -> Result<Self::Target, Error> {
+            unreachable!()
+        }
+
+        fn static_type_id() -> fory_core::TypeId {
+            fory_core::TypeId::LIST
+        }
+
+        fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_u8(fory_core::TypeId::LIST as u8);
+            Ok(())
+        }
+    }
+
+    type TupleLocal = Tuple2Serializer<ExtASerializer, ExtASerializer>;
+    let mut tuple_writer = Fory::builder().compatible(true).build();
+    tuple_writer
+        .register_serializer_by_name::<ExtBSerializer>("owner.UnknownTupleB")
+        .unwrap();
+    let unknown_tuple = tuple_writer
+        .serialize_with::<SameTupleWriter>(&(ExtB(10), ExtB(11)))
+        .unwrap();
+
+    let mut tuple_reader = Fory::builder().compatible(true).build();
+    tuple_reader
+        .register_serializer_by_name::<ExtASerializer>("owner.TupleA")
+        .unwrap();
+    let error = tuple_reader
+        .deserialize_with::<TupleLocal>(&unknown_tuple)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    type TupleSecondLocal = Tuple2Serializer<ExtBSerializer, ExtASerializer>;
+    let mut tuple_reader = Fory::builder().compatible(true).build();
+    tuple_reader
+        .register_serializer_by_name::<ExtASerializer>("owner.TupleA")
+        .unwrap();
+    tuple_reader
+        .register_serializer_by_name::<ExtBSerializer>("owner.UnknownTupleB")
+        .unwrap();
+    let error = tuple_reader
+        .deserialize_with::<TupleSecondLocal>(&unknown_tuple)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    type RcStructWire = VecSerializer<RcSerializer<GroupStructB>>;
+    type RcStructLocal = VecSerializer<RcSerializer<GroupStructA>>;
+    let mut struct_writer = Fory::builder().compatible(true).build();
+    struct_writer
+        .register_by_name::<GroupStructB>("owner.UnknownGroupB")
+        .unwrap();
+    let unknown_struct = struct_writer
+        .serialize_with::<RcStructWire>(&vec![Rc::new(GroupStructB { value: 12 })])
+        .unwrap();
+
+    let mut struct_reader = Fory::builder().compatible(true).build();
+    struct_reader
+        .register_by_name::<GroupStructA>("owner.GroupA")
+        .unwrap();
+    let error = struct_reader
+        .deserialize_with::<RcStructLocal>(&unknown_struct)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    type ArcStructWire = ArraySerializer<ArcSerializer<GroupStructB>, 1>;
+    type ArcStructLocal = ArraySerializer<ArcSerializer<GroupStructA>, 1>;
+    let mut struct_writer = Fory::builder().compatible(true).build();
+    struct_writer
+        .register_by_name::<GroupStructB>("owner.UnknownArrayB")
+        .unwrap();
+    let unknown_struct = struct_writer
+        .serialize_with::<ArcStructWire>(&[Arc::new(GroupStructB { value: 13 })])
+        .unwrap();
+
+    let mut struct_reader = Fory::builder().compatible(true).build();
+    struct_reader
+        .register_by_name::<GroupStructA>("owner.ArrayA")
+        .unwrap();
+    let error = struct_reader
+        .deserialize_with::<ArcStructLocal>(&unknown_struct)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
+
+    struct SameStructTupleWriter;
+
+    impl Serializer for SameStructTupleWriter {
+        type Target = (GroupStructB, GroupStructB);
+
+        fn write_data(value: &Self::Target, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_var_u32(2);
+            context.writer.write_u8(0b1000);
+            GroupStructB::write_type_info(context)?;
+            GroupStructB::write_data(&value.0, context)?;
+            GroupStructB::write_data(&value.1, context)
+        }
+
+        fn read_data(_context: &mut ReadContext) -> Result<Self::Target, Error> {
+            unreachable!()
+        }
+
+        fn static_type_id() -> fory_core::TypeId {
+            fory_core::TypeId::LIST
+        }
+
+        fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_u8(fory_core::TypeId::LIST as u8);
+            Ok(())
+        }
+    }
+
+    type StructTupleLocal = Tuple2Serializer<GroupStructA, GroupStructA>;
+    let mut struct_writer = Fory::builder().compatible(true).build();
+    struct_writer
+        .register_by_name::<GroupStructB>("owner.UnknownTupleStructB")
+        .unwrap();
+    let unknown_struct = struct_writer
+        .serialize_with::<SameStructTupleWriter>(&(
+            GroupStructB { value: 14 },
+            GroupStructB { value: 15 },
+        ))
+        .unwrap();
+
+    let mut struct_reader = Fory::builder().compatible(true).build();
+    struct_reader
+        .register_by_name::<GroupStructA>("owner.TupleStructA")
+        .unwrap();
+    let error = struct_reader
+        .deserialize_with::<StructTupleLocal>(&unknown_struct)
+        .unwrap_err();
+    assert!(error.to_string().contains("does not match declared target"));
 }

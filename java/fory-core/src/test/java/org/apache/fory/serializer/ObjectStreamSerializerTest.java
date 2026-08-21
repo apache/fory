@@ -29,6 +29,8 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamField;
 import java.io.Serializable;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
 import java.net.Inet4Address;
@@ -49,6 +51,7 @@ import org.apache.fory.TestUtils;
 import org.apache.fory.builder.LayerMarkerClassGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.ObjectMap;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.MetaReadContext;
@@ -60,9 +63,11 @@ import org.apache.fory.meta.TypeDef;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
 import org.apache.fory.serializer.otherpkg.PackageNoArgParent;
+import org.apache.fory.type.Types;
 import org.apache.fory.util.Preconditions;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -1472,8 +1477,328 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
             ForyException.class, () -> withReadContext(fory, buffer, serializer::read));
     Assert.assertTrue(error.getMessage().contains("does not match its TypeDef"));
     ConcurrentHashMap<?, ?> remoteTypeDefs =
-        TestUtils.getFieldValue(classResolver.getSharedRegistry(), "remoteTypeDefById");
+        TestUtils.getFieldValue(classResolver.getSharedRegistry(), "remoteTypeDefByHeaderHash");
     assertEquals(remoteTypeDefs.size(), 0);
+  }
+
+  @Test
+  public void testLayerHeaderHashHit() throws Exception {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(true)
+            .build();
+    TypeResolver typeResolver = fory.getTypeResolver();
+    ObjectStreamSerializer serializer =
+        new ObjectStreamSerializer(typeResolver, SingleLayerClass.class);
+    TypeDef localTypeDef = typeResolver.getTypeDef(SingleLayerClass.class, false);
+    TypeInfo localTypeInfo = new TypeInfo(SingleLayerClass.class, localTypeDef);
+    long headerHash = TypeDef.headerHash(localTypeDef.getId());
+    LongMap<TypeInfo> cache = TestUtils.getFieldValue(serializer, "typeInfoByHeaderHash");
+    TypeInfo remoteOwner = new TypeInfo(MixedSerializationClass.class, localTypeDef);
+    cache.put(headerHash, remoteOwner);
+    Method readLayerTypeInfo =
+        ObjectStreamSerializer.class.getDeclaredMethod(
+            "readLayerTypeInfo",
+            TypeResolver.class,
+            MemoryBuffer.class,
+            String.class,
+            Class.class,
+            TypeInfo.class,
+            long.class);
+    readLayerTypeInfo.setAccessible(true);
+
+    long currentHeader = (localTypeDef.getId() & ~0xfffL) | 7;
+    MemoryBuffer body = MemoryBuffer.fromByteArray(new byte[7]);
+    TypeInfo first =
+        (TypeInfo)
+            readLayerTypeInfo.invoke(
+                serializer,
+                typeResolver,
+                body,
+                SingleLayerClass.class.getName(),
+                SingleLayerClass.class,
+                localTypeInfo,
+                currentHeader);
+
+    assertSame(first.getType(), SingleLayerClass.class);
+    assertSame(first.getTypeDef(), localTypeDef);
+    assertSame(cache.get(headerHash), remoteOwner);
+    assertEquals(body.readerIndex(), body.size());
+
+    MemoryBuffer secondBody = MemoryBuffer.fromByteArray(new byte[9]);
+    long secondHeader = (localTypeDef.getId() & ~0xfffL) | 9;
+    TypeInfo second =
+        (TypeInfo)
+            readLayerTypeInfo.invoke(
+                serializer,
+                typeResolver,
+                secondBody,
+                SingleLayerClass.class.getName(),
+                SingleLayerClass.class,
+                localTypeInfo,
+                secondHeader);
+    assertSame(second.getType(), SingleLayerClass.class);
+    assertSame(second.getTypeDef(), localTypeDef);
+    assertSame(cache.get(headerHash), remoteOwner);
+    assertEquals(secondBody.readerIndex(), secondBody.size());
+
+    MemoryBuffer truncated = MemoryBuffer.fromByteArray(new byte[8]);
+    InvocationTargetException error =
+        Assert.expectThrows(
+            InvocationTargetException.class,
+            () ->
+                readLayerTypeInfo.invoke(
+                    serializer,
+                    typeResolver,
+                    truncated,
+                    SingleLayerClass.class.getName(),
+                    SingleLayerClass.class,
+                    localTypeInfo,
+                    secondHeader));
+    Assert.assertTrue(error.getCause() instanceof IndexOutOfBoundsException);
+  }
+
+  @Test
+  public void testLocalLayerSerializerReuse() throws Exception {
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .build();
+    writer.register(SingleLayerClass.class);
+    writer.registerSerializer(
+        SingleLayerClass.class,
+        new ObjectStreamSerializer(writer.getTypeResolver(), SingleLayerClass.class));
+    writer.setMetaWriteContext(new MetaWriteContext());
+    byte[] firstBytes = writer.serialize(new SingleLayerClass("first", 1));
+    writer.setMetaWriteContext(new MetaWriteContext());
+    byte[] secondBytes = writer.serialize(new SingleLayerClass("second", 2));
+
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .build();
+    reader.register(SingleLayerClass.class);
+    ObjectStreamSerializer serializer =
+        new ObjectStreamSerializer(reader.getTypeResolver(), SingleLayerClass.class);
+    reader.registerSerializer(SingleLayerClass.class, serializer);
+    Object[] slotsInfos = TestUtils.getFieldValue(serializer, "slotsInfos");
+    Object slot = slotsInfos[0];
+    CompatibleLayerSerializerBase localSerializer =
+        TestUtils.getFieldValue(slot, "slotsSerializer");
+
+    reader.setMetaReadContext(new MetaReadContext());
+    assertEquals(reader.deserialize(firstBytes), new SingleLayerClass("first", 1));
+    assertSame(TestUtils.getFieldValue(slot, "currentReadSerializer"), localSerializer);
+
+    CompatibleLayerSerializerBase replacement =
+        new CompatibleLayerSerializer<>(
+            reader.getTypeResolver(),
+            SingleLayerClass.class,
+            localSerializer.getLayerTypeDef(),
+            LayerMarkerClassGenerator.getOrCreate(SingleLayerClass.class, 0));
+    Field slotsSerializer = slot.getClass().getDeclaredField("slotsSerializer");
+    slotsSerializer.setAccessible(true);
+    slotsSerializer.set(slot, replacement);
+
+    reader.setMetaReadContext(new MetaReadContext());
+    assertEquals(reader.deserialize(secondBytes), new SingleLayerClass("second", 2));
+    assertSame(TestUtils.getFieldValue(slot, "currentReadSerializer"), replacement);
+    LongMap<TypeInfo> cache = TestUtils.getFieldValue(serializer, "typeInfoByHeaderHash");
+    assertEquals(cache.size, 0);
+  }
+
+  @Test
+  public void testSenderLayerOwner() throws Exception {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(true)
+            .build();
+    TypeResolver typeResolver = fory.getTypeResolver();
+    ObjectStreamSerializer serializer =
+        new ObjectStreamSerializer(typeResolver, MixedSerializationClass.class);
+    TypeDef typeDef = typeResolver.getTypeDef(SingleLayerClass.class, false);
+    long headerHash = TypeDef.headerHash(typeDef.getId());
+    Method readLayerTypeInfo =
+        ObjectStreamSerializer.class.getDeclaredMethod(
+            "readLayerTypeInfo",
+            TypeResolver.class,
+            MemoryBuffer.class,
+            String.class,
+            Class.class,
+            TypeInfo.class,
+            long.class);
+    readLayerTypeInfo.setAccessible(true);
+    MemoryBuffer layerFrame = MemoryBuffer.fromByteArray(typeDef.getEncoded());
+    long header = layerFrame.readInt64();
+
+    TypeInfo senderOnly =
+        (TypeInfo)
+            readLayerTypeInfo.invoke(
+                serializer,
+                typeResolver,
+                layerFrame,
+                SingleLayerClass.class.getName(),
+                null,
+                null,
+                header);
+
+    assertSame(senderOnly.getType(), UnknownClass.UnknownStruct.class);
+    LongMap<TypeInfo> layerCache = TestUtils.getFieldValue(serializer, "typeInfoByHeaderHash");
+    Assert.assertNull(layerCache.get(headerHash));
+    ConcurrentHashMap<?, ?> remoteTypeDefs =
+        TestUtils.getFieldValue(typeResolver.getSharedRegistry(), "remoteTypeDefByHeaderHash");
+    Assert.assertFalse(remoteTypeDefs.containsKey(headerHash));
+
+    MemoryBuffer dynamicFrame = MemoryBuffer.newHeapBuffer(typeDef.getEncoded().length + 4);
+    dynamicFrame.writeUInt8(Types.NAMED_COMPATIBLE_STRUCT);
+    dynamicFrame.writeVarUInt32(0);
+    dynamicFrame.writeBytes(typeDef.getEncoded());
+    fory.setMetaReadContext(new MetaReadContext());
+    TypeInfo dynamic = withReadContext(fory, dynamicFrame, typeResolver::readTypeInfo);
+
+    assertSame(dynamic.getType(), SingleLayerClass.class);
+    Assert.assertFalse(remoteTypeDefs.containsKey(headerHash));
+  }
+
+  @Test
+  public void testLayerInstanceOwnerMismatch() throws Exception {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(true)
+            .build();
+    fory.register(SingleLayerClass.class, "test", "SharedLayer");
+    TypeResolver typeResolver = fory.getTypeResolver();
+    ObjectStreamSerializer serializer =
+        new ObjectStreamSerializer(typeResolver, SingleLayerClass.class);
+    TypeDef remoteTypeDef = namedRemoteTypeDef(TwoLayerParent.class);
+    long headerHash = TypeDef.headerHash(remoteTypeDef.getId());
+    TypeDef localTypeDef = typeResolver.getTypeDef(SingleLayerClass.class, false);
+    assertEquals(
+        ((ClassResolver) typeResolver).getRegisteredName(SingleLayerClass.class),
+        remoteTypeDef.getClassName());
+    assertSame(remoteTypeDef.getClassSpec().type, TwoLayerParent.class);
+    Assert.assertNotEquals(TypeDef.headerHash(localTypeDef.getId()), headerHash);
+    TypeInfo remoteOwner = new TypeInfo(TwoLayerParent.class, remoteTypeDef);
+    LongMap<TypeInfo> cache = TestUtils.getFieldValue(serializer, "typeInfoByHeaderHash");
+    cache.put(headerHash, remoteOwner);
+    Method readLayerTypeInfo =
+        ObjectStreamSerializer.class.getDeclaredMethod(
+            "readLayerTypeInfo",
+            TypeResolver.class,
+            MemoryBuffer.class,
+            String.class,
+            Class.class,
+            TypeInfo.class,
+            long.class);
+    readLayerTypeInfo.setAccessible(true);
+    long currentHeader = (remoteTypeDef.getId() & ~0xfffL) | 4;
+    MemoryBuffer body = MemoryBuffer.fromByteArray(new byte[4]);
+
+    TypeInfo localTypeInfo = new TypeInfo(SingleLayerClass.class, localTypeDef);
+    InvocationTargetException error =
+        Assert.expectThrows(
+            InvocationTargetException.class,
+            () ->
+                readLayerTypeInfo.invoke(
+                    serializer,
+                    typeResolver,
+                    body,
+                    remoteTypeDef.getClassName(),
+                    SingleLayerClass.class,
+                    localTypeInfo,
+                    currentHeader));
+
+    Assert.assertTrue(error.getCause() instanceof ForyException);
+    assertSame(cache.get(headerHash), remoteOwner);
+  }
+
+  @Test
+  public void testLayerGlobalOwnerMismatch() throws Exception {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(true)
+            .build();
+    fory.register(SingleLayerClass.class, "test", "SharedLayer");
+    TypeResolver typeResolver = fory.getTypeResolver();
+    ObjectStreamSerializer serializer =
+        new ObjectStreamSerializer(typeResolver, SingleLayerClass.class);
+    TypeDef remoteTypeDef = namedRemoteTypeDef(TwoLayerParent.class);
+    typeResolver.cacheRemoteTypeDef(remoteTypeDef);
+    long headerHash = TypeDef.headerHash(remoteTypeDef.getId());
+    TypeDef localTypeDef = typeResolver.getTypeDef(SingleLayerClass.class, false);
+    assertEquals(
+        ((ClassResolver) typeResolver).getRegisteredName(SingleLayerClass.class),
+        remoteTypeDef.getClassName());
+    assertSame(remoteTypeDef.getClassSpec().type, TwoLayerParent.class);
+    Assert.assertNotEquals(TypeDef.headerHash(localTypeDef.getId()), headerHash);
+    Method readLayerTypeInfo =
+        ObjectStreamSerializer.class.getDeclaredMethod(
+            "readLayerTypeInfo",
+            TypeResolver.class,
+            MemoryBuffer.class,
+            String.class,
+            Class.class,
+            TypeInfo.class,
+            long.class);
+    readLayerTypeInfo.setAccessible(true);
+    long currentHeader = (remoteTypeDef.getId() & ~0xfffL) | 4;
+    MemoryBuffer body = MemoryBuffer.fromByteArray(new byte[4]);
+    TypeInfo localTypeInfo = new TypeInfo(SingleLayerClass.class, localTypeDef);
+
+    InvocationTargetException error =
+        Assert.expectThrows(
+            InvocationTargetException.class,
+            () ->
+                readLayerTypeInfo.invoke(
+                    serializer,
+                    typeResolver,
+                    body,
+                    remoteTypeDef.getClassName(),
+                    SingleLayerClass.class,
+                    localTypeInfo,
+                    currentHeader));
+
+    Assert.assertTrue(error.getCause() instanceof ForyException);
+    LongMap<TypeInfo> cache = TestUtils.getFieldValue(serializer, "typeInfoByHeaderHash");
+    Assert.assertNull(cache.get(headerHash));
+  }
+
+  private static TypeDef namedRemoteTypeDef(Class<?> owner) {
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(true)
+            .build();
+    writer.register(owner, "test", "SharedLayer");
+    ClassResolver resolver = (ClassResolver) writer.getTypeResolver();
+    TypeDef localTypeDef = resolver.getTypeDef(owner, false);
+    return TypeDef.readTypeDefWithoutRootClass(resolver, localTypeDef.getEncoded())
+        .bindRootClass(owner);
   }
 
   @Test

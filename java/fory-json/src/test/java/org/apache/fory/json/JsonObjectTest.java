@@ -197,6 +197,15 @@ public class JsonObjectTest extends ForyJsonTestModels {
     assertEquals(utf8.active, true);
     assertEquals(utf8.id, 7);
     assertEquals(utf8.name, "fory");
+
+    PublicFields fallbacks =
+        json.fromJson(
+            "{\"active\":true,\"unknown\":0,\"\\u0069d\":8,\"name\":\"first\",\"id\":9}"
+                .getBytes(StandardCharsets.UTF_8),
+            PublicFields.class);
+    assertEquals(fallbacks.active, true);
+    assertEquals(fallbacks.id, 9);
+    assertEquals(fallbacks.name, "first");
     assertGeneratedWhenSupported(json, PublicFields.class);
   }
 

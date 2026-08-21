@@ -35,7 +35,7 @@ public class DeflaterMetaCompressorTest {
   public void testCompressDecompressRoundTrip() {
     byte[] input = sampleInput();
     byte[] compressed = compressor.compress(input, 0, input.length);
-    byte[] decompressed = compressor.decompress(compressed, 0, compressed.length);
+    byte[] decompressed = compressor.decompress(compressed, 0, compressed.length, input.length);
     assertEquals(decompressed, input);
   }
 
@@ -46,7 +46,7 @@ public class DeflaterMetaCompressorTest {
     InvalidDataException e =
         Assert.expectThrows(
             InvalidDataException.class,
-            () -> compressor.decompress(truncated, 0, truncated.length));
+            () -> compressor.decompress(truncated, 0, truncated.length, Integer.MAX_VALUE));
     assertTrue(e.getMessage().contains("truncated"));
   }
 
@@ -58,18 +58,19 @@ public class DeflaterMetaCompressorTest {
     InvalidDataException e =
         Assert.expectThrows(
             InvalidDataException.class,
-            () -> compressor.decompress(corrupted, 0, corrupted.length));
+            () -> compressor.decompress(corrupted, 0, corrupted.length, Integer.MAX_VALUE));
     assertTrue(e.getMessage().contains("Invalid compressed metadata"));
   }
 
   @Test(timeOut = 5_000)
-  public void testDecompressRejectsOutputAboveLimit() {
+  public void testDecompressOutputBoundary() {
     byte[] input = new byte[4096];
     byte[] compressed = compressor.compress(input, 0, input.length);
+    assertEquals(compressor.decompress(compressed, 0, compressed.length, input.length), input);
     InvalidDataException e =
         Assert.expectThrows(
             InvalidDataException.class,
-            () -> compressor.decompress(compressed, 0, compressed.length, 1024));
+            () -> compressor.decompress(compressed, 0, compressed.length, input.length - 1));
     assertTrue(e.getMessage().contains("maximum size"));
   }
 

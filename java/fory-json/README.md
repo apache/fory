@@ -115,21 +115,49 @@ or `JsonProperty.index` when emitted property order must be explicit.
 
 ## Core API
 
-Fory JSON supports String and UTF-8 byte input/output. It does not currently
-provide an `InputStream` parsing API.
+Fory JSON supports String and UTF-8 byte input/output plus incremental UTF-8
+input from `ByteBuffer` chunks. It does not currently provide a blocking
+`InputStream` parsing API.
 
-| Operation            | Runtime type              | Declared `Class`                | Declared `TypeRef`                 |
-| -------------------- | ------------------------- | ------------------------------- | ---------------------------------- |
-| String output        | `toJson(value)`           | `toJson(value, type)`           | `toJson(value, typeRef)`           |
-| UTF-8 bytes          | `toJsonBytes(value)`      | `toJsonBytes(value, type)`      | `toJsonBytes(value, typeRef)`      |
-| UTF-8 `OutputStream` | `writeJsonTo(value, out)` | `writeJsonTo(value, type, out)` | `writeJsonTo(value, typeRef, out)` |
-| String input         | -                         | `fromJson(text, type)`          | `fromJson(text, typeRef)`          |
-| UTF-8 input          | -                         | `fromJson(bytes, type)`         | `fromJson(bytes, typeRef)`         |
+| Operation            | Runtime type              | Declared `Class`                        | Declared `TypeRef`                         |
+| -------------------- | ------------------------- | --------------------------------------- | ------------------------------------------ |
+| String output        | `toJson(value)`           | `toJson(value, type)`                   | `toJson(value, typeRef)`                   |
+| UTF-8 bytes          | `toJsonBytes(value)`      | `toJsonBytes(value, type)`              | `toJsonBytes(value, typeRef)`              |
+| UTF-8 `OutputStream` | `writeJsonTo(value, out)` | `writeJsonTo(value, type, out)`         | `writeJsonTo(value, typeRef, out)`         |
+| String input         | -                         | `fromJson(text, type)`                  | `fromJson(text, typeRef)`                  |
+| UTF-8 input          | -                         | `fromJson(bytes, type)`                 | `fromJson(bytes, typeRef)`                 |
+| UTF-8 byte range     | -                         | `fromJson(bytes, offset, length, type)` | `fromJson(bytes, offset, length, typeRef)` |
 
 Every `fromJson` call consumes exactly one JSON value and rejects trailing
-non-whitespace content. Returned strings and byte arrays are detached from
-internal reusable buffers. `writeJsonTo` writes one complete buffered document;
-it does not flush or close the caller-owned stream.
+non-whitespace content. Byte-range overloads parse exactly the requested range.
+Returned strings and byte arrays are detached from internal reusable buffers.
+`writeJsonTo` writes one complete buffered document; it does not flush or close
+the caller-owned stream.
+
+Use `JsonStreamDecoder` to decode the elements of one top-level JSON array or
+newline-delimited JSON (NDJSON) records without buffering the complete stream:
+
+```java
+import java.nio.ByteBuffer;
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.JsonStreamDecoder;
+
+ForyJson json = ForyJson.builder().build();
+JsonStreamDecoder<User> decoder =
+    json.newArrayStreamDecoder(User.class, 64 * 1024 * 1024);
+
+for (ByteBuffer chunk : chunks) {
+  while (decoder.decodeNext(chunk)) {
+    consume(decoder.value());
+  }
+}
+decoder.finish();
+```
+
+Drain each buffer before supplying the next one. A decoder owns one stream, is
+not thread-safe, and cannot be reused after `finish()` or a failure. See
+[Getting Started](../../docs/json/getting-started.md#incremental-json-streams)
+for NDJSON, JSON `null`, buffer ownership, and limit behavior.
 
 Use `TypeRef` when a root type contains generic arguments:
 

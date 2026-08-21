@@ -7,6 +7,7 @@ Load this file when changing `rust/` or Rust xlang behavior.
 - Run all cargo commands from within `rust/`.
 - Changes under `rust/` must pass `clippy` and tests.
 - Rust code must compile without compiler or Clippy warnings. Treat warnings as blockers and keep `cargo clippy --all-targets --all-features -- -D warnings` passing.
+- `check_string_read(false)` is a trusted-input-only performance option. It deliberately skips UTF-8 validation, so callers that enable it own the guarantee that serialized string bytes are valid UTF-8. Keep the default checked mode for untrusted input, and do not treat misuse of the unchecked option as a default-path deserialization vulnerability.
 - Use `RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1` when debugging failing Rust tests.
 - Add `-- --nocapture` when you need test output during debugging.
 - Do not set `FORY_PANIC_ON_ERROR=1` when running the full Rust test suite, because some tests assert on error contents.

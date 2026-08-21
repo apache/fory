@@ -22,6 +22,7 @@ def test_lambda_functions_serialization():
     """Tests serialization of lambda functions."""
     fory = pyfory.Fory(
         xlang=False,
+        strict=False,
         compatible=False,
     )
     test_input = 5
@@ -50,6 +51,7 @@ def test_regular_functions_serialization():
     """Tests serialization of regular functions."""
     fory = pyfory.Fory(
         xlang=False,
+        strict=False,
         compatible=False,
     )
     test_input = 5
@@ -82,6 +84,7 @@ def test_nested_functions_serialization():
     """Tests serialization of nested functions."""
     fory = pyfory.Fory(
         xlang=False,
+        strict=False,
         compatible=False,
     )
 
@@ -110,6 +113,7 @@ def test_local_class_serialization():
     """Tests serialization of local classes."""
     fory = pyfory.Fory(
         xlang=False,
+        strict=False,
         compatible=False,
     )
 

@@ -410,8 +410,13 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// ReadData element type info if present in buffer.
 	if (collectFlag & CollectionIsSameType) != 0 {
 		if (collectFlag & CollectionIsDeclElementType) == 0 {
-			elemTypeInfo := ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
 			elemType := value.Type().Elem()
+			typeID := uint32(buf.ReadUint8(ctxErr))
+			if ctxErr.HasError() {
+				return
+			}
+			elemTypeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(
+				buf, typeID, elemType, ctxErr)
 			elemSerializer = serializerForConcreteType(elemType, elemTypeInfo, ctxErr)
 			if ctxErr.HasError() {
 				return

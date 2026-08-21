@@ -1184,11 +1184,10 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
             ${unchangedStmt}
           }`;
       }
-      // The factory's typeInfo is this serializer's declared owner. Pass it directly so the
-      // exact-schema hot path does not repeat a resolver lookup; nested fields use readEmbed's
-      // already-hoisted serializer owner.
+      // The generated serializer owns its concrete local TypeMeta. Pass that
+      // owner directly; nested fields use readEmbed's already-hoisted owner.
       return `
-          const ${changedSerializer} = ${this.builder.typeMetaResolver.readCompatibleStructSerializer(localHash, "typeInfo")};
+          const ${changedSerializer} = ${this.builder.typeMetaResolver.readCompatibleStructSerializer(localHash, "serializer")};
           if (${changedSerializer} !== undefined) {
             ${onMetaChanged?.(changedSerializer) ?? `return ${changedSerializer};`}
           }${unchangedBranch}
@@ -1457,6 +1456,20 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   getTypeMetaBytes(): string {
     return this.typeMetaBytesExpr();
+  }
+
+  getLocalTypeMeta(): TypeMeta | undefined {
+    const typeId = this.getTypeId();
+    if (
+      !this.builder.resolver.isCompatible() ||
+      (typeId !== TypeId.COMPATIBLE_STRUCT &&
+        typeId !== TypeId.NAMED_COMPATIBLE_STRUCT &&
+        typeId !== TypeId.NAMED_STRUCT)
+    ) {
+      return undefined;
+    }
+    this.typeMeta.getHash();
+    return this.typeMeta;
   }
 
   private typeMetaBytesExpr(): string {

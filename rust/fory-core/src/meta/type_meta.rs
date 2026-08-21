@@ -938,6 +938,11 @@ pub struct TypeMeta {
 }
 
 impl TypeMeta {
+    #[inline(always)]
+    pub(crate) fn header_hash(header: i64) -> i64 {
+        header >> TYPE_META_HASH_SHIFT
+    }
+
     pub fn new(
         type_id: u32,
         user_type_id: u32,
@@ -1157,8 +1162,6 @@ impl TypeMeta {
         let mut num_fields = 0usize;
         let type_id;
         let mut user_type_id = NO_USER_TYPE_ID;
-        let namespace;
-        let type_name;
         if is_struct {
             register_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0;
             let compatible = (meta_header & COMPATIBLE_TYPEDEF_FLAG) != 0;
@@ -1185,15 +1188,13 @@ impl TypeMeta {
             type_id = non_struct_type_id(meta_header & 0b1111)?;
             register_by_name = is_named_type_def_kind(type_id);
         }
-        if register_by_name {
-            namespace = Self::read_namespace(reader)?;
-            type_name = Self::read_type_name(reader)?;
+        let (namespace, type_name) = if register_by_name {
+            (Self::read_namespace(reader)?, Self::read_type_name(reader)?)
         } else {
             user_type_id = reader.read_var_u32()?;
             let empty_name = MetaString::default();
-            namespace = empty_name.clone();
-            type_name = empty_name;
-        }
+            (empty_name.clone(), empty_name)
+        };
 
         reader.check_bound(num_fields)?;
         let mut field_infos = Vec::with_capacity(num_fields);
@@ -1308,7 +1309,7 @@ impl TypeMeta {
             return Err(Error::invalid_data("invalid TypeMeta metadata size"));
         }
         validate_type_meta_body_hash(header, body)?;
-        let meta_hash = header >> TYPE_META_HASH_SHIFT;
+        let meta_hash = Self::header_hash(header);
         meta.hash = meta_hash;
         Ok(meta)
     }
@@ -1324,7 +1325,9 @@ impl TypeMeta {
         // otherwise materialize that body.
         let mut meta_size = (header & META_SIZE_MASK) as usize;
         if meta_size == META_SIZE_MASK as usize {
-            meta_size += reader.read_var_u32()? as usize;
+            meta_size = meta_size
+                .checked_add(reader.read_var_u32()? as usize)
+                .ok_or_else(|| Error::invalid_data("invalid TypeMeta metadata size"))?;
         }
         reader.skip(meta_size)
     }
@@ -1361,7 +1364,7 @@ impl TypeMeta {
         }
         let meta_hash_shifted =
             type_meta_hash_bits(meta_writer.dump().as_slice(), header as u64) as i64;
-        let meta_hash = meta_hash_shifted >> TYPE_META_HASH_SHIFT;
+        let meta_hash = Self::header_hash(meta_hash_shifted);
         header |= meta_hash_shifted;
         result.write_i64(header);
         if meta_size >= META_SIZE_MASK {

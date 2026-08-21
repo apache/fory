@@ -674,7 +674,7 @@ func dynamicAnyMaxDepthAllowsBoundaryDepth() throws {
 }
 
 @Test
-func dynamicClassCountsOneMaterialization() throws {
+func dynamicClassCountsNestedValues() throws {
     let tail = AnyObjectDynamicGraphNode(value: 3)
     let middle = AnyObjectDynamicGraphNode(value: 2, next: tail)
     let value = AnyObjectDynamicGraphNode(value: 1, next: middle)
@@ -694,9 +694,8 @@ func dynamicClassCountsOneMaterialization() throws {
         #expect(message.contains("maxDepth"))
     }
 
-    // The root is selected through Any, while its statically declared children
-    // follow the registered schema and do not consume dynamic Any depth.
-    let boundary = Fory(config: .init(trackRef: false, maxDepth: 1))
+    // The dynamic root and both materialized child nodes consume one depth each.
+    let boundary = Fory(config: .init(trackRef: false, maxDepth: 3))
     try boundary.register(AnyObjectDynamicGraphNode.self, id: 507)
     let decoded = try boundary.deserialize(
         payload,

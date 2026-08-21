@@ -96,6 +96,7 @@ public final class Utf8JsonReader extends JsonReader {
   // JSON syntax bytes are ASCII, so hot token checks can compare signed bytes directly.
   // UTF-8 string decoding must keep unsigned byte conversion for non-ASCII content.
   private byte[] input;
+  private int inputLimit;
   private byte[] stringDecodeBuffer = new byte[INITIAL_STRING_DECODE_BUFFER_SIZE];
   // Keep the cache after hot representation fields; an inherited reference shifts their offsets.
   private final FieldNameCache fieldNameCache;
@@ -103,6 +104,7 @@ public final class Utf8JsonReader extends JsonReader {
   public Utf8JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
     super(config, typeResolver);
     input = EMPTY_BYTES;
+    inputLimit = 0;
     // The configured limit belongs to each reader; pooled-state concurrency must not divide it.
     int maxEntries = config.maxCachedFieldNames();
     fieldNameCache = maxEntries == 0 ? null : new FieldNameCache(maxEntries);
@@ -110,12 +112,12 @@ public final class Utf8JsonReader extends JsonReader {
 
   @Override
   protected int scanStringEnd(int start) {
-    int inputLength = input.length;
-    if (start >= inputLength || input[start] != '"') {
+    int inputLimit = this.inputLimit;
+    if (start >= inputLimit || input[start] != '"') {
       throw errorAt("Expected string", start);
     }
     int cursor = start + 1;
-    int wordEnd = inputLength - Long.BYTES;
+    int wordEnd = inputLimit - Long.BYTES;
     while (cursor <= wordEnd) {
       long stopMask = stringStopMask(LittleEndian.getInt64(input, cursor));
       if (stopMask == 0) {
@@ -131,12 +133,12 @@ public final class Utf8JsonReader extends JsonReader {
         throw errorAt("Control character in string", cursor);
       }
       if (raw == '\\') {
-        cursor = scanEscape(cursor, inputLength);
+        cursor = scanEscape(cursor, inputLimit);
       } else {
         cursor = (int) (scanUtf8CodePoint(cursor) >>> 32);
       }
     }
-    while (cursor < inputLength) {
+    while (cursor < inputLimit) {
       int raw = input[cursor] & 0xff;
       if (raw == '"') {
         return cursor + 1;
@@ -145,7 +147,7 @@ public final class Utf8JsonReader extends JsonReader {
         throw errorAt("Control character in string", cursor);
       }
       if (raw == '\\') {
-        cursor = scanEscape(cursor, inputLength);
+        cursor = scanEscape(cursor, inputLimit);
       } else if (raw < 0x80) {
         cursor++;
       } else {
@@ -317,9 +319,9 @@ public final class Utf8JsonReader extends JsonReader {
     return decodedQuotedText(outBytes, out, true);
   }
 
-  private int scanEscape(int slash, int inputLength) {
+  private int scanEscape(int slash, int inputLimit) {
     int cursor = slash + 1;
-    if (cursor >= inputLength) {
+    if (cursor >= inputLimit) {
       throw errorAt("Unterminated escape", slash);
     }
     int escaped = input[cursor++] & 0xff;
@@ -330,7 +332,7 @@ public final class Utf8JsonReader extends JsonReader {
     char ch = scanUnicodeEscape(cursor);
     cursor += 4;
     if (Character.isHighSurrogate(ch)) {
-      if (cursor + 6 > inputLength || input[cursor] != '\\' || input[cursor + 1] != 'u') {
+      if (cursor + 6 > inputLimit || input[cursor] != '\\' || input[cursor + 1] != 'u') {
         throw errorAt("Unpaired high surrogate escape", slash);
       }
       char low = scanUnicodeEscape(cursor + 2);
@@ -365,7 +367,7 @@ public final class Utf8JsonReader extends JsonReader {
     } else {
       throw errorAt("Invalid UTF-8 sequence", offset);
     }
-    if (offset > input.length - count) {
+    if (offset > inputLimit - count) {
       throw errorAt("Incomplete UTF-8 sequence", offset);
     }
     for (int i = 1; i < count; i++) {
@@ -384,7 +386,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private char scanUnicodeEscape(int offset) {
-    if (offset > input.length - 4) {
+    if (offset > inputLimit - 4) {
       throw errorAt("Incomplete unicode escape", offset);
     }
     int value = 0;
@@ -445,14 +447,35 @@ public final class Utf8JsonReader extends JsonReader {
 
   public Utf8JsonReader reset(byte[] input) {
     this.input = input;
+    inputLimit = input.length;
     position = 0;
     reset();
     return this;
   }
 
+  /** Resets this reader to a logical range of a borrowed byte array. */
+  @Internal
+  public Utf8JsonReader reset(byte[] input, int offset, int length) {
+    int inputLength = input.length;
+    if ((offset | length) < 0 || offset > inputLength - length) {
+      throwInvalidByteRange(offset, length);
+    }
+    this.input = input;
+    inputLimit = offset + length;
+    position = offset;
+    reset();
+    return this;
+  }
+
+  private static void throwInvalidByteRange(int offset, int length) {
+    throw new IndexOutOfBoundsException(
+        "Invalid UTF-8 byte range: offset=" + offset + ", length=" + length);
+  }
+
   public void clear() {
     reset();
     input = EMPTY_BYTES;
+    inputLimit = 0;
     position = 0;
     if (stringDecodeBuffer.length > RETAINED_STRING_DECODE_BUFFER_SIZE) {
       stringDecodeBuffer = new byte[RETAINED_STRING_DECODE_BUFFER_SIZE];
@@ -461,7 +484,7 @@ public final class Utf8JsonReader extends JsonReader {
 
   public boolean consumeToken(char expected) {
     skipWhitespaceFast();
-    if (position < input.length && input[position] == expected) {
+    if (position < inputLimit && input[position] == expected) {
       position++;
       return true;
     }
@@ -469,7 +492,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public boolean consumeNextToken(char expected) {
-    if (position < input.length && input[position] == expected) {
+    if (position < inputLimit && input[position] == expected) {
       position++;
       return true;
     }
@@ -481,7 +504,7 @@ public final class Utf8JsonReader extends JsonReader {
   public boolean tryConsumeStringQuote() {
     byte[] bytes = input;
     int offset = position;
-    if (offset < bytes.length && bytes[offset] == '"') {
+    if (offset < inputLimit && bytes[offset] == '"') {
       position = offset + 1;
       return true;
     }
@@ -495,7 +518,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public void expectNextToken(char expected) {
-    if (position < input.length && input[position] == expected) {
+    if (position < inputLimit && input[position] == expected) {
       position++;
       return;
     }
@@ -522,7 +545,7 @@ public final class Utf8JsonReader extends JsonReader {
    */
   @Internal
   public boolean tryConsumeNextComma() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       if (input[position] == ',') {
         position++;
         return true;
@@ -540,7 +563,7 @@ public final class Utf8JsonReader extends JsonReader {
    */
   @Internal
   public boolean tryConsumeNextOrderedComma() {
-    if (position < input.length && input[position] == ',') {
+    if (position < inputLimit && input[position] == ',') {
       position++;
       skipWhitespaceFast();
       return true;
@@ -557,7 +580,7 @@ public final class Utf8JsonReader extends JsonReader {
    */
   @Internal
   public boolean consumeNextObjectEndOrSlow() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       if (input[position] == '}') {
         position++;
         return false;
@@ -577,7 +600,7 @@ public final class Utf8JsonReader extends JsonReader {
 
   private boolean consumeNextCommaOrEndObjectSlow() {
     skipWhitespaceFast();
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch == ',') {
         position++;
@@ -595,7 +618,7 @@ public final class Utf8JsonReader extends JsonReader {
   // separators in this owner so a still-cold end-array helper cannot reshape the whole generated
   // loop. Only whitespace, exhaustion, and malformed input belong in the cold fallback.
   public boolean consumeNextCommaOrEndArray() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch == ',') {
         position++;
@@ -620,7 +643,7 @@ public final class Utf8JsonReader extends JsonReader {
   public int consumeNextStringArrayElement() {
     byte[] bytes = input;
     int offset = position;
-    if (offset < bytes.length) {
+    if (offset < inputLimit) {
       int ch = bytes[offset];
       if (ch == ']') {
         position = offset + 1;
@@ -628,7 +651,7 @@ public final class Utf8JsonReader extends JsonReader {
       }
       if (ch == ',') {
         offset++;
-        if (offset < bytes.length && bytes[offset] == '"') {
+        if (offset < inputLimit && bytes[offset] == '"') {
           position = offset + 1;
           return STRING_ARRAY_QUOTED;
         }
@@ -643,7 +666,7 @@ public final class Utf8JsonReader extends JsonReader {
     skipWhitespaceFast();
     byte[] bytes = input;
     int offset = position;
-    if (offset < bytes.length) {
+    if (offset < inputLimit) {
       int ch = bytes[offset];
       if (ch == ']') {
         position = offset + 1;
@@ -653,7 +676,7 @@ public final class Utf8JsonReader extends JsonReader {
         position = offset + 1;
         skipWhitespaceFast();
         offset = position;
-        if (offset < bytes.length && bytes[offset] == '"') {
+        if (offset < inputLimit && bytes[offset] == '"') {
           position = offset + 1;
           return STRING_ARRAY_QUOTED;
         }
@@ -665,7 +688,7 @@ public final class Utf8JsonReader extends JsonReader {
 
   private boolean consumeNextCommaOrEndArraySlow() {
     skipWhitespaceFast();
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch == ',') {
         position++;
@@ -686,7 +709,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public boolean tryReadNextNullToken() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch == 'n') {
         return tryReadNullLiteral();
@@ -701,7 +724,7 @@ public final class Utf8JsonReader extends JsonReader {
   private boolean tryReadNullLiteral() {
     byte[] bytes = input;
     int offset = position;
-    if (offset + 3 < bytes.length && LittleEndian.getInt32(bytes, offset) == NULL_LITERAL) {
+    if (offset + 3 < inputLimit && LittleEndian.getInt32(bytes, offset) == NULL_LITERAL) {
       position = offset + 4;
       return true;
     }
@@ -714,7 +737,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public boolean readNextBooleanValue() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch > ' ' || !isWhitespace(ch)) {
         return readBooleanToken();
@@ -730,14 +753,14 @@ public final class Utf8JsonReader extends JsonReader {
   private boolean readBooleanToken() {
     byte[] bytes = input;
     int offset = position;
-    if (offset + 3 < bytes.length
+    if (offset + 3 < inputLimit
         && bytes[offset] == 't'
         && bytes[offset + 1] == 'r'
         && bytes[offset + 2] == 'u'
         && bytes[offset + 3] == 'e') {
       position = offset + 4;
       return true;
-    } else if (offset + 4 < bytes.length
+    } else if (offset + 4 < inputLimit
         && bytes[offset] == 'f'
         && bytes[offset + 1] == 'a'
         && bytes[offset + 2] == 'l'
@@ -755,7 +778,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public int readNextIntValue() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch > ' ' || !isWhitespace(ch)) {
         return readIntToken();
@@ -771,8 +794,8 @@ public final class Utf8JsonReader extends JsonReader {
   private int readIntToken() {
     byte[] bytes = input;
     int offset = position;
-    int inputLength = bytes.length;
-    if (offset >= inputLength) {
+    int inputLimit = this.inputLimit;
+    if (offset >= inputLimit) {
       throw error("Expected digit");
     }
     int ch = bytes[offset];
@@ -791,8 +814,8 @@ public final class Utf8JsonReader extends JsonReader {
     int result = ch - '0';
     offset++;
     int safeEnd = offset + 8;
-    if (safeEnd > inputLength) {
-      safeEnd = inputLength;
+    if (safeEnd > inputLimit) {
+      safeEnd = inputLimit;
     }
     while (offset < safeEnd) {
       ch = bytes[offset];
@@ -802,10 +825,10 @@ public final class Utf8JsonReader extends JsonReader {
       result = result * 10 + (ch - '0');
       offset++;
     }
-    if (offset < inputLength) {
+    if (offset < inputLimit) {
       ch = bytes[offset];
       if (ch >= '0' && ch <= '9') {
-        return readPositiveIntTail(bytes, offset, inputLength, result);
+        return readPositiveIntTail(bytes, offset, inputLimit, result);
       }
     }
     position = offset;
@@ -813,7 +836,7 @@ public final class Utf8JsonReader extends JsonReader {
     return result;
   }
 
-  private int readPositiveIntTail(byte[] bytes, int offset, int inputLength, int result) {
+  private int readPositiveIntTail(byte[] bytes, int offset, int inputLimit, int result) {
     // The caller has consumed exactly nine positive digits. A Java int can contain only one more;
     // any following digit is necessarily overflow rather than another loop iteration.
     int digit = bytes[offset] - '0';
@@ -823,7 +846,7 @@ public final class Utf8JsonReader extends JsonReader {
     }
     result = result * 10 + digit;
     offset++;
-    if (offset < inputLength) {
+    if (offset < inputLimit) {
       int ch = bytes[offset];
       if (ch >= '0' && ch <= '9') {
         position = offset;
@@ -839,7 +862,7 @@ public final class Utf8JsonReader extends JsonReader {
     position = start + 1;
     int result = 0;
     int limit = Integer.MIN_VALUE;
-    if (position >= input.length) {
+    if (position >= inputLimit) {
       throw error("Expected digit");
     }
     int ch = input[position];
@@ -853,7 +876,7 @@ public final class Utf8JsonReader extends JsonReader {
       throw error("Expected digit");
     }
     int multmin = limit / 10;
-    while (position < input.length) {
+    while (position < inputLimit) {
       ch = input[position];
       if (ch < '0' || ch > '9') {
         break;
@@ -879,7 +902,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public long readNextLongValue() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch > ' ' || !isWhitespace(ch)) {
         return readLongToken();
@@ -921,7 +944,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public double readNextDoubleValue() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch > ' ' || !isWhitespace(ch)) {
         return readDoubleToken();
@@ -935,7 +958,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public float readNextFloatValue() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch > ' ' || !isWhitespace(ch)) {
         return readFloatToken();
@@ -958,8 +981,8 @@ public final class Utf8JsonReader extends JsonReader {
   private long readLongToken() {
     byte[] bytes = input;
     int offset = position;
-    int inputLength = bytes.length;
-    if (offset >= inputLength) {
+    int inputLimit = this.inputLimit;
+    if (offset >= inputLimit) {
       throw error("Expected digit");
     }
     int ch = bytes[offset];
@@ -978,8 +1001,8 @@ public final class Utf8JsonReader extends JsonReader {
     long result = ch - '0';
     offset++;
     int safeEnd = offset + 17;
-    if (safeEnd > inputLength) {
-      safeEnd = inputLength;
+    if (safeEnd > inputLimit) {
+      safeEnd = inputLimit;
     }
     int block = parseEightDigits(bytes, offset, safeEnd);
     if (block >= 0) {
@@ -999,10 +1022,10 @@ public final class Utf8JsonReader extends JsonReader {
       result = result * 10 + (ch - '0');
       offset++;
     }
-    if (offset < inputLength) {
+    if (offset < inputLimit) {
       ch = bytes[offset];
       if (ch >= '0' && ch <= '9') {
-        return readPositiveLongTail(bytes, offset, inputLength, result);
+        return readPositiveLongTail(bytes, offset, inputLimit, result);
       }
     }
     position = offset;
@@ -1010,8 +1033,8 @@ public final class Utf8JsonReader extends JsonReader {
     return result;
   }
 
-  private long readPositiveLongTail(byte[] bytes, int offset, int inputLength, long result) {
-    while (offset < inputLength) {
+  private long readPositiveLongTail(byte[] bytes, int offset, int inputLimit, long result) {
+    while (offset < inputLimit) {
       int ch = bytes[offset];
       if (ch < '0' || ch > '9') {
         break;
@@ -1032,8 +1055,8 @@ public final class Utf8JsonReader extends JsonReader {
   private long readNegativeLongToken(int start) {
     byte[] bytes = input;
     int offset = start + 1;
-    int inputLength = bytes.length;
-    if (offset >= inputLength) {
+    int inputLimit = this.inputLimit;
+    if (offset >= inputLimit) {
       throw error("Expected digit");
     }
     int ch = bytes[offset];
@@ -1049,8 +1072,8 @@ public final class Utf8JsonReader extends JsonReader {
     long result = '0' - ch;
     offset++;
     int safeEnd = offset + 17;
-    if (safeEnd > inputLength) {
-      safeEnd = inputLength;
+    if (safeEnd > inputLimit) {
+      safeEnd = inputLimit;
     }
     int block = parseEightDigits(bytes, offset, safeEnd);
     if (block >= 0) {
@@ -1070,10 +1093,10 @@ public final class Utf8JsonReader extends JsonReader {
       result = result * 10 - (ch - '0');
       offset++;
     }
-    if (offset < inputLength) {
+    if (offset < inputLimit) {
       ch = bytes[offset];
       if (ch >= '0' && ch <= '9') {
-        return readNegativeLongTail(bytes, offset, inputLength, result);
+        return readNegativeLongTail(bytes, offset, inputLimit, result);
       }
     }
     position = offset;
@@ -1081,8 +1104,8 @@ public final class Utf8JsonReader extends JsonReader {
     return result;
   }
 
-  private long readNegativeLongTail(byte[] bytes, int offset, int inputLength, long result) {
-    while (offset < inputLength) {
+  private long readNegativeLongTail(byte[] bytes, int offset, int inputLimit, long result) {
+    while (offset < inputLimit) {
       int ch = bytes[offset];
       if (ch < '0' || ch > '9') {
         break;
@@ -1179,8 +1202,8 @@ public final class Utf8JsonReader extends JsonReader {
     byte[] bytes = input;
     int offset = position;
     int start = offset;
-    int inputLength = bytes.length;
-    if (offset >= inputLength) {
+    int inputLimit = this.inputLimit;
+    if (offset >= inputLimit) {
       return readBigDecimalFallback(start);
     }
     int ch = bytes[offset];
@@ -1202,7 +1225,7 @@ public final class Utf8JsonReader extends JsonReader {
         }
         unscaled = unscaled * 10 + digit;
         offset++;
-        if (offset >= inputLength) {
+        if (offset >= inputLimit) {
           break;
         }
         ch = bytes[offset];
@@ -1210,10 +1233,10 @@ public final class Utf8JsonReader extends JsonReader {
     } else {
       return readBigDecimalFallback(start);
     }
-    if (offset < inputLength && bytes[offset] == '.') {
+    if (offset < inputLimit && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
-      while (offset < inputLength) {
+      while (offset < inputLimit) {
         ch = bytes[offset];
         if (ch < '0' || ch > '9') {
           break;
@@ -1231,7 +1254,7 @@ public final class Utf8JsonReader extends JsonReader {
         return readBigDecimalFallback(start);
       }
     }
-    if (offset < inputLength) {
+    if (offset < inputLimit) {
       ch = bytes[offset];
       if (ch == 'e' || ch == 'E') {
         return readBigDecimalExponentValue(false, unscaled, scale, offset);
@@ -1247,8 +1270,8 @@ public final class Utf8JsonReader extends JsonReader {
   private BigDecimal readSignedBigDecimalToken(int start) {
     byte[] bytes = input;
     int offset = start + 1;
-    int inputLength = bytes.length;
-    if (offset >= inputLength) {
+    int inputLimit = this.inputLimit;
+    if (offset >= inputLimit) {
       return readBigDecimalFallback(start);
     }
     int ch = bytes[offset];
@@ -1267,7 +1290,7 @@ public final class Utf8JsonReader extends JsonReader {
         }
         unscaled = unscaled * 10 + digit;
         offset++;
-        if (offset >= inputLength) {
+        if (offset >= inputLimit) {
           break;
         }
         ch = bytes[offset];
@@ -1275,10 +1298,10 @@ public final class Utf8JsonReader extends JsonReader {
     } else {
       return readBigDecimalFallback(start);
     }
-    if (offset < inputLength && bytes[offset] == '.') {
+    if (offset < inputLimit && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
-      while (offset < inputLength) {
+      while (offset < inputLimit) {
         ch = bytes[offset];
         if (ch < '0' || ch > '9') {
           break;
@@ -1296,7 +1319,7 @@ public final class Utf8JsonReader extends JsonReader {
         return readBigDecimalFallback(start);
       }
     }
-    if (offset < inputLength) {
+    if (offset < inputLimit) {
       ch = bytes[offset];
       if (ch == 'e' || ch == 'E') {
         return readBigDecimalExponentValue(true, unscaled, scale, offset);
@@ -1313,7 +1336,7 @@ public final class Utf8JsonReader extends JsonReader {
     byte[] bytes = input;
     int offset = position;
     int start = offset + 1;
-    if (offset + 38 > bytes.length || bytes[offset] != '"') {
+    if (offset > inputLimit - 38 || bytes[offset] != '"') {
       throw new IllegalArgumentException();
     }
     if (bytes[start + 8] != '-'
@@ -1356,37 +1379,37 @@ public final class Utf8JsonReader extends JsonReader {
     // exponents, overflow, and precision-sensitive values use the reader-owned exact fallback.
     byte[] bytes = input;
     int offset = position;
-    int inputLength = bytes.length;
-    if (offset >= inputLength) {
+    int inputLimit = this.inputLimit;
+    if (offset >= inputLimit) {
       return readDoubleFallback(offset);
     }
     int ch = bytes[offset];
     if (ch == '-') {
       return readSignedDoubleToken(offset);
     }
-    return readPositiveDoubleToken(bytes, offset, inputLength, ch);
+    return readPositiveDoubleToken(bytes, offset, inputLimit, ch);
   }
 
   private float readFloatToken() {
     byte[] bytes = input;
     int offset = position;
-    int inputLength = bytes.length;
-    if (offset >= inputLength) {
+    int inputLimit = this.inputLimit;
+    if (offset >= inputLimit) {
       return readFloatFallback(offset);
     }
     int ch = bytes[offset];
     if (ch == '-') {
       return readSignedFloatToken(offset);
     }
-    return readPositiveFloatToken(bytes, offset, inputLength, ch);
+    return readPositiveFloatToken(bytes, offset, inputLimit, ch);
   }
 
-  private float readPositiveFloatToken(byte[] bytes, int offset, int inputLength, int ch) {
+  private float readPositiveFloatToken(byte[] bytes, int offset, int inputLimit, int ch) {
     int start = offset;
     long unscaled = 0;
     if (ch == '0') {
       offset++;
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         ch = bytes[offset];
         if (ch >= '0' && ch <= '9') {
           return readFloatFallback(start);
@@ -1395,7 +1418,7 @@ public final class Utf8JsonReader extends JsonReader {
     } else if (ch >= '1' && ch <= '9') {
       unscaled = ch - '0';
       offset++;
-      while (offset + 1 < inputLength) {
+      while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
         if (high < 0 || high > 9 || low < 0 || low > 9) {
@@ -1409,7 +1432,7 @@ public final class Utf8JsonReader extends JsonReader {
         unscaled = unscaled * 100 + pair;
         offset += 2;
       }
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
           if (unscaled > LONG_MAX_DIV_10
@@ -1423,21 +1446,21 @@ public final class Utf8JsonReader extends JsonReader {
     } else {
       return readFloatFallback(start);
     }
-    return readPositiveFloatTail(bytes, offset, inputLength, start, unscaled);
+    return readPositiveFloatTail(bytes, offset, inputLimit, start, unscaled);
   }
 
   private float readSignedFloatToken(int start) {
     byte[] bytes = input;
     int offset = start + 1;
-    int inputLength = bytes.length;
-    if (offset >= inputLength) {
+    int inputLimit = this.inputLimit;
+    if (offset >= inputLimit) {
       return readFloatFallback(start);
     }
     int ch = bytes[offset];
     long unscaled = 0;
     if (ch == '0') {
       offset++;
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         ch = bytes[offset];
         if (ch >= '0' && ch <= '9') {
           return readFloatFallback(start);
@@ -1446,7 +1469,7 @@ public final class Utf8JsonReader extends JsonReader {
     } else if (ch >= '1' && ch <= '9') {
       unscaled = ch - '0';
       offset++;
-      while (offset + 1 < inputLength) {
+      while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
         if (high < 0 || high > 9 || low < 0 || low > 9) {
@@ -1460,7 +1483,7 @@ public final class Utf8JsonReader extends JsonReader {
         unscaled = unscaled * 100 + pair;
         offset += 2;
       }
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
           if (unscaled > LONG_MAX_DIV_10
@@ -1474,16 +1497,16 @@ public final class Utf8JsonReader extends JsonReader {
     } else {
       return readFloatFallback(start);
     }
-    return readSignedFloatTail(bytes, offset, inputLength, start, unscaled);
+    return readSignedFloatTail(bytes, offset, inputLimit, start, unscaled);
   }
 
   private float readPositiveFloatTail(
-      byte[] bytes, int offset, int inputLength, int start, long unscaled) {
+      byte[] bytes, int offset, int inputLimit, int start, long unscaled) {
     int scale = 0;
-    if (offset < inputLength && bytes[offset] == '.') {
+    if (offset < inputLimit && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
-      while (offset + 1 < inputLength) {
+      while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
         if (high < 0 || high > 9 || low < 0 || low > 9) {
@@ -1498,7 +1521,7 @@ public final class Utf8JsonReader extends JsonReader {
         scale += 2;
         offset += 2;
       }
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
           if (unscaled > LONG_MAX_DIV_10
@@ -1514,16 +1537,16 @@ public final class Utf8JsonReader extends JsonReader {
         return readFloatFallback(start);
       }
     }
-    return finishFloatToken(bytes, offset, inputLength, start, unscaled, scale);
+    return finishFloatToken(bytes, offset, inputLimit, start, unscaled, scale);
   }
 
   private float readSignedFloatTail(
-      byte[] bytes, int offset, int inputLength, int start, long unscaled) {
+      byte[] bytes, int offset, int inputLimit, int start, long unscaled) {
     int scale = 0;
-    if (offset < inputLength && bytes[offset] == '.') {
+    if (offset < inputLimit && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
-      while (offset + 1 < inputLength) {
+      while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
         if (high < 0 || high > 9 || low < 0 || low > 9) {
@@ -1538,7 +1561,7 @@ public final class Utf8JsonReader extends JsonReader {
         scale += 2;
         offset += 2;
       }
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
           if (unscaled > LONG_MAX_DIV_10
@@ -1554,12 +1577,12 @@ public final class Utf8JsonReader extends JsonReader {
         return readFloatFallback(start);
       }
     }
-    return finishSignedFloatToken(bytes, offset, inputLength, start, unscaled, scale);
+    return finishSignedFloatToken(bytes, offset, inputLimit, start, unscaled, scale);
   }
 
   private float finishFloatToken(
-      byte[] bytes, int offset, int inputLength, int start, long unscaled, int scale) {
-    if (offset < inputLength) {
+      byte[] bytes, int offset, int inputLimit, int start, long unscaled, int scale) {
+    if (offset < inputLimit) {
       int ch = bytes[offset];
       if (ch == 'e' || ch == 'E') {
         return readFloatExponentValue(false, unscaled, scale, start, offset);
@@ -1576,8 +1599,8 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private float finishSignedFloatToken(
-      byte[] bytes, int offset, int inputLength, int start, long unscaled, int scale) {
-    if (offset < inputLength) {
+      byte[] bytes, int offset, int inputLimit, int start, long unscaled, int scale) {
+    if (offset < inputLimit) {
       int ch = bytes[offset];
       if (ch == 'e' || ch == 'E') {
         return readFloatExponentValue(true, unscaled, scale, start, offset);
@@ -1602,12 +1625,12 @@ public final class Utf8JsonReader extends JsonReader {
 
   // Keep the complete integer and fraction scan in one token owner. A separate inline-sized
   // fraction tail makes generated callers depend on which method C2 compiles first.
-  private double readPositiveDoubleToken(byte[] bytes, int offset, int inputLength, int ch) {
+  private double readPositiveDoubleToken(byte[] bytes, int offset, int inputLimit, int ch) {
     int start = offset;
     long unscaled = 0;
     if (ch == '0') {
       offset++;
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         ch = bytes[offset];
         if (ch >= '0' && ch <= '9') {
           return readDoubleFallback(start);
@@ -1616,7 +1639,7 @@ public final class Utf8JsonReader extends JsonReader {
     } else if (ch >= '1' && ch <= '9') {
       unscaled = ch - '0';
       offset++;
-      while (offset + 1 < inputLength) {
+      while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
         if (high < 0 || high > 9 || low < 0 || low > 9) {
@@ -1629,7 +1652,7 @@ public final class Utf8JsonReader extends JsonReader {
         unscaled = unscaled * 100 + pair;
         offset += 2;
       }
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
           if (!canAppendDigit(unscaled, digit)) {
@@ -1643,25 +1666,25 @@ public final class Utf8JsonReader extends JsonReader {
       return readDoubleFallback(start);
     }
     int scale = 0;
-    if (offset < inputLength && bytes[offset] == '.') {
+    if (offset < inputLimit && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
-      long appended = appendEightDigits(bytes, offset, inputLength, unscaled);
+      long appended = appendEightDigits(bytes, offset, inputLimit, unscaled);
       while (appended >= 0) {
         unscaled = appended;
         scale += 8;
         offset += 8;
-        appended = appendEightDigits(bytes, offset, inputLength, unscaled);
+        appended = appendEightDigits(bytes, offset, inputLimit, unscaled);
       }
       if (scale != 0 && unscaled < LONG_MAX_DIV_FOUR_DIGITS) {
-        appended = appendFourDigits(bytes, offset, inputLength, unscaled);
+        appended = appendFourDigits(bytes, offset, inputLimit, unscaled);
         if (appended >= 0) {
           unscaled = appended;
           scale += 4;
           offset += 4;
         }
       }
-      while (offset + 1 < inputLength) {
+      while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
         if (high < 0 || high > 9 || low < 0 || low > 9) {
@@ -1675,7 +1698,7 @@ public final class Utf8JsonReader extends JsonReader {
         scale += 2;
         offset += 2;
       }
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
           if (!canAppendDigit(unscaled, digit)) {
@@ -1690,21 +1713,21 @@ public final class Utf8JsonReader extends JsonReader {
         return readDoubleFallback(start);
       }
     }
-    return finishDoubleToken(bytes, offset, inputLength, start, unscaled, scale);
+    return finishDoubleToken(bytes, offset, inputLimit, start, unscaled, scale);
   }
 
   private double readSignedDoubleToken(int start) {
     byte[] bytes = input;
     int offset = start + 1;
-    int inputLength = bytes.length;
-    if (offset >= inputLength) {
+    int inputLimit = this.inputLimit;
+    if (offset >= inputLimit) {
       return readDoubleFallback(start);
     }
     int ch = bytes[offset];
     long unscaled = 0;
     if (ch == '0') {
       offset++;
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         ch = bytes[offset];
         if (ch >= '0' && ch <= '9') {
           return readDoubleFallback(start);
@@ -1713,7 +1736,7 @@ public final class Utf8JsonReader extends JsonReader {
     } else if (ch >= '1' && ch <= '9') {
       unscaled = ch - '0';
       offset++;
-      while (offset + 1 < inputLength) {
+      while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
         if (high < 0 || high > 9 || low < 0 || low > 9) {
@@ -1726,7 +1749,7 @@ public final class Utf8JsonReader extends JsonReader {
         unscaled = unscaled * 100 + pair;
         offset += 2;
       }
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
           if (!canAppendDigit(unscaled, digit)) {
@@ -1740,25 +1763,25 @@ public final class Utf8JsonReader extends JsonReader {
       return readDoubleFallback(start);
     }
     int scale = 0;
-    if (offset < inputLength && bytes[offset] == '.') {
+    if (offset < inputLimit && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
-      long appended = appendEightDigits(bytes, offset, inputLength, unscaled);
+      long appended = appendEightDigits(bytes, offset, inputLimit, unscaled);
       while (appended >= 0) {
         unscaled = appended;
         scale += 8;
         offset += 8;
-        appended = appendEightDigits(bytes, offset, inputLength, unscaled);
+        appended = appendEightDigits(bytes, offset, inputLimit, unscaled);
       }
       if (scale != 0 && unscaled < LONG_MAX_DIV_FOUR_DIGITS) {
-        appended = appendFourDigits(bytes, offset, inputLength, unscaled);
+        appended = appendFourDigits(bytes, offset, inputLimit, unscaled);
         if (appended >= 0) {
           unscaled = appended;
           scale += 4;
           offset += 4;
         }
       }
-      while (offset + 1 < inputLength) {
+      while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
         if (high < 0 || high > 9 || low < 0 || low > 9) {
@@ -1772,7 +1795,7 @@ public final class Utf8JsonReader extends JsonReader {
         scale += 2;
         offset += 2;
       }
-      if (offset < inputLength) {
+      if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
           if (!canAppendDigit(unscaled, digit)) {
@@ -1787,12 +1810,12 @@ public final class Utf8JsonReader extends JsonReader {
         return readDoubleFallback(start);
       }
     }
-    return finishSignedDoubleToken(bytes, offset, inputLength, start, unscaled, scale);
+    return finishSignedDoubleToken(bytes, offset, inputLimit, start, unscaled, scale);
   }
 
   private double finishDoubleToken(
-      byte[] bytes, int offset, int inputLength, int start, long unscaled, int scale) {
-    if (offset < inputLength) {
+      byte[] bytes, int offset, int inputLimit, int start, long unscaled, int scale) {
+    if (offset < inputLimit) {
       int ch = bytes[offset];
       if (ch == 'e' || ch == 'E') {
         return readDoubleExponentValue(false, unscaled, scale, start, offset);
@@ -1809,8 +1832,8 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private double finishSignedDoubleToken(
-      byte[] bytes, int offset, int inputLength, int start, long unscaled, int scale) {
-    if (offset < inputLength) {
+      byte[] bytes, int offset, int inputLimit, int start, long unscaled, int scale) {
+    if (offset < inputLimit) {
       int ch = bytes[offset];
       if (ch == 'e' || ch == 'E') {
         return readDoubleExponentValue(true, unscaled, scale, start, offset);
@@ -1837,18 +1860,18 @@ public final class Utf8JsonReader extends JsonReader {
   public int readFieldNameInt() {
     skipWhitespaceFast();
     int nameStart = position;
-    if (position >= input.length || input[position++] != '"') {
+    if (position >= inputLimit || input[position++] != '"') {
       throw error("Expected string");
     }
     int result = 0;
     int limit = -Integer.MAX_VALUE;
     boolean negative = false;
-    if (position < input.length && input[position] == '-') {
+    if (position < inputLimit && input[position] == '-') {
       negative = true;
       limit = Integer.MIN_VALUE;
       position++;
     }
-    if (position >= input.length) {
+    if (position >= inputLimit) {
       throw error("Unterminated string");
     }
     int ch = input[position];
@@ -1875,7 +1898,7 @@ public final class Utf8JsonReader extends JsonReader {
       }
       result -= digit;
       position++;
-      if (position >= input.length) {
+      if (position >= inputLimit) {
         throw error("Unterminated string");
       }
       ch = input[position];
@@ -1895,18 +1918,18 @@ public final class Utf8JsonReader extends JsonReader {
   public long readFieldNameLong() {
     skipWhitespaceFast();
     int nameStart = position;
-    if (position >= input.length || input[position++] != '"') {
+    if (position >= inputLimit || input[position++] != '"') {
       throw error("Expected string");
     }
     long result = 0;
     long limit = -Long.MAX_VALUE;
     boolean negative = false;
-    if (position < input.length && input[position] == '-') {
+    if (position < inputLimit && input[position] == '-') {
       negative = true;
       limit = Long.MIN_VALUE;
       position++;
     }
-    if (position >= input.length) {
+    if (position >= inputLimit) {
       throw error("Unterminated string");
     }
     int ch = input[position];
@@ -1933,7 +1956,7 @@ public final class Utf8JsonReader extends JsonReader {
       }
       result -= digit;
       position++;
-      if (position >= input.length) {
+      if (position >= inputLimit) {
         throw error("Unterminated string");
       }
       ch = input[position];
@@ -1951,7 +1974,7 @@ public final class Utf8JsonReader extends JsonReader {
 
   @Override
   protected int length() {
-    return input.length;
+    return inputLimit;
   }
 
   @Override
@@ -1979,12 +2002,12 @@ public final class Utf8JsonReader extends JsonReader {
   private String readCachedFieldName(FieldNameCache cache) {
     skipWhitespaceFast();
     byte[] bytes = input;
-    int inputLength = bytes.length;
-    if (position >= inputLength || bytes[position++] != '"') {
+    int inputLimit = this.inputLimit;
+    if (position >= inputLimit || bytes[position++] != '"') {
       throw error("Expected string");
     }
     int start = position;
-    if (start + Long.BYTES <= inputLength) {
+    if (start + Long.BYTES <= inputLimit) {
       long word0 = LittleEndian.getInt64(bytes, start);
       long stopMask = stringStopMask(word0);
       if (stopMask != 0) {
@@ -2006,15 +2029,15 @@ public final class Utf8JsonReader extends JsonReader {
         }
         return readFieldNameMiss(cache, start, stop, length, word0, 0, hash);
       }
-      return readFieldNameAfterWord0(cache, start, word0, inputLength);
+      return readFieldNameAfterWord0(cache, start, word0, inputLimit);
     }
     return readFieldNameTail(cache, start, start, 0, 0, 0);
   }
 
   private String readFieldNameAfterWord0(
-      FieldNameCache cache, int start, long word0, int inputLength) {
+      FieldNameCache cache, int start, long word0, int inputLimit) {
     int offset = start + Long.BYTES;
-    if (offset + Long.BYTES <= inputLength) {
+    if (offset + Long.BYTES <= inputLimit) {
       long word1 = LittleEndian.getInt64(input, offset);
       long stopMask = stringStopMask(word1);
       if (stopMask != 0) {
@@ -2029,19 +2052,19 @@ public final class Utf8JsonReader extends JsonReader {
             cache, start, stop, Long.BYTES + length, word0, fieldNameWord(word1, length));
       }
       offset += Long.BYTES;
-      if (offset < inputLength && input[offset] == '"') {
+      if (offset < inputLimit && input[offset] == '"') {
         position = offset + 1;
         return resolveFieldName(cache, start, offset, 16, word0, word1);
       }
-      return readStringTokenLongTail(start, offset, inputLength);
+      return readStringTokenLongTail(start, offset, inputLimit);
     }
     return readFieldNameTail(cache, start, offset, Long.BYTES, word0, 0);
   }
 
   private String readFieldNameTail(
       FieldNameCache cache, int start, int offset, int length, long word0, long word1) {
-    int inputLength = input.length;
-    while (offset < inputLength) {
+    int inputLimit = this.inputLimit;
+    while (offset < inputLimit) {
       int ch = input[offset] & 0xff;
       if (ch == '"') {
         position = offset + 1;
@@ -2098,7 +2121,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public String readNextNullableString() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch == '"') {
         return readStringToken();
@@ -2118,7 +2141,7 @@ public final class Utf8JsonReader extends JsonReader {
     // to one byte check; only a possible null or malformed token enters the cold classifier.
     byte[] bytes = input;
     int offset = position;
-    if (offset < bytes.length && bytes[offset] == '"') {
+    if (offset < inputLimit && bytes[offset] == '"') {
       return readStringToken();
     }
     return readNullableStringTokenSlow();
@@ -2155,8 +2178,8 @@ public final class Utf8JsonReader extends JsonReader {
 
   private String readStringToken() {
     byte[] bytes = input;
-    int inputLength = bytes.length;
-    if (position >= inputLength || bytes[position++] != '"') {
+    int inputLimit = this.inputLimit;
+    if (position >= inputLimit || bytes[position++] != '"') {
       throw error("Expected string");
     }
     int start = position;
@@ -2166,43 +2189,43 @@ public final class Utf8JsonReader extends JsonReader {
     // so nullable wrappers and generated object readers cannot absorb duplicate token closures.
     // A loop or forwarding helper would shrink this owner and restore compilation-order
     // sensitivity.
-    if (offset + Long.BYTES <= inputLength) {
+    if (offset + Long.BYTES <= inputLimit) {
       long stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
       if (stopMask != 0) {
         return readStringWordStop(start, offset, stopMask);
       }
       offset += Long.BYTES;
-      if (offset + Long.BYTES <= inputLength) {
+      if (offset + Long.BYTES <= inputLimit) {
         stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
         if (stopMask != 0) {
           return readStringWordStop(start, offset, stopMask);
         }
         offset += Long.BYTES;
-        if (offset + Long.BYTES <= inputLength) {
+        if (offset + Long.BYTES <= inputLimit) {
           stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
           if (stopMask != 0) {
             return readStringWordStop(start, offset, stopMask);
           }
           offset += Long.BYTES;
-          if (offset + Long.BYTES <= inputLength) {
+          if (offset + Long.BYTES <= inputLimit) {
             stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
             if (stopMask != 0) {
               return readStringWordStop(start, offset, stopMask);
             }
             offset += Long.BYTES;
-            if (offset + Long.BYTES <= inputLength) {
+            if (offset + Long.BYTES <= inputLimit) {
               stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
               if (stopMask != 0) {
                 return readStringWordStop(start, offset, stopMask);
               }
               offset += Long.BYTES;
-              if (offset + Long.BYTES <= inputLength) {
+              if (offset + Long.BYTES <= inputLimit) {
                 stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
                 if (stopMask != 0) {
                   return readStringWordStop(start, offset, stopMask);
                 }
                 offset += Long.BYTES;
-                if (offset + Long.BYTES <= inputLength) {
+                if (offset + Long.BYTES <= inputLimit) {
                   stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
                   if (stopMask != 0) {
                     return readStringWordStop(start, offset, stopMask);
@@ -2215,7 +2238,7 @@ public final class Utf8JsonReader extends JsonReader {
         }
       }
     }
-    return readStringTokenLongTail(start, offset, inputLength);
+    return readStringTokenLongTail(start, offset, inputLimit);
   }
 
   private String readStringWordStop(int start, int offset, long stopMask) {
@@ -2228,10 +2251,10 @@ public final class Utf8JsonReader extends JsonReader {
     return readStringStop(start, stop, b);
   }
 
-  /** Returns the current UTF-8 input length to generated bounded String probes. */
+  /** Returns the exclusive UTF-8 input limit to generated bounded String probes. */
   @Internal
-  public int inputLength() {
-    return input.length;
+  public int inputLimit() {
+    return inputLimit;
   }
 
   /** Scans one in-bounds generated String word without publishing the reader cursor. */
@@ -2249,12 +2272,12 @@ public final class Utf8JsonReader extends JsonReader {
   /** Continues a String after generated bounded word probes found no stop byte. */
   @Internal
   public String readStringTokenLongTail(int start, int offset) {
-    return readStringTokenLongTail(start, offset, input.length);
+    return readStringTokenLongTail(start, offset, inputLimit);
   }
 
-  private String readStringTokenLongTail(int start, int offset, int inputLength) {
+  private String readStringTokenLongTail(int start, int offset, int inputLimit) {
     byte[] bytes = input;
-    int doubleWordEnd = inputLength - (Long.BYTES << 1);
+    int doubleWordEnd = inputLimit - (Long.BYTES << 1);
     while (offset <= doubleWordEnd) {
       long stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
       if (stopMask != 0) {
@@ -2279,7 +2302,7 @@ public final class Utf8JsonReader extends JsonReader {
       }
       offset = nextOffset + Long.BYTES;
     }
-    int wordEnd = inputLength - Long.BYTES;
+    int wordEnd = inputLimit - Long.BYTES;
     while (offset <= wordEnd) {
       long stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
       if (stopMask == 0) {
@@ -2294,14 +2317,14 @@ public final class Utf8JsonReader extends JsonReader {
       }
       return readStringStop(start, stop, b);
     }
-    return readStringTokenTail(start, offset, inputLength);
+    return readStringTokenTail(start, offset, inputLimit);
   }
 
-  private String readStringTokenTail(int start, int offset, int inputLength) {
+  private String readStringTokenTail(int start, int offset, int inputLimit) {
     byte[] bytes = input;
     // Reached only when the whole input has fewer than eight bytes left. Keep this rare tail out
     // of the hot word scanner so C2 has more budget for common string call sites.
-    if (offset + Integer.BYTES <= inputLength) {
+    if (offset + Integer.BYTES <= inputLimit) {
       int stopMask = stringStopMask(LittleEndian.getInt32(bytes, offset));
       if (stopMask == 0) {
         offset += Integer.BYTES;
@@ -2315,7 +2338,7 @@ public final class Utf8JsonReader extends JsonReader {
         return readStringStop(start, stop, b);
       }
     }
-    while (offset < inputLength) {
+    while (offset < inputLimit) {
       int b = bytes[offset++];
       if (b == '"') {
         position = offset;
@@ -2338,8 +2361,8 @@ public final class Utf8JsonReader extends JsonReader {
   private LocalDate tryReadIsoLocalDateToken() {
     byte[] bytes = input;
     int offset = position;
-    int length = bytes.length;
-    if (offset + 12 > length || bytes[offset] != '"') {
+    int length = inputLimit;
+    if (offset > length - 12 || bytes[offset] != '"') {
       return null;
     }
     offset++;
@@ -2370,8 +2393,8 @@ public final class Utf8JsonReader extends JsonReader {
   private OffsetDateTime tryReadIsoOffsetDateTimeToken() {
     byte[] bytes = input;
     int offset = position;
-    int length = bytes.length;
-    if (offset + 19 > length || bytes[offset] != '"') {
+    int length = inputLimit;
+    if (offset > length - 19 || bytes[offset] != '"') {
       return null;
     }
     offset++;
@@ -2452,7 +2475,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private int tryScanSimpleStringTail(byte[] bytes, int offset) {
-    int length = bytes.length;
+    int length = inputLimit;
     while (offset < length) {
       int b = bytes[offset++];
       if (b == '"') {
@@ -2599,7 +2622,7 @@ public final class Utf8JsonReader extends JsonReader {
   public int readFieldNamePrefix() {
     skipWhitespaceFast();
     int offset = position;
-    if (offset <= input.length - Integer.BYTES) {
+    if (offset <= inputLimit - Integer.BYTES) {
       return LittleEndian.getInt32(input, offset);
     }
     return 0;
@@ -2614,7 +2637,7 @@ public final class Utf8JsonReader extends JsonReader {
   public boolean tryReadNextFieldNameColon(
       long expectedHash, long expectedMask, int expectedLength) {
     int mark = position;
-    if (mark < input.length) {
+    if (mark < inputLimit) {
       int ch = input[mark];
       if (ch == '"') {
         return tryReadFieldNameColonAt(mark, expectedHash, expectedMask, expectedLength);
@@ -2637,7 +2660,7 @@ public final class Utf8JsonReader extends JsonReader {
   private boolean tryReadNextRawToken0(long prefix, long prefixMask, int tokenLength) {
     byte[] bytes = input;
     int mark = position;
-    if (mark + Long.BYTES <= bytes.length
+    if (mark <= inputLimit - Long.BYTES
         && (LittleEndian.getInt64(bytes, mark) & prefixMask) == prefix) {
       position = mark + tokenLength;
       return true;
@@ -2659,7 +2682,7 @@ public final class Utf8JsonReader extends JsonReader {
     byte[] bytes = input;
     int mark = position;
     int suffixOffset = mark + Long.BYTES;
-    if (mark + tokenLength <= bytes.length
+    if (tokenLength <= inputLimit - mark
         && (LittleEndian.getInt64(bytes, mark) & prefixMask) == prefix
         && bytes[suffixOffset] == suffix) {
       position = mark + tokenLength;
@@ -2682,7 +2705,7 @@ public final class Utf8JsonReader extends JsonReader {
     byte[] bytes = input;
     int mark = position;
     int suffixOffset = mark + Long.BYTES;
-    if (mark + tokenLength <= bytes.length
+    if (tokenLength <= inputLimit - mark
         && (LittleEndian.getInt64(bytes, mark) & prefixMask) == prefix
         && ((bytes[suffixOffset] & 0xFF) | ((bytes[suffixOffset + 1] & 0xFF) << 8)) == suffix) {
       position = mark + tokenLength;
@@ -2705,7 +2728,7 @@ public final class Utf8JsonReader extends JsonReader {
     byte[] bytes = input;
     int mark = position;
     int suffixOffset = mark + Long.BYTES;
-    if (mark + tokenLength <= bytes.length
+    if (tokenLength <= inputLimit - mark
         && (LittleEndian.getInt64(bytes, mark) & prefixMask) == prefix
         && ((bytes[suffixOffset] & 0xFF)
                 | ((bytes[suffixOffset + 1] & 0xFF) << 8)
@@ -2726,9 +2749,9 @@ public final class Utf8JsonReader extends JsonReader {
     byte[] bytes = input;
     int mark = position;
     int suffixOffset = mark + Long.BYTES;
-    if (mark + tokenLength <= bytes.length
+    if (tokenLength <= inputLimit - mark
         && LittleEndian.getInt64(bytes, mark) == prefix
-        && readTokenSuffix(bytes, suffixOffset, tokenLength, suffixMask) == suffix) {
+        && readTokenSuffix(bytes, suffixOffset, tokenLength, suffixMask, inputLimit) == suffix) {
       position = mark + tokenLength;
       return true;
     }
@@ -2736,8 +2759,8 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private static long readTokenSuffix(
-      byte[] bytes, int suffixOffset, int tokenLength, long suffixMask) {
-    if (suffixOffset + Long.BYTES <= bytes.length) {
+      byte[] bytes, int suffixOffset, int tokenLength, long suffixMask, int inputLimit) {
+    if (suffixOffset <= inputLimit - Long.BYTES) {
       return LittleEndian.getInt64(bytes, suffixOffset) & suffixMask;
     }
     int suffixLength = tokenLength - Long.BYTES;
@@ -2754,12 +2777,12 @@ public final class Utf8JsonReader extends JsonReader {
     int offset = position;
     int nameOffset = offset + 1;
     int quoteOffset = nameOffset + expectedLength;
-    if (quoteOffset < bytes.length && bytes[offset] == '"') {
-      if (nameOffset + Long.BYTES <= bytes.length) {
+    if (quoteOffset < inputLimit && bytes[offset] == '"') {
+      if (nameOffset <= inputLimit - Long.BYTES) {
         if ((LittleEndian.getInt64(bytes, nameOffset) & expectedMask) == expectedHash
             && bytes[quoteOffset] == '"') {
           int colonOffset = quoteOffset + 1;
-          if (colonOffset < bytes.length && bytes[colonOffset] == ':') {
+          if (colonOffset < inputLimit && bytes[colonOffset] == ':') {
             position = colonOffset + 1;
           } else {
             readFieldNameColon(colonOffset);
@@ -2783,7 +2806,7 @@ public final class Utf8JsonReader extends JsonReader {
       }
       if (value == expectedHash && bytes[offset] == '"') {
         int colonOffset = offset + 1;
-        if (colonOffset < bytes.length && bytes[colonOffset] == ':') {
+        if (colonOffset < inputLimit && bytes[colonOffset] == ':') {
           position = colonOffset + 1;
         } else {
           readFieldNameColon(colonOffset);
@@ -2811,7 +2834,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public long readNextPackedStringHash() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch > ' ' || !isWhitespace(ch)) {
         return readPackedStringHashToken();
@@ -2827,7 +2850,7 @@ public final class Utf8JsonReader extends JsonReader {
   private long readPackedStringHashToken() {
     int mark = position;
     byte[] bytes = input;
-    int length = bytes.length;
+    int length = inputLimit;
     int offset = position;
     if (offset < length && bytes[offset++] == '"') {
       long value = 0;
@@ -2864,7 +2887,7 @@ public final class Utf8JsonReader extends JsonReader {
     byte[] bytes = input;
     int mark = position;
     int nameOffset = mark + 1;
-    if (nameOffset + Long.BYTES < bytes.length && bytes[mark] == '"') {
+    if (nameOffset < inputLimit - Long.BYTES && bytes[mark] == '"') {
       long word = LittleEndian.getInt64(bytes, nameOffset);
       long stopMask = stringStopMask(word);
       if (stopMask == 0) {
@@ -2885,7 +2908,7 @@ public final class Utf8JsonReader extends JsonReader {
 
   private long readQuotedStringHashSlow() {
     byte[] bytes = input;
-    int length = bytes.length;
+    int length = inputLimit;
     if (position >= length || bytes[position++] != '"') {
       throw error("Expected string");
     }
@@ -3072,7 +3095,7 @@ public final class Utf8JsonReader extends JsonReader {
           return readStringUtf16Tail(bytes, out);
         }
       }
-      if (position >= input.length) {
+      if (position >= inputLimit) {
         throw error("Unterminated string");
       }
       b = input[position++] & 0xFF;
@@ -3082,12 +3105,12 @@ public final class Utf8JsonReader extends JsonReader {
   private String readStringUtf16Tail(byte[] bytes, int out) {
     byte[] input = this.input;
     int position = this.position;
-    int inputLength = input.length;
+    int inputLimit = this.inputLimit;
     int capacity = bytes.length;
-    while (position < inputLength) {
+    while (position < inputLimit) {
       int b = input[position++] & 0xFF;
       if ((b & 0xF0) == 0xE0) {
-        if (position >= inputLength) {
+        if (position >= inputLimit) {
           this.position = position;
           throw error("Short UTF-8 sequence");
         }
@@ -3096,7 +3119,7 @@ public final class Utf8JsonReader extends JsonReader {
           this.position = position;
           throw error("Invalid UTF-8 continuation");
         }
-        if (position >= inputLength) {
+        if (position >= inputLimit) {
           this.position = position;
           throw error("Short UTF-8 sequence");
         }
@@ -3150,7 +3173,7 @@ public final class Utf8JsonReader extends JsonReader {
         }
         out = putUtf16Char(bytes, out, (char) b);
       } else if ((b & 0xE0) == 0xC0) {
-        if (position >= inputLength) {
+        if (position >= inputLimit) {
           this.position = position;
           throw error("Short UTF-8 sequence");
         }
@@ -3170,7 +3193,7 @@ public final class Utf8JsonReader extends JsonReader {
         }
         out = putUtf16Char(bytes, out, (char) codePoint);
       } else if ((b & 0xF8) == 0xF0) {
-        if (position >= inputLength) {
+        if (position >= inputLimit) {
           this.position = position;
           throw error("Short UTF-8 sequence");
         }
@@ -3179,7 +3202,7 @@ public final class Utf8JsonReader extends JsonReader {
           this.position = position;
           throw error("Invalid UTF-8 continuation");
         }
-        if (position >= inputLength) {
+        if (position >= inputLimit) {
           this.position = position;
           throw error("Short UTF-8 sequence");
         }
@@ -3188,7 +3211,7 @@ public final class Utf8JsonReader extends JsonReader {
           this.position = position;
           throw error("Invalid UTF-8 continuation");
         }
-        if (position >= inputLength) {
+        if (position >= inputLimit) {
           this.position = position;
           throw error("Short UTF-8 sequence");
         }
@@ -3222,8 +3245,8 @@ public final class Utf8JsonReader extends JsonReader {
     if ((first & 0xF0) == 0xE0) {
       byte[] input = this.input;
       int position = this.position;
-      int inputLength = input.length;
-      if (position >= inputLength) {
+      int inputLimit = this.inputLimit;
+      if (position >= inputLimit) {
         this.position = position;
         throw error("Short UTF-8 sequence");
       }
@@ -3232,7 +3255,7 @@ public final class Utf8JsonReader extends JsonReader {
         this.position = position;
         throw error("Invalid UTF-8 continuation");
       }
-      if (position >= inputLength) {
+      if (position >= inputLimit) {
         this.position = position;
         throw error("Short UTF-8 sequence");
       }
@@ -3263,7 +3286,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private char readEscapedStringChar() {
-    if (position >= input.length) {
+    if (position >= inputLimit) {
       throw error("Unterminated escape");
     }
     char escaped = (char) (input[position++] & 0xFF);
@@ -3290,7 +3313,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private char readLowSurrogateEscape() {
-    if (position + 2 > input.length || input[position] != '\\' || input[position + 1] != 'u') {
+    if (position + 2 > inputLimit || input[position] != '\\' || input[position + 1] != 'u') {
       throw error("Unpaired high surrogate escape");
     }
     position += 2;
@@ -3345,7 +3368,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private int continuation() {
-    if (position >= input.length) {
+    if (position >= inputLimit) {
       throw error("Short UTF-8 sequence");
     }
     int value = input[position++] & 0xFF;
@@ -3356,7 +3379,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private void skipWhitespaceFast() {
-    while (position < input.length) {
+    while (position < inputLimit) {
       int ch = input[position];
       if (ch > ' ') {
         return;
@@ -3374,7 +3397,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private void rejectLeadingDigitFast() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch >= '0' && ch <= '9') {
         throw error("Leading zero in number");
@@ -3383,7 +3406,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private void rejectFractionOrExponentFast() {
-    if (position < input.length) {
+    if (position < inputLimit) {
       int ch = input[position];
       if (ch == '.' || ch == 'e' || ch == 'E') {
         throw error("Expected integer");
@@ -3392,7 +3415,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private int readZeroIntName(int nameStart) {
-    if (position >= input.length) {
+    if (position >= inputLimit) {
       throw error("Unterminated string");
     }
     int ch = input[position];
@@ -3411,7 +3434,7 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private long readZeroLongName(int nameStart) {
-    if (position >= input.length) {
+    if (position >= inputLimit) {
       throw error("Unterminated string");
     }
     int ch = input[position];

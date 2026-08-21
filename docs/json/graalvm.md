@@ -57,6 +57,16 @@ model metadata and prepares its field, property, creator, record, and `JsonAnySe
 runtime, `ForyJson.builder().build()` can therefore use interpreted codecs without application
 reflection configuration, package exports or opens, or build-time initialization.
 
+An application class configured for build-time initialization may retain a static `ForyJson` in the
+image heap. Set `withConcurrencyLevel` explicitly when the runtime may have a different processor
+count from the build machine. Any custom codec or module instance retained by that `ForyJson` must
+also be safe to create and store at build time.
+
+If a custom configuration should be instantiated only at runtime, return an equivalent temporary
+configuration from a reachable `@ForyJsonProvider` for hosted code generation, then build the
+application's actual `ForyJson` after image startup. The provider itself runs during image analysis;
+it does not create the runtime instance.
+
 ## Generated Codecs
 
 To include generated codecs for a configuration, return that completed configuration from a

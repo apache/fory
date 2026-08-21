@@ -113,6 +113,47 @@ public final class ForyJson {
     return new ForyJsonBuilder();
   }
 
+  /**
+   * Creates a single-stream decoder for the elements of one top-level UTF-8 JSON array.
+   *
+   * @param elementType declared element type
+   * @param maxValueBytes maximum UTF-8 bytes accepted for one array element
+   */
+  public <T> JsonStreamDecoder<T> newArrayStreamDecoder(Class<T> elementType, int maxValueBytes) {
+    return JsonStreamDecoder.forArray(this, elementType, maxValueBytes);
+  }
+
+  /**
+   * Creates a single-stream decoder for the elements of one top-level UTF-8 JSON array.
+   *
+   * @param elementType declared generic element type
+   * @param maxValueBytes maximum UTF-8 bytes accepted for one array element
+   */
+  public <T> JsonStreamDecoder<T> newArrayStreamDecoder(TypeRef<T> elementType, int maxValueBytes) {
+    return JsonStreamDecoder.forArray(this, elementType, maxValueBytes);
+  }
+
+  /**
+   * Creates a single-stream decoder for UTF-8 newline-delimited JSON records.
+   *
+   * @param elementType declared record type
+   * @param maxValueBytes maximum UTF-8 bytes accepted for one record, excluding its line ending
+   */
+  public <T> JsonStreamDecoder<T> newNdjsonStreamDecoder(Class<T> elementType, int maxValueBytes) {
+    return JsonStreamDecoder.forNdjson(this, elementType, maxValueBytes);
+  }
+
+  /**
+   * Creates a single-stream decoder for UTF-8 newline-delimited JSON records.
+   *
+   * @param elementType declared generic record type
+   * @param maxValueBytes maximum UTF-8 bytes accepted for one record, excluding its line ending
+   */
+  public <T> JsonStreamDecoder<T> newNdjsonStreamDecoder(
+      TypeRef<T> elementType, int maxValueBytes) {
+    return JsonStreamDecoder.forNdjson(this, elementType, maxValueBytes);
+  }
+
   JsonConfig config() {
     return config;
   }
@@ -637,6 +678,64 @@ public final class ForyJson {
     }
   }
 
+  /**
+   * Parses exactly one UTF-8 JSON value from {@code bytes[offset, offset + length)} using {@code
+   * type} as its declared Java type. Trailing non-whitespace content within that range is rejected.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must consume nested content through the {@link Utf8JsonReader} passed to its {@code
+   * readUtf8} method instead of invoking a {@code ForyJson} root API.
+   */
+  public <T> T fromJson(byte[] bytes, int offset, int length, Class<T> type) {
+    checkByteRange(bytes, offset, length);
+    PooledState entry = acquire();
+    JsonState state = entry.state;
+    try {
+      state.typeResolver.lockJIT();
+      try {
+        return castValue(readUtf8Value(state.utf8Reader(bytes, offset, length), type, state), type);
+      } finally {
+        state.typeResolver.unlockJIT();
+      }
+    } finally {
+      try {
+        state.clearUtf8Reader();
+      } finally {
+        release(entry);
+      }
+    }
+  }
+
+  /**
+   * Parses exactly one UTF-8 JSON value from {@code bytes[offset, offset + length)} using a generic
+   * type captured by {@link TypeRef}. Trailing non-whitespace content within that range is
+   * rejected.
+   *
+   * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
+   * operation must consume nested content through the {@link Utf8JsonReader} passed to its {@code
+   * readUtf8} method instead of invoking a {@code ForyJson} root API.
+   */
+  public <T> T fromJson(byte[] bytes, int offset, int length, TypeRef<T> typeRef) {
+    checkByteRange(bytes, offset, length);
+    PooledState entry = acquire();
+    JsonState state = entry.state;
+    try {
+      state.typeResolver.lockJIT();
+      try {
+        Object value = readUtf8Value(state.utf8Reader(bytes, offset, length), typeRef, state);
+        return castValue(value, typeRef);
+      } finally {
+        state.typeResolver.unlockJIT();
+      }
+    } finally {
+      try {
+        state.clearUtf8Reader();
+      } finally {
+        release(entry);
+      }
+    }
+  }
+
   private PooledState acquire() {
     PooledState[] slots = this.slots;
     if (slots.length == 1) {
@@ -824,7 +923,28 @@ public final class ForyJson {
     return new ForyJsonException("Cannot read null into primitive " + type);
   }
 
-  /** Permanently owns one execution state and leases it to at most one root operation. */
+  private static void checkByteRange(byte[] bytes, int offset, int length) {
+    // Reject invalid public input before waiting for a pooled state. Utf8JsonReader repeats this
+    // check because its independently callable reset must also protect its cursor invariants.
+    int inputLength = bytes.length;
+    if ((offset | length) < 0 || offset > inputLength - length) {
+      throwInvalidByteRange(offset, length);
+    }
+  }
+
+  private static void throwInvalidByteRange(int offset, int length) {
+    throw new IndexOutOfBoundsException(
+        "Invalid UTF-8 byte range: offset=" + offset + ", length=" + length);
+  }
+
+  /**
+   * Permanently owns one execution state and leases it to at most one root operation.
+   *
+   * <p>Native Image initializes this class at build time so an application may retain a static
+   * {@link ForyJson} in the image heap. The class has no static state; pooled objects enter the
+   * image only when the application constructs and retains that {@code ForyJson} while building the
+   * image. Custom codecs and modules retained by such an instance must also be build-time safe.
+   */
   private static final class PooledState {
     private final JsonState state;
     private final AtomicInteger leased;
@@ -853,6 +973,10 @@ public final class ForyJson {
    * through every capability call. The runtime-class cache and declared-token cache each avoid
    * resolver lookup only on an identity hit; the declared cache also retains the resolved raw type
    * used by typed-root write validation.
+   *
+   * <p>Native Image initializes this class with {@link PooledState} so a build-time-created static
+   * {@link ForyJson} can retain its complete state graph. Ordinary runtime-created instances still
+   * construct these mutable states after image startup.
    */
   private static final class JsonState {
     private final JsonTypeResolver typeResolver;
@@ -914,7 +1038,14 @@ public final class ForyJson {
     }
 
     private Utf8JsonReader utf8Reader(byte[] input) {
+      // Keep full-array roots on the direct reset so the existing hot path does not pay the range
+      // validation branches.
       utf8Reader.reset(input);
+      return utf8Reader;
+    }
+
+    private Utf8JsonReader utf8Reader(byte[] input, int offset, int length) {
+      utf8Reader.reset(input, offset, length);
       return utf8Reader;
     }
 

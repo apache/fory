@@ -381,7 +381,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       builder
         .append("      ")
         .append(field.id)
-        .append(" -> setGeneratedFieldValue(value, fieldInfo, fieldValue)\n")
+        .append(" -> setReadFieldValue(value, fieldInfo, fieldValue)\n")
     }
     builder.append(
       "      else -> throw IllegalStateException(\"Unknown generated field id \${fieldId}\")\n"

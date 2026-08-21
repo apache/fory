@@ -101,8 +101,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
   private final SlotInfo[] slotsInfos;
   private final ObjectMap<TypeNameBytes, String> layerClassNameCache;
-  // Instance-level cache: TypeDef ID -> TypeInfo (shared across all slots).
-  private final LongMap<TypeInfo> typeDefIdToTypeInfo = new LongMap<>(4, 0.4f);
+  // Instance-level cache: checked TypeDef header hash -> TypeInfo (shared across all slots).
+  private final LongMap<TypeInfo> typeInfoByHeaderHash = new LongMap<>(4, 0.4f);
 
   private static CompatibleLayerSerializerBase<?> newGeneratedSerializer(
       TypeResolver typeResolver,
@@ -131,8 +131,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     /**
      * Read the layer TypeDef from buffer (if meta share enabled) and return the appropriate
      * serializer. When meta share is enabled, reads the TypeDef from buffer, caches the serializer
-     * by TypeDef ID, and returns it. When meta share is disabled, returns the default slots
-     * serializer. Also stores the returned serializer for later retrieval via {@link
+     * by TypeDef header hash, and returns it. When meta share is disabled, returns the default
+     * slots serializer. Also stores the returned serializer for later retrieval via {@link
      * #getCurrentReadSerializer()}.
      *
      * @param typeResolver the type resolver
@@ -545,8 +545,9 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
               (ClassResolver) typeResolver, metaReadContext, index, senderClassName);
     } else {
       // New TypeDef in stream, with optimized reuse by validated TypeDef header.
-      long typeDefId = buffer.readInt64();
-      typeInfo = readLayerTypeInfo(typeResolver, buffer, senderClassName, null, typeDefId);
+      long typeDefHeader = buffer.readInt64();
+      typeInfo =
+          readLayerTypeInfo(typeResolver, buffer, senderClassName, null, null, typeDefHeader);
       metaReadContext.readTypeInfos.add(typeInfo);
     }
 
@@ -603,14 +604,35 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       MemoryBuffer buffer,
       String className,
       Class<?> cls,
-      long typeDefId) {
-    TypeInfo typeInfo = typeDefIdToTypeInfo.get(typeDefId);
+      TypeInfo localTypeInfo,
+      long typeDefHeader) {
+    long headerHash = TypeDef.headerHash(typeDefHeader);
+    TypeDef localTypeDef = localTypeInfo == null ? null : localTypeInfo.getTypeDef();
+    if (localTypeDef != null && TypeDef.headerHash(localTypeDef.getId()) == headerHash) {
+      TypeDef.skipTypeDef(buffer, typeDefHeader);
+      // Expected local metadata is not a remotely checked cache entry. In particular, do not let
+      // a previous remote owner under the same hash replace the known slot class.
+      return localTypeInfo;
+    }
+    TypeInfo typeInfo = typeInfoByHeaderHash.get(headerHash);
     if (typeInfo != null) {
-      checkLayerTypeInfo((ClassResolver) typeResolver, typeInfo, className);
-      TypeDef.skipTypeDef(buffer, typeDefId);
+      checkCachedLayerOwner(typeInfo.getTypeDef(), className, cls);
+      TypeDef.skipTypeDef(buffer, typeDefHeader);
+      return cls == null
+          ? new TypeInfo(UnknownClass.UnknownStruct.class, typeInfo.getTypeDef())
+          : typeInfo;
+    }
+    TypeDef cachedTypeDef = typeResolver.getCheckedRemoteTypeDef(headerHash);
+    if (cachedTypeDef != null) {
+      checkCachedLayerOwner(cachedTypeDef, className, cls);
+      TypeDef.skipTypeDef(buffer, typeDefHeader);
+      typeInfo = new TypeInfo(layerClass(cls), cachedTypeDef);
+      if (cls != null) {
+        typeInfoByHeaderHash.put(headerHash, typeInfo);
+      }
       return typeInfo;
     }
-    return readLayerTypeDef(typeResolver, buffer, className, cls, typeDefId);
+    return readLayerTypeDef(typeResolver, buffer, className, cls, typeDefHeader, headerHash);
   }
 
   private TypeInfo readLayerTypeDef(
@@ -618,25 +640,38 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       MemoryBuffer buffer,
       String className,
       Class<?> cls,
-      long typeDefId) {
-    byte[] encoded = TypeDef.readTypeDefBytes(typeResolver, buffer, typeDefId);
-    Class<?> resolvedClass = cls == null ? UnknownClass.UnknownStruct.class : cls;
-    TypeDef localTypeDef = cls == null ? null : typeResolver.getTypeDef(cls, false);
-    TypeDef typeDef;
-    if (localTypeDef != null && Arrays.equals(encoded, localTypeDef.getEncoded())) {
-      typeDef = localTypeDef;
-    } else {
-      ClassResolver classResolver = (ClassResolver) typeResolver;
-      typeDef = TypeDef.readTypeDefWithoutRootClass(classResolver, encoded);
-      // The layer header is the identity owner. Reject mismatched metadata before publishing it to
-      // the checked remote TypeDef cache.
-      checkLayerTypeDef(classResolver, typeDef, resolvedClass, className);
-      typeDef = typeResolver.cacheRemoteTypeDef(typeDef);
+      long typeDefHeader,
+      long headerHash) {
+    byte[] encoded = TypeDef.readTypeDefBytes(typeResolver, buffer, typeDefHeader);
+    Class<?> resolvedClass = layerClass(cls);
+    ClassResolver classResolver = (ClassResolver) typeResolver;
+    TypeDef typeDef = TypeDef.readTypeDefWithoutRootClass(classResolver, encoded);
+    // Sender-only layers are data-only metadata. Their UnknownStruct adaptation belongs only to
+    // this read and must never become a persistent checked owner for an ordinary dynamic root.
+    checkLayerTypeDef(classResolver, typeDef, resolvedClass, className);
+    if (cls == null) {
+      return new TypeInfo(resolvedClass, typeDef);
     }
-    checkLayerTypeDef((ClassResolver) typeResolver, typeDef, resolvedClass, className);
+    typeDef = typeDef.bindRootClass(resolvedClass);
+    typeDef = typeResolver.cacheRemoteTypeDef(typeDef);
+    // A competing checked publication has already validated the frame. Route only by its concrete
+    // wire owner; never parse or revalidate checked metadata on this path.
+    checkCachedLayerOwner(typeDef, className, cls);
     TypeInfo typeInfo = new TypeInfo(resolvedClass, typeDef);
-    typeDefIdToTypeInfo.put(typeDefId, typeInfo);
+    typeInfoByHeaderHash.put(headerHash, typeInfo);
     return typeInfo;
+  }
+
+  private static void checkCachedLayerOwner(
+      TypeDef typeDef, String className, Class<?> layerClass) {
+    if (!className.equals(typeDef.getClassName())
+        || (layerClass != null && typeDef.getClassSpec().type != layerClass)) {
+      throw new ForyException("Layer " + className + " does not match its TypeDef");
+    }
+  }
+
+  private static Class<?> layerClass(Class<?> cls) {
+    return cls == null ? UnknownClass.UnknownStruct.class : cls;
   }
 
   private static void throwUnsupportedEncodingException(Class<?> cls)
@@ -843,6 +878,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
   private class SlotsInfo implements SlotInfo {
     private final Class<?> cls;
     private final StreamTypeInfo streamTypeInfo;
+    private final TypeInfo localTypeInfo;
     // mark non-final for async-jit to update it to jit-serializer.
     private CompatibleLayerSerializerBase slotsSerializer;
     private final ObjectIntMap<String> fieldIndexMap;
@@ -880,6 +916,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       // Create interpreter-mode serializer first
       this.slotsSerializer =
           new CompatibleLayerSerializer(typeResolver, type, layerTypeDef, layerMarkerClass);
+      this.localTypeInfo = new TypeInfo(type, layerTypeDef);
 
       // Register JIT callback to replace with JIT serializer when ready
       if (config.isCodeGenEnabled()
@@ -1012,6 +1049,10 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         TypeInfo typeInfo = readLayerTypeInfo(typeResolver, readContext, className);
         if (typeInfo == null) {
           result = slotsSerializer;
+        } else if (typeInfo == localTypeInfo) {
+          // The local TypeInfo remains stable across roots, while the slot serializer may be
+          // replaced by async JIT. Always read the current serializer from the slot owner.
+          result = slotsSerializer;
         } else {
           // Get or create serializer from TypeInfo
           Serializer<?> serializer = typeInfo.getSerializer();
@@ -1053,10 +1094,10 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         return getMetaReadTypeInfo((ClassResolver) typeResolver, metaReadContext, index, className);
       } else {
         // New TypeDef in stream, with optimized reuse by validated TypeDef header.
-        long typeDefId = buffer.readInt64();
+        long typeDefHeader = buffer.readInt64();
         TypeInfo typeInfo =
             ObjectStreamSerializer.this.readLayerTypeInfo(
-                typeResolver, buffer, className, cls, typeDefId);
+                typeResolver, buffer, className, cls, localTypeInfo, typeDefHeader);
         metaReadContext.readTypeInfos.add(typeInfo);
         return typeInfo;
       }

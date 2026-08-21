@@ -157,15 +157,15 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
             "stringStart" + id,
             new Expression.Invoke(reader, "position", TypeRef.of(int.class)).inline());
     Expression offset = new Expression.Variable("stringOffset" + id, start);
-    Expression inputLength =
+    Expression inputLimit =
         new Expression.Variable(
-            "stringInputLength" + id,
-            new Expression.Invoke(reader, "inputLength", TypeRef.of(int.class)).inline());
+            "stringInputLimit" + id,
+            new Expression.Invoke(reader, "inputLimit", TypeRef.of(int.class)).inline());
     Expression directWordEnd =
         new Expression.Variable(
             "stringDirectWordEnd" + id,
             new Expression.Subtract(
-                true, inputLength, Expression.Literal.ofInt(Long.BYTES * DIRECT_STRING_WORDS)));
+                true, inputLimit, Expression.Literal.ofInt(Long.BYTES * DIRECT_STRING_WORDS)));
     Expression state = new Expression.Variable("stringState" + id, Expression.Literal.ofLong(0L));
     Expression value = new Expression.Variable("stringValue" + id, TypeRef.of(String.class));
     Expression zero = Expression.Literal.ofLong(0L);
@@ -187,7 +187,7 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
             new Expression.Assign(value, finishStringWord(reader, start, offset, state)),
             new Expression.Assign(value, readStringLongTail(reader, start, offset)));
     return new Expression.ListExpression(
-        start, offset, inputLength, directWordEnd, state, value, directScans, finish, value);
+        start, offset, inputLimit, directWordEnd, state, value, directScans, finish, value);
   }
 
   private static Expression tryConsumeStringQuote(Expression reader) {

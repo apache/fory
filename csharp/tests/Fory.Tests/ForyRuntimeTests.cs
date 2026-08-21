@@ -3113,12 +3113,12 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
-    public void CompatibleTypeMetaCacheMissValidatesBodyHashBeforeCaching()
+    public void TypeMetaMissValidatesHash()
     {
         ForyRuntime writer = ForyRuntime.Builder().Compatible(true).Build();
         writer.Register<OneStringField>(200);
         byte[] payload = writer.Serialize(new OneStringField { F1 = "hello" });
-        byte[] tamperedPayload = CorruptCompatibleTypeMetaBody(payload);
+        byte[] tamperedPayload = CorruptCompatibleTypeMetaMiss(payload);
 
         ForyRuntime reader = ForyRuntime.Builder().Compatible(true).Build();
         reader.Register<OneStringField>(200);
@@ -3415,12 +3415,16 @@ public sealed class ForyRuntimeTests
         return payload;
     }
 
-    private static byte[] CorruptCompatibleTypeMetaBody(byte[] payload)
+    private static byte[] CorruptCompatibleTypeMetaMiss(byte[] payload)
     {
         (int typeMetaStart, int typeMetaEnd, _) = ReadCompatibleTypeMetaRange(payload);
         Assert.True(typeMetaEnd > typeMetaStart + sizeof(ulong));
         byte[] malformed = (byte[])payload.Clone();
         malformed[typeMetaEnd - 1] ^= 1;
+        ulong header = BinaryPrimitives.ReadUInt64LittleEndian(malformed.AsSpan(typeMetaStart));
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            malformed.AsSpan(typeMetaStart),
+            header ^ (1UL << TypeMetaConstants.TypeMetaHashShift));
         return malformed;
     }
 

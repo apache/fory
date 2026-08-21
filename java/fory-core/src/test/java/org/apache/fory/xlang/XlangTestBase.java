@@ -59,6 +59,7 @@ import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.InvalidDataException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.meta.FieldInfo;
@@ -118,8 +119,11 @@ public abstract class XlangTestBase extends ForyTestBase {
     }
 
     @Override
-    public byte[] decompress(byte[] data, int offset, int size) {
+    public byte[] decompress(byte[] data, int offset, int size, int maxOutputSize) {
       // Not needed since we never compress
+      if (size > maxOutputSize) {
+        throw new InvalidDataException("Metadata exceeds the maximum size.");
+      }
       byte[] result = new byte[size];
       System.arraycopy(data, offset, result, 0, size);
       return result;

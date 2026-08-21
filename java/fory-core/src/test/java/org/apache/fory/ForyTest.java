@@ -522,8 +522,7 @@ public class ForyTest extends ForyTestBase {
     serDe(fory, ByteBuffer.allocate(32));
     serDe(fory, ByteBuffer.allocateDirect(32));
     assertThrows(InsecureException.class, () -> fory.serialize(new Thread()));
-    assertThrowsCause(
-        UnsupportedOperationException.class, () -> fory.serialize(MethodHandles.lookup()));
+    assertThrows(InsecureException.class, () -> fory.serialize(MethodHandles.lookup()));
   }
 
   @Test

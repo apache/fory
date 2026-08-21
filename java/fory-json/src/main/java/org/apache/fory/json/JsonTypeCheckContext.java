@@ -22,6 +22,10 @@ package org.apache.fory.json;
 /**
  * Runtime-owned context passed to {@link JsonTypeChecker}.
  *
+ * <p>Native Image initializes this class at build time because {@link JsonConfig} retains it in the
+ * state graph of a build-time-created static {@link ForyJson}. The class has no static or mutable
+ * state.
+ *
  * <p>The context is intentionally empty today. It reserves a stable extension point for exposing
  * read-only Fory JSON configuration without changing the checker signature. The class name is not
  * duplicated here because {@link JsonTypeChecker#checkType(String, JsonTypeCheckContext)} receives

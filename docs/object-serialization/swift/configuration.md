@@ -92,9 +92,10 @@ let fory = Fory(compatible: false, checkClassVersion: true)
 
 ### Size and Depth Limits
 
-`maxDepth` limits how deeply deserialization may materialize values whose concrete types are
-selected dynamically through `Any`. Statically declared arrays, dictionaries, structs, classes,
-and unions do not consume this limit.
+`maxDepth` limits nested user-value materialization during one root deserialization. Statically
+declared recursive structs, classes, and unions, dynamically selected `Any` values, and compatible
+field skipping share this root depth budget. Nulls and references to values already materialized do
+not consume another level.
 
 TypeMeta generic metadata has a fixed maximum nesting depth of `20`. Writers reject metadata above
 this limit, and readers apply the same limit.

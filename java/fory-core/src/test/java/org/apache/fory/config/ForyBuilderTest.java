@@ -48,7 +48,8 @@ public class ForyBuilderTest {
                   }
 
                   @Override
-                  public byte[] decompress(byte[] compressedData, int offset, int size) {
+                  public byte[] decompress(
+                      byte[] compressedData, int offset, int size, int maxOutputSize) {
                     return new byte[0];
                   }
                 })
@@ -63,7 +64,8 @@ public class ForyBuilderTest {
               }
 
               @Override
-              public byte[] decompress(byte[] compressedData, int offset, int size) {
+              public byte[] decompress(
+                  byte[] compressedData, int offset, int size, int maxOutputSize) {
                 return new byte[0];
               }
 

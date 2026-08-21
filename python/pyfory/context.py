@@ -180,22 +180,25 @@ class MetaStringReader:
 
     def _read_big_meta_string(self, buffer, length: int):
         hashcode = buffer.read_int64()
+        reader_index = buffer.get_reader_index()
+        buffer.check_bound(reader_index, length)
+        encoded_meta_string = self._hash_to_encoded_meta_strings.get(hashcode)
+        if encoded_meta_string is not None:
+            # The checked cache owns this wire hash. Hits skip the current frame without comparing
+            # or validating its body, length, or encoding; only misses validate before publishing.
+            buffer.set_reader_index(reader_index + length)
+            return encoded_meta_string
         encoding = hashcode & 0xFF
         if encoding > 4:
             raise ValueError(f"Unexpected encoding flag: {encoding}")
-        reader_index = buffer.get_reader_index()
-        buffer.check_bound(reader_index, length)
         data = buffer.get_bytes(reader_index, length)
         buffer.set_reader_index(reader_index + length)
         canonical_hash = hash_meta_string_data(data, encoding)
         if canonical_hash != hashcode:
             raise ValueError("Malformed metastring hash")
-        key = (hashcode, data)
-        encoded_meta_string = self._hash_to_encoded_meta_strings.get(key)
-        if encoded_meta_string is None:
-            encoded_meta_string = self.shared_registry.get_or_create_encoded_meta_string(data, hashcode)
-            if length <= MAX_CACHED_META_STRING_LENGTH and len(self._hash_to_encoded_meta_strings) < MAX_CACHED_META_STRINGS:
-                self._hash_to_encoded_meta_strings[key] = encoded_meta_string
+        encoded_meta_string = self.shared_registry.get_or_create_encoded_meta_string(data, hashcode)
+        if length <= MAX_CACHED_META_STRING_LENGTH and len(self._hash_to_encoded_meta_strings) < MAX_CACHED_META_STRINGS:
+            self._hash_to_encoded_meta_strings[hashcode] = encoded_meta_string
         return encoded_meta_string
 
     def reset(self):

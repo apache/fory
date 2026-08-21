@@ -444,7 +444,7 @@ where
     if declared {
         return Ok(None);
     }
-    read_value_type_info::<S>(context)
+    read_value_type_info::<S, false>(context)
 }
 
 #[inline(always)]

@@ -565,7 +565,7 @@ private func structInlineStructReadLines(_ field: ParsedField, compatibleAligned
         if !context.trackRef && !\(field.typeText).isRefType && \(field.typeText).staticTypeId == .structType {
             \(valueRead)
         } else {
-            __\(field.name) = try \(field.typeText).read(
+            __\(field.name) = try SerializerCodec<\(field.typeText)>.readField(
                 context,
                 refMode: \(fieldRefModeExpression(field)),
                 readTypeInfo: \(compatibleAligned ? "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)" : "false")
@@ -587,7 +587,7 @@ private func classInlineStructReadLines(_ field: ParsedField, compatibleAligned:
         if !context.trackRef && !\(field.typeText).isRefType && \(field.typeText).staticTypeId == .structType {
             \(valueRead)
         } else {
-            value.\(field.name) = try \(field.typeText).read(
+            value.\(field.name) = try SerializerCodec<\(field.typeText)>.readField(
                 context,
                 refMode: \(fieldRefModeExpression(field)),
                 readTypeInfo: \(compatibleAligned ? "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)" : "false")
@@ -710,7 +710,7 @@ private func inlineStructReadExpr(
                 readTypeInfo: \(readTypeInfoExpr)
             )
         }
-        return try \(field.typeText).read(
+        return try SerializerCodec<\(field.typeText)>.readField(
             context,
             refMode: \(refModeExpr),
             readTypeInfo: \(readTypeInfoExpr)
@@ -854,6 +854,10 @@ private func readFieldExpr(
         }
         return
             "try \(fieldCodec).readField(context, refMode: \(refModeExpr), readTypeInfo: \(readTypeInfoExpr))"
+    }
+    if field.typeID == MacroTypeId.structType {
+        return
+            "try SerializerCodec<\(field.typeText)>.readField(context, refMode: \(refModeExpr), readTypeInfo: \(readTypeInfoExpr))"
     }
     return
         "try \(field.typeText).read(context, refMode: \(refModeExpr), readTypeInfo: \(readTypeInfoExpr))"

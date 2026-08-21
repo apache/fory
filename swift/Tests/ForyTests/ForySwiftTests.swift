@@ -638,9 +638,8 @@ func schemaLimitTracksStructTypesSeparately() throws {
         let localTypeInfo = try resolver.requireTypeInfo(for: decoded)
         _ = try resolver.cacheTypeInfo(
             decoded,
-            forHeader: header,
+            forHeaderHash: typeMetaHashFromHeader(header),
             localTypeInfo: localTypeInfo,
-            exactLocal: false,
             config: config
         )
     }
@@ -681,9 +680,8 @@ func nonStructTypeMetaUsesSchemaLimit() throws {
         let localTypeInfo = try resolver.requireTypeInfo(for: decoded)
         _ = try resolver.cacheTypeInfo(
             decoded,
-            forHeader: header,
+            forHeaderHash: typeMetaHashFromHeader(header),
             localTypeInfo: localTypeInfo,
-            exactLocal: false,
             config: config
         )
     }
@@ -695,7 +693,7 @@ func nonStructTypeMetaUsesSchemaLimit() throws {
 }
 
 @Test
-func exactLocalNonStructTypeMetaBypassesSchemaLimit() throws {
+func localNonStructMetaBypassesLimit() throws {
     let config = Config(compatible: true, maxSchemaVersionsPerType: 1)
     let resolver = TypeResolver(config: config)
     try resolver.register(SparseStatus.self, name: "example.SharedEnum")
@@ -727,9 +725,8 @@ func exactLocalNonStructTypeMetaBypassesSchemaLimit() throws {
     let resolved = try resolver.requireTypeInfo(for: decoded)
     _ = try resolver.cacheTypeInfo(
         decoded,
-        forHeader: header,
+        forHeaderHash: typeMetaHashFromHeader(header),
         localTypeInfo: resolved,
-        exactLocal: false,
         config: config
     )
 }
@@ -792,9 +789,8 @@ func failedSchemaDoesNotConsumeLimit() throws {
         let localTypeInfo = try resolver.requireTypeInfo(for: decoded)
         _ = try resolver.cacheTypeInfo(
             decoded,
-            forHeader: header,
+            forHeaderHash: typeMetaHashFromHeader(header),
             localTypeInfo: localTypeInfo,
-            exactLocal: false,
             config: config
         )
     }
@@ -846,7 +842,7 @@ func staticTypeRejectsWrongMetaOwner() throws {
     #expect(throws: (any Error).self) {
         _ = try context.readTypeInfo(for: Address.self)
     }
-    #expect(resolver.getTypeInfo(forHeader: wrongHeader) == nil)
+    #expect(resolver.getTypeInfo(forHeaderHash: typeMetaHashFromHeader(wrongHeader)) == nil)
 
     let addressInfo = try resolver.requireTypeInfo(for: Address.self)
     let addressBytes = try #require(addressInfo.typeDefBytes)
@@ -857,7 +853,55 @@ func staticTypeRejectsWrongMetaOwner() throws {
     exactBuffer.writeBytes(addressBytes)
     let exactContext = ReadContext(buffer: exactBuffer, typeResolver: resolver, config: config)
     _ = try exactContext.readTypeInfo(for: Address.self)
-    #expect(resolver.getTypeInfo(forHeader: addressHeader) == nil)
+    #expect(resolver.getTypeInfo(forHeaderHash: typeMetaHashFromHeader(addressHeader)) == nil)
+}
+
+@Test
+func cachedMetaChecksConcreteOwner() throws {
+    let config = Config(compatible: true)
+    let resolver = TypeResolver(config: config)
+    try resolver.register(Person.self, id: 901)
+    try resolver.register(Address.self, id: 902)
+    try resolver.finishRegistration()
+    let remote = try TypeMeta(
+        typeID: TypeId.compatibleStruct.rawValue,
+        userTypeID: 901,
+        namespace: .empty(specialChar1: ".", specialChar2: "_"),
+        typeName: .empty(specialChar1: "$", specialChar2: "_"),
+        registerByName: false,
+        fields: [
+            TypeMeta.FieldInfo(
+                fieldID: nil,
+                fieldName: "remoteId",
+                fieldType: TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
+            )
+        ]
+    )
+    let encoded = try remote.encode()
+
+    func context() -> ReadContext {
+        let buffer = ByteBuffer()
+        buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.compatibleStruct.rawValue))
+        buffer.writeUInt8(0)
+        buffer.writeBytes(encoded)
+        return ReadContext(buffer: buffer, typeResolver: resolver, config: config)
+    }
+
+    let refBuffer = ByteBuffer()
+    refBuffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.compatibleStruct.rawValue))
+    refBuffer.writeUInt8(0)
+    refBuffer.writeBytes(encoded)
+    refBuffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.compatibleStruct.rawValue))
+    refBuffer.writeUInt8(1)
+    let refContext = ReadContext(buffer: refBuffer, typeResolver: resolver, config: config)
+    _ = try refContext.readTypeInfo(for: Person.self)
+    #expect(throws: (any Error).self) {
+        _ = try refContext.readTypeInfo(for: Address.self)
+    }
+
+    #expect(throws: (any Error).self) {
+        _ = try context().readTypeInfo(for: Address.self)
+    }
 }
 
 @Test
@@ -929,7 +973,7 @@ func macroStructRoundTrip() throws {
 
 @Test
 func macroClassRefTracking() throws {
-    let fory = Fory(config: .init(trackRef: true, compatible: false))
+    let fory = Fory(config: .init(trackRef: true, compatible: false, maxDepth: 0))
     try fory.register(Node.self, id: 200)
 
     let node = Node(value: 7)
@@ -940,6 +984,44 @@ func macroClassRefTracking() throws {
 
     #expect(decoded.value == 7)
     #expect(decoded.next === decoded)
+}
+
+@Test
+func staticClassDepthResets() throws {
+    let deep = Node(
+        value: 1,
+        next: Node(
+            value: 2,
+            next: Node(value: 3, next: Node(value: 4))
+        )
+    )
+    let shallow = Node(value: 5, next: Node(value: 6))
+    let writer = Fory(config: .init(trackRef: false, compatible: false, maxDepth: 8))
+    try writer.register(Node.self, id: 202)
+    let deepData = try writer.serialize(deep)
+    let shallowData = try writer.serialize(shallow)
+
+    let limited = Fory(config: .init(trackRef: false, compatible: false, maxDepth: 2))
+    try limited.register(Node.self, id: 202)
+    do {
+        let _: Node = try limited.deserialize(deepData)
+        Issue.record("expected maxDepth failure")
+    } catch {
+        #expect(String(describing: error).contains("maxDepth"))
+    }
+
+    let reused: Node = try limited.deserialize(shallowData)
+    #expect(reused.value == 5)
+    #expect(reused.next?.value == 6)
+    #expect(reused.next?.next == nil)
+
+    let boundary = Fory(config: .init(trackRef: false, compatible: false, maxDepth: 3))
+    try boundary.register(Node.self, id: 202)
+    let decoded: Node = try boundary.deserialize(deepData)
+    #expect(decoded.value == 1)
+    #expect(decoded.next?.value == 2)
+    #expect(decoded.next?.next?.value == 3)
+    #expect(decoded.next?.next?.next?.value == 4)
 }
 
 @Test

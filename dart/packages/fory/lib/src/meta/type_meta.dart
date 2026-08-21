@@ -65,6 +65,17 @@ final class TypeHeader {
   const TypeHeader(this.value);
 
   @pragma('vm:prefer-inline')
+  static bool sameHash(Int64 left, Int64 right) {
+    return left.high32Unsigned == right.high32Unsigned &&
+        (left.low32 & _hashLow32Mask) == (right.low32 & _hashLow32Mask);
+  }
+
+  @pragma('vm:prefer-inline')
+  static int hashCodeFor(Int64 header) {
+    return header.high32Unsigned ^ (header.low32 & _hashLow32Mask);
+  }
+
+  @pragma('vm:prefer-inline')
   void validateGlobal() {
     if ((value.low32 & _reservedMetaFlags) != 0) {
       throw StateError('Invalid TypeDef global header.');
@@ -95,7 +106,9 @@ final class TypeHeader {
 
   @pragma('vm:prefer-inline')
   static void skipBody(Buffer buffer, Int64 header) {
-    buffer.skip(readMetaSizeFromHeader(buffer, header));
+    final metaSize = readMetaSizeFromHeader(buffer, header);
+    buffer.checkReadableBytes(metaSize);
+    buffer.skip(metaSize);
   }
 
   @pragma('vm:prefer-inline')
@@ -113,7 +126,10 @@ final class TypeHeader {
 
 final class ParsedTypeMetaCache {
   final LinkedHashMap<Int64, TypeInfo> _entries =
-      LinkedHashMap<Int64, TypeInfo>();
+      LinkedHashMap<Int64, TypeInfo>(
+        equals: TypeHeader.sameHash,
+        hashCode: TypeHeader.hashCodeFor,
+      );
   TypeInfo? _cachedTypeInfo;
 
   @pragma('vm:prefer-inline')
@@ -122,7 +138,8 @@ final class ParsedTypeMetaCache {
     // on that metadata object; do not add parallel header slots, sentinel
     // fields, accepted-header state, or body/hash/schema checks to this path.
     final cached = _cachedTypeInfo;
-    if (cached != null && cached.cachedTypeDefHeader == header.value) {
+    if (cached != null &&
+        TypeHeader.sameHash(cached.cachedTypeDefHeader, header.value)) {
       return cached;
     }
     final resolved = _entries[header.value];
@@ -134,7 +151,7 @@ final class ParsedTypeMetaCache {
 
   @pragma('vm:prefer-inline')
   void remember(TypeHeader header, TypeInfo resolved) {
-    assert(resolved.cachedTypeDefHeader == header.value);
+    assert(TypeHeader.sameHash(resolved.cachedTypeDefHeader, header.value));
     _entries[header.value] = resolved;
     _cachedTypeInfo = resolved;
   }

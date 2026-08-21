@@ -36,6 +36,7 @@ import org.apache.fory.json.codec.GeneratedJsonCodec;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.platform.internal._JDKAccess;
 
 /**
@@ -50,6 +51,8 @@ import org.apache.fory.platform.internal._JDKAccess;
  */
 @Internal
 public final class JsonCreatorInfo {
+  private static final boolean USE_NATIVE_REFLECTION =
+      GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && JdkVersion.MAJOR_VERSION >= 25;
   // The Feature resolves each discovered executable through creatorHandle during analysis, and
   // runtime configurations retrieve the retained handles through the same cache.
   private static final ClassValueCache<ConcurrentMap<Executable, CreatorHandles>> NATIVE_CREATORS =
@@ -681,10 +684,19 @@ public final class JsonCreatorInfo {
   private static MethodHandle buildInvoker(
       Executable executable, int logicalCount, int workspaceSize) {
     if (AndroidSupport.IS_ANDROID) {
-      // Android has no supported trusted MethodHandle lookup. Creator shape validation guarantees
-      // a public executable; accessibility is needed only when its declaring class is non-public.
       executable.setAccessible(true);
       return null;
+    }
+    if (USE_NATIVE_REFLECTION) {
+      try {
+        // Creator shape validation guarantees a public executable; accessibility is needed only
+        // when its declaring class is non-public.
+        executable.setAccessible(true);
+        return null;
+      } catch (RuntimeException inaccessible) {
+        // A named application may keep its model package unexported. Fall through to the trusted
+        // creator handle retained by the Native Image Feature instead of requiring module exports.
+      }
     }
     Class<?>[] parameterTypes = executable.getParameterTypes();
     if (logicalCount == parameterTypes.length && workspaceSize == parameterTypes.length) {

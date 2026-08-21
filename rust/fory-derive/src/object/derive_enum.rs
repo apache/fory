@@ -1205,38 +1205,8 @@ pub fn gen_read_data(
     }
 }
 
-pub fn gen_read_type_info(data_enum: &DataEnum) -> TokenStream {
-    // Only use UNION TypeId for Union-compatible enums (unit or single-field variants)
-    let is_union_compatible = is_union_compatible_enum(data_enum);
-    let has_data_variants = data_enum
-        .variants
-        .iter()
-        .any(|v| !matches!(v.fields, Fields::Unit));
-
-    if is_union_compatible && has_data_variants {
-        // Union-compatible with data: read typed/named union type info in xlang mode
-        quote! {
-            if context.is_xlang() {
-                let expected_type_id = context
-                    .get_type_resolver()
-                    .get_provider_type_info(&::std::any::TypeId::of::<Self>())?
-                    .get_type_id();
-                let type_info = context.read_any_type_info()?;
-                let remote_type_id = type_info.get_type_id();
-                if remote_type_id != expected_type_id {
-                    return Err(fory_core::error::Error::type_mismatch(
-                        expected_type_id as u32,
-                        remote_type_id as u32,
-                    ));
-                }
-                Ok(())
-            } else {
-                fory_core::serializer::enum_::read_type_info::<Self>(context)
-            }
-        }
-    } else {
-        quote! {
-            fory_core::serializer::enum_::read_type_info::<Self>(context)
-        }
+pub fn gen_read_type_info(_: &DataEnum) -> TokenStream {
+    quote! {
+        fory_core::serializer::enum_::read_type_info::<Self>(context)
     }
 }

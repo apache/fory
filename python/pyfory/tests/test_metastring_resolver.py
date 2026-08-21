@@ -129,7 +129,7 @@ def test_read_big_metastring_rejects_noncanonical_hash():
         reader.read_encoded_meta_string(buffer)
 
 
-def test_cached_big_metastring_validates_bytes_before_reuse():
+def test_big_metastring_cache_hit():
     shared_registry = SharedRegistry()
     encoder = MetaStringEncoder("$", "_")
     encoded_meta_string = shared_registry.get_encoded_meta_string(encoder.encode("hello, world" * 10))
@@ -150,12 +150,22 @@ def test_cached_big_metastring_validates_bytes_before_reuse():
     buffer.write_bytes(forged_data)
     buffer.set_reader_index(0)
 
-    with pytest.raises(ValueError, match="Malformed metastring hash"):
-        reader.read_encoded_meta_string(buffer)
+    assert reader.read_encoded_meta_string(buffer) is encoded_meta_string
+    assert buffer.get_reader_index() == buffer.get_writer_index()
+
+    different_length = forged_data + b"x"
+    buffer.set_writer_index(0)
+    buffer.set_reader_index(0)
+    buffer.write_var_uint32(len(different_length) << 1)
+    buffer.write_int64(encoded_meta_string.hashcode)
+    buffer.write_bytes(different_length)
+    buffer.set_reader_index(0)
+    assert reader.read_encoded_meta_string(buffer) is encoded_meta_string
+    assert buffer.get_reader_index() == buffer.get_writer_index()
 
 
 @pytest.mark.skipif(CythonMetaStringReader is None, reason="Cython serialization extension is unavailable")
-def test_cython_cached_big_metastring_validates_bytes_before_reuse():
+def test_cython_big_metastring_hit():
     shared_registry = SharedRegistry()
     encoder = MetaStringEncoder("$", "_")
     encoded_meta_string = shared_registry.get_encoded_meta_string(encoder.encode("hello, world" * 10))
@@ -176,8 +186,18 @@ def test_cython_cached_big_metastring_validates_bytes_before_reuse():
     buffer.write_bytes(forged_data)
     buffer.set_reader_index(0)
 
-    with pytest.raises(ValueError, match="Malformed metastring hash"):
-        reader.read_encoded_meta_string(buffer)
+    assert reader.read_encoded_meta_string(buffer) is encoded_meta_string
+    assert buffer.get_reader_index() == buffer.get_writer_index()
+
+    different_length = forged_data + b"x"
+    buffer.set_writer_index(0)
+    buffer.set_reader_index(0)
+    buffer.write_var_uint32(len(different_length) << 1)
+    buffer.write_int64(encoded_meta_string.hashcode)
+    buffer.write_bytes(different_length)
+    buffer.set_reader_index(0)
+    assert reader.read_encoded_meta_string(buffer) is encoded_meta_string
+    assert buffer.get_reader_index() == buffer.get_writer_index()
 
 
 @pytest.mark.skipif(CythonMetaStringReader is None, reason="Cython serialization extension is unavailable")

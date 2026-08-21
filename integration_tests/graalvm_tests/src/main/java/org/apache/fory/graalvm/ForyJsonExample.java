@@ -86,6 +86,7 @@ public final class ForyJsonExample {
   // Portable lower bound: the 8-byte object base plus one 4-byte int field.
   private static final long GRAPH_BUDGET_VALUE_BYTES = 12;
   private static final int REF_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+  private static final ForyJson DEFAULT_JSON = ForyJson.builder().withConcurrencyLevel(1).build();
 
   private ForyJsonExample() {}
 
@@ -142,12 +143,13 @@ public final class ForyJsonExample {
   private static void testHostedCodegenConfigurations() {
     ForyJson providerJson = newProviderJson();
     ForyJson interpretedJson = newInterpretedJson();
-    exerciseCodegenConfiguration(ForyJson.builder().build(), false);
+    exerciseCodegenConfiguration(DEFAULT_JSON, false);
     exerciseCodegenConfiguration(providerJson, true);
     exerciseCodegenConfiguration(interpretedJson, false);
     testEmptyMixin(providerJson, true);
     testEmptyMixin(interpretedJson, false);
     testInterpretedMetadata(interpretedJson);
+    testPrimitiveProperties(interpretedJson);
     testIndependentChildCodegen();
     testExternalModuleMixin();
   }
@@ -206,6 +208,27 @@ public final class ForyJsonExample {
     ValidatedValue validated = json.fromJson("{\"value\":22}", ValidatedValue.class);
     Preconditions.checkArgument(validated.value == 22);
     Preconditions.checkArgument(validated.validatorInvoked());
+  }
+
+  private static void testPrimitiveProperties(ForyJson json) {
+    PrimitiveProperties value = new PrimitiveProperties();
+    value.setBooleanValue(true);
+    value.setByteValue((byte) 12);
+    value.setShortValue((short) 1234);
+    value.setIntValue(123456);
+    value.setLongValue(123456789L);
+    value.setFloatValue(12.5f);
+    value.setDoubleValue(123.25d);
+    value.setCharValue('\u4f60');
+    PrimitiveProperties decoded = json.fromJson(json.toJson(value), PrimitiveProperties.class);
+    Preconditions.checkArgument(decoded.isBooleanValue());
+    Preconditions.checkArgument(decoded.getByteValue() == 12);
+    Preconditions.checkArgument(decoded.getShortValue() == 1234);
+    Preconditions.checkArgument(decoded.getIntValue() == 123456);
+    Preconditions.checkArgument(decoded.getLongValue() == 123456789L);
+    Preconditions.checkArgument(decoded.getFloatValue() == 12.5f);
+    Preconditions.checkArgument(decoded.getDoubleValue() == 123.25d);
+    Preconditions.checkArgument(decoded.getCharValue() == '\u4f60');
   }
 
   private static void exerciseCodegenConfiguration(ForyJson json, boolean generated) {
@@ -757,6 +780,84 @@ public final class ForyJsonExample {
     @JsonAnySetter
     public void putExtra(String key, String value) {
       extra.put(key, value);
+    }
+  }
+
+  @JsonType
+  public static final class PrimitiveProperties {
+    private boolean booleanValue;
+    private byte byteValue;
+    private short shortValue;
+    private int intValue;
+    private long longValue;
+    private float floatValue;
+    private double doubleValue;
+    private char charValue;
+
+    public PrimitiveProperties() {}
+
+    public boolean isBooleanValue() {
+      return booleanValue;
+    }
+
+    public void setBooleanValue(boolean booleanValue) {
+      this.booleanValue = booleanValue;
+    }
+
+    public byte getByteValue() {
+      return byteValue;
+    }
+
+    public void setByteValue(byte byteValue) {
+      this.byteValue = byteValue;
+    }
+
+    public short getShortValue() {
+      return shortValue;
+    }
+
+    public void setShortValue(short shortValue) {
+      this.shortValue = shortValue;
+    }
+
+    public int getIntValue() {
+      return intValue;
+    }
+
+    public void setIntValue(int intValue) {
+      this.intValue = intValue;
+    }
+
+    public long getLongValue() {
+      return longValue;
+    }
+
+    public void setLongValue(long longValue) {
+      this.longValue = longValue;
+    }
+
+    public float getFloatValue() {
+      return floatValue;
+    }
+
+    public void setFloatValue(float floatValue) {
+      this.floatValue = floatValue;
+    }
+
+    public double getDoubleValue() {
+      return doubleValue;
+    }
+
+    public void setDoubleValue(double doubleValue) {
+      this.doubleValue = doubleValue;
+    }
+
+    public char getCharValue() {
+      return charValue;
+    }
+
+    public void setCharValue(char charValue) {
+      this.charValue = charValue;
     }
   }
 

@@ -19,15 +19,17 @@ import Foundation
 
 private let typeMetaSizeMask = 0xFF
 
+@usableFromInline
 @inline(never)
-private func invalidReadDynamicDepth(_ maxDepth: Int) throws -> Never {
+internal func invalidReadDepth(_ maxDepth: Int) throws -> Never {
     throw ForyError.invalidData("configured maxDepth \(maxDepth) is negative")
 }
 
+@usableFromInline
 @inline(never)
-private func readDynamicDepthExceeded(_ depth: Int, maxDepth: Int) throws -> Never {
+internal func readDepthExceeded(_ depth: Int, maxDepth: Int) throws -> Never {
     throw ForyError.invalidData(
-        "dynamic Any nesting depth \(depth) exceeds configured maxDepth \(maxDepth)")
+        "value nesting depth \(depth) exceeds configured maxDepth \(maxDepth)")
 }
 
 public final class ReadContext {
@@ -40,7 +42,8 @@ public final class ReadContext {
     public let refReader: RefReader
     private let compatibleTypeDefTypeInfos = ReusableArray<TypeInfo?>(defaultValue: nil, reserve: 2)
     private let metaStrings = ReusableArray<MetaString?>(defaultValue: nil, reserve: 16)
-    private var dynamicAnyDepth = 0
+    @usableFromInline
+    internal var readDepth = 0
 
     private var typeInfoStack = UInt64Map<TypeInfo>(initialCapacity: 8)
     private var typeInfoScopeStack: [(typeKey: UInt64, previousTypeInfo: TypeInfo?)] = []
@@ -105,22 +108,24 @@ public final class ReadContext {
         throw ForyError.invalidData(message)
     }
 
+    @inlinable
     @inline(__always)
-    func enterDynamicAnyDepth() throws {
+    internal func enterReadDepth() throws {
         if maxDepth < 0 {
-            try invalidReadDynamicDepth(maxDepth)
+            try invalidReadDepth(maxDepth)
         }
-        let nextDepth = dynamicAnyDepth + 1
+        let nextDepth = readDepth + 1
         if nextDepth > maxDepth {
-            try readDynamicDepthExceeded(nextDepth, maxDepth: maxDepth)
+            try readDepthExceeded(nextDepth, maxDepth: maxDepth)
         }
-        dynamicAnyDepth = nextDepth
+        readDepth = nextDepth
     }
 
+    @inlinable
     @inline(__always)
-    func leaveDynamicAnyDepth() {
-        if dynamicAnyDepth > 0 {
-            dynamicAnyDepth -= 1
+    internal func leaveReadDepth() {
+        if readDepth > 0 {
+            readDepth -= 1
         }
     }
 
@@ -318,18 +323,19 @@ public final class ReadContext {
         if !checkClassVersion,
             compatibleTypeDefTypeInfos.isEmpty,
             !localTypeInfo.typeDefHasUserTypeFields,
-            let localTypeDefHeader = localTypeInfo.typeDefHeader
+            let localTypeDefHeaderHash = localTypeInfo.typeDefHeaderHash
         {
             let indexMarker = try buffer.readVarUInt32()
             if indexMarker == 0 {
                 let headerStart = buffer.getCursor()
                 let header = try buffer.readUInt64()
+                let headerHash = typeMetaHashFromHeader(header)
                 var bodySize = Int(header & UInt64(typeMetaSizeMask))
                 if bodySize == typeMetaSizeMask {
                     bodySize += Int(try buffer.readVarUInt32())
                 }
-                if header == localTypeDefHeader {
-                    // The declared local type owns this exact metadata header, so this is a
+                if headerHash == localTypeDefHeaderHash {
+                    // The declared local type owns this protocol-defined 52-bit hash, so this is a
                     // local-schema hit rather than a remote cache publish. Keep it allocation-free:
                     // skip the body, add the local type to the per-read table, and do not parse/hash.
                     // A later value of this same type may refer back to this table index even when
@@ -338,25 +344,24 @@ public final class ReadContext {
                     compatibleTypeDefTypeInfos.push(localTypeInfo)
                     return nil
                 }
-                if let cached = typeResolver.getTypeInfo(forHeader: header) {
+                if let cached = typeResolver.getTypeInfo(forHeaderHash: headerHash) {
                     // Header-cache hits intentionally skip without rehashing. Entries reach this cache only
                     // after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-                    // body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
+                    // body, hash, schema-limit, or local-identity checks here; the miss path owns them.
                     try buffer.skip(bodySize)
                     compatibleTypeDefTypeInfos.push(cached)
-                    return try validateCompatibleTypeInfo(cached, for: localTypeInfo, wireTypeID: wireTypeID)
+                    return try requireCompatibleOwner(cached, for: localTypeInfo)
                 }
                 let cachedTypeInfo = try readTypeInfoBody(
                     start: headerStart,
-                    header: header,
+                    headerHash: headerHash,
                     for: localTypeInfo,
                     wireTypeID: wireTypeID)
                 compatibleTypeDefTypeInfos.push(cachedTypeInfo)
                 if cachedTypeInfo === localTypeInfo {
                     return nil
                 }
-                return try validateCompatibleTypeInfo(
-                    cachedTypeInfo, for: localTypeInfo, wireTypeID: wireTypeID)
+                return cachedTypeInfo
             }
             return try readCompatibleTypeInfo(
                 afterMarker: indexMarker,
@@ -388,20 +393,24 @@ public final class ReadContext {
 
         let typeMetaStart = buffer.getCursor()
         let header = try buffer.readUInt64()
+        let headerHash = typeMetaHashFromHeader(header)
         var bodySize = Int(header & UInt64(typeMetaSizeMask))
         if bodySize == typeMetaSizeMask {
             bodySize += Int(try buffer.readVarUInt32())
         }
-        if let cached = typeResolver.getTypeInfo(forHeader: header) {
+        if let cached = typeResolver.getTypeInfo(forHeaderHash: headerHash) {
             // Header-cache hits intentionally skip without rehashing. Entries reach this cache only
             // after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-            // body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
+            // body, hash, schema-limit, or local-identity checks here; the miss path owns them.
             try buffer.skip(bodySize)
             compatibleTypeDefTypeInfos.push(cached)
             return cached
         }
 
-        let cachedTypeInfo = try readTypeInfoBody(start: typeMetaStart, header: header)
+        let cachedTypeInfo = try readTypeInfoBody(
+            start: typeMetaStart,
+            headerHash: headerHash
+        )
         compatibleTypeDefTypeInfos.push(cachedTypeInfo)
         return cachedTypeInfo
     }
@@ -420,32 +429,39 @@ public final class ReadContext {
             guard let typeInfo = compatibleTypeDefTypeInfos.get(index) else {
                 throw ForyError.invalidData("unknown compatible type definition ref index \(index)")
             }
-            return try validateCompatibleTypeInfo(typeInfo, for: localTypeInfo, wireTypeID: wireTypeID)
+            return try requireCompatibleOwner(typeInfo, for: localTypeInfo)
         }
 
         let typeMetaStart = buffer.getCursor()
         let header = try buffer.readUInt64()
+        let headerHash = typeMetaHashFromHeader(header)
         var bodySize = Int(header & UInt64(typeMetaSizeMask))
         if bodySize == typeMetaSizeMask {
             bodySize += Int(try buffer.readVarUInt32())
         }
-        if let cached = typeResolver.getTypeInfo(forHeader: header) {
+        if headerHash == localTypeInfo.typeDefHeaderHash {
+            // A nonempty per-root TypeDef table still uses the expected local 52-bit identity.
+            // The current frame's low bits own only its body length and bounded skip.
+            try buffer.skip(bodySize)
+            compatibleTypeDefTypeInfos.push(localTypeInfo)
+            return localTypeInfo
+        }
+        if let cached = typeResolver.getTypeInfo(forHeaderHash: headerHash) {
             // Header-cache hits intentionally skip without rehashing. Entries reach this cache only
             // after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-            // body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
+            // body, hash, schema-limit, or local-identity checks here; the miss path owns them.
             try buffer.skip(bodySize)
             compatibleTypeDefTypeInfos.push(cached)
-            return try validateCompatibleTypeInfo(cached, for: localTypeInfo, wireTypeID: wireTypeID)
+            return try requireCompatibleOwner(cached, for: localTypeInfo)
         }
 
         let cachedTypeInfo = try readTypeInfoBody(
             start: typeMetaStart,
-            header: header,
+            headerHash: headerHash,
             for: localTypeInfo,
             wireTypeID: wireTypeID)
         compatibleTypeDefTypeInfos.push(cachedTypeInfo)
-        return try validateCompatibleTypeInfo(
-            cachedTypeInfo, for: localTypeInfo, wireTypeID: wireTypeID)
+        return cachedTypeInfo
     }
 
     @inline(__always)
@@ -456,7 +472,7 @@ public final class ReadContext {
         let buffer = self.buffer
         let compatibleTypeDefTypeInfos = self.compatibleTypeDefTypeInfos
         if compatibleTypeDefTypeInfos.isEmpty,
-            let localTypeDefHeader = localTypeInfo.typeDefHeader
+            let localTypeDefHeaderHash = localTypeInfo.typeDefHeaderHash
         {
             let indexMarker = try buffer.readVarUInt32()
             if indexMarker != 0 {
@@ -467,13 +483,14 @@ public final class ReadContext {
             } else {
                 let headerStart = buffer.getCursor()
                 let header = try buffer.readUInt64()
+                let headerHash = typeMetaHashFromHeader(header)
                 var bodySize = Int(header & UInt64(typeMetaSizeMask))
                 if bodySize == typeMetaSizeMask {
                     bodySize += Int(try buffer.readVarUInt32())
                 }
 
-                if header == localTypeDefHeader {
-                    // The declared local type owns this exact metadata header, so this is a
+                if headerHash == localTypeDefHeaderHash {
+                    // The declared local type owns this protocol-defined 52-bit hash, so this is a
                     // local-schema hit rather than a remote cache publish. Keep it allocation-free:
                     // skip the body, add the local type to the per-read table, and do not parse/hash.
                     try buffer.skip(bodySize)
@@ -481,22 +498,21 @@ public final class ReadContext {
                     return localTypeInfo
                 }
 
-                if let cached = typeResolver.getTypeInfo(forHeader: header) {
+                if let cached = typeResolver.getTypeInfo(forHeaderHash: headerHash) {
                     // Header-cache hits intentionally skip without rehashing. Entries reach this cache only
                     // after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-                    // body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
+                    // body, hash, schema-limit, or local-identity checks here; the miss path owns them.
                     try buffer.skip(bodySize)
                     compatibleTypeDefTypeInfos.push(cached)
-                    return try validateCompatibleTypeInfo(cached, for: localTypeInfo, wireTypeID: wireTypeID)
+                    return try requireCompatibleOwner(cached, for: localTypeInfo)
                 } else {
                     let remoteTypeInfo = try readTypeInfoBody(
                         start: headerStart,
-                        header: header,
+                        headerHash: headerHash,
                         for: localTypeInfo,
                         wireTypeID: wireTypeID)
                     compatibleTypeDefTypeInfos.push(remoteTypeInfo)
-                    return try validateCompatibleTypeInfo(
-                        remoteTypeInfo, for: localTypeInfo, wireTypeID: wireTypeID)
+                    return remoteTypeInfo
                 }
             }
         }
@@ -508,23 +524,17 @@ public final class ReadContext {
     }
 
     @inline(never)
-    private func readTypeInfoBody(start: Int, header: UInt64) throws -> TypeInfo {
+    private func readTypeInfoBody(start: Int, headerHash: UInt64) throws -> TypeInfo {
         buffer.setCursor(start)
         let decoded = try TypeMeta.decode(
             buffer,
             maxTypeFields: config.maxTypeFields,
             maxTypeMetaBytes: config.maxTypeMetaBytes)
-        let typeMetaEnd = buffer.getCursor()
         let localTypeInfo = try typeResolver.requireTypeInfo(for: decoded)
         return try typeResolver.cacheTypeInfo(
             decoded,
-            forHeader: header,
+            forHeaderHash: headerHash,
             localTypeInfo: localTypeInfo,
-            exactLocal: try matchesLocalTypeDefBytes(
-                localTypeInfo: localTypeInfo,
-                typeMeta: decoded,
-                start: start,
-                end: typeMetaEnd),
             config: config
         )
     }
@@ -532,7 +542,7 @@ public final class ReadContext {
     @inline(never)
     private func readTypeInfoBody(
         start: Int,
-        header: UInt64,
+        headerHash: UInt64,
         for localTypeInfo: TypeInfo,
         wireTypeID: TypeId
     ) throws -> TypeInfo {
@@ -541,51 +551,35 @@ public final class ReadContext {
             buffer,
             maxTypeFields: config.maxTypeFields,
             maxTypeMetaBytes: config.maxTypeMetaBytes)
-        let typeMetaEnd = buffer.getCursor()
         try validateCompatibleTypeMeta(decoded, for: localTypeInfo, wireTypeID: wireTypeID)
         // The typed path is owned by the declared local type. After identity validation, the
         // decoded metadata must describe this same TypeInfo; do not resolve another owner here.
         return try typeResolver.cacheTypeInfo(
             decoded,
-            forHeader: header,
+            forHeaderHash: headerHash,
             localTypeInfo: localTypeInfo,
-            exactLocal: try matchesLocalTypeDefBytes(
-                localTypeInfo: localTypeInfo,
-                typeMeta: decoded,
-                start: start,
-                end: typeMetaEnd),
             config: config
         )
     }
 
-    @inline(never)
-    private func matchesLocalTypeDefBytes(
-        localTypeInfo: TypeInfo,
-        typeMeta: TypeMeta,
-        start: Int,
-        end: Int
-    ) throws -> Bool {
-        guard typeMeta.typeID != nil else {
-            return false
+    @inline(__always)
+    private func requireCompatibleOwner(
+        _ remoteTypeInfo: TypeInfo,
+        for localTypeInfo: TypeInfo
+    ) throws -> TypeInfo {
+        // This routes an already checked cache/ref owner; it must never reopen or inspect metadata.
+        // Miss publication permanently binds the concrete target and serializer identities.
+        if remoteTypeInfo.targetTypeID != localTypeInfo.targetTypeID
+            || remoteTypeInfo.serializerTypeID != localTypeInfo.serializerTypeID
+        {
+            throw incompatibleTypeInfoOwner()
         }
-        guard let localTypeDefBytes = localTypeInfo.typeDefBytes,
-            end - start == localTypeDefBytes.count
-        else {
-            return false
-        }
-        return buffer.matchesBytes(start: start, bytes: localTypeDefBytes)
+        return remoteTypeInfo
     }
 
-    private func validateCompatibleTypeInfo(
-        _ remoteTypeInfo: TypeInfo,
-        for localTypeInfo: TypeInfo,
-        wireTypeID: TypeId
-    ) throws -> TypeInfo {
-        guard let remoteTypeMeta = remoteTypeInfo.compatibleTypeMeta else {
-            throw ForyError.invalidData("compatible type metadata is required")
-        }
-        try validateCompatibleTypeMeta(remoteTypeMeta, for: localTypeInfo, wireTypeID: wireTypeID)
-        return remoteTypeInfo
+    @inline(never)
+    private func incompatibleTypeInfoOwner() -> ForyError {
+        ForyError.invalidData("compatible metadata belongs to a different registered type")
     }
 
     @inline(never)
@@ -705,10 +699,10 @@ public final class ReadContext {
     }
 
     func reset() {
-        // Nested dynamic reads release depth only after success. A failure keeps
+        // Nested reads release depth only after success. A failure keeps
         // the active depth until this root-owned cleanup resets the context.
-        if dynamicAnyDepth != 0 {
-            dynamicAnyDepth = 0
+        if readDepth != 0 {
+            readDepth = 0
         }
         refReader.reset()
         if !typeInfoStack.isEmpty {

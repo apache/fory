@@ -259,7 +259,7 @@ func (s *optionalSerializer) Read(ctx *ReadContext, refMode RefMode, readType bo
 		internalTypeID := TypeId(typeID)
 		if IsNamespacedType(internalTypeID) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
 			ctxErr := ctx.Err()
-			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
+			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, s.valueType, ctxErr)
 			if ctxErr.HasError() {
 				return
 			}

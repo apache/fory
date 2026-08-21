@@ -152,23 +152,79 @@ must be explicit.
 
 ## Reading and writing APIs
 
-Fory JSON supports String input/output and UTF-8 byte input/output. It does not currently provide an
-`InputStream` parsing API.
+Fory JSON supports String input/output, UTF-8 byte input/output, and incremental UTF-8 input from
+`ByteBuffer` chunks. It does not currently provide a blocking `InputStream` parsing API.
 
-| Operation            | Runtime type              | Declared `Class`                | Declared `TypeRef`                 |
-| -------------------- | ------------------------- | ------------------------------- | ---------------------------------- |
-| String output        | `toJson(value)`           | `toJson(value, type)`           | `toJson(value, typeRef)`           |
-| UTF-8 bytes          | `toJsonBytes(value)`      | `toJsonBytes(value, type)`      | `toJsonBytes(value, typeRef)`      |
-| UTF-8 `OutputStream` | `writeJsonTo(value, out)` | `writeJsonTo(value, type, out)` | `writeJsonTo(value, typeRef, out)` |
-| String input         | -                         | `fromJson(text, type)`          | `fromJson(text, typeRef)`          |
-| UTF-8 input          | -                         | `fromJson(bytes, type)`         | `fromJson(bytes, typeRef)`         |
+| Operation            | Runtime type              | Declared `Class`                        | Declared `TypeRef`                         |
+| -------------------- | ------------------------- | --------------------------------------- | ------------------------------------------ |
+| String output        | `toJson(value)`           | `toJson(value, type)`                   | `toJson(value, typeRef)`                   |
+| UTF-8 bytes          | `toJsonBytes(value)`      | `toJsonBytes(value, type)`              | `toJsonBytes(value, typeRef)`              |
+| UTF-8 `OutputStream` | `writeJsonTo(value, out)` | `writeJsonTo(value, type, out)`         | `writeJsonTo(value, typeRef, out)`         |
+| String input         | -                         | `fromJson(text, type)`                  | `fromJson(text, typeRef)`                  |
+| UTF-8 input          | -                         | `fromJson(bytes, type)`                 | `fromJson(bytes, typeRef)`                 |
+| UTF-8 byte range     | -                         | `fromJson(bytes, offset, length, type)` | `fromJson(bytes, offset, length, typeRef)` |
 
 Every `fromJson` call consumes exactly one JSON value and rejects trailing non-whitespace content.
+The byte-range overloads parse exactly the requested range and ignore bytes before and after it.
 Returned Strings and byte arrays are detached from internal reusable buffers.
 
 `writeJsonTo` buffers the complete UTF-8 document, performs one `OutputStream.write`, and neither
 flushes nor closes the caller-owned stream. It is an output convenience API, not incremental JSON
 streaming. I/O failures are wrapped in `ForyJsonException`.
+
+### Incremental JSON streams
+
+`JsonStreamDecoder` incrementally decodes either the elements of one top-level JSON array or
+newline-delimited JSON (NDJSON) records. Supply arbitrary UTF-8 `ByteBuffer` chunks and drain each
+chunk before supplying the next one:
+
+```java
+import java.nio.ByteBuffer;
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.JsonStreamDecoder;
+
+ForyJson json = ForyJson.builder().build();
+JsonStreamDecoder<User> decoder =
+    json.newArrayStreamDecoder(User.class, 64 * 1024 * 1024);
+
+for (ByteBuffer chunk : chunks) {
+  while (decoder.decodeNext(chunk)) {
+    User user = decoder.value();
+    consume(user);
+  }
+}
+decoder.finish();
+```
+
+Use `newNdjsonStreamDecoder` for LF- or CRLF-delimited records. A final NDJSON record does not need
+a line ending; `finish()` returns `true` when it decodes that final record:
+
+```java
+JsonStreamDecoder<User> decoder =
+    json.newNdjsonStreamDecoder(User.class, 64 * 1024 * 1024);
+
+for (ByteBuffer chunk : chunks) {
+  while (decoder.decodeNext(chunk)) {
+    consume(decoder.value());
+  }
+}
+if (decoder.finish()) {
+  consume(decoder.value());
+}
+```
+
+Each `decodeNext` call returns at most one value. When it returns `true`, call it again with the same
+buffer if bytes remain; when it returns `false`, that buffer has been consumed to its limit. A
+`true` result with `value() == null` represents JSON `null`.
+
+The decoder advances the supplied buffer's position, but does not retain the buffer or change its
+limit or byte order. Heap, direct, sliced, and read-only buffers are supported. One decoder owns one
+stream, is not thread-safe, and cannot be reused after `finish()` or a failure. The required
+`maxValueBytes` limit applies independently to each array element or NDJSON record rather than to
+the complete stream. For arrays, the limit excludes the outer brackets, commas, and whitespace
+skipped before an element; whitespace after an element and before its comma or closing bracket is
+counted. For NDJSON, every byte other than the LF or CRLF line ending is counted. Whitespace-only
+lines are skipped, but an oversized whitespace-only line still fails the limit.
 
 ### Generic types
 

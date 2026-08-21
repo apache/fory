@@ -109,6 +109,11 @@ impl<S: Serializer> Serializer for OptionSerializer<S> {
     }
 
     #[inline(always)]
+    fn metadata_target_type_id() -> std::any::TypeId {
+        S::metadata_target_type_id()
+    }
+
+    #[inline(always)]
     fn reserved_space() -> usize {
         <RootSerializer<S> as Serializer>::reserved_space()
     }
@@ -219,6 +224,11 @@ where
     #[inline(always)]
     fn static_type_id() -> TypeId {
         OptionSerializer::<T>::static_type_id()
+    }
+
+    #[inline(always)]
+    fn metadata_target_type_id() -> std::any::TypeId {
+        T::metadata_target_type_id()
     }
 
     #[inline(always)]
