@@ -359,7 +359,17 @@ release that changes no schema, then start evolving schemas only once every peer
 evolution-enabled build. Turning the flag on and changing a schema in the same release strands
 any peer that has not yet upgraded.
 
-Cross-language consumers (Python, C++) cannot read evolution-enabled payloads.
+Cross-language consumers (Python, C++) cannot read evolution-enabled payloads today. The hash
+algorithm, wire names, field order, and framing are specified language-neutrally in the
+[row format specification](../specification/row_format_spec.md#schema-evolution) so other runtimes
+can implement them.
+
+Field identity on the wire is the snake_case form of the member name (`createdAt` becomes
+`created_at`), and a versioned layout orders fields by that wire name. For ordinary member names
+this is the same order the generated codecs already use. A member name with a literal underscore
+next to a case boundary makes the two orders diverge (`aB` sorts before `a_a` as a member name,
+but its wire name `a_b` sorts after `a_a`); such a bean is rejected when the codec is built, with
+a message naming the members to rename.
 
 A reader selects the matching layout from the 8-byte strict hash on the payload. The hash includes
 field names and nullability and is checked for collisions across a bean's own versions when the
