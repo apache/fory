@@ -1162,8 +1162,6 @@ impl TypeMeta {
         let mut num_fields = 0usize;
         let type_id;
         let mut user_type_id = NO_USER_TYPE_ID;
-        let namespace;
-        let type_name;
         if is_struct {
             register_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0;
             let compatible = (meta_header & COMPATIBLE_TYPEDEF_FLAG) != 0;
@@ -1190,15 +1188,13 @@ impl TypeMeta {
             type_id = non_struct_type_id(meta_header & 0b1111)?;
             register_by_name = is_named_type_def_kind(type_id);
         }
-        if register_by_name {
-            namespace = Self::read_namespace(reader)?;
-            type_name = Self::read_type_name(reader)?;
+        let (namespace, type_name) = if register_by_name {
+            (Self::read_namespace(reader)?, Self::read_type_name(reader)?)
         } else {
             user_type_id = reader.read_var_u32()?;
             let empty_name = MetaString::default();
-            namespace = empty_name.clone();
-            type_name = empty_name;
-        }
+            (empty_name.clone(), empty_name)
+        };
 
         reader.check_bound(num_fields)?;
         let mut field_infos = Vec::with_capacity(num_fields);
