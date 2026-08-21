@@ -21,6 +21,8 @@ package org.apache.fory.format.type;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import java.lang.reflect.TypeVariable;
 import java.util.Optional;
@@ -101,6 +103,76 @@ public class SchemaHistoryTest {
     assertNotEquals(p10s2, p20s2);
     assertNotEquals(p10s2, p10s4);
     assertNotEquals(p20s2, p10s4);
+  }
+
+  /**
+   * Variable-width binary and fixed-size binary share {@code TYPE_BINARY}, and two fixed-size
+   * binaries of different widths share the ID too, so the strict hash mixes the byte width after
+   * the type ID (0 for variable). Without it an old payload with a resized fixed-binary field would
+   * route to a projection codec with the wrong slot width.
+   */
+  @Test
+  public void binaryWidthDoesNotCollide() {
+    long variable =
+        SchemaHistory.computeStrictSchemaHash(
+            DataTypes.schema(DataTypes.field("a", DataTypes.binary(), false)));
+    long fixed4 =
+        SchemaHistory.computeStrictSchemaHash(
+            DataTypes.schema(DataTypes.field("a", DataTypes.fixedWidthBinary(4), false)));
+    long fixed8 =
+        SchemaHistory.computeStrictSchemaHash(
+            DataTypes.schema(DataTypes.field("a", DataTypes.fixedWidthBinary(8), false)));
+    assertNotEquals(variable, fixed4);
+    assertNotEquals(variable, fixed8);
+    assertNotEquals(fixed4, fixed8);
+    assertEquals(
+        fixed4,
+        SchemaHistory.computeStrictSchemaHash(
+            DataTypes.schema(DataTypes.field("a", DataTypes.fixedWidthBinary(4), false))));
+  }
+
+  /**
+   * The canonical cross-language field order is ascending by snake_case wire name, but Java's
+   * generated codecs bake the member-name order. A literal underscore sorting against an uppercase
+   * letter makes the two orders diverge ({@code aB} before {@code a_a} by member name, {@code a_a}
+   * before {@code a_b} by wire name), so the bean cannot be emitted in canonical order and the
+   * build must reject it with rename guidance.
+   */
+  @Test
+  public void divergentWireNameOrderIsRejected() {
+    IllegalStateException e =
+        expectThrows(
+            IllegalStateException.class,
+            () -> SchemaHistory.build(DivergentNameOrder.class, UnaryOperator.identity()));
+    assertTrue(e.getMessage().contains("wire name"), e.getMessage());
+  }
+
+  /**
+   * The same divergence inside a nested bean must also be rejected. Coverage comes from {@code
+   * collectNestedSites}, which builds every reachable bean's history (even a single-version one, to
+   * count its versions), so the nested bean's own enumeration runs the order check.
+   */
+  @Test
+  public void divergentWireNameOrderInNestedBeanIsRejected() {
+    IllegalStateException e =
+        expectThrows(
+            IllegalStateException.class,
+            () -> SchemaHistory.build(DivergentNestedHolder.class, UnaryOperator.identity()));
+    assertTrue(e.getMessage().contains("wire name"), e.getMessage());
+  }
+
+  @lombok.Data
+  public static class DivergentNameOrder {
+    private int aB;
+    private int a_a;
+  }
+
+  @lombok.Data
+  public static class DivergentNestedHolder {
+    private DivergentNameOrder inner;
+
+    @ForyVersion(since = 2)
+    private int count;
   }
 
   /** Identical decimal shapes must still hash equal; the precision/scale mix must not be noisy. */
