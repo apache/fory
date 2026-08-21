@@ -39,6 +39,7 @@ OUTPUTS = {
     "cpp": TEST_DIR / "cpp/generated",
     "csharp": TEST_DIR / "csharp/generated",
     "kotlin": TEST_DIR / "kotlin/src/main/kotlin/generated",
+    "swift": TEST_DIR / "swift/interop/Sources/Generated",
     "dart": TEST_DIR / "dart/lib/generated",
 }
 
@@ -84,6 +85,7 @@ def main() -> int:
                 f"--cpp_out={OUTPUTS['cpp']}",
                 f"--csharp_out={OUTPUTS['csharp']}",
                 f"--kotlin_out={OUTPUTS['kotlin']}",
+                f"--swift_out={OUTPUTS['swift']}",
                 f"--dart_out={OUTPUTS['dart']}",
                 "--grpc",
             ],

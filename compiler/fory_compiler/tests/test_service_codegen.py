@@ -17,28 +17,30 @@
 
 """Codegen smoke tests for schemas that contain service definitions."""
 
-from pathlib import Path
 import re
 import shutil
 import subprocess
+from pathlib import Path
 from textwrap import dedent
-from typing import Dict, Tuple, Type
 
 import pytest
 
 from fory_compiler.cli import (
     cmd_compile,
     compile_file,
-    main as foryc_main,
     parse_args,
     resolve_imports,
     validate_scala_generation,
+    validate_swift_files,
 )
-from fory_compiler.frontend.fdl.lexer import Lexer
-from fory_compiler.frontend.fdl.parser import Parser
+from fory_compiler.cli import (
+    main as foryc_main,
+)
 from fory_compiler.frontend.fbs.lexer import Lexer as FbsLexer
 from fory_compiler.frontend.fbs.parser import Parser as FbsParser
 from fory_compiler.frontend.fbs.translator import FbsTranslator
+from fory_compiler.frontend.fdl.lexer import Lexer
+from fory_compiler.frontend.fdl.parser import Parser
 from fory_compiler.frontend.proto.lexer import Lexer as ProtoLexer
 from fory_compiler.frontend.proto.parser import Parser as ProtoParser
 from fory_compiler.frontend.proto.translator import ProtoTranslator
@@ -57,8 +59,7 @@ from fory_compiler.generators.swift import SwiftGenerator
 from fory_compiler.ir.ast import Schema
 from fory_compiler.ir.validator import SchemaValidator
 
-
-GENERATOR_CLASSES: Tuple[Type[BaseGenerator], ...] = (
+GENERATOR_CLASSES: tuple[type[BaseGenerator], ...] = (
     JavaGenerator,
     PythonGenerator,
     CppGenerator,
@@ -120,16 +121,16 @@ def parse_fbs(source: str) -> Schema:
 
 
 def generate_files(
-    schema: Schema, generator_cls: Type[BaseGenerator]
-) -> Dict[str, str]:
+    schema: Schema, generator_cls: type[BaseGenerator]
+) -> dict[str, str]:
     options = GeneratorOptions(output_dir=Path("/tmp"))
     generator = generator_cls(schema, options)
     return {item.path: item.content for item in generator.generate()}
 
 
 def generate_service_files(
-    schema: Schema, generator_cls: Type[BaseGenerator]
-) -> Dict[str, str]:
+    schema: Schema, generator_cls: type[BaseGenerator]
+) -> dict[str, str]:
     options = GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
     generator = generator_cls(schema, options)
     return {item.path: item.content for item in generator.generate_services()}
@@ -158,6 +159,7 @@ def test_unsupported_generators_no_services():
             ScalaGenerator,
             KotlinGenerator,
             JavaScriptGenerator,
+            SwiftGenerator,
             DartGenerator,
             CppGenerator,
         ):
@@ -972,6 +974,174 @@ def test_scala_grpc_marshaller():
     assert "org.apache.fory.scala.grpc" not in content
 
 
+def test_swift_grpc_fory_marshaller():
+    schema = parse_fdl(_GREETER_WITH_SERVICE)
+    files = generate_service_files(schema, SwiftGenerator)
+    assert set(files) == {"demo/greeter/GreeterGrpc.swift"}
+    content = files["demo/greeter/GreeterGrpc.swift"]
+    assert (
+        "struct Demo_Greeter_GreeterMessage<Value: Serializer & Sendable>: GRPCPayload"
+        in content
+    )
+    assert "enum ForyRuntime {" in content
+    assert "Thread.current.threadDictionary" in content
+    assert "Demo.Greeter.ForyModule.getFory()" in content
+    assert "enum Demo_Greeter_GreeterMetadata" in content
+    assert 'fullName: "demo.greeter.Greeter"' in content
+    assert (
+        "public protocol Demo_Greeter_GreeterProvider: CallHandlerProvider" in content
+    )
+    assert (
+        "public protocol Demo_Greeter_GreeterAsyncProvider: CallHandlerProvider, Sendable"
+        in content
+    )
+    assert "public struct Demo_Greeter_GreeterAsyncClient: GRPCClient" in content
+    assert "return UnaryServerHandler(" in content
+    assert "func sayHello(" in content
+    # Fory carries the bytes; no protobuf and no Java/C# transliteration.
+    assert "ProtobufSerializer" not in content
+    assert "import SwiftProtobuf" not in content
+    assert "enum GreeterGrpc" not in content
+
+
+def test_swift_grpc_default_package():
+    schema = parse_fdl(
+        dedent(
+            """
+            message Req {}
+            message Res {}
+            service Greeter { rpc SayHello (Req) returns (Res); }
+            """
+        )
+    )
+    files = generate_service_files(schema, SwiftGenerator)
+    assert set(files) == {"GreeterGrpc.swift"}
+    content = files["GreeterGrpc.swift"]
+    assert "enum GreeterMetadata" in content
+    assert "public protocol GreeterProvider: CallHandlerProvider" in content
+    assert "public struct GreeterAsyncClient: GRPCClient" in content
+    assert "ForyModule.getFory()" in content
+    # No package means no name prefix.
+    assert "Demo_" not in content
+
+
+def test_swift_grpc_preflight_collision(tmp_path: Path, capsys):
+    # In flatten style a service provider and a like-named message both land at
+    # file scope, so the preflight must reject the clash.
+    main = tmp_path / "main.fdl"
+    main.write_text(
+        dedent(
+            """
+            package demo.collision;
+
+            message GreeterProvider {}
+            message Req {}
+            message Res {}
+
+            service Greeter {
+                rpc Call (Req) returns (Res);
+            }
+            """
+        )
+    )
+    assert validate_swift_files([main], [tmp_path], "flatten", grpc=True) is False
+    err = capsys.readouterr().err
+    assert "Swift top-level symbol collision" in err
+    assert "Demo_Collision_GreeterProvider" in err
+
+
+def test_swift_grpc_imported_types(tmp_path: Path):
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package demo.shared;
+
+            message SharedRequest { string name = 1; }
+            message SharedReply { string text = 1; }
+            """
+        )
+    )
+    main = tmp_path / "main.fdl"
+    main.write_text(
+        dedent(
+            """
+            package demo.greeter;
+
+            import "common.fdl";
+
+            service Greeter {
+                rpc Call (SharedRequest) returns (SharedReply);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(main, [tmp_path])
+    files = generate_service_files(schema, SwiftGenerator)
+    assert set(files) == {"demo/greeter/GreeterGrpc.swift"}
+    content = files["demo/greeter/GreeterGrpc.swift"]
+    # Imported request and response types are referenced in their own namespace.
+    assert "Demo.Shared.SharedRequest" in content
+    assert "Demo.Shared.SharedReply" in content
+    assert "Demo.Greeter.ForyModule.getFory()" in content
+
+
+@pytest.mark.parametrize(
+    "rpc_name", ["Handle", "ServiceName", "Channel", "DefaultCallOptions"]
+)
+def test_swift_grpc_reserved_member_collision(rpc_name):
+    schema = parse_fdl(
+        dedent(
+            f"""
+            package demo.naming;
+
+            message Req {{}}
+            message Res {{}}
+
+            service Greeter {{ rpc {rpc_name} (Req) returns (Res); }}
+            """
+        )
+    )
+    with pytest.raises(
+        ValueError, match="collides with a generated provider or client member"
+    ):
+        generate_service_files(schema, SwiftGenerator)
+
+
+def test_swift_grpc_nested_and_imported_payloads(tmp_path: Path):
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package demo.shared;
+            message Outer { message Inner { string v = 1; } Inner inner = 1; }
+            """
+        )
+    )
+    main = tmp_path / "main.fdl"
+    main.write_text(
+        dedent(
+            """
+            package demo.api;
+            import "common.fdl";
+            message Local { message Deep { string v = 1; } Deep deep = 1; }
+            service S {
+                rpc Echo (Local) returns (Outer);
+                rpc DeepEcho (Local.Deep) returns (Outer.Inner);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(main, [tmp_path])
+    content = generate_service_files(schema, SwiftGenerator)["demo/api/SGrpc.swift"]
+    # Nested local and imported nested types resolve to their full namespace paths.
+    assert "request: Demo.Api.Local," in content
+    assert "EventLoopFuture<Demo.Shared.Outer>" in content
+    assert "request: Demo.Api.Local.Deep," in content
+    assert "Demo.Shared.Outer.Inner" in content
+    assert "Demo_Api_SMessage<Demo.Api.Local.Deep>" in content
+
+
 def test_grpc_streaming_method_shapes():
     schema = parse_fdl(
         dedent(
@@ -1130,6 +1300,39 @@ def test_grpc_streaming_method_shapes():
     assert "call.request(1)" in scala
     assert "call.sendMessage(request)" in scala
     assert "call.halfClose()" in scala
+
+    swift = next(iter(generate_service_files(schema, SwiftGenerator).values()))
+    assert "type: .unary)" in swift
+    assert "type: .serverStreaming)" in swift
+    assert "type: .clientStreaming)" in swift
+    assert "type: .bidirectionalStreaming)" in swift
+    assert "return UnaryServerHandler(" in swift
+    assert "return ServerStreamingServerHandler(" in swift
+    assert "return ClientStreamingServerHandler(" in swift
+    assert "return BidirectionalStreamingServerHandler(" in swift
+    assert (
+        "func unary(request: Demo.Streams.Req, context: GRPCAsyncServerCallContext)"
+        " async throws -> Demo.Streams.Res" in swift
+    )
+    assert (
+        "responseStream: Demo_Streams_StreamerAsyncResponseStream<Demo.Streams.Res>"
+        in swift
+    )
+    assert (
+        "requestStream: Demo_Streams_StreamerAsyncRequestStream<Demo.Streams.Payload>"
+        in swift
+    )
+    assert (
+        "public func unary(_ request: Demo.Streams.Req) async throws -> Demo.Streams.Res"
+        in swift
+    )
+    assert (
+        "public func server(_ request: Demo.Streams.Req)"
+        " -> Demo_Streams_StreamerResponseStream<Demo.Streams.Res>" in swift
+    )
+    assert "performAsyncClientStreamingCall(" in swift
+    assert "performAsyncBidirectionalStreamingCall(" in swift
+    assert "ProtobufSerializer" not in swift
 
 
 def test_go_grpc_service_codegen():
@@ -1849,6 +2052,12 @@ def test_grpc_method_keywords_safe():
     assert "def `class`(request: Req, responseObserver:" in scala
     assert 'SERVICE_NAME,\n                    "Class"' in scala
 
+    swift = next(iter(generate_service_files(schema, SwiftGenerator).values()))
+    assert "func `class`(request: Demo.Keywords.Req" in swift
+    assert "public func `class`(_ request: Demo.Keywords.Req)" in swift
+    assert 'case "Class":' in swift
+    assert "Demo_Keywords_GreeterMetadata.Methods.`class`" in swift
+
 
 def test_python_grpc_registration_collision():
     schema = parse_fdl(
@@ -1938,13 +2147,16 @@ def test_proto_and_fbs_grpc_service_codegen():
     proto_java = generate_service_files(proto_schema, JavaGenerator)
     proto_python = generate_service_files(proto_schema, PythonGenerator)
     proto_scala = generate_service_files(proto_schema, ScalaGenerator)
+    proto_swift = generate_service_files(proto_schema, SwiftGenerator)
     assert "demo/proto/ProtoSvcGrpc.java" in proto_java
     assert "demo_proto_grpc.py" in proto_python
     assert "demo/proto/ProtoSvcGrpc.scala" in proto_scala
+    assert "demo/proto/ProtoSvcGrpc.swift" in proto_swift
     assert "MethodType.SERVER_STREAMING" in proto_java["demo/proto/ProtoSvcGrpc.java"]
     assert "channel.unary_stream(" in proto_python["demo_proto_grpc.py"]
     assert "MethodType.SERVER_STREAMING" in proto_scala["demo/proto/ProtoSvcGrpc.scala"]
     assert "RpcIterator[Res]" in proto_scala["demo/proto/ProtoSvcGrpc.scala"]
+    assert "type: .serverStreaming)" in proto_swift["demo/proto/ProtoSvcGrpc.swift"]
 
     fbs_schema = parse_fbs(
         dedent(
@@ -1963,9 +2175,12 @@ def test_proto_and_fbs_grpc_service_codegen():
     fbs_java = generate_service_files(fbs_schema, JavaGenerator)
     fbs_python = generate_service_files(fbs_schema, PythonGenerator)
     fbs_scala = generate_service_files(fbs_schema, ScalaGenerator)
+    fbs_swift = generate_service_files(fbs_schema, SwiftGenerator)
     assert "demo/fbs/FbsSvcGrpc.java" in fbs_java
     assert "demo_fbs_grpc.py" in fbs_python
     assert "demo/fbs/FbsSvcGrpc.scala" in fbs_scala
+    assert "demo/fbs/FbsSvcGrpc.swift" in fbs_swift
+    assert 'fullName: "demo.fbs.FbsSvc"' in fbs_swift["demo/fbs/FbsSvcGrpc.swift"]
     assert 'SERVICE_NAME = "demo.fbs.FbsSvc"' in fbs_java["demo/fbs/FbsSvcGrpc.java"]
     assert '"/demo.fbs.FbsSvc/Call"' in fbs_python["demo_fbs_grpc.py"]
     assert (
@@ -2276,6 +2491,24 @@ def test_csharp_grpc_dotnet_fixture(tmp_path: Path):
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_swift_common_root_package_emits_shared_namespace_enum():
+    # Two schemas that share a top-level package component each emit `public enum
+    # Demo`, an invalid redeclaration when compiled into one Swift module. This is a
+    # model-generator limitation, not gRPC specific; gRPC companions inherit it, and
+    # the workaround is disjoint top-level packages. The build-level proof lives in
+    # the Swift toolchain tests under integration_tests/grpc_tests/swift.
+    shared = generate_files(
+        parse_fdl("package demo.shared;\nmessage SharedRequest { string name = 1; }\n"),
+        SwiftGenerator,
+    )
+    greeter = generate_files(
+        parse_fdl("package demo.greeter;\nmessage LocalRequest { string name = 1; }\n"),
+        SwiftGenerator,
+    )
+    assert "public enum Demo {" in next(iter(shared.values()))
+    assert "public enum Demo {" in next(iter(greeter.values()))
 
 
 def test_generated_message_signatures():
@@ -3518,9 +3751,9 @@ def test_dart_grpc_method_aliases(tmp_path: Path):
 
 
 def test_dart_grpc_reserved_methods():
-    from fory_compiler.generators.dart import DartGenerator
-
     import pytest
+
+    from fory_compiler.generators.dart import DartGenerator
 
     for rpc_name, emitted in [("ToString", "toString"), ("HashCode", "hashCode")]:
         schema = parse_fdl(

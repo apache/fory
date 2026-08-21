@@ -30,7 +30,7 @@ does not imply support for every Fory capability.
 | Compact Row Format          | Java                                                                               | Java-only compact layout                                 |
 | Fory JSON                   | Java, Kotlin, Scala                                                                | Standard JSON text                                       |
 | Fory compiler output        | Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin | Generated models use supported Fory APIs                 |
-| Fory gRPC                   | Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Dart, Scala, Kotlin        | Peers must use matching generated Fory service contracts |
+| Fory gRPC                   | Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin | Peers must use matching generated Fory service contracts |
 
 Platform constraints such as [Android](../object-serialization/java/android.md) and
 [GraalVM Native Image](../object-serialization/java/graalvm.md) are documented in the Java Object

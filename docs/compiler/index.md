@@ -23,8 +23,8 @@ Fory IDL is a schema definition language for Apache Fory that enables type-safe
 cross-language serialization. Define your data structures once and generate
 native data structure code for Java, Python, C++, Go, Rust,
 JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Fory IDL can also
-describe RPC services; for Java, Python, Go, Rust, C++, C#, Dart, Scala, Kotlin,
-and JavaScript, the compiler can generate gRPC service companions that use
+describe RPC services; for Java, Python, Go, Rust, C++, C#, Swift, Dart, Scala,
+Kotlin, and JavaScript, the compiler can generate gRPC service companions that use
 Fory serialization for request and response payloads.
 
 ## Example Schema
@@ -88,11 +88,11 @@ service AnimalService {
 }
 ```
 
-Generate Java, Python, Go, Rust, C++, C#, Dart, Scala, Kotlin, and JavaScript
-models plus gRPC service companions with:
+Generate Java, Python, Go, Rust, C++, C#, Swift, Dart, Scala, Kotlin, and
+JavaScript models plus gRPC service companions with:
 
 ```bash
-foryc animals.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --cpp_out=./generated/cpp --csharp_out=./generated/csharp --dart_out=./generated/dart --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
+foryc animals.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --cpp_out=./generated/cpp --csharp_out=./generated/csharp --swift_out=./generated/swift --dart_out=./generated/dart --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
 ```
 
 The generated service code uses normal gRPC APIs, but request and response
