@@ -19,25 +19,19 @@
 
 package org.apache.fory.json;
 
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.apache.fory.annotation.Internal;
-import org.apache.fory.json.codegen.JsonCodegenKey;
 import org.apache.fory.json.resolver.CodecRegistry;
 
 /**
  * Build configuration used to create all pooled states of one {@link ForyJson} instance.
  *
  * <p>Scalar settings and the codec registry are snapshotted at construction; the JSON runtime never
- * observes later builder mutation. {@link JsonCodegenKey} identifies only settings that can change
- * generated source; runtime-only settings such as depth, graph memory, and asynchronous scheduling
- * do not fragment generated class names. Concurrency, per-reader field-name cache, and retained
- * writer-buffer limits are also runtime-only and do not fragment generated class names.
+ * observes later builder mutation.
  */
 public final class JsonConfig {
   private static final int MAX_CACHED_FIELD_NAMES = 1 << 29;
@@ -59,7 +53,6 @@ public final class JsonConfig {
   private final String[] codecFactoryIdentities;
   private final JsonTypeChecker typeChecker;
   private final JsonTypeCheckContext typeCheckContext;
-  private final JsonCodegenKey codegenKey;
 
   JsonConfig(
       boolean writeNullFields,
@@ -76,7 +69,6 @@ public final class JsonConfig {
       CodecRegistry codecRegistry,
       Map<Class<?>, Class<?>> mixins,
       JsonCodecFactory[] codecFactories,
-      List<String> moduleIdentities,
       List<String> factoryIdentities,
       JsonTypeChecker typeChecker) {
     this.writeNullFields = writeNullFields;
@@ -99,17 +91,6 @@ public final class JsonConfig {
     this.codecFactoryIdentities = factoryIdentities.toArray(new String[0]);
     this.typeChecker = typeChecker;
     typeCheckContext = new JsonTypeCheckContext();
-    String codecRegistryKey =
-        this.codecRegistry.codegenKey()
-            + identityKey("module", moduleIdentities)
-            + identityKey("factory", factoryIdentities);
-    codegenKey =
-        new JsonCodegenKey(
-            writeNullFields,
-            propertyDiscoveryEnabled,
-            propertyNamingStrategy,
-            codecRegistryKey,
-            mixinKey(this.mixins));
   }
 
   public boolean writeNullFields() {
@@ -207,45 +188,5 @@ public final class JsonConfig {
       return Collections.emptyMap();
     }
     return Collections.unmodifiableMap(new IdentityHashMap<>(registrations));
-  }
-
-  private static String mixinKey(Map<Class<?>, Class<?>> mixins) {
-    if (mixins.isEmpty()) {
-      return "";
-    }
-    List<Map.Entry<Class<?>, Class<?>>> entries = new ArrayList<>(mixins.entrySet());
-    entries.sort(
-        Comparator.comparing((Map.Entry<Class<?>, Class<?>> entry) -> entry.getKey().getName())
-            .thenComparing(entry -> entry.getValue().getName()));
-    StringBuilder builder = new StringBuilder(entries.size() * 64);
-    for (Map.Entry<Class<?>, Class<?>> entry : entries) {
-      appendIdentity(builder, entry.getKey().getName());
-      appendIdentity(builder, entry.getValue().getName());
-    }
-    return builder.toString();
-  }
-
-  private static String identityKey(String kind, List<String> identities) {
-    if (identities.isEmpty()) {
-      return "";
-    }
-    ArrayList<String> sorted = new ArrayList<>(identities);
-    sorted.sort(String::compareTo);
-    StringBuilder builder = new StringBuilder(sorted.size() * 48);
-    for (String identity : sorted) {
-      appendIdentity(builder, kind);
-      appendIdentity(builder, identity);
-    }
-    return builder.toString();
-  }
-
-  private static void appendIdentity(StringBuilder builder, String value) {
-    builder.append(value.length()).append(':').append(value);
-  }
-
-  /** Returns the immutable generated-source identity for this configuration. */
-  @Internal
-  public JsonCodegenKey codegenKey() {
-    return codegenKey;
   }
 }

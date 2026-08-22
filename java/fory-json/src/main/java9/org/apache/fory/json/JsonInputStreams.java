@@ -17,23 +17,16 @@
  * under the License.
  */
 
-package org.apache.fory.json.codec;
+package org.apache.fory.json;
 
-import java.lang.reflect.Method;
-import org.apache.fory.annotation.Internal;
+import java.io.IOException;
+import java.io.InputStream;
 
-/**
- * Exact parent-carrier operations for a semantic leaf which is not transparent to its carrier.
- *
- * <p>Instances supplied by direct exact registration are keyed by implementation class and must
- * therefore expose the same generated operations. A factory which varies these operations must
- * represent that difference in {@code JsonCodecFactory.factoryKey()}.
- */
-@Internal
-public interface DirectUnboxedValueCodec extends UnboxedValueCodec {
-  /** Returns the exact static {@code (JsonReader) -> carrier} generated invocation. */
-  Method readCarrierMethod();
+/** JDK 9 implementation for reading a complete JSON input stream. */
+final class JsonInputStreams {
+  private JsonInputStreams() {}
 
-  /** Returns the exact static {@code (JsonWriter, carrier) -> void} generated invocation. */
-  Method writeCarrierMethod();
+  static byte[] readAllBytes(InputStream input) throws IOException {
+    return input.readAllBytes();
+  }
 }

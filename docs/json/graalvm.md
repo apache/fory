@@ -53,9 +53,11 @@ public class JsonExample {
 ```
 
 This is sufficient for correct native execution. During image construction, Fory JSON retains the
-model metadata and prepares its field, property, creator, record, and `JsonAnySetter` access. At
-runtime, `ForyJson.builder().build()` can therefore use interpreted codecs without application
-reflection configuration, package exports or opens, or build-time initialization.
+model metadata and prepares its field, property, creator, record, and `JsonAnySetter` access. It
+also generates codecs for reachable models under the default configuration. At runtime,
+`ForyJson.builder().build()` uses those generated codecs and falls back to interpreted codecs when
+no matching generated codec is available, without application reflection configuration, package
+exports or opens, or build-time initialization.
 
 An application class configured for build-time initialization may retain a static `ForyJson` in the
 image heap. Set `withConcurrencyLevel` explicitly when the runtime may have a different processor
@@ -69,8 +71,8 @@ it does not create the runtime instance.
 
 ## Generated Codecs
 
-To include generated codecs for a configuration, return that completed configuration from a
-reachable `@ForyJsonProvider`:
+The default configuration is generated automatically. To add generated codecs for a custom
+configuration, return that completed configuration from a reachable `@ForyJsonProvider`:
 
 ```java
 import org.apache.fory.json.ForyJson;
@@ -97,19 +99,19 @@ public final class JsonConfigs {
 The provider class must be public and concrete and have a public no-argument constructor. Provider
 members are public, non-static, zero-argument instance methods whose exact return type is
 `ForyJson`. Inherited superclass methods and public interface default methods are included. A
-provider may return multiple configurations, and multiple providers may be reachable. Equivalent
-configurations are generated once.
+provider may return multiple configurations, and multiple providers may be reachable.
 
 Provider objects exist only while the image is built. Prefer a dedicated configuration class with
 instance fields and methods as shown above; no application `native-image.properties` entry is
 needed, and the provider package does not need to be exported or opened to Fory. Static provider
 methods and fields are not supported.
 
-Only configurations returned by a provider receive generated codecs. The default configuration is
-not generated implicitly. If a codegen-enabled `ForyJson` configuration was not included, ordinary
-Java models and complete value codecs use their prepared interpreted codecs, and Fory JSON logs one
-process-wide warning recommending a reachable `@ForyJsonProvider`. Language-module object models
-that require hosted capabilities fail before reading or writing a value. `withCodegen(false)`
+Default-configuration codecs remain available when providers are present, and every reachable
+provider adds codecs for its configuration. A codegen-enabled runtime uses an interpreted codec
+whenever no matching generated codec is available. Reflection metadata remains available in either
+case.
+
+`withCodegen(false)`
 explicitly selects interpreted codecs and does not request generated-codec lookup. Asynchronous
 compilation is disabled in a native executable.
 
@@ -131,14 +133,14 @@ class JsonConfigs {
 
 Annotate each reachable concrete Kotlin model with `@JsonType`, or register an exact reachable
 Mixin for a third-party target. Fory reads and validates Kotlin metadata while building the image,
-then generates the provider-selected codecs. A provider configuration with disabled code
-generation or an unsupported metadata ABI fails image construction. A Kotlin-enabled runtime
-configuration that was not returned by a provider fails before it reads or writes a Kotlin object;
-it never falls back to reflective construction.
+then generates codecs for each reachable Kotlin-enabled provider configuration. A provider
+configuration with disabled code generation or an unsupported metadata ABI fails image
+construction. A Kotlin-enabled runtime configuration with no matching generated codec uses its
+prepared interpreted codec.
 
 An exact generic Kotlin root is available only when its complete binding is reached through a
-property, constructor argument, container/map child, or closed subtype of a provider-selected
-concrete root. Keep using `jsonTypeRef<T>()` at the direct root call; no public root registry or
+property, constructor argument, container/map child, or closed subtype of a reachable concrete
+root. Keep using `jsonTypeRef<T>()` at the direct root call; no public root registry or
 reflection configuration is needed.
 
 ## Mixins

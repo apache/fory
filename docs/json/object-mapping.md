@@ -215,7 +215,7 @@ original key type. Null map keys are rejected.
 | `withMaxCachedFieldNames(int)`         | `DEFAULT_MAX_CACHED_FIELD_NAMES` (`8192`) | Field-name cache entries per reader; zero disables caching |
 | `withConcurrencyLevel(int)`            | `max(1, 2 * processors)`                  | Maximum concurrent root operations                         |
 | `withBufferSizeLimitBytes(int)`        | 2 MiB                                     | Maximum reusable capacity retained by each pooled writer   |
-| `registerCodec(type, codec)`           | None                                      | Replace the exact class's complete JSON codec              |
+| `registerCodec(type, codec)`           | None                                      | Replace an eligible exact class's complete JSON codec      |
 | `registerMixin(mixinType)`             | None                                      | Apply one annotation Mixin to its exact declared target    |
 
 Concurrency-level and buffer-retention limits must be positive. The cached-field-name limit
@@ -229,7 +229,7 @@ see [Fory JSON Security](security.md).
 Builder mutation after `build()` does not modify an existing `ForyJson` instance.
 
 On Android, runtime code generation and asynchronous compilation are disabled. In a GraalVM native
-image, runtime compilation is unavailable; configurations returned by a reachable
-`ForyJsonProvider` use codecs generated while the image is built, and other configurations use
-interpreted codecs with build-time-prepared access metadata. Every other builder option keeps the
-behavior described above.
+image, runtime compilation is unavailable. Fory JSON generates codecs for reachable models with the
+default configuration and each reachable `ForyJsonProvider` configuration. A model without a
+matching generated codec uses an interpreted codec. Every other builder option keeps the behavior
+described above.

@@ -69,6 +69,8 @@ concurrent operations and must be thread-safe.
 
 Codec implementations and `JsonCodecFactory` behavior are documented in
 [Custom Codecs](custom-codecs.md). Modules only package those registrations for installation.
+Exact module registrations reject the same dedicated scalar and array types listed there; use an
+occurrence annotation or semantic mapping for those representations.
 
 Application registrations made directly on `ForyJsonBuilder` take precedence over module exact
 registrations. Conflicting module registrations fail during `build()` instead of depending on
@@ -91,12 +93,11 @@ precedence. See [Kotlin](kotlin.md) for type tokens and optional Android minific
 
 ## Module Identity
 
-`moduleKey()` identifies the module configuration for generated-code reuse and conflict checking.
-The default key is the module class name and is sufficient for a configuration-free module.
+`moduleKey()` identifies the module configuration for installation conflict checking. The default
+key is the module class name and is sufficient for a configuration-free module.
 
-A configurable module must return a deterministic key that includes every option affecting codec
-selection or generated code. Do not include secrets, mutable process state, or values unrelated to
-the installed JSON behavior.
+A configurable module must return a deterministic key that includes every option affecting its
+installed JSON behavior. Do not include secrets, mutable process state, or unrelated values.
 
 ```java
 public final class ConfiguredJsonModule implements ForyJsonModule {

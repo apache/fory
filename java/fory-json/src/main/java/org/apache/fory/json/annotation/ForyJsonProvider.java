@@ -32,11 +32,10 @@ import org.apache.fory.json.ForyJson;
  * <p>Annotate a reachable public concrete class with a public no-argument constructor. Every
  * effective public, non-static, zero-argument instance method whose exact return type is {@link
  * ForyJson} is invoked once while the native image is built. This includes inherited superclass
- * methods and public interface default methods. The returned configurations select the generated
- * object codecs included in the image. Configurations not returned by a provider continue to use
- * interpreted codecs for ordinary Java models and complete value codecs; language-module object
- * models require a returned generated configuration. The provider package does not need to be
- * exported or opened to Fory.
+ * methods and public interface default methods. Fory JSON always generates reachable models for the
+ * default configuration, then adds generated codecs for every returned configuration. Models
+ * without a matching generated codec use the interpreted codec. The provider package does not need
+ * to be exported or opened to Fory.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

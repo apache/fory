@@ -37,12 +37,23 @@ public interface JsonCodecFactory {
    */
   JsonValueCodec<?> create(TypeRef<?> type, JsonTypeResolver resolver, boolean runtimeType);
 
-  /** Returns the deterministic semantic identity of this factory configuration. */
+  /**
+   * Returns the deterministic semantic identity of this factory configuration.
+   *
+   * <p>A configurable factory must override this method and include every option that can change
+   * the created codec class, object model, or generated operations. The default class name is
+   * sufficient only for a configuration-free factory.
+   */
   default String factoryKey() {
     return getClass().getName();
   }
 
-  /** Returns runtime classes represented by an exact closed root codec. */
+  /**
+   * Returns runtime classes represented by an exact closed root codec.
+   *
+   * <p>Dedicated reader/writer scalar types, {@code byte[]}, {@code String[]}, and {@code long[]}
+   * are not allowed.
+   */
   @Internal
   default List<Class<?>> handledRuntimeClasses() {
     return Collections.emptyList();

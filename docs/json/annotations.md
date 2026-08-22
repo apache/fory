@@ -41,8 +41,9 @@ construction operations. In Android builds that use R8 or ProGuard, Kotlin KSP e
 retention rules for Kotlin `@JsonType` models. It also processes an exact Mixin declared in
 application source when either the Mixin or its exact target is Kotlin. KSP does not generate codecs
 or construction operations. GraalVM Native Image discovers reachable Java and Kotlin `JsonType`
-declarations directly, and provider-selected configurations generate codecs while the image is
-built. See the [GraalVM guide](graalvm.md) and [Android guide](android.md) for the platform workflows.
+declarations directly. It generates codecs with the default configuration and each reachable
+provider configuration; models without a matching generated codec use interpreted codecs. See the
+[GraalVM guide](graalvm.md) and [Android guide](android.md) for the platform workflows.
 
 ## Kotlin use-site targets
 

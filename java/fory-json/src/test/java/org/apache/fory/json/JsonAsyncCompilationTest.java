@@ -648,9 +648,10 @@ public class JsonAsyncCompilationTest {
       resolver.unlockJIT();
     }
     controlled.executor.runAll();
-    assertNotSame(
-        resolver.getTypeInfo(GenericAsyncBox.class, GenericAsyncBox.class).utf8Reader(),
-        parameterized.utf8Reader());
+    Object rawReader =
+        resolver.getTypeInfo(GenericAsyncBox.class, GenericAsyncBox.class).utf8Reader();
+    assertNotSame(rawReader, parameterized.utf8Reader());
+    assertNotSame(rawReader.getClass(), parameterized.utf8Reader().getClass());
 
     JsonValueCodec<AsyncChild> codec = nullCodec();
     CodecRegistry codecs = new CodecRegistry();
@@ -669,7 +670,7 @@ public class JsonAsyncCompilationTest {
   }
 
   @Test
-  public void sourceShapeIgnoresPublicationOrder() {
+  public void generatedFieldsIgnorePublicationOrder() {
     ForyJson parentFirstJson = ForyJson.builder().withAsyncCompilation(false).build();
     JsonTypeResolver parentFirstResolver = currentTypeResolver(parentFirstJson);
     ObjectCodec<AsyncParent> parentFirstOwner =
@@ -1329,7 +1330,6 @@ public class JsonAsyncCompilationTest {
             codecs,
             Collections.<Class<?>, Class<?>>emptyMap(),
             new JsonCodecFactory[0],
-            Collections.<String>emptyList(),
             Collections.<String>emptyList(),
             null);
     ControlledExecutor executor = new ControlledExecutor();

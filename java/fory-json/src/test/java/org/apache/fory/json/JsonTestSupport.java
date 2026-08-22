@@ -19,6 +19,9 @@
 
 package org.apache.fory.json;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collections;
@@ -37,7 +40,6 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.StringSerializer;
 
 final class JsonTestSupport {
-  private static final String GENERATED_CODEC_SUFFIX = "ForyJsonCodec";
   private static final JsonConfig CONFIG =
       new JsonConfig(
           false,
@@ -54,7 +56,6 @@ final class JsonTestSupport {
           new CodecRegistry(),
           Collections.<Class<?>, Class<?>>emptyMap(),
           new JsonCodecFactory[0],
-          Collections.<String>emptyList(),
           Collections.<String>emptyList(),
           null);
   private static final JsonSharedRegistry REGISTRY = new JsonSharedRegistry(CONFIG);
@@ -210,24 +211,50 @@ final class JsonTestSupport {
     return codec.getClass();
   }
 
-  static String generatedCodecIdentity(Class<?> generatedClass) {
-    String simpleName = generatedClass.getSimpleName();
-    int suffixStart = simpleName.lastIndexOf(GENERATED_CODEC_SUFFIX + "_");
-    if (suffixStart < 0) {
-      throw new AssertionError("Unexpected generated class " + generatedClass.getName());
-    }
-    String identity = simpleName.substring(suffixStart + GENERATED_CODEC_SUFFIX.length() + 1);
-    if (!identity.matches("[0-9a-f]{64}")) {
-      throw new AssertionError("Unexpected generated class " + generatedClass.getName());
-    }
-    return identity;
-  }
-
   static String stringReaderPath(String input) {
     return StringSerializer.isBytesBackedString()
             && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(input))
         ? "latin1"
         : "utf16";
+  }
+
+  static Class<?> shadowClass(Class<?> type) throws ClassNotFoundException, IOException {
+    String name = type.getName();
+    byte[] bytes = classBytes(type);
+    ClassLoader loader =
+        new ClassLoader(type.getClassLoader()) {
+          @Override
+          protected Class<?> loadClass(String className, boolean resolve)
+              throws ClassNotFoundException {
+            synchronized (getClassLoadingLock(className)) {
+              if (!name.equals(className)) {
+                return super.loadClass(className, resolve);
+              }
+              Class<?> loaded = findLoadedClass(className);
+              if (loaded == null) {
+                loaded = defineClass(className, bytes, 0, bytes.length);
+              }
+              if (resolve) {
+                resolveClass(loaded);
+              }
+              return loaded;
+            }
+          }
+        };
+    return loader.loadClass(name);
+  }
+
+  private static byte[] classBytes(Class<?> type) throws IOException {
+    String resource = "/" + type.getName().replace('.', '/') + ".class";
+    try (InputStream input = type.getResourceAsStream(resource);
+        ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+      byte[] buffer = new byte[1024];
+      int read;
+      while ((read = input.read(buffer)) >= 0) {
+        output.write(buffer, 0, read);
+      }
+      return output.toByteArray();
+    }
   }
 
   static int pooledStateCount(ForyJson json) {

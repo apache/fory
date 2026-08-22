@@ -25,7 +25,7 @@ public interface ForyJsonModule {
    * Returns the deterministic semantic identity of this module configuration.
    *
    * <p>A configurable module must override this method and include every setting that can change
-   * codec selection or generated source. The key must not contain secrets or process-local state.
+   * its installed JSON behavior. The key must not contain secrets or process-local state.
    */
   default String moduleKey() {
     return getClass().getName();

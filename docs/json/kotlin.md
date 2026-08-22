@@ -341,9 +341,10 @@ See [Security](security.md) before decoding untrusted input.
 On GraalVM Native Image, use the existing `@ForyJsonProvider` workflow, install
 `ForyJsonKotlin`, and enable code generation in the returned configuration. Annotate each reachable
 concrete Kotlin model with `@JsonType`, or register an exact reachable Mixin for a third-party
-target. Fory reads the Kotlin metadata and prepares generated codecs while building the image.
-Only exact generic bindings reachable through provider-selected concrete roots are available. Do
-not add reflection configuration or package-wide opens.
+target. Fory reads the Kotlin metadata and adds generated codecs for each reachable Kotlin-enabled
+provider configuration while building the image. A model without a matching generated codec uses
+the interpreted codec. Only exact generic bindings reached through concrete roots are available.
+Do not add reflection configuration or package-wide opens.
 
 On Android, use API 26 or later. The runtime reads Kotlin metadata in both debug and release builds,
 and runtime JSON code generation remains disabled. Follow the [installation](#installation) above

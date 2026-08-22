@@ -72,6 +72,7 @@ public final class ForyJsonGraalVMFeatureJarVerifier {
           + "org.apache.fory.util.function.ToCharFunction,"
           + "org.apache.fory.util.function.ToFloatFunction,"
           + "org.apache.fory.util.function.ToShortFunction,"
+          + "org.apache.fory.util.ClassLoaderUtils$ComposedClassLoader,"
           + "org.apache.fory.json.codegen,"
           + "org.apache.fory.json.codec,"
           + "org.apache.fory.json.meta,"

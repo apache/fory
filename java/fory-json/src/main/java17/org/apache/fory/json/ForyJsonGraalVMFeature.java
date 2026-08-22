@@ -64,7 +64,7 @@ import org.apache.fory.json.codec.Base64ByteArrayCodec;
 import org.apache.fory.json.codec.JsonUnwrappedInfo;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
-import org.apache.fory.json.codegen.JsonCodegenKey;
+import org.apache.fory.json.codegen.JsonCodegen;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldInfo;
@@ -83,7 +83,7 @@ import org.apache.fory.util.record.RecordUtils;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
 
-/** Prepares reachable Fory JSON models and provider-selected codecs for Native Image. */
+/** Prepares reachable Fory JSON models and exact generated codecs for Native Image. */
 final class ForyJsonGraalVMFeature implements Feature {
   private static final String SCALA_DERIVED_CODEC_METHOD = "derived$ScalaJsonCodec";
   private static final String SCALA_JSON_CODEC_CLASS = "org.apache.fory.json.scala.ScalaJsonCodec";
@@ -114,10 +114,7 @@ final class ForyJsonGraalVMFeature implements Feature {
   private final Set<Executable> processedCreators = new LinkedHashSet<>();
   private final Set<ObjectCodec<?>> processedObjectModels =
       Collections.newSetFromMap(new IdentityHashMap<>());
-  // JsonCodegenKey stays loader-free so runtime configurations can reproduce it. Hosted resolvers
-  // remain loader-specific, while JsonGeneratedClassRegistry merges their generated capabilities.
-  private final Map<JsonCodegenKey, ArrayList<HostedConfiguration>> hostedConfigurations =
-      new LinkedHashMap<>();
+  private final ArrayList<HostedConfiguration> hostedConfigurations = new ArrayList<>();
 
   @Override
   public String getDescription() {
@@ -159,6 +156,8 @@ final class ForyJsonGraalVMFeature implements Feature {
         }
         if (type == ForyJson.class) {
           registerBuiltInTypes(access);
+          hostedConfigurations.add(
+              new HostedConfiguration(ForyJson.builder().buildConfig()));
           changed = true;
         }
       }
@@ -244,25 +243,9 @@ final class ForyJsonGraalVMFeature implements Feature {
         throw providerFailure(
             providerClass, "provider method returned a codegen-disabled ForyJson: " + method, null);
       }
-      JsonCodegenKey key = config.codegenKey();
-      ArrayList<HostedConfiguration> configurations = hostedConfigurations.get(key);
-      if (configurations == null) {
-        configurations = new ArrayList<>();
-        hostedConfigurations.put(key, configurations);
-      }
-      ClassLoader classLoader = config.classLoader();
-      HostedConfiguration configuration = null;
-      for (HostedConfiguration candidate : configurations) {
-        if (candidate.classLoader == classLoader) {
-          configuration = candidate;
-          break;
-        }
-      }
-      if (configuration == null) {
-        configuration = new HostedConfiguration(config);
-        configurations.add(configuration);
-        changed = true;
-      }
+      HostedConfiguration configuration = new HostedConfiguration(config);
+      hostedConfigurations.add(configuration);
+      changed = true;
       ArrayList<Map.Entry<Class<?>, FactoryBinding>> bindings =
           new ArrayList<>(config.codecRegistry().factoryBindings().entrySet());
       bindings.sort(Comparator.comparing(entry -> entry.getKey().getName()));
@@ -344,48 +327,48 @@ final class ForyJsonGraalVMFeature implements Feature {
 
   private boolean generateConfigurations(DuringAnalysisAccess access) {
     boolean changed = false;
-    for (Map.Entry<JsonCodegenKey, ArrayList<HostedConfiguration>> entry :
-        hostedConfigurations.entrySet()) {
-      for (HostedConfiguration configuration : entry.getValue()) {
-        LinkedHashSet<Class<?>> selectedModels = new LinkedHashSet<>(processedModels);
-        selectedModels.addAll(configuration.factoryModels);
-        if (configuration.scalaJsonCodecs) {
-          selectedModels.addAll(scalaDerivedModels);
+    for (HostedConfiguration configuration : hostedConfigurations) {
+      LinkedHashSet<Class<?>> selectedModels = new LinkedHashSet<>(processedModels);
+      selectedModels.addAll(configuration.factoryModels);
+      if (configuration.scalaJsonCodecs) {
+        selectedModels.addAll(scalaDerivedModels);
+      }
+      for (Map.Entry<Class<?>, Set<Class<?>>> mixin : reachableMixins.entrySet()) {
+        if (mixin.getValue().contains(configuration.mixins.get(mixin.getKey()))) {
+          selectedModels.add(mixin.getKey());
         }
-        for (Map.Entry<Class<?>, Set<Class<?>>> mixin : reachableMixins.entrySet()) {
-          if (mixin.getValue().contains(configuration.mixins.get(mixin.getKey()))) {
-            selectedModels.add(mixin.getKey());
-          }
+      }
+      ArrayList<Class<?>> models = new ArrayList<>(selectedModels);
+      models.sort(Comparator.comparing(Class::getName));
+      boolean generated = false;
+      for (Class<?> model : models) {
+        // A raw generic Class is not a schema. Hosted capabilities are generated only when a
+        // concrete TypeRef occurrence is reached from a selected non-generic root; eagerly
+        // resolving the raw class would also make unreached bindings available in the image.
+        if (model.getTypeParameters().length != 0) {
+          continue;
         }
-        ArrayList<Class<?>> models = new ArrayList<>(selectedModels);
-        models.sort(Comparator.comparing(Class::getName));
-        for (Class<?> model : models) {
-          // A raw generic Class is not a schema. Hosted capabilities are generated only when a
-          // concrete TypeRef occurrence is reached from a selected non-generic root; eagerly
-          // resolving the raw class would also make unreached bindings available in the image.
-          if (model.getTypeParameters().length != 0) {
-            continue;
-          }
-          if (!configuration.processedModels.add(model)) {
-            continue;
-          }
-          List<ObjectCodec<?>> objectModels;
-          try {
-            objectModels = configuration.resolver.generateHostedCodecs(model);
-          } catch (RuntimeException | LinkageError e) {
-            throw new IllegalStateException(
-                "Cannot generate Fory JSON codecs for " + model.getName(), e);
-          }
-          objectModels.sort(Comparator.comparing(codec -> codec.type().getName()));
-          for (ObjectCodec<?> objectModel : objectModels) {
-            registerObjectModel(access, objectModel);
-          }
-          Set<Class<?>> generatedClasses =
-              JsonGeneratedClassRegistry.register(entry.getKey(), configuration.registry);
-          for (Class<?> generatedClass : generatedClasses) {
-            registerGeneratedClass(generatedClass);
-          }
-          changed = true;
+        if (!configuration.processedModels.add(model)) {
+          continue;
+        }
+        List<ObjectCodec<?>> objectModels;
+        try {
+          objectModels = configuration.resolver.generateHostedCodecs(model);
+        } catch (RuntimeException | LinkageError e) {
+          throw new IllegalStateException(
+              "Cannot generate Fory JSON codecs for " + model.getName(), e);
+        }
+        objectModels.sort(Comparator.comparing(codec -> codec.type().getName()));
+        for (ObjectCodec<?> objectModel : objectModels) {
+          registerObjectModel(access, objectModel);
+        }
+        generated = true;
+        changed = true;
+      }
+      if (generated) {
+        Set<Class<?>> generatedClasses = JsonGeneratedClassRegistry.register(configuration.registry);
+        for (Class<?> generatedClass : generatedClasses) {
+          registerGeneratedClass(generatedClass);
         }
       }
     }
@@ -662,6 +645,7 @@ final class ForyJsonGraalVMFeature implements Feature {
   @Override
   public void afterAnalysis(AfterAnalysisAccess access) {
     JsonGeneratedClassRegistry.freeze();
+    JsonCodegen.resetGeneratedClassCache();
   }
 
   private void registerModelHierarchy(DuringAnalysisAccess access, Class<?> type) {
@@ -1108,7 +1092,6 @@ final class ForyJsonGraalVMFeature implements Feature {
   }
 
   private static final class HostedConfiguration {
-    private final ClassLoader classLoader;
     private final JsonSharedRegistry registry;
     private final JsonTypeResolver resolver;
     private final Map<Class<?>, Class<?>> mixins;
@@ -1117,7 +1100,6 @@ final class ForyJsonGraalVMFeature implements Feature {
     private final Set<Class<?>> factoryModels = new LinkedHashSet<>();
 
     private HostedConfiguration(JsonConfig config) {
-      classLoader = config.classLoader();
       registry = JsonSharedRegistry.forHostedCodegen(config);
       resolver = new JsonTypeResolver(registry);
       mixins = config.mixins();

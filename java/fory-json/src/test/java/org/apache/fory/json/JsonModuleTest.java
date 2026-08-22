@@ -125,12 +125,9 @@ public class JsonModuleTest {
         json.fromJson("4294967295".getBytes(StandardCharsets.UTF_8), unsignedInt),
         Integer.valueOf(-1));
 
-    ForyJson application =
-        ForyJson.builder()
-            .withModule(context -> context.registerCodecFactory(factory))
-            .registerCodec(int.class, ScalarCodecs.IntCodec.PRIMITIVE)
-            .build();
-    assertEquals(application.toJson(-1, unsignedInt), "-1");
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> ForyJson.builder().registerCodec(int.class, ScalarCodecs.IntCodec.PRIMITIVE));
   }
 
   @Test

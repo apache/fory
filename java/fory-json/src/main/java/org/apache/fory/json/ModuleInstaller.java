@@ -65,13 +65,10 @@ final class ModuleInstaller implements ModuleContext {
       mergedCodecs.putDefaults(installer.codecs);
       Map<Class<?>, Class<?>> mergedMixins = new IdentityHashMap<>(installer.mixins);
       mergedMixins.putAll(applicationMixins);
-      ArrayList<String> identities = new ArrayList<>(installer.moduleIdentities);
-      identities.sort(String::compareTo);
       return new InstalledModules(
           mergedCodecs,
           mergedMixins,
           installer.factories.toArray(new JsonCodecFactory[0]),
-          Collections.unmodifiableList(identities),
           Collections.unmodifiableList(new ArrayList<>(installer.factoryIdentities)));
     } finally {
       installer.frozen = true;
@@ -158,19 +155,16 @@ final class ModuleInstaller implements ModuleContext {
     final CodecRegistry codecs;
     final Map<Class<?>, Class<?>> mixins;
     final JsonCodecFactory[] factories;
-    final List<String> moduleIdentities;
     final List<String> factoryIdentities;
 
     private InstalledModules(
         CodecRegistry codecs,
         Map<Class<?>, Class<?>> mixins,
         JsonCodecFactory[] factories,
-        List<String> moduleIdentities,
         List<String> factoryIdentities) {
       this.codecs = codecs;
       this.mixins = mixins;
       this.factories = factories;
-      this.moduleIdentities = moduleIdentities;
       this.factoryIdentities = factoryIdentities;
     }
   }

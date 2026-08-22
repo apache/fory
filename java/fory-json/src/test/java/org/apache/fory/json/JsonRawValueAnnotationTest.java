@@ -31,12 +31,6 @@ import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonRawValue;
-import org.apache.fory.json.codec.JsonValueCodec;
-import org.apache.fory.json.reader.Latin1JsonReader;
-import org.apache.fory.json.reader.Utf16JsonReader;
-import org.apache.fory.json.reader.Utf8JsonReader;
-import org.apache.fory.json.writer.StringJsonWriter;
-import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.platform.JdkVersion;
 import org.testng.SkipException;
 import org.testng.annotations.Factory;
@@ -121,17 +115,6 @@ public class JsonRawValueAnnotationTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void rawWriteOverridesTypeCodec() {
-    ForyJson json =
-        newJsonBuilder().registerCodec(String.class, new ReplacingStringCodec()).build();
-    RawFields value = new RawFields();
-    value.first = "{\"id\":1}";
-    assertEquals(json.toJson(value), "{\"first\":{\"id\":1}}");
-    assertEquals(
-        new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"first\":{\"id\":1}}");
-  }
-
-  @Test
   public void rejectInvalidDeclarations() {
     ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.toJson(new NonStringRaw()));
@@ -207,33 +190,6 @@ public class JsonRawValueAnnotationTest extends ForyJsonTestModels {
     @JsonAnyGetter
     public Map<String, String> getValues() {
       return null;
-    }
-  }
-
-  public static final class ReplacingStringCodec implements JsonValueCodec<String> {
-    @Override
-    public void writeString(StringJsonWriter writer, String value) {
-      writer.writeString("replacement");
-    }
-
-    @Override
-    public void writeUtf8(Utf8JsonWriter writer, String value) {
-      writer.writeString("replacement");
-    }
-
-    @Override
-    public String readLatin1(Latin1JsonReader reader) {
-      return reader.readString();
-    }
-
-    @Override
-    public String readUtf16(Utf16JsonReader reader) {
-      return reader.readString();
-    }
-
-    @Override
-    public String readUtf8(Utf8JsonReader reader) {
-      return reader.readString();
     }
   }
 }

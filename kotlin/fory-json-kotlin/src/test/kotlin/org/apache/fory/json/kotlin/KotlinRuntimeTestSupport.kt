@@ -20,6 +20,7 @@
 package org.apache.fory.json.kotlin
 
 import java.io.ByteArrayInputStream
+import java.util.concurrent.CompletableFuture
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -28,6 +29,7 @@ import org.apache.fory.codegen.CompileState
 import org.apache.fory.json.ForyJson
 import org.apache.fory.json.ForyJsonBuilder
 import org.apache.fory.json.ForyJsonException
+import org.apache.fory.json.codegen.GeneratedCodecKey
 import org.apache.fory.json.codegen.JsonJITContext
 import org.apache.fory.reflect.ReflectionUtils
 import org.apache.fory.reflect.TypeRef
@@ -131,9 +133,29 @@ private fun compileStates(json: ForyJson): Map<String, CompileState> {
   val resolver = ReflectionUtils.getObjectFieldValue(state, "typeResolver")
   val registry = ReflectionUtils.getObjectFieldValue(resolver, "sharedRegistry")
   val codegen = ReflectionUtils.getObjectFieldValue(registry, "codegen")
-  val generator = ReflectionUtils.getObjectFieldValue(codegen, "codeGenerator")
-  return ReflectionUtils.getObjectFieldValue(generator, "parallelCompileState")
-    as Map<String, CompileState>
+  val futures =
+    ReflectionUtils.getObjectFieldValue(registry, "generatedClassFutures")
+      as Map<GeneratedCodecKey, CompletableFuture<Class<*>?>>
+  val generatedNames = futures.values.mapNotNull { it.join()?.name }.toSet()
+  val compiler =
+    codegen.javaClass.getDeclaredMethod(
+      "compiler",
+      GeneratedCodecKey::class.java,
+      Class::class.java,
+      String::class.java,
+      String::class.java,
+    )
+  compiler.isAccessible = true
+  return futures.keys
+    .map { key -> compiler.invoke(codegen, key, key.targetClass(), "", "") }
+    .map { ReflectionUtils.getObjectFieldValue(it, "codeGenerator") }
+    .distinct()
+    .flatMap {
+      (ReflectionUtils.getObjectFieldValue(it, "parallelCompileState") as Map<String, CompileState>)
+        .entries
+    }
+    .filter { it.key in generatedNames }
+    .associate { it.toPair() }
 }
 
 private fun finishedResult(state: CompileState): Map<String, ByteArray> {
