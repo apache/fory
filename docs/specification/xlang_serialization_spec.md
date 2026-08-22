@@ -145,9 +145,9 @@ wire identity.
   without adding a wire identity or repeated registration lookup; any
   containing schema metadata owns the prior identity validation. The carrier
   serializer itself remains unregistered in every case.
-- A custom serializer that is not the runtime's
+- A custom serializer that is not the Fory implementation's
   canonical implementation of an existing built-in MUST use the existing EXT
-  or NAMED_EXT form. This serializer-provider separation does not replace runtime-owned
+  or NAMED_EXT form. This serializer-provider separation does not replace implementation-owned
   built-in mappings.
 - Serializer-provider, external structural serializer, or generated-code type names MUST
   NOT change the encoded type ID, registered user ID or name, TypeDef, field order, schema hash,
@@ -261,7 +261,7 @@ metadata. The reader must decide from the collection payload: if the payload
 actually carries a null element, the local `array<T>` field must raise a
 compatible-read error. Null list elements must not be coerced to dense-array
 default values. Reference-tracked list-element framing is separate from
-nullable element schema. A runtime that cannot materialize ref-tracked list
+nullable element schema. A Fory implementation that cannot materialize ref-tracked list
 elements into a dense array without generic/reference paths may reject that
 field during compatible classification; if it accepts the field, reference
 payloads that cannot be represented as dense array element values must fail
@@ -782,6 +782,12 @@ The 8-byte header is a little-endian uint64:
   then mask with `0xfffffffffffff000`. The final header is the masked hash bits OR-ed with the low
   12 header bits.
 
+The low-bit validity rules above apply when the high 52-bit identity is first validated on a cache
+miss. Once that 52-bit identity is known, a cache or expected-local hit does not validate the low
+flags again. It uses the current frame's size bits and optional size extension only to prove the
+current body is readable and skip it, then reuses the concrete checked or expected-local TypeDef
+owner for that identity.
+
 #### TypeDef body
 
 TypeDef body has a single layer (fields are flattened in class hierarchy order):
@@ -1021,6 +1027,9 @@ Reference:         | ((id + 1) << 1) | 1 |
 
 - Bit 0 of the header indicates: 0 = new string, 1 = reference to previous
 - Large strings (> 16 bytes) include 64-bit hash for content-based deduplication
+- That 64-bit wire hash alone is the checked cache identity for a large string. On a known-hash
+  hit, readers verify that the current frame length is readable and skip it without comparing the
+  length or body; only a cache miss reads the body and validates the hash.
 - Small strings use exact byte comparison
 
 ## Value Format
@@ -1597,7 +1606,7 @@ Date represents a date without timezone. It is encoded as:
 - `days` (varint64): signed count of days since the Unix epoch (`1970-01-01`)
 
 The value is reconstructed as `LocalDate.ofEpochDay(days)` or the equivalent calendar-date constructor in
-the target language implementation.
+the target Fory implementation.
 
 This `varint64` encoding applies to xlang serialization only. Native, language-specific local-date
 encodings are unchanged.
@@ -1618,6 +1627,8 @@ The mathematical value is:
 
 - `scale` is encoded as signed varint32.
 - `scale` carries no extra flags or mode bits.
+- Arbitrary-precision decimal carriers accept only
+  `-10_000 <= scale <= 10_000`.
 
 #### Unscaled Header
 
@@ -1652,6 +1663,10 @@ Encoding:
 - `unscaledHeader = (meta << 1) | 1`
 - `payload = magnitude as canonical minimal little-endian bytes`
 
+For arbitrary-precision decimal carriers, `len` must not exceed `10_000`.
+This limit counts only the canonical unsigned binary bytes of `abs(unscaled)`;
+it does not count the header, decimal digits, or textual representations.
+
 Decoding:
 
 - `meta = unscaledHeader >>> 1`
@@ -1672,6 +1687,17 @@ Decoding:
 After decoding `scale` and `unscaled`, the decimal value is reconstructed as:
 
 `value = unscaled × 10^-scale`
+
+The scale and magnitude bounds are accepted-value limits, not changes to the
+wire encoding. Writers must reject values outside them, and readers must reject
+them before allocating the magnitude or constructing the decimal while still
+checking that an accepted body is readable and canonically encoded. A target
+with a fixed-range decimal carrier may impose a stricter native range.
+
+The compatible scalar conversion limits described earlier in this specification
+remain independent. In particular, conversion that formats plain text,
+rescales, quantizes, or otherwise expands output must retain its own expected
+output-length checks; the ordinary decimal scale bound does not replace them.
 
 ### struct
 
@@ -1833,7 +1859,7 @@ A union payload is:
 ```
 
 `case_id` is the union alternative tag number.
-Runtime APIs MAY expose zero-based ordinal indexes for generic union carriers;
+Fory APIs MAY expose zero-based ordinal indexes for generic union carriers;
 those ordinals are valid wire `case_id` values when they are the schema's
 alternative IDs.
 
@@ -1858,7 +1884,7 @@ numeric type IDs, the type ID byte is the complete value type metadata and the
 payload writer MAY use the stored wire type ID to preserve fixed, variable, or
 tagged integer encodings when the decoded value has the expected concrete value type.
 These scalar numeric payloads are not reference-tracked, so their ref metadata
-is `NotNullValue`. Otherwise it MUST fall back to the language implementation's
+is `NotNullValue`. Otherwise it MUST fall back to the Fory implementation's
 ordinary polymorphic Any-value writer. Unknown carriers are implementation-provided
 forward-compatibility containers, not entries in the local schema case table;
 schema-defined union cases MAY use `0..N`. When an unknown carrier is written

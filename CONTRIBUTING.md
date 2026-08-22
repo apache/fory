@@ -42,7 +42,7 @@ Key points:
 
 ## Testing
 
-For environmental requirements, please check [DEVELOPMENT.md](./docs/DEVELOPMENT.md).
+For environmental requirements, see the [Development guide](./docs/development/index.md).
 
 ### Python
 
@@ -182,7 +182,7 @@ cygdb build
 
 ### C++
 
-See the [Debugging C++](docs/cpp_debug.md) doc.
+See the [Debugging C++](docs/development/cpp-debugging.md) guide.
 
 ### Debug Crash
 
@@ -229,17 +229,19 @@ To use Jetbrains IDEA IDE for Java Development, you need to configure the projec
 And due to the usage of `sun.misc.Unsafe` API, which is not visible in Java 11+, you need to configure java compiler with `--releaese` option disabled.
 
 <div align="center">
-  <img width="65%" alt="" src="docs/images/idea_jdk11.png"><br>
+  <img width="65%" alt="" src="docs/images/idea-jdk11.png"><br>
 </div>
 
 ## Website
 
 Apache Fory™'s website consists of static pages hosted at https://github.com/apache/fory-site.
 
-Updates to [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md), docs under [guide](docs/guide), and docs under [benchmarks](docs/benchmarks) will be synced to the site repo automatically.
+The capability-first [docs](docs) tree is the canonical source for the website documentation,
+including Introduction, Getting Started, Benchmarks, user guides, Development, and the separate
+Specification surface.
 
 If you want write a blog, or update other contents about the website, please submit PR to the site repo.
 
 ## Development
 
-For more information, please refer to [Development Guide](./docs/DEVELOPMENT.md).
+For more information, see the [Development guide](./docs/development/index.md).

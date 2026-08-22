@@ -1387,7 +1387,11 @@ public class CollectionSerializersTest extends ForyTestBase {
     undersizedCapacity.writeVarUInt32Small7(1);
     Assert.expectThrows(
         DeserializationException.class,
-        () -> withReadContext(fory, undersizedCapacity, linkedSerializer::newCollection));
+        () ->
+            withReadContext(
+                fory,
+                undersizedCapacity,
+                context -> linkedSerializer.newCollection(context, false)));
 
     CollectionSerializers.ArrayBlockingQueueSerializer arraySerializer =
         new CollectionSerializers.ArrayBlockingQueueSerializer(
@@ -1397,7 +1401,9 @@ public class CollectionSerializersTest extends ForyTestBase {
     sparseCapacity.writeVarUInt32Small7(10);
     Assert.expectThrows(
         IndexOutOfBoundsException.class,
-        () -> withReadContext(fory, sparseCapacity, arraySerializer::newCollection));
+        () ->
+            withReadContext(
+                fory, sparseCapacity, context -> arraySerializer.newCollection(context, false)));
   }
 
   @Test
@@ -1415,7 +1421,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     buffer.writeVarUInt32Small7(2);
     Assert.expectThrows(
         IndexOutOfBoundsException.class,
-        () -> withReadContext(fory, buffer, serializer::newCollection));
+        () -> withReadContext(fory, buffer, context -> serializer.newCollection(context, false)));
   }
 
   @Test
@@ -1891,7 +1897,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     }
 
     @Override
-    public Collection newCollection(ReadContext readContext) {
+    public Collection newCollection(ReadContext readContext, boolean elementReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUInt32();
       setNumElements(numElements);

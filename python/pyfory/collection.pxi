@@ -48,7 +48,87 @@ cdef int64_t _LIST_OWNER_BYTES = 4 * sizeof(PyObject*)
 cdef int64_t _TUPLE_OWNER_BYTES = 3 * sizeof(PyObject*)
 cdef int64_t _SET_OWNER_BYTES = 6 * sizeof(PyObject*)
 cdef int64_t _DICT_OWNER_BYTES = 8 * sizeof(PyObject*)
+cdef int64_t _UNBACKED_CONTAINER_CHECK_INTERVAL = 1024
 ctypedef PyObject *PyObjectPtr
+
+
+cdef extern from *:
+    """
+    static inline void fory_list_set_size(PyObject *list, Py_ssize_t size) {
+#if PY_VERSION_HEX >= 0x030900A4
+      Py_SET_SIZE(list, size);
+#else
+      Py_SIZE(list) = size;
+#endif
+    }
+    static inline Py_ssize_t fory_list_allocated(PyObject *list) {
+      return ((PyListObject *)list)->allocated;
+    }
+    """
+    void fory_list_set_size(object list_, Py_ssize_t size) noexcept
+    Py_ssize_t fory_list_allocated(object list_) noexcept
+
+
+cdef void raise_invalid_map_chunk_size(int chunk_size, int remaining):
+    raise ValueError(
+        f"Invalid map chunk size {chunk_size}, remaining entries {remaining}"
+    )
+
+
+cdef void raise_missing_declared_serializer(uint8_t owner):
+    if owner == 0:
+        raise ValueError("Missing serializer for declared collection element type")
+    if owner == 1:
+        raise ValueError("Missing serializer for declared map key type")
+    raise ValueError("Missing serializer for declared map value type")
+
+
+cdef void raise_modified_published_list():
+    raise ValueError("Published list was modified while being deserialized")
+
+
+cdef inline bint prepare_published_list(
+    list list_, RefReader ref_reader
+) noexcept:
+    if not ref_reader.track_ref or ref_reader.last_preserved_ref_id() == NOT_NULL_VALUE_FLAG:
+        return False
+    # PyList_New leaves NULL slots. Keep the reserved backing store, but expose
+    # only the initialized prefix while a child can reach this list by REF. If
+    # a child fails, list cleanup therefore decrefs only that valid prefix.
+    fory_list_set_size(list_, 0)
+    return True
+
+
+cdef inline int append_reserved_list_item(
+    list list_, Py_ssize_t index, object item
+) except -1:
+    cdef PyObject **items
+    if Py_SIZE(list_) != index or fory_list_allocated(list_) <= index:
+        raise_modified_published_list()
+    # A policy-approved child can call Python before returning. Reload the
+    # backing pointer after that call so a reentrant mutation cannot stale it.
+    items = fory_sequence_get_items(list_)
+    Py_INCREF(item)
+    items[index] = <PyObject *>item
+    fory_list_set_size(list_, index + 1)
+    return 0
+
+
+cdef inline void ensure_container_allocation(ReadContext read_context, int64_t count):
+    cdef int64_t required = count - read_context.remaining_unbacked_container_items
+    if required > 0:
+        read_context.check_readable_bytes_c(<int32_t>required)
+
+
+cdef inline void settle_unbacked_container_items(
+    ReadContext read_context,
+    int64_t completed,
+    uint32_t start_index,
+):
+    cdef int64_t consumed = <int64_t>read_context.c_buffer.reader_index() - start_index
+    if completed > consumed:
+        read_context.reserve_unbacked_container_items_c(completed - consumed)
+
 
 cdef class ListSerializer
 
@@ -73,6 +153,7 @@ cdef class CollectionSerializer(Serializer):
 
     def __init__(self, type_resolver, type_, elem_serializer=None, elem_tracking_ref=None):
         super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
         self.elem_serializer = elem_serializer
         if elem_tracking_ref is not None:
             self.elem_tracking_ref = <int8_t>(1 if elem_tracking_ref else 0)
@@ -211,6 +292,12 @@ cdef class CollectionSerializer(Serializer):
         cdef object obj
         read_context.increase_depth()
         if items != NULL:
+            if is_list and Py_SIZE(collection_) == 0:
+                for i in range(len_):
+                    obj = read_context.read_non_ref(serializer)
+                    append_reserved_list_item(collection_, i, obj)
+                read_context.decrease_depth()
+                return
             for i in range(len_):
                 obj = read_context.read_non_ref(serializer)
                 Py_INCREF(obj)
@@ -222,6 +309,55 @@ cdef class CollectionSerializer(Serializer):
             return
         for i in range(len_):
             self._add_element(collection_, i, read_context.read_non_ref(serializer))
+        read_context.decrease_depth()
+
+    cdef void _read_same_type_no_ref_guarded(
+        self,
+        ReadContext read_context,
+        int64_t len_,
+        object collection_,
+        Serializer serializer,
+    ):
+        cdef PyObject **items = fory_sequence_get_items(collection_)
+        cdef bint is_list = type(collection_) is list
+        cdef int64_t i
+        cdef int64_t window_items = 0
+        cdef uint32_t window_start = read_context.c_buffer.reader_index()
+        cdef object obj
+        read_context.increase_depth()
+        if items != NULL:
+            if is_list and Py_SIZE(collection_) == 0:
+                for i in range(len_):
+                    obj = read_context.read_non_ref(serializer)
+                    append_reserved_list_item(collection_, i, obj)
+                    window_items += 1
+                    if window_items == _UNBACKED_CONTAINER_CHECK_INTERVAL:
+                        settle_unbacked_container_items(read_context, window_items, window_start)
+                        window_start = read_context.c_buffer.reader_index()
+                        window_items = 0
+            else:
+                for i in range(len_):
+                    obj = read_context.read_non_ref(serializer)
+                    Py_INCREF(obj)
+                    if is_list:
+                        PyList_SET_ITEM(collection_, i, obj)
+                    else:
+                        PyTuple_SET_ITEM(collection_, i, obj)
+                    window_items += 1
+                    if window_items == _UNBACKED_CONTAINER_CHECK_INTERVAL:
+                        settle_unbacked_container_items(read_context, window_items, window_start)
+                        window_start = read_context.c_buffer.reader_index()
+                        window_items = 0
+        else:
+            for i in range(len_):
+                self._add_element(collection_, i, read_context.read_non_ref(serializer))
+                window_items += 1
+                if window_items == _UNBACKED_CONTAINER_CHECK_INTERVAL:
+                    settle_unbacked_container_items(read_context, window_items, window_start)
+                    window_start = read_context.c_buffer.reader_index()
+                    window_items = 0
+        if window_items != 0:
+            settle_unbacked_container_items(read_context, window_items, window_start)
         read_context.decrease_depth()
 
     cpdef _write_same_type_has_null(self, WriteContext write_context, value, Serializer serializer):
@@ -254,6 +390,16 @@ cdef class CollectionSerializer(Serializer):
         cdef object obj
         read_context.increase_depth()
         if items != NULL:
+            if is_list and Py_SIZE(collection_) == 0:
+                for i in range(len_):
+                    flag = read_context.read_int8()
+                    if flag == NULL_FLAG:
+                        obj = None
+                    else:
+                        obj = read_context.read_non_ref(serializer)
+                    append_reserved_list_item(collection_, i, obj)
+                read_context.decrease_depth()
+                return
             for i in range(len_):
                 flag = read_context.read_int8()
                 if flag == NULL_FLAG:
@@ -306,15 +452,24 @@ cdef class CollectionSerializer(Serializer):
         cdef object obj
         read_context.increase_depth()
         if items != NULL:
+            if is_list and Py_SIZE(collection_) == 0:
+                for i in range(len_):
+                    ref_id = ref_reader.try_preserve_ref_id(buffer)
+                    if ref_id < NOT_NULL_VALUE_FLAG:
+                        obj = ref_reader.get_read_ref()
+                    else:
+                        obj = serializer.read(read_context)
+                        ref_reader.set_read_ref(ref_id, obj)
+                    append_reserved_list_item(collection_, i, obj)
+                read_context.decrease_depth()
+                return
             for i in range(len_):
                 ref_id = ref_reader.try_preserve_ref_id(buffer)
                 if ref_id < NOT_NULL_VALUE_FLAG:
                     obj = ref_reader.get_read_ref()
                 else:
                     obj = serializer.read(read_context)
-                    if ref_id >= 0 and ref_reader.read_objects[ref_id] == NULL:
-                        Py_INCREF(obj)
-                        ref_reader.read_objects[ref_id] = <PyObject *>obj
+                    ref_reader.set_read_ref(ref_id, obj)
                 Py_INCREF(obj)
                 if is_list:
                     PyList_SET_ITEM(collection_, i, obj)
@@ -328,9 +483,7 @@ cdef class CollectionSerializer(Serializer):
                 obj = ref_reader.get_read_ref()
             else:
                 obj = serializer.read(read_context)
-                if ref_id >= 0 and ref_reader.read_objects[ref_id] == NULL:
-                    Py_INCREF(obj)
-                    ref_reader.read_objects[ref_id] = <PyObject *>obj
+                ref_reader.set_read_ref(ref_id, obj)
             self._add_element(collection_, i, obj)
         read_context.decrease_depth()
 
@@ -448,9 +601,7 @@ cdef inline object get_next_element(
         return ref_reader.get_read_ref()
     typeinfo = type_resolver.read_type_info(read_context)
     obj = typeinfo.serializer.read(read_context)
-    if ref_id >= 0 and ref_reader.read_objects[ref_id] == NULL:
-        Py_INCREF(obj)
-        ref_reader.read_objects[ref_id] = <PyObject *>obj
+    ref_reader.set_read_ref(ref_id, obj)
     return obj
 
 
@@ -474,6 +625,8 @@ cdef class ListSerializer(CollectionSerializer):
         cdef int32_t ref_id
         cdef int64_t i
         cdef int64_t graph_bytes
+        cdef bint element_read_always_advances
+        cdef bint published_list = False
         if len_ < 0:
             raise ValueError("Container element count is negative")
         graph_bytes = _LIST_OWNER_BYTES + <int64_t>len_ * _REFERENCE_BYTES
@@ -482,28 +635,64 @@ cdef class ListSerializer(CollectionSerializer):
             list_ = PyList_New(0)
             return list_
 
-        read_context.check_readable_bytes(len_)
         collect_flag = buffer.read_int8()
-        list_ = PyList_New(len_)
         # IMPORTANT: collection readers must obey the ref/null bits written on
         # the wire, not local Python/Cython element metadata that may imply a
         # different ref policy. Shared xlang tests intentionally deserialize
         # one ref policy and then serialize another local payload. DO NOT
         # REMOVE this comment.
-        read_context.reference(list_)
+        if (
+            collect_flag == (COLL_IS_SAME_TYPE | COLL_IS_DECL_ELEMENT_TYPE)
+            and elem_serializer is not None
+            and elem_serializer.read_data_always_advances
+        ):
+            read_context.check_readable_bytes_c(len_)
+            list_ = PyList_New(len_)
+            type_id = self.elem_type_info.type_id
+            if Fory_CanUsePrimitiveCollectionFastpath(type_id):
+                self._read_primitive_fastpath(read_context, len_, list_, type_id)
+                read_context.reference(list_)
+                return list_
+            published_list = prepare_published_list(list_, ref_reader)
+            read_context.reference(list_)
+            self._read_same_type_no_ref(read_context, len_, list_, elem_serializer)
+            return list_
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if (collect_flag & COLL_IS_DECL_ELEMENT_TYPE) == 0:
-                typeinfo = type_resolver.read_type_info(read_context)
+                typeinfo = type_resolver.read_type_info(
+                    read_context,
+                    self.elem_type_info if elem_serializer is not None else None,
+                )
                 elem_serializer = typeinfo.serializer
             else:
+                if elem_serializer is None:
+                    raise_missing_declared_serializer(0)
                 typeinfo = self.elem_type_info
+        element_read_always_advances = (
+            (collect_flag & (COLL_TRACKING_REF | COLL_HAS_NULL)) != 0
+            or (collect_flag & COLL_IS_SAME_TYPE) == 0
+            or elem_serializer.read_data_always_advances
+        )
+        if element_read_always_advances:
+            read_context.check_readable_bytes_c(len_)
+        else:
+            ensure_container_allocation(read_context, len_)
+        list_ = PyList_New(len_)
+        if (collect_flag & (COLL_IS_SAME_TYPE | COLL_HAS_NULL)) == COLL_IS_SAME_TYPE:
+            type_id = typeinfo.type_id
+            if Fory_CanUsePrimitiveCollectionFastpath(type_id):
+                self._read_primitive_fastpath(read_context, len_, list_, type_id)
+                read_context.reference(list_)
+                return list_
+        published_list = prepare_published_list(list_, ref_reader)
+        read_context.reference(list_)
+        if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if (collect_flag & COLL_HAS_NULL) == 0:
-                type_id = typeinfo.type_id
-                if Fory_CanUsePrimitiveCollectionFastpath(type_id):
-                    self._read_primitive_fastpath(read_context, len_, list_, type_id)
-                    return list_
                 if (collect_flag & COLL_TRACKING_REF) == 0:
-                    self._read_same_type_no_ref(read_context, len_, list_, elem_serializer)
+                    if element_read_always_advances:
+                        self._read_same_type_no_ref(read_context, len_, list_, elem_serializer)
+                    else:
+                        self._read_same_type_no_ref_guarded(read_context, len_, list_, elem_serializer)
                 else:
                     self._read_same_type_ref(read_context, len_, list_, elem_serializer)
             elif (collect_flag & COLL_TRACKING_REF) != 0:
@@ -518,8 +707,11 @@ cdef class ListSerializer(CollectionSerializer):
         if tracking_ref:
             for i in range(len_):
                 elem = get_next_element(read_context, buffer, ref_reader, type_resolver)
-                Py_INCREF(elem)
-                PyList_SET_ITEM(list_, i, elem)
+                if published_list:
+                    append_reserved_list_item(list_, i, elem)
+                else:
+                    Py_INCREF(elem)
+                    PyList_SET_ITEM(list_, i, elem)
             read_context.decrease_depth()
             return list_
         if not has_null:
@@ -540,8 +732,11 @@ cdef class ListSerializer(CollectionSerializer):
                     elem = buffer.read_double()
                 else:
                     elem = read_context.read_non_ref(typeinfo.serializer)
-                Py_INCREF(elem)
-                PyList_SET_ITEM(list_, i, elem)
+                if published_list:
+                    append_reserved_list_item(list_, i, elem)
+                else:
+                    Py_INCREF(elem)
+                    PyList_SET_ITEM(list_, i, elem)
             read_context.decrease_depth()
             return list_
         for i in range(len_):
@@ -565,8 +760,11 @@ cdef class ListSerializer(CollectionSerializer):
                     elem = buffer.read_double()
                 else:
                     elem = read_context.read_non_ref(typeinfo.serializer)
-            Py_INCREF(elem)
-            PyList_SET_ITEM(list_, i, elem)
+            if published_list:
+                append_reserved_list_item(list_, i, elem)
+            else:
+                Py_INCREF(elem)
+                PyList_SET_ITEM(list_, i, elem)
         read_context.decrease_depth()
         return list_
 
@@ -595,6 +793,7 @@ cdef class TupleSerializer(CollectionSerializer):
         cdef int8_t head_flag
         cdef int64_t i
         cdef int64_t graph_bytes
+        cdef bint element_read_always_advances
         if len_ < 0:
             raise ValueError("Container element count is negative")
         graph_bytes = _TUPLE_OWNER_BYTES + <int64_t>len_ * _REFERENCE_BYTES
@@ -603,22 +802,52 @@ cdef class TupleSerializer(CollectionSerializer):
             tuple_ = PyTuple_New(0)
             return tuple_
 
-        read_context.check_readable_bytes(len_)
         collect_flag = buffer.read_int8()
-        tuple_ = PyTuple_New(len_)
+        if (
+            collect_flag == (COLL_IS_SAME_TYPE | COLL_IS_DECL_ELEMENT_TYPE)
+            and elem_serializer is not None
+            and elem_serializer.read_data_always_advances
+        ):
+            read_context.check_readable_bytes_c(len_)
+            tuple_ = PyTuple_New(len_)
+            type_id = self.elem_type_info.type_id
+            if Fory_CanUsePrimitiveCollectionFastpath(type_id):
+                self._read_primitive_fastpath(read_context, len_, tuple_, type_id)
+                return tuple_
+            self._read_same_type_no_ref(read_context, len_, tuple_, elem_serializer)
+            return tuple_
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if (collect_flag & COLL_IS_DECL_ELEMENT_TYPE) == 0:
-                typeinfo = type_resolver.read_type_info(read_context)
+                typeinfo = type_resolver.read_type_info(
+                    read_context,
+                    self.elem_type_info if elem_serializer is not None else None,
+                )
                 elem_serializer = typeinfo.serializer
             else:
+                if elem_serializer is None:
+                    raise_missing_declared_serializer(0)
                 typeinfo = self.elem_type_info
+        element_read_always_advances = (
+            (collect_flag & (COLL_TRACKING_REF | COLL_HAS_NULL)) != 0
+            or (collect_flag & COLL_IS_SAME_TYPE) == 0
+            or elem_serializer.read_data_always_advances
+        )
+        if element_read_always_advances:
+            read_context.check_readable_bytes_c(len_)
+        else:
+            ensure_container_allocation(read_context, len_)
+        tuple_ = PyTuple_New(len_)
+        if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
                 if Fory_CanUsePrimitiveCollectionFastpath(type_id):
                     self._read_primitive_fastpath(read_context, len_, tuple_, type_id)
                     return tuple_
                 if (collect_flag & COLL_TRACKING_REF) == 0:
-                    self._read_same_type_no_ref(read_context, len_, tuple_, elem_serializer)
+                    if element_read_always_advances:
+                        self._read_same_type_no_ref(read_context, len_, tuple_, elem_serializer)
+                    else:
+                        self._read_same_type_no_ref_guarded(read_context, len_, tuple_, elem_serializer)
                 else:
                     self._read_same_type_ref(read_context, len_, tuple_, elem_serializer)
             elif (collect_flag & COLL_TRACKING_REF) != 0:
@@ -717,6 +946,7 @@ cdef class SetSerializer(CollectionSerializer):
         cdef int32_t ref_id
         cdef int64_t i
         cdef int64_t graph_bytes
+        cdef bint element_read_always_advances
 
         len_ = buffer.read_var_uint32()
         if len_ < 0:
@@ -727,24 +957,51 @@ cdef class SetSerializer(CollectionSerializer):
             instance = set()
             read_context.reference(instance)
             return instance
-        read_context.check_readable_bytes(len_)
-        instance = set()
-        read_context.reference(instance)
-
         collect_flag = buffer.read_int8()
+        if (
+            collect_flag == (COLL_IS_SAME_TYPE | COLL_IS_DECL_ELEMENT_TYPE)
+            and elem_serializer is not None
+            and elem_serializer.read_data_always_advances
+        ):
+            read_context.check_readable_bytes_c(len_)
+            instance = set()
+            read_context.reference(instance)
+            type_id = self.elem_type_info.type_id
+            if Fory_CanUsePrimitiveCollectionFastpath(type_id):
+                self._read_primitive_fastpath(read_context, len_, instance, type_id)
+                return instance
+            self._read_same_type_no_ref(read_context, len_, instance, elem_serializer)
+            return instance
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if (collect_flag & COLL_IS_DECL_ELEMENT_TYPE) == 0:
                 typeinfo = type_resolver.read_type_info(read_context)
                 elem_serializer = typeinfo.serializer
             else:
+                if elem_serializer is None:
+                    raise_missing_declared_serializer(0)
                 typeinfo = self.elem_type_info
+        element_read_always_advances = (
+            (collect_flag & (COLL_TRACKING_REF | COLL_HAS_NULL)) != 0
+            or (collect_flag & COLL_IS_SAME_TYPE) == 0
+            or elem_serializer.read_data_always_advances
+        )
+        if element_read_always_advances:
+            read_context.check_readable_bytes_c(len_)
+        else:
+            ensure_container_allocation(read_context, len_)
+        instance = set()
+        read_context.reference(instance)
+        if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
                 if Fory_CanUsePrimitiveCollectionFastpath(type_id):
                     self._read_primitive_fastpath(read_context, len_, instance, type_id)
                     return instance
                 if (collect_flag & COLL_TRACKING_REF) == 0:
-                    self._read_same_type_no_ref(read_context, len_, instance, elem_serializer)
+                    if element_read_always_advances:
+                        self._read_same_type_no_ref(read_context, len_, instance, elem_serializer)
+                    else:
+                        self._read_same_type_no_ref_guarded(read_context, len_, instance, elem_serializer)
                 else:
                     self._read_same_type_ref(read_context, len_, instance, elem_serializer)
             elif (collect_flag & COLL_TRACKING_REF) != 0:
@@ -814,6 +1071,8 @@ cdef class MapSerializer(Serializer):
     # Map serializers can point at either Cython or Python serializer instances.
     cdef Serializer key_serializer
     cdef Serializer value_serializer
+    cdef Serializer key_write_serializer
+    cdef Serializer value_write_serializer
     cdef bint key_tracking_ref
     cdef bint value_tracking_ref
     cdef FlatIntMap[uint64_t, PyObjectPtr] _key_typeinfo_cache
@@ -827,10 +1086,17 @@ cdef class MapSerializer(Serializer):
         value_serializer=None,
         key_tracking_ref=None,
         value_tracking_ref=None,
+        key_write_type_info=False,
+        value_write_type_info=False,
     ):
         super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
         self.key_serializer = key_serializer
         self.value_serializer = value_serializer
+        # Compatible evolving child schemas need dynamic write framing, while this
+        # reader must still accept declared chunks from an exact peer.
+        self.key_write_serializer = None if key_write_type_info else key_serializer
+        self.value_write_serializer = None if value_write_type_info else value_serializer
         self._key_typeinfo_cache = FlatIntMap[uint64_t, PyObjectPtr](4)
         self._value_typeinfo_cache = FlatIntMap[uint64_t, PyObjectPtr](4)
         self.key_tracking_ref = False
@@ -854,8 +1120,8 @@ cdef class MapSerializer(Serializer):
         cdef int64_t value_addr
         cdef Py_ssize_t pos = 0
         cdef RefWriter ref_writer = write_context.ref_writer
-        cdef Serializer key_serializer = self.key_serializer
-        cdef Serializer value_serializer = self.value_serializer
+        cdef Serializer key_serializer = self.key_write_serializer
+        cdef Serializer value_serializer = self.value_write_serializer
         cdef object key
         cdef object value
         cdef type key_cls
@@ -1061,8 +1327,8 @@ cdef class MapSerializer(Serializer):
                 Py_INCREF(key)
                 value = int2obj(value_addr)
                 Py_INCREF(value)
-            key_serializer = self.key_serializer
-            value_serializer = self.value_serializer
+            key_serializer = self.key_write_serializer
+            value_serializer = self.value_write_serializer
             buffer.put_uint8(chunk_size_offset, chunk_size)
             write_context.exit_flush_barrier()
             write_context.try_flush()
@@ -1073,6 +1339,7 @@ cdef class MapSerializer(Serializer):
         cdef dict map_
         cdef int8_t chunk_header = 0
         cdef int64_t graph_bytes
+        cdef bint entry_read_data_always_advances
         if size < 0:
             raise ValueError("Map entry count is negative")
         graph_bytes = _DICT_OWNER_BYTES + <int64_t>size * (2 * _REFERENCE_BYTES)
@@ -1080,7 +1347,17 @@ cdef class MapSerializer(Serializer):
         if size == 0:
             map_ = {}
         else:
-            read_context.check_readable_bytes(size)
+            entry_read_data_always_advances = (
+                self.key_write_serializer is not None
+                and self.key_write_serializer.read_data_always_advances
+            ) or (
+                self.value_write_serializer is not None
+                and self.value_write_serializer.read_data_always_advances
+            )
+            if entry_read_data_always_advances:
+                read_context.check_readable_bytes_c(size)
+            else:
+                ensure_container_allocation(read_context, size)
             chunk_header = read_context.read_uint8()
             map_ = _PyDict_NewPresized(size)
         cdef RefReader ref_reader = read_context.ref_reader
@@ -1094,6 +1371,8 @@ cdef class MapSerializer(Serializer):
         cdef bint track_value_ref
         cdef bint key_is_declared_type
         cdef bint value_is_declared_type
+        cdef bint entry_read_always_advances
+        cdef uint32_t chunk_start
         cdef type key_serializer_type
         cdef type value_serializer_type
         cdef int32_t chunk_size
@@ -1111,15 +1390,16 @@ cdef class MapSerializer(Serializer):
                 if not key_has_null:
                     track_key_ref = (chunk_header & TRACKING_KEY_REF) != 0
                     if (chunk_header & KEY_DECL_TYPE) != 0:
+                        key_serializer = self.key_serializer
+                        if key_serializer is None:
+                            raise_missing_declared_serializer(1)
                         if track_key_ref:
                             ref_id = ref_reader.try_preserve_ref_id(buffer)
                             if ref_id < NOT_NULL_VALUE_FLAG:
                                 key = ref_reader.get_read_ref()
                             else:
                                 key = self._read_obj(key_serializer, read_context)
-                                if ref_id >= 0 and ref_reader.read_objects[ref_id] == NULL:
-                                    Py_INCREF(key)
-                                    ref_reader.read_objects[ref_id] = <PyObject *>key
+                                ref_reader.set_read_ref(ref_id, key)
                         else:
                             key = self._read_obj_no_ref(key_serializer, read_context)
                     else:
@@ -1128,15 +1408,16 @@ cdef class MapSerializer(Serializer):
                 elif not value_has_null:
                     track_value_ref = (chunk_header & TRACKING_VALUE_REF) != 0
                     if (chunk_header & VALUE_DECL_TYPE) != 0:
+                        value_serializer = self.value_serializer
+                        if value_serializer is None:
+                            raise_missing_declared_serializer(2)
                         if track_value_ref:
                             ref_id = ref_reader.try_preserve_ref_id(buffer)
                             if ref_id < NOT_NULL_VALUE_FLAG:
                                 value = ref_reader.get_read_ref()
                             else:
                                 value = self._read_obj(value_serializer, read_context)
-                                if ref_id >= 0 and ref_reader.read_objects[ref_id] == NULL:
-                                    Py_INCREF(value)
-                                    ref_reader.read_objects[ref_id] = <PyObject *>value
+                                ref_reader.set_read_ref(ref_id, value)
                         else:
                             value = self._read_obj_no_ref(value_serializer, read_context)
                     else:
@@ -1159,10 +1440,28 @@ cdef class MapSerializer(Serializer):
             key_is_declared_type = (chunk_header & KEY_DECL_TYPE) != 0
             value_is_declared_type = (chunk_header & VALUE_DECL_TYPE) != 0
             chunk_size = read_context.read_uint8()
-            if not key_is_declared_type:
+            if chunk_size == 0 or chunk_size > size:
+                raise_invalid_map_chunk_size(chunk_size, size)
+            if key_is_declared_type:
+                key_serializer = self.key_serializer
+                if key_serializer is None:
+                    raise_missing_declared_serializer(1)
+            else:
                 key_serializer = self.type_resolver.read_type_info(read_context).serializer
-            if not value_is_declared_type:
+            if value_is_declared_type:
+                value_serializer = self.value_serializer
+                if value_serializer is None:
+                    raise_missing_declared_serializer(2)
+            else:
                 value_serializer = self.type_resolver.read_type_info(read_context).serializer
+            entry_read_always_advances = (
+                track_key_ref
+                or track_value_ref
+                or key_serializer.read_data_always_advances
+                or value_serializer.read_data_always_advances
+            )
+            if not entry_read_always_advances:
+                chunk_start = read_context.c_buffer.reader_index()
             key_serializer_type = type(key_serializer)
             value_serializer_type = type(value_serializer)
             for _ in range(chunk_size):
@@ -1172,9 +1471,7 @@ cdef class MapSerializer(Serializer):
                         key = ref_reader.get_read_ref()
                     else:
                         key = self._read_obj(key_serializer, read_context)
-                        if ref_id >= 0 and ref_reader.read_objects[ref_id] == NULL:
-                            Py_INCREF(key)
-                            ref_reader.read_objects[ref_id] = <PyObject *>key
+                        ref_reader.set_read_ref(ref_id, key)
                 else:
                     if key_serializer_type is StringSerializer:
                         key = read_context.read_string()
@@ -1220,9 +1517,7 @@ cdef class MapSerializer(Serializer):
                         value = ref_reader.get_read_ref()
                     else:
                         value = self._read_obj(value_serializer, read_context)
-                        if ref_id >= 0 and ref_reader.read_objects[ref_id] == NULL:
-                            Py_INCREF(value)
-                            ref_reader.read_objects[ref_id] = <PyObject *>value
+                        ref_reader.set_read_ref(ref_id, value)
                 else:
                     if value_serializer_type is StringSerializer:
                         value = read_context.read_string()
@@ -1264,6 +1559,8 @@ cdef class MapSerializer(Serializer):
                         value = read_context.read_non_ref(value_serializer)
                 map_[key] = value
                 size -= 1
+            if not entry_read_always_advances:
+                settle_unbacked_container_items(read_context, chunk_size, chunk_start)
             if size != 0:
                 chunk_header = read_context.read_uint8()
         read_context.decrease_depth()

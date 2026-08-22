@@ -31,6 +31,9 @@ public protocol Serializer {
     static var isNullableType: Bool { get }
     static var isRefType: Bool { get }
     static var isWrapper: Bool { get }
+    /// Whether every successful `readData` call consumes at least one input byte.
+    /// Custom serializers are conservative unless they explicitly opt in.
+    static var readDataAlwaysAdvances: Bool { get }
 
     static func isNone(_ value: Target) -> Bool
     static func defaultValue(_ context: ReadContext) throws -> Target
@@ -84,6 +87,9 @@ public extension Serializer {
 
     @inlinable
     static var isWrapper: Bool { false }
+
+    @inlinable
+    static var readDataAlwaysAdvances: Bool { false }
 
     @inlinable
     static func isNone(_: Target) -> Bool { false }
@@ -215,6 +221,44 @@ public extension StructSerializer {
     ) throws -> [TypeMeta.FieldInfo] {
         foryFieldsInfo(trackRef: trackRef)
     }
+}
+
+@inlinable
+@inline(__always)
+internal func readNestedField<S: Serializer>(
+    _ context: ReadContext,
+    serializer: S.Type,
+    refMode: RefMode,
+    readTypeInfo: Bool
+) throws -> S.Target {
+    if !serializer.staticTypeId.isUserTypeKind {
+        return try serializer.read(
+            context,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+    }
+    if refMode != .none {
+        let rawFlag = try context.buffer.readInt8()
+        context.buffer.moveBack(1)
+        if rawFlag != RefFlag.refValue.rawValue
+            && rawFlag != RefFlag.notNullValue.rawValue
+        {
+            return try serializer.read(
+                context,
+                refMode: refMode,
+                readTypeInfo: readTypeInfo
+            )
+        }
+    }
+    try context.enterReadDepth()
+    let value = try serializer.read(
+        context,
+        refMode: refMode,
+        readTypeInfo: readTypeInfo
+    )
+    context.leaveReadDepth()
+    return value
 }
 
 @inline(never)

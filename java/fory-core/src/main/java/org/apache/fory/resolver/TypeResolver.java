@@ -130,12 +130,12 @@ public abstract class TypeResolver {
 
   private static final class TransformedTypeInfo {
     final Class<?> readClass;
-    final long typeDefId;
+    final long typeDefHeaderHash;
     final TypeInfo typeInfo;
 
-    TransformedTypeInfo(Class<?> readClass, long typeDefId, TypeInfo typeInfo) {
+    TransformedTypeInfo(Class<?> readClass, long typeDefHeaderHash, TypeInfo typeInfo) {
       this.readClass = readClass;
-      this.typeDefId = typeDefId;
+      this.typeDefHeaderHash = typeDefHeaderHash;
       this.typeInfo = typeInfo;
     }
   }
@@ -884,8 +884,8 @@ public abstract class TypeResolver {
       assert packageNameBytesCache != null;
       simpleClassNameBytes = metaStringReader.readMetaString(buffer, typeNameBytesCache);
 
-      // MetaStringReader returns the provided cache object only when the wire identity matches. For
-      // big meta strings, metadata-hash validation happens before the entry is first cached.
+      // MetaStringReader returns the provided cache object only when the wire identity matches. A
+      // big meta string's hash is its complete identity and is validated before first publication.
       if (typeNameBytesCache == simpleClassNameBytes && packageNameBytesCache == namespaceBytes) {
         return typeInfoCache;
       }
@@ -935,19 +935,38 @@ public abstract class TypeResolver {
       // TypeDef body has parsed successfully and matched the 52-bit metadata hash. Do not add
       // body/hash/schema-limit/exact-local checks here; the header-miss path owns them before
       // cache publish.
-      long id = buffer.readInt64();
-      TypeDef cachedTypeDef = cachedTypeInfo == null ? null : cachedTypeInfo.getTypeDef();
-      // A field-local cache hit is valid only when the cached TypeInfo carries the exact checked
-      // TypeDef id that was parsed and accepted earlier by this resolver.
-      if (cachedTypeDef != null && cachedTypeDef.getId() == id) {
-        typeInfo = cachedTypeInfo;
-      } else {
-        typeInfo = extRegistry.typeInfoByTypeDefId.get(id);
+      long header = buffer.readInt64();
+      long headerHash = TypeDef.headerHash(header);
+      typeInfo = null;
+      if (targetClass != null) {
+        TypeDef localTypeDef = matchingLocalTypeDef(headerHash, targetClass);
+        if (localTypeDef != null) {
+          // An expected local schema owns this header before transformed or remote hints. A
+          // transformed hint can carry the same hash while retaining a remote TypeDef owner.
+          if (cachedTypeInfo != null
+              && cachedTypeInfo.getType() == targetClass
+              && cachedTypeInfo.getTypeDef() == localTypeDef) {
+            typeInfo = cachedTypeInfo;
+          } else {
+            typeInfo = createMetaSharedTypeInfo(localTypeDef, targetClass);
+          }
+        }
+      }
+      if (typeInfo == null && cachedTypeInfo != null) {
+        TypeDef cachedTypeDef = cachedTypeInfo.getTypeDef();
+        // The 52-bit hash is the schema identity. Low header bits describe only this frame and
+        // must not reopen validation of a concrete TypeInfo already bound by a checked miss.
+        if (cachedTypeDef != null && TypeDef.headerHash(cachedTypeDef.getId()) == headerHash) {
+          typeInfo = cachedTypeInfo;
+        }
+      }
+      if (typeInfo == null) {
+        typeInfo = extRegistry.typeInfoByHeaderHash.get(headerHash);
       }
       if (typeInfo != null) {
-        TypeDef.skipTypeDef(buffer, id);
+        TypeDef.skipTypeDef(buffer, header);
       } else {
-        typeInfo = readSharedTypeDefInfo(buffer, id, targetClass);
+        typeInfo = readSharedTypeDefInfo(buffer, header, headerHash, targetClass);
       }
       // index == readTypeInfos.size() since types are written sequentially
       metaReadContext.readTypeInfos.add(typeInfo);
@@ -955,13 +974,14 @@ public abstract class TypeResolver {
     return typeInfo;
   }
 
-  private TypeInfo readSharedTypeDefInfo(MemoryBuffer buffer, long id, Class<?> targetClass) {
-    TypeDef typeDef = sharedRegistry.remoteTypeDefById.get(id);
+  private TypeInfo readSharedTypeDefInfo(
+      MemoryBuffer buffer, long header, long headerHash, Class<?> targetClass) {
+    TypeDef typeDef = sharedRegistry.remoteTypeDefByHeaderHash.get(headerHash);
     if (typeDef != null) {
-      TypeDef.skipTypeDef(buffer, id);
-      return buildMetaSharedTypeInfo(typeDef);
+      TypeDef.skipTypeDef(buffer, header);
+      return buildCachedMetaSharedTypeInfo(typeDef);
     }
-    typeDef = TypeDef.readTypeDef(this, buffer, id);
+    typeDef = TypeDef.readTypeDef(this, buffer, header);
     // The target check is needed only for a newly parsed TypeDef, before it can be
     // cached or counted. Cache hits were already accepted; the caller applies target
     // adaptation after resolving TypeInfo.
@@ -985,16 +1005,16 @@ public abstract class TypeResolver {
   private TypeInfo getTargetTypeInfo(TypeInfo typeInfo, Class<?> targetClass) {
     TransformedTypeInfo[] infos = extRegistry.transformedTypeInfo.get(targetClass);
     Class<?> readClass = typeInfo.getType();
-    long typeDefId = transformCacheTypeDefId(typeInfo);
+    long typeDefHeaderHash = transformCacheTypeDefHeaderHash(typeInfo);
     if (infos != null) {
       // It's ok to use loop here since most of case the array size will be 1.
       for (TransformedTypeInfo info : infos) {
-        if (info.readClass == readClass && info.typeDefId == typeDefId) {
+        if (info.readClass == readClass && info.typeDefHeaderHash == typeDefHeaderHash) {
           return info.typeInfo;
         }
       }
     }
-    return transformTypeInfo(typeInfo, targetClass, typeDefId);
+    return transformTypeInfo(typeInfo, targetClass, typeDefHeaderHash);
   }
 
   private void checkTargetTypeDef(TypeDef typeDef, Class<?> targetClass) {
@@ -1011,12 +1031,13 @@ public abstract class TypeResolver {
     }
   }
 
-  private static long transformCacheTypeDefId(TypeInfo typeInfo) {
+  private static long transformCacheTypeDefHeaderHash(TypeInfo typeInfo) {
     TypeDef typeDef = typeInfo.getTypeDef();
-    return typeDef == null ? 0 : typeDef.getId();
+    return typeDef == null ? 0 : TypeDef.headerHash(typeDef.getId());
   }
 
-  private TypeInfo transformTypeInfo(TypeInfo typeInfo, Class<?> targetClass, long typeDefId) {
+  private TypeInfo transformTypeInfo(
+      TypeInfo typeInfo, Class<?> targetClass, long typeDefHeaderHash) {
     Class<?> readClass = typeInfo.getType();
     TypeInfo newTypeInfo;
     // Keep assignable target matches cached here. Calling Class.isAssignableFrom for every
@@ -1042,7 +1063,7 @@ public abstract class TypeResolver {
     if (size > 0) {
       System.arraycopy(infos, 0, newInfos, 0, size);
     }
-    newInfos[size] = new TransformedTypeInfo(readClass, typeDefId, newTypeInfo);
+    newInfos[size] = new TransformedTypeInfo(readClass, typeDefHeaderHash, newTypeInfo);
     extRegistry.transformedTypeInfo.put(targetClass, newInfos);
     return newTypeInfo;
   }
@@ -1119,19 +1140,32 @@ public abstract class TypeResolver {
   }
 
   final TypeInfo buildMetaSharedTypeInfo(TypeDef typeDef) {
-    TypeInfo typeInfo = extRegistry.typeInfoByTypeDefId.get(typeDef.getId());
+    long headerHash = TypeDef.headerHash(typeDef.getId());
+    Class<?> cls = loadClass(typeDef.getClassSpec());
+    checkClassForDeserialization(cls);
+    TypeDef localTypeDef = matchingLocalTypeDef(headerHash, cls);
+    if (localTypeDef != null) {
+      return createMetaSharedTypeInfo(localTypeDef, cls);
+    }
+    TypeInfo typeInfo = extRegistry.typeInfoByHeaderHash.get(headerHash);
+    return typeInfo != null ? typeInfo : cacheMetaSharedTypeInfo(typeDef, cls);
+  }
+
+  private TypeInfo cacheMetaSharedTypeInfo(TypeDef typeDef, Class<?> cls) {
+    TypeInfo typeInfo = createMetaSharedTypeInfo(typeDef, cls);
+    extRegistry.typeInfoByHeaderHash.put(TypeDef.headerHash(typeDef.getId()), typeInfo);
+    return typeInfo;
+  }
+
+  private TypeInfo buildCachedMetaSharedTypeInfo(TypeDef typeDef) {
+    long headerHash = TypeDef.headerHash(typeDef.getId());
+    TypeInfo typeInfo = extRegistry.typeInfoByHeaderHash.get(headerHash);
     if (typeInfo != null) {
       return typeInfo;
     }
-    Class<?> cls = loadClass(typeDef.getClassSpec());
-    checkClassForDeserialization(cls);
-    return buildMetaSharedTypeInfo(typeDef, cls);
-  }
-
-  private TypeInfo buildMetaSharedTypeInfo(TypeDef typeDef, Class<?> cls) {
-    TypeInfo typeInfo = createMetaSharedTypeInfo(typeDef, cls);
-    extRegistry.typeInfoByTypeDefId.put(typeDef.getId(), typeInfo);
-    return typeInfo;
+    // A checked cache entry was bound to this concrete class before publication. Do not reopen
+    // class loading or deserialization policy on a header-hash hit.
+    return cacheMetaSharedTypeInfo(typeDef, typeDef.getClassSpec().type);
   }
 
   private TypeInfo createMetaSharedTypeInfo(TypeDef typeDef, Class<?> cls) {
@@ -1156,33 +1190,36 @@ public abstract class TypeResolver {
     Class<?> cls = loadClass(typeDef.getClassSpec());
     // A wire TypeDef may create a compatible serializer; check the class before counting it.
     checkClassForDeserialization(cls);
-    TypeDef localTypeDef = exactLocalTypeDef(typeDef, cls);
+    TypeDef localTypeDef = matchingLocalTypeDef(TypeDef.headerHash(typeDef.getId()), cls);
     if (localTypeDef != null) {
-      return buildMetaSharedTypeInfo(localTypeDef, cls);
+      // Local metadata is an expected owner, not a remotely checked cache entry. Keep it out of
+      // both remote caches so future header hits cannot mistake local warm-up for remote approval.
+      return createMetaSharedTypeInfo(localTypeDef, cls);
     }
     Object remoteTypeKey = remoteTypeKey(typeDef);
     sharedRegistry.checkRemoteTypeDefLimit(typeDef, remoteTypeKey);
     TypeInfo typeInfo = createMetaSharedTypeInfo(typeDef, cls);
     TypeDef cachedTypeDef = sharedRegistry.getOrCreateRemoteTypeDef(typeDef, remoteTypeKey);
     if (cachedTypeDef != typeDef) {
-      return buildMetaSharedTypeInfo(cachedTypeDef, cls);
+      return cacheMetaSharedTypeInfo(cachedTypeDef, cls);
     }
-    extRegistry.typeInfoByTypeDefId.put(typeDef.getId(), typeInfo);
+    extRegistry.typeInfoByHeaderHash.put(TypeDef.headerHash(typeDef.getId()), typeInfo);
     return typeInfo;
   }
 
-  private TypeDef exactLocalTypeDef(TypeDef remoteTypeDef, Class<?> cls) {
-    return exactLocalTypeDef(remoteTypeDef.getEncoded(), cls);
-  }
-
-  private TypeDef exactLocalTypeDef(byte[] remoteEncoded, Class<?> cls) {
+  private TypeDef matchingLocalTypeDef(long headerHash, Class<?> cls) {
     // UnknownStruct has no local metadata to compare against; building it would change
     // open-world unknown-type semantics.
     if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
       return null;
     }
+    // A declared polymorphic target can be an unregistered interface or abstract class. It has no
+    // concrete local metadata owner, so do not materialize a TypeDef merely to probe for a hit.
+    if (getTypeInfo(cls, false) == null) {
+      return null;
+    }
     TypeDef localTypeDef = getTypeDef(cls, true);
-    return Arrays.equals(remoteEncoded, localTypeDef.getEncoded()) ? localTypeDef : null;
+    return TypeDef.headerHash(localTypeDef.getId()) == headerHash ? localTypeDef : null;
   }
 
   // TODO(chaokunyang) if TypeDef is consistent with class in this process,
@@ -1346,7 +1383,8 @@ public abstract class TypeResolver {
 
   private Class<? extends Serializer> loadGraalvmCompatibleDeserializerClass(
       Class<?> cls, TypeDef typeDef) {
-    if (typeDef.getId() == TypeDef.buildTypeDef(this, cls).getId()) {
+    if (TypeDef.headerHash(typeDef.getId())
+        == TypeDef.headerHash(TypeDef.buildTypeDef(this, cls).getId())) {
       return CodecUtils.loadOrGenCompatibleCodecClass(this, cls, typeDef);
     }
     return CodecUtils.loadOrGenStaticCompatibleCodecClass(this, cls, typeDef);
@@ -1654,6 +1692,11 @@ public abstract class TypeResolver {
   @Internal
   public final TypeDef cacheRemoteTypeDef(TypeDef typeDef) {
     return sharedRegistry.getOrCreateRemoteTypeDef(typeDef, remoteTypeKey(typeDef));
+  }
+
+  @Internal
+  public final TypeDef getCheckedRemoteTypeDef(long headerHash) {
+    return sharedRegistry.remoteTypeDefByHeaderHash.get(headerHash);
   }
 
   private static Object remoteTypeKey(TypeDef typeDef) {
@@ -2349,8 +2392,8 @@ public abstract class TypeResolver {
       clearGraalvmTypeInfoSerializer(typeInfo);
     }
     userTypeIdToTypeInfo.forEach((id, typeInfo) -> clearGraalvmTypeInfoSerializer(typeInfo));
-    extRegistry.typeInfoByTypeDefId.forEach(
-        (typeDefId, typeInfo) -> clearGraalvmTypeInfoSerializer(typeInfo));
+    extRegistry.typeInfoByHeaderHash.forEach(
+        (headerHash, typeInfo) -> clearGraalvmTypeInfoSerializer(typeInfo));
   }
 
   protected final void registerGraalvmClass(Class<?> cls) {
@@ -2424,7 +2467,8 @@ public abstract class TypeResolver {
     deserializerClass = registry.getCompatibleDeserializerClass(cls);
     if (deserializerClass != null
         && (!GraalvmSupport.isGraalBuildTime()
-            || typeDef.getId() != TypeDef.buildTypeDef(this, cls).getId())) {
+            || TypeDef.headerHash(typeDef.getId())
+                != TypeDef.headerHash(TypeDef.buildTypeDef(this, cls).getId()))) {
       return deserializerClass;
     }
     if (!registry.hasResolvers()) {
@@ -2453,7 +2497,7 @@ public abstract class TypeResolver {
     int classIdGenerator = 1;
     int userIdGenerator = 0;
     final ArrayList<SerializerFactory> serializerFactories = new ArrayList<>();
-    final LongMap<TypeInfo> typeInfoByTypeDefId = new LongMap<>(2, 0.5f);
+    final LongMap<TypeInfo> typeInfoByHeaderHash = new LongMap<>(2, 0.5f);
     // cache absTypeInfo, support custom serializer for abstract or interface.
     // IdentityHashMap is more memory efficient than fory IdentityMap, and this is not in hotpath
     // for query

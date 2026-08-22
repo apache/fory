@@ -27,6 +27,8 @@ public struct Config {
     /// Mainly gates materialized arrays, dictionaries, sets, structs, classes, and objects. Leaf
     /// values are gated by unread input bytes instead, and actual process memory can be higher.
     public let maxGraphMemoryBytes: Int64
+    /// Root allowance for collection elements and map entries not backed by newly consumed bytes.
+    public let maxUnbackedContainerItems: Int
     public let maxTypeFields: Int
     public let maxTypeMetaBytes: Int
     public let maxSchemaVersionsPerType: Int
@@ -38,6 +40,7 @@ public struct Config {
         checkClassVersion: Bool? = nil,
         maxDepth: Int = 5,
         maxGraphMemoryBytes: Int64 = 128 * 1024 * 1024,
+        maxUnbackedContainerItems: Int = 8192,
         maxTypeFields: Int = 512,
         maxTypeMetaBytes: Int = 4096,
         maxSchemaVersionsPerType: Int = 10,
@@ -52,6 +55,9 @@ public struct Config {
         precondition(
             maxGraphMemoryBytes > 0 && maxGraphMemoryBytes <= Int64(Int.max),
             "maxGraphMemoryBytes must be in range [1, \(Int64(Int.max))]")
+        precondition(
+            maxUnbackedContainerItems >= 0,
+            "maxUnbackedContainerItems must be non-negative")
         let effectiveCompatible = compatible ?? true
         let effectiveCheckClassVersion = checkClassVersion ?? !effectiveCompatible
         self.trackRef = trackRef
@@ -59,6 +65,7 @@ public struct Config {
         self.checkClassVersion = effectiveCheckClassVersion
         self.maxDepth = maxDepth
         self.maxGraphMemoryBytes = maxGraphMemoryBytes
+        self.maxUnbackedContainerItems = maxUnbackedContainerItems
         self.maxTypeFields = maxTypeFields
         self.maxTypeMetaBytes = maxTypeMetaBytes
         self.maxSchemaVersionsPerType = maxSchemaVersionsPerType
@@ -83,6 +90,7 @@ public final class Fory {
         checkClassVersion: Bool? = nil,
         maxDepth: Int = 5,
         maxGraphMemoryBytes: Int64 = 128 * 1024 * 1024,
+        maxUnbackedContainerItems: Int = 8192,
         maxTypeFields: Int = 512,
         maxTypeMetaBytes: Int = 4096,
         maxSchemaVersionsPerType: Int = 10,
@@ -95,6 +103,7 @@ public final class Fory {
                 checkClassVersion: checkClassVersion,
                 maxDepth: maxDepth,
                 maxGraphMemoryBytes: maxGraphMemoryBytes,
+                maxUnbackedContainerItems: maxUnbackedContainerItems,
                 maxTypeFields: maxTypeFields,
                 maxTypeMetaBytes: maxTypeMetaBytes,
                 maxSchemaVersionsPerType: maxSchemaVersionsPerType,
@@ -343,6 +352,7 @@ public final class Fory {
     ) throws -> R {
         readContext.buffer.replace(with: data)
         readContext.remainingGraphMemoryBytes = Int(self.config.maxGraphMemoryBytes)
+        readContext.remainingUnbackedContainerItems = self.config.maxUnbackedContainerItems
         defer {
             readContext.reset()
         }
@@ -404,6 +414,7 @@ public final class Fory {
         try typeResolver.finishRegistration()
         readContext.buffer.swapState(with: buffer)
         readContext.remainingGraphMemoryBytes = Int(self.config.maxGraphMemoryBytes)
+        readContext.remainingUnbackedContainerItems = self.config.maxUnbackedContainerItems
         defer {
             readContext.buffer.swapState(with: buffer)
             readContext.reset()

@@ -57,7 +57,7 @@ import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
 import javax.tools.StandardLocation;
 
-/** Generates JSON companions and platform configuration for annotated models and Mixins. */
+/** Generates JSON companions and R8 configuration for annotated models and Mixins. */
 final class JsonTypeProcessor {
   private static final String JSON_PACKAGE = "org.apache.fory.json";
   private static final String JSON_TYPE = JSON_PACKAGE + ".annotation.JsonType";
@@ -71,6 +71,7 @@ final class JsonTypeProcessor {
   private static final String JSON_RAW_VALUE = JSON_PACKAGE + ".annotation.JsonRawValue";
   private static final String JSON_BASE64 = JSON_PACKAGE + ".annotation.JsonBase64";
   private static final String JSON_UNWRAPPED = JSON_PACKAGE + ".annotation.JsonUnwrapped";
+  private static final String JSON_VALIDATOR = JSON_PACKAGE + ".annotation.JsonValidator";
   private static final String BASE64_CODEC = JSON_PACKAGE + ".codec.Base64ByteArrayCodec";
   private static final String JSON_ANY_GETTER = JSON_PACKAGE + ".annotation.JsonAnyGetter";
   private static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
@@ -78,8 +79,6 @@ final class JsonTypeProcessor {
   private static final String NO_MAP_KEY_CODEC = JSON_CODEC + "$NoMapKeyCodec";
   private static final String R8_PREFIX = "META-INF/proguard/fory-json-";
   private static final String R8_MIXIN_PREFIX = "META-INF/proguard/fory-json-mixin-";
-  private static final String NATIVE_IMAGE_PREFIX =
-      "META-INF/native-image/org.apache.fory/fory-json-";
   private static final String[] CODEC_MEMBERS = {
     "value", "elementCodec", "contentCodec", "keyCodec", "valueCodec"
   };
@@ -133,6 +132,7 @@ final class JsonTypeProcessor {
             model.companionHasCreator = generated.hasCreator;
             model.companionHasCreatorFactory = generated.hasCreatorFactory;
             model.companionIsRecord = generated.record;
+            model.companionHasValidators = generated.hasValidators;
             for (GeneratedJsonCodecSourceWriter.MemberRule member : generated.r8Members) {
               model.addR8Member(new R8Member(member.ownerBinaryName, member.declaration));
             }
@@ -141,7 +141,6 @@ final class JsonTypeProcessor {
         List<TypeElement> subtypes = classLiteralSubtypes(type, model.binaryFallbackTypes);
         model.sort();
         emitR8(model);
-        emitNativeImageProperties(model);
         pending.addAll(subtypes);
       } catch (GeneratedJsonCodecSourceWriter.InvalidJsonTypeException e) {
         messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
@@ -245,6 +244,7 @@ final class JsonTypeProcessor {
           model.companionHasCreator = generated.hasCreator;
           model.companionHasCreatorFactory = generated.hasCreatorFactory;
           model.companionIsRecord = generated.record;
+          model.companionHasValidators = generated.hasValidators;
           for (GeneratedJsonCodecSourceWriter.MemberRule member : generated.r8Members) {
             model.addR8Member(new R8Member(member.ownerBinaryName, member.declaration));
           }
@@ -254,7 +254,6 @@ final class JsonTypeProcessor {
         }
         model.sort();
         emitR8(model);
-        emitNativeImageProperties(model);
       } catch (JsonMixinAnnotations.InvalidJsonMixinException e) {
         messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
       } catch (GeneratedJsonCodecSourceWriter.InvalidJsonTypeException e) {
@@ -542,28 +541,6 @@ final class JsonTypeProcessor {
     }
   }
 
-  private void emitNativeImageProperties(Model model) {
-    if (model.companionBinaryName == null) {
-      return;
-    }
-    // The hosted feature freezes factory instances into the image heap after reachability is
-    // known, but GraalVM accepts class-initialization configuration only before analysis starts.
-    // Emit the exact generated class here so unreachable model classes remain removable.
-    String resourceName =
-        NATIVE_IMAGE_PREFIX + model.companionBinaryName + "/native-image.properties";
-    try {
-      javax.tools.FileObject file =
-          filer.createResource(
-              StandardLocation.CLASS_OUTPUT, "", resourceName, model.originatingElements());
-      try (Writer writer = file.openWriter()) {
-        writer.write("Args=--initialize-at-build-time=" + model.companionBinaryName + "$Factory\n");
-      }
-    } catch (IOException e) {
-      throw new InvalidJsonTypeException(
-          "Failed to write generated JSON Native Image properties: " + e, model.target);
-    }
-  }
-
   private String writeR8(Model model) {
     StringBuilder builder = new StringBuilder(8192);
     builder.append("-keepattributes Signature,RuntimeVisibleAnnotations\n");
@@ -661,6 +638,11 @@ final class JsonTypeProcessor {
       }
       if (model.companionIsRecord) {
         builder.append("  public boolean isRecord();\n");
+      }
+      if (model.companionHasValidators) {
+        builder
+            .append("  public java.lang.reflect.Method[] validatorMethods();\n")
+            .append("  public void invokeValidators(java.lang.Object);\n");
       }
       builder.append("}\n");
     }
@@ -892,6 +874,7 @@ final class JsonTypeProcessor {
         || hasAnnotation(annotations, method, JSON_VALUE)
         || hasAnnotation(annotations, method, JSON_RAW_VALUE)
         || hasAnnotation(annotations, method, JSON_BASE64)
+        || hasAnnotation(annotations, method, JSON_VALIDATOR)
         || hasJsonAnnotations(annotations, method.getParameters())) {
       return true;
     }
@@ -1166,6 +1149,7 @@ final class JsonTypeProcessor {
     boolean companionHasCreator;
     boolean companionHasCreatorFactory;
     boolean companionIsRecord;
+    boolean companionHasValidators;
 
     Model(TypeElement target, String binaryName) {
       this.target = target;

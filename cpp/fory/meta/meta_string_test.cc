@@ -414,6 +414,89 @@ TEST_F(MetaStringTest, MetaStringTableEmptyString) {
   EXPECT_EQ(result.value(), "");
 }
 
+TEST_F(MetaStringTest, MetaStringTableReadLargeNames) {
+  MetaStringEncoder namespace_encoder{'.', '_'};
+  MetaStringDecoder namespace_decoder{'.', '_'};
+  MetaStringEncoder type_name_encoder{'$', '_'};
+  MetaStringDecoder type_name_decoder{'$', '_'};
+  const std::vector<MetaEncoding> namespace_encodings = {
+      MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+      MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
+  const std::vector<MetaEncoding> type_name_encodings = {
+      MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+      MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
+      MetaEncoding::FIRST_TO_LOWER_SPECIAL};
+  const std::string namespace_name =
+      "org.apache.fory.serialization.longnamespace";
+  const std::string type_name = "RecursiveCollectionNode";
+
+  auto encoded_namespace =
+      namespace_encoder.encode(namespace_name, namespace_encodings);
+  auto encoded_type_name =
+      type_name_encoder.encode(type_name, type_name_encodings);
+  ASSERT_TRUE(encoded_namespace.ok());
+  ASSERT_TRUE(encoded_type_name.ok());
+  ASSERT_GT(encoded_namespace.value().bytes.size(), 16);
+  ASSERT_GT(encoded_type_name.value().bytes.size(), 16);
+
+  Buffer buffer;
+  auto write_large = [&buffer](const EncodedMetaString &encoded) {
+    buffer.write_var_uint32(static_cast<uint32_t>(encoded.bytes.size()) << 1);
+    buffer.write_int64(
+        compute_meta_string_hash(encoded.bytes, encoded.encoding));
+    buffer.write_bytes(encoded.bytes.data(), encoded.bytes.size());
+  };
+  write_large(encoded_namespace.value());
+  write_large(encoded_type_name.value());
+
+  MetaStringTable table;
+  buffer.reader_index(0);
+  auto decoded_namespace = table.read_string(buffer, namespace_decoder);
+  auto decoded_type_name = table.read_string(buffer, type_name_decoder);
+  ASSERT_TRUE(decoded_namespace.ok());
+  ASSERT_TRUE(decoded_type_name.ok());
+  EXPECT_EQ(decoded_namespace.value(), namespace_name);
+  EXPECT_EQ(decoded_type_name.value(), type_name);
+  EXPECT_EQ(buffer.reader_index(), buffer.writer_index());
+  EXPECT_EQ(compute_meta_string_hash(encoded_type_name.value().bytes,
+                                     encoded_type_name.value().encoding),
+            INT64_C(0x1f8637e8459afd04));
+}
+
+TEST_F(MetaStringTest, MetaStringTableRejectsLargeHash) {
+  MetaStringEncoder type_name_encoder{'$', '_'};
+  MetaStringDecoder type_name_decoder{'$', '_'};
+  const std::string type_name = "RecursiveCollectionNode";
+  auto encoded = type_name_encoder.encode(
+      type_name, {MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+                  MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
+                  MetaEncoding::FIRST_TO_LOWER_SPECIAL});
+  ASSERT_TRUE(encoded.ok());
+  ASSERT_GT(encoded.value().bytes.size(), 16);
+
+  const int64_t canonical =
+      compute_meta_string_hash(encoded.value().bytes, encoded.value().encoding);
+  Buffer malformed;
+  malformed.write_var_uint32(static_cast<uint32_t>(encoded.value().bytes.size())
+                             << 1);
+  malformed.write_int64(canonical ^ INT64_C(0x100));
+  malformed.write_bytes(encoded.value().bytes.data(),
+                        encoded.value().bytes.size());
+
+  MetaStringTable table;
+  malformed.reader_index(0);
+  auto result = table.read_string(malformed, type_name_decoder);
+  ASSERT_FALSE(result.ok());
+  EXPECT_EQ(result.error().code(), ErrorCode::InvalidData);
+
+  Buffer reference;
+  reference.write_var_uint32((1u << 1) | 1u);
+  reference.reader_index(0);
+  auto unpublished = table.read_string(reference, type_name_decoder);
+  EXPECT_FALSE(unpublished.ok());
+  EXPECT_EQ(unpublished.error().code(), ErrorCode::InvalidData);
+}
+
 // ============================================================================
 // Special character encoding tests
 // ============================================================================

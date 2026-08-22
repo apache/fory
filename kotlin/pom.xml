@@ -32,7 +32,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.apache.fory</groupId>
     <artifactId>fory-kotlin-parent</artifactId>
-    <version>1.6.0-SNAPSHOT</version>
+    <version>1.7.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>Fory Kotlin Project Parent POM</name>
     <description>
@@ -51,6 +51,8 @@
     <modules>
         <module>fory-kotlin</module>
         <module>fory-kotlin-ksp</module>
+        <module>fory-json-kotlin</module>
+        <module>fory-json-kotlin-ksp</module>
         <module>fory-kotlin-tests</module>
     </modules>
 
@@ -60,12 +62,38 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <kotlin.compiler.jvmTarget>1.8</kotlin.compiler.jvmTarget>
         <kotlin.version>2.3.20</kotlin.version>
-        <ksp.version>2.3.7</ksp.version>
+        <ksp.version>2.3.8</ksp.version>
         <ksp.maven.plugin.version>0.4.1</ksp.maven.plugin.version>
+        <build-helper-maven-plugin.version>3.6.1</build-helper-maven-plugin.version>
+        <dokka-maven-plugin.version>2.2.0</dokka-maven-plugin.version>
         <maven-spotless-plugin.version>2.43.0</maven-spotless-plugin.version>
+        <google-java-format.version>1.24.0</google-java-format.version>
+        <dokka.skip>false</dokka.skip>
+        <!-- Dokka owns the standard javadoc classifier for mixed Kotlin/Java modules. -->
+        <maven.javadoc.skip>true</maven.javadoc.skip>
     </properties>
 
     <profiles>
+        <profile>
+            <id>jdk25-format</id>
+            <activation>
+                <jdk>[25,)</jdk>
+            </activation>
+            <properties>
+                <google-java-format.version>1.35.0</google-java-format.version>
+            </properties>
+        </profile>
+        <profile>
+            <id>snapshot-publication</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <profile>
             <id>apache-release</id>
             <build>
@@ -133,6 +161,16 @@
                     <version>${kotlin.version}</version>
                 </plugin>
                 <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>build-helper-maven-plugin</artifactId>
+                    <version>${build-helper-maven-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.jetbrains.dokka</groupId>
+                    <artifactId>dokka-maven-plugin</artifactId>
+                    <version>${dokka-maven-plugin.version}</version>
+                </plugin>
+                <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-source-plugin</artifactId>
                     <version>3.0.1</version>
@@ -140,7 +178,7 @@
                         <execution>
                             <id>attach-sources</id>
                             <goals>
-                                <goal>jar</goal>
+                                <goal>jar-no-fork</goal>
                             </goals>
                         </execution>
                     </executions>
@@ -177,7 +215,7 @@
                     <configuration>
                         <java>
                             <googleJavaFormat>
-                                <version>1.19.1</version>
+                                <version>${google-java-format.version}</version>
                                 <style>GOOGLE</style>
                             </googleJavaFormat>
                         </java>
@@ -191,5 +229,53 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>add-kotlin-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.basedir}/src/main/kotlin</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>add-kotlin-test-sources</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.basedir}/src/test/kotlin</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.jetbrains.dokka</groupId>
+                <artifactId>dokka-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-dokka-javadocs</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>javadocJar</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${dokka.skip}</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>

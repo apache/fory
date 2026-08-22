@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-using System.Buffers;
 using System.Numerics;
 using System.Text;
 using Apache.Fory;
@@ -364,14 +363,14 @@ internal static class Program
     private static byte[] CaseStringSerializer(byte[] input)
     {
         ForyRuntime fory = BuildFory(compatible: true);
-        ReadOnlySequence<byte> sequence = new(input);
+        ByteReader inputReader = new(input);
         foreach (string expected in StringSamples)
         {
-            string value = fory.Deserialize<string>(ref sequence);
+            string value = fory.DeserializeFromReader<string>(inputReader);
             Ensure(value == expected, "string value mismatch");
         }
 
-        EnsureConsumed(sequence, nameof(CaseStringSerializer));
+        EnsureConsumed(inputReader, nameof(CaseStringSerializer));
         List<byte> output = [];
         foreach (string sample in StringSamples)
         {
@@ -385,36 +384,36 @@ internal static class Program
     {
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<Color>(101);
-        ReadOnlySequence<byte> sequence = new(input);
+        ByteReader inputReader = new(input);
 
-        bool b1 = fory.Deserialize<bool>(ref sequence);
-        bool b2 = fory.Deserialize<bool>(ref sequence);
-        int i32 = fory.Deserialize<int>(ref sequence);
-        sbyte i8a = fory.Deserialize<sbyte>(ref sequence);
-        sbyte i8b = fory.Deserialize<sbyte>(ref sequence);
-        short i16a = fory.Deserialize<short>(ref sequence);
-        short i16b = fory.Deserialize<short>(ref sequence);
-        int i32a = fory.Deserialize<int>(ref sequence);
-        int i32b = fory.Deserialize<int>(ref sequence);
-        long i64a = fory.Deserialize<long>(ref sequence);
-        long i64b = fory.Deserialize<long>(ref sequence);
-        float f32 = fory.Deserialize<float>(ref sequence);
-        double f64 = fory.Deserialize<double>(ref sequence);
-        string str = fory.Deserialize<string>(ref sequence);
-        DateOnly day = fory.Deserialize<DateOnly>(ref sequence);
-        DateTimeOffset timestamp = fory.Deserialize<DateTimeOffset>(ref sequence);
-        bool[] bools = fory.Deserialize<bool[]>(ref sequence);
-        byte[] bytes = fory.Deserialize<byte[]>(ref sequence);
-        short[] int16s = fory.Deserialize<short[]>(ref sequence);
-        int[] int32s = fory.Deserialize<int[]>(ref sequence);
-        long[] int64s = fory.Deserialize<long[]>(ref sequence);
-        float[] floats = fory.Deserialize<float[]>(ref sequence);
-        double[] doubles = fory.Deserialize<double[]>(ref sequence);
-        List<string> list = fory.Deserialize<List<string>>(ref sequence);
-        HashSet<string> set = fory.Deserialize<HashSet<string>>(ref sequence);
-        Dictionary<string, string> map = fory.Deserialize<Dictionary<string, string>>(ref sequence);
-        Color color = fory.Deserialize<Color>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseCrossLanguageSerializer));
+        bool b1 = fory.DeserializeFromReader<bool>(inputReader);
+        bool b2 = fory.DeserializeFromReader<bool>(inputReader);
+        int i32 = fory.DeserializeFromReader<int>(inputReader);
+        sbyte i8a = fory.DeserializeFromReader<sbyte>(inputReader);
+        sbyte i8b = fory.DeserializeFromReader<sbyte>(inputReader);
+        short i16a = fory.DeserializeFromReader<short>(inputReader);
+        short i16b = fory.DeserializeFromReader<short>(inputReader);
+        int i32a = fory.DeserializeFromReader<int>(inputReader);
+        int i32b = fory.DeserializeFromReader<int>(inputReader);
+        long i64a = fory.DeserializeFromReader<long>(inputReader);
+        long i64b = fory.DeserializeFromReader<long>(inputReader);
+        float f32 = fory.DeserializeFromReader<float>(inputReader);
+        double f64 = fory.DeserializeFromReader<double>(inputReader);
+        string str = fory.DeserializeFromReader<string>(inputReader);
+        DateOnly day = fory.DeserializeFromReader<DateOnly>(inputReader);
+        DateTimeOffset timestamp = fory.DeserializeFromReader<DateTimeOffset>(inputReader);
+        bool[] bools = fory.DeserializeFromReader<bool[]>(inputReader);
+        byte[] bytes = fory.DeserializeFromReader<byte[]>(inputReader);
+        short[] int16s = fory.DeserializeFromReader<short[]>(inputReader);
+        int[] int32s = fory.DeserializeFromReader<int[]>(inputReader);
+        long[] int64s = fory.DeserializeFromReader<long[]>(inputReader);
+        float[] floats = fory.DeserializeFromReader<float[]>(inputReader);
+        double[] doubles = fory.DeserializeFromReader<double[]>(inputReader);
+        List<string> list = fory.DeserializeFromReader<List<string>>(inputReader);
+        HashSet<string> set = fory.DeserializeFromReader<HashSet<string>>(inputReader);
+        Dictionary<string, string> map = fory.DeserializeFromReader<Dictionary<string, string>>(inputReader);
+        Color color = fory.DeserializeFromReader<Color>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseCrossLanguageSerializer));
 
         Ensure(b1, "bool1 mismatch");
         Ensure(!b2, "bool2 mismatch");
@@ -475,10 +474,10 @@ internal static class Program
         fory.Register<EvolvingOverrideStruct>("test.evolving_yes");
         fory.Register<FixedOverrideStruct>("test.evolving_off");
 
-        ReadOnlySequence<byte> sequence = new(input);
-        EvolvingOverrideStruct evolving = fory.Deserialize<EvolvingOverrideStruct>(ref sequence);
-        FixedOverrideStruct fixedValue = fory.Deserialize<FixedOverrideStruct>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseStructEvolvingOverride));
+        ByteReader inputReader = new(input);
+        EvolvingOverrideStruct evolving = fory.DeserializeFromReader<EvolvingOverrideStruct>(inputReader);
+        FixedOverrideStruct fixedValue = fory.DeserializeFromReader<FixedOverrideStruct>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseStructEvolvingOverride));
         Ensure(evolving.F1 == "payload", "evolving override struct mismatch");
         Ensure(fixedValue.F1 == "payload", "fixed override struct mismatch");
 
@@ -492,12 +491,12 @@ internal static class Program
     {
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<Item>(102);
-        ReadOnlySequence<byte> sequence = new(input);
-        List<string?> strList = fory.Deserialize<List<string?>>(ref sequence);
-        List<string?> strList2 = fory.Deserialize<List<string?>>(ref sequence);
-        List<Item?> itemList = fory.Deserialize<List<Item?>>(ref sequence);
-        List<Item?> itemList2 = fory.Deserialize<List<Item?>>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseList));
+        ByteReader inputReader = new(input);
+        List<string?> strList = fory.DeserializeFromReader<List<string?>>(inputReader);
+        List<string?> strList2 = fory.DeserializeFromReader<List<string?>>(inputReader);
+        List<Item?> itemList = fory.DeserializeFromReader<List<Item?>>(inputReader);
+        List<Item?> itemList2 = fory.DeserializeFromReader<List<Item?>>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseList));
 
         List<byte> output = [];
         Append(output, fory.Serialize<object?>(strList));
@@ -511,10 +510,10 @@ internal static class Program
     {
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<Item>(102);
-        ReadOnlySequence<byte> sequence = new(input);
-        NullableKeyDictionary<string, string?> strMap = fory.Deserialize<NullableKeyDictionary<string, string?>>(ref sequence);
-        NullableKeyDictionary<string, Item?> itemMap = fory.Deserialize<NullableKeyDictionary<string, Item?>>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseMap));
+        ByteReader inputReader = new(input);
+        NullableKeyDictionary<string, string?> strMap = fory.DeserializeFromReader<NullableKeyDictionary<string, string?>>(inputReader);
+        NullableKeyDictionary<string, Item?> itemMap = fory.DeserializeFromReader<NullableKeyDictionary<string, Item?>>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseMap));
 
         List<byte> output = [];
         Append(output, fory.Serialize<object?>(strMap));
@@ -526,15 +525,15 @@ internal static class Program
     {
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<Item1>(101);
-        ReadOnlySequence<byte> sequence = new(input);
-        Item1 obj = fory.Deserialize<Item1>(ref sequence);
-        int f1 = fory.Deserialize<int>(ref sequence);
-        int f2 = fory.Deserialize<int>(ref sequence);
-        int f3 = fory.Deserialize<int>(ref sequence);
-        int f4 = fory.Deserialize<int>(ref sequence);
-        int f5 = fory.Deserialize<int>(ref sequence);
-        int f6 = fory.Deserialize<int>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseInteger));
+        ByteReader inputReader = new(input);
+        Item1 obj = fory.DeserializeFromReader<Item1>(inputReader);
+        int f1 = fory.DeserializeFromReader<int>(inputReader);
+        int f2 = fory.DeserializeFromReader<int>(inputReader);
+        int f3 = fory.DeserializeFromReader<int>(inputReader);
+        int f4 = fory.DeserializeFromReader<int>(inputReader);
+        int f5 = fory.DeserializeFromReader<int>(inputReader);
+        int f6 = fory.DeserializeFromReader<int>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseInteger));
 
         Ensure(obj.F1 == 1 && obj.F2 == 2, "item1 primitive fields mismatch");
         Ensure(obj.F3 == 3 && obj.F4 == 4 && obj.F5 == 0 && obj.F6 == 0, "item1 boxed fields mismatch");
@@ -553,17 +552,17 @@ internal static class Program
     private static byte[] CaseDecimal(byte[] input)
     {
         ForyRuntime fory = BuildFory(compatible: true);
-        ReadOnlySequence<byte> sequence = new(input);
+        ByteReader inputReader = new(input);
         List<byte> output = [];
 
         for (int i = 0; i < DecimalValues.Length; i++)
         {
-            ForyDecimal value = fory.Deserialize<ForyDecimal>(ref sequence);
+            ForyDecimal value = fory.DeserializeFromReader<ForyDecimal>(inputReader);
             Ensure(value == DecimalValues[i], $"decimal {i} mismatch");
             Append(output, fory.Serialize<object?>(value));
         }
 
-        EnsureConsumed(sequence, nameof(CaseDecimal));
+        EnsureConsumed(inputReader, nameof(CaseDecimal));
         return output.ToArray();
     }
 
@@ -571,11 +570,11 @@ internal static class Program
     {
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<Item>(102);
-        ReadOnlySequence<byte> sequence = new(input);
-        Item i1 = fory.Deserialize<Item>(ref sequence);
-        Item i2 = fory.Deserialize<Item>(ref sequence);
-        Item i3 = fory.Deserialize<Item>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseItem));
+        ByteReader inputReader = new(input);
+        Item i1 = fory.DeserializeFromReader<Item>(inputReader);
+        Item i2 = fory.DeserializeFromReader<Item>(inputReader);
+        Item i3 = fory.DeserializeFromReader<Item>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseItem));
 
         List<byte> output = [];
         Append(output, fory.Serialize<object?>(i1));
@@ -588,12 +587,12 @@ internal static class Program
     {
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<Color>(101);
-        ReadOnlySequence<byte> sequence = new(input);
-        Color c1 = fory.Deserialize<Color>(ref sequence);
-        Color c2 = fory.Deserialize<Color>(ref sequence);
-        Color c3 = fory.Deserialize<Color>(ref sequence);
-        Color c4 = fory.Deserialize<Color>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseColor));
+        ByteReader inputReader = new(input);
+        Color c1 = fory.DeserializeFromReader<Color>(inputReader);
+        Color c2 = fory.DeserializeFromReader<Color>(inputReader);
+        Color c3 = fory.DeserializeFromReader<Color>(inputReader);
+        Color c4 = fory.DeserializeFromReader<Color>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseColor));
 
         List<byte> output = [];
         Append(output, fory.Serialize<object?>(c1));
@@ -607,10 +606,10 @@ internal static class Program
     {
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<StructWithList>(201);
-        ReadOnlySequence<byte> sequence = new(input);
-        StructWithList s1 = fory.Deserialize<StructWithList>(ref sequence);
-        StructWithList s2 = fory.Deserialize<StructWithList>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseStructWithList));
+        ByteReader inputReader = new(input);
+        StructWithList s1 = fory.DeserializeFromReader<StructWithList>(inputReader);
+        StructWithList s2 = fory.DeserializeFromReader<StructWithList>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseStructWithList));
 
         List<byte> output = [];
         Append(output, fory.Serialize<object?>(s1));
@@ -622,10 +621,10 @@ internal static class Program
     {
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<StructWithMap>(202);
-        ReadOnlySequence<byte> sequence = new(input);
-        StructWithMap s1 = fory.Deserialize<StructWithMap>(ref sequence);
-        StructWithMap s2 = fory.Deserialize<StructWithMap>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseStructWithMap));
+        ByteReader inputReader = new(input);
+        StructWithMap s1 = fory.DeserializeFromReader<StructWithMap>(inputReader);
+        StructWithMap s2 = fory.DeserializeFromReader<StructWithMap>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseStructWithMap));
 
         List<byte> output = [];
         Append(output, fory.Serialize<object?>(s1));
@@ -638,10 +637,10 @@ internal static class Program
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<StructWithUnion2>(301);
 
-        ReadOnlySequence<byte> sequence = new(input);
-        StructWithUnion2 first = fory.Deserialize<StructWithUnion2>(ref sequence);
-        StructWithUnion2 second = fory.Deserialize<StructWithUnion2>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseUnionXlang));
+        ByteReader inputReader = new(input);
+        StructWithUnion2 first = fory.DeserializeFromReader<StructWithUnion2>(inputReader);
+        StructWithUnion2 second = fory.DeserializeFromReader<StructWithUnion2>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseUnionXlang));
 
         Ensure(first.Union.Index == 0, "union case index mismatch for first value");
         Ensure(first.Union.Value is string firstValue && firstValue == "hello", "union case value mismatch for first value");
@@ -681,27 +680,27 @@ internal static class Program
         fory.Register<MyStruct>("my_struct");
         fory.Register<MyExt, MyExtSerializer>("my_ext");
 
-        ReadOnlySequence<byte> sequence = new(input);
+        ByteReader inputReader = new(input);
         List<byte> output = [];
         for (int i = 0; i < 3; i++)
         {
-            Color color = fory.Deserialize<Color>(ref sequence);
+            Color color = fory.DeserializeFromReader<Color>(inputReader);
             Append(output, fory.Serialize<object?>(color));
         }
 
         for (int i = 0; i < 3; i++)
         {
-            MyStruct myStruct = fory.Deserialize<MyStruct>(ref sequence);
+            MyStruct myStruct = fory.DeserializeFromReader<MyStruct>(inputReader);
             Append(output, fory.Serialize<object?>(myStruct));
         }
 
         for (int i = 0; i < 3; i++)
         {
-            MyExt myExt = fory.Deserialize<MyExt>(ref sequence);
+            MyExt myExt = fory.DeserializeFromReader<MyExt>(inputReader);
             Append(output, fory.Serialize<object?>(myExt));
         }
 
-        EnsureConsumed(sequence, nameof(CaseConsistentNamed));
+        EnsureConsumed(inputReader, nameof(CaseConsistentNamed));
         return output.ToArray();
     }
 
@@ -719,10 +718,10 @@ internal static class Program
         fory.Register<Cat>(303);
         fory.Register<AnimalListHolder>(304);
 
-        ReadOnlySequence<byte> sequence = new(input);
-        List<object?> animals = fory.Deserialize<List<object?>>(ref sequence);
-        AnimalListHolder holder = fory.Deserialize<AnimalListHolder>(ref sequence);
-        EnsureConsumed(sequence, nameof(CasePolymorphicList));
+        ByteReader inputReader = new(input);
+        List<object?> animals = fory.DeserializeFromReader<List<object?>>(inputReader);
+        AnimalListHolder holder = fory.DeserializeFromReader<AnimalListHolder>(inputReader);
+        EnsureConsumed(inputReader, nameof(CasePolymorphicList));
 
         List<byte> output = [];
         Append(output, fory.Serialize<object?>(animals));
@@ -737,10 +736,10 @@ internal static class Program
         fory.Register<Cat>(303);
         fory.Register<AnimalMapHolder>(305);
 
-        ReadOnlySequence<byte> sequence = new(input);
-        Dictionary<string, object?> map = fory.Deserialize<Dictionary<string, object?>>(ref sequence);
-        AnimalMapHolder holder = fory.Deserialize<AnimalMapHolder>(ref sequence);
-        EnsureConsumed(sequence, nameof(CasePolymorphicMap));
+        ByteReader inputReader = new(input);
+        Dictionary<string, object?> map = fory.DeserializeFromReader<Dictionary<string, object?>>(inputReader);
+        AnimalMapHolder holder = fory.DeserializeFromReader<AnimalMapHolder>(inputReader);
+        EnsureConsumed(inputReader, nameof(CasePolymorphicMap));
 
         List<byte> output = [];
         Append(output, fory.Serialize<object?>(map));
@@ -802,9 +801,9 @@ internal static class Program
         ForyRuntime fory = BuildFory(compatible: false);
         fory.Register<ReducedPrecisionFloatStruct>(213);
 
-        ReadOnlySequence<byte> sequence = new(input);
-        ReducedPrecisionFloatStruct value = fory.Deserialize<ReducedPrecisionFloatStruct>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseReducedPrecisionFloatStruct));
+        ByteReader inputReader = new(input);
+        ReducedPrecisionFloatStruct value = fory.DeserializeFromReader<ReducedPrecisionFloatStruct>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseReducedPrecisionFloatStruct));
         Ensure(BitConverter.HalfToUInt16Bits(value.Float16Value) == 0x3E00, "float16_value mismatch");
         Ensure(value.BFloat16Value.Bits == 0x3FC0, "bfloat16_value mismatch");
         Ensure(
@@ -848,10 +847,10 @@ internal static class Program
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<CompatibleInt32ArrayField>(901);
 
-        ReadOnlySequence<byte> sequence = new(input);
+        ByteReader inputReader = new(input);
         try
         {
-            _ = fory.Deserialize<CompatibleInt32ArrayField>(ref sequence);
+            _ = fory.DeserializeFromReader<CompatibleInt32ArrayField>(inputReader);
         }
         catch (Apache.Fory.InvalidDataException)
         {
@@ -898,9 +897,9 @@ internal static class Program
         fory.Register<TestEnum>(210);
         fory.Register<TwoEnumFieldStruct>(211);
 
-        ReadOnlySequence<byte> sequence = new(input);
-        TwoEnumFieldStruct value = fory.Deserialize<TwoEnumFieldStruct>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseEnumSchemaEvolutionCompatibleReverse));
+        ByteReader inputReader = new(input);
+        TwoEnumFieldStruct value = fory.DeserializeFromReader<TwoEnumFieldStruct>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseEnumSchemaEvolutionCompatibleReverse));
         Ensure(value.F1 == TestEnum.ValueC, "enum schema evolution reverse F1 mismatch");
         Ensure(value.F2 == TestEnum.ValueA, "enum schema evolution reverse F2 default mismatch");
         return fory.Serialize<object?>(value);
@@ -940,9 +939,9 @@ internal static class Program
         fory.Register<RefInnerSchemaConsistent>(501);
         fory.Register<RefOuterSchemaConsistent>(502);
 
-        ReadOnlySequence<byte> sequence = new(input);
-        RefOuterSchemaConsistent outer = fory.Deserialize<RefOuterSchemaConsistent>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseRefSchemaConsistent));
+        ByteReader inputReader = new(input);
+        RefOuterSchemaConsistent outer = fory.DeserializeFromReader<RefOuterSchemaConsistent>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseRefSchemaConsistent));
         Ensure(ReferenceEquals(outer.Inner1, outer.Inner2), "reference tracking mismatch");
         return fory.Serialize<object?>(outer);
     }
@@ -953,9 +952,9 @@ internal static class Program
         fory.Register<RefInnerCompatible>(503);
         fory.Register<RefOuterCompatible>(504);
 
-        ReadOnlySequence<byte> sequence = new(input);
-        RefOuterCompatible outer = fory.Deserialize<RefOuterCompatible>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseRefCompatible));
+        ByteReader inputReader = new(input);
+        RefOuterCompatible outer = fory.DeserializeFromReader<RefOuterCompatible>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseRefCompatible));
         Ensure(ReferenceEquals(outer.Inner1, outer.Inner2), "reference tracking mismatch");
         return fory.Serialize<object?>(outer);
     }
@@ -966,9 +965,9 @@ internal static class Program
         fory.Register<RefOverrideElement>(701);
         fory.Register<RefOverrideContainer>(702);
 
-        ReadOnlySequence<byte> sequence = new(input);
-        RefOverrideContainer container = fory.Deserialize<RefOverrideContainer>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseCollectionElementRefOverride));
+        ByteReader inputReader = new(input);
+        RefOverrideContainer container = fory.DeserializeFromReader<RefOverrideContainer>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseCollectionElementRefOverride));
 
         if (container.ListField.Count > 0)
         {
@@ -1038,9 +1037,9 @@ internal static class Program
         ForyRuntime fory = BuildFory(compatible: false, trackRef: true);
         fory.Register<CircularRefStruct>(601);
 
-        ReadOnlySequence<byte> sequence = new(input);
-        CircularRefStruct value = fory.Deserialize<CircularRefStruct>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseCircularRefSchemaConsistent));
+        ByteReader inputReader = new(input);
+        CircularRefStruct value = fory.DeserializeFromReader<CircularRefStruct>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseCircularRefSchemaConsistent));
         Ensure(ReferenceEquals(value, value.SelfRef), "circular ref mismatch");
         return fory.Serialize<object?>(value);
     }
@@ -1050,9 +1049,9 @@ internal static class Program
         ForyRuntime fory = BuildFory(compatible: true, trackRef: true);
         fory.Register<CircularRefStruct>(602);
 
-        ReadOnlySequence<byte> sequence = new(input);
-        CircularRefStruct value = fory.Deserialize<CircularRefStruct>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseCircularRefCompatible));
+        ByteReader inputReader = new(input);
+        CircularRefStruct value = fory.DeserializeFromReader<CircularRefStruct>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseCircularRefCompatible));
         Ensure(ReferenceEquals(value, value.SelfRef), "circular ref mismatch");
         return fory.Serialize<object?>(value);
     }
@@ -1110,10 +1109,10 @@ internal static class Program
     {
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<XlangOrdinaryLeaf>(1311);
-        ReadOnlySequence<byte> sequence = new(input);
+        ByteReader inputReader = new(input);
         XlangOrdinaryLeaf value =
-            fory.Deserialize<XlangOrdinaryLeaf>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseCSharpOrdinaryInheritanceId));
+            fory.DeserializeFromReader<XlangOrdinaryLeaf>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseCSharpOrdinaryInheritanceId));
         Ensure(value.Identifier == 17, "ordinary inherited identifier mismatch");
         Ensure(value.Name == "ordinary", "ordinary inherited name mismatch");
         Ensure(value.Score == 19, "ordinary leaf score mismatch");
@@ -1124,10 +1123,10 @@ internal static class Program
     {
         ForyRuntime fory = BuildFory(compatible: false);
         fory.Register<XlangExternalLeaf>("csharp.inheritance.ExternalLeaf");
-        ReadOnlySequence<byte> sequence = new(input);
+        ByteReader inputReader = new(input);
         XlangExternalLeaf value =
-            fory.Deserialize<XlangExternalLeaf>(ref sequence);
-        EnsureConsumed(sequence, nameof(CaseCSharpExternalInheritanceName));
+            fory.DeserializeFromReader<XlangExternalLeaf>(inputReader);
+        EnsureConsumed(inputReader, nameof(CaseCSharpExternalInheritanceName));
         Ensure(
             value.ReadPrivateState() == (23L, "external", 29),
             "external inherited private state mismatch");
@@ -1141,15 +1140,15 @@ internal static class Program
         ForyRuntime fory,
         string caseName)
     {
-        ReadOnlySequence<byte> sequence = new(input);
-        XlangUser user = fory.Deserialize<XlangUser>(ref sequence);
-        XlangPoint point = fory.Deserialize<XlangPoint>(ref sequence);
-        XlangStatus status = fory.Deserialize<XlangStatus>(ref sequence);
-        XlangHolder holder = fory.Deserialize<XlangHolder>(ref sequence);
-        List<XlangUser> users = fory.Deserialize<List<XlangUser>>(ref sequence);
+        ByteReader inputReader = new(input);
+        XlangUser user = fory.DeserializeFromReader<XlangUser>(inputReader);
+        XlangPoint point = fory.DeserializeFromReader<XlangPoint>(inputReader);
+        XlangStatus status = fory.DeserializeFromReader<XlangStatus>(inputReader);
+        XlangHolder holder = fory.DeserializeFromReader<XlangHolder>(inputReader);
+        List<XlangUser> users = fory.DeserializeFromReader<List<XlangUser>>(inputReader);
         Dictionary<string, XlangUser> usersByName =
-            fory.Deserialize<Dictionary<string, XlangUser>>(ref sequence);
-        EnsureConsumed(sequence, caseName);
+            fory.DeserializeFromReader<Dictionary<string, XlangUser>>(inputReader);
+        EnsureConsumed(inputReader, caseName);
 
         EnsureUser(user, 7, "root", "class root");
         Ensure(point.X == 3 && point.Y == -4, "struct root mismatch");
@@ -1187,9 +1186,9 @@ internal static class Program
 
     private static byte[] RoundTripSingle<T>(byte[] input, ForyRuntime fory)
     {
-        ReadOnlySequence<byte> sequence = new(input);
-        T value = fory.Deserialize<T>(ref sequence);
-        EnsureConsumed(sequence, typeof(T).Name);
+        ByteReader inputReader = new(input);
+        T value = fory.DeserializeFromReader<T>(inputReader);
+        EnsureConsumed(inputReader, typeof(T).Name);
         return fory.Serialize<object?>(value);
     }
 
@@ -1237,9 +1236,9 @@ internal static class Program
         target.AddRange(payload);
     }
 
-    private static void EnsureConsumed(ReadOnlySequence<byte> sequence, string caseName)
+    private static void EnsureConsumed(ByteReader reader, string caseName)
     {
-        Ensure(sequence.Length == 0, $"case {caseName} did not consume full payload");
+        Ensure(reader.Remaining == 0, $"case {caseName} did not consume full payload");
     }
 
     private static void Ensure(bool condition, string message)

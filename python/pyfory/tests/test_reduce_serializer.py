@@ -15,8 +15,109 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from pyfory import Fory
+import os
+import types
+
+import pyfory.serializer as serializer_module
+import pytest
+
+from pyfory import DeserializationPolicy, Fory
+from pyfory.error import TypeUnregisteredError
 from pyfory.serializer import ReduceSerializer
+
+
+_reduce_factory_calls = []
+_class_callable_calls = []
+_function_factory_calls = []
+
+
+def _unregistered_reduce_factory(value):
+    _reduce_factory_calls.append(value)
+    return NestedGlobalReduce("result", value)
+
+
+class NestedGlobalReduce:
+    """Encode a global callable through a nested value of this registered type."""
+
+    def __init__(self, mode, value):
+        self.mode = mode
+        self.value = value
+
+    def __reduce__(self):
+        if self.mode == "global":
+            return f"{__name__}._unregistered_reduce_factory"
+        if self.mode == "outer":
+            return NestedGlobalReduce("global", None), (self.value,)
+        return self.__class__, (self.mode, self.value)
+
+    def __eq__(self, other):
+        return isinstance(other, NestedGlobalReduce) and (self.mode, self.value) == (
+            other.mode,
+            other.value,
+        )
+
+
+class UnregisteredClassCallable:
+    def __init__(self):
+        _class_callable_calls.append(True)
+
+
+class ClassCallableReduce:
+    def __reduce__(self):
+        return UnregisteredClassCallable, ()
+
+
+def _function_reduce_factory(value):
+    _function_factory_calls.append(value)
+    return FunctionCallableReduce(value)
+
+
+class FunctionCallableReduce:
+    def __init__(self, value):
+        self.value = value
+
+    def __reduce__(self):
+        return _function_reduce_factory, (self.value,)
+
+    def __eq__(self, other):
+        return isinstance(other, FunctionCallableReduce) and self.value == other.value
+
+
+class NativeCallableReduce:
+    def __reduce__(self):
+        return os.system, ()
+
+
+class BoundReduceFactory:
+    calls = 0
+
+    def build(self):
+        type(self).calls += 1
+        return BoundMethodReduce()
+
+
+_bound_reduce_factory = BoundReduceFactory()
+
+
+class BoundMethodReduce:
+    def __reduce__(self):
+        return _bound_reduce_factory.build, ()
+
+
+class CallableFactory:
+    calls = 0
+
+    def __call__(self):
+        type(self).calls += 1
+        return CallableInstanceReduce()
+
+
+_callable_factory = CallableFactory()
+
+
+class CallableInstanceReduce:
+    def __reduce__(self):
+        return _callable_factory, ()
 
 
 class BasicReduceObject:
@@ -133,6 +234,222 @@ class BothReduceAndStateful:
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.value == other.value
+
+
+def _nested_reduce_data():
+    writer = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    writer.register_type(NestedGlobalReduce)
+    return writer.serialize(NestedGlobalReduce("outer", "allowed"))
+
+
+def test_strict_reduce_global(monkeypatch):
+    _reduce_factory_calls.clear()
+    reader = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    reader.register_type(NestedGlobalReduce)
+    data = _nested_reduce_data()
+
+    def unexpected_resolution(*args, **kwargs):
+        raise AssertionError("strict default policy resolved an unregistered global")
+
+    monkeypatch.setattr(
+        serializer_module,
+        "_resolve_validated_module_attr",
+        unexpected_resolution,
+    )
+
+    with pytest.raises(TypeUnregisteredError, match="Reduce global value"):
+        reader.deserialize(data)
+
+    assert _reduce_factory_calls == []
+
+
+def test_policy_reduce_global():
+    class AllowFactoryPolicy(DeserializationPolicy):
+        def __init__(self):
+            self.functions = []
+
+        def validate_function(self, func, is_local, **kwargs):
+            if func is not _unregistered_reduce_factory:
+                raise ValueError(f"Unexpected reduce function {func}")
+            self.functions.append((func, is_local))
+
+    _reduce_factory_calls.clear()
+    policy = AllowFactoryPolicy()
+    reader = Fory(
+        xlang=False,
+        ref=True,
+        strict=True,
+        compatible=False,
+        policy=policy,
+    )
+    reader.register_type(NestedGlobalReduce)
+
+    assert reader.deserialize(_nested_reduce_data()) == NestedGlobalReduce(
+        "result",
+        "allowed",
+    )
+    assert policy.functions == [(_unregistered_reduce_factory, False)]
+    assert _reduce_factory_calls == ["allowed"]
+
+
+def test_nonstrict_reduce_global():
+    _reduce_factory_calls.clear()
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
+
+    assert fory.deserialize(fory.serialize(NestedGlobalReduce("outer", "allowed"))) == NestedGlobalReduce("result", "allowed")
+    assert _reduce_factory_calls == ["allowed"]
+
+
+def test_strict_reduce_roundtrip():
+    fory = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    fory.register_type(type)
+    fory.register_type(BasicReduceObject)
+    obj = BasicReduceObject(42, 3)
+
+    assert fory.deserialize(fory.serialize(obj)) == obj
+
+
+def test_strict_reduce_class(monkeypatch):
+    writer = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    writer.register_type(type)
+    writer.register_type(ClassCallableReduce)
+    data = writer.serialize(ClassCallableReduce())
+
+    reader = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    reader.register_type(type)
+    reader.register_type(ClassCallableReduce)
+
+    def unexpected_resolution(*args, **kwargs):
+        raise AssertionError("strict default policy resolved an unregistered class")
+
+    monkeypatch.setattr(
+        serializer_module,
+        "_resolve_validated_module_qualname",
+        unexpected_resolution,
+    )
+    _class_callable_calls.clear()
+    with pytest.raises(TypeUnregisteredError, match="is not registered"):
+        reader.deserialize(data)
+    assert _class_callable_calls == []
+
+
+def test_strict_reduce_function(monkeypatch):
+    writer = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    writer.register_type(types.FunctionType)
+    writer.register_type(FunctionCallableReduce)
+    data = writer.serialize(FunctionCallableReduce("blocked"))
+
+    reader = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    reader.register_type(types.FunctionType)
+    reader.register_type(FunctionCallableReduce)
+
+    def unexpected_resolution(*args, **kwargs):
+        raise AssertionError("strict default policy resolved an unregistered function")
+
+    monkeypatch.setattr(
+        serializer_module,
+        "_resolve_validated_module_qualname",
+        unexpected_resolution,
+    )
+    _function_factory_calls.clear()
+    with pytest.raises(TypeUnregisteredError, match="carrier"):
+        reader.deserialize(data)
+    assert _function_factory_calls == []
+
+
+def test_policy_reduce_function():
+    class AllowFunctionPolicy(DeserializationPolicy):
+        def __init__(self):
+            self.functions = []
+
+        def validate_function(self, func, is_local, **kwargs):
+            self.functions.append((func, is_local))
+
+    writer = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    writer.register_type(types.FunctionType)
+    writer.register_type(FunctionCallableReduce)
+    data = writer.serialize(FunctionCallableReduce("allowed"))
+
+    policy = AllowFunctionPolicy()
+    reader = Fory(
+        xlang=False,
+        ref=True,
+        strict=True,
+        policy=policy,
+        compatible=False,
+    )
+    reader.register_type(types.FunctionType)
+    reader.register_type(FunctionCallableReduce)
+    _function_factory_calls.clear()
+
+    assert reader.deserialize(data) == FunctionCallableReduce("allowed")
+    assert policy.functions == [(_function_reduce_factory, False)]
+    assert _function_factory_calls == ["allowed"]
+
+
+def test_nonstrict_reduce_function():
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
+    _function_factory_calls.clear()
+
+    value = FunctionCallableReduce("allowed")
+    assert fory.deserialize(fory.serialize(value)) == value
+    assert _function_factory_calls == ["allowed"]
+
+
+def test_strict_reduce_native(monkeypatch):
+    writer = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    writer.register_type(type(os.system))
+    writer.register_type(NativeCallableReduce)
+    data = writer.serialize(NativeCallableReduce())
+
+    reader = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    reader.register_type(type(os.system))
+    reader.register_type(NativeCallableReduce)
+
+    def unexpected_resolution(*args, **kwargs):
+        raise AssertionError("strict default policy resolved a native function")
+
+    monkeypatch.setattr(
+        serializer_module,
+        "_resolve_validated_module_attr",
+        unexpected_resolution,
+    )
+    with pytest.raises(TypeUnregisteredError, match="callable"):
+        reader.deserialize(data)
+
+
+def test_strict_reduce_bound_method():
+    writer = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    writer.register_type(types.MethodType)
+    writer.register_type(BoundReduceFactory)
+    writer.register_type(BoundMethodReduce)
+    data = writer.serialize(BoundMethodReduce())
+
+    reader = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    reader.register_type(types.MethodType)
+    reader.register_type(BoundReduceFactory)
+    reader.register_type(BoundMethodReduce)
+    BoundReduceFactory.calls = 0
+
+    with pytest.raises(TypeUnregisteredError, match="carrier"):
+        reader.deserialize(data)
+    assert BoundReduceFactory.calls == 0
+
+
+def test_strict_callable_instance():
+    writer = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    writer.register_type(CallableFactory)
+    writer.register_type(CallableInstanceReduce)
+    data = writer.serialize(CallableInstanceReduce())
+
+    reader = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    reader.register_type(CallableFactory)
+    reader.register_type(CallableInstanceReduce)
+    CallableFactory.calls = 0
+
+    with pytest.raises(TypeUnregisteredError, match="reduce type"):
+        reader.deserialize(data)
+    assert CallableFactory.calls == 0
 
 
 def test_basic_reduce_object():

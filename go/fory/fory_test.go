@@ -321,6 +321,25 @@ func TestNamedStructRegistrationCoversPointer(t *testing.T) {
 	require.Equal(t, value, decodedPointer)
 }
 
+func TestCallbackReadRestoresBuffer(t *testing.T) {
+	fory := New(WithXlang(true), WithCompatible(false))
+	data, err := Serialize(fory, int32(7))
+	require.NoError(t, err)
+	data = bytes.Clone(data)
+
+	var callbackValue int32
+	require.NoError(t, fory.DeserializeWithCallbackBuffers(
+		NewByteBuffer(data), &callbackValue, nil))
+	require.Equal(t, int32(7), callbackValue)
+
+	var streamValue int32
+	require.NotPanics(t, func() {
+		err = fory.DeserializeFromReader(bytes.NewReader(data), &streamValue)
+	})
+	require.NoError(t, err)
+	require.Equal(t, int32(7), streamValue)
+}
+
 func TestUnregisteredStructSerializationFails(t *testing.T) {
 	value := explicitRegistrationUser{Name: "bob"}
 

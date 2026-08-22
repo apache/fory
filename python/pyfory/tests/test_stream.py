@@ -210,6 +210,27 @@ def test_stream_backed_buffer_struct_deserialize_shrinks_each_struct(xlang):
     assert reader.get_reader_index() == 0
 
 
+@pytest.mark.parametrize("xlang", [False, True])
+def test_stream_backed_buffer_shrinks_non_struct_root(xlang):
+    fory = pyfory.Fory(xlang=xlang, ref=True, compatible=xlang)
+    value = "x" * 7000
+    reader = Buffer.from_stream(io.BytesIO(fory.dumps(value)), 4096)
+
+    assert fory.deserialize(reader) == value
+    assert reader.get_reader_index() == 0
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_stream_backed_buffer_shrinks_failed_root(xlang):
+    fory = pyfory.Fory(xlang=xlang, ref=True, compatible=xlang)
+    payload = fory.dumps(list(range(6000)))[:-1]
+    reader = Buffer.from_stream(io.BytesIO(payload), 4096)
+
+    with pytest.raises(Exception):
+        fory.deserialize(reader)
+    assert reader.get_reader_index() == 0
+
+
 def test_stream_backed_buffer_pickle_buffer_not_corrupted_after_next_struct():
     fory = pyfory.Fory(xlang=False, ref=True, strict=False, compatible=False)
     fory.register(StreamPickleBufferValue)

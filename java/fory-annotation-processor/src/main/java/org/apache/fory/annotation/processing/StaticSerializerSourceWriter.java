@@ -123,6 +123,7 @@ final class StaticSerializerSourceWriter {
     }
     builder.append("  private final int classVersionHash;\n");
     builder.append("  private final boolean sameSchemaCompatible;\n\n");
+    builder.append("  private final boolean readDataAlwaysAdvances;\n\n");
   }
 
   private void writeDescriptors() {
@@ -184,13 +185,18 @@ final class StaticSerializerSourceWriter {
     }
     builder.append("    this.classVersionHash = 0;\n");
     builder.append("    this.sameSchemaCompatible = false;\n");
+    builder
+        .append("    this.readDataAlwaysAdvances = ")
+        .append(struct.readDataAlwaysAdvances)
+        .append(";\n");
     builder.append("  }\n\n");
     builder
         .append("  public ")
         .append(struct.serializerName)
         .append("(TypeResolver typeResolver, Class<?> type) {\n");
     builder.append("    super(typeResolver, type);\n");
-    writeConstructorBody("buildFieldGroups(DESCRIPTORS)", "false");
+    writeConstructorBody(
+        "buildFieldGroups(DESCRIPTORS)", "false", Boolean.toString(struct.readDataAlwaysAdvances));
     builder.append("  }\n\n");
     builder
         .append("  public ")
@@ -199,11 +205,15 @@ final class StaticSerializerSourceWriter {
     builder.append("    super(typeResolver, type, typeDef, DESCRIPTORS);\n");
     writeConstructorBody(
         "buildLocalFieldGroups(DESCRIPTORS)",
-        "typeDef != null && !HAS_NESTED_COMPATIBLE_STRUCT_FIELDS && typeDef.getId() == TypeDef.buildTypeDef(typeResolver, type).getId()");
+        "typeDef != null && !HAS_NESTED_COMPATIBLE_STRUCT_FIELDS && typeDef.getId() == TypeDef.buildTypeDef(typeResolver, type).getId()",
+        "typeDef.readDataAlwaysAdvances()");
     builder.append("  }\n\n");
   }
 
-  private void writeConstructorBody(String fieldGroupsExpression, String sameSchemaExpression) {
+  private void writeConstructorBody(
+      String fieldGroupsExpression,
+      String sameSchemaExpression,
+      String readDataAlwaysAdvancesExpression) {
     builder.append("    FieldGroups fieldGroups = ").append(fieldGroupsExpression).append(";\n");
     builder.append("    this.allFields = fieldGroups.allFields;\n");
     builder.append("    this.allFieldIds = localFieldIds(allFields, DESCRIPTORS);\n");
@@ -232,6 +242,10 @@ final class StaticSerializerSourceWriter {
     builder.append(
         "    this.classVersionHash = typeResolver.checkClassVersion() ? computeClassVersionHash(DESCRIPTORS) : 0;\n");
     builder.append("    this.sameSchemaCompatible = ").append(sameSchemaExpression).append(";\n");
+    builder
+        .append("    this.readDataAlwaysAdvances = ")
+        .append(readDataAlwaysAdvancesExpression)
+        .append(";\n");
   }
 
   private void writeSerializerMethods() {
@@ -256,6 +270,10 @@ final class StaticSerializerSourceWriter {
         "      return sameSchemaCompatible ? readSchemaConsistent(readContext) : readCompatible(readContext);\n");
     builder.append("    }\n");
     builder.append("    return readSchemaConsistent(readContext);\n");
+    builder.append("  }\n\n");
+    builder.append("  @Override\n");
+    builder.append("  public final boolean readDataAlwaysAdvances() {\n");
+    builder.append("    return readDataAlwaysAdvances;\n");
     builder.append("  }\n\n");
   }
 

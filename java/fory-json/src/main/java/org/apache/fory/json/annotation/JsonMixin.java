@@ -37,12 +37,13 @@ import java.lang.annotation.Target;
  * access, invocation, and value.
  *
  * <p>A Mixin may contribute {@link JsonAnyGetter}, {@link JsonAnyProperty}, {@link JsonAnySetter},
- * {@link JsonBase64}, {@link JsonCodec}, {@link JsonCreator}, {@link JsonIgnore}, {@link
- * JsonProperty}, {@link JsonPropertyOrder}, {@link JsonRawValue}, {@link JsonSubTypes}, {@link
- * JsonUnwrapped}, and {@link JsonValue}. {@link JsonType} remains a marker declared directly on a
- * model and cannot be contributed or removed by a Mixin. A contributed annotation completely
- * replaces the target annotation of the same type at the matched declaration; annotation members
- * are not merged individually. Use {@link JsonMixinRemove} for explicit removal.
+ * {@link JsonBase64}, {@link JsonCodec}, {@link JsonCreator}, {@link JsonFormat}, {@link
+ * JsonIgnore}, {@link JsonProperty}, {@link JsonPropertyOrder}, {@link JsonRawValue}, {@link
+ * JsonSubTypes}, {@link JsonUnwrapped}, {@link JsonValidator}, and {@link JsonValue}. {@link
+ * JsonType} remains a marker declared directly on a model and cannot be contributed or removed by a
+ * Mixin. A contributed annotation completely replaces the target annotation of the same type at the
+ * matched declaration; annotation members are not merged individually. Use {@link JsonMixinRemove}
+ * for explicit removal.
  *
  * <p>A contributed {@link JsonCodec} follows the same codec resolution as a codec declared on the
  * target. An exact codec registered with {@link
@@ -53,8 +54,8 @@ import java.lang.annotation.Target;
  * <p>Register a source with {@link org.apache.fory.json.ForyJsonBuilder#registerMixin(Class)}.
  * Registration applies only to the exact declared target. Registering a second source for that
  * target replaces the first source for subsequently built JSON runtimes. A source containing no
- * mapping annotations is a no-op and therefore clears an earlier overlay when registered later for
- * the same target.
+ * supported JSON annotations is a no-op and therefore clears an earlier overlay when registered
+ * later for the same target.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

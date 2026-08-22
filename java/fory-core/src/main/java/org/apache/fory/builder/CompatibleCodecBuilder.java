@@ -52,6 +52,7 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.CodegenSerializer;
 import org.apache.fory.serializer.CompatibleSerializer;
+import org.apache.fory.serializer.FieldGroups;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
@@ -153,6 +154,11 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
     }
     this.defaultValueLanguage = defaultValueLanguage;
     this.defaultValueFields = defaultValueFields;
+  }
+
+  @Override
+  protected boolean generatedReadDataAlwaysAdvances() {
+    return typeDef.readDataAlwaysAdvances();
   }
 
   // Must be static to be shared across the whole process life.
@@ -556,13 +562,10 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
 
   public static SerializationFieldInfo[] buildRemoteFieldInfos(
       TypeResolver typeResolver, Class<?> cls, TypeDef typeDef) {
-    List<Descriptor> descriptors =
-        typeResolver.createDescriptorGrouper(typeDef, cls).getSortedDescriptors();
-    SerializationFieldInfo[] fieldInfos = new SerializationFieldInfo[descriptors.size()];
-    for (int i = 0; i < descriptors.size(); i++) {
-      fieldInfos[i] = new SerializationFieldInfo(typeResolver, descriptors.get(i));
-    }
-    return fieldInfos;
+    DescriptorGrouper grouper = typeResolver.createDescriptorGrouper(typeDef, cls);
+    // Generated skip helpers dispatch from SerializationFieldInfo.codecCategory. Preserve the
+    // grouper's category instead of rebuilding every remote field as OTHER.
+    return FieldGroups.buildFieldInfos(typeResolver, grouper).allFields;
   }
 
   public static SerializationFieldInfo[] buildLocalFieldInfosByRemoteOrder(

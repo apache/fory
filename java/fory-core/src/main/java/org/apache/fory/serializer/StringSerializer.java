@@ -1377,4 +1377,9 @@ public final class StringSerializer extends ImmutableSerializer<String> {
       this.charArray = EMPTY_CHARS_STUB;
     }
   }
+
+  @Override
+  public boolean readDataAlwaysAdvances() {
+    return true;
+  }
 }

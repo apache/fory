@@ -66,11 +66,17 @@ mixin _BufferMixin {
   }
 
   /// Ensures there is room for [additionalBytes] bytes past the writer index.
+  @pragma('vm:prefer-inline')
   void ensureWritable(int additionalBytes) {
     final required = _writerIndex + additionalBytes;
     if (required <= _bytes.length) {
       return;
     }
+    _grow(required);
+  }
+
+  @pragma('vm:never-inline')
+  void _grow(int required) {
     var newLength = _bytes.isEmpty ? 1 : _bytes.length;
     while (newLength < required) {
       newLength *= 2;
@@ -269,17 +275,39 @@ mixin _BufferMixin {
   }
 
   /// Reads an unsigned 32-bit varint.
+  @pragma('vm:prefer-inline')
   int readVarUint32() {
-    var shift = 0;
-    var result = 0;
+    final byte = readUint8();
+    if (byte < 0x80) {
+      return byte;
+    }
+    return _readVarUint32Tail(byte & 0x7f);
+  }
+
+  @pragma('vm:never-inline')
+  int _readVarUint32Tail(int result) {
+    var value = result;
+    var shift = 7;
     while (true) {
       final byte = readUint8();
-      result |= (byte & 0x7f) << shift;
-      if ((byte & 0x80) == 0) {
-        return result;
+      value |= (byte & 0x7f) << shift;
+      if (byte < 0x80) {
+        return value;
       }
       shift += 7;
+      if (shift == 28) {
+        return _readVarUint32Fifth(value);
+      }
     }
+  }
+
+  @pragma('vm:never-inline')
+  int _readVarUint32Fifth(int result) {
+    final byte = readUint8();
+    if ((byte & 0xf0) != 0) {
+      _throwInvalidVarUint32();
+    }
+    return result | (byte << 28);
   }
 
   /// Writes a zig-zag encoded signed 32-bit varint.
@@ -315,6 +343,11 @@ mixin _BufferMixin {
 
   /// Reads a small unsigned integer written by [writeVarUint36Small].
   int readVarUint36Small() => readVarUint64().toInt();
+}
+
+@pragma('vm:never-inline')
+Never _throwInvalidVarUint32() {
+  throw StateError('Invalid varuint32 encoding.');
 }
 
 @internal
@@ -365,3 +398,22 @@ Uint8List bufferBytes(Buffer buffer) => buffer._bytes;
 
 @internal
 ByteData bufferByteData(Buffer buffer) => buffer._view;
+
+@internal
+Uint8List bufferLimitToWriter(Buffer buffer) {
+  final limitedBytes = Uint8List.sublistView(
+    buffer._bytes,
+    0,
+    buffer._writerIndex,
+  );
+  final limitedView = ByteData.sublistView(limitedBytes);
+  buffer._bytes = limitedBytes;
+  buffer._view = limitedView;
+  return limitedBytes;
+}
+
+@internal
+void bufferRestoreStorage(Buffer buffer, Uint8List bytes, ByteData view) {
+  buffer._bytes = bytes;
+  buffer._view = view;
+}

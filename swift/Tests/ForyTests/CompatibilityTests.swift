@@ -196,6 +196,30 @@ private struct SkippedDynamicMapV2 {
     var keep: Int32 = 0
 }
 
+@ForyUnion
+private indirect enum SkippedDepthUnion: Equatable {
+    @ForyUnknownCase
+    case unknown(UnknownCase)
+    case empty
+    case text(String)
+    case child(SkippedDepthUnion)
+}
+
+@ForyStruct
+private struct SkippedUnionV1 {
+    @ForyField(id: 1)
+    var removed: SkippedDepthUnion = .empty
+
+    @ForyField(id: 2)
+    var keep: Int32 = 0
+}
+
+@ForyStruct
+private struct SkippedUnionV2: Equatable {
+    @ForyField(id: 2)
+    var keep: Int32 = 0
+}
+
 @ForyStruct
 private struct RemoteNestedFixedMapV1: Equatable {
     @ForyField(id: 1)
@@ -416,6 +440,79 @@ func skipsDynamicMapNullEntries() throws {
         keep: 37
     )
     let decoded: SkippedDynamicMapV2 = try reader.deserialize(try writer.serialize(source))
+    #expect(decoded.keep == source.keep)
+}
+
+@Test
+func compatibleNoneCollectionUsesBudget() throws {
+    let sentinel: UInt8 = 0xA5
+    let fieldType = TypeMeta.FieldType(
+        typeID: TypeId.list.rawValue,
+        nullable: false,
+        generics: [
+            TypeMeta.FieldType(typeID: TypeId.none.rawValue, nullable: false)
+        ]
+    )
+
+    for declared in [true, false] {
+        let buffer = ByteBuffer()
+        buffer.writeVarUInt32(3)
+        buffer.writeUInt8(
+            CollectionHeader.sameType
+                | (declared ? CollectionHeader.declaredElementType : 0)
+        )
+        if !declared {
+            buffer.writeUInt8(UInt8(TypeId.none.rawValue))
+        }
+        let sentinelIndex = buffer.count
+        buffer.writeUInt8(sentinel)
+
+        let config = Config(
+            trackRef: false,
+            compatible: true,
+            maxUnbackedContainerItems: 2
+        )
+        let context = ReadContext(
+            buffer: buffer,
+            typeResolver: TypeResolver(config: config),
+            config: config
+        )
+        context.remainingUnbackedContainerItems = config.maxUnbackedContainerItems
+        #expect(throws: (any Error).self) {
+            try context.skipFieldValue(fieldType)
+        }
+
+        #expect(buffer.getCursor() == sentinelIndex)
+        #expect(try buffer.readUInt8() == sentinel)
+        #expect(buffer.remaining == 0)
+    }
+}
+
+@Test
+func compatibleUnionSkipperBoundsDynamicPayload() throws {
+    let writer = Fory(config: .init(compatible: true, maxDepth: 8))
+    try writer.register(SkippedDepthUnion.self, id: 9964)
+    try writer.register(SkippedUnionV1.self, id: 9965)
+    let source = SkippedUnionV1(
+        removed: .child(.child(.text("leaf"))),
+        keep: 43
+    )
+    let bytes = try writer.serialize(source)
+
+    let limitedReader = Fory(config: .init(compatible: true, maxDepth: 1))
+    try limitedReader.register(SkippedDepthUnion.self, id: 9964)
+    try limitedReader.register(SkippedUnionV2.self, id: 9965)
+    do {
+        let _: SkippedUnionV2 = try limitedReader.deserialize(bytes)
+        #expect(Bool(false))
+    } catch ForyError.invalidData(let message) {
+        #expect(message.contains("maxDepth"))
+    }
+
+    let boundaryReader = Fory(config: .init(compatible: true, maxDepth: 2))
+    try boundaryReader.register(SkippedDepthUnion.self, id: 9964)
+    try boundaryReader.register(SkippedUnionV2.self, id: 9965)
+    let decoded: SkippedUnionV2 = try boundaryReader.deserialize(bytes)
     #expect(decoded.keep == source.keep)
 }
 
@@ -1277,6 +1374,38 @@ func compatibleReadAdaptsDefaultVarintListAndArrayFieldPair() throws {
         try writer.serialize(CompatibleVarintListFieldV1(values: [-1, 2, 3], extra: 9))
     )
     #expect(decoded.values == [-1, 2, 3])
+}
+
+@Test
+func listToArrayChecksFixedPayloadBytes() throws {
+    let buffer = ByteBuffer()
+    buffer.writeVarUInt32(2)
+    buffer.writeUInt8(CollectionHeader.sameType | CollectionHeader.declaredElementType)
+    buffer.writeBytes([0, 0])
+
+    let config = Config(trackRef: false, compatible: true)
+    let context = ReadContext(
+        buffer: buffer,
+        typeResolver: TypeResolver(config: config),
+        config: config
+    )
+    let remoteFieldType = TypeMeta.FieldType(
+        typeID: TypeId.list.rawValue,
+        nullable: false,
+        generics: [
+            TypeMeta.FieldType(typeID: TypeId.float64.rawValue, nullable: false)
+        ]
+    )
+
+    #expect(
+        throws: ForyError.invalidData("array requires 16 bytes but only 2 remain in buffer")
+    ) {
+        let _: [Double] = try ArrayFieldCodec<DoubleCodec>.readCompatibleField(
+            context,
+            remoteFieldType: remoteFieldType,
+            refMode: .none
+        )
+    }
 }
 
 @Test

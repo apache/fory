@@ -19,7 +19,7 @@ Canonical runtime-specific rules now live under `../../../languages/*.md` and `.
 - Build: `bazel build //cpp/...`
 - Tests: `bazel test $(bazel query //cpp/...)`
 - Perf tests: `bazel test $(bazel query //cpp/fory/serialization/...)`
-- Profile: use repository-approved sampling tooling from `CONTRIBUTING.md` and `docs/cpp_debug.md`
+- Profile: use repository-approved sampling tooling from `CONTRIBUTING.md` and `docs/development/cpp-debugging.md`
 
 ## Java
 

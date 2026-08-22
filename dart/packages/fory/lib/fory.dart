@@ -33,7 +33,9 @@ export 'src/memory/buffer.dart'
     hide
         bufferByteData,
         bufferBytes,
+        bufferLimitToWriter,
         bufferReserveBytes,
+        bufferRestoreStorage,
         bufferSetReaderIndex,
         bufferSetWriterIndex,
         bufferWriteUint8At,

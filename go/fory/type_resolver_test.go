@@ -80,7 +80,7 @@ func TestTypeInfoPropagatesMetaError(t *testing.T) {
 			name: "known type id",
 			read: func(resolver *TypeResolver, buffer *ByteBuffer, readErr *Error) any {
 				buffer.ReadUint8(readErr)
-				return resolver.readTypeInfoWithTypeID(buffer, uint32(NAMED_STRUCT), readErr)
+				return resolver.readTypeInfoWithTypeID(buffer, uint32(NAMED_STRUCT), nil, readErr)
 			},
 		},
 		{

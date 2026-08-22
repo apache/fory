@@ -30,6 +30,7 @@ import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.ArrayCodec;
+import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
@@ -44,8 +45,12 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
   // that entry. Independently compiled String, child-object, and numeric value bodies remain calls.
   private final boolean inlineSchemaWrites;
 
-  Utf8WriterCodegen(JsonCodegen codegen, JsonTypeResolver resolver, boolean inlineSchemaWrites) {
-    super(codegen, resolver);
+  Utf8WriterCodegen(
+      JsonCodegen codegen,
+      JsonTypeResolver resolver,
+      ObjectCodec<?> objectOwner,
+      boolean inlineSchemaWrites) {
+    super(codegen, resolver, objectOwner);
     this.inlineSchemaWrites = inlineSchemaWrites;
   }
 
@@ -110,6 +115,7 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
         if (i == 0
             && !objectStartFused
             && !property.writeNull()
+            && !property.requiresNonNullWrite()
             && canPackObjectStartString(property)) {
           // The generated first-field branch consumes neither ordinary prefix field.
         } else if (objectStartFused && i == 0) {
@@ -287,6 +293,17 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
       expressions.add(increment(index));
     }
     return expressions;
+  }
+
+  @Override
+  Expression writeNullField(
+      JsonFieldInfo property, int id, boolean commaKnown, Expression index, Expression writer) {
+    if (commaKnown && canPackPrefix(property, true)) {
+      return new Expression.Invoke(writer, "writeNullField", packedPrefixArgs(property, true));
+    }
+    return new Expression.ListExpression(
+        writeFieldName(property, id, commaKnown, index, writer),
+        new Expression.Invoke(writer, "writeNull"));
   }
 
   @Override

@@ -237,6 +237,50 @@ struct CompatibleArrayField {
               (values, fory::F(1).array(fory::T::int32())));
 };
 
+template <typename T> struct CountingAllocator {
+  using value_type = T;
+
+  CountingAllocator() noexcept = default;
+
+  template <typename U>
+  CountingAllocator(const CountingAllocator<U> &) noexcept {}
+
+  T *allocate(std::size_t count) {
+    ++allocation_count;
+    return std::allocator<T>{}.allocate(count);
+  }
+
+  void deallocate(T *data, std::size_t count) noexcept {
+    std::allocator<T>{}.deallocate(data, count);
+  }
+
+  inline static std::size_t allocation_count = 0;
+};
+
+template <typename T, typename U>
+bool operator==(const CountingAllocator<T> &, const CountingAllocator<U> &) {
+  return true;
+}
+
+template <typename T, typename U>
+bool operator!=(const CountingAllocator<T> &, const CountingAllocator<U> &) {
+  return false;
+}
+
+struct CompatibleDoubleListField {
+  std::vector<double> values;
+
+  FORY_STRUCT(CompatibleDoubleListField,
+              (values, fory::F(1).list(fory::T::float64())));
+};
+
+struct CompatibleDoubleArrayField {
+  std::vector<double, CountingAllocator<double>> values;
+
+  FORY_STRUCT(CompatibleDoubleArrayField,
+              (values, fory::F(1).array(fory::T::float64())));
+};
+
 struct CompatibleNullableListField {
   std::vector<std::optional<int32_t>> values;
 
@@ -733,6 +777,47 @@ TEST(SchemaEvolutionTest, ImmediateArrayFieldCanReadIntoListCarrier) {
 
   ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
   EXPECT_EQ(decoded.value().values, (std::vector<int32_t>{4, 5, 6}));
+}
+
+TEST(SchemaEvolutionTest, ListArrayChecksBodyBeforeReserve) {
+  auto writer = Fory::builder().compatible(true).xlang(true).build();
+  auto reader = Fory::builder()
+                    .compatible(true)
+                    .xlang(true)
+                    .max_graph_memory_bytes(1)
+                    .build();
+
+  constexpr uint32_t TYPE_ID = 1051;
+  ASSERT_TRUE(writer.register_struct<CompatibleDoubleListField>(TYPE_ID).ok());
+  ASSERT_TRUE(reader.register_struct<CompatibleDoubleArrayField>(TYPE_ID).ok());
+
+  auto bytes = writer.serialize(CompatibleDoubleListField{{1.0, 2.0}});
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  std::vector<uint8_t> payload = std::move(bytes).value();
+
+  CountingAllocator<double>::allocation_count = 0;
+  auto complete = reader.deserialize<CompatibleDoubleArrayField>(
+      payload.data(), payload.size());
+  ASSERT_TRUE(complete.ok()) << complete.error().to_string();
+  ASSERT_EQ(complete.value().values.size(), 2);
+  EXPECT_DOUBLE_EQ(complete.value().values[0], 1.0);
+  EXPECT_DOUBLE_EQ(complete.value().values[1], 2.0);
+  ASSERT_GT(CountingAllocator<double>::allocation_count, 0);
+
+  constexpr size_t retained_body_bytes = 2;
+  constexpr size_t removed_body_bytes =
+      2 * sizeof(double) - retained_body_bytes;
+  ASSERT_GT(payload.size(), removed_body_bytes);
+  payload.resize(payload.size() - removed_body_bytes);
+
+  CountingAllocator<double>::allocation_count = 0;
+  auto decoded = reader.deserialize<CompatibleDoubleArrayField>(payload.data(),
+                                                                payload.size());
+
+  ASSERT_FALSE(decoded.ok());
+  EXPECT_EQ(decoded.error().code(), ErrorCode::BufferOutOfBound);
+  EXPECT_NE(decoded.error().message().find(" + 16 > "), std::string::npos);
+  EXPECT_EQ(CountingAllocator<double>::allocation_count, 0);
 }
 
 TEST(SchemaEvolutionTest, NullableListElementsReadIntoArrayCarrier) {

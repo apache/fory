@@ -76,6 +76,7 @@ public enum TypeId: UInt32, CaseIterable, Sendable {
     case float32Array = 55
     case float64Array = 56
 
+    @inlinable
     public var isUserTypeKind: Bool {
         switch self {
         case .enumType,
@@ -107,6 +108,23 @@ public enum TypeId: UInt32, CaseIterable, Sendable {
             return true
         default:
             return false
+        }
+    }
+
+    @inline(__always)
+    internal var readDataAlwaysAdvances: Bool {
+        switch self {
+        case .unknown,
+            .structType,
+            .compatibleStruct,
+            .namedStruct,
+            .namedCompatibleStruct,
+            .ext,
+            .namedExt,
+            .none:
+            return false
+        default:
+            return true
         }
     }
 

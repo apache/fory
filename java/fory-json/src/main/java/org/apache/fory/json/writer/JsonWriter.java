@@ -51,6 +51,8 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
  * reparsing.
  */
 public abstract class JsonWriter {
+  private static final long MIN_ISO_INSTANT_SECOND = -31_557_014_167_219_200L;
+  private static final long MAX_ISO_INSTANT_SECOND = 31_556_889_864_403_199L;
   private final JsonTypeResolver typeResolver;
   private final int maxDepth;
   private int depth;
@@ -107,6 +109,14 @@ public abstract class JsonWriter {
 
   public abstract void writeLong(long value);
 
+  /** Writes raw unsigned 32-bit bits as a decimal JSON number. */
+  public void writeUnsignedInt(int value) {
+    writeLong(Integer.toUnsignedLong(value));
+  }
+
+  /** Writes raw unsigned 64-bit bits as a decimal JSON number. */
+  public abstract void writeUnsignedLong(long value);
+
   public abstract void writeFloat(float value);
 
   public abstract void writeDouble(double value);
@@ -133,8 +143,49 @@ public abstract class JsonWriter {
         "Unsupported JSON big-number subtype " + type + "; register an explicit codec");
   }
 
-  public void writeUuid(UUID value) {
-    writeString(value.toString());
+  public final void writeUuid(UUID value) {
+    writeUuid(value.getMostSignificantBits(), value.getLeastSignificantBits());
+  }
+
+  /** Writes one canonical quoted UUID from its primitive 128-bit value. */
+  public abstract void writeUuid(long high, long low);
+
+  /** Writes one canonical quoted ISO-8601 instant from epoch seconds and nanoseconds. */
+  public abstract void writeIsoInstant(long epochSecond, int nano);
+
+  /** Converts a validated ISO instant epoch day into packed year, month, and day components. */
+  protected static long isoDate(long epochSecond, int nano) {
+    if (nano < 0
+        || nano >= 1_000_000_000
+        || epochSecond < MIN_ISO_INSTANT_SECOND
+        || epochSecond > MAX_ISO_INSTANT_SECOND) {
+      throw invalidIsoInstant(epochSecond, nano);
+    }
+    long zeroDay = Math.floorDiv(epochSecond, 86_400) + 719_528 - 60;
+    long adjust = 0;
+    if (zeroDay < 0) {
+      long adjustCycles = (zeroDay + 1) / 146_097 - 1;
+      adjust = adjustCycles * 400;
+      zeroDay += -adjustCycles * 146_097;
+    }
+    long year = (400 * zeroDay + 591) / 146_097;
+    long dayOfYear = zeroDay - (365 * year + year / 4 - year / 100 + year / 400);
+    if (dayOfYear < 0) {
+      year--;
+      dayOfYear = zeroDay - (365 * year + year / 4 - year / 100 + year / 400);
+    }
+    year += adjust;
+    int marchDay = (int) dayOfYear;
+    int marchMonth = (marchDay * 5 + 2) / 153;
+    int month = (marchMonth + 2) % 12 + 1;
+    int day = marchDay - (marchMonth * 306 + 5) / 10 + 1;
+    year += marchMonth / 10;
+    return (year << 32) | ((long) month << 16) | day;
+  }
+
+  private static ForyJsonException invalidIsoInstant(long epochSecond, int nano) {
+    return new ForyJsonException(
+        "Invalid ISO instant components: epochSecond=" + epochSecond + ", nano=" + nano);
   }
 
   public void writeLocalDate(LocalDate value) {
@@ -153,6 +204,69 @@ public abstract class JsonWriter {
     writeString(value.toString());
   }
 
+  /**
+   * Writes a canonical quoted ISO duration from magnitude components.
+   *
+   * <p>Finite components are non-negative; minutes and seconds are below 60 and nanoseconds are
+   * below one billion. Fractions use three, six, or nine digits, and a zero minute component is
+   * retained between nonzero hours and seconds. Infinite values use {@code PT9999999999999H} and
+   * require zero finite components. Negative zero is invalid.
+   */
+  public abstract void writeIsoDuration(
+      boolean infinite, boolean negative, long hours, int minutes, int seconds, int nanos);
+
+  /** Validates the primitive ISO-duration tuple before a concrete writer emits any bytes. */
+  protected static void checkIsoDuration(
+      boolean infinite, boolean negative, long hours, int minutes, int seconds, int nanos) {
+    boolean zero = (hours | minutes | seconds | nanos) == 0;
+    if (hours < 0
+        || minutes < 0
+        || minutes >= 60
+        || seconds < 0
+        || seconds >= 60
+        || nanos < 0
+        || nanos >= 1_000_000_000
+        || infinite && !zero
+        || !infinite && negative && zero) {
+      throw invalidIsoDuration(infinite, negative, hours, minutes, seconds, nanos);
+    }
+  }
+
+  /** Returns whether {@link Duration#toString()} matches the primitive ISO-duration spelling. */
+  protected static boolean matchesIsoDurationShape(
+      long hours, int minutes, int seconds, int nanos) {
+    if (hours != 0 && minutes == 0 && (seconds != 0 || nanos != 0)) {
+      return false;
+    }
+    if (nanos == 0) {
+      return true;
+    }
+    if (nanos % 1_000_000 == 0) {
+      return nanos / 1_000_000 % 10 != 0;
+    }
+    if (nanos % 1000 == 0) {
+      return nanos / 1000 % 10 != 0;
+    }
+    return nanos % 10 != 0;
+  }
+
+  private static ForyJsonException invalidIsoDuration(
+      boolean infinite, boolean negative, long hours, int minutes, int seconds, int nanos) {
+    return new ForyJsonException(
+        "Invalid ISO duration components: infinite="
+            + infinite
+            + ", negative="
+            + negative
+            + ", hours="
+            + hours
+            + ", minutes="
+            + minutes
+            + ", seconds="
+            + seconds
+            + ", nanos="
+            + nanos);
+  }
+
   public void writePeriod(Period value) {
     writeString(value.toString());
   }
@@ -168,6 +282,14 @@ public abstract class JsonWriter {
   public abstract void writeIntFieldName(int value);
 
   public abstract void writeLongFieldName(long value);
+
+  /** Writes raw unsigned 32-bit bits as a decimal JSON member name. */
+  public void writeUnsignedIntFieldName(int value) {
+    writeLongFieldName(Integer.toUnsignedLong(value));
+  }
+
+  /** Writes raw unsigned 64-bit bits as a decimal JSON member name. */
+  public abstract void writeUnsignedLongFieldName(long value);
 
   public abstract void writeObjectStart();
 

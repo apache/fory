@@ -555,6 +555,27 @@ void main() {
         throwsStateError,
       );
     });
+
+    test('rejects invalid map chunk sizes before type metadata', () {
+      for (final chunkSize in <int>[0, 2]) {
+        final buffer =
+            Buffer()
+              ..writeVarUint32(1)
+              ..writeUint8(0)
+              ..writeUint8(chunkSize);
+        final context = _readContext(buffer);
+
+        try {
+          expect(
+            () => MapSerializer.readPayload(context, null, null),
+            throwsStateError,
+            reason: 'chunkSize=$chunkSize',
+          );
+        } finally {
+          context.reset();
+        }
+      }
+    });
   });
 
   group('flattened hierarchy schema', () {

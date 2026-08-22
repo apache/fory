@@ -26,7 +26,7 @@
   <parent>
     <artifactId>fory-parent</artifactId>
     <groupId>org.apache.fory</groupId>
-    <version>1.6.0-SNAPSHOT</version>
+    <version>1.7.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>benchmark</artifactId>
@@ -45,6 +45,7 @@
     <protobuf.version>3.25.5</protobuf.version>
     <jackson.version>2.22.1</jackson.version>
     <jackson.annotations.version>2.22</jackson.annotations.version>
+    <jackson3.version>3.2.1</jackson3.version>
     <gson.version>2.14.0</gson.version>
     <build-helper-maven-plugin.version>3.6.1</build-helper-maven-plugin.version>
     <exec-maven-plugin.version>3.6.2</exec-maven-plugin.version>
@@ -248,6 +249,14 @@
       <properties>
         <maven.compiler.release>17</maven.compiler.release>
       </properties>
+      <dependencies>
+        <!-- Jackson 3 uses Java 17 bytecode, so keep it out of Java 11 compilation. -->
+        <dependency>
+          <groupId>tools.jackson.module</groupId>
+          <artifactId>jackson-module-blackbird</artifactId>
+          <version>${jackson3.version}</version>
+        </dependency>
+      </dependencies>
       <build>
         <plugins>
           <plugin>
@@ -265,6 +274,18 @@
                   <sources>
                     <!-- Add the java17 source directory -->
                     <source>src/main/java17</source>
+                  </sources>
+                </configuration>
+              </execution>
+              <execution>
+                <id>add-test-source</id>
+                <phase>generate-test-sources</phase>
+                <goals>
+                  <goal>add-test-source</goal>
+                </goals>
+                <configuration>
+                  <sources>
+                    <source>src/test/java17</source>
                   </sources>
                 </configuration>
               </execution>

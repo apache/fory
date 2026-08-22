@@ -37,7 +37,33 @@ import org.apache.fory.util.Preconditions;
 /** Serializers for java primitive types. */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class PrimitiveSerializers {
-  public static final class BooleanSerializer extends ImmutableSerializer<Boolean>
+  private abstract static class PrimitiveSerializer<T> extends Serializer<T> {
+    PrimitiveSerializer(Config config, Class<T> type) {
+      super(config, type);
+    }
+
+    @Override
+    public final boolean readDataAlwaysAdvances() {
+      return true;
+    }
+  }
+
+  private abstract static class PrimitiveValueSerializer<T> extends ImmutableSerializer<T> {
+    PrimitiveValueSerializer(Config config, Class<T> type) {
+      super(config, type);
+    }
+
+    PrimitiveValueSerializer(Config config, Class<T> type, boolean needToWriteRef) {
+      super(config, type, needToWriteRef);
+    }
+
+    @Override
+    public final boolean readDataAlwaysAdvances() {
+      return true;
+    }
+  }
+
+  public static final class BooleanSerializer extends PrimitiveValueSerializer<Boolean>
       implements Shareable {
     public BooleanSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
@@ -54,7 +80,8 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class ByteSerializer extends ImmutableSerializer<Byte> implements Shareable {
+  public static final class ByteSerializer extends PrimitiveValueSerializer<Byte>
+      implements Shareable {
     public ByteSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
     }
@@ -70,7 +97,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class UInt8Serializer extends ImmutableSerializer<Integer>
+  public static final class UInt8Serializer extends PrimitiveValueSerializer<Integer>
       implements Shareable {
     public UInt8Serializer(Config config) {
       super(config, Integer.class);
@@ -88,7 +115,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class UInt16Serializer extends ImmutableSerializer<Integer>
+  public static final class UInt16Serializer extends PrimitiveValueSerializer<Integer>
       implements Shareable {
     public UInt16Serializer(Config config) {
       super(config, Integer.class);
@@ -106,7 +133,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class CharSerializer extends ImmutableSerializer<Character>
+  public static final class CharSerializer extends PrimitiveValueSerializer<Character>
       implements Shareable {
     public CharSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
@@ -123,7 +150,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class ShortSerializer extends ImmutableSerializer<Short>
+  public static final class ShortSerializer extends PrimitiveValueSerializer<Short>
       implements Shareable {
     public ShortSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
@@ -140,7 +167,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class IntSerializer extends ImmutableSerializer<Integer>
+  public static final class IntSerializer extends PrimitiveValueSerializer<Integer>
       implements Shareable {
     private final boolean compressNumber;
 
@@ -168,7 +195,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class FixedInt32Serializer extends ImmutableSerializer<Integer>
+  public static final class FixedInt32Serializer extends PrimitiveValueSerializer<Integer>
       implements Shareable {
     public FixedInt32Serializer(Config config) {
       super(config, Integer.class);
@@ -185,7 +212,8 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class VarInt32Serializer extends Serializer<Integer> implements Shareable {
+  public static final class VarInt32Serializer extends PrimitiveSerializer<Integer>
+      implements Shareable {
     public VarInt32Serializer(Config config) {
       super(config, Integer.class);
     }
@@ -201,7 +229,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class FixedUInt32Serializer extends ImmutableSerializer<Long>
+  public static final class FixedUInt32Serializer extends PrimitiveValueSerializer<Long>
       implements Shareable {
     public FixedUInt32Serializer(Config config) {
       super(config, Long.class);
@@ -219,7 +247,8 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class VarUInt32Serializer extends Serializer<Long> implements Shareable {
+  public static final class VarUInt32Serializer extends PrimitiveSerializer<Long>
+      implements Shareable {
     public VarUInt32Serializer(Config config) {
       super(config, Long.class);
     }
@@ -236,7 +265,8 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class LongSerializer extends ImmutableSerializer<Long> implements Shareable {
+  public static final class LongSerializer extends PrimitiveValueSerializer<Long>
+      implements Shareable {
     private final Int64Encoding longEncoding;
 
     public LongSerializer(Config config, Class<?> cls) {
@@ -307,7 +337,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class FixedInt64Serializer extends ImmutableSerializer<Long>
+  public static final class FixedInt64Serializer extends PrimitiveValueSerializer<Long>
       implements Shareable {
     public FixedInt64Serializer(Config config) {
       super(config, Long.class);
@@ -324,7 +354,8 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class VarInt64Serializer extends Serializer<Long> implements Shareable {
+  public static final class VarInt64Serializer extends PrimitiveSerializer<Long>
+      implements Shareable {
     public VarInt64Serializer(Config config) {
       super(config, Long.class);
     }
@@ -340,7 +371,8 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class TaggedInt64Serializer extends Serializer<Long> implements Shareable {
+  public static final class TaggedInt64Serializer extends PrimitiveSerializer<Long>
+      implements Shareable {
     public TaggedInt64Serializer(Config config) {
       super(config, Long.class);
     }
@@ -356,7 +388,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class FixedUInt64Serializer extends ImmutableSerializer<Long>
+  public static final class FixedUInt64Serializer extends PrimitiveValueSerializer<Long>
       implements Shareable {
     public FixedUInt64Serializer(Config config) {
       super(config, Long.class);
@@ -373,7 +405,8 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class VarUInt64Serializer extends Serializer<Long> implements Shareable {
+  public static final class VarUInt64Serializer extends PrimitiveSerializer<Long>
+      implements Shareable {
     public VarUInt64Serializer(Config config) {
       super(config, Long.class);
     }
@@ -389,7 +422,8 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class TaggedUInt64Serializer extends Serializer<Long> implements Shareable {
+  public static final class TaggedUInt64Serializer extends PrimitiveSerializer<Long>
+      implements Shareable {
     public TaggedUInt64Serializer(Config config) {
       super(config, Long.class);
     }
@@ -405,7 +439,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class FloatSerializer extends ImmutableSerializer<Float>
+  public static final class FloatSerializer extends PrimitiveValueSerializer<Float>
       implements Shareable {
     public FloatSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
@@ -422,7 +456,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class DoubleSerializer extends ImmutableSerializer<Double>
+  public static final class DoubleSerializer extends PrimitiveValueSerializer<Double>
       implements Shareable {
     public DoubleSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
@@ -439,7 +473,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class Float16Serializer extends ImmutableSerializer<Float16>
+  public static final class Float16Serializer extends PrimitiveValueSerializer<Float16>
       implements Shareable {
     public Float16Serializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
@@ -456,7 +490,7 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class BFloat16Serializer extends ImmutableSerializer<BFloat16>
+  public static final class BFloat16Serializer extends PrimitiveValueSerializer<BFloat16>
       implements Shareable {
     public BFloat16Serializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);

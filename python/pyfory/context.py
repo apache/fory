@@ -180,22 +180,25 @@ class MetaStringReader:
 
     def _read_big_meta_string(self, buffer, length: int):
         hashcode = buffer.read_int64()
+        reader_index = buffer.get_reader_index()
+        buffer.check_bound(reader_index, length)
+        encoded_meta_string = self._hash_to_encoded_meta_strings.get(hashcode)
+        if encoded_meta_string is not None:
+            # The checked cache owns this wire hash. Hits skip the current frame without comparing
+            # or validating its body, length, or encoding; only misses validate before publishing.
+            buffer.set_reader_index(reader_index + length)
+            return encoded_meta_string
         encoding = hashcode & 0xFF
         if encoding > 4:
             raise ValueError(f"Unexpected encoding flag: {encoding}")
-        reader_index = buffer.get_reader_index()
-        buffer.check_bound(reader_index, length)
         data = buffer.get_bytes(reader_index, length)
         buffer.set_reader_index(reader_index + length)
         canonical_hash = hash_meta_string_data(data, encoding)
         if canonical_hash != hashcode:
             raise ValueError("Malformed metastring hash")
-        key = (hashcode, data)
-        encoded_meta_string = self._hash_to_encoded_meta_strings.get(key)
-        if encoded_meta_string is None:
-            encoded_meta_string = self.shared_registry.get_or_create_encoded_meta_string(data, hashcode)
-            if length <= MAX_CACHED_META_STRING_LENGTH and len(self._hash_to_encoded_meta_strings) < MAX_CACHED_META_STRINGS:
-                self._hash_to_encoded_meta_strings[key] = encoded_meta_string
+        encoded_meta_string = self.shared_registry.get_or_create_encoded_meta_string(data, hashcode)
+        if length <= MAX_CACHED_META_STRING_LENGTH and len(self._hash_to_encoded_meta_strings) < MAX_CACHED_META_STRINGS:
+            self._hash_to_encoded_meta_strings[hashcode] = encoded_meta_string
         return encoded_meta_string
 
     def reset(self):
@@ -473,6 +476,8 @@ class ReadContext:
         "max_depth",
         "_max_graph_memory_bytes",
         "_remaining_graph_memory_bytes",
+        "_max_unbacked_container_items",
+        "remaining_unbacked_container_items",
         "ref_reader",
         "meta_string_reader",
         "meta_share_context",
@@ -495,6 +500,8 @@ class ReadContext:
         self.max_depth = config.max_depth
         self._max_graph_memory_bytes = config.max_graph_memory_bytes
         self._remaining_graph_memory_bytes = 0
+        self._max_unbacked_container_items = config.max_unbacked_container_items
+        self.remaining_unbacked_container_items = 0
         self.ref_reader = MapRefReader() if self.track_ref else NoRefReader()
         self.meta_string_reader = MetaStringReader(type_resolver.shared_registry)
         self.meta_share_context = MetaShareReadContext() if config.scoped_meta_share_enabled else None
@@ -530,9 +537,11 @@ class ReadContext:
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
         self._remaining_graph_memory_bytes = self._max_graph_memory_bytes
+        self.remaining_unbacked_container_items = self._max_unbacked_container_items
         self.depth = 0
 
     def reset(self):
+        buffer = self.buffer
         self.ref_reader.reset()
         self.meta_string_reader.reset()
         if self.meta_share_context is not None:
@@ -544,7 +553,10 @@ class ReadContext:
         self.unsupported_objects = None
         self.peer_out_of_band_enabled = False
         self._remaining_graph_memory_bytes = 0
+        self.remaining_unbacked_container_items = 0
         self.depth = 0
+        if buffer is not None:
+            buffer.shrink_input_buffer()
 
     def reserve_graph_memory(self, num_bytes):
         if num_bytes < 0:
@@ -560,6 +572,22 @@ class ReadContext:
                 "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
             )
         self._remaining_graph_memory_bytes = remaining - num_bytes
+
+    def reserve_unbacked_container_items(self, num_items):
+        remaining = self.remaining_unbacked_container_items
+        if num_items > remaining:
+            self._raise_unbacked_container_items(num_items, remaining)
+        self.remaining_unbacked_container_items = remaining - num_items
+
+    def _raise_unbacked_container_items(self, num_items, remaining):
+        if num_items < 0:
+            raise ValueError("Unbacked container item count is negative")
+        used = self._max_unbacked_container_items - remaining
+        raise ValueError(
+            f"Unbacked container item budget exceeded: requested {num_items} items, "
+            f"used {used} items, limit {self._max_unbacked_container_items} items. "
+            "Increase Fory(..., max_unbacked_container_items=...) for trusted larger payloads."
+        )
 
     def add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj
@@ -632,7 +660,8 @@ class ReadContext:
         return self.read_non_ref(serializer=serializer)
 
     def read_nullable(self, serializer=None):
-        if self.buffer.read_int8() == NULL_FLAG:
+        head_flag = self.buffer.read_int8()
+        if head_flag == NULL_FLAG:
             return None
         return self.read_non_ref(serializer=serializer)
 

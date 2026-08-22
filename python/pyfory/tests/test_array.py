@@ -197,6 +197,10 @@ def test_array_typehint_uses_distinct_carrier_serializers():
     assert isinstance(value_serializer.list_adapter_serializer, ForyArrayListAdapterSerializer)
     assert isinstance(value_serializer.pyarray_serializer, PyArraySerializer)
     assert np is None or isinstance(value_serializer.ndarray_serializer, Numpy1DArraySerializer)
+    assert value_serializer.read_data_always_advances
+    assert value_serializer.list_adapter_serializer.read_data_always_advances
+    assert value_serializer.pyarray_serializer.read_data_always_advances
+    assert np is None or value_serializer.ndarray_serializer.read_data_always_advances
     assert type(value_serializer.wrapper_serializer) is not type(value_serializer.list_adapter_serializer)
     assert type(value_serializer.wrapper_serializer) is not type(value_serializer.pyarray_serializer)
     if np is not None:

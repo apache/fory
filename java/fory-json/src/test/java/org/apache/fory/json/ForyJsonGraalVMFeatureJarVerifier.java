@@ -22,6 +22,7 @@ package org.apache.fory.json;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringReader;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -31,20 +32,20 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Enumeration;
+import java.util.Properties;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
 /** Verifies the packaged Fory JSON GraalVM Feature and activation metadata. */
 public final class ForyJsonGraalVMFeatureJarVerifier {
-  private static final String FEATURE_CLASS_NAME =
-      "org.apache.fory.json.codec.ForyJsonGraalVMFeature";
+  private static final String FEATURE_CLASS_NAME = "org.apache.fory.json.ForyJsonGraalVMFeature";
   private static final String FEATURE_CLASS_FILE =
-      "org/apache/fory/json/codec/ForyJsonGraalVMFeature.class";
+      "org/apache/fory/json/ForyJsonGraalVMFeature.class";
   private static final String VERSION_17_FEATURE_CLASS =
       "META-INF/versions/17/" + FEATURE_CLASS_FILE;
   private static final String FEATURE_SOURCE_FILE =
-      "org/apache/fory/json/codec/ForyJsonGraalVMFeature.java";
+      "org/apache/fory/json/ForyJsonGraalVMFeature.java";
   private static final String VERSION_17_FEATURE_SOURCE =
       "META-INF/versions/17/" + FEATURE_SOURCE_FILE;
   private static final String NATIVE_IMAGE_PROPERTIES =
@@ -52,6 +53,44 @@ public final class ForyJsonGraalVMFeatureJarVerifier {
   private static final String FEATURE_SERVICE =
       "META-INF/services/org.graalvm.nativeimage.hosted.Feature";
   private static final String FEATURE_OPTION = "--features=" + FEATURE_CLASS_NAME;
+  private static final String BUILD_TIME_OPTION = "--initialize-at-build-time=";
+  private static final String RUNTIME_OPTION = "--initialize-at-run-time=";
+  private static final String BUILD_TIME_TARGETS =
+      "org.apache.fory.json.ForyJson,"
+          + "org.apache.fory.json.ForyJson$PooledState,"
+          + "org.apache.fory.json.ForyJson$JsonState,"
+          + "org.apache.fory.json.ForyJsonBuilder,"
+          + "org.apache.fory.json.JsonConfig,"
+          + "org.apache.fory.json.JsonTypeCheckContext,"
+          + "org.apache.fory.json.PropertyNamingStrategy,"
+          + "org.apache.fory.util.function.ObjBooleanConsumer,"
+          + "org.apache.fory.util.function.ObjByteConsumer,"
+          + "org.apache.fory.util.function.ObjCharConsumer,"
+          + "org.apache.fory.util.function.ObjFloatConsumer,"
+          + "org.apache.fory.util.function.ObjShortConsumer,"
+          + "org.apache.fory.util.function.ToByteFunction,"
+          + "org.apache.fory.util.function.ToCharFunction,"
+          + "org.apache.fory.util.function.ToFloatFunction,"
+          + "org.apache.fory.util.function.ToShortFunction,"
+          + "org.apache.fory.json.codegen,"
+          + "org.apache.fory.json.codec,"
+          + "org.apache.fory.json.meta,"
+          + "org.apache.fory.json.reader,"
+          + "org.apache.fory.json.resolver,"
+          + "org.apache.fory.json.writer";
+  private static final String RUNTIME_TARGETS =
+      "org.apache.fory.json.codec.ScalarCodecs$HijrahDateCodec$Formatter,"
+          + "org.apache.fory.json.codec.ScalarCodecs$JapaneseDateCodec$Formatter,"
+          + "org.apache.fory.json.codec.ScalarCodecs$MinguoDateCodec$Formatter,"
+          + "org.apache.fory.json.codec.ScalarCodecs$ThaiBuddhistDateCodec$Formatter";
+  private static final String NATIVE_IMAGE_ARGS =
+      FEATURE_OPTION
+          + " "
+          + BUILD_TIME_OPTION
+          + BUILD_TIME_TARGETS
+          + " "
+          + RUNTIME_OPTION
+          + RUNTIME_TARGETS;
 
   private ForyJsonGraalVMFeatureJarVerifier() {}
 
@@ -83,9 +122,10 @@ public final class ForyJsonGraalVMFeatureJarVerifier {
       check(
           countEntries(jarFile, NATIVE_IMAGE_PROPERTIES) == 1,
           "Expected exactly one JSON native-image.properties");
-      String properties = readEntry(jarFile, NATIVE_IMAGE_PROPERTIES);
-      check(countOccurrences(properties, "--features=") == 1, "Expected one --features option");
-      check(properties.contains(FEATURE_OPTION), "Fory JSON Feature option is missing");
+      Properties properties = new Properties();
+      properties.load(new StringReader(readEntry(jarFile, NATIVE_IMAGE_PROPERTIES)));
+      String nativeImageArgs = properties.getProperty("Args");
+      check(NATIVE_IMAGE_ARGS.equals(nativeImageArgs), "Unexpected Fory JSON Native Image Args");
     }
   }
 
@@ -154,16 +194,6 @@ public final class ForyJsonGraalVMFeatureJarVerifier {
       }
       return new String(outputStream.toByteArray(), StandardCharsets.UTF_8);
     }
-  }
-
-  private static int countOccurrences(String value, String target) {
-    int count = 0;
-    int offset = 0;
-    while ((offset = value.indexOf(target, offset)) >= 0) {
-      count++;
-      offset += target.length();
-    }
-    return count;
   }
 
   private static void check(boolean condition, String message) {

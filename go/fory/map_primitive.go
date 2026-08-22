@@ -137,7 +137,7 @@ func readMapStringString(ctx *ReadContext) map[string]string {
 			return result
 		}
 		if chunkSize == 0 || chunkSize > size {
-			ctx.SetError(DeserializationErrorf("invalid map chunk size %d for remaining length %d", chunkSize, size))
+			setInvalidMapChunkSize(ctx, uint64(chunkSize), uint64(size))
 			return result
 		}
 
@@ -223,7 +223,7 @@ func readMapStringInt64(ctx *ReadContext) map[string]int64 {
 			return result
 		}
 		if chunkSize == 0 || chunkSize > size {
-			ctx.SetError(DeserializationErrorf("invalid map chunk size %d for remaining length %d", chunkSize, size))
+			setInvalidMapChunkSize(ctx, uint64(chunkSize), uint64(size))
 			return result
 		}
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
@@ -307,7 +307,7 @@ func readMapStringInt32(ctx *ReadContext) map[string]int32 {
 			return result
 		}
 		if chunkSize == 0 || chunkSize > size {
-			ctx.SetError(DeserializationErrorf("invalid map chunk size %d for remaining length %d", chunkSize, size))
+			setInvalidMapChunkSize(ctx, uint64(chunkSize), uint64(size))
 			return result
 		}
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
@@ -391,7 +391,7 @@ func readMapStringInt(ctx *ReadContext) map[string]int {
 			return result
 		}
 		if chunkSize == 0 || chunkSize > size {
-			ctx.SetError(DeserializationErrorf("invalid map chunk size %d for remaining length %d", chunkSize, size))
+			setInvalidMapChunkSize(ctx, uint64(chunkSize), uint64(size))
 			return result
 		}
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
@@ -475,7 +475,7 @@ func readMapStringFloat64(ctx *ReadContext) map[string]float64 {
 			return result
 		}
 		if chunkSize == 0 || chunkSize > size {
-			ctx.SetError(DeserializationErrorf("invalid map chunk size %d for remaining length %d", chunkSize, size))
+			setInvalidMapChunkSize(ctx, uint64(chunkSize), uint64(size))
 			return result
 		}
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
@@ -559,7 +559,7 @@ func readMapStringBool(ctx *ReadContext) map[string]bool {
 			return result
 		}
 		if chunkSize == 0 || chunkSize > size {
-			ctx.SetError(DeserializationErrorf("invalid map chunk size %d for remaining length %d", chunkSize, size))
+			setInvalidMapChunkSize(ctx, uint64(chunkSize), uint64(size))
 			return result
 		}
 
@@ -647,7 +647,7 @@ func readMapInt32Int32(ctx *ReadContext) map[int32]int32 {
 			return result
 		}
 		if chunkSize == 0 || chunkSize > size {
-			ctx.SetError(DeserializationErrorf("invalid map chunk size %d for remaining length %d", chunkSize, size))
+			setInvalidMapChunkSize(ctx, uint64(chunkSize), uint64(size))
 			return result
 		}
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
@@ -731,7 +731,7 @@ func readMapInt64Int64(ctx *ReadContext) map[int64]int64 {
 			return result
 		}
 		if chunkSize == 0 || chunkSize > size {
-			ctx.SetError(DeserializationErrorf("invalid map chunk size %d for remaining length %d", chunkSize, size))
+			setInvalidMapChunkSize(ctx, uint64(chunkSize), uint64(size))
 			return result
 		}
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
@@ -815,7 +815,7 @@ func readMapIntInt(ctx *ReadContext) map[int]int {
 			return result
 		}
 		if chunkSize == 0 || chunkSize > size {
-			ctx.SetError(DeserializationErrorf("invalid map chunk size %d for remaining length %d", chunkSize, size))
+			setInvalidMapChunkSize(ctx, uint64(chunkSize), uint64(size))
 			return result
 		}
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {

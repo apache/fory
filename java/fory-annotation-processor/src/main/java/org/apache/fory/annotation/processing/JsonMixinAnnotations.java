@@ -56,12 +56,14 @@ final class JsonMixinAnnotations {
   private static final String JSON_BASE64 = JSON_PACKAGE + ".annotation.JsonBase64";
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
   private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
+  private static final String JSON_FORMAT = JSON_PACKAGE + ".annotation.JsonFormat";
   private static final String JSON_IGNORE = JSON_PACKAGE + ".annotation.JsonIgnore";
   private static final String JSON_PROPERTY = JSON_PACKAGE + ".annotation.JsonProperty";
   private static final String JSON_PROPERTY_ORDER = JSON_PACKAGE + ".annotation.JsonPropertyOrder";
   private static final String JSON_RAW_VALUE = JSON_PACKAGE + ".annotation.JsonRawValue";
   private static final String JSON_SUB_TYPES = JSON_PACKAGE + ".annotation.JsonSubTypes";
   private static final String JSON_UNWRAPPED = JSON_PACKAGE + ".annotation.JsonUnwrapped";
+  private static final String JSON_VALIDATOR = JSON_PACKAGE + ".annotation.JsonValidator";
   private static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
 
   private static final Set<String> MAPPING_ANNOTATIONS =
@@ -74,12 +76,14 @@ final class JsonMixinAnnotations {
                   JSON_BASE64,
                   JSON_CODEC,
                   JSON_CREATOR,
+                  JSON_FORMAT,
                   JSON_IGNORE,
                   JSON_PROPERTY,
                   JSON_PROPERTY_ORDER,
                   JSON_RAW_VALUE,
                   JSON_SUB_TYPES,
                   JSON_UNWRAPPED,
+                  JSON_VALIDATOR,
                   JSON_VALUE)));
 
   private final TypeElement target;

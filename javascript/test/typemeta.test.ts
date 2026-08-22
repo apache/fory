@@ -26,7 +26,8 @@ import Fory, {
 } from "../packages/core/index";
 import type { TypeInfo } from "../packages/core/index";
 import { ReadContext } from "../packages/core/lib/context";
-import { TypeMeta } from "../packages/core/lib/meta/TypeMeta";
+import { AnyHelper } from "../packages/core/lib/gen/any";
+import { localTypeMetaSymbol, TypeMeta } from "../packages/core/lib/meta/TypeMeta";
 import { x64hash128 } from "../packages/core/lib/murmurHash3";
 import { BinaryReader } from "../packages/core/lib/reader";
 import { RefFlags, TypeId } from "../packages/core/lib/type";
@@ -67,11 +68,27 @@ function readCompatibleScalar(
   return reader.deserialize(writer.serialize({ value }));
 }
 
-function typeMetaRecord(typeMeta: TypeMeta): Uint8Array {
+function typeMetaRecord(typeMeta: TypeMeta, marker = 0): Uint8Array {
   const writer = new BinaryWriter({});
-  writer.writeVarUInt32(0);
+  writer.writeVarUInt32(marker);
   writer.buffer(typeMeta.toBytes());
   return writer.dump();
+}
+
+function typeMetaHashFrame(
+  headerHash: number,
+  bodySize: number,
+  availableBodySize = bodySize,
+  headerFlags = 0n,
+): Uint8Array {
+  const bytes = new Uint8Array(8 + availableBodySize);
+  new DataView(bytes.buffer).setBigUint64(
+    0,
+    (BigInt(headerHash) << HASH_SHIFT_BITS) | BigInt(bodySize) | headerFlags,
+    true,
+  );
+  bytes.fill(0xa5, 8);
+  return bytes;
 }
 
 function replaceFirstBytes(
@@ -91,6 +108,30 @@ function replaceFirstBytes(
     }
     if (matched) {
       result.set(replacement, i);
+      return result;
+    }
+  }
+  throw new Error("bytes not found");
+}
+
+function replaceFirstBytesWithDifferentLength(
+  bytes: Uint8Array,
+  search: Uint8Array,
+  replacement: Uint8Array,
+): Uint8Array {
+  for (let i = 0; i <= bytes.length - search.length; i++) {
+    let matched = true;
+    for (let j = 0; j < search.length; j++) {
+      if (bytes[i + j] !== search[j]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) {
+      const result = new Uint8Array(bytes.length - search.length + replacement.length);
+      result.set(bytes.subarray(0, i));
+      result.set(replacement, i);
+      result.set(bytes.subarray(i + search.length), i + replacement.length);
       return result;
     }
   }
@@ -181,6 +222,148 @@ describe("typemeta", () => {
     ).toThrow("Duplicate field id 1");
   });
 
+  test("rejects sparse and overwritten new TypeMeta indexes", () => {
+    const fory = new Fory({ compatible: true });
+    const typeInfo = Type.struct(7410, {
+      value: Type.int32().setId(1),
+    });
+    const registration = fory.register(typeInfo);
+    const typeMeta = TypeMeta.fromTypeInfo(typeInfo, (fory as any).typeResolver);
+    const readContext = (fory as any).readContext;
+
+    readContext.reset(typeMetaRecord(typeMeta, 2));
+    expect(() => readContext.readTypeMeta()).toThrow("Invalid new TypeMeta index 1; expected 0");
+    expect(readContext.typeMeta).toHaveLength(0);
+    expect(readContext.typeMetaCache.size).toBe(0);
+
+    const writer = new BinaryWriter({});
+    writer.buffer(typeMetaRecord(typeMeta));
+    writer.buffer(typeMetaRecord(typeMeta));
+    readContext.reset(writer.dump());
+    expect(readContext.readTypeMeta().getHash()).toBe(typeMeta.getHash());
+    expect(() => readContext.readTypeMeta()).toThrow("Invalid new TypeMeta index 0; expected 1");
+    expect(readContext.typeMeta).toHaveLength(1);
+
+    const value = { value: 7 };
+    expect(registration.deserialize(registration.serialize(value))).toEqual(value);
+  });
+
+  test("binds checked TypeMeta hits to sequential slots", () => {
+    const fory = new Fory({ compatible: true });
+    const typeInfo = Type.struct(7411, {
+      value: Type.int32().setId(1),
+    });
+    const registration = fory.register(typeInfo);
+    const typeMeta = TypeMeta.fromTypeInfo(typeInfo, (fory as any).typeResolver);
+    const writer = new BinaryWriter({});
+    writer.buffer(typeMetaRecord(typeMeta));
+    writer.buffer(typeMetaRecord(typeMeta, 2));
+    writer.writeVarUInt32(3);
+    const readContext = (fory as any).readContext;
+    readContext.reset(writer.dump());
+
+    const first = readContext.readTypeMeta();
+    const second = readContext.readTypeMeta();
+    expect(second).toBe(first);
+    expect(readContext.readTypeMeta()).toBe(second);
+    expect(readContext.typeMeta).toEqual([first, second]);
+    expect(readContext.reader.readGetCursor()).toBe(writer.dump().length);
+
+    const value = { value: 8 };
+    expect(registration.deserialize(registration.serialize(value))).toEqual(value);
+  });
+
+  test("generated named readers reject sparse TypeMeta indexes", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writerType = Type.enum("framing.Color", { Red: 0, Blue: 1 });
+    const readerType = Type.enum("framing.Color", { Red: 0, Blue: 1 });
+    const writer = writerFory.register(writerType);
+    const reader = readerFory.register(readerType);
+    const typeMeta = TypeMeta.fromTypeInfo(writerType, (writerFory as any).typeResolver);
+    const valid = writer.serialize(1);
+    const sparse = replaceFirstBytes(valid, typeMetaRecord(typeMeta), typeMetaRecord(typeMeta, 2));
+
+    expect(() => readerFory.deserialize(sparse, reader.serializer)).toThrow(
+      "Invalid new TypeMeta index 1; expected 0",
+    );
+    expect(readerFory.deserialize(valid, reader.serializer)).toBe(1);
+  });
+
+  test("compatible readers reject overwritten TypeMeta indexes", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writerChild = Type.struct(7413, {
+      value: Type.int32().setId(1),
+    });
+    const readerChild = Type.struct(7413, {
+      value: Type.int32().setId(1),
+    });
+    const writerRoot = Type.struct(7412, {
+      child: Type.struct(7413).setId(1),
+    });
+    const readerRoot = Type.struct(7412, {
+      child: Type.struct(7413).setId(1),
+    });
+    writerFory.register(writerChild);
+    readerFory.register(readerChild);
+    const writer = writerFory.register(writerRoot);
+    const reader = readerFory.register(readerRoot);
+    const childTypeMeta = TypeMeta.fromTypeInfo(writerChild, (writerFory as any).typeResolver);
+    const rootTypeMeta = TypeMeta.fromTypeInfo(writerRoot, (writerFory as any).typeResolver);
+    const value = { child: { value: 9 } };
+    const valid = writer.serialize(value);
+    const overwritten = replaceFirstBytes(
+      valid,
+      typeMetaRecord(childTypeMeta, 2),
+      typeMetaRecord(childTypeMeta),
+    );
+    const readContext = (readerFory as any).readContext;
+
+    expect(() => reader.deserialize(overwritten)).toThrow(
+      "Invalid new TypeMeta index 0; expected 1",
+    );
+    expect(readContext.typeMeta).toHaveLength(1);
+    expect(readContext.typeMeta[0].getHash()).toBe(rootTypeMeta.getHash());
+    expect(readContext.typeMetaCache.has(childTypeMeta.getHash())).toBe(false);
+    expect(reader.deserialize(valid)).toEqual(value);
+  });
+
+  test("rejects hash-valid remote duplicate field ids before publication", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writerType = Type.struct(7414, {
+      first: Type.int32().setId(1),
+      second: Type.int32().setId(2),
+    });
+    const readerType = Type.struct(7414, {
+      first: Type.int32().setId(1),
+      second: Type.int32().setId(2),
+    });
+    const writer = writerFory.register(writerType);
+    const reader = readerFory.register(readerType);
+    const validTypeMeta = TypeMeta.fromTypeInfo(writerType, (writerFory as any).typeResolver);
+    const duplicateTypeMeta = TypeMeta.fromTypeInfo(writerType, (writerFory as any).typeResolver);
+    duplicateTypeMeta.getFieldInfo()[1].fieldId = 1;
+    const duplicateBytes = duplicateTypeMeta.toBytes();
+    const parseReader = new BinaryReader({});
+    parseReader.reset(duplicateBytes);
+    expect(() => TypeMeta.fromBytes(parseReader)).toThrow("Duplicate field id 1");
+
+    const value = { first: 1, second: 2 };
+    const valid = writer.serialize(value);
+    const malformed = replaceFirstBytes(valid, validTypeMeta.toBytes(), duplicateBytes);
+    const readContext = (readerFory as any).readContext;
+
+    expect(() => reader.deserialize(malformed)).toThrow("Duplicate field id 1");
+    expect(readContext.typeMeta).toHaveLength(0);
+    expect(readContext.typeMetaCache.size).toBe(0);
+    expect(readContext.compatibleReadSerializers.size).toBe(0);
+    expect(readContext.totalAcceptedSchemaVersions).toBe(0);
+    expect(readContext.remoteSchemaVersionsByType).toBeUndefined();
+    expect(reader.deserialize(valid)).toEqual(value);
+  });
+
   test("writes the zero size extension when the TypeMeta body is exactly 0xFF bytes", () => {
     const typeMeta = TypeMeta.fromTypeInfo(Type.struct(7003, {})) as any;
     const body = new Uint8Array(0xff);
@@ -214,6 +397,21 @@ describe("typemeta", () => {
     const header = TypeMeta.readHeader(skipReader);
     TypeMeta.skipBody(skipReader, header);
     expect(skipReader.readGetCursor()).toBe(bytes.length);
+  });
+
+  test("parses only within the declared TypeMeta body", () => {
+    const bytes = TypeMeta.fromTypeInfo(
+      Type.struct({ namespace: "example.long.namespace", typeName: "Owner" }, {}),
+    ).toBytes();
+    const malformed = new Uint8Array(bytes);
+    const view = new DataView(malformed.buffer, malformed.byteOffset, malformed.byteLength);
+    const header = view.getBigUint64(0, true);
+    view.setBigUint64(0, (header & ~META_SIZE_MASK) | 2n, true);
+    const reader = new BinaryReader({});
+    reader.reset(malformed);
+
+    expect(() => TypeMeta.fromBytes(reader)).toThrow();
+    expect(reader.readGetCursor()).toBe(10);
   });
 
   test("includes TypeMeta header low bits in the metadata hash", () => {
@@ -256,6 +454,168 @@ describe("typemeta", () => {
     readerFory.register(Type.enum("example.Color", Color));
 
     expect(readerFory.deserialize(writerFory.serialize(Color.Red))).toBe(Color.Red);
+  });
+
+  test("expected named TypeMeta hit uses its owner", () => {
+    const Color = { Green: 0, Red: 1 };
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writer = writerFory.register(Type.enum("example.Color", Color));
+    const reader = readerFory.register(Type.enum("example.Color", Color));
+    const localTypeMeta = (reader.serializer as any)[localTypeMetaSymbol] as TypeMeta;
+    const localBytes = localTypeMeta.toBytes();
+    const currentFrame = typeMetaHashFrame(localTypeMeta.getHash(), localBytes.length - 8 + 2);
+    const bytes = replaceFirstBytesWithDifferentLength(
+      writer.serialize(Color.Red),
+      localBytes,
+      currentFrame,
+    );
+
+    const cachedTypeMeta = TypeMeta.fromTypeInfo(
+      Type.enum("example.Other", { Blue: 0 }),
+      (readerFory as any).typeResolver,
+    );
+    cachedTypeMeta.toBytes();
+    cachedTypeMeta.headerHash = localTypeMeta.getHash();
+    const readContext = (readerFory as any).readContext;
+    readContext.typeMetaCache.set(localTypeMeta.getHash(), cachedTypeMeta);
+
+    expect(readerFory.deserialize(bytes, reader.serializer)).toBe(Color.Red);
+    expect(readContext.typeMeta[0]).toBe(localTypeMeta);
+    expect(readContext.typeMetaCache.get(localTypeMeta.getHash())).toBe(cachedTypeMeta);
+    expect(readContext.totalAcceptedSchemaVersions).toBe(0);
+  });
+
+  test("named TypeMeta hits use their bound owner", () => {
+    const meta = TypeMeta.fromTypeInfo(Type.enum("owners.Alpha", { Value: 0 }));
+    const serializerA = {} as any;
+    const serializerB = {} as any;
+    const config = {
+      compatible: true,
+      maxTypeFields: 512,
+      maxTypeMetaBytes: 4096,
+      maxSchemaVersionsPerType: 4,
+      maxAverageSchemaVersionsPerType: 4,
+      maxGraphMemoryBytes: 4096,
+      maxUnbackedContainerItems: 8,
+      ref: false,
+      useSliceString: false,
+      hooks: {},
+    } as any;
+    const context = new ReadContext(
+      {
+        config,
+        trackingRef: false,
+        computeTypeId: (typeInfo: TypeInfo) => typeInfo.typeId,
+        getSerializerById: () => undefined,
+        getSerializerByName: (name: string) => {
+          if (name === "owners$Alpha") {
+            return serializerA;
+          }
+          if (name === "owners$Beta") {
+            return serializerB;
+          }
+          return undefined;
+        },
+        getSerializerByData: () => undefined,
+        isCompatible: () => true,
+        generateReadSerializer: () => {
+          throw new Error("unused");
+        },
+        regenerateReadSerializer: () => {
+          throw new Error("unused");
+        },
+      } as any,
+      config,
+    );
+    const readAlpha = () => context.readNamedTypeMeta(TypeId.NAMED_ENUM, "owners", "Alpha");
+    const readBeta = () => context.readNamedTypeMeta(TypeId.NAMED_ENUM, "owners", "Beta");
+    const frame = typeMetaRecord(meta);
+
+    context.reset(frame);
+    const checked = readAlpha();
+    (checked as any).getTypeId = () => {
+      throw new Error("cache hit must not inspect TypeMeta");
+    };
+    (checked as any).getNs = () => {
+      throw new Error("cache hit must not inspect TypeMeta");
+    };
+    (checked as any).getTypeName = () => {
+      throw new Error("cache hit must not inspect TypeMeta");
+    };
+
+    context.reset(frame);
+    expect(readAlpha()).toBe(checked);
+    context.reset(frame);
+    expect(readBeta).toThrow("TypeMeta owner mismatch");
+
+    const betaLocalMeta = TypeMeta.fromTypeInfo(Type.enum("owners.Beta", { Value: 0 }));
+    betaLocalMeta.toBytes();
+    betaLocalMeta.headerHash = meta.getHash();
+    serializerB[localTypeMetaSymbol] = betaLocalMeta;
+
+    const writer = new BinaryWriter({});
+    writer.buffer(frame);
+    writer.writeVarUInt32(1);
+    context.reset(writer.dump());
+    expect(readAlpha()).toBe(checked);
+    expect(readAlpha()).toBe(checked);
+    context.reset(writer.dump());
+    expect(readAlpha()).toBe(checked);
+    expect(readBeta).toThrow("TypeMeta owner mismatch");
+  });
+
+  test("compatible TypeMeta ref keeps its bound owner", () => {
+    const fory = new Fory({ compatible: true });
+    const serializerA = fory.register(
+      Type.struct(7018, { value: Type.int32().setId(1) }),
+    ).serializer;
+    const serializerB = fory.register(
+      Type.struct(7019, { value: Type.int32().setId(1) }),
+    ).serializer;
+    const localMetaA = (serializerA as any)[localTypeMetaSymbol] as TypeMeta;
+    const localMetaB = (serializerB as any)[localTypeMetaSymbol] as TypeMeta;
+    localMetaB.headerHash = localMetaA.getHash();
+    const context = (fory as any).readContext as ReadContext;
+
+    context.reset(typeMetaRecord(localMetaA));
+    expect(
+      context.readCompatibleStructSerializer(localMetaA.getHash(), serializerA.getTypeInfo()),
+    ).toBeUndefined();
+
+    const writer = new BinaryWriter({});
+    writer.buffer(typeMetaRecord(localMetaA));
+    writer.writeVarUInt32(1);
+    context.reset(writer.dump());
+    expect(
+      context.readCompatibleStructSerializer(localMetaA.getHash(), serializerA),
+    ).toBeUndefined();
+    expect(() => context.readCompatibleStructSerializer(localMetaA.getHash(), serializerB)).toThrow(
+      "Compatible TypeMeta owner mismatch",
+    );
+  });
+
+  test("direct TypeMeta generation keeps its public adapters", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const remoteTypeMeta = TypeMeta.fromTypeInfo(
+      Type.struct(7020, { value: Type.string().setId(1) }),
+      (writerFory as any).typeResolver,
+    );
+    const localTypeInfo = Type.struct(7020, { value: Type.int32().setId(1) });
+    const context = (readerFory as any).readContext as ReadContext;
+
+    expect(
+      context.genSerializerByTypeMetaRuntime(remoteTypeMeta, localTypeInfo, 123),
+    ).toBeDefined();
+    expect(context.genSerializerByTypeMetaRuntime(remoteTypeMeta)).toBeDefined();
+    expect((context as any).compatibleReadSerializers.size).toBe(0);
+
+    const localTypeMeta = TypeMeta.fromTypeInfo(localTypeInfo, (readerFory as any).typeResolver);
+    context.reset(typeMetaRecord(remoteTypeMeta));
+    expect(
+      context.readCompatibleStructSerializer(localTypeMeta.getHash(), localTypeInfo),
+    ).toBeDefined();
   });
 
   test("generated named enum validates TypeMeta owner", () => {
@@ -386,6 +746,292 @@ describe("typemeta", () => {
     expect(context.reader.readUint8()).toBe(0x7b);
   });
 
+  test("expected local TypeMeta hit uses its owner", () => {
+    const typeId = 7011;
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writerType = Type.struct(typeId, {});
+    const readerType = Type.struct(typeId, {});
+    const writer = writerFory.register(writerType);
+    const reader = readerFory.register(readerType);
+    const localTypeMeta = (reader.serializer as any)[localTypeMetaSymbol] as TypeMeta;
+    expect(localTypeMeta).toBeInstanceOf(TypeMeta);
+
+    const localBytes = localTypeMeta.toBytes();
+    const localBodySize = localBytes.length - 8;
+    const currentBodySize = localBodySize + 3;
+    const currentFrame = typeMetaHashFrame(
+      localTypeMeta.getHash(),
+      currentBodySize,
+      currentBodySize,
+      COMPRESS_META_FLAG | RESERVED_META_FLAGS,
+    );
+    const bytes = replaceFirstBytesWithDifferentLength(
+      writer.serialize({}),
+      localBytes,
+      currentFrame,
+    );
+
+    const cachedTypeMeta = TypeMeta.fromTypeInfo(
+      Type.struct(typeId, { ignored: Type.string() }),
+      (readerFory as any).typeResolver,
+    );
+    cachedTypeMeta.toBytes();
+    cachedTypeMeta.headerHash = localTypeMeta.getHash();
+    const readContext = (readerFory as any).readContext;
+    readContext.typeMetaCache.set(localTypeMeta.getHash(), cachedTypeMeta);
+
+    expect(reader.deserialize(bytes)).toEqual({});
+    expect(readContext.typeMeta[0]).toBe(localTypeMeta);
+    expect(readContext.typeMetaCache.get(localTypeMeta.getHash())).toBe(cachedTypeMeta);
+    expect(readContext.totalAcceptedSchemaVersions).toBe(0);
+  });
+
+  test("fixed struct keeps the ordinary serializer shape", () => {
+    const fory = new Fory({ compatible: true });
+    const serializer = fory.register(
+      Type.struct({ typeId: 7017, evolving: false }, { value: Type.int32() }),
+    ).serializer;
+
+    expect((serializer as any)[localTypeMetaSymbol]).toBeUndefined();
+  });
+
+  test("expected local TypeMeta hit checks the current body", () => {
+    const typeId = 7012;
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writer = writerFory.register(Type.struct(typeId, {}));
+    const reader = readerFory.register(Type.struct(typeId, {}));
+    const localTypeMeta = (reader.serializer as any)[localTypeMetaSymbol] as TypeMeta;
+    const localBytes = localTypeMeta.toBytes();
+    const bodySize = localBytes.length - 8 + 3;
+    const truncatedFrame = typeMetaHashFrame(localTypeMeta.getHash(), bodySize, bodySize - 1);
+    const bytes = replaceFirstBytesWithDifferentLength(
+      writer.serialize({}),
+      localBytes,
+      truncatedFrame,
+    );
+
+    expect(() => reader.deserialize(bytes)).toThrow();
+  });
+
+  test("generic TypeMeta miss resolves the local hash owner", () => {
+    const remoteType = Type.struct(
+      { namespace: "example", typeName: "Generic" },
+      { remoteValue: Type.string() },
+    );
+    const localType = Type.struct(
+      { namespace: "example", typeName: "Generic" },
+      {
+        localValue: Type.int32(),
+        extraValue: Type.string(),
+      },
+    );
+    const remoteTypeMeta = TypeMeta.fromTypeInfo(remoteType);
+    const remoteBytes = remoteTypeMeta.toBytes();
+    const readerFory = new Fory({
+      compatible: true,
+      maxSchemaVersionsPerType: 1,
+      maxAverageSchemaVersionsPerType: 1,
+    });
+    const localSerializer = readerFory.register(localType).serializer;
+    const localTypeMeta = (localSerializer as any)[localTypeMetaSymbol] as TypeMeta;
+    const localBytes = localTypeMeta.toBytes();
+    const remoteHeader = new DataView(
+      remoteBytes.buffer,
+      remoteBytes.byteOffset,
+      remoteBytes.byteLength,
+    ).getBigUint64(0, true);
+    const localHeader = new DataView(
+      localBytes.buffer,
+      localBytes.byteOffset,
+      localBytes.byteLength,
+    ).getBigUint64(0, true);
+    expect(remoteHeader & LOW_HEADER_BITS_MASK).not.toBe(localHeader & LOW_HEADER_BITS_MASK);
+    expect(remoteBytes.subarray(8)).not.toEqual(localBytes.subarray(8));
+
+    localTypeMeta.headerHash = remoteTypeMeta.getHash();
+    const context = (readerFory as any).readContext as ReadContext;
+    context.reset(typeMetaRecord(remoteTypeMeta));
+
+    expect(context.readTypeMeta()).toBe(localTypeMeta);
+    expect((context as any).typeMetaCache.has(remoteTypeMeta.getHash())).toBe(false);
+    expect((context as any).totalAcceptedSchemaVersions).toBe(0);
+  });
+
+  test("Any TypeMeta hits reuse the checked serializer", () => {
+    const typeId = 7013;
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const remoteType = Type.struct(typeId, {
+      value: Type.string().setId(1),
+    });
+    const local = readerFory.register(
+      Type.struct(typeId, {
+        value: Type.int32().setId(1),
+      }),
+    );
+    const remoteTypeMeta = TypeMeta.fromTypeInfo(remoteType, (writerFory as any).typeResolver);
+    const readContext = (readerFory as any).readContext as ReadContext;
+    const warm = new BinaryWriter({});
+    warm.writeUint8(TypeId.COMPATIBLE_STRUCT);
+    warm.buffer(typeMetaRecord(remoteTypeMeta));
+    readContext.reset(warm.dump());
+
+    const checkedSerializer = AnyHelper.detectSerializer(readContext);
+    expect(checkedSerializer).not.toBe(local.serializer);
+    const checkedTypeMeta = (readContext as any).typeMetaCache.get(
+      remoteTypeMeta.getHash(),
+    ) as TypeMeta;
+    for (const getter of ["getTypeId", "getUserTypeId", "getNs", "getTypeName", "getHash"]) {
+      (checkedTypeMeta as any)[getter] = () => {
+        throw new Error("TypeMeta hit must reuse its checked serializer");
+      };
+    }
+
+    const currentFrame = typeMetaHashFrame(
+      remoteTypeMeta.headerHash!,
+      remoteTypeMeta.toBytes().length - 8 + 3,
+    );
+    const persistent = new BinaryWriter({});
+    persistent.writeUint8(TypeId.COMPATIBLE_STRUCT);
+    persistent.writeVarUInt32(0);
+    persistent.buffer(currentFrame);
+    readContext.reset(persistent.dump());
+    expect(AnyHelper.detectSerializer(readContext)).toBe(checkedSerializer);
+    expect(readContext.reader.readGetCursor()).toBe(persistent.dump().length);
+
+    const rootRef = new BinaryWriter({});
+    rootRef.writeUint8(TypeId.COMPATIBLE_STRUCT);
+    rootRef.writeVarUInt32(0);
+    rootRef.buffer(currentFrame);
+    rootRef.writeUint8(TypeId.COMPATIBLE_STRUCT);
+    rootRef.writeVarUInt32(1);
+    readContext.reset(rootRef.dump());
+    expect(AnyHelper.detectSerializer(readContext)).toBe(checkedSerializer);
+    expect(AnyHelper.detectSerializer(readContext)).toBe(checkedSerializer);
+    expect(readContext.reader.readGetCursor()).toBe(rootRef.dump().length);
+  });
+
+  test("Any TypeMeta owner fixes its wire type", () => {
+    const writerFory = new Fory({ compatible: true });
+    const remoteTypeMeta = TypeMeta.fromTypeInfo(
+      Type.struct(7016, {
+        value: Type.string().setId(1),
+      }),
+      (writerFory as any).typeResolver,
+    );
+    const readerFory = new Fory({ compatible: true });
+    const readContext = (readerFory as any).readContext as ReadContext;
+    const metadata = typeMetaRecord(remoteTypeMeta);
+    const frame = (wireTypeId: number, typeMetaBytes: Uint8Array) => {
+      const writer = new BinaryWriter({});
+      writer.writeUint8(wireTypeId);
+      writer.buffer(typeMetaBytes);
+      return writer.dump();
+    };
+
+    readContext.reset(frame(TypeId.NAMED_ENUM, metadata));
+    expect(() => AnyHelper.detectSerializer(readContext)).toThrow("TypeMeta wire type mismatch");
+    expect((readContext as any).typeMetaCache.size).toBe(0);
+    expect((readContext as any).compatibleReadSerializers.size).toBe(0);
+    expect((readContext as any).totalAcceptedSchemaVersions).toBe(0);
+    expect((readContext as any).remoteSchemaVersionsByType).toBeUndefined();
+    expect((readContext as any).typeMeta).toHaveLength(0);
+
+    readContext.reset(frame(TypeId.COMPATIBLE_STRUCT, metadata));
+    const owner = AnyHelper.detectSerializer(readContext);
+    const checkedTypeMeta = (readContext as any).typeMetaCache.get(
+      remoteTypeMeta.getHash(),
+    ) as TypeMeta;
+    for (const getter of ["getTypeId", "getUserTypeId", "getNs", "getTypeName", "getHash"]) {
+      (checkedTypeMeta as any)[getter] = () => {
+        throw new Error("TypeMeta hit must reuse its wire type owner");
+      };
+    }
+
+    const currentFrame = typeMetaHashFrame(
+      remoteTypeMeta.headerHash!,
+      remoteTypeMeta.toBytes().length - 8 + 2,
+    );
+    const persistent = new BinaryWriter({});
+    persistent.writeVarUInt32(0);
+    persistent.buffer(currentFrame);
+    readContext.reset(frame(TypeId.COMPATIBLE_STRUCT, persistent.dump()));
+    expect(AnyHelper.detectSerializer(readContext)).toBe(owner);
+
+    readContext.reset(frame(TypeId.NAMED_ENUM, persistent.dump()));
+    expect(() => AnyHelper.detectSerializer(readContext)).toThrow("TypeMeta wire type mismatch");
+    expect((readContext as any).typeMeta).toHaveLength(0);
+
+    const rootRef = new BinaryWriter({});
+    rootRef.writeUint8(TypeId.COMPATIBLE_STRUCT);
+    rootRef.writeVarUInt32(0);
+    rootRef.buffer(currentFrame);
+    rootRef.writeUint8(TypeId.NAMED_ENUM);
+    rootRef.writeVarUInt32(1);
+    readContext.reset(rootRef.dump());
+    expect(AnyHelper.detectSerializer(readContext)).toBe(owner);
+    expect(() => AnyHelper.detectSerializer(readContext)).toThrow("TypeMeta wire type mismatch");
+    expect((readContext as any).typeMeta).toHaveLength(1);
+  });
+
+  test("Any and typed reads share the compatible owner", () => {
+    const childId = 7014;
+    const rootId = 7015;
+    const writerFory = new Fory({ compatible: true });
+    const remoteChild = Type.struct(childId, {
+      value: Type.string().setId(1),
+    });
+    const writerChild = writerFory.register(remoteChild);
+    const writerRoot = writerFory.register(
+      Type.struct(rootId, {
+        child: remoteChild.setId(1),
+      }),
+    );
+    const remoteTypeMeta = TypeMeta.fromTypeInfo(remoteChild, (writerFory as any).typeResolver);
+    const childBytes = writerChild.serialize({ value: "17" });
+    const rootBytes = writerRoot.serialize({ child: { value: "23" } });
+
+    const createReader = () => {
+      const fory = new Fory({ compatible: true });
+      const localChild = Type.struct(childId, {
+        value: Type.int32().setId(1),
+      });
+      const child = fory.register(localChild);
+      const root = fory.register(
+        Type.struct(rootId, {
+          child: localChild.setId(1),
+        }),
+      );
+      return { fory, child, root };
+    };
+    const detectAny = (fory: Fory) => {
+      const writer = new BinaryWriter({});
+      writer.writeUint8(TypeId.COMPATIBLE_STRUCT);
+      writer.buffer(typeMetaRecord(remoteTypeMeta));
+      const context = (fory as any).readContext as ReadContext;
+      context.reset(writer.dump());
+      return AnyHelper.detectSerializer(context);
+    };
+    const cachedReader = (fory: Fory) =>
+      (fory as any).readContext.compatibleReadSerializers.get(remoteTypeMeta.getHash()).serializer;
+
+    const anyFirst = createReader();
+    const anyOwner = detectAny(anyFirst.fory);
+    expect(anyOwner).toBe(cachedReader(anyFirst.fory));
+    expect(anyFirst.child.deserialize(childBytes)).toEqual({ value: 17 });
+    expect(anyFirst.root.deserialize(rootBytes)).toEqual({ child: { value: 23 } });
+    expect(cachedReader(anyFirst.fory)).toBe(anyOwner);
+
+    const typedFirst = createReader();
+    expect(typedFirst.child.deserialize(childBytes)).toEqual({ value: 17 });
+    const typedOwner = cachedReader(typedFirst.fory);
+    expect(typedFirst.root.deserialize(rootBytes)).toEqual({ child: { value: 23 } });
+    expect(detectAny(typedFirst.fory)).toBe(typedOwner);
+    expect(cachedReader(typedFirst.fory)).toBe(typedOwner);
+  });
+
   test("encodes extended id-registered struct field counts without the name bit", () => {
     const fields: Record<string, any> = {};
     for (let i = 0; i < 32; i++) {
@@ -442,9 +1088,355 @@ describe("typemeta", () => {
       value: 123,
     });
     const reader = readerFory.register(readerType);
+    const typeResolver = (readerFory as any).typeResolver;
+    const originalSerializer = typeResolver.getSerializerByTypeInfo(readerType);
 
     expect(reader.deserialize(changedBytes)).toEqual({ value: 456 });
+    expect(typeResolver.getSerializerByTypeInfo(readerType)).toBe(originalSerializer);
     expect(reader.deserialize(localBytes)).toEqual({ value: 123 });
+    expect(typeResolver.getSerializerByTypeInfo(readerType)).toBe(originalSerializer);
+  });
+
+  test("rejects a different compatible declared owner", () => {
+    const writerFory = new Fory({ compatible: true });
+    const localWriterFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const rootId = 7420;
+    const readerChildId = 7421;
+    const writerChildId = 7422;
+    const writerChildType = Type.struct(writerChildId, {
+      value: Type.int32().setId(1),
+    });
+    const readerChildType = Type.struct(readerChildId, {
+      value: Type.int32().setId(1),
+    });
+    const readerWriterChildType = Type.struct(writerChildId, {
+      value: Type.int32().setId(1),
+    });
+    const writerChild = writerFory.register(writerChildType);
+    readerFory.register(readerChildType);
+    const readerWriterChild = readerFory.register(readerWriterChildType);
+    const writer = writerFory.register(
+      Type.struct(rootId, {
+        child: Type.struct(writerChildId).setId(1),
+      }),
+    );
+    const reader = readerFory.register(
+      Type.struct(rootId, {
+        child: Type.struct(readerChildId).setId(1),
+      }),
+    );
+    const wrongBytes = writer.serialize({ child: { value: 7 } });
+    const writerChildMeta = TypeMeta.fromTypeInfo(
+      writerChildType,
+      (writerFory as any).typeResolver,
+    );
+    const readContext = (readerFory as any).readContext;
+
+    expect(() => reader.deserialize(wrongBytes)).toThrow("Compatible TypeMeta owner mismatch");
+    expect(readContext.typeMeta).toHaveLength(1);
+    expect(readContext.typeMetaCache.has(writerChildMeta.getHash())).toBe(false);
+    expect(readContext.compatibleReadSerializers.has(writerChildMeta.getHash())).toBe(false);
+
+    expect(readerWriterChild.deserialize(writerChild.serialize({ value: 8 }))).toEqual({
+      value: 8,
+    });
+    expect(readContext.typeMetaCache.has(writerChildMeta.getHash())).toBe(false);
+    expect(() => reader.deserialize(wrongBytes)).toThrow("Compatible TypeMeta owner mismatch");
+    expect(readContext.typeMeta).toHaveLength(1);
+    expect(readContext.compatibleReadSerializers.has(writerChildMeta.getHash())).toBe(false);
+
+    const localChildType = Type.struct(readerChildId, {
+      value: Type.int32().setId(1),
+    });
+    localWriterFory.register(localChildType);
+    const localWriter = localWriterFory.register(
+      Type.struct(rootId, {
+        child: Type.struct(readerChildId).setId(1),
+      }),
+    );
+    expect(reader.deserialize(localWriter.serialize({ child: { value: 9 } }))).toEqual({
+      child: { value: 9 },
+    });
+  });
+
+  test("rejects a compatible owner through a metadata ref", () => {
+    const writerFory = new Fory({ compatible: true });
+    const localWriterFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const rootId = 7423;
+    const readerChildId = 7424;
+    const writerChildId = 7425;
+    const childProps = {
+      value: Type.int32().setId(1),
+    };
+    writerFory.register(Type.struct(writerChildId, childProps));
+    readerFory.register(Type.struct(writerChildId, childProps));
+    readerFory.register(Type.struct(readerChildId, childProps));
+    const writer = writerFory.register(
+      Type.struct(rootId, {
+        first: Type.struct(writerChildId).setId(1),
+        second: Type.struct(writerChildId).setId(2),
+      }),
+    );
+    const reader = readerFory.register(
+      Type.struct(rootId, {
+        first: Type.struct(writerChildId).setId(1),
+        second: Type.struct(readerChildId).setId(2),
+      }),
+    );
+    const wrongBytes = writer.serialize({
+      first: { value: 1 },
+      second: { value: 2 },
+    });
+    const readContext = (readerFory as any).readContext;
+
+    expect(() => reader.deserialize(wrongBytes)).toThrow("Compatible TypeMeta owner mismatch");
+    expect(readContext.typeMeta).toHaveLength(2);
+    expect(() => reader.deserialize(wrongBytes)).toThrow("Compatible TypeMeta owner mismatch");
+    expect(readContext.typeMeta).toHaveLength(2);
+
+    localWriterFory.register(Type.struct(writerChildId, childProps));
+    localWriterFory.register(Type.struct(readerChildId, childProps));
+    const localWriter = localWriterFory.register(
+      Type.struct(rootId, {
+        first: Type.struct(writerChildId).setId(1),
+        second: Type.struct(readerChildId).setId(2),
+      }),
+    );
+    expect(
+      reader.deserialize(
+        localWriter.serialize({
+          first: { value: 3 },
+          second: { value: 4 },
+        }),
+      ),
+    ).toEqual({
+      first: { value: 3 },
+      second: { value: 4 },
+    });
+  });
+
+  test("uses a fixed unknown owner for remote struct metadata", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const typeId = 7303;
+    const bytes = writerFory
+      .register(
+        Type.struct(typeId, {
+          value: Type.int32(),
+        }),
+      )
+      .serialize({ value: 1 });
+    const typeResolver = (readerFory as any).typeResolver;
+    const readContext = (readerFory as any).readContext;
+    const generateReadSerializer = typeResolver.generateReadSerializer.bind(typeResolver);
+    let generatedReaders = 0;
+    typeResolver.generateReadSerializer = (typeInfo: TypeInfo) => {
+      generatedReaders++;
+      return generateReadSerializer(typeInfo);
+    };
+
+    expect(typeResolver.getSerializerById(TypeId.COMPATIBLE_STRUCT, typeId)).toBeUndefined();
+    const result: any = readerFory.deserialize(bytes);
+    expect(Object.getPrototypeOf(result)).toBeNull();
+    expect(result.value).toBe(1);
+    expect(writerFory.deserialize(readerFory.serialize(result))).toEqual({ value: 1 });
+    expect(writerFory.deserialize(readerFory.serialize([result]))).toEqual([{ value: 1 }]);
+    expect(
+      writerFory.deserialize(readerFory.serialize(new Map([["value", result]]))).get("value"),
+    ).toEqual({ value: 1 });
+    expect(generatedReaders).toBe(0);
+    expect(typeResolver.getSerializerById(TypeId.COMPATIBLE_STRUCT, typeId)).toBeUndefined();
+    expect(readContext.typeMetaCache.size).toBe(1);
+    expect(readContext.compatibleReadSerializers.size).toBe(0);
+  });
+
+  test("keeps non-compatible unknown structs registration-only", () => {
+    const writerFory = new Fory({ compatible: false });
+    const readerFory = new Fory({ compatible: false });
+    const writer = writerFory.register(
+      Type.struct({ typeId: 7306, evolving: false }, { value: Type.int32() }),
+    );
+
+    expect(() => readerFory.deserialize(writer.serialize({ value: 1 }))).toThrow(
+      "can't find implements",
+    );
+  });
+
+  test("does not publish metadata when compatible reader generation fails", () => {
+    const writerFory = new Fory({ compatible: true });
+    let failGeneration = false;
+    const readerFory = new Fory({
+      compatible: true,
+      hooks: {
+        afterCodeGenerated: (code) => {
+          if (failGeneration) {
+            throw new Error("generated reader rejected");
+          }
+          return code;
+        },
+      },
+    });
+    const typeId = 7305;
+    const writerType = Type.struct(typeId, {
+      value: Type.string(),
+    });
+    const writer = writerFory.register(writerType);
+    const reader = readerFory.register(
+      Type.struct(typeId, {
+        value: Type.int32(),
+      }),
+    );
+    const remoteHash = TypeMeta.fromTypeInfo(
+      writerType,
+      (writerFory as any).typeResolver,
+    ).getHash();
+    const readContext = (readerFory as any).readContext;
+    failGeneration = true;
+
+    expect(() => reader.deserialize(writer.serialize({ value: "1" }))).toThrow(
+      "generated reader rejected",
+    );
+    expect(readContext.typeMetaCache.has(remoteHash)).toBe(false);
+    expect(readContext.compatibleReadSerializers.has(remoteHash)).toBe(false);
+    expect(readContext.totalAcceptedSchemaVersions).toBe(0);
+    expect(readContext.remoteSchemaVersionsByType).toBeUndefined();
+  });
+
+  test("requires positive safe-integer metadata limits", () => {
+    const invalid = [Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY];
+    const options = [
+      "maxTypeFields",
+      "maxTypeMetaBytes",
+      "maxSchemaVersionsPerType",
+      "maxAverageSchemaVersionsPerType",
+    ] as const;
+
+    for (const option of options) {
+      for (const value of invalid) {
+        expect(() => new Fory({ [option]: value })).toThrow(
+          `${option} must be a positive safe integer`,
+        );
+      }
+    }
+  });
+
+  test("quotes remote field names as JavaScript source literals", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const typeId = 7304;
+    const fieldNames = [
+      "single'quote",
+      'double"quote',
+      "back\\slash",
+      "line\nbreak",
+      "carriage\rreturn",
+      "line\u2028separator",
+      "paragraph\u2029separator",
+    ];
+    const writerProps = Object.fromEntries(
+      fieldNames.map((_, index) => [`field${index}`, Type.int32()]),
+    );
+    const remoteProps = Object.fromEntries(fieldNames.map((name) => [name, Type.int32()]));
+    const writerType = Type.struct(typeId, writerProps);
+    const remoteType = Type.struct(typeId, remoteProps);
+    const writer = writerFory.register(writerType);
+    const reader = readerFory.register(Type.struct(typeId, {}));
+    const value = Object.fromEntries(fieldNames.map((_, index) => [`field${index}`, 7]));
+    const bytes = replaceFirstBytesWithDifferentLength(
+      writer.serialize(value),
+      TypeMeta.fromTypeInfo(writerType, (writerFory as any).typeResolver).toBytes(),
+      TypeMeta.fromTypeInfo(remoteType, (writerFory as any).typeResolver).toBytes(),
+    );
+
+    expect(reader.deserialize(bytes)).toEqual({});
+  });
+
+  test("preserves registered __proto__ fields", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const props = Object.fromEntries([["__proto__", Type.int32()]]) as Record<string, TypeInfo>;
+    const writer = writerFory.register(Type.struct(7307, props));
+    const reader = readerFory.register(Type.struct(7307, props));
+    const value = Object.create(null);
+    value.__proto__ = 7;
+
+    const result: any = reader.deserialize(writer.serialize(value));
+    expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(result, "__proto__")).toBe(true);
+    expect(result.__proto__).toBe(7);
+  });
+
+  test("preserves unknown __proto__ fields", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const props = Object.fromEntries([["__proto__", Type.int32()]]) as Record<string, TypeInfo>;
+    const writer = writerFory.register(Type.struct(7308, props));
+    const value = Object.create(null);
+    value.__proto__ = 9;
+
+    const result: any = readerFory.deserialize(writer.serialize(value));
+    expect(Object.getPrototypeOf(result)).toBeNull();
+    expect(Object.prototype.hasOwnProperty.call(result, "__proto__")).toBe(true);
+    expect(result.__proto__).toBe(9);
+  });
+
+  test("restores an enclosing unknown schema after nested reads", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const childType = Type.struct(7309, { value: Type.int32() });
+    class Child {
+      constructor(public value = 0) {}
+    }
+    childType(Child);
+    writerFory.register(Child);
+    const outerType = Type.struct(7310, { child: childType });
+    class Outer {
+      constructor(public child = new Child()) {}
+    }
+    outerType(Outer);
+    writerFory.register(Outer);
+
+    const result: any = readerFory.deserialize(
+      writerFory.serialize([new Outer(new Child(1)), new Outer(new Child(2))]),
+    );
+    expect(Object.getPrototypeOf(result[0])).toBeNull();
+    expect(Object.getPrototypeOf(result[0].child)).toBeNull();
+    expect(result[0].child.value).toBe(1);
+    expect(result[1].child.value).toBe(2);
+  });
+
+  test("separates unknown schemas in dynamic containers", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    class First {
+      constructor(public first = 1) {}
+    }
+    class Second {
+      constructor(public second = "two") {}
+    }
+    Type.struct(7311, { first: Type.int32() })(First);
+    Type.struct(7312, { second: Type.string() })(Second);
+    writerFory.register(First);
+    writerFory.register(Second);
+
+    const values: any = readerFory.deserialize(writerFory.serialize([new First(), new Second()]));
+    const list: any = writerFory.deserialize(readerFory.serialize(values));
+    expect(list[0].first).toBe(1);
+    expect(list[1].second).toBe("two");
+
+    const mapValues: any = readerFory.deserialize(
+      writerFory.serialize(
+        new Map<string, unknown>([
+          ["first", new First()],
+          ["second", new Second()],
+        ]),
+      ),
+    );
+    const map: any = writerFory.deserialize(readerFory.serialize(mapValues));
+    expect(map.get("first").first).toBe(1);
+    expect(map.get("second").second).toBe("two");
   });
 
   test("regenerated read serializers keep getTypeInfo", () => {
@@ -525,7 +1517,7 @@ describe("typemeta", () => {
     expect(generatedReaders).toBe(2);
   });
 
-  test("compatible reader cache uses remote hash and local stale guard", () => {
+  test("compatible cache binds its concrete owner", () => {
     const typeMeta = TypeMeta.fromTypeInfo(
       Type.struct(7313, {
         value: Type.string().setId(1),
@@ -553,21 +1545,61 @@ describe("typemeta", () => {
     );
     const serializers = [{ name: "localA" }, { name: "localB" }] as any[];
     let generatedReaders = 0;
-    (context as any).genSerializerByTypeMetaRuntime = () => serializers[generatedReaders++];
-    const localHashA = typeMeta.getHash() + 1;
-    const localHashB = typeMeta.getHash() + 2;
-    const originalA = { name: "originalA" } as any;
-    const originalB = { name: "originalB" } as any;
+    (context as any).generateTypeMetaSerializer = () => serializers[generatedReaders++];
+    const originalTypeInfo = Type.struct(7313, {
+      value: Type.int32().setId(1),
+    });
+    const localTypeMetaA = TypeMeta.fromTypeInfo(originalTypeInfo);
+    const localTypeMetaB = TypeMeta.fromTypeInfo(originalTypeInfo);
+    const localHashA = localTypeMetaA.getHash();
+    const originalA = {
+      [localTypeMetaSymbol]: localTypeMetaA,
+      getTypeInfo: () => originalTypeInfo,
+      getTypeId: () => typeMeta.getTypeId(),
+      getUserTypeId: () => 7313,
+    } as any;
+    const originalB = {
+      [localTypeMetaSymbol]: localTypeMetaB,
+      getTypeInfo: () => originalTypeInfo,
+      getTypeId: () => typeMeta.getTypeId(),
+      getUserTypeId: () => 7313,
+    } as any;
     const readStructInfo = (localHash: number, original: any) => {
       context.reset(bytes);
       return context.readCompatibleStructSerializer(localHash, original);
     };
 
     expect(readStructInfo(localHashA, originalA)).toBe(serializers[0]);
-    expect(readStructInfo(localHashA, originalB)).toBe(serializers[0]);
-    expect(readStructInfo(localHashB, originalA)).toBe(serializers[1]);
-    expect(readStructInfo(localHashB, originalB)).toBe(serializers[1]);
-    expect(generatedReaders).toBe(2);
+    expect(readStructInfo(localHashA, originalA)).toBe(serializers[0]);
+    expect(() => readStructInfo(localHashA, originalB)).toThrow(
+      "Compatible TypeMeta owner mismatch",
+    );
+    const checked = (context as any).typeMetaCache.get(typeMeta.getHash()) as TypeMeta;
+    (checked as any).getTypeId = () => {
+      throw new Error("cache hit must not inspect TypeMeta");
+    };
+    (checked as any).getNs = () => {
+      throw new Error("cache hit must not inspect TypeMeta");
+    };
+    (checked as any).getTypeName = () => {
+      throw new Error("cache hit must not inspect TypeMeta");
+    };
+    (checked as any).getUserTypeId = () => {
+      throw new Error("cache hit must not inspect TypeMeta");
+    };
+
+    const writer = new BinaryWriter({});
+    writer.buffer(bytes);
+    writer.writeVarUInt32(1);
+    context.reset(writer.dump());
+    expect(context.readCompatibleStructSerializer(localHashA, originalA)).toBe(serializers[0]);
+    expect(context.readCompatibleStructSerializer(localHashA, originalA)).toBe(serializers[0]);
+    context.reset(writer.dump());
+    expect(context.readCompatibleStructSerializer(localHashA, originalA)).toBe(serializers[0]);
+    expect(() => context.readCompatibleStructSerializer(localHashA, originalB)).toThrow(
+      "Compatible TypeMeta owner mismatch",
+    );
+    expect(generatedReaders).toBe(1);
   });
 
   test("remaps compatible tag-id fields onto local property names during regeneration", () => {
@@ -793,6 +1825,43 @@ describe("typemeta", () => {
     expect(() => readCompatibleScalar(7235, Type.float64(), Type.string(), Number.NaN)).toThrow(
       /Non-finite scalar value NaN/,
     );
+  });
+
+  test("bounds compatible decimal scale conversion", () => {
+    expect(
+      readCompatibleScalar(7430, Type.decimal(), Type.bool(), decimal(10n ** 256n, 256)),
+    ).toEqual({ value: true });
+    expect(() =>
+      readCompatibleScalar(7431, Type.decimal(), Type.bool(), decimal(10n ** 257n, 257)),
+    ).toThrow(/scale exceeds compatible conversion limit/);
+    expect(() =>
+      readCompatibleScalar(7432, Type.decimal(), Type.bool(), decimal(1n, -256)),
+    ).toThrow(/magnitude exceeds compatible conversion limit/);
+    expect(() =>
+      readCompatibleScalar(7433, Type.decimal(), Type.bool(), decimal(1n, -257)),
+    ).toThrow(/scale exceeds compatible conversion limit/);
+    expect(readCompatibleScalar(7434, Type.decimal(), Type.bool(), decimal(0n, -257))).toEqual({
+      value: false,
+    });
+    expect(readCompatibleScalar(7435, Type.decimal(), Type.bool(), decimal(0n, 257))).toEqual({
+      value: false,
+    });
+
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writer = writerFory.register(
+      Type.struct(7436, {
+        value: Type.decimal().setNullable(true),
+      }),
+    );
+    const reader = readerFory.register(
+      Type.struct(7436, {
+        value: Type.decimal(),
+      }),
+    );
+    const ordinary = decimal(1n, 257);
+    const result = reader.deserialize(writer.serialize({ value: ordinary }));
+    expect(result.value.equals(ordinary)).toBe(true);
   });
 
   test("composes scalar conversion with nulls", () => {
@@ -1038,6 +2107,55 @@ describe("typemeta", () => {
 
     expect(result.values).toBeInstanceOf(Int32Array);
     expect(Array.from(result.values)).toEqual([1, 2, 3]);
+  });
+
+  test("checks compatible list bytes before dense array allocation", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writerType = Type.struct(7217, {
+      values: Type.list(Type.float64()).setId(1),
+    });
+    const readerType = Type.struct(7217, {
+      values: Type.float64Array().setId(1),
+    });
+    const bytes = writerFory.register(writerType).serialize({
+      values: [1, 2],
+    });
+    const truncated = bytes.subarray(0, bytes.length - 8);
+
+    expect(() => readerFory.register(readerType).deserialize(truncated)).toThrow(
+      /Insufficient bytes to read/,
+    );
+  });
+
+  test("keeps compact list encodings compatible with dense arrays", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writerType = Type.struct(7218, {
+      values: Type.list(Type.int32()).setId(1),
+    });
+    const readerType = Type.struct(7218, {
+      values: Type.int32Array().setId(1),
+    });
+    const bytes = writerFory.register(writerType).serialize({
+      values: [0, 1, -1],
+    });
+    const result = readerFory.register(readerType).deserialize(bytes);
+
+    expect(Array.from(result.values as Int32Array)).toEqual([0, 1, -1]);
+
+    const taggedWriterType = Type.struct(7219, {
+      values: Type.list(Type.int64({ encoding: "tagged" })).setId(1),
+    });
+    const taggedReaderType = Type.struct(7219, {
+      values: Type.int64Array().setId(1),
+    });
+    const taggedBytes = writerFory.register(taggedWriterType).serialize({
+      values: [0n, 1n, -1n],
+    });
+    const taggedResult = readerFory.register(taggedReaderType).deserialize(taggedBytes);
+
+    expect(Array.from(taggedResult.values as BigInt64Array)).toEqual([0n, 1n, -1n]);
   });
 
   test("adapts compatible list fields to reduced-precision dense array carriers", () => {
@@ -1310,6 +2428,397 @@ describe("typemeta", () => {
     const result = readerReg.deserialize(writerReg.serialize(value));
 
     expect(result).toBeInstanceOf(EmptyWrapper);
+  });
+
+  test.each([
+    ["id", 7600, 7601],
+    ["name", "example.skip_child", "example.skip_wrapper"],
+  ])("reads an unregistered remote struct field by %s", (_, childId, wrapperId) => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const childType = Type.struct(childId, {
+      value: Type.int32(),
+    });
+    class Child {
+      constructor(public value = 0) {}
+    }
+    childType(Child);
+    const writerChild = writerFory.register(Child);
+    const writer = writerFory.register(
+      Type.struct(wrapperId, {
+        child: Type.struct(childId),
+        children: Type.list(Type.struct(childId)),
+        childSet: Type.set(Type.struct(childId)),
+        childMap: Type.map(Type.string(), Type.struct(childId)),
+        nestedChildren: Type.list(Type.list(Type.struct(childId))),
+        nestedListMap: Type.map(Type.struct(childId), Type.list(Type.struct(childId))),
+        nestedSetMap: Type.map(Type.struct(childId), Type.set(Type.struct(childId))),
+        nestedMapMap: Type.map(Type.struct(childId), Type.map(Type.string(), Type.struct(childId))),
+        nullableListMap: Type.map(Type.struct(childId), Type.list(Type.int32().setNullable(true))),
+        nullValueMap: Type.map(Type.struct(childId), Type.int32().setNullable(true)),
+        nullKeyMap: Type.map(Type.struct(childId).setNullable(true), Type.struct(childId)),
+        deepListMap: Type.map(Type.struct(childId), Type.list(Type.list(Type.struct(childId)))),
+      }),
+    );
+    const reader = readerFory.register(Type.struct(wrapperId, {}));
+    const typeResolver = (readerFory as any).typeResolver;
+
+    expect(
+      reader.deserialize(
+        writer.serialize({
+          child: new Child(7),
+          children: [new Child(8)],
+          childSet: new Set([new Child(9)]),
+          childMap: new Map([["key", new Child(10)]]),
+          nestedChildren: [[new Child(11)]],
+          nestedListMap: new Map([[new Child(12), [new Child(13)]]]),
+          nestedSetMap: new Map([[new Child(14), new Set([new Child(15)])]]),
+          nestedMapMap: new Map([[new Child(16), new Map([["key", new Child(17)]])]]),
+          nullableListMap: new Map([[new Child(18), [null]]]),
+          nullValueMap: new Map([[new Child(19), null]]),
+          nullKeyMap: new Map([[null, new Child(20)]]),
+          deepListMap: new Map([[new Child(21), [[new Child(22)]]]]),
+        }),
+      ),
+    ).toEqual({});
+    expect(typeResolver.getSerializerByTypeInfo(childType)).toBeUndefined();
+    const root: any = readerFory.deserialize(writerChild.serialize(new Child(8)));
+    expect(Object.getPrototypeOf(root)).toBeNull();
+    expect(root.value).toBe(8);
+    const values: any = readerFory.deserialize(writerFory.serialize([new Child(23)]));
+    expect(Object.getPrototypeOf(values[0])).toBeNull();
+    expect(values[0].value).toBe(23);
+    expect(typeResolver.getSerializerByTypeInfo(childType)).toBeUndefined();
+  });
+
+  test("retains a skipped owner through ordinary Any", () => {
+    const childId = 7610;
+    const writerFory = new Fory({ compatible: true, ref: true });
+    const readerFory = new Fory({ compatible: true, ref: true });
+    const childType = Type.struct(childId, {
+      value: Type.int32().setId(1),
+    });
+    class Child {
+      constructor(public value = 0) {}
+    }
+    childType(Child);
+    const childWriter = writerFory.register(Child);
+    const writer = writerFory.register(
+      Type.struct(childId + 1, {
+        removed: Type.struct(childId).setTrackingRef(true).setId(1),
+        kept: Type.any().setTrackingRef(true).setId(2),
+        again: Type.any().setTrackingRef(true).setId(3),
+      }),
+    );
+    const reader = readerFory.register(
+      Type.struct(childId + 1, {
+        kept: Type.any().setTrackingRef(true).setId(2),
+        again: Type.any().setTrackingRef(true).setId(3),
+      }),
+    );
+    const shared = new Child(1);
+
+    const result: any = reader.deserialize(
+      writer.serialize({ removed: shared, kept: shared, again: shared }),
+    );
+    expect(Object.getPrototypeOf(result.kept)).toBeNull();
+    expect(result.kept.$tag1).toBe(1);
+    expect(result.again).toBe(result.kept);
+    expect(
+      reader.deserialize(writer.serialize({ removed: new Child(2), kept: "ok", again: "next" })),
+    ).toEqual({
+      kept: "ok",
+      again: "next",
+    });
+    const root: any = readerFory.deserialize(childWriter.serialize(new Child(3)));
+    expect(root.$tag1).toBe(3);
+    expect((readerFory as any).typeResolver.getSerializerByTypeInfo(childType)).toBeUndefined();
+  });
+
+  test("reuses a registered compatible skip reader across roots", () => {
+    const childId = 7630;
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    @Type.struct(childId, {
+      value: Type.string().setId(1),
+    })
+    class WriterChild {
+      constructor(public value = "") {}
+    }
+    @Type.struct(childId, {
+      value: Type.int32().setId(1),
+    })
+    class ReaderChild {
+      constructor(public value = 0) {}
+    }
+    writerFory.register(WriterChild);
+    readerFory.register(ReaderChild);
+    const writer = writerFory.register(
+      Type.struct(childId + 1, {
+        removed: Type.any().setId(1),
+        marker: Type.int32().setId(2),
+      }),
+    );
+    const reader = readerFory.register(
+      Type.struct(childId + 1, {
+        marker: Type.int32().setId(2),
+      }),
+    );
+    const bytes = writer.serialize({ removed: new WriterChild("7"), marker: 9 });
+    const typeResolver = (readerFory as any).typeResolver;
+    const generateReadSerializer = typeResolver.generateReadSerializer.bind(typeResolver);
+    let generatedReaders = 0;
+    typeResolver.generateReadSerializer = (typeInfo: TypeInfo) => {
+      generatedReaders++;
+      return generateReadSerializer(typeInfo);
+    };
+
+    expect(reader.deserialize(bytes)).toEqual({ marker: 9 });
+    expect(generatedReaders).toBeGreaterThan(0);
+    generatedReaders = 0;
+    expect(reader.deserialize(bytes)).toEqual({ marker: 9 });
+    expect(reader.deserialize(bytes)).toEqual({ marker: 9 });
+    expect(generatedReaders).toBe(0);
+  });
+
+  test.each([
+    ["declared List", 7640],
+    ["dynamic List", 7650],
+    ["declared Map", 7660],
+    ["dynamic Map", 7670],
+  ])("retains an alias first decoded in a skipped %s", (shape, childId) => {
+    const writerFory = new Fory({ compatible: true, ref: true });
+    const readerFory = new Fory({ compatible: true, ref: true });
+    const childType = Type.struct(childId, {
+      value: Type.int32().setId(1),
+    });
+    class Child {
+      constructor(public value = 0) {}
+    }
+    childType(Child);
+    writerFory.register(Child);
+    const isList = shape.endsWith("List");
+    const isDynamic = shape.startsWith("dynamic");
+    const elementType = isDynamic ? Type.any() : Type.struct(childId).setTrackingRef(true);
+    const removedType = isList ? Type.list(elementType) : Type.map(Type.string(), elementType);
+    const writer = writerFory.register(
+      Type.struct(childId + 1, {
+        removed: removedType.setTrackingRef(true).setId(1),
+        kept: Type.any().setTrackingRef(true).setId(2),
+      }),
+    );
+    const reader = readerFory.register(
+      Type.struct(childId + 1, {
+        kept: Type.any().setTrackingRef(true).setId(2),
+      }),
+    );
+    const shared = new Child(1);
+    const removed: any = isList ? [shared] : new Map([["key", shared]]);
+
+    const result: any = reader.deserialize(writer.serialize({ removed, kept: shared }));
+    expect(Object.getPrototypeOf(result.kept)).toBeNull();
+    expect(result.kept.$tag1).toBe(1);
+    expect((readerFory as any).typeResolver.getSerializerByTypeInfo(childType)).toBeUndefined();
+  });
+
+  test.each([
+    ["List", 7750],
+    ["Map", 7760],
+  ])("retains a nested skipped %s owner", (shape, childId) => {
+    const writerFory = new Fory({ compatible: true, ref: true });
+    const readerFory = new Fory({ compatible: true, ref: true });
+    const childType = Type.struct(childId, {
+      value: Type.int32().setId(1),
+    });
+    class Child {
+      constructor(public value = 0) {}
+    }
+    childType(Child);
+    writerFory.register(Child);
+    const containerType =
+      shape === "List" ? Type.list(Type.any()) : Type.map(Type.string(), Type.any());
+    const writer = writerFory.register(
+      Type.struct(childId + 1, {
+        removed: containerType.setTrackingRef(true).setId(1),
+        kept: Type.any().setTrackingRef(true).setId(2),
+        again: Type.any().setTrackingRef(true).setId(3),
+        marker: Type.int32().setId(4),
+      }),
+    );
+    const reader = readerFory.register(
+      Type.struct(childId + 1, {
+        kept: Type.any().setTrackingRef(true).setId(2),
+        again: Type.any().setTrackingRef(true).setId(3),
+        marker: Type.int32().setId(4),
+      }),
+    );
+    const child = new Child(1);
+    const nested = [child, child];
+    const container: any = shape === "List" ? [nested] : new Map([["key", nested]]);
+
+    const result: any = reader.deserialize(
+      writer.serialize({ removed: container, kept: container, again: container, marker: 7 }),
+    );
+    expect(result.again).toBe(result.kept);
+    expect(result.marker).toBe(7);
+    const retainedNested = shape === "List" ? result.kept[0] : result.kept.get("key");
+    expect(Object.getPrototypeOf(retainedNested[0])).toBeNull();
+    expect(retainedNested[0].$tag1).toBe(1);
+    expect(retainedNested[1]).toBe(retainedNested[0]);
+    expect((readerFory as any).typeResolver.getSerializerByTypeInfo(childType)).toBeUndefined();
+  });
+
+  test.each([
+    ["Any", 7680],
+    ["declared List", 7690],
+    ["dynamic List", 7700],
+    ["declared Map", 7710],
+    ["dynamic Map", 7720],
+  ])("keeps removed-field %s aliases aligned", (shape, childId) => {
+    const writerFory = new Fory({ compatible: true, ref: true });
+    const readerFory = new Fory({ compatible: true, ref: true });
+    const childType = Type.struct(childId, {
+      value: Type.int32().setId(1),
+    });
+    class Child {
+      constructor(public value = 0) {}
+    }
+    childType(Child);
+    writerFory.register(Child);
+    const wrapperId = childId + 1;
+    const shared = new Child(1);
+    let writerType: TypeInfo;
+    let value: any;
+    if (shape === "Any") {
+      writerType = Type.struct(wrapperId, {
+        removed: Type.struct(childId).setTrackingRef(true).setId(1),
+        alias: Type.any().setTrackingRef(true).setId(2),
+        marker: Type.int32().setId(3),
+      });
+      value = { removed: shared, alias: shared, marker: 7 };
+    } else {
+      const isList = shape.endsWith("List");
+      const isDynamic = shape.startsWith("dynamic");
+      const elementType = isDynamic ? Type.any() : Type.struct(childId).setTrackingRef(true);
+      const removedType = isList ? Type.list(elementType) : Type.map(Type.string(), elementType);
+      writerType = Type.struct(wrapperId, {
+        removed: removedType.setTrackingRef(true).setId(1),
+        marker: Type.int32().setId(2),
+      });
+      value = {
+        removed: isList
+          ? [shared, shared]
+          : new Map([
+              ["first", shared],
+              ["second", shared],
+            ]),
+        marker: 7,
+      };
+    }
+    const markerId = shape === "Any" ? 3 : 2;
+    const writer = writerFory.register(writerType);
+    const reader = readerFory.register(
+      Type.struct(wrapperId, {
+        marker: Type.int32().setId(markerId),
+      }),
+    );
+
+    expect(reader.deserialize(writer.serialize(value))).toEqual({ marker: 7 });
+    expect((readerFory as any).typeResolver.getSerializerByTypeInfo(childType)).toBeUndefined();
+  });
+
+  test("keeps registered skipped aliases ordinary", () => {
+    const writerFory = new Fory({ compatible: true, ref: true });
+    const readerFory = new Fory({ compatible: true, ref: true });
+    @Type.struct(7730, {
+      value: Type.int32().setId(1),
+    })
+    class Child {
+      constructor(public value = 0) {}
+    }
+    writerFory.register(Child);
+    readerFory.register(Child);
+    const writer = writerFory.register(
+      Type.struct(7731, {
+        removed: Type.struct(7730).setTrackingRef(true).setId(1),
+        kept: Type.any().setTrackingRef(true).setId(2),
+      }),
+    );
+    const reader = readerFory.register(
+      Type.struct(7731, {
+        kept: Type.any().setTrackingRef(true).setId(2),
+      }),
+    );
+    const shared = new Child(7);
+
+    const result = reader.deserialize(writer.serialize({ removed: shared, kept: shared }));
+    expect(result.kept).toBeInstanceOf(Child);
+    expect(result.kept.value).toBe(7);
+  });
+
+  test.each([
+    ["List", 7770],
+    ["Map", 7780],
+  ])("keeps a registered child in an aliased skipped %s", (shape, childId) => {
+    const writerFory = new Fory({ compatible: true, ref: true });
+    const readerFory = new Fory({ compatible: true, ref: true });
+    @Type.struct(childId, {
+      value: Type.int32().setId(1),
+    })
+    class Child {
+      constructor(public value = 0) {}
+    }
+    writerFory.register(Child);
+    readerFory.register(Child);
+    const containerType =
+      shape === "List" ? Type.list(Type.any()) : Type.map(Type.string(), Type.any());
+    const writer = writerFory.register(
+      Type.struct(childId + 1, {
+        removed: containerType.setTrackingRef(true).setId(1),
+        kept: Type.any().setTrackingRef(true).setId(2),
+      }),
+    );
+    const reader = readerFory.register(
+      Type.struct(childId + 1, {
+        kept: Type.any().setTrackingRef(true).setId(2),
+      }),
+    );
+    const child = new Child(7);
+    const container: any = shape === "List" ? [child] : new Map([["key", child]]);
+
+    const result = reader.deserialize(writer.serialize({ removed: container, kept: container }));
+    const retainedChild = shape === "List" ? result.kept[0] : result.kept.get("key");
+    expect(retainedChild).toBeInstanceOf(Child);
+    expect(retainedChild.value).toBe(7);
+  });
+
+  test("keeps a skipped unregistered self reference internal", () => {
+    const writerFory = new Fory({ compatible: true, ref: true });
+    const readerFory = new Fory({ compatible: true, ref: true });
+    @Type.struct(7740, {
+      self: Type.any().setTrackingRef(true).setId(1),
+    })
+    class Child {
+      self: unknown = null;
+    }
+    writerFory.register(Child);
+    const writer = writerFory.register(
+      Type.struct(7741, {
+        removed: Type.struct(7740).setTrackingRef(true).setId(1),
+        marker: Type.int32().setId(2),
+      }),
+    );
+    const reader = readerFory.register(
+      Type.struct(7741, {
+        marker: Type.int32().setId(2),
+      }),
+    );
+    const child = new Child();
+    child.self = child;
+
+    expect(reader.deserialize(writer.serialize({ removed: child, marker: 7 }))).toEqual({
+      marker: 7,
+    });
   });
 
   test("skips unknown compatible enum fields when regenerating an empty reader", () => {

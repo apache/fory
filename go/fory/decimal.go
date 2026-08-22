@@ -52,21 +52,28 @@ var (
 	decimalLongMax     = big.NewInt(MaxInt64)
 )
 
+const maxDecimalMagnitudeBytes = 10_000
+const maxDecimalScale int32 = 10_000
+
 type decimalSerializer struct{}
 
 func (s decimalSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	decimal := value.Interface().(Decimal)
+	if !validateDecimal(ctx.Err(), decimal.Scale, &decimal.Unscaled) {
+		return
+	}
 	if refMode != RefModeNone {
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
 		ctx.buffer.WriteUint8(uint8(DECIMAL))
 	}
-	s.WriteData(ctx, value)
+	writeValidDecimalParts(ctx.buffer, decimal.Scale, &decimal.Unscaled)
 }
 
 func (s decimalSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	decimal := value.Interface().(Decimal)
-	writeDecimalParts(ctx.buffer, decimal.Scale, &decimal.Unscaled)
+	writeDecimalParts(ctx, decimal.Scale, &decimal.Unscaled)
 }
 
 func (s decimalSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
@@ -98,12 +105,48 @@ func (s decimalSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, t
 	s.Read(ctx, refMode, false, false, value)
 }
 
-func writeDecimalParts(buffer *ByteBuffer, scale int32, unscaled *big.Int) {
+func writeDecimalParts(ctx *WriteContext, scale int32, unscaled *big.Int) {
+	if !validateDecimal(ctx.Err(), scale, unscaled) {
+		return
+	}
+	writeValidDecimalParts(ctx.buffer, scale, unscaled)
+}
+
+// Root writers call this before their protocol header so a rejected direct
+// Decimal cannot append a partial root to a caller-owned buffer.
+func validateRootDecimal(ctxErr *Error, value any) bool {
+	switch decimal := value.(type) {
+	case Decimal:
+		return validateDecimal(ctxErr, decimal.Scale, &decimal.Unscaled)
+	case *Decimal:
+		return decimal == nil || validateDecimal(ctxErr, decimal.Scale, &decimal.Unscaled)
+	default:
+		return true
+	}
+}
+
+func validateDecimal(ctxErr *Error, scale int32, unscaled *big.Int) bool {
+	if scale < -maxDecimalScale || scale > maxDecimalScale {
+		ctxErr.SetError(SerializationErrorf(
+			"decimal scale %d exceeds supported range [%d, %d]",
+			scale, -maxDecimalScale, maxDecimalScale))
+		return false
+	}
+	if unscaled != nil && unscaled.BitLen() > maxDecimalMagnitudeBytes*8 {
+		ctxErr.SetError(SerializationErrorf(
+			"decimal magnitude exceeds %d bytes", maxDecimalMagnitudeBytes))
+		return false
+	}
+	return true
+}
+
+func writeValidDecimalParts(buffer *ByteBuffer, scale int32, unscaled *big.Int) {
 	if unscaled == nil {
 		unscaled = new(big.Int)
 	}
+	small := canUseSmallDecimalEncoding(unscaled)
 	buffer.WriteVarint32(scale)
-	if canUseSmallDecimalEncoding(unscaled) {
+	if small {
 		smallValue := unscaled.Int64()
 		header := encodeDecimalZigZag64(smallValue) << 1
 		buffer.WriteVarUint64(header)
@@ -124,6 +167,15 @@ func writeDecimalParts(buffer *ByteBuffer, scale int32, unscaled *big.Int) {
 func readDecimalParts(ctx *ReadContext) (int32, *big.Int) {
 	err := ctx.Err()
 	scale := ctx.buffer.ReadVarint32(err)
+	if ctx.HasError() {
+		return 0, nil
+	}
+	if scale < -maxDecimalScale || scale > maxDecimalScale {
+		ctx.SetError(DeserializationErrorf(
+			"decimal scale %d exceeds supported range [%d, %d]",
+			scale, -maxDecimalScale, maxDecimalScale))
+		return 0, nil
+	}
 	header := ctx.buffer.ReadVarUint64(err)
 	if ctx.HasError() {
 		return 0, nil
@@ -140,6 +192,12 @@ func readDecimalParts(ctx *ReadContext) (int32, *big.Int) {
 	}
 	if length > uint64(MaxInt) {
 		ctx.SetError(DeserializationErrorf("invalid decimal magnitude length %d", length))
+		return 0, nil
+	}
+	if length > maxDecimalMagnitudeBytes {
+		ctx.SetError(DeserializationErrorf(
+			"decimal magnitude length %d exceeds limit %d",
+			length, maxDecimalMagnitudeBytes))
 		return 0, nil
 	}
 	magnitudeBytes := ctx.buffer.ReadBytes(int(length), err)

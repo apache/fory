@@ -51,6 +51,7 @@ public:
         input_stream_(nullptr), output_stream_(nullptr) {
     writer_index_ = 0;
     reader_index_ = 0;
+    discarded_reader_bytes_ = 0;
   }
 
   /// Wrap an existing vector for zero-copy serialization.
@@ -61,12 +62,12 @@ public:
   explicit Buffer(std::vector<uint8_t> &vec)
       : data_(vec.data()), size_(static_cast<uint32_t>(vec.size())),
         own_data_(false), writer_index_(static_cast<uint32_t>(vec.size())),
-        reader_index_(0), wrapped_vector_(&vec), input_stream_(nullptr),
-        output_stream_(nullptr) {}
+        reader_index_(0), discarded_reader_bytes_(0), wrapped_vector_(&vec),
+        input_stream_(nullptr), output_stream_(nullptr) {}
 
   explicit Buffer(InputStream &input_stream)
       : data_(nullptr), size_(0), own_data_(false), writer_index_(0),
-        reader_index_(0), wrapped_vector_(nullptr),
+        reader_index_(0), discarded_reader_bytes_(0), wrapped_vector_(nullptr),
         input_stream_(&input_stream), output_stream_(nullptr) {
     input_stream_->bind_buffer(this);
     input_stream_owner_ = input_stream_->weak_from_this().lock();
@@ -92,6 +93,7 @@ public:
     swap(own_data_, other.own_data_);
     swap(writer_index_, other.writer_index_);
     swap(reader_index_, other.reader_index_);
+    swap(discarded_reader_bytes_, other.discarded_reader_bytes_);
     swap(wrapped_vector_, other.wrapped_vector_);
     swap(input_stream_, other.input_stream_);
     swap(input_stream_owner_, other.input_stream_owner_);
@@ -150,6 +152,11 @@ public:
   FORY_ALWAYS_INLINE uint32_t writer_index() { return writer_index_; }
 
   FORY_ALWAYS_INLINE uint32_t reader_index() { return reader_index_; }
+
+  /// Monotonic read position across stream-buffer compaction.
+  FORY_ALWAYS_INLINE uint64_t logical_reader_index() const {
+    return discarded_reader_bytes_ + reader_index_;
+  }
 
   /// \brief Return the remaining bytes available for reading
   FORY_ALWAYS_INLINE uint32_t remaining_size() const {
@@ -1440,6 +1447,7 @@ private:
   bool own_data_;
   uint32_t writer_index_;
   uint32_t reader_index_;
+  uint64_t discarded_reader_bytes_;
   std::vector<uint8_t> *wrapped_vector_ = nullptr;
   InputStream *input_stream_ = nullptr;
   std::shared_ptr<InputStream> input_stream_owner_;

@@ -399,7 +399,7 @@ public sealed partial class ForyModelGenerator : IIncrementalGenerator
                 else
                 {
                     sb.AppendLine(
-                        $"        global::Apache.Fory.TypeResolver.RegisterGeneratedStruct<{model.TargetTypeName}, {model.GeneratedClassName}>({BoolLiteral(model.Evolving)});");
+                        $"        global::Apache.Fory.TypeResolver.RegisterGeneratedStruct<{model.TargetTypeName}, {model.GeneratedClassName}>({BoolLiteral(model.Evolving)}, {BoolLiteral(ReadDataAlwaysAdvances(model))});");
                 }
             }
 

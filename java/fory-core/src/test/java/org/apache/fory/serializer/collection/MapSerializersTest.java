@@ -57,9 +57,11 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.annotation.Ref;
+import org.apache.fory.builder.Generated;
 import org.apache.fory.collection.LazyMap;
 import org.apache.fory.collection.MapEntry;
 import org.apache.fory.config.CompatibleMode;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
@@ -693,7 +695,8 @@ public class MapSerializersTest extends ForyTestBase {
     MemoryBuffer buffer = MemoryUtils.buffer(8);
     buffer.writeVarUInt32Small7(2);
     Assert.expectThrows(
-        IndexOutOfBoundsException.class, () -> withReadContext(fory, buffer, serializer::newMap));
+        IndexOutOfBoundsException.class,
+        () -> withReadContext(fory, buffer, context -> serializer.newMap(context, false)));
   }
 
   @Test(dataProvider = "foryCopyConfig")
@@ -1584,6 +1587,88 @@ public class MapSerializersTest extends ForyTestBase {
     obj.map = map;
     obj.mapKeyFinal = ofHashMap("k1", map);
     serDeCheck(fory, obj);
+  }
+
+  @Test
+  public void testInvalidMapChunkSize() {
+    for (boolean generic : new boolean[] {false, true}) {
+      for (int chunkSize : new int[] {0, 2}) {
+        Fory fory =
+            builder()
+                .withRefTracking(false)
+                .withCodegen(false)
+                .requireClassRegistration(false)
+                .build();
+        MapLikeSerializer serializer = (MapLikeSerializer) fory.getSerializer(HashMap.class);
+        MemoryBuffer buffer = MemoryUtils.buffer(2);
+        buffer.writeByte(MapFlags.KEY_DECL_TYPE | MapFlags.VALUE_DECL_TYPE);
+        buffer.writeByte(chunkSize);
+        DeserializationException exception =
+            Assert.expectThrows(
+                DeserializationException.class,
+                () ->
+                    withReadContext(
+                        fory,
+                        buffer,
+                        context -> {
+                          if (generic) {
+                            context
+                                .getGenerics()
+                                .pushGenericType(
+                                    GenericType.build(new TypeRef<Map<String, Integer>>() {}),
+                                    context.getDepth());
+                          }
+                          serializer.readElements(context, 1, new HashMap<>());
+                          return null;
+                        }));
+        Assert.assertTrue(exception.getMessage().contains("Map chunk size"));
+      }
+    }
+  }
+
+  @Test
+  public void testGeneratedInvalidMapChunkSize() {
+    Fory fory =
+        builder()
+            .withXlang(false)
+            .withCodegen(true)
+            .withAsyncCompilation(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    MapChunkHolder holder = new MapChunkHolder();
+    holder.values.put("only-key", 17);
+    byte[] bytes = fory.serialize(holder);
+    assertEquals(fory.deserialize(bytes), holder);
+    Assert.assertTrue(fory.getSerializer(MapChunkHolder.class) instanceof Generated);
+
+    assertGeneratedChunkRejected(fory, bytes, 0);
+    assertGeneratedChunkRejected(fory, bytes, 2);
+  }
+
+  private static void assertGeneratedChunkRejected(Fory fory, byte[] bytes, int replacement) {
+    boolean rejected = false;
+    for (int i = 0; i < bytes.length; i++) {
+      if ((bytes[i] & 0xff) != 1) {
+        continue;
+      }
+      byte[] corrupted = bytes.clone();
+      corrupted[i] = (byte) replacement;
+      try {
+        fory.deserialize(corrupted);
+      } catch (DeserializationException exception) {
+        if (exception.getMessage().contains("Map chunk size")) {
+          rejected = true;
+          break;
+        }
+      }
+    }
+    Assert.assertTrue(rejected, "Generated map reader did not reject chunk size " + replacement);
+  }
+
+  @Data
+  public static class MapChunkHolder {
+    public Map<String, Integer> values = new HashMap<>();
   }
 
   @Test(dataProvider = "referenceTrackingConfig")

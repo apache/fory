@@ -280,6 +280,13 @@ impl ForyBuilder {
         self
     }
 
+    /// Sets the root allowance for collection elements and map entries not
+    /// backed by newly consumed input bytes. Defaults to 8192. Zero is strict.
+    pub fn max_unbacked_container_items(mut self, max_items: usize) -> Self {
+        self.config.max_unbacked_container_items = max_items;
+        self
+    }
+
     /// Sets the maximum depth for nested dynamic object serialization.
     ///
     /// # Arguments
@@ -1047,6 +1054,7 @@ impl Fory {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
             context.attach_reader(Reader::new(outlive_buffer));
             context.remaining_graph_memory_bytes = self.config.max_graph_memory_bytes;
+            context.remaining_unbacked_container_items = self.config.max_unbacked_container_items;
             let result = self.deserialize_with_context::<S>(context);
             context.detach_reader();
             result
@@ -1121,6 +1129,7 @@ impl Fory {
             new_reader.set_cursor(reader.cursor);
             context.attach_reader(new_reader);
             context.remaining_graph_memory_bytes = self.config.max_graph_memory_bytes;
+            context.remaining_unbacked_container_items = self.config.max_unbacked_container_items;
             let result = self.deserialize_with_context::<S>(context);
             let end = context.detach_reader().get_cursor();
             reader.set_cursor(end);

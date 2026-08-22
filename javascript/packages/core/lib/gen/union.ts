@@ -28,6 +28,7 @@ import { TypeMeta } from "../meta/TypeMeta";
 
 class UnionSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
+  typeMeta: TypeMeta | undefined;
   detectedSerializer: string;
   writerSerializer: string;
   caseTypesVar: string;
@@ -36,6 +37,10 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
     this.typeInfo = typeInfo;
+    this.typeMeta =
+      typeInfo.typeId === TypeId.NAMED_UNION && builder.resolver.isCompatible()
+        ? TypeMeta.fromTypeInfo(typeInfo, builder.resolver)
+        : undefined;
     this.detectedSerializer = this.scope.declareVar("detectedSerializer", "null");
     this.writerSerializer = this.scope.declareVar("writerSerializer", "null");
 
@@ -46,7 +51,7 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
       for (const [caseIdx, caseTypeInfo] of Object.entries(cases)) {
         const ti = caseTypeInfo as TypeInfo;
         const isNamed = TypeId.isNamedType(ti._typeId);
-        const named = isNamed ? `"${ti.named}"` : "null";
+        const named = isNamed ? CodecBuilder.sourceString(ti.named) : "null";
         caseEntries.push(
           `${caseIdx}: { typeId: ${ti.typeId}, userTypeId: ${ti.userTypeId ?? -1}, named: ${named} }`,
         );
@@ -194,7 +199,6 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
   }
 
   read(assignStmt: (v: string) => string, refState: string): string {
-    void refState;
     const caseIndex = this.scope.uniqueName("caseIndex");
     const refFlag = this.scope.uniqueName("refFlag");
     const unionValue = this.scope.uniqueName("unionValue");
@@ -203,15 +207,22 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
     return `
       const ${caseIndex} = ${this.builder.reader.readVarUInt32()};
       const ${refFlag} = ${this.builder.reader.readInt8()};
+      const ${result} = { case: ${caseIndex}, value: null };
+      ${this.maybeReference(result, refState)}
       let ${unionValue} = null;
-      if (${refFlag} === ${RefFlags.NullFlag}) {
-        ${unionValue} = null;
-      } else if (${refFlag} === ${RefFlags.RefFlag}) {
-        ${unionValue} = ${this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32())};
-      } else {
-        ${this.readDeclaredCases(caseIndex, unionValue, refFlag, caseInfo)}
+      switch (${refFlag}) {
+        case ${RefFlags.NullFlag}:
+          ${unionValue} = null;
+          break;
+        case ${RefFlags.RefFlag}:
+          ${unionValue} = ${this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32())};
+          break;
+        case ${RefFlags.NotNullValueFlag}:
+        case ${RefFlags.RefValueFlag}:
+          ${this.readDeclaredCases(caseIndex, unionValue, refFlag, caseInfo)}
+          break;
       }
-      const ${result} = { case: ${caseIndex}, value: ${unionValue} };
+      ${result}.value = ${unionValue};
       ${assignStmt(result)}
     `;
   }
@@ -228,9 +239,9 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
         if (this.builder.resolver.isCompatible()) {
           const bytes = this.scope.declare(
             "unionTypeInfoBytes",
-            `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`,
+            `new Uint8Array([${this.typeMeta!.toBytes().join(",")}])`,
           );
-          const serializerExpr = `${this.builder.getTypeResolverName()}.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`;
+          const serializerExpr = `${this.builder.getTypeResolverName()}.getSerializerByName(${CodecBuilder.sourceString(this.typeInfo.named!)})`;
           typeMeta = this.builder.typeMetaResolver.writeTypeMeta(
             `${serializerExpr}.getTypeInfo()`,
             bytes,
@@ -238,15 +249,11 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
         } else {
           const nsBytes = this.scope.declare(
             "unionNsBytes",
-            this.builder.metaStringResolver.encodeNamespace(
-              CodecBuilder.replaceBackslashAndQuote(this.typeInfo.namespace),
-            ),
+            this.builder.metaStringResolver.encodeNamespace(this.typeInfo.namespace),
           );
           const typeNameBytes = this.scope.declare(
             "unionTypeNameBytes",
-            this.builder.metaStringResolver.encodeTypeName(
-              CodecBuilder.replaceBackslashAndQuote(this.typeInfo.typeName),
-            ),
+            this.builder.metaStringResolver.encodeTypeName(this.typeInfo.typeName),
           );
           typeMeta = `
             ${this.builder.metaStringResolver.writeBytes(nsBytes)}
@@ -277,6 +284,7 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
               TypeId.NAMED_UNION,
               this.typeInfo.namespace,
               this.typeInfo.typeName,
+              "serializer",
             )};
           `;
         } else {
@@ -300,6 +308,11 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
 
   getTypeId() {
     return this.typeInfo._typeId;
+  }
+
+  getLocalTypeMeta(): TypeMeta | undefined {
+    this.typeMeta?.getHash();
+    return this.typeMeta;
   }
 }
 

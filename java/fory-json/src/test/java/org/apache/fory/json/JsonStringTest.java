@@ -467,7 +467,10 @@ public class JsonStringTest extends ForyJsonTestModels {
   @Test
   public void readStringScanBoundaries() {
     ForyJson json = newJson();
-    for (int length : new int[] {0, 1, 7, 8, 15, 16, 17, 23, 24, 31, 32, 33, 63, 64, 65}) {
+    for (int length :
+        new int[] {
+          0, 1, 7, 8, 15, 16, 17, 23, 24, 31, 32, 33, 39, 40, 41, 47, 48, 49, 55, 56, 57, 63, 64, 65
+        }) {
       String value = repeat('a', length);
       String input = "\"" + value + "\"";
       assertEquals(json.fromJson(input, String.class), value);

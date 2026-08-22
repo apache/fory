@@ -31,6 +31,14 @@ const REFERENCE_BYTES = 4;
 // charged separately by count below; this is not a Fory wire header or a V8 layout probe.
 const JS_MAP_OWNER_BYTES = 8 * REFERENCE_BYTES;
 
+type SchemaIdentitySerializer = Serializer & {
+  getTypeIdentity?: (value: any) => unknown;
+};
+
+function throwInvalidMapChunkSize(chunkSize: number, remaining: number): never {
+  throw new Error(`Invalid map chunk size ${chunkSize} for ${remaining} remaining entries.`);
+}
+
 const MapFlags = {
   /** Whether track elements ref. */
   TRACKING_REF: 0b1,
@@ -47,6 +55,7 @@ class ElementInfo {
     public serializer: Serializer | null,
     public isNull: boolean,
     public trackRef: boolean,
+    public typeIdentity: unknown,
   ) {}
 
   equalTo(other: ElementInfo | null) {
@@ -56,7 +65,8 @@ class ElementInfo {
     return (
       this.serializer === other.serializer &&
       this.isNull === other.isNull &&
-      this.trackRef === other.trackRef
+      this.trackRef === other.trackRef &&
+      this.typeIdentity === other.typeIdentity
     );
   }
 }
@@ -71,8 +81,8 @@ class MapChunkWriter {
 
   constructor(
     private writeContext: WriteContext,
-    private keySerializer?: Serializer | null,
-    private valueSerializer?: Serializer | null,
+    private keyDeclared: boolean,
+    private valueDeclared: boolean,
   ) {}
 
   private getHead(keyInfo: ElementInfo, valueInfo: ElementInfo) {
@@ -83,7 +93,7 @@ class MapChunkWriter {
     if (valueInfo.trackRef) {
       flag |= MapFlags.TRACKING_REF;
     }
-    if (this.valueSerializer) {
+    if (this.valueDeclared) {
       flag |= MapFlags.DECL_ELEMENT_TYPE;
     }
     flag <<= 3;
@@ -93,7 +103,7 @@ class MapChunkWriter {
     if (keyInfo.trackRef) {
       flag |= MapFlags.TRACKING_REF;
     }
-    if (this.keySerializer) {
+    if (this.keyDeclared) {
       flag |= MapFlags.DECL_ELEMENT_TYPE;
     }
     return flag;
@@ -153,7 +163,7 @@ class MapChunkWriter {
   }
 }
 
-class MapAnySerializer {
+export class MapAnySerializer {
   constructor(
     private writeContext: WriteContext,
     private readContext: ReadContext,
@@ -180,18 +190,15 @@ class MapAnySerializer {
         return true;
       } else {
         this.writeContext.writer.writeInt8(RefFlags.RefValueFlag);
+        this.writeContext.writeRef(v);
         return false;
       }
     }
     return false;
   }
 
-  write(value: Map<any, any>) {
-    const mapChunkWriter = new MapChunkWriter(
-      this.writeContext,
-      this.keySerializer,
-      this.valueSerializer,
-    );
+  write(value: Map<any, any>, keyDeclared: boolean, valueDeclared: boolean) {
+    const mapChunkWriter = new MapChunkWriter(this.writeContext, keyDeclared, valueDeclared);
     this.writeContext.writer.writeVarUint32Small7(value.size);
     for (const [k, v] of value.entries()) {
       const keySerializer =
@@ -204,11 +211,17 @@ class MapAnySerializer {
           : this.writeContext.typeResolver.getSerializerByData(v);
 
       const header = mapChunkWriter.next(
-        new ElementInfo(keySerializer || null, k == null, keySerializer?.needToWriteRef() || false),
+        new ElementInfo(
+          keySerializer || null,
+          k == null,
+          keySerializer?.needToWriteRef() || false,
+          (keySerializer as SchemaIdentitySerializer | undefined)?.getTypeIdentity?.(k),
+        ),
         new ElementInfo(
           valueSerializer || null,
           v == null,
           valueSerializer?.needToWriteRef() || false,
+          (valueSerializer as SchemaIdentitySerializer | undefined)?.getTypeIdentity?.(v),
         ),
       );
       const keyHeader = header & 0b111;
@@ -216,17 +229,21 @@ class MapAnySerializer {
       if (mapChunkWriter.isFirst()) {
         if (!(keyHeader & MapFlags.HAS_NULL) && !(valueHeader & MapFlags.HAS_NULL)) {
           if (!(keyHeader & MapFlags.DECL_ELEMENT_TYPE)) {
-            keySerializer?.writeTypeInfo(null);
+            keySerializer?.writeTypeInfo(k);
           }
           if (!(valueHeader & MapFlags.DECL_ELEMENT_TYPE)) {
-            valueSerializer?.writeTypeInfo(null);
+            valueSerializer?.writeTypeInfo(v);
           }
         }
       }
 
       const includeNone = keyHeader & MapFlags.HAS_NULL || valueHeader & MapFlags.HAS_NULL;
+      // A null side preserves the other side's DECL bit; the declared side writes
+      // only its body, never another TypeInfo.
       if (!this.writeFlag(keyHeader, k)) {
         if (!includeNone) {
+          keySerializer!.write(k);
+        } else if (keyHeader & MapFlags.DECL_ELEMENT_TYPE) {
           keySerializer!.write(k);
         } else {
           keySerializer!.writeNoRef(k);
@@ -234,6 +251,8 @@ class MapAnySerializer {
       }
       if (!this.writeFlag(valueHeader, v)) {
         if (!includeNone) {
+          valueSerializer!.write(v);
+        } else if (valueHeader & MapFlags.DECL_ELEMENT_TYPE) {
           valueSerializer!.write(v);
         } else {
           valueSerializer!.writeNoRef(v);
@@ -278,6 +297,7 @@ class MapAnySerializer {
   read(fromRef: boolean): any {
     let count = this.readContext.reader.readVarUint32Small7();
     this.readContext.reserveGraphMemory(JS_MAP_OWNER_BYTES + count * 2 * REFERENCE_BYTES);
+    this.readContext.checkUnbackedContainerAllocation(count);
     const result = new Map();
     if (fromRef) {
       this.readContext.reference(result);
@@ -292,6 +312,9 @@ class MapAnySerializer {
       } else {
         chunkSize = this.readContext.reader.readUint8();
       }
+      if (chunkSize < 1 || chunkSize > count) {
+        throwInvalidMapChunkSize(chunkSize, count);
+      }
       let keySerializer = this.keySerializer;
       let valueSerializer = this.valueSerializer;
 
@@ -303,13 +326,34 @@ class MapAnySerializer {
         if (!(valueHeader & MapFlags.DECL_ELEMENT_TYPE)) {
           valueSerializer = AnyHelper.detectSerializer(this.readContext);
         }
+      } else {
+        // A non-declared side beside null carries its TypeInfo inline with that element.
+        // Clear the local declared serializer so readElement consumes the wire TypeInfo.
+        if (!(keyHeader & MapFlags.DECL_ELEMENT_TYPE)) {
+          keySerializer = null;
+        }
+        if (!(valueHeader & MapFlags.DECL_ELEMENT_TYPE)) {
+          valueSerializer = null;
+        }
       }
+
+      const entryReadAlwaysAdvances =
+        Boolean(keyHeader & MapFlags.HAS_NULL) ||
+        Boolean(valueHeader & MapFlags.HAS_NULL) ||
+        Boolean(keyHeader & MapFlags.TRACKING_REF) ||
+        Boolean(valueHeader & MapFlags.TRACKING_REF) ||
+        keySerializer?.readDataAlwaysAdvances === true ||
+        valueSerializer?.readDataAlwaysAdvances === true;
+      const checkpoint = entryReadAlwaysAdvances ? 0 : this.readContext.reader.readGetCursor();
 
       for (let index = 0; index < chunkSize; index++) {
         const key = this.readElement(keyHeader, keySerializer);
         const value = this.readElement(valueHeader, valueSerializer);
         result.set(key, value);
         count--;
+      }
+      if (!entryReadAlwaysAdvances) {
+        this.readContext.settleUnbackedContainerItems(chunkSize, checkpoint);
       }
     }
     return result;
@@ -344,6 +388,20 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
       valueTypeId === TypeId.UNKNOWN ||
       !TypeId.isBuiltin(keyTypeId!) ||
       !TypeId.isBuiltin(valueTypeId!)
+    );
+  }
+
+  private useDeclaredType(typeInfo: TypeInfo) {
+    const readWriteTypeInfo =
+      this.builder.resolver.getSerializerByTypeInfo(typeInfo)?.getTypeInfo() ?? typeInfo;
+    // Evolving structs need per-chunk TypeInfo so a compatible reader can discard a removed map
+    // field. A fixed-schema serializer deliberately keeps the declared form: evolving=false is its
+    // same-schema size and speed opt-out, even when the field declaration is only a placeholder.
+    return (
+      typeInfo.typeId !== TypeId.UNKNOWN &&
+      (!this.builder.resolver.isCompatible() ||
+        !TypeId.structType(readWriteTypeInfo.typeId) ||
+        !readWriteTypeInfo.evolving)
     );
   }
 
@@ -443,9 +501,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
       return this.scope.declare(
         "map_inner_ser",
         TypeId.isNamedType(innerTypeInfo.typeId)
-          ? this.builder.typeResolver.getSerializerByName(
-              CodecBuilder.replaceBackslashAndQuote(innerTypeInfo.named!),
-            )
+          ? this.builder.typeResolver.getSerializerByName(innerTypeInfo.named!)
           : this.builder.typeResolver.getSerializerById(
               innerTypeInfo.typeId,
               innerTypeInfo.userTypeId,
@@ -460,12 +516,18 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
       this.typeInfo.options!.value!.typeId !== TypeId.UNKNOWN
         ? innerSerializer(this.typeInfo.options!.value!)
         : null
-    }).write(${accessor})`;
+    }).write(${accessor}, ${this.useDeclaredType(
+      this.typeInfo.options!.key!,
+    )}, ${this.useDeclaredType(this.typeInfo.options!.value!)})`;
   }
 
   private readSpecificType(accessor: (expr: string) => string, refState: string) {
     const count = this.scope.uniqueName("count");
     const result = this.scope.uniqueName("result");
+    const checkpoint = this.scope.uniqueName("checkpoint");
+    const entryReadAlwaysAdvances = this.scope.uniqueName("entryReadAlwaysAdvances");
+    const staticReadDataAlwaysAdvances =
+      this.keyGenerator.readDataAlwaysAdvances() || this.valueGenerator.readDataAlwaysAdvances();
     // Skip depth tracking for leaf key/value types.
     const keyIsLeaf = TypeId.isLeafTypeId(this.keyGenerator.getTypeId()!);
     const valueIsLeaf = TypeId.isLeafTypeId(this.valueGenerator.getTypeId()!);
@@ -480,6 +542,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
         : this.valueGenerator.readWithDepth(assignStmt, refState);
     };
     const anyHelper = this.builder.getExternal(AnyHelper.name);
+    const invalidChunkSize = this.builder.getExternal(throwInvalidMapChunkSize.name);
     const readContextName = this.builder.getReadContextName();
     const keySerializer = this.scope.uniqueName("keySerializer");
     const valueSerializer = this.scope.uniqueName("valueSerializer");
@@ -498,6 +561,11 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
       ${readContextName}.reserveGraphMemory(${JS_MAP_OWNER_BYTES} + ${count} * 2 * ${REFERENCE_BYTES});
+      ${
+        staticReadDataAlwaysAdvances
+          ? this.builder.reader.checkReadableBytes(count)
+          : `${readContextName}.checkUnbackedContainerAllocation(${count});`
+      }
       const ${result} = new Map();
       if (${refState}) {
         ${this.builder.referenceResolver.reference(result)}
@@ -516,6 +584,9 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
         if (!keyIncludeNone && !valueIncludeNone) {
           chunkSize = ${this.builder.reader.readUint8()};
         }
+        if (chunkSize < 1 || chunkSize > ${count}) {
+          ${invalidChunkSize}(chunkSize, ${count});
+        }
         let ${keySerializer} = null;
         let ${valueSerializer} = null;
         if (!keyIncludeNone && !valueIncludeNone) {
@@ -525,6 +596,17 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
           if (!${valueDeclaredType}) {
             ${valueSerializer} = ${anyHelper}.detectSerializer(${readContextName});
           }
+        }
+        ${
+          staticReadDataAlwaysAdvances
+            ? ""
+            : `
+              const ${entryReadAlwaysAdvances} = Boolean(keyIncludeNone) || Boolean(valueIncludeNone) ||
+                Boolean(keyTrackingRef) || Boolean(valueTrackingRef) ||
+                ${keySerializer}?.readDataAlwaysAdvances === true ||
+                ${valueSerializer}?.readDataAlwaysAdvances === true;
+              const ${checkpoint} = ${entryReadAlwaysAdvances} ? 0 : ${this.builder.reader.readGetCursor()};
+            `
         }
         for (let index = 0; index < chunkSize; index++) {
           let key;
@@ -621,6 +703,15 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
           );
           ${count}--;
         }
+        ${
+          staticReadDataAlwaysAdvances
+            ? ""
+            : `
+              if (!${entryReadAlwaysAdvances}) {
+                ${readContextName}.settleUnbackedContainerItems(chunkSize, ${checkpoint});
+              }
+            `
+        }
       }
       ${accessor(result)}
     `;
@@ -635,9 +726,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
       return this.scope.declare(
         "map_inner_ser",
         TypeId.isNamedType(innerTypeInfo.typeId)
-          ? this.builder.typeResolver.getSerializerByName(
-              CodecBuilder.replaceBackslashAndQuote(innerTypeInfo.named!),
-            )
+          ? this.builder.typeResolver.getSerializerByName(innerTypeInfo.named!)
           : this.builder.typeResolver.getSerializerById(
               innerTypeInfo.typeId,
               innerTypeInfo.userTypeId,
@@ -663,4 +752,5 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
 }
 
 CodegenRegistry.registerExternal(MapAnySerializer);
+CodegenRegistry.registerExternal(throwInvalidMapChunkSize);
 CodegenRegistry.register(TypeId.MAP, MapSerializerGenerator);

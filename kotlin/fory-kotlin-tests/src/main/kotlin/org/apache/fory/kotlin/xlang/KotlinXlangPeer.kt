@@ -40,12 +40,14 @@ import org.apache.fory.annotation.ForyUnion
 import org.apache.fory.annotation.ForyUnknownCase
 import org.apache.fory.annotation.Ref
 import org.apache.fory.exception.ForyException
+import org.apache.fory.exception.InsecureException
 import org.apache.fory.exception.SerializationException
 import org.apache.fory.kotlin.Fixed
 import org.apache.fory.kotlin.ForyKotlin
 import org.apache.fory.kotlin.VarInt
 import org.apache.fory.kotlin.register
 import org.apache.fory.memory.MemoryUtils
+import org.apache.fory.serializer.GraphMemoryEstimates
 import org.apache.fory.serializer.StaticGeneratedStructSerializer
 import org.apache.fory.serializer.kotlin.KotlinSerializers
 import org.apache.fory.type.BFloat16
@@ -130,6 +132,41 @@ constructor(
 )
 
 @ForyStruct
+public data class KotlinTrackedDenseArraysWriter
+constructor(
+  @Ref @ForyField(id = 1) val ubytes: UByteArray,
+  @Ref @ForyField(id = 2) val ubytesAlias: UByteArray,
+  @Ref @ForyField(id = 3) val ushorts: UShortArray,
+  @Ref @ForyField(id = 4) val ushortsAlias: UShortArray,
+  @Ref @ForyField(id = 5) val uints: UIntArray,
+  @Ref @ForyField(id = 6) val uintsAlias: UIntArray,
+  @Ref @ForyField(id = 7) val ulongs: ULongArray,
+  @Ref @ForyField(id = 8) val ulongsAlias: ULongArray,
+  @Ref @ForyField(id = 9) val nullableUInts: UIntArray?,
+  @Ref @ForyField(id = 10) val absentUInts: UIntArray?,
+  @Ref @ForyField(id = 11) val notNullUInts: UIntArray?,
+  @ForyField(id = 12) val sentinel: Int,
+)
+
+@ForyStruct
+public data class KotlinTrackedDenseArraysReader
+constructor(
+  @Ref @ForyField(id = 1) val ubytes: UByteArray,
+  @Ref @ForyField(id = 2) val ubytesAlias: UByteArray,
+  @Ref @ForyField(id = 3) val ushorts: UShortArray,
+  @Ref @ForyField(id = 4) val ushortsAlias: UShortArray,
+  @Ref @ForyField(id = 5) val uints: UIntArray,
+  @Ref @ForyField(id = 6) val uintsAlias: UIntArray,
+  @Ref @ForyField(id = 7) val ulongs: ULongArray,
+  @Ref @ForyField(id = 8) val ulongsAlias: ULongArray,
+  @Ref @ForyField(id = 9) val nullableUInts: UIntArray?,
+  @Ref @ForyField(id = 10) val absentUInts: UIntArray?,
+  @Ref @ForyField(id = 11) val notNullUInts: UIntArray?,
+  @ForyField(id = 12) val sentinel: Int,
+  @ForyField(id = 13) val added: String = "reader-default",
+)
+
+@ForyStruct
 public data class KotlinNullableCompatibleWriter constructor(@ForyField(id = 1) val anchor: String)
 
 @ForyStruct
@@ -152,6 +189,17 @@ constructor(
   @ForyField(id = 1) val id: Int,
   @ForyField(id = 2) val name: String = "generated-default",
 )
+
+@ForyStruct
+public data class KotlinCompatibleUIntListReader
+constructor(
+  @Ref @ForyField(id = 1) val first: List<UInt>,
+  @Ref @ForyField(id = 2) val second: List<UInt>,
+)
+
+@ForyStruct
+public data class KotlinCompatibleDenseUIntListReader
+constructor(@ForyField(id = 1) val values: List<UInt>)
 
 @ForyStruct
 public data class KotlinDefaultRefWriter
@@ -189,6 +237,23 @@ public class KotlinMutableNode() {
 }
 
 @ForyStruct
+public class KotlinCheckedValue() {
+  @ForyField(id = 1) public var name: String = ""
+}
+
+@ForyStruct
+public class KotlinWrongValue() {
+  @ForyField(id = 1) public var name: String = ""
+}
+
+@ForyStruct
+public data class KotlinCheckedHolder
+constructor(
+  @ForyField(id = 1) public val id: Int,
+  @Ref @ForyField(id = 2, dynamic = ForyField.Dynamic.TRUE) public val value: KotlinCheckedValue?,
+)
+
+@ForyStruct
 public class KotlinCtorBackrefRoot
 constructor(@ForyField(id = 1) val child: KotlinCtorBackrefChild)
 
@@ -204,7 +269,18 @@ public sealed class KotlinPet {
   @ForyCase(id = 0) public data class User(val value: KotlinUser) : KotlinPet()
 
   @ForyCase(id = 1) public data class Name(val value: String) : KotlinPet()
+
+  @ForyCase(id = 2) public data class Ids(val value: List<UInt>) : KotlinPet()
+
+  @ForyCase(id = 3) public data class SharedIds(val value: @Ref List<UInt>) : KotlinPet()
 }
+
+@ForyStruct
+public data class KotlinUnionListRefs
+constructor(
+  @ForyField(id = 1) val first: KotlinPet,
+  @ForyField(id = 2) val second: KotlinPet,
+)
 
 public fun main(args: Array<String>) {
   if (args.size < 2) {
@@ -212,6 +288,7 @@ public fun main(args: Array<String>) {
   }
   when (args[0]) {
     "static_serializer_round_trip" -> staticSerializerRoundTrip(args[1])
+    "generated_field_type_guard" -> generatedFieldTypeGuard()
     "compatible_default_round_trip" -> compatibleDefaultRoundTrip()
     "constructor_backref_copy" -> constructorBackrefCopy()
     "dense_array_round_trip" -> denseArrayRoundTrip(args[1])
@@ -222,6 +299,9 @@ public fun main(args: Array<String>) {
 
 private fun staticSerializerRoundTrip(dataFile: String) {
   checkNoArgRegisterReceivers()
+  compatibleScalarContainerRefs()
+  compatibleDenseUIntList()
+  trackedDenseArrayRefs()
 
   val fory = newFory()
   fory.register<KotlinUser>("kotlin.KotlinUser")
@@ -489,6 +569,7 @@ private fun staticSerializerRoundTrip(dataFile: String) {
   refFory.register<KotlinMutableNode>("kotlin.KotlinMutableNode")
   refFory.register<KotlinUser>("kotlin.KotlinUser")
   KotlinSerializers.registerUnion(refFory, KotlinPet::class.java, "kotlin.KotlinPet")
+  refFory.register<KotlinUnionListRefs>("kotlin.KotlinUnionListRefs")
   val node = KotlinMutableNode()
   node.id = "root"
   node.parent = node
@@ -510,11 +591,235 @@ private fun staticSerializerRoundTrip(dataFile: String) {
   check(copiedUnknownPayload == unknownPayload)
   check(copiedUnknownPayload !== unknownPayload)
 
+  val sharedIds = arrayListOf(1u, UInt.MAX_VALUE)
+  val unionListRefs =
+    KotlinUnionListRefs(KotlinPet.SharedIds(sharedIds), KotlinPet.SharedIds(sharedIds))
+  val decodedUnionListRefs =
+    refFory.deserialize(
+      refFory.serialize(unionListRefs),
+      KotlinUnionListRefs::class.java,
+    )
+  val firstIds = (decodedUnionListRefs.first as KotlinPet.SharedIds).value
+  val secondIds = (decodedUnionListRefs.second as KotlinPet.SharedIds).value
+  check(firstIds === secondIds)
+
   val pet: KotlinPet = KotlinPet.User(response)
   val decodedPet = fory.deserialize(fory.serialize(pet), KotlinPet::class.java)
   check(decodedPet == pet)
   check(fory.getSerializer(KotlinPet::class.java) is StaticGeneratedStructSerializer<*>) {
     "KotlinPet did not load a static generated union serializer"
+  }
+  checkUnionListBudget(emptyList())
+  checkUnionListBudget(listOf(1u, 2u, UInt.MAX_VALUE))
+}
+
+private fun generatedFieldTypeGuard() {
+  val fory = newRefCompatibleFory()
+  fory.register<KotlinCheckedValue>("kotlin.CheckedValue")
+  fory.register<KotlinWrongValue>("kotlin.WrongValue")
+  fory.register<KotlinCheckedHolder>("kotlin.CheckedHolder")
+  val serializer = fory.getSerializer(KotlinCheckedHolder::class.java)
+  check(serializer is StaticGeneratedStructSerializer<*>)
+  val value = KotlinCheckedValue().also { it.name = "wire-value" }
+  val holder = KotlinCheckedHolder(1, value)
+  val decoded = fory.deserialize(fory.serialize(holder), KotlinCheckedHolder::class.java)
+  check(decoded.id == 1)
+  check(decoded.value?.name == "wire-value")
+
+  val fieldsById = serializer.javaClass.getDeclaredField("fieldsById")
+  fieldsById.isAccessible = true
+  val fields = fieldsById.get(serializer) as Array<*>
+  val setter =
+    serializer.javaClass.getDeclaredMethod(
+      "setFieldById",
+      KotlinCheckedHolder::class.java,
+      org.apache.fory.serializer.FieldGroups.SerializationFieldInfo::class.java,
+      Int::class.javaPrimitiveType,
+      Any::class.java,
+    )
+  setter.isAccessible = true
+  val failure =
+    runCatching { setter.invoke(serializer, holder, fields[1], 1, KotlinWrongValue()) }
+      .exceptionOrNull() ?: error("Generated Kotlin reader stored an incompatible field value")
+  check(hasStaticReadSetter(failure)) {
+    "Generated Kotlin field guard did not execute setReadFieldValue: $failure"
+  }
+}
+
+private fun hasStaticReadSetter(error: Throwable): Boolean {
+  var current: Throwable? = error
+  while (current != null) {
+    if (
+      current.stackTrace.any {
+        it.className == StaticGeneratedStructSerializer::class.java.name &&
+          it.methodName == "setReadFieldValue"
+      }
+    ) {
+      return true
+    }
+    current = current.cause
+  }
+  return false
+}
+
+private fun trackedDenseArrayRefs() {
+  val ubytes = byteArrayOf(1, -1).asUByteArray()
+  val ushorts = shortArrayOf(2, -1).asUShortArray()
+  val uints = intArrayOf(3, -1).asUIntArray()
+  val ulongs = longArrayOf(4, -1).asULongArray()
+  val sentinel = 0x76543210
+  val value =
+    KotlinTrackedDenseArraysWriter(
+      ubytes = ubytes,
+      ubytesAlias = ubytes,
+      ushorts = ushorts,
+      ushortsAlias = ushorts,
+      uints = uints,
+      uintsAlias = uints,
+      ulongs = ulongs,
+      ulongsAlias = ulongs,
+      nullableUInts = uints,
+      absentUInts = null,
+      notNullUInts = uints,
+      sentinel = sentinel,
+    )
+
+  val normal = newRefFory()
+  normal.register<KotlinTrackedDenseArraysWriter>("kotlin.TrackedDenseArrayRefs")
+  check(
+    normal.getSerializer(KotlinTrackedDenseArraysWriter::class.java)
+      is StaticGeneratedStructSerializer<*>
+  )
+  val decoded =
+    normal.deserialize(normal.serialize(value), KotlinTrackedDenseArraysWriter::class.java)
+  check(decoded.ubytes.asByteArray() === decoded.ubytesAlias.asByteArray())
+  check(decoded.ushorts.asShortArray() === decoded.ushortsAlias.asShortArray())
+  check(decoded.uints.asIntArray() === decoded.uintsAlias.asIntArray())
+  check(decoded.ulongs.asLongArray() === decoded.ulongsAlias.asLongArray())
+  check(decoded.nullableUInts!!.asIntArray() === decoded.uints.asIntArray())
+  check(decoded.absentUInts == null)
+  check(decoded.notNullUInts contentEquals uints)
+  check(decoded.sentinel == sentinel)
+
+  val writer = newRefCompatibleFory()
+  writer.register<KotlinTrackedDenseArraysWriter>("kotlin.TrackedDenseArrayRefs")
+  val reader = newRefCompatibleFory()
+  reader.register<KotlinTrackedDenseArraysReader>("kotlin.TrackedDenseArrayRefs")
+  check(
+    reader.getSerializer(KotlinTrackedDenseArraysReader::class.java)
+      is StaticGeneratedStructSerializer<*>
+  )
+  val compatible =
+    reader.deserialize(writer.serialize(value), KotlinTrackedDenseArraysReader::class.java)
+  check(compatible.ubytes.asByteArray() === compatible.ubytesAlias.asByteArray())
+  check(compatible.ushorts.asShortArray() === compatible.ushortsAlias.asShortArray())
+  check(compatible.uints.asIntArray() === compatible.uintsAlias.asIntArray())
+  check(compatible.ulongs.asLongArray() === compatible.ulongsAlias.asLongArray())
+  check(compatible.nullableUInts!!.asIntArray() === compatible.uints.asIntArray())
+  check(compatible.absentUInts == null)
+  check(compatible.notNullUInts!!.asIntArray() === compatible.uints.asIntArray())
+  check(compatible.sentinel == sentinel)
+  check(compatible.added == "reader-default")
+
+  val noRefWriter = newCompatibleFory()
+  noRefWriter.register<KotlinTrackedDenseArraysWriter>("kotlin.TrackedDenseArrayRefs")
+  val noRefReader = newCompatibleFory()
+  noRefReader.register<KotlinTrackedDenseArraysReader>("kotlin.TrackedDenseArrayRefs")
+  val noRefDecoded =
+    noRefReader.deserialize(
+      noRefWriter.serialize(value),
+      KotlinTrackedDenseArraysReader::class.java,
+    )
+  check(noRefDecoded.ubytes contentEquals ubytes)
+  check(noRefDecoded.ushorts contentEquals ushorts)
+  check(noRefDecoded.uints contentEquals uints)
+  check(noRefDecoded.ulongs contentEquals ulongs)
+  check(noRefDecoded.nullableUInts contentEquals uints)
+  check(noRefDecoded.absentUInts == null)
+  check(noRefDecoded.notNullUInts contentEquals uints)
+  check(noRefDecoded.sentinel == sentinel)
+  check(noRefDecoded.added == "reader-default")
+}
+
+private fun checkUnionListBudget(values: List<UInt>) {
+  val writer = newFory()
+  writer.register<KotlinUser>("kotlin.KotlinUser")
+  KotlinSerializers.registerUnion(writer, KotlinPet::class.java, "kotlin.KotlinPet")
+  val value: KotlinPet = KotlinPet.Ids(values)
+  val bytes = writer.serialize(value)
+  val requiredBytes =
+    GraphMemoryEstimates.shallowObjectBytes(java.util.ArrayList::class.java) +
+      values.size.toLong() * GraphMemoryEstimates.REFERENCE_BYTES
+
+  val tooSmallReader = newBudgetFory(requiredBytes - 1)
+  tooSmallReader.register<KotlinUser>("kotlin.KotlinUser")
+  KotlinSerializers.registerUnion(tooSmallReader, KotlinPet::class.java, "kotlin.KotlinPet")
+  try {
+    tooSmallReader.deserialize(bytes, KotlinPet::class.java)
+    error("Kotlin union list exceeded its graph memory budget")
+  } catch (_: InsecureException) {}
+
+  val exactReader = newBudgetFory(requiredBytes)
+  exactReader.register<KotlinUser>("kotlin.KotlinUser")
+  KotlinSerializers.registerUnion(exactReader, KotlinPet::class.java, "kotlin.KotlinPet")
+  check(exactReader.deserialize(bytes, KotlinPet::class.java) == value)
+}
+
+private fun compatibleScalarContainerRefs() {
+  val shared = arrayListOf(1L, 4_294_967_295L)
+  val writer = newRefCompatibleFory()
+  writer.register(
+    KotlinCompatibleUIntListWriter::class.java,
+    "kotlin",
+    "CompatibleUIntListRefs",
+  )
+  val bytes = writer.serialize(KotlinCompatibleUIntListWriter(shared, shared))
+  val requiredBytes =
+    GraphMemoryEstimates.shallowObjectBytes(KotlinCompatibleUIntListReader::class.java).toLong() +
+      GraphMemoryEstimates.shallowObjectBytes(java.util.ArrayList::class.java) +
+      shared.size.toLong() * GraphMemoryEstimates.REFERENCE_BYTES
+
+  val tooSmallReader = newRefBudgetCompatibleFory(requiredBytes - 1)
+  tooSmallReader.register<KotlinCompatibleUIntListReader>("kotlin.CompatibleUIntListRefs")
+  try {
+    tooSmallReader.deserialize(bytes, KotlinCompatibleUIntListReader::class.java)
+    error("Compatible Kotlin scalar container exceeded its graph memory budget")
+  } catch (_: InsecureException) {}
+
+  val exactReader = newRefBudgetCompatibleFory(requiredBytes)
+  exactReader.register<KotlinCompatibleUIntListReader>("kotlin.CompatibleUIntListRefs")
+  val decoded = exactReader.deserialize(bytes, KotlinCompatibleUIntListReader::class.java)
+  check(decoded.first == listOf(1u, UInt.MAX_VALUE))
+  check(decoded.first === decoded.second)
+}
+
+private fun compatibleDenseUIntList() {
+  val values = intArrayOf(1, -1)
+  val writer = newRefCompatibleFory()
+  writer.register(
+    KotlinCompatibleDenseUIntListWriter::class.java,
+    "kotlin",
+    "CompatibleDenseUIntList",
+  )
+  val bytes = writer.serialize(KotlinCompatibleDenseUIntListWriter(values))
+  val requiredBytes =
+    GraphMemoryEstimates.shallowObjectBytes(KotlinCompatibleDenseUIntListReader::class.java)
+      .toLong() +
+      GraphMemoryEstimates.shallowObjectBytes(java.util.ArrayList::class.java) +
+      values.size.toLong() * GraphMemoryEstimates.REFERENCE_BYTES
+
+  val tooSmallReader = newRefBudgetCompatibleFory(requiredBytes - 1)
+  tooSmallReader.register<KotlinCompatibleDenseUIntListReader>("kotlin.CompatibleDenseUIntList")
+  try {
+    tooSmallReader.deserialize(bytes, KotlinCompatibleDenseUIntListReader::class.java)
+    error("Compatible dense UInt list exceeded its graph memory budget")
+  } catch (_: InsecureException) {}
+
+  val exactReader = newRefBudgetCompatibleFory(requiredBytes)
+  exactReader.register<KotlinCompatibleDenseUIntListReader>("kotlin.CompatibleDenseUIntList")
+  val decoded = exactReader.deserialize(bytes, KotlinCompatibleDenseUIntListReader::class.java)
+  check(decoded.values == listOf(1u, UInt.MAX_VALUE)) {
+    "Compatible dense UInt list decoded unexpected values ${decoded.values}"
   }
 }
 
@@ -654,6 +959,14 @@ private fun unsignedCollectionRoundTrip(dataFile: String) {
 private fun newFory(): Fory =
   ForyKotlin.builder().withXlang(true).requireClassRegistration(true).withRefTracking(false).build()
 
+private fun newBudgetFory(maxGraphMemoryBytes: Long): Fory =
+  ForyKotlin.builder()
+    .withXlang(true)
+    .requireClassRegistration(true)
+    .withRefTracking(false)
+    .withMaxGraphMemoryBytes(maxGraphMemoryBytes)
+    .build()
+
 private fun newCompatibleFory(): Fory =
   ForyKotlin.builder()
     .withXlang(true)
@@ -668,6 +981,15 @@ private fun newRefCompatibleFory(): Fory =
     .withCompatible(true)
     .requireClassRegistration(true)
     .withRefTracking(true)
+    .build()
+
+private fun newRefBudgetCompatibleFory(maxGraphMemoryBytes: Long): Fory =
+  ForyKotlin.builder()
+    .withXlang(true)
+    .withCompatible(true)
+    .requireClassRegistration(true)
+    .withRefTracking(true)
+    .withMaxGraphMemoryBytes(maxGraphMemoryBytes)
     .build()
 
 private fun newRefFory(): Fory =

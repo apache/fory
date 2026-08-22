@@ -522,8 +522,7 @@ public class ForyTest extends ForyTestBase {
     serDe(fory, ByteBuffer.allocate(32));
     serDe(fory, ByteBuffer.allocateDirect(32));
     assertThrows(InsecureException.class, () -> fory.serialize(new Thread()));
-    assertThrowsCause(
-        UnsupportedOperationException.class, () -> fory.serialize(MethodHandles.lookup()));
+    assertThrows(InsecureException.class, () -> fory.serialize(MethodHandles.lookup()));
   }
 
   @Test
@@ -921,6 +920,41 @@ public class ForyTest extends ForyTestBase {
       this.f1 = f1;
       this.f2 = f2;
     }
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testInterpretedPolymorphicFieldDepth(boolean referenceTracking) {
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(referenceTracking)
+            .withCodegen(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(referenceTracking)
+            .withCodegen(false)
+            .requireClassRegistration(false)
+            .withMaxDepth(4)
+            .withCompatible(false)
+            .build();
+
+    MaxDepth shallow = nestedMaxDepth(2);
+    MaxDepth shallowCopy = (MaxDepth) reader.deserialize(writer.serialize(shallow));
+    assertEquals(shallowCopy.f1, shallow.f1);
+    assertThrows(
+        InsecureException.class, () -> reader.deserialize(writer.serialize(nestedMaxDepth(12))));
+  }
+
+  private static MaxDepth nestedMaxDepth(int levels) {
+    Object value = "leaf";
+    for (int i = levels; i > 0; i--) {
+      value = new MaxDepth(i, value);
+    }
+    return (MaxDepth) value;
   }
 
   @Test

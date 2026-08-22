@@ -20,7 +20,6 @@
 package org.apache.fory.json.resolver;
 
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.InvocationTargetException;
@@ -28,14 +27,15 @@ import java.lang.reflect.Method;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.GeneratedJsonCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
+import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.internal._JDKAccess;
 
 /** Complete String representation selected by one effective {@code JsonValue} member. */
 final class JsonStringValueCodec implements JsonValueCodec<Object> {
@@ -95,7 +95,7 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
       reader.readNull();
       return null;
     }
-    return read(reader.readString());
+    return read(reader, reader.readString());
   }
 
   @Override
@@ -104,7 +104,7 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
       reader.readNull();
       return null;
     }
-    return read(reader.readString());
+    return read(reader, reader.readString());
   }
 
   @Override
@@ -113,10 +113,10 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
       reader.readNull();
       return null;
     }
-    return read(reader.readString());
+    return read(reader, reader.readString());
   }
 
-  private Object read(String value) {
+  private Object read(JsonReader reader, String value) {
     if (raw) {
       throw new ForyJsonException(
           "Combined @JsonValue and @JsonRawValue representation is write-only for "
@@ -128,7 +128,7 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
               + ownerType.getName()
               + " requires a one-String-argument @JsonCreator");
     }
-    return creator.create(value);
+    return creator.create(reader, value);
   }
 
   private abstract static class ValueCreator {
@@ -138,7 +138,7 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
       this.ownerType = ownerType;
     }
 
-    abstract Object create(String value);
+    abstract Object create(JsonReader reader, String value);
 
     final Object requireResult(Object result) {
       if (result == null || result.getClass() != ownerType) {
@@ -146,11 +146,6 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
             "JSON creator must return an exact non-null " + ownerType.getName());
       }
       return result;
-    }
-
-    final ForyJsonException invocationFailure(Throwable cause) {
-      return new ForyJsonException(
-          "Failed to invoke JSON creator for " + ownerType.getName(), cause);
     }
 
     final ForyJsonException creatorFailure(Throwable cause) {
@@ -166,7 +161,7 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
         return new GeneratedCreator(ownerType, generatedCodec);
       }
       if (!AndroidSupport.IS_ANDROID) {
-        return new MethodHandleCreator(ownerType, buildInvoker(ownerType, executable));
+        return new MethodHandleCreator(ownerType, buildInvoker(executable));
       }
       executable.setAccessible(true);
       return executable instanceof Constructor
@@ -174,17 +169,8 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
           : new FactoryCreator(ownerType, (Method) executable);
     }
 
-    private static MethodHandle buildInvoker(Class<?> ownerType, Executable executable) {
-      try {
-        MethodHandle target =
-            executable instanceof Constructor
-                ? _JDKAccess._trustedLookup(ownerType)
-                    .unreflectConstructor((Constructor<?>) executable)
-                : _JDKAccess._trustedLookup(ownerType).unreflect((Method) executable);
-        return target.asType(MethodType.methodType(Object.class, String.class));
-      } catch (IllegalAccessException e) {
-        throw new ForyJsonException("Cannot access JSON creator for " + ownerType.getName(), e);
-      }
+    private static MethodHandle buildInvoker(Executable executable) {
+      return JsonCreatorInfo.stringCreatorHandle(executable);
     }
   }
 
@@ -197,11 +183,13 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
     }
 
     @Override
-    Object create(String value) {
+    Object create(JsonReader reader, String value) {
       try {
-        return requireResult(generatedCodec.newInstance(new Object[] {value}));
+        return requireResult(generatedCodec.newInstance(reader.creatorArguments(value)));
       } catch (Throwable cause) {
         throw creatorFailure(cause);
+      } finally {
+        reader.clearCreatorArguments();
       }
     }
   }
@@ -215,7 +203,7 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
     }
 
     @Override
-    Object create(String value) {
+    Object create(JsonReader reader, String value) {
       try {
         Object result = (Object) invoker.invokeExact(value);
         return requireResult(result);
@@ -234,13 +222,15 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
     }
 
     @Override
-    Object create(String value) {
+    Object create(JsonReader reader, String value) {
       try {
-        return requireResult(constructor.newInstance(value));
+        return requireResult(constructor.newInstance(reader.creatorArguments(value)));
       } catch (InstantiationException | IllegalAccessException e) {
-        throw invocationFailure(e);
+        throw creatorFailure(e);
       } catch (InvocationTargetException e) {
         throw creatorFailure(e.getCause());
+      } finally {
+        reader.clearCreatorArguments();
       }
     }
   }
@@ -254,13 +244,15 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
     }
 
     @Override
-    Object create(String value) {
+    Object create(JsonReader reader, String value) {
       try {
-        return requireResult(factory.invoke(null, value));
+        return requireResult(factory.invoke(null, reader.creatorArguments(value)));
       } catch (IllegalAccessException e) {
-        throw invocationFailure(e);
+        throw creatorFailure(e);
       } catch (InvocationTargetException e) {
         throw creatorFailure(e.getCause());
+      } finally {
+        reader.clearCreatorArguments();
       }
     }
   }

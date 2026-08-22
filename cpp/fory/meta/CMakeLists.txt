@@ -52,6 +52,7 @@ target_include_directories(fory_meta
 
 target_link_libraries(fory_meta
     PUBLIC
+        fory_thirdparty
         fory_util
 )
 

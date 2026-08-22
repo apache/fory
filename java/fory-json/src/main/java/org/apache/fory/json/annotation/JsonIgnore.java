@@ -26,20 +26,21 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Excludes one field-backed logical property from JSON reading, writing, or both directions.
+ * Excludes one logical property from JSON reading, writing, or both directions.
  *
  * <p>An eligible backing field, getter, and setter with the same Java property name form one
- * logical property. This field annotation removes the selected direction from that complete
- * property, so a same-named accessor cannot restore it. The annotation does not make an otherwise
- * ineligible field or accessor eligible and cannot be overridden by {@link JsonProperty}.
+ * logical property. An annotation on any field, accessor, setter value, or selected creator
+ * parameter removes the selected direction from that complete property, so another declaration
+ * cannot restore it. The annotation does not make an otherwise ineligible declaration eligible and
+ * cannot be overridden by {@link JsonProperty}.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.FIELD)
+@Target({ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER})
 public @interface JsonIgnore {
-  /** Whether this field is ignored when reading JSON into an object. */
+  /** Whether this logical property is ignored when reading JSON into an object. */
   boolean ignoreRead() default true;
 
-  /** Whether this field is ignored when writing an object as JSON. */
+  /** Whether this logical property is ignored when writing an object as JSON. */
   boolean ignoreWrite() default true;
 }

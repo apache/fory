@@ -45,11 +45,13 @@ import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.annotation.JsonValidator;
 import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.codec.JsonUnwrappedInfo.Declaration;
 import org.apache.fory.json.codec.JsonUnwrappedInfo.WriteSpec;
@@ -61,7 +63,9 @@ import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
+import org.apache.fory.json.meta.JsonValidatorInfo;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
+import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.ObjectInstantiator;
 import org.apache.fory.reflect.ObjectInstantiators;
 import org.apache.fory.reflect.TypeRef;
@@ -79,21 +83,62 @@ final class ObjectCodecBuilder {
       boolean writeNullFields,
       JsonSharedRegistry sharedRegistry,
       GeneratedJsonCodec<?> generatedCodec) {
+    return build(
+        ownerType,
+        propertyDiscoveryEnabled,
+        propertyNamingStrategy,
+        writeNullFields,
+        sharedRegistry,
+        generatedCodec,
+        null);
+  }
+
+  static <T> ObjectCodec<T> build(
+      TypeRef<T> ownerType,
+      boolean propertyDiscoveryEnabled,
+      PropertyNamingStrategy propertyNamingStrategy,
+      boolean writeNullFields,
+      JsonSharedRegistry sharedRegistry,
+      GeneratedJsonCodec<?> generatedCodec,
+      JsonObjectModel objectModel) {
     Class<?> type = ownerType.getRawType();
     Annotations annotations = new Annotations(type, sharedRegistry);
     boolean record =
         generatedCodec == null ? RecordUtils.isRecord(type) : generatedCodec.validatedRecord();
     boolean hasAnyField =
         validateMemberAnnotations(
-            type, propertyDiscoveryEnabled, record, generatedCodec, annotations);
+            type, propertyDiscoveryEnabled, record, generatedCodec, annotations, objectModel);
+    JsonValidatorInfo validatorInfo =
+        JsonValidatorInfo.create(type, findValidators(type, annotations), generatedCodec);
+    if (objectModel != null && objectModel.fixedInstance() != null) {
+      validateFixedObjectModel(type, hasAnyField, generatedCodec, annotations, objectModel);
+      return ObjectCodec.createCodec(
+          ownerType,
+          new JsonFieldInfo[0],
+          new JsonFieldInfo[0],
+          JsonCreatorInfo.fixedInstance(type, objectModel.fixedInstance()),
+          null,
+          null,
+          null,
+          null,
+          validatorInfo);
+    }
     LinkedHashMap<String, FieldBuilder> builders = new LinkedHashMap<>();
-    addFields(type, record, propertyDiscoveryEnabled, hasAnyField, builders, annotations);
+    addFields(type, record, propertyDiscoveryEnabled, hasAnyField, builders, annotations, null);
     if (record) {
       addRecordAccessors(type, builders, generatedCodec);
+    } else if (objectModel != null) {
+      addObjectModelAccessors(type, builders, annotations, objectModel);
     }
     Method anySetter =
         addJsonMethods(
-            type, propertyDiscoveryEnabled, record, builders, generatedCodec, annotations);
+            type,
+            propertyDiscoveryEnabled,
+            record,
+            builders,
+            generatedCodec,
+            annotations,
+            objectModel);
     if (generatedCodec != null && generatedCodec.hasAnySetter() && anySetter == null) {
       throw new ForyJsonException(
           "Generated JSON Any setter does not match runtime annotations on " + type.getName());
@@ -117,6 +162,13 @@ final class ObjectCodecBuilder {
               + " on "
               + type.getName());
     }
+    if (anyBuilder != null && anyBuilder.formatAnnotation != null) {
+      throw new ForyJsonException(
+          "@JsonFormat is not supported on JSON Any logical property "
+              + anyBuilder.name
+              + " on "
+              + type.getName());
+    }
     List<Declaration> creatorOnlyUnwrapped = new ArrayList<>();
     JsonCreatorInfo creatorInfo =
         record
@@ -129,17 +181,14 @@ final class ObjectCodecBuilder {
                 propertyNamingStrategy,
                 creatorOnlyUnwrapped,
                 generatedCodec,
-                annotations);
+                annotations,
+                objectModel);
+    if (objectModel != null) {
+      validateObjectModelProperties(type, objectModel, builders, creatorInfo);
+    }
     if (anySetter != null && (record || creatorInfo != null)) {
       throw new ForyJsonException(
           "@JsonAnySetter is not supported on constructor-backed type " + type.getName());
-    }
-    if (creatorInfo != null
-        && anyBuilder != null
-        && anyBuilder.anyReadEnabled()
-        && anyBuilder.creatorArgumentIndex < 0) {
-      throw new ForyJsonException(
-          "Read-enabled @JsonAnyProperty must bind one @JsonCreator argument on " + type.getName());
     }
     JsonPropertyOrder propertyOrder = findPropertyOrder(type, annotations);
     boolean hasAny = anyBuilder != null || anySetter != null;
@@ -153,10 +202,14 @@ final class ObjectCodecBuilder {
     List<Declaration> unwrappedDeclarations =
         hasUnwrapped ? new ArrayList<>(builders.size() + creatorOnlyUnwrapped.size()) : null;
     List<JsonFieldInfo> reads = new ArrayList<>();
+    List<JsonFieldInfo> deferredFields = objectModel == null ? null : new ArrayList<>();
+    List<JsonFieldInfo> directDeferredFields = objectModel == null ? null : new ArrayList<>();
+    List<Boolean> deferredRequired = objectModel == null ? null : new ArrayList<>();
     List<String> skippedNames = hasAny ? new ArrayList<>() : null;
     Map<String, FieldBuilder> canonicalNames = new LinkedHashMap<>();
     Map<Long, String> canonicalHashes = new LinkedHashMap<>();
     int anyOriginalIndex = -1;
+    int anyConstructionIndex = -1;
     for (FieldBuilder builder : builders.values()) {
       if (builder == anyBuilder) {
         if (anyWrites) {
@@ -164,6 +217,14 @@ final class ObjectCodecBuilder {
           if (hasUnwrapped) {
             unwrappedWrites.add(UnwrappedWriteBuilder.any(builder));
           }
+        }
+        if (objectModel != null && builder.anyReadEnabled() && builder.creatorArgumentIndex < 0) {
+          JsonFieldInfo field =
+              builder.build(
+                  record, ownerType, propertyNamingStrategy, writeNullFields, generatedCodec);
+          anyConstructionIndex = creatorInfo.argumentCount() + deferredFields.size();
+          deferredFields.add(field);
+          deferredRequired.add(builder.requiredDeferred);
         }
         continue;
       }
@@ -191,7 +252,9 @@ final class ObjectCodecBuilder {
               "JSON property name hash collision between " + priorHashName + " and " + name);
         }
         boolean creatorInput = creatorInfo != null && builder.creatorArgumentIndex >= 0;
-        boolean readableFixed = creatorInfo == null && builder.hasReadSink();
+        boolean readableFixed =
+            builder.hasReadSink()
+                && (creatorInfo == null || objectModel != null && builder.creatorArgumentIndex < 0);
         if (!creatorInput && !readableFixed) {
           skippedNames.add(name);
         }
@@ -205,7 +268,14 @@ final class ObjectCodecBuilder {
                 + " from "
                 + builder.explicitIndexSource);
       }
-      if (!builder.hasWriteSource() && !builder.hasReadSink()) {
+      boolean creatorDirection =
+          creatorInfo != null && builder.creatorArgumentIndex >= 0 && builder.creatorReadAllowed();
+      if (!builder.hasWriteSource() && !builder.hasReadSink() && !creatorDirection) {
+        if (objectModel != null
+            && builder.creatorArgumentIndex >= 0
+            && creatorInfo.hasDefault(builder.creatorArgumentIndex)) {
+          continue;
+        }
         if (builder.hasConfiguration()) {
           throw new ForyJsonException(
               "JSON property annotation has no readable or writable direction for " + builder.name);
@@ -217,9 +287,14 @@ final class ObjectCodecBuilder {
         JsonFieldInfo property =
             builder.build(
                 record, ownerType, propertyNamingStrategy, writeNullFields, generatedCodec);
+        markRequiredWrite(property, builder, creatorInfo, objectModel);
         int unwrappedConstructionIndex = -1;
         if (creatorInfo != null && builder.creatorArgumentIndex >= 0) {
           unwrappedConstructionIndex = builder.creatorArgumentIndex;
+        } else if (objectModel != null && builder.hasReadSink()) {
+          unwrappedConstructionIndex = creatorInfo.argumentCount() + deferredFields.size();
+          deferredFields.add(property);
+          deferredRequired.add(builder.requiredDeferred);
         }
         Declaration declaration =
             builder.buildUnwrappedDeclaration(
@@ -230,7 +305,7 @@ final class ObjectCodecBuilder {
         }
         continue;
       }
-      if (creatorInfo != null && !builder.hasWriteSource()) {
+      if (creatorInfo != null && objectModel == null && !builder.hasWriteSource()) {
         if (builder.explicitInclude != JsonProperty.Include.DEFAULT) {
           throw new ForyJsonException(
               "JSON inclusion policy requires a write source for property " + builder.name);
@@ -243,6 +318,7 @@ final class ObjectCodecBuilder {
       }
       JsonFieldInfo field =
           builder.build(record, ownerType, propertyNamingStrategy, writeNullFields, generatedCodec);
+      markRequiredWrite(field, builder, creatorInfo, objectModel);
       if (!hasAny) {
         FieldBuilder priorProperty = canonicalNames.put(field.name(), builder);
         if (priorProperty != null) {
@@ -266,7 +342,8 @@ final class ObjectCodecBuilder {
           writeBuilders.add(builder);
         }
       }
-      if (creatorInfo == null && builder.hasReadSink()) {
+      if (builder.hasReadSink()
+          && (creatorInfo == null || objectModel != null && builder.creatorArgumentIndex < 0)) {
         if (!hasAny) {
           String priorHashName = canonicalHashes.put(field.nameHash(), field.name());
           if (priorHashName != null && !priorHashName.equals(field.name())) {
@@ -278,6 +355,11 @@ final class ObjectCodecBuilder {
           }
         }
         reads.add(field);
+        if (objectModel != null) {
+          deferredFields.add(field);
+          directDeferredFields.add(field);
+          deferredRequired.add(builder.requiredDeferred);
+        }
       }
     }
     if (hasUnwrapped) {
@@ -311,13 +393,23 @@ final class ObjectCodecBuilder {
               : orderWriteFields(type, propertyOrder, writeBuilders, writes);
     }
     JsonFieldInfo[] readArray = reads.toArray(new JsonFieldInfo[0]);
+    if (objectModel != null && !deferredFields.isEmpty()) {
+      creatorInfo =
+          creatorInfo.withDeferredFields(
+              deferredFields.toArray(new JsonFieldInfo[0]),
+              directDeferredFields.toArray(new JsonFieldInfo[0]),
+              requiredFlags(deferredRequired));
+    }
     for (int i = 0; i < readArray.length; i++) {
       readArray[i].setReadIndex(i);
     }
     int constructionIndex = -1;
     if (anyBuilder != null && anyBuilder.anyReadEnabled()) {
       if (creatorInfo != null) {
-        constructionIndex = anyBuilder.creatorArgumentIndex;
+        constructionIndex =
+            anyBuilder.creatorArgumentIndex >= 0
+                ? anyBuilder.creatorArgumentIndex
+                : objectModel == null ? -1 : anyConstructionIndex;
       }
     }
     AnyInfo anyInfo =
@@ -332,7 +424,11 @@ final class ObjectCodecBuilder {
                 annotations)
             : null;
     ObjectInstantiator<?> instantiator =
-        creatorInfo == null ? ObjectInstantiators.createObjectInstantiator(type) : null;
+        creatorInfo == null
+            ? GraalvmSupport.isGraalRuntime()
+                ? ObjectInstantiators.getObjectInstantiator(type)
+                : ObjectInstantiators.createObjectInstantiator(type)
+            : null;
     String[] skipped = hasAny ? skippedNames.toArray(new String[0]) : null;
     JsonUnwrappedInfo unwrappedInfo =
         hasUnwrapped
@@ -347,7 +443,70 @@ final class ObjectCodecBuilder {
         anyInfo,
         skipped,
         unwrappedInfo,
-        instantiator);
+        instantiator,
+        validatorInfo);
+  }
+
+  private static void markRequiredWrite(
+      JsonFieldInfo field,
+      FieldBuilder builder,
+      JsonCreatorInfo creatorInfo,
+      JsonObjectModel objectModel) {
+    if (objectModel != null && field.requiresUnboxedBinding()) {
+      // The logical codec is bound only after the recursive parent shell is published. Its exact
+      // transparent-null action and physical carrier are normalized in JsonFieldInfo.resolveTypes.
+      return;
+    }
+    if (objectModel != null && field.hasOccurrenceNullability()) {
+      if (field.occurrenceNullable()) {
+        if (builder.explicitInclude == JsonProperty.Include.NON_NULL) {
+          throw new ForyJsonException(
+              "Nullable reconstructible JSON property "
+                  + field.name()
+                  + " cannot omit an explicit null value");
+        }
+        field.includeNullWrite();
+      } else if (builder.hasWriteSource()
+          && !field.occurrenceWrapsNull()
+          && field.writeRawType() != null
+          && !field.writeRawType().isPrimitive()) {
+        field.requireNonNullWrite();
+      }
+      return;
+    }
+    int argumentIndex = builder.creatorArgumentIndex;
+    if (objectModel != null
+        && creatorInfo != null
+        && argumentIndex >= 0
+        && !creatorInfo.hasDefault(argumentIndex)
+        && builder.hasWriteSource()
+        && !field.writeNull()
+        && !field.writeRawType().isPrimitive()) {
+      field.requireNonNullWrite();
+    }
+  }
+
+  private static boolean[] requiredFlags(List<Boolean> required) {
+    boolean[] flags = new boolean[required.size()];
+    for (int i = 0; i < flags.length; i++) {
+      flags[i] = required.get(i);
+    }
+    return flags;
+  }
+
+  private static Method[] findValidators(Class<?> type, Annotations annotations) {
+    List<Method> validators = null;
+    for (Method method : type.getMethods()) {
+      if (!method.isSynthetic()
+          && !method.isBridge()
+          && annotations.has(method, JsonValidator.class)) {
+        if (validators == null) {
+          validators = new ArrayList<>();
+        }
+        validators.add(method);
+      }
+    }
+    return validators == null ? null : validators.toArray(new Method[0]);
   }
 
   private static boolean hasUnwrappedProperty(Map<String, FieldBuilder> builders) {
@@ -764,7 +923,8 @@ final class ObjectCodecBuilder {
       boolean propertyDiscoveryEnabled,
       boolean hasAnyField,
       LinkedHashMap<String, FieldBuilder> builders,
-      Annotations annotations) {
+      Annotations annotations,
+      Field[] nonPropertyFields) {
     List<Class<?>> hierarchy = new ArrayList<>();
     for (Class<?> current = type;
         current != null && current != Object.class;
@@ -777,6 +937,9 @@ final class ObjectCodecBuilder {
     for (int i = hierarchy.size() - 1; i >= 0; i--) {
       Class<?> current = hierarchy.get(i);
       for (Field field : current.getDeclaredFields()) {
+        if (containsField(nonPropertyFields, field)) {
+          continue;
+        }
         if (annotations.has(field, JsonUnwrapped.class) && !isEligibleField(field)) {
           throw new ForyJsonException("@JsonUnwrapped is not supported on JSON field: " + field);
         }
@@ -802,13 +965,26 @@ final class ObjectCodecBuilder {
     }
   }
 
+  private static boolean containsField(Field[] fields, Field target) {
+    if (fields == null) {
+      return false;
+    }
+    for (Field field : fields) {
+      if (field.equals(target)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private static Method addJsonMethods(
       Class<?> type,
       boolean propertyDiscoveryEnabled,
       boolean record,
       LinkedHashMap<String, FieldBuilder> builders,
       GeneratedJsonCodec<?> generatedCodec,
-      Annotations annotations) {
+      Annotations annotations,
+      JsonObjectModel objectModel) {
     Method anyGetter = null;
     Method anySetter = null;
     for (Method method : type.getMethods()) {
@@ -845,6 +1021,11 @@ final class ObjectCodecBuilder {
         }
       }
       if (!propertyDiscoveryEnabled || record || !isEligibleAccessor(method)) {
+        continue;
+      }
+      // Language metadata has already installed this exact accessor under its logical source name.
+      // Bean-name discovery must not create a second property from a mangled JVM method name.
+      if (containsObjectModelMethod(objectModel, method)) {
         continue;
       }
       String propertyName = getterPropertyName(method);
@@ -898,7 +1079,8 @@ final class ObjectCodecBuilder {
         || method.isAnnotationPresent(JsonAnySetter.class)
         || method.isAnnotationPresent(JsonValue.class)
         || method.isAnnotationPresent(JsonRawValue.class)
-        || method.isAnnotationPresent(JsonBase64.class)) {
+        || method.isAnnotationPresent(JsonBase64.class)
+        || method.isAnnotationPresent(JsonValidator.class)) {
       return true;
     }
     return !record
@@ -973,6 +1155,131 @@ final class ObjectCodecBuilder {
     }
   }
 
+  private static void addObjectModelAccessors(
+      Class<?> type,
+      LinkedHashMap<String, FieldBuilder> builders,
+      Annotations annotations,
+      JsonObjectModel objectModel) {
+    String[] names = objectModel.propertyNames();
+    Method[] accessors = objectModel.propertyGetters();
+    Method[] setters = objectModel.propertySetters();
+    TypeRef<?>[] propertyTypes = objectModel.propertyTypes();
+    boolean[] reconstructible = objectModel.propertyReconstructible();
+    boolean[] required = objectModel.propertyRequired();
+    Set<String> creatorProperties = new HashSet<>();
+    for (String name : objectModel.parameterNames()) {
+      creatorProperties.add(name);
+    }
+    for (int i = 0; i < names.length; i++) {
+      Method accessor = accessors[i];
+      FieldBuilder builder =
+          builders.computeIfAbsent(names[i], name -> new FieldBuilder(name, annotations));
+      builder.setObjectModelType(propertyTypes[i]);
+      builder.objectModelReconstructible = reconstructible[i];
+      builder.requiredDeferred = required[i];
+      if (accessor != null) {
+        builder.setWriteGetter(type, accessor);
+      }
+      if (setters[i] != null) {
+        builder.setReadSetter(type, setters[i]);
+      }
+      builder.restrictObjectModelField(creatorProperties.contains(names[i]));
+    }
+  }
+
+  private static void validateFixedObjectModel(
+      Class<?> type,
+      boolean hasAnyField,
+      GeneratedJsonCodec<?> generatedCodec,
+      Annotations annotations,
+      JsonObjectModel objectModel) {
+    LinkedHashMap<String, FieldBuilder> builders = new LinkedHashMap<>();
+    // Effective field, getter, setter, and setter-parameter annotations are merged by the same
+    // property owner used for ordinary objects. A singleton candidate is accepted only when that
+    // merge removes every instance property in both directions.
+    addFields(
+        type, false, true, hasAnyField, builders, annotations, objectModel.nonPropertyFields());
+    addObjectModelAccessors(type, builders, annotations, objectModel);
+    Method anySetter =
+        addJsonMethods(type, true, false, builders, generatedCodec, annotations, objectModel);
+    if (anySetter != null) {
+      throw new ForyJsonException(
+          "Singleton JSON model has an effective @JsonAnySetter on " + type.getName());
+    }
+    validateObjectModelProperties(type, objectModel, builders, null);
+    Set<String> candidates = new HashSet<>(Arrays.asList(objectModel.propertyNames()));
+    for (FieldBuilder builder : builders.values()) {
+      if (!candidates.contains(builder.name)
+          && builder.hasLogicalMember()
+          && (!builder.ignoreRead || !builder.ignoreWrite)) {
+        throw new ForyJsonException(
+            "Singleton JSON model has an effective instance property "
+                + builder.name
+                + " on "
+                + type.getName());
+      }
+    }
+  }
+
+  private static void validateObjectModelProperties(
+      Class<?> type,
+      JsonObjectModel model,
+      LinkedHashMap<String, FieldBuilder> builders,
+      JsonCreatorInfo creator) {
+    String[] names = model.propertyNames();
+    boolean[] reconstructible = model.propertyReconstructible();
+    for (int i = 0; i < names.length; i++) {
+      String name = names[i];
+      FieldBuilder builder = builders.get(name);
+      if (builder == null) {
+        throw new ForyJsonException("Missing JSON object-model property " + name);
+      }
+      int argumentIndex = builder.creatorArgumentIndex;
+      if (argumentIndex >= 0) {
+        if (builder.ignoreRead != builder.ignoreWrite) {
+          throw new ForyJsonException(
+              "Constructor property " + name + " cannot be ignored in one direction on " + type);
+        }
+        if (builder.ignoreRead && !creator.hasDefault(argumentIndex)) {
+          throw new ForyJsonException(
+              "Ignored constructor property " + name + " requires a language default on " + type);
+        }
+        continue;
+      }
+      if (builder.ignoreRead && builder.ignoreWrite) {
+        if (builder.requiredDeferred) {
+          throw new ForyJsonException(
+              "Required deferred property " + name + " cannot be ignored on " + type);
+        }
+        continue;
+      }
+      if (model.fixedInstance() != null) {
+        throw new ForyJsonException(
+            "Singleton JSON model has effective instance property " + name + " on " + type);
+      }
+      if (!reconstructible[i]) {
+        throw new ForyJsonException(
+            "JSON object-model property " + name + " is not reconstructible on " + type);
+      }
+      if (!builder.hasWriteSource() || !builder.hasReadSink()) {
+        throw new ForyJsonException(
+            "Deferred JSON property " + name + " must be readable and writable on " + type);
+      }
+      if (builder.ignoreRead || builder.ignoreWrite) {
+        throw new ForyJsonException(
+            "Deferred JSON property " + name + " cannot be ignored in one direction on " + type);
+      }
+      if (builder.requiredDeferred
+          && (builder.objectModelType == null
+              || builder.objectModelType.getTypeExtMeta() == null
+              || builder.objectModelType.getTypeExtMeta().nullable()
+              || builder.objectModelType.getTypeExtMeta().nullableWrapper())) {
+        throw new ForyJsonException(
+            "Required deferred JSON property " + name + " must be non-null on " + type);
+      }
+    }
+  }
+
   private static void rejectRecordCreator(Class<?> type, Annotations annotations) {
     for (Constructor<?> constructor : type.getDeclaredConstructors()) {
       if (annotations.has(constructor, JsonCreator.class)) {
@@ -1040,10 +1347,10 @@ final class ObjectCodecBuilder {
       if (builder.isAny() || builder.unwrappedAnnotation != null) {
         continue;
       }
-      Type resolved =
+      TypeRef<?> resolved =
           parameterTypes == null
-              ? builder.logicalType(ownerType)
-              : ownerType.resolveType(parameterTypes[i]).getType();
+              ? builder.logicalTypeRef(ownerType)
+              : ownerType.resolveType(parameterTypes[i]);
       fields.add(
           new JsonCreatorFieldInfo(
               builder.jsonName(namingStrategy),
@@ -1051,7 +1358,9 @@ final class ObjectCodecBuilder {
               resolved,
               rawTypes[i],
               builder.codecAnnotation(),
-              builder.valueCodecClass()));
+              builder.valueCodecClass(),
+              builder.formatAnnotation(),
+              builder.creatorUnboxedRequired));
     }
     JsonCreatorFieldInfo[] fieldArray = fields.toArray(new JsonCreatorFieldInfo[0]);
     rejectCreatorHashCollisions(fieldArray);
@@ -1066,17 +1375,51 @@ final class ObjectCodecBuilder {
       PropertyNamingStrategy namingStrategy,
       List<Declaration> creatorOnlyUnwrapped,
       GeneratedJsonCodec<?> generatedCodec,
-      Annotations annotations) {
-    JsonCreatorDeclaration declaration = JsonCreatorDeclaration.find(type, annotations.registry);
+      Annotations annotations,
+      JsonObjectModel objectModel) {
+    JsonCreatorDeclaration declaration =
+        JsonCreatorDeclaration.find(type, annotations.registry, objectModel);
     if (declaration == null) {
-      if (generatedCodec != null && generatedCodec.validatedCreatorParameterNames() != null) {
+      if (objectModel == null
+          && generatedCodec != null
+          && generatedCodec.validatedCreatorParameterNames() != null) {
         throw new ForyJsonException(
             "Generated JSON creator does not match runtime annotations on " + type.getName());
       }
-      return null;
+      if (objectModel == null) {
+        return null;
+      }
+      validateGeneratedObjectModel(type, objectModel, generatedCodec);
+      return buildObjectModelCreatorInfo(
+          type,
+          ownerType,
+          builders,
+          namingStrategy,
+          generatedCodec,
+          annotations,
+          objectModel,
+          null);
     }
     Executable creator = declaration.executable();
     JsonCreator annotation = declaration.annotation();
+    if (objectModel != null) {
+      if (!creator.equals(objectModel.creator())) {
+        throw new ForyJsonException(
+            "Language JSON object model does not describe selected @JsonCreator " + creator);
+      }
+      validateObjectModelCreatorAnnotation(
+          declaration.annotationSource(), annotation, objectModel, annotations);
+      validateGeneratedObjectModel(type, objectModel, generatedCodec);
+      return buildObjectModelCreatorInfo(
+          type,
+          ownerType,
+          builders,
+          namingStrategy,
+          generatedCodec,
+          annotations,
+          objectModel,
+          declaration);
+    }
     validateGeneratedCreator(type, creator, annotation, generatedCodec, annotations);
 
     Map<String, FieldBuilder> jsonProperties = new LinkedHashMap<>();
@@ -1134,7 +1477,7 @@ final class ObjectCodecBuilder {
           throw new ForyJsonException("@JsonCreator property is ignored for reading: " + javaName);
         }
         if (!builder.isAny() && builder.unwrappedAnnotation == null) {
-          Type resolved = ownerType.resolveType(parameterTypes[i]).getType();
+          TypeRef<?> resolved = ownerType.resolveType(parameterTypes[i]);
           JsonCodec codecAnnotation = builder.codecAnnotation();
           Class<? extends JsonValueCodec<?>> valueCodecClass = builder.valueCodecClass();
           fields.add(
@@ -1144,7 +1487,9 @@ final class ObjectCodecBuilder {
                   resolved,
                   rawTypes[i],
                   codecAnnotation,
-                  valueCodecClass));
+                  valueCodecClass,
+                  builder.formatAnnotation(),
+                  builder.creatorUnboxedRequired));
         }
       }
     } else {
@@ -1194,19 +1539,20 @@ final class ObjectCodecBuilder {
                 "Creator-only property cannot declare an inclusion policy: " + jsonName);
           }
         }
-        Type resolved = ownerType.resolveType(parameterTypes[i]).getType();
+        TypeRef<?> resolved = ownerType.resolveType(parameterTypes[i]);
         JsonCodec codecAnnotation =
             builder == null
                 ? annotations.get(parameters[i], JsonCodec.class)
                 : builder.codecAnnotation();
         Class<? extends JsonValueCodec<?>> valueCodecClass =
             builder == null ? null : builder.valueCodecClass();
+        JsonFormat formatAnnotation = builder == null ? null : builder.formatAnnotation();
         JsonUnwrapped unwrapped =
             builder == null
                 ? annotations.get(parameters[i], JsonUnwrapped.class)
                 : builder.unwrappedAnnotation;
         if (unwrapped != null) {
-          if (codecAnnotation != null || valueCodecClass != null) {
+          if (codecAnnotation != null || valueCodecClass != null || formatAnnotation != null) {
             throw new ForyJsonException(
                 "Value codecs are not supported on @JsonUnwrapped creator property " + jsonName);
           }
@@ -1216,7 +1562,7 @@ final class ObjectCodecBuilder {
                     jsonName,
                     unwrapped.prefix(),
                     unwrapped.suffix(),
-                    resolved,
+                    resolved.getType(),
                     rawTypes[i],
                     null,
                     null,
@@ -1227,7 +1573,14 @@ final class ObjectCodecBuilder {
         } else {
           fields.add(
               new JsonCreatorFieldInfo(
-                  jsonName, i, resolved, rawTypes[i], codecAnnotation, valueCodecClass));
+                  jsonName,
+                  i,
+                  resolved,
+                  rawTypes[i],
+                  codecAnnotation,
+                  valueCodecClass,
+                  formatAnnotation,
+                  false));
         }
       }
     }
@@ -1235,6 +1588,142 @@ final class ObjectCodecBuilder {
     rejectCreatorHashCollisions(fieldArray);
     return new JsonCreatorInfo(
         type, creator, fieldArray, creatorDefaults(rawTypes), generatedCodec);
+  }
+
+  private static void validateObjectModelCreatorAnnotation(
+      Executable annotationSource,
+      JsonCreator annotation,
+      JsonObjectModel objectModel,
+      Annotations annotations) {
+    int logicalCount = objectModel.parameterNames().length;
+    String[] declaredNames = annotation.value();
+    if (declaredNames.length != 0) {
+      if (declaredNames.length != logicalCount) {
+        throw new ForyJsonException(
+            "@JsonCreator property count does not match language object model on "
+                + annotationSource);
+      }
+      Parameter[] parameters = annotationSource.getParameters();
+      for (int i = 0; i < logicalCount; i++) {
+        if (annotations.has(parameters[i], JsonProperty.class)) {
+          throw new ForyJsonException(
+              "Property-list @JsonCreator parameters cannot declare @JsonProperty: "
+                  + annotationSource);
+        }
+      }
+      return;
+    }
+    Parameter[] parameters = annotationSource.getParameters();
+    for (int i = 0; i < logicalCount; i++) {
+      JsonProperty property = annotations.get(parameters[i], JsonProperty.class);
+      if (property == null || property.value().isEmpty()) {
+        throw new ForyJsonException(
+            "Parameter-local @JsonCreator requires a non-empty @JsonProperty on every parameter: "
+                + annotationSource);
+      }
+    }
+  }
+
+  private static JsonCreatorInfo buildObjectModelCreatorInfo(
+      Class<?> type,
+      TypeRef<?> ownerType,
+      LinkedHashMap<String, FieldBuilder> builders,
+      PropertyNamingStrategy namingStrategy,
+      GeneratedJsonCodec<?> generatedCodec,
+      Annotations annotations,
+      JsonObjectModel objectModel,
+      JsonCreatorDeclaration declaration) {
+    if (objectModel.fixedInstance() != null) {
+      return JsonCreatorInfo.fixedInstance(type, objectModel.fixedInstance());
+    }
+    Executable creator = objectModel.creator();
+    String[] names = objectModel.parameterNames();
+    Method[] defaultMethods = objectModel.defaultMethods();
+    int[] defaultMaskBits = objectModel.defaultMaskBits();
+    TypeRef<?>[] logicalParameterTypes = objectModel.parameterTypes();
+    Type[] parameterTypes = creator.getGenericParameterTypes();
+    Class<?>[] rawTypes = creator.getParameterTypes();
+    Executable annotationSource = declaration == null ? creator : declaration.annotationSource();
+    Parameter[] parameters = annotationSource.getParameters();
+    JsonCreator creatorAnnotation = declaration == null ? null : declaration.annotation();
+    String[] declaredProperties = creatorAnnotation == null ? null : creatorAnnotation.value();
+    Map<String, FieldBuilder> jsonProperties = null;
+    if (creatorAnnotation != null && declaredProperties.length == 0) {
+      jsonProperties = new LinkedHashMap<>();
+      for (FieldBuilder builder : builders.values()) {
+        if (!builder.hasLogicalMember()) {
+          continue;
+        }
+        String jsonName = builder.jsonName(namingStrategy);
+        FieldBuilder prior = jsonProperties.put(jsonName, builder);
+        if (prior != null) {
+          throw new ForyJsonException(
+              "Duplicate canonical JSON property name " + jsonName + " on " + type.getName());
+        }
+      }
+    }
+    List<JsonCreatorFieldInfo> fields = new ArrayList<>(parameterTypes.length);
+    for (int i = 0; i < parameterTypes.length; i++) {
+      FieldBuilder builder;
+      if (creatorAnnotation == null) {
+        builder = builders.get(names[i]);
+      } else if (declaredProperties.length != 0) {
+        builder = builders.get(declaredProperties[i]);
+      } else {
+        JsonProperty property = annotations.get(parameters[i], JsonProperty.class);
+        builder = property == null ? null : jsonProperties.get(property.value());
+      }
+      if (builder == null || !builder.hasLogicalMember()) {
+        throw new ForyJsonException(
+            "Unknown JSON object-model property for creator parameter "
+                + names[i]
+                + " on "
+                + creator);
+      }
+      if (builder.creatorArgumentIndex >= 0) {
+        throw new ForyJsonException(
+            "Multiple creator parameters map to JSON object-model property "
+                + builder.name
+                + " on "
+                + creator);
+      }
+      bindCreatorType(ownerType, creator, i, parameterTypes[i], builder);
+      builder.mergeCreatorParameter(type, parameters[i]);
+      if (!builder.creatorReadAllowed()) {
+        if (defaultMethods[i] == null && defaultMaskBits[i] < 0) {
+          throw new ForyJsonException(
+              "Ignored constructor property " + names[i] + " requires a language default");
+        }
+        continue;
+      }
+      if (!builder.isAny() && builder.unwrappedAnnotation == null) {
+        TypeRef<?> resolved = logicalParameterTypes[i];
+        fields.add(
+            new JsonCreatorFieldInfo(
+                builder.jsonName(namingStrategy),
+                i,
+                resolved,
+                rawTypes[i],
+                builder.codecAnnotation(),
+                builder.valueCodecClass(),
+                builder.formatAnnotation(),
+                builder.creatorUnboxedRequired));
+      }
+    }
+    JsonCreatorFieldInfo[] fieldArray = fields.toArray(new JsonCreatorFieldInfo[0]);
+    rejectCreatorHashCollisions(fieldArray);
+    return new JsonCreatorInfo(
+        type,
+        creator,
+        objectModel.invocationCreator(),
+        fieldArray,
+        creatorDefaults(rawTypes),
+        generatedCodec,
+        defaultMethods,
+        names,
+        objectModel.defaultConstructor(),
+        defaultMaskBits,
+        objectModel.parameterNullable());
   }
 
   private static void validateGeneratedCreator(
@@ -1250,7 +1739,6 @@ final class ObjectCodecBuilder {
     Class<?>[] parameterTypes = generatedCodec.validatedCreatorParameterTypes();
     String factoryName = generatedCodec.validatedCreatorFactoryName();
     if (names == null
-        || !creator.equals(generatedCodec.validatedCreator())
         || !Arrays.equals(parameterTypes, creator.getParameterTypes())
         || creator instanceof Method != (factoryName != null)
         || creator instanceof Method && !creator.getName().equals(factoryName)) {
@@ -1269,6 +1757,26 @@ final class ObjectCodecBuilder {
     if (!Arrays.equals(names, runtimeNames)) {
       throw new ForyJsonException(
           "Generated JSON creator names do not match " + creator + " on " + type.getName());
+    }
+  }
+
+  private static void validateGeneratedObjectModel(
+      Class<?> type, JsonObjectModel objectModel, GeneratedJsonCodec<?> generatedCodec) {
+    if (generatedCodec == null) {
+      return;
+    }
+    String[] names = generatedCodec.validatedCreatorParameterNames();
+    Class<?>[] parameterTypes = generatedCodec.validatedCreatorParameterTypes();
+    String factoryName = generatedCodec.validatedCreatorFactoryName();
+    Executable creator = objectModel.creator();
+    String expectedFactory = creator instanceof Method ? creator.getName() : null;
+    if (names == null
+        || !Arrays.equals(names, objectModel.parameterNames())
+        || !Arrays.equals(parameterTypes, creator.getParameterTypes())
+        || (factoryName == null ? expectedFactory != null : !factoryName.equals(expectedFactory))) {
+      throw new ForyJsonException(
+          "Generated JSON creator metadata does not match language object model on "
+              + type.getName());
     }
   }
 
@@ -1293,9 +1801,22 @@ final class ObjectCodecBuilder {
       int parameterIndex,
       Type parameterType,
       FieldBuilder builder) {
-    Type resolvedParameter = ownerType.resolveType(parameterType).getType();
+    TypeRef<?> resolvedParameterRef = ownerType.resolveType(parameterType);
+    Type resolvedParameter = resolvedParameterRef.getType();
     Type propertyType = builder.logicalType(ownerType);
-    if (!resolvedParameter.equals(propertyType)) {
+    Class<?> parameterCarrier = creator.getParameterTypes()[parameterIndex];
+    boolean compatible =
+        resolvedParameter.equals(propertyType)
+            || builder.objectModelType != null
+                && JsonObjectModel.compatibleType(resolvedParameterRef, builder.objectModelType);
+    boolean requiresCarrier =
+        builder.objectModelType != null
+            && (parameterCarrier == builder.objectModelType.getRawType() || !compatible)
+            && UnboxedValueCodec.requiresCarrier(parameterCarrier, builder.objectModelType);
+    if (requiresCarrier) {
+      builder.creatorUnboxedRequired = true;
+    }
+    if (!compatible && !requiresCarrier) {
       throw new ForyJsonException(
           "@JsonCreator parameter type "
               + resolvedParameter
@@ -1352,10 +1873,14 @@ final class ObjectCodecBuilder {
       boolean propertyDiscoveryEnabled,
       boolean record,
       GeneratedJsonCodec<?> generatedCodec,
-      Annotations annotations) {
+      Annotations annotations,
+      JsonObjectModel objectModel) {
     boolean hasAnyField = false;
     for (Class<?> current = type; current != null; current = current.getSuperclass()) {
       for (Field field : current.getDeclaredFields()) {
+        if (annotations.has(field, JsonFormat.class)) {
+          validateFormatField(field, annotations);
+        }
         if (annotations.has(field, JsonBase64.class)) {
           validateBase64Field(field, annotations);
         }
@@ -1401,9 +1926,15 @@ final class ObjectCodecBuilder {
         }
         if (annotations.has(method, JsonCodec.class)) {
           validateCodecMethod(
-              type, method, propertyDiscoveryEnabled, record, generatedCodec, annotations);
+              type,
+              method,
+              propertyDiscoveryEnabled,
+              record,
+              generatedCodec,
+              annotations,
+              objectModel);
         }
-        validateCodecParameters(method, propertyDiscoveryEnabled, record, annotations);
+        validateCodecParameters(method, propertyDiscoveryEnabled, record, objectModel, annotations);
         if (annotations.has(method, JsonRawValue.class)) {
           validateRawMethod(
               type, method, propertyDiscoveryEnabled, record, generatedCodec, annotations);
@@ -1416,10 +1947,17 @@ final class ObjectCodecBuilder {
           validateUnwrappedMethod(
               type, method, propertyDiscoveryEnabled, record, generatedCodec, annotations);
         }
-        validateUnwrappedParameters(type, method, propertyDiscoveryEnabled, record, annotations);
+        validateUnwrappedParameters(
+            type, method, propertyDiscoveryEnabled, record, objectModel, annotations);
         if (annotations.has(method, JsonProperty.class)) {
           validatePropertyMethod(type, method, propertyDiscoveryEnabled, record, generatedCodec);
         }
+        if (annotations.has(method, JsonIgnore.class)) {
+          validateIgnoreMethod(
+              type, method, propertyDiscoveryEnabled, record, generatedCodec, objectModel);
+        }
+        validateIgnoreParameters(
+            type, method, propertyDiscoveryEnabled, record, objectModel, annotations);
         if (annotations.has(method, JsonAnyGetter.class)) {
           if (!propertyDiscoveryEnabled) {
             throw new ForyJsonException(
@@ -1434,14 +1972,18 @@ final class ObjectCodecBuilder {
           }
           validateAnySetter(method, annotations);
         }
+        if (annotations.has(method, JsonValidator.class)) {
+          validateValidator(method);
+        }
       }
     }
     // Generated Record parameter annotations are checked by the source processor against fields
     // and accessors. Do not re-read desugared constructor parameters: Android 8 ART may crash.
     if (!record || generatedCodec == null) {
       for (Constructor<?> constructor : type.getDeclaredConstructors()) {
-        validateCodecParameters(type, constructor, record, annotations);
-        validateUnwrappedParameters(type, constructor, record, annotations);
+        validateCodecParameters(type, constructor, record, objectModel, annotations);
+        validateUnwrappedParameters(type, constructor, record, objectModel, annotations);
+        validateIgnoreParameters(type, constructor, record, objectModel, annotations);
       }
     }
     for (Method method : type.getMethods()) {
@@ -1452,9 +1994,15 @@ final class ObjectCodecBuilder {
         // getMethods exposes only the effective inherited declaration. A class or child-interface
         // override therefore suppresses an annotation from the overridden interface method.
         validateCodecMethod(
-            type, method, propertyDiscoveryEnabled, record, generatedCodec, annotations);
+            type,
+            method,
+            propertyDiscoveryEnabled,
+            record,
+            generatedCodec,
+            annotations,
+            objectModel);
       }
-      validateCodecParameters(method, propertyDiscoveryEnabled, record, annotations);
+      validateCodecParameters(method, propertyDiscoveryEnabled, record, objectModel, annotations);
       if (annotations.has(method, JsonRawValue.class)) {
         validateRawMethod(
             type, method, propertyDiscoveryEnabled, record, generatedCodec, annotations);
@@ -1467,9 +2015,118 @@ final class ObjectCodecBuilder {
         validateUnwrappedMethod(
             type, method, propertyDiscoveryEnabled, record, generatedCodec, annotations);
       }
-      validateUnwrappedParameters(type, method, propertyDiscoveryEnabled, record, annotations);
+      validateUnwrappedParameters(
+          type, method, propertyDiscoveryEnabled, record, objectModel, annotations);
+      if (annotations.has(method, JsonIgnore.class)) {
+        validateIgnoreMethod(
+            type, method, propertyDiscoveryEnabled, record, generatedCodec, objectModel);
+      }
+      validateIgnoreParameters(
+          type, method, propertyDiscoveryEnabled, record, objectModel, annotations);
+      if (annotations.has(method, JsonValidator.class)) {
+        validateValidator(method);
+      }
     }
     return hasAnyField;
+  }
+
+  private static void validateIgnoreMethod(
+      Class<?> type,
+      Method method,
+      boolean propertyDiscoveryEnabled,
+      boolean record,
+      GeneratedJsonCodec<?> generatedCodec,
+      JsonObjectModel objectModel) {
+    if (record && isRecordAccessor(type, method, generatedCodec)) {
+      return;
+    }
+    if (containsObjectModelMethod(objectModel, method)) {
+      return;
+    }
+    if (propertyDiscoveryEnabled
+        && isEligibleAccessor(method)
+        && (getterPropertyName(method) != null || setterPropertyName(method) != null)) {
+      return;
+    }
+    throw new ForyJsonException(
+        "@JsonIgnore requires an effective JSON getter or setter: " + method);
+  }
+
+  private static void validateIgnoreParameters(
+      Class<?> type,
+      Method method,
+      boolean propertyDiscoveryEnabled,
+      boolean record,
+      JsonObjectModel objectModel,
+      Annotations annotations) {
+    Parameter[] parameters = method.getParameters();
+    for (int i = 0; i < parameters.length; i++) {
+      if (!annotations.has(parameters[i], JsonIgnore.class)) {
+        continue;
+      }
+      if (annotations.has(method, JsonCreator.class)) {
+        continue;
+      }
+      if (objectModel != null && !containsObjectModelSetter(objectModel, method)) {
+        continue;
+      }
+      if (i == 0
+          && (containsObjectModelSetter(objectModel, method)
+              || !record
+                  && propertyDiscoveryEnabled
+                  && isEligibleAccessor(method)
+                  && setterPropertyName(method) != null)) {
+        continue;
+      }
+      throw new ForyJsonException(
+          "@JsonIgnore parameter requires a JSON setter or creator value: " + method);
+    }
+  }
+
+  private static void validateIgnoreParameters(
+      Class<?> type,
+      Constructor<?> constructor,
+      boolean record,
+      JsonObjectModel objectModel,
+      Annotations annotations) {
+    Parameter[] parameters = constructor.getParameters();
+    boolean selected =
+        annotations.has(constructor, JsonCreator.class)
+            || record && isRecordConstructor(type, constructor)
+            || objectModel != null && constructor.equals(objectModel.creator());
+    for (Parameter parameter : parameters) {
+      if (annotations.has(parameter, JsonIgnore.class) && !selected && objectModel == null) {
+        throw new ForyJsonException(
+            "@JsonIgnore parameter requires a selected JSON constructor: " + constructor);
+      }
+    }
+  }
+
+  private static boolean containsObjectModelMethod(JsonObjectModel model, Method method) {
+    if (model == null) {
+      return false;
+    }
+    return containsMethod(model.propertyGetters(), method)
+        || containsMethod(model.propertySetters(), method);
+  }
+
+  private static boolean containsObjectModelSetter(JsonObjectModel model, Method method) {
+    return model != null && containsMethod(model.propertySetters(), method);
+  }
+
+  private static boolean containsMethod(Method[] methods, Method target) {
+    for (Method method : methods) {
+      if (target.equals(method)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static void validateValidator(Method method) {
+    if (!JsonValidatorInfo.isValidatorMethod(method)) {
+      throw new ForyJsonException("Invalid @JsonValidator method " + method);
+    }
   }
 
   private static void validateUnwrappedMethod(
@@ -1502,6 +2159,7 @@ final class ObjectCodecBuilder {
       Method method,
       boolean propertyDiscoveryEnabled,
       boolean record,
+      JsonObjectModel objectModel,
       Annotations annotations) {
     Parameter[] parameters = method.getParameters();
     for (int i = 0; i < parameters.length; i++) {
@@ -1509,6 +2167,9 @@ final class ObjectCodecBuilder {
         continue;
       }
       if (annotations.has(method, JsonCreator.class)) {
+        continue;
+      }
+      if (objectModel != null && !containsObjectModelSetter(objectModel, method)) {
         continue;
       }
       if (!record
@@ -1524,11 +2185,17 @@ final class ObjectCodecBuilder {
   }
 
   private static void validateUnwrappedParameters(
-      Class<?> type, Constructor<?> constructor, boolean record, Annotations annotations) {
+      Class<?> type,
+      Constructor<?> constructor,
+      boolean record,
+      JsonObjectModel objectModel,
+      Annotations annotations) {
     Parameter[] parameters = constructor.getParameters();
     for (int i = 0; i < parameters.length; i++) {
       JsonUnwrapped annotation = annotations.get(parameters[i], JsonUnwrapped.class);
-      if (annotation == null || annotations.has(constructor, JsonCreator.class)) {
+      if (annotation == null
+          || annotations.has(constructor, JsonCreator.class)
+          || objectModel != null) {
         continue;
       }
       if (record && isPropagatedRecordUnwrapped(type, constructor, i, annotation, annotations)) {
@@ -1545,7 +2212,8 @@ final class ObjectCodecBuilder {
       boolean propertyDiscoveryEnabled,
       boolean record,
       GeneratedJsonCodec<?> generatedCodec,
-      Annotations annotations) {
+      Annotations annotations,
+      JsonObjectModel objectModel) {
     if (annotations.has(method, JsonAnyGetter.class)) {
       if (!propertyDiscoveryEnabled) {
         throw new ForyJsonException(
@@ -1561,6 +2229,9 @@ final class ObjectCodecBuilder {
       throw new ForyJsonException(
           "@JsonCodec requires an effective ordinary JSON getter: " + method);
     }
+    if (containsObjectModelMethod(objectModel, method)) {
+      return;
+    }
     if (!propertyDiscoveryEnabled
         || !isEligibleAccessor(method)
         || getterPropertyName(method) == null) {
@@ -1570,13 +2241,20 @@ final class ObjectCodecBuilder {
   }
 
   private static void validateCodecParameters(
-      Method method, boolean propertyDiscoveryEnabled, boolean record, Annotations annotations) {
+      Method method,
+      boolean propertyDiscoveryEnabled,
+      boolean record,
+      JsonObjectModel objectModel,
+      Annotations annotations) {
     Parameter[] parameters = method.getParameters();
     for (int i = 0; i < parameters.length; i++) {
       if (!annotations.has(parameters[i], JsonCodec.class)) {
         continue;
       }
       if (annotations.has(method, JsonCreator.class)) {
+        continue;
+      }
+      if (objectModel != null && !containsObjectModelSetter(objectModel, method)) {
         continue;
       }
       if (annotations.has(method, JsonAnySetter.class)) {
@@ -1599,7 +2277,11 @@ final class ObjectCodecBuilder {
   }
 
   private static void validateCodecParameters(
-      Class<?> type, Constructor<?> constructor, boolean record, Annotations annotations) {
+      Class<?> type,
+      Constructor<?> constructor,
+      boolean record,
+      JsonObjectModel objectModel,
+      Annotations annotations) {
     Parameter[] parameters = constructor.getParameters();
     for (int i = 0; i < parameters.length; i++) {
       JsonCodec annotation = annotations.get(parameters[i], JsonCodec.class);
@@ -1607,6 +2289,12 @@ final class ObjectCodecBuilder {
         continue;
       }
       if (record && isRecordConstructor(type, constructor)) {
+        continue;
+      }
+      if (objectModel != null && constructor.equals(objectModel.creator())) {
+        continue;
+      }
+      if (objectModel != null) {
         continue;
       }
       throw new ForyJsonException("@JsonCodec parameter requires a @JsonCreator: " + constructor);
@@ -1668,6 +2356,24 @@ final class ObjectCodecBuilder {
     JsonIgnore ignore = annotations.get(field, JsonIgnore.class);
     if (ignore != null && ignore.ignoreRead() && ignore.ignoreWrite()) {
       throw new ForyJsonException("@JsonBase64 has no JSON read or write direction: " + field);
+    }
+  }
+
+  private static void validateFormatField(Field field, Annotations annotations) {
+    if (!isEligibleField(field)) {
+      throw new ForyJsonException("Invalid @JsonFormat field " + field);
+    }
+    if (annotations.has(field, JsonCodec.class)
+        || annotations.has(field, JsonBase64.class)
+        || annotations.has(field, JsonRawValue.class)
+        || annotations.has(field, JsonAnyProperty.class)
+        || annotations.has(field, JsonUnwrapped.class)
+        || annotations.has(field, JsonValue.class)) {
+      throw new ForyJsonException("Conflicting JSON annotations on @JsonFormat field " + field);
+    }
+    JsonIgnore ignore = annotations.get(field, JsonIgnore.class);
+    if (ignore != null && ignore.ignoreRead() && ignore.ignoreWrite()) {
+      throw new ForyJsonException("@JsonFormat has no JSON read or write direction: " + field);
     }
   }
 
@@ -2175,11 +2881,19 @@ final class ObjectCodecBuilder {
     private AnnotatedElement rawValueSource;
     private boolean hasJsonProperty;
     private int creatorArgumentIndex = -1;
+    private boolean creatorUnboxedRequired;
     private JsonCodec codecAnnotation;
     private Class<? extends JsonValueCodec<?>> valueCodecClass;
+    private JsonFormat formatAnnotation;
+    private AnnotatedElement formatSource;
     private AnnotatedElement codecSource;
     private JsonUnwrapped unwrappedAnnotation;
     private AnnotatedElement unwrappedSource;
+    private boolean ignoreRead;
+    private boolean ignoreWrite;
+    private TypeRef<?> objectModelType;
+    private boolean objectModelReconstructible = true;
+    private boolean requiredDeferred;
 
     private FieldBuilder(String name, Annotations annotations) {
       this.name = name;
@@ -2197,14 +2911,16 @@ final class ObjectCodecBuilder {
         throw new ForyJsonException("Duplicate JSON field " + name);
       }
       this.field = field;
-      fieldWriteAllowed = writeAllowed;
-      fieldReadAllowed = readAllowed;
-      if (writeSource) {
+      mergeIgnore(field);
+      fieldWriteAllowed = writeAllowed && !ignoreWrite;
+      fieldReadAllowed = readAllowed && !ignoreRead;
+      if (writeSource && !ignoreWrite) {
         writeField = field;
       }
-      if (readSink) {
+      if (readSink && !ignoreRead) {
         readField = field;
       }
+      mergeFormat(field);
       mergeAnnotation(type, field);
       if (annotations.has(field, JsonAnyProperty.class)) {
         if (!writeSource && !readSink) {
@@ -2215,8 +2931,14 @@ final class ObjectCodecBuilder {
     }
 
     private void setWriteGetter(Class<?> type, Method getter) {
+      // A language object model installs the exact source getter before ordinary bean discovery.
+      // Seeing that same Method again is one declaration, not a competing accessor.
+      if (getter.equals(writeGetter)) {
+        return;
+      }
+      mergeIgnore(getter);
       mergeAnnotation(type, getter);
-      if (field != null && !fieldWriteAllowed) {
+      if (ignoreWrite || field != null && !fieldWriteAllowed) {
         return;
       }
       if (writeGetter != null) {
@@ -2226,12 +2948,24 @@ final class ObjectCodecBuilder {
       writeField = null;
     }
 
+    private void setObjectModelType(TypeRef<?> type) {
+      if (objectModelType != null && !objectModelType.equals(type)) {
+        throw new ForyJsonException("Conflicting JSON object-model types for property " + name);
+      }
+      objectModelType = type;
+    }
+
     private void setReadSetter(Class<?> type, Method setter) {
+      if (setter.equals(readSetter)) {
+        return;
+      }
+      mergeIgnore(setter);
       mergeAnnotation(type, setter);
       Parameter parameter = setter.getParameters()[0];
+      mergeIgnore(parameter);
       mergeCodec(parameter);
       mergeUnwrapped(parameter);
-      if (field != null && !fieldReadAllowed) {
+      if (ignoreRead || field != null && !fieldReadAllowed) {
         return;
       }
       if (readSetter != null) {
@@ -2239,6 +2973,24 @@ final class ObjectCodecBuilder {
       }
       readSetter = setter;
       readField = null;
+    }
+
+    private void restrictObjectModelField(boolean constructorProperty) {
+      if (writeGetter == null
+          && writeField != null
+          && !Modifier.isPublic(writeField.getModifiers())) {
+        writeField = null;
+      }
+      if (constructorProperty || !objectModelReconstructible) {
+        readField = null;
+        return;
+      }
+      if (readSetter == null
+          && readField != null
+          && (!Modifier.isPublic(readField.getModifiers())
+              || Modifier.isFinal(readField.getModifiers()))) {
+        readField = null;
+      }
     }
 
     private void setAnyGetter(Class<?> type, Method getter) {
@@ -2285,6 +3037,7 @@ final class ObjectCodecBuilder {
           || codecAnnotation != null
           || rawValueSource != null
           || valueCodecClass != null
+          || formatAnnotation != null
           || unwrappedAnnotation != null;
     }
 
@@ -2297,7 +3050,7 @@ final class ObjectCodecBuilder {
     }
 
     private boolean creatorReadAllowed() {
-      return field == null || fieldReadAllowed;
+      return !ignoreRead && (field == null || fieldReadAllowed);
     }
 
     private String jsonName(PropertyNamingStrategy strategy) {
@@ -2310,7 +3063,10 @@ final class ObjectCodecBuilder {
           : "Java property " + name + " explicitly named by " + explicitNameSource;
     }
 
-    private Type logicalType(TypeRef<?> ownerType) {
+    private TypeRef<?> logicalTypeRef(TypeRef<?> ownerType) {
+      if (objectModelType != null) {
+        return objectModelType;
+      }
       Type type;
       if (writeGetter != null) {
         type = writeGetter.getGenericReturnType();
@@ -2324,7 +3080,11 @@ final class ObjectCodecBuilder {
       } else {
         throw new ForyJsonException("JSON property has no type source " + name);
       }
-      return ownerType.resolveType(type).getType();
+      return ownerType.resolveType(type);
+    }
+
+    private Type logicalType(TypeRef<?> ownerType) {
+      return logicalTypeRef(ownerType).getType();
     }
 
     private JsonFieldInfo build(
@@ -2364,7 +3124,7 @@ final class ObjectCodecBuilder {
           throw new ForyJsonException(
               "@JsonRawValue requires an exact String write source for property " + name);
         }
-        if (codecAnnotation != null || valueCodecClass != null) {
+        if (codecAnnotation != null || valueCodecClass != null || formatAnnotation != null) {
           throw new ForyJsonException(
               "@JsonRawValue cannot coexist with a value codec for property " + name);
         }
@@ -2379,8 +3139,10 @@ final class ObjectCodecBuilder {
           writeAccessor,
           readAccessor,
           ownerType,
+          objectModelType,
           codecAnnotation,
           valueCodecClass,
+          formatAnnotation,
           rawValue);
     }
 
@@ -2403,7 +3165,10 @@ final class ObjectCodecBuilder {
                 + "."
                 + name);
       }
-      if (codecAnnotation != null || valueCodecClass != null || rawValueSource != null) {
+      if (codecAnnotation != null
+          || valueCodecClass != null
+          || formatAnnotation != null
+          || rawValueSource != null) {
         throw new ForyJsonException(
             "Value representation annotations are not supported on @JsonUnwrapped property "
                 + type.getName()
@@ -2420,13 +3185,6 @@ final class ObjectCodecBuilder {
       if (hasIndex() && !hasWriteSource()) {
         throw new ForyJsonException(
             "@JsonUnwrapped property index requires a write source: "
-                + type.getName()
-                + "."
-                + name);
-      }
-      if (creatorInfo != null && hasReadSink() && creatorArgumentIndex < 0) {
-        throw new ForyJsonException(
-            "Read-enabled @JsonUnwrapped property must bind one @JsonCreator argument on "
                 + type.getName()
                 + "."
                 + name);
@@ -2463,10 +3221,19 @@ final class ObjectCodecBuilder {
       return valueCodecClass;
     }
 
+    private JsonFormat formatAnnotation() {
+      return formatAnnotation;
+    }
+
     private void mergeAnnotation(Class<?> type, AnnotatedElement source) {
       mergeCodec(source);
-      if (annotations.has(source, JsonRawValue.class) && rawValueSource == null) {
-        rawValueSource = source;
+      if (annotations.has(source, JsonRawValue.class)) {
+        if (formatAnnotation != null) {
+          throw formatConflict(source, "@JsonRawValue");
+        }
+        if (rawValueSource == null) {
+          rawValueSource = source;
+        }
       }
       mergeUnwrapped(source);
       JsonProperty property = annotations.get(source, JsonProperty.class);
@@ -2540,11 +3307,15 @@ final class ObjectCodecBuilder {
     }
 
     private void mergeCreatorParameter(Class<?> type, Parameter parameter) {
+      mergeIgnore(parameter);
       mergeCodec(parameter);
       mergeUnwrapped(parameter);
       JsonProperty property = annotations.get(parameter, JsonProperty.class);
       if (unwrappedAnnotation == null) {
         mergeAnnotation(type, parameter);
+        return;
+      }
+      if (property == null) {
         return;
       }
       hasJsonProperty = true;
@@ -2577,10 +3348,30 @@ final class ObjectCodecBuilder {
       }
     }
 
+    private void mergeIgnore(AnnotatedElement source) {
+      JsonIgnore ignore = annotations.get(source, JsonIgnore.class);
+      if (ignore == null) {
+        return;
+      }
+      if (ignore.ignoreWrite() && !ignoreWrite) {
+        ignoreWrite = true;
+        writeField = null;
+        writeGetter = null;
+      }
+      if (ignore.ignoreRead() && !ignoreRead) {
+        ignoreRead = true;
+        readField = null;
+        readSetter = null;
+      }
+    }
+
     private void mergeUnwrapped(AnnotatedElement source) {
       JsonUnwrapped declared = annotations.get(source, JsonUnwrapped.class);
       if (declared == null) {
         return;
+      }
+      if (formatAnnotation != null) {
+        throw formatConflict(source, "@JsonUnwrapped");
       }
       if (unwrappedAnnotation != null
           && (!unwrappedAnnotation.prefix().equals(declared.prefix())
@@ -2602,6 +3393,9 @@ final class ObjectCodecBuilder {
     private void mergeCodec(AnnotatedElement source) {
       JsonCodec declared = annotations.get(source, JsonCodec.class);
       if (annotations.has(source, JsonBase64.class)) {
+        if (formatAnnotation != null) {
+          throw formatConflict(source, "@JsonBase64");
+        }
         if (declared != null || codecAnnotation != null) {
           throw new ForyJsonException(
               "@JsonBase64 cannot coexist with @JsonCodec for property " + name);
@@ -2611,6 +3405,9 @@ final class ObjectCodecBuilder {
           codecSource = source;
         }
         return;
+      }
+      if (declared != null && formatAnnotation != null) {
+        throw formatConflict(source, "@JsonCodec");
       }
       if (declared != null && valueCodecClass != null) {
         throw new ForyJsonException(
@@ -2634,6 +3431,47 @@ final class ObjectCodecBuilder {
       }
     }
 
+    private void mergeFormat(AnnotatedElement source) {
+      JsonFormat declared = annotations.get(source, JsonFormat.class);
+      if (declared == null) {
+        return;
+      }
+      if (codecAnnotation != null || valueCodecClass != null) {
+        throw formatConflict(source, "a value codec");
+      }
+      if (rawValueSource != null) {
+        throw formatConflict(source, "@JsonRawValue");
+      }
+      if (unwrappedAnnotation != null) {
+        throw formatConflict(source, "@JsonUnwrapped");
+      }
+      if (formatAnnotation != null && !formatAnnotation.equals(declared)) {
+        throw new ForyJsonException(
+            "Conflicting @JsonFormat declarations for property "
+                + name
+                + " from "
+                + formatSource
+                + " and "
+                + source);
+      }
+      if (formatAnnotation == null) {
+        formatAnnotation = declared;
+        formatSource = source;
+      }
+    }
+
+    private ForyJsonException formatConflict(AnnotatedElement source, String annotation) {
+      return new ForyJsonException(
+          "@JsonFormat cannot coexist with "
+              + annotation
+              + " for property "
+              + name
+              + " from "
+              + formatSource
+              + " and "
+              + source);
+    }
+
     private void validateTypes(TypeRef<?> ownerType) {
       Type writeType =
           writeGetter == null ? fieldType(writeField) : writeGetter.getGenericReturnType();
@@ -2644,6 +3482,30 @@ final class ObjectCodecBuilder {
       }
       if (readType != null) {
         readType = ownerType.resolveType(readType).getType();
+      }
+      if (objectModelType != null) {
+        Type modelType = objectModelType.getType();
+        if (writeType == void.class) {
+          writeType = modelType;
+        }
+        boolean writeMismatch =
+            writeType != null
+                && !JsonObjectModel.compatibleType(
+                    ownerType.resolveType(writeType), objectModelType)
+                && !UnboxedValueCodec.requiresCarrier(writeRawType(), objectModelType);
+        Class<?> readRawType =
+            readSetter != null
+                ? readSetter.getParameterTypes()[0]
+                : readField == null ? null : readField.getType();
+        boolean readMismatch =
+            readType != null
+                && !JsonObjectModel.compatibleType(ownerType.resolveType(readType), objectModelType)
+                && !UnboxedValueCodec.requiresCarrier(readRawType, objectModelType);
+        if (writeMismatch || readMismatch) {
+          throw new ForyJsonException(
+              "JSON object-model type " + modelType + " does not match property " + name);
+        }
+        return;
       }
       if (writeType != null && readType != null && !writeType.equals(readType)) {
         throw new ForyJsonException(

@@ -35,21 +35,17 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
   // of each generated prefix method.
   private static final int DIRECT_STRING_WORDS = 3;
 
-  Utf8ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, boolean finalDependencies) {
-    super(codegen, resolver, finalDependencies);
+  Utf8ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
+    super(codegen, resolver);
   }
 
-  Utf8ReaderCodegen(
-      JsonCodegen codegen,
-      JsonTypeResolver resolver,
-      boolean finalDependencies,
-      int[] fastReadGroupEnds) {
-    super(codegen, resolver, finalDependencies, fastReadGroupEnds);
+  Utf8ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, int[] fastReadGroupEnds) {
+    super(codegen, resolver, fastReadGroupEnds);
   }
 
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
-    return codegen.utf8ReaderFieldType(property.readTypeInfo(), resolver, finalDependencies());
+    return codegen.utf8ReaderFieldType(property.readTypeInfo(), resolver);
   }
 
   @Override
@@ -95,12 +91,34 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
   }
 
   @Override
+  boolean directSlowFieldIndex() {
+    return true;
+  }
+
+  @Override
+  boolean rawFieldNameDispatch() {
+    return true;
+  }
+
+  @Override
   Expression consumeCommaOrEndObjectExpr() {
     Expression comma =
         new Expression.Invoke(readerRef(), "tryConsumeNextComma", TypeRef.of(boolean.class))
             .inline();
     Expression endOrSlow =
         new Expression.Invoke(readerRef(), "consumeNextObjectEndOrSlow", TypeRef.of(boolean.class))
+            .inline();
+    return new Expression.LogicalOr(comma, endOrSlow);
+  }
+
+  @Override
+  Expression consumeOrderedCommaOrEndObjectExpr() {
+    Expression comma =
+        new Expression.Invoke(readerRef(), "tryConsumeNextOrderedComma", TypeRef.of(boolean.class))
+            .inline();
+    Expression endOrSlow =
+        new Expression.Invoke(
+                readerRef(), "consumeNextOrderedObjectEndOrSlow", TypeRef.of(boolean.class))
             .inline();
     return new Expression.LogicalOr(comma, endOrSlow);
   }
@@ -139,15 +157,15 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
             "stringStart" + id,
             new Expression.Invoke(reader, "position", TypeRef.of(int.class)).inline());
     Expression offset = new Expression.Variable("stringOffset" + id, start);
-    Expression inputLength =
+    Expression inputLimit =
         new Expression.Variable(
-            "stringInputLength" + id,
-            new Expression.Invoke(reader, "inputLength", TypeRef.of(int.class)).inline());
+            "stringInputLimit" + id,
+            new Expression.Invoke(reader, "inputLimit", TypeRef.of(int.class)).inline());
     Expression directWordEnd =
         new Expression.Variable(
             "stringDirectWordEnd" + id,
             new Expression.Subtract(
-                true, inputLength, Expression.Literal.ofInt(Long.BYTES * DIRECT_STRING_WORDS)));
+                true, inputLimit, Expression.Literal.ofInt(Long.BYTES * DIRECT_STRING_WORDS)));
     Expression state = new Expression.Variable("stringState" + id, Expression.Literal.ofLong(0L));
     Expression value = new Expression.Variable("stringValue" + id, TypeRef.of(String.class));
     Expression zero = Expression.Literal.ofLong(0L);
@@ -169,7 +187,7 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
             new Expression.Assign(value, finishStringWord(reader, start, offset, state)),
             new Expression.Assign(value, readStringLongTail(reader, start, offset)));
     return new Expression.ListExpression(
-        start, offset, inputLength, directWordEnd, state, value, directScans, finish, value);
+        start, offset, inputLimit, directWordEnd, state, value, directScans, finish, value);
   }
 
   private static Expression tryConsumeStringQuote(Expression reader) {
@@ -214,8 +232,8 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
   }
 
   @Override
-  Expression tryReadNextFieldNameColon(JsonFieldInfo property, boolean tokenValueRead) {
-    return tryReadAsciiFieldNameColon(property);
+  Expression tryReadNextFieldNameColon(String name) {
+    return tryReadAsciiFieldNameColon(name);
   }
 
   @Override

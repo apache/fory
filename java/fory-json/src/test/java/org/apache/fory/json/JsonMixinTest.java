@@ -19,7 +19,7 @@
 
 package org.apache.fory.json;
 
-import static org.apache.fory.json.JsonTestSupport.generatedCodecId;
+import static org.apache.fory.json.JsonTestSupport.generatedCodecIdentity;
 import static org.apache.fory.json.JsonTestSupport.generatedUtf8WriterClass;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
@@ -29,7 +29,9 @@ import static org.testng.Assert.expectThrows;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.fory.json.annotation.JsonAnyGetter;
@@ -47,6 +49,7 @@ import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.annotation.JsonValidator;
 import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -54,6 +57,7 @@ import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.SkipException;
@@ -143,6 +147,20 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void validatorAnnotations() {
+    ForyJson added = newJsonBuilder().registerMixin(ValidatorMixin.class).build();
+    ValidatorTarget value = added.fromJson("{\"id\":7}", ValidatorTarget.class);
+    assertEquals(value.validations, 1);
+
+    ForyJson direct = newJson();
+    assertEquals(direct.fromJson("{\"id\":8}", RemoveValidatorTarget.class).validations, 1);
+    ForyJson removed = newJsonBuilder().registerMixin(RemoveValidatorMixin.class).build();
+    assertEquals(removed.fromJson("{\"id\":8}", RemoveValidatorTarget.class).validations, 0);
+    assertGeneratedWhenSupported(added, ValidatorTarget.class);
+    assertGeneratedWhenSupported(removed, RemoveValidatorTarget.class);
+  }
+
+  @Test
   public void typeAnnotations() {
     ForyJson subtypeJson = newJsonBuilder().registerMixin(ShapeMixin.class).build();
     Shape value = new Circle(3);
@@ -199,11 +217,11 @@ public class JsonMixinTest extends ForyJsonTestModels {
       repeated.toJsonBytes(new NameTarget("repeat"));
       equivalent.toJsonBytes(new NameTarget("equal"));
       assertEquals(
-          generatedCodecId(generatedUtf8WriterClass(repeated, NameTarget.class)),
-          generatedCodecId(generatedUtf8WriterClass(equivalent, NameTarget.class)));
+          generatedCodecIdentity(generatedUtf8WriterClass(repeated, NameTarget.class)),
+          generatedCodecIdentity(generatedUtf8WriterClass(equivalent, NameTarget.class)));
       assertNotEquals(
-          generatedCodecId(generatedUtf8WriterClass(first, NameTarget.class)),
-          generatedCodecId(generatedUtf8WriterClass(second, NameTarget.class)));
+          generatedCodecIdentity(generatedUtf8WriterClass(first, NameTarget.class)),
+          generatedCodecIdentity(generatedUtf8WriterClass(second, NameTarget.class)));
     }
     assertGeneratedWhenSupported(first, NameTarget.class);
     assertGeneratedWhenSupported(second, NameTarget.class);
@@ -281,6 +299,33 @@ public class JsonMixinTest extends ForyJsonTestModels {
     ForyJson order = newJsonBuilder().registerMixin(OrderBarrierMixin.class).build();
     assertEquals(newJson().toJson(new OrderBarrierChild()), "{\"b\":2,\"a\":1}");
     assertEquals(order.toJson(new OrderBarrierChild()), "{\"a\":1,\"b\":2}");
+  }
+
+  @Test
+  public void covariantSubtypeAuthority() {
+    ForyJson direct = newJson();
+    assertEquals(
+        direct.fromJson("[]", covariantList(String.class)), java.util.Collections.emptyList());
+    assertEquals(
+        direct.fromJson("[]", covariantList(RemovedShape.class)),
+        java.util.Collections.emptyList());
+    assertThrows(ForyJsonException.class, () -> direct.fromJson("[]", covariantList(Shape.class)));
+
+    ForyJson replacement = newJsonBuilder().registerMixin(ShapeMixin.class).build();
+    assertEquals(
+        replacement.fromJson("[]", covariantList(Shape.class)), java.util.Collections.emptyList());
+
+    ForyJson removed = newJsonBuilder().registerMixin(ShapeRemoveMixin.class).build();
+    assertThrows(
+        ForyJsonException.class, () -> removed.fromJson("[]", covariantList(RemovedShape.class)));
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  private static TypeRef<List<?>> covariantList(Class<?> elementType) {
+    TypeExtMeta metadata = TypeExtMeta.of(0, false, false, false, true);
+    TypeRef<?> element = TypeRef.of((Class) elementType, metadata);
+    return (TypeRef)
+        TypeRef.ofDeclaredTypeArguments((Class) List.class, null, Arrays.asList(element), null);
   }
 
   @Test
@@ -576,6 +621,40 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
     @JsonCreator
     ValueTarget create(String value);
+  }
+
+  public static final class ValidatorTarget {
+    public int id;
+    public transient int validations;
+
+    public void checkValid() {
+      if (id <= 0) {
+        throw new IllegalArgumentException("invalid id");
+      }
+      validations++;
+    }
+  }
+
+  @JsonMixin(target = ValidatorTarget.class)
+  public abstract static class ValidatorMixin {
+    @JsonValidator
+    public abstract void checkValid();
+  }
+
+  public static final class RemoveValidatorTarget {
+    public int id;
+    public transient int validations;
+
+    @JsonValidator
+    public void checkValid() {
+      validations++;
+    }
+  }
+
+  @JsonMixin(target = RemoveValidatorTarget.class)
+  public abstract static class RemoveValidatorMixin {
+    @JsonMixinRemove(JsonValidator.class)
+    public abstract void checkValid();
   }
 
   public interface Shape {}

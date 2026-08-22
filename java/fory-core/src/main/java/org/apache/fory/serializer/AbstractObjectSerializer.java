@@ -38,6 +38,7 @@ import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.RefReader;
 import org.apache.fory.context.RefWriter;
 import org.apache.fory.context.WriteContext;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -190,11 +191,8 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     if (refMode == RefMode.TRACKING) {
       int nextReadRefId = readContext.tryPreserveRefId();
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
-        Object value =
-            typeResolver
-                .readTypeInfo(readContext, fieldInfo.type)
-                .getSerializer()
-                .read(readContext);
+        TypeInfo typeInfo = typeResolver.readTypeInfo(readContext, fieldInfo.type);
+        Object value = readContext.readNonRef(typeInfo);
         refReader.setReadRef(nextReadRefId, value);
         return value;
       }
@@ -202,9 +200,36 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     }
     if (refMode != RefMode.NULL_ONLY || buffer.readByte() != Fory.NULL_FLAG) {
       TypeInfo typeInfo = typeResolver.readTypeInfo(readContext, fieldInfo.type);
-      return typeInfo.getSerializer().read(readContext, RefMode.NONE);
+      readContext.increaseDepth();
+      Object value = typeInfo.getSerializer().read(readContext, RefMode.NONE);
+      readContext.decreaseDepth();
+      return value;
     }
     return null;
+  }
+
+  // Reflective accessors can use Unsafe, which performs no checkcast. Keep this check at concrete
+  // field-assignment owners because compatible skip may read a remote descriptor without storing
+  // its value into that descriptor's synthetic type.
+  static void checkFieldValueType(SerializationFieldInfo fieldInfo, Object fieldValue) {
+    // A fixed non-tracking serializer already guarantees its declared target. Only dynamic type
+    // dispatch or a tracked back-reference can produce a different runtime class.
+    if (fieldInfo.requiresFieldValueTypeCheck
+        && fieldValue != null
+        && !fieldInfo.type.isAssignableFrom(fieldValue.getClass())) {
+      throwIncompatibleFieldValue(fieldInfo, fieldValue);
+    }
+  }
+
+  private static void throwIncompatibleFieldValue(
+      SerializationFieldInfo fieldInfo, Object fieldValue) {
+    throw new DeserializationException(
+        "Cannot store deserialized value of type "
+            + fieldValue.getClass().getName()
+            + " into field "
+            + fieldInfo.qualifiedFieldName
+            + " of type "
+            + fieldInfo.type.getName());
   }
 
   protected final void skipField(ReadContext readContext, SerializationFieldInfo remoteFieldInfo) {
@@ -542,7 +567,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     if (readContext.getConfig().isXlang()) {
       return readContext.readNonRef(fieldInfo.containerTypeInfo);
     }
-    return readContext.readNonRef(fieldInfo.classInfoHolder);
+    return readContext.readNonRef(fieldInfo.classInfoReadHolder);
   }
 
   private static Object readContainerFieldValueRef(
@@ -642,6 +667,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       }
     } else {
       Object fieldValue = readField(readContext, typeResolver, refReader, fieldInfo, buffer);
+      checkFieldValueType(fieldInfo, fieldValue);
       fieldAccessor.putObject(targetObject, fieldValue);
     }
   }
@@ -881,6 +907,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         // Use RefMode.NONE because null flag was already handled by caller
         Object fieldValue =
             readField(readContext, typeResolver, refReader, fieldInfo, RefMode.NONE, buffer);
+        checkFieldValueType(fieldInfo, fieldValue);
         fieldAccessor.putObject(targetObject, fieldValue);
     }
   }

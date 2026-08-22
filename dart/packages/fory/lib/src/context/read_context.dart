@@ -55,6 +55,7 @@ final class ReadContext {
   final List<TypeInfo> _sharedTypes = <TypeInfo>[];
   int _depth = 0;
   int _remainingGraphMemoryBytes = 0;
+  int _remainingUnbackedContainerItems = 0;
 
   @internal
   ReadContext(
@@ -69,6 +70,7 @@ final class ReadContext {
   void prepare(Buffer buffer) {
     _buffer = buffer;
     _remainingGraphMemoryBytes = config.maxGraphMemoryBytes;
+    _remainingUnbackedContainerItems = config.maxUnbackedContainerItems;
   }
 
   @internal
@@ -78,6 +80,7 @@ final class ReadContext {
     _metaStringReader.reset();
     _depth = 0;
     _remainingGraphMemoryBytes = 0;
+    _remainingUnbackedContainerItems = 0;
   }
 
   /// The active input buffer for the current operation.
@@ -114,6 +117,37 @@ final class ReadContext {
       'maxGraphMemoryBytes exceeded: requested $bytes estimated graph bytes, '
       '$_remainingGraphMemoryBytes remaining, effective limit '
       '${config.maxGraphMemoryBytes}.',
+    );
+  }
+
+  @internal
+  @pragma('vm:prefer-inline')
+  void checkUnbackedContainerAllocation(int count) {
+    final requiredReadable = count - _remainingUnbackedContainerItems;
+    if (requiredReadable > 0) {
+      _buffer.checkReadableBytes(requiredReadable);
+    }
+  }
+
+  @internal
+  @pragma('vm:prefer-inline')
+  void settleUnbackedContainerItems(int items, int bytesRead) {
+    final unbackedItems = items - bytesRead;
+    if (unbackedItems <= 0) {
+      return;
+    }
+    final remaining = _remainingUnbackedContainerItems - unbackedItems;
+    _remainingUnbackedContainerItems = remaining;
+    if (remaining < 0) {
+      _throwUnbackedContainerLimit();
+    }
+  }
+
+  @pragma('vm:never-inline')
+  Never _throwUnbackedContainerLimit() {
+    throw StateError(
+      'Count-driven container work exceeds maxUnbackedContainerItems '
+      '${config.maxUnbackedContainerItems}.',
     );
   }
 

@@ -228,6 +228,43 @@ public final class Utf16JsonReader extends JsonReader {
     return matches && index == expected.length();
   }
 
+  @Override
+  protected CharSequence decodeQuotedText(int start, int end) {
+    byte[] outBytes = stringDecodeBuffer;
+    int out = 0;
+    int offset = start;
+    while (offset < end) {
+      char ch = charAtFast(offset++);
+      if (ch == '\\') {
+        char escaped = charAtFast(offset++);
+        if (escaped == 'u') {
+          ch = scanUnicodeEscape(offset);
+          offset += 4;
+        } else {
+          ch = scanSimpleEscape(escaped, offset - 1);
+        }
+        if (Character.isHighSurrogate(ch)) {
+          offset += 2;
+          char low = scanUnicodeEscape(offset);
+          offset += 4;
+          outBytes = ensureStringDecodeCapacity(outBytes, out + 4);
+          out = putUtf16Char(outBytes, out, ch);
+          out = putUtf16Char(outBytes, out, low);
+          continue;
+        }
+      } else if (Character.isHighSurrogate(ch)) {
+        char low = charAtFast(offset++);
+        outBytes = ensureStringDecodeCapacity(outBytes, out + 4);
+        out = putUtf16Char(outBytes, out, ch);
+        out = putUtf16Char(outBytes, out, low);
+        continue;
+      }
+      outBytes = ensureStringDecodeCapacity(outBytes, out + 2);
+      out = putUtf16Char(outBytes, out, ch);
+    }
+    return decodedQuotedText(outBytes, out, true);
+  }
+
   private int scanEscape(int slash) {
     int cursor = slash + 1;
     if (cursor >= length) {
@@ -1752,7 +1789,7 @@ public final class Utf16JsonReader extends JsonReader {
       return value;
     }
     position = mark;
-    return readIsoLocalDateFallback(readStringToken());
+    return readIsoLocalDateFallback(readQuotedTextValue());
   }
 
   public OffsetDateTime readIsoOffsetDateTime() {
@@ -1763,7 +1800,7 @@ public final class Utf16JsonReader extends JsonReader {
       return value;
     }
     position = mark;
-    return readIsoOffsetDateTimeFallback(readStringToken());
+    return readIsoOffsetDateTimeFallback(readQuotedTextValue());
   }
 
   private String readStringToken() {

@@ -87,6 +87,7 @@ public class ForyStructProcessorTest {
               .build();
       Object serializer = fory.getTypeResolver().getTypeInfo(type).getSerializer();
       Assert.assertEquals(serializer.getClass().getName(), serializerType.getName());
+      Assert.assertTrue(((StaticGeneratedStructSerializer<?>) serializer).readDataAlwaysAdvances());
       Object roundTrip = fory.deserialize(fory.serialize(value));
       Assert.assertEquals(getField(type, roundTrip, "id"), 7);
       Assert.assertEquals(getField(type, roundTrip, "name"), "fory");
@@ -99,6 +100,37 @@ public class ForyStructProcessorTest {
     Assert.assertTrue(rules.contains("-keep,allowoptimization class test.SimpleStruct { *; }"));
     Assert.assertTrue(rules.contains("class test.SimpleStruct_ForySerializer"));
     Assert.assertTrue(rules.contains("class test.SimpleStruct_ForyNativeSerializer"));
+  }
+
+  @Test
+  public void testEmptyStructDoesNotClaimReadProgress() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.EmptyStruct",
+            "package test;\n"
+                + "import org.apache.fory.annotation.ForyStruct;\n"
+                + "@ForyStruct public class EmptyStruct {\n"
+                + "  public EmptyStruct() {}\n"
+                + "}\n");
+    Assert.assertTrue(result.success, result.diagnostics());
+    try (URLClassLoader loader = result.classLoader()) {
+      Class<?> type = loader.loadClass("test.EmptyStruct");
+      Class<?> serializerType = loader.loadClass("test.EmptyStruct_ForySerializer");
+      Fory fory =
+          Fory.builder()
+              .withXlang(true)
+              .withClassLoader(loader)
+              .withCodegen(false)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
+      StaticGeneratedStructSerializer<?> serializer =
+          (StaticGeneratedStructSerializer<?>)
+              serializerType
+                  .getConstructor(org.apache.fory.resolver.TypeResolver.class, Class.class)
+                  .newInstance(fory.getTypeResolver(), type);
+      Assert.assertFalse(serializer.readDataAlwaysAdvances());
+    }
   }
 
   @Test

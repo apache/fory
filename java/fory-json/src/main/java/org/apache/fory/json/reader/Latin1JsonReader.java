@@ -25,6 +25,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.UUID;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
@@ -206,6 +207,40 @@ public final class Latin1JsonReader extends JsonReader {
       matches &= index < expected.length() && expected.charAt(index++) == ch;
     }
     return matches && index == expected.length();
+  }
+
+  @Override
+  protected CharSequence decodeQuotedText(int start, int end) {
+    byte[] outBytes = stringDecodeBuffer;
+    int out = 0;
+    int offset = start;
+    while (offset < end) {
+      int raw = input[offset++] & 0xff;
+      char ch;
+      if (raw == '\\') {
+        int escaped = input[offset++] & 0xff;
+        if (escaped == 'u') {
+          ch = scanUnicodeEscape(offset);
+          offset += 4;
+        } else {
+          ch = scanSimpleEscape(escaped, offset - 1);
+        }
+        if (Character.isHighSurrogate(ch)) {
+          offset += 2;
+          char low = scanUnicodeEscape(offset);
+          offset += 4;
+          outBytes = ensureStringDecodeCapacity(outBytes, out + 4);
+          out = putUtf16Char(outBytes, out, ch);
+          out = putUtf16Char(outBytes, out, low);
+          continue;
+        }
+      } else {
+        ch = (char) raw;
+      }
+      outBytes = ensureStringDecodeCapacity(outBytes, out + 2);
+      out = putUtf16Char(outBytes, out, ch);
+    }
+    return decodedQuotedText(outBytes, out, true);
   }
 
   private int scanEscape(int slash, int inputLength) {
@@ -811,7 +846,7 @@ public final class Latin1JsonReader extends JsonReader {
       return readUuidToken();
     } catch (RuntimeException e) {
       position = mark;
-      return UUID.fromString(readStringToken());
+      return parseUuidValue(readQuotedTextValue());
     }
   }
 
@@ -1817,7 +1852,7 @@ public final class Latin1JsonReader extends JsonReader {
       return value;
     }
     position = mark;
-    return readIsoLocalDateFallback(readStringToken());
+    return readIsoLocalDateFallback(readQuotedTextValue());
   }
 
   public OffsetDateTime readIsoOffsetDateTime() {
@@ -1828,7 +1863,7 @@ public final class Latin1JsonReader extends JsonReader {
       return value;
     }
     position = mark;
-    return readIsoOffsetDateTimeFallback(readStringToken());
+    return readIsoOffsetDateTimeFallback(readQuotedTextValue());
   }
 
   private String readStringToken() {
@@ -2182,6 +2217,23 @@ public final class Latin1JsonReader extends JsonReader {
   @Override
   public long readFieldNameHash() {
     return readQuotedStringHash();
+  }
+
+  /**
+   * Returns the raw four-byte prefix at the next field name after consuming legal whitespace.
+   *
+   * <p>Generated object readers use this only as a discriminator before a complete field-token
+   * check. A miss leaves the name unread so the ordinary hash parser retains escape, Unicode,
+   * alias, unknown-field, and malformed-input handling.
+   */
+  @Internal
+  public int readFieldNamePrefix() {
+    skipWhitespaceFast();
+    int offset = position;
+    if (offset <= input.length - Integer.BYTES) {
+      return LittleEndian.getInt32(input, offset);
+    }
+    return 0;
   }
 
   public boolean tryReadFieldNameColon(long expectedHash, long expectedMask, int expectedLength) {

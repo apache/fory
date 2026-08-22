@@ -39,6 +39,7 @@ syn = { default-features = false, version = "2.0", features = [
     "parsing",
     "proc-macro",
     "derive",
+    "fold",
     "printing",
 ] }
 quote = { default-features = false, version = "1.0" }

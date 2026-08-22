@@ -19,14 +19,19 @@
 
 package org.apache.fory.graalvm;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,13 +40,22 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.concurrent.locks.Lock;
+import org.apache.fory.codegen.CompileState;
+import org.apache.fory.graalvm.closed.ClosedJsonConfigs;
 import org.apache.fory.graalvm.closed.ClosedJsonRecord;
 import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.PropertyNamingStrategy;
+import org.apache.fory.json.annotation.ForyJsonProvider;
+import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
+import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonFormat;
+import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
@@ -49,45 +63,245 @@ import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.annotation.JsonValidator;
 import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
+import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.util.Preconditions;
 
-/** Native-image acceptance coverage for the complete interpreted Fory JSON path. */
+/** Native-image acceptance coverage for hosted code generation and interpreter fallback. */
 public final class ForyJsonExample {
+  private static final String NATIVE_INTERPRETER_MESSAGE =
+      "Fory JSON is using interpreted codecs because the current configuration was not included "
+          + "in this native image. Return this configuration from a reachable "
+          + "@ForyJsonProvider to enable generated codecs.";
+  // Portable lower bound: the 8-byte object base plus one 4-byte int field.
+  private static final long GRAPH_BUDGET_VALUE_BYTES = 12;
+  private static final int REF_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+  private static final ForyJson DEFAULT_JSON = ForyJson.builder().withConcurrencyLevel(1).build();
+
   private ForyJsonExample() {}
 
   public static void main(String[] args) {
-    testModels();
-    testConfigurations();
-    testCodecs();
-    testValueAnnotations();
-    testSubtypes();
-    testContainerRoots();
-    testGenericProperties();
-    testUnwrapped();
-    testMixin();
-    testMixinValue();
-    testMixinValueRecord();
-    testMixinEnumValue();
-    testMixinCodec();
-    testBigDecimal();
-    testSqlTypes();
-    testClosedPackage();
-    System.out.println("Fory JSON succeed");
+    PrintStream originalOut = System.out;
+    ByteArrayOutputStream captured = new ByteArrayOutputStream();
+    try (PrintStream testOut = new PrintStream(captured, true, StandardCharsets.UTF_8)) {
+      System.setOut(testOut);
+      try {
+        Preconditions.checkArgument(
+            ClosedJsonConfigs.class.isAnnotationPresent(ForyJsonProvider.class));
+        if (GraalvmSupport.isGraalRuntime()) {
+          testHostedCodegenConfigurations();
+        }
+        testModels();
+        testConfigurations();
+        testCodecs();
+        testValueAnnotations();
+        testSubtypes();
+        testContainerRoots();
+        testGenericProperties();
+        testUnwrapped();
+        testValidator();
+        testGraphMemoryBudget();
+        testContainerGraphBudget();
+        testSpecialContainerBudget();
+        testMixin();
+        testMixinValue();
+        testMixinValueRecord();
+        testMixinEnumValue();
+        testMixinCodec();
+        testBigDecimal();
+        testSqlTypes();
+        testFormatTimezone();
+        testClosedPackage();
+      } finally {
+        System.setOut(originalOut);
+      }
+    }
+    String output = new String(captured.toByteArray(), StandardCharsets.UTF_8);
+    if (GraalvmSupport.isGraalRuntime()) {
+      int occurrences = countOccurrences(output, NATIVE_INTERPRETER_MESSAGE);
+      Preconditions.checkArgument(
+          occurrences == 1,
+          "Expected one Native Image interpreted-codec message, found "
+              + occurrences
+              + ": "
+              + output);
+    }
+    originalOut.print(output);
+    originalOut.println("Fory JSON succeed");
+  }
+
+  private static void testHostedCodegenConfigurations() {
+    ForyJson providerJson = newProviderJson();
+    ForyJson interpretedJson = newInterpretedJson();
+    exerciseCodegenConfiguration(DEFAULT_JSON, false);
+    exerciseCodegenConfiguration(providerJson, true);
+    exerciseCodegenConfiguration(interpretedJson, false);
+    testEmptyMixin(providerJson, true);
+    testEmptyMixin(interpretedJson, false);
+    testInterpretedMetadata(interpretedJson);
+    testPrimitiveProperties(interpretedJson);
+    testIndependentChildCodegen();
+    testExternalModuleMixin();
+  }
+
+  private static ForyJson newProviderJson() {
+    return ForyJson.builder()
+        .writeNullFields(true)
+        .withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE)
+        .registerCodec(CodegenProbeValue.class, new CodegenProbeCodec())
+        .registerMixin(CoreCompileStateMixin.class)
+        .registerMixin(EmptyMixin.class)
+        .build();
+  }
+
+  private static ForyJson newInterpretedJson() {
+    return ForyJson.builder()
+        .withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE)
+        .registerCodec(CodegenProbeValue.class, new CodegenProbeCodec())
+        .registerMixin(EmptyMixin.class)
+        .registerMixin(InterpretedMixin.class)
+        .build();
+  }
+
+  private static void testEmptyMixin(ForyJson json, boolean generated) {
+    CodegenProbeCodec.expect(EmptyMixinTarget.class, generated);
+    EmptyMixinTarget value = new EmptyMixinTarget();
+    value.probe = new CodegenProbeValue("empty-mixin");
+    String encoded = json.toJson(value);
+    Preconditions.checkArgument(
+        json.fromJson(encoded, EmptyMixinTarget.class).probe.value.equals("empty-mixin"));
+  }
+
+  private static void testInterpretedMetadata(ForyJson json) {
+    InterpretedMixinTarget mixinValue = new InterpretedMixinTarget();
+    mixinValue.setName("empty-mixin");
+    String mixinJson = json.toJson(mixinValue);
+    Preconditions.checkArgument(
+        json.fromJson(mixinJson, InterpretedMixinTarget.class).getName().equals("empty-mixin"));
+
+    InterpretedBean bean = new InterpretedBean();
+    bean.setName("bean");
+    bean.putExtra("dynamic", "extra");
+    InterpretedBean decoded = json.fromJson(json.toJson(bean), InterpretedBean.class);
+    Preconditions.checkArgument(decoded.getName().equals("bean"));
+    Preconditions.checkArgument(decoded.extra().equals(Map.of("dynamic", "extra")));
+
+    DirectValueRecord record = new DirectValueRecord("record-value");
+    Preconditions.checkArgument(json.toJson(record).equals("\"record-value\""));
+    Preconditions.checkArgument(
+        json.fromJson("\"decoded-record\"", DirectValueRecord.class)
+            .equals(new DirectValueRecord("decoded-record")));
+    Preconditions.checkArgument(json.toJson(DirectValueEnum.READY).equals("\"ready\""));
+    Preconditions.checkArgument(
+        json.fromJson("\"done\"", DirectValueEnum.class) == DirectValueEnum.DONE);
+
+    ValidatedValue validated = json.fromJson("{\"value\":22}", ValidatedValue.class);
+    Preconditions.checkArgument(validated.value == 22);
+    Preconditions.checkArgument(validated.validatorInvoked());
+  }
+
+  private static void testPrimitiveProperties(ForyJson json) {
+    PrimitiveProperties value = new PrimitiveProperties();
+    value.setBooleanValue(true);
+    value.setByteValue((byte) 12);
+    value.setShortValue((short) 1234);
+    value.setIntValue(123456);
+    value.setLongValue(123456789L);
+    value.setFloatValue(12.5f);
+    value.setDoubleValue(123.25d);
+    value.setCharValue('\u4f60');
+    PrimitiveProperties decoded = json.fromJson(json.toJson(value), PrimitiveProperties.class);
+    Preconditions.checkArgument(decoded.isBooleanValue());
+    Preconditions.checkArgument(decoded.getByteValue() == 12);
+    Preconditions.checkArgument(decoded.getShortValue() == 1234);
+    Preconditions.checkArgument(decoded.getIntValue() == 123456);
+    Preconditions.checkArgument(decoded.getLongValue() == 123456789L);
+    Preconditions.checkArgument(decoded.getFloatValue() == 12.5f);
+    Preconditions.checkArgument(decoded.getDoubleValue() == 123.25d);
+    Preconditions.checkArgument(decoded.getCharValue() == '\u4f60');
+  }
+
+  private static void exerciseCodegenConfiguration(ForyJson json, boolean generated) {
+    CodegenProbeCodec.expect(CodegenProbeModel.class, generated);
+    CodegenProbeModel value = new CodegenProbeModel();
+    value.id = 41;
+    value.probe = new CodegenProbeValue("probe");
+    value.children.add(new CodegenProbeChild("child"));
+    String encoded = json.toJson(value);
+    Preconditions.checkArgument(encoded.contains("probe"));
+    String utf8 = new String(json.toJsonBytes(value), StandardCharsets.UTF_8);
+    Preconditions.checkArgument(utf8.contains("probe"));
+    Preconditions.checkArgument(
+        json.fromJson(encoded, CodegenProbeModel.class).probe.value.equals("probe"));
+    Preconditions.checkArgument(
+        json.fromJson(encoded, CodegenProbeModel.class).children.get(0).name.equals("child"));
+    String utf16 = encoded.replace(":\"probe\"", ":\"\u4f60\"");
+    Preconditions.checkArgument(
+        json.fromJson(utf16, CodegenProbeModel.class).probe.value.equals("\u4f60"));
+    Preconditions.checkArgument(
+        json.fromJson(utf8.getBytes(StandardCharsets.UTF_8), CodegenProbeModel.class)
+            .probe
+            .value
+            .equals("probe"));
+  }
+
+  private static int countOccurrences(String value, String target) {
+    int count = 0;
+    int offset = 0;
+    while ((offset = value.indexOf(target, offset)) >= 0) {
+      count++;
+      offset += target.length();
+    }
+    return count;
   }
 
   private static void testClosedPackage() {
-    ForyJson json = ForyJson.builder().build();
     ClosedJsonRecord value = new ClosedJsonRecord(17, "closed");
+    ForyJson interpreted = ForyJson.builder().build();
+    String interpretedJson = interpreted.toJson(value);
+    Preconditions.checkArgument(
+        interpreted.fromJson(interpretedJson, ClosedJsonRecord.class).equals(value));
+
+    ForyJson generated = newProviderJson();
+    String generatedJson = generated.toJson(value);
+    Preconditions.checkArgument(
+        generated.fromJson(generatedJson, ClosedJsonRecord.class).equals(value));
+  }
+
+  private static void testIndependentChildCodegen() {
+    CodegenProbeCodec.expect(PublicChild.class, true);
+    ForyJson json = newProviderJson();
+    PackagePrivateOwner value = new PackagePrivateOwner();
+    value.child.name = "child";
+    value.child.probe = new CodegenProbeValue("probe");
     String encoded = json.toJson(value);
-    Preconditions.checkArgument(json.fromJson(encoded, ClosedJsonRecord.class).equals(value));
+    Preconditions.checkArgument(
+        json.fromJson(encoded, PackagePrivateOwner.class).child.name.equals("child"));
+    String utf16 = encoded.replace(":\"probe\"", ":\"你\"");
+    Preconditions.checkArgument(
+        json.fromJson(utf16, PackagePrivateOwner.class).child.probe.value.equals("你"));
+    byte[] utf8 = json.toJsonBytes(value);
+    Preconditions.checkArgument(
+        json.fromJson(utf8, PackagePrivateOwner.class).child.probe.value.equals("probe"));
+  }
+
+  private static void testExternalModuleMixin() {
+    ForyJson json = newProviderJson();
+    CompileState value = new CompileState();
+    value.finished = true;
+    String encoded = json.toJson(value);
+    Preconditions.checkArgument(encoded.equals("{\"finished\":true}"));
+    Preconditions.checkArgument(json.fromJson(encoded, CompileState.class).finished);
   }
 
   private static void testMixin() {
@@ -346,6 +560,107 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(decodedRecord.equals(record));
   }
 
+  private static void testValidator() {
+    ForyJson json = newProviderJson();
+    ValidatedValue value = json.fromJson("{\"value\":21}", ValidatedValue.class);
+    Preconditions.checkArgument(value.value == 21);
+    Preconditions.checkArgument(value.validatorInvoked());
+    try {
+      json.fromJson("{\"value\":0}", ValidatedValue.class);
+      throw new AssertionError("Invalid native JSON input must fail validation");
+    } catch (ForyJsonException expected) {
+      Preconditions.checkArgument(expected.getCause() instanceof IllegalArgumentException);
+    }
+  }
+
+  private static void testGraphMemoryBudget() {
+    String text = "{\"value\":34}";
+    ForyJson exact = ForyJson.builder().withMaxGraphMemoryBytes(GRAPH_BUDGET_VALUE_BYTES).build();
+    Preconditions.checkArgument(exact.fromJson(text, GraphBudgetValue.class).value == 34);
+
+    ForyJson insufficient =
+        ForyJson.builder().withMaxGraphMemoryBytes(GRAPH_BUDGET_VALUE_BYTES - 1).build();
+    try {
+      insufficient.fromJson(text, GraphBudgetValue.class);
+      throw new AssertionError("An undersized graph memory budget must reject the object");
+    } catch (ForyJsonException expected) {
+      // Expected: malformed and resource-limit error details are not a public contract.
+    }
+  }
+
+  private static void testContainerGraphBudget() {
+    long plainListBytes = minimumGraphBudget("[]", PlainGraphList.class);
+    long fieldListBytes = minimumGraphBudget("[]", FieldGraphList.class);
+    Preconditions.checkArgument(fieldListBytes == plainListBytes + Long.BYTES + Integer.BYTES);
+
+    long plainMapBytes = minimumGraphBudget("{}", PlainGraphMap.class);
+    long fieldMapBytes = minimumGraphBudget("{}", FieldGraphMap.class);
+    Preconditions.checkArgument(fieldMapBytes == plainMapBytes + Long.BYTES + Integer.BYTES);
+  }
+
+  private static void testSpecialContainerBudget() {
+    int enumMapShallow = GraphMemoryEstimates.shallowObjectBytes(EnumMap.class);
+    int regularSetShallow =
+        GraphMemoryEstimates.shallowObjectBytes(EnumSet.noneOf(Status.class).getClass());
+    int jumboSetShallow =
+        GraphMemoryEstimates.shallowObjectBytes(EnumSet.noneOf(BudgetJumboKey.class).getClass());
+    Preconditions.checkArgument(enumMapShallow > 2 * REF_BYTES);
+    Preconditions.checkArgument(regularSetShallow > 2 * REF_BYTES);
+    Preconditions.checkArgument(jumboSetShallow > 2 * REF_BYTES);
+
+    long enumMapBytes =
+        GraphMemoryEstimates.shallowObjectBytes(GraphBudgetEnumMap.class)
+            + enumMapShallow
+            + GraphMemoryEstimates.objectArrayBytes()
+            + (long) Status.values().length * REF_BYTES;
+    Preconditions.checkArgument(
+        minimumGraphBudget("{\"value\":{}}", GraphBudgetEnumMap.class) == enumMapBytes);
+
+    long regularSetBytes =
+        GraphMemoryEstimates.shallowObjectBytes(GraphBudgetRegularSet.class) + regularSetShallow;
+    Preconditions.checkArgument(
+        minimumGraphBudget("{\"value\":[]}", GraphBudgetRegularSet.class) == regularSetBytes);
+
+    long jumboWords = (BudgetJumboKey.values().length + Long.SIZE - 1L) / Long.SIZE * Long.BYTES;
+    long jumboSetBytes =
+        GraphMemoryEstimates.shallowObjectBytes(GraphBudgetJumboSet.class)
+            + jumboSetShallow
+            + GraphMemoryEstimates.objectArrayBytes()
+            + jumboWords;
+    Preconditions.checkArgument(
+        minimumGraphBudget("{\"value\":[]}", GraphBudgetJumboSet.class) == jumboSetBytes);
+  }
+
+  private static long minimumGraphBudget(String input, Class<?> type) {
+    long low = 1;
+    long high = 4096;
+    while (low < high) {
+      long middle = low + (high - low) / 2;
+      if (fitsGraphBudget(input, type, middle)) {
+        high = middle;
+      } else {
+        low = middle + 1;
+      }
+    }
+    Preconditions.checkArgument(fitsGraphBudget(input, type, low));
+    return low;
+  }
+
+  private static boolean fitsGraphBudget(String input, Class<?> type, long budget) {
+    ForyJson json =
+        ForyJson.builder()
+            .withCodegen(false)
+            .withConcurrencyLevel(1)
+            .withMaxGraphMemoryBytes(budget)
+            .build();
+    try {
+      json.fromJson(input, type);
+      return true;
+    } catch (ForyJsonException expected) {
+      return false;
+    }
+  }
+
   private static void testBigDecimal() {
     ForyJson json = ForyJson.builder().build();
     BigDecimalHolder value = new BigDecimalHolder();
@@ -368,6 +683,278 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(decoded.timestamp.getTime() == 3_000L);
   }
 
+  private static void testFormatTimezone() {
+    ForyJson json = ForyJson.builder().build();
+    Instant instant = Instant.parse("2024-01-02T03:04:05Z");
+    FormatTimezoneValues value = new FormatTimezoneValues();
+    value.instant = instant;
+    value.instants = List.of(instant, instant.plusSeconds(3600));
+    String expected =
+        "{\"instant\":\"2024-01-02 11:04:05 +08:00\","
+            + "\"instants\":[\"2024-01-02 11:04:05 +08:00\","
+            + "\"2024-01-02 12:04:05 +08:00\"]}";
+    Preconditions.checkArgument(json.toJson(value).equals(expected));
+    byte[] bytes = json.toJsonBytes(value);
+    Preconditions.checkArgument(new String(bytes, StandardCharsets.UTF_8).equals(expected));
+    FormatTimezoneValues decoded = json.fromJson(bytes, FormatTimezoneValues.class);
+    Preconditions.checkArgument(decoded.instant.equals(instant));
+    Preconditions.checkArgument(decoded.instants.equals(value.instants));
+  }
+
+  public interface InheritedJsonConfig {
+    default ForyJson duplicateConfiguration() {
+      return newProviderJson();
+    }
+  }
+
+  @JsonType
+  public static final class CodegenProbeModel {
+    public int id;
+
+    @JsonCodec(CodegenProbeCodec.class)
+    public CodegenProbeValue probe;
+
+    public List<CodegenProbeChild> children = new ArrayList<>();
+
+    public CodegenProbeModel() {}
+  }
+
+  @JsonType
+  public static final class CodegenProbeChild {
+    public String name;
+
+    public CodegenProbeChild() {}
+
+    public CodegenProbeChild(String name) {
+      this.name = name;
+    }
+  }
+
+  public static final class EmptyMixinTarget {
+    @JsonCodec(CodegenProbeCodec.class)
+    private CodegenProbeValue probe;
+
+    public EmptyMixinTarget() {}
+  }
+
+  @JsonMixin(target = EmptyMixinTarget.class)
+  public interface EmptyMixin {}
+
+  public static final class InterpretedMixinTarget {
+    private String name;
+
+    public InterpretedMixinTarget() {}
+
+    public String getName() {
+      return name;
+    }
+
+    public void setName(String name) {
+      this.name = name;
+    }
+  }
+
+  @JsonMixin(target = InterpretedMixinTarget.class)
+  public interface InterpretedMixin {}
+
+  @JsonType
+  public static final class InterpretedBean {
+    private String name;
+    private final transient Map<String, String> extra = new LinkedHashMap<>();
+
+    public InterpretedBean() {}
+
+    public String getName() {
+      return name;
+    }
+
+    public void setName(String name) {
+      this.name = name;
+    }
+
+    @JsonAnyGetter
+    public Map<String, String> extra() {
+      return extra;
+    }
+
+    @JsonAnySetter
+    public void putExtra(String key, String value) {
+      extra.put(key, value);
+    }
+  }
+
+  @JsonType
+  public static final class PrimitiveProperties {
+    private boolean booleanValue;
+    private byte byteValue;
+    private short shortValue;
+    private int intValue;
+    private long longValue;
+    private float floatValue;
+    private double doubleValue;
+    private char charValue;
+
+    public PrimitiveProperties() {}
+
+    public boolean isBooleanValue() {
+      return booleanValue;
+    }
+
+    public void setBooleanValue(boolean booleanValue) {
+      this.booleanValue = booleanValue;
+    }
+
+    public byte getByteValue() {
+      return byteValue;
+    }
+
+    public void setByteValue(byte byteValue) {
+      this.byteValue = byteValue;
+    }
+
+    public short getShortValue() {
+      return shortValue;
+    }
+
+    public void setShortValue(short shortValue) {
+      this.shortValue = shortValue;
+    }
+
+    public int getIntValue() {
+      return intValue;
+    }
+
+    public void setIntValue(int intValue) {
+      this.intValue = intValue;
+    }
+
+    public long getLongValue() {
+      return longValue;
+    }
+
+    public void setLongValue(long longValue) {
+      this.longValue = longValue;
+    }
+
+    public float getFloatValue() {
+      return floatValue;
+    }
+
+    public void setFloatValue(float floatValue) {
+      this.floatValue = floatValue;
+    }
+
+    public double getDoubleValue() {
+      return doubleValue;
+    }
+
+    public void setDoubleValue(double doubleValue) {
+      this.doubleValue = doubleValue;
+    }
+
+    public char getCharValue() {
+      return charValue;
+    }
+
+    public void setCharValue(char charValue) {
+      this.charValue = charValue;
+    }
+  }
+
+  /** Hosted-only loader which makes the first equivalent provider unable to compile one model. */
+  public static final class CodegenRejectingClassLoader extends ClassLoader {
+    public CodegenRejectingClassLoader() {
+      super(ForyJsonExample.class.getClassLoader());
+    }
+
+    @Override
+    protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+      if (name.equals(CodegenProbeModel.class.getName())) {
+        throw new ClassNotFoundException(name);
+      }
+      return super.loadClass(name, resolve);
+    }
+  }
+
+  public static final class CodegenProbeValue {
+    private final String value;
+
+    private CodegenProbeValue(String value) {
+      this.value = value;
+    }
+  }
+
+  public static final class CodegenProbeCodec implements JsonValueCodec<CodegenProbeValue> {
+    private static Class<?> expectedType;
+    private static boolean expectGenerated;
+
+    public CodegenProbeCodec() {}
+
+    private static void expect(Class<?> type, boolean generated) {
+      expectedType = type;
+      expectGenerated = generated;
+    }
+
+    @Override
+    public void writeString(StringJsonWriter writer, CodegenProbeValue value) {
+      checkCapability(writer.typeResolver().getTypeInfo(expectedType, expectedType).stringWriter());
+      writer.writeString(value == null ? null : value.value);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, CodegenProbeValue value) {
+      checkCapability(writer.typeResolver().getTypeInfo(expectedType, expectedType).utf8Writer());
+      writer.writeString(value == null ? null : value.value);
+    }
+
+    @Override
+    public CodegenProbeValue readLatin1(Latin1JsonReader reader) {
+      checkCapability(reader.typeResolver().getTypeInfo(expectedType, expectedType).latin1Reader());
+      return reader.tryReadNullToken() ? null : new CodegenProbeValue(reader.readString());
+    }
+
+    @Override
+    public CodegenProbeValue readUtf16(Utf16JsonReader reader) {
+      checkCapability(reader.typeResolver().getTypeInfo(expectedType, expectedType).utf16Reader());
+      return reader.tryReadNullToken() ? null : new CodegenProbeValue(reader.readString());
+    }
+
+    @Override
+    public CodegenProbeValue readUtf8(Utf8JsonReader reader) {
+      checkCapability(reader.typeResolver().getTypeInfo(expectedType, expectedType).utf8Reader());
+      return reader.tryReadNullToken() ? null : new CodegenProbeValue(reader.readString());
+    }
+
+    private static void checkCapability(Object capability) {
+      boolean generated = !(capability instanceof ObjectCodec<?>);
+      Preconditions.checkArgument(generated == expectGenerated);
+    }
+  }
+
+  @JsonType
+  static final class PackagePrivateOwner {
+    public PublicChild child = new PublicChild();
+
+    PackagePrivateOwner() {}
+  }
+
+  @JsonType
+  public static final class PublicChild {
+    public String name;
+
+    @JsonCodec(CodegenProbeCodec.class)
+    public CodegenProbeValue probe;
+
+    public PublicChild() {}
+  }
+
+  @JsonMixin(target = CompileState.class)
+  public abstract static class CoreCompileStateMixin {
+    @JsonIgnore private Lock lock;
+    @JsonProperty private boolean finished;
+    @JsonIgnore private Map<String, byte[]> result;
+  }
+
   public static class Parent {
     private int inheritedId = 10;
 
@@ -382,6 +969,38 @@ public final class ForyJsonExample {
 
   public static final class StringMap extends HashMap<String, String> {
     public StringMap() {}
+  }
+
+  public static final class PlainGraphList extends ArrayList<String> {
+    public PlainGraphList() {}
+  }
+
+  public static class FieldGraphListBase extends ArrayList<String> {
+    private long inheritedField;
+
+    public FieldGraphListBase() {}
+  }
+
+  public static final class FieldGraphList extends FieldGraphListBase {
+    private int directField;
+
+    public FieldGraphList() {}
+  }
+
+  public static final class PlainGraphMap extends LinkedHashMap<String, String> {
+    public PlainGraphMap() {}
+  }
+
+  public static class FieldGraphMapBase extends LinkedHashMap<String, String> {
+    private long inheritedField;
+
+    public FieldGraphMapBase() {}
+  }
+
+  public static final class FieldGraphMap extends FieldGraphMapBase {
+    private int directField;
+
+    public FieldGraphMap() {}
   }
 
   public abstract static class GenericProperty<T> {
@@ -566,6 +1185,39 @@ public final class ForyJsonExample {
   }
 
   @JsonType
+  public record DirectValueRecord(@JsonValue String value) {
+    @JsonCreator
+    public DirectValueRecord {}
+  }
+
+  @JsonType
+  public enum DirectValueEnum {
+    READY("ready"),
+    DONE("done");
+
+    private final String value;
+
+    DirectValueEnum(String value) {
+      this.value = value;
+    }
+
+    @JsonValue
+    public String value() {
+      return value;
+    }
+
+    @JsonCreator
+    public static DirectValueEnum fromValue(String value) {
+      for (DirectValueEnum candidate : values()) {
+        if (candidate.value.equals(value)) {
+          return candidate;
+        }
+      }
+      throw new IllegalArgumentException(value);
+    }
+  }
+
+  @JsonType
   public static final class RawValue {
     @JsonRawValue public String body;
   }
@@ -579,6 +1231,110 @@ public final class ForyJsonExample {
   public static final class ConfigValue {
     public String camelName;
     public String nullValue;
+  }
+
+  @JsonType
+  public static final class ValidatedValue {
+    public int value;
+    private boolean validatorInvoked;
+
+    @JsonValidator
+    public void validate() {
+      validatorInvoked = true;
+      Preconditions.checkArgument(value > 0);
+    }
+
+    public boolean validatorInvoked() {
+      return validatorInvoked;
+    }
+  }
+
+  @JsonType
+  public static final class GraphBudgetValue {
+    public int value;
+  }
+
+  @JsonType
+  public static final class GraphBudgetEnumMap {
+    public EnumMap<Status, String> value;
+  }
+
+  @JsonType
+  public static final class GraphBudgetRegularSet {
+    public EnumSet<Status> value;
+  }
+
+  @JsonType
+  public static final class GraphBudgetJumboSet {
+    public EnumSet<BudgetJumboKey> value;
+  }
+
+  public enum BudgetJumboKey {
+    V00,
+    V01,
+    V02,
+    V03,
+    V04,
+    V05,
+    V06,
+    V07,
+    V08,
+    V09,
+    V10,
+    V11,
+    V12,
+    V13,
+    V14,
+    V15,
+    V16,
+    V17,
+    V18,
+    V19,
+    V20,
+    V21,
+    V22,
+    V23,
+    V24,
+    V25,
+    V26,
+    V27,
+    V28,
+    V29,
+    V30,
+    V31,
+    V32,
+    V33,
+    V34,
+    V35,
+    V36,
+    V37,
+    V38,
+    V39,
+    V40,
+    V41,
+    V42,
+    V43,
+    V44,
+    V45,
+    V46,
+    V47,
+    V48,
+    V49,
+    V50,
+    V51,
+    V52,
+    V53,
+    V54,
+    V55,
+    V56,
+    V57,
+    V58,
+    V59,
+    V60,
+    V61,
+    V62,
+    V63,
+    V64
   }
 
   @JsonType
@@ -818,6 +1574,15 @@ public final class ForyJsonExample {
     public Date date;
     public Time time;
     public Timestamp timestamp;
+  }
+
+  @JsonType
+  public static final class FormatTimezoneValues {
+    @JsonFormat(pattern = "uuuu-MM-dd HH:mm:ss XXX", timezone = "Asia/Shanghai")
+    public Instant instant;
+
+    @JsonFormat(pattern = "uuuu-MM-dd HH:mm:ss XXX", timezone = "Asia/Shanghai")
+    public List<Instant> instants;
   }
 
   @JsonMixin(target = JsonMixinTarget.class)

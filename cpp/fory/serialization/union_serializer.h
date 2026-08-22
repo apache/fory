@@ -441,6 +441,62 @@ template <typename ValueType, typename SpecProvider, int8_t NodeIndex>
 ValueType read_union_configured_value(ReadContext &ctx, RefMode ref_mode,
                                       bool read_type);
 
+template <typename ValueType, typename SpecProvider, int8_t NodeIndex>
+inline constexpr bool union_read_data_always_advances() {
+  if constexpr (is_optional_v<ValueType>) {
+    using Inner = typename ValueType::value_type;
+    constexpr FieldNodeKind kind = union_node_kind<SpecProvider, NodeIndex>();
+    constexpr int8_t child =
+        kind == FieldNodeKind::Inner
+            ? union_node_child<SpecProvider, NodeIndex, 0>()
+            : NodeIndex;
+    return union_read_data_always_advances<Inner, SpecProvider, child>();
+  }
+  return read_data_always_advances_v<ValueType>;
+}
+
+template <bool MeasureProgress, typename Container, typename SpecProvider,
+          int8_t ElemNode>
+inline bool read_union_list_items(Container &result, ReadContext &ctx,
+                                  uint32_t length) {
+  using Elem = element_type_t<Container>;
+  uint32_t checkpoint_item = 0;
+  uint64_t checkpoint_byte = 0;
+  if constexpr (MeasureProgress) {
+    checkpoint_byte = ctx.buffer().logical_reader_index();
+  }
+  for (uint32_t i = 0; i < length; ++i) {
+    if constexpr (ElemNode >= 0) {
+      auto elem = read_union_configured_value<Elem, SpecProvider, ElemNode>(
+          ctx, RefMode::None, false);
+      collection_insert(result, std::move(elem));
+    } else {
+      auto elem = Serializer<Elem>::read_data(ctx);
+      collection_insert(result, std::move(elem));
+    }
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return false;
+    }
+    if constexpr (MeasureProgress) {
+      const uint32_t completed = i + 1;
+      if ((completed & 1023U) == 0) {
+        if (FORY_PREDICT_FALSE(!detail::settle_unbacked_container_items(
+                ctx, completed - checkpoint_item, checkpoint_byte))) {
+          return false;
+        }
+        checkpoint_item = completed;
+        checkpoint_byte = ctx.buffer().logical_reader_index();
+      }
+    }
+  }
+  if constexpr (MeasureProgress) {
+    return checkpoint_item == length ||
+           detail::settle_unbacked_container_items(
+               ctx, length - checkpoint_item, checkpoint_byte);
+  }
+  return true;
+}
+
 template <typename Container, typename SpecProvider, int8_t ElemNode>
 void write_union_configured_list_data(const Container &coll,
                                       WriteContext &ctx) {
@@ -480,18 +536,22 @@ Container read_union_configured_list_data(ReadContext &ctx) {
       return result;
     }
   }
-  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+  constexpr bool element_read_data_always_advances = []() constexpr {
+    if constexpr (ElemNode >= 0) {
+      return union_read_data_always_advances<Elem, SpecProvider, ElemNode>();
+    }
+    return read_data_always_advances_v<Elem>;
+  }();
+  if (FORY_PREDICT_FALSE(!reserve_collection<element_read_data_always_advances>(
+          result, ctx, length))) {
     return result;
   }
-  for (uint32_t i = 0; i < length; ++i) {
-    if constexpr (ElemNode >= 0) {
-      auto elem = read_union_configured_value<Elem, SpecProvider, ElemNode>(
-          ctx, RefMode::None, false);
-      collection_insert(result, std::move(elem));
-    } else {
-      auto elem = Serializer<Elem>::read_data(ctx);
-      collection_insert(result, std::move(elem));
-    }
+  if constexpr (element_read_data_always_advances) {
+    (void)read_union_list_items<false, Container, SpecProvider, ElemNode>(
+        result, ctx, length);
+  } else {
+    (void)read_union_list_items<true, Container, SpecProvider, ElemNode>(
+        result, ctx, length);
   }
   return result;
 }
@@ -545,6 +605,46 @@ void write_union_configured_map_data(const MapType &map, WriteContext &ctx) {
   }
 }
 
+template <bool MeasureProgress, typename MapType, typename SpecProvider,
+          int8_t KeyNode, int8_t ValueNode>
+inline bool read_union_map_chunk(MapType &result, ReadContext &ctx,
+                                 uint8_t chunk_size) {
+  using Key = key_type_t<MapType>;
+  using Value = mapped_type_t<MapType>;
+  uint64_t checkpoint_byte = 0;
+  if constexpr (MeasureProgress) {
+    checkpoint_byte = ctx.buffer().logical_reader_index();
+  }
+  for (uint8_t i = 0; i < chunk_size; ++i) {
+    Key key = [&]() {
+      if constexpr (KeyNode >= 0) {
+        return read_union_configured_value<Key, SpecProvider, KeyNode>(
+            ctx, RefMode::None, false);
+      }
+      return Serializer<Key>::read_data(ctx);
+    }();
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return false;
+    }
+    Value value = [&]() {
+      if constexpr (ValueNode >= 0) {
+        return read_union_configured_value<Value, SpecProvider, ValueNode>(
+            ctx, RefMode::None, false);
+      }
+      return Serializer<Value>::read_data(ctx);
+    }();
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return false;
+    }
+    result.emplace(std::move(key), std::move(value));
+  }
+  if constexpr (MeasureProgress) {
+    return detail::settle_unbacked_container_items(ctx, chunk_size,
+                                                   checkpoint_byte);
+  }
+  return true;
+}
+
 template <typename MapType, typename SpecProvider, int8_t KeyNode,
           int8_t ValueNode>
 MapType read_union_configured_map_data(ReadContext &ctx) {
@@ -555,7 +655,22 @@ MapType read_union_configured_map_data(ReadContext &ctx) {
   if (length == 0) {
     return result;
   }
-  if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
+  constexpr bool key_read_data_always_advances = []() constexpr {
+    if constexpr (KeyNode >= 0) {
+      return union_read_data_always_advances<Key, SpecProvider, KeyNode>();
+    }
+    return read_data_always_advances_v<Key>;
+  }();
+  constexpr bool value_read_data_always_advances = []() constexpr {
+    if constexpr (ValueNode >= 0) {
+      return union_read_data_always_advances<Value, SpecProvider, ValueNode>();
+    }
+    return read_data_always_advances_v<Value>;
+  }();
+  constexpr bool entry_read_data_always_advances =
+      key_read_data_always_advances || value_read_data_always_advances;
+  if (FORY_PREDICT_FALSE(
+          !reserve_map<entry_read_data_always_advances>(result, ctx, length))) {
     return result;
   }
   uint32_t read_count = 0;
@@ -563,6 +678,10 @@ MapType read_union_configured_map_data(ReadContext &ctx) {
     uint8_t header = ctx.read_uint8(ctx.error());
     uint8_t chunk_size = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return result;
+    }
+    if (FORY_PREDICT_FALSE(!detail::check_map_chunk_size(
+            ctx, chunk_size, length - read_count))) {
       return result;
     }
     const bool key_decl = (header & DECL_KEY_TYPE) != 0;
@@ -573,26 +692,22 @@ MapType read_union_configured_map_data(ReadContext &ctx) {
     if (!value_decl) {
       (void)ctx.read_any_type_info(ctx.error());
     }
-    for (uint8_t i = 0; i < chunk_size && read_count < length; ++i) {
-      Key key = [&]() {
-        if constexpr (KeyNode >= 0) {
-          return read_union_configured_value<Key, SpecProvider, KeyNode>(
-              ctx, RefMode::None, false);
-        } else {
-          return Serializer<Key>::read_data(ctx);
-        }
-      }();
-      Value value = [&]() {
-        if constexpr (ValueNode >= 0) {
-          return read_union_configured_value<Value, SpecProvider, ValueNode>(
-              ctx, RefMode::None, false);
-        } else {
-          return Serializer<Value>::read_data(ctx);
-        }
-      }();
-      result.emplace(std::move(key), std::move(value));
-      ++read_count;
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return result;
     }
+    if constexpr (entry_read_data_always_advances) {
+      if (FORY_PREDICT_FALSE(
+              (!read_union_map_chunk<false, MapType, SpecProvider, KeyNode,
+                                     ValueNode>(result, ctx, chunk_size)))) {
+        return result;
+      }
+    } else if (FORY_PREDICT_FALSE(
+                   (!read_union_map_chunk<true, MapType, SpecProvider, KeyNode,
+                                          ValueNode>(result, ctx,
+                                                     chunk_size)))) {
+      return result;
+    }
+    read_count += chunk_size;
   }
   return result;
 }
@@ -916,6 +1031,7 @@ template <typename R, typename Arg> struct UnionFactoryArg<R (*)(Arg)> {
 template <typename T>
 struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
   static constexpr TypeId type_id = TypeId::UNION;
+  static constexpr bool read_data_always_advances = true;
 
   static inline void write_type_info(WriteContext &ctx) {
     auto type_info_res = ctx.type_resolver().template get_type_info<T>();
@@ -936,7 +1052,8 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
       return;
     }
     const TypeInfo *expected = type_info_res.value();
-    const TypeInfo *remote = ctx.read_any_type_info(ctx.error());
+    const TypeInfo *remote =
+        ctx.read_any_type_info_owner(ctx.error(), expected);
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }

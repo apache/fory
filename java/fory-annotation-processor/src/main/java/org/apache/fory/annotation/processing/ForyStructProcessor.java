@@ -39,6 +39,7 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.NestingKind;
@@ -477,7 +478,62 @@ public final class ForyStructProcessor extends AbstractProcessor {
         nullable,
         trackingRef,
         hasTrackingRefMetadata,
+        fieldReadAlwaysAdvances(field.asType(), nullable, trackingRef),
         foryField.dynamic);
+  }
+
+  private boolean fieldReadAlwaysAdvances(TypeMirror type, boolean nullable, boolean trackingRef) {
+    TypeKind kind = type.getKind();
+    if (nullable || trackingRef || kind.isPrimitive() || kind == TypeKind.ARRAY) {
+      return true;
+    }
+    TypeMirror erased = types.erasure(type);
+    Element element = types.asElement(erased);
+    if (element != null && element.getKind() == ElementKind.ENUM) {
+      return true;
+    }
+    if (isAssignableTo(erased, "java.util.Collection") || isAssignableTo(erased, "java.util.Map")) {
+      return true;
+    }
+    switch (canonicalName(erased)) {
+      case "java.lang.Boolean":
+      case "java.lang.Byte":
+      case "java.lang.Character":
+      case "java.lang.Short":
+      case "java.lang.Integer":
+      case "java.lang.Long":
+      case "java.lang.Float":
+      case "java.lang.Double":
+      case "java.lang.String":
+      case "java.lang.StringBuilder":
+      case "java.lang.StringBuffer":
+      case "java.math.BigDecimal":
+      case "java.math.BigInteger":
+      case "java.nio.ByteBuffer":
+      case "java.time.Duration":
+      case "java.time.Instant":
+      case "java.time.LocalDate":
+      case "java.time.LocalDateTime":
+      case "java.util.Date":
+      case "java.sql.Date":
+      case "java.sql.Timestamp":
+      case "org.apache.fory.type.Float16":
+      case "org.apache.fory.type.BFloat16":
+      case "org.apache.fory.type.Float16Array":
+      case "org.apache.fory.type.BFloat16Array":
+      case "org.apache.fory.type.unsigned.UInt8":
+      case "org.apache.fory.type.unsigned.UInt16":
+      case "org.apache.fory.type.unsigned.UInt32":
+      case "org.apache.fory.type.unsigned.UInt64":
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  private boolean isAssignableTo(TypeMirror type, String targetName) {
+    TypeElement target = elements.getTypeElement(targetName);
+    return target != null && types.isAssignable(type, types.erasure(target.asType()));
   }
 
   private boolean fieldNullable(

@@ -36,6 +36,20 @@ func TestTypeResolver(t *testing.T) {
 	require.Error(t, typeResolver.registerStructByName(reflect.TypeOf(A{}), "example", "A"))
 }
 
+func TestUnsignedScalarsSkipRefs(t *testing.T) {
+	for _, typeID := range []TypeId{
+		UINT8,
+		UINT16,
+		UINT32,
+		UINT64,
+		VAR_UINT32,
+		VAR_UINT64,
+		TAGGED_UINT64,
+	} {
+		require.False(t, NeedWriteRef(typeID), "type ID %d", typeID)
+	}
+}
+
 func TestCreateSerializerSliceTypes(t *testing.T) {
 	fory := NewFory(WithXlang(false), WithCompatible(false))
 	r := newTypeResolver(fory)

@@ -56,6 +56,16 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
+  public void jsonFormatTimezone() {
+    AndroidJsonScenarios.generatedFormatTimezone();
+  }
+
+  @Test
+  public void generatedJsonValidator() {
+    AndroidJsonScenarios.generatedValidator();
+  }
+
+  @Test
   public void manualJsonCodecs() {
     AndroidJsonScenarios.manualCodecs();
   }
@@ -73,6 +83,11 @@ public class ForyAndroidInstrumentedTest {
   @Test
   public void generatedJsonMixin() {
     AndroidJsonScenarios.generatedMixin();
+  }
+
+  @Test
+  public void kotlinJsonMetadataSurvivesMinification() {
+    AndroidKotlinJsonScenarios.metadataSurvivesMinification();
   }
 
   @Test

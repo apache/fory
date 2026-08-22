@@ -33,7 +33,7 @@ from cpython.dict cimport PyDict_Next
 from cpython.list cimport PyList_New, PyList_SET_ITEM
 from cpython.tuple cimport PyTuple_New, PyTuple_SET_ITEM
 from cpython.ref cimport Py_INCREF, Py_XDECREF
-from cpython.bytes cimport PyBytes_GET_SIZE
+from cpython.bytes cimport PyBytes_AS_STRING, PyBytes_GET_SIZE
 from libc.string cimport memcmp
 from pyfory.includes.libflat_hash_map cimport flat_hash_map
 from pyfory.includes.libutil cimport FlatIntMap
@@ -42,6 +42,7 @@ from pyfory._fory import (
     NOT_NULL_INT64_FLAG,
 )
 from pyfory.meta.typedef_decoder import decode_typedef
+from pyfory.meta.typedef import is_struct_typedef_kind
 from pyfory.meta.metastring import MetaStringDecoder
 from pyfory.policy import DEFAULT_POLICY
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
@@ -117,6 +118,8 @@ cdef class Config:
             Mainly covers materialized collections, maps, arrays, structs, and objects. Leaf values
             are gated by unread input bytes instead, and actual process memory can be higher.
             Defaults to 128 MiB and must be a positive byte limit.
+        max_unbacked_container_items: Maximum repeated collection/map reads not backed
+            by input bytes per root. Defaults to 8192 and must be non-negative.
         field_nullable: Treats struct/dataclass fields as nullable by default.
         policy: Deserialization policy used for security-sensitive checks.
         meta_compressor: Optional typedef/meta compressor implementation.
@@ -134,6 +137,7 @@ cdef class Config:
     cdef public int32_t max_schema_versions_per_type
     cdef public int32_t max_average_schema_versions_per_type
     cdef public int64_t max_graph_memory_bytes
+    cdef public int64_t max_unbacked_container_items
     cdef public bint field_nullable
     cdef public object policy
     cdef public object meta_compressor
@@ -153,6 +157,7 @@ cdef class Config:
         max_schema_versions_per_type,
         max_average_schema_versions_per_type,
         max_graph_memory_bytes,
+        max_unbacked_container_items,
         field_nullable,
         policy,
         meta_compressor,
@@ -176,6 +181,8 @@ cdef class Config:
                 Mainly covers materialized collections, maps, arrays, structs, and objects. Leaf
                 values are gated by unread input bytes instead, and actual process memory can be
                 higher. Defaults to 128 MiB and must be a positive byte limit.
+            max_unbacked_container_items: Maximum repeated collection/map reads not backed
+                by input bytes per root. Defaults to 8192 and must be non-negative.
             field_nullable: Treat all struct fields as nullable by default.
             policy: Deserialization policy implementation.
             meta_compressor: Optional typedef/meta compressor.
@@ -201,11 +208,18 @@ cdef class Config:
             or max_graph_memory_bytes > 9223372036854775807
         ):
             raise ValueError("max_graph_memory_bytes must be in range [1, 9223372036854775807]")
+        if (
+            not isinstance(max_unbacked_container_items, int)
+            or max_unbacked_container_items < 0
+            or max_unbacked_container_items > 9223372036854775807
+        ):
+            raise ValueError("max_unbacked_container_items must be in range [0, 9223372036854775807]")
         self.max_type_fields = max_type_fields
         self.max_type_meta_bytes = max_type_meta_bytes
         self.max_schema_versions_per_type = max_schema_versions_per_type
         self.max_average_schema_versions_per_type = max_average_schema_versions_per_type
         self.max_graph_memory_bytes = max_graph_memory_bytes
+        self.max_unbacked_container_items = max_unbacked_container_items
         self.field_nullable = field_nullable
         self.policy = policy
         self.meta_compressor = meta_compressor
@@ -249,6 +263,7 @@ cdef class TypeResolver:
     cdef readonly dict _type_id_to_type_info
     cdef readonly dict _user_type_id_to_type_info
     cdef readonly dict _ns_type_to_type_info
+    cdef readonly dict _local_type_info_by_hash
     cdef readonly dict _meta_shared_type_info
     cdef vector[PyObject *] _c_registered_id_to_type_info
     cdef flat_hash_map[uint32_t, PyObject *] _c_user_type_id_to_type_info
@@ -283,6 +298,7 @@ cdef class TypeResolver:
         self._type_id_to_type_info = resolver._type_id_to_type_info
         self._user_type_id_to_type_info = resolver._user_type_id_to_type_info
         self._ns_type_to_type_info = resolver._ns_type_to_type_info
+        self._local_type_info_by_hash = resolver._local_type_info_by_hash
         self._meta_shared_type_info = resolver._meta_shared_type_info
         for typeinfo in resolver._types_info.values():
             self._populate_type_info(typeinfo)
@@ -379,6 +395,9 @@ cdef class TypeResolver:
     def get_type_info_by_name(self, namespace, typename):
         return self.resolver.get_type_info_by_name(namespace, typename)
 
+    def _get_type_by_python_name(self, module, qualname):
+        return self.resolver._get_type_by_python_name(module, qualname)
+
     def get_registered_name(self, cls):
         return self.resolver.get_registered_name(cls)
 
@@ -420,7 +439,9 @@ cdef class TypeResolver:
                     write_context.buffer, typeinfo.typename_bytes
                 )
 
-    cpdef inline TypeInfo read_type_info(self, ReadContext read_context):
+    cpdef inline TypeInfo read_type_info(
+        self, ReadContext read_context, TypeInfo expected_typeinfo=None
+    ):
         cdef Buffer buffer = read_context.buffer
         cdef uint8_t type_id = buffer.read_uint8()
         cdef TypeRegistrationKind reg_kind
@@ -433,7 +454,11 @@ cdef class TypeResolver:
             type_id == <uint8_t>TypeId.COMPATIBLE_STRUCT
             or type_id == <uint8_t>TypeId.NAMED_COMPATIBLE_STRUCT
         ):
-            return self.read_shared_type_meta(read_context, type_id=type_id)
+            return self.read_shared_type_meta(
+                read_context,
+                type_id=type_id,
+                expected_typeinfo=expected_typeinfo,
+            )
         if Fory_IsInternalTypeId(type_id):
             # Hot type-id reads must stay on the C caches. Internal ids are
             # populated during resolver initialization, so falling back into the
@@ -448,7 +473,11 @@ cdef class TypeResolver:
         reg_kind = get_type_registration_kind(<TypeId>type_id)
         if reg_kind == TypeRegistrationKind.BY_NAME:
             if self.meta_share:
-                return self.read_shared_type_meta(read_context, type_id=type_id)
+                return self.read_shared_type_meta(
+                    read_context,
+                    type_id=type_id,
+                    expected_typeinfo=expected_typeinfo,
+                )
             ns_metabytes = read_context.meta_string_reader.read_encoded_meta_string(
                 buffer
             )
@@ -541,7 +570,44 @@ cdef class TypeResolver:
             type_def = typeinfo.type_def
         write_context.write_bytes(type_def.encoded)
 
-    cpdef inline TypeInfo read_shared_type_meta(self, ReadContext read_context, type_id=None):
+    cpdef _write_unknown_struct_type_info(
+        self, WriteContext write_context, object type_def
+    ):
+        cdef MetaShareWriteContext meta_context
+        cdef object encoded
+        cdef uint8_t type_id
+        cdef uint64_t type_addr
+        cdef pair[uint64_t, int32_t] *entry
+        cdef int32_t index
+        if (
+            not is_struct_typedef_kind(type_def.type_id)
+            or not is_type_share_meta(<TypeId>type_def.type_id)
+        ):
+            raise TypeError("UnknownStruct requires a shared Struct TypeDef")
+        encoded = type_def.encoded
+        if type(encoded) is not bytes or len(encoded) < 8:
+            raise TypeError("UnknownStruct requires an encoded TypeDef")
+        meta_context = write_context.meta_share_context
+        if meta_context is None:
+            raise TypeError("UnknownStruct requires compatible metadata sharing")
+        type_id = type_def.type_id
+        type_addr = <uint64_t><PyObject *>type_def
+        write_context.write_uint8(type_id)
+        entry = meta_context.class_map.find(type_addr)
+        if entry != NULL:
+            write_context.write_var_uint32((deref(entry).second << 1) | 1)
+            return
+        index = meta_context.class_map.size()
+        meta_context.class_map[type_addr] = index
+        write_context.write_var_uint32(index << 1)
+        write_context.write_bytes(encoded)
+
+    cpdef inline TypeInfo read_shared_type_meta(
+        self,
+        ReadContext read_context,
+        type_id=None,
+        TypeInfo expected_typeinfo=None,
+    ):
         cdef MetaShareReadContext meta_context = read_context.meta_share_context
         cdef uint32_t index_marker
         cdef uint32_t index
@@ -555,40 +621,120 @@ cdef class TypeResolver:
         index_marker = read_context.read_var_uint32()
         index = index_marker >> 1
         if index_marker & 1:
-            return meta_context.read_type_infos[index]
-        typeinfo = self._read_and_build_type_info(read_context.buffer)
+            typeinfo = meta_context.read_type_infos[index]
+            return self._require_type_info_owner(typeinfo, expected_typeinfo)
+        typeinfo = self._read_and_build_type_info(
+            read_context.buffer, expected_typeinfo
+        )
         meta_context.read_type_infos.append(typeinfo)
         return typeinfo
 
-    cdef inline TypeInfo _read_and_build_type_info(self, Buffer buffer):
-        cdef int64_t header = buffer.read_int64()
-        cdef TypeInfo typeinfo = self._meta_shared_type_info.get(header)
-        if typeinfo is not None:
-            # Header-cache hits intentionally skip without rehashing. Entries reach this cache only
-            # after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-            # body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
-            _skip_typedef_fast(buffer, header)
-            return typeinfo
-        return self._read_uncached_type_info(buffer, header)
+    cdef inline bint _matches_type_def_hash(
+        self, TypeInfo typeinfo, uint64_t hash_key
+    ) noexcept:
+        cdef object type_def
+        cdef bytes encoded
+        cdef const uint8_t *data
+        cdef uint64_t header
+        if typeinfo is None:
+            return False
+        type_def = typeinfo.type_def
+        if type_def is None:
+            return False
+        encoded = type_def.encoded
+        if type(encoded) is not bytes or PyBytes_GET_SIZE(encoded) < 8:
+            return False
+        data = <const uint8_t *>PyBytes_AS_STRING(encoded)
+        header = (
+            <uint64_t>data[0]
+            | (<uint64_t>data[1] << 8)
+            | (<uint64_t>data[2] << 16)
+            | (<uint64_t>data[3] << 24)
+            | (<uint64_t>data[4] << 32)
+            | (<uint64_t>data[5] << 40)
+            | (<uint64_t>data[6] << 48)
+            | (<uint64_t>data[7] << 56)
+        )
+        return header >> 12 == hash_key
 
-    cdef TypeInfo _read_uncached_type_info(self, Buffer buffer, int64_t header):
+    cdef inline TypeInfo _require_type_info_owner(
+        self, TypeInfo typeinfo, TypeInfo expected_typeinfo
+    ):
+        if (
+            expected_typeinfo is not None
+            and typeinfo.cls is not expected_typeinfo.cls
+        ):
+            raise TypeError("Type metadata owner does not match the declared type")
+        return typeinfo
+
+    cdef inline TypeInfo _read_and_build_type_info(
+        self, Buffer buffer, TypeInfo expected_typeinfo=None
+    ):
+        cdef int64_t header = buffer.read_int64()
+        cdef uint64_t hash_key = _typedef_hash_key(header)
+        cdef TypeInfo typeinfo
+        if self._matches_type_def_hash(expected_typeinfo, hash_key):
+            # A declared concrete owner outranks remote checked metadata. The
+            # current frame contributes only its bounded body length on this hit.
+            _skip_typedef_fast(buffer, header)
+            return expected_typeinfo
+        typeinfo = self._local_type_info_by_hash.get(hash_key)
+        if typeinfo is not None:
+            _skip_typedef_fast(buffer, header)
+            return self._require_type_info_owner(typeinfo, expected_typeinfo)
+        typeinfo = self._meta_shared_type_info.get(hash_key)
+        if typeinfo is not None:
+            # The top 52 bits are the protocol identity. On a hit the current low
+            # 12 bits only describe how much opaque frame data to bounds-check and skip.
+            _skip_typedef_fast(buffer, header)
+            return self._require_type_info_owner(typeinfo, expected_typeinfo)
+        return self._read_uncached_type_info(buffer, header, expected_typeinfo)
+
+    cdef TypeInfo _read_uncached_type_info(
+        self,
+        Buffer buffer,
+        int64_t header,
+        TypeInfo expected_typeinfo=None,
+    ):
         cdef TypeInfo typeinfo
         cdef object type_def
         cdef object type_key
+        cdef object name
+        cdef int64_t local_header
+        cdef uint64_t hash_key = _typedef_hash_key(header)
         type_def = decode_typedef(buffer, self.resolver, header=header)
         typeinfo = self.resolver._local_type_info_for_typedef(type_def)
+        if expected_typeinfo is not None:
+            if typeinfo is None or typeinfo.cls is not expected_typeinfo.cls:
+                raise TypeError("Type metadata owner does not match the declared type")
         if typeinfo is not None:
             if typeinfo.type_def is None:
                 self.resolver._set_type_info(typeinfo)
-            if (
-                typeinfo.type_def is not None
-                and typeinfo.type_def.encoded == type_def.encoded
-            ):
-                self._meta_shared_type_info[header] = typeinfo
-                return typeinfo
+            if typeinfo.type_def is not None:
+                local_header = Buffer(typeinfo.type_def.encoded).read_int64()
+                if _typedef_hash_key(local_header) == hash_key:
+                    # Registration owns this expected local schema. It is not a
+                    # validated remote entry and must not enter the persistent cache.
+                    self._local_type_info_by_hash[hash_key] = typeinfo
+                    return typeinfo
+        elif not is_struct_typedef_kind(type_def.type_id):
+            name = (
+                type_def.namespace + "." + type_def.typename
+                if type_def.namespace
+                else type_def.typename
+            )
+            raise ValueError(f"TypeDef {name} is not registered")
         type_key = self.resolver._check_remote_type_def_limit(type_def)
+        if typeinfo is None:
+            # Compatible metadata authorizes only this fixed framework owner;
+            # it never loads or manufactures the sender-named Python class.
+            from pyfory.struct import UnknownStruct
+
+            type_def.cls = UnknownStruct
+        else:
+            self.resolver._bind_local_type_def(type_def, typeinfo)
         typeinfo = self.resolver._build_type_info_from_typedef(type_def)
-        self._meta_shared_type_info[header] = typeinfo
+        self._meta_shared_type_info[hash_key] = typeinfo
         self.resolver._record_remote_type_def(type_key)
         return typeinfo
 
@@ -603,11 +749,60 @@ cdef class TypeResolver:
             self._c_meta_hash_to_type_info.find(hash_key)
         )
         cdef TypeInfo typeinfo
+        # Slow resolution may populate and rehash this map, invalidating entry.
+        cdef bint cache_slot_empty = (
+            entry == NULL or deref(entry).second == NULL
+        )
         if entry != NULL and deref(entry).second != NULL:
-            return <TypeInfo>deref(entry).second
+            typeinfo = <TypeInfo>deref(entry).second
+            if (
+                _encoded_meta_string_matches(
+                    ns_metabytes,
+                    typeinfo.namespace_bytes,
+                )
+                and _encoded_meta_string_matches(
+                    type_metabytes,
+                    typeinfo.typename_bytes,
+                )
+            ):
+                return typeinfo
         typeinfo = self.resolver._load_metabytes_to_type_info(ns_metabytes, type_metabytes)
-        self._c_meta_hash_to_type_info[hash_key] = <PyObject *>typeinfo
+        if (
+            cache_slot_empty
+            # The Python resolver owns the bounded accepted-alias set. The
+            # compiled mirror must not retain aliases that owner declined.
+            and self._ns_type_to_type_info.get(
+                (ns_metabytes, type_metabytes)
+            ) is typeinfo
+            and _encoded_meta_string_matches(
+                ns_metabytes,
+                typeinfo.namespace_bytes,
+            )
+            and _encoded_meta_string_matches(
+                type_metabytes,
+                typeinfo.typename_bytes,
+            )
+        ):
+            self._c_meta_hash_to_type_info[hash_key] = <PyObject *>typeinfo
         return typeinfo
+
+
+cdef inline bint _encoded_meta_string_matches(object left, object right):
+    if left is right:
+        return True
+    if left is None or right is None:
+        return False
+    return (
+        left.hashcode == right.hashcode
+        and left.encoding == right.encoding
+        and left.length == right.length
+        and left.data == right.data
+    )
+
+
+cdef inline uint64_t _typedef_hash_key(int64_t header):
+    # Cast before shifting so signed headers keep their protocol-defined top 52 bits.
+    return (<uint64_t>header) >> 12
 
 
 cdef inline void _skip_typedef_fast(Buffer buffer, int64_t header):
@@ -648,6 +843,7 @@ cdef class Serializer:
     cdef readonly TypeResolver type_resolver
     cdef readonly object type_
     cdef public bint need_to_write_ref
+    cdef public bint read_data_always_advances
 
     def __init__(self, TypeResolver type_resolver, type_):
         """
@@ -661,6 +857,7 @@ cdef class Serializer:
         type_ = normalize_fory_type(type_)
         self.type_ = type_
         self.need_to_write_ref = self.type_resolver.track_ref and not _is_primitive_type(type_)
+        self.read_data_always_advances = False
 
     cpdef write(self, WriteContext write_context, value):
         raise NotImplementedError(f"write method not implemented in {type(self)}")
@@ -672,6 +869,12 @@ cdef class Serializer:
     @classmethod
     def support_subclass(cls) -> bool:
         return False
+
+
+cdef class _PrimitiveSerializer(Serializer):
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
 
 
 @cython.final
@@ -688,6 +891,7 @@ cdef class EnumSerializer(Serializer):
         cdef uint32_t wire_value
         super().__init__(type_resolver, type_)
         self.need_to_write_ref = False
+        self.read_data_always_advances = True
         self._members = tuple(type_)
         self._wire_value_by_member = {member: idx for idx, member in enumerate(self._members)}
         self._member_by_wire_value = {idx: member for idx, member in enumerate(self._members)}
@@ -729,6 +933,10 @@ cdef class EnumSerializer(Serializer):
 
 @cython.final
 cdef class SliceSerializer(Serializer):
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.read_data_always_advances = True
+
     cpdef inline write(self, WriteContext write_context, v):
         cdef slice value = v
         start, stop, step = value.start, value.stop, value.step
@@ -847,6 +1055,7 @@ cdef class Fory:
     cdef public bint field_nullable
     cdef public int32_t max_depth
     cdef public int64_t max_graph_memory_bytes
+    cdef public int64_t max_unbacked_container_items
     cdef public object policy
     cdef public Config config
     cdef public TypeResolver type_resolver
@@ -866,6 +1075,7 @@ cdef class Fory:
         max_schema_versions_per_type=10,
         max_average_schema_versions_per_type=3,
         max_graph_memory_bytes=128 * 1024 * 1024,
+        max_unbacked_container_items=8192,
         policy=None,
         field_nullable=False,
         meta_compressor=None,
@@ -888,6 +1098,8 @@ cdef class Fory:
                 Mainly covers materialized collections, maps, arrays, structs, and objects. Leaf
                 values are gated by unread input bytes instead, and actual process memory can be
                 higher. Defaults to 128 MiB and must be a positive byte limit.
+            max_unbacked_container_items: Maximum repeated collection/map reads not backed
+                by input bytes per root. Defaults to 8192 and must be non-negative.
             policy: Optional deserialization policy implementation.
             field_nullable: Treat struct fields as nullable by default.
             meta_compressor: Optional typedef/meta compressor implementation.
@@ -911,7 +1123,14 @@ cdef class Fory:
             or max_graph_memory_bytes > 9223372036854775807
         ):
             raise ValueError("max_graph_memory_bytes must be in range [1, 9223372036854775807]")
+        if (
+            not isinstance(max_unbacked_container_items, int)
+            or max_unbacked_container_items < 0
+            or max_unbacked_container_items > 9223372036854775807
+        ):
+            raise ValueError("max_unbacked_container_items must be in range [0, 9223372036854775807]")
         self.max_graph_memory_bytes = max_graph_memory_bytes
+        self.max_unbacked_container_items = max_unbacked_container_items
         self.config = Config(
             xlang=xlang,
             track_ref=ref,
@@ -925,6 +1144,7 @@ cdef class Fory:
             max_schema_versions_per_type=max_schema_versions_per_type,
             max_average_schema_versions_per_type=max_average_schema_versions_per_type,
             max_graph_memory_bytes=max_graph_memory_bytes,
+            max_unbacked_container_items=max_unbacked_container_items,
             field_nullable=field_nullable,
             policy=self.policy,
             meta_compressor=meta_compressor,
@@ -1107,6 +1327,7 @@ cdef class Fory:
         )
         read_context.peer_out_of_band_enabled = peer_out_of_band_enabled
         read_context.remaining_graph_memory_bytes = self.max_graph_memory_bytes
+        read_context.remaining_unbacked_container_items = self.max_unbacked_container_items
         read_context.depth = 0
         return read_context.read_ref()
 

@@ -182,7 +182,9 @@ public class UnionSerializer extends Serializer<Union> {
         caseValue = readCaseValue(readContext, serializer, genericType);
       } else {
         TypeInfo readTypeInfo = resolver.readTypeInfo(readContext);
+        readContext.increaseDepth();
         caseValue = Serializers.read(readContext, readTypeInfo.getSerializer());
+        readContext.decreaseDepth();
       }
       readContext.setReadRef(nextReadRefId, caseValue);
     } else {
@@ -353,16 +355,20 @@ public class UnionSerializer extends Serializer<Union> {
   private static Object readCaseValue(
       ReadContext readContext, Serializer serializer, GenericType genericType) {
     if (genericType == null) {
-      return Serializers.read(readContext, serializer);
+      readContext.increaseDepth();
+      Object value = Serializers.read(readContext, serializer);
+      readContext.decreaseDepth();
+      return value;
     }
+    // ReadContext.reset is the sole failure cleanup owner for both depth and generic state.
+    // Nested decoders decrement and pop only after a successful child read; do not add a local
+    // try/finally here.
     readContext.getGenerics().pushGenericType(genericType, readContext.getDepth());
     readContext.increaseDepth();
-    try {
-      return Serializers.read(readContext, serializer);
-    } finally {
-      readContext.decreaseDepth();
-      readContext.getGenerics().popGenericType(readContext.getDepth());
-    }
+    Object value = Serializers.read(readContext, serializer);
+    readContext.decreaseDepth();
+    readContext.getGenerics().popGenericType(readContext.getDepth());
+    return value;
   }
 
   private static void writeKnownCasePayload(
@@ -651,5 +657,10 @@ public class UnionSerializer extends Serializer<Union> {
       }
     }
     return builder.toString();
+  }
+
+  @Override
+  public final boolean readDataAlwaysAdvances() {
+    return true;
   }
 }

@@ -21,12 +21,18 @@ package org.apache.fory.codegen;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Executable;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -34,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -46,11 +53,86 @@ import org.codehaus.commons.compiler.util.resource.MapResourceFinder;
 import org.codehaus.commons.compiler.util.resource.Resource;
 import org.codehaus.janino.ClassLoaderIClassLoader;
 import org.codehaus.janino.Compiler;
+import org.codehaus.janino.MethodDescriptor;
 import org.codehaus.janino.util.ClassFile;
 
 /** A util to compile code to bytecode and create classloader to load generated class. */
 public class JaninoUtils {
   private static final Logger LOG = LoggerFactory.getLogger(JaninoUtils.class);
+
+  /**
+   * One verified direct JVM invocation used to replace a source placeholder after Janino has
+   * compiled the containing class.
+   *
+   * <p>The generated-codec bridge is an instance method with a source-nameable signature; the
+   * target member need not be source-nameable. Parameter index {@code -1} supplies a JVM null
+   * constant. All other indexes select one bridge parameter.
+   */
+  @Internal
+  public static final class DirectInvocation {
+    private final String bridgeName;
+    private final Class<?> returnType;
+    private final Class<?>[] parameterTypes;
+    private final Executable target;
+    private final int receiverIndex;
+    private final int[] argumentIndexes;
+
+    private DirectInvocation(
+        String bridgeName,
+        Class<?> returnType,
+        Class<?>[] parameterTypes,
+        Executable target,
+        int receiverIndex,
+        int[] argumentIndexes) {
+      this.bridgeName = bridgeName;
+      this.returnType = returnType;
+      this.parameterTypes = parameterTypes.clone();
+      this.target = target;
+      this.receiverIndex = receiverIndex;
+      this.argumentIndexes = argumentIndexes.clone();
+      validateDirectInvocation(this);
+    }
+
+    /** Creates a bridge which invokes one exact constructor. */
+    public static DirectInvocation constructor(
+        String bridgeName,
+        Class<?>[] parameterTypes,
+        Constructor<?> target,
+        int... argumentIndexes) {
+      return new DirectInvocation(
+          bridgeName, target.getDeclaringClass(), parameterTypes, target, -1, argumentIndexes);
+    }
+
+    /** Creates a bridge which invokes one exact method. */
+    public static DirectInvocation method(
+        String bridgeName,
+        Class<?> returnType,
+        Class<?>[] parameterTypes,
+        Method target,
+        int receiverIndex,
+        int... argumentIndexes) {
+      return new DirectInvocation(
+          bridgeName, returnType, parameterTypes, target, receiverIndex, argumentIndexes);
+    }
+
+    public String bridgeName() {
+      return bridgeName;
+    }
+
+    public String descriptor() {
+      return methodDescriptor(returnType, parameterTypes);
+    }
+
+    /** Returns whether two bridge declarations invoke the same exact verified target shape. */
+    public boolean sameTarget(DirectInvocation other) {
+      return other != null
+          && returnType == other.returnType
+          && target.equals(other.target)
+          && receiverIndex == other.receiverIndex
+          && Arrays.equals(parameterTypes, other.parameterTypes)
+          && Arrays.equals(argumentIndexes, other.argumentIndexes);
+    }
+  }
 
   public static Class<?> compileClass(
       ClassLoader loader, String pkg, String className, String code) {
@@ -142,6 +224,316 @@ public class JaninoUtils {
     ReflectionUtils.setObjectFieldValue(classLoader, "classLoader", null);
     ReflectionUtils.setObjectFieldValue(classLoader, "loadedIClasses", new HashMap<>());
     return classes;
+  }
+
+  /** Replaces verified source placeholders with straight-line direct JVM invocations. */
+  @Internal
+  public static byte[] installDirectInvocations(
+      byte[] classBytes, DirectInvocation... invocations) {
+    if (invocations.length == 0) {
+      return classBytes;
+    }
+    try {
+      ClassFile classFile = new ClassFile(new ByteArrayInputStream(classBytes));
+      ReflectionUtils.setObjectFieldValue(
+          classFile, "methodInfos", new ArrayList<>(classFile.methodInfos));
+      for (DirectInvocation invocation : invocations) {
+        installDirectInvocation(classFile, invocation);
+      }
+      return classFile.toByteArray();
+    } catch (IOException e) {
+      throw new CodegenException("Cannot rewrite generated direct invocation", e);
+    }
+  }
+
+  private static void installDirectInvocation(ClassFile classFile, DirectInvocation invocation) {
+    String descriptor = invocation.descriptor();
+    ClassFile.MethodInfo sourceMethod = null;
+    for (ClassFile.MethodInfo method : classFile.methodInfos) {
+      if (method.getName().equals(invocation.bridgeName())
+          && method.getDescriptor().equals(descriptor)) {
+        if (sourceMethod != null) {
+          throw new CodegenException(
+              "Duplicate generated direct invocation " + invocation.bridgeName());
+        }
+        sourceMethod = method;
+      }
+    }
+    if (sourceMethod == null) {
+      throw new CodegenException(
+          "Missing generated direct invocation "
+              + invocation.bridgeName()
+              + descriptor
+              + " in "
+              + classFile.getThisClassName());
+    }
+    if (Modifier.isStatic(sourceMethod.getAccessFlags())) {
+      throw new CodegenException(
+          "Generated direct invocation bridge must be an instance method "
+              + invocation.bridgeName()
+              + descriptor);
+    }
+    classFile.methodInfos.remove(sourceMethod);
+    ClassFile.MethodInfo method =
+        classFile.addMethodInfo(
+            sourceMethod.getAccessFlags(),
+            invocation.bridgeName(),
+            new MethodDescriptor(descriptor));
+    byte[] code = directInvocationCode(classFile, invocation);
+    int maxLocals = parameterSlots(invocation.parameterTypes) + 1;
+    int targetSlots = parameterSlots(invocation.target.getParameterTypes());
+    int invocationStack =
+        invocation.target instanceof Constructor
+            ? targetSlots + 2
+            : targetSlots + (Modifier.isStatic(invocation.target.getModifiers()) ? 0 : 1);
+    int maxStack = Math.max(invocationStack, slots(invocation.returnType));
+    short codeName = classFile.addConstantUtf8Info("Code");
+    method.addAttribute(
+        new ClassFile.CodeAttribute(
+            codeName,
+            (short) maxStack,
+            (short) maxLocals,
+            code,
+            new ClassFile.CodeAttribute.ExceptionTableEntry[0],
+            new ClassFile.AttributeInfo[0]));
+  }
+
+  private static byte[] directInvocationCode(ClassFile classFile, DirectInvocation invocation) {
+    ByteArrayOutputStream code = new ByteArrayOutputStream();
+    Executable target = invocation.target;
+    if (target instanceof Constructor) {
+      short owner = classFile.addConstantClassInfo(typeDescriptor(target.getDeclaringClass()));
+      writeOpcodeIndex(code, 0xbb, owner); // new
+      code.write(0x59); // dup
+    } else if (!Modifier.isStatic(target.getModifiers())) {
+      writeLoad(
+          code,
+          invocation.parameterTypes[invocation.receiverIndex],
+          localIndex(invocation, invocation.receiverIndex));
+    }
+    Class<?>[] targetParameters = target.getParameterTypes();
+    for (int i = 0; i < targetParameters.length; i++) {
+      int source = invocation.argumentIndexes[i];
+      if (source < 0) {
+        code.write(0x01); // aconst_null
+      } else {
+        writeLoad(code, invocation.parameterTypes[source], localIndex(invocation, source));
+      }
+    }
+    Class<?> ownerType = target.getDeclaringClass();
+    String ownerDescriptor = typeDescriptor(ownerType);
+    String targetName = target instanceof Constructor ? "<init>" : target.getName();
+    String targetDescriptor =
+        methodDescriptor(
+            target instanceof Method ? ((Method) target).getReturnType() : void.class,
+            targetParameters);
+    short reference;
+    int opcode;
+    if (target instanceof Constructor) {
+      reference = classFile.addConstantMethodrefInfo(ownerDescriptor, targetName, targetDescriptor);
+      opcode = 0xb7; // invokespecial
+    } else if (Modifier.isStatic(target.getModifiers())) {
+      reference =
+          ownerType.isInterface()
+              ? classFile.addConstantInterfaceMethodrefInfo(
+                  ownerDescriptor, targetName, targetDescriptor)
+              : classFile.addConstantMethodrefInfo(ownerDescriptor, targetName, targetDescriptor);
+      opcode = 0xb8; // invokestatic
+    } else if (ownerType.isInterface()) {
+      reference =
+          classFile.addConstantInterfaceMethodrefInfo(
+              ownerDescriptor, targetName, targetDescriptor);
+      opcode = 0xb9; // invokeinterface
+    } else {
+      reference = classFile.addConstantMethodrefInfo(ownerDescriptor, targetName, targetDescriptor);
+      opcode = 0xb6; // invokevirtual
+    }
+    writeOpcodeIndex(code, opcode, reference);
+    if (opcode == 0xb9) {
+      code.write(parameterSlots(targetParameters) + 1);
+      code.write(0);
+    }
+    writeReturn(code, invocation.returnType);
+    return code.toByteArray();
+  }
+
+  private static void validateDirectInvocation(DirectInvocation invocation) {
+    if (invocation.bridgeName.isEmpty()) {
+      throw new IllegalArgumentException("Direct invocation bridge name is empty");
+    }
+    Class<?>[] targetParameters = invocation.target.getParameterTypes();
+    if (targetParameters.length != invocation.argumentIndexes.length) {
+      throw new IllegalArgumentException("Direct invocation argument shape does not match target");
+    }
+    if (invocation.target instanceof Constructor) {
+      if (invocation.returnType != invocation.target.getDeclaringClass()
+          || invocation.receiverIndex != -1) {
+        throw new IllegalArgumentException("Invalid direct constructor bridge shape");
+      }
+    } else {
+      Method method = (Method) invocation.target;
+      if (invocation.returnType != method.getReturnType()) {
+        throw new IllegalArgumentException(
+            "Direct method bridge return type does not match target");
+      }
+      if (Modifier.isStatic(method.getModifiers())) {
+        if (invocation.receiverIndex != -1) {
+          throw new IllegalArgumentException("Static direct method cannot have a receiver");
+        }
+      } else if (invocation.receiverIndex < 0
+          || invocation.receiverIndex >= invocation.parameterTypes.length
+          || !method
+              .getDeclaringClass()
+              .isAssignableFrom(invocation.parameterTypes[invocation.receiverIndex])) {
+        throw new IllegalArgumentException("Invalid direct method receiver");
+      }
+    }
+    for (int i = 0; i < targetParameters.length; i++) {
+      int source = invocation.argumentIndexes[i];
+      if (source < 0) {
+        if (targetParameters[i].isPrimitive()) {
+          throw new IllegalArgumentException("Null cannot supply a primitive direct argument");
+        }
+      } else if (source >= invocation.parameterTypes.length
+          || invocation.parameterTypes[source] != targetParameters[i]) {
+        throw new IllegalArgumentException("Direct invocation argument type does not match target");
+      }
+    }
+  }
+
+  private static int localIndex(DirectInvocation invocation, int parameterIndex) {
+    // Direct placeholders are generated-codec instance methods. Target staticness affects only the
+    // invocation opcode; local slot zero always remains the generated-codec receiver.
+    int index = 1;
+    for (int i = 0; i < parameterIndex; i++) {
+      index += slots(invocation.parameterTypes[i]);
+    }
+    return index;
+  }
+
+  private static int parameterSlots(Class<?>[] types) {
+    int slots = 0;
+    for (Class<?> type : types) {
+      slots += slots(type);
+    }
+    return slots;
+  }
+
+  private static int slots(Class<?> type) {
+    return type == long.class || type == double.class ? 2 : 1;
+  }
+
+  private static void writeLoad(ByteArrayOutputStream code, Class<?> type, int index) {
+    int opcode;
+    if (!type.isPrimitive()) {
+      opcode = 0x19; // aload
+    } else if (type == long.class) {
+      opcode = 0x16; // lload
+    } else if (type == float.class) {
+      opcode = 0x17; // fload
+    } else if (type == double.class) {
+      opcode = 0x18; // dload
+    } else {
+      opcode = 0x15; // iload
+    }
+    int compactBase;
+    switch (opcode) {
+      case 0x15:
+        compactBase = 0x1a;
+        break;
+      case 0x16:
+        compactBase = 0x1e;
+        break;
+      case 0x17:
+        compactBase = 0x22;
+        break;
+      case 0x18:
+        compactBase = 0x26;
+        break;
+      default:
+        compactBase = 0x2a;
+    }
+    if (index <= 3) {
+      code.write(compactBase + index);
+    } else if (index <= 255) {
+      code.write(opcode);
+      code.write(index);
+    } else {
+      code.write(0xc4); // wide
+      code.write(opcode);
+      writeShort(code, index);
+    }
+  }
+
+  private static void writeOpcodeIndex(ByteArrayOutputStream code, int opcode, short index) {
+    code.write(opcode);
+    writeShort(code, index & 0xffff);
+  }
+
+  private static void writeShort(ByteArrayOutputStream code, int value) {
+    code.write(value >>> 8);
+    code.write(value);
+  }
+
+  private static void writeReturn(ByteArrayOutputStream code, Class<?> type) {
+    if (type == void.class) {
+      code.write(0xb1);
+    } else if (!type.isPrimitive()) {
+      code.write(0xb0);
+    } else if (type == long.class) {
+      code.write(0xad);
+    } else if (type == float.class) {
+      code.write(0xae);
+    } else if (type == double.class) {
+      code.write(0xaf);
+    } else {
+      code.write(0xac);
+    }
+  }
+
+  private static String methodDescriptor(Class<?> returnType, Class<?>[] parameterTypes) {
+    StringBuilder descriptor = new StringBuilder("(");
+    for (Class<?> parameterType : parameterTypes) {
+      descriptor.append(typeDescriptor(parameterType));
+    }
+    return descriptor.append(')').append(typeDescriptor(returnType)).toString();
+  }
+
+  private static String typeDescriptor(Class<?> type) {
+    if (type.isPrimitive()) {
+      if (type == void.class) {
+        return "V";
+      }
+      if (type == boolean.class) {
+        return "Z";
+      }
+      if (type == byte.class) {
+        return "B";
+      }
+      if (type == char.class) {
+        return "C";
+      }
+      if (type == short.class) {
+        return "S";
+      }
+      if (type == int.class) {
+        return "I";
+      }
+      if (type == long.class) {
+        return "J";
+      }
+      if (type == float.class) {
+        return "F";
+      }
+      if (type == double.class) {
+        return "D";
+      }
+      throw new AssertionError(type);
+    }
+    if (type.isArray()) {
+      return type.getName().replace('.', '/');
+    }
+    return 'L' + type.getName().replace('.', '/') + ';';
   }
 
   public static class CodeStats {

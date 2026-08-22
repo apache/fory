@@ -265,13 +265,12 @@ def write_report(
         "Apache Fory, Protocol Buffers, and JSON in Swift."
     )
     lines.append("")
-    lines.append("## Benchmark Products")
+    lines.append("## Benchmark Scope")
     lines.append("")
     lines.append(
-        "The ordinary/xlang cases are built by `swift-benchmark`. External-type "
-        "and carrier comparisons are built by the separate "
-        "`swift-external-benchmark` product, so building the ordinary product "
-        "does not compile those models or serializer specializations."
+        "The results below cover the ordinary/xlang cases run by `swift-benchmark`. "
+        "External-type and carrier comparisons use the separate "
+        "`swift-external-benchmark` executable and are included only when requested."
     )
     lines.append("")
     lines.append("## Throughput Plot")
@@ -344,7 +343,7 @@ def write_report(
         lines.append("## External-Type Serialization")
         lines.append("")
         lines.append(
-            "These cases are built in the isolated `swift-external-benchmark` product."
+            "These cases run in the isolated `swift-external-benchmark` executable."
         )
         lines.append("")
         lines.append("| Case | Operation | TPS | ns/op | Bytes |")

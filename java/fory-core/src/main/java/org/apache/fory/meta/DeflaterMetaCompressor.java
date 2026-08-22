@@ -46,11 +46,6 @@ public class DeflaterMetaCompressor implements MetaCompressor {
   }
 
   @Override
-  public byte[] decompress(byte[] input, int offset, int size) {
-    return decompress(input, offset, size, Integer.MAX_VALUE);
-  }
-
-  @Override
   public byte[] decompress(byte[] input, int offset, int size, int maxOutputSize) {
     Inflater inflater = new Inflater();
     inflater.setInput(input, offset, size);

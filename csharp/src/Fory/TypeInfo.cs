@@ -33,12 +33,21 @@ internal enum UserTypeKind
 
 public sealed class TypeInfo
 {
-    internal readonly record struct TypeMetaCacheEntry(TypeMeta TypeMeta, byte[] EncodedBytes, ulong HeaderHash);
+    internal readonly record struct TypeMetaCacheEntry(
+        TypeMeta TypeMeta,
+        byte[] EncodedBytes,
+        ulong HeaderHash,
+        CheckedTypeMeta CheckedTypeMeta);
 
+    private static readonly MethodInfo CreateNullableMethod =
+        typeof(TypeInfo).GetMethod(
+            nameof(CreateNullable),
+            BindingFlags.NonPublic | BindingFlags.Static)!;
     private readonly object _serializer;
     private readonly TypeMeta? _typeMeta;
     private readonly Action<WriteContext, object?, bool> _writeDataObject;
     private readonly Func<ReadContext, object?> _readDataObject;
+    private readonly Action<ReadContext> _skipDataObject;
     private readonly Func<ReadContext, uint, object?>? _readReservedRefDataObject;
     private readonly Action<WriteContext, object?, RefMode, bool, bool> _writeObject;
     private readonly Func<ReadContext, RefMode, bool, object?> _readObject;
@@ -58,6 +67,7 @@ public sealed class TypeInfo
         bool isRefType,
         object? defaultObject,
         bool evolving,
+        bool readDataAlwaysAdvances,
         bool isRegistered,
         uint? userTypeId,
         bool registerByName,
@@ -65,6 +75,7 @@ public sealed class TypeInfo
         MetaString? typeName,
         Action<WriteContext, object?, bool> writeDataObject,
         Func<ReadContext, object?> readDataObject,
+        Action<ReadContext> skipDataObject,
         Func<ReadContext, uint, object?>? readReservedRefDataObject,
         Action<WriteContext, object?, RefMode, bool, bool> writeObject,
         Func<ReadContext, RefMode, bool, object?> readObject,
@@ -82,6 +93,7 @@ public sealed class TypeInfo
         IsRefType = isRefType;
         DefaultObject = defaultObject;
         Evolving = evolving;
+        ReadDataAlwaysAdvances = readDataAlwaysAdvances;
         IsRegistered = isRegistered;
         UserTypeId = userTypeId;
         RegisterByName = registerByName;
@@ -89,6 +101,7 @@ public sealed class TypeInfo
         TypeName = typeName;
         _writeDataObject = writeDataObject;
         _readDataObject = readDataObject;
+        _skipDataObject = skipDataObject;
         _readReservedRefDataObject = readReservedRefDataObject;
         _writeObject = writeObject;
         _readObject = readObject;
@@ -98,7 +111,7 @@ public sealed class TypeInfo
 
     internal static TypeInfo Create<T>(Type type, Serializer<T> serializer)
     {
-        return Create(type, serializer, evolving: true);
+        return Create(type, serializer, evolving: true, readDataAlwaysAdvances: false);
     }
 
     internal static TypeInfo Create<T>(
@@ -106,6 +119,23 @@ public sealed class TypeInfo
         Serializer<T> serializer,
         bool evolving)
     {
+        return Create(type, serializer, evolving, readDataAlwaysAdvances: false);
+    }
+
+    internal static TypeInfo Create<T>(
+        Type type,
+        Serializer<T> serializer,
+        bool evolving,
+        bool readDataAlwaysAdvances)
+    {
+        Type? nullableType = Nullable.GetUnderlyingType(type);
+        if (nullableType is not null)
+        {
+            return (TypeInfo)CreateNullableMethod
+                .MakeGenericMethod(nullableType)
+                .Invoke(null, [type, serializer, evolving])!;
+        }
+
         Func<bool, IReadOnlyList<TypeMetaFieldInfo>> typeMetaFields =
             CreateTypeMetaFieldsProvider(serializer, out bool hasTypeMetaFieldsProvider);
         (TypeId? builtInTypeId, UserTypeKind? userTypeKind, bool isDynamicType) = ResolveTypeShape(
@@ -128,6 +158,7 @@ public sealed class TypeInfo
             isRefType,
             serializer.DefaultObject,
             resolvedEvolving,
+            readDataAlwaysAdvances,
             isRegistered: false,
             userTypeId: null,
             registerByName: false,
@@ -135,10 +166,56 @@ public sealed class TypeInfo
             typeName: null,
             (context, value, hasGenerics) => WriteDataObject(serializer, context, value, hasGenerics),
             context => ReadDataObject(serializer, context, boxedValueBytes),
+            context => SkipDataObject(serializer, context),
             CreateReservedRefDataReader(serializer, boxedValueBytes),
             (context, value, refMode, writeTypeInfo, hasGenerics) =>
                 WriteObject(serializer, context, value, refMode, writeTypeInfo, hasGenerics),
-            (context, refMode, readTypeInfo) => serializer.Read(context, refMode, readTypeInfo),
+            (context, refMode, readTypeInfo) =>
+                ReadObject(serializer, context, refMode, readTypeInfo, boxedValueBytes),
+            typeMetaFields,
+            builtInTypeId,
+            null);
+    }
+
+    private static TypeInfo CreateNullable<T>(
+        Type type,
+        object serializerObject,
+        bool evolving)
+        where T : struct
+    {
+        Serializer<T?> serializer = (Serializer<T?>)serializerObject;
+        Func<bool, IReadOnlyList<TypeMetaFieldInfo>> typeMetaFields =
+            CreateTypeMetaFieldsProvider(serializer, out bool hasTypeMetaFieldsProvider);
+        (TypeId? builtInTypeId, UserTypeKind? userTypeKind, bool isDynamicType) = ResolveTypeShape(
+            type,
+            hasTypeMetaFieldsProvider);
+        bool resolvedEvolving =
+            userTypeKind == Apache.Fory.UserTypeKind.Struct ? evolving : true;
+        long boxedValueBytes = BoxedValueBytes<T>();
+        return new TypeInfo(
+            type,
+            serializer,
+            builtInTypeId,
+            userTypeKind,
+            isDynamicType,
+            isNullableType: true,
+            isRefType: false,
+            serializer.DefaultObject,
+            resolvedEvolving,
+            readDataAlwaysAdvances: false,
+            isRegistered: false,
+            userTypeId: null,
+            registerByName: false,
+            namespaceName: null,
+            typeName: null,
+            (context, value, hasGenerics) => WriteDataObject(serializer, context, value, hasGenerics),
+            context => ReadNullableData(serializer, context, boxedValueBytes),
+            context => SkipDataObject(serializer, context),
+            readReservedRefDataObject: null,
+            (context, value, refMode, writeTypeInfo, hasGenerics) =>
+                WriteObject(serializer, context, value, refMode, writeTypeInfo, hasGenerics),
+            (context, refMode, readTypeInfo) =>
+                ReadNullable(serializer, context, refMode, readTypeInfo, boxedValueBytes),
             typeMetaFields,
             builtInTypeId,
             null);
@@ -193,6 +270,61 @@ public sealed class TypeInfo
         return serializer.ReadData(context);
     }
 
+    private static void SkipDataObject<T>(Serializer<T> serializer, ReadContext context)
+    {
+        _ = serializer.ReadData(context);
+    }
+
+    private static object? ReadObject<T>(
+        Serializer<T> serializer,
+        ReadContext context,
+        RefMode refMode,
+        bool readTypeInfo,
+        long boxedValueBytes)
+    {
+        T value = serializer.Read(context, refMode, readTypeInfo);
+        if (boxedValueBytes != 0)
+        {
+            context.ReserveGraphMemory(boxedValueBytes);
+        }
+
+        return value;
+    }
+
+    private static object? ReadNullableData<T>(
+        Serializer<T?> serializer,
+        ReadContext context,
+        long boxedValueBytes)
+        where T : struct
+    {
+        T? value = serializer.ReadData(context);
+        if (!value.HasValue)
+        {
+            return null;
+        }
+
+        context.ReserveGraphMemory(boxedValueBytes);
+        return value.Value;
+    }
+
+    private static object? ReadNullable<T>(
+        Serializer<T?> serializer,
+        ReadContext context,
+        RefMode refMode,
+        bool readTypeInfo,
+        long boxedValueBytes)
+        where T : struct
+    {
+        T? value = serializer.Read(context, refMode, readTypeInfo);
+        if (!value.HasValue)
+        {
+            return null;
+        }
+
+        context.ReserveGraphMemory(boxedValueBytes);
+        return value.Value;
+    }
+
     private static Func<ReadContext, uint, object?>? CreateReservedRefDataReader<T>(
         Serializer<T> serializer,
         long boxedValueBytes)
@@ -231,34 +363,11 @@ public sealed class TypeInfo
         }
     }
 
-    private static long BoxedValueBytes<T>()
+    internal static long BoxedValueBytes<T>()
     {
-        Type type = typeof(T);
-        if (!ShouldReserveBoxedValue(type))
-        {
-            return 0;
-        }
-
-        return Unsafe.SizeOf<T>();
-    }
-
-    private static bool ShouldReserveBoxedValue(Type type)
-    {
-        if (!type.IsValueType ||
-            Nullable.GetUnderlyingType(type) is not null ||
-            type.IsEnum ||
-            type.IsPrimitive)
-        {
-            return false;
-        }
-
-        return type != typeof(decimal) &&
-               type != typeof(Half) &&
-               type != typeof(BFloat16) &&
-               type != typeof(DateOnly) &&
-               type != typeof(DateTime) &&
-               type != typeof(DateTimeOffset) &&
-               type != typeof(TimeSpan);
+        return typeof(T).IsValueType
+            ? checked(2L * IntPtr.Size + Unsafe.SizeOf<T>())
+            : 0;
     }
 
     private static void WriteObject<T>(
@@ -589,6 +698,8 @@ public sealed class TypeInfo
 
     internal bool Evolving { get; }
 
+    internal bool ReadDataAlwaysAdvances { get; }
+
     internal TypeId? WireTypeId { get; }
 
     internal Type SerializerType => _serializer.GetType();
@@ -603,6 +714,17 @@ public sealed class TypeInfo
         throw new InvalidDataException($"serializer type mismatch for {typeof(T)}");
     }
 
+    internal bool ReadDataAlwaysAdvancesFor<T>(Serializer<T> serializer)
+    {
+        return ReadDataAlwaysAdvances && ReferenceEquals(_serializer, serializer);
+    }
+
+    internal bool ReadDataAlwaysAdvancesFor<T>(Serializer<T> serializer, TypeMeta? typeMeta)
+    {
+        return ReferenceEquals(_serializer, serializer) &&
+               (typeMeta?.ReadDataAlwaysAdvances ?? ReadDataAlwaysAdvances);
+    }
+
     internal void WriteDataObject(WriteContext context, object? value, bool hasGenerics)
     {
         _writeDataObject(context, value, hasGenerics);
@@ -611,6 +733,11 @@ public sealed class TypeInfo
     internal object? ReadDataObject(ReadContext context)
     {
         return _readDataObject(context);
+    }
+
+    internal void SkipDataObject(ReadContext context)
+    {
+        _skipDataObject(context);
     }
 
     internal object? ReadReservedRefDataObject(ReadContext context, uint refId)
@@ -672,6 +799,7 @@ public sealed class TypeInfo
             IsRefType,
             DefaultObject,
             Evolving,
+            ReadDataAlwaysAdvances,
             isRegistered: true,
             userTypeId: userTypeId,
             registerByName: false,
@@ -679,6 +807,7 @@ public sealed class TypeInfo
             typeName: null,
             _writeDataObject,
             _readDataObject,
+            _skipDataObject,
             _readReservedRefDataObject,
             _writeObject,
             _readObject,
@@ -699,6 +828,7 @@ public sealed class TypeInfo
             IsRefType,
             DefaultObject,
             Evolving,
+            ReadDataAlwaysAdvances,
             isRegistered: true,
             userTypeId: null,
             registerByName: true,
@@ -706,6 +836,7 @@ public sealed class TypeInfo
             typeName: typeName,
             _writeDataObject,
             _readDataObject,
+            _skipDataObject,
             _readReservedRefDataObject,
             _writeObject,
             _readObject,
@@ -741,6 +872,11 @@ public sealed class TypeInfo
 
     internal TypeInfo WithWireTypeInfo(TypeId wireTypeId, TypeMeta? typeMeta = null)
     {
+        bool readDataAlwaysAdvances =
+            typeMeta is not null &&
+            wireTypeId is TypeId.CompatibleStruct or TypeId.NamedCompatibleStruct
+                ? typeMeta.ReadDataAlwaysAdvances
+                : ReadDataAlwaysAdvances;
         return new TypeInfo(
             Type,
             _serializer,
@@ -751,6 +887,7 @@ public sealed class TypeInfo
             IsRefType,
             DefaultObject,
             Evolving,
+            readDataAlwaysAdvances,
             IsRegistered,
             UserTypeId,
             RegisterByName,
@@ -758,12 +895,47 @@ public sealed class TypeInfo
             TypeName,
             _writeDataObject,
             _readDataObject,
+            _skipDataObject,
             _readReservedRefDataObject,
             _writeObject,
             _readObject,
             _typeMetaFields,
             wireTypeId,
             typeMeta);
+    }
+
+    internal TypeInfo WithAdvancingReadData()
+    {
+        if (ReadDataAlwaysAdvances)
+        {
+            return this;
+        }
+
+        return new TypeInfo(
+            Type,
+            _serializer,
+            BuiltInTypeId,
+            UserTypeKind,
+            IsDynamicType,
+            IsNullableType,
+            IsRefType,
+            DefaultObject,
+            Evolving,
+            readDataAlwaysAdvances: true,
+            IsRegistered,
+            UserTypeId,
+            RegisterByName,
+            NamespaceName,
+            TypeName,
+            _writeDataObject,
+            _readDataObject,
+            _skipDataObject,
+            _readReservedRefDataObject,
+            _writeObject,
+            _readObject,
+            _typeMetaFields,
+            WireTypeId,
+            _typeMeta);
     }
 
     internal TypeMetaCacheEntry GetTypeMetaCacheEntry(bool trackRef)
@@ -855,6 +1027,11 @@ public sealed class TypeInfo
             typeMeta.Fields,
             typeMeta.Compressed,
             headerHash);
-        return new TypeMetaCacheEntry(typeMeta, encoded, headerHash);
+        TypeInfo owner = WithWireTypeInfo(wireTypeId, typeMeta);
+        return new TypeMetaCacheEntry(
+            typeMeta,
+            encoded,
+            headerHash,
+            new CheckedTypeMeta(typeMeta, owner));
     }
 }

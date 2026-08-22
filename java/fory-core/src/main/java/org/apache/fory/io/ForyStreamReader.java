@@ -51,8 +51,11 @@ public interface ForyStreamReader {
   }
 
   /**
-   * Read stream and fill the data to underlying {@link MemoryBuffer}, which is also the buffer
-   * returned by {@link #getBuffer}.
+   * Reads at least {@code minFillSize} additional bytes into the underlying {@link MemoryBuffer},
+   * which is also the buffer returned by {@link #getBuffer}, or throws if that many bytes are not
+   * available.
+   *
+   * @return the number of bytes added to the underlying buffer
    */
   int fillBuffer(int minFillSize);
 

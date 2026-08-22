@@ -161,9 +161,9 @@ public class SubListSerializers {
     }
 
     @Override
-    public Collection newCollection(ReadContext readContext) {
+    public Collection newCollection(ReadContext readContext, boolean elementReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(readContext, buffer);
+      int numElements = readCollectionSize(readContext, buffer, elementReadAlwaysAdvances);
       setNumElements(numElements);
       ArrayList list = new ArrayList(numElements);
       readContext.reference(list);

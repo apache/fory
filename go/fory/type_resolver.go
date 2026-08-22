@@ -18,7 +18,6 @@
 package fory
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -54,6 +53,9 @@ const (
 	invalidUserTypeID     uint32 = 0xffffffff
 	internalTypeIDLimit          = 0xFF
 	minRemoteTypeDefLimit        = 8192
+	// Distinct remote logical types are attacker-controlled, so their bound cannot
+	// grow with the number of keys already accepted.
+	maxRemoteTypeKeys = 8192
 )
 
 var (
@@ -149,9 +151,6 @@ type TypeResolver struct {
 	typeToSerializers map[reflect.Type]Serializer
 	typeToTypeInfo    map[reflect.Type]string
 	typeIdToType      map[TypeId]reflect.Type
-	dynamicStringToId map[string]int16
-	dynamicIdToString map[int16]string
-	dynamicStringId   int16
 
 	fory *Fory
 	//metaStringResolver  MetaStringResolver
@@ -184,9 +183,9 @@ type TypeResolver struct {
 
 	// meta share related
 	typeToTypeDef               map[reflect.Type]*TypeDef
-	defIdToTypeDef              map[int64]*TypeDef
+	defIdToTypeDef              map[uint64]*TypeDef
 	remoteSchemaVersionsByType  map[any]int
-	totalAcceptedSchemaVersions int
+	totalAcceptedSchemaVersions int64
 
 	// Fast type cache for O(1) lookup using type pointer
 	typePointerCache map[uintptr]*TypeInfo
@@ -200,8 +199,6 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		typeToSerializers: map[reflect.Type]Serializer{},
 		typeIdToType:      map[TypeId]reflect.Type{},
 		typeToTypeInfo:    map[reflect.Type]string{},
-		dynamicStringToId: map[string]int16{},
-		dynamicIdToString: map[int16]string{},
 		fory:              fory,
 
 		isXlang:             fory.config.IsXlang,
@@ -228,7 +225,7 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		typeNameDecoder:  meta.NewDecoder('$', '_'),
 
 		typeToTypeDef:              make(map[reflect.Type]*TypeDef),
-		defIdToTypeDef:             make(map[int64]*TypeDef),
+		defIdToTypeDef:             make(map[uint64]*TypeDef),
 		remoteSchemaVersionsByType: make(map[any]int),
 		typePointerCache:           make(map[uintptr]*TypeInfo),
 		unionTypeCache:             make(map[reflect.Type]bool),
@@ -343,12 +340,16 @@ func (r *TypeResolver) initialize() {
 		// that can hold any element type when deserializing into any
 		{interfaceSliceType, LIST, mustNewSliceDynSerializer(interfaceType)},
 		{interfaceMapType, MAP, mapSerializer{
-			type_:             interfaceMapType,
-			keyReferencable:   true,
-			valueReferencable: true,
-			keyBytes:          int(interfaceMapType.Key().Size()),
-			valueBytes:        int(interfaceMapType.Elem().Size()),
-			maxLength:         maxGraphCount(int(interfaceMapType.Key().Size()) + int(interfaceMapType.Elem().Size())),
+			type_:              interfaceMapType,
+			declaredKeyType:    interfaceMapType.Key(),
+			declaredValueType:  interfaceMapType.Elem(),
+			declaredKeyBytes:   int(interfaceMapType.Key().Size()),
+			declaredValueBytes: int(interfaceMapType.Elem().Size()),
+			keyReferencable:    true,
+			valueReferencable:  true,
+			keyBytes:           int(interfaceMapType.Key().Size()),
+			valueBytes:         int(interfaceMapType.Elem().Size()),
+			maxLength:          maxGraphCount(int(interfaceMapType.Key().Size()) + int(interfaceMapType.Elem().Size())),
 		}},
 		// stringSliceType uses dedicated stringSliceSerializer for optimized serialization
 		// This ensures CollectionIsDeclElementType is set for Java compatibility
@@ -399,10 +400,12 @@ func (r *TypeResolver) initialize() {
 		{durationType, DURATION, durationSerializer{}},
 		{decimalType, DECIMAL, decimalSerializer{}},
 		{genericSetType, SET, setSerializer{
-			type_:      genericSetType,
-			keyBytes:   int(genericSetType.Key().Size()),
-			valueBytes: int(genericSetType.Elem().Size()),
-			maxLength:  maxGraphCount(int(genericSetType.Key().Size()) + int(genericSetType.Elem().Size())),
+			declaredElemType:  genericSetType.Key(),
+			type_:             genericSetType,
+			keyBytes:          int(genericSetType.Key().Size()),
+			valueBytes:        int(genericSetType.Elem().Size()),
+			declaredElemBytes: int(genericSetType.Key().Size()),
+			maxLength:         maxGraphCount(int(genericSetType.Key().Size()) + int(genericSetType.Elem().Size())),
 		}},
 	}
 	for _, elem := range serializers {
@@ -1334,18 +1337,26 @@ func (r *TypeResolver) writeSharedTypeMeta(buffer *ByteBuffer, typeInfo *TypeInf
 	context := r.fory.MetaContext()
 	key := typePointer(typeInfo.Type)
 	writeTypeDefInline := func() {
-		typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
-		if typeDefErr != nil {
-			err.SetError(typeDefErr)
-			return
+		typeDef := typeInfo.TypeDef
+		if typeDef == nil {
+			var typeDefErr error
+			typeDef, typeDefErr = r.localTypeDef(typeInfo)
+			if typeDefErr != nil {
+				err.SetError(typeDefErr)
+				return
+			}
 		}
 		typeDef.writeTypeDef(buffer, err)
 	}
 	writeTypeDefWithZeroMarker := func() {
-		typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
-		if typeDefErr != nil {
-			err.SetError(typeDefErr)
-			return
+		typeDef := typeInfo.TypeDef
+		if typeDef == nil {
+			var typeDefErr error
+			typeDef, typeDefErr = r.localTypeDef(typeInfo)
+			if typeDefErr != nil {
+				err.SetError(typeDefErr)
+				return
+			}
 		}
 		buffer.WriteUint8(0)
 		typeDef.writeTypeDef(buffer, err)
@@ -1443,6 +1454,11 @@ func (r *TypeResolver) checkRemoteTypeDefLimit(td *TypeDef) (any, error) {
 		typeKey = td.userTypeId
 	}
 	versionsForType := r.remoteSchemaVersionsByType[typeKey]
+	if versionsForType == 0 && len(r.remoteSchemaVersionsByType) >= maxRemoteTypeKeys {
+		return nil, fmt.Errorf(
+			"remote logical type limit exceeded: %d >= %d. The data may be malicious",
+			len(r.remoteSchemaVersionsByType), maxRemoteTypeKeys)
+	}
 	if versionsForType >= r.fory.config.MaxSchemaVersionsPerType {
 		return nil, fmt.Errorf(
 			"remote schema version limit exceeded for type %v: %d >= %d. The data may be malicious. If the data is not malicious, please increase MaxSchemaVersionsPerType",
@@ -1452,11 +1468,9 @@ func (r *TypeResolver) checkRemoteTypeDefLimit(td *TypeDef) (any, error) {
 	if versionsForType == 0 {
 		acceptedTypeCount++
 	}
-	globalLimit := acceptedTypeCount * r.fory.config.MaxAverageSchemaVersionsPerType
-	if globalLimit < minRemoteTypeDefLimit {
-		globalLimit = minRemoteTypeDefLimit
-	}
-	if r.totalAcceptedSchemaVersions >= globalLimit {
+	if r.totalAcceptedSchemaVersions >= int64(minRemoteTypeDefLimit) &&
+		r.totalAcceptedSchemaVersions/int64(acceptedTypeCount) >=
+			int64(r.fory.config.MaxAverageSchemaVersionsPerType) {
 		return nil, fmt.Errorf(
 			"remote schema version limit exceeded: %d metadata versions for %d accepted remote types exceeds the average limit %d. The data may be malicious. If the data is not malicious, please increase MaxAverageSchemaVersionsPerType",
 			r.totalAcceptedSchemaVersions, acceptedTypeCount, r.fory.config.MaxAverageSchemaVersionsPerType)
@@ -1470,7 +1484,9 @@ func (r *TypeResolver) recordRemoteTypeDef(typeKey any) {
 	r.totalAcceptedSchemaVersions++
 }
 
-func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeInfo {
+func (r *TypeResolver) readSharedTypeMeta(
+	buffer *ByteBuffer, expectedType reflect.Type, err *Error,
+) *TypeInfo {
 	context := r.fory.MetaContext()
 	if context == nil {
 		err.SetError(fmt.Errorf("MetaContext is nil - ensure compatible mode is enabled"))
@@ -1499,6 +1515,12 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 			err.SetError(fmt.Errorf("TypeInfo at index %d has nil Serializer (type=%v, typeID=%d)", index, info.Type, info.TypeID))
 			return nil
 		}
+		if expectedType != nil {
+			serializerForConcreteType(expectedType, info, err)
+			if err.HasError() {
+				return nil
+			}
+		}
 
 		return info
 	}
@@ -1508,16 +1530,38 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 	if err.HasError() {
 		return nil
 	}
+	identity := typeDefIdentity(id)
 
 	var td *TypeDef
-	if existingTd, exists := r.defIdToTypeDef[id]; exists {
-		// Header-cache hits intentionally skip without rehashing. Entries reach this cache only
-		// after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-		// body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
+	if expectedType != nil {
+		// The selected concrete type owns its local checked TypeDef identity. Resolve that owner
+		// before the remote cache so a colliding remote identity cannot replace a typed local read.
+		localTd, localErr := r.getTypeDef(expectedType, true)
+		if localErr != nil {
+			err.SetError(localErr)
+			return nil
+		}
+		localIdentity, hasLocalIdentity := encodedTypeDefIdentity(localTd.encoded)
+		if hasLocalIdentity && localIdentity == identity {
+			skipTypeDef(buffer, id, err)
+			if err.HasError() {
+				return nil
+			}
+			td = localTd
+		}
+	}
+	if td == nil {
+		existingTd, exists := r.defIdToTypeDef[identity]
+		if !exists {
+			return r.readTypeDefInfo(buffer, id, context, expectedType, err)
+		}
+		// The top 52 header bits are the checked TypeDef identity. Low header bits describe only
+		// the current frame; skipTypeDef consumes its current size form without revalidation.
 		skipTypeDef(buffer, id, err)
+		if err.HasError() {
+			return nil
+		}
 		td = existingTd
-	} else {
-		return r.readTypeDefInfo(buffer, id, context, err)
 	}
 
 	typeInfo, typeInfoErr := td.getOrBuildTypeInfo(r)
@@ -1525,26 +1569,51 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 		err.SetError(typeInfoErr)
 		return nil
 	}
+	if expectedType != nil {
+		serializerForConcreteType(expectedType, typeInfo, err)
+		if err.HasError() {
+			return nil
+		}
+	}
 	context.readTypeInfos = append(context.readTypeInfos, typeInfo)
 	return typeInfo
 }
 
 //go:noinline
-func (r *TypeResolver) readTypeDefInfo(buffer *ByteBuffer, id int64, context *MetaContext, err *Error) *TypeInfo {
+func (r *TypeResolver) readTypeDefInfo(
+	buffer *ByteBuffer,
+	id int64,
+	context *MetaContext,
+	expectedType reflect.Type,
+	err *Error,
+) *TypeInfo {
 	td := readTypeDef(r.fory, buffer, id, err)
 	if err.HasError() {
 		return nil
 	}
+	identity := typeDefIdentity(id)
 	if typeInfo := r.localTypeInfoForTypeDef(td); typeInfo != nil {
 		localTd, localErr := r.localTypeDef(typeInfo)
 		if localErr != nil {
 			err.SetError(localErr)
 			return nil
 		}
-		if localTd != nil && bytes.Equal(localTd.encoded, td.encoded) {
-			r.defIdToTypeDef[id] = localTd
-			context.readTypeInfos = append(context.readTypeInfos, typeInfo)
-			return typeInfo
+		if localTd != nil {
+			localIdentity, hasLocalIdentity := encodedTypeDefIdentity(localTd.encoded)
+			// The remote body is already parsed and hash-validated. Top 52 identity equality is
+			// sufficient; low header bits and encoded body bytes are not a second local identity.
+			if hasLocalIdentity && localIdentity == identity {
+				if expectedType != nil {
+					serializerForConcreteType(expectedType, typeInfo, err)
+					if err.HasError() {
+						return nil
+					}
+				}
+				// Exact local metadata is a root-local owner. Only a validated non-local TypeDef
+				// may enter the persistent remote checked cache or schema-version accounting.
+				context.readTypeInfos = append(context.readTypeInfos, typeInfo)
+				return typeInfo
+			}
 		}
 	}
 	typeKey, limitErr := r.checkRemoteTypeDefLimit(td)
@@ -1557,7 +1626,15 @@ func (r *TypeResolver) readTypeDefInfo(buffer *ByteBuffer, id int64, context *Me
 		err.SetError(typeInfoErr)
 		return nil
 	}
-	r.defIdToTypeDef[id] = td
+	if expectedType != nil {
+		// Reject a resolved concrete-owner mismatch before publishing any persistent or
+		// root-local remote metadata state.
+		serializerForConcreteType(expectedType, typeInfo, err)
+		if err.HasError() {
+			return nil
+		}
+	}
+	r.defIdToTypeDef[identity] = td
 	r.recordRemoteTypeDef(typeKey)
 	context.readTypeInfos = append(context.readTypeInfos, typeInfo)
 	return typeInfo
@@ -1595,11 +1672,18 @@ func (r *TypeResolver) localTypeDef(typeInfo *TypeInfo) (*TypeDef, error) {
 	if typeInfo == nil || typeInfo.Type == nil {
 		return nil, nil
 	}
+	if typeInfo.TypeDef != nil {
+		return typeInfo.TypeDef, nil
+	}
 	type_ := typeInfo.Type
 	if type_.Kind() == reflect.Ptr {
 		type_ = type_.Elem()
 	}
-	return r.getTypeDef(type_, true)
+	typeDef, err := r.getTypeDef(type_, true)
+	if err == nil {
+		typeInfo.TypeDef = typeDef
+	}
+	return typeDef, err
 }
 
 func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s Serializer, err error) {
@@ -1775,10 +1859,12 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 			keyBytes := int(type_.Key().Size())
 			valueBytes := int(type_.Elem().Size())
 			return setSerializer{
-				type_:      type_,
-				keyBytes:   keyBytes,
-				valueBytes: valueBytes,
-				maxLength:  maxGraphCount(keyBytes + valueBytes),
+				declaredElemType:  type_.Key(),
+				type_:             type_,
+				keyBytes:          keyBytes,
+				valueBytes:        valueBytes,
+				declaredElemBytes: keyBytes,
+				maxLength:         maxGraphCount(keyBytes + valueBytes),
 			}, nil
 		}
 		hasKeySerializer, hasValueSerializer := !isDynamicType(type_.Key()), !isDynamicType(type_.Elem())
@@ -1805,25 +1891,33 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 				}
 			}
 			return &mapSerializer{
-				type_:             type_,
-				keySerializer:     keySerializer,
-				valueSerializer:   valueSerializer,
-				keyReferencable:   keyReferencable,
-				valueReferencable: valueReferencable,
-				hasGenerics:       mapInStruct,
-				keyBytes:          int(type_.Key().Size()),
-				valueBytes:        int(type_.Elem().Size()),
-				maxLength:         maxGraphCount(int(type_.Key().Size()) + int(type_.Elem().Size())),
+				type_:              type_,
+				declaredKeyType:    type_.Key(),
+				declaredValueType:  type_.Elem(),
+				declaredKeyBytes:   int(type_.Key().Size()),
+				declaredValueBytes: int(type_.Elem().Size()),
+				keySerializer:      keySerializer,
+				valueSerializer:    valueSerializer,
+				keyReferencable:    keyReferencable,
+				valueReferencable:  valueReferencable,
+				hasGenerics:        mapInStruct,
+				keyBytes:           int(type_.Key().Size()),
+				valueBytes:         int(type_.Elem().Size()),
+				maxLength:          maxGraphCount(int(type_.Key().Size()) + int(type_.Elem().Size())),
 			}, nil
 		}
 		return mapSerializer{
-			type_:             type_,
-			keyReferencable:   keyReferencable,
-			valueReferencable: valueReferencable,
-			hasGenerics:       mapInStruct,
-			keyBytes:          int(type_.Key().Size()),
-			valueBytes:        int(type_.Elem().Size()),
-			maxLength:         maxGraphCount(int(type_.Key().Size()) + int(type_.Elem().Size())),
+			type_:              type_,
+			declaredKeyType:    type_.Key(),
+			declaredValueType:  type_.Elem(),
+			declaredKeyBytes:   int(type_.Key().Size()),
+			declaredValueBytes: int(type_.Elem().Size()),
+			keyReferencable:    keyReferencable,
+			valueReferencable:  valueReferencable,
+			hasGenerics:        mapInStruct,
+			keyBytes:           int(type_.Key().Size()),
+			valueBytes:         int(type_.Elem().Size()),
+			maxLength:          maxGraphCount(int(type_.Key().Size()) + int(type_.Elem().Size())),
 		}, nil
 	case reflect.Struct:
 		serializer := r.typeToSerializers[type_]
@@ -1920,6 +2014,10 @@ func (r *TypeResolver) getArraySerializer(arrayType reflect.Type) (Serializer, e
 			return bfloat16ArraySerializer{arrayType: arrayType}, nil
 		}
 		return uint16ArraySerializer{arrayType: arrayType}, nil
+	case reflect.Uint32:
+		return uint32ArraySerializer{arrayType: arrayType}, nil
+	case reflect.Uint64:
+		return uint64ArraySerializer{arrayType: arrayType}, nil
 	case reflect.Float32:
 		return float32ArraySerializer{arrayType: arrayType}, nil
 	case reflect.Float64:
@@ -1930,6 +2028,11 @@ func (r *TypeResolver) getArraySerializer(arrayType reflect.Type) (Serializer, e
 			return int64ArraySerializer{arrayType: arrayType}, nil
 		}
 		return int32ArraySerializer{arrayType: arrayType}, nil
+	case reflect.Uint:
+		if reflect.TypeOf(uint(0)).Size() == 8 {
+			return uint64ArraySerializer{arrayType: arrayType}, nil
+		}
+		return uint32ArraySerializer{arrayType: arrayType}, nil
 	}
 	if elemType.Kind() == reflect.Interface || (elemType.Kind() == reflect.Ptr && elemType.Elem().Kind() == reflect.Interface) {
 		return newArrayDynSerializer(elemType)
@@ -1994,10 +2097,10 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 			return typeInfo
 		}
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
-		return r.readSharedTypeMeta(buffer, err)
+		return r.readSharedTypeMeta(buffer, nil, err)
 	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
-			return r.readSharedTypeMeta(buffer, err)
+			return r.readSharedTypeMeta(buffer, nil, err)
 		}
 		// ReadData namespace and type name metadata bytes
 		nsBytes := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
@@ -2038,7 +2141,9 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 
 // readTypeInfoWithTypeID reads type info when the typeID has already been read from buffer.
 // This is used by collection serializers that read typeID separately before deciding how to proceed.
-func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32, err *Error) *TypeInfo {
+func (r *TypeResolver) readTypeInfoWithTypeID(
+	buffer *ByteBuffer, typeID uint32, expectedType reflect.Type, err *Error,
+) *TypeInfo {
 	internalTypeID := TypeId(typeID)
 
 	switch internalTypeID {
@@ -2051,10 +2156,10 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 			return typeInfo
 		}
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
-		return r.readSharedTypeMeta(buffer, err)
+		return r.readSharedTypeMeta(buffer, expectedType, err)
 	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
-			return r.readSharedTypeMeta(buffer, err)
+			return r.readSharedTypeMeta(buffer, expectedType, err)
 		}
 		// ReadData namespace and type name metadata bytes
 		nsBytes := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
@@ -2091,6 +2196,33 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 	return nil
 }
 
+// consumeTypeInfoForCodec advances TypeInfo framing when the caller already
+// owns an explicitly selected body codec. Non-shared names need no registry
+// lookup; shared metadata still goes through its cache owner so later indexes
+// remain valid.
+func (r *TypeResolver) consumeTypeInfoForCodec(buffer *ByteBuffer, err *Error) {
+	typeID := TypeId(buffer.ReadUint8(err))
+	if err.HasError() {
+		return
+	}
+	switch typeID {
+	case ENUM, STRUCT, EXT, TYPED_UNION:
+		buffer.ReadVarUint32(err)
+	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
+		r.readSharedTypeMeta(buffer, nil, err)
+	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
+		if r.metaShareEnabled() {
+			r.readSharedTypeMeta(buffer, nil, err)
+			return
+		}
+		r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		if err.HasError() {
+			return
+		}
+		r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+	}
+}
+
 // readTypeInfoForType reads type info when the expected type is already known.
 // This is an optimization that avoids expensive type resolution via namespace/typename map lookups.
 // Instead of resolving the type from the buffer, it uses the passed reflect.Type directly.
@@ -2109,7 +2241,7 @@ func (r *TypeResolver) readTypeInfoForType(buffer *ByteBuffer, expectedType refl
 		return nil
 	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
-			typeInfo := r.readSharedTypeMeta(buffer, err)
+			typeInfo := r.readSharedTypeMeta(buffer, expectedType, err)
 			if err.HasError() {
 				return nil
 			}
@@ -2133,7 +2265,7 @@ func (r *TypeResolver) readTypeInfoForType(buffer *ByteBuffer, expectedType refl
 		return nil
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
 		// Compatible mode: read type def from shared meta
-		typeInfo := r.readSharedTypeMeta(buffer, err)
+		typeInfo := r.readSharedTypeMeta(buffer, expectedType, err)
 		if err.HasError() {
 			return nil
 		}
@@ -2144,6 +2276,36 @@ func (r *TypeResolver) readTypeInfoForType(buffer *ByteBuffer, expectedType refl
 	}
 }
 
+// serializerForConcreteType rejects assignable-but-different concrete types because
+// struct serializers may use offsets that are valid only for their exact Go type.
+func serializerForConcreteType(expectedType reflect.Type, typeInfo *TypeInfo, err *Error) Serializer {
+	if typeInfo != nil && typeInfo.Type == expectedType && typeInfo.Serializer != nil {
+		return typeInfo.Serializer
+	}
+	return serializerForConcreteTypeSlow(expectedType, typeInfo, err)
+}
+
+//go:noinline
+func serializerForConcreteTypeSlow(expectedType reflect.Type, typeInfo *TypeInfo, err *Error) Serializer {
+	if expectedType == nil || typeInfo == nil || typeInfo.Type == nil || typeInfo.Serializer == nil {
+		err.SetError(DeserializationErrorf("wire type cannot be materialized as %v", expectedType))
+		return nil
+	}
+	actualType := typeInfo.Type
+	for expectedType.Kind() == reflect.Ptr {
+		expectedType = expectedType.Elem()
+	}
+	for actualType.Kind() == reflect.Ptr {
+		actualType = actualType.Elem()
+	}
+	if actualType != expectedType {
+		err.SetError(DeserializationErrorf(
+			"wire concrete type %v does not match declared type %v", typeInfo.Type, expectedType))
+		return nil
+	}
+	return typeInfo.Serializer
+}
+
 func (r *TypeResolver) getTypeInfoById(id uint32) (*TypeInfo, error) {
 	if typeInfo, exists := r.typeIDToTypeInfo[id]; exists {
 		return typeInfo, nil
@@ -2152,106 +2314,14 @@ func (r *TypeResolver) getTypeInfoById(id uint32) (*TypeInfo, error) {
 	}
 }
 
-func (r *TypeResolver) writeMetaString(buffer *ByteBuffer, str string, err *Error) {
-	if id, ok := r.dynamicStringToId[str]; !ok {
-		dynamicStringId := r.dynamicStringId
-		r.dynamicStringId += 1
-		r.dynamicStringToId[str] = dynamicStringId
-		encodedMeta, encErr := r.namespaceEncoder.EncodeWithEncoding(str, meta.UTF_8)
-		if encErr != nil {
-			err.SetError(encErr)
-			return
-		}
-		encoded := encodedMeta.GetEncodedBytes()
-		length := len(encoded)
-		buffer.WriteVarUint32(uint32(length << 1))
-		if length <= SMALL_STRING_THRESHOLD {
-			if length != 0 {
-				buffer.WriteByte_(uint8(meta.UTF_8))
-			}
-		} else {
-			// TODO this hash should be unique, since we don't compare data equality for performance
-			h := fnv.New64a()
-			if _, hashErr := h.Write(encoded); hashErr != nil {
-				err.SetError(hashErr)
-				return
-			}
-			hash := int64(h.Sum64() & 0xffffffffffffff00)
-			buffer.WriteInt64(hash)
-		}
-		if len(str) > MaxInt16 {
-			err.SetError(fmt.Errorf("too long string: %s", str))
-			return
-		}
-		buffer.WriteBinary(encoded)
-	} else {
-		buffer.WriteVarUint32(uint32(((id + 1) << 1) | 1))
-	}
-}
-
-func (r *TypeResolver) readMetaString(buffer *ByteBuffer, err *Error) string {
-	header := buffer.ReadVarUint32(err)
-	var length = int(header >> 1)
-	if header&0b1 == 0 {
-		encoding := meta.UTF_8
-		if length <= SMALL_STRING_THRESHOLD {
-			if length != 0 {
-				encoding = meta.Encoding(buffer.ReadByte(err))
-			}
-		} else {
-			// TODO support use computed hash
-			hash := buffer.ReadInt64(err)
-			encoding = meta.Encoding(hash & 0xFF)
-		}
-		raw := buffer.ReadBinary(length, err)
-		if length == 0 {
-			raw = nil
-		}
-		decoder := meta.NewDecoder('.', '_')
-		str, decErr := decoder.Decode(raw, encoding)
-		if decErr != nil {
-			err.SetError(decErr)
-			return ""
-		}
-		dynamicStringId := r.dynamicStringId
-		r.dynamicStringId += 1
-		r.dynamicIdToString[dynamicStringId] = str
-		return str
-	} else {
-		return r.dynamicIdToString[int16(length-1)]
-	}
-}
-
 func (r *TypeResolver) resetWrite() {
-	if r.dynamicStringId > 0 {
-		r.dynamicStringToId = map[string]int16{}
-		r.dynamicIdToString = map[int16]string{}
-		r.dynamicStringId = 0
-	}
 	// Reset meta string resolver to ensure each serialization is independent
 	r.metaStringResolver.ResetWrite()
 }
 
 func (r *TypeResolver) resetRead() {
-	if r.dynamicStringId > 0 {
-		r.dynamicStringToId = map[string]int16{}
-		r.dynamicIdToString = map[int16]string{}
-		r.dynamicStringId = 0
-	}
 	// Reset meta string resolver to ensure each deserialization is independent
 	r.metaStringResolver.ResetRead()
-}
-
-func computeStringHash(str string) int32 {
-	strBytes := unsafeGetBytes(str)
-	var hash int64 = 17
-	for _, b := range strBytes {
-		hash = hash*31 + int64(b)
-		for hash >= MaxInt32 {
-			hash = hash / 7
-		}
-	}
-	return int32(hash)
 }
 
 // ErrTypeMismatch indicates a type ID mismatch during deserialization

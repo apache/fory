@@ -32,6 +32,17 @@ extension ReadContext {
         return TypeId.needsTypeInfoForField(resolved)
     }
 
+    @inline(__always)
+    private func skippedFieldReadAlwaysAdvances(
+        _ fieldType: TypeMeta.FieldType,
+        typeInfo: TypeInfo?
+    ) -> Bool {
+        if let typeInfo {
+            return typeInfo.readDataAlwaysAdvances
+        }
+        return TypeId(rawValue: fieldType.typeID)?.readDataAlwaysAdvances == true
+    }
+
     private func readSkippedFieldValue(
         fieldType: TypeMeta.FieldType,
         typeInfo: TypeInfo? = nil,
@@ -52,6 +63,16 @@ extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool
     ) throws -> Any? {
+        if refMode == .tracking,
+            fieldType.typeID != TypeId.unknown.rawValue,
+            let typeInfo,
+            typeInfo.isRefType
+        {
+            // A static same-type reference body has one tracking envelope, owned by its registered
+            // reader so it can publish the reference before reading children. Dynamic fields keep
+            // their outer envelope here because their concrete TypeInfo writes a second envelope.
+            return try typeInfo.readDeclared(self)
+        }
         switch refMode {
         case .none:
             return try readSkippedFieldPayload(
@@ -109,11 +130,11 @@ extension ReadContext {
         readTypeInfo: Bool
     ) throws -> Any {
         if let typeInfo {
-            return try readAnyValue(typeInfo: typeInfo)
+            return try readSkippedTypeInfoValue(fieldType: fieldType, typeInfo: typeInfo)
         }
         if readTypeInfo {
             let typeInfo = try self.readTypeInfo()
-            return try readAnyValue(typeInfo: typeInfo)
+            return try readSkippedTypeInfoValue(fieldType: fieldType, typeInfo: typeInfo)
         }
 
         guard let resolvedTypeID = TypeId(rawValue: fieldType.typeID) else {
@@ -225,6 +246,23 @@ extension ReadContext {
         }
     }
 
+    @inline(__always)
+    private func readSkippedTypeInfoValue(
+        fieldType: TypeMeta.FieldType,
+        typeInfo: TypeInfo
+    ) throws -> Any {
+        if fieldType.typeID != TypeId.unknown.rawValue, typeInfo.isRefType {
+            // Static collection/map framing already consumed or omitted the operation envelope.
+            // Reading the retained reference TypeInfo as a complete dynamic value would consume
+            // the first body byte as a second reference flag.
+            return try typeInfo.readBody(self)
+        }
+        if fieldType.typeID != TypeId.unknown.rawValue {
+            return try typeInfo.readDeclared(self)
+        }
+        return try readAnyValue(typeInfo: typeInfo)
+    }
+
     private func readSkippedCollection(
         fieldType: TypeMeta.FieldType
     ) throws -> [Any] {
@@ -248,6 +286,41 @@ extension ReadContext {
             typeInfo = try self.readTypeInfo()
         }
 
+        if sameType, !trackRef, !hasNull {
+            if skippedFieldReadAlwaysAdvances(elementFieldType, typeInfo: typeInfo) {
+                for _ in 0..<length {
+                    _ = try readSkippedFieldPayload(
+                        fieldType: elementFieldType,
+                        typeInfo: typeInfo,
+                        readTypeInfo: false
+                    )
+                }
+                return []
+            }
+
+            var windowStart = buffer.cursor
+            var windowItems = 0
+            for _ in 0..<length {
+                _ = try readSkippedFieldPayload(
+                    fieldType: elementFieldType,
+                    typeInfo: typeInfo,
+                    readTypeInfo: false
+                )
+                windowItems += 1
+                if windowItems == unbackedContainerCheckInterval {
+                    try settleUnbackedContainerItems(
+                        self, completed: windowItems, startCursor: windowStart)
+                    windowStart = buffer.cursor
+                    windowItems = 0
+                }
+            }
+            if windowItems != 0 {
+                try settleUnbackedContainerItems(
+                    self, completed: windowItems, startCursor: windowStart)
+            }
+            return []
+        }
+
         for _ in 0..<length {
             if sameType {
                 if trackRef {
@@ -265,12 +338,6 @@ extension ReadContext {
                     if refFlag != RefFlag.notNullValue.rawValue {
                         throw ForyError.invalidData("invalid collection nullability flag \(refFlag)")
                     }
-                    _ = try readSkippedFieldPayload(
-                        fieldType: elementFieldType,
-                        typeInfo: typeInfo,
-                        readTypeInfo: false
-                    )
-                } else {
                     _ = try readSkippedFieldPayload(
                         fieldType: elementFieldType,
                         typeInfo: typeInfo,
@@ -374,29 +441,49 @@ extension ReadContext {
             }
 
             let chunkSize = Int(try buffer.readUInt8())
-            if chunkSize <= 0 {
-                throw ForyError.invalidData("invalid map chunk size \(chunkSize)")
-            }
-            if chunkSize > (totalLength - readCount) {
-                throw ForyError.invalidData("map chunk size exceeds remaining entries")
+            if chunkSize <= 0 || chunkSize > (totalLength - readCount) {
+                throw invalidMapChunkSize(dynamic: false)
             }
 
             let keyTypeInfo = keyDeclared ? nil : try self.readTypeInfo()
             let valueTypeInfo = valueDeclared ? nil : try self.readTypeInfo()
-
-            for _ in 0..<chunkSize {
-                _ = try readSkippedValue(
-                    fieldType: keyType,
-                    typeInfo: keyTypeInfo,
-                    refMode: trackKeyRef ? .tracking : .none,
-                    readTypeInfo: false
-                )
-                _ = try readSkippedValue(
-                    fieldType: valueType,
-                    typeInfo: valueTypeInfo,
-                    refMode: trackValueRef ? .tracking : .none,
-                    readTypeInfo: false
-                )
+            let alwaysAdvances =
+                trackKeyRef || trackValueRef
+                || skippedFieldReadAlwaysAdvances(keyType, typeInfo: keyTypeInfo)
+                || skippedFieldReadAlwaysAdvances(valueType, typeInfo: valueTypeInfo)
+            if alwaysAdvances {
+                for _ in 0..<chunkSize {
+                    _ = try readSkippedValue(
+                        fieldType: keyType,
+                        typeInfo: keyTypeInfo,
+                        refMode: trackKeyRef ? .tracking : .none,
+                        readTypeInfo: false
+                    )
+                    _ = try readSkippedValue(
+                        fieldType: valueType,
+                        typeInfo: valueTypeInfo,
+                        refMode: trackValueRef ? .tracking : .none,
+                        readTypeInfo: false
+                    )
+                }
+            } else {
+                let chunkStart = buffer.cursor
+                for _ in 0..<chunkSize {
+                    _ = try readSkippedValue(
+                        fieldType: keyType,
+                        typeInfo: keyTypeInfo,
+                        refMode: .none,
+                        readTypeInfo: false
+                    )
+                    _ = try readSkippedValue(
+                        fieldType: valueType,
+                        typeInfo: valueTypeInfo,
+                        refMode: .none,
+                        readTypeInfo: false
+                    )
+                }
+                try settleUnbackedContainerItems(
+                    self, completed: chunkSize, startCursor: chunkStart)
             }
             readCount += chunkSize
         }
@@ -406,6 +493,8 @@ extension ReadContext {
 
     private func readSkippedUnion() throws -> Any {
         _ = try buffer.readVarUInt32()
+        // The selected TypeInfo owns the materialization depth. The skip itself
+        // must not charge the same recursive value a second time.
         return try DynamicSerializer<Any>.read(
             self,
             refMode: .tracking,

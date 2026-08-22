@@ -19,13 +19,27 @@ using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
+internal sealed class CheckedTypeMeta
+{
+    internal CheckedTypeMeta(TypeMeta typeMeta, TypeInfo? owner)
+    {
+        TypeMeta = typeMeta;
+        Owner = owner;
+    }
+
+    internal TypeMeta TypeMeta { get; }
+
+    internal TypeInfo? Owner { get; }
+}
+
 public sealed class ReadContext
 {
-    private const int MinRemoteTypeMetaLimit = 8192;
+    private const long MinRemoteTypeMetaVersions = 8192;
+    private const int MaxRemoteTypeMetaKeys = 8192;
 
-    private readonly ReusableArray<TypeMeta> _typeMetaRefs = new();
-    private readonly UInt64Map<TypeMeta> _typeMetasByHeader = new();
-    private TypeMeta? _firstTypeMetaRef;
+    private readonly ReusableArray<CheckedTypeMeta> _typeMetaRefs = new();
+    private readonly UInt64Map<CheckedTypeMeta> _typeMetasByHash = new();
+    private CheckedTypeMeta? _firstTypeMetaRef;
     private bool _hasFirstTypeMetaRef;
 
     private readonly List<MetaString> _readMetaStrings = [];
@@ -37,11 +51,12 @@ public sealed class ReadContext
     internal UInt64Map<TypeMeta>? _typeMetaByType;
     internal Type? _cachedTypeMetaType;
     internal TypeMeta? _cachedTypeMeta;
-    internal int _currentDynamicReadDepth;
+    private int _remainingDynamicReadDepth;
     private readonly Dictionary<object, int> _remoteSchemaVersionsByType = [];
     private readonly Config _config;
-    private int _totalAcceptedSchemaVersions;
+    private long _totalAcceptedSchemaVersions;
     internal long _remainingGraphMemoryBytes;
+    internal long _remainingUnbackedContainerItems;
 
     public ReadContext(
         ByteReader reader,
@@ -57,6 +72,7 @@ public sealed class ReadContext
         CheckStructVersion = config.CheckStructVersion;
         RefReader = new RefReader();
         _maxDynamicReadDepth = config.MaxDepth;
+        _remainingDynamicReadDepth = _maxDynamicReadDepth;
         _config = config;
     }
 
@@ -132,13 +148,47 @@ public sealed class ReadContext
             $"estimated graph memory request {bytes} bytes exceeds MaxGraphMemoryBytes remaining budget {remaining} bytes out of effective limit {_config.MaxGraphMemoryBytes} bytes");
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void CheckUnbackedContainerAllocation(int count)
+    {
+        long requiredReadable = count - _remainingUnbackedContainerItems;
+        if (requiredReadable > 0)
+        {
+            Reader.CheckBound((int)requiredReadable);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void SettleUnbackedContainerItems(int items, int bytesRead)
+    {
+        int unbackedItems = items - bytesRead;
+        if (unbackedItems <= 0)
+        {
+            return;
+        }
+
+        long remaining = _remainingUnbackedContainerItems - unbackedItems;
+        _remainingUnbackedContainerItems = remaining;
+        if (remaining < 0)
+        {
+            ThrowUnbackedContainerLimit();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ThrowUnbackedContainerLimit()
+    {
+        throw new InvalidDataException(
+            $"count-driven container work exceeds MaxUnbackedContainerItems {_config.MaxUnbackedContainerItems}");
+    }
+
     internal void ResetFor(ByteReader reader)
     {
         Reader = reader;
         Reset();
     }
 
-    internal TypeMeta? GetTypeMetaRef(int index)
+    internal CheckedTypeMeta? GetTypeMetaRef(int index)
     {
         if (index < 0)
         {
@@ -153,7 +203,7 @@ public sealed class ReadContext
         return _typeMetaRefs.Get(index - 1);
     }
 
-    internal void StoreTypeMetaRef(TypeMeta typeMeta, int index)
+    internal void StoreTypeMetaRef(CheckedTypeMeta typeMeta, int index)
     {
         if (index < 0)
         {
@@ -190,14 +240,12 @@ public sealed class ReadContext
             $"type meta index gap: index={index}, count={_typeMetaRefs.Count + 1}");
     }
 
-    internal bool TryGetTypeMetaByHeader(ulong header, out TypeMeta typeMeta)
+    internal bool TryGetTypeMetaByHash(ulong headerHash, out CheckedTypeMeta typeMeta)
     {
-        // UInt64Map reserves ulong.MaxValue as its empty-slot marker. A valid
-        // cached TypeMeta header cannot use reserved global-header bits, but an
-        // attacker-controlled cache lookup can happen before cold-path header
-        // validation, so this value must be forced to the miss path.
-        if (header != ulong.MaxValue &&
-            _typeMetasByHeader.TryGetValue(header, out TypeMeta? cached) &&
+        // This map is the sole accepted remote-metadata owner. Entries are published only after
+        // cold validation and limit checks. A hit therefore skips parsing, validation, and
+        // accounting; exact-local metadata uses its local concrete owner without cache publish.
+        if (_typeMetasByHash.TryGetValue(headerHash, out CheckedTypeMeta? cached) &&
             cached is not null)
         {
             typeMeta = cached;
@@ -208,21 +256,22 @@ public sealed class ReadContext
         return false;
     }
 
-    internal void StoreRemoteTypeMeta(ulong header, TypeMeta typeMeta)
+    internal CheckedTypeMeta StoreRemoteTypeMeta(
+        ulong headerHash,
+        TypeMeta typeMeta,
+        TypeInfo? owner)
     {
-        if (_typeMetasByHeader.TryGetValue(header, out _))
+        if (_typeMetasByHash.TryGetValue(headerHash, out CheckedTypeMeta? cached) &&
+            cached is not null)
         {
-            return;
+            return cached;
         }
 
         object typeKey = CheckRemoteTypeMetaLimits(typeMeta);
-        _typeMetasByHeader.Set(header, typeMeta);
+        CheckedTypeMeta checkedTypeMeta = new(typeMeta, owner);
+        _typeMetasByHash.Set(headerHash, checkedTypeMeta);
         RecordRemoteTypeMetaVersion(typeKey);
-    }
-
-    internal void StoreExactLocalTypeMeta(ulong header, TypeMeta typeMeta)
-    {
-        _typeMetasByHeader.Set(header, typeMeta);
+        return checkedTypeMeta;
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
@@ -241,7 +290,16 @@ public sealed class ReadContext
         {
             throw new InvalidDataException("remote metadata is missing type identity");
         }
-        _remoteSchemaVersionsByType.TryGetValue(typeKey, out int versionsForType);
+        bool hasTypeKey =
+            _remoteSchemaVersionsByType.TryGetValue(typeKey, out int versionsForType);
+        if (!hasTypeKey &&
+            _remoteSchemaVersionsByType.Count >= MaxRemoteTypeMetaKeys)
+        {
+            throw new InvalidDataException(
+                $"Remote TypeMeta logical type limit exceeded: {_remoteSchemaVersionsByType.Count} >= {MaxRemoteTypeMetaKeys}. " +
+                "The data may be malicious.");
+        }
+
         int maxSchemaVersionsPerType = _config.MaxSchemaVersionsPerType;
         if (versionsForType >= maxSchemaVersionsPerType)
         {
@@ -250,14 +308,12 @@ public sealed class ReadContext
                 "The data may be malicious. If the data is not malicious, please increase MaxSchemaVersionsPerType.");
         }
 
-        int acceptedTypeCount = versionsForType == 0
+        long acceptedTypeCount = !hasTypeKey
             ? _remoteSchemaVersionsByType.Count + 1
             : _remoteSchemaVersionsByType.Count;
         int maxAverageSchemaVersionsPerType = _config.MaxAverageSchemaVersionsPerType;
-        long globalLimit = Math.Max(
-            MinRemoteTypeMetaLimit,
-            (long)acceptedTypeCount * maxAverageSchemaVersionsPerType);
-        if (_totalAcceptedSchemaVersions >= globalLimit)
+        if (_totalAcceptedSchemaVersions >= MinRemoteTypeMetaVersions &&
+            _totalAcceptedSchemaVersions / acceptedTypeCount >= maxAverageSchemaVersionsPerType)
         {
             throw new InvalidDataException(
                 $"Remote schema version limit exceeded: {_totalAcceptedSchemaVersions} metadata versions for " +
@@ -287,46 +343,58 @@ public sealed class ReadContext
 
     internal TypeMeta ReadTypeMeta()
     {
-        if (TryReadTypeMetaRef(out int index, out TypeMeta typeMeta))
+        if (TryReadTypeMetaRef(out int index, out CheckedTypeMeta checkedTypeMeta))
         {
-            return typeMeta;
+            return checkedTypeMeta.TypeMeta;
         }
 
         ulong header = Reader.ReadUInt64();
-        if (TryGetTypeMetaByHeader(header, out TypeMeta cachedTypeMeta))
+        ulong headerHash = header >> TypeMetaConstants.TypeMetaHashShift;
+        if (TryGetTypeMetaByHash(headerHash, out checkedTypeMeta))
         {
             // Header-cache hits intentionally skip without rehashing. Entries reach this cache only
             // after successful TypeMeta body validation. Do not add body/hash/schema-limit/exact-local
             // checks here; the miss path owns them before cache publish.
             TypeMeta.SkipBody(Reader, header);
-            StoreTypeMetaRef(cachedTypeMeta, index);
-            return cachedTypeMeta;
+            StoreTypeMetaRef(checkedTypeMeta, index);
+            return checkedTypeMeta.TypeMeta;
         }
 
         Reader.MoveBack(sizeof(ulong));
-        int typeMetaStart = Reader.Cursor;
-        typeMeta = DecodeTypeMeta();
-        int typeMetaEnd = Reader.Cursor;
-        if (MatchesExactLocalTypeMeta(typeMeta, typeMetaStart, typeMetaEnd))
+        TypeMeta typeMeta = DecodeTypeMeta();
+        if (TypeResolver.TryGetLocalTypeInfo(typeMeta, out TypeInfo exactLocal))
         {
-            StoreExactLocalTypeMeta(header, typeMeta);
+            TypeInfo.TypeMetaCacheEntry local = exactLocal.GetTypeMetaCacheEntry(TrackRef);
+            // DecodeTypeMeta validated this first miss. The 52-bit hash alone selects the local
+            // schema identity; do not compare the encoded body or publish a local hit remotely.
+            if (local.HeaderHash == typeMeta.HeaderHash)
+            {
+                checkedTypeMeta = local.CheckedTypeMeta;
+                typeMeta = checkedTypeMeta.TypeMeta;
+            }
+            else
+            {
+                // A local id/name lookup alone does not authorize the received wire kind or shape.
+                // Only TypeResolver may bind a concrete owner after its full policy validation.
+                checkedTypeMeta = StoreRemoteTypeMeta(typeMeta.HeaderHash, typeMeta, owner: null);
+            }
         }
         else
         {
-            StoreRemoteTypeMeta(header, typeMeta);
+            checkedTypeMeta = StoreRemoteTypeMeta(typeMeta.HeaderHash, typeMeta, owner: null);
         }
-        StoreTypeMetaRef(typeMeta, index);
-        return typeMeta;
+        StoreTypeMetaRef(checkedTypeMeta, index);
+        return checkedTypeMeta.TypeMeta;
     }
 
-    internal bool TryReadTypeMetaRef(out int index, out TypeMeta typeMeta)
+    internal bool TryReadTypeMetaRef(out int index, out CheckedTypeMeta typeMeta)
     {
         uint indexMarker = Reader.ReadVarUInt32();
         bool isRef = (indexMarker & 1) == 1;
         index = checked((int)(indexMarker >> 1));
         if (isRef)
         {
-            TypeMeta? cached = GetTypeMetaRef(index);
+            CheckedTypeMeta? cached = GetTypeMetaRef(index);
             if (cached is null)
             {
                 throw new InvalidDataException($"unknown type meta ref index {index}");
@@ -341,28 +409,9 @@ public sealed class ReadContext
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    internal bool MatchesExactLocalTypeMeta(TypeMeta typeMeta, int start, int end)
-    {
-        if (!TypeResolver.TryGetLocalTypeInfo(typeMeta, out TypeInfo exactLocal))
-        {
-            return false;
-        }
-
-        TypeInfo.TypeMetaCacheEntry local = exactLocal.GetTypeMetaCacheEntry(TrackRef);
-        byte[] encoded = local.EncodedBytes;
-        if (end - start != encoded.Length ||
-            !Reader.Storage.AsSpan(start, encoded.Length).SequenceEqual(encoded))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     internal TypeMeta DecodeTypeMeta()
     {
-        return TypeMeta.Decode(Reader, _config.MaxTypeFields, _config.MaxTypeMetaBytes);
+        return TypeMeta.Decode(Reader, _config.MaxTypeFields, _config.MaxTypeMetaBytes, _config.MaxDepth);
     }
 
     internal void StoreTypeMeta(Type type, TypeMeta typeMeta)
@@ -466,22 +515,37 @@ public sealed class ReadContext
         _readTypeInfoByType.Remove(TypeMapKey.Get(type));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void IncreaseReadDepth()
     {
-        _currentDynamicReadDepth += 1;
-        if (_currentDynamicReadDepth > _maxDynamicReadDepth)
+        // Keep a countdown so the successful nested hot path needs one state load/store and a
+        // sign check. Failed roots retain the negative value until root-owned reset restores it.
+        int remaining = _remainingDynamicReadDepth - 1;
+        _remainingDynamicReadDepth = remaining;
+        if (remaining < 0)
         {
-            throw new InvalidDataException(
-                $"maximum dynamic object nesting depth ({_maxDynamicReadDepth}) exceeded. current depth: {_currentDynamicReadDepth}");
+            ThrowReadDepthExceeded(_maxDynamicReadDepth - remaining);
         }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ThrowReadDepthExceeded(int depth)
+    {
+        throw new InvalidDataException(
+            $"maximum dynamic object nesting depth ({_maxDynamicReadDepth}) exceeded. current depth: {depth}");
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void DecreaseReadDepth()
     {
-        if (_currentDynamicReadDepth > 0)
-        {
-            _currentDynamicReadDepth -= 1;
-        }
+        _remainingDynamicReadDepth += 1;
+    }
+
+    internal int CurrentReadDepth => _maxDynamicReadDepth - _remainingDynamicReadDepth;
+
+    internal void ResetReadDepth()
+    {
+        _remainingDynamicReadDepth = _maxDynamicReadDepth;
     }
 
     internal void Reset()
@@ -493,10 +557,11 @@ public sealed class ReadContext
         _readTypeInfoByType.ClearKeys();
         _cachedTypeMetaType = null;
         _cachedTypeMeta = null;
-        _currentDynamicReadDepth = 0;
+        ResetReadDepth();
         _firstTypeMetaRef = null;
         _hasFirstTypeMetaRef = false;
         _typeMetaRefs.Clear();
         _readMetaStrings.Clear();
+        _remainingUnbackedContainerItems = 0;
     }
 }

@@ -61,6 +61,7 @@ final class GeneratedJsonCodecSourceWriter {
   private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
   private static final String JSON_PROPERTY = JSON_PACKAGE + ".annotation.JsonProperty";
   private static final String JSON_UNWRAPPED = JSON_PACKAGE + ".annotation.JsonUnwrapped";
+  private static final String JSON_VALIDATOR = JSON_PACKAGE + ".annotation.JsonValidator";
   private static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
   private static final String JSON_ANY_GETTER = JSON_PACKAGE + ".annotation.JsonAnyGetter";
   private static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
@@ -142,7 +143,8 @@ final class GeneratedJsonCodecSourceWriter {
         model.anySetter != null,
         model.creator != null,
         model.creator != null && model.creator.factory,
-        model.creator != null && model.creator.record);
+        model.creator != null && model.creator.record,
+        !model.validators.isEmpty());
   }
 
   private boolean needsGeneratedCodec(
@@ -276,6 +278,7 @@ final class GeneratedJsonCodecSourceWriter {
             annotations);
     collectFieldAccessors(model);
     collectMethodAccessors(model);
+    collectValidators(model);
     model.anySetter = findAnySetter(model);
     if (model.anySetter != null) {
       model.addR8Member(
@@ -291,6 +294,27 @@ final class GeneratedJsonCodecSourceWriter {
       model.addR8Member(model.targetBinaryName, model.creator.r8Declaration);
     }
     return model;
+  }
+
+  private void collectValidators(Model model) {
+    for (ExecutableElement method : effectiveMethods(model.target)) {
+      if (annotationMirror(model.annotations, method, JSON_VALIDATOR) == null) {
+        continue;
+      }
+      Set<Modifier> modifiers = method.getModifiers();
+      if (!modifiers.contains(Modifier.PUBLIC)
+          || modifiers.contains(Modifier.STATIC)
+          || modifiers.contains(Modifier.ABSTRACT)
+          || !method.getParameters().isEmpty()
+          || method.getReturnType().getKind() != TypeKind.VOID) {
+        // Runtime metadata validation owns the diagnostic for malformed annotations.
+        continue;
+      }
+      TypeElement owner = (TypeElement) method.getEnclosingElement();
+      model.validators.add(new Validator(method.getSimpleName().toString()));
+      model.addR8Member(
+          elements.getBinaryName(owner).toString(), "void " + method.getSimpleName() + "();");
+    }
   }
 
   private void collectFieldAccessors(Model model) {
@@ -708,7 +732,23 @@ final class GeneratedJsonCodecSourceWriter {
         .append(model.simpleName)
         .append(" extends org.apache.fory.json.codec.GeneratedJsonCodec<")
         .append(model.targetType)
-        .append("> {\n")
+        .append("> {\n");
+    for (int i = 0; i < model.validators.size(); i++) {
+      Validator validator = model.validators.get(i);
+      source
+          .append("  private static final java.lang.reflect.Method VALIDATOR_")
+          .append(i)
+          .append(" =\n")
+          .append("      validatorMethod(")
+          .append(model.targetType)
+          .append(".class, \"")
+          .append(escapeJava(validator.methodName))
+          .append("\");\n");
+    }
+    if (!model.validators.isEmpty()) {
+      source.append('\n');
+    }
+    source
         .append("  public ")
         .append(model.simpleName)
         .append("() {}\n\n")
@@ -741,6 +781,9 @@ final class GeneratedJsonCodecSourceWriter {
     if (model.creator != null) {
       renderCreator(source, model);
     }
+    if (!model.validators.isEmpty()) {
+      renderValidators(source, model);
+    }
     source
         .append(
             "  private static java.lang.reflect.Field declaredField(Class<?> owner, String name) {\n")
@@ -764,19 +807,47 @@ final class GeneratedJsonCodecSourceWriter {
     if (model.anySetter != null) {
       renderAnySetter(source, model.anySetter);
     }
-    source
-        .append("  public static final class Factory\n")
-        .append("      implements org.apache.fory.json.codec.GeneratedJsonCodecFactory {\n")
-        .append("    public Factory() {}\n\n")
-        .append("    @Override\n")
-        .append("    public org.apache.fory.json.codec.GeneratedJsonCodec<?> create() {\n")
-        .append("      return new ")
-        .append(model.simpleName)
-        .append("();\n")
-        .append("    }\n")
-        .append("  }\n")
-        .append("}\n");
+    source.append("}\n");
     return source.toString();
+  }
+
+  private void renderValidators(StringBuilder source, Model model) {
+    source
+        .append("  @Override\n")
+        .append("  public java.lang.reflect.Method[] validatorMethods() {\n")
+        .append("    return new java.lang.reflect.Method[] {");
+    for (int i = 0; i < model.validators.size(); i++) {
+      if (i != 0) {
+        source.append(", ");
+      }
+      source.append("VALIDATOR_").append(i);
+    }
+    source
+        .append("};\n")
+        .append("  }\n\n")
+        .append("  @Override\n")
+        .append("  public void invokeValidators(Object target) {\n")
+        .append("    ")
+        .append(model.targetType)
+        .append(" typedTarget = (")
+        .append(model.targetType)
+        .append(") target;\n");
+    for (int i = 0; i < model.validators.size(); i++) {
+      Validator validator = model.validators.get(i);
+      source
+          .append("    try {\n")
+          .append("      typedTarget.")
+          .append(validator.methodName)
+          .append("();\n")
+          .append("    } catch (Throwable throwable) {\n")
+          .append("      throw validatorFailure(")
+          .append(model.targetType)
+          .append(".class, VALIDATOR_")
+          .append(i)
+          .append(", throwable);\n")
+          .append("    }\n");
+    }
+    source.append("  }\n\n");
   }
 
   private void renderCreator(StringBuilder source, Model model) {
@@ -1400,6 +1471,7 @@ final class GeneratedJsonCodecSourceWriter {
     final boolean hasCreator;
     final boolean hasCreatorFactory;
     final boolean record;
+    final boolean hasValidators;
 
     Result(
         String companionBinaryName,
@@ -1407,13 +1479,15 @@ final class GeneratedJsonCodecSourceWriter {
         boolean hasAnySetter,
         boolean hasCreator,
         boolean hasCreatorFactory,
-        boolean record) {
+        boolean record,
+        boolean hasValidators) {
       this.companionBinaryName = companionBinaryName;
       this.r8Members = r8Members;
       this.hasAnySetter = hasAnySetter;
       this.hasCreator = hasCreator;
       this.hasCreatorFactory = hasCreatorFactory;
       this.record = record;
+      this.hasValidators = hasValidators;
     }
   }
 
@@ -1437,6 +1511,7 @@ final class GeneratedJsonCodecSourceWriter {
     final String targetType;
     final JsonMixinAnnotations annotations;
     final List<Accessor> accessors = new ArrayList<>();
+    final List<Validator> validators = new ArrayList<>();
     final List<MemberRule> r8Members = new ArrayList<>();
     final Set<String> r8MemberKeys = new HashSet<>();
     AnySetter anySetter;
@@ -1583,6 +1658,14 @@ final class GeneratedJsonCodecSourceWriter {
       this.memberValueType = memberValueType;
       this.memberValueBinaryType = memberValueBinaryType;
       this.valueKind = valueKind;
+    }
+  }
+
+  private static final class Validator {
+    final String methodName;
+
+    Validator(String methodName) {
+      this.methodName = methodName;
     }
   }
 

@@ -83,37 +83,6 @@ func validateOptionalValueType(valueType reflect.Type) error {
 	return nil
 }
 
-func isOptionalType(type_ reflect.Type) bool {
-	_, ok := getOptionalInfo(type_)
-	return ok
-}
-
-func unwrapOptionalType(type_ reflect.Type) (reflect.Type, bool) {
-	info, ok := getOptionalInfo(type_)
-	if !ok {
-		return type_, false
-	}
-	return info.valueType, true
-}
-
-func optionalHasValue(value reflect.Value, info optionalInfo) bool {
-	if value.Kind() == reflect.Ptr {
-		if value.IsNil() {
-			return false
-		}
-		value = value.Elem()
-	}
-	if value.CanAddr() {
-		hasPtr := (*bool)(unsafe.Add(unsafe.Pointer(value.UnsafeAddr()), info.hasOffset))
-		return *hasPtr
-	}
-	field := value.FieldByName("has")
-	if !field.IsValid() {
-		return false
-	}
-	return field.Bool()
-}
-
 // optionalSerializer handles Optional[T] values by writing null flags and delegating to the element serializer.
 type optionalSerializer struct {
 	optionalType    reflect.Type
@@ -267,15 +236,11 @@ func (s *optionalSerializer) Read(ctx *ReadContext, refMode RefMode, readType bo
 				s.setHas(value, false)
 				return
 			}
-			refObj := ctx.RefResolver().GetReadObject(refID)
-			if refObj.IsValid() {
-				valueField := s.valueField(value)
-				if refObj.Type().AssignableTo(valueField.Type()) {
-					valueField.Set(refObj)
-					s.setHas(value, true)
-					return
-				}
+			valueField := s.valueField(value)
+			if assignReadRef(ctx, refID, valueField) {
+				s.setHas(value, true)
 			}
+			return
 		}
 	case RefModeNullOnly:
 		flag := buf.ReadInt8(ctx.Err())
@@ -294,11 +259,15 @@ func (s *optionalSerializer) Read(ctx *ReadContext, refMode RefMode, readType bo
 		internalTypeID := TypeId(typeID)
 		if IsNamespacedType(internalTypeID) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
 			ctxErr := ctx.Err()
-			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
+			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, s.valueType, ctxErr)
 			if ctxErr.HasError() {
 				return
 			}
-			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
+			serializer := serializerForConcreteType(s.valueType, typeInfo, ctxErr)
+			if ctxErr.HasError() {
+				return
+			}
+			if structSer, ok := serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
 				valueField := s.valueField(value)
 				s.setHas(value, true)
 				structSer.ReadData(ctx, valueField)

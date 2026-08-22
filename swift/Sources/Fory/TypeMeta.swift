@@ -30,6 +30,13 @@ private let typeMetaSizeMask: UInt64 = 0xFF
 private let typeMetaNumHashBits: UInt64 = 52
 private let typeMetaHashSeed: UInt64 = 47
 private let noUserTypeID: UInt32 = UInt32.max
+private let typeMetaMaxDepth = 20
+
+@inline(__always)
+internal func typeMetaHashFromHeader(_ header: UInt64) -> UInt64 {
+    // The top 52 bits are the schema identity; the low 12 bits belong to current-frame framing.
+    header >> (64 - typeMetaNumHashBits)
+}
 
 public let namespaceMetaStringEncodings: [MetaStringEncoding] = [
     .utf8,
@@ -70,6 +77,11 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
             self.generics = generics
         }
 
+        internal var readDataAlwaysAdvances: Bool {
+            nullable || trackRef
+                || TypeId(rawValue: typeID)?.readDataAlwaysAdvances == true
+        }
+
         fileprivate func write(
             _ buffer: ByteBuffer,
             writeFlags: Bool,
@@ -100,59 +112,96 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
             }
         }
 
+        @inline(never)
         fileprivate static func read(
             _ buffer: ByteBuffer,
             readFlags: Bool,
             nullable: Bool? = nil,
             trackRef: Bool? = nil
         ) throws -> FieldType {
-            let header: UInt32
-            if readFlags {
-                header = try buffer.readVarUInt32()
-            } else {
-                header = UInt32(try buffer.readUInt8())
-            }
-
-            let typeID: UInt32
-            let resolvedNullable: Bool
-            let resolvedTrackRef: Bool
-
-            if readFlags {
-                typeID = header >> 2
-                resolvedNullable = (header & 0b10) != 0
-                resolvedTrackRef = (header & 0b1) != 0
-            } else {
-                typeID = header
-                resolvedNullable = nullable ?? false
-                resolvedTrackRef = trackRef ?? false
-            }
-
-            if typeID == TypeId.list.rawValue || typeID == TypeId.set.rawValue {
-                let element = try read(buffer, readFlags: true)
-                return FieldType(
-                    typeID: typeID,
-                    nullable: resolvedNullable,
-                    trackRef: resolvedTrackRef,
-                    generics: [element]
-                )
-            }
-            if typeID == TypeId.map.rawValue {
-                let key = try read(buffer, readFlags: true)
-                let value = try read(buffer, readFlags: true)
-                return FieldType(
-                    typeID: typeID,
-                    nullable: resolvedNullable,
-                    trackRef: resolvedTrackRef,
-                    generics: [key, value]
-                )
-            }
-
-            return FieldType(
-                typeID: typeID,
-                nullable: resolvedNullable,
-                trackRef: resolvedTrackRef,
-                generics: []
+            let root = try readHeader(
+                buffer,
+                readFlags: readFlags,
+                nullable: nullable,
+                trackRef: trackRef
             )
+            let rootChildren = genericCount(root.typeID)
+            if rootChildren == 0 {
+                return root
+            }
+            // Keep parsing iterative so the fixed TypeMeta metadata limit, rather
+            // than the native call stack, bounds recursive FieldType consumers.
+            var pending = [root]
+            var remainingChildren = [rootChildren]
+            while true {
+                let parentIndex = pending.count - 1
+                if remainingChildren[parentIndex] != 0 {
+                    remainingChildren[parentIndex] -= 1
+                    let child = try readHeader(buffer, readFlags: true)
+                    let childCount = genericCount(child.typeID)
+                    if childCount == 0 {
+                        pending[parentIndex].generics.append(child)
+                    } else {
+                        let childDepth = pending.count + 1
+                        if childDepth > typeMetaMaxDepth {
+                            try decodingNestingDepthExceeded(childDepth)
+                        }
+                        pending.append(child)
+                        remainingChildren.append(childCount)
+                    }
+                    continue
+                }
+
+                let completed = pending.removeLast()
+                remainingChildren.removeLast()
+                if pending.isEmpty {
+                    return completed
+                }
+                pending[pending.count - 1].generics.append(completed)
+            }
+        }
+
+        @inline(never)
+        private static func decodingNestingDepthExceeded(_ depth: Int) throws -> Never {
+            throw ForyError.invalidData(
+                "TypeMeta generic nesting depth \(depth) exceeds limit \(typeMetaMaxDepth)")
+        }
+
+        @inline(never)
+        private static func encodingNestingDepthExceeded(_ depth: Int) throws -> Never {
+            throw ForyError.encodingError(
+                "TypeMeta generic nesting depth \(depth) exceeds limit \(typeMetaMaxDepth)")
+        }
+
+        private static func readHeader(
+            _ buffer: ByteBuffer,
+            readFlags: Bool,
+            nullable: Bool? = nil,
+            trackRef: Bool? = nil
+        ) throws -> FieldType {
+            let header =
+                readFlags
+                ? try buffer.readVarUInt32()
+                : UInt32(try buffer.readUInt8())
+            if readFlags {
+                return FieldType(
+                    typeID: header >> 2,
+                    nullable: (header & 0b10) != 0,
+                    trackRef: (header & 0b1) != 0
+                )
+            }
+            return FieldType(
+                typeID: header,
+                nullable: nullable ?? false,
+                trackRef: trackRef ?? false
+            )
+        }
+
+        private static func genericCount(_ typeID: UInt32) -> Int {
+            if typeID == TypeId.list.rawValue || typeID == TypeId.set.rawValue {
+                return 1
+            }
+            return typeID == TypeId.map.rawValue ? 2 : 0
         }
     }
 
@@ -165,6 +214,11 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
             self.fieldID = fieldID
             self.fieldName = fieldName
             self.fieldType = fieldType
+        }
+
+        @inline(never)
+        private static func invalidTaggedFieldID(_ fieldID: Int) -> ForyError {
+            ForyError.invalidData("tagged field id \(fieldID) exceeds Int16 range")
         }
 
         fileprivate func write(_ buffer: ByteBuffer) throws {
@@ -235,7 +289,11 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
             )
 
             if encodingFlags == 3 {
-                let fieldID = Int16(size - 1)
+                let rawFieldID = size - 1
+                if _slowPath(rawFieldID > Int(Int16.max)) {
+                    throw invalidTaggedFieldID(rawFieldID)
+                }
+                let fieldID = Int16(rawFieldID)
                 return FieldInfo(
                     fieldID: fieldID,
                     fieldName: "$tag\(fieldID)",
@@ -262,7 +320,16 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
     public let registerByName: Bool
     public let fields: [FieldInfo]
     public let compressed: Bool
+    /// The protocol-defined 52-bit schema identity. Equal values identify the same schema,
+    /// so readers do not need to compare the field array again.
     public let headerHash: UInt64
+
+    internal var readDataAlwaysAdvances: Bool {
+        for field in fields where field.fieldType.readDataAlwaysAdvances {
+            return true
+        }
+        return false
+    }
 
     public init(
         typeID: UInt32?,
@@ -307,6 +374,13 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
     public func encode() throws -> [UInt8] {
         if compressed {
             throw ForyError.encodingError("compressed TypeMeta is not supported yet")
+        }
+
+        // TypeMeta decoding uses the same fixed limit. Validate iteratively before
+        // the recursive encoder writes any bytes so public and registered metadata
+        // cannot produce a value that the cache-miss reader rejects.
+        for field in fields {
+            try field.fieldType.validateDepth()
         }
 
         let body = try encodeBody()
@@ -445,7 +519,7 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
             registerByName: registerByName,
             fields: fieldInfos,
             compressed: compressed,
-            headerHash: header >> (64 - typeMetaNumHashBits)
+            headerHash: typeMetaHashFromHeader(header)
         )
     }
 
@@ -971,6 +1045,36 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
             return TypeId.union.rawValue
         default:
             return typeID
+        }
+    }
+}
+
+fileprivate extension TypeMeta.FieldType {
+    func validateDepth() throws {
+        var pending: [(fieldType: Self, parentDepth: Int)] = [(self, 0)]
+        while let current = pending.popLast() {
+            let childCount = Self.genericCount(current.fieldType.typeID)
+            if childCount == 0 {
+                continue
+            }
+
+            let depth = current.parentDepth + 1
+            if depth > typeMetaMaxDepth {
+                try Self.encodingNestingDepthExceeded(depth)
+            }
+
+            if childCount == 1 {
+                if let child = current.fieldType.generics.first {
+                    pending.append((child, depth))
+                }
+            } else {
+                if current.fieldType.generics.count > 1 {
+                    pending.append((current.fieldType.generics[1], depth))
+                }
+                if let child = current.fieldType.generics.first {
+                    pending.append((child, depth))
+                }
+            }
         }
     }
 }

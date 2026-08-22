@@ -21,10 +21,21 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { Serializer, TypeId } from "../type";
+import { RefFlags, Serializer, TypeId } from "../type";
 import { Scope } from "./scope";
-import { TypeMeta } from "../meta/TypeMeta";
 import { ReadContext, WriteContext } from "../context";
+
+function buildNamedTypeKey(ns: string, typeName: string) {
+  return `${ns}$${typeName}`;
+}
+
+type TypeMetaReadContext = {
+  readTypeMetaSerializer(expectedWireTypeId: number): Serializer;
+};
+
+function readCheckedTypeMetaSerializer(readContext: ReadContext, expectedWireTypeId: number) {
+  return (readContext as unknown as TypeMetaReadContext).readTypeMetaSerializer(expectedWireTypeId);
+}
 
 export class AnyHelper {
   static detectSerializer(readContext: ReadContext) {
@@ -37,36 +48,14 @@ export class AnyHelper {
     }
     let serializer: Serializer | undefined;
 
-    function buildNamedTypeKey(ns: string, typeName: string) {
-      return `${ns}$${typeName}`;
-    }
-
-    function tryUpdateSerializer(serializer: Serializer | undefined | null, typeMeta: TypeMeta) {
-      if (!serializer) {
-        return readContext.genSerializerByTypeMetaRuntime(typeMeta);
-      }
-      const hash = serializer.getHash();
-      if (hash !== typeMeta.getHash()) {
-        return readContext.genSerializerByTypeMetaRuntime(typeMeta, serializer);
-      }
-      return serializer;
-    }
-
     switch (typeId) {
       case TypeId.COMPATIBLE_STRUCT:
-        {
-          const typeMeta = readContext.readTypeMeta();
-          serializer = typeResolver.getSerializerById(typeId, typeMeta.getUserTypeId());
-          serializer = tryUpdateSerializer(serializer, typeMeta);
-        }
+        serializer = readCheckedTypeMetaSerializer(readContext, typeId);
         break;
       case TypeId.NAMED_ENUM:
       case TypeId.NAMED_UNION:
         if (readContext.isCompatible()) {
-          const typeMeta = readContext.readTypeMeta();
-          const ns = typeMeta.getNs();
-          const typeName = typeMeta.getTypeName();
-          serializer = typeResolver.getSerializerByName(buildNamedTypeKey(ns, typeName));
+          serializer = readCheckedTypeMetaSerializer(readContext, typeId);
         } else {
           const ns = readContext.readNamespace();
           const typeName = readContext.readTypeName();
@@ -75,10 +64,7 @@ export class AnyHelper {
         break;
       case TypeId.NAMED_EXT:
         if (readContext.isCompatible()) {
-          const typeMeta = readContext.readTypeMeta();
-          const ns = typeMeta.getNs();
-          const typeName = typeMeta.getTypeName();
-          serializer = typeResolver.getSerializerByName(buildNamedTypeKey(ns, typeName));
+          serializer = readCheckedTypeMetaSerializer(readContext, typeId);
         } else {
           const ns = readContext.readNamespace();
           const typeName = readContext.readTypeName();
@@ -88,12 +74,7 @@ export class AnyHelper {
       case TypeId.NAMED_STRUCT:
       case TypeId.NAMED_COMPATIBLE_STRUCT:
         if (readContext.isCompatible() || typeId === TypeId.NAMED_COMPATIBLE_STRUCT) {
-          const typeMeta = readContext.readTypeMeta();
-          const ns = typeMeta.getNs();
-          const typeName = typeMeta.getTypeName();
-          const named = buildNamedTypeKey(ns, typeName);
-          const namedSerializer = typeResolver.getSerializerByName(named);
-          serializer = tryUpdateSerializer(namedSerializer, typeMeta);
+          serializer = readCheckedTypeMetaSerializer(readContext, typeId);
         } else {
           const ns = readContext.readNamespace();
           const typeName = readContext.readTypeName();
@@ -138,6 +119,17 @@ class AnySerializerGenerator extends BaseSerializerGenerator {
   write(accessor: string): string {
     return `
       ${this.writerSerializer}.write(${accessor});;
+    `;
+  }
+
+  writeRef(accessor: string): string {
+    return `
+      if (${accessor} === null || ${accessor} === undefined) {
+        ${this.builder.writer.writeInt8(RefFlags.NullFlag)}
+      } else {
+        ${this.writerSerializer} = ${this.builder.getExternal(AnyHelper.name)}.getSerializer(${this.builder.getWriteContextName()}, ${accessor});
+        ${this.writerSerializer}.writeRef(${accessor});
+      }
     `;
   }
 

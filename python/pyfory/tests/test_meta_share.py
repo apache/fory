@@ -112,13 +112,16 @@ class TestMetaShareMode:
         deserialized = fory.deserialize(fory.serialize(obj))
         assert deserialized == obj
 
-    def test_strict_reader_rejects_unknown_typedef(self):
+    def test_strict_reader_uses_unknown_struct(self):
         writer = Fory(xlang=True, compatible=True, strict=False)
         writer.register_type(SimpleDataClass)
         reader = Fory(xlang=True, compatible=True, strict=True)
 
-        with pytest.raises(ValueError, match="not registered in strict mode"):
-            reader.deserialize(writer.serialize(SimpleDataClass(name="test", age=25, active=True)))
+        result = reader.deserialize(writer.serialize(SimpleDataClass(name="test", age=25, active=True)))
+        assert type(result) is pyfory.UnknownStruct
+        assert result["name"] == "test"
+        assert result["age"] == 25
+        assert result["active"] is True
 
     def test_multiple_objects_same_type(self):
         fory = Fory(xlang=True, compatible=True)

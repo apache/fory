@@ -23,6 +23,7 @@ import org.apache.fory.Fory
 import org.apache.fory.exception.InsecureException
 import org.apache.fory.kotlin.ForyKotlin
 import org.testng.Assert.assertEquals
+import org.testng.Assert.assertSame
 import org.testng.Assert.fail
 import org.testng.annotations.Test
 
@@ -33,6 +34,22 @@ class CollectionSerializerTest {
 
     val arrayDeque = ArrayDeque(listOf(1, 2, 3, 4, 5))
     assertEquals(arrayDeque, fory.deserialize(fory.serialize(arrayDeque)))
+  }
+
+  @Test
+  fun testArrayDequeSelfReference() {
+    val fory: Fory =
+      ForyKotlin.builder()
+        .withXlang(false)
+        .withRefTracking(true)
+        .requireClassRegistration(true)
+        .build()
+    val arrayDeque = ArrayDeque<Any>()
+    arrayDeque.addLast(arrayDeque)
+
+    val copy = fory.deserialize(fory.serialize(arrayDeque)) as ArrayDeque<*>
+
+    assertSame(copy.first(), copy)
   }
 
   @Test

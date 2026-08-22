@@ -40,26 +40,7 @@ namespace serialization {
 
 // Forward declarations
 class TypeResolver;
-class ReadContext;
 class TypeMeta;
-
-/// RAII helper to automatically decrease dynamic depth when leaving scope.
-/// Used for tracking nested polymorphic type deserialization depth.
-class DynDepthGuard {
-public:
-  explicit DynDepthGuard(ReadContext &ctx) : ctx_(ctx) {}
-
-  ~DynDepthGuard();
-
-  // Non-copyable, non-movable
-  DynDepthGuard(const DynDepthGuard &) = delete;
-  DynDepthGuard &operator=(const DynDepthGuard &) = delete;
-  DynDepthGuard(DynDepthGuard &&) = delete;
-  DynDepthGuard &operator=(DynDepthGuard &&) = delete;
-
-private:
-  ReadContext &ctx_;
-};
 
 /// write context for serialization operations.
 ///
@@ -375,12 +356,10 @@ private:
   OutputStream *output_stream_ = nullptr;
 
   // Meta sharing state (for streaming inline TypeMeta)
-  // Maps TypeInfo* to index for reference tracking - uses map size as counter
+  // The first TypeInfo has index 0; the map stores later types at size + 1.
   util::FlatIntMap<uint64_t, uint32_t> write_type_info_index_map_;
   // Fast path for the common single-type stream: avoid hash map lookups.
   const TypeInfo *first_type_info_ = nullptr;
-  bool has_first_type_info_ = false;
-  bool type_info_index_map_active_ = false;
 };
 
 /// Read context for deserialization operations.
@@ -478,13 +457,14 @@ public:
   /// Check if reference tracking is enabled.
   inline bool track_ref() const { return config_->track_ref; }
 
-  /// get maximum allowed dynamic nesting depth for polymorphic types.
+  /// Get the maximum nesting depth for polymorphic and static smart-pointer
+  /// pointee reads.
   inline uint32_t max_dyn_depth() const { return config_->max_dyn_depth; }
 
-  /// get current dynamic nesting depth.
+  /// Get the current protected deserialization nesting depth.
   inline uint32_t current_dyn_depth() const { return current_dyn_depth_; }
 
-  /// Increase dynamic nesting depth by 1.
+  /// Increase protected deserialization nesting depth by 1.
   ///
   /// @return Error if max dynamic depth exceeded, success otherwise.
   inline Result<void, Error> increase_dyn_depth() {
@@ -497,7 +477,10 @@ public:
     return Result<void, Error>();
   }
 
-  /// Decrease dynamic nesting depth by 1.
+  /// Decrease dynamic nesting depth by 1 after the nested body succeeds.
+  ///
+  /// Failed nested reads retain their depth until the root operation resets
+  /// this context.
   inline void decrease_dyn_depth() {
     if (current_dyn_depth_ > 0) {
       current_dyn_depth_--;
@@ -510,6 +493,19 @@ public:
       return set_graph_memory_exceeded(bytes, remaining);
     }
     remaining_graph_memory_bytes_ = remaining - bytes;
+    return true;
+  }
+
+  FORY_ALWAYS_INLINE size_t remaining_unbacked_container_items() const {
+    return remaining_unbacked_container_items_;
+  }
+
+  FORY_ALWAYS_INLINE bool reserve_unbacked_container_items(size_t items) {
+    const size_t remaining = remaining_unbacked_container_items_;
+    if (FORY_PREDICT_FALSE(items > remaining)) {
+      return set_unbacked_container_items_exceeded(items, remaining);
+    }
+    remaining_unbacked_container_items_ = remaining - items;
     return true;
   }
 
@@ -627,10 +623,11 @@ public:
     buffer().skip(length, error);
   }
 
+  /// Read and validate type information for a statically declared enum.
   Result<const TypeInfo *, Error>
   read_enum_type_info(const std::type_index &type, uint32_t base_type_id);
 
-  /// Read enum type info without type_index (fast path).
+  /// Read enum type info without a statically declared C++ owner.
   Result<const TypeInfo *, Error> read_enum_type_info(uint32_t base_type_id);
 
   /// Read TypeMeta inline using streaming protocol.
@@ -669,11 +666,39 @@ public:
 
 private:
   friend class Fory;
+  template <typename T, typename Enable> friend struct Serializer;
+  template <typename T>
+  friend const TypeInfo *read_collection_element_type_info(ReadContext &ctx);
+  template <typename T>
+  friend const TypeInfo *read_map_type_info(ReadContext &ctx);
 
+  struct ReadTypeInfo {
+    const TypeInfo *type_info;
+    const TypeInfo *concrete_owner;
+  };
+
+  struct CachedTypeInfo {
+    TypeInfo type_info;
+    const TypeInfo *concrete_owner = nullptr;
+  };
+
+  Result<const TypeInfo *, Error>
+  read_enum_type_info_owner(const TypeInfo *expected_type_info,
+                            uint32_t base_type_id);
+  Result<const TypeInfo *, Error>
+  read_type_meta_owner(const TypeInfo *expected_type_info);
+  Result<const TypeInfo *, Error>
+  read_any_type_info_owner(const TypeInfo *expected_type_info);
+  const TypeInfo *read_any_type_info_owner(Error &error,
+                                           const TypeInfo *expected_type_info);
+  static bool matches_expected_type(const TypeInfo *concrete_owner,
+                                    const TypeInfo *expected_type_info);
   FORY_NOINLINE Result<std::string, Error>
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
   FORY_NOINLINE bool set_graph_memory_exceeded(size_t bytes, size_t remaining);
+  FORY_NOINLINE bool set_unbacked_container_items_exceeded(size_t items,
+                                                           size_t remaining);
 
   // Error state - accumulated during deserialization, checked at the end
   Error error_;
@@ -684,28 +709,27 @@ private:
   RefReader ref_reader_;
   uint32_t current_dyn_depth_;
   size_t remaining_graph_memory_bytes_ = 0;
+  size_t remaining_unbacked_container_items_ = 0;
 
   // Meta sharing state (for compatible mode)
-  // Persistent cache storage for TypeInfo objects keyed by meta header.
-  std::vector<std::unique_ptr<TypeInfo>> cached_type_infos_;
-  // Index-based access (pointers to cached_type_infos_ or type_resolver)
-  std::vector<const TypeInfo *> reading_type_infos_;
-  // Cache by meta_header (pointers to cached_type_infos_)
-  fory::flat_hash_map<int64_t, const TypeInfo *> parsed_type_infos_;
-  // Fast path for repeated type meta headers.
-  int64_t cached_meta_header_ = 0;
-  const TypeInfo *cached_meta_type_info_ = nullptr;
-  bool has_cached_meta_header_ = false;
+  // Persistent cache storage for TypeInfo objects keyed by the protocol
+  // 52-bit TypeMeta header hash.
+  std::vector<std::unique_ptr<CachedTypeInfo>> cached_type_infos_;
+  // Root-local TypeMeta entries retain both their read TypeInfo and the
+  // registration-owned concrete TypeInfo authorized for that metadata.
+  std::vector<ReadTypeInfo> reading_type_infos_;
+  // Cache by the 52-bit TypeMeta header hash.
+  fory::flat_hash_map<int64_t, const CachedTypeInfo *> parsed_type_infos_;
+  // Fast path for the last checked non-local TypeMeta owner. Its TypeMeta hash
+  // is the cache identity; local expected hits are root-local only.
+  const CachedTypeInfo *cached_meta_type_info_ = nullptr;
   bool meta_string_table_active_ = false;
 
   // Dynamic meta strings used for named type/class info.
   meta::MetaStringTable meta_string_table_;
   fory::flat_hash_map<std::string, uint32_t> remote_schema_versions_by_type_;
-  size_t total_accepted_schema_versions_ = 0;
+  uint64_t total_accepted_schema_versions_ = 0;
 };
-
-/// Implementation of DynDepthGuard destructor
-inline DynDepthGuard::~DynDepthGuard() { ctx_.decrease_dyn_depth(); }
 
 } // namespace serialization
 } // namespace fory

@@ -17,16 +17,28 @@ security boundary.
 ## Scope
 
 This model applies to deserializing Fory binary data from untrusted or
-partially trusted sources.
+partially trusted sources. Its resource, policy, and cleanup boundaries also
+apply to Java Fory JSON. The Java Fory JSON subsection under
+[Graph Memory Budget](#graph-memory-budget) defines that format's accounting
+scope without changing binary Fory behavior.
 
 It does not treat the semantic content of a successfully deserialized value as a
 Fory security boundary. A sender can always construct protocol-valid data whose
 value is chosen by that sender. Application authorization, object-level business
 rules, and domain-specific validation remain application responsibilities.
+Java Fory JSON applications can enforce those rules with `JsonValidator` or in
+a `JsonCreator`, but the selected business invariant remains an application
+policy rather than a Fory protocol security boundary.
 
-This model also does not cover trusted in-memory formats. Row format and other
-memory-format paths are trusted-data paths unless a runtime explicitly exposes
-them as untrusted deserialization APIs.
+This model also does not cover trusted in-memory formats. Row format accepts only trusted input and
+must not be used to process attacker-controlled or otherwise untrusted bytes. Other memory-format
+paths are trusted-data paths unless a Fory implementation explicitly exposes them as untrusted
+deserialization APIs.
+
+Rust `check_string_read(false)` is likewise an explicit trusted-input mode. It disables UTF-8
+validation for performance and may be used only when the application guarantees that encoded string
+bytes are valid UTF-8. The default checked mode remains part of the untrusted-deserialization
+boundary; the unchecked mode is not.
 
 ## Trust Boundaries
 
@@ -66,10 +78,42 @@ deserialization policies.
 
 An application explicitly trusts a class when it registers that class or
 registers a serializer for that class. Both operations are configuration-time
-trust decisions under the class-registration policy. The existence of a
-serializer that Fory discovered, selected, or generated without an explicit
-application registration is serialization mechanics only and does not by
-itself authorize the class.
+trust decisions under the class-registration policy. Explicitly selecting a
+static root serializer or static root target at the deserialization call is
+also an application authorization decision for that root path. Authorization
+of that statically selected root does not depend on a separate registration
+lookup; any registration needed to access registered identity or
+registration-backed metadata remains access-driven.
+
+Explicitly declaring or selecting a static field codec is itself an application
+authorization decision for that field; the codec does not need to be registered
+separately for authorization. Registering an enclosing class or schema also
+authorizes the statically declared field codecs and serializers that belong to
+that registered owner. This applies equally to declared Array, Set, Map, Struct,
+and other statically composed field paths. Those declared field paths do not
+require independent registration merely because their bodies are decoded
+without another type lookup. Likewise, an encoded declared-type marker does not
+create a registration bypass when it can only invoke the codec already selected
+by the authorized root or enclosing schema.
+
+These static authorization paths do not authorize an arbitrary alternative
+chosen by encoded type metadata. A dynamic or polymorphic type selected by
+input must still pass the active registration and deserialization-policy checks
+for that type. A serializer that Fory merely discovers or generates, and that
+is not reached through an explicitly selected static root or a registered
+enclosing owner, is serialization mechanics only and does not by itself
+authorize a dynamically selected class.
+
+An application-provided custom deserialization policy is itself an application-owned trust
+decision. In Python's reduce path, strict mode with the default policy requires registration-owned
+authorization for a wire-selected global name before importing or resolving it. When an
+application installs a custom policy, that
+policy's module, function, method, class, and reduce interception hooks own authorization of the
+resolved callable. A permissive custom policy may intentionally authorize an unregistered callable;
+strict mode does not override that explicit application policy.
+Python `strict=False` is likewise only for trusted input: callable authorization in that mode is
+the application's responsibility, and the default policy does not restore the strict registration
+boundary.
 
 Disabling registration or dynamic-type checks for trusted data is a caller
 configuration choice. That choice only removes the arbitrary-type materialization
@@ -92,7 +136,7 @@ accounting boundary.
 ## Depth And Progress
 
 Deserialization paths that recurse through objects, metadata, containers, or
-references should enforce the runtime's configured depth limit before crafted
+references should enforce the Fory instance's configured depth limit before crafted
 nesting can exhaust the call stack or bypass cleanup. A malformed input that
 exceeds the configured depth should fail the root operation instead of
 continuing unbounded recursion.
@@ -121,6 +165,62 @@ Deserialization code must prevent the following outcomes for untrusted input:
 When a path cannot produce one of these outcomes, earlier rejection of malformed
 bytes is normally a correctness or interoperability choice, not a security
 requirement.
+
+## Reader Limits Do Not Imply Writer Limits
+
+Read-side length, scale, count, depth, memory, and work limits protect
+deserialization from untrusted input. They are not automatically value-range
+contracts for serialization and do not require a corresponding writer-side
+check.
+
+In particular, Java Fory JSON's arbitrary-precision number length and decimal
+scale limits bound reader-side parsing and materialization. Writers must not
+reject an in-memory `BigInteger`, `BigDecimal`, or language wrapper solely
+because the default reader would reject the resulting JSON. Round-trip
+symmetry, matching error behavior, and test uniformity do not justify extra
+writer branches or validation.
+
+A writer-side restriction is appropriate only when the wire specification or a
+public write API explicitly requires it, or when writing the value otherwise
+causes a concrete writer-owned runtime-safety or resource failure. Such a check
+belongs to the writer that owns that boundary and must not be inferred from a
+deserialization limit.
+
+## Robustness Scope Gate
+
+Before reporting or fixing a deserialization robustness finding, establish a
+concrete consequence in the current implementation:
+
+- Crash, panic, undefined behavior, or out-of-bounds access.
+- Disproportionate allocation, CPU work, or stream growth.
+- A no-progress loop.
+- Persistent state, reference-table, or cache pollution.
+- Later-root corruption or a failed-root cleanup leak.
+- A concrete type, registration, callable, or deserialization-policy violation.
+
+Protocol strictness alone is outside this gate. Do not change code merely
+because a malformed or noncanonical flag, enum value, marker, length form, or
+reserved value is accepted, rejected late, decoded differently, or produces a
+less precise error. Such validation is actionable only when it prevents one of
+the concrete consequences above or implements an explicit public contract.
+
+## Controlled Deserialization Errors
+
+When a decoder determines that input is invalid for the active owner path, the
+root operation must return an error and run its normal failure cleanup. This is
+an outcome requirement, not an error-taxonomy requirement.
+
+Unless a public API or specification explicitly promises otherwise, Fory does
+not require a particular exception type, error code, message, detection layer,
+input offset, or earliest possible detection point. An existing bounded
+downstream buffer-underflow, type, reference, depth, or serializer error is a
+valid rejection. A decoder does not need a new local check merely to replace
+that controlled failure with a more specific or more uniform error.
+
+Tests for malformed input should prove that the root operation fails, cleanup
+remains correct, and any relevant security invariant is preserved. They should
+not pin an exact error type or message when doing so would require additional
+successful-path validation that protects no security boundary.
 
 ## Non-Security Semantics
 
@@ -217,30 +317,54 @@ Large valid collection inputs are allowed. If the input contains many encoded
 elements, proportional deserialization is expected.
 
 The security requirement is to avoid disproportionate preallocation from a
-declared logical count before enough input bytes justify that capacity. For a
-non-empty container, a reader that will allocate or reserve from the declared
-count should call `checkReadableBytes(logicalCount)` or the runtime equivalent
-before that allocation. The check remains byte-owner-only: it does not decode
-the whole container, validate element semantics, or replace chunk validation.
-Readers that do not preallocate from the logical count may still grow
-proportionally as elements are actually read.
+declared logical count before enough input bytes justify that capacity. When
+the repeated element or entry body is proven to consume at least one byte, a
+reader that allocates or reserves from the declared count should call
+`checkReadableBytes(logicalCount)` or an equivalent readable-byte check before that
+allocation. When the body may consume no bytes, the readable-byte requirement
+may exclude the root operation's remaining unbacked-container allowance. The
+reader must still account for actual input progress while reading the
+container. The byte check does not decode the whole container, validate element
+semantics, or replace chunk validation. Readers that do not preallocate from
+the logical count may still grow proportionally as elements are actually read.
 
 Map or collection chunk validation is security-relevant only when missing
 validation can cause a no-progress loop, unbounded resource growth, retained
 state, or success across a Fory policy boundary. Protocol-allowed chunk
 segmentation is normal input and is not a security issue by itself.
 
+## Unbacked Container Work Budget
+
+Fory implementations enforce a root-scoped limit on count-driven collection elements and
+map entries whose repeated read bodies are not backed by input progress. The
+public option is named `maxUnbackedContainerItems` or the language-equivalent
+spelling. Its default is `8192`; values must be non-negative, and zero is a
+strict limit rather than an unlimited sentinel.
+
+The allowance is shared by all nested collections, maps, and compatible field
+skip operations in one root read. Collection readers account for completed
+items every 1024 elements and at the final partial window. Map readers account
+at existing protocol chunk boundaries. Bytes actually consumed by the repeated
+item bodies offset the completed item count in the same window. The budget does
+not add framing, reject values on write, change reference publication, or
+replace graph-memory accounting.
+
+Readers whose exact repeated operation is known to consume at least one byte
+retain their direct loop and proportional readable-byte check. Generated and
+compiled serializers should remove budget access and periodic branches from
+those proven-positive paths.
+
 ## Graph Memory Budget
 
-Runtimes should enforce a per-operation approximate gate for estimated memory created by one
+Fory implementations should enforce a per-operation approximate gate for estimated memory created by one
 materialized graph. This is cumulative accounting for graph owners created by one top-level
 deserialization operation; it is not exact heap measurement and it is not a raw element-slot limit.
 Actual process memory can be higher than the configured gate.
 
 The public configuration is `maxGraphMemoryBytes`. The default is a fixed `128 MiB` for all input
 forms; positive user configuration overrides the default. Explicit non-positive configuration is
-invalid and should be rejected when the runtime is created. The budget is not derived from input
-size, and stream budgeting should not depend on dynamic bytes-read accounting.
+invalid and should be rejected during configuration or Fory instance creation. The budget is not
+derived from input size, and stream budgeting should not depend on dynamic bytes-read accounting.
 
 Graph budget accounting should:
 
@@ -265,13 +389,14 @@ Graph budget accounting should:
   and use primitive/value field widths for inline storage;
 - preserve existing byte-availability checks before backing allocation or capacity reservation;
 - skip enum/union as separate owners and skip dedicated string, binary, primitive scalar, primitive
-  array, and primitive dense-array leaf owners.
+  array, and primitive dense-array leaf owners unless a language-specific owner section explicitly
+  includes them.
 
 Skipped leaf owners must still be gated by remaining input bytes. If the unread input does not
 contain enough bytes for a string, binary value, primitive scalar, primitive array, or primitive
-dense array, the runtime must not read or create that leaf value.
+dense array, the reader must not read or create that leaf value.
 
-Each runtime must inspect the concrete owner path before choosing formulas. Reserve self storage
+Each Fory implementation must inspect the concrete owner path before choosing formulas. Reserve self storage
 exactly once at the owner that stores, boxes, or allocates the value. Deserialization facades may
 reset the budget for each operation, but must not pre-reserve the top-level result type, self bytes,
 or value storage.
@@ -279,13 +404,61 @@ Reference-backed paths reserve parent owner self cost plus reference storage, wh
 heap owner reserves its own shallow self cost when materialized. Inline/value paths reserve inline
 element, field, or boxed storage in the holder/allocation owner; top-level value serializers and
 generated struct/product read paths must not charge their own self storage.
-For inline/value collection or map runtimes, the top-level value container itself is not charged by
+For inline/value collection or map implementations, the top-level value container itself is not charged by
 the deserialization facade or by the container serializer only because it is the returned value.
 Nested value containers are charged as inline slots of the parent holder or as backing storage
 elements of the outer collection that actually owns those slots. Pointer, box, smart-pointer, or
 type-erased materialization paths reserve the shallow storage for the heap value they allocate.
 Parents must not recursively include child object, collection, map, string, binary, or primitive
 dense-array contents; the child owner reserves its own shallow memory when it is materialized.
+
+### Java Fory Core
+
+Java Fory core primitive-array serializers reserve the portable array header plus the logical
+length multiplied by the primitive storage width. Primitive-list serializers reserve the returned
+list's shallow owner, the backing-array header, and the same primitive storage. These known-length
+paths reserve once after their existing proportional readable-byte check and before allocation;
+they do not use incremental batches. Compressed inputs use the decompressed logical length, while
+temporary compressed arrays remain construction scratch outside the retained graph budget.
+Float16 and BFloat16 dense-array carriers also include their wrapper's shallow owner. When a boxed
+list conversion first decodes a primitive array, the array's reservation remains as credit toward
+the final list estimate, and the conversion reserves only a positive remaining difference.
+
+### Java Fory JSON
+
+Java Fory JSON uses `ForyJsonBuilder.withMaxGraphMemoryBytes` to configure this per-root gate. The
+default is the fixed `ForyJson.DEFAULT_MAX_GRAPH_MEMORY_BYTES` value of 128 MiB, and explicit values
+must be positive. String and UTF-8 byte-array root reads use the same configured limit. Every root
+read starts with the complete limit, and success or failure cannot reduce the next root operation's
+budget. The limit is not derived from input length.
+
+Built-in Java JSON accounting includes shallow POJO and record storage, collections and sets plus
+candidate element-reference slots, maps plus candidate key/value-reference slots, reference arrays
+plus their slots, and Java primitive arrays plus their primitive storage. Natural `JsonObject` and
+`JsonArray` values follow the same map and collection rules. Unknown-length collection, map, and
+array storage is reserved in 1024-item batches before each batch's final child and at the tail.
+Repeated set elements and duplicate or overwritten map members are therefore charged per input
+occurrence. A reference array is charged even when its elements are leaves, and an object is charged
+even when all of its properties are leaves. Primitive arrays decoded from JSON arrays reserve the
+portable array header and actual Java primitive width using the same batch schedule.
+`AtomicReference`, `AtomicReferenceArray`, and generic `Optional<T>` values include wrapper and
+reference storage; primitive optionals and atomic primitive values are leaves.
+
+Dedicated Java JSON leaf codecs are excluded from graph accounting: null, strings, characters,
+booleans, numeric values including arbitrary-precision numbers, enums, temporal and other scalar
+values, and binary values. A `byte[]` handled by a binary or Base64 codec remains a binary leaf;
+the same Java carrier decoded from a JSON numeric array is a primitive-array owner. Byte-availability
+and grammar checks still apply independently of graph accounting.
+
+A custom Java JSON codec that materializes composite graph owners must call
+`JsonReader.reserveGraphMemory` with its application-defined byte estimate for each composite
+application object, collection, map, or reference array. Unknown-length retained storage should be
+reserved in bounded batches before each batch's final child and at the tail; a codec may use
+stronger timing. A custom scalar or other dedicated leaf representation makes no reservation. The
+budget cannot include custom allocations that the codec does not reserve, application constructor
+or validator internals, temporary parsing storage, or unrelated process memory. Applications must
+therefore combine this approximate gate with transport input limits, timeouts, and other resource
+controls appropriate to their trust boundary.
 
 ### Generated Structural Targets
 
@@ -310,19 +483,19 @@ the complete target and target-ancestor prefix used by an ordinary child. It mus
 non-public physical field in that prefix; the generator does not scan the referenced assembly for
 private layout.
 
-Exact external private identities are version-pinned package ABI assertions. Runtime wire access
+Exact external private identities are version-pinned package ABI assertions. Generated wire access
 uses exact accessors and must not fall back to reflection, layout probing, or a different member.
-Storage-only private declarations have no runtime accessor, so the application must validate them
+Storage-only private declarations have no generated accessor, so the application must validate them
 against the pinned package version.
 
 Dart generators may additionally include public instance fields visible on the target at
 generation time. Swift macros cannot inspect another type's stored layout and therefore use only
-the external declaration. In every runtime, these formulas are resolved during generation and
+the external declaration. In every implementation, these formulas are resolved during generation and
 must not add reflection, layout probing, allocation, or field enumeration to deserialization hot
 paths. The normal owner rules still apply: a reference target reserves its shallow owner and field
 storage, while an inline value target is charged by the holder that owns its storage.
 
-### Runtime-Specific Owner Notes
+### Language-Specific Owner Notes
 
 #### C++
 
@@ -350,19 +523,17 @@ Boxed, reference-counted, and type-erased materialization paths reserve `size_of
 payload they create. Compile-time `size_of::<T>()` formulas are acceptable in those allocation
 owners, but value serializers should not add a parallel self-reserve for the same `T`.
 
-Count-derived Rust collection and map owners require at least the declared element or entry count in
-readable bytes after the count. Apply that gate exactly once before reservation or allocation; do
-not repeat it after reading shared metadata. Their serializers must symmetrically reject a value
-when its complete post-count header, metadata, framing, and body are shorter than the count,
-including a non-zero-sized target whose custom serializer emits a compact or empty body. Use one
-aggregate writer check per variable carrier, never a per-element check.
+Before count-derived allocation, Rust owners whose exact repeated operation is proven to consume at
+least one byte retain the full readable-byte gate. Uncertain owners require readable bytes only for
+the portion of the count not covered by the remaining unbacked-item allowance. Apply the selected
+gate exactly once at the allocation owner; do not repeat it after reading shared metadata. Writers
+continue to encode legal compact or empty bodies and do not enforce this reader-side allowance.
 
-Fixed arrays do not allocate from their validated wire count and omit this proportional gate.
-`Vec`, `VecDeque`, and `BinaryHeap` also omit it for zero-sized elements because they create no
-count-derived backing allocation in that case. `LinkedList`, `HashSet`, `BTreeSet`, `HashMap`, and
-`BTreeMap` retain the gate for node, bucket, entry, or duplicate-processing work. Implementations
-must not substitute guessed node costs, padding bytes, a global compact-body bypass, or a second
-collection or map codec.
+Fixed arrays do not allocate from their validated wire count and omit the allocation gate. `Vec`,
+`VecDeque`, and `BinaryHeap` also omit it for zero-sized elements because they create no
+count-derived backing allocation in that case. Node, bucket, and entry owners retain the gate where
+the declared count drives allocation. Implementations must not substitute guessed allocation costs,
+padding bytes, a global compact-body bypass, or a second collection or map codec.
 
 #### Swift
 
@@ -402,7 +573,7 @@ materialization path, owns that reservation. Boxing, `object`, and dynamic mater
 reserve a boxed owner when Fory creates the retained box. Owner constants should be real portable
 lower bounds for the relevant C# object or container shape, not placeholder markers.
 
-Runtimes should not guess object headers, array headers, allocator headers, debug-mode fields, hash
+Fory implementations should not guess object headers, array headers, allocator headers, debug-mode fields, hash
 buckets, tree links, hash-chain links, node headers, map-entry objects, spare blocks, or runtime
 table layouts unless the owner path has a cheap, stable, explicit lower-bound storage signal and
 documents the formula. Owner constants should be real lower bounds for the owner shape, not
@@ -411,14 +582,14 @@ placeholder markers.
 ## Skip Semantics
 
 Skipping unknown or incompatible data is classified by concrete impact, not by
-whether the runtime materializes a temporary value.
+whether the Fory implementation materializes a temporary value.
 
 Directly consuming encoded contents is useful when it is simple and owned by the
-current runtime path. It is not a security requirement for complex fields such
-as lists, sets, and maps. A runtime may materialize a value and discard it when
+current reader path. It is not a security requirement for complex fields such
+as lists, sets, and maps. A Fory implementation may materialize a value and discard it when
 that preserves the existing serializer ownership model.
 
-For extension, dynamic, or user-owned types, the owning runtime may not always
+For extension, dynamic, or user-owned types, the owning Fory implementation may not always
 have enough information to skip without invoking a registered serializer. In
 that case, classify the behavior by concrete impact:
 
@@ -478,7 +649,7 @@ handling, deserialization policy, or schema-evolution semantics. Failed or
 incompatible metadata must not consume schema-version limits, and metadata
 cache hits or generated field readers must not add validation, hashing,
 allocation, or policy work for these limits. The concrete sequence for metadata
-parsing, cache publishing, exact-local matching, and counting belongs to the
+parsing, cache publishing, local-header matching, and counting belongs to the
 [xlang implementation guide](../specification/xlang_implementation_guide.md).
 
 The checked metadata cache is the only owner of whether a received TypeDef or
@@ -486,11 +657,34 @@ TypeMeta header has already been validated. A metadata cache hit means the
 header was previously parsed, body/hash-validated, policy-checked, and
 published by the owning cache, so the reader must skip the remaining metadata
 body and use the cached metadata without repeating body validation, hash
-validation, limit checks, exact-local checks, or policy work. A metadata cache
-miss is the only path that parses the metadata body, validates its hash and
-shape, enforces metadata limits, performs exact-local byte comparison, and
-publishes to the cache. Do not add separate nullable flags, sentinel headers,
-per-TypeInfo acceptance markers, or parallel state to represent this decision.
+validation, limit checks, local-schema checks, or policy work. The
+protocol-defined 52-bit TypeDef/TypeMeta header hash is the unique schema
+identity. A known expected local header match is a local-schema hit and must
+skip the body without comparing field arrays or metadata bytes, publishing to
+the remote cache, or consuming a schema-version count. A metadata cache miss is
+the only path that parses the metadata body, validates its hash and shape, and
+enforces metadata limits. The low 12 header bits belong only to the current
+frame. A hit uses the current size and optional extension for bounds and skip
+without validating current reserved or compression flags; low-flag validation
+belongs to the first miss. After this first validation, the miss path may
+build local metadata when no local header was available before the parse. The
+validated received 52-bit hash alone is compared with that local header hash;
+equality selects the local owner without comparing encoded bytes or fields.
+Non-local metadata is then published to the remote cache. Do not add
+separate nullable flags, sentinel headers, per-TypeInfo acceptance markers, or
+parallel state to represent this decision.
+
+Checked MetaString caches follow the same ownership rule. A cache miss is the
+only path that reads and validates a new MetaString body before publishing it.
+The protocol-defined wire hash alone is the MetaString cache identity. A cache
+hit means that identity was already validated, so the reader checks that the
+current frame body is readable, skips its declared length, and uses the cached
+value without rehashing, comparing the length or body bytes, or repeating
+validation. A different body or length carrying the same hash is not a second
+protocol identity that the reader must reject; resolving it to the cached value
+is the defined cache semantics, not a cache-poisoning or policy-bypass defect.
+Do not add hit-time byte or length comparison or other parallel acceptance
+state for MetaString caches.
 
 Only metadata that is actually carried as a TypeDef or TypeMeta body is subject
 to metadata body and schema-version limits. Compatible named enum, ext, and
@@ -509,7 +703,7 @@ one TypeDef. These limits are checked before copying, decompressing, reserving,
 or allocating from attacker-declared metadata sizes or field counts.
 
 The default limits are `maxTypeFields = 512` and `maxTypeMetaBytes = 4096`.
-Runtimes should report limit failures as possible malicious data and tell users
+Fory implementations should report limit failures as possible malicious data and tell users
 to increase the exact option only when the data is not malicious. These limits
 must not introduce validation on metadata cache-hit, generated serializer, or
 already-resolved type-id hot paths.
@@ -535,10 +729,11 @@ Reference tracking validation is security-relevant when malformed input can:
 Reference tracking validation is not required merely because a malformed flag is
 not rejected at the earliest possible byte. Lazy rejection is acceptable when
 the root operation still returns an error and no security invariant is violated.
+The downstream error does not need to be a dedicated reference-protocol error.
 
 ## Error Propagation And Cleanup
 
-Fory runtimes may intentionally use lazy error propagation. After a read records
+Fory implementations may intentionally use lazy error propagation. After a read records
 an error, later read steps may continue until the outer operation observes and
 returns the error.
 
@@ -564,6 +759,8 @@ validation solely for strictness when it introduces:
 - Wrapper objects or result carriers on success paths.
 - Extra copying for buffer-backed string, binary, or primitive-array reads.
 - Branches that do not protect a security invariant.
+- Helper calls or generated-code expansion whose only purpose is to normalize
+  an eventual error's type, message, location, or timing.
 
 Prefer owner-local checks that can be inlined and that already use information
 available in the current serializer. Do not move serializer-owned semantics into

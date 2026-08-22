@@ -232,6 +232,7 @@ extension Decimal: Serializer {
     public static var staticTypeId: TypeId {
         .decimal
     }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeData(_ value: Self, _ context: WriteContext) throws {
         let state = foundationDecimalWireState(value)
@@ -267,10 +268,18 @@ extension Decimal: Serializer {
 
         let meta = header >> 1
         let signum: Int8 = (meta & 1) == 0 ? 1 : -1
-        let length = Int(meta >> 1)
-        guard length > 0 else {
-            throw ForyError.invalidData("invalid decimal magnitude length \(length)")
+        let rawLength = meta >> 1
+        guard rawLength > 0 else {
+            throw ForyError.invalidData("invalid decimal magnitude length \(rawLength)")
         }
+        // Foundation.Decimal has eight 16-bit mantissa words. Check the unsigned
+        // wire length before native conversion or copying an attacker-sized body.
+        guard rawLength <= UInt64(decimalMaxMagnitudeBytes) else {
+            throw ForyError.invalidData(
+                "decimal magnitude with \(rawLength) bytes exceeds Foundation.Decimal precision"
+            )
+        }
+        let length = Int(rawLength)
         let magnitudeBytes = try context.buffer.readBytes(count: length)
         guard magnitudeBytes[length - 1] != 0 else {
             throw ForyError.invalidData("non-canonical decimal magnitude bytes: trailing zero byte")

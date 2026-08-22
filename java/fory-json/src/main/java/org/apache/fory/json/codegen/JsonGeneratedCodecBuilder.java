@@ -23,6 +23,9 @@ import static org.apache.fory.codegen.ExpressionUtils.inline;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.HashSet;
+import java.util.Set;
 import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
@@ -42,6 +45,7 @@ import org.apache.fory.type.Descriptor;
  */
 final class JsonGeneratedCodecBuilder extends CodecBuilder {
   private final String generatedClassName;
+  private final Set<String> directMethods = new HashSet<>();
 
   JsonGeneratedCodecBuilder(String generatedPackage, String generatedClassName, Class<?> type) {
     super(new CodegenContext(), TypeRef.of(type));
@@ -104,12 +108,17 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
       // JSON writers check the returned member value directly. Requesting expression-level null
       // state here only emits an unused boolean for each nullable getter and bloats generated
       // object writers enough to hurt C2 inlining.
-      return new Expression.Invoke(
-          object,
-          getter.getName(),
-          property.name(),
-          TypeRef.of(getter.getGenericReturnType()),
-          false);
+      if (DirectMethodCodegen.sourceNameable(getter)) {
+        return new Expression.Invoke(
+            object,
+            getter.getName(),
+            property.name(),
+            TypeRef.of(getter.getGenericReturnType()),
+            false);
+      }
+      String name = DirectMethodCodegen.getterName(getter);
+      addDirectMethod(name, getter.getReturnType(), getter.getDeclaringClass(), "target");
+      return directInvoke(name, property.name(), TypeRef.of(getter.getGenericReturnType()), object);
     }
     return getFieldValue(object, writeDescriptor(property));
   }
@@ -121,6 +130,12 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
   Expression unwrappedValue(Declaration declaration, Expression object) {
     Method getter = declaration.writeAccessor().getter();
     if (getter != null) {
+      if (!DirectMethodCodegen.sourceNameable(getter)) {
+        String name = DirectMethodCodegen.getterName(getter);
+        addDirectMethod(name, getter.getReturnType(), getter.getDeclaringClass(), "target");
+        return directInvoke(
+            name, declaration.javaName(), TypeRef.of(getter.getGenericReturnType()), object);
+      }
       return new Expression.Invoke(
           object,
           getter.getName(),
@@ -146,7 +161,18 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
       if (!rawType.isAssignableFrom(value.type().getRawType())) {
         value = tryInlineCast(value, typeRef);
       }
-      return new Expression.Invoke(object, setter.getName(), value);
+      if (DirectMethodCodegen.sourceNameable(setter)) {
+        return new Expression.Invoke(object, setter.getName(), value);
+      }
+      String name = DirectMethodCodegen.setterName(setter);
+      addDirectMethod(
+          name,
+          void.class,
+          setter.getDeclaringClass(),
+          "target",
+          setter.getParameterTypes()[0],
+          "value");
+      return directInvoke(name, "", TypeRef.of(void.class), object, value);
     }
     return setFieldValue(
         object,
@@ -175,11 +201,62 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
       if (!rawType.isAssignableFrom(value.type().getRawType())) {
         value = tryInlineCast(value, typeRef);
       }
-      return new Expression.Invoke(object, setter.getName(), value);
+      if (DirectMethodCodegen.sourceNameable(setter)) {
+        return new Expression.Invoke(object, setter.getName(), value);
+      }
+      String name = DirectMethodCodegen.setterName(setter);
+      addDirectMethod(
+          name,
+          void.class,
+          setter.getDeclaringClass(),
+          "target",
+          setter.getParameterTypes()[0],
+          "value");
+      return directInvoke(name, "", TypeRef.of(void.class), object, value);
     }
     return setFieldValue(
         object,
         readDescriptor(declaration.readAccessor().field()),
         tryInlineCast(value, TypeRef.of(declaration.readAccessor().field().getGenericType())));
+  }
+
+  void addDirectMethod(String name, Class<?> returnType, Object... parameters) {
+    if (directMethods.add(name)) {
+      ctx.addMethod("final", name, "throw new AssertionError();", returnType, parameters);
+    }
+  }
+
+  Expression directInvoke(String name, String valueName, TypeRef<?> type, Expression... arguments) {
+    return new Expression.Invoke(
+        new Expression.Reference("this", TypeRef.of(Object.class)),
+        name,
+        valueName,
+        type,
+        false,
+        false,
+        arguments);
+  }
+
+  Expression valueOperation(Method method, Expression... values) {
+    Class<?>[] targetParameters = method.getParameterTypes();
+    boolean isStatic = Modifier.isStatic(method.getModifiers());
+    int expected = targetParameters.length + (isStatic ? 0 : 1);
+    if (values.length != expected) {
+      throw new IllegalArgumentException("Invalid generated value operation " + method);
+    }
+    Object[] parameters = new Object[expected << 1];
+    Expression[] arguments = new Expression[expected];
+    for (int i = 0; i < expected; i++) {
+      Class<?> type =
+          isStatic
+              ? targetParameters[i]
+              : i == 0 ? method.getDeclaringClass() : targetParameters[i - 1];
+      parameters[i << 1] = type;
+      parameters[(i << 1) + 1] = "value" + i;
+      arguments[i] = tryInlineCast(inline(values[i]), TypeRef.of(type));
+    }
+    String name = DirectMethodCodegen.valueOperationName(method);
+    addDirectMethod(name, method.getReturnType(), parameters);
+    return directInvoke(name, "value", TypeRef.of(method.getReturnType()), arguments);
   }
 }

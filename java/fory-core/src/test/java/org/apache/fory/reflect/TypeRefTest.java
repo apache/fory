@@ -394,6 +394,24 @@ public class TypeRefTest extends ForyTestBase {
   }
 
   @Test
+  public void testTypeKeyMetadata() {
+    TypeRef<?> plain =
+        TypeRef.of(String.class, TypeExtMeta.of(Types.UNKNOWN, false, false, false, false));
+    TypeRef<?> wrapped =
+        TypeRef.of(String.class, TypeExtMeta.of(Types.UNKNOWN, false, false, true, false));
+    TypeRef<?> covariant =
+        TypeRef.of(String.class, TypeExtMeta.of(Types.UNKNOWN, false, false, false, true));
+    TypeRef<?> both =
+        TypeRef.of(String.class, TypeExtMeta.of(Types.UNKNOWN, false, false, true, true));
+    assertNotEquals(plain.getTypeKey(), wrapped.getTypeKey());
+    assertNotEquals(plain.getTypeKey(), covariant.getTypeKey());
+    assertNotEquals(plain.getTypeKey(), both.getTypeKey());
+    assertNotEquals(wrapped.getTypeKey(), covariant.getTypeKey());
+    assertNotEquals(wrapped.getTypeKey(), both.getTypeKey());
+    assertNotEquals(covariant.getTypeKey(), both.getTypeKey());
+  }
+
+  @Test
   public void testScalaContainerTypeRefNormalization() throws Exception {
     if (!ScalaTypes.SCALA_AVAILABLE) {
       throw new SkipException("Scala is not available on the Java test classpath");
@@ -427,7 +445,7 @@ public class TypeRefTest extends ForyTestBase {
   }
 
   @Test
-  public void testTypeUseMetadataKeepsNullableOwnership() throws Exception {
+  public void typeUseMetadataKeepsNullableOwner() throws Exception {
     Field nicknameField = TypeUseMetadataStruct.class.getDeclaredField("nickname");
     TypeRef<?> nicknameType = TypeRef.ofTypeUse(nicknameField.getAnnotatedType());
     TypeExtMeta nicknameMeta = nicknameType.getTypeExtMeta();

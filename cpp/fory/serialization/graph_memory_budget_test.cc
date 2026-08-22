@@ -29,6 +29,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -79,6 +80,12 @@ struct BudgetFixedArrayOwner {
   FORY_STRUCT(BudgetFixedArrayOwner, prefix, items);
 };
 
+struct BudgetWeakOwner {
+  std::shared_ptr<BudgetItem> owner;
+  SharedWeak<BudgetItem> weak;
+  FORY_STRUCT(BudgetWeakOwner, owner, weak);
+};
+
 template <typename T> struct GenericBudgetNode {
   T value;
   std::vector<GenericBudgetNode<T>> children;
@@ -103,6 +110,28 @@ template <typename Fn> auto with_fory(int64_t max_graph_memory_bytes, Fn &&fn) {
   fory.register_struct<BudgetEmpty>(4);
   fory.register_struct<GenericBudgetNode<std::string>>(5);
   return std::forward<Fn>(fn)(fory);
+}
+
+template <typename Fn>
+auto with_weak_fory(int64_t max_graph_memory_bytes, Fn &&fn) {
+  auto fory = Fory::builder()
+                  .xlang(true)
+                  .compatible(false)
+                  .track_ref(true)
+                  .max_graph_memory_bytes(max_graph_memory_bytes)
+                  .build();
+  fory.register_struct<BudgetItem>(1);
+  fory.register_struct<BudgetWeakOwner>(6);
+  return std::forward<Fn>(fn)(fory);
+}
+
+template <typename T>
+std::vector<uint8_t> serialize_weak_value(const T &value) {
+  auto bytes = with_weak_fory(kDefaultGraphMemoryBytes, [&](Fory &fory) {
+    return fory.serialize(value);
+  });
+  EXPECT_TRUE(bytes.ok()) << bytes.error().to_string();
+  return std::move(bytes).value();
 }
 
 template <typename T> std::vector<uint8_t> serialize_value(const T &value) {
@@ -241,6 +270,81 @@ TEST(GraphMemoryBudgetTest, SmartPointerStructOwners) {
   ASSERT_TRUE(unique_exact.ok()) << unique_exact.error().to_string();
   ASSERT_NE(unique_exact.value(), nullptr);
   EXPECT_EQ(*unique_exact.value(), *unique_value);
+}
+
+TEST(GraphMemoryBudgetTest, SharedWeakOwners) {
+  constexpr size_t inner_bytes = sizeof(std::weak_ptr<BudgetItem>);
+
+  SharedWeak<BudgetItem> null_value;
+  auto null_bytes = serialize_weak_value(null_value);
+  auto null_small =
+      with_weak_fory(static_cast<int64_t>(inner_bytes - 1), [&](Fory &fory) {
+        return fory.deserialize<SharedWeak<BudgetItem>>(null_bytes);
+      });
+  ASSERT_FALSE(null_small.ok());
+  EXPECT_EQ(null_small.error().code(), ErrorCode::InvalidData);
+  auto null_exact =
+      with_weak_fory(static_cast<int64_t>(inner_bytes), [&](Fory &fory) {
+        return fory.deserialize<SharedWeak<BudgetItem>>(null_bytes);
+      });
+  ASSERT_TRUE(null_exact.ok()) << null_exact.error().to_string();
+  EXPECT_TRUE(null_exact->expired());
+
+  auto strong = std::make_shared<BudgetItem>();
+  strong->id = 11;
+  strong->name = "weak";
+  SharedWeak<BudgetItem> value = SharedWeak<BudgetItem>::from(strong);
+  auto value_bytes = serialize_weak_value(value);
+  constexpr size_t value_required = inner_bytes + sizeof(BudgetItem);
+  auto value_small =
+      with_weak_fory(static_cast<int64_t>(value_required - 1), [&](Fory &fory) {
+        return fory.deserialize<SharedWeak<BudgetItem>>(value_bytes);
+      });
+  ASSERT_FALSE(value_small.ok());
+  EXPECT_EQ(value_small.error().code(), ErrorCode::InvalidData);
+  auto value_exact =
+      with_weak_fory(static_cast<int64_t>(value_required), [&](Fory &fory) {
+        return fory.deserialize<SharedWeak<BudgetItem>>(value_bytes);
+      });
+  ASSERT_TRUE(value_exact.ok()) << value_exact.error().to_string();
+
+  BudgetWeakOwner ref_value;
+  ref_value.owner = strong;
+  ref_value.weak = SharedWeak<BudgetItem>::from(strong);
+  auto ref_bytes = serialize_weak_value(ref_value);
+  constexpr size_t ref_required = sizeof(BudgetItem) + inner_bytes;
+  auto ref_small =
+      with_weak_fory(static_cast<int64_t>(ref_required - 1), [&](Fory &fory) {
+        return fory.deserialize<BudgetWeakOwner>(ref_bytes);
+      });
+  ASSERT_FALSE(ref_small.ok());
+  EXPECT_EQ(ref_small.error().code(), ErrorCode::InvalidData);
+  auto ref_exact =
+      with_weak_fory(static_cast<int64_t>(ref_required), [&](Fory &fory) {
+        return fory.deserialize<BudgetWeakOwner>(ref_bytes);
+      });
+  ASSERT_TRUE(ref_exact.ok()) << ref_exact.error().to_string();
+  ASSERT_NE(ref_exact->owner, nullptr);
+  EXPECT_EQ(ref_exact->weak.upgrade(), ref_exact->owner);
+
+  std::vector<std::shared_ptr<BudgetItem>> typed_source{strong, strong};
+  auto typed_bytes = serialize_weak_value(typed_source);
+  constexpr size_t typed_required = inner_bytes + sizeof(BudgetItem);
+  using TypedTarget =
+      std::tuple<SharedWeak<BudgetItem>, std::shared_ptr<BudgetItem>>;
+  auto typed_small =
+      with_weak_fory(static_cast<int64_t>(typed_required - 1), [&](Fory &fory) {
+        return fory.deserialize<TypedTarget>(typed_bytes);
+      });
+  ASSERT_FALSE(typed_small.ok());
+  EXPECT_EQ(typed_small.error().code(), ErrorCode::InvalidData);
+  auto typed_exact =
+      with_weak_fory(static_cast<int64_t>(typed_required), [&](Fory &fory) {
+        return fory.deserialize<TypedTarget>(typed_bytes);
+      });
+  ASSERT_TRUE(typed_exact.ok()) << typed_exact.error().to_string();
+  ASSERT_NE(std::get<1>(*typed_exact), nullptr);
+  EXPECT_EQ(std::get<0>(*typed_exact).upgrade(), std::get<1>(*typed_exact));
 }
 
 TEST(GraphMemoryBudgetTest, SmartPointerVectorOwner) {

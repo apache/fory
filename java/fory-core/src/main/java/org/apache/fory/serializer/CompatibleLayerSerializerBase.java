@@ -294,6 +294,7 @@ public abstract class CompatibleLayerSerializerBase<T> extends AbstractObjectSer
     }
     Object fieldValue = readFieldValue(readContext, buffer, refReader, generics, fieldInfo);
     if (fieldAccessor != null) {
+      checkFieldValueType(fieldInfo, fieldValue);
       fieldAccessor.putObject(obj, fieldValue);
     }
   }

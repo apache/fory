@@ -26,7 +26,7 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 OUTPUT_DIR="$SCRIPT_DIR/results"
 REPORT_DIR="$OUTPUT_DIR/report"
 PROTO_DIR="$SCRIPT_DIR/proto"
-DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/python"
+DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/object-serialization/xlang/python"
 
 DATA=""
 SERIALIZER=""
@@ -51,7 +51,7 @@ Options:
   --iterations <n>       Measurement iterations (default: 15)
   --repeat <n>           Repeat count per iteration (default: 5)
   --number <n>           Inner loop call count (default: 1000)
-  --no-copy-docs         Skip copying report/plots into docs/benchmarks/python
+  --no-copy-docs         Skip copying report/plots into docs/benchmarks/object-serialization/xlang/python
   -h, --help             Show this help message
 
 Examples:

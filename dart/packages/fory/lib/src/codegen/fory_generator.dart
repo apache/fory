@@ -221,7 +221,6 @@ final class ForyGenerator extends Generator {
             '// ignore_for_file: implementation_imports, invalid_use_of_internal_member, no_leading_underscores_for_local_identifiers, unreachable_switch_case, unused_element, unused_element_parameter, unnecessary_null_comparison',
           )
           ..writeln();
-
     for (final enumSpec in enumSpecs) {
       _writeEnum(output, enumSpec);
     }
@@ -2348,6 +2347,10 @@ final class ForyGenerator extends Generator {
       ..writeln(
         '  usesNestedTypeDefinitions: ${_structUsesNestedTypeDefinitions(structSpec)},',
       )
+      ..writeln(
+        '  readDataAlwaysAdvances: ${_structReadDataAlwaysAdvances(structSpec)},',
+      );
+    output
       ..writeln('  fields: $metadataListName,')
       ..writeln(');')
       ..writeln()
@@ -2357,7 +2360,8 @@ final class ForyGenerator extends Generator {
       ..writeln('  List<GeneratedStructFieldDescriptor>? _fieldDescriptors;')
       ..writeln()
       ..writeln('  $serializerClassName();')
-      ..writeln()
+      ..writeln();
+    output
       ..writeln(
         '  List<GeneratedStructFieldDescriptor> _writeFields(WriteContext context) {',
       )
@@ -5765,6 +5769,30 @@ GeneratedFieldType(
       }
     }
     return false;
+  }
+
+  bool _structReadDataAlwaysAdvances(_GeneratedStructSpec structSpec) {
+    for (final field in structSpec.fields) {
+      if (field.fieldType.nullable ||
+          field.fieldType.ref ||
+          _isGeneratedDynamicField(field) ||
+          _fieldReadAlwaysAdvances(field.fieldType)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _fieldReadAlwaysAdvances(_GeneratedFieldTypeSpec fieldType) {
+    final typeId = fieldType.typeId;
+    return _isPrimitiveTypeId(typeId) ||
+        _isBuiltInTypeId(typeId) ||
+        TypeIds.isContainer(typeId) ||
+        typeId == TypeIds.enumById ||
+        typeId == TypeIds.namedEnum ||
+        typeId == TypeIds.union ||
+        typeId == TypeIds.typedUnion ||
+        typeId == TypeIds.namedUnion;
   }
 
   bool _fieldTypeUsesNestedTypeDefinitions(_GeneratedFieldTypeSpec fieldType) {

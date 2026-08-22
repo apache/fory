@@ -69,8 +69,15 @@ func (s *extensionSerializerAdapter) Write(ctx *WriteContext, refMode RefMode, w
 }
 
 func (s *extensionSerializerAdapter) ReadData(ctx *ReadContext, value reflect.Value) {
+	if ctx.HasError() || !ctx.enterDepth() {
+		return
+	}
 	// Delegate to user's serializer
 	s.userSerial.ReadData(ctx, value)
+	if ctx.HasError() {
+		return
+	}
+	ctx.decDepth()
 }
 
 func (s *extensionSerializerAdapter) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
@@ -81,14 +88,11 @@ func (s *extensionSerializerAdapter) Read(ctx *ReadContext, refMode RefMode, rea
 	case RefModeTracking:
 		refID, refErr := ctx.RefResolver().TryPreserveRefId(buf)
 		if refErr != nil {
-			ctx.SetError(FromError(refErr))
+			ctxErr.SetError(refErr)
 			return
 		}
 		if refID < int32(NotNullValueFlag) {
-			obj := ctx.RefResolver().GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
-			}
+			assignReadRef(ctx, refID, value)
 			return
 		}
 	case RefModeNullOnly:
@@ -96,6 +100,14 @@ func (s *extensionSerializerAdapter) Read(ctx *ReadContext, refMode RefMode, rea
 		if flag == NullFlag {
 			return
 		}
+	}
+	if readType {
+		ctx.TypeResolver().consumeTypeInfoForCodec(buf, ctxErr)
+		if ctxErr.HasError() {
+			return
+		}
+		// Explicit serializer selection authorizes the body codec. TypeInfo is
+		// consumed for wire framing only and must not replace that codec.
 	}
 	s.ReadData(ctx, value)
 }

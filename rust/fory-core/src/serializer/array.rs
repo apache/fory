@@ -28,7 +28,7 @@ use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::meta::FieldType;
 use crate::resolver::{RefFlag, RefMode, TypeInfo, TypeResolver};
-use crate::serializer::{core::read_value_type_info, Serializer};
+use crate::serializer::{core::read_group_type_info, core::read_value_type_info, Serializer};
 use crate::type_id::{TypeId, SIZE_OF_REF_AND_TYPE};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
@@ -194,7 +194,7 @@ macro_rules! array_read_declared {
 
 macro_rules! array_read_typed {
     (value, $T:ty, $S:ty, $N:ident, $context:expr, $has_null:expr) => {{
-        let type_info = read_value_type_info::<$S>($context)?;
+        let type_info = read_value_type_info::<$S, false>($context)?;
         try_init_array(|| {
             if $has_null && $context.reader.read_i8()? == RefFlag::Null as i8 {
                 return <$S as Serializer>::default_value($context);
@@ -211,6 +211,15 @@ macro_rules! array_read_typed {
         let read_type = <$C as Codec<$T>>::read_type_info_value($context)?;
         read_typed_items::<$T, $C, $N>($context, &read_type, $has_null)
     }};
+}
+
+macro_rules! array_group_type_info {
+    (value, $C:ty, $context:expr) => {
+        read_group_type_info::<$C, false>($context)
+    };
+    (field, $C:ty, $context:expr) => {
+        read_group_type_info::<$C, true>($context)
+    };
 }
 
 macro_rules! read_object_array_body {
@@ -241,7 +250,7 @@ macro_rules! read_object_array_body {
                         $layer, $T, $C, $N, context, $remote, ref_mode, has_null, track_ref
                     );
                 }
-                let type_info = context.read_any_type_info()?;
+                let type_info = array_group_type_info!($layer, $C, context)?;
                 return try_init_array(|| {
                     <$C as Serializer>::read_with_type_info(context, ref_mode, &type_info)
                 });
@@ -293,6 +302,8 @@ where
     S: Serializer<Target = T>,
 {
     type Target = [T; N];
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
 
     #[inline(always)]
     fn write_data(value: &Self::Target, context: &mut WriteContext) -> Result<(), Error> {
@@ -473,6 +484,8 @@ pub struct ArraySerializer<S, const N: usize>(PhantomData<fn() -> S>);
 impl<S: Serializer, const N: usize> Serializer for ArraySerializer<S, N> {
     type Target = [S::Target; N];
 
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
+
     #[inline(always)]
     fn write_data(value: &Self::Target, context: &mut WriteContext) -> Result<(), Error> {
         <RootArrayCodec<S, N> as Serializer>::write_data(value, context)
@@ -542,6 +555,8 @@ where
     T: Serializer<Target = T>,
 {
     type Target = Self;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
 
     #[inline(always)]
     fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {

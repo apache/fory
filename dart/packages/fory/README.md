@@ -25,7 +25,7 @@ Add `fory` to your package dependencies.
 
 ```yaml
 dependencies:
-  fory: ^1.5.0
+  fory: ^1.6.1
 
 dev_dependencies:
   build_runner: ^2.4.13
@@ -108,7 +108,7 @@ class TextMessage extends MessageBase {
 
 The generated `TextMessage` schema contains both `sequence` and `text`.
 Superclass and applied-mixin fields are flattened into one child serializer.
-See [Struct Inheritance](https://fory.apache.org/docs/guide/dart/inheritance)
+See [Struct Inheritance](https://fory.apache.org/docs/object-serialization/dart/inheritance)
 for private fields, mixins, constructors, and
 `ignoreInheritedPrivateFields`.
 
@@ -186,6 +186,9 @@ Exactly one registration mode is required:
 Use `.` inside `name` to add a namespace prefix, for example `example.Person`.
 
 Keep the same registration identity on every peer that exchanges the type.
+Finish all generated and custom serializer registration before the first root
+read or write. A `Fory` instance permanently rejects registration after that
+point; create a new instance for a different registry.
 
 ## Configuration
 
@@ -381,4 +384,4 @@ For the xlang wire format and type mapping details, see the
 [Apache Fory specification](https://github.com/apache/fory/tree/main/docs/specification).
 
 For the full Dart guide, see
-[https://fory.apache.org/docs/guide/dart/](https://fory.apache.org/docs/guide/dart/).
+[https://fory.apache.org/docs/object-serialization/dart/](https://fory.apache.org/docs/object-serialization/dart/).

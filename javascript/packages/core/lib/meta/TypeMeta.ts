@@ -76,9 +76,19 @@ export const isPrimitiveTypeId = (typeId: number): boolean => {
 };
 
 export const refTrackingUnableTypeId = (typeId: number): boolean => {
+  // Scalar wire values use value semantics and never consume reference IDs,
+  // even when JavaScript represents the carrier, such as Decimal, as an object.
   return (
     PRIMITIVE_TYPE_IDS.includes(typeId as any) ||
-    [TypeId.DURATION, TypeId.DATE, TypeId.TIMESTAMP, TypeId.STRING].includes(typeId as any)
+    [
+      TypeId.STRING,
+      TypeId.ENUM,
+      TypeId.NAMED_ENUM,
+      TypeId.DURATION,
+      TypeId.DATE,
+      TypeId.TIMESTAMP,
+      TypeId.DECIMAL,
+    ].includes(typeId as any)
   );
 };
 
@@ -281,11 +291,24 @@ function nonStructTypeId(kindCode: number): number {
       throw new Error(`unsupported TypeMeta kind code ${kindCode}`);
   }
 }
+// Package-internal key for binding a generated serializer to the concrete
+// local metadata owner built during code generation.
+export const localTypeMetaSymbol = Symbol("localTypeMeta");
+
+// Package-internal key for the concrete serializer selected when a TypeMeta is
+// first validated. Generic metadata hits dispatch through this owner directly.
+export const checkedTypeMetaSerializerSymbol = Symbol("checkedTypeMetaSerializer");
+
+// Package-internal key for the primitive wire type owned by a checked TypeMeta
+// serializer. Any reads compare this value without inspecting metadata again.
+export const checkedTypeMetaWireTypeIdSymbol = Symbol("checkedTypeMetaWireTypeId");
+
 export class TypeMeta {
   // The 52-bit TypeMeta header hash is the checked metadata identity. It is
   // precise in JS Number and already includes the low header bits as hash input;
   // hot cache hits must compare this value directly without extra low-bit state.
   headerHash: number | null;
+  dynamicTypeId = -1;
   private readonly compressed: boolean;
   private bytes: Uint8Array | null = null;
 
@@ -463,12 +486,16 @@ export class TypeMeta {
     const compressed = false;
     const headerHash = Number(header >> HASH_SHIFT_BITS);
 
-    const bodyStart = reader.readGetCursor();
     // Size limits are not byte-availability proof. Keep this readable-byte
     // check before parsing, slicing, copying, or caching data from metaSize.
     reader.checkReadableBytes(metaSize);
-    const bodyEnd = bodyStart + metaSize;
-    const classHeader = reader.readUint8();
+    // Parse through an exact zero-copy view of the declared metadata body.
+    // Otherwise a malformed inner length can consume bytes from the following
+    // root value before the final body-size check rejects the metadata.
+    const body = reader.bufferRef(metaSize);
+    const bodyReader = new BinaryReader({});
+    bodyReader.reset(body);
+    const classHeader = bodyReader.readUint8();
     const isStruct = (classHeader & STRUCT_TYPEDEF_FLAG) !== 0;
     let numFields = 0;
 
@@ -488,7 +515,7 @@ export class TypeMeta {
       }
       numFields = classHeader & SMALL_NUM_FIELDS_THRESHOLD;
       if (numFields === SMALL_NUM_FIELDS_THRESHOLD) {
-        numFields += reader.readVarUInt32();
+        numFields += bodyReader.readVarUInt32();
       }
       TypeMeta.checkTypeFields(numFields, maxTypeFields);
     } else {
@@ -500,19 +527,30 @@ export class TypeMeta {
     }
 
     if (registerByName) {
-      namespace = this.readPkgName(reader);
-      typeName = this.readTypeName(reader);
+      namespace = this.readPkgName(bodyReader);
+      typeName = this.readTypeName(bodyReader);
     } else {
-      userTypeId = reader.readVarUInt32();
+      userTypeId = bodyReader.readVarUInt32();
     }
 
     // Read fields
-    if (numFields > bodyEnd - reader.readGetCursor()) {
+    if (numFields > metaSize - bodyReader.readGetCursor()) {
       throw new Error("TypeMeta field count exceeds metadata body size");
     }
     const fields: FieldInfo[] = [];
+    let fieldIds: Set<number> | undefined;
     for (let i = 0; i < numFields; i++) {
-      const fieldInfo = this.readFieldInfo(reader);
+      const fieldInfo = this.readFieldInfo(bodyReader);
+      if (fieldInfo.hasFieldId()) {
+        const fieldId = fieldInfo.getFieldId()!;
+        if (fieldIds?.has(fieldId)) {
+          throw new Error(`Duplicate field id ${fieldId}`);
+        }
+        if (fieldIds === undefined) {
+          fieldIds = new Set();
+        }
+        fieldIds.add(fieldId);
+      }
       fields.push(fieldInfo);
     }
     if (!isStruct && fields.length !== 0) {
@@ -527,11 +565,11 @@ export class TypeMeta {
       userTypeId,
     };
 
-    const consumed = reader.readGetCursor() - bodyStart;
+    const consumed = bodyReader.readGetCursor();
     if (consumed !== metaSize) {
       throw new Error(`unexpected TypeMeta body size: expected ${metaSize}, consumed ${consumed}`);
     }
-    TypeMeta.validateParsedBodyHash(header, reader.bufferRefAt(bodyStart, metaSize));
+    TypeMeta.validateParsedBodyHash(header, body);
 
     return new TypeMeta(fields, typeInfo, headerHash, compressed);
   }
@@ -737,7 +775,7 @@ export class TypeMeta {
         if (localName) {
           resolvedName = localName;
         }
-      } else if (localProps[resolvedName]) {
+      } else if (Object.prototype.hasOwnProperty.call(localProps, resolvedName)) {
         resolvedName = fieldInfo.getFieldName();
       } else {
         const normalized = TypeMeta.toSnakeCase(resolvedName);
@@ -899,6 +937,9 @@ export class TypeMeta {
   }
 
   static lowerUnderscoreToLowerCamelCase(lowerUnderscore: string) {
+    if (lowerUnderscore === "__proto__") {
+      return lowerUnderscore;
+    }
     let result = "";
     const length = lowerUnderscore.length;
 
@@ -931,6 +972,9 @@ export class TypeMeta {
   }
 
   static lowerCamelToLowerUnderscore(lowerCamel: string) {
+    if (lowerCamel === "__proto__") {
+      return lowerCamel;
+    }
     let result = "";
     const length = lowerCamel.length;
     let fromIndex = 0;

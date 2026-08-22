@@ -106,6 +106,12 @@ struct EncodedMetaString {
   std::vector<uint8_t> bytes;
 };
 
+// Compute the canonical wire hash for a meta string. Large meta strings encode
+// MetaEncoding in the low byte of this hash instead of writing a separate
+// encoding byte.
+int64_t compute_meta_string_hash(const std::vector<uint8_t> &bytes,
+                                 MetaEncoding encoding);
+
 // Encoder for meta strings used by xlang type metadata.
 // This mirrors the behavior of Java's MetaStringEncoder.
 class MetaStringEncoder {

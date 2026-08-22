@@ -36,6 +36,8 @@ macro_rules! impl_num_serializer {
         impl Serializer for $ty {
             type Target = Self;
 
+            const READ_DATA_ALWAYS_ADVANCES: bool = true;
+
             #[inline(always)]
             fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
                 $writer(&mut context.writer, *value);

@@ -19,6 +19,8 @@ namespace Apache.Fory;
 
 public static class FieldSkipper
 {
+    private const int UnbackedCheckInterval = 1024;
+
     public static void SkipFieldValue(ReadContext context, TypeMetaFieldType fieldType)
     {
         SkipValue(context, fieldType, RefModeExtensions.From(fieldType.Nullable, fieldType.TrackRef));
@@ -134,7 +136,8 @@ public static class FieldSkipper
     private static object? ReadInlineTypedPayload(ReadContext context)
     {
         TypeInfo typeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
-        return context.TypeResolver.ReadAnyValue(typeInfo, context);
+        context.TypeResolver.SkipAnyValue(typeInfo, context);
+        return null;
     }
 
     private static object? ReadInlineTypedPayload(ReadContext context, uint refId)
@@ -148,7 +151,8 @@ public static class FieldSkipper
         switch (refMode)
         {
             case RefMode.None:
-                return context.TypeResolver.ReadAnyValue(typeInfo, context);
+                context.TypeResolver.SkipAnyValue(typeInfo, context);
+                return null;
             case RefMode.NullOnly:
                 {
                     sbyte flag = context.Reader.ReadInt8();
@@ -162,7 +166,8 @@ public static class FieldSkipper
                         throw new InvalidDataException($"unexpected nullOnly flag {flag}");
                     }
 
-                    return context.TypeResolver.ReadAnyValue(typeInfo, context);
+                    context.TypeResolver.SkipAnyValue(typeInfo, context);
+                    return null;
                 }
             case RefMode.Tracking:
                 {
@@ -182,7 +187,8 @@ public static class FieldSkipper
                                 return context.TypeResolver.ReadAnyValue(typeInfo, context, reservedRefId);
                             }
                         case RefFlag.NotNullValue:
-                            return context.TypeResolver.ReadAnyValue(typeInfo, context);
+                            context.TypeResolver.SkipAnyValue(typeInfo, context);
+                            return null;
                         default:
                             throw new RefException($"invalid ref flag {(sbyte)flag}");
                     }
@@ -289,6 +295,8 @@ public static class FieldSkipper
             case (uint)TypeId.Map:
                 SkipMap(context, fieldType);
                 return;
+            case (uint)TypeId.None:
+                return;
             case (uint)TypeId.Enum:
             case (uint)TypeId.NamedEnum:
                 _ = context.Reader.ReadVarUInt32();
@@ -349,9 +357,34 @@ public static class FieldSkipper
             elementTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
         }
 
+        bool guardUnbackedItems = elementRefMode == RefMode.None &&
+                                  !FieldReadAlwaysAdvances(elementType, elementTypeInfo);
+        if (!guardUnbackedItems)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                SkipValue(context, elementType, elementRefMode, elementTypeInfo);
+            }
+
+            return;
+        }
+
+        int checkpoint = context.Reader.Cursor;
         for (int i = 0; i < length; i++)
         {
             SkipValue(context, elementType, elementRefMode, elementTypeInfo);
+            if (((i + 1) & (UnbackedCheckInterval - 1)) == 0)
+            {
+                int cursor = context.Reader.Cursor;
+                context.SettleUnbackedContainerItems(UnbackedCheckInterval, cursor - checkpoint);
+                checkpoint = cursor;
+            }
+        }
+
+        int tail = length & (UnbackedCheckInterval - 1);
+        if (tail != 0)
+        {
+            context.SettleUnbackedContainerItems(tail, context.Reader.Cursor - checkpoint);
         }
     }
 
@@ -413,6 +446,11 @@ public static class FieldSkipper
             }
 
             int chunkSize = context.Reader.ReadUInt8();
+            if (chunkSize == 0 || chunkSize > totalLength - readCount)
+            {
+                ThrowInvalidChunkSize(chunkSize, totalLength - readCount);
+            }
+
             TypeInfo? keyChunkTypeInfo = null;
             if (!keyDeclared)
             {
@@ -433,13 +471,46 @@ public static class FieldSkipper
                 valueChunkTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
             }
 
+            bool guardChunk = !trackKeyRef &&
+                              !trackValueRef &&
+                              !FieldReadAlwaysAdvances(keyType, keyChunkTypeInfo) &&
+                              !FieldReadAlwaysAdvances(valueType, valueChunkTypeInfo);
+            int checkpoint = guardChunk ? context.Reader.Cursor : 0;
+
             for (int i = 0; i < chunkSize; i++)
             {
                 SkipValue(context, keyType, trackKeyRef ? RefMode.Tracking : RefMode.None, keyChunkTypeInfo);
                 SkipValue(context, valueType, trackValueRef ? RefMode.Tracking : RefMode.None, valueChunkTypeInfo);
             }
 
+            if (guardChunk)
+            {
+                context.SettleUnbackedContainerItems(
+                    chunkSize,
+                    context.Reader.Cursor - checkpoint);
+            }
+
             readCount += chunkSize;
         }
+    }
+
+    private static bool FieldReadAlwaysAdvances(
+        TypeMetaFieldType fieldType,
+        TypeInfo? resolvedTypeInfo)
+    {
+        if (resolvedTypeInfo is not null)
+        {
+            return resolvedTypeInfo.ReadDataAlwaysAdvances;
+        }
+
+        uint typeId = fieldType.TypeId;
+        return typeId is >= 1 and <= 26 or >= 33 and <= 35 or >= 37 and <= 56;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static void ThrowInvalidChunkSize(int chunkSize, int remaining)
+    {
+        throw new InvalidDataException(
+            $"invalid map chunk size {chunkSize} with {remaining} entries remaining");
     }
 }

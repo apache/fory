@@ -62,6 +62,14 @@ fn test_max_dyn_depth_exceeded_box_dyn_any() {
         let err = result.unwrap_err();
         let err_msg = format!("{:?}", err);
         assert!(err_msg.contains("Maximum dynamic object nesting depth"));
+
+        let shallow: Box<dyn Any> = Box::new(Container {
+            value: 4,
+            nested: None,
+        });
+        let shallow_bytes = fory.serialize(&shallow).unwrap();
+        let reused: Result<Box<dyn Any>, _> = fory.deserialize(&shallow_bytes);
+        assert!(reused.is_ok(), "failed root depth must reset before reuse");
     }
 }
 

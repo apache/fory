@@ -18,7 +18,7 @@
 use super::codec::{
     field_ref_mode, field_type_with_ref_flags, generic_field_type, Codec, CodecReadType,
 };
-use super::collection::check_count_write_bytes;
+use super::collection::{field_read_data_always_advances, settle_unbacked_items};
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::meta::FieldType;
@@ -172,7 +172,6 @@ macro_rules! write_map_data_body {
         if len == 0 {
             return Ok(());
         }
-        let body_offset = context.writer.len();
         context.writer.reserve(
             len.saturating_mul(
                 map_reserved_space!($layer, $K, $KC)
@@ -392,7 +391,7 @@ macro_rules! write_map_data_body {
         if pair_count != 0 {
             context.writer.set_bytes(header_offset + 1, &[pair_count]);
         }
-        check_count_write_bytes(context, body_offset, len)
+        Ok(())
     }};
 }
 
@@ -445,7 +444,7 @@ where
     if declared {
         return Ok(None);
     }
-    read_value_type_info::<S>(context)
+    read_value_type_info::<S, false>(context)
 }
 
 #[inline(always)]
@@ -547,6 +546,23 @@ macro_rules! map_read_entry {
     };
 }
 
+macro_rules! entry_read_data_always_advances {
+    (value, $T:ty, $S:ty, $read_type:expr) => {
+        <$S as Serializer>::READ_DATA_ALWAYS_ADVANCES
+            && $read_type
+                .as_ref()
+                .map_or(true, |type_info| type_info.has_exact_local_schema())
+    };
+    (field, $T:ty, $C:ty, $read_type:expr) => {
+        <$C as Serializer>::READ_DATA_ALWAYS_ADVANCES
+            && match $read_type {
+                EntryReadType::Direct => true,
+                EntryReadType::TypeInfo(type_info) => type_info.has_exact_local_schema(),
+                EntryReadType::Field(field_type) => field_read_data_always_advances(field_type),
+            }
+    };
+}
+
 #[cold]
 #[inline(never)]
 fn invalid_map_chunk() -> Error {
@@ -579,7 +595,14 @@ macro_rules! read_map_data_body {
         let context = $context;
         let len = context.reader.read_var_u32()?;
         let capacity = len as usize;
-        context.reader.check_bound(capacity)?;
+        let required = if <$KC as Serializer>::READ_DATA_ALWAYS_ADVANCES
+            || <$VC as Serializer>::READ_DATA_ALWAYS_ADVANCES
+        {
+            capacity
+        } else {
+            capacity.saturating_sub(context.remaining_unbacked_container_items())
+        };
+        context.reader.check_bound(required)?;
         let elem_bytes = std::mem::size_of::<$K>()
             .checked_add(std::mem::size_of::<$V>())
             .and_then(|bytes| bytes.checked_mul(capacity))
@@ -666,11 +689,28 @@ macro_rules! read_map_data_body {
                 1,
                 value_tracked
             )?;
-            while read < end {
-                let key = map_read_entry!($layer, $K, $KC, context, &key_type, key_tracked)?;
-                let value = map_read_entry!($layer, $V, $VC, context, &value_type, value_tracked)?;
-                map.insert(key, value);
-                read += 1;
+            let entry_read_always_advances = key_tracked
+                || value_tracked
+                || entry_read_data_always_advances!($layer, $K, $KC, &key_type)
+                || entry_read_data_always_advances!($layer, $V, $VC, &value_type);
+            if entry_read_always_advances {
+                while read < end {
+                    let key = map_read_entry!($layer, $K, $KC, context, &key_type, key_tracked)?;
+                    let value =
+                        map_read_entry!($layer, $V, $VC, context, &value_type, value_tracked)?;
+                    map.insert(key, value);
+                    read += 1;
+                }
+            } else {
+                let chunk_start = context.reader.get_cursor();
+                while read < end {
+                    let key = map_read_entry!($layer, $K, $KC, context, &key_type, key_tracked)?;
+                    let value =
+                        map_read_entry!($layer, $V, $VC, context, &value_type, value_tracked)?;
+                    map.insert(key, value);
+                    read += 1;
+                }
+                settle_unbacked_items(context, chunk_size as usize, chunk_start)?;
             }
         }
         Ok(map)
@@ -761,6 +801,8 @@ macro_rules! impl_map_codec {
             fn reserved_space() -> usize {
                 std::mem::size_of::<u32>() + SIZE_OF_REF_AND_TYPE
             }
+
+            const READ_DATA_ALWAYS_ADVANCES: bool = true;
         }
 
         impl<K, V, KC, VC, const NULLABLE: bool, const TRACK_REF: bool>
@@ -892,6 +934,8 @@ macro_rules! impl_map_serializer {
             KS::Target: $($key_bound)+,
         {
             type Target = $target<KS::Target, VS::Target>;
+
+            const READ_DATA_ALWAYS_ADVANCES: bool = true;
 
             #[inline(always)]
             fn write_data(value: &Self::Target, context: &mut WriteContext) -> Result<(), Error> {
@@ -1033,6 +1077,8 @@ macro_rules! impl_map_serializer {
         {
             type Target = Self;
 
+            const READ_DATA_ALWAYS_ADVANCES: bool = true;
+
             #[inline(always)]
             fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
                 <$provider<K, V> as Serializer>::write_data(value, context)
@@ -1119,3 +1165,22 @@ impl_map_serializer!(
     [Eq + std::hash::Hash]
 );
 impl_map_serializer!(BTreeMapSerializer, BTreeMap, BTreeMapCodec, [Ord]);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Config, Reader};
+
+    #[test]
+    fn empty_entries_use_root_budget() {
+        let bytes = [3, DECL_KEY_TYPE | DECL_VALUE_TYPE, 3];
+        let mut context = ReadContext::new(TypeResolver::default(), Config::default());
+        context.remaining_graph_memory_bytes = usize::MAX;
+        context.remaining_unbacked_container_items = 2;
+        context.attach_reader(Reader::new(&bytes));
+
+        let error =
+            read_value_map_data::<BTreeMap<(), ()>, (), (), (), ()>(&mut context).unwrap_err();
+        assert!(error.to_string().contains("max_unbacked_container_items"));
+    }
+}

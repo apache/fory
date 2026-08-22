@@ -308,7 +308,7 @@ definitions may change between service versions.
 
 # More Information
 
-For comprehensive documentation, see https://fory.apache.org/docs/guide/go/
+For comprehensive documentation, see https://fory.apache.org/docs/object-serialization/go/
 
 Related specifications:
   - Xlang Serialization: https://fory.apache.org/docs/specification/xlang_serialization_spec

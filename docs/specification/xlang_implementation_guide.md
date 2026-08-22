@@ -21,12 +21,11 @@ license: |
 
 ## Overview
 
-This guide describes the current xlang implementation ownership model used by
-the xlang runtimes.
+This guide describes the current xlang ownership model used by Fory implementations.
 
 The wire format is defined by
 [Xlang Serialization Spec](xlang_serialization_spec.md). This document is about
-service boundaries, operation flow, and internal ownership. New language implementations do not
+service boundaries, operation flow, and internal ownership. New Fory implementations do not
 need the same class names, but they should preserve the same control flow:
 
 - root operations stay on the `Fory` facade
@@ -202,7 +201,7 @@ The ownership split is:
 
 - the serializer provider owns static serialization behavior and, for an
   external structural serializer, the local schema declaration
-- the target owns runtime values, host type identity, storage size, and
+- the target owns values of the target type, host type identity, storage size, and
   dynamic downcasts
 - the value serializer owns target bodies, complete root values, defaults,
   value type identity, root/dynamic type information, and value-level
@@ -298,8 +297,8 @@ internal static class StatusSerializer
 ```
 
 External declarations are compile-time generator input only. They are never
-instantiated, reflected over by the runtime, registered, reference-published,
-or used as wire identities. Runtime type positions, construction, `TypeInfo`,
+instantiated, reflected over at runtime, registered, reference-published,
+or used as wire identities. All serializer type positions, construction, `TypeInfo`,
 metadata, reference publication, generated factory keys, roots, fields,
 dynamic values, and carriers use the target type.
 
@@ -349,7 +348,7 @@ C# carrier composition remains target-based. The resolver recursively binds
 `Dictionary<TKey, TValue>`, `SortedDictionary<TKey, TValue>`,
 `SortedList<TKey, TValue>`, `ConcurrentDictionary<TKey, TValue>`, and
 `NullableKeyDictionary<TKey, TValue>`. Ordinary, external, and custom
-serializers use the same carrier bodies. There is no hierarchy runtime lookup,
+serializers use the same carrier bodies. There is no hierarchy lookup at runtime,
 provider object, callback, schema tree, per-element dispatch, or additional
 value allocation.
 
@@ -373,7 +372,7 @@ Rust represents immutable value-serializer properties with five associated
 constants on `Serializer`:
 
 - `IS_OPTIONAL` means the selected value shape carries Option semantics;
-- `IS_POLYMORPHIC` means its concrete target is selected from the runtime
+- `IS_POLYMORPHIC` means its concrete target is selected from the application
   value;
 - `IS_SHARED_REF` means it uses the existing shared-reference wire behavior;
 - `IS_WRAPPER` means it is a Fory-owned wrapper serializer without an
@@ -401,9 +400,9 @@ or forwards field framing without changing root or value composition.
 Serializer-provider identity is a host implementation detail and is never
 encoded. External structural serializers use the same STRUCT, ENUM, or UNION
 metadata and value format as an equivalent directly supported target. Custom
-serializers that are not the runtime's canonical implementation of an existing
+serializers that are not the Fory implementation's canonical serializer for an existing
 built-in use EXT or NAMED_EXT. Serializer-provider separation does not replace
-runtime-owned built-in mappings.
+implementation-owned built-in mappings.
 
 Static generated fields and serializer-selected roots should dispatch directly
 to the serializer selected by their schema. A Rust field `with = S` selects the
@@ -830,9 +829,9 @@ custom serializer targeting one of the same Rust shapes also keeps it false
 because it owns an independent opaque EXT body. Private built-in registration
 validates only its expected internal type ID. These semantic checks use the
 existing serializer contracts and wire categories. Custom EXT registration is
-the only runtime consumer of `IS_WRAPPER`.
+the only consumer of `IS_WRAPPER`.
 
-Dynamic values should resolve by the concrete target identity. When a runtime
+Dynamic values should resolve by the concrete target identity. When a Fory implementation
 needs both directions, its serializer-provider-to-type-info and target-to-type-info
 indexes must point to the same immutable registration metadata and serializer
 harness rather than creating parallel metadata or serialization paths.
@@ -1076,7 +1075,7 @@ This policy avoids three inefficient implementation shapes:
 
 Scratch buffers remain appropriate when the target representation is not a
 direct byte target, such as string transcoding, compression, byte-order
-conversion that is not performed in place, bit-packed values, or runtimes whose
+conversion that is not performed in place, bit-packed values, or implementations whose
 stream API cannot read into a caller-provided target.
 
 For fixed-width primitive arrays, the final result must not become visible to
@@ -1104,8 +1103,8 @@ memory budget before allocation or size hinting. The budget state belongs to
 state. Root facades set or reset the per-operation budget only; they must not
 pre-reserve root type or root self bytes. `maxGraphMemoryBytes` defaults to a
 fixed `128 MiB`; positive configuration overrides the default; explicit
-non-positive configuration is invalid and must be rejected when the runtime is
-created. Do not derive this budget from root input size, and do not add dynamic
+non-positive configuration is invalid and must be rejected during configuration or Fory instance
+creation. Do not derive this budget from root input size, and do not add dynamic
 stream bytes-read accounting for this budget.
 Because the budget is fixed per root, read state should not mirror the
 configured maximum into a second active-limit field. Use the existing
@@ -1136,13 +1135,13 @@ reserve the heap or boxed storage they allocate. Value serializers, including
 root and generated struct/product read paths, do not reserve their own self
 storage. Struct/record/POJO/tuple, compatible, generated, and dynamic object
 owners reserve a nonzero shallow self cost plus shallow field storage only in
-reference-object runtimes or dynamic/boxed materialization paths.
+reference-object implementations or dynamic/boxed materialization paths.
 Parents must not recursively include child object, collection, map, string,
 binary, or primitive dense-array contents. Skip enum/union as separate owners and
 skip dedicated string, binary, primitive scalar, primitive array, and primitive
 dense-array leaf owners, but do not skip general inline-value containers such as
 vectors or lists of value objects. If reference slot size is not cheap or
-reliable to query, use a 4-byte reference slot. Native runtimes may use
+reliable to query, use a 4-byte reference slot. Native-code implementations may use
 conservative lower-bound estimates instead of guessing non-portable object,
 container, allocator, table, node, entry, or debug-layout details. Reject
 arithmetic overflow before budget comparison or allocation, and keep the
@@ -1150,7 +1149,7 @@ existing `checkReadableBytes` proof before backing
 allocation or capacity reservation.
 Skipped leaf owners must still be gated by remaining input bytes. If unread
 bytes are insufficient for a string, binary value, primitive scalar, primitive
-array, or primitive dense array, the runtime must not read or create that leaf
+array, or primitive dense array, the reader must not read or create that leaf
 value.
 
 For TypeDef or TypeMeta bodies, first prove that the encoded metadata body bytes
@@ -1172,34 +1171,39 @@ remain hot paths and must not add work for these limits.
 Remote schema-version limits belong to the same cold metadata owner path.
 Header cache hits must skip the remaining metadata body and return cached
 metadata without schema-limit checks, hash revalidation, allocation, or policy
-work. On a header miss, keep the handling in one concrete owner path: prove and
-read the metadata body bytes, validate the body against its header, validate
-field counts, resolve the type through the existing registration and
-deserialization-policy checks, compare exact local metadata by original encoded
-bytes when applicable, check schema-version limits for non-local remote
-metadata, build the required read state, publish to the persistent metadata
-cache, and then record the schema count. Failed or incompatible metadata must
-not publish to the persistent cache and must not consume schema-version counts.
+work. The protocol-defined 52-bit TypeDef/TypeMeta header hash is the unique
+schema identity. When the selected local type already owns the received header,
+that is a local-schema hit: skip the body and use the local metadata without
+comparing field arrays or encoded metadata bytes, publishing to the persistent
+remote cache, or consuming a schema-version count. This applies to struct and
+named enum, ext, and union metadata when those metadata bodies are present.
+The low 12 header bits belong only to the current frame. A hit reads its current
+size and optional extension for bounds and skip but does not validate current
+reserved or compression flags; low-flag validation belongs to the cold miss.
 
-Remote metadata whose encoded bytes exactly match the local registered metadata
-may use the local metadata without consuming the remote schema-version limit,
-after the existing type and deserialization-policy checks for selecting that
-local type have run. This exact-local bypass is not struct-only; it also applies
-to named enum, ext, and union metadata when those metadata bodies are present and
-match the local encoded bytes. Pure id-based enum, ext, and typed-union values
+A header miss enters the parse owner: prove and read the metadata body bytes,
+validate the body against its header, validate field counts, and resolve the
+type through the existing registration and deserialization-policy checks. When
+no local header was available before parsing, this miss-only path may lazily
+build local metadata and compare its 52-bit header hash with the validated
+received hash. Hash equality selects local metadata without a byte or field
+comparison and without consuming a remote schema-version count.
+Otherwise, check schema-version limits, build the required read state, publish
+to the persistent metadata cache, and then record the schema count. Failed or
+incompatible metadata must not publish to the persistent cache and must not
+consume schema-version counts. Pure id-based enum, ext, and typed-union values
 do not carry TypeDef or TypeMeta bodies and must stay on the normal type-id plus
 user-type-id path. Compatible named enum, ext, and union metadata normally has
 one version, but it still counts against accepted remote metadata totals when it
-is sent as shared metadata and does not exactly match local metadata.
-`maxTypeFields` applies only to struct field lists.
+is sent as shared metadata and is a non-local metadata miss. `maxTypeFields`
+applies only to struct field lists.
 
-The exact-local candidate must be derived inside the metadata owner path from
-the decoded metadata identity: `userTypeId` for id-registered metadata, or
-`(namespace, typeName)` for name-registered metadata. Do not thread extra
-expected-type parameters through read callers solely for this check. This rule
-applies to every runtime. Java and Python may lazy-build the local encoded
-metadata only after this identity lookup selects a local class and the existing
-class, registration, and deserialization-policy checks for that class have run.
+The miss-only local candidate must be derived inside the metadata owner from
+the decoded identity, after the existing class, registration, and policy
+checks. Compare only its 52-bit header hash with the validated received hash.
+Do not retain or compare metadata bytes or fields, thread extra expected-type
+parameters through callers for revalidation, or add parallel accepted-header
+state. Cache hits never repeat miss-time work.
 
 When a statically declared compatible named enum, ext, or union field reads
 shared metadata, the decoded metadata must match the declared type id,
@@ -1207,7 +1211,9 @@ namespace, and type name before the metadata owner publishes it to the
 persistent cache or records a schema count. Already accepted header or reference
 cache hits still skip the body and must not rerun body-hash, schema-limit, or
 registration checks, but the field reader must not treat metadata for a
-different declared named type as the current field's metadata.
+different declared named type as the current field's metadata. Route such hits
+by the concrete metadata owner identity bound on the miss; do not inspect the
+metadata body or repeat its namespace, type-name, user-id, or wire-type checks.
 
 Skip paths do not need to materialize skipped values. Existing byte-skip
 operations should consume any available buffered prefix first, then skip or drop
@@ -1270,7 +1276,7 @@ When `Config.compatible` is enabled and the struct is marked evolving:
   classified as compatible when element domains match; the nullable element
   schema bit alone is not a schema-pair rejection. Actual null element payloads
   fail in the dense-array reader. Ref-tracked list-element framing is separate
-  and may remain rejected when the runtime cannot materialize it without
+  and may remain rejected when the implementation cannot materialize it without
   generic/reference paths.
 
 When `compatible` is disabled and `checkStructVersion` is enabled:
@@ -1325,6 +1331,12 @@ Ownership rules:
   `MetaStringReader`
 - shared type-definition tables are operation-local context state
 
+For a large MetaString that carries a wire hash, that hash alone is its checked
+cache identity. The body length belongs to the current frame: a hash cache hit
+checks that many bytes are readable and skips them, but does not compare the
+length or body with the cached value. Only a cache miss reads the body, verifies
+the hash, and publishes the checked value.
+
 ## Enums In Xlang Mode
 
 In xlang mode, enums are serialized by numeric tag, not by name.
@@ -1339,7 +1351,7 @@ In C#, the enum's underlying numeric value is the xlang tag. Java peers for
 sparse C# enums must declare matching `@ForyEnumId` values instead of relying
 on declaration ordinals.
 
-Other language implementations should preserve the same wire rule even if the configuration or
+Other Fory implementations should preserve the same wire rule even if the configuration or
 annotation surface differs.
 
 A Rust data-carrying enum is an xlang union only when each known variant is unit
@@ -1386,7 +1398,7 @@ registration API family.
 
 Ordinary Dart `ForyStruct` inheritance is a code-generation-time field
 discovery, normalization, access, construction, and flattening change. It does
-not redesign the runtime reference protocol.
+not redesign the reference protocol.
 
 For a concrete annotated child, the generator walks the instantiated
 superclass and applied-mixin storage chain rather than only the child's direct
@@ -1518,7 +1530,7 @@ proof.
 The concrete child owns one `GeneratedStructSchema`, one canonical field sort,
 one serializer and descriptor cache, one reconstruction, one reference
 publication path, and one graph-memory owner. Parent serializers are neither
-nested nor invoked, and parent runtime registration is not required. A
+nested nor invoked, and parent type registration is not required. A
 separately annotated concrete parent has its own independently flattened
 schema only for values of that exact type.
 
@@ -1591,7 +1603,7 @@ registration identity.
 
 The generator must analyze ordinary and external structs through one struct
 model and one emitter. Private generated symbol names come from the declaration
-name. Every runtime type position uses the target type: `Serializer<Target>`,
+name. Every generated serializer type position uses the target type: `Serializer<Target>`,
 `GeneratedStructSchema<Target>`, read and write signatures, constructor calls,
 schema `type`, and generated-module dispatch.
 
@@ -1626,7 +1638,7 @@ paths remain the only runtime paths.
 Registration is keyed by `Target` through the generated module and the existing
 generated registration API. Direct roots, generated fields, dynamic values,
 and recursive collection/map children resolve the same target registration.
-Dart root collections retain their existing untyped outer runtime shapes.
+Dart root collections retain their existing untyped outer shapes.
 
 ## Directory Layout
 

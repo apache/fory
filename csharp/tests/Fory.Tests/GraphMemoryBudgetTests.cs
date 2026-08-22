@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-using System.Buffers;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using Apache.Fory;
@@ -80,7 +79,7 @@ public sealed class NullableValueHolder
 public sealed class BudgetValueCompatWriter
 {
     public BudgetValue Value { get; set; }
-    public int Extra { get; set; }
+    public BudgetValue Extra { get; set; }
 }
 
 [ForyStruct]
@@ -149,6 +148,7 @@ public sealed class GraphMemoryBudgetTests
     private const long BudgetValueBytes = 4;
     private static readonly long BudgetValueHolderBytes = ObjectOwnerBytes + BudgetValueBytes;
     private const long DefaultGraphMemoryBytes = 128L * 1024 * 1024;
+    private const int UnprovenCollectionLength = 1_000_000;
 
     private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
 
@@ -194,6 +194,12 @@ public sealed class GraphMemoryBudgetTests
         return ArrayOwnerBytes + (long)count * ElementBytes<T>();
     }
 
+    private static long BoxBudget<T>()
+        where T : struct
+    {
+        return ObjectHeaderBytes + Unsafe.SizeOf<T>();
+    }
+
     private static long MapBudget<TKey, TValue>(int count)
     {
         return DictionaryOwnerBytes + (long)count * (ElementBytes<TKey>() + ElementBytes<TValue>());
@@ -203,6 +209,27 @@ public sealed class GraphMemoryBudgetTests
     {
         return NullableKeyDictionaryOwnerBytes
             + MapBudget<TKey, TValue>(count);
+    }
+
+    private static ReadContext NewShortCollectionContext(out Serializer<int> serializer)
+    {
+        ByteWriter writer = new();
+        writer.WriteVarUInt32(UnprovenCollectionLength);
+        writer.WriteUInt8(CollectionBits.SameType | CollectionBits.DeclaredElementType);
+
+        ForyRuntime fory = NewFory();
+        TypeResolver resolver = new();
+        serializer = resolver.GetSerializer<int>();
+        ReadContext context = new(new ByteReader(writer.ToArray()), resolver, fory.Config);
+        context._remainingGraphMemoryBytes = fory.Config.MaxGraphMemoryBytes;
+        return context;
+    }
+
+    private static long RejectedCollectionAllocation(Action read)
+    {
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<OutOfBoundsException>(read);
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     [Fact]
@@ -299,18 +326,6 @@ public sealed class GraphMemoryBudgetTests
         Assert.Equal(default(ExternalBudgetValue), decoded.BaseState);
         Assert.Equal(default(ExternalBudgetValue), decoded.ReadHiddenState());
     }
-
-    [Fact]
-    public void ReadOnlySequenceUsesSameBudget()
-    {
-        const int count = 6;
-        List<List<string>> value = Enumerable.Range(0, count).Select(_ => new List<string>()).ToList();
-        byte[] bytes = Serialize(value);
-        ReadOnlySequence<byte> sequence = new(bytes);
-
-        Assert.Equal(count, NewFory().Deserialize<List<List<string>>>(ref sequence).Count);
-    }
-
     [Fact]
     public void ExplicitConfigOverridesDefault()
     {
@@ -387,7 +402,10 @@ public sealed class GraphMemoryBudgetTests
     {
         Dictionary<object, object?> value = new() { ["a"] = 1, ["b"] = "two" };
         byte[] bytes = NewFory().Serialize<object>(value);
-        long required = NullableKeyMapBudget<object, object?>(value.Count) + MapBudget<object, object?>(value.Count);
+        long required =
+            NullableKeyMapBudget<object, object?>(value.Count) +
+            MapBudget<object, object?>(value.Count) +
+            BoxBudget<int>();
 
         Assert.Throws<InvalidDataException>(() => NewFory(required - 1).Deserialize<object>(bytes));
         Dictionary<object, object?> result = Assert.IsType<Dictionary<object, object?>>(
@@ -432,6 +450,157 @@ public sealed class GraphMemoryBudgetTests
         byte[] holderBytes = Serialize(holder);
         Assert.Throws<InvalidDataException>(() => NewFory(BudgetValueHolderBytes - 1).Deserialize<BudgetValueHolder>(holderBytes));
         Assert.Equal(holder.Value.Id, NewFory(BudgetValueHolderBytes).Deserialize<BudgetValueHolder>(holderBytes).Value.Id);
+    }
+
+    [Fact]
+    public void DynamicBoxBudget()
+    {
+        byte[] payload = NewFory().Serialize<object>(37);
+        long required = BoxBudget<int>();
+
+        Assert.Throws<InvalidDataException>(
+            () => NewFory(required - 1).Deserialize<object>(payload));
+        Assert.Equal(37, Assert.IsType<int>(
+            NewFory(required).Deserialize<object>(payload)));
+    }
+
+    [Fact]
+    public void RegisteredBoxBudget()
+    {
+        BudgetValue value = new() { Id = 7 };
+        byte[] payload = NewFory().Serialize<object>(value);
+        long required = BoxBudget<BudgetValue>();
+
+        Check(payload);
+
+        byte[] refPayload = [.. payload];
+        Assert.Equal(unchecked((byte)(sbyte)RefFlag.NotNullValue), refPayload[1]);
+        refPayload[1] = unchecked((byte)(sbyte)RefFlag.RefValue);
+        Check(refPayload);
+
+        void Check(byte[] bytes)
+        {
+            Assert.Throws<InvalidDataException>(
+                () => NewFory(required - 1).Deserialize<object>(bytes));
+            BudgetValue decoded = Assert.IsType<BudgetValue>(
+                NewFory(required).Deserialize<object>(bytes));
+            Assert.Equal(value.Id, decoded.Id);
+        }
+    }
+
+    [Fact]
+    public void NullableBoxBudget()
+    {
+        TypeResolver resolver = new();
+        Serializer<Union2<int?, string>> serializer =
+            resolver.GetSerializer<Union2<int?, string>>();
+
+        byte[] present = WriteUnion(Union2<int?, string>.OfT1(37));
+        long required = BoxBudget<int>();
+        Assert.Throws<InvalidDataException>(
+            () => ReadUnion(present, required - 1));
+        Union2<int?, string> decoded = ReadUnion(present, required);
+        Assert.Equal(37, Assert.IsType<int>(decoded.Value));
+
+        byte[] absent = WriteUnion(Union2<int?, string>.OfT1(null));
+        Assert.Null(ReadUnion(absent, 1).Value);
+
+        byte[] WriteUnion(Union2<int?, string> value)
+        {
+            ByteWriter writer = new();
+            WriteContext context =
+                new(writer, resolver, trackRef: false, compatible: false);
+            serializer.WriteData(context, value, hasGenerics: false);
+            return writer.ToArray();
+        }
+
+        Union2<int?, string> ReadUnion(byte[] bytes, long budget)
+        {
+            Config config = ForyRuntime.Builder()
+                .Compatible(false)
+                .MaxGraphMemoryBytes(Math.Max(1, budget))
+                .Build()
+                .Config;
+            ReadContext context =
+                new(new ByteReader(bytes), resolver, config);
+            context._remainingGraphMemoryBytes = budget;
+            return serializer.ReadData(context);
+        }
+    }
+
+    [Fact]
+    public void TypedUnionBoxBudget()
+    {
+        TypeResolver resolver = new();
+        Serializer<Union2<int, string>> serializer =
+            resolver.GetSerializer<Union2<int, string>>();
+        ByteWriter writer = new();
+        WriteContext writeContext =
+            new(writer, resolver, trackRef: false, compatible: false);
+        serializer.WriteData(
+            writeContext,
+            Union2<int, string>.OfT1(37),
+            hasGenerics: false);
+        byte[] payload = writer.ToArray();
+        long required = BoxBudget<int>();
+
+        Assert.Throws<InvalidDataException>(
+            () => Read(required - 1));
+        Assert.Equal(37, Assert.IsType<int>(Read(required).Value));
+
+        Union2<int, string> Read(long budget)
+        {
+            Config config = ForyRuntime.Builder()
+                .Compatible(false)
+                .Build()
+                .Config;
+            ReadContext readContext =
+                new(new ByteReader(payload), resolver, config);
+            readContext._remainingGraphMemoryBytes = budget;
+            return serializer.ReadData(readContext);
+        }
+    }
+
+    [Fact]
+    public void FixedScalarBoxBudget()
+    {
+        (TypeId TypeId, object Value, long Budget)[] cases =
+        [
+            (TypeId.Int32, 37, BoxBudget<int>()),
+            (TypeId.Int64, 38L, BoxBudget<long>()),
+            (TypeId.TaggedInt64, 39L, BoxBudget<long>()),
+            (TypeId.UInt32, 40U, BoxBudget<uint>()),
+            (TypeId.UInt64, 41UL, BoxBudget<ulong>()),
+            (TypeId.TaggedUInt64, 42UL, BoxBudget<ulong>()),
+        ];
+
+        foreach ((TypeId typeId, object value, long required) in cases)
+        {
+            TypeResolver resolver = new();
+            ByteWriter writer = new();
+            WriteContext writeContext =
+                new(writer, resolver, trackRef: false, compatible: false);
+            UnknownCaseSerializer.WritePayload(
+                writeContext,
+                UnknownCase.FromRuntime(99, (uint)typeId, value));
+            byte[] payload = writer.ToArray();
+
+            Assert.Throws<InvalidDataException>(
+                () => Read(payload, required - 1));
+            Assert.Equal(value, Read(payload, required).Value);
+
+            UnknownCase Read(byte[] bytes, long budget)
+            {
+                Config config = ForyRuntime.Builder()
+                    .Compatible(false)
+                    .Build()
+                    .Config;
+                ReadContext readContext =
+                    new(new ByteReader(bytes), resolver, config);
+                readContext._remainingGraphMemoryBytes = budget;
+                return UnknownCaseSerializer.ReadPayload(readContext, 99);
+            }
+        }
     }
 
     [Fact]
@@ -527,11 +696,50 @@ public sealed class GraphMemoryBudgetTests
     }
 
     [Fact]
+    public void CompatibleBinaryListBudget()
+    {
+        byte[] value = [0, 1, 2, 250, 255];
+        ForyRuntime writer = ForyRuntime.Builder()
+            .Compatible(true)
+            .TrackRef(false)
+            .Build();
+        writer.Register<CompatibleBinarySchema>(1016);
+        byte[] payload = writer.Serialize(
+            new CompatibleBinarySchema { Value = value });
+        long required =
+            GeneratedGraphHolderBytes + ListBudget<byte>(value.Length);
+
+        ForyRuntime tooSmall = ForyRuntime.Builder()
+            .Compatible(true)
+            .TrackRef(false)
+            .MaxGraphMemoryBytes(required - 1)
+            .Build();
+        tooSmall.Register<CompatibleUInt8ArrayListSchema>(1016);
+        Assert.Throws<InvalidDataException>(
+            () => tooSmall.Deserialize<CompatibleUInt8ArrayListSchema>(payload));
+
+        ForyRuntime exact = ForyRuntime.Builder()
+            .Compatible(true)
+            .TrackRef(false)
+            .MaxGraphMemoryBytes(required)
+            .Build();
+        exact.Register<CompatibleUInt8ArrayListSchema>(1016);
+        Assert.Equal(
+            value,
+            exact.Deserialize<CompatibleUInt8ArrayListSchema>(payload).Value);
+    }
+
+    [Fact]
     public void CompatibleInlineValueFieldIsChargedByHolder()
     {
         ForyRuntime writer = ForyRuntime.Builder().Compatible(true).TrackRef(false).Build();
         writer.Register<BudgetValue>(1005).Register<BudgetValueCompatWriter>(1011);
-        byte[] bytes = writer.Serialize(new BudgetValueCompatWriter { Value = new BudgetValue { Id = 9 }, Extra = 1 });
+        byte[] bytes = writer.Serialize(
+            new BudgetValueCompatWriter
+            {
+                Value = new BudgetValue { Id = 9 },
+                Extra = new BudgetValue { Id = 1 },
+            });
 
         ForyRuntime reader = ForyRuntime.Builder()
             .Compatible(true)
@@ -560,5 +768,31 @@ public sealed class GraphMemoryBudgetTests
         Array.Resize(ref bytes, bytes.Length + 1);
 
         Assert.Throws<OutOfBoundsException>(() => NewFory().Deserialize<List<string>>(bytes));
+    }
+
+    [Fact]
+    public void QueueCapacityRequiresReadableBytes()
+    {
+        ReadContext context = NewShortCollectionContext(out Serializer<int> serializer);
+
+        long allocated = RejectedCollectionAllocation(
+            () => CollectionReadCodec.ReadQueueData(serializer, context));
+
+        Assert.True(
+            allocated < (long)UnprovenCollectionLength * sizeof(int),
+            $"Rejected Queue input allocated {allocated} bytes before its body was proven readable.");
+    }
+
+    [Fact]
+    public void StackCapacityRequiresReadableBytes()
+    {
+        ReadContext context = NewShortCollectionContext(out Serializer<int> serializer);
+
+        long allocated = RejectedCollectionAllocation(
+            () => CollectionReadCodec.ReadStackData(serializer, context));
+
+        Assert.True(
+            allocated < (long)UnprovenCollectionLength * sizeof(int),
+            $"Rejected Stack input allocated {allocated} bytes before its body was proven readable.");
     }
 }

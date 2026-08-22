@@ -259,6 +259,22 @@ macro_rules! impl_single_carrier_serializer {
                 > as $crate::serializer::Serializer>::REQUIRES_SCOPED_ACCESS;
 
             #[inline(always)]
+            fn metadata_target_type_id() -> std::any::TypeId {
+                if $wrapper {
+                    S::metadata_target_type_id()
+                } else {
+                    std::any::TypeId::of::<Self::Target>()
+                }
+            }
+
+            const READ_DATA_ALWAYS_ADVANCES: bool = <$codec<
+                    S::Target,
+                    S,
+                    false,
+                    false,
+                > as $crate::serializer::Serializer>::READ_DATA_ALWAYS_ADVANCES;
+
+            #[inline(always)]
             fn dynamic_type_id(
                 value: &Self::Target,
             ) -> Result<Option<std::any::TypeId>, $crate::Error> {
@@ -412,6 +428,14 @@ macro_rules! impl_single_carrier_serializer {
                 <$provider<T> as $crate::serializer::Serializer>::REQUIRES_SCOPED_ACCESS;
 
             #[inline(always)]
+            fn metadata_target_type_id() -> std::any::TypeId {
+                <$provider<T> as $crate::serializer::Serializer>::metadata_target_type_id()
+            }
+
+            const READ_DATA_ALWAYS_ADVANCES: bool =
+                <$provider<T> as $crate::serializer::Serializer>::READ_DATA_ALWAYS_ADVANCES;
+
+            #[inline(always)]
             fn dynamic_type_id(
                 value: &Self,
             ) -> Result<Option<std::any::TypeId>, $crate::Error> {
@@ -510,6 +534,8 @@ macro_rules! impl_collection_carrier_codec {
             fn static_type_id() -> $crate::TypeId {
                 $crate::TypeId::$wire_type
             }
+
+            const READ_DATA_ALWAYS_ADVANCES: bool = true;
         }
 
         impl<T, C, const NULLABLE: bool, const TRACK_REF: bool>

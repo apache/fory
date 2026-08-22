@@ -19,6 +19,9 @@
 
 import 'dart:typed_data';
 
+import 'package:meta/meta.dart';
+
+import 'package:fory/src/codegen/generated_registry.dart';
 import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/config.dart';
 import 'package:fory/src/context/meta_string_reader.dart';
@@ -48,6 +51,7 @@ final class Fory {
   late final WriteContext _writeContext;
   late final ReadContext _readContext;
   late final TypeResolver _typeResolver;
+  bool _registrationOpen = true;
 
   /// Creates a runtime configured by direct constructor options.
   ///
@@ -63,6 +67,7 @@ final class Fory {
     int maxAverageSchemaVersionsPerType =
         Config.defaultMaxAverageSchemaVersionsPerType,
     int maxGraphMemoryBytes = Config.defaultMaxGraphMemoryBytes,
+    int maxUnbackedContainerItems = Config.defaultMaxUnbackedContainerItems,
   }) {
     final config = Config(
       compatible: compatible,
@@ -73,6 +78,7 @@ final class Fory {
       maxSchemaVersionsPerType: maxSchemaVersionsPerType,
       maxAverageSchemaVersionsPerType: maxAverageSchemaVersionsPerType,
       maxGraphMemoryBytes: maxGraphMemoryBytes,
+      maxUnbackedContainerItems: maxUnbackedContainerItems,
     );
     _readBuffer = Buffer();
     _writeBuffer = Buffer();
@@ -122,6 +128,7 @@ final class Fory {
   /// The target [buffer] is cleared before bytes are written. [trackRef] has
   /// the same root-level semantics as [serialize].
   void serializeTo(Object? value, Buffer buffer, {bool trackRef = false}) {
+    _registrationOpen = false;
     buffer.clear();
     _writeContext.prepare(buffer, trackRef: trackRef);
     try {
@@ -147,6 +154,7 @@ final class Fory {
     required int typeId,
     bool trackRef = false,
   }) {
+    _registrationOpen = false;
     buffer.clear();
     _writeContext.prepare(buffer, trackRef: trackRef);
     try {
@@ -166,8 +174,24 @@ final class Fory {
   /// The payload is decoded from its wire metadata first. `T` is used as a
   /// post-read type check, not as an alternate schema.
   T deserialize<T>(Uint8List bytes) {
+    _registrationOpen = false;
     _readBuffer.wrap(bytes);
-    return deserializeFrom<T>(_readBuffer);
+    _readContext.prepare(_readBuffer);
+    try {
+      final header = _readBuffer.readUint8();
+      if (header != _xlangHeaderFlag) {
+        _throwInvalidRootHeader(header);
+      }
+      final value = _readContext.readRefAs<T>();
+      if (value is T) {
+        return value;
+      }
+      throw StateError(
+        'Deserialized value has type ${value.runtimeType}, expected $T.',
+      );
+    } finally {
+      _readContext.reset();
+    }
   }
 
   /// Deserializes a value from [buffer] and checks that it is assignable to
@@ -181,6 +205,25 @@ final class Fory {
   /// Only xlang payloads are supported. This method consumes bytes from the
   /// current reader position of [buffer].
   T deserializeFrom<T>(Buffer buffer) {
+    _registrationOpen = false;
+    final fullBytes = bufferBytes(buffer);
+    if (bufferWriterIndex(buffer) == fullBytes.length) {
+      return _deserializeBuffer<T>(buffer);
+    }
+    // ByteData bounds must match writerIndex so a malformed value cannot read
+    // unwritten capacity. The public Buffer owner is restored after the root.
+    final fullView = bufferByteData(buffer);
+    final limitedBytes = bufferLimitToWriter(buffer);
+    try {
+      return _deserializeBuffer<T>(buffer);
+    } finally {
+      if (identical(bufferBytes(buffer), limitedBytes)) {
+        bufferRestoreStorage(buffer, fullBytes, fullView);
+      }
+    }
+  }
+
+  T _deserializeBuffer<T>(Buffer buffer) {
     _readContext.prepare(buffer);
     try {
       final header = buffer.readUint8();
@@ -226,8 +269,11 @@ final class Fory {
   /// Generated struct and enum registration should normally flow through the
   /// generated Fory module, which installs generated metadata into the
   /// internal registry before calling this method. For custom serializers,
-  /// including unions, use [registerSerializer].
+  /// including unions, use [registerSerializer]. Registration is permanently
+  /// closed when this instance starts its first root serialization or
+  /// deserialization operation.
   void register(Type type, {int? id, String? name}) {
+    _checkRegistrationOpen();
     _typeResolver.registerGenerated(
       type,
       id: id,
@@ -246,13 +292,16 @@ final class Fory {
   /// `example.Person`. The final segment is the type name.
   ///
   /// This is the advanced escape hatch for external types, custom unions, or
-  /// custom wire behavior. Prefer [register] for generated types.
+  /// custom wire behavior. Prefer [register] for generated types. Registration
+  /// is permanently closed when this instance starts its first root
+  /// serialization or deserialization operation.
   void registerSerializer(
     Type type,
     Serializer serializer, {
     int? id,
     String? name,
   }) {
+    _checkRegistrationOpen();
     _typeResolver.registerSerializer(
       type,
       serializer,
@@ -260,5 +309,33 @@ final class Fory {
       namespace: null,
       typeName: name,
     );
+  }
+
+  /// Registers generated metadata without mutating the shared catalog after
+  /// this instance's registration boundary has closed.
+  @internal
+  void registerGenerated(
+    Type type,
+    GeneratedTypeEntry entry, {
+    int? id,
+    String? name,
+  }) {
+    _checkRegistrationOpen();
+    GeneratedTypeCatalog.remember(type, entry);
+    _typeResolver.registerGenerated(
+      type,
+      id: id,
+      namespace: null,
+      typeName: name,
+    );
+  }
+
+  void _checkRegistrationOpen() {
+    if (!_registrationOpen) {
+      throw StateError(
+        'Types and serializers must be registered before the first root '
+        'serialization or deserialization operation.',
+      );
+    }
   }
 }

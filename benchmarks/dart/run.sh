@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 OUTPUT_DIR="$SCRIPT_DIR/results"
-DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/dart"
+DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/object-serialization/xlang/dart"
 BUILD_DIR="$SCRIPT_DIR/build"
 RUNNER="$BUILD_DIR/benchmark_runner"
 GENERATE_REPORT=true
@@ -45,7 +45,7 @@ usage() {
   echo "  --duration <sec>     Seconds per sample (default: 1.5)."
   echo "  --warmup <sec>       Warmup seconds per case (default: 1.0)."
   echo "  --no-report          Skip report generation."
-  echo "  --no-copy-docs       Skip copying report/plots into docs/benchmarks/dart."
+  echo "  --no-copy-docs       Skip copying report/plots into docs/benchmarks/object-serialization/xlang/dart."
   echo "  -h, --help           Show this help."
 }
 

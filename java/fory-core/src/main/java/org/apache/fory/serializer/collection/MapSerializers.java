@@ -91,9 +91,9 @@ public class MapSerializers {
     }
 
     @Override
-    public HashMap newMap(ReadContext readContext) {
+    public HashMap newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(readContext, buffer);
+      int numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
       setNumElements(numElements);
       HashMap hashMap = new HashMap(numElements);
       readContext.reference(hashMap);
@@ -112,9 +112,9 @@ public class MapSerializers {
     }
 
     @Override
-    public LinkedHashMap newMap(ReadContext readContext) {
+    public LinkedHashMap newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(readContext, buffer);
+      int numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
       setNumElements(numElements);
       LinkedHashMap hashMap = new LinkedHashMap(numElements);
       readContext.reference(hashMap);
@@ -151,9 +151,9 @@ public class MapSerializers {
     }
 
     @Override
-    public LazyMap newMap(ReadContext readContext) {
+    public LazyMap newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(readContext, buffer);
+      int numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
       setNumElements(numElements);
       LazyMap map = new LazyMap(numElements);
       readContext.reference(map);
@@ -205,9 +205,9 @@ public class MapSerializers {
 
     @SuppressWarnings("unchecked")
     @Override
-    public Map newMap(ReadContext readContext) {
+    public Map newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      setNumElements(readMapSize(readContext, buffer));
+      setNumElements(readMapSize(readContext, buffer, entryReadAlwaysAdvances));
       T map;
       Comparator comparator = config.isXlang() ? null : (Comparator) readContext.readRef();
       if (type == TreeMap.class) {
@@ -328,9 +328,9 @@ public class MapSerializers {
     }
 
     @Override
-    public ConcurrentHashMap newMap(ReadContext readContext) {
+    public ConcurrentHashMap newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(readContext, buffer);
+      int numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
       setNumElements(numElements);
       ConcurrentHashMap map = new ConcurrentHashMap(numElements);
       readContext.reference(map);
@@ -365,9 +365,9 @@ public class MapSerializers {
     }
 
     @Override
-    public ConcurrentSkipListMap newMap(ReadContext readContext) {
+    public ConcurrentSkipListMap newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(readContext, buffer);
+      int numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
       setNumElements(numElements);
       Comparator comparator = config.isXlang() ? null : (Comparator) readContext.readRef();
       ConcurrentSkipListMap map = new ConcurrentSkipListMap(comparator);
@@ -429,9 +429,9 @@ public class MapSerializers {
     }
 
     @Override
-    public EnumMap newMap(ReadContext readContext) {
+    public EnumMap newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      setNumElements(readMapSize(readContext, buffer));
+      setNumElements(readMapSize(readContext, buffer, entryReadAlwaysAdvances));
       Class<?> keyType = typeResolver.readTypeInfo(readContext).getType();
       EnumMap map = new EnumMap(keyType);
       readContext.reference(map);
@@ -640,9 +640,9 @@ public class MapSerializers {
       throw new IllegalStateException("should not be called");
     }
 
-    public Map newMap(ReadContext readContext) {
+    public Map newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(readContext, buffer);
+      int numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
       setNumElements(numElements);
       HashMap<Object, Object> map = new HashMap<>(numElements);
       readContext.reference(map);

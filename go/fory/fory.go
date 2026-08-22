@@ -70,6 +70,7 @@ type Config struct {
 	IsXlang                         bool
 	Compatible                      bool // Schema evolution compatibility mode
 	MaxGraphMemoryBytes             int64
+	MaxUnbackedContainerItems       int64
 	MaxTypeFields                   int
 	MaxTypeMetaBytes                int
 	MaxSchemaVersionsPerType        int
@@ -84,6 +85,7 @@ func defaultConfig() Config {
 		IsXlang:                         true,
 		MaxTypeFields:                   512,
 		MaxGraphMemoryBytes:             128 * 1024 * 1024,
+		MaxUnbackedContainerItems:       8192,
 		MaxTypeMetaBytes:                4096,
 		MaxSchemaVersionsPerType:        10,
 		MaxAverageSchemaVersionsPerType: 3,
@@ -123,6 +125,18 @@ func WithMaxGraphMemoryBytes(size int64) Option {
 	}
 	return func(f *Fory) {
 		f.config.MaxGraphMemoryBytes = size
+	}
+}
+
+// WithMaxUnbackedContainerItems limits collection elements and map entries
+// whose repeated reads are not backed by input bytes in one root operation.
+// Zero is a strict limit.
+func WithMaxUnbackedContainerItems(items int64) Option {
+	if items < 0 {
+		panic("MaxUnbackedContainerItems must be non-negative")
+	}
+	return func(f *Fory) {
+		f.config.MaxUnbackedContainerItems = items
 	}
 }
 
@@ -234,6 +248,7 @@ func New(opts ...Option) *Fory {
 	f.writeCtx.xlang = f.config.IsXlang
 
 	f.readCtx = NewReadContext(f.config.TrackRef)
+	f.readCtx.maxDepth = f.config.MaxDepth
 	f.readCtx.typeResolver = f.typeResolver
 	f.readCtx.refResolver = f.refResolver
 	f.readCtx.compatible = f.config.Compatible
@@ -527,6 +542,9 @@ func (f *Fory) RegisterExtensionByName(type_ any, name string, serializer Extens
 func (f *Fory) Reset() {
 	f.writeCtx.Reset()
 	f.readCtx.Reset()
+	if f.metaContext != nil {
+		f.metaContext.Reset()
+	}
 }
 
 // ============================================================================
@@ -546,6 +564,9 @@ func (f *Fory) Reset() {
 // For thread-safe usage, use threadsafe.Fory which copies the data internally.
 func (f *Fory) Serialize(value any) ([]byte, error) {
 	defer f.resetWriteState()
+	if !validateRootDecimal(f.writeCtx.Err(), value) {
+		return nil, f.writeCtx.TakeError()
+	}
 	// WriteData protocol header
 	writeHeader(f.writeCtx, f.config)
 
@@ -559,12 +580,19 @@ func (f *Fory) Serialize(value any) ([]byte, error) {
 				reflValue.Type(), reflValue.Type())
 		}
 	}
-	f.writeCtx.WriteValue(reflValue, RefModeTracking, true)
+	f.writeCtx.WriteValue(reflValue, f.rootRefMode(), true)
 	if f.writeCtx.HasError() {
 		return nil, f.writeCtx.TakeError()
 	}
 
 	return f.writeCtx.buffer.GetByteSlice(0, f.writeCtx.buffer.writerIndex), nil
+}
+
+func (f *Fory) rootRefMode() RefMode {
+	if f.config.TrackRef {
+		return RefModeTracking
+	}
+	return RefModeNullOnly
 }
 
 // Deserialize deserializes data directly into the provided target value.
@@ -574,13 +602,14 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 	f.readCtx.SetData(data)
 	target := reflect.ValueOf(v).Elem()
 	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
+	f.readCtx.remainingUnbackedContainerItems = f.config.MaxUnbackedContainerItems
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
 
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	f.readCtx.ReadValue(target, f.rootRefMode(), true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -609,6 +638,9 @@ func (f *Fory) resetWriteState() {
 // Returns error if serialization fails.
 func (f *Fory) SerializeTo(buf *ByteBuffer, value any) error {
 	defer f.resetWriteState()
+	if !validateRootDecimal(f.writeCtx.Err(), value) {
+		return f.writeCtx.TakeError()
+	}
 
 	// Temporarily swap buffer
 	origBuffer := f.writeCtx.buffer
@@ -643,7 +675,7 @@ func (f *Fory) SerializeTo(buf *ByteBuffer, value any) error {
 	}
 
 	// Standard path - TypeMeta is written inline using streaming protocol
-	f.writeCtx.WriteValue(rv, RefModeTracking, true)
+	f.writeCtx.WriteValue(rv, f.rootRefMode(), true)
 	if f.writeCtx.HasError() {
 		f.writeCtx.buffer = origBuffer
 		return f.writeCtx.TakeError()
@@ -666,6 +698,7 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	f.readCtx.buffer = buf
 	target := reflect.ValueOf(v).Elem()
 	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
+	f.readCtx.remainingUnbackedContainerItems = f.config.MaxUnbackedContainerItems
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
@@ -674,7 +707,7 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	f.readCtx.ReadValue(target, f.rootRefMode(), true)
 	if f.readCtx.HasError() {
 		f.readCtx.buffer = origBuffer
 		return f.readCtx.TakeError()
@@ -725,6 +758,9 @@ func (f *Fory) SerializeWithCallback(buffer *ByteBuffer, v any, callback func(Bu
 			f.writeCtx.outOfBand = false
 		}
 	}()
+	if !validateRootDecimal(f.writeCtx.Err(), v) {
+		return f.writeCtx.TakeError()
+	}
 	f.writeCtx.buffer = buffer
 	if f.metaContext != nil {
 		f.metaContext.Reset()
@@ -739,7 +775,7 @@ func (f *Fory) SerializeWithCallback(buffer *ByteBuffer, v any, callback func(Bu
 	writeHeader(f.writeCtx, f.config)
 
 	// Serialize the value - TypeMeta is written inline using streaming protocol
-	f.writeCtx.WriteValue(reflect.ValueOf(v), RefModeTracking, true)
+	f.writeCtx.WriteValue(reflect.ValueOf(v), f.rootRefMode(), true)
 	if f.writeCtx.HasError() {
 		return f.writeCtx.TakeError()
 	}
@@ -750,14 +786,16 @@ func (f *Fory) SerializeWithCallback(buffer *ByteBuffer, v any, callback func(Bu
 // DeserializeWithCallbackBuffers deserializes from buffer into the provided value (for streaming/cross-language use).
 // The third parameter is optional external buffers for out-of-band data (can be nil).
 func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers []*ByteBuffer) error {
-	// Reset context and use the provided buffer
+	// Use the caller buffer only for this root; later stream roots reuse the
+	// original internal buffer.
+	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = buffer
 	defer func() {
 		f.readCtx.Reset()
 		if f.metaContext != nil {
 			f.metaContext.Reset()
 		}
-		f.readCtx.buffer = nil
+		f.readCtx.buffer = origBuffer
 		f.readCtx.outOfBandBuffers = nil
 	}()
 	// Set up out-of-band buffers if provided
@@ -779,6 +817,7 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 
 	target := rv.Elem()
 	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
+	f.readCtx.remainingUnbackedContainerItems = f.config.MaxUnbackedContainerItems
 
 	// ReadData and validate header
 	readHeader(f.readCtx)
@@ -787,7 +826,7 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	f.readCtx.ReadValue(target, f.rootRefMode(), true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -807,7 +846,7 @@ func (f *Fory) serializeReflectValue(value reflect.Value) ([]byte, error) {
 	}
 
 	// Serialize the value - TypeMeta is written inline using streaming protocol
-	f.writeCtx.WriteValue(value, RefModeTracking, true)
+	f.writeCtx.WriteValue(value, f.rootRefMode(), true)
 	if f.writeCtx.HasError() {
 		return nil, f.writeCtx.TakeError()
 	}
@@ -881,11 +920,14 @@ func readHeaderSlow(ctx *ReadContext, bitmap byte) {
 // For thread-safe usage, use threadsafe.Serialize which copies the data internally.
 func Serialize[T any](f *Fory, value T) ([]byte, error) {
 	defer f.resetWriteState()
+	v := any(value)
+	if !validateRootDecimal(f.writeCtx.Err(), v) {
+		return nil, f.writeCtx.TakeError()
+	}
 	// WriteData protocol header
 	writeHeader(f.writeCtx, f.config)
 
 	// Fast path: type switch for common types (Go compiler can optimize this)
-	v := any(value)
 	var err error
 	switch val := v.(type) {
 	case bool:
@@ -928,7 +970,7 @@ func Serialize[T any](f *Fory, value T) ([]byte, error) {
 	case Decimal:
 		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
 		f.writeCtx.WriteTypeId(DECIMAL)
-		writeDecimalParts(f.writeCtx.buffer, val.Scale, &val.Unscaled)
+		writeValidDecimalParts(f.writeCtx.buffer, val.Scale, &val.Unscaled)
 	case string:
 		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
 		f.writeCtx.WriteTypeId(STRING)
@@ -1033,10 +1075,13 @@ func Serialize[T any](f *Fory, value T) ([]byte, error) {
 // For structs, it reads directly into the struct fields.
 // Note: Fory instance is NOT thread-safe. Use ThreadSafeFory for concurrent use.
 func Deserialize[T any](f *Fory, data []byte, target *T) error {
-	// Reuse context, reset and set new data
-	f.readCtx.Reset()
+	// Generic roots share the same reusable read and metadata owners as the
+	// method API, so both entry and every exit must start from a root-clean state.
+	f.resetReadState()
+	defer f.resetReadState()
 	f.readCtx.SetData(data)
 	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
+	f.readCtx.remainingUnbackedContainerItems = f.config.MaxUnbackedContainerItems
 
 	var targetVal reflect.Value
 	var targetType reflect.Type

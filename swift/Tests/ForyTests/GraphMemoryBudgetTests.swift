@@ -135,6 +135,29 @@ private final class BudgetDynamicHolder {
     }
 }
 
+@ForyStruct
+private struct DynamicInlineBudgetValue: Equatable {
+    var first: Int64 = 0
+    var second: Int64 = 0
+    var third: Int64 = 0
+}
+
+@ForyStruct
+private struct DynamicBoxBudgetV1: Equatable {
+    var first: Int64 = 0
+    var second: Int64 = 0
+    var third: Int64 = 0
+    var fourth: Int64 = 0
+}
+
+@ForyStruct
+private struct DynamicBoxBudgetV2: Equatable {
+    var first: Int64 = 0
+    var second: Int64 = 0
+    var third: Int64 = 0
+    var replacement: Int64 = 0
+}
+
 private let defaultGraphMemoryBytes: Int64 = 128 * 1024 * 1024
 
 private func makeBudgetFory(
@@ -168,6 +191,10 @@ private func makeCompatibleBudgetFory(maxGraphMemoryBytes: Int64 = defaultGraphM
 private let testReferenceBytes = 4
 private let classOwnerBytes = 2 * MemoryLayout<Int>.stride
 private let budgetNodeGraphBytes = classOwnerBytes + 4
+private let unknownCaseCarrierGraphBytes =
+    classOwnerBytes
+    + 2 * MemoryLayout<UInt32>.stride
+    + MemoryLayout<Any?>.stride
 
 private func elementBytes<S: Serializer>(_ serializer: S.Type) -> Int {
     if serializer.staticTypeId == .unknown {
@@ -237,6 +264,42 @@ private func expectInvalidData(_ body: () throws -> Void) {
     }
 }
 
+private func unknownCaseContext(
+    flag: RefFlag,
+    budget: Int
+) -> (context: ReadContext, referenced: BudgetNode?) {
+    let buffer = ByteBuffer()
+    buffer.writeInt8(flag.rawValue)
+    switch flag {
+    case .null:
+        break
+    case .ref:
+        buffer.writeVarUInt32(0)
+    case .refValue, .notNullValue:
+        buffer.writeUInt8(UInt8(TypeId.varint32.rawValue))
+        buffer.writeVarInt32(7)
+    }
+
+    let config = Config(
+        trackRef: flag == .ref || flag == .refValue,
+        compatible: false
+    )
+    let context = ReadContext(
+        buffer: buffer,
+        typeResolver: TypeResolver(config: config),
+        config: config
+    )
+    context.remainingGraphMemoryBytes = budget
+
+    guard flag == .ref else {
+        return (context, nil)
+    }
+    let referenced = BudgetNode(id: 9)
+    let refID = context.refReader.reserveRefID()
+    context.refReader.storeRef(referenced, at: refID)
+    return (context, referenced)
+}
+
 private func budgetSelfNodeGraphBytes() -> Int {
     classOwnerBytes
         + MemoryLayout<Int32>.stride
@@ -250,6 +313,36 @@ func fixedDefaultBudget() throws {
     #expect(fory.config.maxGraphMemoryBytes == defaultGraphMemoryBytes)
     let value = Array(repeating: [String](), count: 3)
     #expect(try fory.deserialize(try fory.serialize(value)) == value)
+}
+
+@Test
+func unknownCaseChargesCarrier() throws {
+    for flag in [RefFlag.null, .ref, .refValue, .notNullValue] {
+        expectInvalidData {
+            let input = unknownCaseContext(
+                flag: flag,
+                budget: unknownCaseCarrierGraphBytes - 1
+            )
+            _ = try UnknownCaseSerializer.readPayload(caseId: 42, input.context)
+        }
+
+        let input = unknownCaseContext(
+            flag: flag,
+            budget: unknownCaseCarrierGraphBytes
+        )
+        let value = try UnknownCaseSerializer.readPayload(caseId: 42, input.context)
+        #expect(input.context.remainingGraphMemoryBytes == 0)
+        #expect(value.caseId == 42)
+
+        switch flag {
+        case .null:
+            #expect(value.value == nil)
+        case .ref:
+            #expect(value.value as? BudgetNode === input.referenced)
+        case .refValue, .notNullValue:
+            #expect(value.value as? Int32 == 7)
+        }
+    }
 }
 
 @Test
@@ -549,6 +642,144 @@ func dynamicAnyArrayBudget() throws {
     let decoded = try makeBudgetFory(maxGraphMemoryBytes: Int64(required))
         .deserialize(bytes, with: DynamicSerializer<Any>.self)
     #expect((decoded as? [Any])?.count == count)
+}
+
+@Test
+func dynamicBoxSignalMatchesExistentialStorage() throws {
+    let resolver = TypeResolver(config: Config())
+    try resolver.register(DynamicInlineBudgetValue.self, id: 9820)
+    try resolver.register(DynamicBoxBudgetV1.self, id: 9821)
+    try resolver.register(DynamicBoxBudgetV2.self, id: 9823)
+    try resolver.register(BudgetNode.self, id: 9822)
+
+    #expect(try resolver.requireTypeInfo(for: DynamicInlineBudgetValue.self).dynamicBoxBytes == 0)
+    #expect(
+        try resolver.requireTypeInfo(for: DynamicBoxBudgetV1.self).dynamicBoxBytes
+            == MemoryLayout<DynamicBoxBudgetV1>.stride
+    )
+    #expect(
+        try resolver.requireTypeInfo(for: DynamicBoxBudgetV2.self).dynamicBoxBytes
+            == MemoryLayout<DynamicBoxBudgetV2>.stride
+    )
+    #expect(try resolver.requireTypeInfo(for: BudgetNode.self).dynamicBoxBytes == 0)
+}
+
+@Test
+func dynamicRootChargesHeapBox() throws {
+    func makeFory(_ budget: Int64) throws -> Fory {
+        let fory = Fory(config: .init(maxGraphMemoryBytes: budget))
+        try fory.register(DynamicBoxBudgetV1.self, id: 9821)
+        return fory
+    }
+
+    let value = DynamicBoxBudgetV1(first: 1, second: 2, third: 3, fourth: 4)
+    let bytes = try makeFory(defaultGraphMemoryBytes).serialize(
+        value as Any,
+        with: DynamicSerializer<Any>.self
+    )
+    let required = MemoryLayout<DynamicBoxBudgetV1>.stride
+
+    expectInvalidData {
+        _ = try makeFory(Int64(required - 1))
+            .deserialize(bytes, with: DynamicSerializer<Any>.self)
+    }
+    let decoded = try makeFory(Int64(required))
+        .deserialize(bytes, with: DynamicSerializer<Any>.self)
+    #expect(decoded as? DynamicBoxBudgetV1 == value)
+}
+
+@Test
+func dynamicArrayChargesHeapBoxes() throws {
+    func makeFory(_ budget: Int64) throws -> Fory {
+        let fory = Fory(config: .init(maxGraphMemoryBytes: budget))
+        try fory.register(DynamicBoxBudgetV1.self, id: 9821)
+        return fory
+    }
+
+    let item = DynamicBoxBudgetV1(first: 1, second: 2, third: 3, fourth: 4)
+    let value: [Any] = [item]
+    typealias Serializer = ArraySerializer<DynamicSerializer<Any>>
+    let bytes = try makeFory(defaultGraphMemoryBytes).serialize(value, with: Serializer.self)
+    let required =
+        listBudget(DynamicSerializer<Any>.self, count: value.count)
+        + MemoryLayout<DynamicBoxBudgetV1>.stride
+
+    expectInvalidData {
+        _ = try makeFory(Int64(required - 1)).deserialize(bytes, with: Serializer.self)
+    }
+    let decoded = try makeFory(Int64(required)).deserialize(bytes, with: Serializer.self)
+    #expect(decoded.first as? DynamicBoxBudgetV1 == item)
+}
+
+@Test
+func unknownCaseChargesDynamicHeapBox() throws {
+    let config = Config(compatible: false)
+    let resolver = TypeResolver(config: config)
+    try resolver.register(DynamicBoxBudgetV1.self, id: 9821)
+    try resolver.finishRegistration()
+    let value = DynamicBoxBudgetV1(first: 1, second: 2, third: 3, fourth: 4)
+    let buffer = ByteBuffer()
+    let writeContext = WriteContext(
+        buffer: buffer,
+        typeResolver: resolver,
+        trackRef: false
+    )
+    try UnknownCaseSerializer.writePayload(
+        UnknownCase(caseId: 7, value: value),
+        writeContext
+    )
+    let bytes = Array(buffer.storage.prefix(buffer.count))
+    let required = unknownCaseCarrierGraphBytes + MemoryLayout<DynamicBoxBudgetV1>.stride
+
+    func read(_ budget: Int) throws -> UnknownCase {
+        let context = ReadContext(
+            buffer: ByteBuffer(bytes: bytes),
+            typeResolver: resolver,
+            config: config
+        )
+        context.remainingGraphMemoryBytes = budget
+        return try UnknownCaseSerializer.readPayload(caseId: 7, context)
+    }
+
+    expectInvalidData {
+        _ = try read(required - 1)
+    }
+    let decoded = try read(required)
+    #expect(decoded.value as? DynamicBoxBudgetV1 == value)
+}
+
+@Test
+func compatibleDynamicUsesLocalBoxSize() throws {
+    func writer() throws -> Fory {
+        let fory = Fory(config: .init(compatible: true))
+        try fory.register(DynamicBoxBudgetV1.self, id: 9823)
+        return fory
+    }
+
+    func reader(_ budget: Int64) throws -> Fory {
+        let fory = Fory(
+            config: .init(
+                compatible: true,
+                maxGraphMemoryBytes: budget
+            ))
+        try fory.register(DynamicBoxBudgetV2.self, id: 9823)
+        return fory
+    }
+
+    let value = DynamicBoxBudgetV1(first: 1, second: 2, third: 3, fourth: 4)
+    let bytes = try writer().serialize(value as Any, with: DynamicSerializer<Any>.self)
+    let required = MemoryLayout<DynamicBoxBudgetV2>.stride
+
+    expectInvalidData {
+        _ = try reader(Int64(required - 1))
+            .deserialize(bytes, with: DynamicSerializer<Any>.self)
+    }
+    let decoded = try reader(Int64(required))
+        .deserialize(bytes, with: DynamicSerializer<Any>.self)
+    #expect(
+        decoded as? DynamicBoxBudgetV2
+            == DynamicBoxBudgetV2(first: 1, second: 2, third: 3, replacement: 4)
+    )
 }
 
 @Test

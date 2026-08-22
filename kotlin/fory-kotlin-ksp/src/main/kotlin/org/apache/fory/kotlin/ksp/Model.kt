@@ -104,6 +104,7 @@ internal data class KotlinSourceTypeNode(
   val unsigned: Boolean,
   val arrayType: Boolean = false,
   val enum: Boolean = false,
+  val union: Boolean = false,
   val nestedCompatibleStruct: Boolean = false,
   val collectionFactory: CollectionFactory = CollectionFactory.NONE,
   val typeArguments: List<KotlinSourceTypeNode> = emptyList(),

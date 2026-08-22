@@ -25,6 +25,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::vec;
 
+#[allow(clippy::assertions_on_constants)]
 const _: () = {
     assert!(<Box<dyn Any> as Serializer>::IS_POLYMORPHIC);
     assert!(<Box<dyn Any> as Serializer>::IS_WRAPPER);
@@ -421,6 +422,21 @@ fn any_map_type_handoff() {
         decoded["text"].as_ref().unwrap().downcast_ref::<String>(),
         Some(&"eight".to_string())
     );
+}
+
+#[test]
+fn any_native_map_type_handoff() {
+    let fory = Fory::builder().xlang(false).compatible(false).build();
+    let values: HashMap<String, Box<dyn Any>> = HashMap::from([
+        ("one".to_string(), Box::new(1_i32) as Box<dyn Any>),
+        ("two".to_string(), Box::new(2_i32) as Box<dyn Any>),
+    ]);
+
+    let bytes = fory.serialize(&values).unwrap();
+    let decoded: HashMap<String, Box<dyn Any>> = fory.deserialize(&bytes).unwrap();
+
+    assert_eq!(decoded["one"].downcast_ref::<i32>(), Some(&1));
+    assert_eq!(decoded["two"].downcast_ref::<i32>(), Some(&2));
 }
 
 #[test]

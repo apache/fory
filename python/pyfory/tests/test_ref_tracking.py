@@ -323,6 +323,25 @@ def test_invalid_collection_element_ref_id_raises_value_error():
         fory.deserialize(payload)
 
 
+def test_invalid_reference_publication_id():
+    fory = pyfory.Fory(
+        xlang=True,
+        compatible=False,
+        ref=True,
+        strict=False,
+    )
+    read_context = fory.read_context
+    read_context.preserve_ref_id()
+
+    try:
+        with pytest.raises(ValueError, match="Invalid ref id"):
+            read_context.set_read_ref(1, object())
+        with pytest.raises(ValueError, match="Invalid ref id"):
+            read_context.preserve_ref_id(1)
+    finally:
+        fory.reset_read()
+
+
 @pytest.mark.parametrize("xlang", [False, True])
 def test_optional_fixed_uint64_roundtrip(xlang):
     value = 1234567890123456789

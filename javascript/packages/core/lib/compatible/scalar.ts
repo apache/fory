@@ -20,7 +20,12 @@
 import type { TypeInfo } from "../typeInfo";
 import { TypeId } from "../type";
 import type { BinaryReader } from "../reader";
-import { Decimal, DecimalCodec } from "../types/decimal";
+import {
+  Decimal,
+  DECIMAL_MAX_MAGNITUDE_BYTES,
+  DECIMAL_MAX_SCALE,
+  DecimalCodec,
+} from "../types/decimal";
 import { fromBFloat16Bits, toBFloat16Bits } from "../types/bfloat16";
 import { fromFloat16Bits, toFloat16Bits } from "../types/float16";
 
@@ -143,6 +148,11 @@ function scalarKind(typeId: number): ScalarKind | undefined {
 
 function readDecimal(reader: BinaryReader): Decimal {
   const scale = reader.readVarInt32();
+  if (scale < -DECIMAL_MAX_SCALE || scale > DECIMAL_MAX_SCALE) {
+    throw new Error(
+      `Decimal scale ${scale} exceeds supported range [-${DECIMAL_MAX_SCALE}, ${DECIMAL_MAX_SCALE}].`,
+    );
+  }
   const header = reader.readVarUInt64();
   if ((header & 1n) === 0n) {
     return new Decimal(DecimalCodec.decodeZigZag64(header >> 1n), scale);
@@ -151,6 +161,11 @@ function readDecimal(reader: BinaryReader): Decimal {
   const length = Number(meta >> 1n);
   if (length <= 0 || length > 0x7fffffff) {
     throw new Error(`Invalid decimal magnitude length ${length}.`);
+  }
+  if (length > DECIMAL_MAX_MAGNITUDE_BYTES) {
+    throw new Error(
+      `Decimal magnitude length ${length} exceeds ${DECIMAL_MAX_MAGNITUDE_BYTES} bytes.`,
+    );
   }
   const magnitudeBytes = reader.buffer(length);
   if (magnitudeBytes[length - 1] === 0) {
@@ -198,6 +213,9 @@ function normalizeParts(value: DecimalParts): DecimalParts {
 function decimalToParts(value: Decimal): DecimalParts {
   if (value.unscaledValue === 0n) {
     return { unscaled: 0n, scale: 0, negativeZero: false };
+  }
+  if (value.scale < -MAX_COMPATIBLE_DECIMAL_DIGITS || value.scale > MAX_COMPATIBLE_DECIMAL_DIGITS) {
+    throw new Error("Scalar decimal scale exceeds compatible conversion limit.");
   }
   if (value.scale < 0) {
     const digits = decimalDigitCount(value.unscaledValue);

@@ -24,13 +24,12 @@
 #   USE_PYTHON_RUST=0       # Use shell script for Rust
 #   USE_PYTHON_JAVASCRIPT=0 # Use shell script for JavaScript
 #   USE_PYTHON_JAVA=0       # Use shell script for Java
-#   USE_PYTHON_KOTLIN=0     # Use shell script for Kotlin
 #   USE_PYTHON_PYTHON=0     # Use shell script for Python
 #   USE_PYTHON_GO=0         # Use shell script for Go
 #   USE_PYTHON_FORMAT=0     # Use shell script for Format
 #
 # By default, JavaScript, Rust, and C++ use the Python implementation,
-# while Java, Kotlin, Python, Go, and Format use the shell script implementation.
+# while Java, Python, Go, and Format use the shell script implementation.
 
 set -e
 set -x
@@ -79,7 +78,7 @@ install_jdks() {
   done
 }
 
-run_graalvm_tests() {
+run_graalvm_test() {
   local main_class="$1"
   local java_version
   local java_major
@@ -102,8 +101,8 @@ run_graalvm_tests() {
     -Dmaven.test.skip=true \
     -Dmaven.source.skip=true \
     -Dmaven.javadoc.skip=true
-  echo "Start to build GraalVM JPMS native image for $main_class"
   cd "$ROOT"/integration_tests/graalvm_tests
+  echo "Start to build GraalVM JPMS native image for $main_class"
   mvn -DmainClass="$main_class" -DskipTests=true -Dassembly.skipAssembly=true \
     --no-transfer-progress -Pnative-module clean package
   echo "Built GraalVM JPMS native image"
@@ -113,11 +112,11 @@ run_graalvm_tests() {
 }
 
 graalvm_test() {
-  run_graalvm_tests org.apache.fory.graalvm.Main
+  run_graalvm_test org.apache.fory.graalvm.Main
 }
 
 graalvm_json_tests() {
-  run_graalvm_tests org.apache.fory.graalvm.ForyJsonExample
+  run_graalvm_test org.apache.fory.graalvm.ForyJsonExample
 }
 
 jdk25_access_options() {
@@ -178,6 +177,7 @@ install_jdk25_fory_artifacts() {
   cd "$ROOT"/benchmarks/java
   mvn -T10 -B --no-transfer-progress -Pjmh -DskipTests install
   unset JDK_JAVA_OPTIONS
+  python "$ROOT/ci/run_ci.py" kotlin --task install-kotlin
   echo "Verify JPMS tests on JDK25"
   cd "$ROOT"/integration_tests/jpms_tests
   mvn -T10 -B --no-transfer-progress clean test
@@ -257,6 +257,7 @@ jdk17_plus_tests() {
   fi
   if [[ "$java_major" -ge 25 ]]; then
     unset JDK_JAVA_OPTIONS
+    python "$ROOT/ci/run_ci.py" kotlin --task install-kotlin
     echo "Executing JDK${java_major} JPMS tests"
     cd "$ROOT/integration_tests/jpms_tests"
     mvn -T10 --batch-mode --no-transfer-progress clean test
@@ -266,37 +267,6 @@ jdk17_plus_tests() {
     fi
   fi
   echo "Executing fory java tests succeeds"
-}
-
-kotlin_tests() {
-  echo "Executing fory kotlin tests"
-  cd "$ROOT/kotlin"
-  set +e
-  # The KSP Maven plugin discovers processors from JAR artifacts. Build and install the
-  # processor first so the generated-test module does not see the reactor classes directory as
-  # its processor artifact.
-  mvn -T16 --batch-mode --no-transfer-progress -pl fory-kotlin,fory-kotlin-ksp -am -DskipTests install
-  testcode=$?
-  if [[ $testcode -ne 0 ]]; then
-    exit $testcode
-  fi
-  java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')
-  if [[ "$java_version" == 1.* ]]; then
-    java_major=$(echo "$java_version" | cut -d. -f2)
-  else
-    java_major=$(echo "$java_version" | cut -d. -f1)
-  fi
-  if [[ "$java_major" -ge 17 ]]; then
-    mvn -T16 --batch-mode --no-transfer-progress test -DfailIfNoTests=false
-  else
-    echo "Skipping fory-kotlin-tests on JDK < 17 because ksp-maven-plugin requires Java 17+"
-    mvn -T16 --batch-mode --no-transfer-progress -pl fory-kotlin,fory-kotlin-ksp -am test -DfailIfNoTests=false
-  fi
-  testcode=$?
-  if [[ $testcode -ne 0 ]]; then
-    exit $testcode
-  fi
-  echo "Executing fory kotlin tests succeeds"
 }
 
 windows_java21_test() {
@@ -347,9 +317,6 @@ case $1 in
     ;;
     java26)
       jdk17_plus_tests
-    ;;
-    kotlin)
-      kotlin_tests
     ;;
     windows_java21)
       windows_java21_test

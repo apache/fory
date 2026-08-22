@@ -20,6 +20,7 @@
 from typing import Dict, List, Optional, Set, Tuple
 
 from fory_compiler.generators.base import GeneratedFile
+from fory_compiler.generators.services.base import StreamingMode, streaming_mode
 from fory_compiler.ir.ast import (
     ArrayType,
     Field,
@@ -57,6 +58,28 @@ class RustServiceGeneratorMixin:
     def allocate_grpc_service_identifiers(self, services: List[Service]) -> None:
         """Allocate sanitized identifiers used by generated gRPC code."""
         self._ensure_name_caches(self.schema)
+        if not hasattr(self, "_named_service_schema_ids"):
+            self._named_service_schema_ids: Set[int] = set()
+            self._service_trait_identifier_cache: Dict[Tuple[object, ...], str] = {}
+            self._service_client_module_identifier_cache: Dict[
+                Tuple[object, ...], str
+            ] = {}
+            self._service_server_module_identifier_cache: Dict[
+                Tuple[object, ...], str
+            ] = {}
+            self._service_name_constant_identifier_cache: Dict[
+                Tuple[object, ...], str
+            ] = {}
+            self._rpc_method_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+            self._rpc_stream_type_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+            self._rpc_path_constant_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+
         schema_id = id(self.schema)
         if schema_id in self._named_service_schema_ids:
             return
@@ -265,12 +288,13 @@ class RustServiceGeneratorMixin:
         method_name = self._rpc_method_identifier_cache[service_key][method_key]
         request_type = self.service_type_path(method.request_type)
         response_type = self.service_type_path(method.response_type)
+        mode = streaming_mode(method)
         lines: List[str] = []
-        if method.client_streaming:
+        if mode in (StreamingMode.CLIENT_STREAMING, StreamingMode.BIDIRECTIONAL):
             request_arg_type = f"::tonic::Request<::tonic::Streaming<{request_type}>>"
         else:
             request_arg_type = f"::tonic::Request<{request_type}>"
-        if method.server_streaming:
+        if mode in (StreamingMode.SERVER_STREAMING, StreamingMode.BIDIRECTIONAL):
             stream_type = self._rpc_stream_type_identifier_cache[service_key][
                 method_key
             ]

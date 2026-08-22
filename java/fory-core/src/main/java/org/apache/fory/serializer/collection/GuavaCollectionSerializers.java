@@ -107,9 +107,9 @@ public class GuavaCollectionSerializers {
     }
 
     @Override
-    public Collection newCollection(ReadContext readContext) {
+    public Collection newCollection(ReadContext readContext, boolean elementReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(readContext, buffer);
+      int numElements = readCollectionSize(readContext, buffer, elementReadAlwaysAdvances);
       setNumElements(numElements);
       // This is only a transient element holder. readCollectionSize reserves the final Guava
       // collection owner and reference slots, so do not reserve this helper separately.
@@ -142,9 +142,9 @@ public class GuavaCollectionSerializers {
     }
 
     @Override
-    public Collection newCollection(ReadContext readContext) {
+    public Collection newCollection(ReadContext readContext, boolean elementReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(readContext, buffer);
+      int numElements = readCollectionSize(readContext, buffer, elementReadAlwaysAdvances);
       setNumElements(numElements);
       // This is only a transient element holder. readCollectionSize reserves the final Guava
       // collection owner and reference slots, so do not reserve this helper separately.
@@ -178,9 +178,9 @@ public class GuavaCollectionSerializers {
     }
 
     @Override
-    public Collection newCollection(ReadContext readContext) {
+    public Collection newCollection(ReadContext readContext, boolean elementReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(readContext, buffer);
+      int numElements = readCollectionSize(readContext, buffer, elementReadAlwaysAdvances);
       setNumElements(numElements);
       // This is only a transient element holder. readCollectionSize reserves the final Guava
       // collection owner and reference slots, so do not reserve this helper separately.
@@ -222,9 +222,9 @@ public class GuavaCollectionSerializers {
     }
 
     @Override
-    public Collection newCollection(ReadContext readContext) {
+    public Collection newCollection(ReadContext readContext, boolean elementReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(readContext, buffer);
+      int numElements = readCollectionSize(readContext, buffer, elementReadAlwaysAdvances);
       setNumElements(numElements);
       Comparator comparator = (Comparator) readContext.readRef();
       // This is only a transient element holder. readCollectionSize reserves the final Guava
@@ -262,9 +262,9 @@ public class GuavaCollectionSerializers {
     protected abstract ImmutableMap.Builder makeBuilder(int size);
 
     @Override
-    public Map newMap(ReadContext readContext) {
+    public Map newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(readContext, buffer);
+      int numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
       setNumElements(numElements);
       // This is only a transient key/value holder. readMapSize reserves the final Guava map owner
       // and reference slots, so do not reserve this helper separately.
@@ -295,7 +295,7 @@ public class GuavaCollectionSerializers {
     @Override
     public T read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int size = readMapSize(readContext, buffer);
+      int size = readMapSize(readContext, buffer, false);
       Map map = new HashMap();
       readElements(readContext, size, map);
       return xnewInstance(map);
@@ -626,9 +626,9 @@ public class GuavaCollectionSerializers {
     }
 
     @Override
-    public Map newMap(ReadContext readContext) {
+    public Map newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(readContext, buffer);
+      int numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
       setNumElements(numElements);
       Comparator comparator = (Comparator) readContext.readRef();
       return new SortedMapContainer<>(comparator, numElements);

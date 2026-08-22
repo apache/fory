@@ -703,6 +703,11 @@ where
     }
 
     #[inline(always)]
+    fn metadata_target_type_id() -> std::any::TypeId {
+        S::metadata_target_type_id()
+    }
+
+    #[inline(always)]
     fn reserved_space() -> usize {
         S::reserved_space()
     }
@@ -716,6 +721,8 @@ where
     const IS_WRAPPER: bool = S::IS_WRAPPER;
 
     const REQUIRES_SCOPED_ACCESS: bool = S::REQUIRES_SCOPED_ACCESS;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = S::READ_DATA_ALWAYS_ADVANCES;
 
     #[inline(always)]
     fn is_none(value: &S::Target) -> bool {
@@ -761,7 +768,7 @@ where
         let read_type_info = serializer_read_type_info::<S>(context);
         if ref_mode == RefMode::None && !S::IS_POLYMORPHIC {
             if read_type_info {
-                if let Some(type_info) = read_value_type_info::<S>(context)? {
+                if let Some(type_info) = read_value_type_info::<S, true>(context)? {
                     return Self::read_data_with_type_info(context, &type_info);
                 }
             }
@@ -828,7 +835,7 @@ where
         let read_type_info = field_read_type_info::<S>(context, remote_field_type);
         if ref_mode == RefMode::None && !S::IS_POLYMORPHIC {
             if read_type_info {
-                if let Some(type_info) = read_value_type_info::<S>(context)? {
+                if let Some(type_info) = read_value_type_info::<S, true>(context)? {
                     return Self::read_data_with_type_info(context, &type_info);
                 }
             }
@@ -861,7 +868,7 @@ where
 
     #[inline(always)]
     fn read_type_info_value(context: &mut ReadContext) -> Result<CodecReadType, Error> {
-        if let Some(type_info) = read_value_type_info::<S>(context)? {
+        if let Some(type_info) = read_value_type_info::<S, false>(context)? {
             return Ok(CodecReadType::TypeInfo(type_info));
         }
         Self::field_type(context.get_type_resolver()).map(CodecReadType::Field)
@@ -882,6 +889,8 @@ where
     C: Serializer<Target = T>,
 {
     type Target = Option<T>;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = C::READ_DATA_ALWAYS_ADVANCES;
 
     #[inline(always)]
     fn reserved_space() -> usize {
@@ -1053,6 +1062,11 @@ where
     #[inline(always)]
     fn static_type_id() -> TypeId {
         C::static_type_id()
+    }
+
+    #[inline(always)]
+    fn metadata_target_type_id() -> std::any::TypeId {
+        C::metadata_target_type_id()
     }
 
     const IS_OPTIONAL: bool = true;
@@ -1602,6 +1616,8 @@ where
     S: Serializer<Target = T>,
 {
     type Target = Vec<T>;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = true;
 
     #[inline(always)]
     fn reserved_space() -> usize {

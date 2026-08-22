@@ -346,7 +346,7 @@ pub fn read_box_any(
     type_info: Option<&Rc<TypeInfo>>,
 ) -> Result<Box<dyn Any>, Error> {
     context.inc_depth()?;
-    let result = (|| {
+    let value = (|| {
         let ref_flag = if ref_mode != RefMode::None {
             context.reader.read_i8()?
         } else {
@@ -367,9 +367,9 @@ pub fn read_box_any(
         check_local_target(type_info)?;
         check_erased_target_type(type_info)?;
         type_info.get_harness().read_box_any(context, type_info)
-    })();
+    })()?;
     context.dec_depth();
-    result
+    Ok(value)
 }
 
 impl Serializer for Rc<dyn Any> {
@@ -529,7 +529,7 @@ fn read_new_rc_any(
     type_info: Option<&Rc<TypeInfo>>,
 ) -> Result<Rc<dyn Any>, Error> {
     context.inc_depth()?;
-    let result = (|| {
+    let value = (|| {
         let owned_type_info;
         let type_info = if read_type_info {
             owned_type_info = context.read_any_type_info()?;
@@ -540,9 +540,9 @@ fn read_new_rc_any(
         check_local_target(type_info)?;
         check_erased_target_type(type_info)?;
         type_info.get_harness().read_rc_any(context, type_info)
-    })();
+    })()?;
     context.dec_depth();
-    result
+    Ok(value)
 }
 
 impl Serializer for Arc<dyn Any + Send + Sync> {
@@ -702,7 +702,7 @@ fn read_new_arc_any(
     type_info: Option<&Rc<TypeInfo>>,
 ) -> Result<Arc<dyn Any + Send + Sync>, Error> {
     context.inc_depth()?;
-    let result = (|| {
+    let value = (|| {
         let owned_type_info;
         let type_info = if read_type_info {
             owned_type_info = context.read_any_type_info()?;
@@ -713,7 +713,34 @@ fn read_new_arc_any(
         check_local_target(type_info)?;
         check_erased_target_type(type_info)?;
         type_info.get_harness().read_arc_any(context, type_info)
-    })();
+    })()?;
     context.dec_depth();
-    result
+    Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Config, Reader, TypeResolver};
+
+    #[test]
+    fn failed_depth_waits_for_reset() {
+        let config = Config {
+            max_dyn_depth: 1,
+            ..Default::default()
+        };
+        let mut context = ReadContext::new(TypeResolver::default(), config);
+        let null = [RefFlag::Null as i8 as u8];
+        context.attach_reader(Reader::new(&null));
+
+        let error = read_box_any(&mut context, RefMode::Tracking, false, None).unwrap_err();
+        assert!(matches!(error, Error::InvalidRef(_)));
+        let error = read_box_any(&mut context, RefMode::Tracking, false, None).unwrap_err();
+        assert!(matches!(error, Error::DepthExceed(_)));
+
+        context.reset();
+        context.attach_reader(Reader::new(&null));
+        let error = read_box_any(&mut context, RefMode::Tracking, false, None).unwrap_err();
+        assert!(matches!(error, Error::InvalidRef(_)));
+    }
 }

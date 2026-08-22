@@ -127,9 +127,19 @@ class ProcessorValidationTest {
     assertTrue(source.contains("return User(userName = (fieldValues[0] as String))"))
     assertTrue(!source.contains("return User(name = field0!!)"))
     assertTrue(source.contains("fieldValues[0] = value.name"))
+    assertTrue(source.contains("0 -> setReadFieldValue(value, fieldInfo, fieldValue)"))
+    assertTrue(source.contains("setGeneratedFieldValue(copied, fieldsById[0]!!"))
+    assertFalse(source.contains("setGeneratedFieldValue(value, fieldInfo, fieldValue)"))
+    assertFalse(source.contains("setReadFieldValue(copied"))
     assertFalse(source.contains("NATURAL_ORDER_COMPARATOR"))
     assertFalse(source.contains("requireXlangNaturalOrdering"))
     assertFalse(source.contains("trackConstructorRefRead(readContext, buffer)"))
+    assertTrue(source.contains("private const val READ_DATA_ALWAYS_ADVANCES: Boolean = true"))
+    assertTrue(
+      source.contains(
+        "override fun readDataAlwaysAdvances(): Boolean = READ_DATA_ALWAYS_ADVANCES && (typeDef == null || sameSchemaCompatible)"
+      )
+    )
   }
 
   @Test
@@ -945,6 +955,109 @@ class ProcessorValidationTest {
   }
 
   @Test
+  fun writesTrackedUnsignedArrays() {
+    fun unsignedScalar(name: String, typeId: String, rawClassExpression: String) =
+      KotlinSourceTypeNode(
+        rawClassExpression = rawClassExpression,
+        kotlinTypeName = "kotlin.$name",
+        valueTypeName = name,
+        typeName = "kotlin.$name",
+        typeId = typeId,
+        nullable = false,
+        trackingRef = false,
+        primitive = false,
+        unsigned = true,
+      )
+
+    fun unsignedArray(
+      name: String,
+      typeId: String,
+      componentType: KotlinSourceTypeNode,
+      nullable: Boolean = false,
+    ) =
+      KotlinSourceTypeNode(
+        rawClassExpression = "${name}Array::class.java",
+        kotlinTypeName = "kotlin.${name}Array",
+        valueTypeName = "${name}Array" + if (nullable) "?" else "",
+        typeName = "kotlin.${name}Array",
+        typeId = typeId,
+        nullable = nullable,
+        trackingRef = true,
+        primitive = false,
+        unsigned = true,
+        componentType = componentType,
+      )
+
+    fun field(id: Int, name: String, type: KotlinSourceTypeNode) =
+      KotlinSourceField(
+        id = id,
+        name = name,
+        type = type,
+        hasForyField = true,
+        foryFieldId = id + 1,
+        trackingRef = true,
+        dynamic = "AUTO",
+        arrayType = false,
+        hasDefault = false,
+        nullable = type.nullable,
+        propertyTypeName = type.valueTypeName,
+      )
+
+    val ubyte = unsignedScalar("UByte", "Types.UINT8", "Byte::class.javaPrimitiveType!!")
+    val ushort = unsignedScalar("UShort", "Types.UINT16", "Short::class.javaPrimitiveType!!")
+    val uint = unsignedScalar("UInt", "Types.UINT32", "Int::class.javaPrimitiveType!!")
+    val ulong = unsignedScalar("ULong", "Types.UINT64", "Long::class.javaPrimitiveType!!")
+    val source =
+      KotlinSerializerSourceWriter(
+          KotlinSourceStruct(
+            packageName = "example",
+            typeName = "TrackedUnsignedArrays",
+            qualifiedTypeName = "example.TrackedUnsignedArrays",
+            serializerName = "TrackedUnsignedArrays_ForySerializer",
+            serializerVisibility = KotlinSerializerVisibility.PUBLIC,
+            fields =
+              listOf(
+                field(0, "ubytes", unsignedArray("UByte", "Types.UINT8_ARRAY", ubyte)),
+                field(1, "ushorts", unsignedArray("UShort", "Types.UINT16_ARRAY", ushort)),
+                field(2, "uints", unsignedArray("UInt", "Types.UINT32_ARRAY", uint)),
+                field(3, "ulongs", unsignedArray("ULong", "Types.UINT64_ARRAY", ulong)),
+                field(
+                  4,
+                  "nullableUInts",
+                  unsignedArray("UInt", "Types.UINT32_ARRAY", uint, nullable = true),
+                ),
+              ),
+            originatingFiles = emptyList(),
+          )
+        )
+        .write()
+
+    assertTrue(source.contains("writeContext.writeRefOrNull(trackedArray0.asByteArray())"))
+    assertTrue(source.contains("writeContext.writeRefOrNull(trackedArray1.asShortArray())"))
+    assertTrue(source.contains("writeContext.writeRefOrNull(trackedArray2.asIntArray())"))
+    assertTrue(source.contains("writeContext.writeRefOrNull(trackedArray3.asLongArray())"))
+    assertTrue(source.contains("writeContext.writeRefOrNull(trackedArray4?.asIntArray())"))
+    assertTrue(source.contains("val nextReadRefId0 = readContext.tryPreserveRefId()"))
+    assertTrue(source.contains("nextReadRefId0 >= Fory.NOT_NULL_VALUE_FLAG"))
+    assertTrue(source.contains("trackedArray0.asByteArray()); trackedArray0"))
+    assertTrue(source.contains("(readContext.getReadRef() as ByteArray).asUByteArray()"))
+    assertTrue(source.contains("(readContext.getReadRef() as ShortArray).asUShortArray()"))
+    assertTrue(source.contains("(readContext.getReadRef() as IntArray).asUIntArray()"))
+    assertTrue(source.contains("(readContext.getReadRef() as LongArray).asULongArray()"))
+    assertTrue(source.contains("(readContext.getReadRef() as IntArray?)?.asUIntArray()"))
+    assertFalse(source.contains("readFieldValue(readContext, fieldInfo)"))
+    assertFalse(source.contains("KotlinXlangArrayEncoding.toUByteArray"))
+    assertFalse(source.contains("KotlinXlangArrayEncoding.toUShortArray"))
+    assertFalse(source.contains("KotlinXlangArrayEncoding.toUIntArray"))
+    assertFalse(source.contains("KotlinXlangArrayEncoding.toULongArray"))
+    assertTrue(
+      source.contains(
+        "ctorFieldValue(readContext, readCompatibleFieldValue(readContext, remoteField, localField), type) } as IntArray).asUIntArray()"
+      )
+    )
+  }
+
+  @Test
   fun writesNullableUInt() {
     val nullableUInt =
       KotlinSourceTypeNode(
@@ -1089,6 +1202,7 @@ class ProcessorValidationTest {
         .write()
 
     assertTrue(source.contains("internal class InternalHolder_ForySerializer"))
+    assertTrue(source.contains("private const val READ_DATA_ALWAYS_ADVANCES: Boolean = false"))
   }
 
   @Test
@@ -1240,7 +1354,7 @@ class ProcessorValidationTest {
   }
 
   @Test
-  fun unsignedContainersUseLoops() {
+  fun compatibleScalarContainersBindFinalOwner() {
     val uint =
       KotlinSourceTypeNode(
         rawClassExpression = "Int::class.javaPrimitiveType!!",
@@ -1359,12 +1473,42 @@ class ProcessorValidationTest {
         )
         .write()
 
-    assertTrue(source.contains("java.util.ArrayList<Any?>(source0.size())"))
-    assertTrue(source.contains("java.util.LinkedHashMap<Any?, Any?>(source0.size)"))
-    assertTrue(source.contains("DurationEncoding.fromJava"))
-    assertTrue(!source.contains(".map {"))
-    assertTrue(!source.contains(".mapTo("))
-    assertTrue(!source.contains(".associate {"))
+    assertTrue(
+      source.contains(
+        "remoteField.serializationFieldInfo.genericType.getTypeParameter0().setSerializer(this.fieldsById[0]!!.genericType.getTypeParameter0().getSerializer())"
+      )
+    )
+    assertTrue(
+      source.contains(
+        "remoteField.serializationFieldInfo.genericType.getTypeParameter0().setSerializer(this.fieldsById[1]!!.genericType.getTypeParameter0().getSerializer())"
+      )
+    )
+    assertTrue(
+      source.contains(
+        "remoteField.serializationFieldInfo.genericType.getTypeParameter1().setSerializer(this.fieldsById[1]!!.genericType.getTypeParameter1().getSerializer())"
+      )
+    )
+    assertTrue(
+      source.contains(
+        "remoteField.serializationFieldInfo.genericType.getTypeParameter0().setSerializer(this.fieldsById[2]!!.genericType.getTypeParameter0().getSerializer())"
+      )
+    )
+    assertTrue(source.contains("if (remoteField.compatibleCollectionArrayReadAction == null)"))
+    val compatibleSource =
+      source.substring(
+        source.indexOf("override fun readCompatible"),
+        source.indexOf("override fun copy")
+      )
+    assertTrue(
+      compatibleSource.contains("if (remoteField.compatibleCollectionArrayReadAction != null)")
+    )
+    assertTrue(compatibleSource.contains("compatibleList[index0] ="))
+    assertFalse(compatibleSource.contains("java.util.ArrayList<Any?>(source0.size())"))
+    assertFalse(compatibleSource.contains("java.util.LinkedHashMap<Any?, Any?>(source0.size)"))
+    assertFalse(compatibleSource.contains("DurationEncoding.fromJava"))
+    assertTrue(
+      compatibleSource.contains("readCompatibleFieldValue(readContext, remoteField, localField)")
+    )
   }
 
   @Test
@@ -1536,6 +1680,7 @@ class ProcessorValidationTest {
         unsigned = false,
         typeArguments = listOf(duration),
       )
+    val trackedUIntList = uintList.copy(trackingRef = true)
     val uintArray =
       KotlinSourceTypeNode(
         rawClassExpression = "UIntArray::class.java",
@@ -1607,6 +1752,12 @@ class ProcessorValidationTest {
                   className = "UseCase",
                   qualifiedClassName = "example.Pet.UseCase",
                   valueType = owner,
+                ),
+                KotlinSourceUnionCase(
+                  id = 7,
+                  className = "SharedCounts",
+                  qualifiedClassName = "example.Pet.SharedCounts",
+                  valueType = trackedUIntList,
                 )
               ),
             originatingFiles = emptyList(),
@@ -1620,6 +1771,7 @@ class ProcessorValidationTest {
     assertTrue(source.contains("UnionSerializer.copyCaseValue(copyContext"))
     assertTrue(source.contains("UnionSerializer.copyUnknownValue(copyContext, value.value)"))
     assertTrue(source.contains("UnionSerializer.writeUnknownValue(writeContext"))
+    assertTrue(source.contains("override fun readDataAlwaysAdvances(): Boolean = true"))
     assertTrue(source.contains("TypeRef.of<Any>(Int::class.javaPrimitiveType!!"))
     assertTrue(!source.contains("UInt::class.java"))
     assertTrue(source.contains("buffer.writeUInt8(Types.VAR_UINT32)"))
@@ -1635,6 +1787,17 @@ class ProcessorValidationTest {
     assertTrue(source.contains("listValue.isNotEmpty()"))
     assertTrue(source.contains("buffer.writeByte(CollectionFlags.DECL_SAME_TYPE_NOT_HAS_NULL)"))
     assertTrue(source.contains("if (size == 0) java.util.ArrayList<Any?>(0)"))
+    assertTrue(
+      source.contains(
+        "private val ARRAY_LIST_OWNER_BYTES: Int = GraphMemoryEstimates.shallowObjectBytes(java.util.ArrayList::class.java)"
+      )
+    )
+    assertTrue(source.contains("Collection size must be non-negative: "))
+    assertTrue(
+      source.contains(
+        "readContext.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + size.toLong() * GraphMemoryEstimates.REFERENCE_BYTES)"
+      )
+    )
     assertTrue(source.contains("buffer.checkReadableBytes(size)"))
     assertTrue(source.contains("java.util.ArrayList<Any?>(size)"))
     assertTrue(
@@ -1645,6 +1808,16 @@ class ProcessorValidationTest {
     assertTrue(source.contains("\"UseCase\","))
     assertTrue(!source.contains("Unknown union case id"))
     assertTrue(source.contains("is example.Pet.UseCase ->"))
+    assertTrue(
+      source.contains(
+        "is example.Pet.SharedCounts -> UnionSerializer.writeCaseValue(typeResolver, writeContext, caseFields[7]!!, value.value, 7)"
+      )
+    )
+    assertTrue(
+      source.contains(
+        "7 -> example.Pet.SharedCounts(UnionSerializer.readCaseValue(typeResolver, readContext, caseFields[7]!!) as List<UInt>)"
+      )
+    )
     assertTrue(!source.contains("org.apache.fory.type.union.Union"))
   }
 

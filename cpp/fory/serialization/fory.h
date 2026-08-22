@@ -123,6 +123,15 @@ public:
     return *this;
   }
 
+  /// Set the root allowance for container items not backed by input bytes.
+  /// Defaults to 8192. Zero is a strict limit.
+  ForyBuilder &max_unbacked_container_items(int64_t max_items) {
+    FORY_CHECK(max_items >= 0)
+        << "max_unbacked_container_items must be non-negative";
+    config_.max_unbacked_container_items = max_items;
+    return *this;
+  }
+
   /// Set maximum accepted field count in one received struct TypeMeta.
   ForyBuilder &max_type_fields(uint32_t max_fields) {
     FORY_CHECK(max_fields > 0) << "max_type_fields must be positive";
@@ -893,6 +902,8 @@ private:
     read_ctx_->attach(buffer);
     read_ctx_->remaining_graph_memory_bytes_ =
         static_cast<size_t>(config_.max_graph_memory_bytes);
+    read_ctx_->remaining_unbacked_container_items_ =
+        static_cast<size_t>(config_.max_unbacked_container_items);
     ReadContextGuard guard(*read_ctx_);
     return deserialize_impl<T>(buffer);
   }

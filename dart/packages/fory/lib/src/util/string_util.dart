@@ -84,9 +84,11 @@ String readStringFromBuffer(Buffer buffer, int byteLength, int encoding) {
         throw StateError('Invalid UTF-16 string payload length $byteLength.');
       }
       final codeUnitCount = byteLength ~/ 2;
-      if (Endian.host == Endian.little && start.isEven) {
+      // Uint16List.view uses an offset in bytes.buffer, not in the Uint8List view.
+      final byteOffset = bytes.offsetInBytes + start;
+      if (Endian.host == Endian.little && byteOffset.isEven) {
         return String.fromCharCodes(
-          Uint16List.view(bytes.buffer, start, codeUnitCount),
+          Uint16List.view(bytes.buffer, byteOffset, codeUnitCount),
         );
       }
       final codeUnits = Uint16List(codeUnitCount);

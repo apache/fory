@@ -854,7 +854,10 @@ assert result.children[0].parent is result  # Reference preserved
 
 ### Type Registration
 
-In strict mode, only registered types can be deserialized. This prevents arbitrary code execution:
+In strict mode, Fory loads and instantiates only registered application types.
+Compatible metadata for an unregistered remote Struct returns the fixed
+data-only `pyfory.UnknownStruct` carrier; it does not load or generate the
+sender-named class. This prevents arbitrary class materialization:
 
 ```python
 import pyfory
@@ -1302,7 +1305,7 @@ Apache License 2.0. See [LICENSE](https://github.com/apache/fory/blob/main/LICEN
 
 ## Links
 
-- **Documentation**: https://fory.apache.org/docs/guide/python/
+- **Documentation**: https://fory.apache.org/docs/object-serialization/python/
 - **GitHub**: https://github.com/apache/fory
 - **PyPI**: https://pypi.org/project/pyfory/
 - **Issues**: https://github.com/apache/fory/issues

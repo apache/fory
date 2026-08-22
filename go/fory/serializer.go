@@ -142,3 +142,67 @@ type ExtensionSerializer interface {
 	// Errors should be set on the context via ctx.SetError().
 	ReadData(ctx *ReadContext, value reflect.Value)
 }
+
+func serializerReadDataAlwaysAdvances(serializer Serializer) bool {
+	switch s := serializer.(type) {
+	case boolSerializer, int8Serializer, byteSerializer, uint16Serializer,
+		uint32Serializer, uint64Serializer, uintSerializer, int16Serializer,
+		int32Serializer, int64Serializer, intSerializer, float32Serializer,
+		float64Serializer, float16Serializer, bfloat16Serializer,
+		stringSerializer, ptrToStringSerializer, decimalSerializer,
+		dateSerializer, timeSerializer, durationSerializer, *enumSerializer,
+		*sliceSerializer, *sliceDynSerializer, setSerializer, mapSerializer,
+		*mapSerializer, *arrayConcreteValueSerializer, *arrayDynSerializer,
+		byteArraySerializer, primitiveListSerializer,
+		compatiblePrimitiveListToArraySerializer, boolSliceSerializer,
+		int8SliceSerializer, int16SliceSerializer, int32SliceSerializer,
+		int64SliceSerializer, byteSliceSerializer, uint16SliceSerializer,
+		uint32SliceSerializer, uint64SliceSerializer, float32SliceSerializer,
+		float64SliceSerializer, float16SliceSerializer, bfloat16SliceSerializer,
+		intSliceSerializer, uintSliceSerializer, stringSliceSerializer,
+		boolArraySerializer, int8ArraySerializer, int16ArraySerializer,
+		int32ArraySerializer, int64ArraySerializer, uint8ArraySerializer,
+		uint16ArraySerializer, uint32ArraySerializer, uint64ArraySerializer,
+		float32ArraySerializer, float64ArraySerializer, float16ArraySerializer,
+		bfloat16ArraySerializer, stringStringMapSerializer,
+		stringInt64MapSerializer, stringIntMapSerializer,
+		stringFloat64MapSerializer, stringBoolMapSerializer,
+		int32Int32MapSerializer, int64Int64MapSerializer, intIntMapSerializer,
+		encodedByteSliceSerializer, encodedInt32Serializer,
+		encodedUint32Serializer, encodedInt64Serializer, encodedUint64Serializer,
+		*UnionSerializer, *ptrToInterfaceSerializer:
+		return true
+	case *ptrToValueSerializer:
+		return serializerReadDataAlwaysAdvances(s.valueSerializer)
+	case *optionalSerializer:
+		return serializerReadDataAlwaysAdvances(s.valueSerializer)
+	case interfaceScalarSerializer:
+		return serializerReadDataAlwaysAdvances(s.serializer)
+	case *structSerializer:
+		return s.readDataAlwaysAdvances
+	case *skipStructSerializer:
+		return skipStructReadDataAlwaysAdvances(s.fieldDefs)
+	default:
+		return false
+	}
+}
+
+func typeIDReadDataAlwaysAdvances(typeID TypeId) bool {
+	switch typeID {
+	case NONE, UNKNOWN, STRUCT, COMPATIBLE_STRUCT, NAMED_STRUCT,
+		NAMED_COMPATIBLE_STRUCT, EXT, NAMED_EXT:
+		return false
+	default:
+		return true
+	}
+}
+
+func skipStructReadDataAlwaysAdvances(fields []FieldDef) bool {
+	for _, field := range fields {
+		if field.nullable || field.trackRef || isStructFieldType(field.typeSpec) ||
+			(field.typeSpec != nil && typeIDReadDataAlwaysAdvances(field.typeSpec.TypeId())) {
+			return true
+		}
+	}
+	return false
+}

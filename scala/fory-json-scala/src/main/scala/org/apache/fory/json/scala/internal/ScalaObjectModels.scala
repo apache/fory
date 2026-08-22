@@ -1,0 +1,304 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.fory.json.scala.internal
+
+import java.lang.reflect.{Constructor, Field, Method, Modifier}
+
+import org.apache.fory.json.ForyJsonException
+import org.apache.fory.json.codec.{JsonObjectModel, JsonValueCodec, ObjectCodec}
+import org.apache.fory.json.resolver.JsonTypeResolver
+import org.apache.fory.reflect.TypeRef
+
+private[scala] object ScalaObjectModels {
+  def isCaseClass(typeClass: Class[_]): Boolean = {
+    if (!classOf[Product].isAssignableFrom(typeClass) || typeClass.getName.startsWith("scala.Tuple")) {
+      return false
+    }
+    findPrimaryConstructor(typeClass) != null
+  }
+
+  def caseClassCodec(typeRef: TypeRef[_], resolver: JsonTypeResolver): ObjectCodec[_] = {
+    val typeClass = typeRef.getRawType
+    val constructor = findPrimaryConstructor(typeClass)
+    if (constructor == null) {
+      throw ScalaTypeSupport.unsupported(typeRef, "case class has no supported public primary constructor")
+    }
+    val parameterTypes = constructor.getParameterTypes
+    val names = constructor.getParameters.map(_.getName)
+    val accessors = new Array[Method](names.length)
+    var index = 0
+    while (index < names.length) {
+      val accessor = propertyGetter(typeClass, names(index), parameterTypes(index))
+      if (accessor == null)
+        throw new ForyJsonException(
+          s"Missing Scala case-class accessor ${typeClass.getName}.${names(index)}"
+        )
+      if (
+        accessor.getParameterCount != 0 || !compatibleAccessor(accessor, parameterTypes(index)) ||
+        Modifier.isStatic(accessor.getModifiers) || accessor.isBridge || accessor.isSynthetic
+      ) {
+        throw new ForyJsonException(s"Invalid Scala case-class accessor $accessor")
+      }
+      accessors(index) = accessor
+      index += 1
+    }
+    val bodyFields = productFields(typeClass).filter(field => !names.contains(field.getName))
+    val bodyGetters = bodyFields.map(field => propertyGetter(typeClass, field.getName, field.getType))
+    val bodyPropertyIndexes = bodyGetters.indices.filter(index => bodyGetters(index) != null)
+    val propertyNames = names ++ bodyPropertyIndexes.map(index => bodyFields(index).getName)
+    val propertyGetters = accessors ++ bodyPropertyIndexes.map(index => bodyGetters(index))
+    val propertySetters =
+      Array.fill[Method](names.length)(null) ++
+        bodyPropertyIndexes.map(index => propertySetter(typeClass, bodyFields(index)))
+    val propertyTypes =
+      ScalaEnumerationTypes.propertyTypes(
+        typeClass,
+        constructor,
+        propertyNames,
+        propertyGetters,
+        propertySetters
+      ).map(typeRef.resolveType)
+    // Constructor properties and their accessors are one logical occurrence. In particular,
+    // @JsonEnumeration binds an erased Enumeration.Value parameter to the exact MODULE$ owner.
+    val logicalParameterTypes = propertyTypes.take(names.length)
+    val defaults = constructorDefaults(typeClass, parameterTypes)
+    resolver.createObjectCodec(
+      typeRef,
+      new JsonObjectModel(
+        constructor,
+        null,
+        names,
+        accessors,
+        defaults,
+        Array.fill(names.length)(-1),
+        Array.fill(names.length)(true),
+        logicalParameterTypes,
+        propertyNames,
+        propertyGetters,
+        propertySetters,
+        propertyTypes
+      )
+    )
+  }
+
+  def singletonCodec(
+      typeRef: TypeRef[_],
+      resolver: JsonTypeResolver
+  ): JsonValueCodec[_] = {
+    val typeClass = typeRef.getRawType
+    val field = singletonField(typeClass)
+    if (field == null) null
+    else fixedCodec(typeRef, resolver, field.get(null))
+  }
+
+  def fixedCodec(
+      typeRef: TypeRef[_],
+      resolver: JsonTypeResolver,
+      instance: AnyRef
+  ): ObjectCodec[_] = {
+    val typeClass = typeRef.getRawType
+    if (instance == null || instance.getClass != typeClass)
+      throw ScalaTypeSupport.unsupported(typeRef, "singleton instance has a different runtime class")
+    val nonPropertyFields = singletonNonPropertyFields(typeClass)
+    val fields = singletonStateFields(typeClass, nonPropertyFields)
+    val getters = fields.map(field => propertyGetter(typeClass, field.getName, field.getType))
+    val propertyTypes = fields.indices.map { index =>
+      val getter = getters(index)
+      typeRef.resolveType(if (getter == null) fields(index).getGenericType else getter.getGenericReturnType)
+    }.toArray
+    resolver.createObjectCodec(
+      typeRef,
+      JsonObjectModel.fixedInstance(
+        instance,
+        fields.map(_.getName),
+        getters,
+        Array.fill[Method](fields.length)(null),
+        propertyTypes,
+        nonPropertyFields
+      )
+    )
+  }
+
+  private def singletonStateFields(
+      typeClass: Class[_],
+      nonPropertyFields: Array[Field]
+  ): Array[Field] = {
+    val moduleClass = typeClass.getName.endsWith("$")
+    typeClass.getDeclaredFields.filter { field =>
+      val name = field.getName
+      val modifiers = field.getModifiers
+      if (moduleClass) {
+        name != "MODULE$" && !field.isSynthetic &&
+        (!Modifier.isStatic(modifiers) || !Modifier.isFinal(modifiers) ||
+          propertyGetter(typeClass, name, field.getType) != null)
+      }
+      else {
+        !Modifier.isStatic(modifiers) && !field.isSynthetic && !nonPropertyFields.contains(field)
+      }
+    }
+  }
+
+  private def singletonNonPropertyFields(typeClass: Class[_]): Array[Field] = {
+    if (typeClass.getName.endsWith("$")) return Array.empty
+    typeClass.getDeclaredFields.filter { field =>
+      val name = field.getName
+      val modifiers = field.getModifiers
+      !Modifier.isStatic(modifiers) && Modifier.isFinal(modifiers) && !field.isSynthetic &&
+      (name.startsWith("_$ordinal$") || name.startsWith("$name$"))
+    }
+  }
+
+  private def productFields(typeClass: Class[_]): Array[Field] = {
+    typeClass.getDeclaredFields.filter { field =>
+      val modifiers = field.getModifiers
+      !Modifier.isStatic(modifiers) && !field.isSynthetic && !field.getName.startsWith("$")
+    }
+  }
+
+  private def findPrimaryConstructor(typeClass: Class[_]): Constructor[_] = {
+    val constructors = typeClass.getConstructors
+    val methods = typeClass.getMethods
+    var selected: Constructor[_] = null
+    var index = 0
+    while (index < constructors.length) {
+      val constructor = constructors(index)
+      val parameterTypes = constructor.getParameterTypes
+      val matchingApply = methods.exists { method =>
+        method.getName == "apply" && Modifier.isStatic(method.getModifiers) && !method.isBridge &&
+        !method.isSynthetic && method.getReturnType == typeClass &&
+        sameTypes(method.getParameterTypes, parameterTypes)
+      }
+      if (!constructor.isSynthetic && !constructor.isVarArgs && matchingApply) {
+        if (selected != null) {
+          throw new ForyJsonException(s"Ambiguous Scala case-class primary constructor on ${typeClass.getName}")
+        }
+        selected = constructor
+      }
+      index += 1
+    }
+    selected
+  }
+
+  private def sameTypes(left: Array[Class[_]], right: Array[Class[_]]): Boolean = {
+    if (left.length != right.length) return false
+    var index = 0
+    while (index < left.length) {
+      if (left(index) != right(index)) return false
+      index += 1
+    }
+    true
+  }
+
+  private def propertyGetter(typeClass: Class[_], name: String, propertyType: Class[_]): Method = {
+    try {
+      val method = typeClass.getMethod(name)
+      val modifiers = method.getModifiers
+      if (
+        method.getParameterCount == 0 && compatibleAccessor(method, propertyType) &&
+        Modifier.isPublic(modifiers) && !Modifier.isStatic(modifiers) && !method.isBridge &&
+        !method.isSynthetic
+      ) method
+      else null
+    } catch { case _: NoSuchMethodException => null }
+  }
+
+  private def compatibleAccessor(method: Method, propertyType: Class[_]): Boolean =
+    method.getReturnType == propertyType ||
+      propertyType == classOf[scala.runtime.BoxedUnit] && method.getReturnType == java.lang.Void.TYPE
+
+  private def propertySetter(typeClass: Class[_], field: Field): Method = {
+    try {
+      val method = typeClass.getMethod(field.getName + "_$eq", field.getType)
+      val modifiers = method.getModifiers
+      if (
+        method.getReturnType == java.lang.Void.TYPE && Modifier.isPublic(modifiers) &&
+        !Modifier.isStatic(modifiers) && !method.isBridge && !method.isSynthetic
+      ) method
+      else null
+    } catch { case _: NoSuchMethodException => null }
+  }
+
+  private def constructorDefaults(
+      typeClass: Class[_],
+      parameterTypes: Array[Class[_]]
+  ): Array[Method] = {
+    // Scala emits constructor-default forwarders on the case-class owner. Using those exact
+    // methods keeps construction metadata owner-bound and avoids loading the companion singleton.
+    // A default in a later parameter list receives the preceding parameter lists as arguments.
+    val defaults = new Array[Method](parameterTypes.length)
+    var index = 0
+    while (index < defaults.length) {
+      val name = "$lessinit$greater$default$" + (index + 1)
+      val candidates = typeClass.getMethods.filter { method =>
+        val modifiers = method.getModifiers
+        method.getName == name && Modifier.isPublic(modifiers) && Modifier.isStatic(modifiers) &&
+        method.getParameterCount <= index &&
+        compatibleDefaultParameters(method.getParameterTypes, parameterTypes) &&
+        compatibleDefaultResult(method.getReturnType, parameterTypes(index))
+      }
+      if (candidates.length > 1)
+        throw new ForyJsonException(s"Ambiguous Scala constructor default $name on ${typeClass.getName}")
+      if (candidates.length == 1) defaults(index) = candidates(0)
+      index += 1
+    }
+    defaults
+  }
+
+  private def compatibleDefaultParameters(
+      dependencies: Array[Class[_]],
+      constructorParameters: Array[Class[_]]
+  ): Boolean = {
+    var index = 0
+    while (index < dependencies.length) {
+      if (dependencies(index) != constructorParameters(index)) return false
+      index += 1
+    }
+    true
+  }
+
+  private def compatibleDefaultResult(result: Class[_], parameter: Class[_]): Boolean =
+    boxed(parameter).isAssignableFrom(boxed(result))
+
+  private def boxed(value: Class[_]): Class[_] = {
+    if (!value.isPrimitive) value
+    else if (value == java.lang.Boolean.TYPE) classOf[java.lang.Boolean]
+    else if (value == java.lang.Byte.TYPE) classOf[java.lang.Byte]
+    else if (value == java.lang.Short.TYPE) classOf[java.lang.Short]
+    else if (value == java.lang.Integer.TYPE) classOf[java.lang.Integer]
+    else if (value == java.lang.Long.TYPE) classOf[java.lang.Long]
+    else if (value == java.lang.Float.TYPE) classOf[java.lang.Float]
+    else if (value == java.lang.Double.TYPE) classOf[java.lang.Double]
+    else if (value == java.lang.Character.TYPE) classOf[java.lang.Character]
+    else value
+  }
+
+  private def singletonField(typeClass: Class[_]): Field = {
+    if (!typeClass.getName.endsWith("$")) return null
+    try {
+      val field = typeClass.getField("MODULE$")
+      val modifiers = field.getModifiers
+      if (
+        field.getType == typeClass && Modifier.isPublic(modifiers) && Modifier.isStatic(modifiers) &&
+        Modifier.isFinal(modifiers)
+      ) field
+      else null
+    } catch { case _: NoSuchFieldException => null }
+  }
+}

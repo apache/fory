@@ -27,10 +27,15 @@ import { TypeMeta } from "../meta/TypeMeta";
 
 class EnumSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
+  typeMeta: TypeMeta | undefined;
 
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
     this.typeInfo = typeInfo;
+    this.typeMeta =
+      typeInfo.typeId === TypeId.NAMED_ENUM && builder.resolver.isCompatible()
+        ? TypeMeta.fromTypeInfo(typeInfo, builder.resolver)
+        : undefined;
   }
 
   private getEnumEntries(): Array<[string, string | number]> {
@@ -80,7 +85,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
                 throw new Error("Enum value must be a valid uint32");
               }
             }
-            const safeValue = typeof value === "string" ? `"${value}"` : value;
+            const safeValue = typeof value === "string" ? CodecBuilder.sourceString(value) : value;
             const wireValue = useExplicitNumericWireValues ? safeValue : index;
             return ` if (${accessor} === ${safeValue}) {
                     ${this.builder.writer.writeVarUInt32(wireValue)}
@@ -108,6 +113,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
               TypeId.NAMED_ENUM,
               this.typeInfo.namespace,
               this.typeInfo.typeName,
+              "serializer",
             )};
           `;
         } else {
@@ -149,22 +155,18 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
         if (this.builder.resolver.isCompatible()) {
           const bytes = this.scope.declare(
             "enumTypeInfoBytes",
-            `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`,
+            `new Uint8Array([${this.typeMeta!.toBytes().join(",")}])`,
           );
           typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), bytes);
         } else {
           const typeInfo = this.typeInfo;
           const nsBytes = this.scope.declare(
             "nsBytes",
-            this.builder.metaStringResolver.encodeNamespace(
-              CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace),
-            ),
+            this.builder.metaStringResolver.encodeNamespace(typeInfo.namespace),
           );
           const typeNameBytes = this.scope.declare(
             "typeNameBytes",
-            this.builder.metaStringResolver.encodeTypeName(
-              CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName),
-            ),
+            this.builder.metaStringResolver.encodeTypeName(typeInfo.typeName),
           );
           typeMeta = `
               ${this.builder.metaStringResolver.writeBytes(nsBytes)}
@@ -184,13 +186,19 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
 
   read(accessor: (expr: string) => string): string {
     if (!this.typeInfo.options?.enumProps) {
-      return accessor(this.builder.reader.readVarUInt32());
+      const result = this.scope.uniqueName("enum_result");
+      return `
+        const ${result} = ${this.builder.reader.readVarUInt32()};
+        ${accessor(result)}
+      `;
     }
     const enumEntries = this.getEnumEntries();
     const useExplicitNumericWireValues = this.useExplicitNumericWireValues(enumEntries);
     const enumValue = this.scope.uniqueName("enum_v");
+    const result = this.scope.uniqueName("enum_result");
     return `
         const ${enumValue} = ${this.builder.reader.readVarUInt32()};
+        let ${result};
         switch(${enumValue}) {
             ${enumEntries
               .map(([, value], index) => {
@@ -202,11 +210,12 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
                     throw new Error("Enum value must be a valid uint32");
                   }
                 }
-                const safeValue = typeof value === "string" ? `"${value}"` : `${value}`;
+                const safeValue =
+                  typeof value === "string" ? CodecBuilder.sourceString(value) : `${value}`;
                 const wireValue = useExplicitNumericWireValues ? safeValue : `${index}`;
                 return `
                 case ${wireValue}:
-                    ${accessor(safeValue)}
+                    ${result} = ${safeValue};
                     break;
                 `;
               })
@@ -214,11 +223,17 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
             default:
                 throw new Error("Enum received an unexpected value: " + ${enumValue});
         }
+        ${accessor(result)}
     `;
   }
 
   getFixedSize(): number {
     return 7;
+  }
+
+  getLocalTypeMeta(): TypeMeta | undefined {
+    this.typeMeta?.getHash();
+    return this.typeMeta;
   }
 }
 

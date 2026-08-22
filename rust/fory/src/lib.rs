@@ -88,7 +88,11 @@
 extern crate self as fory;
 
 pub use fory_core::{
-    error::Error, fory::Fory, fory::ForyBuilder, register_trait_type, row::from_row, row::to_row,
+    error::Error,
+    fory::Fory,
+    fory::ForyBuilder,
+    register_trait_type,
+    row::{from_row, to_row, to_row_into, ArrayIter, ArrayView, MapView, Row, RowView},
     ArcSerializer, ArcWeak, ArcWeakSerializer, ArraySerializer, BFloat16, BTreeMapSerializer,
     BTreeSetSerializer, BinaryHeapSerializer, BoxSerializer, Date, Decimal, Duration, Float16,
     ForyObject, HashMapSerializer, HashSetSerializer, LinkedListSerializer, MutexSerializer,

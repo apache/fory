@@ -109,6 +109,11 @@ impl<S: Serializer> Serializer for OptionSerializer<S> {
     }
 
     #[inline(always)]
+    fn metadata_target_type_id() -> std::any::TypeId {
+        S::metadata_target_type_id()
+    }
+
+    #[inline(always)]
     fn reserved_space() -> usize {
         <RootSerializer<S> as Serializer>::reserved_space()
     }
@@ -122,6 +127,8 @@ impl<S: Serializer> Serializer for OptionSerializer<S> {
     const IS_WRAPPER: bool = true;
 
     const REQUIRES_SCOPED_ACCESS: bool = S::REQUIRES_SCOPED_ACCESS;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = S::READ_DATA_ALWAYS_ADVANCES;
 
     #[inline(always)]
     fn is_none(value: &Self::Target) -> bool {
@@ -220,6 +227,11 @@ where
     }
 
     #[inline(always)]
+    fn metadata_target_type_id() -> std::any::TypeId {
+        T::metadata_target_type_id()
+    }
+
+    #[inline(always)]
     fn reserved_space() -> usize {
         OptionSerializer::<T>::reserved_space()
     }
@@ -233,6 +245,8 @@ where
     const IS_WRAPPER: bool = true;
 
     const REQUIRES_SCOPED_ACCESS: bool = OptionSerializer::<T>::REQUIRES_SCOPED_ACCESS;
+
+    const READ_DATA_ALWAYS_ADVANCES: bool = T::READ_DATA_ALWAYS_ADVANCES;
 
     #[inline(always)]
     fn is_none(value: &Self) -> bool {

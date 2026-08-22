@@ -21,8 +21,7 @@ TypeDef decoder for xlang serialization.
 This module implements the decoding of TypeDef objects according to the xlang serialization specification.
 """
 
-from dataclasses import make_dataclass
-from typing import Any, List
+from typing import List
 
 # Python 3.8 must be able to evaluate these annotations at runtime.
 
@@ -44,7 +43,6 @@ from pyfory.meta.typedef import (
     TYPE_NAME_ENCODINGS,
     FIELD_NAME_ENCODING_TAG_ID,
     TAG_ID_SIZE_THRESHOLD,
-    is_struct_typedef_kind,
     is_named_typedef_kind,
     xlang_non_struct_type_id,
     _typedef_header_hash,
@@ -140,7 +138,6 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
     num_fields = 0
     is_registered_by_name = False
 
-    type_cls = None
     user_type_id = NO_USER_TYPE_ID
     if is_struct:
         is_registered_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0
@@ -168,22 +165,10 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
     if is_registered_by_name:
         namespace = read_namespace(meta_buffer)
         typename = read_typename(meta_buffer)
-        # Look up the type_id from namespace and typename
-        type_info = resolver.get_type_info_by_name(namespace, typename)
-        if type_info:
-            if type_info.type_id != type_id:
-                raise ValueError("TypeDef kind does not match registered type metadata")
-            type_cls = type_info.cls
     else:
         user_type_id = meta_buffer.read_var_uint32()
-        if resolver.is_registered_by_id(type_id=type_id, user_type_id=user_type_id):
-            type_info = resolver.get_type_info_by_id(type_id, user_type_id=user_type_id)
-            type_cls = type_info.cls
-            namespace = type_info.decode_namespace()
-            typename = type_info.decode_typename()
-        else:
-            namespace = "fory"
-            typename = f"UnknownStruct{user_type_id if user_type_id != NO_USER_TYPE_ID else type_id}"
+        namespace = "fory"
+        typename = f"UnknownStruct{user_type_id if user_type_id != NO_USER_TYPE_ID else type_id}"
     name = namespace + "." + typename if namespace else typename
 
     field_infos = read_fields_info(meta_buffer, resolver, name, num_fields)
@@ -192,26 +177,13 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
     if meta_buffer.get_reader_index() != meta_buffer.size():
         raise ValueError("Invalid TypeDef metadata size")
     _validate_parsed_typedef_hash(header, encoded_meta_data)
-    if type_cls is None and is_struct_typedef_kind(type_id):
-        if getattr(resolver, "strict", False) and not getattr(resolver, "_allow_unregistered_typedef", False):
-            raise ValueError(f"TypeDef {name} is not registered in strict mode")
-        resolver._check_remote_type_def_meta(type_id, namespace, typename, user_type_id)
-        # Generate dynamic dataclass from field definitions
-        field_definitions = [(field_info.name, Any) for field_info in field_infos]
-        # Use a valid Python identifier for class name
-        class_name = typename.replace(".", "_").replace("$", "_")
-        type_cls = make_dataclass(class_name, field_definitions)
-        policy = getattr(resolver, "policy", None)
-        if policy is not None:
-            policy.validate_class(type_cls, is_local=True)
-    elif type_cls is None:
-        raise ValueError(f"TypeDef {name} is not registered")
 
-    # Create TypeDef object
+    # Class binding belongs to the resolver after the schema has been fully
+    # validated. Decoding metadata must never load or manufacture a Python class.
     type_def = TypeDef(
         namespace,
         typename,
-        type_cls,
+        None,
         type_id,
         field_infos,
         encoded.to_bytes(0, encoded.get_writer_index()),

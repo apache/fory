@@ -38,6 +38,8 @@ import org.apache.fory.serializer.Shareable
 public class DurationSerializer(config: Config) :
   ImmutableSerializer<Duration>(config, Duration::class.java, !config.isTimeRefIgnored), Shareable {
 
+  override fun readDataAlwaysAdvances(): Boolean = true
+
   @Suppress("UNCHECKED_CAST")
   private fun durationUnitSerializer(writeContext: WriteContext): Serializer<DurationUnit> {
     return writeContext.typeResolver.getSerializer(DurationUnit::class.java)

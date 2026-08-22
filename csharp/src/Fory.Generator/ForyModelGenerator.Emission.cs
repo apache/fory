@@ -123,6 +123,11 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine("        return nullable ? global::Apache.Fory.RefMode.NullOnly : global::Apache.Fory.RefMode.None;");
         sb.AppendLine("    }");
         sb.AppendLine();
+        if (model.SortedMembers.Any(member => HasMapCodec(member.FieldCodec)))
+        {
+            EmitMapChunkError(sb, 1);
+        }
+
         foreach (MemberModel member in model.SortedMembers)
         {
             if (member.FieldCodec is not null)
@@ -156,42 +161,6 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
-            "    private bool __ForyMatchesTypeMeta(global::Apache.Fory.TypeMeta typeMeta, bool trackRef)");
-        sb.AppendLine("    {");
-        sb.AppendLine(
-            "        global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> expectedFields = TypeMetaFields(trackRef);");
-        sb.AppendLine("        if (typeMeta.Fields.Count != expectedFields.Count)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            return false;");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-        sb.AppendLine("        for (int i = 0; i < expectedFields.Count; i++)");
-        sb.AppendLine("        {");
-        sb.AppendLine(
-            "            global::Apache.Fory.TypeMetaFieldInfo remoteField = typeMeta.Fields[i];");
-        sb.AppendLine(
-            "            global::Apache.Fory.TypeMetaFieldInfo localField = expectedFields[i];");
-        sb.AppendLine("            if (remoteField.FieldId.HasValue && localField.FieldId.HasValue)");
-        sb.AppendLine("            {");
-        sb.AppendLine(
-            "                if (remoteField.FieldId.Value != localField.FieldId.Value || !remoteField.FieldType.Equals(localField.FieldType))");
-        sb.AppendLine("                {");
-        sb.AppendLine("                    return false;");
-        sb.AppendLine("                }");
-        sb.AppendLine();
-        sb.AppendLine("                continue;");
-        sb.AppendLine("            }");
-        sb.AppendLine(
-            "            if (remoteField.FieldName != localField.FieldName || !remoteField.FieldType.Equals(localField.FieldType))");
-        sb.AppendLine("            {");
-        sb.AppendLine("                return false;");
-        sb.AppendLine("            }");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-        sb.AppendLine("        return true;");
-        sb.AppendLine("    }");
-        sb.AppendLine();
-        sb.AppendLine(
             "    private static void __ForyEnsureTypeMetaCache(global::Apache.Fory.TypeResolver typeResolver)");
         sb.AppendLine("    {");
         sb.AppendLine("        ulong resolverVersion = typeResolver.VersionHash();");
@@ -222,7 +191,7 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
-            "    private bool __ForyMatchesCachedTypeMeta(global::Apache.Fory.TypeMeta typeMeta, bool trackRef, global::Apache.Fory.TypeResolver typeResolver)");
+            "    private static bool __ForyMatchesTypeMetaHash(global::Apache.Fory.TypeMeta typeMeta, bool trackRef, global::Apache.Fory.TypeResolver typeResolver)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (trackRef)");
         sb.AppendLine("        {");
@@ -234,12 +203,7 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine();
         sb.AppendLine("            __ForyEnsureTypeMetaCache(typeResolver);");
         sb.AppendLine();
-        sb.AppendLine("            bool matched = false;");
-        sb.AppendLine("            if (typeMeta.HeaderHash == __ForyRefTypeMetaHash)");
-        sb.AppendLine("            {");
-        sb.AppendLine("                matched = __ForyMatchesTypeMeta(typeMeta, true);");
-        sb.AppendLine("            }");
-        sb.AppendLine();
+        sb.AppendLine("            bool matched = typeMeta.HeaderHash == __ForyRefTypeMetaHash;");
         sb.AppendLine("            __ForyRefMeta = typeMeta;");
         sb.AppendLine("            __ForyRefMetaMatches = matched;");
         sb.AppendLine("            return matched;");
@@ -253,12 +217,7 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine();
         sb.AppendLine("        __ForyEnsureTypeMetaCache(typeResolver);");
         sb.AppendLine();
-        sb.AppendLine("        bool noTrackMatched = false;");
-        sb.AppendLine("        if (typeMeta.HeaderHash == __ForyNoRefTypeMetaHash)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            noTrackMatched = __ForyMatchesTypeMeta(typeMeta, false);");
-        sb.AppendLine("        }");
-        sb.AppendLine();
+        sb.AppendLine("        bool noTrackMatched = typeMeta.HeaderHash == __ForyNoRefTypeMetaHash;");
         sb.AppendLine("        __ForyNoRefMeta = typeMeta;");
         sb.AppendLine("        __ForyNoRefMetaMatches = noTrackMatched;");
         sb.AppendLine("        return noTrackMatched;");
@@ -495,7 +454,7 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine($"            {model.TargetTypeName} value = new {model.TargetTypeName}();");
         EmitRefPublication(sb, model, "value", 3);
 
-        sb.AppendLine("            bool __ForyExactTypeMeta = __ForyMatchesCachedTypeMeta(typeMeta, context.TrackRef, context.TypeResolver);");
+        sb.AppendLine("            bool __ForyExactTypeMeta = __ForyMatchesTypeMetaHash(typeMeta, context.TrackRef, context.TypeResolver);");
         sb.AppendLine("            if (__ForyAllFieldsBuiltIn && __ForyExactTypeMeta)");
         sb.AppendLine("            {");
         foreach (MemberModel member in model.SortedMembers)
@@ -532,61 +491,8 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine("                return value;");
         sb.AppendLine("            }");
         sb.AppendLine();
-        sb.AppendLine("            for (int i = 0; i < typeMeta.Fields.Count; i++)");
-        sb.AppendLine("            {");
-        sb.AppendLine("                global::Apache.Fory.TypeMetaFieldInfo remoteField = typeMeta.Fields[i];");
-        sb.AppendLine("                switch (remoteField.AssignedFieldId)");
-        sb.AppendLine("                {");
-        sb.AppendLine("                    case -1:");
-        sb.AppendLine("                        global::Apache.Fory.FieldSkipper.SkipFieldValue(context, remoteField.FieldType);");
-        sb.AppendLine("                        break;");
-        for (int idx = 0; idx < model.SortedMembers.Length; idx++)
-        {
-            MemberModel member = model.SortedMembers[idx];
-            sb.AppendLine($"                    case {idx * 2}:");
-            sb.AppendLine("                        {");
-            EmitReadMemberAssignment(
-                sb,
-                member,
-                BuildWriteRefModeExpression(member),
-                BuildFieldTypeInfoLiteral(member),
-                "value",
-                "CompatDirect",
-                7,
-                true);
-            sb.AppendLine("                            break;");
-            sb.AppendLine("                        }");
-            sb.AppendLine($"                    case {idx * 2 + 1}:");
-            sb.AppendLine("                        {");
-            string compatRefModeExpr;
-            if (CompatibleCaseNeedsRemoteRefMode(member))
-            {
-                sb.AppendLine("                            global::Apache.Fory.RefMode remoteRefMode = __ForyRefMode(remoteField.FieldType.Nullable, remoteField.FieldType.TrackRef);");
-                compatRefModeExpr = "remoteRefMode";
-            }
-            else
-            {
-                compatRefModeExpr = "default";
-            }
-
-            EmitReadMemberAssignment(
-                sb,
-                member,
-                compatRefModeExpr,
-                BuildFieldTypeInfoLiteral(member),
-                "value",
-                "Compat",
-                7,
-                false);
-            sb.AppendLine("                            break;");
-            sb.AppendLine("                        }");
-        }
-
-        sb.AppendLine("                    default:");
-        sb.AppendLine("                        throw new global::Apache.Fory.InvalidDataException($\"invalid compatible matched id {remoteField.AssignedFieldId}\");");
-        sb.AppendLine("                }");
-        sb.AppendLine("            }");
-        sb.AppendLine("            return value;");
+        sb.AppendLine("            // Keep schema-evolution field dispatch out of the exact-metadata hot body.");
+        sb.AppendLine("            return ReadCompatibleFields(context, value, typeMeta);");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine("        uint schemaHash = unchecked((uint)context.Reader.ReadInt32());");
@@ -620,6 +526,72 @@ public sealed partial class ForyModelGenerator
         }
 
         sb.AppendLine("        return valueSchema;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        EmitCompatibleFieldReadMethod(sb, model);
+    }
+
+    private static void EmitCompatibleFieldReadMethod(StringBuilder sb, TypeModel model)
+    {
+        sb.AppendLine("    [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]");
+        sb.AppendLine(
+            $"    private {model.TargetTypeName} ReadCompatibleFields(global::Apache.Fory.ReadContext context, {model.TargetTypeName} value, global::Apache.Fory.TypeMeta typeMeta)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        for (int i = 0; i < typeMeta.Fields.Count; i++)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            global::Apache.Fory.TypeMetaFieldInfo remoteField = typeMeta.Fields[i];");
+        sb.AppendLine("            switch (remoteField.AssignedFieldId)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                case -1:");
+        sb.AppendLine("                    global::Apache.Fory.FieldSkipper.SkipFieldValue(context, remoteField.FieldType);");
+        sb.AppendLine("                    break;");
+        for (int idx = 0; idx < model.SortedMembers.Length; idx++)
+        {
+            MemberModel member = model.SortedMembers[idx];
+            sb.AppendLine($"                case {idx * 2}:");
+            sb.AppendLine("                    {");
+            EmitReadMemberAssignment(
+                sb,
+                member,
+                BuildWriteRefModeExpression(member),
+                BuildFieldTypeInfoLiteral(member),
+                "value",
+                "CompatDirect",
+                6,
+                true);
+            sb.AppendLine("                        break;");
+            sb.AppendLine("                    }");
+            sb.AppendLine($"                case {idx * 2 + 1}:");
+            sb.AppendLine("                    {");
+            string compatRefModeExpr;
+            if (CompatibleCaseNeedsRemoteRefMode(member))
+            {
+                sb.AppendLine("                        global::Apache.Fory.RefMode remoteRefMode = __ForyRefMode(remoteField.FieldType.Nullable, remoteField.FieldType.TrackRef);");
+                compatRefModeExpr = "remoteRefMode";
+            }
+            else
+            {
+                compatRefModeExpr = "default";
+            }
+
+            EmitReadMemberAssignment(
+                sb,
+                member,
+                compatRefModeExpr,
+                BuildFieldTypeInfoLiteral(member),
+                "value",
+                "Compat",
+                6,
+                false);
+            sb.AppendLine("                        break;");
+            sb.AppendLine("                    }");
+        }
+
+        sb.AppendLine("                default:");
+        sb.AppendLine("                    throw new global::Apache.Fory.InvalidDataException($\"invalid compatible matched id {remoteField.AssignedFieldId}\");");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
+        sb.AppendLine("        return value;");
         sb.AppendLine("    }");
         sb.AppendLine();
     }
@@ -761,6 +733,11 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine();
         sb.AppendLine($"        public override {member.TypeName} DefaultValue => default!;");
         sb.AppendLine();
+        if (HasMapCodec(member.FieldCodec))
+        {
+            EmitMapChunkError(sb, 2);
+        }
+
         sb.AppendLine($"        public override void WriteData(global::Apache.Fory.WriteContext context, in {member.TypeName} value, bool hasGenerics)");
         sb.AppendLine("        {");
         sb.AppendLine("            _ = hasGenerics;");
@@ -828,8 +805,10 @@ public sealed partial class ForyModelGenerator
 
         if (!member.HasSchemaType)
         {
-            sb.AppendLine(
-                $"{indent}{member.TypeName} {valueVar} = context.TypeResolver.GetSerializer<{member.TypeName}>().Read(context, {refModeExpr}, true);");
+            string readExpr = CanReadNested(member)
+                ? $"context.TypeResolver.ReadNested<{member.TypeName}>(context, {refModeExpr}, true)"
+                : $"context.TypeResolver.GetSerializer<{member.TypeName}>().Read(context, {refModeExpr}, true)";
+            sb.AppendLine($"{indent}{member.TypeName} {valueVar} = {readExpr};");
             return;
         }
 
@@ -884,8 +863,10 @@ public sealed partial class ForyModelGenerator
         }
 
         string fallbackIndent = new(' ', indentLevel * 4);
-        sb.AppendLine(
-            $"{fallbackIndent}{member.TypeName} {valueVar} = context.TypeResolver.GetSerializer<{member.TypeName}>().ReadData(context);");
+        string fallbackReadExpr = CanReadNested(member)
+            ? $"context.TypeResolver.ReadNestedData<{member.TypeName}>(context)"
+            : $"context.TypeResolver.GetSerializer<{member.TypeName}>().ReadData(context)";
+        sb.AppendLine($"{fallbackIndent}{member.TypeName} {valueVar} = {fallbackReadExpr};");
     }
 
     private static void EmitWriteUnionTopType(
@@ -1090,6 +1071,7 @@ public sealed partial class ForyModelGenerator
         if (codec.CarrierKind == CarrierKind.List)
         {
             sb.AppendLine($"{indent}context.Reader.CheckBound(__foryLength);");
+            sb.AppendLine($"{indent}context.ReserveGraphMemory({GraphListOwnerBytesExpr} + (long)__foryLength);");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new(__foryLength);");
             sb.AppendLine($"{indent}for (int __foryIndex = 0; __foryIndex < __foryLength; __foryIndex++)");
             sb.AppendLine($"{indent}{{");
@@ -1167,6 +1149,7 @@ public sealed partial class ForyModelGenerator
         string headerVar = $"__foryHeader{id++}";
         string declaredVar = $"__foryDeclared{id++}";
         string sameTypeVar = $"__forySameType{id++}";
+        string elementBytesVar = $"__foryElementBytes{id++}";
         sb.AppendLine($"{indent}int {lengthVar} = checked((int)context.Reader.ReadVarUInt32());");
         sb.AppendLine($"{indent}if ({lengthVar} != 0)");
         sb.AppendLine($"{indent}{{");
@@ -1193,7 +1176,15 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine($"{indent}}}");
         sb.AppendLine($"{indent}if ({lengthVar} != 0)");
         sb.AppendLine($"{indent}{{");
-        sb.AppendLine($"{indent}    context.Reader.CheckBound({lengthVar});");
+        sb.AppendLine($"{indent}    int {elementBytesVar} = remoteFieldType.Generics[0].TypeId switch");
+        sb.AppendLine($"{indent}    {{");
+        foreach (uint remoteElementTypeId in CompatibleElementReadTypeIds(PackedArrayElementTypeId(codec.TypeId)))
+        {
+            sb.AppendLine($"{indent}        {remoteElementTypeId} => {MinimumEncodedElementBytes(remoteElementTypeId)},");
+        }
+        sb.AppendLine($"{indent}        _ => throw new global::Apache.Fory.InvalidDataException($\"unsupported compatible list element type {{remoteFieldType.Generics[0].TypeId}}\"),");
+        sb.AppendLine($"{indent}    }};");
+        sb.AppendLine($"{indent}    context.Reader.CheckBound(checked({lengthVar} * {elementBytesVar}));");
         sb.AppendLine($"{indent}}}");
         string elementTypeName = codec.CarrierKind == CarrierKind.Array ? ElementTypeName(codec.TypeName) : PackedArrayElementTypeName(codec.TypeId);
         uint elementTypeId = PackedArrayElementTypeId(codec.TypeId);
@@ -1248,6 +1239,18 @@ public sealed partial class ForyModelGenerator
             11 or 12 => [11, 12],
             13 or 14 or 15 => [13, 14, 15],
             _ => [elementTypeId],
+        };
+    }
+
+    private static int MinimumEncodedElementBytes(uint typeId)
+    {
+        return typeId switch
+        {
+            1 or 2 or 5 or 7 or 9 or 12 or 14 => 1,
+            3 or 10 or 17 or 18 => 2,
+            4 or 8 or 11 or 15 or 19 => 4,
+            6 or 13 or 20 => 8,
+            _ => throw new InvalidOperationException($"unsupported compatible list element type id {typeId}"),
         };
     }
 
@@ -1752,6 +1755,10 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine($"{innerIndent}    continue;");
         sb.AppendLine($"{innerIndent}}}");
         sb.AppendLine($"{innerIndent}int __foryChunkSize = context.Reader.ReadUInt8();");
+        sb.AppendLine($"{innerIndent}if (__foryChunkSize == 0 || __foryChunkSize > {totalVar} - __foryRead)");
+        sb.AppendLine($"{innerIndent}{{");
+        sb.AppendLine($"{innerIndent}    __ForyThrowInvalidMapChunkSize(__foryChunkSize, {totalVar} - __foryRead);");
+        sb.AppendLine($"{innerIndent}}}");
         sb.AppendLine($"{innerIndent}if (!__foryKeyDeclared)");
         sb.AppendLine($"{innerIndent}{{");
         EmitReadInlineTypeInfo(sb, NonNullableCodec(key), indentLevel + 2, ref id);
@@ -1769,6 +1776,46 @@ public sealed partial class ForyModelGenerator
         sb.AppendLine($"{innerIndent}}}");
         sb.AppendLine($"{innerIndent}__foryRead += __foryChunkSize;");
         sb.AppendLine($"{indent}}}");
+    }
+
+    private static bool HasMapCodec(FieldCodecModel? codec)
+    {
+        return codec is not null &&
+               (codec.Kind == FieldCodecKind.Map || codec.Generics.Any(HasMapCodec));
+    }
+
+    private static bool ReadDataAlwaysAdvances(TypeModel model)
+    {
+        return model.SortedMembers.Any(FieldReadAlwaysAdvances);
+    }
+
+    private static bool FieldReadAlwaysAdvances(MemberModel member)
+    {
+        if (member.IsNullable ||
+            member.NeedsFieldTypeInfo ||
+            member.DynamicAnyKind != DynamicAnyKind.None)
+        {
+            return true;
+        }
+
+        if (member.FieldCodec is not null)
+        {
+            return member.FieldCodec.Kind != FieldCodecKind.Scalar;
+        }
+
+        return CanUseDirectBuiltInFieldAccess(member) &&
+               TryBuildDirectPayloadRead(member.Classification.TypeId, out _);
+    }
+
+    private static void EmitMapChunkError(StringBuilder sb, int indentLevel)
+    {
+        string indent = new(' ', indentLevel * 4);
+        sb.AppendLine($"{indent}[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]");
+        sb.AppendLine($"{indent}private static void __ForyThrowInvalidMapChunkSize(int chunkSize, int remaining)");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    throw new global::Apache.Fory.InvalidDataException($\"invalid map chunk size {{chunkSize}} with {{remaining}} entries remaining\");");
+        sb.AppendLine($"{indent}}}");
+        sb.AppendLine();
     }
 
     private static void EmitReadInlineTypeInfo(
@@ -2029,7 +2076,7 @@ public sealed partial class ForyModelGenerator
                 return;
             }
 
-            if (CanUseTrackRefBranchWriteDataInvocation(member))
+            if (CanBranchTrackRefData(member))
             {
                 sb.AppendLine("            if (context.TrackRef)");
                 sb.AppendLine("            {");
@@ -2177,6 +2224,18 @@ public sealed partial class ForyModelGenerator
             return;
         }
 
+        if (readTypeInfoExpr == "false" &&
+            CanReadNested(member) &&
+            !member.IsNullable &&
+            (member.Classification.IsBuiltIn || !member.IsRefType))
+        {
+            // The field has no envelope or type metadata, so guard only the materialized body.
+            // This preserves nested-depth accounting without the general ref/type dispatcher.
+            sb.AppendLine(
+                $"{indent}{assignmentTarget} = context.TypeResolver.ReadNestedData<{member.TypeName}>(context);");
+            return;
+        }
+
         if (CanReadInlineValueData(member))
         {
             EmitInlineValueDataRead(sb, member, assignmentTarget, readTypeInfoExpr, indent);
@@ -2185,13 +2244,19 @@ public sealed partial class ForyModelGenerator
 
         if (variableSuffix == "Compat")
         {
+            string compatibleReadExpr = CanReadNested(member)
+                ? $"context.TypeResolver.ReadNested<{member.TypeName}>(context, {refModeExpr}, {readTypeInfoExpr})"
+                : $"context.TypeResolver.GetSerializer<{member.TypeName}>().Read(context, {refModeExpr}, {readTypeInfoExpr})";
             sb.AppendLine(
-                $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().Read(context, {refModeExpr}, {readTypeInfoExpr});");
+                $"{indent}{assignmentTarget} = {compatibleReadExpr};");
             return;
         }
 
+        string readExpr = CanReadNested(member)
+            ? $"context.TypeResolver.ReadNested<{member.TypeName}>(context, {refModeExpr}, {readTypeInfoExpr})"
+            : $"context.TypeResolver.GetSerializer<{member.TypeName}>().Read(context, {refModeExpr}, {readTypeInfoExpr})";
         sb.AppendLine(
-            $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().Read(context, {refModeExpr}, {readTypeInfoExpr});");
+            $"{indent}{assignmentTarget} = {readExpr};");
     }
 
     private static void EmitInlineValueDataRead(
@@ -2203,8 +2268,10 @@ public sealed partial class ForyModelGenerator
     {
         if (readTypeInfoExpr == "false")
         {
-            sb.AppendLine(
-                $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().ReadData(context);");
+            string readExpr = DeclaredTypeMayRecurse(member)
+                ? $"context.TypeResolver.ReadNestedData<{member.TypeName}>(context)"
+                : $"context.TypeResolver.GetSerializer<{member.TypeName}>().ReadData(context)";
+            sb.AppendLine($"{indent}{assignmentTarget} = {readExpr};");
             return;
         }
 
@@ -2223,7 +2290,141 @@ public sealed partial class ForyModelGenerator
             sb.AppendLine($"{indent}}}");
         }
 
-        sb.AppendLine($"{indent}{assignmentTarget} = {serializerVar}.ReadData(context);");
+        string dataReadExpr = DeclaredTypeMayRecurse(member)
+            ? $"context.TypeResolver.ReadNestedData({serializerVar}, context)"
+            : $"{serializerVar}.ReadData(context)";
+        sb.AppendLine($"{indent}{assignmentTarget} = {dataReadExpr};");
+    }
+
+    private static bool CanReadNested(MemberModel member)
+    {
+        // DynamicAny resolves its envelope before TypeResolver applies the existing depth guard.
+        // Known acyclic generated types have a compile-time finite owner depth. Keep the runtime
+        // guard for recursive graphs and for unknown serializers whose recursion cannot be proven.
+        return member.DynamicAnyKind == DynamicAnyKind.None &&
+               (member.Classification.TypeId is >= 22 and <= 24 or >= 27 and <= 35) &&
+               DeclaredTypeMayRecurse(member);
+    }
+
+    private static bool DeclaredTypeMayRecurse(MemberModel member)
+    {
+        if (member.MemberType is null)
+        {
+            return true;
+        }
+
+        HashSet<ITypeSymbol> active = new(RuntimeTypeComparer.Instance);
+        HashSet<ITypeSymbol> complete = new(RuntimeTypeComparer.Instance);
+        return TypeMayRecurse(member.MemberType, active, complete);
+    }
+
+    private static bool TypeMayRecurse(
+        ITypeSymbol type,
+        HashSet<ITypeSymbol> active,
+        HashSet<ITypeSymbol> complete)
+    {
+        (_, ITypeSymbol unwrapped) = UnwrapNullable(type);
+        if (unwrapped.SpecialType == SpecialType.System_Object ||
+            unwrapped.TypeKind is TypeKind.Dynamic or TypeKind.TypeParameter)
+        {
+            return true;
+        }
+
+        if (TryGetListElementType(unwrapped, out ITypeSymbol? listElement))
+        {
+            return TypeMayRecurse(listElement!, active, complete);
+        }
+
+        if (TryGetSetElementType(unwrapped, out ITypeSymbol? setElement))
+        {
+            return TypeMayRecurse(setElement!, active, complete);
+        }
+
+        if (TryGetMapTypeArguments(
+                unwrapped,
+                out ITypeSymbol? keyType,
+                out ITypeSymbol? valueType))
+        {
+            return TypeMayRecurse(keyType!, active, complete) ||
+                   TypeMayRecurse(valueType!, active, complete);
+        }
+
+        if (unwrapped.TypeKind == TypeKind.Enum)
+        {
+            return false;
+        }
+
+        TypeClassification classification = ClassifyType(unwrapped);
+        if (classification.IsBuiltIn)
+        {
+            return false;
+        }
+
+        if (unwrapped is not INamedTypeSymbol namedType)
+        {
+            return true;
+        }
+
+        ForyAttributeKind attributeKind = GetForyAttributeKind(namedType);
+        if (attributeKind == ForyAttributeKind.Enum)
+        {
+            return false;
+        }
+
+        // Union case selection and runtime serializer registration can introduce recursive owners;
+        // keep the conservative guard unless a concrete generated struct graph proves acyclic.
+        if (attributeKind != ForyAttributeKind.Struct)
+        {
+            return true;
+        }
+
+        if (complete.Contains(namedType))
+        {
+            return false;
+        }
+
+        if (!active.Add(namedType))
+        {
+            return true;
+        }
+
+        for (INamedTypeSymbol? current = namedType;
+             current is not null && current.SpecialType != SpecialType.System_Object;
+             current = current.BaseType)
+        {
+            if (!SymbolEqualityComparer.Default.Equals(current, namedType) &&
+                GetForyAttributeKind(current) != ForyAttributeKind.Struct)
+            {
+                active.Remove(namedType);
+                return true;
+            }
+
+            foreach (ISymbol declaredMember in current.GetMembers())
+            {
+                if (declaredMember.IsImplicitlyDeclared ||
+                    declaredMember.IsStatic ||
+                    TryGetIgnoredField(declaredMember, out _))
+                {
+                    continue;
+                }
+
+                ITypeSymbol? memberType = declaredMember switch
+                {
+                    IFieldSymbol field => field.Type,
+                    IPropertySymbol property when !property.IsIndexer => property.Type,
+                    _ => null,
+                };
+                if (memberType is not null && TypeMayRecurse(memberType, active, complete))
+                {
+                    active.Remove(namedType);
+                    return true;
+                }
+            }
+        }
+
+        active.Remove(namedType);
+        complete.Add(namedType);
+        return false;
     }
 
     private static bool CompatibleCaseNeedsRemoteRefMode(MemberModel member)
@@ -2550,7 +2751,7 @@ public sealed partial class ForyModelGenerator
         return member.Classification.IsBuiltIn || !member.IsRefType;
     }
 
-    private static bool CanUseTrackRefBranchWriteDataInvocation(MemberModel member)
+    private static bool CanBranchTrackRefData(MemberModel member)
     {
         if (member.IsNullable || member.DynamicAnyKind != DynamicAnyKind.None)
         {

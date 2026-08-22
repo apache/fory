@@ -207,10 +207,7 @@ func (s *UnionSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool,
 			return
 		}
 		if refID < int32(NotNullValueFlag) {
-			obj := ctx.RefResolver().GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
-			}
+			assignReadRef(ctx, refID, value)
 			return
 		}
 	case RefModeNullOnly:
@@ -220,14 +217,38 @@ func (s *UnionSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool,
 		}
 	}
 	if readType {
-		ctx.TypeResolver().ReadTypeInfo(ctx.Buffer(), err)
+		resolver := ctx.TypeResolver()
+		expected := resolver.getTypeInfoByType(value.Type())
+		if expected == nil {
+			ctx.SetError(DeserializationErrorf("unregistered union type: %v", value.Type()))
+			return
+		}
+		typeID := uint32(ctx.Buffer().ReadUint8(err))
+		if ctx.HasError() {
+			return
+		}
+		// A declared union is owned by its registered concrete Go type. Shared references and
+		// checked metadata cache entries may route another union without reparsing its body, so
+		// compare the resolved concrete owner before reading case data.
+		typeInfo := resolver.readTypeInfoWithTypeID(ctx.Buffer(), typeID, expected.Type, err)
+		if ctx.HasError() {
+			return
+		}
+		// Shared NAMED_UNION metadata was already checked against expected.Type before any
+		// metadata publication. Plain-ID and non-shared paths still need the exact owner check.
+		if TypeId(typeID) != NAMED_UNION || !resolver.metaShareEnabled() {
+			serializerForConcreteType(expected.Type, typeInfo, err)
+			if ctx.HasError() {
+				return
+			}
+		}
 	}
 	s.ReadData(ctx, value)
 }
 
 // ReadData deserializes union payload (case_id + case_value).
 func (s *UnionSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	if ctx.HasError() {
+	if ctx.HasError() || !ctx.enterDepth() {
 		return
 	}
 	if err := s.initialize(ctx.TypeResolver()); err != nil {
@@ -277,6 +298,7 @@ func (s *UnionSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		return
 	}
 	setter.ForyUnionSet(caseID, caseValue)
+	ctx.decDepth()
 }
 
 // ReadWithTypeInfo deserializes with pre-read type info.
@@ -440,11 +462,20 @@ func readUnionOverrideValue(ctx *ReadContext, info *unionCaseInfo) (any, bool) {
 		return nil, false
 	}
 	if refID < int32(NotNullValueFlag) {
-		obj := ctx.RefResolver().GetReadObject(refID)
-		if obj.IsValid() {
-			return obj.Interface(), true
+		if refID == int32(NullFlag) {
+			return nil, true
 		}
-		return nil, true
+		obj := ctx.RefResolver().GetReadObject(refID)
+		if !obj.IsValid() {
+			ctx.SetError(InvalidRefIdError(refID))
+			return nil, false
+		}
+		if !obj.Type().AssignableTo(info.type_) {
+			ctx.SetError(DeserializationErrorf(
+				"union reference type %v is not assignable to %v", obj.Type(), info.type_))
+			return nil, false
+		}
+		return obj.Interface(), true
 	}
 
 	typeID := TypeId(buf.ReadUint8(ctx.Err()))

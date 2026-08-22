@@ -159,17 +159,6 @@ public sealed class ThreadSafeFory : IDisposable
     }
 
     /// <summary>
-    /// Deserializes a value from the head of a framed sequence and advances the sequence.
-    /// </summary>
-    /// <typeparam name="T">Target type.</typeparam>
-    /// <param name="payload">Input sequence. On success, sliced past the consumed frame.</param>
-    /// <returns>Deserialized value.</returns>
-    public T Deserialize<T>(ref ReadOnlySequence<byte> payload)
-    {
-        return Current.Deserialize<T>(ref payload);
-    }
-
-    /// <summary>
     /// Disposes thread-local runtimes and prevents further API use.
     /// </summary>
     public void Dispose()

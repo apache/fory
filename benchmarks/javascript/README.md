@@ -2,7 +2,7 @@
 
 This benchmark compares serialization and deserialization throughput in JavaScript for Apache Fory, Protocol Buffers, and JSON.
 
-It mirrors the benchmark layout used by [`benchmarks/cpp`](benchmarks/cpp/README.md) and uses the shared schema in [`benchmarks/proto/bench.proto`](benchmarks/proto/bench.proto).
+It mirrors the benchmark layout used by [`benchmarks/cpp`](../cpp/README.md) and uses the shared schema in [`benchmarks/proto/bench.proto`](../proto/bench.proto).
 
 ## Coverage
 
@@ -57,8 +57,8 @@ widened to int64.
 Running the pipeline writes:
 
 - raw benchmark JSON to `benchmarks/javascript/benchmark_results.json`
-- throughput plot to `docs/benchmarks/javascript/throughput.png`
-- Markdown report to `docs/benchmarks/javascript/README.md`
+- throughput plot to `docs/benchmarks/object-serialization/xlang/javascript/throughput.png`
+- Markdown report to `docs/benchmarks/object-serialization/xlang/javascript/README.md`
 
 ## Notes
 

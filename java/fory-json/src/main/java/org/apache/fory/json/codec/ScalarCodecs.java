@@ -75,13 +75,18 @@ import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonFieldNameHash;
+import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.meta.TypeExtMeta;
+import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Float16;
 
@@ -100,20 +105,18 @@ import org.apache.fory.type.Float16;
  * decimal timestamps.
  */
 public final class ScalarCodecs {
-  private static final DateTimeFormatter YEAR_MONTH_FORMATTER =
-      DateTimeFormatter.ofPattern("uuuu-MM");
-  private static final DateTimeFormatter MONTH_DAY_FORMATTER =
-      DateTimeFormatter.ofPattern("--MM-dd");
-  private static final DateTimeFormatter HIJRAH_DATE_FORMATTER =
-      DateTimeFormatter.ISO_LOCAL_DATE.withChronology(HijrahChronology.INSTANCE);
-  private static final DateTimeFormatter JAPANESE_DATE_FORMATTER =
-      DateTimeFormatter.ISO_LOCAL_DATE.withChronology(JapaneseChronology.INSTANCE);
-  private static final DateTimeFormatter MINGUO_DATE_FORMATTER =
-      DateTimeFormatter.ISO_LOCAL_DATE.withChronology(MinguoChronology.INSTANCE);
-  private static final DateTimeFormatter THAI_BUDDHIST_DATE_FORMATTER =
-      DateTimeFormatter.ISO_LOCAL_DATE.withChronology(ThaiBuddhistChronology.INSTANCE);
-
   private ScalarCodecs() {}
+
+  @Internal
+  public static boolean supportsDateTimeFormat(Class<?> type) {
+    return DateTimeFormatCodec.supports(type);
+  }
+
+  @Internal
+  public static JsonValueCodec<?> dateTimeFormatCodec(
+      Class<?> type, String pattern, String timezone) {
+    return DateTimeFormatCodec.create(type, pattern, timezone);
+  }
 
   public static final class NaturalCodec implements JsonValueCodec<Object> {
     public static final NaturalCodec INSTANCE = new NaturalCodec();
@@ -1488,7 +1491,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeUuid(value);
+        writer.writeUuid(value.getMostSignificantBits(), value.getLeastSignificantBits());
       }
     }
 
@@ -1497,7 +1500,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeUuid(value);
+        writer.writeUuid(value.getMostSignificantBits(), value.getLeastSignificantBits());
       }
     }
 
@@ -1857,7 +1860,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_INSTANT);
+        writer.writeIsoInstant(value.getEpochSecond(), value.getNano());
       }
     }
 
@@ -1866,7 +1869,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_INSTANT);
+        writer.writeIsoInstant(value.getEpochSecond(), value.getNano());
       }
     }
 
@@ -2098,12 +2101,16 @@ public final class ScalarCodecs {
   public static final class YearMonthCodec implements JsonValueCodec<YearMonth> {
     public static final YearMonthCodec INSTANCE = new YearMonthCodec();
 
+    private static final class Formatter {
+      private static final DateTimeFormatter INSTANCE = DateTimeFormatter.ofPattern("uuuu-MM");
+    }
+
     @Override
     public void writeString(StringJsonWriter writer, YearMonth value) {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, YEAR_MONTH_FORMATTER);
+        writer.writeTemporal(value, Formatter.INSTANCE);
       }
     }
 
@@ -2112,7 +2119,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, YEAR_MONTH_FORMATTER);
+        writer.writeTemporal(value, Formatter.INSTANCE);
       }
     }
 
@@ -2135,12 +2142,16 @@ public final class ScalarCodecs {
   public static final class MonthDayCodec implements JsonValueCodec<MonthDay> {
     public static final MonthDayCodec INSTANCE = new MonthDayCodec();
 
+    private static final class Formatter {
+      private static final DateTimeFormatter INSTANCE = DateTimeFormatter.ofPattern("--MM-dd");
+    }
+
     @Override
     public void writeString(StringJsonWriter writer, MonthDay value) {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, MONTH_DAY_FORMATTER);
+        writer.writeTemporal(value, Formatter.INSTANCE);
       }
     }
 
@@ -2149,7 +2160,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, MONTH_DAY_FORMATTER);
+        writer.writeTemporal(value, Formatter.INSTANCE);
       }
     }
 
@@ -2280,15 +2291,22 @@ public final class ScalarCodecs {
     }
   }
 
+  // Registry publication initializes chronology codec classes. Keep formatter setup behind
+  // method-use holders because JDK chronology initialization may require runtime environment state.
   public static final class HijrahDateCodec implements JsonValueCodec<HijrahDate> {
     public static final HijrahDateCodec INSTANCE = new HijrahDateCodec();
+
+    private static final class Formatter {
+      private static final DateTimeFormatter INSTANCE =
+          DateTimeFormatter.ISO_LOCAL_DATE.withChronology(HijrahChronology.INSTANCE);
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, HijrahDate value) {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeString(HIJRAH_DATE_FORMATTER.format(value));
+        writer.writeString(Formatter.INSTANCE.format(value));
       }
     }
 
@@ -2297,7 +2315,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeString(HIJRAH_DATE_FORMATTER.format(value));
+        writer.writeString(Formatter.INSTANCE.format(value));
       }
     }
 
@@ -2308,7 +2326,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return HijrahDate.from(HIJRAH_DATE_FORMATTER.parse(value));
+        return HijrahDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(HijrahDate.class, value, e);
       }
@@ -2321,7 +2339,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return HijrahDate.from(HIJRAH_DATE_FORMATTER.parse(value));
+        return HijrahDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(HijrahDate.class, value, e);
       }
@@ -2334,7 +2352,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return HijrahDate.from(HIJRAH_DATE_FORMATTER.parse(value));
+        return HijrahDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(HijrahDate.class, value, e);
       }
@@ -2344,12 +2362,17 @@ public final class ScalarCodecs {
   public static final class JapaneseDateCodec implements JsonValueCodec<JapaneseDate> {
     public static final JapaneseDateCodec INSTANCE = new JapaneseDateCodec();
 
+    private static final class Formatter {
+      private static final DateTimeFormatter INSTANCE =
+          DateTimeFormatter.ISO_LOCAL_DATE.withChronology(JapaneseChronology.INSTANCE);
+    }
+
     @Override
     public void writeString(StringJsonWriter writer, JapaneseDate value) {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeString(JAPANESE_DATE_FORMATTER.format(value));
+        writer.writeString(Formatter.INSTANCE.format(value));
       }
     }
 
@@ -2358,7 +2381,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeString(JAPANESE_DATE_FORMATTER.format(value));
+        writer.writeString(Formatter.INSTANCE.format(value));
       }
     }
 
@@ -2369,7 +2392,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return JapaneseDate.from(JAPANESE_DATE_FORMATTER.parse(value));
+        return JapaneseDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(JapaneseDate.class, value, e);
       }
@@ -2382,7 +2405,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return JapaneseDate.from(JAPANESE_DATE_FORMATTER.parse(value));
+        return JapaneseDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(JapaneseDate.class, value, e);
       }
@@ -2395,7 +2418,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return JapaneseDate.from(JAPANESE_DATE_FORMATTER.parse(value));
+        return JapaneseDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(JapaneseDate.class, value, e);
       }
@@ -2405,12 +2428,17 @@ public final class ScalarCodecs {
   public static final class MinguoDateCodec implements JsonValueCodec<MinguoDate> {
     public static final MinguoDateCodec INSTANCE = new MinguoDateCodec();
 
+    private static final class Formatter {
+      private static final DateTimeFormatter INSTANCE =
+          DateTimeFormatter.ISO_LOCAL_DATE.withChronology(MinguoChronology.INSTANCE);
+    }
+
     @Override
     public void writeString(StringJsonWriter writer, MinguoDate value) {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeString(MINGUO_DATE_FORMATTER.format(value));
+        writer.writeString(Formatter.INSTANCE.format(value));
       }
     }
 
@@ -2419,7 +2447,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeString(MINGUO_DATE_FORMATTER.format(value));
+        writer.writeString(Formatter.INSTANCE.format(value));
       }
     }
 
@@ -2430,7 +2458,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return MinguoDate.from(MINGUO_DATE_FORMATTER.parse(value));
+        return MinguoDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(MinguoDate.class, value, e);
       }
@@ -2443,7 +2471,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return MinguoDate.from(MINGUO_DATE_FORMATTER.parse(value));
+        return MinguoDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(MinguoDate.class, value, e);
       }
@@ -2456,7 +2484,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return MinguoDate.from(MINGUO_DATE_FORMATTER.parse(value));
+        return MinguoDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(MinguoDate.class, value, e);
       }
@@ -2466,12 +2494,17 @@ public final class ScalarCodecs {
   public static final class ThaiBuddhistDateCodec implements JsonValueCodec<ThaiBuddhistDate> {
     public static final ThaiBuddhistDateCodec INSTANCE = new ThaiBuddhistDateCodec();
 
+    private static final class Formatter {
+      private static final DateTimeFormatter INSTANCE =
+          DateTimeFormatter.ISO_LOCAL_DATE.withChronology(ThaiBuddhistChronology.INSTANCE);
+    }
+
     @Override
     public void writeString(StringJsonWriter writer, ThaiBuddhistDate value) {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeString(THAI_BUDDHIST_DATE_FORMATTER.format(value));
+        writer.writeString(Formatter.INSTANCE.format(value));
       }
     }
 
@@ -2480,7 +2513,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeString(THAI_BUDDHIST_DATE_FORMATTER.format(value));
+        writer.writeString(Formatter.INSTANCE.format(value));
       }
     }
 
@@ -2491,7 +2524,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return ThaiBuddhistDate.from(THAI_BUDDHIST_DATE_FORMATTER.parse(value));
+        return ThaiBuddhistDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(ThaiBuddhistDate.class, value, e);
       }
@@ -2504,7 +2537,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return ThaiBuddhistDate.from(THAI_BUDDHIST_DATE_FORMATTER.parse(value));
+        return ThaiBuddhistDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(ThaiBuddhistDate.class, value, e);
       }
@@ -2517,7 +2550,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return ThaiBuddhistDate.from(THAI_BUDDHIST_DATE_FORMATTER.parse(value));
+        return ThaiBuddhistDate.from(Formatter.INSTANCE.parse(value));
       } catch (RuntimeException e) {
         throw invalidString(ThaiBuddhistDate.class, value, e);
       }
@@ -2635,59 +2668,187 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicReferenceCodec implements JsonValueCodec<AtomicReference<?>> {
+  public static class AtomicReferenceCodec implements JsonValueCodec<AtomicReference<?>> {
+    static final int SHALLOW_BYTES = GraphMemoryEstimates.shallowObjectBytes(AtomicReference.class);
+
     private final JsonTypeInfo valueTypeInfo;
+    private final byte nullAction;
+
+    private static final byte PLATFORM_NULL = 0;
+    private static final byte OUTER_NULL = 1;
+    private static final byte VALUE_NULL = 2;
+    private static final byte REJECT_NULL = 3;
 
     public AtomicReferenceCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       this.valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+      nullAction = PLATFORM_NULL;
+    }
+
+    public AtomicReferenceCodec(TypeRef<?> referenceType, JsonTypeResolver resolver) {
+      this(referenceType, resolver.getTypeInfo(CodecUtils.elementTypeRef(referenceType)));
     }
 
     @Internal
-    public AtomicReferenceCodec(JsonTypeInfo valueTypeInfo) {
+    public AtomicReferenceCodec(TypeRef<?> referenceType, JsonTypeInfo valueTypeInfo) {
       this.valueTypeInfo = valueTypeInfo;
+      nullAction = atomicReferenceNullAction(referenceType, valueTypeInfo);
+    }
+
+    /** Selects the exact transparent child-null operation for one declared reference occurrence. */
+    @Internal
+    public static AtomicReferenceCodec create(
+        TypeRef<?> referenceType, JsonTypeInfo valueTypeInfo) {
+      TypeExtMeta metadata = referenceType.getTypeExtMeta();
+      if (metadata != null && valueTypeInfo.transparentNull()) {
+        if (metadata.nullable() && !metadata.nullableWrapper()) {
+          throw new ForyJsonException(
+              "Nullable AtomicReference with transparent-null content has ambiguous JSON null");
+        }
+        return new TransparentAtomicReferenceCodec(referenceType, valueTypeInfo);
+      }
+      if (metadata == null || valueTypeInfo.nullable()) {
+        return new NullMaterializingAtomicReferenceCodec(referenceType, valueTypeInfo);
+      }
+      return new AtomicReferenceCodec(referenceType, valueTypeInfo);
     }
 
     @Override
     public void writeString(StringJsonWriter writer, AtomicReference<?> value) {
       if (value == null) {
+        requireAtomicOwner();
         writer.writeNull();
       } else {
-        valueTypeInfo.stringWriter().writeString(writer, value.get());
+        Object element = value.get();
+        if (element == null && nullAction != PLATFORM_NULL) {
+          writeAtomicNull(writer);
+        } else {
+          valueTypeInfo.stringWriter().writeString(writer, element);
+        }
       }
     }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, AtomicReference<?> value) {
       if (value == null) {
+        requireAtomicOwner();
         writer.writeNull();
       } else {
-        valueTypeInfo.utf8Writer().writeUtf8(writer, value.get());
+        Object element = value.get();
+        if (element == null && nullAction != PLATFORM_NULL) {
+          writeAtomicNull(writer);
+        } else {
+          valueTypeInfo.utf8Writer().writeUtf8(writer, element);
+        }
       }
     }
 
     @Override
     public AtomicReference<?> readLatin1(Latin1JsonReader reader) {
       if (reader.tryReadNullToken()) {
-        return new AtomicReference<>();
+        return readAtomicNull(reader);
       }
-      return new AtomicReference<>(valueTypeInfo.latin1Reader().readLatin1(reader));
+      Object value = valueTypeInfo.latin1Reader().readLatin1(reader);
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return new AtomicReference<>(value);
     }
 
     @Override
     public AtomicReference<?> readUtf16(Utf16JsonReader reader) {
       if (reader.tryReadNullToken()) {
-        return new AtomicReference<>();
+        return readAtomicNull(reader);
       }
-      return new AtomicReference<>(valueTypeInfo.utf16Reader().readUtf16(reader));
+      Object value = valueTypeInfo.utf16Reader().readUtf16(reader);
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return new AtomicReference<>(value);
     }
 
     @Override
     public AtomicReference<?> readUtf8(Utf8JsonReader reader) {
       if (reader.tryReadNullToken()) {
-        return new AtomicReference<>();
+        return readAtomicNull(reader);
       }
-      return new AtomicReference<>(valueTypeInfo.utf8Reader().readUtf8(reader));
+      Object value = valueTypeInfo.utf8Reader().readUtf8(reader);
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return new AtomicReference<>(value);
+    }
+
+    private void requireAtomicOwner() {
+      if (nullAction != PLATFORM_NULL && nullAction != OUTER_NULL) {
+        throw new ForyJsonException("Non-null AtomicReference occurrence cannot be null");
+      }
+    }
+
+    private void writeAtomicNull(JsonWriter writer) {
+      if (nullAction != VALUE_NULL) {
+        throw new ForyJsonException("AtomicReference value occurrence cannot be null");
+      }
+      writer.writeNull();
+    }
+
+    private AtomicReference<?> readAtomicNull(JsonReader reader) {
+      if (nullAction == OUTER_NULL) {
+        return null;
+      }
+      if (nullAction == REJECT_NULL) {
+        throw new ForyJsonException("AtomicReference value occurrence cannot be null");
+      }
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return new AtomicReference<>();
+    }
+
+    private static byte atomicReferenceNullAction(
+        TypeRef<?> referenceType, JsonTypeInfo valueTypeInfo) {
+      TypeExtMeta metadata = referenceType.getTypeExtMeta();
+      if (metadata == null) {
+        return PLATFORM_NULL;
+      }
+      boolean outerNullable = metadata.nullable() && !metadata.nullableWrapper();
+      boolean valueNullable = valueTypeInfo.nullable();
+      if (outerNullable && valueNullable) {
+        throw new ForyJsonException(
+            "Nullable AtomicReference with nullable content has ambiguous JSON null");
+      }
+      return outerNullable ? OUTER_NULL : valueNullable ? VALUE_NULL : REJECT_NULL;
+    }
+  }
+
+  private static final class NullMaterializingAtomicReferenceCodec extends AtomicReferenceCodec
+      implements TransparentNullCodec {
+    private NullMaterializingAtomicReferenceCodec(
+        TypeRef<?> referenceType, JsonTypeInfo valueTypeInfo) {
+      super(referenceType, valueTypeInfo);
+    }
+  }
+
+  private static final class TransparentAtomicReferenceCodec extends AtomicReferenceCodec
+      implements TransparentNullCodec {
+    private final JsonTypeInfo valueTypeInfo;
+
+    private TransparentAtomicReferenceCodec(TypeRef<?> referenceType, JsonTypeInfo valueTypeInfo) {
+      super(referenceType, valueTypeInfo);
+      this.valueTypeInfo = valueTypeInfo;
+    }
+
+    @Override
+    public AtomicReference<?> readLatin1(Latin1JsonReader reader) {
+      Object value = valueTypeInfo.latin1Reader().readLatin1(reader);
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return new AtomicReference<>(value);
+    }
+
+    @Override
+    public AtomicReference<?> readUtf16(Utf16JsonReader reader) {
+      Object value = valueTypeInfo.utf16Reader().readUtf16(reader);
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return new AtomicReference<>(value);
+    }
+
+    @Override
+    public AtomicReference<?> readUtf8(Utf8JsonReader reader) {
+      Object value = valueTypeInfo.utf8Reader().readUtf8(reader);
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return new AtomicReference<>(value);
     }
   }
 
@@ -2927,8 +3088,15 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicReferenceArrayCodec
-      implements JsonValueCodec<AtomicReferenceArray<?>> {
+  public static class AtomicReferenceArrayCodec implements JsonValueCodec<AtomicReferenceArray<?>> {
+    private static final int SHALLOW_BYTES =
+        GraphMemoryEstimates.shallowObjectBytes(AtomicReferenceArray.class);
+    private static final int ARRAY_BYTES = GraphMemoryEstimates.objectArrayBytes();
+    private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+    private static final int REFERENCE_BATCH_SIZE = 1024;
+    private static final int REFERENCE_BATCH_MASK = REFERENCE_BATCH_SIZE - 1;
+    private static final int REFERENCE_BATCH_BYTES = REFERENCE_BATCH_SIZE * REFERENCE_BYTES;
+
     private final JsonTypeInfo valueTypeInfo;
 
     public AtomicReferenceArrayCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
@@ -2936,9 +3104,21 @@ public final class ScalarCodecs {
       this.valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
     }
 
+    public AtomicReferenceArrayCodec(TypeRef<?> valueType, JsonTypeResolver resolver) {
+      this.valueTypeInfo = resolver.getTypeInfo(valueType);
+    }
+
     @Internal
     public AtomicReferenceArrayCodec(JsonTypeInfo valueTypeInfo) {
       this.valueTypeInfo = valueTypeInfo;
+    }
+
+    /** Selects the exact element-null operation for one declared atomic reference array. */
+    @Internal
+    public static AtomicReferenceArrayCodec create(JsonTypeInfo valueTypeInfo) {
+      return valueTypeInfo.rejectsNull()
+          ? new NonNullAtomicReferenceArrayCodec(valueTypeInfo)
+          : new AtomicReferenceArrayCodec(valueTypeInfo);
     }
 
     @Override
@@ -2952,7 +3132,7 @@ public final class ScalarCodecs {
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
-        codec.writeString(writer, array.get(i));
+        writeElement(writer, codec, array.get(i));
       }
       writer.writeArrayEnd();
     }
@@ -2968,7 +3148,7 @@ public final class ScalarCodecs {
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
-        codec.writeUtf8(writer, array.get(i));
+        writeElement(writer, codec, array.get(i));
       }
       writer.writeArrayEnd();
     }
@@ -2988,19 +3168,20 @@ public final class ScalarCodecs {
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
-        reader.exitDepth();
+        finishArray(reader, 0);
         return new AtomicReferenceArray<>(0);
       }
       Object[] values = new Object[8];
       int size = 0;
       Utf16ReaderCodec<Object> codec = valueTypeInfo.utf16Reader();
       do {
+        reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = codec.readUtf16(reader);
+        values[size++] = readElement(reader, codec);
       } while (reader.consumeNextCommaOrEndArray());
-      reader.exitDepth();
+      finishArray(reader, size);
       return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
     }
 
@@ -3012,19 +3193,20 @@ public final class ScalarCodecs {
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
-        reader.exitDepth();
+        finishArray(reader, 0);
         return new AtomicReferenceArray<>(0);
       }
       Object[] values = new Object[8];
       int size = 0;
       Utf8ReaderCodec<Object> codec = valueTypeInfo.utf8Reader();
       do {
+        reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = codec.readUtf8(reader);
+        values[size++] = readElement(reader, codec);
       } while (reader.consumeNextCommaOrEndArray());
-      reader.exitDepth();
+      finishArray(reader, size);
       return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
     }
 
@@ -3033,38 +3215,142 @@ public final class ScalarCodecs {
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
-        reader.exitDepth();
+        finishArray(reader, 0);
         return new AtomicReferenceArray<>(0);
       }
       Object[] values = new Object[8];
       int size = 0;
       do {
+        reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = codec.readLatin1(reader);
+        values[size++] = readElement(reader, codec);
       } while (reader.consumeNextCommaOrEndArray());
-      reader.exitDepth();
+      finishArray(reader, size);
       return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
+    }
+
+    private static void finishArray(JsonReader reader, int size) {
+      reader.reserveGraphMemory(
+          SHALLOW_BYTES + ARRAY_BYTES + (size & REFERENCE_BATCH_MASK) * REFERENCE_BYTES);
+      reader.exitDepth();
+    }
+
+    private static void reserveReferenceBatch(JsonReader reader, int size) {
+      // The final owner charge settles only the tail; complete 1024-slot batches are charged here.
+      if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
+        reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
+      }
+    }
+
+    void writeElement(StringJsonWriter writer, StringWriterCodec<Object> codec, Object element) {
+      codec.writeString(writer, element);
+    }
+
+    void writeElement(Utf8JsonWriter writer, Utf8WriterCodec<Object> codec, Object element) {
+      codec.writeUtf8(writer, element);
+    }
+
+    Object readElement(Latin1JsonReader reader, Latin1ReaderCodec<Object> codec) {
+      return codec.readLatin1(reader);
+    }
+
+    Object readElement(Utf16JsonReader reader, Utf16ReaderCodec<Object> codec) {
+      return codec.readUtf16(reader);
+    }
+
+    Object readElement(Utf8JsonReader reader, Utf8ReaderCodec<Object> codec) {
+      return codec.readUtf8(reader);
     }
   }
 
-  public static final class OptionalCodec implements JsonValueCodec<Optional<?>> {
+  private static final class NonNullAtomicReferenceArrayCodec extends AtomicReferenceArrayCodec {
+    private NonNullAtomicReferenceArrayCodec(JsonTypeInfo valueTypeInfo) {
+      super(valueTypeInfo);
+    }
+
+    @Override
+    void writeElement(StringJsonWriter writer, StringWriterCodec<Object> codec, Object element) {
+      if (element == null) {
+        rejectNullAtomicArrayElement();
+      }
+      codec.writeString(writer, element);
+    }
+
+    @Override
+    void writeElement(Utf8JsonWriter writer, Utf8WriterCodec<Object> codec, Object element) {
+      if (element == null) {
+        rejectNullAtomicArrayElement();
+      }
+      codec.writeUtf8(writer, element);
+    }
+
+    @Override
+    Object readElement(Latin1JsonReader reader, Latin1ReaderCodec<Object> codec) {
+      if (reader.tryReadNullToken()) {
+        return rejectNullAtomicArrayElement();
+      }
+      return codec.readLatin1(reader);
+    }
+
+    @Override
+    Object readElement(Utf16JsonReader reader, Utf16ReaderCodec<Object> codec) {
+      if (reader.tryReadNullToken()) {
+        return rejectNullAtomicArrayElement();
+      }
+      return codec.readUtf16(reader);
+    }
+
+    @Override
+    Object readElement(Utf8JsonReader reader, Utf8ReaderCodec<Object> codec) {
+      if (reader.tryReadNullToken()) {
+        return rejectNullAtomicArrayElement();
+      }
+      return codec.readUtf8(reader);
+    }
+  }
+
+  private static Object rejectNullAtomicArrayElement() {
+    throw new ForyJsonException("AtomicReferenceArray element occurrence cannot be null");
+  }
+
+  public static final class OptionalCodec
+      implements JsonValueCodec<Optional<?>>, TransparentNullCodec {
+    private static final int SHALLOW_BYTES =
+        GraphMemoryEstimates.shallowObjectBytes(Optional.class);
+
     private final JsonTypeInfo valueTypeInfo;
+    private final boolean requireOwner;
 
     public OptionalCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       this.valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+      requireOwner = false;
+    }
+
+    public OptionalCodec(TypeRef<?> optionalType, JsonTypeResolver resolver) {
+      this(optionalType, resolver.getTypeInfo(CodecUtils.elementTypeRef(optionalType)));
     }
 
     @Internal
-    public OptionalCodec(JsonTypeInfo valueTypeInfo) {
+    public OptionalCodec(TypeRef<?> optionalType, JsonTypeInfo valueTypeInfo) {
       this.valueTypeInfo = valueTypeInfo;
+      TypeExtMeta metadata = optionalType.getTypeExtMeta();
+      requireOwner = metadata != null;
+      if (metadata != null && (metadata.nullable() || metadata.nullableWrapper())) {
+        throw new ForyJsonException("Nullable Optional has ambiguous JSON null: " + optionalType);
+      }
+      if (valueTypeInfo.nullable() || valueTypeInfo.transparentNull()) {
+        throw new ForyJsonException(
+            "Optional content must have one non-null JSON representation: " + optionalType);
+      }
     }
 
     @Override
     public void writeString(StringJsonWriter writer, Optional<?> value) {
       if (value == null) {
+        requireOptionalOwner();
         writer.writeNull();
         return;
       }
@@ -3079,6 +3365,7 @@ public final class ScalarCodecs {
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Optional<?> value) {
       if (value == null) {
+        requireOptionalOwner();
         writer.writeNull();
         return;
       }
@@ -3095,7 +3382,12 @@ public final class ScalarCodecs {
       if (reader.tryReadNullToken()) {
         return Optional.empty();
       }
-      return Optional.ofNullable(valueTypeInfo.latin1Reader().readLatin1(reader));
+      Object value = valueTypeInfo.latin1Reader().readLatin1(reader);
+      if (value == null) {
+        return Optional.empty();
+      }
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return Optional.of(value);
     }
 
     @Override
@@ -3103,7 +3395,12 @@ public final class ScalarCodecs {
       if (reader.tryReadNullToken()) {
         return Optional.empty();
       }
-      return Optional.ofNullable(valueTypeInfo.utf16Reader().readUtf16(reader));
+      Object value = valueTypeInfo.utf16Reader().readUtf16(reader);
+      if (value == null) {
+        return Optional.empty();
+      }
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return Optional.of(value);
     }
 
     @Override
@@ -3111,16 +3408,42 @@ public final class ScalarCodecs {
       if (reader.tryReadNullToken()) {
         return Optional.empty();
       }
-      return Optional.ofNullable(valueTypeInfo.utf8Reader().readUtf8(reader));
+      Object value = valueTypeInfo.utf8Reader().readUtf8(reader);
+      if (value == null) {
+        return Optional.empty();
+      }
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return Optional.of(value);
+    }
+
+    private void requireOptionalOwner() {
+      if (requireOwner) {
+        throw new ForyJsonException("Non-null Optional occurrence cannot be null");
+      }
     }
   }
 
-  public static final class OptionalIntCodec implements JsonValueCodec<OptionalInt> {
-    public static final OptionalIntCodec INSTANCE = new OptionalIntCodec();
+  private static void requireOptionalOwner(boolean required) {
+    if (required) {
+      throw new ForyJsonException("Non-null Optional occurrence cannot be null");
+    }
+  }
+
+  public static final class OptionalIntCodec
+      implements JsonValueCodec<OptionalInt>, TransparentNullCodec {
+    public static final OptionalIntCodec INSTANCE = new OptionalIntCodec(false);
+    @Internal public static final OptionalIntCodec NON_NULL = new OptionalIntCodec(true);
+
+    private final boolean requireOwner;
+
+    private OptionalIntCodec(boolean requireOwner) {
+      this.requireOwner = requireOwner;
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, OptionalInt value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }
@@ -3135,6 +3458,7 @@ public final class ScalarCodecs {
     @Override
     public void writeUtf8(Utf8JsonWriter writer, OptionalInt value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }
@@ -3162,12 +3486,21 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class OptionalLongCodec implements JsonValueCodec<OptionalLong> {
-    public static final OptionalLongCodec INSTANCE = new OptionalLongCodec();
+  public static final class OptionalLongCodec
+      implements JsonValueCodec<OptionalLong>, TransparentNullCodec {
+    public static final OptionalLongCodec INSTANCE = new OptionalLongCodec(false);
+    @Internal public static final OptionalLongCodec NON_NULL = new OptionalLongCodec(true);
+
+    private final boolean requireOwner;
+
+    private OptionalLongCodec(boolean requireOwner) {
+      this.requireOwner = requireOwner;
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, OptionalLong value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }
@@ -3182,6 +3515,7 @@ public final class ScalarCodecs {
     @Override
     public void writeUtf8(Utf8JsonWriter writer, OptionalLong value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }
@@ -3209,12 +3543,21 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class OptionalDoubleCodec implements JsonValueCodec<OptionalDouble> {
-    public static final OptionalDoubleCodec INSTANCE = new OptionalDoubleCodec();
+  public static final class OptionalDoubleCodec
+      implements JsonValueCodec<OptionalDouble>, TransparentNullCodec {
+    public static final OptionalDoubleCodec INSTANCE = new OptionalDoubleCodec(false);
+    @Internal public static final OptionalDoubleCodec NON_NULL = new OptionalDoubleCodec(true);
+
+    private final boolean requireOwner;
+
+    private OptionalDoubleCodec(boolean requireOwner) {
+      this.requireOwner = requireOwner;
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, OptionalDouble value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }
@@ -3229,6 +3572,7 @@ public final class ScalarCodecs {
     @Override
     public void writeUtf8(Utf8JsonWriter writer, OptionalDouble value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }

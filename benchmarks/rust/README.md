@@ -37,7 +37,7 @@ Options:
                                Filter benchmark by serializer
   --filter <regex>             Custom criterion filter
   --no-report                  Skip Python report generation
-  --no-copy-docs               Skip copying the report into docs/benchmarks/rust
+  --no-copy-docs               Skip copying the report into docs/benchmarks/object-serialization/xlang/rust
 ```
 
 Examples:

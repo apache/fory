@@ -66,6 +66,7 @@ import java.time.chrono.MinguoDate;
 import java.time.chrono.ThaiBuddhistDate;
 import java.util.Arrays;
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,8 +95,10 @@ import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.StringSerializer;
+import org.apache.fory.type.Types;
 import org.testng.annotations.Test;
 
 public class JsonScalarTest extends ForyJsonTestModels {
@@ -582,6 +585,27 @@ public class JsonScalarTest extends ForyJsonTestModels {
     AtomicReference<String> nullValue =
         json.fromJson("null", new TypeRef<AtomicReference<String>>() {});
     assertEquals(nullValue.get(), null);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void optionalNonNullAtomicReference() {
+    TypeExtMeta nonNull = TypeExtMeta.of(Types.UNKNOWN, false, false, false, false);
+    TypeRef<?> stringType = TypeRef.of(String.class, nonNull);
+    TypeRef<?> atomicType =
+        TypeRef.ofDeclaredTypeArguments(
+            AtomicReference.class, nonNull, Collections.singletonList(stringType), null);
+    TypeRef<Optional<AtomicReference<String>>> optionalType =
+        (TypeRef<Optional<AtomicReference<String>>>)
+            (TypeRef<?>)
+                TypeRef.ofDeclaredTypeArguments(
+                    Optional.class, nonNull, Collections.singletonList(atomicType), null);
+    ForyJson json = newJson();
+    Optional<AtomicReference<String>> value = json.fromJson("\"value\"", optionalType);
+    assertTrue(value.isPresent());
+    assertEquals(value.get().get(), "value");
+    assertEquals(json.toJson(value, optionalType), "\"value\"");
+    assertEquals(json.fromJson("null", optionalType), Optional.empty());
   }
 
   @Test(dataProvider = "enableCodegen")
@@ -1116,6 +1140,88 @@ public class JsonScalarTest extends ForyJsonTestModels {
         newUtf8Reader(duration.getBytes(StandardCharsets.UTF_8)).readDuration(), expectedDuration);
     assertEquals(newLatin1Reader(latin1Bytes(duration)).readDuration(), expectedDuration);
     assertEquals(utf16Reader(duration).readDuration(), expectedDuration);
+  }
+
+  @Test
+  public void readQuotedText() {
+    assertQuotedText("\"fory-json\"", "fory-json", true);
+    assertQuotedText("\"A\\u4e2d\\ud83d\\ude00\"", "A\u4e2d\ud83d\ude00", true);
+    assertQuotedText("\"A\u4e2d\ud83d\ude00\"", "A\u4e2d\ud83d\ude00", false);
+    assertEquals(newUtf8Reader("null".getBytes(StandardCharsets.UTF_8)).readQuotedText(), null);
+    assertEquals(newLatin1Reader(latin1Bytes("null")).readQuotedText(), null);
+    assertEquals(utf16Reader("null").readQuotedText(), null);
+
+    Utf8JsonReader reused = newUtf8Reader("\"A\\u4e2d\" \"next\"".getBytes(StandardCharsets.UTF_8));
+    CharSequence first = reused.readQuotedText();
+    assertEquals(first.toString(), "A\u4e2d");
+    CharSequence second = reused.readQuotedText();
+    assertTrue(first == second);
+    assertEquals(second.toString(), "next");
+
+    assertInvalidQuotedText("\"\\uD800\"");
+    assertInvalidQuotedText("\"\\x\"");
+
+    ForyJson json = newJson();
+    assertEquals(
+        json.fromJson("\"123e4567-e89b-12d3-a456-42661417400\\u0030\"", UUID.class),
+        UUID.fromString("123e4567-e89b-12d3-a456-426614174000"));
+    assertEquals(json.fromJson("\"1-1-1-1-1\"", UUID.class), UUID.fromString("1-1-1-1-1"));
+    assertEquals(
+        json.fromJson("\"123456789-1-1-1-1\"", UUID.class), UUID.fromString("123456789-1-1-1-1"));
+    assertEquals(
+        json.fromJson("\"2024-02-03T04:05:06.123\\u005a\"", Instant.class),
+        Instant.parse("2024-02-03T04:05:06.123Z"));
+    assertEquals(
+        json.fromJson("\"PT1H1M1.123\\u0053\"", Duration.class),
+        Duration.ofSeconds(3661, 123_000_000));
+  }
+
+  @Test
+  public void rejectUnsignedFieldNameOverflow() {
+    String overflow = "\"18446744073709551616\"";
+    if (StringSerializer.isBytesBackedString()) {
+      assertThrows(
+          ForyJsonException.class,
+          () -> newLatin1Reader(latin1Bytes(overflow)).readFieldNameUnsignedLong());
+    }
+    assertThrows(ForyJsonException.class, () -> utf16Reader(overflow).readFieldNameUnsignedLong());
+    assertThrows(
+        ForyJsonException.class,
+        () -> newUtf8Reader(overflow.getBytes(StandardCharsets.UTF_8)).readFieldNameUnsignedLong());
+  }
+
+  @Test
+  public void writePrimitiveQuotedScalars() {
+    UUID uuid = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
+    assertUuidWriter(uuid);
+
+    Instant[] instants = {
+      Instant.EPOCH,
+      Instant.ofEpochSecond(-1, 1),
+      Instant.parse("2024-02-03T04:05:06.123456789Z"),
+      Instant.MIN,
+      Instant.MAX
+    };
+    for (Instant instant : instants) {
+      assertInstantWriter(instant);
+    }
+    assertInvalidInstantWriter(Instant.MIN.getEpochSecond() - 1, 0);
+    assertInvalidInstantWriter(Instant.MAX.getEpochSecond() + 1, 0);
+    assertInvalidInstantWriter(0, -1);
+    assertInvalidInstantWriter(0, 1_000_000_000);
+
+    assertDurationWriter(false, false, 0, 0, 0, 0, "\"PT0S\"");
+    assertDurationWriter(false, false, 1, 0, 1, 120_000_000, "\"PT1H0M1.120S\"");
+    assertDurationWriter(false, true, 0, 1, 2, 1, "\"-PT1M2.000000001S\"");
+    assertDurationWriter(true, false, 0, 0, 0, 0, "\"PT9999999999999H\"");
+    assertDurationWriter(true, true, 0, 0, 0, 0, "\"-PT9999999999999H\"");
+
+    assertInvalidDurationWriter(false, true, 0, 0, 0, 0);
+    assertInvalidDurationWriter(false, false, -1, 0, 0, 0);
+    assertInvalidDurationWriter(false, false, 0, 60, 0, 0);
+    assertInvalidDurationWriter(false, false, 0, 0, 60, 0);
+    assertInvalidDurationWriter(false, false, 0, 0, 0, 1_000_000_000);
+    assertInvalidDurationWriter(true, false, 1, 0, 0, 0);
   }
 
   @Test
@@ -3061,6 +3167,92 @@ public class JsonScalarTest extends ForyJsonTestModels {
           reader.readFloat();
           reader.finish();
         });
+  }
+
+  private static void assertQuotedText(String input, String expected, boolean latin1) {
+    assertEquals(
+        newUtf8Reader(input.getBytes(StandardCharsets.UTF_8)).readQuotedText().toString(),
+        expected);
+    if (latin1) {
+      assertEquals(newLatin1Reader(latin1Bytes(input)).readQuotedText().toString(), expected);
+    }
+    assertEquals(utf16Reader(input).readQuotedText().toString(), expected);
+  }
+
+  private static void assertInvalidQuotedText(String input) {
+    assertThrows(
+        ForyJsonException.class,
+        () -> newUtf8Reader(input.getBytes(StandardCharsets.UTF_8)).readQuotedText());
+    assertThrows(
+        ForyJsonException.class, () -> newLatin1Reader(latin1Bytes(input)).readQuotedText());
+    assertThrows(ForyJsonException.class, () -> utf16Reader(input).readQuotedText());
+  }
+
+  private static void assertUuidWriter(UUID value) {
+    String expected = '"' + value.toString() + '"';
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
+    utf8Writer.writeUuid(value.getMostSignificantBits(), value.getLeastSignificantBits());
+    assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+    StringJsonWriter stringWriter = newStringWriter(new byte[4]);
+    stringWriter.writeUuid(value.getMostSignificantBits(), value.getLeastSignificantBits());
+    assertEquals(stringWriter.toJson(), expected);
+  }
+
+  private static void assertInstantWriter(Instant value) {
+    String expected = '"' + value.toString() + '"';
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
+    utf8Writer.writeIsoInstant(value.getEpochSecond(), value.getNano());
+    assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+    StringJsonWriter stringWriter = newStringWriter(new byte[4]);
+    stringWriter.writeIsoInstant(value.getEpochSecond(), value.getNano());
+    assertEquals(stringWriter.toJson(), expected);
+    StringJsonWriter utf16Writer = utf16StringWriter();
+    utf16Writer.writeIsoInstant(value.getEpochSecond(), value.getNano());
+    assertEquals(utf16Writer.toJson(), expected);
+  }
+
+  private static void assertInvalidInstantWriter(long epochSecond, int nanos) {
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
+    assertThrows(ForyJsonException.class, () -> utf8Writer.writeIsoInstant(epochSecond, nanos));
+    assertEquals(utf8Writer.toJsonBytes().length, 0);
+
+    StringJsonWriter stringWriter = newStringWriter(new byte[4]);
+    assertThrows(ForyJsonException.class, () -> stringWriter.writeIsoInstant(epochSecond, nanos));
+    assertEquals(stringWriter.toJson(), "");
+  }
+
+  private static void assertDurationWriter(
+      boolean infinite,
+      boolean negative,
+      long hours,
+      int minutes,
+      int seconds,
+      int nanos,
+      String expected) {
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
+    utf8Writer.writeIsoDuration(infinite, negative, hours, minutes, seconds, nanos);
+    assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+    StringJsonWriter stringWriter = newStringWriter(new byte[4]);
+    stringWriter.writeIsoDuration(infinite, negative, hours, minutes, seconds, nanos);
+    assertEquals(stringWriter.toJson(), expected);
+    StringJsonWriter utf16Writer = utf16StringWriter();
+    utf16Writer.writeIsoDuration(infinite, negative, hours, minutes, seconds, nanos);
+    assertEquals(utf16Writer.toJson(), expected);
+  }
+
+  private static void assertInvalidDurationWriter(
+      boolean infinite, boolean negative, long hours, int minutes, int seconds, int nanos) {
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
+    assertThrows(
+        ForyJsonException.class,
+        () -> utf8Writer.writeIsoDuration(infinite, negative, hours, minutes, seconds, nanos));
+    assertEquals(utf8Writer.toJsonBytes().length, 0);
+
+    StringJsonWriter stringWriter = newStringWriter(new byte[4]);
+    assertThrows(
+        ForyJsonException.class,
+        () -> stringWriter.writeIsoDuration(infinite, negative, hours, minutes, seconds, nanos));
+    assertEquals(stringWriter.toJson(), "");
   }
 
   private static void assertWriterNumber(BigInteger value, String expected) {

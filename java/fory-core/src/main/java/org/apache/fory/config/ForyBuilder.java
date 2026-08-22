@@ -104,6 +104,7 @@ public final class ForyBuilder {
   int maxSchemaVersionsPerType = 10;
   int maxAverageSchemaVersionsPerType = 3;
   long maxGraphMemoryBytes = 128L * 1024 * 1024;
+  int maxUnbackedContainerItems = 8192;
   float mapRefLoadFactor = 0.51f;
   boolean forVirtualThread = false;
   TypeChecker typeChecker;
@@ -471,6 +472,10 @@ public final class ForyBuilder {
    * Set a compressor for meta compression. Note that the passed {@link MetaCompressor} should be
    * thread-safe. By default, a `Deflater` based compressor {@link DeflaterMetaCompressor} will be
    * used. Users can pass other compressor such as `zstd` for better compression rate.
+   *
+   * <p>Custom compressors used for deserialization must implement {@link
+   * MetaCompressor#decompress(byte[], int, int, int)} and enforce its limit before allocating
+   * output from a size declared by the compressed input.
    */
   public ForyBuilder withMetaCompressor(MetaCompressor metaCompressor) {
     MetaCompressor checkedMetaCompressor = MetaCompressor.checkMetaCompressor(metaCompressor);
@@ -599,6 +604,19 @@ public final class ForyBuilder {
     Preconditions.checkArgument(maxGraphMemoryBytes > 0, "maxGraphMemoryBytes must be positive");
     this.maxGraphMemoryBytes = maxGraphMemoryBytes;
     recordAction(b -> b.withMaxGraphMemoryBytes(maxGraphMemoryBytes));
+    return this;
+  }
+
+  /**
+   * Sets the maximum collection elements and map entries whose reads are not backed by one input
+   * byte per item during one root deserialization. The default is 8192. Zero is a strict limit, not
+   * a disabled sentinel.
+   */
+  public ForyBuilder withMaxUnbackedContainerItems(int maxUnbackedContainerItems) {
+    Preconditions.checkArgument(
+        maxUnbackedContainerItems >= 0, "maxUnbackedContainerItems must be non-negative");
+    this.maxUnbackedContainerItems = maxUnbackedContainerItems;
+    recordAction(b -> b.withMaxUnbackedContainerItems(maxUnbackedContainerItems));
     return this;
   }
 

@@ -30,6 +30,7 @@ STRING_TYPE_ID = TypeId.STRING
 SMALL_STRING_THRESHOLD = 16
 cdef int32_t MAX_CACHED_META_STRINGS = 8192
 cdef int32_t MAX_CACHED_META_STRING_LENGTH = 2048
+cdef int32_t MAX_RETAINED_ROOT_VECTOR_CAPACITY = 8192
 cdef int64_t _MAX_GRAPH_MEMORY_BYTES = 9223372036854775807
 
 
@@ -181,8 +182,12 @@ cdef class RefReader:
         return ref_id
 
     cdef inline int32_t preserve_ref_id(self, int32_t ref_id):
+        cdef int32_t size
         if not self.track_ref:
             return -1
+        size = self.read_objects.size()
+        if ref_id != NOT_NULL_VALUE_FLAG and (ref_id < 0 or ref_id >= size):
+            raise ValueError(f"Invalid ref id {ref_id}, current size {size}")
         self.read_ref_ids.push_back(ref_id)
         return ref_id
 
@@ -191,9 +196,9 @@ cdef class RefReader:
         cdef int32_t ref_id
         cdef int32_t size
         cdef PyObject *obj
-        if not self.track_ref:
-            return buffer.c_buffer.read_int8(buffer._error)
         head_flag = buffer.c_buffer.read_int8(buffer._error)
+        if not self.track_ref:
+            return head_flag
         if head_flag == REF_FLAG:
             ref_id = buffer.c_buffer.read_var_uint32(buffer._error)
             size = self.read_objects.size()
@@ -207,7 +212,8 @@ cdef class RefReader:
         self.read_object = None
         if head_flag == REF_VALUE_FLAG:
             return self.preserve_next_ref_id()
-        self.read_ref_ids.push_back(-1)
+        if head_flag == NOT_NULL_VALUE_FLAG:
+            self.read_ref_ids.push_back(NOT_NULL_VALUE_FLAG)
         return head_flag
 
     cdef inline int32_t last_preserved_ref_id(self):
@@ -215,7 +221,8 @@ cdef class RefReader:
         if not self.track_ref:
             return -1
         length = self.read_ref_ids.size()
-        assert length > 0
+        if length == 0:
+            raise ValueError("No preserved ref id")
         return self.read_ref_ids[length - 1]
 
     cdef inline bint has_preserved_ref_id(self):
@@ -226,12 +233,18 @@ cdef class RefReader:
     cdef inline reference(self, obj):
         cdef int32_t ref_id
         cdef bint need_inc
+        cdef int32_t size
         if not self.track_ref:
             return
+        if self.read_ref_ids.size() == 0:
+            raise ValueError("No preserved ref id")
         ref_id = self.read_ref_ids.back()
         self.read_ref_ids.pop_back()
-        if ref_id < 0:
+        if ref_id == NOT_NULL_VALUE_FLAG:
             return
+        size = self.read_objects.size()
+        if ref_id < 0 or ref_id >= size:
+            raise ValueError(f"Invalid ref id {ref_id}, current size {size}")
         need_inc = self.read_objects[ref_id] == NULL
         if need_inc:
             Py_INCREF(obj)
@@ -255,24 +268,35 @@ cdef class RefReader:
         return <object> obj
 
     cdef inline set_read_ref(self, int32_t ref_id, obj):
+        cdef int32_t size
         if not self.track_ref:
             return
-        if ref_id >= 0:
-            # ref_id < 0 is the NOT_NULL_VALUE_FLAG sentinel path and has no
-            # slot in read_objects. Referenceable containers/structs populate
-            # their slot eagerly through reference(), so the follow-up store here
-            # should only fill slots that are still empty.
-            if self.read_objects[ref_id] == NULL:
-                Py_INCREF(obj)
-                self.read_objects[ref_id] = <PyObject *>obj
+        if ref_id == NOT_NULL_VALUE_FLAG:
+            return
+        size = self.read_objects.size()
+        if ref_id < 0 or ref_id >= size:
+            raise ValueError(f"Invalid ref id {ref_id}, current size {size}")
+        # Referenceable containers/structs may populate their slot eagerly
+        # through reference(), so the follow-up store only fills an empty slot.
+        if self.read_objects[ref_id] == NULL:
+            Py_INCREF(obj)
+            self.read_objects[ref_id] = <PyObject *>obj
 
     cpdef inline reset(self):
         cdef PyObject *item
+        cdef vector[PyObject *] empty_read_objects
+        cdef vector[int32_t] empty_read_ref_ids
         if self.track_ref:
             for item in self.read_objects:
                 Py_XDECREF(item)
             self.read_objects.clear()
             self.read_ref_ids.clear()
+            # Ordinary root sizes remain reusable. Release only exceptional
+            # peaks so one input cannot pin arbitrary native-vector capacity.
+            if self.read_objects.capacity() > MAX_RETAINED_ROOT_VECTOR_CAPACITY:
+                self.read_objects.swap(empty_read_objects)
+            if self.read_ref_ids.capacity() > MAX_RETAINED_ROOT_VECTOR_CAPACITY:
+                self.read_ref_ids.swap(empty_read_ref_ids)
         self.read_object = None
 
 
@@ -368,8 +392,29 @@ cdef class MetaStringReader:
                 raise ValueError(f"Unexpected encoding flag: {encoding}")
             hashcode = _hash_small_metastring(v1, v2, length, <uint8_t> encoding)
             entry = self._c_hash_to_small_encoded_meta_string.find(hashcode)
-            if entry == NULL or deref(entry).second == NULL:
-                reader_index = buffer.get_reader_index()
+            reader_index = buffer.get_reader_index()
+            if entry != NULL and deref(entry).second != NULL:
+                cached_data = (<object> deref(entry).second).data
+                if (
+                    (<object> deref(entry).second).encoding == <uint8_t> encoding
+                    and PyBytes_GET_SIZE(cached_data) == length
+                    and memcmp(
+                        <void *>(buffer.c_buffer.data() + reader_index - length),
+                        <void *> PyBytes_AS_STRING(cached_data),
+                        length,
+                    ) == 0
+                ):
+                    encoded_meta_string_ptr = deref(entry).second
+                else:
+                    data = buffer.get_bytes(reader_index - length, length)
+                    encoded_meta_string = self.shared_registry.get_or_create_encoded_meta_string(
+                        data,
+                        hashcode,
+                    )
+                    encoded_meta_string_ptr = <PyObject *> encoded_meta_string
+                    Py_INCREF(<object> encoded_meta_string_ptr)
+                    self._c_owned_dynamic_encoded_meta_string_vec.push_back(encoded_meta_string_ptr)
+            else:
                 data = buffer.get_bytes(reader_index - length, length)
                 cache_entry = self._c_hash_to_small_encoded_meta_string.size() < MAX_CACHED_META_STRINGS
                 encoded_meta_string = self.shared_registry.get_or_create_encoded_meta_string(
@@ -384,29 +429,20 @@ cdef class MetaStringReader:
                 else:
                     Py_INCREF(<object> encoded_meta_string_ptr)
                     self._c_owned_dynamic_encoded_meta_string_vec.push_back(encoded_meta_string_ptr)
-            else:
-                encoded_meta_string_ptr = deref(entry).second
         else:
             hashcode = buffer.read_int64()
-            if (hashcode & 0xFF) > 4:
-                raise ValueError(f"Unexpected encoding flag: {hashcode & 0xFF}")
             reader_index = buffer.get_reader_index()
             buffer.check_bound(reader_index, length)
             entry = self._c_hash_to_encoded_meta_string.find(hashcode)
             if entry != NULL and deref(entry).second != NULL:
-                cached_data = (<object> deref(entry).second).data
-                if (
-                    PyBytes_GET_SIZE(cached_data) == length
-                    and memcmp(
-                        <void *>(buffer.c_buffer.data() + reader_index),
-                        <void *> PyBytes_AS_STRING(cached_data),
-                        length,
-                    ) == 0
-                ):
-                    buffer.set_reader_index(reader_index + length)
-                    encoded_meta_string_ptr = deref(entry).second
-                    self._c_dynamic_id_to_encoded_meta_string_vec.push_back(encoded_meta_string_ptr)
-                    return <object> encoded_meta_string_ptr
+                # The checked cache owns this wire hash. Never validate, compare, or rehash a hit,
+                # including when the current frame length differs.
+                buffer.set_reader_index(reader_index + length)
+                encoded_meta_string_ptr = deref(entry).second
+                self._c_dynamic_id_to_encoded_meta_string_vec.push_back(encoded_meta_string_ptr)
+                return <object> encoded_meta_string_ptr
+            if (hashcode & 0xFF) > 4:
+                raise ValueError(f"Unexpected encoding flag: {hashcode & 0xFF}")
             MurmurHash3_x64_128(
                 <void *>(buffer.c_buffer.data() + reader_index),
                 length,
@@ -446,10 +482,22 @@ cdef class MetaStringReader:
 
     cpdef inline reset(self):
         cdef PyObject *item
+        cdef vector[PyObject *] empty_dynamic
+        cdef vector[PyObject *] empty_owned
         for item in self._c_owned_dynamic_encoded_meta_string_vec:
             Py_XDECREF(item)
         self._c_owned_dynamic_encoded_meta_string_vec.clear()
         self._c_dynamic_id_to_encoded_meta_string_vec.clear()
+        if (
+            self._c_owned_dynamic_encoded_meta_string_vec.capacity()
+            > MAX_RETAINED_ROOT_VECTOR_CAPACITY
+        ):
+            self._c_owned_dynamic_encoded_meta_string_vec.swap(empty_owned)
+        if (
+            self._c_dynamic_id_to_encoded_meta_string_vec.capacity()
+            > MAX_RETAINED_ROOT_VECTOR_CAPACITY
+        ):
+            self._c_dynamic_id_to_encoded_meta_string_vec.swap(empty_dynamic)
 
 
 @cython.final
@@ -749,6 +797,8 @@ cdef class ReadContext:
     cdef readonly int32_t max_depth
     cdef int64_t max_graph_memory_bytes
     cdef int64_t remaining_graph_memory_bytes
+    cdef int64_t max_unbacked_container_items
+    cdef int64_t remaining_unbacked_container_items
     cdef readonly RefReader ref_reader
     cdef readonly MetaStringReader meta_string_reader
     cdef readonly MetaShareReadContext meta_share_context
@@ -771,6 +821,8 @@ cdef class ReadContext:
         self.max_depth = config.max_depth
         self.max_graph_memory_bytes = config.max_graph_memory_bytes
         self.remaining_graph_memory_bytes = 0
+        self.max_unbacked_container_items = config.max_unbacked_container_items
+        self.remaining_unbacked_container_items = 0
         self.ref_reader = RefReader(self.track_ref)
         self.meta_string_reader = MetaStringReader(self.type_resolver.shared_registry)
         self.meta_share_context = MetaShareReadContext() if config.scoped_meta_share_enabled else None
@@ -795,9 +847,11 @@ cdef class ReadContext:
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
         self.remaining_graph_memory_bytes = self.max_graph_memory_bytes
+        self.remaining_unbacked_container_items = self.max_unbacked_container_items
         self.depth = 0
 
     cpdef inline reset(self):
+        cdef Buffer buffer = self.buffer
         self.ref_reader.reset()
         self.meta_string_reader.reset()
         if self.meta_share_context is not None:
@@ -810,7 +864,10 @@ cdef class ReadContext:
         self.unsupported_objects = None
         self.peer_out_of_band_enabled = False
         self.remaining_graph_memory_bytes = 0
+        self.remaining_unbacked_container_items = 0
         self.depth = 0
+        if buffer is not None:
+            buffer.shrink_input_buffer()
 
     cdef void _raise_graph_memory_error(self, int64_t num_bytes, int64_t remaining):
         cdef int64_t used
@@ -835,6 +892,28 @@ cdef class ReadContext:
         if num_bytes > _MAX_GRAPH_MEMORY_BYTES:
             raise ValueError("Estimated graph memory overflow")
         self.reserve_graph_memory_c(<int64_t>num_bytes)
+
+    cdef void _raise_unbacked_container_items(self, int64_t num_items, int64_t remaining):
+        cdef int64_t used
+        if num_items < 0:
+            raise ValueError("Unbacked container item count is negative")
+        used = self.max_unbacked_container_items - remaining
+        raise ValueError(
+            f"Unbacked container item budget exceeded: requested {num_items} items, "
+            f"used {used} items, limit {self.max_unbacked_container_items} items. "
+            "Increase Fory(..., max_unbacked_container_items=...) for trusted larger payloads."
+        )
+
+    cdef inline void reserve_unbacked_container_items_c(self, int64_t num_items):
+        cdef int64_t remaining = self.remaining_unbacked_container_items
+        if num_items < 0 or num_items > remaining:
+            self._raise_unbacked_container_items(num_items, remaining)
+        self.remaining_unbacked_container_items = remaining - num_items
+
+    cpdef inline reserve_unbacked_container_items(self, num_items):
+        if not isinstance(num_items, int) or num_items < 0 or num_items > 9223372036854775807:
+            raise ValueError("Unbacked container item count must be in int64 range")
+        self.reserve_unbacked_container_items_c(<int64_t>num_items)
 
     cpdef inline add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj
@@ -889,6 +968,7 @@ cdef class ReadContext:
 
     cpdef inline read_ref(self, Serializer serializer=None):
         cdef int32_t ref_id
+        cdef int8_t head_flag
         cdef TypeInfo typeinfo
         cdef uint8_t type_id
         cdef object obj
@@ -902,48 +982,42 @@ cdef class ReadContext:
                 type_id = typeinfo.type_id
                 if type_id == STRING_TYPE_ID:
                     obj = self.buffer.read_string()
-                    if ref_id >= 0 and self.ref_reader.read_objects[ref_id] == NULL:
-                        Py_INCREF(obj)
-                        self.ref_reader.read_objects[ref_id] = <PyObject *>obj
+                    self.ref_reader.set_read_ref(ref_id, obj)
                     return obj
                 if type_id == INT64_TYPE_ID:
                     obj = self.read_varint64()
-                    if ref_id >= 0 and self.ref_reader.read_objects[ref_id] == NULL:
-                        Py_INCREF(obj)
-                        self.ref_reader.read_objects[ref_id] = <PyObject *>obj
+                    self.ref_reader.set_read_ref(ref_id, obj)
                     return obj
                 if type_id == BOOL_TYPE_ID:
                     obj = self.read_bool()
-                    if ref_id >= 0 and self.ref_reader.read_objects[ref_id] == NULL:
-                        Py_INCREF(obj)
-                        self.ref_reader.read_objects[ref_id] = <PyObject *>obj
+                    self.ref_reader.set_read_ref(ref_id, obj)
                     return obj
                 if type_id == FLOAT64_TYPE_ID:
                     obj = self.read_double()
-                    if ref_id >= 0 and self.ref_reader.read_objects[ref_id] == NULL:
-                        Py_INCREF(obj)
-                        self.ref_reader.read_objects[ref_id] = <PyObject *>obj
+                    self.ref_reader.set_read_ref(ref_id, obj)
                     return obj
                 serializer = typeinfo.serializer
             obj = self._read_non_ref_internal(serializer)
-            if ref_id >= 0 and self.ref_reader.read_objects[ref_id] == NULL:
-                Py_INCREF(obj)
-                self.ref_reader.read_objects[ref_id] = <PyObject *>obj
+            self.ref_reader.set_read_ref(ref_id, obj)
             return obj
-        if self.read_int8() == NULL_FLAG:
+        head_flag = self.read_int8()
+        if head_flag == NULL_FLAG:
             return None
         return self._read_non_ref_internal(serializer)
 
     cpdef inline read_non_ref(self, Serializer serializer=None):
-        if self.track_ref:
-            self.ref_reader.read_ref_ids.push_back(-1)
+        if self.track_ref and (
+            serializer is None or serializer.need_to_write_ref
+        ):
+            self.ref_reader.read_ref_ids.push_back(NOT_NULL_VALUE_FLAG)
         return self._read_non_ref_internal(serializer)
 
     cpdef inline read_no_ref(self, Serializer serializer=None):
         return self.read_non_ref(serializer=serializer)
 
     cpdef inline read_nullable(self, Serializer serializer=None):
-        if self.read_int8() == NULL_FLAG:
+        cdef int8_t head_flag = self.read_int8()
+        if head_flag == NULL_FLAG:
             return None
         return self._read_non_ref_internal(serializer)
 
@@ -1131,16 +1205,20 @@ cdef class ReadContext:
     cpdef read_bytes_and_size(self):
         return self.buffer.read_bytes_and_size()
 
-    cpdef check_readable_bytes(self, int32_t length):
-        cdef Buffer buffer
+    cdef void _raise_invalid_readable_bytes(self, int32_t length):
+        raise_fory_error(CErrorCode.InvalidData, f"Readable byte count {length} is negative")
+
+    cdef inline void check_readable_bytes_c(self, int32_t length):
         if length < 0:
-            raise_fory_error(CErrorCode.InvalidData, f"Readable byte count {length} is negative")
+            self._raise_invalid_readable_bytes(length)
         if length == 0:
             return
-        buffer = self.buffer
-        if not self.c_buffer.ensure_readable(<uint32_t>length, buffer._error):
-            if not buffer._error.ok():
-                buffer._raise_if_error()
+        if not self.c_buffer.ensure_readable(<uint32_t>length, self.buffer._error):
+            if not self.buffer._error.ok():
+                self.buffer._raise_if_error()
+
+    cpdef check_readable_bytes(self, int32_t length):
+        self.check_readable_bytes_c(length)
 
     cpdef inline int32_t get_reader_index(self):
         return self.buffer.get_reader_index()

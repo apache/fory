@@ -49,17 +49,31 @@ pub fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
     Ok(())
 }
 
+/// Resolve compatible Struct metadata before generated code reads its fields.
+///
+/// This is public only because derive output runs in downstream crates. A registered remote
+/// harness must match `T`; only an unregistered structural stub may reach field remapping.
+#[doc(hidden)]
+#[inline(always)]
+pub fn read_compatible_type_info<T: StructSerializer>(
+    context: &mut ReadContext,
+) -> Result<std::rc::Rc<crate::resolver::TypeInfo>, Error> {
+    context.read_struct_type_info_for(T::metadata_target_type_id())
+}
+
 #[inline(always)]
 pub fn read_type_info_fast<T: StructSerializer>(context: &mut ReadContext) -> Result<(), Error> {
     if context.is_compatible() || context.is_xlang() {
-        return read_type_info(context);
+        context.read_type_info_for(T::metadata_target_type_id())?;
+        return Ok(());
     }
     let local_type_id = context
         .get_type_resolver()
         .get_type_id_by_index(T::type_index())?;
     let local_type_id_u32 = local_type_id as u32;
     if !crate::type_id::needs_user_type_id(local_type_id_u32) {
-        return read_type_info(context);
+        context.read_type_info_for(T::metadata_target_type_id())?;
+        return Ok(());
     }
     let remote_type_id = context.reader.read_u8()? as u32;
     ensure!(

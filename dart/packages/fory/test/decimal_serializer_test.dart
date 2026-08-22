@@ -24,6 +24,9 @@ import 'package:test/test.dart';
 
 part 'decimal_serializer_test.fory.dart';
 
+const int _decimalMagnitudeByteLimit = 10_000;
+const int _decimalScaleLimit = 10_000;
+
 @ForyStruct()
 class DecimalEnvelope {
   DecimalEnvelope();
@@ -34,6 +37,23 @@ class DecimalEnvelope {
 
 Decimal _decimal(String unscaled, int scale) {
   return Decimal(BigInt.parse(unscaled), scale);
+}
+
+Buffer _decimalRootBuffer(int scale) {
+  return Buffer()
+    ..writeUint8(0x01)
+    ..writeByte(-1)
+    ..writeVarUint32Small7(TypeIds.decimal)
+    ..writeVarInt32(scale);
+}
+
+Uint64 _bigDecimalHeader(int magnitudeLength, [int sign = 0]) {
+  final meta = (magnitudeLength << 1) | sign;
+  return Uint64((meta << 1) | 1);
+}
+
+BigInt _magnitudeWithByteLength(int length) {
+  return BigInt.one << (length * 8 - 1);
 }
 
 void _registerDecimalEnvelope(Fory fory) {
@@ -83,6 +103,116 @@ void main() {
       );
       expect(roundTrip.amount, equals(value.amount));
       expect(roundTrip.note, equals('principal'));
+    });
+
+    test('reader and writer enforce scale limits', () {
+      final fory = Fory();
+      for (final scale in <int>[-_decimalScaleLimit, _decimalScaleLimit]) {
+        final value = Decimal(BigInt.one, scale);
+        expect(fory.deserialize<Decimal>(fory.serialize(value)), equals(value));
+      }
+
+      for (final scale in <int>[
+        -_decimalScaleLimit - 1,
+        _decimalScaleLimit + 1,
+        -0x80000000,
+        0x7fffffff,
+      ]) {
+        expect(
+          () => fory.serialize(Decimal(BigInt.one, scale)),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.toString(),
+              'message',
+              contains('Decimal scale'),
+            ),
+          ),
+          reason: 'writer scale=$scale',
+        );
+        expect(
+          () => fory.deserializeFrom<Decimal>(_decimalRootBuffer(scale)),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.toString(),
+              'message',
+              contains('Decimal scale'),
+            ),
+          ),
+          reason: 'reader scale=$scale',
+        );
+      }
+    });
+
+    test('decodes maximum canonical magnitude payloads', () {
+      const magnitudeLength = _decimalMagnitudeByteLimit;
+      final magnitudeBytes = Uint8List(magnitudeLength)
+        ..fillRange(0, magnitudeLength, 0xff);
+      final magnitude = (BigInt.one << (magnitudeLength * 8)) - BigInt.one;
+
+      for (final sign in <int>[0, 1]) {
+        const scale = -17;
+        final buffer =
+            _decimalRootBuffer(scale)
+              ..writeVarUint64(_bigDecimalHeader(magnitudeLength, sign))
+              ..writeBytes(magnitudeBytes);
+
+        expect(
+          Fory().deserializeFrom<Decimal>(buffer),
+          equals(Decimal(sign == 0 ? magnitude : -magnitude, scale)),
+        );
+      }
+    });
+
+    test('writer enforces magnitude byte limit', () {
+      final fory = Fory();
+      final maximum = Decimal(
+        _magnitudeWithByteLength(_decimalMagnitudeByteLimit),
+        0,
+      );
+      expect(fory.serialize(maximum), isNotEmpty);
+
+      final oversized = Decimal(
+        _magnitudeWithByteLength(_decimalMagnitudeByteLimit + 1),
+        0,
+      );
+      expect(
+        () => fory.serialize(oversized),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Decimal magnitude length'),
+          ),
+        ),
+      );
+    });
+
+    test('reader enforces magnitude byte limit before copying', () {
+      final oversized = _decimalRootBuffer(0)
+        ..writeVarUint64(_bigDecimalHeader(_decimalMagnitudeByteLimit + 1));
+      expect(
+        () => Fory().deserializeFrom<Decimal>(oversized),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Decimal magnitude length'),
+          ),
+        ),
+      );
+
+      final truncated = _decimalRootBuffer(0)
+        ..writeVarUint64(_bigDecimalHeader(_decimalMagnitudeByteLimit));
+      expect(
+        () => Fory().deserializeFrom<Decimal>(truncated),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Insufficient readable bytes'),
+          ),
+        ),
+      );
     });
 
     test('rejects non-canonical big decimal payloads', () {

@@ -60,12 +60,13 @@ public final class SharedRegistry {
   private static final int MAX_CACHED_ENCODED_META_STRING_LENGTH = 2048;
   private static final int MAX_CACHED_TYPE_CHECKER_CLASSES = 8192;
   private static final int MIN_REMOTE_TYPE_DEF_LIMIT = 8192;
+  private static final int MAX_REMOTE_TYPE_DEF_KEYS = 8192;
 
   final ConcurrentIdentityMap<Class<?>, TypeDef> typeDefMap = new ConcurrentIdentityMap<>();
   final ConcurrentIdentityMap<Class<?>, TypeDef> currentLayerTypeDef =
       new ConcurrentIdentityMap<>();
-  final ConcurrentHashMap<Long, TypeDef> typeDefById = new ConcurrentHashMap<>();
-  final ConcurrentHashMap<Long, TypeDef> remoteTypeDefById = new ConcurrentHashMap<>();
+  final ConcurrentHashMap<Long, TypeDef> typeDefByHeaderHash = new ConcurrentHashMap<>();
+  final ConcurrentHashMap<Long, TypeDef> remoteTypeDefByHeaderHash = new ConcurrentHashMap<>();
   final ConcurrentHashMap<Tuple2<Class<?>, Boolean>, SortedMap<Member, Descriptor>>
       descriptorsCache = new ConcurrentHashMap<>();
   final ConcurrentHashMap<FieldDescriptorsKey, List<Descriptor>> fieldDescriptorsCache =
@@ -207,27 +208,27 @@ public final class SharedRegistry {
   }
 
   TypeDef getOrCreateTypeDef(TypeDef typeDef) {
-    long id = typeDef.getId();
-    TypeDef existing = typeDefById.get(id);
+    long headerHash = TypeDef.headerHash(typeDef.getId());
+    TypeDef existing = typeDefByHeaderHash.get(headerHash);
     if (existing != null) {
       return existing;
     }
-    existing = typeDefById.putIfAbsent(id, typeDef);
+    existing = typeDefByHeaderHash.putIfAbsent(headerHash, typeDef);
     return existing == null ? typeDef : existing;
   }
 
   synchronized TypeDef getOrCreateRemoteTypeDef(TypeDef typeDef, Object remoteTypeKey) {
-    long id = typeDef.getId();
-    TypeDef existing = remoteTypeDefById.get(id);
+    long headerHash = TypeDef.headerHash(typeDef.getId());
+    TypeDef existing = remoteTypeDefByHeaderHash.get(headerHash);
     if (existing != null) {
       return existing;
     }
     int versionsForType = checkRemoteTypeLimit(remoteTypeKey);
-    TypeDef canonicalTypeDef = typeDefById.putIfAbsent(id, typeDef);
+    TypeDef canonicalTypeDef = typeDefByHeaderHash.putIfAbsent(headerHash, typeDef);
     if (canonicalTypeDef == null) {
       canonicalTypeDef = typeDef;
     }
-    existing = remoteTypeDefById.putIfAbsent(id, canonicalTypeDef);
+    existing = remoteTypeDefByHeaderHash.putIfAbsent(headerHash, canonicalTypeDef);
     if (existing != null) {
       return existing;
     }
@@ -237,7 +238,7 @@ public final class SharedRegistry {
   }
 
   synchronized void checkRemoteTypeDefLimit(TypeDef typeDef, Object remoteTypeKey) {
-    if (remoteTypeDefById.containsKey(typeDef.getId())) {
+    if (remoteTypeDefByHeaderHash.containsKey(TypeDef.headerHash(typeDef.getId()))) {
       return;
     }
     checkRemoteTypeLimit(remoteTypeKey);
@@ -245,6 +246,14 @@ public final class SharedRegistry {
 
   private int checkRemoteTypeLimit(Object remoteTypeKey) {
     int versionsForType = remoteTypeDefVersionsByType.getOrDefault(remoteTypeKey, 0);
+    if (versionsForType == 0 && remoteTypeDefVersionsByType.size() >= MAX_REMOTE_TYPE_DEF_KEYS) {
+      throw new ForyException(
+          "Remote type limit exceeded: "
+              + remoteTypeDefVersionsByType.size()
+              + " accepted remote types >= "
+              + MAX_REMOTE_TYPE_DEF_KEYS
+              + ". The data may be malicious.");
+    }
     int maxSchemaVersionsPerType = maxSchemaVersionsPerType();
     if (versionsForType >= maxSchemaVersionsPerType) {
       throw new ForyException(

@@ -26,18 +26,23 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.Map;
 import org.apache.fory.codegen.Code;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Reference;
+import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.CollectionCodec;
+import org.apache.fory.json.codec.DirectUnboxedValueCodec;
 import org.apache.fory.json.codec.JsonUnwrappedInfo;
 import org.apache.fory.json.codec.JsonUnwrappedInfo.Group;
 import org.apache.fory.json.codec.JsonUnwrappedInfo.ReadRoute;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
 import org.apache.fory.json.codec.ScalarCodecs;
+import org.apache.fory.json.codec.TransparentUnboxedValueCodec;
+import org.apache.fory.json.codec.UnboxedValueCodec;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
@@ -63,34 +68,28 @@ import org.apache.fory.type.TypeUtils;
  */
 abstract class JsonReaderCodegen {
   private static final int READ_FIELD_SWITCH_SIZE = 8;
+  // Bound both the inlined prefix chain and the typed fallback signature. Wider creators retain
+  // the existing compact loop instead of inflating every generated reader representation.
+  private static final int MAX_ORDERED_CREATOR_FIELDS = 16;
   private static final boolean LITTLE_ENDIAN = NativeByteOrder.IS_LITTLE_ENDIAN;
   private static final long UTF16_PAIR_MASK = 0x0000FFFF0000FFFFL;
   private static final long UTF16_BYTE_MASK = 0x00FF00FF00FF00FFL;
 
   final JsonCodegen codegen;
   final JsonTypeResolver resolver;
-  private final boolean finalDependencies;
   private final int[] fastReadGroupEnds;
   private AnyInfo any;
   private Class<?> ownerType;
+  private ObjectCodec<?> objectOwner;
   private boolean storesSelfReader;
 
   JsonReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
-    this(codegen, resolver, false, null);
+    this(codegen, resolver, null);
   }
 
-  JsonReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, boolean finalDependencies) {
-    this(codegen, resolver, finalDependencies, null);
-  }
-
-  JsonReaderCodegen(
-      JsonCodegen codegen,
-      JsonTypeResolver resolver,
-      boolean finalDependencies,
-      int[] fastReadGroupEnds) {
+  JsonReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, int[] fastReadGroupEnds) {
     this.codegen = codegen;
     this.resolver = resolver;
-    this.finalDependencies = finalDependencies;
     this.fastReadGroupEnds = fastReadGroupEnds;
   }
 
@@ -124,9 +123,13 @@ abstract class JsonReaderCodegen {
     return false;
   }
 
+  boolean rawFieldNameDispatch() {
+    return false;
+  }
+
   abstract boolean isDirectName(String name, boolean tokenValueRead);
 
-  abstract Expression tryReadNextFieldNameColon(JsonFieldInfo property, boolean tokenValueRead);
+  abstract Expression tryReadNextFieldNameColon(String name);
 
   abstract Expression readEnumField(
       JsonGeneratedCodecBuilder builder,
@@ -141,15 +144,13 @@ abstract class JsonReaderCodegen {
     return JsonCodegen.readNestedType(property, resolver);
   }
 
-  final boolean finalDependencies() {
-    return finalDependencies;
-  }
-
   String genReaderCode(
       JsonGeneratedCodecBuilder builder,
-      Class<?> type,
+      ObjectCodec<?> owner,
       JsonFieldInfo[] properties,
       JsonCreatorInfo creatorInfo) {
+    Class<?> type = owner.type();
+    objectOwner = owner;
     ownerType = type;
     if (creatorInfo != null) {
       return genCreatorReaderCode(builder, type, creatorInfo);
@@ -164,13 +165,16 @@ abstract class JsonReaderCodegen {
     // Generated readers retain immutable lookup metadata directly. Creator-backed readers are
     // selected above and consume the exact executable owned by JsonCreatorInfo.
     ctx.addField(JsonFieldTable.class, "readTable");
+    if (owner.hasValidators()) {
+      ctx.addField(ObjectCodec.class, "owner");
+    }
     ctx.addField(long[].class, "fieldHashes");
     for (int i = 0; i < properties.length; i++) {
       if (usesReadInfo(properties[i])) {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
       if (JsonCodegen.usesReadCodec(properties[i], resolver)) {
-        addCapabilityField(ctx, codecFieldType(properties[i]), "r" + i);
+        addValueReaderField(ctx, properties[i], "r" + i);
       }
       if (storesReadObjectCodec(type, properties[i])) {
         addObjectReaderField(ctx, properties[i], "o" + i);
@@ -206,7 +210,7 @@ abstract class JsonReaderCodegen {
   }
 
   private void addCapabilityField(CodegenContext ctx, Class<?> type, String name) {
-    ctx.addField(finalDependencies, JsonCodegen.generatedCodecType(ctx, type), name, null);
+    ctx.addField(true, JsonCodegen.generatedCodecType(ctx, type), name, null);
   }
 
   private void addObjectReaderField(CodegenContext ctx, JsonFieldInfo field, String name) {
@@ -225,6 +229,14 @@ abstract class JsonReaderCodegen {
     }
   }
 
+  private void addValueReaderField(CodegenContext ctx, JsonFieldInfo field, String name) {
+    if (usesReaderSlot(field.readTypeInfo())) {
+      ctx.addField(true, ctx.type(JsonTypeInfo.class), name, null);
+    } else {
+      addCapabilityField(ctx, codecFieldType(field), name);
+    }
+  }
+
   private void addAnyReaderField(CodegenContext ctx, AnyInfo any) {
     if (usesReaderSlot(any.valueTypeInfo())) {
       ctx.addField(true, ctx.type(JsonTypeInfo.class), "anyReader", null);
@@ -235,10 +247,12 @@ abstract class JsonReaderCodegen {
 
   String genAnyReaderCode(
       JsonGeneratedCodecBuilder builder,
-      Class<?> type,
+      ObjectCodec<?> owner,
       JsonFieldInfo[] properties,
       JsonCreatorInfo creatorInfo,
       AnyInfo any) {
+    Class<?> type = owner.type();
+    objectOwner = owner;
     this.any = any;
     ownerType = type;
     storesSelfReader =
@@ -266,7 +280,7 @@ abstract class JsonReaderCodegen {
       addFinalAnyMapMethod(ctx);
     }
     if (any.readSetter() != null) {
-      addAnySetterMethod(ctx, type, any);
+      addAnySetterMethod(builder, type, any);
     }
     addReaderFields(ctx, type, properties);
     addAnyReaderConstructor(ctx, readerConstructorExpression(type, properties), storesAnyReader);
@@ -300,6 +314,7 @@ abstract class JsonReaderCodegen {
       Class<?> type,
       ObjectCodec<?> owner,
       JsonUnwrappedInfo unwrapped) {
+    objectOwner = owner;
     AnyInfo ownerAny = owner.anyInfo();
     this.any =
         ownerAny != null && (ownerAny.readField() != null || ownerAny.readSetter() != null)
@@ -340,13 +355,13 @@ abstract class JsonReaderCodegen {
       addFinalAnyMapMethod(ctx);
     }
     if (any != null && any.readSetter() != null) {
-      addAnySetterMethod(ctx, type, any);
+      addAnySetterMethod(builder, type, any);
     }
     if (rootCreator == null) {
       addReaderFields(ctx, type, directFields);
     } else {
       for (int i = 0; i < directCreatorFields.length; i++) {
-        if (!isDirectCreatorPrimitive(directCreatorFields[i])) {
+        if (usesCreatorReader(directCreatorFields[i])) {
           addCreatorReaderField(ctx, directCreatorFields[i], "r" + i);
         }
       }
@@ -359,12 +374,12 @@ abstract class JsonReaderCodegen {
           ctx.addField(JsonFieldInfo.class, "rp" + id);
         }
         if (JsonCodegen.usesReadCodec(field, resolver)) {
-          addCapabilityField(ctx, codecFieldType(field), "r" + id);
+          addValueReaderField(ctx, field, "r" + id);
         }
         if (storesReadObjectCodec(type, field)) {
           addObjectReaderField(ctx, field, "o" + id);
         }
-      } else if (!isDirectCreatorPrimitive(routes[i].creatorField())) {
+      } else if (usesCreatorReader(routes[i].creatorField())) {
         addCreatorReaderField(ctx, routes[i].creatorField(), "r" + id);
       }
     }
@@ -406,7 +421,7 @@ abstract class JsonReaderCodegen {
         groups,
         directCount,
         rootArray);
-    addUnwrappedCreatorMethods(ctx, type, rootCreator, groups);
+    addUnwrappedCreatorMethods(builder, type, rootCreator, groups);
     addUnwrappedGroupMethods(ctx, builder, type, groups, rootArray);
     ctx.clearExprState();
     Expression root = unwrappedRootWorkspace(builder, rootCreator != null);
@@ -419,7 +434,11 @@ abstract class JsonReaderCodegen {
             "groupPresent",
             new Expression.NewArray(boolean.class, Expression.Literal.ofInt(groups.length)));
     Expression.ListExpression body = new Expression.ListExpression();
-    body.add(new Expression.Invoke(readerRef(), "enterDepth"), root, workspaces, present);
+    body.add(new Expression.Invoke(readerRef(), "enterDepth"));
+    if (!rootArray) {
+      body.add(reserveObject(owner));
+    }
+    body.add(root, workspaces, present);
     Expression anyMap = anyMap(builder, root, rootArray);
     if (anyMap != null) {
       body.add(anyMap);
@@ -447,14 +466,11 @@ abstract class JsonReaderCodegen {
     if (anyCreated != null) {
       // Rebuild the member expression with the shared flag after declaring it.
       body = new Expression.ListExpression();
-      body.add(
-          new Expression.Invoke(readerRef(), "enterDepth"),
-          root,
-          workspaces,
-          present,
-          anyMap,
-          anyCreated,
-          expectExpr('{'));
+      body.add(new Expression.Invoke(readerRef(), "enterDepth"));
+      if (!rootArray) {
+        body.add(reserveObject(owner));
+      }
+      body.add(root, workspaces, present, anyMap, anyCreated, expectExpr('{'));
       members =
           unwrappedMembers(
               builder,
@@ -475,8 +491,22 @@ abstract class JsonReaderCodegen {
     if (groups.length != 0) {
       body.add(finishUnwrappedGroups(type, root, workspaces, present, rootArray));
     }
-    Expression finishedRoot = finishUnwrappedRoot(root, type, rootCreator);
-    body.add(new Expression.Invoke(readerRef(), "exitDepth"), new Expression.Return(finishedRoot));
+    if (rootArray) {
+      body.add(reserveObject(owner));
+    }
+    Expression finishedRoot = finishUnwrappedRoot(builder, root, type, rootCreator);
+    body.add(new Expression.Invoke(readerRef(), "exitDepth"));
+    if (owner.hasValidators()) {
+      Expression finished =
+          new Expression.Variable(
+              "finishedObject", new Expression.Cast(finishedRoot, TypeRef.of(type)));
+      body.add(
+          finished,
+          new Expression.Invoke(ownerRef(), "validateObject", finished),
+          new Expression.Return(finished));
+    } else {
+      body.add(new Expression.Return(finishedRoot));
+    }
     Code.ExprCode generated = body.genCode(ctx);
     String code = generated.code();
     code = code == null ? "" : ctx.optimizeMethodCode(code);
@@ -496,7 +526,7 @@ abstract class JsonReaderCodegen {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
       if (JsonCodegen.usesReadCodec(properties[i], resolver)) {
-        addCapabilityField(ctx, codecFieldType(properties[i]), "r" + i);
+        addValueReaderField(ctx, properties[i], "r" + i);
       }
       if (storesReadObjectCodec(type, properties[i])) {
         addObjectReaderField(ctx, properties[i], "o" + i);
@@ -514,7 +544,8 @@ abstract class JsonReaderCodegen {
         "map");
   }
 
-  private void addAnySetterMethod(CodegenContext ctx, Class<?> type, AnyInfo any) {
+  private void addAnySetterMethod(JsonGeneratedCodecBuilder builder, Class<?> type, AnyInfo any) {
+    CodegenContext ctx = builder.context();
     Method setter = any.readSetter();
     Class<?> valueType = setter.getParameterTypes()[1];
     String methodName = setter.getName();
@@ -529,16 +560,28 @@ abstract class JsonReaderCodegen {
         valueType.isPrimitive()
             ? "if (value == null) {\n  throw owner.nullPrimitiveAnyValue();\n}\n"
             : "";
+    String invocation = "object." + methodName + "(name, " + value + ")";
+    if (!DirectMethodCodegen.sourceNameable(setter)) {
+      String bridgeName = DirectMethodCodegen.setterName(setter);
+      builder.addDirectMethod(
+          bridgeName,
+          void.class,
+          setter.getDeclaringClass(),
+          "object",
+          String.class,
+          "name",
+          valueType,
+          "value");
+      invocation = "this." + bridgeName + "(object, name, " + value + ")";
+    }
     ctx.addMethod(
         "private final",
         "callAnySetter",
         nullCheck
             + "try {\n"
-            + "  object."
-            + methodName
-            + "(name, "
-            + value
-            + ");\n"
+            + "  "
+            + invocation
+            + ";\n"
             + "} catch (Throwable e) {\n"
             + "  if (e instanceof Error) {\n"
             + "    throw (Error) e;\n"
@@ -566,7 +609,7 @@ abstract class JsonReaderCodegen {
     ctx.addField(ObjectCodec.class, "owner");
     ctx.addField(JsonCreatorInfo.class, "creator");
     for (int i = 0; i < fields.length; i++) {
-      if (!isDirectCreatorPrimitive(fields[i])) {
+      if (usesCreatorReader(fields[i])) {
         addCreatorReaderField(ctx, fields[i], "r" + i);
       }
     }
@@ -579,9 +622,12 @@ abstract class JsonReaderCodegen {
         "properties",
         JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
         "codecs");
-    addCreatorMethod(ctx, type, creatorInfo.executable());
+    addCreatorMethod(builder, type, creatorInfo);
+    if (usesOrderedCreator(fields, creatorInfo)) {
+      addCreatorSlowMethod(ctx, builder, type, creatorInfo);
+    }
     ctx.clearExprState();
-    Code.ExprCode body = creatorReadExpression(type, creatorInfo).genCode(ctx);
+    Code.ExprCode body = creatorReadExpression(builder, type, creatorInfo).genCode(ctx);
     String bodyCode = body.code();
     bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
     ctx.addMethod(
@@ -617,17 +663,17 @@ abstract class JsonReaderCodegen {
       addAnyReaderField(ctx, any);
     }
     for (int i = 0; i < fields.length; i++) {
-      if (!isDirectCreatorPrimitive(fields[i])) {
+      if (usesCreatorReader(fields[i])) {
         addCreatorReaderField(ctx, fields[i], "r" + i);
       }
     }
     addAnyReaderConstructor(ctx, creatorConstructorExpression(fields), storesAnyReader);
-    addCreatorMethod(ctx, type, creatorInfo.executable());
+    addCreatorMethod(builder, type, creatorInfo);
     addGeneratedMethod(
         ctx,
         "private final",
         anyReadMethod,
-        anyCreatorReadExpression(type, creatorInfo),
+        anyCreatorReadExpression(builder, type, creatorInfo),
         Object.class,
         concreteReaderType,
         "reader");
@@ -644,12 +690,13 @@ abstract class JsonReaderCodegen {
     return ctx.genCode();
   }
 
-  private Expression anyCreatorReadExpression(Class<?> type, JsonCreatorInfo creatorInfo) {
+  private Expression anyCreatorReadExpression(
+      JsonGeneratedCodecBuilder builder, Class<?> type, JsonCreatorInfo creatorInfo) {
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
     Class<?>[] parameterTypes = creatorInfo.executable().getParameterTypes();
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(new Expression.Invoke(readerRef(), "enterDepth"));
-    Expression[] arguments = creatorArguments(creatorInfo.executable(), expressions);
+    CreatorArguments arguments = creatorArguments(creatorInfo, expressions);
     Expression anyMap =
         new Expression.Variable("anyMap", new Expression.Null(TypeRef.of(Map.class), false));
     expressions.add(anyMap);
@@ -658,8 +705,9 @@ abstract class JsonReaderCodegen {
         new Expression.If(
             consumeExpr('}'),
             new Expression.ListExpression(
+                reserveObject(objectOwner),
                 new Expression.Invoke(readerRef(), "exitDepth"),
-                new Expression.Return(createValue(type, arguments)))));
+                finishCreator(builder, type, creatorInfo, arguments))));
 
     Expression.ListExpression loop = new Expression.ListExpression();
     Expression fieldStart =
@@ -687,8 +735,10 @@ abstract class JsonReaderCodegen {
           new Expression.Switch.Case(
               i,
               new Expression.ListExpression(
-                  new Expression.Assign(
-                      arguments[fields[i].argumentIndex()], readCreatorValue(fields[i], i)),
+                  assignCreatorArgument(
+                      arguments,
+                      fields[i].argumentIndex(),
+                      readCreatorValue(builder, fields[i], i)),
                   new Expression.Break()));
     }
     loop.add(
@@ -706,15 +756,17 @@ abstract class JsonReaderCodegen {
         new Expression.Variable(
             "finishedAnyMap",
             new Expression.Cast(
-                new Expression.Invoke(ownerRef(), "finishAnyMap", TypeRef.of(Map.class), anyMap),
+                new Expression.Invoke(
+                    ownerRef(), "finishAnyMap", TypeRef.of(Map.class), readerRef(), anyMap),
                 TypeRef.of(parameterTypes[any.constructionIndex()])));
     expressions.add(
         new Expression.If(
             ne(anyMap, new Expression.Null(TypeRef.of(Map.class), false)),
             new Expression.ListExpression(
-                finished, new Expression.Assign(arguments[any.constructionIndex()], finished))));
+                finished, assignCreatorArgument(arguments, any.constructionIndex(), finished))));
+    expressions.add(reserveObject(objectOwner));
     expressions.add(new Expression.Invoke(readerRef(), "exitDepth"));
-    expressions.add(new Expression.Return(createValue(type, arguments)));
+    expressions.add(finishCreator(builder, type, creatorInfo, arguments));
     return expressions;
   }
 
@@ -740,10 +792,13 @@ abstract class JsonReaderCodegen {
     Expression create =
         new Expression.Assign(
             anyMap,
-            new Expression.Invoke(ownerRef(), "newAnyMap", TypeRef.of(Map.class), false).inline());
+            new Expression.Invoke(
+                    ownerRef(), "newAnyMap", TypeRef.of(Map.class), false, readerRef())
+                .inline());
     Expression read =
         new Expression.ListExpression(
             name,
+            new Expression.Invoke(ownerRef(), "reserveAnyEntry", readerRef()),
             value,
             new Expression.If(
                 eq(anyMap, new Expression.Null(TypeRef.of(Map.class), false)), create),
@@ -757,9 +812,13 @@ abstract class JsonReaderCodegen {
                 eq(match, Expression.Literal.ofInt(JsonFieldTable.UNKNOWN)), read, skip)));
   }
 
-  private void addCreatorMethod(CodegenContext ctx, Class<?> type, Executable executable) {
+  private void addCreatorMethod(
+      JsonGeneratedCodecBuilder builder, Class<?> type, JsonCreatorInfo creatorInfo) {
+    CodegenContext ctx = builder.context();
+    Executable executable = creatorInfo.executable();
     Class<?>[] parameterTypes = executable.getParameterTypes();
-    Object[] parameters = new Object[parameterTypes.length << 1];
+    int maskCount = creatorInfo.defaultMaskCount();
+    Object[] parameters = new Object[(parameterTypes.length + maskCount) << 1];
     StringBuilder invocation = new StringBuilder();
     for (int i = 0; i < parameterTypes.length; i++) {
       parameters[i << 1] = parameterTypes[i];
@@ -769,23 +828,76 @@ abstract class JsonReaderCodegen {
       }
       invocation.append('a').append(i);
     }
-    String typeName = ctx.type(type);
-    String expression =
-        executable instanceof Constructor
-            ? "new " + typeName + "(" + invocation + ")"
-            : typeName + "." + ((Method) executable).getName() + "(" + invocation + ")";
-    StringBuilder body = new StringBuilder();
-    body.append(typeName)
-        .append(" value;\ntry {\n  value = ")
-        .append(expression)
-        .append(";\n")
-        .append("} catch (Throwable e) {\n  throw owner.creatorFailure(e);\n}\n");
-    if (executable instanceof Method) {
-      body.append("return (").append(typeName).append(") owner.requireCreatorResult(value);");
-    } else {
-      body.append("return value;");
+    StringBuilder maskedInvocation = new StringBuilder(invocation);
+    for (int i = 0; i < maskCount; i++) {
+      int parameter = parameterTypes.length + i;
+      parameters[parameter << 1] = int.class;
+      parameters[(parameter << 1) + 1] = "m" + i;
+      maskedInvocation.append(", m").append(i);
     }
+    String typeName = ctx.type(type);
+    String expression = creatorInvocation(builder, type, creatorInfo, invocation.toString());
+    StringBuilder body = new StringBuilder();
+    body.append(typeName).append(" value;\ntry {\n");
+    if (maskCount == 0) {
+      body.append("  value = ").append(expression).append(";\n");
+    } else {
+      body.append("  if ((");
+      for (int i = 0; i < maskCount; i++) {
+        if (i != 0) {
+          body.append(" | ");
+        }
+        body.append('m').append(i);
+      }
+      body.append(") == 0) {\n")
+          .append("    value = ")
+          .append(expression)
+          .append(";\n  } else {\n    value = ")
+          .append(defaultCreatorInvocation(builder, type, creatorInfo, maskedInvocation.toString()))
+          .append(";\n  }\n");
+    }
+    body.append("} catch (Throwable e) {\n  throw owner.creatorFailure(e);\n}\n");
+    if (executable instanceof Method) {
+      body.append("value = (").append(typeName).append(") owner.requireCreatorResult(value);\n");
+    }
+    if (objectOwner.hasValidators() && !creatorInfo.hasDeferredFields()) {
+      body.append("owner.validateObject(value);\n");
+    }
+    body.append("return value;");
     ctx.addMethod("private final", "createValue", body.toString(), type, parameters);
+  }
+
+  private String creatorInvocation(
+      JsonGeneratedCodecBuilder builder, Class<?> type, JsonCreatorInfo creator, String arguments) {
+    Executable executable = creator.executable();
+    if (DirectMethodCodegen.requiresFullCreatorBridge(creator)) {
+      String name = DirectMethodCodegen.fullCreatorName(creator.invocationExecutable());
+      builder.addDirectMethod(name, type, creatorParameters(executable.getParameterTypes()));
+      return "this." + name + "(" + arguments + ")";
+    }
+    String typeName = builder.context().type(type);
+    return executable instanceof Constructor
+        ? "new " + typeName + "(" + arguments + ")"
+        : typeName + "." + ((Method) executable).getName() + "(" + arguments + ")";
+  }
+
+  private String defaultCreatorInvocation(
+      JsonGeneratedCodecBuilder builder, Class<?> type, JsonCreatorInfo creator, String arguments) {
+    Class<?>[] logical = creator.executable().getParameterTypes();
+    Class<?>[] parameters = Arrays.copyOf(logical, logical.length + creator.defaultMaskCount());
+    Arrays.fill(parameters, logical.length, parameters.length, int.class);
+    String name = DirectMethodCodegen.defaultCreatorName(creator.defaultConstructor());
+    builder.addDirectMethod(name, type, creatorParameters(parameters));
+    return "this." + name + "(" + arguments + ")";
+  }
+
+  private static Object[] creatorParameters(Class<?>[] parameterTypes) {
+    Object[] parameters = new Object[parameterTypes.length << 1];
+    for (int i = 0; i < parameterTypes.length; i++) {
+      parameters[i << 1] = parameterTypes[i];
+      parameters[(i << 1) + 1] = "v" + i;
+    }
+    return parameters;
   }
 
   private Expression creatorConstructorExpression(JsonCreatorFieldInfo[] fields) {
@@ -810,7 +922,7 @@ abstract class JsonReaderCodegen {
     addSelfReaderAssignment(expressions);
     Reference codecs = new Reference("codecs", TypeRef.of(readerArrayType()));
     for (int i = 0; i < fields.length; i++) {
-      if (!isDirectCreatorPrimitive(fields[i])) {
+      if (usesCreatorReader(fields[i])) {
         if (usesReaderSlot(fields[i].typeInfo())) {
           Expression creator =
               new Expression.Invoke(owner, "creatorInfo", TypeRef.of(JsonCreatorInfo.class))
@@ -872,42 +984,56 @@ abstract class JsonReaderCodegen {
             new Reference("this.selfReader", TypeRef.of(readerCapabilityType())), nestedReader));
   }
 
-  private Expression creatorReadExpression(Class<?> type, JsonCreatorInfo creatorInfo) {
+  private Expression creatorReadExpression(
+      JsonGeneratedCodecBuilder builder, Class<?> type, JsonCreatorInfo creatorInfo) {
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(new Expression.Invoke(readerRef(), "enterDepth"));
-    Expression[] arguments = creatorArguments(creatorInfo.executable(), expressions);
+    CreatorArguments arguments = creatorArguments(creatorInfo, expressions);
     expressions.add(expectExpr('{'));
     expressions.add(
         new Expression.If(
             consumeExpr('}'),
             new Expression.ListExpression(
+                reserveObject(objectOwner),
                 new Expression.Invoke(readerRef(), "exitDepth"),
-                new Expression.Return(createValue(type, arguments)))));
+                finishCreator(builder, type, creatorInfo, arguments))));
 
+    if (usesOrderedCreator(fields, creatorInfo)) {
+      expressions.add(orderedCreatorRead(builder, type, creatorInfo, arguments));
+      expressions.add(reserveObject(objectOwner));
+      expressions.add(new Expression.Invoke(readerRef(), "exitDepth"));
+      expressions.add(finishCreator(builder, type, creatorInfo, arguments));
+      return expressions;
+    }
+
+    expressions.add(creatorReadLoop(builder, fields, arguments));
+    expressions.add(reserveObject(objectOwner));
+    expressions.add(new Expression.Invoke(readerRef(), "exitDepth"));
+    expressions.add(finishCreator(builder, type, creatorInfo, arguments));
+    return expressions;
+  }
+
+  private Expression creatorReadLoop(
+      JsonGeneratedCodecBuilder builder,
+      JsonCreatorFieldInfo[] fields,
+      CreatorArguments arguments) {
     Expression.ListExpression loop = new Expression.ListExpression();
-    Expression hash = readFieldNameHash("creatorFieldHash");
-    Expression fieldIndex =
+    Reference fieldIndex = new Reference("creatorFieldIndex", TypeRef.of(int.class));
+    loop.add(
         new Expression.Variable(
-            "creatorFieldIndex",
-            new Expression.Invoke(
-                    fieldRef("creator", JsonCreatorInfo.class),
-                    "index",
-                    TypeRef.of(int.class),
-                    true,
-                    hash)
-                .inline());
-    loop.add(hash);
-    loop.add(fieldIndex);
-    loop.add(expectExpr(':'));
+            "creatorFieldIndex", Expression.Literal.ofInt(JsonFieldTable.UNKNOWN)));
+    loop.add(readCreatorFieldIndex(fieldIndex, fields));
     Expression.Switch.Case[] cases = new Expression.Switch.Case[fields.length];
     for (int i = 0; i < fields.length; i++) {
       cases[i] =
           new Expression.Switch.Case(
               i,
               new Expression.ListExpression(
-                  new Expression.Assign(
-                      arguments[fields[i].argumentIndex()], readCreatorValue(fields[i], i)),
+                  assignCreatorArgument(
+                      arguments,
+                      fields[i].argumentIndex(),
+                      readCreatorValue(builder, fields[i], i)),
                   new Expression.Break()));
     }
     loop.add(
@@ -916,51 +1042,356 @@ abstract class JsonReaderCodegen {
         new Expression.If(
             not(consumeExpr(',')),
             new Expression.ListExpression(expectExpr('}'), new Expression.Break())));
-    expressions.add(new Expression.While(Expression.Literal.True, loop));
+    return new Expression.While(Expression.Literal.True, loop);
+  }
+
+  private boolean usesOrderedCreator(JsonCreatorFieldInfo[] fields, JsonCreatorInfo creatorInfo) {
+    if (fields.length == 0
+        || fields.length > MAX_ORDERED_CREATOR_FIELDS
+        || creatorInfo.argumentCount() + creatorInfo.deferredFields().length
+            > MAX_ORDERED_CREATOR_FIELDS) {
+      return false;
+    }
+    for (JsonCreatorFieldInfo field : fields) {
+      if (!isDirectName(field.name(), true)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private Expression orderedCreatorRead(
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonCreatorInfo creatorInfo,
+      CreatorArguments arguments) {
+    // Each direct-name miss leaves the opening quote unread. Pass already decoded typed arguments
+    // to the ordinary loop so escaped, unknown, duplicate, and arbitrary-order members resume at
+    // the exact cursor without reparsing successful prefix fields.
+    JsonCreatorFieldInfo[] fields = creatorInfo.fields();
+    Expression next = creatorSlowReturn(type, creatorInfo, arguments);
+    for (int i = fields.length - 1; i >= 0; i--) {
+      JsonCreatorFieldInfo field = fields[i];
+      Expression read =
+          assignCreatorArgument(
+              arguments, field.argumentIndex(), readCreatorValue(builder, field, i));
+      next =
+          new Expression.If(
+              tryReadNextFieldNameColon(field.name()),
+              new Expression.ListExpression(
+                  read, new Expression.If(consumeOrderedCommaOrEndObjectExpr(), next)),
+              creatorSlowReturn(type, creatorInfo, arguments));
+    }
+    return next;
+  }
+
+  private Expression creatorSlowReturn(
+      Class<?> type, JsonCreatorInfo creatorInfo, CreatorArguments arguments) {
+    return new Expression.Return(creatorSlowCall(type, creatorInfo, arguments));
+  }
+
+  private void addCreatorSlowMethod(
+      CodegenContext ctx,
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonCreatorInfo creatorInfo) {
+    Expression.ListExpression expressions = new Expression.ListExpression();
+    CreatorArguments arguments = creatorParameterArguments(creatorInfo, expressions);
+    expressions.add(creatorReadLoop(builder, creatorInfo.fields(), arguments));
+    expressions.add(reserveObject(objectOwner));
     expressions.add(new Expression.Invoke(readerRef(), "exitDepth"));
-    expressions.add(new Expression.Return(createValue(type, arguments)));
+    expressions.add(finishCreator(builder, type, creatorInfo, arguments));
+    addGeneratedMethod(
+        ctx,
+        "private final",
+        creatorSlowMethod(),
+        expressions,
+        type,
+        creatorSlowParameters(creatorInfo));
+  }
+
+  private Expression creatorSlowCall(
+      Class<?> type, JsonCreatorInfo creatorInfo, CreatorArguments arguments) {
+    int inputCount =
+        1 + arguments.values.length + (arguments.present == null ? 0 : arguments.present.length);
+    Expression[] inputs = new Expression[inputCount];
+    inputs[0] = readerRef();
+    System.arraycopy(arguments.values, 0, inputs, 1, arguments.values.length);
+    if (arguments.present != null) {
+      System.arraycopy(
+          arguments.present, 0, inputs, 1 + arguments.values.length, arguments.present.length);
+    }
+    return new Expression.Invoke(
+        new Reference("this", TypeRef.of(Object.class)),
+        creatorSlowMethod(),
+        "",
+        TypeRef.of(type),
+        false,
+        false,
+        inputs);
+  }
+
+  private Object[] creatorSlowParameters(JsonCreatorInfo creatorInfo) {
+    Class<?>[] valueTypes = creatorValueTypes(creatorInfo);
+    int presentCount = creatorInfo.tracksArgumentPresence() ? valueTypes.length : 0;
+    Object[] parameters = new Object[(1 + valueTypes.length + presentCount) * 2];
+    int index = 0;
+    parameters[index++] = readerType();
+    parameters[index++] = "reader";
+    for (int i = 0; i < valueTypes.length; i++) {
+      parameters[index++] = valueTypes[i];
+      parameters[index++] = "a" + i;
+    }
+    for (int i = 0; i < presentCount; i++) {
+      parameters[index++] = boolean.class;
+      parameters[index++] = "p" + i;
+    }
+    return parameters;
+  }
+
+  private String creatorSlowMethod() {
+    return readMethod() + "Slow";
+  }
+
+  private Expression readCreatorFieldIndex(Expression fieldIndex, JsonCreatorFieldInfo[] fields) {
+    Expression hash = readFieldNameHash("creatorFieldHash");
+    Expression fallback =
+        new Expression.ListExpression(
+            hash,
+            new Expression.Assign(
+                fieldIndex,
+                new Expression.Invoke(
+                        fieldRef("creator", JsonCreatorInfo.class),
+                        "index",
+                        TypeRef.of(int.class),
+                        true,
+                        hash)
+                    .inline()),
+            expectExpr(':'));
+    if (!rawFieldNameDispatch() || !hasDirectCreatorFieldName(fields)) {
+      return fallback;
+    }
+    Expression prefix =
+        new Expression.Invoke(
+            readerRef(), "readFieldNamePrefix", "creatorFieldPrefix", TypeRef.of(int.class), false);
+    // A complete direct token consumes the colon. A miss leaves the name unread, so the existing
+    // hash path retains whitespace, escape, unknown-name, collision, and malformed-input behavior.
+    return new Expression.ListExpression(
+        prefix,
+        directCreatorFieldNameSwitch(fieldIndex, prefix, fields),
+        new Expression.If(
+            eq(fieldIndex, Expression.Literal.ofInt(JsonFieldTable.UNKNOWN)), fallback));
+  }
+
+  private CreatorArguments creatorArguments(
+      JsonCreatorInfo creatorInfo, Expression.ListExpression expressions) {
+    // Creator fields cover only read-enabled JSON members. The executable owns the full argument
+    // shape, including ignored or getter-only parameters which must still receive typed defaults.
+    Class<?>[] valueTypes = creatorValueTypes(creatorInfo);
+    Expression[] values = new Expression[valueTypes.length];
+    Expression[] present =
+        creatorInfo.tracksArgumentPresence() ? new Expression[values.length] : null;
+    for (int i = 0; i < values.length; i++) {
+      values[i] = new Expression.Variable("a" + i, creatorDefault(valueTypes[i]));
+      expressions.add(values[i]);
+      if (present != null) {
+        present[i] = new Expression.Variable("p" + i, Expression.Literal.False);
+        expressions.add(present[i]);
+      }
+    }
+    Expression[] masks = new Expression[creatorInfo.defaultMaskCount()];
+    for (int i = 0; i < masks.length; i++) {
+      masks[i] = new Expression.Variable("m" + i, Expression.Literal.ofInt(0));
+      expressions.add(masks[i]);
+    }
+    return new CreatorArguments(values, present, masks);
+  }
+
+  private CreatorArguments creatorParameterArguments(
+      JsonCreatorInfo creatorInfo, Expression.ListExpression expressions) {
+    Class<?>[] valueTypes = creatorValueTypes(creatorInfo);
+    Expression[] values = new Expression[valueTypes.length];
+    Expression[] present =
+        creatorInfo.tracksArgumentPresence() ? new Expression[valueTypes.length] : null;
+    for (int i = 0; i < valueTypes.length; i++) {
+      values[i] = new Reference("a" + i, TypeRef.of(valueTypes[i]));
+      if (present != null) {
+        present[i] = new Reference("p" + i, TypeRef.of(boolean.class));
+      }
+    }
+    Expression[] masks = new Expression[creatorInfo.defaultMaskCount()];
+    for (int i = 0; i < masks.length; i++) {
+      masks[i] = new Expression.Variable("m" + i, Expression.Literal.ofInt(0));
+      expressions.add(masks[i]);
+    }
+    return new CreatorArguments(values, present, masks);
+  }
+
+  private Class<?>[] creatorValueTypes(JsonCreatorInfo creatorInfo) {
+    Class<?>[] parameterTypes = creatorInfo.executable().getParameterTypes();
+    JsonFieldInfo[] deferredFields = creatorInfo.deferredFields();
+    Class<?>[] valueTypes =
+        Arrays.copyOf(parameterTypes, parameterTypes.length + deferredFields.length);
+    for (int i = 0; i < deferredFields.length; i++) {
+      valueTypes[parameterTypes.length + i] = deferredFields[i].readRawType();
+    }
+    return valueTypes;
+  }
+
+  private Expression assignCreatorArgument(
+      CreatorArguments arguments, int index, Expression value) {
+    Expression assign = new Expression.Assign(arguments.values[index], value);
+    if (arguments.present == null) {
+      return assign;
+    }
+    return new Expression.ListExpression(
+        assign, new Expression.Assign(arguments.present[index], Expression.Literal.True));
+  }
+
+  private Expression resolveMissingArguments(
+      JsonCreatorInfo creatorInfo, CreatorArguments arguments) {
+    if (arguments.present == null) {
+      return new Expression.ListExpression();
+    }
+    Class<?>[] parameterTypes = creatorInfo.executable().getParameterTypes();
+    Expression.ListExpression expressions = new Expression.ListExpression();
+    for (int i = 0; i < parameterTypes.length; i++) {
+      int maskBit = creatorInfo.defaultMaskBit(i);
+      if (maskBit >= 0) {
+        int word = maskBit >>> 5;
+        Expression setMask =
+            new Expression.Assign(
+                arguments.masks[word],
+                new Expression.BitOr(
+                    arguments.masks[word], Expression.Literal.ofInt(1 << (maskBit & 31))));
+        expressions.add(new Expression.If(not(arguments.present[i]), setMask));
+      } else {
+        Expression defaultValue = creatorDefaultValue(creatorInfo, arguments, i, parameterTypes[i]);
+        expressions.add(
+            new Expression.If(
+                not(arguments.present[i]),
+                new Expression.Assign(arguments.values[i], defaultValue)));
+      }
+    }
+    JsonFieldInfo[] deferredFields = creatorInfo.deferredFields();
+    for (int i = 0; i < deferredFields.length; i++) {
+      if (creatorInfo.deferredRequired(i)) {
+        expressions.add(
+            new Expression.If(
+                not(arguments.present[parameterTypes.length + i]),
+                new Expression.Invoke(
+                    fieldRef("creator", JsonCreatorInfo.class),
+                    "requireDeferred",
+                    Expression.Literal.ofInt(i))));
+      }
+    }
     return expressions;
   }
 
-  private Expression[] creatorArguments(
-      Executable executable, Expression.ListExpression expressions) {
-    // Creator fields cover only read-enabled JSON members. The executable owns the full argument
-    // shape, including ignored or getter-only parameters which must still receive typed defaults.
-    Class<?>[] parameterTypes = executable.getParameterTypes();
-    Expression[] arguments = new Expression[parameterTypes.length];
-    for (int i = 0; i < parameterTypes.length; i++) {
-      arguments[i] = new Expression.Variable("a" + i, creatorDefault(parameterTypes[i]));
-      expressions.add(arguments[i]);
+  private Expression creatorDefaultValue(
+      JsonCreatorInfo creatorInfo, CreatorArguments arguments, int index, Class<?> parameterType) {
+    Method method = creatorInfo.defaultMethod(index);
+    if (method == null) {
+      return new Expression.Cast(
+          new Expression.Invoke(
+              fieldRef("creator", JsonCreatorInfo.class),
+              "defaultValue",
+              TypeRef.of(Object.class),
+              Expression.Literal.ofInt(index),
+              new Expression.Null(TypeRef.of(Object[].class), false)),
+          TypeRef.of(parameterType));
     }
-    return arguments;
+    Class<?>[] dependencies = method.getParameterTypes();
+    Expression[] inputs = new Expression[dependencies.length];
+    for (int i = 0; i < dependencies.length; i++) {
+      inputs[i] = new Expression.Cast(arguments.values[i], TypeRef.of(dependencies[i])).inline();
+    }
+    Expression value =
+        new Expression.StaticInvoke(
+            method.getDeclaringClass(),
+            method.getName(),
+            TypeRef.of(method.getReturnType()),
+            inputs);
+    return new Expression.Cast(value, TypeRef.of(parameterType));
+  }
+
+  private Expression finishCreator(
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonCreatorInfo creatorInfo,
+      CreatorArguments arguments) {
+    Expression.ListExpression expressions = new Expression.ListExpression();
+    expressions.add(resolveMissingArguments(creatorInfo, arguments));
+    Expression[] constructorArguments =
+        Arrays.copyOf(arguments.values, creatorInfo.argumentCount() + arguments.masks.length);
+    System.arraycopy(
+        arguments.masks,
+        0,
+        constructorArguments,
+        creatorInfo.argumentCount(),
+        arguments.masks.length);
+    Expression value = new Expression.Variable("value", createValue(type, constructorArguments));
+    expressions.add(value);
+    JsonFieldInfo[] deferredFields = creatorInfo.deferredFields();
+    for (int i = 0; i < deferredFields.length; i++) {
+      int slot = creatorInfo.argumentCount() + i;
+      expressions.add(
+          new Expression.If(
+              arguments.present[slot],
+              builder.setField(deferredFields[i], value, arguments.values[slot])));
+    }
+    if (creatorInfo.hasDeferredFields() && objectOwner.hasValidators()) {
+      expressions.add(new Expression.Invoke(ownerRef(), "validateObject", value));
+    }
+    expressions.add(new Expression.Return(value));
+    return expressions;
+  }
+
+  private static final class CreatorArguments {
+    private final Expression[] values;
+    private final Expression[] present;
+    private final Expression[] masks;
+
+    private CreatorArguments(Expression[] values, Expression[] present, Expression[] masks) {
+      this.values = values;
+      this.present = present;
+      this.masks = masks;
+    }
   }
 
   private void addUnwrappedCreatorMethods(
-      CodegenContext ctx, Class<?> rootType, JsonCreatorInfo rootCreator, Group[] groups) {
+      JsonGeneratedCodecBuilder builder,
+      Class<?> rootType,
+      JsonCreatorInfo rootCreator,
+      Group[] groups) {
     if (rootCreator != null) {
       addWorkspaceCreatorMethod(
-          ctx, rootType, rootCreator.executable(), unwrappedCreatorMethod(-1), "owner");
+          builder, rootType, rootCreator, unwrappedCreatorMethod(-1), "owner", "this.creator");
     }
     for (int i = 0; i < groups.length; i++) {
       ObjectCodec<?> child = groups[i].childCodec();
       JsonCreatorInfo creator = child.creatorInfo();
       if (creator != null) {
         addWorkspaceCreatorMethod(
-            ctx,
+            builder,
             child.type(),
-            creator.executable(),
+            creator,
             unwrappedCreatorMethod(i),
-            "this.groupCodecs[" + i + "]");
+            "this.groupCodecs[" + i + "]",
+            "this.groupCodecs[" + i + "].creatorInfo()");
       }
     }
   }
 
   private void addWorkspaceCreatorMethod(
-      CodegenContext ctx,
+      JsonGeneratedCodecBuilder builder,
       Class<?> type,
-      Executable executable,
+      JsonCreatorInfo creator,
       String methodName,
-      String codecExpression) {
+      String codecExpression,
+      String creatorExpression) {
+    CodegenContext ctx = builder.context();
+    Executable executable = creator.executable();
     Class<?>[] parameterTypes = executable.getParameterTypes();
     StringBuilder invocation = new StringBuilder();
     for (int i = 0; i < parameterTypes.length; i++) {
@@ -977,17 +1408,36 @@ abstract class JsonReaderCodegen {
           .append(i)
           .append("])");
     }
+    int maskCount = creator.defaultMaskCount();
+    StringBuilder maskedInvocation = new StringBuilder(invocation);
+    for (int i = 0; i < maskCount; i++) {
+      maskedInvocation.append(", m").append(i);
+    }
     String typeName = ctx.type(type);
-    String expression =
-        executable instanceof Constructor
-            ? "new " + typeName + "(" + invocation + ")"
-            : typeName + "." + ((Method) executable).getName() + "(" + invocation + ")";
+    String expression = creatorInvocation(builder, type, creator, invocation.toString());
     StringBuilder body = new StringBuilder();
-    body.append(typeName)
-        .append(" value;\ntry {\n  value = ")
-        .append(expression)
-        .append(";\n")
-        .append("} catch (Throwable e) {\n  throw ")
+    for (int i = 0; i < maskCount; i++) {
+      body.append("int m").append(i).append(" = 0;\n");
+    }
+    appendWorkspaceDefaults(ctx, body, creator, creatorExpression, parameterTypes);
+    body.append(typeName).append(" value;\ntry {\n");
+    if (maskCount == 0) {
+      body.append("  value = ").append(expression).append(";\n");
+    } else {
+      body.append("  if ((");
+      for (int i = 0; i < maskCount; i++) {
+        if (i != 0) {
+          body.append(" | ");
+        }
+        body.append('m').append(i);
+      }
+      body.append(") == 0) {\n    value = ")
+          .append(expression)
+          .append(";\n  } else {\n    value = ")
+          .append(defaultCreatorInvocation(builder, type, creator, maskedInvocation.toString()))
+          .append(";\n  }\n");
+    }
+    body.append("} catch (Throwable e) {\n  throw ")
         .append(codecExpression)
         .append(".creatorFailure(e);\n}\n");
     if (executable instanceof Method) {
@@ -1000,6 +1450,110 @@ abstract class JsonReaderCodegen {
       body.append("return value;");
     }
     ctx.addMethod("private final", methodName, body.toString(), type, Object[].class, "arguments");
+  }
+
+  private void appendWorkspaceDefaults(
+      CodegenContext ctx,
+      StringBuilder body,
+      JsonCreatorInfo creator,
+      String creatorExpression,
+      Class<?>[] parameterTypes) {
+    for (int i = 0; i < parameterTypes.length; i++) {
+      Method method = creator.defaultMethod(i);
+      body.append("if (")
+          .append(ctx.type(JsonCreatorInfo.class))
+          .append(".isMissing(arguments[")
+          .append(i)
+          .append("])) {\n  ");
+      if (method == null) {
+        int maskBit = creator.defaultMaskBit(i);
+        if (maskBit < 0) {
+          body.append("throw ")
+              .append(creatorExpression)
+              .append(".missingArgument(")
+              .append(i)
+              .append(");\n");
+        } else {
+          body.append("arguments[")
+              .append(i)
+              .append("] = ")
+              .append(workspaceDefault(parameterTypes[i]))
+              .append(";\n  m")
+              .append(maskBit >>> 5)
+              .append(" |= ")
+              .append(1 << (maskBit & 31))
+              .append(";\n");
+        }
+      } else {
+        body.append("arguments[")
+            .append(i)
+            .append("] = ")
+            .append(ctx.type(method.getDeclaringClass()))
+            .append('.')
+            .append(method.getName())
+            .append('(');
+        Class<?>[] dependencies = method.getParameterTypes();
+        for (int j = 0; j < dependencies.length; j++) {
+          if (j != 0) {
+            body.append(", ");
+          }
+          Class<?> castType =
+              dependencies[j].isPrimitive()
+                  ? TypeUtils.boxedType(dependencies[j])
+                  : dependencies[j];
+          body.append("((")
+              .append(ctx.type(castType))
+              .append(") arguments[")
+              .append(j)
+              .append("])");
+        }
+        body.append(");\n");
+      }
+      body.append("}\n");
+    }
+    JsonFieldInfo[] deferredFields = creator.deferredFields();
+    for (int i = 0; i < deferredFields.length; i++) {
+      if (!creator.deferredRequired(i)) {
+        continue;
+      }
+      body.append("if (")
+          .append(ctx.type(JsonCreatorInfo.class))
+          .append(".isMissing(arguments[")
+          .append(creator.deferredSlot(i))
+          .append("])) {\n  throw ")
+          .append(creatorExpression)
+          .append(".missingDeferred(")
+          .append(i)
+          .append(");\n}\n");
+    }
+  }
+
+  private static String workspaceDefault(Class<?> type) {
+    if (!type.isPrimitive()) {
+      return "null";
+    }
+    if (type == boolean.class) {
+      return "false";
+    }
+    if (type == char.class) {
+      return "(char) 0";
+    }
+    if (type == byte.class) {
+      return "(byte) 0";
+    }
+    if (type == short.class) {
+      return "(short) 0";
+    }
+    if (type == long.class) {
+      return "0L";
+    }
+    if (type == float.class) {
+      return "0F";
+    }
+    if (type == double.class) {
+      return "0D";
+    }
+    return "0";
   }
 
   private String unwrappedCreatorMethod(int groupIndex) {
@@ -1042,8 +1596,19 @@ abstract class JsonReaderCodegen {
     return new Expression.Literal(type == float.class ? 0F : 0D, TypeRef.of(type));
   }
 
-  private Expression readCreatorValue(JsonCreatorFieldInfo field, int id) {
+  private Expression readCreatorValue(
+      JsonGeneratedCodecBuilder builder, JsonCreatorFieldInfo field, int id) {
     Class<?> type = field.rawType();
+    DirectUnboxedValueCodec direct = field.directUnboxedValueCodec();
+    if (direct != null) {
+      return new Expression.Cast(
+          builder.valueOperation(direct.readCarrierMethod(), readerRef()), TypeRef.of(type));
+    }
+    TransparentUnboxedValueCodec transparent = field.transparentUnboxedValueCodec();
+    if (transparent != null) {
+      Expression value = readCreatorTerminal(builder, field, id);
+      return new Expression.Cast(constructCarrier(builder, transparent, value), TypeRef.of(type));
+    }
     if (!isDirectCreatorPrimitive(field)) {
       Expression codec =
           usesReaderSlot(field.typeInfo())
@@ -1091,12 +1656,123 @@ abstract class JsonReaderCodegen {
     throw new IllegalStateException("Unsupported primitive creator type " + type);
   }
 
+  private Expression readCreatorTerminal(
+      JsonGeneratedCodecBuilder builder, JsonCreatorFieldInfo field, int id) {
+    return readTerminal(builder, field.typeInfo(), id, false, creatorReader(field, id));
+  }
+
+  private Expression creatorReader(JsonCreatorFieldInfo field, int id) {
+    return usesReaderSlot(field.typeInfo())
+        ? readerFromSlot(fieldRef("r" + id, JsonTypeInfo.class))
+        : fieldRef("r" + id, readerCapabilityType());
+  }
+
+  private Expression readTerminal(
+      JsonGeneratedCodecBuilder builder,
+      JsonTypeInfo typeInfo,
+      int id,
+      boolean tokenValueRead,
+      Expression codec) {
+    Class<?> rawType = typeInfo.rawType();
+    JsonFieldKind kind = typeInfo.kind();
+    UnboxedValueCodec operation = typeInfo.unboxedValueCodec();
+    if (operation instanceof DirectUnboxedValueCodec) {
+      return builder.valueOperation(
+          ((DirectUnboxedValueCodec) operation).readCarrierMethod(), readerRef());
+    }
+    if (rawType.isPrimitive()) {
+      if (rawType == boolean.class && kind == JsonFieldKind.BOOLEAN) {
+        return readBooleanExpr(tokenValueRead);
+      }
+      if (rawType == byte.class && kind == JsonFieldKind.BYTE) {
+        return new Expression.StaticInvoke(
+            JsonCreatorFieldInfo.class,
+            "checkedByte",
+            TypeRef.of(byte.class),
+            readIntExpr(tokenValueRead));
+      }
+      if (rawType == short.class && kind == JsonFieldKind.SHORT) {
+        return new Expression.StaticInvoke(
+            JsonCreatorFieldInfo.class,
+            "checkedShort",
+            TypeRef.of(short.class),
+            readIntExpr(tokenValueRead));
+      }
+      if (rawType == int.class && kind == JsonFieldKind.INT) {
+        return readIntExpr(tokenValueRead);
+      }
+      if (rawType == long.class && kind == JsonFieldKind.LONG) {
+        return readLongExpr(tokenValueRead);
+      }
+      if (rawType == float.class && kind == JsonFieldKind.FLOAT) {
+        return readFloatExpr();
+      }
+      if (rawType == double.class && kind == JsonFieldKind.DOUBLE) {
+        return readDoubleExpr();
+      }
+      if (rawType == char.class && kind == JsonFieldKind.CHAR) {
+        return new Expression.Invoke(readerRef(), "readChar", TypeRef.of(char.class)).inline();
+      }
+    }
+    if (rawType == String.class && kind == JsonFieldKind.STRING) {
+      return readStringExpr(tokenValueRead);
+    }
+    return new Expression.Cast(
+        inline(
+            new Expression.Invoke(
+                codec, readMethod(), TypeRef.of(Object.class), false, readerRef())),
+        TypeRef.of(rawType));
+  }
+
+  private Expression constructCarrier(
+      JsonGeneratedCodecBuilder builder, TransparentUnboxedValueCodec operation, Expression value) {
+    Method[] methods = operation.constructMethods();
+    int[] boxBytes = operation.constructBoxBytes();
+    if (methods.length == 0 || methods.length != boxBytes.length) {
+      throw new ForyJsonException("Invalid transparent unboxed constructor operations");
+    }
+    Expression current = value;
+    for (int i = 0; i < methods.length; i++) {
+      Expression invoke = inline(builder.valueOperation(methods[i], current));
+      if (boxBytes[i] != 0) {
+        invoke =
+            new Expression.ListExpression(
+                new Expression.Invoke(
+                    readerRef(), "reserveGraphMemory", Expression.Literal.ofInt(boxBytes[i])),
+                invoke);
+      }
+      current = invoke;
+    }
+    return current;
+  }
+
   private static boolean isDirectCreatorPrimitive(JsonCreatorFieldInfo field) {
     Class<?> type = field.rawType();
+    return isDirectPrimitive(type, field.typeInfo().kind());
+  }
+
+  private static boolean usesCreatorReader(JsonCreatorFieldInfo field) {
+    if (field.directUnboxedValueCodec() != null) {
+      return false;
+    }
+    TransparentUnboxedValueCodec transparent = field.transparentUnboxedValueCodec();
+    if (transparent == null) {
+      return !isDirectCreatorPrimitive(field);
+    }
+    JsonTypeInfo terminal = transparent.valueTypeInfo();
+    if (terminal.unboxedValueCodec() instanceof DirectUnboxedValueCodec) {
+      return false;
+    }
+    if (terminal.rawType() == String.class && terminal.kind() == JsonFieldKind.STRING) {
+      return false;
+    }
+    return !isDirectPrimitive(terminal.rawType(), terminal.kind());
+  }
+
+  private static boolean isDirectPrimitive(Class<?> type, JsonFieldKind kind) {
     if (!type.isPrimitive()) {
       return false;
     }
-    JsonFieldKind kind = field.typeInfo().kind();
     return type == boolean.class && kind == JsonFieldKind.BOOLEAN
         || (type == byte.class && kind == JsonFieldKind.BYTE)
         || (type == short.class && kind == JsonFieldKind.SHORT)
@@ -1333,7 +2009,7 @@ abstract class JsonReaderCodegen {
     expressions.add(
         new Expression.Assign(
             new Reference("this.readTable", TypeRef.of(JsonFieldTable.class)), table));
-    if (any != null) {
+    if (any != null || objectOwner.hasValidators()) {
       expressions.add(
           new Expression.Assign(new Reference("this.owner", TypeRef.of(ObjectCodec.class)), owner));
     }
@@ -1366,12 +2042,20 @@ abstract class JsonReaderCodegen {
               new Expression.Invoke(property, "nameHash", TypeRef.of(long.class)).inline(),
               id));
       if (JsonCodegen.usesReadCodec(properties[i], resolver)) {
-        Class<?> codecType = codecFieldType(properties[i]);
-        expressions.add(
-            new Expression.Assign(
-                new Reference("this.r" + i, TypeRef.of(codecType)),
-                new Expression.Cast(
-                    new Expression.ArrayValue(codecsRef, id), TypeRef.of(codecType))));
+        if (usesReaderSlot(properties[i].readTypeInfo())) {
+          expressions.add(
+              new Expression.Assign(
+                  new Reference("this.r" + i, TypeRef.of(JsonTypeInfo.class)),
+                  new Expression.Invoke(property, "readTypeInfo", TypeRef.of(JsonTypeInfo.class))
+                      .inline()));
+        } else {
+          Class<?> codecType = codecFieldType(properties[i]);
+          expressions.add(
+              new Expression.Assign(
+                  new Reference("this.r" + i, TypeRef.of(codecType)),
+                  new Expression.Cast(
+                      new Expression.ArrayValue(codecsRef, id), TypeRef.of(codecType))));
+        }
       } else if (storesReadObjectCodec(type, properties[i])) {
         if (usesReaderSlot(properties[i].readTypeInfo())) {
           expressions.add(
@@ -1424,7 +2108,7 @@ abstract class JsonReaderCodegen {
               new Expression.Invoke(owner, "creatorInfo", TypeRef.of(JsonCreatorInfo.class))
                   .inline()));
       for (int i = 0; i < creatorFields.length; i++) {
-        if (!isDirectCreatorPrimitive(creatorFields[i])) {
+        if (usesCreatorReader(creatorFields[i])) {
           expressions.add(
               new Expression.Assign(
                   new Reference("this.r" + i, TypeRef.of(readerCapabilityType())),
@@ -1439,7 +2123,7 @@ abstract class JsonReaderCodegen {
       JsonFieldInfo field = routes[i].field();
       if (field != null) {
         addUnwrappedReaderAssignment(expressions, type, field, id, properties, codecs);
-      } else if (!isDirectCreatorPrimitive(routes[i].creatorField())) {
+      } else if (usesCreatorReader(routes[i].creatorField())) {
         expressions.add(
             new Expression.Assign(
                 new Reference("this.r" + id, TypeRef.of(readerCapabilityType())),
@@ -1494,13 +2178,21 @@ abstract class JsonReaderCodegen {
               new Reference("this.rp" + id, TypeRef.of(JsonFieldInfo.class)), property));
     }
     if (JsonCodegen.usesReadCodec(field, resolver)) {
-      Class<?> codecType = codecFieldType(field);
-      expressions.add(
-          new Expression.Assign(
-              new Reference("this.r" + id, TypeRef.of(codecType)),
-              new Expression.Cast(
-                  new Expression.ArrayValue(codecs, Expression.Literal.ofInt(id)),
-                  TypeRef.of(codecType))));
+      if (usesReaderSlot(field.readTypeInfo())) {
+        expressions.add(
+            new Expression.Assign(
+                new Reference("this.r" + id, TypeRef.of(JsonTypeInfo.class)),
+                new Expression.Invoke(property, "readTypeInfo", TypeRef.of(JsonTypeInfo.class))
+                    .inline()));
+      } else {
+        Class<?> codecType = codecFieldType(field);
+        expressions.add(
+            new Expression.Assign(
+                new Reference("this.r" + id, TypeRef.of(codecType)),
+                new Expression.Cast(
+                    new Expression.ArrayValue(codecs, Expression.Literal.ofInt(id)),
+                    TypeRef.of(codecType))));
+      }
     } else if (storesReadObjectCodec(type, field)) {
       expressions.add(
           new Expression.Assign(
@@ -1519,18 +2211,55 @@ abstract class JsonReaderCodegen {
     return new Expression.Variable("object", inline(value));
   }
 
-  private Expression finishUnwrappedRoot(Expression root, Class<?> type, JsonCreatorInfo creator) {
+  private Expression finishUnwrappedRoot(
+      JsonGeneratedCodecBuilder builder, Expression root, Class<?> type, JsonCreatorInfo creator) {
     if (creator == null) {
       return root;
     }
-    return new Expression.Invoke(
-        new Reference("this", TypeRef.of(Object.class)),
-        unwrappedCreatorMethod(-1),
-        "",
-        TypeRef.of(type),
-        false,
-        false,
-        new Expression.Cast(root, TypeRef.of(Object[].class)));
+    Expression workspace = new Expression.Cast(root, TypeRef.of(Object[].class));
+    Expression constructed =
+        new Expression.Invoke(
+            new Reference("this", TypeRef.of(Object.class)),
+            unwrappedCreatorMethod(-1),
+            "",
+            TypeRef.of(type),
+            false,
+            false,
+            workspace);
+    return finishWorkspaceObject(builder, creator, type, constructed, workspace, "constructedRoot");
+  }
+
+  private Expression finishWorkspaceObject(
+      JsonGeneratedCodecBuilder builder,
+      JsonCreatorInfo creator,
+      Class<?> type,
+      Expression constructed,
+      Expression workspace,
+      String name) {
+    if (!creator.hasDeferredFields()) {
+      return constructed;
+    }
+    Expression value =
+        new Expression.Variable(name, new Expression.Cast(constructed, TypeRef.of(type)));
+    Expression.ListExpression expressions = new Expression.ListExpression(value);
+    JsonFieldInfo[] deferredFields = creator.deferredFields();
+    for (int i = 0; i < deferredFields.length; i++) {
+      JsonFieldInfo field = deferredFields[i];
+      Expression deferred =
+          new Expression.Variable(
+              name + "Deferred" + i,
+              new Expression.ArrayValue(
+                  new Expression.Cast(workspace, TypeRef.of(Object[].class)),
+                  Expression.Literal.ofInt(creator.deferredSlot(i))));
+      Expression missing =
+          new Expression.StaticInvoke(
+              JsonCreatorInfo.class, "isMissing", TypeRef.of(boolean.class), deferred);
+      Expression typed = new Expression.Cast(deferred, TypeRef.of(field.readRawType()));
+      expressions.add(
+          deferred, new Expression.If(not(missing), builder.setField(field, value, typed)));
+    }
+    expressions.add(value);
+    return expressions;
   }
 
   private Expression.ListExpression unwrappedMembers(
@@ -1602,7 +2331,7 @@ abstract class JsonReaderCodegen {
     Expression directRead =
         creatorFields == null
             ? unwrappedDirectFields(builder, type, directFields, root, direct)
-            : unwrappedDirectCreator(creatorFields, root, direct);
+            : unwrappedDirectCreator(builder, creatorFields, root, direct);
     Expression directMiss = direct;
     if (creatorFields != null) {
       directMiss =
@@ -1700,7 +2429,10 @@ abstract class JsonReaderCodegen {
   }
 
   private Expression unwrappedDirectCreator(
-      JsonCreatorFieldInfo[] fields, Expression root, Expression index) {
+      JsonGeneratedCodecBuilder builder,
+      JsonCreatorFieldInfo[] fields,
+      Expression root,
+      Expression index) {
     if (fields.length > READ_FIELD_SWITCH_SIZE) {
       int chunks = (fields.length + READ_FIELD_SWITCH_SIZE - 1) / READ_FIELD_SWITCH_SIZE;
       Expression.Switch.Case[] cases = new Expression.Switch.Case[chunks];
@@ -1726,11 +2458,16 @@ abstract class JsonReaderCodegen {
               true, "/", index, Expression.Literal.ofInt(READ_FIELD_SWITCH_SIZE));
       return new Expression.Switch(chunk, cases, new Expression.Invoke(readerRef(), "skipValue"));
     }
-    return unwrappedDirectCreator(fields, 0, fields.length, root, index);
+    return unwrappedDirectCreator(builder, fields, 0, fields.length, root, index);
   }
 
   private Expression unwrappedDirectCreator(
-      JsonCreatorFieldInfo[] fields, int start, int end, Expression root, Expression index) {
+      JsonGeneratedCodecBuilder builder,
+      JsonCreatorFieldInfo[] fields,
+      int start,
+      int end,
+      Expression root,
+      Expression index) {
     Expression.Switch.Case[] cases = new Expression.Switch.Case[end - start];
     for (int i = start; i < end; i++) {
       JsonCreatorFieldInfo field = fields[i];
@@ -1740,7 +2477,7 @@ abstract class JsonReaderCodegen {
               new Expression.ListExpression(
                   new Expression.AssignArrayElem(
                       root,
-                      readCreatorValue(field, i),
+                      readCreatorValue(builder, field, i),
                       Expression.Literal.ofInt(field.argumentIndex())),
                   new Expression.Break()));
     }
@@ -1817,7 +2554,7 @@ abstract class JsonReaderCodegen {
         read.add(
             new Expression.AssignArrayElem(
                 new Expression.Cast(workspace, TypeRef.of(Object[].class)),
-                readCreatorValue(field, id),
+                readCreatorValue(builder, field, id),
                 Expression.Literal.ofInt(field.argumentIndex())));
       }
       read.add(new Expression.Break());
@@ -1846,7 +2583,7 @@ abstract class JsonReaderCodegen {
         Expression read =
             creatorFields == null
                 ? unwrappedDirectFields(builder, type, fields, start, end, root, index)
-                : unwrappedDirectCreator(creatorFields, start, end, root, index);
+                : unwrappedDirectCreator(builder, creatorFields, start, end, root, index);
         addGeneratedMethod(
             ctx,
             "private final",
@@ -1912,6 +2649,7 @@ abstract class JsonReaderCodegen {
             TypeRef.of(void.class),
             false,
             false,
+            readerRef(),
             Expression.Literal.ofInt(group.readIndex()),
             workspaces,
             present));
@@ -1936,7 +2674,7 @@ abstract class JsonReaderCodegen {
             + "}\n"
             + "while (true) {\n"
             + "  if (!present[current]) {\n"
-            + "    initUnwrappedGroup(current, workspaces, present);\n"
+            + "    initUnwrappedGroup(reader, current, workspaces, present);\n"
             + "  }\n"
             + "  if (current == target) {\n"
             + "    return;\n"
@@ -1951,6 +2689,8 @@ abstract class JsonReaderCodegen {
         "ensureUnwrappedGroup",
         ensureBody,
         void.class,
+        readerType(),
+        "reader",
         int.class,
         "target",
         Object[].class,
@@ -1971,11 +2711,21 @@ abstract class JsonReaderCodegen {
       StringBuilder body = new StringBuilder("switch (groupIndex) {\n");
       for (int i = start; i < end; i++) {
         ObjectCodec<?> child = groups[i].childCodec();
-        body.append("case ").append(i).append(":\n  workspaces[").append(i).append("] = ");
+        body.append("case ").append(i).append(":\n");
         if (child.creatorInfo() != null) {
-          body.append("this.groupCodecs[").append(i).append("].creatorInfo().newArguments();\n");
+          body.append("  workspaces[")
+              .append(i)
+              .append("] = this.groupCodecs[")
+              .append(i)
+              .append("].creatorInfo().newArguments();\n");
         } else {
-          body.append("this.groupCodecs[").append(i).append("].newInstance();\n");
+          body.append("  reader.reserveGraphMemory(")
+              .append(child.graphMemoryBytes())
+              .append(");\n  workspaces[")
+              .append(i)
+              .append("] = this.groupCodecs[")
+              .append(i)
+              .append("].newInstance();\n");
         }
         body.append("  present[").append(i).append("] = true;\n  return;\n");
       }
@@ -1985,6 +2735,8 @@ abstract class JsonReaderCodegen {
           unwrappedGroupInitMethod(start),
           body.toString(),
           void.class,
+          readerType(),
+          "reader",
           int.class,
           "groupIndex",
           Object[].class,
@@ -1996,7 +2748,7 @@ abstract class JsonReaderCodegen {
           .append(chunk)
           .append(":\n  ")
           .append(unwrappedGroupInitMethod(start))
-          .append("(groupIndex, workspaces, present);\n  return;\n");
+          .append("(reader, groupIndex, workspaces, present);\n  return;\n");
     }
     dispatch.append("default:\n  throw new IllegalArgumentException();\n}");
     ctx.addMethod(
@@ -2004,6 +2756,8 @@ abstract class JsonReaderCodegen {
         "initUnwrappedGroup",
         dispatch.toString(),
         void.class,
+        readerType(),
+        "reader",
         int.class,
         "groupIndex",
         Object[].class,
@@ -2045,6 +2799,8 @@ abstract class JsonReaderCodegen {
           new Expression.Switch(
               new Reference("groupIndex", TypeRef.of(int.class)), cases, new Expression.Empty()),
           void.class,
+          readerType(),
+          "reader",
           rootWorkspaceType,
           "root",
           Object[].class,
@@ -2062,6 +2818,7 @@ abstract class JsonReaderCodegen {
                       TypeRef.of(void.class),
                       false,
                       false,
+                      readerRef(),
                       new Reference("root", TypeRef.of(rootWorkspaceType)),
                       new Reference("workspaces", TypeRef.of(Object[].class)),
                       new Reference("groupIndex", TypeRef.of(int.class))),
@@ -2079,6 +2836,8 @@ abstract class JsonReaderCodegen {
         "finishUnwrappedGroup",
         new Expression.Switch(chunk, dispatchCases, new Expression.Empty()),
         void.class,
+        readerType(),
+        "reader",
         rootWorkspaceType,
         "root",
         Object[].class,
@@ -2088,7 +2847,7 @@ abstract class JsonReaderCodegen {
     String body =
         "for (int i = this.groupCodecs.length - 1; i >= 0; i--) {\n"
             + "  if (present[i]) {\n"
-            + "    finishUnwrappedGroup(root, workspaces, i);\n"
+            + "    finishUnwrappedGroup(reader, root, workspaces, i);\n"
             + "  }\n"
             + "}";
     ctx.addMethod(
@@ -2096,6 +2855,8 @@ abstract class JsonReaderCodegen {
         "finishUnwrappedGroups",
         body,
         void.class,
+        readerType(),
+        "reader",
         rootWorkspaceType,
         "root",
         Object[].class,
@@ -2114,7 +2875,7 @@ abstract class JsonReaderCodegen {
     Expression workspace = new Expression.ArrayValue(workspaces, Expression.Literal.ofInt(index));
     Expression child;
     if (childCodec.creatorInfo() != null) {
-      child =
+      Expression constructed =
           new Expression.Invoke(
               new Reference("this", TypeRef.of(Object.class)),
               unwrappedCreatorMethod(index),
@@ -2123,25 +2884,53 @@ abstract class JsonReaderCodegen {
               false,
               false,
               new Expression.Cast(workspace, TypeRef.of(Object[].class)));
+      child =
+          finishWorkspaceObject(
+              builder,
+              childCodec.creatorInfo(),
+              childCodec.type(),
+              constructed,
+              workspace,
+              "constructedGroup" + index);
     } else {
       child = workspace;
     }
+    Expression finishedChild =
+        new Expression.Variable(
+            "finishedGroup" + index, new Expression.Cast(child, TypeRef.of(childCodec.type())));
     Group parent = group.parent();
     ObjectCodec<?> parentCodec = group.parentCodec();
     Expression parentWorkspace =
         parent == null
             ? root
             : new Expression.ArrayValue(workspaces, Expression.Literal.ofInt(parent.readIndex()));
+    Expression assignment;
     if (parentCodec.creatorInfo() != null) {
-      return new Expression.AssignArrayElem(
-          new Expression.Cast(parentWorkspace, TypeRef.of(Object[].class)),
-          child,
-          Expression.Literal.ofInt(group.declaration().constructionIndex()));
+      assignment =
+          new Expression.AssignArrayElem(
+              new Expression.Cast(parentWorkspace, TypeRef.of(Object[].class)),
+              finishedChild,
+              Expression.Literal.ofInt(group.declaration().constructionIndex()));
+    } else {
+      assignment =
+          builder.setUnwrapped(
+              group.declaration(),
+              new Expression.Cast(parentWorkspace, TypeRef.of(parentCodec.type())),
+              finishedChild);
     }
-    return builder.setUnwrapped(
-        group.declaration(),
-        new Expression.Cast(parentWorkspace, TypeRef.of(parentCodec.type())),
-        new Expression.Cast(child, TypeRef.of(childCodec.type())));
+    Expression.ListExpression expressions = new Expression.ListExpression();
+    if (childCodec.creatorInfo() != null) {
+      expressions.add(reserveObject(childCodec));
+    }
+    expressions.add(finishedChild);
+    if (childCodec.hasValidators()) {
+      Expression groupCodec =
+          new Expression.ArrayValue(
+              fieldRef("groupCodecs", ObjectCodec[].class), Expression.Literal.ofInt(index));
+      expressions.add(new Expression.Invoke(groupCodec, "validateObject", finishedChild));
+    }
+    expressions.add(assignment);
+    return expressions;
   }
 
   private Expression finishUnwrappedGroups(
@@ -2158,6 +2947,7 @@ abstract class JsonReaderCodegen {
         TypeRef.of(void.class),
         false,
         false,
+        readerRef(),
         new Expression.Cast(root, TypeRef.of(rootWorkspaceType)),
         workspaces,
         present);
@@ -2183,6 +2973,7 @@ abstract class JsonReaderCodegen {
     Expression object = objectExpression(builder);
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(new Expression.Invoke(readerRef(), "enterDepth"));
+    expressions.add(reserveObject(objectOwner));
     expressions.add(object);
     Expression anyMap = anyMap(builder, object);
     if (anyMap != null) {
@@ -2223,6 +3014,7 @@ abstract class JsonReaderCodegen {
     Expression object = objectExpression(builder);
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(new Expression.Invoke(readerRef(), "enterDepth"));
+    expressions.add(reserveObject(objectOwner));
     expressions.add(object);
     Expression anyMap = anyMap(builder, object);
     if (anyMap != null) {
@@ -2361,9 +3153,9 @@ abstract class JsonReaderCodegen {
       Expression[] skips) {
     if (isDirectName(properties[index].name(), true)) {
       return statementIf(
-          tryReadNextFieldNameColon(properties[index], true),
+          tryReadNextFieldNameColon(properties[index].name()),
           new Expression.ListExpression(
-              readField(builder, type, properties[index], index, object, true),
+              readField(builder, type, properties[index], index, object, false),
               fieldEnd(slowMethod, properties.length, groupEnd, groupHelper, index, object)),
           nextDirectFallback(
               builder,
@@ -2396,9 +3188,9 @@ abstract class JsonReaderCodegen {
     int nextIndex = index + 1;
     if (nextIndex < groupEnd && isDirectName(properties[nextIndex].name(), true)) {
       return statementIf(
-          tryReadNextFieldNameColon(properties[nextIndex], true),
+          tryReadNextFieldNameColon(properties[nextIndex].name()),
           new Expression.ListExpression(
-              readField(builder, type, properties[nextIndex], nextIndex, object, true),
+              readField(builder, type, properties[nextIndex], nextIndex, object, false),
               new Expression.Assign(skips[nextIndex], Expression.Literal.True),
               fieldEnd(slowMethod, properties.length, groupEnd, groupHelper, nextIndex, object)),
           hashFallback(
@@ -2581,8 +3373,19 @@ abstract class JsonReaderCodegen {
     return builder.newObject();
   }
 
+  private Expression reserveObject(ObjectCodec<?> codec) {
+    return new Expression.Invoke(
+        readerRef(), "reserveGraphMemory", Expression.Literal.ofInt(codec.graphMemoryBytes()));
+  }
+
   private Expression returnObject(Expression object) {
     Expression exitDepth = new Expression.Invoke(readerRef(), "exitDepth");
+    if (objectOwner.hasValidators()) {
+      return new Expression.ListExpression(
+          exitDepth,
+          new Expression.Invoke(ownerRef(), "validateObject", object),
+          new Expression.Return(object));
+    }
     return new Expression.ListExpression(exitDepth, new Expression.Return(object));
   }
 
@@ -2755,7 +3558,8 @@ abstract class JsonReaderCodegen {
         new Expression.Variable(
             "finishedAnyMap",
             new Expression.Cast(
-                new Expression.Invoke(ownerRef(), "finishAnyMap", TypeRef.of(Map.class), map),
+                new Expression.Invoke(
+                    ownerRef(), "finishAnyMap", TypeRef.of(Map.class), readerRef(), map),
                 TypeRef.of(Map.class)));
     Expression store;
     if (creatorWorkspace) {
@@ -2791,8 +3595,8 @@ abstract class JsonReaderCodegen {
     expressions.add(hashes);
     expressions.add(fieldIndex);
     Expression anyMapCreated = anyMapCreatedFlag(expressions);
+    expressions.add(expectExpr(':'));
     Expression.ListExpression loop = new Expression.ListExpression();
-    loop.add(expectExpr(':'));
     loop.add(
         fieldSwitch(
             builder,
@@ -2819,16 +3623,21 @@ abstract class JsonReaderCodegen {
     if (fieldStart != null) {
       loop.add(fieldStart);
     }
-    Expression fieldHash = readFieldNameHash("fieldHash");
-    loop.add(fieldHash);
-    loop.add(assignSlowFieldIndex(fieldIndex, expectedIndex, hashes, fieldHash, properties));
-    if (any != null) {
-      loop.add(
-          new Expression.Assign(
-              new Reference("firstFieldHash", TypeRef.of(long.class)), fieldHash));
-      loop.add(
-          new Expression.Assign(
-              new Reference("firstFieldStart", TypeRef.of(int.class)), fieldStart));
+    if (any == null && rawFieldNameDispatch() && hasDirectFieldName(properties)) {
+      loop.add(readDirectFieldIndex(fieldIndex, expectedIndex, hashes, properties));
+    } else {
+      Expression fieldHash = readFieldNameHash("fieldHash");
+      loop.add(fieldHash);
+      loop.add(assignSlowFieldIndex(fieldIndex, expectedIndex, hashes, fieldHash, properties));
+      loop.add(expectExpr(':'));
+      if (any != null) {
+        loop.add(
+            new Expression.Assign(
+                new Reference("firstFieldHash", TypeRef.of(long.class)), fieldHash));
+        loop.add(
+            new Expression.Assign(
+                new Reference("firstFieldStart", TypeRef.of(int.class)), fieldStart));
+      }
     }
     expressions.add(new Expression.While(Expression.Literal.True, loop));
     return expressions;
@@ -2842,6 +3651,9 @@ abstract class JsonReaderCodegen {
       Expression hashes,
       Expression expectedIndex,
       Expression anyMapCreated) {
+    if (any == null && rawFieldNameDispatch() && hasDirectFieldName(properties)) {
+      return readNextDirectField(builder, type, properties, object, hashes, expectedIndex);
+    }
     Expression fieldStart =
         any == null
             ? null
@@ -2863,6 +3675,125 @@ abstract class JsonReaderCodegen {
             builder, type, properties, object, fieldIndex, fieldHash, fieldStart, anyMapCreated),
         updateExpectedIndex(expectedIndex, fieldIndex));
     return expressions;
+  }
+
+  private Expression readNextDirectField(
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonFieldInfo[] properties,
+      Expression object,
+      Expression hashes,
+      Expression expectedIndex) {
+    Reference fieldIndex = new Reference("fieldIndex", TypeRef.of(int.class));
+    return new Expression.ListExpression(
+        new Expression.Variable("fieldIndex", Expression.Literal.ofInt(JsonFieldTable.UNKNOWN)),
+        readDirectFieldIndex(fieldIndex, expectedIndex, hashes, properties),
+        fieldSwitch(builder, type, properties, object, fieldIndex),
+        updateExpectedIndex(expectedIndex, fieldIndex));
+  }
+
+  private Expression readDirectFieldIndex(
+      Expression fieldIndex,
+      Expression expectedIndex,
+      Expression hashes,
+      JsonFieldInfo[] properties) {
+    int unresolved = JsonFieldTable.UNKNOWN;
+    Expression prefix =
+        new Expression.Invoke(
+            readerRef(), "readFieldNamePrefix", "fieldPrefix", TypeRef.of(int.class), false);
+    Expression fieldHash = readFieldNameHash("fieldHash");
+    Expression fallback =
+        new Expression.ListExpression(
+            fieldHash,
+            assignSlowFieldIndex(fieldIndex, expectedIndex, hashes, fieldHash, properties),
+            expectExpr(':'));
+    // Keep classification and complete token verification in the generated slow owner. On a miss
+    // the token matcher leaves the name unread, so one existing hash path retains every escaped,
+    // aliased, unknown, and malformed-name behavior without adding a second scanner owner.
+    return new Expression.ListExpression(
+        prefix,
+        new Expression.Assign(fieldIndex, Expression.Literal.ofInt(unresolved)),
+        directFieldNameSwitch(fieldIndex, prefix, properties),
+        new Expression.If(eq(fieldIndex, Expression.Literal.ofInt(unresolved)), fallback));
+  }
+
+  private boolean hasDirectFieldName(JsonFieldInfo[] properties) {
+    for (JsonFieldInfo property : properties) {
+      if (!property.name().isEmpty() && isDirectName(property.name(), true)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean hasDirectCreatorFieldName(JsonCreatorFieldInfo[] fields) {
+    for (JsonCreatorFieldInfo field : fields) {
+      if (!field.name().isEmpty() && isDirectName(field.name(), true)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private Expression directFieldNameSwitch(
+      Expression fieldIndex, Expression prefix, JsonFieldInfo[] properties) {
+    String[] names = new String[properties.length];
+    for (int i = 0; i < properties.length; i++) {
+      names[i] = properties[i].name();
+    }
+    return directFieldNameSwitch(fieldIndex, prefix, names);
+  }
+
+  private Expression directFieldNameSwitch(
+      Expression fieldIndex, Expression prefix, String[] names) {
+    int[] keys = new int[names.length];
+    int keyCount = 0;
+    for (String name : names) {
+      if (name.isEmpty() || !isDirectName(name, true)) {
+        continue;
+      }
+      int key = (int) JsonAsciiToken.prefix(fieldNameToken(name));
+      boolean found = false;
+      for (int i = 0; i < keyCount; i++) {
+        if (keys[i] == key) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        keys[keyCount++] = key;
+      }
+    }
+    Expression.Switch.Case[] cases = new Expression.Switch.Case[keyCount];
+    for (int keyIndex = 0; keyIndex < keyCount; keyIndex++) {
+      int key = keys[keyIndex];
+      Expression resolve = new Expression.Empty();
+      for (int field = names.length - 1; field >= 0; field--) {
+        String name = names[field];
+        if (!name.isEmpty()
+            && isDirectName(name, true)
+            && (int) JsonAsciiToken.prefix(fieldNameToken(name)) == key) {
+          resolve =
+              new Expression.If(
+                  tryReadNextFieldNameColon(name),
+                  new Expression.Assign(fieldIndex, Expression.Literal.ofInt(field)),
+                  resolve);
+        }
+      }
+      cases[keyIndex] =
+          new Expression.Switch.Case(
+              key, new Expression.ListExpression(resolve, new Expression.Break()));
+    }
+    return new Expression.Switch(prefix, cases, null);
+  }
+
+  private Expression directCreatorFieldNameSwitch(
+      Expression fieldIndex, Expression prefix, JsonCreatorFieldInfo[] fields) {
+    String[] names = new String[fields.length];
+    for (int i = 0; i < fields.length; i++) {
+      names[i] = fields[i].name();
+    }
+    return directFieldNameSwitch(fieldIndex, prefix, names);
   }
 
   private Expression fieldSwitch(
@@ -3015,9 +3946,9 @@ abstract class JsonReaderCodegen {
             "anyValue",
             new Expression.Invoke(
                 anyReaderRef(), readMethod(), TypeRef.of(Object.class), readerRef()));
-    Expression write;
+    Expression read;
     if (any.readSetter() != null) {
-      write =
+      Expression write =
           new Expression.Invoke(
               new Reference("this", TypeRef.of(Object.class)),
               "callAnySetter",
@@ -3028,6 +3959,7 @@ abstract class JsonReaderCodegen {
               object,
               name,
               value);
+      read = new Expression.ListExpression(name, value, write);
     } else {
       Reference map = new Reference("anyMap", TypeRef.of(Map.class));
       Expression create =
@@ -3035,7 +3967,8 @@ abstract class JsonReaderCodegen {
               ? new Expression.ListExpression(
                   new Expression.Assign(
                       map,
-                      new Expression.Invoke(ownerRef(), "newAnyMap", TypeRef.of(Map.class), false)
+                      new Expression.Invoke(
+                              ownerRef(), "newAnyMap", TypeRef.of(Map.class), false, readerRef())
                           .inline()),
                   new Expression.Assign(anyMapCreated, Expression.Literal.True))
               : Modifier.isFinal(any.readField().getModifiers())
@@ -3051,16 +3984,25 @@ abstract class JsonReaderCodegen {
                       new Expression.Assign(
                           map,
                           new Expression.Invoke(
-                                  ownerRef(), "newAnyMap", TypeRef.of(Map.class), false)
+                                  ownerRef(),
+                                  "newAnyMap",
+                                  TypeRef.of(Map.class),
+                                  false,
+                                  readerRef())
                               .inline()),
                       new Expression.Assign(anyMapCreated, Expression.Literal.True));
       Expression put = new Expression.Invoke(ownerRef(), "putAnyMap", map, name, value);
-      write =
+      Expression write =
           new Expression.ListExpression(
               new Expression.If(eq(map, new Expression.Null(TypeRef.of(Map.class), false)), create),
               put);
+      read =
+          new Expression.ListExpression(
+              name,
+              new Expression.Invoke(ownerRef(), "reserveAnyEntry", readerRef()),
+              value,
+              write);
     }
-    Expression read = new Expression.ListExpression(name, value, write);
     return new Expression.If(
         reserved,
         skip,
@@ -3199,7 +4141,7 @@ abstract class JsonReaderCodegen {
   }
 
   private boolean usesReaderSlot(JsonTypeInfo child) {
-    return resolver.usesReaderSlot(ownerType, child);
+    return resolver.usesReaderSlot(objectOwner, child);
   }
 
   private Expression readerFromSlot(Expression slot) {
@@ -3228,6 +4170,10 @@ abstract class JsonReaderCodegen {
     return new Expression.Invoke(
             readerRef(), "consumeNextCommaOrEndObject", TypeRef.of(boolean.class))
         .inline();
+  }
+
+  Expression consumeOrderedCommaOrEndObjectExpr() {
+    return consumeCommaOrEndObjectExpr();
   }
 
   final Expression tryReadNullExpr() {
@@ -3320,8 +4266,8 @@ abstract class JsonReaderCodegen {
         .inline();
   }
 
-  final Expression tryReadAsciiFieldNameColon(JsonFieldInfo property) {
-    String token = fieldNameToken(property.name());
+  final Expression tryReadAsciiFieldNameColon(String name) {
+    String token = fieldNameToken(name);
     int tokenLength = token.length();
     int suffixLength = JsonAsciiToken.suffixLength(tokenLength);
     // Whitespace, escapes, and UTF8 spellings that do not match the raw token fall through without
@@ -3358,48 +4304,30 @@ abstract class JsonReaderCodegen {
         .inline();
   }
 
-  final Expression tryReadUtf16FieldNameColon(JsonFieldInfo property, boolean tokenValueRead) {
-    String name = property.name();
-    int length = name.length();
-    if (tokenValueRead) {
-      String token = fieldNameToken(name);
-      int tokenLength = token.length();
-      int tailLength = Math.max(0, tokenLength - 4);
-      if (tokenLength <= 8) {
-        return new Expression.Invoke(
-                readerRef(),
-                "tryReadNextFieldNameUtf16Token2",
-                TypeRef.of(boolean.class),
-                Expression.Literal.ofLong(utf16TokenWord(token, 0, Math.min(tokenLength, 4))),
-                Expression.Literal.ofLong(utf16WordMask(Math.min(tokenLength, 4))),
-                Expression.Literal.ofLong(
-                    tailLength == 0 ? 0 : utf16TokenWord(token, 4, tailLength)),
-                Expression.Literal.ofLong(tailLength == 0 ? 0 : utf16WordMask(tailLength)),
-                Expression.Literal.ofInt(tokenLength))
-            .inline();
-      }
+  final Expression tryReadUtf16FieldNameColon(String name) {
+    String token = fieldNameToken(name);
+    int tokenLength = token.length();
+    int tailLength = Math.max(0, tokenLength - 4);
+    if (tokenLength <= 8) {
       return new Expression.Invoke(
               readerRef(),
-              "tryReadNextFieldNameUtf16Token3",
+              "tryReadNextFieldNameUtf16Token2",
               TypeRef.of(boolean.class),
-              Expression.Literal.ofLong(utf16TokenWord(token, 0, 4)),
-              Expression.Literal.ofLong(utf16TokenWord(token, 4, 4)),
-              Expression.Literal.ofLong(utf16TokenWord(token, 8, tokenLength - 8)),
+              Expression.Literal.ofLong(utf16TokenWord(token, 0, Math.min(tokenLength, 4))),
+              Expression.Literal.ofLong(utf16WordMask(Math.min(tokenLength, 4))),
+              Expression.Literal.ofLong(tailLength == 0 ? 0 : utf16TokenWord(token, 4, tailLength)),
+              Expression.Literal.ofLong(tailLength == 0 ? 0 : utf16WordMask(tailLength)),
               Expression.Literal.ofInt(tokenLength))
           .inline();
     }
-    int tailLength = Math.max(0, length - 4);
     return new Expression.Invoke(
             readerRef(),
-            "tryReadNextFieldNameUtf16",
+            "tryReadNextFieldNameUtf16Token3",
             TypeRef.of(boolean.class),
-            Expression.Literal.ofLong(property.nameHash()),
-            Expression.Literal.ofLong(packedNameMask(length)),
-            Expression.Literal.ofLong(utf16NameWord(name, 0, Math.min(length, 4))),
-            Expression.Literal.ofLong(utf16WordMask(Math.min(length, 4))),
-            Expression.Literal.ofLong(tailLength == 0 ? 0 : utf16NameWord(name, 4, tailLength)),
-            Expression.Literal.ofLong(tailLength == 0 ? 0 : utf16WordMask(tailLength)),
-            Expression.Literal.ofInt(length))
+            Expression.Literal.ofLong(utf16TokenWord(token, 0, 4)),
+            Expression.Literal.ofLong(utf16TokenWord(token, 4, 4)),
+            Expression.Literal.ofLong(utf16TokenWord(token, 8, tokenLength - 8)),
+            Expression.Literal.ofInt(tokenLength))
         .inline();
   }
 
@@ -3573,20 +4501,13 @@ abstract class JsonReaderCodegen {
   }
 
   final boolean usesReadCodec(JsonFieldInfo property) {
-    switch (property.readKind()) {
-      case ENUM:
-      case ARRAY:
-      case COLLECTION:
-      case MAP:
-        return true;
-      case OBJECT:
-        return !usesReadObjectCodec(property);
-      default:
-        return false;
-    }
+    return JsonCodegen.usesReadCodec(property, resolver);
   }
 
   final boolean usesReadInfo(JsonFieldInfo property) {
+    if (property.readsUnboxedValue()) {
+      return false;
+    }
     switch (property.readKind()) {
       case BOOLEAN:
       case INT:
@@ -3610,7 +4531,8 @@ abstract class JsonReaderCodegen {
   }
 
   final boolean usesReadObjectCodec(JsonFieldInfo property) {
-    return property.readKind() == JsonFieldKind.OBJECT
+    return !property.readsUnboxedValue()
+        && property.readKind() == JsonFieldKind.OBJECT
         && property.readRawType() != Object.class
         && resolver.canonicalObjectCodec(property.readTypeInfo()) != null;
   }
@@ -3627,6 +4549,9 @@ abstract class JsonReaderCodegen {
       int id,
       Expression object,
       boolean tokenValueRead) {
+    if (property.readsUnboxedValue()) {
+      return readUnboxedField(builder, property, id, object, tokenValueRead);
+    }
     Class<?> rawType = property.readRawType();
     switch (property.readKind()) {
       case BOOLEAN:
@@ -3654,6 +4579,30 @@ abstract class JsonReaderCodegen {
         return new Expression.Invoke(
             fieldRef("rp" + id, JsonFieldInfo.class), readFieldMethod(), readerRef(), object);
     }
+  }
+
+  private Expression readUnboxedField(
+      JsonGeneratedCodecBuilder builder,
+      JsonFieldInfo property,
+      int id,
+      Expression object,
+      boolean tokenValueRead) {
+    DirectUnboxedValueCodec direct = property.readDirectUnboxedValueCodec();
+    if (direct != null) {
+      return builder.setField(
+          property, object, builder.valueOperation(direct.readCarrierMethod(), readerRef()));
+    }
+    TransparentUnboxedValueCodec transparent = property.readTransparentUnboxedValueCodec();
+    Expression value =
+        readTerminal(
+            builder, property.readTypeInfo(), id, tokenValueRead, propertyReader(property, id));
+    return builder.setField(property, object, constructCarrier(builder, transparent, value));
+  }
+
+  private Expression propertyReader(JsonFieldInfo property, int id) {
+    return usesReaderSlot(property.readTypeInfo())
+        ? readerFromSlot(fieldRef("r" + id, JsonTypeInfo.class))
+        : fieldRef("r" + id, readerCapabilityType());
   }
 
   final Expression readBoolean(
@@ -3831,7 +4780,7 @@ abstract class JsonReaderCodegen {
     Expression value =
         inline(
             new Expression.Invoke(
-                fieldRef("r" + id, readerCapabilityType()),
+                propertyReader(property, id),
                 readObjectMethod(),
                 TypeRef.of(Object.class),
                 false,

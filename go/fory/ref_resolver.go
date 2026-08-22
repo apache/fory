@@ -279,8 +279,6 @@ func (r *RefResolver) TryPreserveRefId(buffer *ByteBuffer) (int32, error) {
 			return r.PreserveRefId()
 		}
 	}
-	// `headFlag` except `REF_FLAG` can be used as stub ref id because we use
-	// `refId >= NOT_NULL_VALUE_FLAG` to read data.
 	return int32(headFlag), nil
 }
 
@@ -297,8 +295,10 @@ func (r *RefResolver) Reference(value reflect.Value) {
 		return
 	}
 	refId := r.readRefIds[length-1]
+	// This stack contains only slots appended by PreserveRefId, so the slot is valid by
+	// construction and does not need SetReadObject's checked explicit-ID path.
+	r.readObjects[refId] = value
 	r.readRefIds = r.readRefIds[:length-1]
-	r.SetReadObject(refId, value)
 }
 
 // GetReadObject returns the object for the specified id.
@@ -319,14 +319,17 @@ func (r *RefResolver) GetCurrentReadObject() reflect.Value {
 	return r.readObject
 }
 
-// SetReadObject sets the id for an object that has been read.
-// id: The id from {@link #NextReadRefId}.
-// object: the object that has been read
-func (r *RefResolver) SetReadObject(refId int32, value reflect.Value) {
+// SetReadObject publishes a value for an explicit reference ID.
+func (r *RefResolver) SetReadObject(refId int32, value reflect.Value) error {
 	if !r.refTracking {
-		return
+		return nil
 	}
 	if refId >= 0 {
+		// Unlike Reference's internal stack ID, an explicit ID may originate from a decoded
+		// header and must be checked before indexing the reference table.
+		if int(refId) >= len(r.readObjects) {
+			return InvalidRefIdError(refId)
+		}
 		r.readObjects[refId] = value
 		// Consume the preserved ref id if it's the most recent.
 		// This keeps the readRefIds stack in sync for serializers that
@@ -335,6 +338,34 @@ func (r *RefResolver) SetReadObject(refId int32, value reflect.Value) {
 			r.readRefIds = r.readRefIds[:n-1]
 		}
 	}
+	return nil
+}
+
+func assignReadRef(ctx *ReadContext, refId int32, target reflect.Value) bool {
+	if refId == int32(NullFlag) {
+		return true
+	}
+	value := ctx.RefResolver().GetReadObject(refId)
+	if !value.IsValid() {
+		ctx.SetError(InvalidRefIdError(refId))
+		return false
+	}
+	if !value.Type().AssignableTo(target.Type()) {
+		ctx.SetError(DeserializationErrorf(
+			"reference type %v is not assignable to %v", value.Type(), target.Type()))
+		return false
+	}
+	target.Set(value)
+	return true
+}
+
+func publishReadRef(ctx *ReadContext, refId int32, value reflect.Value) bool {
+	if err := ctx.RefResolver().SetReadObject(refId, value); err != nil {
+		ctxErr := ctx.Err()
+		ctxErr.SetError(err)
+		return false
+	}
+	return true
 }
 
 func (r *RefResolver) reset() {

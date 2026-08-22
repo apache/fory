@@ -339,6 +339,11 @@ class RemoteDecimalScalar:
 
 
 @dataclass
+class RemoteOptionalDecimalScalar:
+    value: Optional[decimal.Decimal] = None
+
+
+@dataclass
 class LocalFloat32Scalar:
     value: pyfory.Float32 = 0.0
 
@@ -411,6 +416,42 @@ def test_compatible_scalar_conversions():
     result = compat_ser_de(RemoteStringScalar, LocalFloat32Scalar, RemoteStringScalar("-0e0"), 737)
     assert result.value == 0.0
     assert math.copysign(1.0, result.value) < 0.0
+
+
+def test_compatible_decimal_trailing_zeros():
+    value = decimal.Decimal((0, (1,) + (0,) * 5000, -5000))
+    result = compat_ser_de(RemoteDecimalScalar, LocalInt64Scalar, RemoteDecimalScalar(value), 753)
+    assert result == LocalInt64Scalar(1)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        decimal.Decimal((0, (1,) * 257, 0)),
+        decimal.Decimal((0, (1,), -10_000)),
+    ],
+)
+def test_compatible_decimal_parts_limit(value):
+    _, reader, payload = compat_ser(RemoteDecimalScalar, LocalInt64Scalar, RemoteDecimalScalar(value), 754)
+    with pytest.raises(ForyInvalidDataError):
+        reader.deserialize(payload)
+
+
+def test_decimal_nullable_uses_direct_read():
+    value = decimal.Decimal("1" * 300)
+    _, reader, payload = compat_ser(RemoteOptionalDecimalScalar, LocalDecimalScalar, RemoteOptionalDecimalScalar(value), 755)
+    result = reader.deserialize(payload)
+    assert result.value.as_tuple() == value.as_tuple()
+
+
+def test_scalar_conversion_error_is_bounded():
+    value = "x" * 5000
+    _, reader, payload = compat_ser(RemoteStringScalar, LocalDecimalScalar, RemoteStringScalar(value), 756)
+    with pytest.raises(ForyInvalidDataError) as exc_info:
+        reader.deserialize(payload)
+    message = str(exc_info.value)
+    assert len(message) < 256
+    assert value not in message
 
 
 def test_compatible_scalar_rejects_invalid_bool_payload():
@@ -1237,6 +1278,99 @@ class CompatibleListOwnerV2:
     items: List[CompatibleListItemV2]
 
 
+@dataclass
+class CompatibleMapValueV1:
+    value: pyfory.Int32
+
+
+@dataclass
+class CompatibleMapValueV2:
+    value: pyfory.Int64
+    added: str
+
+
+@dataclass(unsafe_hash=True)
+class CompatibleMapKeyV1:
+    code: pyfory.Int32
+
+
+@dataclass(unsafe_hash=True)
+class CompatibleMapKeyV2:
+    code: pyfory.Int64
+    added: str
+
+
+@dataclass
+class CompatibleMapOwnerV1:
+    values: Dict[Optional[str], pyfory.Ref[CompatibleMapValueV1]]
+    keys: Dict[pyfory.Ref[CompatibleMapKeyV1], Optional[str]]
+
+
+@dataclass
+class CompatibleMapOwnerV2:
+    values: Dict[Optional[str], pyfory.Ref[CompatibleMapValueV2]]
+    keys: Dict[pyfory.Ref[CompatibleMapKeyV2], Optional[str]]
+
+
+@dataclass(frozen=True)
+class UnknownNested:
+    value: int
+
+
+@dataclass(frozen=True)
+class UnknownText:
+    text: str
+
+
+@dataclass
+class RemoteUnknownOuter:
+    kept: int
+    removed: UnknownNested
+
+
+@dataclass
+class LocalUnknownOuter:
+    kept: int
+
+
+@dataclass
+class RemoteUnknownContainers:
+    marker: int = pyfory.field(id=1)
+    direct: UnknownNested = pyfory.field(id=2, ref=True)
+    values: List[UnknownNested] = pyfory.field(id=3, ref=True)
+    value_set: Set[UnknownNested] = pyfory.field(id=4, ref=True)
+    value_map: Dict[str, UnknownNested] = pyfory.field(id=5, ref=True)
+    nested: List[Dict[str, List[UnknownNested]]] = pyfory.field(
+        id=6,
+        ref=True,
+    )
+
+
+@dataclass
+class LocalUnknownContainers:
+    marker: int = pyfory.field(id=1)
+
+
+@dataclass
+class UnknownCycleChild:
+    self_ref: Any = pyfory.field(id=1, ref=True)
+
+
+@dataclass
+class RemoteUnknownCycle:
+    removed: UnknownCycleChild = pyfory.field(id=1, ref=True)
+    kept: Any = pyfory.field(id=2, ref=True)
+    again: Any = pyfory.field(id=3, ref=True)
+    marker: int = pyfory.field(id=4)
+
+
+@dataclass
+class LocalUnknownCycle:
+    kept: Any = pyfory.field(id=2, ref=True)
+    again: Any = pyfory.field(id=3, ref=True)
+    marker: int = pyfory.field(id=4)
+
+
 @pytest.mark.parametrize("xlang", [False, True])
 def test_compatible_mode_add_field(xlang):
     """Test that adding a field with default value works in compatible mode."""
@@ -1276,6 +1410,136 @@ def test_compatible_mode_remove_field(xlang):
     assert v3_result.f1 == 200
     assert v3_result.f2 == "hello"
     # f3 and f4 from V2 are ignored
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_unknown_typedef_uses_checked_cache(xlang):
+    writer = Fory(xlang=xlang, ref=False, compatible=True, strict=True)
+    reader = Fory(xlang=xlang, ref=False, compatible=True, strict=True)
+    writer.register_type(UnknownNested, name="security.UnknownNested")
+    writer.register_type(RemoteUnknownOuter, name="security.UnknownOuter")
+    reader.register_type(LocalUnknownOuter, name="security.UnknownOuter")
+    payload = writer.serialize(
+        RemoteUnknownOuter(
+            kept=1,
+            removed=UnknownNested(2),
+        )
+    )
+
+    assert reader.deserialize(payload) == LocalUnknownOuter(kept=1)
+    cached = {
+        (typeinfo.decode_namespace(), typeinfo.decode_typename()): typeinfo for typeinfo in reader.type_resolver._meta_shared_type_info.values()
+    }
+    nested_typeinfo = cached[("security", "UnknownNested")]
+    assert nested_typeinfo.cls is pyfory.UnknownStruct
+    assert nested_typeinfo.type_def.cls is pyfory.UnknownStruct
+
+    assert reader.deserialize(payload) == LocalUnknownOuter(kept=1)
+    cached_again = {
+        (typeinfo.decode_namespace(), typeinfo.decode_typename()): typeinfo for typeinfo in reader.type_resolver._meta_shared_type_info.values()
+    }
+    assert cached_again[("security", "UnknownNested")] is nested_typeinfo
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_removed_unknown_nested_containers(xlang, monkeypatch):
+    writer = Fory(xlang=xlang, ref=True, compatible=True, strict=True)
+    reader = Fory(xlang=xlang, ref=True, compatible=True, strict=True)
+    writer.register_type(UnknownNested, name="security.UnknownNested")
+    writer.register_type(RemoteUnknownContainers, name="security.UnknownContainers")
+    reader.register_type(LocalUnknownContainers, name="security.UnknownContainers")
+    child = UnknownNested(7)
+    payload = writer.serialize(
+        RemoteUnknownContainers(
+            marker=9,
+            direct=child,
+            values=[child, UnknownNested(8)],
+            value_set={UnknownNested(10)},
+            value_map={"value": UnknownNested(11)},
+            nested=[{"values": [UnknownNested(12)]}],
+        )
+    )
+
+    def reject_dataclass(*args, **kwargs):
+        raise AssertionError("remote TypeDef must not generate a class")
+
+    monkeypatch.setattr(dataclasses, "make_dataclass", reject_dataclass)
+    assert reader.deserialize(payload) == LocalUnknownContainers(marker=9)
+    assert reader.read_context.meta_share_context.read_type_infos == []
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_removed_unknown_struct_refs(xlang):
+    writer = Fory(xlang=xlang, ref=True, compatible=True, strict=True)
+    reader = Fory(xlang=xlang, ref=True, compatible=True, strict=True)
+    writer.register_type(UnknownCycleChild, name="security.UnknownCycleChild")
+    writer.register_type(RemoteUnknownCycle, name="security.UnknownCycle")
+    reader.register_type(LocalUnknownCycle, name="security.UnknownCycle")
+    child = UnknownCycleChild(None)
+    child.self_ref = child
+    payload = writer.serialize(
+        RemoteUnknownCycle(
+            removed=child,
+            kept=child,
+            again=child,
+            marker=13,
+        )
+    )
+    child_payload = writer.serialize(child)
+
+    result = reader.deserialize(payload)
+
+    assert result.marker == 13
+    assert type(result.kept) is pyfory.UnknownStruct
+    assert result.kept is result.again
+    assert result.kept["__tag_1__"] is result.kept
+    cached_names = {(typeinfo.decode_namespace(), typeinfo.decode_typename()) for typeinfo in reader.type_resolver._meta_shared_type_info.values()}
+    assert ("security", "UnknownCycleChild") in cached_names
+    root_child = reader.deserialize(child_payload)
+    assert type(root_child) is pyfory.UnknownStruct
+    assert root_child["__tag_1__"] is root_child
+    assert reader.read_context.meta_share_context.read_type_infos == []
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_unknown_struct_round_trip(xlang):
+    writer = Fory(xlang=xlang, compatible=True, strict=True)
+    reader = Fory(xlang=xlang, compatible=True, strict=True)
+    other_reader = Fory(xlang=xlang, compatible=True, strict=True)
+    peer = Fory(xlang=xlang, compatible=True, strict=True)
+    writer.register_type(UnknownNested, name="security.UnknownRoundTrip")
+    writer.register_type(UnknownText, name="security.UnknownText")
+    peer.register_type(UnknownNested, name="security.UnknownRoundTrip")
+
+    result = reader.deserialize(writer.serialize(UnknownNested(17)))
+    other = reader.deserialize(writer.serialize(UnknownText("text")))
+
+    assert type(result) is pyfory.UnknownStruct
+    assert type(other) is pyfory.UnknownStruct
+    assert result.type_def is not other.type_def
+    assert result["value"] == 17
+    assert other["text"] == "text"
+    assert peer.deserialize(reader.serialize(result)) == UnknownNested(17)
+    assert peer.deserialize(other_reader.serialize(result)) == UnknownNested(17)
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_unknown_struct_failure_cleanup(xlang):
+    writer = Fory(xlang=xlang, compatible=True, strict=True, ref=True)
+    reader = Fory(xlang=xlang, compatible=True, strict=True, ref=True)
+    writer.register_type(UnknownNested, name="security.UnknownCleanup")
+    payload = writer.serialize(UnknownNested(23))
+
+    with pytest.raises(Exception):
+        reader.deserialize(payload[:-1])
+    result = reader.deserialize(payload)
+    assert type(result) is pyfory.UnknownStruct
+    assert result["value"] == 23
+    assert reader.read_context.meta_share_context.read_type_infos == []
+
+    with pytest.raises(TypeError, match="framework TypeDef"):
+        reader.serialize(pyfory.UnknownStruct(None))
+    assert reader.deserialize(writer.serialize(UnknownNested(24)))["value"] == 24
 
 
 @pytest.mark.parametrize("xlang", [False, True])
@@ -1363,6 +1627,62 @@ def test_compatible_nested_list_struct():
     assert isinstance(decoded, CompatibleListOwnerV2)
     assert [item.value for item in decoded.items] == [123, 456]
     assert [item.added for item in decoded.items] == ["", ""]
+
+
+@pytest.mark.parametrize("ref", [False, True])
+@pytest.mark.parametrize("registration", ["id", "name"])
+@pytest.mark.parametrize("xlang", [False, True])
+def test_compatible_nested_map_struct(ref, registration, xlang):
+    writer = Fory(xlang=xlang, compatible=True, ref=ref)
+    reader = Fory(xlang=xlang, compatible=True, ref=ref)
+
+    if registration == "id":
+        writer.register_type(CompatibleMapValueV1, type_id=511)
+        writer.register_type(CompatibleMapKeyV1, type_id=512)
+        writer.register_type(CompatibleMapOwnerV1, type_id=513)
+        reader.register_type(CompatibleMapValueV2, type_id=511)
+        reader.register_type(CompatibleMapKeyV2, type_id=512)
+        reader.register_type(CompatibleMapOwnerV2, type_id=513)
+    else:
+        writer.register_type(CompatibleMapValueV1, name="test.CompatibleMapValue")
+        writer.register_type(CompatibleMapKeyV1, name="test.CompatibleMapKey")
+        writer.register_type(CompatibleMapOwnerV1, name="test.CompatibleMapOwner")
+        reader.register_type(CompatibleMapValueV2, name="test.CompatibleMapValue")
+        reader.register_type(CompatibleMapKeyV2, name="test.CompatibleMapKey")
+        reader.register_type(CompatibleMapOwnerV2, name="test.CompatibleMapOwner")
+
+    shared_value = CompatibleMapValueV1(456)
+    decoded = reader.deserialize(
+        writer.serialize(
+            CompatibleMapOwnerV1(
+                values={
+                    "a": CompatibleMapValueV1(123),
+                    "b": shared_value,
+                    None: shared_value,
+                },
+                keys={
+                    CompatibleMapKeyV1(7): "seven",
+                    CompatibleMapKeyV1(9): "nine",
+                    CompatibleMapKeyV1(11): None,
+                },
+            )
+        )
+    )
+
+    assert decoded == CompatibleMapOwnerV2(
+        values={
+            "a": CompatibleMapValueV2(123, ""),
+            "b": CompatibleMapValueV2(456, ""),
+            None: CompatibleMapValueV2(456, ""),
+        },
+        keys={
+            CompatibleMapKeyV2(7, ""): "seven",
+            CompatibleMapKeyV2(9, ""): "nine",
+            CompatibleMapKeyV2(11, ""): None,
+        },
+    )
+    if ref:
+        assert decoded.values["b"] is decoded.values[None]
 
 
 @dataclass

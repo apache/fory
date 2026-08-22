@@ -25,6 +25,8 @@ import 'package:fory/src/codegen/generated_registry.dart';
 import 'package:fory/src/config.dart';
 import 'package:fory/src/context/meta_string_reader.dart';
 import 'package:fory/src/context/meta_string_writer.dart';
+import 'package:fory/src/context/read_context.dart';
+import 'package:fory/src/context/write_context.dart';
 import 'package:fory/src/meta/field_info.dart';
 import 'package:fory/src/meta/field_type.dart';
 import 'package:fory/src/meta/meta_string.dart';
@@ -113,6 +115,7 @@ final class TypeInfo {
   final bool supportsRef;
   final bool needsRootRef;
   final bool usesNestedTypeDefinitions;
+  final bool readDataAlwaysAdvances;
   final bool evolving;
   final List<FieldInfo> fields;
   final Serializer<Object?> serializer;
@@ -132,6 +135,7 @@ final class TypeInfo {
     required this.supportsRef,
     required this.needsRootRef,
     required this.usesNestedTypeDefinitions,
+    required this.readDataAlwaysAdvances,
     required this.evolving,
     required this.fields,
     required this.serializer,
@@ -153,6 +157,76 @@ final class TypeInfo {
   bool get isBasicValue => TypeIds.isBasicValue(typeId);
 
   Int64 get cachedTypeDefHeader => remoteTypeDef?.header ?? typeDef!.header;
+}
+
+abstract final class _RemoteEnumField {}
+
+abstract final class _RemoteUnionField {}
+
+final TypeInfo _unknownRemoteEnumTypeInfo = TypeInfo(
+  type: _RemoteEnumField,
+  kind: RegistrationKind.enumType,
+  typeId: TypeIds.enumById,
+  supportsRef: false,
+  needsRootRef: false,
+  usesNestedTypeDefinitions: false,
+  readDataAlwaysAdvances: false,
+  evolving: false,
+  fields: const <FieldInfo>[],
+  serializer: const _UnknownRemoteFieldSerializer('enum'),
+  structSerializer: null,
+  userTypeId: null,
+  namespace: null,
+  typeName: null,
+  encodedNamespace: null,
+  encodedTypeName: null,
+  typeDef: null,
+  remoteTypeDef: null,
+);
+
+final TypeInfo _unknownRemoteUnionTypeInfo = TypeInfo(
+  type: _RemoteUnionField,
+  kind: RegistrationKind.union,
+  typeId: TypeIds.union,
+  supportsRef: true,
+  needsRootRef: false,
+  usesNestedTypeDefinitions: false,
+  readDataAlwaysAdvances: false,
+  evolving: false,
+  fields: const <FieldInfo>[],
+  serializer: const _UnknownRemoteFieldSerializer('union'),
+  structSerializer: null,
+  userTypeId: null,
+  namespace: null,
+  typeName: null,
+  encodedNamespace: null,
+  encodedTypeName: null,
+  typeDef: null,
+  remoteTypeDef: null,
+);
+
+final class _UnknownRemoteFieldSerializer extends Serializer<Object?> {
+  final String kind;
+
+  const _UnknownRemoteFieldSerializer(this.kind);
+
+  @override
+  @pragma('vm:never-inline')
+  void write(WriteContext context, Object? value) {
+    throw StateError('Unknown remote $kind fields cannot be written.');
+  }
+
+  @override
+  @pragma('vm:never-inline')
+  Object? read(ReadContext context) {
+    // Remote TypeDef carries only ENUM/UNION here, not the selected codec
+    // identity. Null/back-reference envelopes do not call this body. A fresh
+    // body must fail before an unrelated local serializer shifts the stream.
+    throw StateError(
+      'Cannot read an unmatched compatible $kind field without its declared '
+      'serializer.',
+    );
+  }
 }
 
 bool usesDeclaredTypeInfo(
@@ -219,6 +293,23 @@ bool _fieldTypeUsesNestedTypeDefinitions(FieldType fieldType) {
   return false;
 }
 
+bool _fieldsReadDataAlwaysAdvances(List<FieldInfo> fields) {
+  for (final field in fields) {
+    final fieldType = field.fieldType;
+    final typeId = fieldType.typeId;
+    if (fieldType.nullable ||
+        fieldType.ref ||
+        fieldType.isDynamic ||
+        TypeIds.isContainer(typeId) ||
+        (TypeIds.isBasicValue(typeId) && typeId != TypeIds.none) ||
+        typeId == TypeIds.enumById ||
+        typeId == TypeIds.union) {
+      return true;
+    }
+  }
+  return false;
+}
+
 String? _fieldIdentityError(List<FieldInfo> fields) {
   final fieldsById = <int, FieldInfo>{};
   final fieldsByName = <String, FieldInfo>{};
@@ -265,6 +356,7 @@ List<FieldInfo> _validateLocalFieldInfos(List<FieldInfo> fields) {
 
 final class TypeResolver {
   static const int _minRemoteTypeMetaLimit = 8192;
+  static const int _maxRemoteTypeMetaKeys = 8192;
 
   final Config config;
   final TypeMetaDecoder _typeMetaDecoder = const TypeMetaDecoder();
@@ -274,7 +366,10 @@ final class TypeResolver {
   final List<_NamedTypeReadCacheEntry?> _namedTypeLookupCache =
       List<_NamedTypeReadCacheEntry?>.filled(128, null);
   final Map<Type, TypeInfo> _runtimeTypeValueCache = <Type, TypeInfo>{};
-  final Map<Type, TypeInfo> _registeredByType = <Type, TypeInfo>{};
+  final Map<Type, TypeInfo> _typeInfoByType = <Type, TypeInfo>{
+    _RemoteEnumField: _unknownRemoteEnumTypeInfo,
+    _RemoteUnionField: _unknownRemoteUnionTypeInfo,
+  };
   final Map<int, TypeInfo> _registeredById = <int, TypeInfo>{};
   final Map<String, TypeInfo> _registeredByName = <String, TypeInfo>{};
   final Map<EncodedMetaString, Map<EncodedMetaString, TypeInfo>>
@@ -320,6 +415,7 @@ final class TypeResolver {
       fields: entry.fields,
       needsRootRef: entry.needsRootRef,
       usesNestedTypeDefinitions: entry.usesNestedTypeDefinitions,
+      readDataAlwaysAdvances: entry.readDataAlwaysAdvances,
       id: id,
       namespace: namespace,
       typeName: typeName,
@@ -351,6 +447,7 @@ final class TypeResolver {
     bool evolving = true,
     bool? needsRootRef,
     bool? usesNestedTypeDefinitions,
+    bool readDataAlwaysAdvances = false,
     List<FieldInfo> fields = const <FieldInfo>[],
     int? id,
     String? namespace,
@@ -385,6 +482,8 @@ final class TypeResolver {
               ? usesNestedTypeDefinitions ??
                   _fieldsUseNestedTypeDefinitions(normalizedFields)
               : true,
+      readDataAlwaysAdvances:
+          readDataAlwaysAdvances || registrationKind == RegistrationKind.union,
       evolving: registrationKind == RegistrationKind.struct ? evolving : false,
       fields: normalizedFields,
       serializer: payloadSerializer,
@@ -404,6 +503,10 @@ final class TypeResolver {
       namespace: resolvedNamespace,
       typeName: resolvedTypeName,
     );
+    // Pre-use registration order may change direct bindings retained by other
+    // registered structs. Rebuild their final metadata on this cold path. The
+    // owning Fory instance rejects registration after the first root operation,
+    // so no read/write cache can require invalidation here.
     _rebuildRegisteredTypeDefs();
   }
 
@@ -414,8 +517,13 @@ final class TypeResolver {
     // registered TypeDefs on the registration cold path instead of constructing
     // them lazily from read/write hot paths.
     final seen = Set<TypeInfo>.identity();
-    for (final resolved in _registeredByType.values) {
+    for (final resolved in _typeInfoByType.values) {
       if (!seen.add(resolved)) {
+        continue;
+      }
+      if (resolved.userTypeId == null && resolved.typeName == null) {
+        // Wire-only remote field markers participate in ordinary TypeInfo
+        // lookup but are not application registrations and have no TypeDef.
         continue;
       }
       final typeDef = _buildTypeDef(
@@ -475,6 +583,14 @@ final class TypeResolver {
     return encoded;
   }
 
+  EncodedMetaString canonicalizeEncodedMetaString(EncodedMetaString candidate) {
+    if (candidate.bytes.isEmpty) {
+      return EncodedMetaString.empty;
+    }
+    final key = _EncodedMetaStringKey(candidate.encoding, candidate.bytes);
+    return _internedEncodedMetaStrings[key] ?? candidate;
+  }
+
   TypeInfo resolveValue(Object value) {
     final runtimeType = value.runtimeType;
     final cached = _runtimeTypeValueCache[runtimeType];
@@ -487,7 +603,7 @@ final class TypeResolver {
   }
 
   TypeInfo _resolveValueSlow(Object value, Type runtimeType) {
-    final registered = _registeredByType[runtimeType];
+    final registered = _typeInfoByType[runtimeType];
     if (registered != null) {
       return registered;
     }
@@ -631,7 +747,7 @@ final class TypeResolver {
       case TypeIds.float64Array:
         return _builtin(_builtinTypeForFieldType(fieldType), fieldType.typeId);
       default:
-        return _registeredByType[fieldType.type];
+        return _typeInfoByType[fieldType.type];
     }
   }
 
@@ -660,14 +776,14 @@ final class TypeResolver {
   }
 
   TypeInfo resolvedRegisteredType(Type type) {
-    final resolved = _registeredByType[type];
+    final resolved = _typeInfoByType[type];
     if (resolved == null) {
       throw StateError('Type $type is not registered.');
     }
     return resolved;
   }
 
-  TypeInfo? expectedRootType<T>() => _registeredByType[T];
+  TypeInfo? expectedRootType<T>() => _typeInfoByType[T];
 
   TypeInfo resolveUserByEncodedName(
     EncodedMetaString namespace,
@@ -898,14 +1014,15 @@ final class TypeResolver {
     }
     final marker = buffer.readVarUint32Small14();
     if ((marker & 1) == 1) {
-      return sharedTypes[marker >>> 1];
+      return _checkExpectedTypeDefOwner(sharedTypes[marker >>> 1], expected);
     }
     final headerValue = buffer.readInt64();
     final expectedTypeDef = expected.typeDef;
-    if (expectedTypeDef != null && expectedTypeDef.header == headerValue) {
-      // The expected local TypeInfo owns this TypeDef header. This is a direct
-      // local-schema hit: skip the remote body, do not rehash, and do not
-      // publish to ParsedTypeMetaCache because no remote metadata miss occurred.
+    if (expectedTypeDef != null &&
+        TypeHeader.sameHash(expectedTypeDef.header, headerValue)) {
+      // The expected local TypeInfo owns this 52-bit TypeDef hash. The current
+      // size bits only bound and skip this frame; do not validate its low flags,
+      // rehash its body, or publish to ParsedTypeMetaCache.
       TypeHeader.skipBody(buffer, headerValue);
       sharedTypes.add(expected);
       return expected;
@@ -913,16 +1030,35 @@ final class TypeResolver {
     final header = TypeHeader(headerValue);
     final cached = _parsedTypeMetaCache.lookup(header);
     if (cached != null) {
-      // Header-cache hits intentionally skip without rehashing. Entries reach this cache only
-      // after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-      // body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
+      // The checked cache owns the 52-bit identity. The current size bits only
+      // bound and skip this frame; the miss path owns low-flag/body/hash/schema
+      // validation before publication.
+      final resolved = _checkExpectedTypeDefOwner(cached, expected);
       header.skipRemaining(buffer);
-      sharedTypes.add(cached);
-      return cached;
+      sharedTypes.add(resolved);
+      return resolved;
     }
-    final resolved = _readTypeDefWithHeader(buffer, header);
+    final resolved = _readTypeDefWithHeader(buffer, header, expected: expected);
     sharedTypes.add(resolved);
     return resolved;
+  }
+
+  @pragma('vm:prefer-inline')
+  TypeInfo _checkExpectedTypeDefOwner(TypeInfo resolved, TypeInfo expected) {
+    // Remote schema wrappers retain the canonical registered Dart type. This
+    // binds already-validated metadata to the declared concrete owner without
+    // reading schema fields, names, or body bytes.
+    if (!identical(resolved.type, expected.type)) {
+      _throwTypeDefOwnerMismatch(expected.type, resolved.type);
+    }
+    return resolved;
+  }
+
+  @pragma('vm:never-inline')
+  Never _throwTypeDefOwnerMismatch(Type expected, Type actual) {
+    throw StateError(
+      'TypeDef owner mismatch: expected $expected, got $actual.',
+    );
   }
 
   void _writeTypeDef(
@@ -1179,9 +1315,9 @@ final class TypeResolver {
     final header = TypeHeader(buffer.readInt64());
     final cached = _parsedTypeMetaCache.lookup(header);
     if (cached != null) {
-      // Header-cache hits intentionally skip without rehashing. Entries reach this cache only
-      // after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-      // body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
+      // The checked cache owns the 52-bit identity. The current size bits only
+      // bound and skip this frame; the miss path owns low-flag/body/hash/schema
+      // validation before publication.
       header.skipRemaining(buffer);
       sharedTypes.add(cached);
       return typeMetaForResolved(cached);
@@ -1192,8 +1328,11 @@ final class TypeResolver {
   }
 
   @pragma('vm:never-inline')
-  TypeInfo _readTypeDefWithHeader(Buffer buffer, TypeHeader header) {
-    final typeDefStart = bufferReaderIndex(buffer) - 8;
+  TypeInfo _readTypeDefWithHeader(
+    Buffer buffer,
+    TypeHeader header, {
+    TypeInfo? expected,
+  }) {
     header.validateGlobal();
     final metaSize = header.readMetaSize(buffer);
     if (metaSize > config.maxTypeMetaBytes) {
@@ -1282,19 +1421,14 @@ final class TypeResolver {
         typeId) {
       throw StateError('TypeDef kind does not match registered type metadata.');
     }
-    final localTypeDef = typeDefForResolved(resolved);
-    if (_matchesEncodedTypeDef(buffer, typeDefStart, localTypeDef.encoded)) {
-      _parsedTypeMetaCache.remember(header, resolved);
-      return resolved;
+    if (expected != null) {
+      _checkExpectedTypeDefOwner(resolved, expected);
     }
-    if (resolved.kind != RegistrationKind.struct) {
-      final remoteSchemaKey = _checkRemoteTypeDefLimit(
-        typeId: typeId,
-        userTypeId: userTypeId,
-        resolved: resolved,
-      );
-      _parsedTypeMetaCache.remember(header, resolved);
-      _recordRemoteTypeDef(remoteSchemaKey);
+    final localTypeDef = typeDefForResolved(resolved);
+    // Parsing, hash validation, and policy resolution above own this cold miss.
+    // The validated top-52 hash now selects the schema owner; current-frame
+    // size and flag differences must not publish or count a remote version.
+    if (TypeHeader.sameHash(localTypeDef.header, header.value)) {
       return resolved;
     }
     final remoteSchemaKey = _checkRemoteTypeDefLimit(
@@ -1303,11 +1437,16 @@ final class TypeResolver {
       resolved: resolved,
     );
     final remoteTypeDef = TypeDef(
-      evolving: true,
-      fields: List<FieldInfo>.unmodifiable(fields),
+      evolving: isStruct ? true : resolved.evolving,
+      fields:
+          isStruct ? List<FieldInfo>.unmodifiable(fields) : const <FieldInfo>[],
       header: header.value,
       encoded: Uint8List(0),
     );
+    // A checked cache owner must retain the validated remote header even when
+    // non-struct names resolve to local serializers. For example, alternate
+    // legal encodings of an empty namespace have distinct hashes but the same
+    // canonical registered owner.
     final remoteResolved = TypeInfo(
       type: resolved.type,
       kind: resolved.kind,
@@ -1315,6 +1454,13 @@ final class TypeResolver {
       supportsRef: resolved.supportsRef,
       needsRootRef: resolved.needsRootRef,
       usesNestedTypeDefinitions: resolved.usesNestedTypeDefinitions,
+      // Compatible field dispatch follows the received schema. Derive this
+      // one-level fact from the remote fields instead of retaining the local
+      // generated readData answer; nested Struct and ext bodies stay conservative.
+      readDataAlwaysAdvances:
+          isStruct
+              ? _fieldsReadDataAlwaysAdvances(fields)
+              : resolved.readDataAlwaysAdvances,
       evolving: resolved.evolving,
       fields: resolved.fields,
       serializer: resolved.serializer,
@@ -1327,21 +1473,14 @@ final class TypeResolver {
       typeDef: resolved.typeDef,
       remoteTypeDef: remoteTypeDef,
     );
-    remoteResolved.structSerializer?.validateCompatibleTypeInfo(remoteResolved);
+    if (isStruct) {
+      remoteResolved.structSerializer?.validateCompatibleTypeInfo(
+        remoteResolved,
+      );
+    }
     _parsedTypeMetaCache.remember(header, remoteResolved);
     _recordRemoteTypeDef(remoteSchemaKey);
     return remoteResolved;
-  }
-
-  bool _matchesEncodedTypeDef(
-    Buffer buffer,
-    int typeDefStart,
-    Uint8List encoded,
-  ) {
-    if (bufferReaderIndex(buffer) - typeDefStart != encoded.length) {
-      return false;
-    }
-    return bufferMatchesBytes(buffer, typeDefStart, encoded);
   }
 
   @pragma('vm:never-inline')
@@ -1362,17 +1501,22 @@ final class TypeResolver {
         'maxSchemaVersionsPerType=${config.maxSchemaVersionsPerType}.',
       );
     }
+    if (versionsForType == 0 &&
+        _remoteSchemaVersionsByType.length >= _maxRemoteTypeMetaKeys) {
+      throw StateError(
+        'Remote schema logical type limit exceeded. The data may be '
+        'malicious.',
+      );
+    }
     final acceptedTypeCount =
         versionsForType == 0
             ? _remoteSchemaVersionsByType.length + 1
             : _remoteSchemaVersionsByType.length;
-    final averageLimit =
-        acceptedTypeCount * config.maxAverageSchemaVersionsPerType;
-    final globalLimit =
-        averageLimit > _minRemoteTypeMetaLimit
-            ? averageLimit
-            : _minRemoteTypeMetaLimit;
-    if (_totalAcceptedSchemaVersions >= globalLimit) {
+    // Division preserves `total >= typeCount * average` without producing an
+    // unsafe integer on Dart's JavaScript targets.
+    if (_totalAcceptedSchemaVersions >= _minRemoteTypeMetaLimit &&
+        _totalAcceptedSchemaVersions ~/ acceptedTypeCount >=
+            config.maxAverageSchemaVersionsPerType) {
       throw StateError(
         'Remote schema version limit exceeded globally. The data may be '
         'malicious. If the data is not malicious, please increase '
@@ -1399,9 +1543,11 @@ final class TypeResolver {
       size += source.readVarUint32Small7();
     }
     source.checkReadableBytes(size);
-    return internEncodedMetaString(
-      Uint8List.fromList(source.readBytes(size)),
-      encoding: decodeEncoding(compactEncoding),
+    return canonicalizeEncodedMetaString(
+      EncodedMetaString(
+        Uint8List.fromList(source.readBytes(size)),
+        decodeEncoding(compactEncoding),
+      ),
     );
   }
 
@@ -1443,16 +1589,25 @@ final class TypeResolver {
     required int typeId,
     required bool nullable,
     required bool ref,
+    int nestedDepth = 0,
   }) {
+    if (nestedDepth > config.maxDepth) {
+      _throwTypeDefDepthExceeded();
+    }
     final arguments = <FieldType>[];
     if (typeId == TypeIds.list || typeId == TypeIds.set) {
-      arguments.add(_readNestedFieldType(source));
+      arguments.add(_readNestedFieldType(source, nestedDepth + 1));
     } else if (typeId == TypeIds.map) {
-      arguments.add(_readNestedFieldType(source));
-      arguments.add(_readNestedFieldType(source));
+      arguments.add(_readNestedFieldType(source, nestedDepth + 1));
+      arguments.add(_readNestedFieldType(source, nestedDepth + 1));
     }
     return FieldType(
-      type: Object,
+      type:
+          typeId == TypeIds.enumById
+              ? _RemoteEnumField
+              : typeId == TypeIds.union
+              ? _RemoteUnionField
+              : Object,
       declaredTypeName: null,
       typeId: typeId,
       nullable: nullable,
@@ -1462,13 +1617,21 @@ final class TypeResolver {
     );
   }
 
-  FieldType _readNestedFieldType(Buffer source) {
+  FieldType _readNestedFieldType(Buffer source, int nestedDepth) {
     final encoded = source.readVarUint32Small7();
     return _readTypeDefFieldType(
       source,
       typeId: encoded >>> 2,
       nullable: ((encoded >> 1) & 1) == 1,
       ref: (encoded & 1) == 1,
+      nestedDepth: nestedDepth,
+    );
+  }
+
+  @pragma('vm:never-inline')
+  Never _throwTypeDefDepthExceeded() {
+    throw StateError(
+      'TypeDef field depth exceeded maxDepth ${config.maxDepth}.',
     );
   }
 
@@ -1584,6 +1747,7 @@ final class TypeResolver {
       supportsRef: TypeIds.supportsRef(typeId),
       needsRootRef: false,
       usesNestedTypeDefinitions: false,
+      readDataAlwaysAdvances: typeId != TypeIds.none,
       evolving: false,
       fields: const <FieldInfo>[],
       serializer: _builtinSerializerFor(typeId, type),
@@ -1780,7 +1944,7 @@ final class TypeResolver {
     required String? namespace,
     required String? typeName,
   }) {
-    _registeredByType[type] = resolved;
+    _typeInfoByType[type] = resolved;
     if (id != null) {
       _registeredById[id] = resolved;
       return;

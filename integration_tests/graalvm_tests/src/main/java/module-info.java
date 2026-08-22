@@ -22,7 +22,8 @@ module org.apache.fory.graalvm.tests {
   requires org.apache.fory.json;
   requires java.sql;
 
-  // Fory-generated codecs and annotation codecs access the test models from library modules.
+  // Binary serialization acceptance retains its existing exported and opened model packages.
+  // The Fory JSON closed-package test intentionally uses neither directive.
   exports org.apache.fory.graalvm;
   exports org.apache.fory.graalvm.record;
 

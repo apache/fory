@@ -44,14 +44,15 @@ import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.memory.NativeByteOrder;
 
 /**
  * Representation-neutral JSON cursor and common scalar parsing owner.
  *
  * <p>The base class retains the resolver used by dynamic codecs, the current code-unit position,
- * configured and current container depth, a reusable ASCII token view, and a fixed workspace for
- * exact floating-point boundary correction. Concrete readers own input storage, string decoding,
- * field-name probes, and direct primitive numeric fast paths for their representation.
+ * configured and current container depth, reusable creator and numeric workspaces, and a quoted
+ * text view. Concrete readers own input storage, string decoding, field-name probes, and direct
+ * primitive numeric fast paths for their representation.
  *
  * <p>Primitive {@code int}, {@code long}, {@code float}, and {@code double} parsing does not
  * materialize a String or arbitrary-precision number. Precision-sensitive floating input uses the
@@ -60,10 +61,10 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
  * not inherit that resource policy.
  *
  * <p>Readers are mutable and confined to one borrowed {@code ForyJson} state. Concrete reset
- * methods borrow an input and reset the cursor and depth; {@code clear()} detaches that input
- * before the state returns to the pool. A failed nested parse may leave depth nonzero because the
- * root cleanup resets it; nested codec paths intentionally avoid cleanup-only {@code try/finally}
- * regions.
+ * methods borrow an input and reset the cursor, depth, and graph-memory budget; {@code clear()}
+ * detaches that input and clears the root state before the state returns to the pool. A failed
+ * nested parse may leave depth nonzero because the root cleanup resets it; nested codec paths
+ * intentionally avoid cleanup-only {@code try/finally} regions.
  */
 public abstract class JsonReader {
   private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
@@ -153,10 +154,12 @@ public abstract class JsonReader {
     1.0f, 10.0f, 100.0f, 1_000.0f, 10_000.0f, 100_000.0f, 1_000_000.0f, 10_000_000.0f
   };
 
+  private final JsonConfig config;
   private final JsonTypeResolver typeResolver;
   protected int position;
   private final int maxDepth;
   private int depth;
+  private long remainingGraphMemoryBytes;
 
   /**
    * Scans one complete object for a closed-subtype string discriminator without consuming input.
@@ -247,6 +250,9 @@ public abstract class JsonReader {
 
   protected abstract boolean matchesScannedString(int start, int end, String expected);
 
+  /** Decodes one validated quoted token body into the concrete reader's reusable string scratch. */
+  protected abstract CharSequence decodeQuotedText(int start, int end);
+
   /**
    * Reads one wrapper subtype name from a fixed validated table without materializing a String.
    *
@@ -255,12 +261,14 @@ public abstract class JsonReader {
    */
   public abstract int readSubtypeName(JsonSubtypeScanInfo info);
 
-  private final AsciiStringView asciiStringView = new AsciiStringView(this);
+  private final QuotedTextView quotedTextView = new QuotedTextView(this);
+  private final Object[] creatorArguments = new Object[1];
   // Primitive floating fallback reuses this exact-boundary workspace. Reader construction is the
   // cold owner so the first precision-sensitive scalar cannot allocate on the numeric hot path.
   private final byte[] decimalBoundaryDigits = new byte[DECIMAL_BOUNDARY_DIGITS];
 
   protected JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
+    this.config = config;
     this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
     maxDepth = config.maxDepth();
   }
@@ -270,6 +278,19 @@ public abstract class JsonReader {
    */
   public final JsonTypeResolver typeResolver() {
     return typeResolver;
+  }
+
+  /** Returns this reader's reusable one-value creator argument array. */
+  @Internal
+  public final Object[] creatorArguments(Object value) {
+    creatorArguments[0] = value;
+    return creatorArguments;
+  }
+
+  /** Releases the value retained by {@link #creatorArguments(Object)}. */
+  @Internal
+  public final void clearCreatorArguments() {
+    creatorArguments[0] = null;
   }
 
   protected abstract int length();
@@ -285,6 +306,18 @@ public abstract class JsonReader {
    * common names, but callers must not depend on reference identity.
    */
   public abstract String readFieldName();
+
+  /** Consumes {@code expected} after whitespace when present. */
+  public abstract boolean consumeNextToken(char expected);
+
+  /** Consumes {@code expected} after whitespace or fails. */
+  public abstract void expectNextToken(char expected);
+
+  /** Consumes the comma before the next object member, or the closing brace. */
+  public abstract boolean consumeNextCommaOrEndObject();
+
+  /** Consumes the comma before the next array element, or the closing bracket. */
+  public abstract boolean consumeNextCommaOrEndArray();
 
   protected static long fieldNameHash(int length, long word0, long word1) {
     if (length == 0) {
@@ -309,6 +342,31 @@ public abstract class JsonReader {
     return position;
   }
 
+  /**
+   * Proves that an already selected input span contains at least {@code bytes} readable bytes.
+   *
+   * <p>Every supported input code unit is backed by at least one byte, so the
+   * representation-neutral length is a conservative byte lower bound. Composite codecs use this
+   * before a compact scalar controls a larger variable-capacity allocation.
+   */
+  @Internal
+  public final void checkReadableBytesFrom(int start, int bytes) {
+    int inputLength = length();
+    if (start < 0 || start > position || bytes < 0 || bytes > inputLength - start) {
+      throwInsufficientReadableBytes(start, bytes, inputLength);
+    }
+  }
+
+  private void throwInsufficientReadableBytes(int start, int bytes, int inputLength) {
+    throw new ForyJsonException(
+        "Insufficient JSON input for variable-capacity value: requested "
+            + bytes
+            + " readable bytes from position "
+            + start
+            + ", input length "
+            + inputLength);
+  }
+
   @Internal
   public final String materializeFieldName(int start) {
     int current = position;
@@ -326,6 +384,52 @@ public abstract class JsonReader {
 
   protected final void reset() {
     depth = 0;
+    remainingGraphMemoryBytes = config.maxGraphMemoryBytes();
+    quotedTextView.clear();
+  }
+
+  /**
+   * Reserves estimated graph memory before an owner or its retained storage is materialized.
+   *
+   * <p>Custom codecs use this raw byte API before allocating a composite owner and at their bounded
+   * batch boundaries for retained container storage. Dedicated leaf values do not reserve graph
+   * memory.
+   */
+  public final void reserveGraphMemory(long bytes) {
+    long remaining = remainingGraphMemoryBytes;
+    long nextRemaining = remaining - bytes;
+    if ((bytes | nextRemaining) < 0) {
+      throwInvalidGraphMemory(bytes, remaining);
+    }
+    remainingGraphMemoryBytes = nextRemaining;
+  }
+
+  /**
+   * Reserves estimated graph memory before an owner or its retained storage is materialized.
+   *
+   * <p>This overload keeps the common integer-estimate path to one comparison and subtraction.
+   */
+  public final void reserveGraphMemory(int bytes) {
+    long remaining = remainingGraphMemoryBytes;
+    if (bytes < 0 || remaining < bytes) {
+      throwInvalidGraphMemory(bytes, remaining);
+    }
+    remainingGraphMemoryBytes = remaining - bytes;
+  }
+
+  private void throwInvalidGraphMemory(long bytes, long remaining) {
+    if (bytes < 0) {
+      throw new ForyJsonException(
+          "Estimated graph memory must be non-negative, but got " + bytes + " bytes");
+    }
+    throw new ForyJsonException(
+        "Estimated graph memory request "
+            + bytes
+            + " bytes exceeds maxGraphMemoryBytes remaining budget "
+            + remaining
+            + " bytes out of configured limit "
+            + config.maxGraphMemoryBytes()
+            + " bytes; increase ForyJsonBuilder#withMaxGraphMemoryBytes for trusted data");
   }
 
   public final void enterDepth() {
@@ -348,6 +452,39 @@ public abstract class JsonReader {
 
   public String readNullableString() {
     return tryReadNull() ? null : readString();
+  }
+
+  /**
+   * Reads nullable quoted text without materializing a String.
+   *
+   * <p>The returned view is reused by this reader and is valid only until the next reader
+   * operation. Canonical unescaped ASCII points directly at the input. Escaped and non-ASCII text
+   * is decoded into the concrete reader's bounded reusable string scratch.
+   */
+  public final CharSequence readQuotedText() {
+    if (tryReadNullToken()) {
+      return null;
+    }
+    return readQuotedTextValue();
+  }
+
+  /** Reads a quoted-text value after its owner has already rejected or consumed {@code null}. */
+  protected final CharSequence readQuotedTextValue() {
+    CharSequence value = tryReadQuotedTextView();
+    if (value != null) {
+      return value;
+    }
+    int tokenStart = position;
+    int tokenEnd = scanStringEnd(tokenStart);
+    value = decodeQuotedText(tokenStart + 1, tokenEnd - 1);
+    position = tokenEnd;
+    return value;
+  }
+
+  /** Publishes decoded Latin1 or native-order UTF16 scratch through the reusable quoted view. */
+  protected final CharSequence decodedQuotedText(byte[] bytes, int length, boolean utf16) {
+    quotedTextView.reset(bytes, length, utf16);
+    return quotedTextView;
   }
 
   /** Reads a nullable Base64 JSON string directly into its decoded bytes. */
@@ -690,6 +827,58 @@ public abstract class JsonReader {
     return negative ? result : -result;
   }
 
+  /** Reads one canonical unsigned 32-bit JSON integer and returns its raw bits. */
+  public final int readUnsignedInt() {
+    long value = readUnsignedLong();
+    if (Long.compareUnsigned(value, 0xffff_ffffL) > 0) {
+      throw error("Unsigned integer overflow");
+    }
+    return (int) value;
+  }
+
+  /** Reads one canonical unsigned 64-bit JSON integer and returns its raw bits. */
+  public final long readUnsignedLong() {
+    skipWhitespace();
+    long value = readUnsignedDigits();
+    rejectFractionOrExponent();
+    return value;
+  }
+
+  private long readUnsignedDigits() {
+    int start = position;
+    if (position >= length()) {
+      throw error("Expected unsigned digit");
+    }
+    char ch = charAt(position);
+    if (ch == '0') {
+      position++;
+      rejectLeadingDigit();
+      return 0;
+    }
+    if (ch < '1' || ch > '9') {
+      throw error("Expected unsigned digit");
+    }
+    long result = 0;
+    long maxDiv10 = 1_844_674_407_370_955_161L;
+    while (position < length()) {
+      ch = charAt(position);
+      if (ch < '0' || ch > '9') {
+        break;
+      }
+      int digit = ch - '0';
+      int comparison = Long.compareUnsigned(result, maxDiv10);
+      if (comparison > 0 || comparison == 0 && digit > 5) {
+        throw error("Unsigned long overflow");
+      }
+      result = result * 10 + digit;
+      position++;
+    }
+    if (position == start) {
+      throw error("Expected unsigned digit");
+    }
+    return result;
+  }
+
   public BigInteger readBigInteger() {
     skipWhitespace();
     int mark = position;
@@ -731,102 +920,57 @@ public abstract class JsonReader {
       return readUuidToken();
     } catch (RuntimeException e) {
       position = mark;
-      return UUID.fromString(readString());
+      return parseUuidValue(readQuotedTextValue());
     }
   }
 
   public LocalTime readIsoLocalTime() {
-    CharSequence value = tryReadAsciiStringView();
-    if (value != null) {
-      return parseLocalTimeValue(value);
-    }
-    return parseLocalTimeValue(readString());
+    return parseLocalTimeValue(readQuotedTextValue());
   }
 
   public LocalDateTime readIsoLocalDateTime() {
-    CharSequence value = tryReadAsciiStringView();
-    if (value != null) {
-      return parseLocalDateTimeValue(value);
-    }
-    return parseLocalDateTimeValue(readString());
+    return parseLocalDateTimeValue(readQuotedTextValue());
   }
 
   public Instant readIsoInstant() {
-    CharSequence value = tryReadAsciiStringView();
-    if (value != null) {
-      return parseInstantValue(value);
-    }
-    return parseInstantValue(readString());
+    return parseInstantValue(readQuotedTextValue());
   }
 
   public Duration readDuration() {
-    CharSequence value = tryReadAsciiStringView();
-    if (value != null) {
-      return parseDurationValue(value);
-    }
-    return parseDurationValue(readString());
+    return parseDurationValue(readQuotedTextValue());
   }
 
   public ZoneOffset readZoneOffset() {
-    int mark = position;
-    CharSequence value = tryReadAsciiStringView();
-    if (value != null) {
-      ZoneOffset offset = tryParseZoneOffset(value);
-      if (offset != null) {
-        return offset;
-      } else {
-        position = mark;
-      }
+    CharSequence value = readQuotedTextValue();
+    ZoneOffset offset = tryParseZoneOffset(value);
+    if (offset == null) {
+      throw invalidStringValue("java.time.ZoneOffset");
     }
-    return parseZoneOffsetString(readString());
+    return offset;
   }
 
   public ZonedDateTime readZonedDateTime() {
-    CharSequence value = tryReadAsciiStringView();
-    if (value != null) {
-      return parseZonedDateTimeValue(value);
-    }
-    return parseZonedDateTimeValue(readString());
+    return parseZonedDateTimeValue(readQuotedTextValue());
   }
 
   public Year readYear() {
-    CharSequence value = tryReadAsciiStringView();
-    if (value != null) {
-      return parseYearValue(value);
-    }
-    return parseYearString(readString());
+    return parseYearText(readQuotedTextValue());
   }
 
   public YearMonth readYearMonth() {
-    CharSequence value = tryReadAsciiStringView();
-    if (value != null) {
-      return YearMonth.parse(value);
-    }
-    return parseYearMonthString(readString());
+    return parseYearMonthValue(readQuotedTextValue());
   }
 
   public MonthDay readMonthDay() {
-    CharSequence value = tryReadAsciiStringView();
-    if (value != null) {
-      return MonthDay.parse(value);
-    }
-    return parseMonthDayString(readString());
+    return parseMonthDayValue(readQuotedTextValue());
   }
 
   public Period readPeriod() {
-    CharSequence value = tryReadAsciiStringView();
-    if (value != null) {
-      return Period.parse(value);
-    }
-    return parsePeriodString(readString());
+    return parsePeriodValue(readQuotedTextValue());
   }
 
   public OffsetTime readOffsetTime() {
-    CharSequence value = tryReadAsciiStringView();
-    if (value != null) {
-      return parseOffsetTimeValue(value);
-    }
-    return parseOffsetTimeValue(readString());
+    return parseOffsetTimeValue(readQuotedTextValue());
   }
 
   protected final BigDecimal readBigDecimalFallback(int start) {
@@ -898,6 +1042,62 @@ public abstract class JsonReader {
     return new UUID(msb, lsb);
   }
 
+  /** Parses the {@link UUID#fromString(String)} grammar from the reusable quoted-text view. */
+  protected final UUID parseUuidValue(CharSequence value) {
+    try {
+      int first = indexOf(value, '-', 0);
+      int second = indexOf(value, '-', first + 1);
+      int third = indexOf(value, '-', second + 1);
+      int fourth = indexOf(value, '-', third + 1);
+      if (first < 0
+          || second < 0
+          || third < 0
+          || fourth < 0
+          || indexOf(value, '-', fourth + 1) >= 0) {
+        throw new IllegalArgumentException();
+      }
+      long msb = parseHexGroup(value, 0, first, 8);
+      msb = (msb << 16) | parseHexGroup(value, first + 1, second, 4);
+      msb = (msb << 16) | parseHexGroup(value, second + 1, third, 4);
+      long lsb = parseHexGroup(value, third + 1, fourth, 4);
+      lsb = (lsb << 48) | parseHexGroup(value, fourth + 1, value.length(), 12);
+      return new UUID(msb, lsb);
+    } catch (RuntimeException e) {
+      try {
+        // UUID.fromString historically accepts some noncanonical group widths. Keep the canonical
+        // path allocation-free, but preserve that public compatibility on the cold fallback.
+        return UUID.fromString(value.toString());
+      } catch (RuntimeException fallback) {
+        throw invalidStringValue("java.util.UUID", fallback);
+      }
+    }
+  }
+
+  private static int indexOf(CharSequence value, char expected, int start) {
+    for (int i = start; i < value.length(); i++) {
+      if (value.charAt(i) == expected) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private static long parseHexGroup(CharSequence value, int start, int end, int maxLength) {
+    int length = end - start;
+    if (length <= 0 || length > maxLength) {
+      throw new IllegalArgumentException();
+    }
+    return parseHex(value, start, length);
+  }
+
+  private static long parseHex(CharSequence value, int offset, int length) {
+    long result = 0;
+    for (int i = 0; i < length; i++) {
+      result = (result << 4) | uuidHexValue(value.charAt(offset + i));
+    }
+    return result;
+  }
+
   private long parseHex(int offset, int length) {
     long value = 0;
     for (int i = 0; i < length; i++) {
@@ -917,7 +1117,7 @@ public abstract class JsonReader {
     throw new IllegalArgumentException();
   }
 
-  private AsciiStringView tryReadAsciiStringView() {
+  private QuotedTextView tryReadQuotedTextView() {
     skipWhitespace();
     int mark = position;
     if (position >= length() || charAt(position++) != '"') {
@@ -927,8 +1127,8 @@ public abstract class JsonReader {
     while (position < length()) {
       char ch = charAt(position++);
       if (ch == '"') {
-        asciiStringView.reset(start, position - 1);
-        return asciiStringView;
+        quotedTextView.reset(start, position - 1);
+        return quotedTextView;
       }
       if (ch == '\\' || ch < 0x20 || ch >= 0x80) {
         position = mark;
@@ -943,24 +1143,62 @@ public abstract class JsonReader {
     if (length == 1 && value.charAt(0) == 'Z') {
       return ZoneOffset.UTC;
     }
-    if (length != 6 && length != 9) {
+    if (length < 2) {
       return null;
     }
     char sign = value.charAt(0);
     if (sign != '+' && sign != '-') {
       return null;
     }
-    if (value.charAt(3) != ':' || (length == 9 && value.charAt(6) != ':')) {
+    int hour;
+    int minute = 0;
+    int second = 0;
+    try {
+      switch (length) {
+        case 2:
+          hour = value.charAt(1) - '0';
+          if (hour < 0 || hour > 9) {
+            return null;
+          }
+          break;
+        case 3:
+          hour = parse2(value, 1);
+          break;
+        case 5:
+          hour = parse2(value, 1);
+          minute = parse2(value, 3);
+          break;
+        case 6:
+          if (value.charAt(3) != ':') {
+            return null;
+          }
+          hour = parse2(value, 1);
+          minute = parse2(value, 4);
+          break;
+        case 7:
+          hour = parse2(value, 1);
+          minute = parse2(value, 3);
+          second = parse2(value, 5);
+          break;
+        case 9:
+          if (value.charAt(3) != ':' || value.charAt(6) != ':') {
+            return null;
+          }
+          hour = parse2(value, 1);
+          minute = parse2(value, 4);
+          second = parse2(value, 7);
+          break;
+        default:
+          return null;
+      }
+      int total = hour * 3600 + minute * 60 + second;
+      return ZoneOffset.ofTotalSeconds(sign == '-' ? -total : total);
+    } catch (RuntimeException e) {
       return null;
     }
-    int hour = parse2(value, 1);
-    int minute = parse2(value, 4);
-    int second = length == 9 ? parse2(value, 7) : 0;
-    int total = hour * 3600 + minute * 60 + second;
-    return ZoneOffset.ofTotalSeconds(sign == '-' ? -total : total);
   }
 
-  protected final LocalDate readIsoLocalDateFallback(String value) {
+  protected final LocalDate readIsoLocalDateFallback(CharSequence value) {
     try {
       int length = value.length();
       if (length >= 10
@@ -970,9 +1208,6 @@ public abstract class JsonReader {
         try {
           return LocalDate.of(parse4(value, 0), parse2(value, 5), parse2(value, 8));
         } catch (RuntimeException e) {
-          if (length > 10 && value.charAt(10) == 'T') {
-            return LocalDate.parse(value.substring(0, 10));
-          }
           return LocalDate.parse(value);
         }
       }
@@ -982,7 +1217,7 @@ public abstract class JsonReader {
     }
   }
 
-  protected final OffsetDateTime readIsoOffsetDateTimeFallback(String value) {
+  protected final OffsetDateTime readIsoOffsetDateTimeFallback(CharSequence value) {
     try {
       return OffsetDateTime.parse(value);
     } catch (RuntimeException e) {
@@ -1022,14 +1257,6 @@ public abstract class JsonReader {
     }
   }
 
-  private ZoneOffset parseZoneOffsetString(String value) {
-    try {
-      return ZoneOffset.of(value);
-    } catch (RuntimeException e) {
-      throw invalidStringValue("java.time.ZoneOffset", e);
-    }
-  }
-
   private ZonedDateTime parseZonedDateTimeValue(CharSequence value) {
     try {
       return ZonedDateTime.parse(value);
@@ -1038,7 +1265,7 @@ public abstract class JsonReader {
     }
   }
 
-  private Year parseYearString(String value) {
+  private Year parseYearText(CharSequence value) {
     try {
       return parseYearValue(value);
     } catch (RuntimeException e) {
@@ -1046,7 +1273,7 @@ public abstract class JsonReader {
     }
   }
 
-  private YearMonth parseYearMonthString(String value) {
+  private YearMonth parseYearMonthValue(CharSequence value) {
     try {
       return YearMonth.parse(value);
     } catch (RuntimeException e) {
@@ -1054,7 +1281,7 @@ public abstract class JsonReader {
     }
   }
 
-  private MonthDay parseMonthDayString(String value) {
+  private MonthDay parseMonthDayValue(CharSequence value) {
     try {
       return MonthDay.parse(value);
     } catch (RuntimeException e) {
@@ -1062,7 +1289,7 @@ public abstract class JsonReader {
     }
   }
 
-  private Period parsePeriodString(String value) {
+  private Period parsePeriodValue(CharSequence value) {
     try {
       return Period.parse(value);
     } catch (RuntimeException e) {
@@ -1081,6 +1308,10 @@ public abstract class JsonReader {
   private ForyJsonException invalidStringValue(String type, RuntimeException e) {
     return new ForyJsonException(
         "Invalid " + type + " JSON string at JSON position " + position, e);
+  }
+
+  private ForyJsonException invalidStringValue(String type) {
+    return new ForyJsonException("Invalid " + type + " JSON string at JSON position " + position);
   }
 
   private static int parse4(CharSequence value, int index) {
@@ -2305,6 +2536,75 @@ public abstract class JsonReader {
     }
   }
 
+  /** Reads an unsigned 32-bit decimal JSON member name without materializing a String. */
+  public int readFieldNameUnsignedInt() {
+    long value = readFieldNameUnsignedLong();
+    if (Long.compareUnsigned(value, 0xffff_ffffL) > 0) {
+      throw error("Unsigned integer field name overflow");
+    }
+    return (int) value;
+  }
+
+  /** Reads an unsigned 64-bit decimal JSON member name without materializing a String. */
+  public long readFieldNameUnsignedLong() {
+    skipWhitespace();
+    int quotePosition = position;
+    if (position >= length() || charAt(position++) != '"') {
+      throw error("Expected unsigned integer field name");
+    }
+    if (position >= length()) {
+      return readDecodedUnsignedFieldName(quotePosition);
+    }
+    char first = charAt(position);
+    if (first == '0') {
+      position++;
+      if (position < length() && charAt(position) == '"') {
+        position++;
+        return 0;
+      }
+      return readDecodedUnsignedFieldName(quotePosition);
+    }
+    if (first < '1' || first > '9') {
+      return readDecodedUnsignedFieldName(quotePosition);
+    }
+    long value = 0;
+    long maxDiv10 = 1_844_674_407_370_955_161L;
+    while (position < length()) {
+      char ch = charAt(position);
+      if (ch < '0' || ch > '9') {
+        if (ch == '"') {
+          position++;
+          return value;
+        }
+        return readDecodedUnsignedFieldName(quotePosition);
+      }
+      int digit = ch - '0';
+      int comparison = Long.compareUnsigned(value, maxDiv10);
+      if (comparison > 0 || comparison == 0 && digit > 5) {
+        return throwUnsignedFieldNameOverflow();
+      }
+      value = value * 10 + digit;
+      position++;
+    }
+    return readDecodedUnsignedFieldName(quotePosition);
+  }
+
+  private long readDecodedUnsignedFieldName(int quotePosition) {
+    // Canonical ASCII digits stay allocation-free. Escapes and other forms accepted by the
+    // decoded member-name contract restore the opening quote and use the ordinary String parser.
+    position = quotePosition;
+    try {
+      return Long.parseUnsignedLong(readString());
+    } catch (NumberFormatException e) {
+      throw new ForyJsonException(
+          "Invalid unsigned long field name at JSON position " + position, e);
+    }
+  }
+
+  private long throwUnsignedFieldNameOverflow() {
+    throw error("Unsigned long field name overflow");
+  }
+
   public JsonFieldInfo readField(JsonFieldTable table) {
     return table.get(readFieldNameHash());
   }
@@ -2802,31 +3102,62 @@ public abstract class JsonReader {
 
   protected abstract String slice(int start, int end);
 
-  private static final class AsciiStringView implements CharSequence {
+  private static final class QuotedTextView implements CharSequence {
     private final JsonReader reader;
+    private byte[] decodedBytes;
     private int start;
     private int end;
+    private boolean utf16;
 
-    AsciiStringView(JsonReader reader) {
+    QuotedTextView(JsonReader reader) {
       this.reader = reader;
     }
 
     void reset(int start, int end) {
+      decodedBytes = null;
       this.start = start;
       this.end = end;
+      utf16 = false;
+    }
+
+    void reset(byte[] bytes, int length, boolean utf16) {
+      decodedBytes = bytes;
+      start = 0;
+      end = length;
+      this.utf16 = utf16;
+    }
+
+    void clear() {
+      decodedBytes = null;
+      start = 0;
+      end = 0;
+      utf16 = false;
     }
 
     @Override
     public int length() {
-      return end - start;
+      int length = end - start;
+      return decodedBytes != null && utf16 ? length >>> 1 : length;
     }
 
     @Override
     public char charAt(int index) {
-      if (index < 0 || start + index >= end) {
+      int length = length();
+      if (index < 0 || index >= length) {
         throw new IndexOutOfBoundsException();
       }
-      return reader.charAt(start + index);
+      byte[] bytes = decodedBytes;
+      if (bytes == null) {
+        return reader.charAt(start + index);
+      }
+      if (!utf16) {
+        return (char) (bytes[start + index] & 0xff);
+      }
+      int offset = start + (index << 1);
+      if (NativeByteOrder.IS_LITTLE_ENDIAN) {
+        return (char) ((bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8));
+      }
+      return (char) (((bytes[offset] & 0xff) << 8) | (bytes[offset + 1] & 0xff));
     }
 
     @Override
@@ -2836,7 +3167,15 @@ public abstract class JsonReader {
 
     @Override
     public String toString() {
-      return reader.slice(start, end);
+      if (decodedBytes == null) {
+        return reader.slice(start, end);
+      }
+      int length = length();
+      StringBuilder builder = new StringBuilder(length);
+      for (int i = 0; i < length; i++) {
+        builder.append(charAt(i));
+      }
+      return builder.toString();
     }
   }
 }

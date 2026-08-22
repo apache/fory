@@ -48,6 +48,7 @@ import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonMixinRemove;
@@ -57,6 +58,7 @@ import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.annotation.JsonValidator;
 import org.apache.fory.json.annotation.JsonValue;
 
 /** Resolves immutable annotation overlays for the exact Mixins enabled by one runtime. */
@@ -70,12 +72,14 @@ final class JsonMixinAnnotations {
         JsonBase64.class,
         JsonCodec.class,
         JsonCreator.class,
+        JsonFormat.class,
         JsonIgnore.class,
         JsonProperty.class,
         JsonPropertyOrder.class,
         JsonRawValue.class,
         JsonSubTypes.class,
         JsonUnwrapped.class,
+        JsonValidator.class,
         JsonValue.class
       };
 
@@ -386,11 +390,35 @@ final class JsonMixinAnnotations {
   private static <A extends Annotation> A declaredAnnotation(
       AnnotatedElement element, Class<A> annotationType) {
     try {
+      if (element instanceof Parameter) {
+        return parameterAnnotation((Parameter) element, annotationType);
+      }
       return element.getDeclaredAnnotation(annotationType);
     } catch (RuntimeException | LinkageError e) {
       throw new ForyJsonException(
           "Cannot read @" + annotationType.getSimpleName() + " on " + element, e);
     }
+  }
+
+  private static <A extends Annotation> A parameterAnnotation(
+      Parameter parameter, Class<A> annotationType) {
+    Executable executable = parameter.getDeclaringExecutable();
+    Parameter[] parameters = executable.getParameters();
+    Annotation[][] annotations = executable.getParameterAnnotations();
+    // Android 8 ART can crash in Parameter.getDeclaredAnnotation even though the executable-owned
+    // parameter annotation table is valid. Keep every effective parameter lookup on that table.
+    for (int i = 0; i < parameters.length; i++) {
+      if (!parameter.equals(parameters[i])) {
+        continue;
+      }
+      for (Annotation annotation : annotations[i]) {
+        if (annotation.annotationType() == annotationType) {
+          return annotationType.cast(annotation);
+        }
+      }
+      return null;
+    }
+    throw new IllegalArgumentException("Parameter does not belong to " + executable);
   }
 
   static <A extends Annotation> A targetAnnotation(

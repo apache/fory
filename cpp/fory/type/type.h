@@ -179,7 +179,7 @@ get_type_registration_kind(TypeId type_id) {
   }
 }
 
-inline bool is_user_type(TypeId type_id) {
+inline constexpr bool is_user_type(TypeId type_id) {
   switch (type_id) {
   case TypeId::ENUM:
   case TypeId::NAMED_ENUM:

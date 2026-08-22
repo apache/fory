@@ -203,4 +203,20 @@ describe("union", () => {
     const result = deserialize(serialize(input));
     expect(result).toEqual(input);
   });
+
+  test("publishes the union wrapper before resolving its case reference", () => {
+    const fory = new Fory({ compatible: false, ref: true });
+    const serializer = fory.register(
+      Type.union(701, {
+        1: Type.any(),
+      }),
+    ).serializer;
+    const readContext = (fory as any).readContext;
+    readContext.reset(new Uint8Array([1, 254, 0]));
+
+    const result = serializer.read(true);
+
+    expect(result.value).toBe(result);
+    expect(readContext.getReadRef(0)).toBe(result);
+  });
 });

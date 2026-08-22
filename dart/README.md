@@ -97,7 +97,7 @@ final roundTrip = fory.deserialize<Person>(bytes);
 
 Ordinary annotated classes serialize one flattened view of their concrete
 superclass and applied-mixin storage. See
-[Struct Inheritance](../docs/guide/dart/inheritance.md) for details.
+[Struct Inheritance](../docs/object-serialization/dart/inheritance.md) for details.
 
 ## Development
 

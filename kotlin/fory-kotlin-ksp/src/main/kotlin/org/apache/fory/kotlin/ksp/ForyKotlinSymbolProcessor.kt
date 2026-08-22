@@ -1089,6 +1089,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
         trackingRef = hasTypeRef,
         primitive = false,
         unsigned = false,
+        enum = true,
       )
     }
     if (hasDeclarationAnnotation(declaration, FORY_UNION)) {
@@ -1105,6 +1106,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
         trackingRef = hasTypeRef,
         primitive = false,
         unsigned = false,
+        union = true,
         nestedCompatibleStruct = true,
       )
     }

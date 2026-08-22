@@ -26,9 +26,17 @@ const runTest =
     : require("node:test").test;
 const { ReadContext } = require("../dist/lib/context");
 const { AnyHelper } = require("../dist/lib/gen/any");
-const { FieldInfo, TypeMeta } = require("../dist/lib/meta/TypeMeta");
+const {
+  checkedTypeMetaSerializerSymbol,
+  checkedTypeMetaWireTypeIdSymbol,
+  FieldInfo,
+  localTypeMetaSymbol,
+  TypeMeta,
+} = require("../dist/lib/meta/TypeMeta");
 const { TypeId } = require("../dist/lib/type");
 const { Type } = require("../dist/lib/typeInfo");
+
+const MAX_REMOTE_TYPE_KEYS = 8192;
 
 function context(typeResolver = {}, config = {}) {
   const fullConfig = {
@@ -48,6 +56,12 @@ function context(typeResolver = {}, config = {}) {
     getSerializerByName() {
       return undefined;
     },
+    getUnknownStructSerializer() {
+      return {};
+    },
+    isCompatible() {
+      return fullConfig.compatible;
+    },
     ...typeResolver,
   };
   return new ReadContext(resolver, fullConfig);
@@ -60,19 +74,24 @@ function remoteStruct(
   typeId = TypeId.NAMED_STRUCT,
   userTypeId = -1,
 ) {
-  return new TypeMeta([new FieldInfo(
-    fieldName,
-    fieldType.typeId,
-    fieldType.userTypeId,
-    fieldType.trackingRef === true,
-    fieldType.nullable === true,
-    fieldType.options,
-  )], {
-    namespace: "example",
-    typeId,
-    typeName: name,
-    userTypeId,
-  });
+  return new TypeMeta(
+    [
+      new FieldInfo(
+        fieldName,
+        fieldType.typeId,
+        fieldType.userTypeId,
+        fieldType.trackingRef === true,
+        fieldType.nullable === true,
+        fieldType.options,
+      ),
+    ],
+    {
+      namespace: "example",
+      typeId,
+      typeName: name,
+      userTypeId,
+    },
+  );
 }
 
 function anyStruct(fieldName, fieldType = Type.int32({ encoding: "fixed" })) {
@@ -106,16 +125,6 @@ function readNamedTypeMeta(readContext, typeId, namespace, typeName, typeMeta) {
   return readContext.readNamedTypeMeta(typeId, namespace, typeName);
 }
 
-function headerParts(typeMeta) {
-  const encoded = typeMeta.toBytes();
-  const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength);
-  const header = view.getBigUint64(0, true);
-  return {
-    low: Number(header & 0xffffffffn),
-    high: Number(header >> 32n),
-  };
-}
-
 function readCompatibleStructSerializer(readContext, expectedHash, original, typeMeta) {
   const encoded = typeMeta.toBytes();
   const bytes = new Uint8Array(encoded.length + 1);
@@ -137,26 +146,103 @@ function detectAnySerializer(readContext, typeMeta) {
 
 function localSerializer(typeInfo) {
   const typeMeta = TypeMeta.fromTypeInfo(typeInfo);
+  typeMeta.getHash();
   return {
+    [localTypeMetaSymbol]: typeMeta,
     getHash() {
       return typeMeta.getHash();
     },
     getTypeInfo() {
       return typeInfo;
     },
-    getTypeMetaBytes() {
-      return typeMeta.toBytes();
+    getTypeId() {
+      return typeInfo.typeId;
+    },
+    getUserTypeId() {
+      return typeInfo.userTypeId ?? -1;
     },
   };
 }
 
 runTest("remote schema limit rejects extra versions", () => {
-  const readContext = context();
+  const typeInfo = Type.struct({ namespace: "example", typeName: "Shared" }, {});
+  const original = localSerializer(typeInfo);
+  const readContext = context({
+    computeTypeId(candidate) {
+      return candidate.typeId;
+    },
+    getSerializerByName(name) {
+      return name === "example$Shared" ? original : undefined;
+    },
+    generateReadSerializer(candidate) {
+      return {
+        getTypeInfo() {
+          return candidate;
+        },
+      };
+    },
+  });
   readTypeMeta(readContext, remoteStruct("Shared", "first"));
   assert.throws(
     () => readTypeMeta(readContext, remoteStruct("Shared", "second")),
     /maxSchemaVersionsPerType/,
   );
+});
+
+runTest("remote TypeMeta key cap preserves persistent owner state", () => {
+  const localMeta = remoteNamedNonStruct("LocalAtCap", TypeId.NAMED_ENUM);
+  const localOwner = {
+    [localTypeMetaSymbol]: localMeta,
+  };
+  const readContext = context(
+    {
+      getSerializerByName(name) {
+        return name === "example$LocalAtCap" ? localOwner : {};
+      },
+    },
+    {
+      maxSchemaVersionsPerType: 3,
+      maxAverageSchemaVersionsPerType: 3,
+    },
+  );
+  let lastMeta;
+  for (let i = 0; i < MAX_REMOTE_TYPE_KEYS; i++) {
+    lastMeta = remoteNamedNonStruct(`Remote${i}`, TypeId.NAMED_ENUM);
+    readTypeMeta(readContext, lastMeta);
+  }
+
+  assert.equal(readContext.remoteSchemaVersionsByType.size, MAX_REMOTE_TYPE_KEYS);
+  assert.equal(readContext.totalAcceptedSchemaVersions, MAX_REMOTE_TYPE_KEYS);
+  assert.equal(readContext.typeMetaCache.size, MAX_REMOTE_TYPE_KEYS);
+
+  const rejected = remoteNamedNonStruct("RemoteOverflow", TypeId.NAMED_ENUM);
+  const cachedBeforeReject = readContext.cachedTypeMeta;
+  assert.throws(() => readTypeMeta(readContext, rejected), /Remote TypeMeta key limit exceeded/);
+  assert.equal(readContext.remoteSchemaVersionsByType.size, MAX_REMOTE_TYPE_KEYS);
+  assert.equal(readContext.totalAcceptedSchemaVersions, MAX_REMOTE_TYPE_KEYS);
+  assert.equal(readContext.typeMetaCache.size, MAX_REMOTE_TYPE_KEYS);
+  assert.equal(readContext.typeMetaCache.has(rejected.getHash()), false);
+  assert.equal(readContext.cachedTypeMeta, cachedBeforeReject);
+
+  readTypeMeta(readContext, lastMeta);
+  assert.equal(readContext.remoteSchemaVersionsByType.size, MAX_REMOTE_TYPE_KEYS);
+  assert.equal(readContext.totalAcceptedSchemaVersions, MAX_REMOTE_TYPE_KEYS);
+  assert.equal(readContext.typeMetaCache.size, MAX_REMOTE_TYPE_KEYS);
+
+  const existingVersion = remoteNamedNonStruct(
+    `Remote${MAX_REMOTE_TYPE_KEYS - 1}`,
+    TypeId.NAMED_EXT,
+  );
+  readTypeMeta(readContext, existingVersion);
+  assert.equal(readContext.remoteSchemaVersionsByType.size, MAX_REMOTE_TYPE_KEYS);
+  assert.equal(readContext.totalAcceptedSchemaVersions, MAX_REMOTE_TYPE_KEYS + 1);
+  assert.equal(readContext.typeMetaCache.size, MAX_REMOTE_TYPE_KEYS + 1);
+
+  readTypeMeta(readContext, localMeta);
+  assert.equal(readContext.remoteSchemaVersionsByType.size, MAX_REMOTE_TYPE_KEYS);
+  assert.equal(readContext.totalAcceptedSchemaVersions, MAX_REMOTE_TYPE_KEYS + 1);
+  assert.equal(readContext.typeMetaCache.has(localMeta.getHash()), false);
+  assert.equal(readContext.typeMetaCache.size, MAX_REMOTE_TYPE_KEYS + 1);
 });
 
 runTest("remote non-struct TypeMeta uses schema limit", () => {
@@ -186,8 +272,8 @@ runTest("failed non-struct TypeMeta does not consume schema limit", () => {
   );
 
   registered = true;
-  assert.doesNotThrow(
-    () => readTypeMeta(readContext, remoteNamedNonStruct("SharedEnum", TypeId.NAMED_EXT)),
+  assert.doesNotThrow(() =>
+    readTypeMeta(readContext, remoteNamedNonStruct("SharedEnum", TypeId.NAMED_EXT)),
   );
 });
 
@@ -195,11 +281,9 @@ runTest("exact local non-struct TypeMeta bypasses schema limit", () => {
   const enumInfo = Type.enum({ namespace: "example", typeName: "SharedEnum" }, { A: 0 });
   const enumMeta = TypeMeta.fromTypeInfo(enumInfo);
   const localSerializer = {
+    [localTypeMetaSymbol]: enumMeta,
     getTypeInfo() {
       return enumInfo;
-    },
-    getTypeMetaBytes() {
-      return enumMeta.toBytes();
     },
   };
   const readContext = context({
@@ -212,13 +296,15 @@ runTest("exact local non-struct TypeMeta bypasses schema limit", () => {
   });
 
   readNamedTypeMeta(readContext, TypeId.NAMED_ENUM, "example", "SharedEnum", enumMeta);
-  assert.doesNotThrow(() => readNamedTypeMeta(
-    readContext,
-    TypeId.NAMED_EXT,
-    "example",
-    "SharedEnum",
-    remoteNamedNonStruct("SharedEnum", TypeId.NAMED_EXT),
-  ));
+  assert.doesNotThrow(() =>
+    readNamedTypeMeta(
+      readContext,
+      TypeId.NAMED_EXT,
+      "example",
+      "SharedEnum",
+      remoteNamedNonStruct("SharedEnum", TypeId.NAMED_EXT),
+    ),
+  );
 
   const genericReadContext = context({
     computeTypeId(typeInfo) {
@@ -229,10 +315,9 @@ runTest("exact local non-struct TypeMeta bypasses schema limit", () => {
     },
   });
   readTypeMeta(genericReadContext, enumMeta);
-  assert.doesNotThrow(() => readTypeMeta(
-    genericReadContext,
-    remoteNamedNonStruct("SharedEnum", TypeId.NAMED_EXT),
-  ));
+  assert.doesNotThrow(() =>
+    readTypeMeta(genericReadContext, remoteNamedNonStruct("SharedEnum", TypeId.NAMED_EXT)),
+  );
 });
 
 runTest("named enum TypeMeta validates declared owner before caching", () => {
@@ -253,44 +338,45 @@ runTest("named enum TypeMeta validates declared owner before caching", () => {
   });
 
   assert.throws(
-    () => readNamedTypeMeta(
-      readContext,
-      TypeId.NAMED_ENUM,
-      "example",
-      "Color",
-      otherMeta,
-    ),
+    () => readNamedTypeMeta(readContext, TypeId.NAMED_ENUM, "example", "Color", otherMeta),
     /TypeMeta mismatch/,
   );
 
-  const wrongHeader = headerParts(otherMeta);
-  assert.equal(
-    readContext.typeMetaCache.get(wrongHeader.high)?.get(wrongHeader.low),
-    undefined,
-  );
-  assert.doesNotThrow(
-    () => readNamedTypeMeta(
-      readContext,
-      TypeId.NAMED_ENUM,
-      "example",
-      "Color",
-      colorMeta,
-    ),
+  assert.equal(readContext.typeMetaCache.has(otherMeta.getHash()), false);
+  assert.doesNotThrow(() =>
+    readNamedTypeMeta(readContext, TypeId.NAMED_ENUM, "example", "Color", colorMeta),
   );
 });
 
 runTest("TypeMeta field limit rejects large struct metadata", () => {
   const readContext = context({}, { maxTypeFields: 1 });
   const fieldType = Type.int32({ encoding: "fixed" });
-  const typeMeta = new TypeMeta([
-    new FieldInfo("first", fieldType.typeId, fieldType.userTypeId, false, false, fieldType.options),
-    new FieldInfo("second", fieldType.typeId, fieldType.userTypeId, false, false, fieldType.options),
-  ], {
-    namespace: "example",
-    typeId: TypeId.NAMED_STRUCT,
-    typeName: "TooManyFields",
-    userTypeId: -1,
-  });
+  const typeMeta = new TypeMeta(
+    [
+      new FieldInfo(
+        "first",
+        fieldType.typeId,
+        fieldType.userTypeId,
+        false,
+        false,
+        fieldType.options,
+      ),
+      new FieldInfo(
+        "second",
+        fieldType.typeId,
+        fieldType.userTypeId,
+        false,
+        false,
+        fieldType.options,
+      ),
+    ],
+    {
+      namespace: "example",
+      typeId: TypeId.NAMED_STRUCT,
+      typeName: "TooManyFields",
+      userTypeId: -1,
+    },
+  );
 
   assert.throws(() => readTypeMeta(readContext, typeMeta), /maxTypeFields/);
 });
@@ -305,8 +391,27 @@ runTest("TypeMeta body limit rejects large metadata", () => {
 });
 
 runTest("TypeMeta cache hit skips current body", () => {
-  const readContext = context();
   const typeMeta = remoteStruct("Cached", "value");
+  const typeInfo = Type.struct(
+    { namespace: "example", typeName: "Cached" },
+    { localValue: Type.string() },
+  );
+  const original = localSerializer(typeInfo);
+  const readContext = context({
+    computeTypeId(candidate) {
+      return candidate.typeId;
+    },
+    getSerializerByName(name) {
+      return name === "example$Cached" ? original : undefined;
+    },
+    generateReadSerializer(candidate) {
+      return {
+        getTypeInfo() {
+          return candidate;
+        },
+      };
+    },
+  });
   const encoded = typeMeta.toBytes();
 
   readTypeMeta(readContext, typeMeta);
@@ -344,20 +449,23 @@ runTest("failed compatible TypeMeta does not consume schema limit", () => {
     },
   });
   assert.throws(
-    () => readCompatibleStructSerializer(
+    () =>
+      readCompatibleStructSerializer(
+        readContext,
+        localHash,
+        original,
+        remoteStruct("Shared", "value", Type.map(Type.string(), Type.int32({ encoding: "fixed" }))),
+      ),
+    /field schema mismatch/,
+  );
+  assert.doesNotThrow(() =>
+    readCompatibleStructSerializer(
       readContext,
       localHash,
       original,
-      remoteStruct("Shared", "value", Type.map(Type.string(), Type.int32({ encoding: "fixed" }))),
+      remoteStruct("Shared", "extra"),
     ),
-    /field schema mismatch/,
   );
-  assert.doesNotThrow(() => readCompatibleStructSerializer(
-    readContext,
-    localHash,
-    original,
-    remoteStruct("Shared", "extra"),
-  ));
 });
 
 runTest("exact local TypeMeta bypasses schema limit", () => {
@@ -367,18 +475,17 @@ runTest("exact local TypeMeta bypasses schema limit", () => {
   );
   const generatingOriginal = localSerializer(localTypeInfo);
   const localMeta = TypeMeta.fromTypeInfo(localTypeInfo);
-  const localBytes = localMeta.toBytes();
   const exactOriginal = {
+    [localTypeMetaSymbol]: localMeta,
+    [checkedTypeMetaWireTypeIdSymbol]: TypeId.NAMED_STRUCT,
     getHash() {
       return localMeta.getHash();
     },
     getTypeInfo() {
-      throw new Error("exact local compare must use encoded bytes");
-    },
-    getTypeMetaBytes() {
-      return localBytes;
+      throw new Error("exact local hit must use its TypeMeta owner");
     },
   };
+  localMeta[checkedTypeMetaSerializerSymbol] = exactOriginal;
   let activeOriginal = generatingOriginal;
   const localHash = generatingOriginal.getHash();
   const readContext = context({
@@ -407,16 +514,26 @@ runTest("exact local TypeMeta bypasses schema limit", () => {
     remoteStruct("Shared", "extra"),
   );
   activeOriginal = exactOriginal;
-  assert.doesNotThrow(() => readCompatibleStructSerializer(
-    readContext,
-    localHash,
-    undefined,
-    localMeta,
-  ));
-  assert.doesNotThrow(() => readTypeMeta(
-    readContext,
-    localMeta,
-  ));
+  assert.doesNotThrow(() =>
+    readCompatibleStructSerializer(readContext, localHash, exactOriginal, localMeta),
+  );
+  assert.doesNotThrow(() =>
+    readCompatibleStructSerializer(readContext, localHash, exactOriginal, localMeta),
+  );
+  assert.doesNotThrow(() => readTypeMeta(readContext, remoteStruct("Shared", "extra")));
+  assert.doesNotThrow(() =>
+    readCompatibleStructSerializer(readContext, localHash, exactOriginal, localMeta),
+  );
+  assert.doesNotThrow(() => readTypeMeta(readContext, localMeta));
+
+  const encoded = localMeta.toBytes();
+  const newThenRef = new Uint8Array(encoded.length + 2);
+  newThenRef[0] = 0;
+  newThenRef.set(encoded, 1);
+  newThenRef[newThenRef.length - 1] = 1;
+  readContext.reset(newThenRef);
+  assert.equal(readContext.readCompatibleStructSerializer(localHash, exactOriginal), undefined);
+  assert.equal(readContext.readCompatibleStructSerializer(localHash, exactOriginal), undefined);
 });
 
 runTest("exact local TypeMeta does not consume schema limit", () => {
@@ -443,17 +560,11 @@ runTest("exact local TypeMeta does not consume schema limit", () => {
 
   readTypeMeta(readContext, TypeMeta.fromTypeInfo(localTypeInfo));
 
-  assert.doesNotThrow(() => readTypeMeta(
-    readContext,
-    remoteStruct("Shared", "extra"),
-  ));
+  assert.doesNotThrow(() => readTypeMeta(readContext, remoteStruct("Shared", "extra")));
 });
 
 runTest("failed Any TypeMeta does not consume schema limit", () => {
-  const localTypeInfo = Type.struct(
-    901,
-    { value: Type.int32({ encoding: "fixed" }) },
-  );
+  const localTypeInfo = Type.struct(901, { value: Type.int32({ encoding: "fixed" }) });
   const original = localSerializer(localTypeInfo);
   const readContext = context({
     computeTypeId(typeInfo) {
@@ -478,34 +589,31 @@ runTest("failed Any TypeMeta does not consume schema limit", () => {
   });
 
   assert.throws(
-    () => detectAnySerializer(
-      readContext,
-      anyStruct("value", Type.map(Type.string(), Type.int32({ encoding: "fixed" }))),
-    ),
+    () =>
+      detectAnySerializer(
+        readContext,
+        anyStruct("value", Type.map(Type.string(), Type.int32({ encoding: "fixed" }))),
+      ),
     /field schema mismatch/,
   );
   assert.doesNotThrow(() => detectAnySerializer(readContext, anyStruct("extra")));
 });
 
 runTest("exact Any TypeMeta bypasses schema limit", () => {
-  const localTypeInfo = Type.struct(
-    901,
-    { value: Type.int32({ encoding: "fixed" }) },
-  );
+  const localTypeInfo = Type.struct(901, { value: Type.int32({ encoding: "fixed" }) });
   const generatingOriginal = localSerializer(localTypeInfo);
-  const localMeta = TypeMeta.fromTypeInfo(localTypeInfo);
-  const localBytes = localMeta.toBytes();
+  const localMeta = anyStruct("value", Type.int32({ encoding: "fixed" }));
   const exactOriginal = {
+    [localTypeMetaSymbol]: localMeta,
+    [checkedTypeMetaWireTypeIdSymbol]: TypeId.COMPATIBLE_STRUCT,
     getHash() {
       return localMeta.getHash();
     },
     getTypeInfo() {
-      throw new Error("exact local compare must use encoded bytes");
-    },
-    getTypeMetaBytes() {
-      return localBytes;
+      throw new Error("exact local hit must use its TypeMeta owner");
     },
   };
+  localMeta[checkedTypeMetaSerializerSymbol] = exactOriginal;
   let activeOriginal = generatingOriginal;
   const readContext = context({
     computeTypeId(typeInfo) {
@@ -531,24 +639,17 @@ runTest("exact Any TypeMeta bypasses schema limit", () => {
 
   detectAnySerializer(readContext, anyStruct("extra"));
   activeOriginal = exactOriginal;
-  assert.doesNotThrow(() => detectAnySerializer(
-    readContext,
-    localMeta,
-  ));
-  assert.doesNotThrow(() => readTypeMeta(
-    readContext,
-    localMeta,
-  ));
+  assert.doesNotThrow(() => detectAnySerializer(readContext, localMeta));
+  assert.doesNotThrow(() => readTypeMeta(readContext, localMeta));
 });
 
-runTest("remote schema limit keeps unknown structs separate", () => {
+runTest("compatible unknown structs use the checked metadata cache", () => {
   const readContext = context();
-  assert.equal(
-    readTypeMeta(readContext, remoteStruct("UnknownA", "value")).getTypeName(),
-    "UnknownA",
-  );
-  assert.equal(
-    readTypeMeta(readContext, remoteStruct("UnknownB", "value")).getTypeName(),
-    "UnknownB",
-  );
+  const unknownA = remoteStruct("UnknownA", "value");
+  const unknownB = remoteStruct("UnknownB", "value");
+
+  assert.doesNotThrow(() => readTypeMeta(readContext, unknownA));
+  assert.doesNotThrow(() => readTypeMeta(readContext, unknownB));
+  assert.equal(readContext.typeMetaCache.has(unknownA.getHash()), true);
+  assert.equal(readContext.typeMetaCache.has(unknownB.getHash()), true);
 });

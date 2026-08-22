@@ -131,9 +131,10 @@ public final class MetaStringReader {
   private EncodedMetaString readBigMetaString(
       MemoryBuffer buffer, EncodedMetaString cache, int len) {
     long hashCode = buffer.readInt64();
-    if (cache.hash == hashCode && cache.bytes.length == len) {
-      // Big meta-string hashes are the wire identity on this cache hit. The body hash is computed
-      // and checked before a new entry is published; later hits intentionally skip the body.
+    if (cache.hash == hashCode) {
+      // The hash is the complete wire identity for a checked big meta-string cache hit. The frame
+      // length controls only readable-byte validation and cursor advancement; it must not reopen
+      // identity validation after the entry was first checked and published.
       buffer.checkReadableBytes(len);
       buffer._increaseReaderIndexUnsafe(len);
       return cache;
@@ -144,9 +145,9 @@ public final class MetaStringReader {
   private EncodedMetaString readBigMetaString(MemoryBuffer buffer, int len, long hashCode) {
     buffer.checkReadableBytes(len);
     EncodedMetaString encodedMetaString = hash2MetaStringMap.get(hashCode);
-    if (encodedMetaString != null && encodedMetaString.bytes.length == len) {
-      // Preserve the header-keyed fast path: entries reach this map only after their bytes matched
-      // the wire hash, so repeat hits advance over the redundant body without rehashing.
+    if (encodedMetaString != null) {
+      // Entries reach this map only after their bytes matched the wire hash. A repeat hash hit uses
+      // that checked identity and advances over this frame's redundant body without revalidation.
       buffer._increaseReaderIndexUnsafe(len);
       return encodedMetaString;
     }

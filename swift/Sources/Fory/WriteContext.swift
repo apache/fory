@@ -173,17 +173,25 @@ public final class WriteContext {
     }
 
     func writeTypeMeta(_ typeInfo: TypeInfo) throws {
-        if !typeDefStateUsed {
-            typeDefStateUsed = true
-        }
-
+        let buffer = self.buffer
         let typeIndexBySerializer = self.typeIndexBySerializer
         let typeKey = UInt64(UInt(bitPattern: typeInfo.serializerTypeID))
+        if !typeDefStateUsed {
+            // Reset keeps this flag paired with an empty index map, so the first TypeMeta in a
+            // root always owns index zero and does not need a general lookup.
+            typeDefStateUsed = true
+            typeIndexBySerializer.set(0, for: typeKey)
+            buffer.writeUInt8(0)
+            if let typeDefBytes = typeInfo.typeDefBytes {
+                buffer.writeBytes(typeDefBytes)
+            }
+            return
+        }
+
         let assignment = typeIndexBySerializer.putIfAbsent(
             UInt32(typeIndexBySerializer.count),
             for: typeKey
         )
-        let buffer = self.buffer
         if assignment.inserted {
             let marker = assignment.value << 1
             if marker < 0x80 {

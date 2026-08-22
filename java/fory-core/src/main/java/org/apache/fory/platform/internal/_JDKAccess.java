@@ -70,8 +70,8 @@ public class _JDKAccess {
       JDK_CONCURRENT_FIELD_ACCESS = false;
       JDK_PROXY_FIELD_ACCESS = false;
     } else if (JdkVersion.MAJOR_VERSION >= 25) {
-      // JDK25+ zero-Unsafe mode requires java.base/java.lang.invoke to be opened to fory-core.
-      // Missing that open is an invalid runtime configuration, not a fallback signal.
+      // JDK25+ prefers the java.lang.invoke open and falls back to current-JDK Unsafe when absent.
+      // Keep the access capabilities enabled so the selected _Lookup path owns that decision.
       JDK_INTERNAL_FIELD_ACCESS = true;
       JDK_LANG_FIELD_ACCESS = true;
       JDK_COLLECTION_FIELD_ACCESS = true;
@@ -101,8 +101,10 @@ public class _JDKAccess {
   }
 
   public static String jdk25AccessMessage() {
-    return "JDK25 zero-Unsafe mode requires java.base/java.lang.invoke to be open to Fory. "
-        + "Use --add-opens=java.base/java.lang.invoke=ALL-UNNAMED when Fory is on the "
+    return "On JDK25+, opening java.base/java.lang.invoke to Fory core is not required, but "
+        + "is recommended. It is required when the current-JDK Unsafe fallback is disabled or "
+        + "unavailable. Use "
+        + "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED when Fory is on the "
         + "classpath, or --add-opens=java.base/java.lang.invoke=org.apache.fory.core when "
         + "Fory is on the module path.";
   }
@@ -178,6 +180,25 @@ public class _JDKAccess {
               handle,
               boxedMethodType(handle.type()));
       return (BiConsumer<T, U>) callSite.getTarget().invokeExact();
+    } catch (Throwable e) {
+      throw ExceptionUtils.throwException(e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  public static <T> T makeObjPrimitiveConsumer(
+      Lookup lookup, MethodHandle handle, Class<?> consumerInterface, Class<?> valueType) {
+    MethodType consumerMethodType = MethodType.methodType(void.class, Object.class, valueType);
+    try {
+      CallSite callSite =
+          LambdaMetafactory.metafactory(
+              lookup,
+              "accept",
+              MethodType.methodType(consumerInterface),
+              consumerMethodType,
+              handle,
+              handle.type());
+      return (T) callSite.getTarget().invoke();
     } catch (Throwable e) {
       throw ExceptionUtils.throwException(e);
     }
@@ -345,18 +366,25 @@ public class _JDKAccess {
     }
   }
 
-  // caller sensitive, must use MethodHandle to walk around the check.
   private static volatile MethodHandle addReadsHandle;
 
   public static Object addReads(Object thisModule, Object otherModule) {
     Preconditions.checkArgument(JdkVersion.MAJOR_VERSION >= 9);
     try {
       if (addReadsHandle == null) {
-        Class<?> cls = Class.forName("java.lang.Module");
-        MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(cls);
-        addReadsHandle = lookup.findVirtual(cls, "addReads", MethodType.methodType(cls, cls));
+        Class<?> moduleClass = Class.forName("java.lang.Module");
+        Class<?> modulesClass = Class.forName("jdk.internal.module.Modules");
+        MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(modulesClass);
+        // Module.addReads is caller-sensitive and rejects changes to another module even through a
+        // trusted handle. The JDK module-graph owner exposes the corresponding privileged update.
+        addReadsHandle =
+            lookup.findStatic(
+                modulesClass,
+                "addReads",
+                MethodType.methodType(void.class, moduleClass, moduleClass));
       }
-      return addReadsHandle.invoke(thisModule, otherModule);
+      addReadsHandle.invoke(thisModule, otherModule);
+      return thisModule;
     } catch (Throwable e) {
       throw ExceptionUtils.throwException(e);
     }

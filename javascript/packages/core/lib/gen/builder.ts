@@ -354,7 +354,7 @@ class TypeResolverBuilder {
   }
 
   getSerializerByName(name: string) {
-    return `${this.holder}.getSerializerByName("${name}")`;
+    return `${this.holder}.getSerializerByName(${CodecBuilder.sourceString(name)})`;
   }
 
   getSerializerByData(v: string) {
@@ -376,24 +376,14 @@ class TypeMetaContextBuilder {
     return `${this.readHolder}.readTypeMeta()`;
   }
 
-  readNamedTypeMeta(typeId: number, namespace: string, typeName: string) {
-    const safeNamespace = CodecBuilder.replaceBackslashAndQuote(namespace);
-    const safeTypeName = CodecBuilder.replaceBackslashAndQuote(typeName);
-    return `${this.readHolder}.readNamedTypeMeta(${typeId}, "${safeNamespace}", "${safeTypeName}")`;
+  readNamedTypeMeta(typeId: number, namespace: string, typeName: string, serializer?: string) {
+    const method = serializer === undefined ? "readNamedTypeMeta" : "readExpectedNamedTypeMeta";
+    const owner = serializer === undefined ? "" : `, ${serializer}`;
+    return `${this.readHolder}.${method}(${typeId}, ${CodecBuilder.sourceString(namespace)}, ${CodecBuilder.sourceString(typeName)}${owner})`;
   }
 
-  readCompatibleStructSerializer(localHash: string, original?: string) {
-    if (original) {
-      return `${this.readHolder}.readCompatibleStructSerializer(${localHash}, ${original})`;
-    }
-    return `${this.readHolder}.readCompatibleStructSerializer(${localHash})`;
-  }
-
-  genSerializerByTypeMetaRuntime(typeMeta: string, original?: string) {
-    if (original) {
-      return `${this.readHolder}.genSerializerByTypeMetaRuntime(${typeMeta}, ${original})`;
-    }
-    return `${this.readHolder}.genSerializerByTypeMetaRuntime(${typeMeta})`;
+  readCompatibleStructSerializer(localHash: string, original: string) {
+    return `${this.readHolder}.readCompatibleStructOwner(${localHash}, ${original})`;
   }
 }
 
@@ -417,11 +407,11 @@ class MetaStringContextBuilder {
   }
 
   encodeNamespace(input: string) {
-    return `${this.writeHelperHolder}.encodeNamespace("${input}")`;
+    return `${this.writeHelperHolder}.encodeNamespace(${CodecBuilder.sourceString(input)})`;
   }
 
   encodeTypeName(input: string) {
-    return `${this.writeHelperHolder}.encodeTypeName("${input}")`;
+    return `${this.writeHelperHolder}.encodeTypeName(${CodecBuilder.sourceString(input)})`;
   }
 }
 
@@ -464,27 +454,20 @@ export class CodecBuilder {
     return /^[a-zA-Z_$][0-9a-zA-Z_$]*$/.test(prop);
   }
 
-  static replaceBackslashAndQuote(v: string) {
-    return v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  }
-
-  static safeString(target: string) {
-    if (!CodecBuilder.isDotPropAccessor(target) || CodecBuilder.isReserved(target)) {
-      return `"${CodecBuilder.replaceBackslashAndQuote(target)}"`;
-    }
-    return `"${target}"`;
+  static sourceString(value: string) {
+    return JSON.stringify(value);
   }
 
   static safePropAccessor(prop: string) {
     if (!CodecBuilder.isDotPropAccessor(prop) || CodecBuilder.isReserved(prop)) {
-      return `["${CodecBuilder.replaceBackslashAndQuote(prop)}"]`;
+      return `[${CodecBuilder.sourceString(prop)}]`;
     }
     return `.${prop}`;
   }
 
   static safePropName(prop: string) {
     if (!CodecBuilder.isDotPropAccessor(prop) || CodecBuilder.isReserved(prop)) {
-      return `["${CodecBuilder.replaceBackslashAndQuote(prop)}"]`;
+      return `[${CodecBuilder.sourceString(prop)}]`;
     }
     return prop;
   }

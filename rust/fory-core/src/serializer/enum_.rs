@@ -106,22 +106,12 @@ pub fn read_type_info<S: Serializer>(context: &mut ReadContext) -> Result<(), Er
         .get_type_resolver()
         .get_provider_type_info(&std::any::TypeId::of::<S>())?
         .get_type_id();
-    let remote_type_id = context.reader.read_u8()?;
+    let type_info = context.read_type_info_for(S::metadata_target_type_id())?;
+    let remote_type_id = type_info.get_type_id();
     ensure!(
-        local_type_id as u8 == remote_type_id,
+        local_type_id == remote_type_id,
         Error::type_mismatch(local_type_id as u32, remote_type_id as u32)
     );
-    if remote_type_id == TypeId::NAMED_ENUM as u8 {
-        if context.is_share_meta() {
-            // Read type meta inline using streaming protocol
-            let _type_info = context.read_type_meta()?;
-        } else {
-            let _namespace_msb = context.read_meta_string()?;
-            let _type_name_msb = context.read_meta_string()?;
-        }
-    } else {
-        context.reader.read_var_u32()?;
-    }
     Ok(())
 }
 

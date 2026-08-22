@@ -162,15 +162,6 @@ func NeedsTypeMetaWrite(typeID TypeId) bool {
 	}
 }
 
-func isUserTypeRegisteredById(typeID TypeId) bool {
-	switch typeID {
-	case ENUM, STRUCT, COMPATIBLE_STRUCT, EXT, TYPED_UNION:
-		return true
-	default:
-		return false
-	}
-}
-
 func isPrimitiveType(typeID TypeId) bool {
 	switch typeID {
 	case BOOL,
@@ -206,24 +197,13 @@ func isPrimitiveType(typeID TypeId) bool {
 func NeedWriteRef(typeID TypeId) bool {
 	switch typeID {
 	case BOOL, INT8, INT16, INT32, INT64, VARINT32, VARINT64, TAGGED_INT64,
+		UINT8, UINT16, UINT32, UINT64, VAR_UINT32, VAR_UINT64, TAGGED_UINT64,
 		FLOAT32, FLOAT64, FLOAT16, FLOAT8, BFLOAT16,
 		STRING, TIMESTAMP, DATE, DURATION, DECIMAL, NONE:
 		return false
 	default:
 		return true
 	}
-}
-
-func isListType(typeID TypeId) bool {
-	return typeID == LIST
-}
-
-func isSetType(typeID TypeId) bool {
-	return typeID == SET
-}
-
-func isMapType(typeID TypeId) bool {
-	return typeID == MAP
 }
 
 func isCollectionType(typeID TypeId) bool {

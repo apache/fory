@@ -19,7 +19,10 @@ use crate::context::ReadContext;
 use crate::ensure;
 use crate::error::Error;
 use crate::meta::FieldType;
-use crate::serializer::collection::{DECL_ELEMENT_TYPE, HAS_NULL, IS_SAME_TYPE, TRACKING_REF};
+use crate::serializer::collection::{
+    field_read_data_always_advances, settle_unbacked_items, DECL_ELEMENT_TYPE, HAS_NULL,
+    IS_SAME_TYPE, TRACKING_REF,
+};
 use crate::serializer::util;
 use crate::type_id as types;
 use crate::util::ENABLE_FORY_DEBUG_OUTPUT;
@@ -335,15 +338,39 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
     };
     context.inc_depth()?;
     let null_only = has_null && !track_ref;
-    for _ in 0..length {
-        skip_value(
-            context,
-            elem_type,
-            track_ref,
-            null_only,
-            false,
-            type_info.as_ref(),
-        )?;
+    if track_ref || has_null || field_read_data_always_advances(elem_type) {
+        for _ in 0..length {
+            skip_value(
+                context,
+                elem_type,
+                track_ref,
+                null_only,
+                false,
+                type_info.as_ref(),
+            )?;
+        }
+    } else {
+        let mut window_start = context.reader.get_cursor();
+        let mut window_items = 0usize;
+        for _ in 0..length {
+            skip_value(
+                context,
+                elem_type,
+                track_ref,
+                null_only,
+                false,
+                type_info.as_ref(),
+            )?;
+            window_items += 1;
+            if window_items == 1024 {
+                settle_unbacked_items(context, window_items, window_start)?;
+                window_start = context.reader.get_cursor();
+                window_items = 0;
+            }
+        }
+        if window_items != 0 {
+            settle_unbacked_items(context, window_items, window_start)?;
+        }
     }
     context.dec_depth();
     Ok(())
@@ -493,23 +520,50 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         };
 
         context.inc_depth()?;
-        for _ in 0..chunk_size {
-            skip_value(
-                context,
-                key_type,
-                key_track_ref,
-                false,
-                false,
-                key_type_info.as_ref(),
-            )?;
-            skip_value(
-                context,
-                value_type,
-                value_track_ref,
-                false,
-                false,
-                value_type_info.as_ref(),
-            )?;
+        let entry_read_always_advances = key_track_ref
+            || value_track_ref
+            || field_read_data_always_advances(key_type)
+            || field_read_data_always_advances(value_type);
+        if entry_read_always_advances {
+            for _ in 0..chunk_size {
+                skip_value(
+                    context,
+                    key_type,
+                    key_track_ref,
+                    false,
+                    false,
+                    key_type_info.as_ref(),
+                )?;
+                skip_value(
+                    context,
+                    value_type,
+                    value_track_ref,
+                    false,
+                    false,
+                    value_type_info.as_ref(),
+                )?;
+            }
+        } else {
+            let chunk_start = context.reader.get_cursor();
+            for _ in 0..chunk_size {
+                skip_value(
+                    context,
+                    key_type,
+                    key_track_ref,
+                    false,
+                    false,
+                    key_type_info.as_ref(),
+                )?;
+                skip_value(
+                    context,
+                    value_type,
+                    value_track_ref,
+                    false,
+                    false,
+                    value_type_info.as_ref(),
+                )?;
+            }
+            settle_unbacked_items(context, chunk_size as usize, chunk_start)?;
         }
         context.dec_depth();
         len_counter += chunk_size as u32;
@@ -1031,5 +1085,56 @@ pub fn skip_enum_variant(
                 variant_type
             )))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Config, Reader, TypeResolver};
+
+    fn assert_empty_collection_uses_budget(collection_type: u32) {
+        let bytes = [3, IS_SAME_TYPE | DECL_ELEMENT_TYPE];
+        let mut context = ReadContext::new(TypeResolver::default(), Config::default());
+        context.remaining_unbacked_container_items = 2;
+        context.attach_reader(Reader::new(&bytes));
+        let element_type = FieldType::new(types::NONE, false, Vec::new());
+        let field_type = FieldType::new(collection_type, false, vec![element_type]);
+
+        let error = skip_collection(&mut context, &field_type).unwrap_err();
+        assert!(error.to_string().contains("max_unbacked_container_items"));
+    }
+
+    #[test]
+    fn bounds_declared_none_list() {
+        assert_empty_collection_uses_budget(types::LIST);
+    }
+
+    #[test]
+    fn bounds_declared_none_set() {
+        assert_empty_collection_uses_budget(types::SET);
+    }
+
+    #[test]
+    fn bounds_declared_none_map() {
+        let bytes = [
+            3,
+            crate::serializer::map::DECL_KEY_TYPE | crate::serializer::map::DECL_VALUE_TYPE,
+            3,
+        ];
+        let mut context = ReadContext::new(TypeResolver::default(), Config::default());
+        context.remaining_unbacked_container_items = 2;
+        context.attach_reader(Reader::new(&bytes));
+        let field_type = FieldType::new(
+            types::MAP,
+            false,
+            vec![
+                FieldType::new(types::NONE, false, Vec::new()),
+                FieldType::new(types::NONE, false, Vec::new()),
+            ],
+        );
+
+        let error = skip_map(&mut context, &field_type).unwrap_err();
+        assert!(error.to_string().contains("max_unbacked_container_items"));
     }
 }

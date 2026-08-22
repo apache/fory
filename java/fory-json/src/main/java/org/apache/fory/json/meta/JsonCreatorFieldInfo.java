@@ -23,12 +23,17 @@ import java.lang.reflect.Type;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonFormat;
+import org.apache.fory.json.codec.DirectUnboxedValueCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.codec.TransparentUnboxedValueCodec;
+import org.apache.fory.json.codec.UnboxedValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.reflect.TypeRef;
 
 /** Immutable input metadata for one {@code JsonCreator} argument. */
 @Internal
@@ -36,26 +41,36 @@ public final class JsonCreatorFieldInfo {
   private final String name;
   private final long nameHash;
   private final int argumentIndex;
-  private final Type type;
+  private final TypeRef<?> typeRef;
   private final Class<?> rawType;
   private final JsonCodec codecAnnotation;
   private final Class<? extends JsonValueCodec<?>> valueCodecClass;
+  private final JsonFormat formatAnnotation;
+  private final boolean unboxedRequired;
+  private final boolean selectedCodec;
   private JsonTypeInfo typeInfo;
+  private JsonTypeInfo occurrenceTypeInfo;
+  private UnboxedValueCodec unboxedValueCodec;
 
   public JsonCreatorFieldInfo(
       String name,
       int argumentIndex,
-      Type type,
+      TypeRef<?> typeRef,
       Class<?> rawType,
       JsonCodec codecAnnotation,
-      Class<? extends JsonValueCodec<?>> valueCodecClass) {
+      Class<? extends JsonValueCodec<?>> valueCodecClass,
+      JsonFormat formatAnnotation,
+      boolean unboxedRequired) {
     this.name = name;
     nameHash = JsonFieldNameHash.hash(name);
     this.argumentIndex = argumentIndex;
-    this.type = type;
+    this.typeRef = typeRef;
     this.rawType = rawType;
     this.codecAnnotation = codecAnnotation;
     this.valueCodecClass = valueCodecClass;
+    this.formatAnnotation = formatAnnotation;
+    this.unboxedRequired = unboxedRequired;
+    selectedCodec = codecAnnotation != null || valueCodecClass != null || formatAnnotation != null;
   }
 
   public String name() {
@@ -65,7 +80,14 @@ public final class JsonCreatorFieldInfo {
   /** Returns parent-local metadata with a transformed JSON name and the same creator argument. */
   public JsonCreatorFieldInfo withName(String transformedName) {
     return new JsonCreatorFieldInfo(
-        transformedName, argumentIndex, type, rawType, codecAnnotation, valueCodecClass);
+        transformedName,
+        argumentIndex,
+        typeRef,
+        rawType,
+        codecAnnotation,
+        valueCodecClass,
+        formatAnnotation,
+        unboxedRequired);
   }
 
   public long nameHash() {
@@ -77,7 +99,11 @@ public final class JsonCreatorFieldInfo {
   }
 
   public Type type() {
-    return type;
+    return typeRef.getType();
+  }
+
+  public TypeRef<?> typeRef() {
+    return typeRef;
   }
 
   public Class<?> rawType() {
@@ -89,24 +115,123 @@ public final class JsonCreatorFieldInfo {
   }
 
   public void resolveType(JsonTypeResolver resolver) {
-    typeInfo =
-        codecAnnotation != null
-            ? resolver.getTypeInfo(type, rawType, codecAnnotation)
-            : valueCodecClass != null
-                ? resolver.getTypeInfo(type, rawType, valueCodecClass)
-                : resolver.getTypeInfo(type, rawType);
+    if (!unboxedRequired) {
+      typeInfo = selectedCodec ? selectedTypeInfo(resolver) : resolver.getTypeInfo(typeRef);
+      occurrenceTypeInfo = typeInfo;
+      return;
+    }
+    if (selectedCodec) {
+      throw new ForyJsonException(
+          "JSON creator property "
+              + name
+              + " cannot select a codec or format for the unboxed logical type "
+              + typeRef);
+    }
+    JsonTypeInfo canonical = resolver.getTypeInfo(typeRef);
+    UnboxedValueCodec operation = canonical.unboxedValueCodec();
+    if (operation == null || operation.carrierType() != rawType) {
+      throw new ForyJsonException(
+          "JSON creator property "
+              + name
+              + " has no exact unboxed carrier operation for "
+              + rawType.getName());
+    }
+    unboxedValueCodec = operation;
+    occurrenceTypeInfo = canonical;
+    if (operation instanceof DirectUnboxedValueCodec) {
+      typeInfo = canonical;
+    } else if (operation instanceof TransparentUnboxedValueCodec) {
+      typeInfo = ((TransparentUnboxedValueCodec) operation).valueTypeInfo();
+    } else {
+      throw new ForyJsonException(
+          "JSON creator property "
+              + name
+              + " has an unsupported unboxed carrier capability for "
+              + rawType.getName());
+    }
+  }
+
+  private JsonTypeInfo selectedTypeInfo(JsonTypeResolver resolver) {
+    return codecAnnotation != null
+        ? resolver.getTypeInfo(typeRef, codecAnnotation)
+        : valueCodecClass != null
+            ? resolver.getTypeInfo(typeRef, valueCodecClass)
+            : resolver.getTypeInfo(typeRef, formatAnnotation);
   }
 
   public Object readLatin1(Latin1JsonReader reader) {
-    return requirePrimitive(typeInfo.latin1Reader().readLatin1(reader), rawType);
+    if (readOccurrenceNull(reader)) {
+      return null;
+    }
+    Object value =
+        unboxedValueCodec == null
+            ? typeInfo.latin1Reader().readLatin1(reader)
+            : unboxedValueCodec.readLatin1Carrier(reader);
+    return requirePrimitive(value, rawType);
   }
 
   public Object readUtf16(Utf16JsonReader reader) {
-    return requirePrimitive(typeInfo.utf16Reader().readUtf16(reader), rawType);
+    if (readOccurrenceNull(reader)) {
+      return null;
+    }
+    Object value =
+        unboxedValueCodec == null
+            ? typeInfo.utf16Reader().readUtf16(reader)
+            : unboxedValueCodec.readUtf16Carrier(reader);
+    return requirePrimitive(value, rawType);
   }
 
   public Object readUtf8(Utf8JsonReader reader) {
-    return requirePrimitive(typeInfo.utf8Reader().readUtf8(reader), rawType);
+    if (readOccurrenceNull(reader)) {
+      return null;
+    }
+    Object value =
+        unboxedValueCodec == null
+            ? typeInfo.utf8Reader().readUtf8(reader)
+            : unboxedValueCodec.readUtf8Carrier(reader);
+    return requirePrimitive(value, rawType);
+  }
+
+  private boolean readOccurrenceNull(org.apache.fory.json.reader.JsonReader reader) {
+    if (!occurrenceTypeInfo.nullable() && !occurrenceTypeInfo.rejectsNull()) {
+      return false;
+    }
+    if (!reader.tryReadNull()) {
+      return false;
+    }
+    if (occurrenceTypeInfo.rejectsNull()) {
+      rejectNullRead();
+    }
+    return true;
+  }
+
+  /** Returns whether a present JSON null materializes a non-null logical value in this carrier. */
+  public boolean materializesNullCarrier() {
+    return unboxedValueCodec != null && occurrenceTypeInfo.transparentNull();
+  }
+
+  /** Returns the cold-bound unboxed carrier operation. */
+  public UnboxedValueCodec unboxedValueCodec() {
+    return unboxedValueCodec;
+  }
+
+  /** Returns the exact transparent carrier operation, or {@code null}. */
+  public TransparentUnboxedValueCodec transparentUnboxedValueCodec() {
+    return unboxedValueCodec instanceof TransparentUnboxedValueCodec
+        ? (TransparentUnboxedValueCodec) unboxedValueCodec
+        : null;
+  }
+
+  /** Returns the exact semantic leaf carrier operation, or {@code null}. */
+  public DirectUnboxedValueCodec directUnboxedValueCodec() {
+    return unboxedValueCodec instanceof DirectUnboxedValueCodec
+        ? (DirectUnboxedValueCodec) unboxedValueCodec
+        : null;
+  }
+
+  /** Throws the cold failure used by interpreted and generated readers. */
+  public Object rejectNullRead() {
+    throw new ForyJsonException("JSON creator property " + name + " is not nullable");
   }
 
   /** Enforces the shared interpreted/generated null contract for a primitive creator argument. */

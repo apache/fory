@@ -421,7 +421,7 @@ public sealed class ExternalTypeSerializationTests
         InvalidOperationException error = Assert.Throws<InvalidOperationException>(
             () => TypeResolver.RegisterGeneratedStruct<
                 ExternalUser,
-                DuplicateExternalUserSerializer>(true));
+                DuplicateExternalUserSerializer>(true, true));
         Assert.Contains(typeof(ExternalUser).ToString(), error.Message, StringComparison.Ordinal);
 
         ForyRuntime fory = NewFory(compatible: true);

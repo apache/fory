@@ -25,7 +25,10 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertTrue;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -33,6 +36,7 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -48,17 +52,15 @@ import javax.tools.ToolProvider;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.GeneratedJsonCodec;
-import org.apache.fory.json.codec.GeneratedJsonCodecFactory;
 import org.apache.fory.json.meta.JsonAnySetterAccessor;
 import org.apache.fory.json.meta.JsonFieldAccessor;
+import org.apache.fory.platform.JdkVersion;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class JsonTypeProcessorTest {
   private static final String RULE_PREFIX = "META-INF/proguard/fory-json-";
   private static final String MIXIN_RULE_PREFIX = "META-INF/proguard/fory-json-mixin-";
-  private static final String NATIVE_IMAGE_PREFIX =
-      "META-INF/native-image/org.apache.fory/fory-json-";
 
   @Test
   public void unannotatedType() throws Exception {
@@ -81,8 +83,6 @@ public class JsonTypeProcessorTest {
     String companion = "test.EmptyMixin_ForyJsonMixin_test_x2e_Target_ForyJsonCodec";
     assertFalse(result.hasGeneratedSource(companion.replace('.', '/') + ".java"));
     assertFalse(result.hasGeneratedResource(MIXIN_RULE_PREFIX + "test.EmptyMixin.pro"));
-    assertFalse(
-        result.hasGeneratedResource(NATIVE_IMAGE_PREFIX + companion + "/native-image.properties"));
   }
 
   @Test
@@ -504,10 +504,6 @@ public class JsonTypeProcessorTest {
     assertFalse(rules.contains("test.Plain_ForyJsonCodec$Factory"), rules);
     assertFalse(rules.contains("-keep,allowoptimization,allowobfuscation class test.Plain"), rules);
     assertTrue(result.hasGeneratedSource("test/Plain_ForyJsonCodec.java"));
-    assertEquals(
-        result.generatedResource(
-            NATIVE_IMAGE_PREFIX + "test.Plain_ForyJsonCodec/native-image.properties"),
-        "Args=--initialize-at-build-time=test.Plain_ForyJsonCodec$Factory\n");
   }
 
   @Test
@@ -552,14 +548,138 @@ public class JsonTypeProcessorTest {
     anySetter.put(model, "answer", 42);
     Field extra = modelType.getField("extra");
     assertEquals(((Map<?, ?>) extra.get(model)).get("answer"), 42);
+  }
 
-    GeneratedJsonCodecFactory factory =
-        (GeneratedJsonCodecFactory)
-            loader
-                .loadClass("test.GeneratedModel_ForyJsonCodec$Factory")
-                .getConstructor()
-                .newInstance();
-    assertEquals(factory.create().type(), modelType);
+  @Test
+  public void generatedValidators() throws Throwable {
+    CompilationResult result =
+        compile(
+            "test.ValidatedModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class ValidatedBase {\n"
+                + "  public int calls;\n"
+                + "  @JsonValidator public void validateBase() { calls++; }\n"
+                + "}\n"
+                + "@JsonType public final class ValidatedModel extends ValidatedBase {\n"
+                + "  public boolean fail;\n"
+                + "  @JsonValidator public void validateModel() {\n"
+                + "    calls++;\n"
+                + "    if (fail) throw new IllegalStateException(\"invalid\");\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> modelType = loader.loadClass("test.ValidatedModel");
+    GeneratedJsonCodec<?> codec = generatedCodec(loader, "test.ValidatedModel_ForyJsonCodec");
+    Method[] validators = codec.validatorMethods();
+    assertEquals(validators.length, 2);
+    List<String> names = new ArrayList<>();
+    for (Method validator : validators) {
+      names.add(validator.getName());
+    }
+    Collections.sort(names);
+    assertEquals(names, Arrays.asList("validateBase", "validateModel"));
+
+    Object model = modelType.getConstructor().newInstance();
+    codec.invokeValidators(model);
+    Field calls = modelType.getField("calls");
+    calls.setAccessible(true);
+    assertEquals(calls.getInt(model), 2);
+    modelType.getField("fail").setBoolean(model, true);
+    try {
+      codec.invokeValidators(model);
+      throw new AssertionError("Expected validator failure");
+    } catch (ForyJsonException e) {
+      assertTrue(e.getMessage().contains("test.ValidatedModel"), e.getMessage());
+      assertTrue(e.getMessage().contains("validateModel"), e.getMessage());
+      assertTrue(e.getCause() instanceof IllegalStateException);
+    }
+
+    String rules = result.generatedResource(RULE_PREFIX + "test.ValidatedModel.pro");
+    assertTrue(rules.contains("void validateBase();"), rules);
+    assertTrue(rules.contains("void validateModel();"), rules);
+    assertTrue(rules.contains("java.lang.reflect.Method[] validatorMethods();"), rules);
+    assertTrue(rules.contains("void invokeValidators(java.lang.Object);"), rules);
+  }
+
+  @Test
+  public void generatedAndroidValidator() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.AndroidValidated",
+            "package test;\n"
+                + "import org.apache.fory.json.*;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "import org.apache.fory.platform.AndroidSupport;\n"
+                + "@JsonType public final class AndroidValidated {\n"
+                + "  public int value;\n"
+                + "  boolean invoked;\n"
+                + "  @JsonValidator public void validate() {\n"
+                + "    invoked = true;\n"
+                + "    if (value < 0) throw new IllegalArgumentException(\"negative\");\n"
+                + "  }\n"
+                + "}\n"
+                + "final class AndroidValidatorMain {\n"
+                + "  public static void main(String[] args) {\n"
+                + "    if (!AndroidSupport.IS_ANDROID) throw new AssertionError();\n"
+                + "    ForyJson json = ForyJson.builder().build();\n"
+                + "    AndroidValidated value = json.fromJson(\"{\\\"value\\\":1}\", "
+                + "AndroidValidated.class);\n"
+                + "    if (!value.invoked) throw new AssertionError();\n"
+                + "    try {\n"
+                + "      json.fromJson(\"{\\\"value\\\":-1}\", AndroidValidated.class);\n"
+                + "      throw new AssertionError();\n"
+                + "    } catch (ForyJsonException expected) {\n"
+                + "      if (!(expected.getCause() instanceof IllegalArgumentException)) "
+                + "throw expected;\n"
+                + "    }\n"
+                + "    System.out.println(\"RESULT:ok\");\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+
+    ProcessBuilder processBuilder =
+        new ProcessBuilder(javaCommand(result.classRoot, "test.AndroidValidatorMain"))
+            .redirectErrorStream(true);
+    processBuilder.environment().put("FORY_ANDROID_ENABLED", "1");
+    processBuilder.environment().remove("FORY_PANIC_ON_ERROR");
+    Process process = processBuilder.start();
+    String output = readFully(process.getInputStream());
+    assertEquals(process.waitFor(), 0, output);
+    assertTrue(output.contains("RESULT:ok"), output);
+  }
+
+  @Test
+  public void generatedMixinValidator() throws Throwable {
+    CompilationResult result =
+        compile(
+            "test.MixinValidatedModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public final class MixinValidatedModel {\n"
+                + "  public int calls;\n"
+                + "  public void verify() { calls++; }\n"
+                + "}\n"
+                + "@JsonMixin(target = MixinValidatedModel.class)\n"
+                + "interface ValidationMixin {\n"
+                + "  @JsonValidator void verify();\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> modelType = loader.loadClass("test.MixinValidatedModel");
+    String companion =
+        "test.ValidationMixin_ForyJsonMixin_test_x2e_MixinValidatedModel_ForyJsonCodec";
+    GeneratedJsonCodec<?> codec = generatedCodec(loader, companion);
+    assertEquals(codec.validatorMethods().length, 1);
+    assertEquals(codec.validatorMethods()[0], modelType.getMethod("verify"));
+    Object model = modelType.getConstructor().newInstance();
+    codec.invokeValidators(model);
+    assertEquals(modelType.getField("calls").getInt(model), 1);
+
+    String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.ValidationMixin.pro");
+    assertTrue(rules.contains("void verify();"), rules);
+    assertTrue(rules.contains("@interface org.apache.fory.json.annotation.JsonValidator"), rules);
   }
 
   @Test
@@ -797,6 +917,70 @@ public class JsonTypeProcessorTest {
         "test.EncodedCreator",
         new Class<?>[] {byte[].class},
         new Object[] {new byte[] {1, 2, 3}});
+  }
+
+  @Test
+  public void formatRecordPipeline() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.FormatRecord",
+            "package test;\n"
+                + "import java.time.Instant;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public record FormatRecord(\n"
+                + "    @JsonFormat(pattern = \"uuuu-MM-dd HH:mm:ss XXX\", "
+                + "timezone = \"Asia/Shanghai\") Instant value) {}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(RULE_PREFIX + "test.FormatRecord.pro");
+    assertTrue(rules.contains("@interface org.apache.fory.json.annotation.JsonFormat"), rules);
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.FormatRecord");
+    Instant instant = Instant.parse("2024-01-02T03:04:05Z");
+    Object value = type.getConstructor(Instant.class).newInstance(instant);
+    for (ForyJson json : jsonRuntimes(loader)) {
+      assertEquals(json.toJson(value), "{\"value\":\"2024-01-02 11:04:05 +08:00\"}");
+      Object decoded = json.fromJson("{\"value\":\"2024-01-02 12:04:05 +08:00\"}", type);
+      assertEquals(type.getMethod("value").invoke(decoded), instant.plusSeconds(3600));
+    }
+  }
+
+  @Test
+  public void formatMixinPipeline() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.FormatTarget",
+            "package test;\n"
+                + "import java.time.Instant;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public final class FormatTarget { public Instant value; }\n"
+                + "@JsonMixin(target = FormatTarget.class) abstract class FormatMixin {\n"
+                + "  @JsonFormat(pattern = \"uuuu-MM-dd HH:mm:ss XXX\", "
+                + "timezone = \"Asia/Shanghai\") Instant value;\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String base = "FormatMixin_ForyJsonMixin_test_x2e_FormatTarget";
+    assertTrue(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
+    String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.FormatMixin.pro");
+    assertTrue(rules.contains("@interface org.apache.fory.json.annotation.JsonFormat"), rules);
+    ClassLoader loader = result.classLoader();
+    Class<?> target = loader.loadClass("test.FormatTarget");
+    Class<?> mixin = loader.loadClass("test.FormatMixin");
+    Object value = target.getConstructor().newInstance();
+    Instant instant = Instant.parse("2024-01-02T03:04:05Z");
+    target.getField("value").set(value, instant);
+    for (boolean codegen : new boolean[] {false, true}) {
+      ForyJson json =
+          ForyJson.builder()
+              .withCodegen(codegen)
+              .withAsyncCompilation(false)
+              .withClassLoader(loader)
+              .registerMixin(mixin)
+              .build();
+      assertEquals(json.toJson(value), "{\"value\":\"2024-01-02 11:04:05 +08:00\"}");
+      Object decoded = json.fromJson("{\"value\":\"2024-01-02 12:04:05 +08:00\"}", target);
+      assertEquals(target.getField("value").get(decoded), instant.plusSeconds(3600));
+    }
   }
 
   @Test
@@ -1754,6 +1938,34 @@ public class JsonTypeProcessorTest {
   private static GeneratedJsonCodec<?> generatedCodec(ClassLoader loader, String name)
       throws Exception {
     return (GeneratedJsonCodec<?>) loader.loadClass(name).getConstructor().newInstance();
+  }
+
+  private static List<String> javaCommand(Path classRoot, String mainClass) {
+    List<String> command =
+        new ArrayList<>(
+            Collections.singletonList(
+                System.getProperty("java.home")
+                    + File.separator
+                    + "bin"
+                    + File.separator
+                    + "java"));
+    if (JdkVersion.MAJOR_VERSION >= 25) {
+      command.add("--add-opens=java.base/java.lang.invoke=ALL-UNNAMED");
+    }
+    command.add("-cp");
+    command.add(classRoot + File.pathSeparator + System.getProperty("java.class.path"));
+    command.add(mainClass);
+    return command;
+  }
+
+  private static String readFully(InputStream inputStream) throws IOException {
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    byte[] buffer = new byte[1024];
+    int read;
+    while ((read = inputStream.read(buffer)) != -1) {
+      output.write(buffer, 0, read);
+    }
+    return new String(output.toByteArray(), StandardCharsets.UTF_8);
   }
 
   private static void assertRoundTrips(

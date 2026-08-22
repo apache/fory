@@ -119,6 +119,6 @@ protoc \
 ```
 
 - The benchmark intentionally includes plain-model conversion for protobuf to mirror real-world usage.
-- `swift-benchmark` and `swift-external-benchmark` are separate products. Building the ordinary
-  product does not compile external-type models or serializer specializations.
+- `swift-benchmark` and `swift-external-benchmark` are separate executables. Building the ordinary
+  benchmark does not compile external-type models or serializer specializations.
 - Results vary across machines and runtime environments.

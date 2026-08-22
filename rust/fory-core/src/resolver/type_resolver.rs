@@ -287,8 +287,10 @@ impl TypeInfo {
         self.register_by_name
     }
 
+    /// Returns whether metadata resolution selected the exact local schema.
     #[inline(always)]
-    pub(crate) fn has_exact_local_schema(&self) -> bool {
+    #[doc(hidden)]
+    pub fn has_exact_local_schema(&self) -> bool {
         self.exact_local_schema
     }
 

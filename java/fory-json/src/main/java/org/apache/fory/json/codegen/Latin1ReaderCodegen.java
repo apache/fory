@@ -30,11 +30,11 @@ import org.apache.fory.reflect.TypeRef;
 
 final class Latin1ReaderCodegen extends JsonReaderCodegen {
   Latin1ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
-    super(codegen, resolver, true);
+    super(codegen, resolver);
   }
 
   Latin1ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, int[] fastReadGroupEnds) {
-    super(codegen, resolver, true, fastReadGroupEnds);
+    super(codegen, resolver, fastReadGroupEnds);
   }
 
   @Override
@@ -94,13 +94,18 @@ final class Latin1ReaderCodegen extends JsonReaderCodegen {
   }
 
   @Override
+  boolean rawFieldNameDispatch() {
+    return true;
+  }
+
+  @Override
   boolean isDirectName(String name, boolean tokenValueRead) {
     return JsonAsciiToken.isLongPackable(fieldNameToken(name));
   }
 
   @Override
-  Expression tryReadNextFieldNameColon(JsonFieldInfo property, boolean tokenValueRead) {
-    return tryReadAsciiFieldNameColon(property);
+  Expression tryReadNextFieldNameColon(String name) {
+    return tryReadAsciiFieldNameColon(name);
   }
 
   @Override

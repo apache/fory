@@ -115,7 +115,7 @@ Notes:
 - C# external-type serialization maps a third-party class/struct or enum
   through a local
   `ForyStruct(Target = typeof(...))` or
-  `ForyEnum(Target = typeof(...))` serializer declaration. The runtime target
+  `ForyEnum(Target = typeof(...))` serializer declaration. The target type
   still uses the C# mapping shown above; declaration ownership is not a wire
   distinction.
 - Python `pyfory.Float16` and `pyfory.BFloat16` are reserved annotation markers; scalar values deserialize as native Python `float`.
@@ -155,7 +155,7 @@ Notes:
   payload contains a null element, the dense-array reader raises a compatible-read error instead of
   coercing the value. Reference-tracked list-element framing is separate from nullable element
   schema and may be rejected during compatible field classification when the local matched field is
-  `array<T>` and the runtime cannot materialize it without generic/reference paths.
+  `array<T>` and the Fory implementation cannot materialize it without generic/reference paths.
 - `binary` and `array<uint8>` remain distinct schema kinds. In schema-compatible struct/class field
   matching only, a direct top-level `binary` field may be read as a direct top-level `array<uint8>`
   field and the reverse may be read as the same byte sequence. This rule does not apply inside

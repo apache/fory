@@ -806,7 +806,7 @@ template <> struct Serializer<char16_t> {
   }
 
   static inline char16_t read_data(ReadContext &ctx) {
-    char16_t value;
+    char16_t value{};
     ctx.read_bytes(reinterpret_cast<uint8_t *>(&value), sizeof(char16_t),
                    ctx.error());
     return value;
@@ -880,7 +880,7 @@ template <> struct Serializer<char32_t> {
   }
 
   static inline char32_t read_data(ReadContext &ctx) {
-    char32_t value;
+    char32_t value{};
     ctx.read_bytes(reinterpret_cast<uint8_t *>(&value), sizeof(char32_t),
                    ctx.error());
     return value;

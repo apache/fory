@@ -85,7 +85,7 @@ from pyfory.serializer import (  # pylint: disable=unused-import
     BFloat16Serializer,
     BFloat16ArraySerializer,
 )
-from pyfory.struct import DataClassSerializer
+from pyfory.struct import DataClassSerializer, UnknownStruct
 from pyfory.field import dataclass, field  # pylint: disable=unused-import
 from pyfory.annotation import (  # pylint: disable=unused-import
     Array,
@@ -135,7 +135,7 @@ from pyfory.type_util import (  # pylint: disable=unused-import
 )
 from pyfory.policy import DeserializationPolicy  # pylint: disable=unused-import
 
-__version__ = "1.6.0.dev0"
+__version__ = "1.7.0.dev0"
 
 __all__ = [
     "Array",
@@ -211,6 +211,7 @@ __all__ = [
     "TypeId",
     "TypeInfo",
     "TypeSerializer",
+    "UnknownStruct",
     "UInt8",
     "UInt8Array",
     "UInt8ArraySerializer",

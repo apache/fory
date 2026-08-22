@@ -251,6 +251,27 @@ The text of each license is the standard Apache 2.0 license.
     Files:
       cpp/fory/thirdparty/flat_hash_map.h
 
+* jackson-annotations (https://github.com/FasterXML/jackson-annotations)
+    Fory JSON implementations of the following annotation APIs are based on Jackson annotations.
+    Files:
+      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonAnyGetter.java
+      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonAnySetter.java
+      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonCreator.java
+      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonFormat.java
+      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonIgnore.java
+      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonProperty.java
+      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonPropertyOrder.java
+      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonRawValue.java
+      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonSubTypes.java
+      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonUnwrapped.java
+      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonValue.java
+
+* jackson-module-scala (https://github.com/FasterXML/jackson-module-scala)
+    Fory JSON's Scala JsonEnumeration annotation implementation is based on Jackson's
+    JsonScalaEnumeration annotation.
+    Files:
+      scala/fory-json-scala/src/main/java/org/apache/fory/json/scala/JsonEnumeration.java
+
 
 ================================================================
 BSD-3-Clause licenses

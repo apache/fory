@@ -25,7 +25,6 @@ import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -182,8 +181,8 @@ public class ChildContainerSerializers {
       return value;
     }
 
-    public Collection newCollection(ReadContext readContext) {
-      Collection collection = super.newCollection(readContext);
+    public Collection newCollection(ReadContext readContext, boolean elementReadAlwaysAdvances) {
+      Collection collection = super.newCollection(readContext, elementReadAlwaysAdvances);
       readAndSetFields(readContext, typeResolver, collection, slotsSerializers);
       return collection;
     }
@@ -216,8 +215,8 @@ public class ChildContainerSerializers {
     }
 
     @Override
-    public T newCollection(ReadContext readContext) {
-      T collection = (T) super.newCollection(readContext);
+    public T newCollection(ReadContext readContext, boolean elementReadAlwaysAdvances) {
+      T collection = (T) super.newCollection(readContext, elementReadAlwaysAdvances);
       int numElements = getAndClearNumElements();
       setNumElements(numElements);
       collection.ensureCapacity(numElements);
@@ -250,9 +249,9 @@ public class ChildContainerSerializers {
     }
 
     @Override
-    public T newCollection(ReadContext readContext) {
+    public T newCollection(ReadContext readContext, boolean elementReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(readContext, buffer);
+      int numElements = readCollectionSize(readContext, buffer, elementReadAlwaysAdvances);
       setNumElements(numElements);
       int refId = readContext.lastPreservedRefId();
       Comparator comparator = (Comparator) readContext.readRef();
@@ -296,9 +295,9 @@ public class ChildContainerSerializers {
     }
 
     @Override
-    public T newCollection(ReadContext readContext) {
+    public T newCollection(ReadContext readContext, boolean elementReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(readContext, buffer);
+      int numElements = readCollectionSize(readContext, buffer, elementReadAlwaysAdvances);
       setNumElements(numElements);
       int refId = readContext.lastPreservedRefId();
       Comparator comparator = (Comparator) readContext.readRef();
@@ -353,8 +352,8 @@ public class ChildContainerSerializers {
     }
 
     @Override
-    public Map newMap(ReadContext readContext) {
-      Map map = super.newMap(readContext);
+    public Map newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
+      Map map = super.newMap(readContext, entryReadAlwaysAdvances);
       readAndSetFields(readContext, typeResolver, map, slotsSerializers);
       return map;
     }
@@ -404,9 +403,9 @@ public class ChildContainerSerializers {
     }
 
     @Override
-    public Map newMap(ReadContext readContext) {
+    public Map newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(readContext, buffer);
+      int numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
       setNumElements(numElements);
       int refId = readContext.lastPreservedRefId();
       Comparator comparator = (Comparator) readContext.readRef();
@@ -710,10 +709,15 @@ public class ChildContainerSerializers {
       if (typeInfo == null) {
         throw new ForyException("Invalid layer metadata reference id " + index);
       }
+      if (typeInfo.getType() != localSerializer.getType()) {
+        throw new ForyException(
+            "Layer " + localSerializer.getType().getName() + " does not match its TypeDef");
+      }
+      checkLayerTypeDef(localSerializer, typeInfo.getTypeDef());
       return getLayerSerializer(typeResolver, localSerializer, typeInfo);
     }
-    long id = buffer.readInt64();
-    TypeInfo typeInfo = readLayerTypeInfo(typeResolver, buffer, localSerializer, id);
+    long typeDefHeader = buffer.readInt64();
+    TypeInfo typeInfo = readLayerTypeInfo(typeResolver, buffer, localSerializer, typeDefHeader);
     metaReadContext.readTypeInfos.add(typeInfo);
     return getLayerSerializer(typeResolver, localSerializer, typeInfo);
   }
@@ -722,16 +726,41 @@ public class ChildContainerSerializers {
       TypeResolver typeResolver,
       MemoryBuffer buffer,
       CompatibleLayerSerializerBase localSerializer,
-      long typeDefId) {
+      long typeDefHeader) {
     TypeDef localTypeDef = localSerializer.getLayerTypeDef();
-    byte[] encoded = TypeDef.readTypeDefBytes(typeResolver, buffer, typeDefId);
+    long headerHash = TypeDef.headerHash(typeDefHeader);
     Class<?> layerClass = localSerializer.getType();
-    typeResolver.checkClassForDeserialization(layerClass);
-    TypeDef typeDef =
-        Arrays.equals(encoded, localTypeDef.getEncoded())
-            ? localTypeDef
-            : typeResolver.cacheRemoteTypeDef(TypeDef.readTypeDef(typeResolver, encoded));
+    TypeDef typeDef;
+    if (TypeDef.headerHash(localTypeDef.getId()) == headerHash) {
+      TypeDef.skipTypeDef(buffer, typeDefHeader);
+      typeDef = localTypeDef;
+    } else {
+      typeDef = typeResolver.getCheckedRemoteTypeDef(headerHash);
+      if (typeDef != null) {
+        checkLayerTypeDef(localSerializer, typeDef);
+        TypeDef.skipTypeDef(buffer, typeDefHeader);
+        return new TypeInfo(layerClass, typeDef);
+      }
+      byte[] encoded = TypeDef.readTypeDefBytes(typeResolver, buffer, typeDefHeader);
+      typeResolver.checkClassForDeserialization(layerClass);
+      typeDef = TypeDef.readTypeDef(typeResolver, encoded);
+      // The local slot is the layer identity owner. Reject a different root before publishing its
+      // metadata to the checked remote TypeDef cache.
+      checkLayerTypeDef(localSerializer, typeDef);
+      typeDef = typeResolver.cacheRemoteTypeDef(typeDef);
+      // A competing checked publication is already validated. Only its concrete layer owner must
+      // still match this child-container serializer.
+      checkLayerTypeDef(localSerializer, typeDef);
+    }
     return new TypeInfo(layerClass, typeDef);
+  }
+
+  private static void checkLayerTypeDef(
+      CompatibleLayerSerializerBase localSerializer, TypeDef typeDef) {
+    Class<?> layerClass = localSerializer.getType();
+    if (typeDef == null || typeDef.getClassSpec().type != layerClass) {
+      throw new ForyException("Layer " + layerClass.getName() + " does not match its TypeDef");
+    }
   }
 
   private static CompatibleLayerSerializerBase getLayerSerializer(

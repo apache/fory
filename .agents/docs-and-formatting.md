@@ -6,8 +6,9 @@ Load this file when changing documentation, public APIs, protocol specs, benchma
 
 - `README.md`
 - `CONTRIBUTING.md`
-- `docs/DEVELOPMENT.md`
-- language guides under `docs/guide/`
+- `docs/development/building.md`
+- capability and runtime guides under `docs/object-serialization/`, `docs/row-format/`,
+  `docs/json/`, and `docs/grpc/`
 - `docs/specification/**`
 - `docs/compiler/**`
 
@@ -25,13 +26,15 @@ Load this file when changing documentation, public APIs, protocol specs, benchma
   tables, callouts, or READMEs. Use plain words such as "Supported" or
   "Unsupported" instead.
 - Provide or update working examples when adding new features or materially changing workflows.
-- `docs/DEVELOPMENT.md` plus updates under `docs/guide/` and `docs/benchmarks/` are synced to `apache/fory-site`; other website content should be changed there instead of this repo.
+- The capability-first `docs/` tree is the canonical source for the website documentation,
+  including Introduction and Getting Started.
 - When benchmark logic, scripts, config, or compared serializers change, rerun the relevant benchmarks and refresh the report and plots under `docs/benchmarks/**`.
 - Never manually edit generated code for compiler or IDL outputs; regenerate from the source schema or IDL.
 - Do not treat checked-in benchmark reports as canonical for current numbers. Run the active harness or a source-aligned size check, and match schema, config, and mode before comparing runtimes.
 - Use portable repo-relative or web links in repository docs, not local filesystem paths. Package readmes rendered by external package managers should link to canonical published docs pages when that is the user-facing context.
-- Published `docs/guide/**` pages should prioritize end-user installation and usage flows unless the file is explicitly a contributor or development guide.
-- Keep `docs/guide/**` configuration text user-action focused. Do not put cache ownership,
+- Published capability guides should prioritize end-user installation and usage flows unless the
+  file is explicitly a contributor or development guide.
+- Keep user-facing configuration text action focused. Do not put cache ownership,
   cold/hot path, publish ordering, exact-local schema bypass, or TypeDef/TypeMeta routing
   invariants there; put implementation invariants in `docs/specification/xlang_implementation_guide.md`,
   security classifications in `docs/security/deserialization.md`, and agent-only workflow rules in

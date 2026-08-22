@@ -248,6 +248,11 @@ where
         C::static_type_id()
     }
 
+    #[inline(always)]
+    fn metadata_target_type_id() -> std::any::TypeId {
+        C::metadata_target_type_id()
+    }
+
     const IS_POLYMORPHIC: bool = C::IS_POLYMORPHIC;
 
     const IS_SHARED_REF: bool = true;

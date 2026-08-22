@@ -345,10 +345,8 @@ private func buildClassReadCompatibleDataDecl(
             if let reservedRefID {
                 context.refReader.storeRef(value, at: reservedRefID)
             }
-            if let localTypeMeta = remoteTypeInfo.typeMeta,
-               let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
-               typeMeta.headerHash == localHeaderHash,
-               typeMeta.fields == localTypeMeta.fields {
+            if let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
+               typeMeta.headerHash == localHeaderHash {
                 if !remoteTypeInfo.typeDefHasUserTypeFields {
                     \(schemaAssignBody)
                     return value
@@ -382,10 +380,8 @@ private func buildEmptyStructReadCompatibleDataDecl(accessPrefix: String) -> Str
         guard let typeMeta = typeInfo.compatibleTypeMeta else {
             throw ForyError.invalidData("compatible type metadata is required")
         }
-        if let localTypeMeta = typeInfo.typeMeta,
-           let localHeaderHash = typeInfo.typeDefHeaderHash,
-           typeMeta.headerHash == localHeaderHash,
-           typeMeta.fields == localTypeMeta.fields {
+        if let localHeaderHash = typeInfo.typeDefHeaderHash,
+           typeMeta.headerHash == localHeaderHash {
             return Target()
         }
         for remoteField in typeMeta.fields {
@@ -436,10 +432,8 @@ private func buildStructReadCompatibleDataDecl(
             \(bufferBinding)guard let typeMeta = typeInfo.compatibleTypeMeta else {
                 throw ForyError.invalidData("compatible type metadata is required")
             }
-            if let localTypeMeta = typeInfo.typeMeta,
-               let localHeaderHash = typeInfo.typeDefHeaderHash,
-               typeMeta.headerHash == localHeaderHash,
-               typeMeta.fields == localTypeMeta.fields {
+            if let localHeaderHash = typeInfo.typeDefHeaderHash,
+               typeMeta.headerHash == localHeaderHash {
                 if !typeInfo.typeDefHasUserTypeFields {
                     \(schemaReadBody)
                     return Target(
@@ -571,7 +565,7 @@ private func structInlineStructReadLines(_ field: ParsedField, compatibleAligned
         if !context.trackRef && !\(field.typeText).isRefType && \(field.typeText).staticTypeId == .structType {
             \(valueRead)
         } else {
-            __\(field.name) = try \(field.typeText).read(
+            __\(field.name) = try SerializerCodec<\(field.typeText)>.readField(
                 context,
                 refMode: \(fieldRefModeExpression(field)),
                 readTypeInfo: \(compatibleAligned ? "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)" : "false")
@@ -593,7 +587,7 @@ private func classInlineStructReadLines(_ field: ParsedField, compatibleAligned:
         if !context.trackRef && !\(field.typeText).isRefType && \(field.typeText).staticTypeId == .structType {
             \(valueRead)
         } else {
-            value.\(field.name) = try \(field.typeText).read(
+            value.\(field.name) = try SerializerCodec<\(field.typeText)>.readField(
                 context,
                 refMode: \(fieldRefModeExpression(field)),
                 readTypeInfo: \(compatibleAligned ? "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)" : "false")
@@ -716,7 +710,7 @@ private func inlineStructReadExpr(
                 readTypeInfo: \(readTypeInfoExpr)
             )
         }
-        return try \(field.typeText).read(
+        return try SerializerCodec<\(field.typeText)>.readField(
             context,
             refMode: \(refModeExpr),
             readTypeInfo: \(readTypeInfoExpr)
@@ -860,6 +854,10 @@ private func readFieldExpr(
         }
         return
             "try \(fieldCodec).readField(context, refMode: \(refModeExpr), readTypeInfo: \(readTypeInfoExpr))"
+    }
+    if field.typeID == MacroTypeId.structType {
+        return
+            "try SerializerCodec<\(field.typeText)>.readField(context, refMode: \(refModeExpr), readTypeInfo: \(readTypeInfoExpr))"
     }
     return
         "try \(field.typeText).read(context, refMode: \(refModeExpr), readTypeInfo: \(readTypeInfoExpr))"

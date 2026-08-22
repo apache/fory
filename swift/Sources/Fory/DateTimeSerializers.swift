@@ -264,6 +264,7 @@ public struct LocalDate: Serializer, Equatable, Hashable, Comparable {
     public static var staticTypeId: TypeId {
         .date
     }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
@@ -397,6 +398,7 @@ extension Duration: Serializer {
     public static var staticTypeId: TypeId {
         .duration
     }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
@@ -432,6 +434,7 @@ extension Date: Serializer {
     public static var staticTypeId: TypeId {
         .timestamp
     }
+    public static var readDataAlwaysAdvances: Bool { true }
 
     public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)

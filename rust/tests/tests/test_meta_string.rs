@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::iter;
+use std::{collections::HashSet, iter};
 
 use fory_core::meta::{
     Encoding, MetaStringDecoder, MetaStringEncoder, NAMESPACE_DECODER, NAMESPACE_ENCODER,
@@ -118,6 +118,38 @@ fn test_meta_string() {
             assert_eq!(new_string, meta_string);
         }
     }
+}
+
+#[test]
+fn test_meta_string_encoding_identity() {
+    let lower = TYPE_NAME_ENCODER
+        .encode_with_encoding("abcdef", Encoding::LowerSpecial)
+        .unwrap();
+    let first_lower = TYPE_NAME_ENCODER
+        .encode_with_encoding("Abcdef", Encoding::FirstToLowerSpecial)
+        .unwrap();
+
+    assert_eq!(lower.bytes, first_lower.bytes);
+    assert_ne!(lower.original, first_lower.original);
+    assert_ne!(lower, first_lower);
+
+    let mut meta_strings = HashSet::new();
+    assert!(meta_strings.insert(lower));
+    assert!(meta_strings.insert(first_lower));
+    assert_eq!(meta_strings.len(), 2);
+}
+
+#[test]
+fn test_all_lower_large_roundtrip() {
+    let original = "Aa".repeat(16_000);
+    let encoded = TYPE_NAME_ENCODER
+        .encode_with_encoding(&original, Encoding::AllToLowerSpecial)
+        .unwrap();
+    let decoded = TYPE_NAME_DECODER
+        .decode(&encoded.bytes, encoded.encoding)
+        .unwrap();
+
+    assert_eq!(decoded.original, original);
 }
 
 #[test]

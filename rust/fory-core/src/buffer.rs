@@ -200,6 +200,18 @@ impl<'a> Writer<'a> {
         }
     }
 
+    #[inline(always)]
+    fn write_u24(&mut self, value: u32) {
+        let bytes = value.to_le_bytes();
+        self.bf.extend_from_slice(&bytes[..3]);
+    }
+
+    #[inline(always)]
+    fn write_u40(&mut self, value: u64) {
+        let bytes = value.to_le_bytes();
+        self.bf.extend_from_slice(&bytes[..5]);
+    }
+
     // ============ VAR_UINT32 (TypeId = 12) ============
 
     #[inline(always)]
@@ -221,8 +233,7 @@ impl<'a> Writer<'a> {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
             let u3 = (value >> 14) as u8;
-            self.write_u16(((u2 as u16) << 8) | u1 as u16);
-            self.bf.push(u3);
+            self.write_u24(((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32);
         } else if value < 0x10000000 {
             // 4 bytes
             let u1 = ((value as u8) & 0x7F) | 0x80;
@@ -239,10 +250,13 @@ impl<'a> Writer<'a> {
             let u3 = (((value >> 14) as u8) & 0x7F) | 0x80;
             let u4 = (((value >> 21) as u8) & 0x7F) | 0x80;
             let u5 = (value >> 28) as u8;
-            self.write_u32(
-                ((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32,
+            self.write_u40(
+                ((u5 as u64) << 32)
+                    | ((u4 as u64) << 24)
+                    | ((u3 as u64) << 16)
+                    | ((u2 as u64) << 8)
+                    | u1 as u64,
             );
-            self.bf.push(u5);
         }
     }
 
@@ -280,8 +294,7 @@ impl<'a> Writer<'a> {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
             let u3 = (value >> 14) as u8;
-            self.write_u16(((u2 as u16) << 8) | u1 as u16);
-            self.bf.push(u3);
+            self.write_u24(((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32);
         } else if value < 0x10000000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
@@ -296,10 +309,13 @@ impl<'a> Writer<'a> {
             let u3 = (((value >> 14) as u8) & 0x7F) | 0x80;
             let u4 = (((value >> 21) as u8) & 0x7F) | 0x80;
             let u5 = (value >> 28) as u8;
-            self.write_u32(
-                ((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32,
+            self.write_u40(
+                ((u5 as u64) << 32)
+                    | ((u4 as u64) << 24)
+                    | ((u3 as u64) << 16)
+                    | ((u2 as u64) << 8)
+                    | u1 as u64,
             );
-            self.bf.push(u5);
         } else if value < 0x40000000000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
@@ -1090,3 +1106,44 @@ impl<'a> Reader<'a> {
 unsafe impl<'a> Send for Reader<'a> {}
 #[allow(clippy::needless_lifetimes)]
 unsafe impl<'a> Sync for Reader<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use super::{Reader, Writer};
+
+    #[test]
+    fn varuint_boundary_roundtrip() {
+        let cases = [
+            (0x3fff_u32, 2),
+            (0x4000, 3),
+            (0x1f_ffff, 3),
+            (0x20_0000, 4),
+            (0x0fff_ffff, 4),
+            (0x1000_0000, 5),
+            (u32::MAX, 5),
+        ];
+        for (value, expected_len) in cases {
+            let mut buffer = Vec::new();
+            let mut writer = Writer::from_buffer(&mut buffer);
+            writer.write_var_u32(value);
+            assert_eq!(writer.len(), expected_len);
+            let bytes = writer.dump();
+            assert_eq!(Reader::new(&bytes).read_var_u32().unwrap(), value);
+            let mut padded = bytes;
+            padded.extend_from_slice(&[0; 8]);
+            let mut reader = Reader::new(&padded);
+            assert_eq!(reader.read_var_u32().unwrap(), value);
+            assert_eq!(reader.get_cursor(), expected_len);
+
+            let mut buffer = Vec::new();
+            let mut writer = Writer::from_buffer(&mut buffer);
+            writer.write_var_u64(u64::from(value));
+            assert_eq!(writer.len(), expected_len);
+            let bytes = writer.dump();
+            assert_eq!(
+                Reader::new(&bytes).read_var_u64().unwrap(),
+                u64::from(value)
+            );
+        }
+    }
+}

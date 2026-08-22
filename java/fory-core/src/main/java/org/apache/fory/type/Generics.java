@@ -89,6 +89,15 @@ public class Generics {
     genericTypesSize = size;
   }
 
+  /** Clears all operation-local generic types retained by this stack. */
+  public void reset() {
+    int size = genericTypesSize;
+    while (size > 0) {
+      genericTypes[--size] = null;
+    }
+    genericTypesSize = 0;
+  }
+
   /**
    * Returns the current type parameters.
    *

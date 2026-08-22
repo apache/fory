@@ -34,6 +34,8 @@ macro_rules! impl_unsigned_serializer {
         impl Serializer for $ty {
             type Target = Self;
 
+            const READ_DATA_ALWAYS_ADVANCES: bool = true;
+
             #[inline(always)]
             fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
                 if !$xlang && context.is_xlang() {

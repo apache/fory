@@ -155,6 +155,20 @@ type NestedInt32ArrayPayloadDataClass struct {
 	Payload [][2]int32 `fory:"type=list(element=array(element=int32))"`
 }
 
+type compatibleContainerEnum int32
+
+type enumContainerSource struct {
+	List   []compatibleContainerEnum          `fory:"id=1,ref=true,type=list(element=_(nullable=false))"`
+	ByEnum map[compatibleContainerEnum]string `fory:"id=2,type=map(key=_(nullable=false))"`
+	ByName map[string]compatibleContainerEnum `fory:"id=3,type=map(value=_(nullable=false))"`
+}
+
+type enumContainerTarget struct {
+	List   []compatibleContainerEnum          `fory:"id=1,ref=true"`
+	ByEnum map[compatibleContainerEnum]string `fory:"id=2"`
+	ByName map[string]compatibleContainerEnum `fory:"id=3"`
+}
+
 func TestMetaShareEnabled(t *testing.T) {
 	fory := NewForyWithOptions(WithXlang(true), WithCompatible(true))
 
@@ -347,6 +361,48 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 				assert.Equal(t, in.Items, out.Items)
 				assert.Equal(t, in.Nums, out.Nums)
 			},
+		},
+		{
+			name:      "EnumContainersWithOuterRef",
+			tag:       "EnumContainers",
+			writeType: enumContainerSource{},
+			readType:  enumContainerTarget{},
+			input: enumContainerSource{
+				List:   []compatibleContainerEnum{1, 2},
+				ByEnum: map[compatibleContainerEnum]string{1: "one"},
+				ByName: map[string]compatibleContainerEnum{"two": 2},
+			},
+			writerSetup: func(f *Fory) error {
+				return f.RegisterEnum(compatibleContainerEnum(0), 1901)
+			},
+			readerSetup: func(f *Fory) error {
+				return f.RegisterEnum(compatibleContainerEnum(0), 1901)
+			},
+			assertFunc: func(t *testing.T, input any, output any) {
+				in := input.(enumContainerSource)
+				out := output.(enumContainerTarget)
+				assert.Equal(t, in.List, out.List)
+				assert.Equal(t, in.ByEnum, out.ByEnum)
+				assert.Equal(t, in.ByName, out.ByName)
+			},
+		},
+		{
+			name:      "EnumContainerNullableMismatch",
+			tag:       "EnumContainers",
+			writeType: enumContainerTarget{},
+			readType:  enumContainerSource{},
+			input: enumContainerTarget{
+				List:   []compatibleContainerEnum{1, 2},
+				ByEnum: map[compatibleContainerEnum]string{1: "one"},
+				ByName: map[string]compatibleContainerEnum{"two": 2},
+			},
+			writerSetup: func(f *Fory) error {
+				return f.RegisterEnum(compatibleContainerEnum(0), 1901)
+			},
+			readerSetup: func(f *Fory) error {
+				return f.RegisterEnum(compatibleContainerEnum(0), 1901)
+			},
+			unmarshalErrContains: "cannot be read as local field",
 		},
 		{
 			name:      "InconsistentSliceElements",
