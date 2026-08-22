@@ -218,8 +218,9 @@ func Map(key, value DataType) *MapType {
 	}
 }
 
+// Struct returns a struct type over a copy of fields.
 func Struct(fields []Field) *StructType {
-	return &StructType{Fields: fields}
+	return &StructType{Fields: append([]Field(nil), fields...)}
 }
 
 func dataTypeEqual(a, b DataType) bool {
@@ -254,17 +255,17 @@ type Schema struct {
 	byName map[string]int
 }
 
-// NewSchema builds a schema from fields in their schema-declared order,
-// which fixes the field slot layout. For duplicate names, FieldIndex
-// resolves to the first occurrence.
+// NewSchema builds a schema over a copy of fields in their declared
+// order, which fixes the field slot layout. For duplicate names,
+// FieldIndex resolves to the last occurrence, matching Java's Schema so
+// identical schema bytes resolve names identically in both runtimes.
 func NewSchema(fields []Field) *Schema {
-	byName := make(map[string]int, len(fields))
-	for i, f := range fields {
-		if _, ok := byName[f.Name]; !ok {
-			byName[f.Name] = i
-		}
+	owned := append([]Field(nil), fields...)
+	byName := make(map[string]int, len(owned))
+	for i, f := range owned {
+		byName[f.Name] = i
 	}
-	return &Schema{fields: fields, byName: byName}
+	return &Schema{fields: owned, byName: byName}
 }
 
 func (s *Schema) NumFields() int { return len(s.fields) }

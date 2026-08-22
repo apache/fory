@@ -107,6 +107,25 @@ func TestSchemaLookup(t *testing.T) {
 	require.Equal(t, "id", s.Field(0).Name)
 	require.Equal(t, 1, s.FieldIndex("name"))
 	require.Equal(t, -1, s.FieldIndex("missing"))
+
+	// Duplicate names resolve to the last occurrence, as in Java.
+	dup := NewSchema([]Field{
+		NewField("x", Int32Type{}, false),
+		NewField("x", StringType{}, true),
+	})
+	require.Equal(t, 1, dup.FieldIndex("x"))
+}
+
+// Schemas and struct types own a copy of their fields, so later
+// mutation of the caller's slice cannot desynchronize name lookups.
+func TestSchemaCopiesFields(t *testing.T) {
+	fields := []Field{NewField("a", Int32Type{}, false)}
+	s := NewSchema(fields)
+	st := Struct(fields)
+	fields[0].Name = "changed"
+	require.Equal(t, "a", s.Field(0).Name)
+	require.Equal(t, 0, s.FieldIndex("a"))
+	require.Equal(t, "a", st.Fields[0].Name)
 }
 
 func TestSchemaEqual(t *testing.T) {
