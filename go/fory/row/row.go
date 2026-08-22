@@ -30,11 +30,12 @@ import (
 // from the underlying data without deserializing other fields; nested
 // values are sub-slice views, never copies (except String).
 //
-// Fixed-width getters return the zero value for null fields; use
-// IsNullAt to distinguish. Variable-width getters return nil (or "")
-// for null fields. An out-of-range field index panics; offsets in
-// corrupt or untrusted data may panic on slice bounds, so wrap
-// untrusted decoding with recover.
+// Row and its nested views require trusted, schema-matched bytes: the
+// row format is a trusted in-memory format and these views do not
+// validate the row graph. Fixed-width getters return the zero value for
+// null fields; use IsNullAt to distinguish. Variable-width getters
+// return nil (or "") for null fields. Out-of-range indexes and
+// malformed bytes panic.
 type Row struct {
 	fields      []Field
 	data        []byte
@@ -125,7 +126,7 @@ func (r *Row) Timestamp(i int) time.Time {
 }
 
 func (r *Row) Duration(i int) time.Duration {
-	return time.Duration(r.Int64(i)) * time.Microsecond
+	return durationFromMicros(r.Int64(i))
 }
 
 // varData returns the value bytes of variable-width field i, or nil if
@@ -180,7 +181,14 @@ type ArrayData struct {
 }
 
 func NewArrayData(elem Field, data []byte) *ArrayData {
-	numElements := int(binary.LittleEndian.Uint64(data))
+	// Narrow the wire count only when it is far below int range, so
+	// header and size arithmetic cannot overflow on any platform; an
+	// absurd count becomes -1, which validateBounds and every index
+	// check reject.
+	numElements := -1
+	if count := binary.LittleEndian.Uint64(data); count <= uint64(math.MaxInt/8) {
+		numElements = int(count)
+	}
 	elemSize := elem.Type.ByteWidth()
 	if elemSize < 0 {
 		elemSize = 8
@@ -285,7 +293,7 @@ func (a *ArrayData) Timestamp(i int) time.Time {
 }
 
 func (a *ArrayData) Duration(i int) time.Duration {
-	return time.Duration(a.Int64(i)) * time.Microsecond
+	return durationFromMicros(a.Int64(i))
 }
 
 func (a *ArrayData) varData(i int) []byte {
@@ -333,7 +341,11 @@ type MapData struct {
 }
 
 func NewMapData(mapType *MapType, data []byte) *MapData {
-	keysSize := int(binary.LittleEndian.Uint64(data))
+	keysSize64 := binary.LittleEndian.Uint64(data)
+	if keysSize64 > uint64(len(data)) {
+		panic(fmt.Sprintf("row: map keys array of %d bytes exceeds the %d-byte map region", keysSize64, len(data)))
+	}
+	keysSize := int(keysSize64)
 	keysData := boundedSlice(data, 8, keysSize)
 	valuesData := boundedSlice(data, 8+keysSize, len(data)-8-keysSize)
 	return &MapData{
@@ -367,4 +379,14 @@ func decodeOffsetAndSize(slotValue uint64) (offset, size int) {
 func dateFromDays(days int32) fory.Date {
 	d, _ := fory.DateFromEpochDay(int64(days))
 	return d
+}
+
+// durationFromMicros converts wire microseconds to a time.Duration,
+// which counts nanoseconds; values the multiplication would wrap are
+// rejected instead of silently changing sign.
+func durationFromMicros(micros int64) time.Duration {
+	if micros > math.MaxInt64/1000 || micros < math.MinInt64/1000 {
+		panic(fmt.Sprintf("row: duration of %d microseconds overflows time.Duration", micros))
+	}
+	return time.Duration(micros) * time.Microsecond
 }

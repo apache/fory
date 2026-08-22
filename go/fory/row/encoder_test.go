@@ -175,3 +175,125 @@ func TestNewEncoderRejectsNonStruct(t *testing.T) {
 	_, err = NewEncoder[map[string]int]()
 	require.Error(t, err)
 }
+
+// A null for a Go carrier that cannot hold nil is a decode error, not a
+// silent zero value: the wire and type hash cannot distinguish the two.
+func TestDecodeRejectsNullIntoValueCarrier(t *testing.T) {
+	type inner struct {
+		X int32
+	}
+	type carriers struct {
+		S  string
+		In inner
+		L  []int32
+	}
+	enc, err := NewEncoder[carriers]()
+	require.NoError(t, err)
+	schema := enc.Schema()
+	w := NewRowWriter(schema)
+	idx := schema.FieldIndex
+
+	// buildRow writes a complete valid row, then nulls one target:
+	// the string field, the value-struct field, or one list element.
+	buildRow := func(nullTarget string) []byte {
+		buf := w.Buffer()
+		buf.SetWriterIndex(0)
+		w.Reset()
+		if nullTarget == "s" {
+			w.SetNullAt(idx("s"))
+		} else {
+			require.NoError(t, w.WriteString(idx("s"), "x"))
+		}
+		if nullTarget == "in" {
+			w.SetNullAt(idx("in"))
+		} else {
+			child := NewRowWriterWithBuffer(NewSchema(schema.Field(idx("in")).Type.(*StructType).Fields), buf)
+			start := buf.WriterIndex()
+			child.Reset()
+			child.WriteInt32(0, 1)
+			require.NoError(t, w.SetOffsetAndSize(idx("in"), start, buf.WriterIndex()-start))
+		}
+		aw := NewArrayWriter(schema.Field(idx("l")).Type.(*ListType).Elem, buf)
+		start := buf.WriterIndex()
+		require.NoError(t, aw.Reset(2))
+		aw.WriteInt32(0, 1)
+		if nullTarget == "l[1]" {
+			aw.SetNullAt(1)
+		} else {
+			aw.WriteInt32(1, 2)
+		}
+		require.NoError(t, w.SetOffsetAndSize(idx("l"), start, buf.WriterIndex()-start))
+		return append([]byte(nil), w.ToBytes()...)
+	}
+
+	decoded, err := enc.FromRow(buildRow(""))
+	require.NoError(t, err)
+	require.Equal(t, carriers{S: "x", In: inner{X: 1}, L: []int32{1, 2}}, decoded)
+	for _, target := range []string{"s", "in", "l[1]"} {
+		_, err := enc.FromRow(buildRow(target))
+		requireErrorContains(t, err, "null value")
+	}
+}
+
+// Inferred schemas must survive the wire format unchanged, which
+// requires the canonical (nullable) map value field.
+func TestInferredSchemaRoundTripsThroughBytes(t *testing.T) {
+	type primitiveMap struct {
+		Counts map[string]int32
+		Flags  map[int64]bool
+	}
+	for _, schema := range []*Schema{
+		mustSchema(t, NewEncoder[primitiveMap]),
+		mustSchema(t, NewEncoder[person]),
+	} {
+		encoded, err := SchemaToBytes(schema)
+		require.NoError(t, err)
+		parsed, err := SchemaFromBytes(encoded)
+		require.NoError(t, err)
+		require.True(t, parsed.Equal(schema), "parsed %v != inferred %v", parsed, schema)
+	}
+
+	enc, err := NewEncoder[primitiveMap]()
+	require.NoError(t, err)
+	original := primitiveMap{Counts: map[string]int32{"a": 1, "b": -2}, Flags: map[int64]bool{7: true}}
+	rowBytes, err := enc.ToRow(&original)
+	require.NoError(t, err)
+	decoded, err := enc.FromRow(rowBytes)
+	require.NoError(t, err)
+	require.Equal(t, original, decoded)
+}
+
+func mustSchema[T any](t *testing.T, newEncoder func() (*Encoder[T], error)) *Schema {
+	t.Helper()
+	enc, err := newEncoder()
+	require.NoError(t, err)
+	return enc.Schema()
+}
+
+func TestEncoderRejectsNilArguments(t *testing.T) {
+	enc, err := NewEncoder[person]()
+	require.NoError(t, err)
+	_, err = enc.ToRow(nil)
+	require.Error(t, err)
+	_, err = enc.Encode(nil)
+	require.Error(t, err)
+	require.Error(t, enc.FromRowInto([]byte{}, nil))
+}
+
+// Struct-typed map keys must round-trip entry for entry.
+func TestEncoderStructMapKeys(t *testing.T) {
+	type point struct {
+		X, Y int32
+	}
+	type grid struct {
+		Cells map[point]string
+	}
+	enc, err := NewEncoder[grid]()
+	require.NoError(t, err)
+	original := grid{Cells: map[point]string{{1, 2}: "a", {3, 4}: "b"}}
+	rowBytes, err := enc.ToRow(&original)
+	require.NoError(t, err)
+	decoded, err := enc.FromRow(rowBytes)
+	require.NoError(t, err)
+	require.Equal(t, original, decoded)
+}

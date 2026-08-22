@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"time"
+	"unicode/utf8"
 
 	fory "github.com/apache/fory/go/fory"
 )
@@ -151,15 +152,26 @@ func (w *RowWriter) WriteDate(i int, d fory.Date) error {
 	return nil
 }
 
-func (w *RowWriter) WriteTimestamp(i int, t time.Time) {
-	w.WriteInt64(i, t.UnixMicro())
+func (w *RowWriter) WriteTimestamp(i int, t time.Time) error {
+	micros, err := timestampMicros(t)
+	if err != nil {
+		return err
+	}
+	w.WriteInt64(i, micros)
+	return nil
 }
 
 func (w *RowWriter) WriteDuration(i int, d time.Duration) {
 	w.WriteInt64(i, d.Microseconds())
 }
 
+// WriteString writes a UTF-8 string; the row format string type is
+// UTF-8, so invalid byte sequences are rejected rather than changed by
+// other runtimes on read.
 func (w *RowWriter) WriteString(i int, s string) error {
+	if !utf8.ValidString(s) {
+		return errInvalidUTF8
+	}
 	start := appendStringRegion(w.buf, s)
 	return w.SetOffsetAndSize(i, start, len(s))
 }
@@ -211,10 +223,12 @@ func (w *ArrayWriter) Reset(numElements int) error {
 	if numElements < 0 {
 		return fmt.Errorf("row: negative array length %d", numElements)
 	}
-	dataBytes := int64(numElements) * int64(w.elemSize)
-	if dataBytes > maxArrayDataBytes {
+	// Compare before multiplying so extreme counts cannot overflow the
+	// size computation and slip past the limit.
+	if numElements > maxArrayDataBytes/w.elemSize {
 		return fmt.Errorf("row: array of %d elements exceeds maximum size", numElements)
 	}
+	dataBytes := int64(numElements) * int64(w.elemSize)
 	headerBytes := 8 + bitmapWidthInBytes(numElements)
 	total := headerBytes + roundToWord(int(dataBytes))
 	base := w.buf.WriterIndex()
@@ -293,8 +307,13 @@ func (w *ArrayWriter) WriteDate(i int, d fory.Date) error {
 	return nil
 }
 
-func (w *ArrayWriter) WriteTimestamp(i int, t time.Time) {
-	w.WriteInt64(i, t.UnixMicro())
+func (w *ArrayWriter) WriteTimestamp(i int, t time.Time) error {
+	micros, err := timestampMicros(t)
+	if err != nil {
+		return err
+	}
+	w.WriteInt64(i, micros)
+	return nil
 }
 
 func (w *ArrayWriter) WriteDuration(i int, d time.Duration) {
@@ -302,6 +321,9 @@ func (w *ArrayWriter) WriteDuration(i int, d time.Duration) {
 }
 
 func (w *ArrayWriter) WriteString(i int, s string) error {
+	if !utf8.ValidString(s) {
+		return errInvalidUTF8
+	}
 	start := appendStringRegion(w.buf, s)
 	return w.SetOffsetAndSize(i, start, len(s))
 }
@@ -366,6 +388,24 @@ func appendBytesRegion(buf *fory.ByteBuffer, b []byte) int {
 	copy(data[start:], b)
 	buf.SetWriterIndex(start + rounded)
 	return start
+}
+
+var errInvalidUTF8 = fmt.Errorf("row: string is not valid UTF-8")
+
+// timestampMicros converts t to microseconds since the Unix epoch with
+// overflow checking; time.Time.UnixMicro is undefined outside the
+// int64 microsecond range.
+func timestampMicros(t time.Time) (int64, error) {
+	sec := t.Unix()
+	if sec > math.MaxInt64/1_000_000 || sec < math.MinInt64/1_000_000 {
+		return 0, fmt.Errorf("row: timestamp %v is outside the int64 microsecond range", t)
+	}
+	micros := sec * 1_000_000
+	subMicros := int64(t.Nanosecond()) / 1000
+	if micros > math.MaxInt64-subMicros {
+		return 0, fmt.Errorf("row: timestamp %v is outside the int64 microsecond range", t)
+	}
+	return micros + subMicros, nil
 }
 
 func appendStringRegion(buf *fory.ByteBuffer, s string) int {

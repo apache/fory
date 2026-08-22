@@ -106,7 +106,9 @@ func TestNestedArray(t *testing.T) {
 func TestArrayResetRejectsInvalidLength(t *testing.T) {
 	w := NewArrayWriter(List(Int64Type{}).Elem, fory.NewByteBuffer(nil))
 	require.Error(t, w.Reset(-1))
-	require.Error(t, w.Reset(1<<40))
+	require.Error(t, w.Reset(maxArrayDataBytes/8+1))
+	// Extreme counts must fail the limit check, not overflow past it.
+	require.Error(t, w.Reset(math.MaxInt))
 }
 
 // Forged element counts must fail validation even when the arithmetic

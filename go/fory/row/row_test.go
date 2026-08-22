@@ -18,6 +18,7 @@
 package row
 
 import (
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -245,13 +246,47 @@ func TestOutOfRangeIndexPanics(t *testing.T) {
 // The wire format packs offset and size into 32 bits each; larger
 // values must be rejected, never silently truncated.
 func TestOffsetAndSizeRejectWireLimit(t *testing.T) {
+	if uint64(math.MaxInt) <= math.MaxUint32 {
+		t.Skip("int cannot exceed the 32-bit wire limit on this platform")
+	}
+	tooBig := int(math.MaxInt)
 	w := NewRowWriter(int64StringSchema())
 	w.Reset()
-	require.Error(t, w.SetOffsetAndSize(1, w.Buffer().WriterIndex(), 1<<33))
+	require.Error(t, w.SetOffsetAndSize(1, w.Buffer().WriterIndex(), tooBig))
 
 	aw := NewArrayWriter(List(StringType{}).Elem, w.Buffer())
 	require.NoError(t, aw.Reset(1))
-	require.Error(t, aw.SetOffsetAndSize(0, w.Buffer().WriterIndex(), 1<<33))
+	require.Error(t, aw.SetOffsetAndSize(0, w.Buffer().WriterIndex(), tooBig))
+}
+
+// Strings are UTF-8 on the wire; arbitrary Go byte strings are rejected
+// so other runtimes never see replacement characters.
+func TestWriteStringRejectsInvalidUTF8(t *testing.T) {
+	w := NewRowWriter(int64StringSchema())
+	w.Reset()
+	require.Error(t, w.WriteString(1, string([]byte{0xff, 'a'})))
+	aw := NewArrayWriter(List(StringType{}).Elem, w.Buffer())
+	require.NoError(t, aw.Reset(1))
+	require.Error(t, aw.WriteString(0, string([]byte{0xc3})))
+}
+
+// Timestamps outside the int64 microsecond range and durations whose
+// nanosecond conversion would wrap are rejected instead of corrupted.
+func TestTemporalRangeChecks(t *testing.T) {
+	s := NewSchema([]Field{
+		NewField("ts", TimestampType{}, true),
+		NewField("dur", DurationType{}, true),
+	})
+	w := NewRowWriter(s)
+	w.Reset()
+	farFuture := time.Date(300000, time.January, 1, 0, 0, 0, 0, time.UTC)
+	require.Error(t, w.WriteTimestamp(0, farFuture))
+	require.NoError(t, w.WriteTimestamp(0, time.UnixMicro(math.MaxInt64)))
+
+	w.WriteInt64(1, math.MaxInt64) // raw microseconds that overflow time.Duration
+	r := NewRow(s, w.ToBytes())
+	require.Equal(t, int64(math.MaxInt64), r.Timestamp(0).UnixMicro())
+	require.Panics(t, func() { r.Duration(1) })
 }
 
 func TestConcurrentReads(t *testing.T) {

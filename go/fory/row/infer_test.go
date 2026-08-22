@@ -96,7 +96,10 @@ func TestInferTypeMapping(t *testing.T) {
 
 	require.Equal(t, StringType{}, byName("s").Type)
 	require.True(t, byName("s").Nullable)
-	require.Equal(t, BinaryType{}, byName("bin").Type)
+	bin := byName("bin").Type.(*ListType)
+	require.Equal(t, Int8Type{}, bin.Elem.Type, "[]byte is list<int8>, the Java byte[] model")
+	require.False(t, bin.Elem.Nullable)
+	require.True(t, byName("bin").Nullable)
 
 	list := byName("l").Type.(*ListType)
 	require.Equal(t, Int32Type{}, list.Elem.Type)
@@ -107,6 +110,7 @@ func TestInferTypeMapping(t *testing.T) {
 	require.Equal(t, StringType{}, m.Key.Type)
 	require.False(t, m.Key.Nullable)
 	require.Equal(t, Int64Type{}, m.Value.Type)
+	require.True(t, m.Value.Nullable, "map values are canonically nullable, as in Java and the schema parser")
 
 	in := byName("in").Type.(*StructType)
 	require.Equal(t, "x", in.Fields[0].Name)
@@ -119,43 +123,76 @@ func TestInferTypeMapping(t *testing.T) {
 	require.Equal(t, Date32Type{}, byName("d").Type)
 	require.Equal(t, TimestampType{}, byName("t").Type)
 	require.Equal(t, DurationType{}, byName("dur").Type)
+	for _, name := range []string{"d", "t", "dur"} {
+		require.True(t, byName(name).Nullable, "%s: Java temporal carriers are nullable objects", name)
+	}
 }
 
-// Ignore semantics must match the core fory tag parser: "-",
-// "ignore", and "ignore=true" skip; "ignore=false" keeps.
+// Tag grammar must match the core fory tag parser: "-", "ignore",
+// ignore=true/1/yes skip (case-insensitive, whitespace around '='
+// allowed); ignore=false/0/no keeps; other core keys are accepted and
+// ignored; unknown keys, duplicate keys, and bad values are errors.
 func TestInferSkipsIgnoredAndUnexported(t *testing.T) {
 	type tagged struct {
 		A       int64
 		hidden  int64
 		Skipped string `fory:"ignore"`
 		Dash    string `fory:"-"`
-		True    string `fory:"ignore=true"`
+		Yes     string `fory:"ignore = YES"`
+		One     string `fory:"id=3, ignore=1"`
 		Kept    int32  `fory:"ignore=false"`
+		Kept2   int32  `fory:"nullable=true, ignore=no"`
+		Kept3   int32  `fory:"type=map(key=string,value=int32)"`
 	}
 	s, err := InferSchema(reflect.TypeOf(tagged{}))
 	require.NoError(t, err)
-	require.Equal(t, 2, s.NumFields())
+	require.Equal(t, 4, s.NumFields())
 	require.Equal(t, "a", s.Field(0).Name)
 	require.Equal(t, "kept", s.Field(1).Name)
+	require.Equal(t, "kept2", s.Field(2).Name)
+	require.Equal(t, "kept3", s.Field(3).Name)
 
-	type badTag struct {
-		A int64 `fory:"ignore=yes"`
+	for _, bad := range []any{
+		struct {
+			A int64 `fory:"ignore=maybe"`
+		}{},
+		struct {
+			A int64 `fory:"ignore, ignore"`
+		}{},
+		struct {
+			A int64 `fory:"bogus=1"`
+		}{},
+	} {
+		_, err := InferSchema(reflect.TypeOf(bad))
+		require.Error(t, err, "%T", bad)
 	}
-	_, err = InferSchema(reflect.TypeOf(badTag{}))
-	requireErrorContains(t, err, "invalid ignore value")
 }
 
 func TestInferRejectsUnsupportedTypes(t *testing.T) {
 	type node struct {
 		Next *node
 	}
+	type recursiveList []recursiveList
+	type recursiveMap map[string]recursiveMap
+	type keyWithHidden struct {
+		A int32
+		b int32
+	}
 	cases := []any{
 		struct{ U uint32 }{},
 		struct{ C chan int }{},
 		struct{ A [3]int32 }{},
 		struct{ PP **int32 }{},
+		struct{ PS *[]int32 }{},
+		struct{ PM *map[string]int32 }{},
+		struct{ PB *[]byte }{},
 		struct{ M map[*string]int32 }{},
+		struct{ M map[keyWithHidden]int32 }{},
+		struct{ M map[time.Time]int32 }{},
+		struct{ M map[[2]int32]int32 }{},
 		node{},
+		struct{ L recursiveList }{},
+		struct{ M recursiveMap }{},
 	}
 	for _, c := range cases {
 		_, err := InferSchema(reflect.TypeOf(c))
@@ -163,4 +200,21 @@ func TestInferRejectsUnsupportedTypes(t *testing.T) {
 	}
 	_, err := InferSchema(reflect.TypeOf(42))
 	require.Error(t, err)
+	_, err = InferSchema(nil)
+	require.Error(t, err)
+}
+
+// Map keys whose encoded fields fully determine Go equality are
+// accepted, including value structs of such fields.
+func TestInferAcceptsEqualityPreservingMapKeys(t *testing.T) {
+	type point struct {
+		X, Y int32
+	}
+	type keyed struct {
+		ByDate  map[fory.Date]string
+		ByPoint map[point]string
+		ByDur   map[time.Duration]string
+	}
+	_, err := InferSchema(reflect.TypeOf(keyed{}))
+	require.NoError(t, err)
 }
