@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"testing"
 
+	fory "github.com/apache/fory/go/fory"
 	"github.com/stretchr/testify/require"
 )
 
@@ -171,4 +172,50 @@ func TestSchemaFromBytesRejectsDeepNesting(t *testing.T) {
 	}
 	_, err := SchemaFromBytes(data)
 	requireErrorContains(t, err, "nesting")
+}
+
+type unknownDataType struct{}
+
+func (unknownDataType) TypeID() fory.TypeId { return 99 }
+func (unknownDataType) ByteWidth() int      { return -1 }
+func (unknownDataType) String() string      { return "unknown" }
+
+// The writer validates everything the wire format cannot express
+// before emitting a byte, so its output is always readable.
+func TestSchemaToBytesRejectsUnwritableSchemas(t *testing.T) {
+	_, err := SchemaToBytes(nil)
+	require.Error(t, err)
+
+	// One level deeper than the reader accepts.
+	var deep DataType = Int32Type{}
+	for i := 0; i < maxSchemaNestingDepth; i++ {
+		deep = List(deep)
+	}
+	_, err = SchemaToBytes(NewSchema([]Field{NewField("deep", deep, true)}))
+	requireErrorContains(t, err, "nesting")
+	// Exactly the reader's limit still round-trips.
+	var ok DataType = Int32Type{}
+	for i := 0; i < maxSchemaNestingDepth-1; i++ {
+		ok = List(ok)
+	}
+	okBytes, err := SchemaToBytes(NewSchema([]Field{NewField("ok", ok, true)}))
+	require.NoError(t, err)
+	_, err = SchemaFromBytes(okBytes)
+	require.NoError(t, err)
+
+	// A type that refers to itself.
+	loop := &ListType{}
+	loop.Elem = NewField("item", loop, true)
+	_, err = SchemaToBytes(NewSchema([]Field{NewField("loop", loop, true)}))
+	requireErrorContains(t, err, "refers to itself")
+
+	// Decimal parameters wider than the single wire byte.
+	_, err = SchemaToBytes(NewSchema([]Field{NewField("d", DecimalType{Precision: 300, Scale: 2}, true)}))
+	requireErrorContains(t, err, "decimal")
+
+	// Pointer decimal and foreign DataType implementations.
+	_, err = SchemaToBytes(NewSchema([]Field{NewField("d", &DecimalType{Precision: 10, Scale: 2}, true)}))
+	require.Error(t, err)
+	_, err = SchemaToBytes(NewSchema([]Field{NewField("u", unknownDataType{}, true)}))
+	require.Error(t, err)
 }

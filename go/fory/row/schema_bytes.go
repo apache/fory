@@ -76,8 +76,18 @@ func SchemaToBytes(s *Schema) ([]byte, error) {
 	return buf.GetByteSlice(0, buf.WriterIndex()), nil
 }
 
-// SchemaToBuffer serializes a schema into an existing buffer.
+// SchemaToBuffer serializes a schema into an existing buffer. The
+// schema is validated in full before any byte is written, so a
+// rejected schema leaves the buffer untouched.
 func SchemaToBuffer(s *Schema, buf *fory.ByteBuffer) error {
+	if s == nil {
+		return fmt.Errorf("row: cannot serialize a nil schema")
+	}
+	for _, f := range s.Fields() {
+		if err := validateSchemaField(f, nil, 0); err != nil {
+			return err
+		}
+	}
 	buf.WriteByte_(schemaVersion)
 	buf.WriteVarUint32Small7(uint32(s.NumFields()))
 	for _, f := range s.Fields() {
@@ -88,10 +98,60 @@ func SchemaToBuffer(s *Schema, buf *fory.ByteBuffer) error {
 	return nil
 }
 
-func writeSchemaField(buf *fory.ByteBuffer, f Field) error {
+// validateSchemaField checks what the wire format can express before
+// writing: nesting within maxSchemaNestingDepth (so the reader accepts
+// the output), no composite type reachable from itself, decimal
+// parameters within one byte, and only the DataType implementations
+// the format defines. A depth of d means the field sits d levels below
+// the top-level schema, matching the reader's depth counter.
+func validateSchemaField(f Field, path []DataType, depth int) error {
+	if depth >= maxSchemaNestingDepth {
+		return fmt.Errorf("row: schema nesting exceeds %d levels", maxSchemaNestingDepth)
+	}
 	if f.Name == "" {
 		return fmt.Errorf("row: schema field with empty name")
 	}
+	switch t := f.Type.(type) {
+	case BoolType, Int8Type, Int16Type, Int32Type, Int64Type, Float16Type, Float32Type,
+		Float64Type, StringType, BinaryType, Date32Type, TimestampType, DurationType:
+		return nil
+	case DecimalType:
+		if t.Precision < 0 || t.Precision > math.MaxUint8 || t.Scale < 0 || t.Scale > math.MaxUint8 {
+			return fmt.Errorf("row: decimal(%d, %d) in field %q is outside the wire format's single-byte range", t.Precision, t.Scale, f.Name)
+		}
+		return nil
+	case *ListType, *MapType, *StructType:
+		for _, seen := range path {
+			if seen == f.Type {
+				return fmt.Errorf("row: schema type %T in field %q refers to itself", f.Type, f.Name)
+			}
+		}
+		path = append(path, f.Type)
+		switch t := t.(type) {
+		case *ListType:
+			return validateSchemaField(t.Elem, path, depth+1)
+		case *MapType:
+			if err := validateSchemaField(t.Key, path, depth+1); err != nil {
+				return err
+			}
+			return validateSchemaField(t.Value, path, depth+1)
+		case *StructType:
+			for _, child := range t.Fields {
+				if err := validateSchemaField(child, path, depth+1); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		return nil
+	case nil:
+		return fmt.Errorf("row: schema field %q has no type", f.Name)
+	default:
+		return fmt.Errorf("row: schema field %q uses %T, which the wire format does not define (use DecimalType by value)", f.Name, f.Type)
+	}
+}
+
+func writeSchemaField(buf *fory.ByteBuffer, f Field) error {
 	encoding := fieldNameEncoder.ComputeEncodingWith(f.Name, fieldNameEncodings[:])
 	metaString, err := fieldNameEncoder.EncodeWithEncoding(f.Name, encoding)
 	if err != nil {
@@ -147,8 +207,9 @@ func writeSchemaType(buf *fory.ByteBuffer, dataType DataType) error {
 }
 
 // SchemaFromBytes deserializes a schema from the cross-language wire
-// format. It is safe on untrusted input: declared sizes are checked
-// against remaining bytes before any allocation.
+// format. Schema bytes are trusted input, like the row format itself;
+// declared counts are still bounded by the remaining bytes so
+// malformed schemas fail fast instead of over-allocating.
 func SchemaFromBytes(data []byte) (*Schema, error) {
 	r := &schemaReader{buf: fory.NewByteBuffer(data), size: len(data)}
 	version := r.buf.ReadUint8(&r.err)
@@ -158,15 +219,9 @@ func SchemaFromBytes(data []byte) (*Schema, error) {
 	if version != schemaVersion {
 		return nil, fmt.Errorf("row: unsupported schema version %d, expected %d", version, schemaVersion)
 	}
-	numFields := int(r.buf.ReadVarUint32Small7(&r.err))
-	if err := r.err.CheckError(); err != nil {
+	numFields, err := r.readCount("schema")
+	if err != nil {
 		return nil, err
-	}
-	// Every field costs at least one byte, so a declared count larger
-	// than the remaining input is corrupt; checking before the
-	// allocation below keeps attacker-declared counts harmless.
-	if numFields > r.remaining() {
-		return nil, fmt.Errorf("row: schema declares %d fields but only %d bytes remain", numFields, r.remaining())
 	}
 	fields := make([]Field, 0, numFields)
 	for i := 0; i < numFields; i++ {
@@ -188,6 +243,21 @@ type schemaReader struct {
 
 func (r *schemaReader) remaining() int { return r.size - r.buf.ReaderIndex() }
 
+// readCount reads a field count and bounds it by the remaining bytes
+// (every field costs at least one byte) BEFORE narrowing to int, so a
+// large wire value cannot wrap negative on 32-bit platforms or drive an
+// oversized allocation.
+func (r *schemaReader) readCount(owner string) (int, error) {
+	count := r.buf.ReadVarUint32Small7(&r.err)
+	if err := r.err.CheckError(); err != nil {
+		return 0, err
+	}
+	if uint64(count) > uint64(r.remaining()) {
+		return 0, fmt.Errorf("row: %s declares %d fields but only %d bytes remain", owner, count, r.remaining())
+	}
+	return int(count), nil
+}
+
 func (r *schemaReader) readField() (Field, error) {
 	if r.depth >= maxSchemaNestingDepth {
 		return Field{}, fmt.Errorf("row: schema nesting exceeds %d levels", maxSchemaNestingDepth)
@@ -205,18 +275,17 @@ func (r *schemaReader) readField() (Field, error) {
 	nameSizeMinus1 := (header >> 2) & 0x0F
 	nullable := header&0x40 != 0
 
-	var nameSize int
+	nameSize64 := uint64(nameSizeMinus1 + 1)
 	if nameSizeMinus1 == fieldNameSizeThreshold {
-		nameSize = int(r.buf.ReadVarUint32Small7(&r.err)) + fieldNameSizeThreshold
-	} else {
-		nameSize = nameSizeMinus1 + 1
+		nameSize64 = uint64(r.buf.ReadVarUint32Small7(&r.err)) + fieldNameSizeThreshold
 	}
 	if err := r.err.CheckError(); err != nil {
 		return Field{}, err
 	}
-	if nameSize > r.remaining() {
-		return Field{}, fmt.Errorf("row: field name of %d bytes exceeds %d remaining", nameSize, r.remaining())
+	if nameSize64 > uint64(r.remaining()) {
+		return Field{}, fmt.Errorf("row: field name of %d bytes exceeds %d remaining", nameSize64, r.remaining())
 	}
+	nameSize := int(nameSize64)
 	nameBytes := r.buf.ReadBinary(nameSize, &r.err)
 	if err := r.err.CheckError(); err != nil {
 		return Field{}, err
@@ -290,12 +359,9 @@ func (r *schemaReader) readType() (DataType, error) {
 		// canonical key/value names and nullability.
 		return Map(keyField.Type, valueField.Type), nil
 	case fory.STRUCT:
-		numFields := int(r.buf.ReadVarUint32Small7(&r.err))
-		if err := r.err.CheckError(); err != nil {
+		numFields, err := r.readCount("struct")
+		if err != nil {
 			return nil, err
-		}
-		if numFields > r.remaining() {
-			return nil, fmt.Errorf("row: struct declares %d fields but only %d bytes remain", numFields, r.remaining())
 		}
 		fields := make([]Field, 0, numFields)
 		for i := 0; i < numFields; i++ {
