@@ -45,6 +45,13 @@ type bar struct {
 	F2 string
 }
 
+// Mirrors GoCrossLanguageTest.Blob: Java byte[] and Go []byte are both
+// list<int8>.
+type blob struct {
+	F1 []byte
+	F2 string
+}
+
 // Mirrors CrossLanguageTest.Foo. F3 uses []*string because the Java
 // fixture contains a null list element.
 type foo struct {
@@ -69,6 +76,8 @@ func main() {
 			fail("test_serialization_with_schema needs <schemaFile> <dataFile>")
 		}
 		testSerializationWithSchema(os.Args[2], os.Args[3])
+	case "test_byte_array_carrier":
+		testByteArrayCarrier(os.Args[2])
 	default:
 		fail("unknown test case %q", caseName)
 	}
@@ -83,6 +92,22 @@ func testMapEncoder(dataFile string) {
 	decoded, err := encoder.Decode(data)
 	must(err)
 	expected := a{F1: int32Ptr(1), F2: map[string]string{"pid": "12345", "ip": "0.0.0.0", "k1": "v1"}}
+	check(reflect.DeepEqual(decoded, expected), "decoded %+v, expected %+v", decoded, expected)
+
+	encoded, err := encoder.Encode(&expected)
+	must(err)
+	must(os.WriteFile(dataFile, encoded, 0o644))
+}
+
+func testByteArrayCarrier(dataFile string) {
+	encoder, err := row.NewEncoder[blob]()
+	must(err)
+	data, err := os.ReadFile(dataFile)
+	must(err)
+
+	decoded, err := encoder.Decode(data)
+	must(err)
+	expected := blob{F1: []byte{0, 1, 0xff, 127, 0x80}, F2: "bytes"}
 	check(reflect.DeepEqual(decoded, expected), "decoded %+v, expected %+v", decoded, expected)
 
 	encoded, err := encoder.Encode(&expected)

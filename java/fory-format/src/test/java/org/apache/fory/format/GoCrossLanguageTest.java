@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import lombok.Data;
 import org.apache.fory.format.encoder.Encoders;
 import org.apache.fory.format.encoder.RowEncoder;
 import org.apache.fory.format.row.binary.BinaryRow;
@@ -43,7 +44,8 @@ import org.testng.annotations.Test;
 /**
  * Row format cross-language tests against a Go peer built from {@code go/fory/tests/row_xlang}.
  * Data shapes are shared with {@link CrossLanguageTest} so the Java, Python, and Go peers exercise
- * the same schemas.
+ * the same schemas. Setting {@code FORY_GO_JAVA_CI=1} opts into the suite; once opted in, a missing
+ * Go toolchain or a peer build failure fails the tests instead of skipping them.
  */
 @Test
 public class GoCrossLanguageTest {
@@ -57,29 +59,47 @@ public class GoCrossLanguageTest {
     if (!"1".equals(enabled)) {
       throw new SkipException("Skipping GoCrossLanguageTest: FORY_GO_JAVA_CI not set to 1");
     }
-    boolean goInstalled = true;
     try {
       Process process = new ProcessBuilder("go", "version").start();
-      if (process.waitFor() != 0) {
-        goInstalled = false;
-      }
-    } catch (IOException | InterruptedException e) {
-      goInstalled = false;
-      if (e instanceof InterruptedException) {
-        Thread.currentThread().interrupt();
-      }
-    }
-    if (!goInstalled) {
-      throw new SkipException("Skipping GoCrossLanguageTest: go not installed");
+      Assert.assertEquals(process.waitFor(), 0, "go toolchain is required when FORY_GO_JAVA_CI=1");
+    } catch (IOException e) {
+      throw new AssertionError("go toolchain is required when FORY_GO_JAVA_CI=1", e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError("interrupted while probing the go toolchain", e);
     }
     List<String> buildCommand =
         Arrays.asList("go", "build", "-o", "tests/" + GO_BINARY, "./tests/row_xlang");
-    boolean buildSuccess =
+    Assert.assertTrue(
         TestUtils.executeCommand(
-            buildCommand, 120, Collections.emptyMap(), new File("../../go/fory"));
-    if (!buildSuccess || !new File("../../go/fory/tests/" + GO_BINARY).exists()) {
-      throw new SkipException("Skipping GoCrossLanguageTest: failed to build " + GO_BINARY);
+            buildCommand, 120, Collections.emptyMap(), new File("../../go/fory")),
+        "failed to build the Go row format peer " + GO_BINARY);
+    Assert.assertTrue(
+        new File("../../go/fory/tests/" + GO_BINARY).exists(),
+        GO_BINARY + " not found after a successful build");
+  }
+
+  /** Keep in sync with {@code blob} in row_xlang_main.go: byte[] is list<int8> in both. */
+  @Data
+  public static class Blob {
+    public byte[] f1;
+    public String f2;
+
+    public static Blob create() {
+      Blob blob = new Blob();
+      blob.f1 = new byte[] {0, 1, -1, 127, -128};
+      blob.f2 = "bytes";
+      return blob;
     }
+  }
+
+  public void testByteArrayCarrier() throws IOException {
+    Blob blob = Blob.create();
+    RowEncoder<Blob> encoder = Encoders.bean(Blob.class);
+    Path dataFile = createTempFile("row_go_blob");
+    Files.write(dataFile, encoder.encode(blob));
+    Assert.assertTrue(runGoPeer("test_byte_array_carrier", dataFile));
+    Assert.assertEquals(encoder.decode(Files.readAllBytes(dataFile)), blob);
   }
 
   public void testMapEncoder() throws IOException {
