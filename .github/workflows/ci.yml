@@ -180,6 +180,24 @@ jobs:
           cd compiler
           pytest -q fory_compiler/tests
 
+  compiler_import:
+    name: Compiler Import ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9"]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+      - name: Import the compiler CLI
+        run: |
+          cd compiler
+          python -c "import fory_compiler.cli"
+
   java:
     name: Java CI
     needs: changes
