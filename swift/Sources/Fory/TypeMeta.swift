@@ -32,6 +32,12 @@ private let typeMetaHashSeed: UInt64 = 47
 private let noUserTypeID: UInt32 = UInt32.max
 private let typeMetaMaxDepth = 20
 
+@inline(__always)
+internal func typeMetaHashFromHeader(_ header: UInt64) -> UInt64 {
+    // The top 52 bits are the schema identity; the low 12 bits belong to current-frame framing.
+    header >> (64 - typeMetaNumHashBits)
+}
+
 public let namespaceMetaStringEncodings: [MetaStringEncoding] = [
     .utf8,
     .allToLowerSpecial,
@@ -513,7 +519,7 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
             registerByName: registerByName,
             fields: fieldInfos,
             compressed: compressed,
-            headerHash: header >> (64 - typeMetaNumHashBits)
+            headerHash: typeMetaHashFromHeader(header)
         )
     }
 

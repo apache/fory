@@ -33,6 +33,7 @@
     <artifactId>fory-kotlin-grpc-tests</artifactId>
 
     <properties>
+        <dokka.skip>true</dokka.skip>
         <grpc.version>1.75.0</grpc.version>
         <grpc.kotlin.version>1.4.3</grpc.kotlin.version>
         <kotlinx.coroutines.version>1.8.0</kotlinx.coroutines.version>

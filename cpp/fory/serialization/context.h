@@ -356,12 +356,10 @@ private:
   OutputStream *output_stream_ = nullptr;
 
   // Meta sharing state (for streaming inline TypeMeta)
-  // Maps TypeInfo* to index for reference tracking - uses map size as counter
+  // The first TypeInfo has index 0; the map stores later types at size + 1.
   util::FlatIntMap<uint64_t, uint32_t> write_type_info_index_map_;
   // Fast path for the common single-type stream: avoid hash map lookups.
   const TypeInfo *first_type_info_ = nullptr;
-  bool has_first_type_info_ = false;
-  bool type_info_index_map_active_ = false;
 };
 
 /// Read context for deserialization operations.
@@ -625,10 +623,11 @@ public:
     buffer().skip(length, error);
   }
 
+  /// Read and validate type information for a statically declared enum.
   Result<const TypeInfo *, Error>
   read_enum_type_info(const std::type_index &type, uint32_t base_type_id);
 
-  /// Read enum type info without type_index (fast path).
+  /// Read enum type info without a statically declared C++ owner.
   Result<const TypeInfo *, Error> read_enum_type_info(uint32_t base_type_id);
 
   /// Read TypeMeta inline using streaming protocol.
@@ -667,7 +666,33 @@ public:
 
 private:
   friend class Fory;
+  template <typename T, typename Enable> friend struct Serializer;
+  template <typename T>
+  friend const TypeInfo *read_collection_element_type_info(ReadContext &ctx);
+  template <typename T>
+  friend const TypeInfo *read_map_type_info(ReadContext &ctx);
 
+  struct ReadTypeInfo {
+    const TypeInfo *type_info;
+    const TypeInfo *concrete_owner;
+  };
+
+  struct CachedTypeInfo {
+    TypeInfo type_info;
+    const TypeInfo *concrete_owner = nullptr;
+  };
+
+  Result<const TypeInfo *, Error>
+  read_enum_type_info_owner(const TypeInfo *expected_type_info,
+                            uint32_t base_type_id);
+  Result<const TypeInfo *, Error>
+  read_type_meta_owner(const TypeInfo *expected_type_info);
+  Result<const TypeInfo *, Error>
+  read_any_type_info_owner(const TypeInfo *expected_type_info);
+  const TypeInfo *read_any_type_info_owner(Error &error,
+                                           const TypeInfo *expected_type_info);
+  static bool matches_expected_type(const TypeInfo *concrete_owner,
+                                    const TypeInfo *expected_type_info);
   FORY_NOINLINE Result<std::string, Error>
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
@@ -687,16 +712,17 @@ private:
   size_t remaining_unbacked_container_items_ = 0;
 
   // Meta sharing state (for compatible mode)
-  // Persistent cache storage for TypeInfo objects keyed by meta header.
-  std::vector<std::unique_ptr<TypeInfo>> cached_type_infos_;
-  // Index-based access (pointers to cached_type_infos_ or type_resolver)
-  std::vector<const TypeInfo *> reading_type_infos_;
-  // Cache by meta_header (pointers to cached_type_infos_)
-  fory::flat_hash_map<int64_t, const TypeInfo *> parsed_type_infos_;
-  // Fast path for repeated type meta headers.
-  int64_t cached_meta_header_ = 0;
-  const TypeInfo *cached_meta_type_info_ = nullptr;
-  bool has_cached_meta_header_ = false;
+  // Persistent cache storage for TypeInfo objects keyed by the protocol
+  // 52-bit TypeMeta header hash.
+  std::vector<std::unique_ptr<CachedTypeInfo>> cached_type_infos_;
+  // Root-local TypeMeta entries retain both their read TypeInfo and the
+  // registration-owned concrete TypeInfo authorized for that metadata.
+  std::vector<ReadTypeInfo> reading_type_infos_;
+  // Cache by the 52-bit TypeMeta header hash.
+  fory::flat_hash_map<int64_t, const CachedTypeInfo *> parsed_type_infos_;
+  // Fast path for the last checked non-local TypeMeta owner. Its TypeMeta hash
+  // is the cache identity; local expected hits are root-local only.
+  const CachedTypeInfo *cached_meta_type_info_ = nullptr;
   bool meta_string_table_active_ = false;
 
   // Dynamic meta strings used for named type/class info.

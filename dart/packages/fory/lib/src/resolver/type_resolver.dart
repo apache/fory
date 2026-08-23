@@ -1014,14 +1014,15 @@ final class TypeResolver {
     }
     final marker = buffer.readVarUint32Small14();
     if ((marker & 1) == 1) {
-      return sharedTypes[marker >>> 1];
+      return _checkExpectedTypeDefOwner(sharedTypes[marker >>> 1], expected);
     }
     final headerValue = buffer.readInt64();
     final expectedTypeDef = expected.typeDef;
-    if (expectedTypeDef != null && expectedTypeDef.header == headerValue) {
-      // The expected local TypeInfo owns this TypeDef header. This is a direct
-      // local-schema hit: skip the remote body, do not rehash, and do not
-      // publish to ParsedTypeMetaCache because no remote metadata miss occurred.
+    if (expectedTypeDef != null &&
+        TypeHeader.sameHash(expectedTypeDef.header, headerValue)) {
+      // The expected local TypeInfo owns this 52-bit TypeDef hash. The current
+      // size bits only bound and skip this frame; do not validate its low flags,
+      // rehash its body, or publish to ParsedTypeMetaCache.
       TypeHeader.skipBody(buffer, headerValue);
       sharedTypes.add(expected);
       return expected;
@@ -1029,16 +1030,35 @@ final class TypeResolver {
     final header = TypeHeader(headerValue);
     final cached = _parsedTypeMetaCache.lookup(header);
     if (cached != null) {
-      // Header-cache hits intentionally skip without rehashing. Entries reach this cache only
-      // after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-      // body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
+      // The checked cache owns the 52-bit identity. The current size bits only
+      // bound and skip this frame; the miss path owns low-flag/body/hash/schema
+      // validation before publication.
+      final resolved = _checkExpectedTypeDefOwner(cached, expected);
       header.skipRemaining(buffer);
-      sharedTypes.add(cached);
-      return cached;
+      sharedTypes.add(resolved);
+      return resolved;
     }
-    final resolved = _readTypeDefWithHeader(buffer, header);
+    final resolved = _readTypeDefWithHeader(buffer, header, expected: expected);
     sharedTypes.add(resolved);
     return resolved;
+  }
+
+  @pragma('vm:prefer-inline')
+  TypeInfo _checkExpectedTypeDefOwner(TypeInfo resolved, TypeInfo expected) {
+    // Remote schema wrappers retain the canonical registered Dart type. This
+    // binds already-validated metadata to the declared concrete owner without
+    // reading schema fields, names, or body bytes.
+    if (!identical(resolved.type, expected.type)) {
+      _throwTypeDefOwnerMismatch(expected.type, resolved.type);
+    }
+    return resolved;
+  }
+
+  @pragma('vm:never-inline')
+  Never _throwTypeDefOwnerMismatch(Type expected, Type actual) {
+    throw StateError(
+      'TypeDef owner mismatch: expected $expected, got $actual.',
+    );
   }
 
   void _writeTypeDef(
@@ -1295,9 +1315,9 @@ final class TypeResolver {
     final header = TypeHeader(buffer.readInt64());
     final cached = _parsedTypeMetaCache.lookup(header);
     if (cached != null) {
-      // Header-cache hits intentionally skip without rehashing. Entries reach this cache only
-      // after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-      // body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
+      // The checked cache owns the 52-bit identity. The current size bits only
+      // bound and skip this frame; the miss path owns low-flag/body/hash/schema
+      // validation before publication.
       header.skipRemaining(buffer);
       sharedTypes.add(cached);
       return typeMetaForResolved(cached);
@@ -1308,8 +1328,11 @@ final class TypeResolver {
   }
 
   @pragma('vm:never-inline')
-  TypeInfo _readTypeDefWithHeader(Buffer buffer, TypeHeader header) {
-    final typeDefStart = bufferReaderIndex(buffer) - 8;
+  TypeInfo _readTypeDefWithHeader(
+    Buffer buffer,
+    TypeHeader header, {
+    TypeInfo? expected,
+  }) {
     header.validateGlobal();
     final metaSize = header.readMetaSize(buffer);
     if (metaSize > config.maxTypeMetaBytes) {
@@ -1398,19 +1421,14 @@ final class TypeResolver {
         typeId) {
       throw StateError('TypeDef kind does not match registered type metadata.');
     }
-    final localTypeDef = typeDefForResolved(resolved);
-    if (_matchesEncodedTypeDef(buffer, typeDefStart, localTypeDef.encoded)) {
-      _parsedTypeMetaCache.remember(header, resolved);
-      return resolved;
+    if (expected != null) {
+      _checkExpectedTypeDefOwner(resolved, expected);
     }
-    if (resolved.kind != RegistrationKind.struct) {
-      final remoteSchemaKey = _checkRemoteTypeDefLimit(
-        typeId: typeId,
-        userTypeId: userTypeId,
-        resolved: resolved,
-      );
-      _parsedTypeMetaCache.remember(header, resolved);
-      _recordRemoteTypeDef(remoteSchemaKey);
+    final localTypeDef = typeDefForResolved(resolved);
+    // Parsing, hash validation, and policy resolution above own this cold miss.
+    // The validated top-52 hash now selects the schema owner; current-frame
+    // size and flag differences must not publish or count a remote version.
+    if (TypeHeader.sameHash(localTypeDef.header, header.value)) {
       return resolved;
     }
     final remoteSchemaKey = _checkRemoteTypeDefLimit(
@@ -1419,11 +1437,16 @@ final class TypeResolver {
       resolved: resolved,
     );
     final remoteTypeDef = TypeDef(
-      evolving: true,
-      fields: List<FieldInfo>.unmodifiable(fields),
+      evolving: isStruct ? true : resolved.evolving,
+      fields:
+          isStruct ? List<FieldInfo>.unmodifiable(fields) : const <FieldInfo>[],
       header: header.value,
       encoded: Uint8List(0),
     );
+    // A checked cache owner must retain the validated remote header even when
+    // non-struct names resolve to local serializers. For example, alternate
+    // legal encodings of an empty namespace have distinct hashes but the same
+    // canonical registered owner.
     final remoteResolved = TypeInfo(
       type: resolved.type,
       kind: resolved.kind,
@@ -1434,7 +1457,10 @@ final class TypeResolver {
       // Compatible field dispatch follows the received schema. Derive this
       // one-level fact from the remote fields instead of retaining the local
       // generated readData answer; nested Struct and ext bodies stay conservative.
-      readDataAlwaysAdvances: _fieldsReadDataAlwaysAdvances(fields),
+      readDataAlwaysAdvances:
+          isStruct
+              ? _fieldsReadDataAlwaysAdvances(fields)
+              : resolved.readDataAlwaysAdvances,
       evolving: resolved.evolving,
       fields: resolved.fields,
       serializer: resolved.serializer,
@@ -1447,21 +1473,14 @@ final class TypeResolver {
       typeDef: resolved.typeDef,
       remoteTypeDef: remoteTypeDef,
     );
-    remoteResolved.structSerializer?.validateCompatibleTypeInfo(remoteResolved);
+    if (isStruct) {
+      remoteResolved.structSerializer?.validateCompatibleTypeInfo(
+        remoteResolved,
+      );
+    }
     _parsedTypeMetaCache.remember(header, remoteResolved);
     _recordRemoteTypeDef(remoteSchemaKey);
     return remoteResolved;
-  }
-
-  bool _matchesEncodedTypeDef(
-    Buffer buffer,
-    int typeDefStart,
-    Uint8List encoded,
-  ) {
-    if (bufferReaderIndex(buffer) - typeDefStart != encoded.length) {
-      return false;
-    }
-    return bufferMatchesBytes(buffer, typeDefStart, encoded);
   }
 
   @pragma('vm:never-inline')

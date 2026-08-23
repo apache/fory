@@ -1814,6 +1814,66 @@ fn compatible_external_schema() {
 }
 
 #[test]
+fn custom_polymorphic_default_meta() {
+    #[derive(Debug)]
+    struct Foreign(i32);
+
+    struct ForeignSerializer;
+
+    impl Serializer for ForeignSerializer {
+        type Target = Foreign;
+
+        fn write_data(value: &Foreign, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_i32(value.0);
+            Ok(())
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<Foreign, Error> {
+            Ok(Foreign(context.reader.read_i32()?))
+        }
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct Local(i32);
+
+    struct DefaultPolySerializer;
+
+    impl Serializer for DefaultPolySerializer {
+        type Target = Local;
+
+        const IS_POLYMORPHIC: bool = true;
+
+        fn write_data(value: &Local, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_i32(value.0);
+            Ok(())
+        }
+
+        fn read_data(context: &mut ReadContext) -> Result<Local, Error> {
+            Ok(Local(context.reader.read_i32()?))
+        }
+    }
+
+    let mut writer = Fory::builder().xlang(false).compatible(true).build();
+    writer
+        .register_serializer_by_name::<ForeignSerializer>("example.Foreign")
+        .unwrap();
+    let bytes = writer
+        .serialize_with::<ForeignSerializer>(&Foreign(42))
+        .unwrap();
+
+    let mut reader = Fory::builder().xlang(false).compatible(true).build();
+    reader
+        .register_serializer_by_name::<DefaultPolySerializer>("example.Local")
+        .unwrap();
+    assert_eq!(
+        reader
+            .deserialize_with::<DefaultPolySerializer>(&bytes)
+            .unwrap(),
+        Local(42)
+    );
+}
+
+#[test]
 fn compatible_carrier_schema() {
     let mut writer = Fory::builder().xlang(false).compatible(true).build();
     writer.register::<UserV1Serializer>(420).unwrap();

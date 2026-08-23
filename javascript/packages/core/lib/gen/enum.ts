@@ -27,10 +27,15 @@ import { TypeMeta } from "../meta/TypeMeta";
 
 class EnumSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
+  typeMeta: TypeMeta | undefined;
 
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
     this.typeInfo = typeInfo;
+    this.typeMeta =
+      typeInfo.typeId === TypeId.NAMED_ENUM && builder.resolver.isCompatible()
+        ? TypeMeta.fromTypeInfo(typeInfo, builder.resolver)
+        : undefined;
   }
 
   private getEnumEntries(): Array<[string, string | number]> {
@@ -108,6 +113,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
               TypeId.NAMED_ENUM,
               this.typeInfo.namespace,
               this.typeInfo.typeName,
+              "serializer",
             )};
           `;
         } else {
@@ -149,7 +155,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
         if (this.builder.resolver.isCompatible()) {
           const bytes = this.scope.declare(
             "enumTypeInfoBytes",
-            `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`,
+            `new Uint8Array([${this.typeMeta!.toBytes().join(",")}])`,
           );
           typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), bytes);
         } else {
@@ -223,6 +229,11 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
 
   getFixedSize(): number {
     return 7;
+  }
+
+  getLocalTypeMeta(): TypeMeta | undefined {
+    this.typeMeta?.getHash();
+    return this.typeMeta;
   }
 }
 

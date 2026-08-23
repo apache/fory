@@ -681,6 +681,47 @@ public class NativeTypeDefEncoderTest {
     }
   }
 
+  @Test
+  public void testUnregisteredParentLayer() {
+    Fory writer = registeredChildFory();
+    Fory reader = registeredChildFory();
+    writer.register(ChildClass.class, 100);
+    reader.register(ChildClass.class, 100);
+    ClassResolver readerResolver = (ClassResolver) reader.getTypeResolver();
+    Assert.assertFalse(readerResolver.isRegisteredByName(BaseAbstractClass.class.getName()));
+
+    ChildClass child = new ChildClass();
+    child.setId("123");
+    child.setName("test");
+    ChildClass decoded = (ChildClass) reader.deserialize(writer.serialize(child));
+    Assert.assertEquals(decoded.getId(), "123");
+    Assert.assertEquals(decoded.getName(), "test");
+
+    TypeDef typeDef = TypeDef.buildTypeDef(writer.getTypeResolver(), ChildClass.class);
+    TypeDef decodedTypeDef =
+        TypeDef.readTypeDef(readerResolver, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+    FieldInfo parentField =
+        decodedTypeDef.getFieldsInfo().stream()
+            .filter(field -> field.getFieldName().equals("id"))
+            .findFirst()
+            .orElseThrow(AssertionError::new);
+    Assert.assertEquals(parentField.getDefinedClass(), BaseAbstractClass.class.getName());
+    Assert.assertEquals(decodedTypeDef.getClassSpec().type, ChildClass.class);
+  }
+
+  private static Fory registeredChildFory() {
+    return Fory.builder()
+        .withXlang(false)
+        .withRefTracking(false)
+        .withMetaShare(true)
+        .withScopedMetaShare(true)
+        .withCompatible(true)
+        .withDeserializeUnknownClass(false)
+        .withAsyncCompilation(false)
+        .requireClassRegistration(true)
+        .build();
+  }
+
   @Data
   public abstract static class BaseAbstractClass {
     private String id;

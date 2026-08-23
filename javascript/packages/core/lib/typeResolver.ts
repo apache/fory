@@ -138,10 +138,10 @@ export default class TypeResolver {
     this.unknownStructSerializer = new UnknownStructSerializer(this, writeContext, readContext);
   }
 
-  getUnknownStructSerializer(typeMeta?: import("./meta/TypeMeta").TypeMeta) {
+  getUnknownStructSerializer(typeMeta?: import("./meta/TypeMeta").TypeMeta, wireTypeId?: number) {
     return typeMeta === undefined
       ? this.unknownStructSerializer
-      : this.unknownStructSerializer.bind(typeMeta);
+      : this.unknownStructSerializer.createReadSerializer(typeMeta, wireTypeId);
   }
 
   isCompatible() {

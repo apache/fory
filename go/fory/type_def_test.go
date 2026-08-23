@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/apache/fory/go/fory/meta"
+	"github.com/apache/fory/go/fory/optional"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,6 +39,10 @@ type SliceStruct struct {
 	ID    int32
 	Items []string
 }
+
+type typeDefOwnerEnumA int32
+
+type typeDefOwnerEnumB int32
 
 type SchemaLimitBad struct {
 	Value string
@@ -234,6 +239,43 @@ func typeDefTestFrame(t *testing.T, body []byte, compressed bool) (*ByteBuffer, 
 	header := frame.ReadInt64(readErr)
 	require.NoError(t, readErr.CheckError())
 	return frame, header
+}
+
+func sharedTypeDefFrame(header int64, body []byte) *ByteBuffer {
+	buffer := NewByteBuffer(nil)
+	buffer.WriteVarUint32(0)
+	buffer.WriteInt64(header)
+	buffer.WriteBinary(body)
+	return NewByteBuffer(buffer.Bytes())
+}
+
+func alternateNamedTypeDef(
+	t *testing.T, fory *Fory, type_ reflect.Type, namespace, typeName string,
+) *TypeDef {
+	t.Helper()
+	localTd, err := fory.typeResolver.getTypeDef(type_, true)
+	require.NoError(t, err)
+	nsData := []byte(namespace)
+	nameData := []byte(typeName)
+	nsBytes := NewMetaStringBytes(nsData, ComputeMetaStringHash(nsData, meta.UTF_8))
+	nameBytes := NewMetaStringBytes(nameData, ComputeMetaStringHash(nameData, meta.UTF_8))
+	remoteTd := NewTypeDef(
+		localTd.typeId,
+		localTd.userTypeId,
+		nsBytes,
+		nameBytes,
+		localTd.registerByName,
+		localTd.compressed,
+		localTd.fieldDefs,
+	)
+	remoteTd.encoded, err = encodingTypeDef(fory.typeResolver, remoteTd)
+	require.NoError(t, err)
+	localIdentity, ok := encodedTypeDefIdentity(localTd.encoded)
+	require.True(t, ok)
+	remoteIdentity, ok := encodedTypeDefIdentity(remoteTd.encoded)
+	require.True(t, ok)
+	require.NotEqual(t, localIdentity, remoteIdentity)
+	return remoteTd
 }
 
 func deflateTypeDefTestBody(t *testing.T, body []byte) []byte {
@@ -518,37 +560,303 @@ func TestTypeDefRejectsCompressedMetadata(t *testing.T) {
 	require.Contains(t, err.Error(), "compressed xlang TypeDef")
 }
 
-func TestReadSharedTypeMetaExactLocalPopulatesCache(t *testing.T) {
+func TestRemoteTypeDefCacheHit(t *testing.T) {
 	fory := NewFory(WithXlang(false), WithCompatible(true))
-	require.NoError(t, fory.RegisterStructByName(SimpleStruct{}, "example.SimpleStruct"))
-	typeDef, err := buildTypeDef(fory, reflect.ValueOf(SimpleStruct{}))
-	require.NoError(t, err)
-	require.NotEmpty(t, typeDef.encoded)
+	remoteTd := remoteSchemaLimitTypeDef(t, SimpleStruct{}, "remote.Cache")
 
 	headerErr := &Error{}
-	header := NewByteBuffer(typeDef.encoded).ReadInt64(headerErr)
+	header := NewByteBuffer(remoteTd.encoded).ReadInt64(headerErr)
 	require.NoError(t, headerErr.CheckError())
-	require.NotContains(t, fory.typeResolver.defIdToTypeDef, header)
+	identity := typeDefIdentity(header)
+	require.NotContains(t, fory.typeResolver.defIdToTypeDef, identity)
 
-	buffer := NewByteBuffer(nil)
-	buffer.WriteVarUint32(0)
-	buffer.WriteBinary(typeDef.encoded)
+	require.NoError(t, readRemoteTypeDef(t, fory, remoteTd))
+	cachedTd := fory.typeResolver.defIdToTypeDef[identity]
+	require.NotNil(t, cachedTd)
+	cachedTypeInfo, err := cachedTd.getOrBuildTypeInfo(fory.typeResolver)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), fory.typeResolver.totalAcceptedSchemaVersions)
+	fory.MetaContext().Reset()
+
+	originalSize := int(header & META_SIZE_MASK)
+	require.Less(t, originalSize+1, META_SIZE_MASK)
+	differentBody := make([]byte, originalSize+1)
+	differentHeader := int64(identity<<12 | uint64(len(differentBody)))
+	buffer := sharedTypeDefFrame(differentHeader, differentBody)
 	readErr := &Error{}
-	typeInfo := fory.typeResolver.readSharedTypeMeta(buffer, readErr)
+	typeInfo := fory.typeResolver.readSharedTypeMeta(buffer, nil, readErr)
 	require.NoError(t, readErr.CheckError())
-	require.NotNil(t, typeInfo)
-	require.Contains(t, fory.typeResolver.defIdToTypeDef, header)
-	require.Zero(t, fory.typeResolver.totalAcceptedSchemaVersions)
+	require.Same(t, typeInfo, cachedTypeInfo)
+	require.Equal(t, len(buffer.GetData()), buffer.ReaderIndex())
+	require.Same(t, cachedTd, fory.typeResolver.defIdToTypeDef[identity])
+	require.Equal(t, int64(1), fory.typeResolver.totalAcceptedSchemaVersions)
+	require.Len(t, fory.MetaContext().readTypeInfos, 1)
+}
 
-	invalidBody := append([]byte(nil), typeDef.encoded...)
-	invalidBody[len(invalidBody)-1] ^= 1
-	buffer = NewByteBuffer(nil)
-	buffer.WriteVarUint32(0)
-	buffer.WriteBinary(invalidBody)
-	readErr = &Error{}
-	typeInfo = fory.typeResolver.readSharedTypeMeta(buffer, readErr)
+func TestExpectedTypeDefHashHit(t *testing.T) {
+	fory := NewFory(WithXlang(false), WithCompatible(true))
+	require.NoError(t, fory.RegisterStructByName(SimpleStruct{}, "example.SimpleStruct"))
+	expectedType := reflect.TypeOf(SimpleStruct{})
+	localTd, err := fory.typeResolver.getTypeDef(expectedType, true)
+	require.NoError(t, err)
+
+	remoteTd := remoteSchemaLimitTypeDef(t, SliceStruct{}, "remote.Cache")
+	headerErr := &Error{}
+	header := NewByteBuffer(remoteTd.encoded).ReadInt64(headerErr)
+	require.NoError(t, headerErr.CheckError())
+	identity := typeDefIdentity(header)
+	require.NoError(t, readRemoteTypeDef(t, fory, remoteTd))
+	cachedRemote := fory.typeResolver.defIdToTypeDef[identity]
+	require.NotNil(t, cachedRemote)
+	require.NotSame(t, localTd, cachedRemote)
+	require.Equal(t, int64(1), fory.typeResolver.totalAcceptedSchemaVersions)
+	fory.MetaContext().Reset()
+
+	localHeaderErr := &Error{}
+	localHeader := NewByteBuffer(localTd.encoded).ReadInt64(localHeaderErr)
+	require.NoError(t, localHeaderErr.CheckError())
+	localLow := uint64(localHeader) & 0xfff
+	rewrittenLocal := NewByteBuffer(nil)
+	rewrittenLocal.WriteInt64(int64(identity<<12 | localLow))
+	rewrittenLocal.WriteBinary(localTd.encoded[8:])
+	localTd.encoded = rewrittenLocal.Bytes()
+
+	localSize := int(localHeader & META_SIZE_MASK)
+	require.Less(t, localSize+1, META_SIZE_MASK)
+	differentBody := make([]byte, localSize+1)
+	differentHeader := int64(identity<<12 | uint64(RESERVED_META_BITS) | uint64(len(differentBody)))
+	sharedFrame := sharedTypeDefFrame(differentHeader, differentBody)
+	wire := NewByteBuffer(nil)
+	wire.WriteUint8(uint8(localTd.typeId))
+	wire.WriteBinary(sharedFrame.GetData())
+	buffer := NewByteBuffer(wire.Bytes())
+
+	readErr := &Error{}
+	serializer := fory.typeResolver.readTypeInfoForType(buffer, expectedType, readErr)
 	require.NoError(t, readErr.CheckError())
-	require.NotNil(t, typeInfo)
+	require.Same(t, fory.typeResolver.typeToSerializers[expectedType], serializer)
+	require.Equal(t, len(buffer.GetData()), buffer.ReaderIndex())
+	require.Same(t, cachedRemote, fory.typeResolver.defIdToTypeDef[identity])
+	require.Equal(t, int64(1), fory.typeResolver.totalAcceptedSchemaVersions)
+	require.Len(t, fory.MetaContext().readTypeInfos, 1)
+}
+
+func TestGenericTypeDefIdentityLocalHit(t *testing.T) {
+	fory := NewFory(WithXlang(false), WithCompatible(true))
+	require.NoError(t, fory.RegisterStructByName(SimpleStruct{}, "example.Shared"))
+	localInfo := fory.typeResolver.typesInfo[reflect.TypeOf(SimpleStruct{})]
+	require.NotNil(t, localInfo)
+	localTd, err := fory.typeResolver.localTypeDef(localInfo)
+	require.NoError(t, err)
+	require.NotNil(t, localTd)
+
+	sender := NewFory(WithXlang(false), WithCompatible(true))
+	require.NoError(t, sender.RegisterStructByName(SliceStruct{}, "example.Shared"))
+	remoteTd, err := buildTypeDef(sender, reflect.ValueOf(SliceStruct{}))
+	require.NoError(t, err)
+	remoteHeaderErr := &Error{}
+	remoteHeader := NewByteBuffer(remoteTd.encoded).ReadInt64(remoteHeaderErr)
+	require.NoError(t, remoteHeaderErr.CheckError())
+	identity := typeDefIdentity(remoteHeader)
+
+	localHeaderErr := &Error{}
+	localHeader := NewByteBuffer(localTd.encoded).ReadInt64(localHeaderErr)
+	require.NoError(t, localHeaderErr.CheckError())
+	localLow := uint64(localHeader) & 0xfff
+	remoteLow := uint64(remoteHeader) & 0xfff
+	if localLow == remoteLow {
+		localLow ^= RESERVED_META_BITS
+	}
+	rewrittenLocal := NewByteBuffer(nil)
+	rewrittenLocal.WriteInt64(int64(identity<<12 | localLow))
+	rewrittenLocal.WriteBinary(localTd.encoded[8:])
+	localTd.encoded = rewrittenLocal.Bytes()
+	require.NotEqual(t, remoteLow, localLow)
+	require.False(t, bytes.Equal(localTd.encoded, remoteTd.encoded))
+
+	readErr := &Error{}
+	typeInfo := fory.typeResolver.readSharedTypeMeta(
+		sharedTypeDefFrame(remoteHeader, remoteTd.encoded[8:]), nil, readErr)
+	require.NoError(t, readErr.CheckError())
+	require.Same(t, localInfo, typeInfo)
+	require.NotContains(t, fory.typeResolver.defIdToTypeDef, identity)
+	require.Zero(t, fory.typeResolver.totalAcceptedSchemaVersions)
+	require.Len(t, fory.MetaContext().readTypeInfos, 1)
+
+	fory.MetaContext().Reset()
+	readErr = &Error{}
+	typeInfo = fory.typeResolver.readSharedTypeMeta(
+		sharedTypeDefFrame(remoteHeader, remoteTd.encoded[8:]), nil, readErr)
+	require.NoError(t, readErr.CheckError())
+	require.Same(t, localInfo, typeInfo)
+	require.NotContains(t, fory.typeResolver.defIdToTypeDef, identity)
+	require.Zero(t, fory.typeResolver.totalAcceptedSchemaVersions)
+	require.Len(t, fory.MetaContext().readTypeInfos, 1)
+}
+
+func TestTypeDefCacheHitTruncatedBody(t *testing.T) {
+	fory := NewFory(WithXlang(false), WithCompatible(true))
+	remoteTd := remoteSchemaLimitTypeDef(t, SimpleStruct{}, "remote.Cache")
+
+	headerErr := &Error{}
+	header := NewByteBuffer(remoteTd.encoded).ReadInt64(headerErr)
+	require.NoError(t, headerErr.CheckError())
+	identity := typeDefIdentity(header)
+
+	require.NoError(t, readRemoteTypeDef(t, fory, remoteTd))
+	cachedTd := fory.typeResolver.defIdToTypeDef[identity]
+	require.NotNil(t, cachedTd)
+	require.Equal(t, int64(1), fory.typeResolver.totalAcceptedSchemaVersions)
+	fory.MetaContext().Reset()
+
+	originalSize := int(header & META_SIZE_MASK)
+	require.Less(t, originalSize+2, META_SIZE_MASK)
+	declaredSize := originalSize + 2
+	truncatedBody := make([]byte, declaredSize-1)
+	truncatedHeader := int64(identity<<12 | uint64(RESERVED_META_BITS) | uint64(declaredSize))
+	truncated := sharedTypeDefFrame(truncatedHeader, truncatedBody)
+	readErr := &Error{}
+	require.Nil(t, fory.typeResolver.readSharedTypeMeta(truncated, nil, readErr))
+	require.Equal(t, ErrKindBufferOutOfBound, readErr.Kind())
+	require.Same(t, cachedTd, fory.typeResolver.defIdToTypeDef[identity])
+	require.Equal(t, int64(1), fory.typeResolver.totalAcceptedSchemaVersions)
+	require.Empty(t, fory.MetaContext().readTypeInfos)
+}
+
+func TestPointerTypeDefOwnerMismatch(t *testing.T) {
+	fory := NewFory(WithXlang(false), WithCompatible(true), WithTrackRef(false))
+	require.NoError(t, fory.RegisterStructByName(SimpleStruct{}, "test.PointerA"))
+	require.NoError(t, fory.RegisterStructByName(SliceStruct{}, "test.PointerB"))
+	remoteTd := alternateNamedTypeDef(
+		t, fory, reflect.TypeOf(SliceStruct{}), "test", "PointerB")
+	identity, ok := encodedTypeDefIdentity(remoteTd.encoded)
+	require.True(t, ok)
+
+	ptrType := reflect.TypeOf((*SimpleStruct)(nil))
+	serializer, err := fory.typeResolver.getSerializerByType(ptrType, false)
+	require.NoError(t, err)
+	ptrSerializer, ok := serializer.(*ptrToValueSerializer)
+	require.True(t, ok)
+
+	wire := NewByteBuffer(nil)
+	wire.WriteUint8(uint8(remoteTd.typeId))
+	wire.WriteVarUint32(0)
+	writeErr := &Error{}
+	remoteTd.writeTypeDef(wire, writeErr)
+	require.NoError(t, writeErr.CheckError())
+	fory.readCtx.SetData(wire.Bytes())
+	var target *SimpleStruct
+	ptrSerializer.Read(
+		fory.readCtx, RefModeNone, true, false, reflect.ValueOf(&target).Elem())
+	readErr := fory.readCtx.CheckError()
+	require.Error(t, readErr)
+	require.Contains(t, readErr.Error(), "does not match declared type")
+	require.Nil(t, target)
+	require.Empty(t, fory.MetaContext().readTypeInfos)
+	require.NotContains(t, fory.typeResolver.defIdToTypeDef, identity)
+	require.Zero(t, fory.typeResolver.totalAcceptedSchemaVersions)
+}
+
+func TestEnumTypeDefOwnerMismatch(t *testing.T) {
+	fory := NewFory(WithXlang(true), WithCompatible(true), WithTrackRef(false))
+	require.NoError(t, fory.RegisterEnumByName(typeDefOwnerEnumA(0), "test.EnumA"))
+	require.NoError(t, fory.RegisterEnumByName(typeDefOwnerEnumB(0), "test.EnumB"))
+	remoteTd := alternateNamedTypeDef(
+		t, fory, reflect.TypeOf(typeDefOwnerEnumB(0)), "test", "EnumB")
+	identity, ok := encodedTypeDefIdentity(remoteTd.encoded)
+	require.True(t, ok)
+
+	serializer, err := fory.typeResolver.getSerializerByType(
+		reflect.TypeOf(typeDefOwnerEnumA(0)), false)
+	require.NoError(t, err)
+	enumSerializer, ok := serializer.(*enumSerializer)
+	require.True(t, ok)
+
+	wire := NewByteBuffer(nil)
+	wire.WriteUint8(uint8(remoteTd.typeId))
+	wire.WriteVarUint32(0)
+	writeErr := &Error{}
+	remoteTd.writeTypeDef(wire, writeErr)
+	require.NoError(t, writeErr.CheckError())
+	fory.readCtx.SetData(wire.Bytes())
+	var target typeDefOwnerEnumA
+	enumSerializer.Read(
+		fory.readCtx, RefModeNone, true, false, reflect.ValueOf(&target).Elem())
+	readErr := fory.readCtx.CheckError()
+	require.Error(t, readErr)
+	require.Contains(t, readErr.Error(), "does not match declared type")
+	require.Empty(t, fory.MetaContext().readTypeInfos)
+	require.NotContains(t, fory.typeResolver.defIdToTypeDef, identity)
+	require.Zero(t, fory.typeResolver.totalAcceptedSchemaVersions)
+}
+
+func TestOptionalTypeDefOwnerMismatch(t *testing.T) {
+	fory := NewFory(WithXlang(false), WithCompatible(true), WithTrackRef(false))
+	require.NoError(t, fory.RegisterStructByName(SimpleStruct{}, "test.OptionalA"))
+	require.NoError(t, fory.RegisterStructByName(SliceStruct{}, "test.OptionalB"))
+	remoteTd := alternateNamedTypeDef(
+		t, fory, reflect.TypeOf(SliceStruct{}), "test", "OptionalB")
+	identity, ok := encodedTypeDefIdentity(remoteTd.encoded)
+	require.True(t, ok)
+
+	optionalType := reflect.TypeOf(optional.None[*SimpleStruct]())
+	serializer, err := fory.typeResolver.getSerializerByType(optionalType, false)
+	require.NoError(t, err)
+	optionalSerializer, ok := serializer.(*optionalSerializer)
+	require.True(t, ok)
+
+	wire := NewByteBuffer(nil)
+	wire.WriteUint8(uint8(remoteTd.typeId))
+	wire.WriteVarUint32(0)
+	writeErr := &Error{}
+	remoteTd.writeTypeDef(wire, writeErr)
+	require.NoError(t, writeErr.CheckError())
+	fory.readCtx.SetData(wire.Bytes())
+	target := optional.None[*SimpleStruct]()
+	optionalSerializer.Read(
+		fory.readCtx, RefModeNone, true, false, reflect.ValueOf(&target).Elem())
+	readErr := fory.readCtx.CheckError()
+	require.Error(t, readErr)
+	require.Contains(t, readErr.Error(), "does not match declared type")
+	require.True(t, target.IsNone())
+	require.Empty(t, fory.MetaContext().readTypeInfos)
+	require.NotContains(t, fory.typeResolver.defIdToTypeDef, identity)
+	require.Zero(t, fory.typeResolver.totalAcceptedSchemaVersions)
+}
+
+func TestSliceElementTypeDefMismatch(t *testing.T) {
+	fory := NewFory(WithXlang(false), WithCompatible(true), WithTrackRef(false))
+	require.NoError(t, fory.RegisterStructByName(SimpleStruct{}, "test.SliceA"))
+	require.NoError(t, fory.RegisterStructByName(SliceStruct{}, "test.SliceB"))
+	remoteTd := remoteSchemaLimitTypeDef(t, SchemaLimitExtra{}, "test.SliceB")
+	identity, ok := encodedTypeDefIdentity(remoteTd.encoded)
+	require.True(t, ok)
+
+	sliceType := reflect.TypeOf([]SimpleStruct{})
+	serializer, err := fory.typeResolver.getSerializerByType(sliceType, false)
+	require.NoError(t, err)
+	sliceSerializer, ok := serializer.(*sliceSerializer)
+	require.True(t, ok)
+
+	wire := NewByteBuffer(nil)
+	wire.WriteVarUint32(1)
+	wire.WriteInt8(int8(CollectionIsSameType))
+	wire.WriteUint8(uint8(remoteTd.typeId))
+	wire.WriteVarUint32(0)
+	writeErr := &Error{}
+	remoteTd.writeTypeDef(wire, writeErr)
+	require.NoError(t, writeErr.CheckError())
+	fory.readCtx.SetData(wire.Bytes())
+	fory.readCtx.remainingGraphMemoryBytes = fory.config.MaxGraphMemoryBytes
+	var target []SimpleStruct
+	sliceSerializer.ReadData(fory.readCtx, reflect.ValueOf(&target).Elem())
+	readErr := fory.readCtx.CheckError()
+	require.Error(t, readErr)
+	require.Contains(t, readErr.Error(), "does not match declared type")
+	require.Nil(t, target)
+	require.Empty(t, fory.MetaContext().readTypeInfos)
+	require.NotContains(t, fory.typeResolver.defIdToTypeDef, identity)
+	require.Zero(t, fory.typeResolver.totalAcceptedSchemaVersions)
 }
 
 func TestCheckedTypeDefSize32BitLimit(t *testing.T) {
@@ -664,7 +972,7 @@ func readRemoteTypeDef(t *testing.T, fory *Fory, typeDef *TypeDef) error {
 	require.NoError(t, writeErr.CheckError())
 
 	readErr := &Error{}
-	typeInfo := fory.typeResolver.readSharedTypeMeta(buffer, readErr)
+	typeInfo := fory.typeResolver.readSharedTypeMeta(buffer, nil, readErr)
 	if err := readErr.CheckError(); err != nil {
 		return err
 	}

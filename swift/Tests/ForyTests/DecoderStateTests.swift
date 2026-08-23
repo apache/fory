@@ -175,10 +175,7 @@ func remoteSchemaLogicalKeyLimitPersists() throws {
         )
     }
 
-    func cache(
-        _ typeMeta: TypeMeta,
-        exactLocal: Bool = false
-    ) throws -> (header: UInt64, typeInfo: TypeInfo) {
+    func cache(_ typeMeta: TypeMeta) throws -> (header: UInt64, typeInfo: TypeInfo) {
         let encoded = try typeMeta.encode()
         let buffer = ByteBuffer(bytes: encoded)
         let header = try buffer.readUInt64()
@@ -186,9 +183,8 @@ func remoteSchemaLogicalKeyLimitPersists() throws {
         let decoded = try TypeMeta.decode(buffer)
         let typeInfo = try resolver.cacheTypeInfo(
             decoded,
-            forHeader: header,
+            forHeaderHash: typeMetaHashFromHeader(header),
             localTypeInfo: localTypeInfo,
-            exactLocal: exactLocal,
             config: config
         )
         return (header, typeInfo)
@@ -228,11 +224,12 @@ func remoteSchemaLogicalKeyLimitPersists() throws {
         try remoteTypeMeta(userTypeID: rejectedTypeID, fieldName: "rejectedB")
     )
 
-    let exactLocalMeta = try remoteTypeMeta(userTypeID: rejectedTypeID + 1)
-    let exactLocal = try cache(exactLocalMeta, exactLocal: true)
-    #expect(exactLocal.typeInfo === localTypeInfo)
-    let exactLocalHit = try cache(exactLocalMeta)
-    #expect(exactLocalHit.typeInfo === localTypeInfo)
+    let localTypeDefBytes = try #require(localTypeInfo.typeDefBytes)
+    let localMeta = try TypeMeta.decode(localTypeDefBytes)
+    let local = try cache(localMeta)
+    #expect(local.typeInfo === localTypeInfo)
+    let localHit = try cache(localMeta)
+    #expect(localHit.typeInfo === localTypeInfo)
 
     let existingVersion = try remoteTypeMeta(
         userTypeID: firstUserTypeID,

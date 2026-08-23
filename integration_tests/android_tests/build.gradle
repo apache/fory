@@ -40,10 +40,14 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.13.2'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.20'
+        classpath 'com.google.devtools.ksp:symbol-processing-gradle-plugin:2.3.8'
     }
 }
 
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'com.google.devtools.ksp'
 
 def foryTestBuildType = providers.gradleProperty('foryTestBuildType').getOrElse('release')
 
@@ -88,16 +92,68 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 dependencies {
     implementation('org.apache.fory:fory-core:1.7.0-SNAPSHOT') {
         exclude group: 'com.google.guava', module: 'guava'
         exclude group: 'org.codehaus.janino', module: 'janino'
     }
     implementation 'org.apache.fory:fory-json:1.7.0-SNAPSHOT'
+    implementation 'org.apache.fory:fory-json-kotlin:1.7.0-SNAPSHOT'
+    implementation 'org.apache.fory:kotlin-json-corpus:1.7.0-SNAPSHOT'
+    ksp 'org.apache.fory:fory-json-kotlin-ksp:1.7.0-SNAPSHOT'
     annotationProcessor 'org.apache.fory:fory-annotation-processor:1.7.0-SNAPSHOT'
     implementation 'com.google.guava:guava:32.1.2-android'
     implementation 'org.slf4j:slf4j-api:2.0.12'
 
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test:runner:1.6.2'
+}
+
+def kotlinJsonRules = [
+        'fory-json-org.apache.fory.android.AndroidKotlinAccount.pro':
+                'org.apache.fory.android.AndroidKotlinAccount',
+        'fory-json-org.apache.fory.android.AndroidKotlinDefaults.pro':
+                'org.apache.fory.android.AndroidKotlinDefaults',
+        'fory-json-org.apache.fory.android.AndroidKotlinMarker.pro':
+                'org.apache.fory.android.AndroidKotlinMarker',
+]
+
+tasks.register('verifyKotlinJsonRules') {
+    dependsOn 'kspDebugKotlin', 'kspReleaseKotlin'
+    doLast {
+        ['debug', 'release'].each { variant ->
+            def ruleDir = layout.buildDirectory
+                    .dir("generated/ksp/${variant}/resources/META-INF/proguard")
+                    .get().asFile
+            def expected = kotlinJsonRules
+            def actual = fileTree(ruleDir).matching { include 'fory-json-*.pro' }.files
+                    .collectEntries { rule -> [(rule.name): rule] }
+            if (actual.keySet() != expected.keySet()) {
+                throw new GradleException(
+                        "Unexpected Kotlin JSON rules for ${variant}: " +
+                                (actual.keySet() - expected.keySet()) +
+                                "; missing: " + (expected.keySet() - actual.keySet()))
+            }
+            expected.each { name, model ->
+                def exactKeep = "-keep,allowoptimization class ${model}".toString()
+                if (!actual[name].readLines('UTF-8').contains(exactKeep)) {
+                    throw new GradleException("${actual[name]} does not retain exact model ${model}")
+                }
+            }
+            def request = layout.buildDirectory.file(
+                    "generated/ksp/${variant}/java/org/apache/fory/android/" +
+                            "AndroidKotlinJsonScenarios_d_KspJavaShapeMixin_" +
+                            "ForyJsonSubtypeGeneration.java").get().asFile
+            if (!request.isFile() || !request.text.contains(
+                    'GeneratedJsonSubtypeTable.Generation')) {
+                throw new GradleException("Missing generated Java subtype request ${request}")
+            }
+        }
+    }
 }

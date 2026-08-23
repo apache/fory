@@ -32,6 +32,7 @@
     <artifactId>fory-kotlin-tests</artifactId>
 
     <properties>
+        <dokka.skip>true</dokka.skip>
         <maven.deploy.skip>true</maven.deploy.skip>
     </properties>
 

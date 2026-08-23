@@ -140,19 +140,19 @@ final class DateTimeFormatCodec implements JsonValueCodec<Object> {
 
   @Override
   public Object readLatin1(Latin1JsonReader reader) {
-    CharSequence value = reader.readDateTimeText();
+    CharSequence value = reader.readQuotedText();
     return value == null ? null : parse(value);
   }
 
   @Override
   public Object readUtf16(Utf16JsonReader reader) {
-    CharSequence value = reader.readDateTimeText();
+    CharSequence value = reader.readQuotedText();
     return value == null ? null : parse(value);
   }
 
   @Override
   public Object readUtf8(Utf8JsonReader reader) {
-    CharSequence value = reader.readDateTimeText();
+    CharSequence value = reader.readQuotedText();
     return value == null ? null : parse(value);
   }
 

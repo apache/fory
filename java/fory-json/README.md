@@ -42,14 +42,14 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-json</artifactId>
-  <version>1.6.0</version>
+  <version>1.6.1</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-json:1.6.0")
+implementation("org.apache.fory:fory-json:1.6.1")
 ```
 
 On JDK 25 and later, opening `java.lang.invoke` to Fory core is also recommended. It avoids
@@ -115,21 +115,49 @@ or `JsonProperty.index` when emitted property order must be explicit.
 
 ## Core API
 
-Fory JSON supports String and UTF-8 byte input/output. It does not currently
-provide an `InputStream` parsing API.
+Fory JSON supports String and UTF-8 byte input/output plus incremental UTF-8
+input from `ByteBuffer` chunks. It does not currently provide a blocking
+`InputStream` parsing API.
 
-| Operation            | Runtime type              | Declared `Class`                | Declared `TypeRef`                 |
-| -------------------- | ------------------------- | ------------------------------- | ---------------------------------- |
-| String output        | `toJson(value)`           | `toJson(value, type)`           | `toJson(value, typeRef)`           |
-| UTF-8 bytes          | `toJsonBytes(value)`      | `toJsonBytes(value, type)`      | `toJsonBytes(value, typeRef)`      |
-| UTF-8 `OutputStream` | `writeJsonTo(value, out)` | `writeJsonTo(value, type, out)` | `writeJsonTo(value, typeRef, out)` |
-| String input         | -                         | `fromJson(text, type)`          | `fromJson(text, typeRef)`          |
-| UTF-8 input          | -                         | `fromJson(bytes, type)`         | `fromJson(bytes, typeRef)`         |
+| Operation            | Runtime type              | Declared `Class`                        | Declared `TypeRef`                         |
+| -------------------- | ------------------------- | --------------------------------------- | ------------------------------------------ |
+| String output        | `toJson(value)`           | `toJson(value, type)`                   | `toJson(value, typeRef)`                   |
+| UTF-8 bytes          | `toJsonBytes(value)`      | `toJsonBytes(value, type)`              | `toJsonBytes(value, typeRef)`              |
+| UTF-8 `OutputStream` | `writeJsonTo(value, out)` | `writeJsonTo(value, type, out)`         | `writeJsonTo(value, typeRef, out)`         |
+| String input         | -                         | `fromJson(text, type)`                  | `fromJson(text, typeRef)`                  |
+| UTF-8 input          | -                         | `fromJson(bytes, type)`                 | `fromJson(bytes, typeRef)`                 |
+| UTF-8 byte range     | -                         | `fromJson(bytes, offset, length, type)` | `fromJson(bytes, offset, length, typeRef)` |
 
 Every `fromJson` call consumes exactly one JSON value and rejects trailing
-non-whitespace content. Returned strings and byte arrays are detached from
-internal reusable buffers. `writeJsonTo` writes one complete buffered document;
-it does not flush or close the caller-owned stream.
+non-whitespace content. Byte-range overloads parse exactly the requested range.
+Returned strings and byte arrays are detached from internal reusable buffers.
+`writeJsonTo` writes one complete buffered document; it does not flush or close
+the caller-owned stream.
+
+Use `JsonStreamDecoder` to decode the elements of one top-level JSON array or
+newline-delimited JSON (NDJSON) records without buffering the complete stream:
+
+```java
+import java.nio.ByteBuffer;
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.JsonStreamDecoder;
+
+ForyJson json = ForyJson.builder().build();
+JsonStreamDecoder<User> decoder =
+    json.newArrayStreamDecoder(User.class, 64 * 1024 * 1024);
+
+for (ByteBuffer chunk : chunks) {
+  while (decoder.decodeNext(chunk)) {
+    consume(decoder.value());
+  }
+}
+decoder.finish();
+```
+
+Drain each buffer before supplying the next one. A decoder owns one stream, is
+not thread-safe, and cannot be reused after `finish()` or a failure. See
+[Getting Started](../../docs/json/getting-started.md#incremental-json-streams)
+for NDJSON, JSON `null`, buffer ownership, and limit behavior.
 
 Use `TypeRef` when a root type contains generic arguments:
 
@@ -177,6 +205,7 @@ The canonical Fory JSON documentation is split by reader task:
 - [Object Mapping](../../docs/json/object-mapping.md)
 - [Annotations](../../docs/json/annotations.md)
 - [Custom Codecs](../../docs/json/custom-codecs.md)
+- [Modules](../../docs/json/modules.md)
 - [Android](../../docs/json/android.md)
 - [GraalVM Native Image](../../docs/json/graalvm.md)
 - [Security](../../docs/json/security.md)
@@ -190,6 +219,9 @@ closed polymorphism, and dynamic members. See the
 `JsonValueCodec`, `MapKeyCodec`, registrations, and `JsonCodec` customize a
 complete value or one direct child level. See
 [Custom Codecs](../../docs/json/custom-codecs.md).
+
+`ForyJsonModule` packages codecs, factories, and Mixins for installation by a language integration,
+third-party library, framework, or application. See [Modules](../../docs/json/modules.md).
 
 Android uses interpreted or annotation-processor-generated access with exact R8
 rules. See the [Android guide](../../docs/json/android.md).

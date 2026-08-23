@@ -72,6 +72,32 @@ public sealed class ForyGeneratorTests
     }
 
     [Fact]
+    public void TypeMetaHitUsesHashIdentity()
+    {
+        const string source = """
+            using Apache.Fory;
+
+            namespace GeneratedDiagnostics;
+
+            [ForyStruct]
+            public sealed class Model
+            {
+                public int Value { get; set; }
+            }
+            """;
+
+        string generated = GenerateSource(source);
+
+        Assert.Contains("__ForyMatchesTypeMetaHash", generated, StringComparison.Ordinal);
+        Assert.Contains(
+            "bool matched = typeMeta.HeaderHash == __ForyRefTypeMetaHash;",
+            generated,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("__ForyMatchesCachedTypeMeta", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("expectedFields = TypeMetaFields", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NegativeForyFieldIdReportsDiagnostic()
     {
         const string source = """

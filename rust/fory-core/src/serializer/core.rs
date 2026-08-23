@@ -146,7 +146,11 @@ pub trait Serializer: Sized + 'static {
     #[doc(hidden)]
     #[inline(always)]
     fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        context.read_any_type_info()?;
+        if Self::IS_POLYMORPHIC {
+            context.read_any_type_info()?;
+        } else {
+            context.read_type_info_for(Self::metadata_target_type_id())?;
+        }
         Ok(())
     }
 
@@ -188,6 +192,13 @@ pub trait Serializer: Sized + 'static {
     #[doc(hidden)]
     const REQUIRES_SCOPED_ACCESS: bool = false;
 
+    /// Return the concrete registered owner represented by this serializer's wire metadata.
+    #[doc(hidden)]
+    #[inline(always)]
+    fn metadata_target_type_id() -> std::any::TypeId {
+        std::any::TypeId::of::<Self::Target>()
+    }
+
     /// Whether every successful `read_data` call consumes at least one input byte.
     ///
     /// Custom serializers are conservative by default. Implementations may opt in
@@ -214,7 +225,7 @@ pub trait Serializer: Sized + 'static {
 }
 
 #[inline(always)]
-pub(super) fn read_value_type_info<S: Serializer>(
+pub(super) fn read_value_type_info<S: Serializer, const ALLOW_STRUCTURAL_META: bool>(
     context: &mut ReadContext,
 ) -> Result<Option<Rc<TypeInfo>>, Error> {
     // Static built-in carrier headers are compact type IDs, not registered
@@ -224,10 +235,80 @@ pub(super) fn read_value_type_info<S: Serializer>(
     if (context.is_compatible() || S::IS_POLYMORPHIC)
         && !type_id::is_internal_type(S::static_type_id() as u32)
     {
-        return context.read_any_type_info().map(Some);
+        return read_group_type_info::<S, ALLOW_STRUCTURAL_META>(context).map(Some);
     }
     S::read_type_info(context)?;
     Ok(None)
+}
+
+#[inline(always)]
+fn group_allows_structural<const ALLOW_STRUCTURAL_META: bool>(static_type_id: TypeId) -> bool {
+    ALLOW_STRUCTURAL_META && type_id::is_struct_type_id(static_type_id as u32)
+}
+
+#[inline(always)]
+pub(super) fn read_group_type_info<S: Serializer, const ALLOW_STRUCTURAL_META: bool>(
+    context: &mut ReadContext,
+) -> Result<Rc<TypeInfo>, Error> {
+    // Polymorphic serializers select the wire owner dynamically. Only Struct-compatible
+    // mapping may retain an unregistered remote schema for structural remapping; enums and
+    // extensions must bind their declared concrete owner before cache publication.
+    let static_type_id = S::static_type_id();
+    if S::IS_POLYMORPHIC {
+        context.read_any_type_info()
+    } else if group_allows_structural::<ALLOW_STRUCTURAL_META>(static_type_id) {
+        context.read_struct_type_info_for(S::metadata_target_type_id())
+    } else if type_id::is_internal_type(static_type_id as u32) && static_type_id != TypeId::UNION {
+        let type_info = context.read_any_type_info()?;
+        if type_info.get_type_id() != static_type_id {
+            return Err(Error::type_mismatch(
+                static_type_id as u32,
+                type_info.get_type_id() as u32,
+            ));
+        }
+        Ok(type_info)
+    } else {
+        context.read_type_info_for(S::metadata_target_type_id())
+    }
+}
+
+#[inline(always)]
+pub(super) fn check_group_type_info<S: Serializer, const ALLOW_STRUCTURAL_META: bool>(
+    type_info: &TypeInfo,
+) -> Result<(), Error> {
+    let static_type_id = S::static_type_id();
+    if S::IS_POLYMORPHIC {
+        return Ok(());
+    }
+    if group_allows_structural::<ALLOW_STRUCTURAL_META>(static_type_id) {
+        if !type_id::is_struct_type_id(type_info.get_type_meta_ref().get_type_id()) {
+            return Err(Error::type_error(
+                "resolved TypeInfo is not structural metadata",
+            ));
+        }
+        let resolved_target = type_info.get_harness().target_type_id();
+        if resolved_target.is_none() || resolved_target == Some(S::metadata_target_type_id()) {
+            return Ok(());
+        }
+        return Err(Error::type_error(
+            "resolved TypeInfo target does not match declared target",
+        ));
+    }
+    if type_id::is_internal_type(static_type_id as u32) && static_type_id != TypeId::UNION {
+        if type_info.get_type_id() != static_type_id {
+            return Err(Error::type_mismatch(
+                static_type_id as u32,
+                type_info.get_type_id() as u32,
+            ));
+        }
+        return Ok(());
+    }
+    if type_info.get_harness().target_type_id() != Some(S::metadata_target_type_id()) {
+        return Err(Error::type_error(
+            "resolved TypeInfo target does not match declared target",
+        ));
+    }
+    Ok(())
 }
 
 /// Schema metadata and compatible reads for derive-generated serializers.

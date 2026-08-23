@@ -94,7 +94,7 @@ func (s *enumSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, 
 			ctx.SetError(TypeMismatchError(internalID, ENUM))
 			return
 		}
-		typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeID, err)
+		typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeID, s.type_, err)
 		if ctx.HasError() {
 			return
 		}

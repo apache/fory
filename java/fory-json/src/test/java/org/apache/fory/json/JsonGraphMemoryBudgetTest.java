@@ -41,10 +41,6 @@ import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonUnwrapped;
-import org.apache.fory.json.codec.AbstractJsonValueCodec;
-import org.apache.fory.json.codec.Base64ByteArrayCodec;
-import org.apache.fory.json.reader.JsonReader;
-import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.testng.annotations.Factory;
@@ -206,14 +202,8 @@ public class JsonGraphMemoryBudgetTest extends ForyJsonTestModels {
     assertEquals(values[1023], 1023);
 
     long budget = headerBytes + 1023L * Integer.BYTES;
-    CountingIntCodec.reads = 0;
-    ForyJson json =
-        newJsonBuilder()
-            .withMaxGraphMemoryBytes(budget)
-            .registerCodec(int.class, new CountingIntCodec())
-            .build();
+    ForyJson json = newJsonBuilder().withMaxGraphMemoryBytes(budget).build();
     assertThrows(ForyJsonException.class, () -> json.fromJson(intArray(1024), int[].class));
-    assertEquals(CountingIntCodec.reads, 1023);
   }
 
   @Test
@@ -371,13 +361,6 @@ public class JsonGraphMemoryBudgetTest extends ForyJsonTestModels {
     ForyJson json = jsonWithBudget(1);
     assertEquals(json.fromJson("123", Long.class), Long.valueOf(123));
     assertEquals(json.fromJson("\"a long leaf string\"", String.class), "a long leaf string");
-
-    ForyJson base64 =
-        newJsonBuilder()
-            .withMaxGraphMemoryBytes(1)
-            .registerCodec(byte[].class, new Base64ByteArrayCodec())
-            .build();
-    assertEquals(base64.fromJson("\"AQIDBA==\"", byte[].class), new byte[] {1, 2, 3, 4});
   }
 
   @Test
@@ -524,21 +507,6 @@ public class JsonGraphMemoryBudgetTest extends ForyJsonTestModels {
     public CountingChild(int number) {
       creations++;
       this.number = number;
-    }
-  }
-
-  private static final class CountingIntCodec extends AbstractJsonValueCodec<Integer> {
-    static int reads;
-
-    @Override
-    public void write(JsonWriter writer, Integer value) {
-      writer.writeInt(value.intValue());
-    }
-
-    @Override
-    public Integer read(JsonReader reader) {
-      reads++;
-      return Integer.valueOf(reader.readInt());
     }
   }
 

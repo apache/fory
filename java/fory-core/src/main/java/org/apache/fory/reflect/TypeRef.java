@@ -542,6 +542,8 @@ public class TypeRef<T> {
       builder.append('#').append(typeExtMeta.typeId());
       builder.append(':').append(typeExtMeta.nullable() ? '1' : '0');
       builder.append(':').append(typeExtMeta.trackingRef() ? '1' : '0');
+      builder.append(':').append(typeExtMeta.nullableWrapper() ? '1' : '0');
+      builder.append(':').append(typeExtMeta.covariant() ? '1' : '0');
     }
     if (typeArguments != null && !typeArguments.isEmpty()) {
       builder.append('<');

@@ -46,6 +46,7 @@ from plot_style import (
 apply_benchmark_style(plt)
 
 DEFAULT_LIBS = "fory-json,jackson,gson"
+DEFAULT_JACKSON = "standard"
 LIB_ALIASES = {
     "fory": "fory",
     "fory-json": "fory",
@@ -53,15 +54,23 @@ LIB_ALIASES = {
     "gson": "gson",
     "fastjson2": "fastjson2",
 }
-SERIALIZER_LABELS = {
+CLI_NAMES = {
     "fory": "fory-json",
     "jackson": "jackson",
     "gson": "gson",
     "fastjson2": "fastjson2",
 }
+SERIALIZER_LABELS = {
+    "fory": "fory-json",
+    "jackson": "Jackson",
+    "blackbird": "Jackson Blackbird",
+    "gson": "Gson",
+    "fastjson2": "fastjson2",
+}
 COLORS = {
     "fory": "#FF6F01",
     "jackson": "#55BCC2",
+    "blackbird": "#55BCC2",
     "gson": "#8C6D8A",
     "fastjson2": (0.90, 0.43, 0.5),
 }
@@ -72,7 +81,7 @@ CASE_LABELS = {
     "from": "Deserialize",
 }
 BENCHMARK_PATTERN = re.compile(
-    r"(?:^|[.])(?P<serializer>fory|jackson|gson|fastjson2)"
+    r"(?:^|[.])(?P<serializer>fory|jackson|blackbird|gson|fastjson2)"
     r"(?P<operation>To|From)Json(?P<representation>Bytes|String)$"
 )
 
@@ -95,6 +104,12 @@ def parse_args() -> argparse.Namespace:
         "--libs",
         default=DEFAULT_LIBS,
         help="Comma-separated libraries in bar and table order",
+    )
+    parser.add_argument(
+        "--jackson",
+        choices=("standard", "blackbird"),
+        default=DEFAULT_JACKSON,
+        help="Jackson implementation to plot (default: standard)",
     )
     parser.add_argument(
         "--print-lib-config",
@@ -120,6 +135,15 @@ def parse_libs(value: str) -> tuple[str, ...]:
     return tuple(serializers)
 
 
+def resolve_serializers(serializers: tuple[str, ...], jackson: str) -> tuple[str, ...]:
+    if jackson == "standard":
+        return serializers
+    return tuple(
+        "blackbird" if serializer == "jackson" else serializer
+        for serializer in serializers
+    )
+
+
 def load_json(path: Path) -> list[dict[str, Any]]:
     with path.open("r", encoding="utf-8") as source:
         payload = json.load(source)
@@ -127,6 +151,30 @@ def load_json(path: Path) -> list[dict[str, Any]]:
     if not isinstance(benchmarks, list):
         raise TypeError(f"Expected a JMH benchmark list in {path}")
     return benchmarks
+
+
+def validate_jackson_results(
+    benchmarks: list[dict[str, Any]], serializers: tuple[str, ...], jackson: str
+) -> None:
+    expected = "jackson" if jackson == "standard" else "blackbird"
+    found = set()
+    for benchmark in benchmarks:
+        match = BENCHMARK_PATTERN.search(benchmark.get("benchmark", ""))
+        if match is not None and match.group("serializer") in {"jackson", "blackbird"}:
+            found.add(match.group("serializer"))
+    if len(found) > 1:
+        raise ValueError("JMH results contain both Jackson and Jackson Blackbird")
+    if "jackson" not in serializers:
+        return
+    if found != {expected}:
+        if not found:
+            raise ValueError(
+                f"JMH results do not contain the selected Jackson mode: {jackson}"
+            )
+        actual = SERIALIZER_LABELS[next(iter(found))]
+        raise ValueError(
+            f"JMH results contain {actual}, but --jackson selected {jackson}"
+        )
 
 
 def ops_per_second(value: float, unit: str) -> float:
@@ -232,6 +280,15 @@ def format_score(value: float) -> str:
     return f"{value:,.0f}"
 
 
+def format_library_names(serializers: tuple[str, ...]) -> str:
+    names = [SERIALIZER_LABELS[name] for name in serializers]
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return " and ".join(names)
+    return ", ".join(names[:-1]) + f", and {names[-1]}"
+
+
 def benchmark_metadata(benchmarks: list[dict[str, Any]]) -> list[str]:
     if not benchmarks:
         return []
@@ -262,9 +319,10 @@ def render_report(
     benchmarks: list[dict[str, Any]],
     results: dict[tuple[str, str], dict[str, tuple[float, float]]],
     serializers: tuple[str, ...],
+    requested_serializers: tuple[str, ...],
     output: Path,
 ) -> None:
-    library_names = ", ".join(SERIALIZER_LABELS[name] for name in serializers)
+    library_names = format_library_names(serializers)
     lines = [
         "# Java JSON Benchmark Report\n\n",
         f"The benchmark compares {library_names} using the same data. "
@@ -278,7 +336,8 @@ def render_report(
         "```bash\n",
         "cd benchmarks/java\n",
         "./run_json.sh --libs "
-        + ",".join(SERIALIZER_LABELS[name] for name in serializers)
+        + ",".join(CLI_NAMES[name] for name in requested_serializers)
+        + (" --jackson blackbird" if "blackbird" in serializers else "")
         + "\n",
         "```\n\n",
     ]
@@ -318,24 +377,35 @@ def render_report(
 def main() -> None:
     args = parse_args()
     try:
-        serializers = parse_libs(args.libs)
+        requested_serializers = parse_libs(args.libs)
+        serializers = resolve_serializers(requested_serializers, args.jackson)
     except ValueError as error:
         raise SystemExit(str(error)) from error
     if args.print_lib_config:
-        labels = ",".join(SERIALIZER_LABELS[name] for name in serializers)
+        labels = ",".join(CLI_NAMES[name] for name in requested_serializers)
         print(labels + "\t" + "|".join(serializers))
         return
     json_path = Path(args.json_file)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     benchmarks = load_json(json_path)
+    try:
+        validate_jackson_results(benchmarks, requested_serializers, args.jackson)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     results = collect_results(benchmarks, serializers)
     string_chart_path = output_dir / "string_throughput.png"
     bytes_chart_path = output_dir / "utf8_bytes_throughput.png"
     report_path = output_dir / "README.md"
     render_plot(results, serializers, "string", string_chart_path)
     render_plot(results, serializers, "bytes", bytes_chart_path)
-    render_report(benchmarks, results, serializers, report_path)
+    render_report(
+        benchmarks,
+        results,
+        serializers,
+        requested_serializers,
+        report_path,
+    )
     print(f"Generated {string_chart_path}")
     print(f"Generated {bytes_chart_path}")
     print(f"Generated {report_path}")

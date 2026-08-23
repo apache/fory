@@ -41,6 +41,15 @@ final class GeneratedTypeNames {
         + escapeBinarySimpleName(targetBinaryName);
   }
 
+  static String jsonSubtypeSimpleName(String binaryName) {
+    int packageSeparator = binaryName.lastIndexOf('.');
+    return escapeBinarySimpleName(binaryName.substring(packageSeparator + 1)) + "_ForyJsonSubTypes";
+  }
+
+  static String jsonMixinSubtypeSimpleName(String mixinBinaryName, String targetBinaryName) {
+    return jsonMixinSimpleName(mixinBinaryName, targetBinaryName) + "_ForyJsonSubTypes";
+  }
+
   private static String escape(String value, boolean preserveDots) {
     // Keep this encoding identical to fory-core GeneratedClassNames. The processor intentionally
     // has no runtime dependency, so generated source names need this local build-time owner.

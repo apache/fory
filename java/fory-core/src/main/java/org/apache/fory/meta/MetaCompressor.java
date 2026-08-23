@@ -28,15 +28,15 @@ import org.apache.fory.exception.InvalidDataException;
 public interface MetaCompressor {
   byte[] compress(byte[] data, int offset, int size);
 
-  byte[] decompress(byte[] data, int offset, int size);
-
-  default byte[] decompress(byte[] data, int offset, int size, int maxOutputSize) {
-    byte[] decompressed = decompress(data, offset, size);
-    if (decompressed.length > maxOutputSize) {
-      throw new InvalidDataException("Decompressed TypeDef metadata exceeds the maximum size.");
-    }
-    return decompressed;
-  }
+  /**
+   * Decompress at most {@code maxOutputSize} bytes.
+   *
+   * <p>Implementations must enforce the bound incrementally or before sizing any allocation from
+   * metadata declared by the compressed input.
+   *
+   * @throws InvalidDataException if the output would exceed {@code maxOutputSize}
+   */
+  byte[] decompress(byte[] data, int offset, int size, int maxOutputSize);
 
   /**
    * Check whether {@link MetaCompressor} implements `equals/hashCode` method. If not implemented,

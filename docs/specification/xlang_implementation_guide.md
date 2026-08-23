@@ -1171,34 +1171,39 @@ remain hot paths and must not add work for these limits.
 Remote schema-version limits belong to the same cold metadata owner path.
 Header cache hits must skip the remaining metadata body and return cached
 metadata without schema-limit checks, hash revalidation, allocation, or policy
-work. On a header miss, keep the handling in one concrete owner path: prove and
-read the metadata body bytes, validate the body against its header, validate
-field counts, resolve the type through the existing registration and
-deserialization-policy checks, compare exact local metadata by original encoded
-bytes when applicable, check schema-version limits for non-local remote
-metadata, build the required read state, publish to the persistent metadata
-cache, and then record the schema count. Failed or incompatible metadata must
-not publish to the persistent cache and must not consume schema-version counts.
+work. The protocol-defined 52-bit TypeDef/TypeMeta header hash is the unique
+schema identity. When the selected local type already owns the received header,
+that is a local-schema hit: skip the body and use the local metadata without
+comparing field arrays or encoded metadata bytes, publishing to the persistent
+remote cache, or consuming a schema-version count. This applies to struct and
+named enum, ext, and union metadata when those metadata bodies are present.
+The low 12 header bits belong only to the current frame. A hit reads its current
+size and optional extension for bounds and skip but does not validate current
+reserved or compression flags; low-flag validation belongs to the cold miss.
 
-Remote metadata whose encoded bytes exactly match the local registered metadata
-may use the local metadata without consuming the remote schema-version limit,
-after the existing type and deserialization-policy checks for selecting that
-local type have run. This exact-local bypass is not struct-only; it also applies
-to named enum, ext, and union metadata when those metadata bodies are present and
-match the local encoded bytes. Pure id-based enum, ext, and typed-union values
+A header miss enters the parse owner: prove and read the metadata body bytes,
+validate the body against its header, validate field counts, and resolve the
+type through the existing registration and deserialization-policy checks. When
+no local header was available before parsing, this miss-only path may lazily
+build local metadata and compare its 52-bit header hash with the validated
+received hash. Hash equality selects local metadata without a byte or field
+comparison and without consuming a remote schema-version count.
+Otherwise, check schema-version limits, build the required read state, publish
+to the persistent metadata cache, and then record the schema count. Failed or
+incompatible metadata must not publish to the persistent cache and must not
+consume schema-version counts. Pure id-based enum, ext, and typed-union values
 do not carry TypeDef or TypeMeta bodies and must stay on the normal type-id plus
 user-type-id path. Compatible named enum, ext, and union metadata normally has
 one version, but it still counts against accepted remote metadata totals when it
-is sent as shared metadata and does not exactly match local metadata.
-`maxTypeFields` applies only to struct field lists.
+is sent as shared metadata and is a non-local metadata miss. `maxTypeFields`
+applies only to struct field lists.
 
-The exact-local candidate must be derived inside the metadata owner path from
-the decoded metadata identity: `userTypeId` for id-registered metadata, or
-`(namespace, typeName)` for name-registered metadata. Do not thread extra
-expected-type parameters through read callers solely for this check. This rule
-applies to every Fory implementation. Java and Python may lazy-build the local encoded
-metadata only after this identity lookup selects a local class and the existing
-class, registration, and deserialization-policy checks for that class have run.
+The miss-only local candidate must be derived inside the metadata owner from
+the decoded identity, after the existing class, registration, and policy
+checks. Compare only its 52-bit header hash with the validated received hash.
+Do not retain or compare metadata bytes or fields, thread extra expected-type
+parameters through callers for revalidation, or add parallel accepted-header
+state. Cache hits never repeat miss-time work.
 
 When a statically declared compatible named enum, ext, or union field reads
 shared metadata, the decoded metadata must match the declared type id,
@@ -1206,7 +1211,9 @@ namespace, and type name before the metadata owner publishes it to the
 persistent cache or records a schema count. Already accepted header or reference
 cache hits still skip the body and must not rerun body-hash, schema-limit, or
 registration checks, but the field reader must not treat metadata for a
-different declared named type as the current field's metadata.
+different declared named type as the current field's metadata. Route such hits
+by the concrete metadata owner identity bound on the miss; do not inspect the
+metadata body or repeat its namespace, type-name, user-id, or wire-type checks.
 
 Skip paths do not need to materialize skipped values. Existing byte-skip
 operations should consume any available buffered prefix first, then skip or drop
@@ -1323,6 +1330,12 @@ Ownership rules:
 - per-operation dynamic meta-string ids live on `MetaStringWriter` and
   `MetaStringReader`
 - shared type-definition tables are operation-local context state
+
+For a large MetaString that carries a wire hash, that hash alone is its checked
+cache identity. The body length belongs to the current frame: a hash cache hit
+checks that many bytes are readable and skips them, but does not compare the
+length or body with the cached value. Only a cache miss reads the body, verifies
+the hash, and publishes the checked value.
 
 ## Enums In Xlang Mode
 

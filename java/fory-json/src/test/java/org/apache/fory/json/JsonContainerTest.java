@@ -19,7 +19,12 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.generatedUtf8WriterClass;
+import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
+import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
+import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
@@ -62,12 +67,18 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import org.apache.fory.json.codec.ArrayCodec;
+import org.apache.fory.json.codec.MapCodec;
+import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.data.FastContainers;
 import org.apache.fory.json.data.Kind;
 import org.apache.fory.json.data.MapKeyFields;
 import org.apache.fory.json.data.Nested;
 import org.apache.fory.json.data.TokenValues;
+import org.apache.fory.json.reader.JsonReader;
+import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.type.Types;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
@@ -83,6 +94,50 @@ public class JsonContainerTest extends ForyJsonTestModels {
     assertEquals(
         json.toJson(new Nested()),
         "{\"kind\":\"FAST\",\"names\":[\"a\",\"b\"],\"scores\":{\"one\":1,\"two\":2}}");
+  }
+
+  @Test
+  public void factoryOwnedMapKeyCodecIsDirect() {
+    ForyJson json = newJson();
+    JsonTypeInfo valueTypeInfo =
+        JsonTestSupport.currentTypeResolver(json).getTypeInfo(String.class, String.class);
+    MapKeyCodec keyCodec =
+        new MapKeyCodec() {
+          @Override
+          public String toName(Object key) {
+            return (String) key;
+          }
+
+          @Override
+          public Object fromName(String name) {
+            return name;
+          }
+
+          @Override
+          public Object readName(JsonReader reader) {
+            return reader.readFieldName();
+          }
+        };
+    MapCodec<?> codec =
+        MapCodec.createUncheckedKeyCodec(HashMap.class, Integer.class, valueTypeInfo, keyCodec);
+    Map<?, ?> value =
+        codec.readUtf8(newUtf8Reader("{\"direct\":\"value\"}".getBytes(StandardCharsets.UTF_8)));
+    assertEquals(value, Collections.singletonMap("direct", "value"));
+  }
+
+  @Test
+  public void unsignedArrayOverflow() {
+    byte[] input = "[4294967295]".getBytes(StandardCharsets.UTF_8);
+    ArrayCodec<byte[]> uint8 = ArrayCodec.createUnsignedPrimitive(byte[].class, Types.UINT8_ARRAY);
+    ArrayCodec<short[]> uint16 =
+        ArrayCodec.createUnsignedPrimitive(short[].class, Types.UINT16_ARRAY);
+
+    assertThrows(ForyJsonException.class, () -> uint8.readUtf8(newUtf8Reader(input)));
+    assertThrows(ForyJsonException.class, () -> uint8.readLatin1(newLatin1Reader(input)));
+    assertThrows(ForyJsonException.class, () -> uint8.readUtf16(newUtf16Reader("[4294967295]")));
+    assertThrows(ForyJsonException.class, () -> uint16.readUtf8(newUtf8Reader(input)));
+    assertThrows(ForyJsonException.class, () -> uint16.readLatin1(newLatin1Reader(input)));
+    assertThrows(ForyJsonException.class, () -> uint16.readUtf16(newUtf16Reader("[4294967295]")));
   }
 
   @Test
@@ -120,6 +175,30 @@ public class JsonContainerTest extends ForyJsonTestModels {
     assertEquals(objects.value.name, ZH_TEXT);
     assertEquals(objects.values.get(0).getClass(), TokenValues.class);
     assertEquals(objects.values.get(0).name, "utf8");
+  }
+
+  @Test
+  public void generatedParameterizedPojo() {
+    ForyJson json = newJson(true);
+    TypeRef<GenericBox<String>> strings = new TypeRef<GenericBox<String>>() {};
+    TypeRef<GenericBox<TokenValues>> values = new TypeRef<GenericBox<TokenValues>>() {};
+    json.fromJson("{\"value\":\"one\",\"values\":[]}", strings);
+    json.fromJson(
+        "{\"value\":{\"count\":1,\"name\":\"one\",\"tags\":[],\"total\":2}," + "\"values\":[]}",
+        values);
+    assertNotEquals(
+        generatedUtf8WriterClass(json, strings), generatedUtf8WriterClass(json, values));
+  }
+
+  @Test
+  public void rejectExpandingGeneric() {
+    ForyJson json = newJson(true);
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("{\"next\":null}", new TypeRef<Expanding<String>>() {}));
+    GenericBox<String> value =
+        json.fromJson("{\"value\":\"ready\",\"values\":[]}", new TypeRef<GenericBox<String>>() {});
+    assertEquals(value.value, "ready");
   }
 
   @Test
@@ -744,6 +823,10 @@ public class JsonContainerTest extends ForyJsonTestModels {
   public static final class GenericBox<T> {
     public T value;
     public List<T> values;
+  }
+
+  public static final class Expanding<T> {
+    public Expanding<List<T>> next;
   }
 
   public static final class NoteList extends ArrayList<Note> {}

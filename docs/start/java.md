@@ -44,14 +44,14 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.6.0</version>
+  <version>1.6.1</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-core:1.6.0")
+implementation("org.apache.fory:fory-core:1.6.1")
 ```
 
 Run this complete xlang round trip:
@@ -97,7 +97,7 @@ Fory JSON maps Java objects to standard JSON text and UTF-8 bytes. Add
 `fory-json` instead of `fory-core` when the application only needs JSON:
 
 ```kotlin
-implementation("org.apache.fory:fory-json:1.6.0")
+implementation("org.apache.fory:fory-json:1.6.1")
 ```
 
 Add the import to `ForyExample.java`:

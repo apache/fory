@@ -214,7 +214,7 @@ public final class AndroidJsonScenarios {
 
     GeneratedJsonModel.resetCodecCalls();
     String encoded = json.toJson(value, GeneratedJsonModel.class);
-    check(encoded.contains("\"kind\":\"generated\""));
+    check(encoded.contains("\"kind\":\"GeneratedJsonSubtype\""));
     check(encoded.contains("\"generated:list\""));
     check(encoded.contains("\"generated:root\""));
     check(encoded.contains("\"generated:property\""));
@@ -298,6 +298,16 @@ public final class AndroidJsonScenarios {
     generatedMixinRecord();
     generatedMixinValue();
     generatedMixinValueRecord();
+  }
+
+  public static void generatedSealedMixin() {
+    ForyJson json =
+        ForyJson.builder().registerMixin(GeneratedMixinShapeAnnotations.class).build();
+    String text = json.toJson(new GeneratedMixinShape.Circle(36), GeneratedMixinShape.class);
+    checkEquals("{\"kind\":\"Circle\",\"radius\":36}", text);
+    GeneratedMixinShape decoded = json.fromJson(text, GeneratedMixinShape.class);
+    check(decoded instanceof GeneratedMixinShape.Circle);
+    checkEquals(36, ((GeneratedMixinShape.Circle) decoded).radius);
   }
 
   private static void generatedMixinRecord() {

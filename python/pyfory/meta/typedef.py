@@ -139,6 +139,12 @@ def _normalize_user_type_id(type_id: int) -> int:
     return type_id
 
 
+def _typedef_hash_key(header: int) -> int:
+    # The wire header can arrive as a signed int64. Normalize before shifting so
+    # the protocol's top 52 bits remain the same identity in every Python path.
+    return (header & _UINT64_MASK) >> TYPEDEF_HASH_SHIFT
+
+
 def _typedef_header_hash(encoded: bytes, header_low_bits: int) -> int:
     hash_input = encoded + bytes((header_low_bits & 0xFF, (header_low_bits >> 8) & 0xFF))
     hash_value = hash_buffer(hash_input, 47)[0]

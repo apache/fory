@@ -79,6 +79,9 @@ public final class ForyStructProcessor extends AbstractProcessor {
   private static final String JSON_TYPE = "org.apache.fory.json.annotation.JsonType";
   private static final String JSON_MIXIN = "org.apache.fory.json.annotation.JsonMixin";
   private static final String JSON_MIXIN_REMOVE = "org.apache.fory.json.annotation.JsonMixinRemove";
+  private static final String JSON_SUB_TYPES = "org.apache.fory.json.annotation.JsonSubTypes";
+  private static final String JSON_SUBTYPE_GENERATION =
+      "org.apache.fory.json.codec.GeneratedJsonSubtypeTable.Generation";
   private static final String IGNORE = annotationClass("Ignore");
   private static final String INT32_TYPE = annotationClass("Int32Type");
   private static final String INT64_TYPE = annotationClass("Int64Type");
@@ -108,6 +111,8 @@ public final class ForyStructProcessor extends AbstractProcessor {
     annotations.add(JSON_TYPE);
     annotations.add(JSON_MIXIN);
     annotations.add(JSON_MIXIN_REMOVE);
+    annotations.add(JSON_SUB_TYPES);
+    annotations.add(JSON_SUBTYPE_GENERATION);
     return Collections.unmodifiableSet(annotations);
   }
 

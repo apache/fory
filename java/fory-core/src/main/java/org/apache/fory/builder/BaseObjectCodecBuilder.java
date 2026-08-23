@@ -1192,25 +1192,35 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   protected Reference addTypeInfoHolderField(Class<?> cls) {
+    return addTypeInfoHolderField(cls, "TypeInfoHolder");
+  }
+
+  private Reference addTypeInfoHolderField(Class<?> cls, String fieldSuffix) {
     // Final type need to write classinfo when meta share enabled.
-    String key;
+    String fieldKey;
     if (ReflectionUtils.isMonomorphic(cls)) {
-      key = "classInfoHolder:" + cls;
+      fieldKey = fieldSuffix + ":" + cls;
     } else {
-      key = "classInfoHolder:" + cls + walkPath;
+      fieldKey = fieldSuffix + ":" + cls + walkPath;
     }
-    Reference reference = (Reference) sharedFieldMap.get(key);
+    Reference reference = (Reference) sharedFieldMap.get(fieldKey);
     if (reference != null) {
       return reference;
     }
     Expression classInfoHolderExpr =
         inlineInvoke(typeResolverRef, "nilTypeInfoHolder", classInfoHolderTypeRef);
-    String name = ctx.newName(cls, "TypeInfoHolder");
+    String name = ctx.newName(cls, fieldSuffix);
     ctx.addField(true, ctx.type(TypeInfoHolder.class), name, classInfoHolderExpr);
     // The class info field read only once, no need to shallow.
     reference = new Reference(name, classInfoHolderTypeRef);
-    sharedFieldMap.put(key, reference);
+    sharedFieldMap.put(fieldKey, reference);
     return reference;
+  }
+
+  protected Reference addWriteTypeInfoHolderField(Class<?> cls) {
+    // Compatible reads may retain remote schema metadata. Keep generated collection writes on a
+    // distinct local cache even when both paths have the same class and walk path.
+    return addTypeInfoHolderField(cls, "WriteTypeInfoHolder");
   }
 
   protected Expression readTypeInfo(Class<?> cls, Expression ignored) {
@@ -1544,7 +1554,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       return Tuple2.of(bitmap, null);
     } else {
       Expression elementTypeExpr = getClassExpr(elementType);
-      Expression classInfoHolder = addTypeInfoHolderField(elementType);
+      Expression classInfoHolder = addWriteTypeInfoHolderField(elementType);
       Expression bitmap;
       if (trackingRef) {
         if (elementType == Object.class) {

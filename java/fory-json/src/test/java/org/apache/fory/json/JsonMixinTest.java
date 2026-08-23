@@ -19,17 +19,19 @@
 
 package org.apache.fory.json;
 
-import static org.apache.fory.json.JsonTestSupport.generatedCodecId;
 import static org.apache.fory.json.JsonTestSupport.generatedUtf8WriterClass;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.fory.json.annotation.JsonAnyGetter;
@@ -55,6 +57,7 @@ import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.SkipException;
@@ -213,12 +216,12 @@ public class JsonMixinTest extends ForyJsonTestModels {
       second.toJsonBytes(new NameTarget("second"));
       repeated.toJsonBytes(new NameTarget("repeat"));
       equivalent.toJsonBytes(new NameTarget("equal"));
-      assertEquals(
-          generatedCodecId(generatedUtf8WriterClass(repeated, NameTarget.class)),
-          generatedCodecId(generatedUtf8WriterClass(equivalent, NameTarget.class)));
-      assertNotEquals(
-          generatedCodecId(generatedUtf8WriterClass(first, NameTarget.class)),
-          generatedCodecId(generatedUtf8WriterClass(second, NameTarget.class)));
+      assertSame(
+          generatedUtf8WriterClass(repeated, NameTarget.class),
+          generatedUtf8WriterClass(equivalent, NameTarget.class));
+      assertNotSame(
+          generatedUtf8WriterClass(first, NameTarget.class),
+          generatedUtf8WriterClass(second, NameTarget.class));
     }
     assertGeneratedWhenSupported(first, NameTarget.class);
     assertGeneratedWhenSupported(second, NameTarget.class);
@@ -296,6 +299,33 @@ public class JsonMixinTest extends ForyJsonTestModels {
     ForyJson order = newJsonBuilder().registerMixin(OrderBarrierMixin.class).build();
     assertEquals(newJson().toJson(new OrderBarrierChild()), "{\"b\":2,\"a\":1}");
     assertEquals(order.toJson(new OrderBarrierChild()), "{\"a\":1,\"b\":2}");
+  }
+
+  @Test
+  public void covariantSubtypeAuthority() {
+    ForyJson direct = newJson();
+    assertEquals(
+        direct.fromJson("[]", covariantList(String.class)), java.util.Collections.emptyList());
+    assertEquals(
+        direct.fromJson("[]", covariantList(RemovedShape.class)),
+        java.util.Collections.emptyList());
+    assertThrows(ForyJsonException.class, () -> direct.fromJson("[]", covariantList(Shape.class)));
+
+    ForyJson replacement = newJsonBuilder().registerMixin(ShapeMixin.class).build();
+    assertEquals(
+        replacement.fromJson("[]", covariantList(Shape.class)), java.util.Collections.emptyList());
+
+    ForyJson removed = newJsonBuilder().registerMixin(ShapeRemoveMixin.class).build();
+    assertThrows(
+        ForyJsonException.class, () -> removed.fromJson("[]", covariantList(RemovedShape.class)));
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  private static TypeRef<List<?>> covariantList(Class<?> elementType) {
+    TypeExtMeta metadata = TypeExtMeta.of(0, false, false, false, true);
+    TypeRef<?> element = TypeRef.of((Class) elementType, metadata);
+    return (TypeRef)
+        TypeRef.ofDeclaredTypeArguments((Class) List.class, null, Arrays.asList(element), null);
   }
 
   @Test

@@ -19,14 +19,27 @@ using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
+internal sealed class CheckedTypeMeta
+{
+    internal CheckedTypeMeta(TypeMeta typeMeta, TypeInfo? owner)
+    {
+        TypeMeta = typeMeta;
+        Owner = owner;
+    }
+
+    internal TypeMeta TypeMeta { get; }
+
+    internal TypeInfo? Owner { get; }
+}
+
 public sealed class ReadContext
 {
     private const long MinRemoteTypeMetaVersions = 8192;
     private const int MaxRemoteTypeMetaKeys = 8192;
 
-    private readonly ReusableArray<TypeMeta> _typeMetaRefs = new();
-    private readonly UInt64Map<TypeMeta> _typeMetasByHeader = new();
-    private TypeMeta? _firstTypeMetaRef;
+    private readonly ReusableArray<CheckedTypeMeta> _typeMetaRefs = new();
+    private readonly UInt64Map<CheckedTypeMeta> _typeMetasByHash = new();
+    private CheckedTypeMeta? _firstTypeMetaRef;
     private bool _hasFirstTypeMetaRef;
 
     private readonly List<MetaString> _readMetaStrings = [];
@@ -175,7 +188,7 @@ public sealed class ReadContext
         Reset();
     }
 
-    internal TypeMeta? GetTypeMetaRef(int index)
+    internal CheckedTypeMeta? GetTypeMetaRef(int index)
     {
         if (index < 0)
         {
@@ -190,7 +203,7 @@ public sealed class ReadContext
         return _typeMetaRefs.Get(index - 1);
     }
 
-    internal void StoreTypeMetaRef(TypeMeta typeMeta, int index)
+    internal void StoreTypeMetaRef(CheckedTypeMeta typeMeta, int index)
     {
         if (index < 0)
         {
@@ -227,17 +240,12 @@ public sealed class ReadContext
             $"type meta index gap: index={index}, count={_typeMetaRefs.Count + 1}");
     }
 
-    internal bool TryGetTypeMetaByHeader(ulong header, out TypeMeta typeMeta)
+    internal bool TryGetTypeMetaByHash(ulong headerHash, out CheckedTypeMeta typeMeta)
     {
-        // This map is the sole accepted-metadata owner. Remote entries are published only after
-        // cold validation and limit checks; exact-local entries are published only after byte
-        // identity is proven. A hit therefore skips parsing, validation, and accounting.
-        // UInt64Map reserves ulong.MaxValue as its empty-slot marker. A valid
-        // cached TypeMeta header cannot use reserved global-header bits, but an
-        // attacker-controlled cache lookup can happen before cold-path header
-        // validation, so this value must be forced to the miss path.
-        if (header != ulong.MaxValue &&
-            _typeMetasByHeader.TryGetValue(header, out TypeMeta? cached) &&
+        // This map is the sole accepted remote-metadata owner. Entries are published only after
+        // cold validation and limit checks. A hit therefore skips parsing, validation, and
+        // accounting; exact-local metadata uses its local concrete owner without cache publish.
+        if (_typeMetasByHash.TryGetValue(headerHash, out CheckedTypeMeta? cached) &&
             cached is not null)
         {
             typeMeta = cached;
@@ -248,21 +256,22 @@ public sealed class ReadContext
         return false;
     }
 
-    internal void StoreRemoteTypeMeta(ulong header, TypeMeta typeMeta)
+    internal CheckedTypeMeta StoreRemoteTypeMeta(
+        ulong headerHash,
+        TypeMeta typeMeta,
+        TypeInfo? owner)
     {
-        if (_typeMetasByHeader.TryGetValue(header, out _))
+        if (_typeMetasByHash.TryGetValue(headerHash, out CheckedTypeMeta? cached) &&
+            cached is not null)
         {
-            return;
+            return cached;
         }
 
         object typeKey = CheckRemoteTypeMetaLimits(typeMeta);
-        _typeMetasByHeader.Set(header, typeMeta);
+        CheckedTypeMeta checkedTypeMeta = new(typeMeta, owner);
+        _typeMetasByHash.Set(headerHash, checkedTypeMeta);
         RecordRemoteTypeMetaVersion(typeKey);
-    }
-
-    internal void StoreExactLocalTypeMeta(ulong header, TypeMeta typeMeta)
-    {
-        _typeMetasByHeader.Set(header, typeMeta);
+        return checkedTypeMeta;
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
@@ -334,46 +343,58 @@ public sealed class ReadContext
 
     internal TypeMeta ReadTypeMeta()
     {
-        if (TryReadTypeMetaRef(out int index, out TypeMeta typeMeta))
+        if (TryReadTypeMetaRef(out int index, out CheckedTypeMeta checkedTypeMeta))
         {
-            return typeMeta;
+            return checkedTypeMeta.TypeMeta;
         }
 
         ulong header = Reader.ReadUInt64();
-        if (TryGetTypeMetaByHeader(header, out TypeMeta cachedTypeMeta))
+        ulong headerHash = header >> TypeMetaConstants.TypeMetaHashShift;
+        if (TryGetTypeMetaByHash(headerHash, out checkedTypeMeta))
         {
             // Header-cache hits intentionally skip without rehashing. Entries reach this cache only
             // after successful TypeMeta body validation. Do not add body/hash/schema-limit/exact-local
             // checks here; the miss path owns them before cache publish.
             TypeMeta.SkipBody(Reader, header);
-            StoreTypeMetaRef(cachedTypeMeta, index);
-            return cachedTypeMeta;
+            StoreTypeMetaRef(checkedTypeMeta, index);
+            return checkedTypeMeta.TypeMeta;
         }
 
         Reader.MoveBack(sizeof(ulong));
-        int typeMetaStart = Reader.Cursor;
-        typeMeta = DecodeTypeMeta();
-        int typeMetaEnd = Reader.Cursor;
-        if (MatchesExactLocalTypeMeta(typeMeta, typeMetaStart, typeMetaEnd))
+        TypeMeta typeMeta = DecodeTypeMeta();
+        if (TypeResolver.TryGetLocalTypeInfo(typeMeta, out TypeInfo exactLocal))
         {
-            StoreExactLocalTypeMeta(header, typeMeta);
+            TypeInfo.TypeMetaCacheEntry local = exactLocal.GetTypeMetaCacheEntry(TrackRef);
+            // DecodeTypeMeta validated this first miss. The 52-bit hash alone selects the local
+            // schema identity; do not compare the encoded body or publish a local hit remotely.
+            if (local.HeaderHash == typeMeta.HeaderHash)
+            {
+                checkedTypeMeta = local.CheckedTypeMeta;
+                typeMeta = checkedTypeMeta.TypeMeta;
+            }
+            else
+            {
+                // A local id/name lookup alone does not authorize the received wire kind or shape.
+                // Only TypeResolver may bind a concrete owner after its full policy validation.
+                checkedTypeMeta = StoreRemoteTypeMeta(typeMeta.HeaderHash, typeMeta, owner: null);
+            }
         }
         else
         {
-            StoreRemoteTypeMeta(header, typeMeta);
+            checkedTypeMeta = StoreRemoteTypeMeta(typeMeta.HeaderHash, typeMeta, owner: null);
         }
-        StoreTypeMetaRef(typeMeta, index);
-        return typeMeta;
+        StoreTypeMetaRef(checkedTypeMeta, index);
+        return checkedTypeMeta.TypeMeta;
     }
 
-    internal bool TryReadTypeMetaRef(out int index, out TypeMeta typeMeta)
+    internal bool TryReadTypeMetaRef(out int index, out CheckedTypeMeta typeMeta)
     {
         uint indexMarker = Reader.ReadVarUInt32();
         bool isRef = (indexMarker & 1) == 1;
         index = checked((int)(indexMarker >> 1));
         if (isRef)
         {
-            TypeMeta? cached = GetTypeMetaRef(index);
+            CheckedTypeMeta? cached = GetTypeMetaRef(index);
             if (cached is null)
             {
                 throw new InvalidDataException($"unknown type meta ref index {index}");
@@ -385,25 +406,6 @@ public sealed class ReadContext
 
         typeMeta = null!;
         return false;
-    }
-
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    internal bool MatchesExactLocalTypeMeta(TypeMeta typeMeta, int start, int end)
-    {
-        if (!TypeResolver.TryGetLocalTypeInfo(typeMeta, out TypeInfo exactLocal))
-        {
-            return false;
-        }
-
-        TypeInfo.TypeMetaCacheEntry local = exactLocal.GetTypeMetaCacheEntry(TrackRef);
-        byte[] encoded = local.EncodedBytes;
-        if (end - start != encoded.Length ||
-            !Reader.Storage.AsSpan(start, encoded.Length).SequenceEqual(encoded))
-        {
-            return false;
-        }
-
-        return true;
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]

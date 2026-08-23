@@ -472,6 +472,10 @@ public final class ForyBuilder {
    * Set a compressor for meta compression. Note that the passed {@link MetaCompressor} should be
    * thread-safe. By default, a `Deflater` based compressor {@link DeflaterMetaCompressor} will be
    * used. Users can pass other compressor such as `zstd` for better compression rate.
+   *
+   * <p>Custom compressors used for deserialization must implement {@link
+   * MetaCompressor#decompress(byte[], int, int, int)} and enforce its limit before allocating
+   * output from a size declared by the compressed input.
    */
   public ForyBuilder withMetaCompressor(MetaCompressor metaCompressor) {
     MetaCompressor checkedMetaCompressor = MetaCompressor.checkMetaCompressor(metaCompressor);

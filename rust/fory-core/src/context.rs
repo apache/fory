@@ -525,33 +525,109 @@ impl<'a> ReadContext<'a> {
             .read_type_meta(&mut self.reader, &self.type_resolver, &self.config)
     }
 
+    #[inline(always)]
+    fn read_type_meta_for(&mut self, expected: &Rc<TypeInfo>) -> Result<Rc<TypeInfo>, Error> {
+        self.meta_resolver.read_type_meta_for(
+            &mut self.reader,
+            &self.type_resolver,
+            &self.config,
+            expected,
+        )
+    }
+
+    #[inline(always)]
+    fn read_struct_type_meta_for(
+        &mut self,
+        expected: &Rc<TypeInfo>,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        self.meta_resolver.read_struct_type_meta_for(
+            &mut self.reader,
+            &self.type_resolver,
+            &self.config,
+            expected,
+        )
+    }
+
     pub fn read_any_type_info(&mut self) -> Result<Rc<TypeInfo>, Error> {
+        self.read_any_type_info_with_expected(None, false)
+    }
+
+    #[inline(always)]
+    pub(crate) fn read_type_info_for(
+        &mut self,
+        expected_target: std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        let expected = self.type_resolver.get_target_type_info(&expected_target)?;
+        self.read_any_type_info_with_expected(Some(&expected), false)
+    }
+
+    #[inline(always)]
+    pub(crate) fn read_struct_type_info_for(
+        &mut self,
+        expected_target: std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        let expected = self.type_resolver.get_target_type_info(&expected_target)?;
+        self.read_any_type_info_with_expected(Some(&expected), true)
+    }
+
+    fn read_any_type_info_with_expected(
+        &mut self,
+        expected: Option<&Rc<TypeInfo>>,
+        allow_structural_stub: bool,
+    ) -> Result<Rc<TypeInfo>, Error> {
         let fory_type_id = self.reader.read_u8()? as u32;
         // should be compiled to jump table generation
-        match fory_type_id {
+        let type_info = match fory_type_id {
             types::ENUM | types::STRUCT | types::EXT | types::TYPED_UNION => {
                 let user_type_id = self.reader.read_var_u32()?;
                 self.type_resolver
                     .get_user_type_info_by_id(user_type_id)
-                    .ok_or_else(|| Error::type_error("ID harness not found"))
+                    .ok_or_else(|| Error::type_error("ID harness not found"))?
             }
             types::COMPATIBLE_STRUCT | types::NAMED_COMPATIBLE_STRUCT => {
                 // Read type meta inline using streaming protocol
-                self.read_type_meta()
+                return match expected {
+                    Some(expected) if allow_structural_stub => {
+                        self.read_struct_type_meta_for(expected)
+                    }
+                    Some(expected) => self.read_type_meta_for(expected),
+                    None => self.read_type_meta(),
+                };
             }
             types::NAMED_ENUM | types::NAMED_EXT | types::NAMED_STRUCT | types::NAMED_UNION => {
                 if self.is_share_meta() {
                     // Read type meta inline using streaming protocol
-                    self.read_type_meta()
+                    return match expected {
+                        Some(expected) if allow_structural_stub => {
+                            self.read_struct_type_meta_for(expected)
+                        }
+                        Some(expected) => self.read_type_meta_for(expected),
+                        None => self.read_type_meta(),
+                    };
                 } else {
-                    self.read_named_type_info()
+                    self.read_named_type_info()?
                 }
             }
             _ => self
                 .type_resolver
                 .get_type_info_by_id(fory_type_id)
-                .ok_or_else(|| Error::type_error("ID harness not found")),
+                .ok_or_else(|| Error::type_error("ID harness not found"))?,
+        };
+        if let Some(expected) = expected {
+            let expected_target = expected
+                .get_harness()
+                .target_type_id()
+                .ok_or_else(|| Error::type_error("expected TypeInfo has no concrete target"))?;
+            let resolved_target = type_info.get_harness().target_type_id();
+            if resolved_target != Some(expected_target)
+                && !(allow_structural_stub && resolved_target.is_none())
+            {
+                return Err(Error::type_error(
+                    "resolved TypeInfo target does not match declared target",
+                ));
+            }
         }
+        Ok(type_info)
     }
 
     // Name decoding and resolver fallback allocate; keep them out of the common ID and compatible

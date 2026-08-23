@@ -179,7 +179,9 @@ class NativeTypeDefDecoder {
           int typeId = i == numClasses - 1 ? rootTypeId : resolver.getTypeIdForTypeDef(cls);
           classSpec = new ClassSpec(cls, typeId, resolver.getUserTypeIdForTypeDef(cls));
           currentClass = cls;
-        } else {
+        } else if (i == numClasses - 1) {
+          // Only the root layer represents a dynamic object type. Non-root layers only label field
+          // ownership, so compatible matching uses their wire names without loading those classes.
           // `loadClassForMeta` keeps name-level checks before Class.forName; do not replace this
           // metadata path with direct class loading from the remote TypeDef name.
           Class<?> cls =

@@ -33,7 +33,11 @@ internal enum UserTypeKind
 
 public sealed class TypeInfo
 {
-    internal readonly record struct TypeMetaCacheEntry(TypeMeta TypeMeta, byte[] EncodedBytes, ulong HeaderHash);
+    internal readonly record struct TypeMetaCacheEntry(
+        TypeMeta TypeMeta,
+        byte[] EncodedBytes,
+        ulong HeaderHash,
+        CheckedTypeMeta CheckedTypeMeta);
 
     private static readonly MethodInfo CreateNullableMethod =
         typeof(TypeInfo).GetMethod(
@@ -1023,6 +1027,11 @@ public sealed class TypeInfo
             typeMeta.Fields,
             typeMeta.Compressed,
             headerHash);
-        return new TypeMetaCacheEntry(typeMeta, encoded, headerHash);
+        TypeInfo owner = WithWireTypeInfo(wireTypeId, typeMeta);
+        return new TypeMetaCacheEntry(
+            typeMeta,
+            encoded,
+            headerHash,
+            new CheckedTypeMeta(typeMeta, owner));
     }
 }

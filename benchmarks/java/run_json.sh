@@ -25,6 +25,7 @@ DURATION_SECONDS="2"
 WARMUP_ITERATIONS="3"
 MEASUREMENT_ITERATIONS="5"
 LIBS="fory-json,jackson,gson"
+JACKSON="standard"
 SKIP_BUILD="false"
 
 usage() {
@@ -41,6 +42,8 @@ Options:
   --libs <names>             Comma-separated libraries in chart order
                              (default: fory-json,jackson,gson)
                              Available: fory-json, jackson, gson, fastjson2
+  --jackson <implementation> Jackson implementation: standard or blackbird
+                             (default: standard)
   --reports-dir <dir>        Output directory (default: reports/json)
   --skip-build               Reuse target/benchmarks.jar
   --help                     Show this help
@@ -95,6 +98,11 @@ while [[ $# -gt 0 ]]; do
       LIBS="$2"
       shift 2
       ;;
+    --jackson)
+      require_value "$@"
+      JACKSON="$2"
+      shift 2
+      ;;
     --reports-dir)
       require_value "$@"
       REPORT_DIR="$2"
@@ -116,6 +124,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "${JACKSON}" in
+  standard|blackbird) ;;
+  *)
+    echo "Unknown Jackson implementation: ${JACKSON}. Available: standard, blackbird" >&2
+    exit 1
+    ;;
+esac
+
 case "${REPORT_DIR}" in
   /*) ;;
   *) REPORT_DIR="${PWD}/${REPORT_DIR}" ;;
@@ -127,7 +143,7 @@ if ! python3 -c "import matplotlib, numpy" >/dev/null 2>&1; then
 fi
 
 LIB_CONFIG="$(python3 "${SCRIPT_DIR}/plot_json_benchmark.py" \
-  --libs "${LIBS}" --print-lib-config 2>&1)" || {
+  --libs "${LIBS}" --jackson "${JACKSON}" --print-lib-config 2>&1)" || {
   echo "${LIB_CONFIG}" >&2
   exit 1
 }
@@ -135,7 +151,7 @@ IFS=$'\t' read -r NORMALIZED_LIBS SERIALIZER_REGEX <<<"${LIB_CONFIG}"
 
 JMH_DURATION="$(jmh_time "${DURATION_SECONDS}")"
 RESULT_JSON="${REPORT_DIR}/benchmark_results.json"
-BENCHMARK_REGEX="org\\.apache\\.fory\\.benchmark\\.JsonSerializationSuite\\.(${SERIALIZER_REGEX})(To|From)Json(Bytes|String)$"
+BENCHMARK_REGEX="org\\.apache\\.fory\\.benchmark\\.(JsonSerializationSuite|JacksonBlackbirdSerializationSuite)\\.(${SERIALIZER_REGEX})(To|From)Json(Bytes|String)$"
 
 mkdir -p "${REPORT_DIR}"
 cd "${SCRIPT_DIR}"
@@ -166,7 +182,8 @@ ENABLE_FORY_DEBUG_OUTPUT=0 java \
 python3 plot_json_benchmark.py \
   --json-file "${RESULT_JSON}" \
   --output-dir "${REPORT_DIR}" \
-  --libs "${NORMALIZED_LIBS}"
+  --libs "${NORMALIZED_LIBS}" \
+  --jackson "${JACKSON}"
 
 echo "JSON benchmark report: ${REPORT_DIR}/README.md"
 echo "JSON String benchmark chart: ${REPORT_DIR}/string_throughput.png"

@@ -217,7 +217,31 @@ func (s *UnionSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool,
 		}
 	}
 	if readType {
-		ctx.TypeResolver().ReadTypeInfo(ctx.Buffer(), err)
+		resolver := ctx.TypeResolver()
+		expected := resolver.getTypeInfoByType(value.Type())
+		if expected == nil {
+			ctx.SetError(DeserializationErrorf("unregistered union type: %v", value.Type()))
+			return
+		}
+		typeID := uint32(ctx.Buffer().ReadUint8(err))
+		if ctx.HasError() {
+			return
+		}
+		// A declared union is owned by its registered concrete Go type. Shared references and
+		// checked metadata cache entries may route another union without reparsing its body, so
+		// compare the resolved concrete owner before reading case data.
+		typeInfo := resolver.readTypeInfoWithTypeID(ctx.Buffer(), typeID, expected.Type, err)
+		if ctx.HasError() {
+			return
+		}
+		// Shared NAMED_UNION metadata was already checked against expected.Type before any
+		// metadata publication. Plain-ID and non-shared paths still need the exact owner check.
+		if TypeId(typeID) != NAMED_UNION || !resolver.metaShareEnabled() {
+			serializerForConcreteType(expected.Type, typeInfo, err)
+			if ctx.HasError() {
+				return
+			}
+		}
 	}
 	s.ReadData(ctx, value)
 }

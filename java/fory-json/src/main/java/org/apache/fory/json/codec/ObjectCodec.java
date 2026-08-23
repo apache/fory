@@ -54,6 +54,7 @@ import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.platform.internal._JDKAccess;
@@ -77,7 +78,7 @@ import org.apache.fory.serializer.GraphMemoryEstimates;
  * paths independently, but it is built from this codec's immutable field metadata and preserves the
  * same null, unknown-field, creator, and member-discovery semantics.
  */
-public class ObjectCodec<T> implements JsonValueCodec<T> {
+public class ObjectCodec<T> implements CompositeJsonCodec<T> {
   protected final Class<?> type;
   protected final JsonFieldInfo[] writeFields;
   protected final JsonFieldInfo[] readFields;
@@ -109,7 +110,10 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
             : new JsonFieldTable(readFields, skippedNames);
     this.instantiator = instantiator;
     this.creatorInfo = creatorInfo;
-    graphMemoryBytes = GraphMemoryEstimates.shallowObjectBytes(type);
+    graphMemoryBytes =
+        creatorInfo != null && creatorInfo.fixedInstance()
+            ? 0
+            : GraphMemoryEstimates.shallowObjectBytes(type);
   }
 
   @Internal
@@ -133,6 +137,30 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     }
   }
 
+  /** Builds an object codec from a validated language-module object model. */
+  @Internal
+  public static <T> ObjectCodec<T> build(
+      TypeRef<T> ownerType,
+      boolean propertyDiscoveryEnabled,
+      PropertyNamingStrategy propertyNamingStrategy,
+      boolean writeNullFields,
+      JsonSharedRegistry sharedRegistry,
+      GeneratedJsonCodec<?> generatedCodec,
+      JsonObjectModel objectModel) {
+    try {
+      return ObjectCodecBuilder.build(
+          ownerType,
+          propertyDiscoveryEnabled,
+          propertyNamingStrategy,
+          writeNullFields,
+          sharedRegistry,
+          generatedCodec,
+          objectModel);
+    } catch (ForyJsonException e) {
+      throw sharedRegistry.mixinSchemaFailure(ownerType.getRawType(), e);
+    }
+  }
+
   static <T> ObjectCodec<T> createCodec(
       TypeRef<T> ownerType,
       JsonFieldInfo[] writeFields,
@@ -144,6 +172,29 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       ObjectInstantiator<?> instantiator,
       JsonValidatorInfo validatorInfo) {
     Class<?> type = ownerType.getRawType();
+    if (creatorInfo != null && creatorInfo.fixedInstance()) {
+      if (validatorInfo != null) {
+        return new ValidatingFixedObjectCodec<>(
+            type,
+            writeFields,
+            readFields,
+            creatorInfo,
+            anyInfo,
+            skippedNames,
+            unwrappedInfo,
+            instantiator,
+            validatorInfo);
+      }
+      return new FixedObjectCodec<>(
+          type,
+          writeFields,
+          readFields,
+          creatorInfo,
+          anyInfo,
+          skippedNames,
+          unwrappedInfo,
+          instantiator);
+    }
     if (ownerType.getType() instanceof Class) {
       if (validatorInfo != null) {
         return new ValidatingObjectCodec<>(
@@ -274,6 +325,11 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     if (unwrappedInfo != null) {
       unwrappedInfo.resolve(this, typeResolver);
     }
+  }
+
+  @Override
+  public final void resolveTypes(TypeRef<?> type, JsonTypeResolver resolver) {
+    resolveTypes(resolver);
   }
 
   @Internal
@@ -478,9 +534,19 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       reader.exitDepth();
       return object;
     }
+    int expectedIndex = 0;
     do {
-      JsonFieldInfo field = reader.readField(readTable);
-      reader.expect(':');
+      JsonFieldInfo field;
+      if (expectedIndex < readFields.length
+          && tryReadLatin1Field(reader, readFields[expectedIndex])) {
+        field = readFields[expectedIndex++];
+      } else {
+        field = reader.readField(readTable);
+        reader.expect(':');
+        if (field != null) {
+          expectedIndex = field.readIndex() + 1;
+        }
+      }
       if (field == null) {
         reader.skipValue();
       } else {
@@ -524,9 +590,19 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       reader.exitDepth();
       return object;
     }
+    int expectedIndex = 0;
     do {
-      JsonFieldInfo field = reader.readField(readTable);
-      reader.expect(':');
+      JsonFieldInfo field;
+      if (expectedIndex < readFields.length
+          && tryReadUtf16Field(reader, readFields[expectedIndex])) {
+        field = readFields[expectedIndex++];
+      } else {
+        field = reader.readField(readTable);
+        reader.expect(':');
+        if (field != null) {
+          expectedIndex = field.readIndex() + 1;
+        }
+      }
       if (field == null) {
         reader.skipValue();
       } else {
@@ -570,9 +646,19 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       reader.exitDepth();
       return object;
     }
+    int expectedIndex = 0;
     do {
-      JsonFieldInfo field = reader.readField(readTable);
-      reader.expect(':');
+      JsonFieldInfo field;
+      if (expectedIndex < readFields.length
+          && tryReadUtf8Field(reader, readFields[expectedIndex])) {
+        field = readFields[expectedIndex++];
+      } else {
+        field = reader.readField(readTable);
+        reader.expect(':');
+        if (field != null) {
+          expectedIndex = field.readIndex() + 1;
+        }
+      }
       if (field == null) {
         reader.skipValue();
       } else {
@@ -929,11 +1015,20 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     Latin1ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.latin1Reader();
     reader.expect('{');
     if (!reader.consume('}')) {
+      int expectedIndex = 0;
       do {
         int start = reader.position();
-        long hash = reader.readFieldNameHash();
-        int match = table.match(hash);
-        reader.expect(':');
+        int match;
+        if (expectedIndex < readFields.length
+            && tryReadLatin1Field(reader, readFields[expectedIndex])) {
+          match = expectedIndex++;
+        } else {
+          match = table.match(reader.readFieldNameHash());
+          reader.expect(':');
+          if (match >= 0) {
+            expectedIndex = match + 1;
+          }
+        }
         if (match >= 0) {
           readFields[match].readLatin1(reader, object);
         } else if (match == JsonFieldTable.SKIP) {
@@ -975,11 +1070,20 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     Utf16ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf16Reader();
     reader.expect('{');
     if (!reader.consume('}')) {
+      int expectedIndex = 0;
       do {
         int start = reader.position();
-        long hash = reader.readFieldNameHash();
-        int match = table.match(hash);
-        reader.expect(':');
+        int match;
+        if (expectedIndex < readFields.length
+            && tryReadUtf16Field(reader, readFields[expectedIndex])) {
+          match = expectedIndex++;
+        } else {
+          match = table.match(reader.readFieldNameHash());
+          reader.expect(':');
+          if (match >= 0) {
+            expectedIndex = match + 1;
+          }
+        }
         if (match >= 0) {
           readFields[match].readUtf16(reader, object);
         } else if (match == JsonFieldTable.SKIP) {
@@ -1021,11 +1125,20 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     Utf8ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf8Reader();
     reader.expect('{');
     if (!reader.consume('}')) {
+      int expectedIndex = 0;
       do {
         int start = reader.position();
-        long hash = reader.readFieldNameHash();
-        int match = table.match(hash);
-        reader.expect(':');
+        int match;
+        if (expectedIndex < readFields.length
+            && tryReadUtf8Field(reader, readFields[expectedIndex])) {
+          match = expectedIndex++;
+        } else {
+          match = table.match(reader.readFieldNameHash());
+          reader.expect(':');
+          if (match >= 0) {
+            expectedIndex = match + 1;
+          }
+        }
         if (match >= 0) {
           readFields[match].readUtf8(reader, object);
         } else if (match == JsonFieldTable.SKIP) {
@@ -1066,11 +1179,21 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     Latin1ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.latin1Reader();
     reader.expect('{');
     if (!reader.consume('}')) {
+      int expectedIndex = 0;
       do {
         int start = reader.position();
-        long hash = reader.readFieldNameHash();
-        int index = creatorInfo.index(hash);
-        reader.expect(':');
+        int index;
+        long hash = 0;
+        if (expectedIndex < fields.length && tryReadLatin1Field(reader, fields[expectedIndex])) {
+          index = expectedIndex++;
+        } else {
+          hash = reader.readFieldNameHash();
+          index = creatorInfo.index(hash);
+          reader.expect(':');
+          if (index >= 0) {
+            expectedIndex = index + 1;
+          }
+        }
         if (index >= 0) {
           JsonCreatorFieldInfo field = fields[index];
           arguments[field.argumentIndex()] = field.readLatin1(reader);
@@ -1104,11 +1227,21 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     Utf16ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf16Reader();
     reader.expect('{');
     if (!reader.consume('}')) {
+      int expectedIndex = 0;
       do {
         int start = reader.position();
-        long hash = reader.readFieldNameHash();
-        int index = creatorInfo.index(hash);
-        reader.expect(':');
+        int index;
+        long hash = 0;
+        if (expectedIndex < fields.length && tryReadUtf16Field(reader, fields[expectedIndex])) {
+          index = expectedIndex++;
+        } else {
+          hash = reader.readFieldNameHash();
+          index = creatorInfo.index(hash);
+          reader.expect(':');
+          if (index >= 0) {
+            expectedIndex = index + 1;
+          }
+        }
         if (index >= 0) {
           JsonCreatorFieldInfo field = fields[index];
           arguments[field.argumentIndex()] = field.readUtf16(reader);
@@ -1142,11 +1275,21 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     Utf8ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf8Reader();
     reader.expect('{');
     if (!reader.consume('}')) {
+      int expectedIndex = 0;
       do {
         int start = reader.position();
-        long hash = reader.readFieldNameHash();
-        int index = creatorInfo.index(hash);
-        reader.expect(':');
+        int index;
+        long hash = 0;
+        if (expectedIndex < fields.length && tryReadUtf8Field(reader, fields[expectedIndex])) {
+          index = expectedIndex++;
+        } else {
+          hash = reader.readFieldNameHash();
+          index = creatorInfo.index(hash);
+          reader.expect(':');
+          if (index >= 0) {
+            expectedIndex = index + 1;
+          }
+        }
         if (index >= 0) {
           JsonCreatorFieldInfo field = fields[index];
           arguments[field.argumentIndex()] = field.readUtf8(reader);
@@ -1178,9 +1321,18 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
     reader.expect('{');
     if (!reader.consume('}')) {
+      int expectedIndex = 0;
       do {
-        int index = creatorInfo.index(reader.readFieldNameHash());
-        reader.expect(':');
+        int index;
+        if (expectedIndex < fields.length && tryReadLatin1Field(reader, fields[expectedIndex])) {
+          index = expectedIndex++;
+        } else {
+          index = creatorInfo.index(reader.readFieldNameHash());
+          reader.expect(':');
+          if (index >= 0) {
+            expectedIndex = index + 1;
+          }
+        }
         if (index < 0) {
           reader.skipValue();
         } else {
@@ -1198,9 +1350,18 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
     reader.expect('{');
     if (!reader.consume('}')) {
+      int expectedIndex = 0;
       do {
-        int index = creatorInfo.index(reader.readFieldNameHash());
-        reader.expect(':');
+        int index;
+        if (expectedIndex < fields.length && tryReadUtf16Field(reader, fields[expectedIndex])) {
+          index = expectedIndex++;
+        } else {
+          index = creatorInfo.index(reader.readFieldNameHash());
+          reader.expect(':');
+          if (index >= 0) {
+            expectedIndex = index + 1;
+          }
+        }
         if (index < 0) {
           reader.skipValue();
         } else {
@@ -1218,9 +1379,18 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
     reader.expect('{');
     if (!reader.consume('}')) {
+      int expectedIndex = 0;
       do {
-        int index = creatorInfo.index(reader.readFieldNameHash());
-        reader.expect(':');
+        int index;
+        if (expectedIndex < fields.length && tryReadUtf8Field(reader, fields[expectedIndex])) {
+          index = expectedIndex++;
+        } else {
+          index = creatorInfo.index(reader.readFieldNameHash());
+          reader.expect(':');
+          if (index >= 0) {
+            expectedIndex = index + 1;
+          }
+        }
         if (index < 0) {
           reader.skipValue();
         } else {
@@ -1231,6 +1401,107 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       reader.expect('}');
     }
     return arguments;
+  }
+
+  // Exact ordered probes consume the complete field-name token only on a match. A miss must leave
+  // the cursor unchanged so the existing hash path remains the sole owner of escaped, unknown,
+  // duplicate, and arbitrary-order field semantics.
+  private static boolean tryReadLatin1Field(Latin1JsonReader reader, JsonFieldInfo field) {
+    int length = field.stringNamePrefix().length;
+    if (length != field.name().length() + 3
+        || field.utf8NamePrefix().length != length
+        || length > Long.BYTES * 2) {
+      return false;
+    }
+    if (length <= Long.BYTES) {
+      long mask = length == Long.BYTES ? -1L : (1L << (length << 3)) - 1L;
+      return reader.tryReadNextFieldNameToken0(field.utf8NamePrefixWord0(), mask, length);
+    }
+    int suffixLength = length - Long.BYTES;
+    long suffixMask = suffixLength == Long.BYTES ? -1L : (1L << (suffixLength << 3)) - 1L;
+    return reader.tryReadNextFieldNameToken8(
+        field.utf8NamePrefixWord0(), field.utf8NamePrefixWord1(), suffixMask, length);
+  }
+
+  private static boolean tryReadLatin1Field(Latin1JsonReader reader, JsonCreatorFieldInfo field) {
+    String name = field.name();
+    int length = name.length();
+    if (length == 0 || length > Long.BYTES) {
+      return false;
+    }
+    long mask = length == Long.BYTES ? -1L : (1L << (length << 3)) - 1L;
+    return reader.tryReadNextFieldNameColon(field.nameHash(), mask, length);
+  }
+
+  private static boolean tryReadUtf16Field(Utf16JsonReader reader, JsonFieldInfo field) {
+    int length = field.stringNamePrefix().length;
+    if (length != field.name().length() + 3
+        || field.utf8NamePrefix().length != length
+        || length > 12) {
+      return false;
+    }
+    long firstWord = utf16TokenWord(field.utf8NamePrefixWord0());
+    long secondWord = utf16TokenWord(field.utf8NamePrefixWord0() >>> 32);
+    if (length <= Long.BYTES) {
+      int secondLength = Math.max(0, length - 4);
+      return reader.tryReadNextFieldNameUtf16Token2(
+          firstWord,
+          utf16TokenMask(Math.min(length, 4)),
+          secondLength == 0 ? 0 : secondWord,
+          secondLength == 0 ? 0 : utf16TokenMask(secondLength),
+          length);
+    }
+    return reader.tryReadNextFieldNameUtf16Token3(
+        firstWord, secondWord, utf16TokenWord(field.utf8NamePrefixWord1()), length);
+  }
+
+  private static boolean tryReadUtf16Field(Utf16JsonReader reader, JsonCreatorFieldInfo field) {
+    String name = field.name();
+    int length = name.length();
+    if (length == 0 || length > Long.BYTES) {
+      return false;
+    }
+    long mask = length == Long.BYTES ? -1L : (1L << (length << 3)) - 1L;
+    return reader.tryReadNextFieldNameColon(field.nameHash(), mask, length);
+  }
+
+  private static long utf16TokenWord(long value) {
+    value &= 0xFFFF_FFFFL;
+    value = (value | (value << 16)) & 0x0000_FFFF_0000_FFFFL;
+    value = (value | (value << 8)) & 0x00FF_00FF_00FF_00FFL;
+    return NativeByteOrder.IS_LITTLE_ENDIAN ? value : value << 8;
+  }
+
+  private static long utf16TokenMask(int length) {
+    return length == 4 ? -1L : (1L << (length << 4)) - 1L;
+  }
+
+  private static boolean tryReadUtf8Field(Utf8JsonReader reader, JsonFieldInfo field) {
+    int length = field.utf8NamePrefix().length;
+    if (length == 0 || length > Long.BYTES * 2) {
+      return false;
+    }
+    if (length <= Long.BYTES) {
+      long mask = length == Long.BYTES ? -1L : (1L << (length << 3)) - 1L;
+      return reader.tryReadNextFieldNameToken0(field.utf8NamePrefixWord0(), mask, length);
+    }
+    int suffixLength = length - Long.BYTES;
+    long suffixMask = suffixLength == Long.BYTES ? -1L : (1L << (suffixLength << 3)) - 1L;
+    return reader.tryReadNextFieldNameToken8(
+        field.utf8NamePrefixWord0(), field.utf8NamePrefixWord1(), suffixMask, length);
+  }
+
+  private static boolean tryReadUtf8Field(Utf8JsonReader reader, JsonCreatorFieldInfo field) {
+    return tryReadUtf8Field(reader, field.name(), field.nameHash());
+  }
+
+  private static boolean tryReadUtf8Field(Utf8JsonReader reader, String name, long hash) {
+    int length = name.length();
+    if (length == 0 || length > Long.BYTES) {
+      return false;
+    }
+    long mask = length == Long.BYTES ? -1L : (1L << (length << 3)) - 1L;
+    return reader.tryReadNextFieldNameColon(hash, mask, length);
   }
 
   @SuppressWarnings("unchecked")
@@ -1248,6 +1519,12 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     writer.writeObjectStart();
     writeMembers(writer, value, 0);
     writer.writeObjectEnd();
+  }
+
+  /** Returns whether this object codec represents one pre-existing singleton. */
+  @Internal
+  public final boolean fixedInstance() {
+    return creatorInfo != null && creatorInfo.fixedInstance();
   }
 
   // ClosedSubtypeCodec owns the open object and discriminator for PROPERTY inclusion. Keep this
@@ -1278,6 +1555,17 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       return;
     }
     writeFixedMembers(writer, value, written);
+  }
+
+  // PROPERTY dispatch already performs one child call. Let a fixed-object child specialize that
+  // call for its identity invariant without adding a singleton branch or hook to ordinary object
+  // writes.
+  void writeSubtypeMembers(StringJsonWriter writer, T value, int written) {
+    writeMembers(writer, value, written);
+  }
+
+  void writeSubtypeMembers(Utf8JsonWriter writer, T value, int written) {
+    writeMembers(writer, value, written);
   }
 
   private int writeUnwrappedMembers(StringJsonWriter writer, Object value, int written) {
@@ -1697,6 +1985,233 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       } catch (IllegalAccessException e) {
         throw new ForyJsonException("Cannot access @JsonAnySetter " + method, e);
       }
+    }
+  }
+
+  /** Standard object owner for one pre-existing language singleton. */
+  private static class FixedObjectCodec<T> extends ObjectCodec<T> {
+    private final T instance;
+
+    @SuppressWarnings("unchecked")
+    private FixedObjectCodec(
+        Class<?> type,
+        JsonFieldInfo[] writeFields,
+        JsonFieldInfo[] readFields,
+        JsonCreatorInfo creatorInfo,
+        AnyInfo anyInfo,
+        String[] skippedNames,
+        JsonUnwrappedInfo unwrappedInfo,
+        ObjectInstantiator<?> instantiator) {
+      super(
+          type,
+          writeFields,
+          readFields,
+          creatorInfo,
+          anyInfo,
+          skippedNames,
+          unwrappedInfo,
+          instantiator);
+      instance = (T) type.cast(creatorInfo.create(null));
+    }
+
+    @Override
+    public void writeString(StringJsonWriter writer, T value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      requireInstance(value);
+      writer.writeObjectStart();
+      writer.writeObjectEnd();
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, T value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      requireInstance(value);
+      writer.writeObjectStart();
+      writer.writeObjectEnd();
+    }
+
+    @Override
+    public T readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readLatin1Object(reader);
+    }
+
+    @Override
+    public T readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readUtf16Object(reader);
+    }
+
+    @Override
+    public T readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readUtf8Object(reader);
+    }
+
+    @Override
+    T readLatin1Object(Latin1JsonReader reader) {
+      return readFixedObject(reader);
+    }
+
+    @Override
+    T readLatin1Object(Latin1JsonReader reader, JsonFieldTable table) {
+      return readInlineObject(reader, table);
+    }
+
+    @Override
+    T readUtf16Object(Utf16JsonReader reader) {
+      return readFixedObject(reader);
+    }
+
+    @Override
+    T readUtf16Object(Utf16JsonReader reader, JsonFieldTable table) {
+      return readInlineObject(reader, table);
+    }
+
+    @Override
+    T readUtf8Object(Utf8JsonReader reader) {
+      return readFixedObject(reader);
+    }
+
+    @Override
+    T readUtf8Object(Utf8JsonReader reader, JsonFieldTable table) {
+      return readInlineObject(reader, table);
+    }
+
+    @Override
+    void writeSubtypeMembers(StringJsonWriter writer, T value, int written) {
+      requireInstance(value);
+    }
+
+    @Override
+    void writeSubtypeMembers(Utf8JsonWriter writer, T value, int written) {
+      requireInstance(value);
+    }
+
+    private void requireInstance(T value) {
+      if (value != instance) {
+        throw wrongInstance();
+      }
+    }
+
+    private T readFixedObject(JsonReader reader) {
+      reader.enterDepth();
+      reader.expect('{');
+      if (!reader.consume('}')) {
+        throw nonEmptyObject();
+      }
+      reader.exitDepth();
+      return instance;
+    }
+
+    private T readInlineObject(JsonReader reader, JsonFieldTable table) {
+      reader.enterDepth();
+      reader.expect('{');
+      if (reader.consume('}')) {
+        throw nonEmptyObject();
+      }
+      do {
+        int match = table.match(reader.readFieldNameHash());
+        reader.expect(':');
+        if (match != JsonFieldTable.SKIP) {
+          throw nonEmptyObject();
+        }
+        reader.skipValue();
+      } while (reader.consume(','));
+      reader.expect('}');
+      reader.exitDepth();
+      return instance;
+    }
+
+    private ForyJsonException wrongInstance() {
+      return new ForyJsonException("Expected singleton instance " + type.getName());
+    }
+
+    private ForyJsonException nonEmptyObject() {
+      return new ForyJsonException(
+          "JSON singleton " + type.getName() + " requires an empty object");
+    }
+  }
+
+  /** Fixed object owner whose read capability invokes effective validators. */
+  private static final class ValidatingFixedObjectCodec<T> extends FixedObjectCodec<T> {
+    private final JsonValidatorInfo validatorInfo;
+
+    private ValidatingFixedObjectCodec(
+        Class<?> type,
+        JsonFieldInfo[] writeFields,
+        JsonFieldInfo[] readFields,
+        JsonCreatorInfo creatorInfo,
+        AnyInfo anyInfo,
+        String[] skippedNames,
+        JsonUnwrappedInfo unwrappedInfo,
+        ObjectInstantiator<?> instantiator,
+        JsonValidatorInfo validatorInfo) {
+      super(
+          type,
+          writeFields,
+          readFields,
+          creatorInfo,
+          anyInfo,
+          skippedNames,
+          unwrappedInfo,
+          instantiator);
+      this.validatorInfo = validatorInfo;
+    }
+
+    @Override
+    public boolean hasValidators() {
+      return true;
+    }
+
+    @Override
+    public void validateObject(Object value) {
+      validatorInfo.validate(value);
+    }
+
+    @Override
+    T readLatin1Object(Latin1JsonReader reader) {
+      T object = super.readLatin1Object(reader);
+      validatorInfo.validate(object);
+      return object;
+    }
+
+    @Override
+    T readLatin1Object(Latin1JsonReader reader, JsonFieldTable table) {
+      T object = super.readLatin1Object(reader, table);
+      validatorInfo.validate(object);
+      return object;
+    }
+
+    @Override
+    T readUtf16Object(Utf16JsonReader reader) {
+      T object = super.readUtf16Object(reader);
+      validatorInfo.validate(object);
+      return object;
+    }
+
+    @Override
+    T readUtf16Object(Utf16JsonReader reader, JsonFieldTable table) {
+      T object = super.readUtf16Object(reader, table);
+      validatorInfo.validate(object);
+      return object;
+    }
+
+    @Override
+    T readUtf8Object(Utf8JsonReader reader) {
+      T object = super.readUtf8Object(reader);
+      validatorInfo.validate(object);
+      return object;
+    }
+
+    @Override
+    T readUtf8Object(Utf8JsonReader reader, JsonFieldTable table) {
+      T object = super.readUtf8Object(reader, table);
+      validatorInfo.validate(object);
+      return object;
     }
   }
 

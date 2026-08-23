@@ -29,11 +29,11 @@ import org.apache.fory.reflect.TypeRef;
 
 final class Utf16ReaderCodegen extends JsonReaderCodegen {
   Utf16ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
-    super(codegen, resolver, true);
+    super(codegen, resolver);
   }
 
   Utf16ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, int[] fastReadGroupEnds) {
-    super(codegen, resolver, true, fastReadGroupEnds);
+    super(codegen, resolver, fastReadGroupEnds);
   }
 
   @Override
@@ -87,8 +87,8 @@ final class Utf16ReaderCodegen extends JsonReaderCodegen {
   }
 
   @Override
-  Expression tryReadNextFieldNameColon(JsonFieldInfo property, boolean tokenValueRead) {
-    return tryReadUtf16FieldNameColon(property, tokenValueRead);
+  Expression tryReadNextFieldNameColon(String name) {
+    return tryReadUtf16FieldNameColon(name);
   }
 
   @Override

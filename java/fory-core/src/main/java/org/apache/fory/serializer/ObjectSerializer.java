@@ -301,12 +301,14 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
           Object fieldValue =
               readContainerFieldValue(
                   readContext, typeResolver, refReader, generics, fieldInfo, buffer);
+          checkFieldValueType(fieldInfo, fieldValue);
           fieldInfo.fieldAccessor.putObject(obj, fieldValue);
           return;
         }
       case OTHER:
         {
           Object fieldValue = readField(readContext, typeResolver, refReader, fieldInfo, buffer);
+          checkFieldValueType(fieldInfo, fieldValue);
           fieldInfo.fieldAccessor.putObject(obj, fieldValue);
           return;
         }

@@ -49,6 +49,14 @@ The Java benchmark section compares Fory against popular Java serialization fram
 
 For additional benchmark notes, raw data, and the complete Java benchmark README, see [Java Benchmarks](object-serialization/native/java/README.md).
 
+## Kotlin JSON Benchmark
+
+The Kotlin JSON harness compares Fory JSON Kotlin, kotlinx.serialization, Moshi, and Jackson Kotlin
+with one immutable model and 16 isolated String/UTF-8 operations. The
+[Kotlin JSON report](json/kotlin/README.md) is intentionally marked pending until a complete
+measured run is published; no placeholder performance result is inferred from another language or
+project.
+
 ## Python Benchmark
 
 Fory Python demonstrates strong performance compared to `pickle` and Protobuf across object and list workloads.

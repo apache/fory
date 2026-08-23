@@ -32,6 +32,10 @@
     <modelVersion>4.0.0</modelVersion>
     <artifactId>fory-kotlin-idl-tests</artifactId>
 
+    <properties>
+        <dokka.skip>true</dokka.skip>
+    </properties>
+
     <build>
         <resources>
             <resource>

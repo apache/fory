@@ -54,6 +54,7 @@ python ci/release.py bump_version -l all -version <next-dev-version> \
 - `integration_tests/idl_tests/dart/pubspec.yaml`
 - `integration_tests/idl_tests/rust/Cargo.lock`
 - `dart/CHANGELOG.md` and `dart/packages/fory/CHANGELOG.md`
+- `scala/fory-scala/README.md` and `scala/fory-json-scala/README.md`
 
 5. Search for stale previous development forms and accidental next-development
    versions in user-facing docs:

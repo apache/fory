@@ -689,5 +689,5 @@ fory = "x.y.z"
 
 ```yaml
 dependencies:
-  fory: ^1.6.0
+  fory: ^1.6.1
 ```

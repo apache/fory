@@ -1,6 +1,6 @@
 ---
 title: Security
-sidebar_position: 8
+sidebar_position: 11
 id: security
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -19,11 +19,17 @@ license: |
   limitations under the License.
 ---
 
-Use Fory JSON with untrusted input only after defining which Java types may be
+Use Fory JSON with untrusted input only after defining which JVM types may be
 materialized and which resource limits the endpoint will enforce. Fory JSON
 does not derive arbitrary Java class names from JSON input, but annotations,
 declared target types, and custom codecs still define an application-controlled
 object surface.
+
+Kotlin type tokens and metadata are trusted schema declarations, not input authority. The Kotlin
+module validates the logical type, physical JVM carrier, and constructor/default operations before
+parsing. JSON input cannot select a class, constructor, compiler default target, object, companion,
+module, codec, or callable. `JsonSubTypes` selects only a logical name from a finite table: either
+the explicit entries or the inferred sealed hierarchy.
 
 ## Type Policy And Class Loading
 
@@ -47,6 +53,14 @@ both serialization and parsing, so it must be thread-safe. Built-in scalar
 types normally do not invoke the custom checker, but an application codec for
 a built-in target makes that target subject to the checker. A custom codec
 never bypasses the fixed disallow list.
+
+An empty `JsonSubTypes.value` authorizes the statically sealed closure of the selected top-level
+base. This is still a closed set: JSON cannot name a class, search the classpath, or admit a later
+descendant of an exact open member. If the complete sealed closure is broader than the endpoint
+should trust, declare a non-empty explicit subtype table or use `withTypeChecker` to reject exact
+inferred classes. The fixed disallow list validates the complete inferred closure; the custom
+checker narrows that closure, and rejecting every inferred class is an error. Explicit subtype
+tables are exact declarations and fail if the checker rejects an entry.
 
 `withClassLoader` sets the loader for annotation-declared subtype `className`
 entries. Without it, `build()` snapshots the current thread context class
@@ -80,9 +94,9 @@ storage is reserved in 1024-item batches before each batch's final child and at
 the tail. Repeated set elements and duplicate or overwritten map members are
 therefore charged for every input occurrence. A reference array is charged
 even when every element is a leaf, and an object is charged when all its
-properties are leaves. `AtomicReference`, `AtomicReferenceArray`, and generic
-`Optional<T>` values include wrapper and reference storage; primitive
-optionals and atomic primitive values are leaves.
+properties are leaves. `AtomicReference`, `AtomicReferenceArray`, and generic `Optional<T>` values
+include wrapper and reference storage. An allocated primitive Optional or atomic primitive wrapper
+is also charged once; a cached empty Optional singleton is not a new graph owner.
 
 Dedicated leaf codecs are excluded from graph accounting: null, strings,
 characters, booleans, numeric values including arbitrary-precision numbers,
@@ -103,6 +117,18 @@ It cannot include application constructor or validator internals, temporary
 parsing storage, custom-codec allocations that the codec does not reserve, or
 unrelated process memory. Actual memory use can therefore exceed the configured
 budget.
+
+Kotlin does not add separate collection, input, or workspace limits. Arrays, collections, maps,
+and ordinary objects use the same core depth and graph-memory accounting as Java and Scala.
+Interpreted constructor argument arrays are fixed from trusted model metadata, not an
+input-declared count, and are not retained in the decoded graph. Singleton and `Unit` reads return
+existing instances. A boxed value-class result is charged once when that wrapper is materialized.
+
+Compiler defaults, model constructors, validators, and application codecs are trusted application
+code. Their internal allocation and side effects are not sandboxed or charged by the graph budget.
+Their exceptions still fail the root operation and clear root parsing state, but a later trailing-
+input failure cannot undo code that already ran. Validate side effects accordingly when decoding
+untrusted input.
 
 ## External Controls And Verification
 

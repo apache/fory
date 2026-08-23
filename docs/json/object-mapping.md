@@ -100,6 +100,19 @@ use ordinary-constructor side effects as a deserialization completion hook: when
 constructor runs, property assignment happens afterward, and constructor-bypassing paths do not run
 it at all.
 
+## Kotlin object mapping
+
+Install `fory-json-kotlin` and use `ForyJsonKotlin.builder()` for Kotlin/JVM classes. Kotlin
+ordinary and data classes use their selected constructor, exact property types, compiler defaults,
+and declared nullability; they do not use Java's constructor-bypassing fallback. A default applies
+only when the member is missing. An explicit JSON null remains a present value and is rejected for
+a non-null parameter.
+
+Use `jsonTypeRef<T>()` for generic, nullable, unsigned, and value-class roots. Standard arrays,
+collections, and maps continue to use their normal Fory JSON representation. The complete language
+type table, singleton/value-class behavior, and omission rules are in the
+[Kotlin guide](kotlin.md).
+
 ## Supported Java types
 
 The following groups have built-in mappings. Exact wire representations are stable JSON values, but
@@ -132,12 +145,19 @@ Non-finite float and double values use the quoted strings `"NaN"`, `"Infinity"`,
 `"-Infinity"`. Use explicit `BigInteger` or `BigDecimal` targets when arbitrary precision must be
 preserved.
 
+Declared boolean and numeric targets also accept their ordinary token text in a JSON string, such
+as `"true"`, `"42"`, or `"123.45"`; no builder option is required. This applies to roots, object
+members, arrays, collections, and maps. Fory continues to write native JSON boolean and number
+tokens. An `Object` target retains natural JSON typing, so a quoted value remains a `String`; a
+quoted numeric value read as `Number` uses `Double`.
+
 ### Built-in representations
 
 These built-in values use the following ordinary JSON shapes:
 
 | Java type                                                                 | JSON representation                                                                                                                |
 | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Boolean and numeric scalars                                               | Native JSON boolean or number when written; declared targets also read the same token text quoted                                  |
 | Enum                                                                      | Constant name as a string                                                                                                          |
 | `Date`, `Calendar`, `java.sql.Date`, `Time`, `Timestamp`                  | Epoch milliseconds as a number                                                                                                     |
 | `TimeZone`                                                                | Time-zone ID as a string                                                                                                           |
@@ -202,7 +222,7 @@ original key type. Null map keys are rejected.
 | `withMaxCachedFieldNames(int)`         | `DEFAULT_MAX_CACHED_FIELD_NAMES` (`8192`) | Field-name cache entries per reader; zero disables caching |
 | `withConcurrencyLevel(int)`            | `max(1, 2 * processors)`                  | Maximum concurrent root operations                         |
 | `withBufferSizeLimitBytes(int)`        | 2 MiB                                     | Maximum reusable capacity retained by each pooled writer   |
-| `registerCodec(type, codec)`           | None                                      | Replace the exact class's complete JSON codec              |
+| `registerCodec(type, codec)`           | None                                      | Replace an eligible exact class's complete JSON codec      |
 | `registerMixin(mixinType)`             | None                                      | Apply one annotation Mixin to its exact declared target    |
 
 Concurrency-level and buffer-retention limits must be positive. The cached-field-name limit
@@ -216,7 +236,7 @@ see [Fory JSON Security](security.md).
 Builder mutation after `build()` does not modify an existing `ForyJson` instance.
 
 On Android, runtime code generation and asynchronous compilation are disabled. In a GraalVM native
-image, runtime compilation is unavailable; configurations returned by a reachable
-`ForyJsonProvider` use codecs generated while the image is built, and other configurations use
-interpreted codecs with build-time-prepared access metadata. Every other builder option keeps the
-behavior described above.
+image, runtime compilation is unavailable. Fory JSON generates codecs for reachable models with the
+default configuration and each reachable `ForyJsonProvider` configuration. A model without a
+matching generated codec uses an interpreted codec. Every other builder option keeps the behavior
+described above.

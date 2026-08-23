@@ -19,8 +19,8 @@ license: |
   limitations under the License.
 ---
 
-Fory Kotlin provides binary Object Serialization, generated models, Fory gRPC,
-and Android support. It runs on Fory Java and supports Java 8 and later.
+Fory Kotlin provides binary Object Serialization, standard JSON mapping, generated models, Fory
+gRPC, and Android support. It runs on Fory Java and supports Java 8 and later.
 
 ## Verify the Toolchain
 
@@ -32,11 +32,19 @@ java -version
 
 ## Object Serialization
 
-Add the Fory Kotlin library to the application module:
+The repositories below resolve release coordinates from Maven Central and `-SNAPSHOT` coordinates
+from the Apache snapshot repository. Keep every Fory module on the same version:
 
 ```kotlin title="build.gradle.kts"
+repositories {
+  maven("https://repository.apache.org/snapshots/") {
+    mavenContent { snapshotsOnly() }
+  }
+  mavenCentral()
+}
+
 dependencies {
-  implementation("org.apache.fory:fory-kotlin:1.6.0")
+  implementation("org.apache.fory:fory-kotlin:1.7.0-SNAPSHOT")
 }
 ```
 
@@ -72,6 +80,34 @@ within the JVM Fory implementation family. Continue with
 [Kotlin Object Serialization](../object-serialization/kotlin/index.md),
 [xlang](../object-serialization/kotlin/basic-serialization.md#cross-language-interoperability), or
 [native mode](../object-serialization/kotlin/native.md).
+
+## Standard JSON
+
+Fory JSON is a separate text format from binary Object Serialization. Add its optional Kotlin
+module when interoperating with ordinary JSON APIs, browsers, logs, or other JSON libraries:
+
+```kotlin title="build.gradle.kts"
+dependencies {
+  implementation("org.apache.fory:fory-json-kotlin:1.7.0-SNAPSHOT")
+}
+```
+
+```kotlin
+import org.apache.fory.json.kotlin.ForyJsonKotlin
+import org.apache.fory.json.kotlin.jsonTypeRef
+
+data class User(val id: Long, val name: String)
+
+val json = ForyJsonKotlin.builder().build()
+val userType = jsonTypeRef<User>()
+val text = json.toJson(User(1, "Alice"), userType)
+val decoded = json.fromJson(text, userType)
+```
+
+The runtime reads Kotlin/JVM metadata directly. Add `fory-json-kotlin-ksp` only to Android builds
+that use R8 or ProGuard; it emits exact retention rules for Kotlin `@JsonType` models and
+source-owned exact Mixins. Native Image uses the normal `@ForyJsonProvider` workflow. Continue with
+[Kotlin JSON](../json/kotlin.md).
 
 ## Other Capabilities
 

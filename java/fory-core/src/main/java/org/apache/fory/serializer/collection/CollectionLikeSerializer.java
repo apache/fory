@@ -55,7 +55,10 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   private final int collectionOwnerBytes;
   protected final Config config;
   protected final boolean supportCodegenHook;
+  // Compatible reads may cache remote schema metadata; local writes and copies retain the
+  // original local holder and must not reuse read state.
   protected final TypeInfoHolder elementTypeInfoHolder;
+  protected final TypeInfoHolder elementTypeInfoReadHolder;
   protected final TypeResolver typeResolver;
 
   // For subclass whose element type are instantiated already, such as
@@ -97,6 +100,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     this.collectionOwnerBytes = collectionOwnerBytes;
     this.supportCodegenHook = supportCodegenHook;
     elementTypeInfoHolder = typeResolver.nilTypeInfoHolder();
+    elementTypeInfoReadHolder = typeResolver.nilTypeInfoHolder();
     this.typeResolver = typeResolver;
   }
 
@@ -657,7 +661,8 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       Serializer serializer;
       TypeResolver typeResolver = this.typeResolver;
       if ((flags & CollectionFlags.IS_DECL_ELEMENT_TYPE) != CollectionFlags.IS_DECL_ELEMENT_TYPE) {
-        serializer = typeResolver.readTypeInfo(readContext, elementTypeInfoHolder).getSerializer();
+        serializer =
+            typeResolver.readTypeInfo(readContext, elementTypeInfoReadHolder).getSerializer();
       } else {
         serializer = elemGenericType.getSerializer(typeResolver);
       }

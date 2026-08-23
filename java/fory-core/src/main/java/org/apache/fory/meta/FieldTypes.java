@@ -1390,7 +1390,11 @@ public class FieldTypes {
       int typeId, boolean nullable, boolean trackingRef, TypeRef<?> declared) {
     TypeExtMeta declaredMeta = declared == null ? null : declared.getTypeExtMeta();
     return TypeExtMeta.of(
-        typeId, nullable, trackingRef, declaredMeta != null && declaredMeta.nullableWrapper());
+        typeId,
+        nullable,
+        trackingRef,
+        declaredMeta != null && declaredMeta.nullableWrapper(),
+        declaredMeta != null && declaredMeta.covariant());
   }
 
   /** Class for Union field type. Union types use declared type. */

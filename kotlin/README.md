@@ -3,11 +3,14 @@
 Apache Fory Kotlin adds Kotlin/JVM and Android support on top of the Fory Java
 runtime.
 
-The Kotlin tree contains three Maven modules:
+The Kotlin tree contains five Maven modules:
 
 - `fory-kotlin`: runtime integration for Kotlin/JVM and Android.
 - `fory-kotlin-ksp`: KSP processor for Kotlin xlang/schema static serializers.
 - `fory-kotlin-tests`: Java-driven Kotlin xlang test fixtures.
+- `fory-json-kotlin`: Kotlin/JVM and Android integration for Fory JSON.
+- `fory-json-kotlin-ksp`: KSP processor that emits exact R8/ProGuard retention rules for Fory JSON
+  models and Mixins. It does not generate JSON codecs or source files.
 
 ## Runtime Module
 

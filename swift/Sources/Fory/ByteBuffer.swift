@@ -84,19 +84,6 @@ public final class ByteBuffer {
 
     @usableFromInline
     @inline(__always)
-    internal func matchesBytes(start: Int, bytes: [UInt8]) -> Bool {
-        var index = 0
-        while index < bytes.count {
-            if storage[start + index] != bytes[index] {
-                return false
-            }
-            index += 1
-        }
-        return true
-    }
-
-    @usableFromInline
-    @inline(__always)
     internal func withUnsafeReadableBytes<R>(
         _ body: (UnsafeBufferPointer<UInt8>) throws -> R
     ) rethrows -> R {

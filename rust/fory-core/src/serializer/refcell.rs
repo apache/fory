@@ -136,6 +136,11 @@ where
         C::static_type_id()
     }
 
+    #[inline(always)]
+    fn metadata_target_type_id() -> std::any::TypeId {
+        C::metadata_target_type_id()
+    }
+
     const IS_OPTIONAL: bool = C::IS_OPTIONAL;
 
     const IS_POLYMORPHIC: bool = C::IS_POLYMORPHIC;

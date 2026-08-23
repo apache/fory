@@ -184,6 +184,14 @@ pub const fn is_enum_type_id(type_id: TypeId) -> bool {
     matches!(type_id, TypeId::ENUM | TypeId::NAMED_ENUM | TypeId::UNION)
 }
 
+#[inline(always)]
+pub(crate) const fn is_struct_type_id(type_id: u32) -> bool {
+    matches!(
+        type_id,
+        STRUCT | COMPATIBLE_STRUCT | NAMED_STRUCT | NAMED_COMPATIBLE_STRUCT
+    )
+}
+
 pub static BASIC_TYPES: [TypeId; 35] = [
     TypeId::BOOL,
     TypeId::INT8,

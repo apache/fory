@@ -52,6 +52,21 @@
     </dependency>
     <dependency>
       <groupId>org.apache.fory</groupId>
+      <artifactId>fory-json</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.fory</groupId>
+      <artifactId>fory-json-kotlin</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.fory</groupId>
+      <artifactId>kotlin-json-corpus</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.fory</groupId>
       <artifactId>fory-test-core</artifactId>
       <version>${project.version}</version>
     </dependency>

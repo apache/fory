@@ -229,6 +229,44 @@ public extension StructSerializer {
     }
 }
 
+@inlinable
+@inline(__always)
+internal func readNestedField<S: Serializer>(
+    _ context: ReadContext,
+    serializer: S.Type,
+    refMode: RefMode,
+    readTypeInfo: Bool
+) throws -> S.Target {
+    if !serializer.staticTypeId.isUserTypeKind {
+        return try serializer.read(
+            context,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+    }
+    if refMode != .none {
+        let rawFlag = try context.buffer.readInt8()
+        context.buffer.moveBack(1)
+        if rawFlag != RefFlag.refValue.rawValue
+            && rawFlag != RefFlag.notNullValue.rawValue
+        {
+            return try serializer.read(
+                context,
+                refMode: refMode,
+                readTypeInfo: readTypeInfo
+            )
+        }
+    }
+    try context.enterReadDepth()
+    let value = try serializer.read(
+        context,
+        refMode: refMode,
+        readTypeInfo: readTypeInfo
+    )
+    context.leaveReadDepth()
+    return value
+}
+
 @inline(never)
 private func unsupportedDefaultValue<S: Serializer>(_ serializer: S.Type) -> ForyError {
     ForyError.invalidData("\(serializer) does not define a default target value")

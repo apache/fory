@@ -216,7 +216,10 @@ class CollectionSerializer(Serializer):
         serializer = None
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if (collect_flag & COLL_IS_DECL_ELEMENT_TYPE) == 0:
-                typeinfo = self.type_resolver.read_type_info(read_context)
+                typeinfo = self.type_resolver.read_type_info(
+                    read_context,
+                    self.elem_type_info if self.elem_serializer is not None else None,
+                )
                 serializer = typeinfo.serializer
             else:
                 serializer = self.elem_serializer

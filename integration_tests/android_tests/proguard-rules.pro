@@ -19,7 +19,20 @@
   public static void generatedCodecs();
   public static void generatedUnwrapped();
   public static void generatedMixin();
+  public static void generatedSealedMixin();
 }
+
+# Instrumentation invokes this entry point across the target/test APK boundary. KSP's exact
+# consumer rules alone retain the Kotlin metadata and members used at runtime.
+-keep,allowoptimization class org.apache.fory.android.AndroidKotlinJsonScenarios {
+  public static void metadataSurvivesMinification();
+  public static void javaSealedMixinSurvivesMinification();
+}
+
+# The release androidTest APK omits the Kotlin runtime shared with the separately minified target
+# APK. Target R8 cannot see AndroidX Test's reachability, so this cross-APK runtime ABI must retain
+# both its classes and method descriptors. This harness rule is independent of model retention.
+-keep class kotlin.** { *; }
 
 # Equivalent user-authored rules for models that deliberately omit @JsonType.
 -keepattributes Signature,RuntimeVisibleAnnotations

@@ -47,6 +47,7 @@ import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.serializer.collection.PrimitiveListSerializers;
 import org.apache.fory.type.BFloat16Array;
+import org.apache.fory.type.Float16;
 import org.apache.fory.type.Float16Array;
 import org.apache.fory.type.Types;
 import org.apache.fory.util.PrimitiveArrayCompressionType;
@@ -55,6 +56,7 @@ import org.testng.annotations.Test;
 public class GraphMemoryBudgetTest extends ForyTestBase {
   private static final long DEFAULT_GRAPH_MEMORY_BYTES = 128L * 1024 * 1024;
   private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+  private static final int COMPATIBLE_TYPE_ID = 1001;
 
   @Test
   public void testConfigDefaultsAndValidation() {
@@ -380,6 +382,63 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   }
 
   @Test
+  public void testCompatibleListArrayBudget() {
+    LongListWriter writer = new LongListWriter();
+
+    long arrayBytes =
+        GraphMemoryEstimates.shallowObjectBytes(LongArrayReader.class)
+            + primitiveArrayBytes(writer.value.size(), 8);
+    LongArrayReader arrayReader = assertCompatibleBudget(writer, LongArrayReader.class, arrayBytes);
+    assertTrue(Arrays.equals(arrayReader.value, new long[] {1, 2, 3}));
+
+    long primitiveListBytes =
+        GraphMemoryEstimates.shallowObjectBytes(LongPrimitiveListReader.class)
+            + primitiveListBytes(Int64List.class, writer.value.size(), 8);
+    LongPrimitiveListReader listReader =
+        assertCompatibleBudget(writer, LongPrimitiveListReader.class, primitiveListBytes);
+    assertEquals(listReader.value, new Int64List(new long[] {1, 2, 3}));
+
+    Float16ListWriter float16Writer = new Float16ListWriter();
+    long float16ArrayBytes =
+        GraphMemoryEstimates.shallowObjectBytes(Float16ArrayReader.class)
+            + primitiveArrayBytes(float16Writer.value.size(), 2)
+            + GraphMemoryEstimates.shallowObjectBytes(Float16Array.class);
+    Float16ArrayReader float16Reader =
+        assertCompatibleBudget(float16Writer, Float16ArrayReader.class, float16ArrayBytes);
+    assertEquals(float16Reader.value, Float16Array.of(1, 2));
+  }
+
+  @Test
+  public void testCompatibleDenseArrayBudget() {
+    LongArrayWriter longWriter = new LongArrayWriter();
+    long longListBytes =
+        GraphMemoryEstimates.shallowObjectBytes(LongBoxedListReader.class)
+            + Math.max(
+                primitiveArrayBytes(longWriter.value.length, 8),
+                collectionBytes(longWriter.value.length));
+    LongBoxedListReader longListReader =
+        assertCompatibleBudget(longWriter, LongBoxedListReader.class, longListBytes);
+    assertEquals(longListReader.value, Arrays.asList(1L, 2L, 3L));
+
+    BoolArrayWriter boolWriter = new BoolArrayWriter();
+    long boolListBytes =
+        GraphMemoryEstimates.shallowObjectBytes(BoolBoxedListReader.class)
+            + Math.max(
+                primitiveArrayBytes(boolWriter.value.length, 1),
+                collectionBytes(boolWriter.value.length));
+    BoolBoxedListReader boolListReader =
+        assertCompatibleBudget(boolWriter, BoolBoxedListReader.class, boolListBytes);
+    assertEquals(boolListReader.value, Arrays.asList(true, false, true));
+
+    long denseListBytes =
+        GraphMemoryEstimates.shallowObjectBytes(LongPrimitiveListReader.class)
+            + primitiveListBytes(Int64List.class, longWriter.value.length, 8);
+    LongPrimitiveListReader denseListReader =
+        assertCompatibleBudget(longWriter, LongPrimitiveListReader.class, denseListBytes);
+    assertEquals(denseListReader.value, new Int64List(new long[] {1, 2, 3}));
+  }
+
+  @Test
   public void testTruncatedCollectionStillFails() {
     Fory fory = newFory(collectionBytes(3));
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
@@ -465,6 +524,25 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
         .withLongArrayCompressed(true)
         .withLongCompressed(Int64Encoding.VARINT)
         .build();
+  }
+
+  private static Fory compatibleFory(long maxGraphMemoryBytes, Class<?> type) {
+    Fory fory =
+        builder()
+            .withXlang(true)
+            .withCompatible(true)
+            .withCodegen(false)
+            .withMaxGraphMemoryBytes(maxGraphMemoryBytes)
+            .build();
+    fory.register(type, COMPATIBLE_TYPE_ID);
+    return fory;
+  }
+
+  private static <T> T assertCompatibleBudget(Object value, Class<T> type, long required) {
+    byte[] bytes = compatibleFory(DEFAULT_GRAPH_MEMORY_BYTES, value.getClass()).serialize(value);
+    assertThrows(
+        InsecureException.class, () -> compatibleFory(required - 1, type).deserialize(bytes));
+    return type.cast(compatibleFory(required, type).deserialize(bytes));
   }
 
   private static void assertGraphBudget(
@@ -667,5 +745,41 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     public int hashCode() {
       return java.util.Objects.hash(intValue, longValue, name);
     }
+  }
+
+  public static final class LongListWriter {
+    public List<Long> value = Arrays.asList(1L, 2L, 3L);
+  }
+
+  public static final class LongArrayReader {
+    public long[] value;
+  }
+
+  public static final class LongPrimitiveListReader {
+    public Int64List value;
+  }
+
+  public static final class Float16ListWriter {
+    public List<Float16> value = Arrays.asList(Float16.valueOf(1), Float16.valueOf(2));
+  }
+
+  public static final class Float16ArrayReader {
+    public Float16Array value;
+  }
+
+  public static final class LongArrayWriter {
+    public long[] value = {1, 2, 3};
+  }
+
+  public static final class LongBoxedListReader {
+    public List<Long> value;
+  }
+
+  public static final class BoolArrayWriter {
+    public boolean[] value = {true, false, true};
+  }
+
+  public static final class BoolBoxedListReader {
+    public List<Boolean> value;
   }
 }

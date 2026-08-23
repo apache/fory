@@ -209,6 +209,40 @@ public final class Latin1JsonReader extends JsonReader {
     return matches && index == expected.length();
   }
 
+  @Override
+  protected CharSequence decodeQuotedText(int start, int end) {
+    byte[] outBytes = stringDecodeBuffer;
+    int out = 0;
+    int offset = start;
+    while (offset < end) {
+      int raw = input[offset++] & 0xff;
+      char ch;
+      if (raw == '\\') {
+        int escaped = input[offset++] & 0xff;
+        if (escaped == 'u') {
+          ch = scanUnicodeEscape(offset);
+          offset += 4;
+        } else {
+          ch = scanSimpleEscape(escaped, offset - 1);
+        }
+        if (Character.isHighSurrogate(ch)) {
+          offset += 2;
+          char low = scanUnicodeEscape(offset);
+          offset += 4;
+          outBytes = ensureStringDecodeCapacity(outBytes, out + 4);
+          out = putUtf16Char(outBytes, out, ch);
+          out = putUtf16Char(outBytes, out, low);
+          continue;
+        }
+      } else {
+        ch = (char) raw;
+      }
+      outBytes = ensureStringDecodeCapacity(outBytes, out + 2);
+      out = putUtf16Char(outBytes, out, ch);
+    }
+    return decodedQuotedText(outBytes, out, true);
+  }
+
   private int scanEscape(int slash, int inputLength) {
     int cursor = slash + 1;
     if (cursor >= inputLength) {
@@ -478,7 +512,17 @@ public final class Latin1JsonReader extends JsonReader {
     return readBooleanToken();
   }
 
+  private boolean readQuotedBooleanValue() {
+    beginQuotedScalar();
+    boolean value = readBooleanToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   private boolean readBooleanToken() {
+    if (position < input.length && input[position] == '"') {
+      return readQuotedBooleanValue();
+    }
     if (startsWithAscii("true")) {
       position += 4;
       return true;
@@ -505,6 +549,13 @@ public final class Latin1JsonReader extends JsonReader {
     return readIntToken();
   }
 
+  private int readQuotedIntValue() {
+    beginQuotedScalar();
+    int value = readIntToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   private int readIntToken() {
     byte[] bytes = input;
     int offset = position;
@@ -513,6 +564,9 @@ public final class Latin1JsonReader extends JsonReader {
       throw error("Expected digit");
     }
     int ch = bytes[offset];
+    if (ch == '"') {
+      return readQuotedIntValue();
+    }
     if (ch == '-') {
       return readNegativeIntToken(offset);
     }
@@ -639,6 +693,13 @@ public final class Latin1JsonReader extends JsonReader {
     return readLongToken();
   }
 
+  private long readQuotedLongValue() {
+    beginQuotedScalar();
+    long value = readLongToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   private long readLongToken() {
     byte[] bytes = input;
     int offset = position;
@@ -647,6 +708,9 @@ public final class Latin1JsonReader extends JsonReader {
       throw error("Expected digit");
     }
     int ch = bytes[offset];
+    if (ch == '"') {
+      return readQuotedLongValue();
+    }
     if (ch == '-') {
       return readNegativeLongToken(offset);
     }
@@ -805,6 +869,13 @@ public final class Latin1JsonReader extends JsonReader {
     return readBigDecimalToken();
   }
 
+  private BigDecimal readQuotedBigDecimalValue() {
+    beginQuotedScalar();
+    BigDecimal value = readBigDecimalToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   public UUID readUuid() {
     skipWhitespaceFast();
     int mark = position;
@@ -812,7 +883,7 @@ public final class Latin1JsonReader extends JsonReader {
       return readUuidToken();
     } catch (RuntimeException e) {
       position = mark;
-      return UUID.fromString(readStringToken());
+      return parseUuidValue(readQuotedTextValue());
     }
   }
 
@@ -842,6 +913,16 @@ public final class Latin1JsonReader extends JsonReader {
     return readDoubleToken();
   }
 
+  private double readQuotedDoubleValue() {
+    if (isQuotedNonFiniteNumber()) {
+      return readNonFiniteDoubleLiteral();
+    }
+    beginQuotedScalar();
+    double value = readDoubleToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   public float readNextFloatValue() {
     if (position < input.length) {
       int ch = input[position];
@@ -856,6 +937,16 @@ public final class Latin1JsonReader extends JsonReader {
     return readFloatToken();
   }
 
+  private float readQuotedFloatValue() {
+    if (isQuotedNonFiniteNumber()) {
+      return readNonFiniteFloatLiteral();
+    }
+    beginQuotedScalar();
+    float value = readFloatToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   private BigDecimal readBigDecimalToken() {
     byte[] bytes = input;
     int offset = position;
@@ -865,6 +956,9 @@ public final class Latin1JsonReader extends JsonReader {
       return readBigDecimalFallback(start);
     }
     int ch = bytes[offset];
+    if (ch == '"') {
+      return readQuotedBigDecimalValue();
+    }
     if (ch == '-') {
       return readSignedBigDecimalToken(start);
     }
@@ -1040,6 +1134,9 @@ public final class Latin1JsonReader extends JsonReader {
       return readDoubleFallback(offset);
     }
     int ch = bytes[offset];
+    if (ch == '"') {
+      return readQuotedDoubleValue();
+    }
     if (ch == '-') {
       return readSignedDoubleToken(offset);
     }
@@ -1054,6 +1151,9 @@ public final class Latin1JsonReader extends JsonReader {
       return readFloatFallback(offset);
     }
     int ch = bytes[offset];
+    if (ch == '"') {
+      return readQuotedFloatValue();
+    }
     if (ch == '-') {
       return readSignedFloatToken(offset);
     }
@@ -1818,7 +1918,7 @@ public final class Latin1JsonReader extends JsonReader {
       return value;
     }
     position = mark;
-    return readIsoLocalDateFallback(readStringToken());
+    return readIsoLocalDateFallback(readQuotedTextValue());
   }
 
   public OffsetDateTime readIsoOffsetDateTime() {
@@ -1829,7 +1929,7 @@ public final class Latin1JsonReader extends JsonReader {
       return value;
     }
     position = mark;
-    return readIsoOffsetDateTimeFallback(readStringToken());
+    return readIsoOffsetDateTimeFallback(readQuotedTextValue());
   }
 
   private String readStringToken() {

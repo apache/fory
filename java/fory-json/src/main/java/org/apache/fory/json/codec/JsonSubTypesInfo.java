@@ -81,13 +81,27 @@ public final class JsonSubTypesInfo {
     }
   }
 
-  int classIndex(Class<?> type) {
+  /** Returns the exact class slot, or {@code -1} when the class is outside this table. */
+  @Internal
+  public int classIndex(Class<?> type) {
     for (int i = 0; i < classes.length; i++) {
       if (classes[i] == type) {
         return i;
       }
     }
     return -1;
+  }
+
+  /** Returns the number of exact branches in this table. */
+  @Internal
+  public int size() {
+    return classes.length;
+  }
+
+  /** Returns a snapshot of the exact accepted classes. */
+  @Internal
+  public Class<?>[] classes() {
+    return classes.clone();
   }
 
   private static byte[] join(byte[] left, byte[] right) {

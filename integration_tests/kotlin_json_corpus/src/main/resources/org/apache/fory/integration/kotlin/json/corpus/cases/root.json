@@ -1,0 +1,9 @@
+{
+  "account": { "id": 1, "name": "default" },
+  "id": 9,
+  "unsigned": 4294967295,
+  "shape": { "kind": "PlatformCircle", "radius": 3 },
+  "profile": { "display_label": "mixin" },
+  "token": "custom",
+  "box": { "value": "generic" }
+}

@@ -200,11 +200,12 @@ public class ChildContainerSerializersTest extends ForyTestBase {
             () -> readLayerSerializer.invoke(null, refReadContext, resolver, localSerializer));
     Assert.assertTrue(refError.getCause() instanceof ForyException);
 
-    Field remoteTypeDefById = SharedRegistry.class.getDeclaredField("remoteTypeDefById");
-    remoteTypeDefById.setAccessible(true);
+    Field remoteTypeDefByHeaderHash =
+        SharedRegistry.class.getDeclaredField("remoteTypeDefByHeaderHash");
+    remoteTypeDefByHeaderHash.setAccessible(true);
     Map<Long, TypeDef> remoteTypeDefs =
-        (Map<Long, TypeDef>) remoteTypeDefById.get(resolver.getSharedRegistry());
-    Assert.assertFalse(remoteTypeDefs.containsKey(wrongTypeDef.getId()));
+        (Map<Long, TypeDef>) remoteTypeDefByHeaderHash.get(resolver.getSharedRegistry());
+    Assert.assertFalse(remoteTypeDefs.containsKey(TypeDef.headerHash(wrongTypeDef.getId())));
 
     MetaReadContext bodyMetaContext = new MetaReadContext();
     MemoryBuffer bodyBuffer = MemoryUtils.buffer(256);
@@ -218,8 +219,118 @@ public class ChildContainerSerializersTest extends ForyTestBase {
             InvocationTargetException.class,
             () -> readLayerSerializer.invoke(null, bodyReadContext, resolver, localSerializer));
     Assert.assertTrue(bodyError.getCause() instanceof ForyException);
-    Assert.assertFalse(remoteTypeDefs.containsKey(wrongTypeDef.getId()));
+    Assert.assertFalse(remoteTypeDefs.containsKey(TypeDef.headerHash(wrongTypeDef.getId())));
     Assert.assertEquals(bodyMetaContext.readTypeInfos.size, 0);
+  }
+
+  @Test
+  public void testLayerHeaderHashHit() throws Exception {
+    Fory fory =
+        builder()
+            .withRefTracking(false)
+            .withCodegen(false)
+            .withCompatible(true)
+            .withMetaShare(true)
+            .build();
+    TypeResolver resolver = fory.getTypeResolver();
+    TypeDef localTypeDef = resolver.getTypeDef(ChildHashMap1.class, false);
+    TypeDef remoteTypeDef = resolver.getTypeDef(ChildHashMap2.class, false);
+    CompatibleLayerSerializerBase localSerializer =
+        new CompatibleLayerSerializer<>(
+            resolver,
+            ChildHashMap1.class,
+            localTypeDef,
+            LayerMarkerClassGenerator.getOrCreate(ChildHashMap1.class, 0));
+    Method readLayerSerializer =
+        ChildContainerSerializers.class.getDeclaredMethod(
+            "readLayerSerializer",
+            ReadContext.class,
+            TypeResolver.class,
+            CompatibleLayerSerializerBase.class);
+    readLayerSerializer.setAccessible(true);
+    Field remoteTypeDefByHeaderHash =
+        SharedRegistry.class.getDeclaredField("remoteTypeDefByHeaderHash");
+    remoteTypeDefByHeaderHash.setAccessible(true);
+    Map<Long, TypeDef> remoteTypeDefs =
+        (Map<Long, TypeDef>) remoteTypeDefByHeaderHash.get(resolver.getSharedRegistry());
+    long headerHash = TypeDef.headerHash(localTypeDef.getId());
+    remoteTypeDefs.put(headerHash, remoteTypeDef);
+
+    MemoryBuffer body = layerFrame(localTypeDef, 7, 7);
+    ReadContext readContext = fory.getReadContext();
+    readContext.setMetaReadContext(new MetaReadContext());
+    readContext.prepare(body, null, false);
+    CompatibleLayerSerializerBase result =
+        (CompatibleLayerSerializerBase)
+            readLayerSerializer.invoke(null, readContext, resolver, localSerializer);
+
+    Assert.assertSame(result.getLayerTypeDef(), localTypeDef);
+    Assert.assertEquals(body.readerIndex(), body.size());
+
+    MemoryBuffer truncated = layerFrame(localTypeDef, 9, 8);
+    ReadContext truncatedContext = fory.getReadContext();
+    truncatedContext.setMetaReadContext(new MetaReadContext());
+    truncatedContext.prepare(truncated, null, false);
+    InvocationTargetException error =
+        Assert.expectThrows(
+            InvocationTargetException.class,
+            () -> readLayerSerializer.invoke(null, truncatedContext, resolver, localSerializer));
+    Assert.assertTrue(error.getCause() instanceof IndexOutOfBoundsException);
+  }
+
+  @Test
+  public void testCheckedLayerOwnerMismatch() throws Exception {
+    Fory fory =
+        builder()
+            .withRefTracking(false)
+            .withCodegen(false)
+            .withCompatible(true)
+            .withMetaShare(true)
+            .build();
+    TypeResolver resolver = fory.getTypeResolver();
+    TypeDef localTypeDef = resolver.getTypeDef(ChildHashMap1.class, false);
+    TypeDef remoteTypeDef = resolver.getTypeDef(ChildHashMap2.class, false);
+    CompatibleLayerSerializerBase localSerializer =
+        new CompatibleLayerSerializer<>(
+            resolver,
+            ChildHashMap1.class,
+            localTypeDef,
+            LayerMarkerClassGenerator.getOrCreate(ChildHashMap1.class, 0));
+    Method readLayerSerializer =
+        ChildContainerSerializers.class.getDeclaredMethod(
+            "readLayerSerializer",
+            ReadContext.class,
+            TypeResolver.class,
+            CompatibleLayerSerializerBase.class);
+    readLayerSerializer.setAccessible(true);
+    Field remoteTypeDefByHeaderHash =
+        SharedRegistry.class.getDeclaredField("remoteTypeDefByHeaderHash");
+    remoteTypeDefByHeaderHash.setAccessible(true);
+    Map<Long, TypeDef> remoteTypeDefs =
+        (Map<Long, TypeDef>) remoteTypeDefByHeaderHash.get(resolver.getSharedRegistry());
+    remoteTypeDefs.put(TypeDef.headerHash(remoteTypeDef.getId()), remoteTypeDef);
+
+    MemoryBuffer body = layerFrame(remoteTypeDef, 4, 4);
+    ReadContext readContext = fory.getReadContext();
+    readContext.setMetaReadContext(new MetaReadContext());
+    readContext.prepare(body, null, false);
+    InvocationTargetException error =
+        Assert.expectThrows(
+            InvocationTargetException.class,
+            () -> readLayerSerializer.invoke(null, readContext, resolver, localSerializer));
+
+    Assert.assertTrue(error.getCause() instanceof ForyException);
+  }
+
+  private static MemoryBuffer layerFrame(
+      TypeDef typeDef, int declaredBodySize, int writtenBodySize) {
+    MemoryBuffer buffer = MemoryUtils.buffer(writtenBodySize + 16);
+    buffer.writeVarUInt32(0);
+    buffer.writeInt64((typeDef.getId() & ~0xfffL) | declaredBodySize);
+    for (int i = 0; i < writtenBodySize; i++) {
+      buffer.writeByte(0);
+    }
+    return MemoryBuffer.fromByteArray(buffer.getBytes(0, buffer.writerIndex()));
   }
 
   @Test(dataProvider = "foryCopyConfig")

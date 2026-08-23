@@ -194,6 +194,9 @@
                         <exclude name="module-info.class"/>
                       </fileset>
                     </copy>
+                    <copy todir="${fory.json.java9.test.classes}" overwrite="true">
+                      <fileset dir="${fory.json.mr.classes}/17" erroronmissingdir="false"/>
+                    </copy>
                   </target>
                 </configuration>
               </execution>
@@ -254,6 +257,35 @@
                       <classpath>
                         <path refid="maven.compile.classpath"/>
                         <pathelement location="${project.build.outputDirectory}"/>
+                      </classpath>
+                      <compilerarg value="--release"/>
+                      <compilerarg value="17"/>
+                      <compilerarg value="-sourcepath"/>
+                      <compilerarg value=""/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>compile-java17-tests</id>
+                <phase>test-compile</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <skip>${maven.test.skip}</skip>
+                  <target>
+                    <javac srcdir="${project.basedir}/src/test/java17"
+                           destdir="${project.build.testOutputDirectory}"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="org/**/*.java"/>
+                      <classpath>
+                        <path refid="maven.test.classpath"/>
+                        <pathelement location="${project.build.outputDirectory}"/>
+                        <pathelement location="${fory.json.mr.classes}/17"/>
                       </classpath>
                       <compilerarg value="--release"/>
                       <compilerarg value="17"/>
@@ -424,6 +456,9 @@
                       <fileset dir="${fory.json.mr.classes}/9">
                         <exclude name="module-info.class"/>
                       </fileset>
+                    </copy>
+                    <copy todir="${fory.json.jdk25.test.classes}" overwrite="true">
+                      <fileset dir="${fory.json.mr.classes}/17" erroronmissingdir="false"/>
                     </copy>
                     <copy todir="${fory.json.jdk25.test.classes}" overwrite="true">
                       <fileset dir="${fory.json.mr.classes}/25">

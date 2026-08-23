@@ -34,7 +34,6 @@ import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.UUID;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonConfig;
@@ -195,6 +194,18 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       grow(20);
     }
     writeLongNoEnsure(value);
+  }
+
+  @Override
+  public void writeUnsignedLong(long value) {
+    if (value >= 0) {
+      writeLong(value);
+      return;
+    }
+    long quotient = Long.divideUnsigned(value, 10);
+    int remainder = (int) Long.remainderUnsigned(value, 10);
+    writeLong(quotient);
+    buffer[position++] = (byte) ('0' + remainder);
   }
 
   @Override
@@ -438,26 +449,51 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   @Override
-  public void writeUuid(UUID value) {
+  public void writeUuid(long high, long low) {
     int pos = position;
     if (pos + 38 > buffer.length) {
       grow(38);
     }
     byte[] bytes = buffer;
     bytes[pos++] = (byte) '"';
-    long high = value.getMostSignificantBits();
     pos = writeHex(bytes, pos, high, 60, 8);
     bytes[pos++] = (byte) '-';
     pos = writeHex(bytes, pos, high, 28, 4);
     bytes[pos++] = (byte) '-';
     pos = writeHex(bytes, pos, high, 12, 4);
-    long low = value.getLeastSignificantBits();
     bytes[pos++] = (byte) '-';
     pos = writeHex(bytes, pos, low, 60, 4);
     bytes[pos++] = (byte) '-';
     pos = writeHex(bytes, pos, low, 44, 12);
     bytes[pos++] = (byte) '"';
     position = pos;
+  }
+
+  @Override
+  public void writeIsoInstant(long epochSecond, int nano) {
+    long date = isoDate(epochSecond, nano);
+    int secondOfDay = (int) Math.floorMod(epochSecond, 86_400);
+    int hour = secondOfDay / 3600;
+    int minute = (secondOfDay - hour * 3600) / 60;
+    int second = secondOfDay - hour * 3600 - minute * 60;
+    writeByteRaw((byte) '"');
+    writeIsoYear((int) (date >> 32));
+    writeByteRaw((byte) '-');
+    writeTwoDigitsValue((int) ((date >>> 16) & 0xffff));
+    writeByteRaw((byte) '-');
+    writeTwoDigitsValue((int) date & 0xffff);
+    writeByteRaw((byte) 'T');
+    writeTwoDigitsValue(hour);
+    writeByteRaw((byte) ':');
+    writeTwoDigitsValue(minute);
+    writeByteRaw((byte) ':');
+    writeTwoDigitsValue(second);
+    if (nano != 0) {
+      writeByteRaw((byte) '.');
+      writeNano(nano);
+    }
+    writeByteRaw((byte) 'Z');
+    writeByteRaw((byte) '"');
   }
 
   @Override
@@ -584,8 +620,51 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeDuration(Duration value) {
+    long totalSeconds = value.getSeconds();
+    int nanos = value.getNano();
+    if (totalSeconds >= 0) {
+      long hours = totalSeconds / 3600;
+      int minutes = (int) (totalSeconds % 3600 / 60);
+      int seconds = (int) (totalSeconds % 60);
+      if (matchesIsoDurationShape(hours, minutes, seconds, nanos)) {
+        writeIsoDuration(false, false, hours, minutes, seconds, nanos);
+        return;
+      }
+    }
     writeByteRaw((byte) '"');
     writeDurationBody(value);
+    writeByteRaw((byte) '"');
+  }
+
+  @Override
+  public void writeIsoDuration(
+      boolean infinite, boolean negative, long hours, int minutes, int seconds, int nanos) {
+    checkIsoDuration(infinite, negative, hours, minutes, seconds, nanos);
+    writeByteRaw((byte) '"');
+    if (negative) {
+      writeByteRaw((byte) '-');
+    }
+    writeAscii("PT");
+    long outputHours = infinite ? 9_999_999_999_999L : hours;
+    boolean hasHours = outputHours != 0;
+    boolean hasSeconds = seconds != 0 || nanos != 0;
+    boolean hasMinutes = minutes != 0 || hasSeconds && hasHours;
+    if (hasHours) {
+      writeLong(outputHours);
+      writeByteRaw((byte) 'H');
+    }
+    if (hasMinutes) {
+      writeInt(minutes);
+      writeByteRaw((byte) 'M');
+    }
+    if (hasSeconds || !hasHours && !hasMinutes) {
+      writeInt(seconds);
+      if (nanos != 0) {
+        writeByteRaw((byte) '.');
+        writeNano(nanos);
+      }
+      writeByteRaw((byte) 'S');
+    }
     writeByteRaw((byte) '"');
   }
 
@@ -738,6 +817,16 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeRaw(index == 0 ? field.utf8NamePrefix() : field.utf8CommaNamePrefix());
   }
 
+  public void writeNullField(long prefix0, long prefix1, int prefixLength) {
+    int additional = Math.max(packedPrefixSize(prefixLength), prefixLength + 4);
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+    LittleEndian.putInt32(buffer, position, 0x6c6c756e);
+    position += 4;
+  }
+
   @Override
   public void writeIntFieldName(int value) {
     writeByteRaw((byte) '"');
@@ -750,6 +839,14 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   public void writeLongFieldName(long value) {
     writeByteRaw((byte) '"');
     writeLong(value);
+    writeByteRaw((byte) '"');
+    writeByteRaw((byte) ':');
+  }
+
+  @Override
+  public void writeUnsignedLongFieldName(long value) {
+    writeByteRaw((byte) '"');
+    writeUnsignedLong(value);
     writeByteRaw((byte) '"');
     writeByteRaw((byte) ':');
   }
@@ -1602,6 +1699,60 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       }
     }
     writeByteRaw((byte) '"');
+  }
+
+  private void writeIsoYear(int year) {
+    if (year >= 0 && year <= 9999) {
+      writePadded4Value(year);
+    } else if (year > 9999) {
+      writeByteRaw((byte) '+');
+      writeInt(year);
+    } else if (year >= -9999) {
+      writeByteRaw((byte) '-');
+      writePadded4Value(-year);
+    } else {
+      writeInt(year);
+    }
+  }
+
+  private void writePadded4Value(int value) {
+    if (position + 4 > buffer.length) {
+      grow(4);
+    }
+    position = writePadded4(buffer, position, value);
+  }
+
+  private void writeTwoDigitsValue(int value) {
+    int high = value / 10;
+    writeByteRaw((byte) ('0' + high));
+    writeByteRaw((byte) ('0' + value - high * 10));
+  }
+
+  private void writeNano(int nano) {
+    if (nano % 1_000_000 == 0) {
+      writePadded3Value(nano / 1_000_000);
+      return;
+    }
+    if (nano % 1000 == 0) {
+      int micros = nano / 1000;
+      int high = micros / 1000;
+      writePadded3Value(high);
+      writePadded3Value(micros - high * 1000);
+      return;
+    }
+    int first = nano / 100_000_000;
+    int remainder = nano - first * 100_000_000;
+    int middle = remainder / 10_000;
+    writeByteRaw((byte) ('0' + first));
+    writePadded4Value(middle);
+    writePadded4Value(remainder - middle * 10_000);
+  }
+
+  private void writePadded3Value(int value) {
+    if (position + 3 > buffer.length) {
+      grow(3);
+    }
+    position = writePadded3(buffer, position, value);
   }
 
   private void writeDurationBody(Duration value) {

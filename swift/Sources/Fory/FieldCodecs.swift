@@ -551,11 +551,16 @@ public enum SerializerCodec<S: Serializer>: FieldCodec {
     @inline(__always)
     public static func readFieldData(_ context: ReadContext) throws -> Target {
         if S.staticTypeId.isUserTypeKind {
-            return try S.read(
+            // Field and carrier envelopes have already handled null/ref short-circuits.
+            // TypeInfo-owned dispatch bypasses this adapter and accounts for itself.
+            try context.enterReadDepth()
+            let value = try S.read(
                 context,
                 refMode: .none,
                 readTypeInfo: false
             )
+            context.leaveReadDepth()
+            return value
         }
         return try S.readData(context)
     }
@@ -599,7 +604,7 @@ public enum SerializerCodec<S: Serializer>: FieldCodec {
         _ context: ReadContext,
         refMode: RefMode
     ) throws -> Target {
-        try S.read(
+        try readField(
             context,
             refMode: refMode,
             readTypeInfo: TypeId.needsTypeInfoForField(S.staticTypeId)
@@ -612,10 +617,8 @@ public enum SerializerCodec<S: Serializer>: FieldCodec {
         refMode: RefMode,
         readTypeInfo: Bool
     ) throws -> Target {
-        try S.read(
-            context,
-            refMode: refMode,
-            readTypeInfo: readTypeInfo
+        try readNestedField(
+            context, serializer: S.self, refMode: refMode, readTypeInfo: readTypeInfo
         )
     }
 }

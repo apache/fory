@@ -25,7 +25,6 @@ import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -717,8 +716,8 @@ public class ChildContainerSerializers {
       checkLayerTypeDef(localSerializer, typeInfo.getTypeDef());
       return getLayerSerializer(typeResolver, localSerializer, typeInfo);
     }
-    long id = buffer.readInt64();
-    TypeInfo typeInfo = readLayerTypeInfo(typeResolver, buffer, localSerializer, id);
+    long typeDefHeader = buffer.readInt64();
+    TypeInfo typeInfo = readLayerTypeInfo(typeResolver, buffer, localSerializer, typeDefHeader);
     metaReadContext.readTypeInfos.add(typeInfo);
     return getLayerSerializer(typeResolver, localSerializer, typeInfo);
   }
@@ -727,20 +726,31 @@ public class ChildContainerSerializers {
       TypeResolver typeResolver,
       MemoryBuffer buffer,
       CompatibleLayerSerializerBase localSerializer,
-      long typeDefId) {
+      long typeDefHeader) {
     TypeDef localTypeDef = localSerializer.getLayerTypeDef();
-    byte[] encoded = TypeDef.readTypeDefBytes(typeResolver, buffer, typeDefId);
+    long headerHash = TypeDef.headerHash(typeDefHeader);
     Class<?> layerClass = localSerializer.getType();
-    typeResolver.checkClassForDeserialization(layerClass);
     TypeDef typeDef;
-    if (Arrays.equals(encoded, localTypeDef.getEncoded())) {
+    if (TypeDef.headerHash(localTypeDef.getId()) == headerHash) {
+      TypeDef.skipTypeDef(buffer, typeDefHeader);
       typeDef = localTypeDef;
     } else {
+      typeDef = typeResolver.getCheckedRemoteTypeDef(headerHash);
+      if (typeDef != null) {
+        checkLayerTypeDef(localSerializer, typeDef);
+        TypeDef.skipTypeDef(buffer, typeDefHeader);
+        return new TypeInfo(layerClass, typeDef);
+      }
+      byte[] encoded = TypeDef.readTypeDefBytes(typeResolver, buffer, typeDefHeader);
+      typeResolver.checkClassForDeserialization(layerClass);
       typeDef = TypeDef.readTypeDef(typeResolver, encoded);
       // The local slot is the layer identity owner. Reject a different root before publishing its
       // metadata to the checked remote TypeDef cache.
       checkLayerTypeDef(localSerializer, typeDef);
       typeDef = typeResolver.cacheRemoteTypeDef(typeDef);
+      // A competing checked publication is already validated. Only its concrete layer owner must
+      // still match this child-container serializer.
+      checkLayerTypeDef(localSerializer, typeDef);
     }
     return new TypeInfo(layerClass, typeDef);
   }

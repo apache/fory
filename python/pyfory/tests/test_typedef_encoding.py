@@ -41,6 +41,7 @@ from pyfory.meta.typedef import (
     DynamicFieldType,
     FIELD_NAME_ENCODINGS,
     COMPRESS_META_FLAG,
+    RESERVED_META_FLAGS,
     REGISTER_BY_NAME_FLAG,
     STRUCT_TYPEDEF_FLAG,
     META_SIZE_MASKS,
@@ -48,6 +49,7 @@ from pyfory.meta.typedef import (
     TYPEDEF_HASH_SHIFT,
     _INT64_MIN,
     _UINT64_MASK,
+    _typedef_hash_key,
     plan_field_assignment,
 )
 from pyfory.meta.typedef_encoder import (
@@ -515,7 +517,7 @@ def test_remote_schema_limit_rejects_extra_versions(xlang):
     second_header = Buffer(second_typedef).read_int64()
     with pytest.raises(ValueError, match="max_schema_versions_per_type"):
         _read_remote_typedef(reader, second_type_id, second_typedef)
-    assert second_header not in reader.type_resolver._meta_shared_type_info
+    assert _typedef_hash_key(second_header) not in reader.type_resolver._meta_shared_type_info
 
 
 @pytest.mark.parametrize("xlang", [False, True])
@@ -573,7 +575,7 @@ def test_remote_type_key_cap():
     assert resolver._remote_schema_versions_by_type == accepted_before
     assert resolver._total_accepted_schema_versions == total_before
     assert resolver._meta_shared_type_info == cache_before
-    assert header not in resolver._meta_shared_type_info
+    assert _typedef_hash_key(header) not in resolver._meta_shared_type_info
 
     resolver._record_remote_type_def(existing_key)
     assert len(resolver._remote_schema_versions_by_type) == _MAX_REMOTE_TYPE_DEF_KEYS
@@ -631,13 +633,95 @@ def test_remote_key_cap_cache_hit():
     )
     header = Buffer(encoded).read_int64()
     cached_typeinfo = object()
-    resolver._meta_shared_type_info[header] = cached_typeinfo
+    resolver._meta_shared_type_info[_typedef_hash_key(header)] = cached_typeinfo
     buffer = Buffer(encoded)
 
     assert resolver._read_and_build_type_info(buffer) is cached_typeinfo
     assert buffer.get_reader_index() == len(encoded)
     assert len(resolver._remote_schema_versions_by_type) == (_MAX_REMOTE_TYPE_DEF_KEYS)
     assert resolver._total_accepted_schema_versions == _MAX_REMOTE_TYPE_DEF_KEYS
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_typedef_cache_uses_top52(xlang):
+    reader = Fory(xlang=xlang, strict=False, compatible=True)
+    remote = make_dataclass("Top52Remote", [("value", int)])
+    type_id, encoded = _remote_typedef(xlang, "security.Top52Remote", remote)
+    typeinfo = _read_remote_typedef(reader, type_id, encoded)
+    original_header = Buffer(encoded).read_int64()
+    hash_key = _typedef_hash_key(original_header)
+    body = b"new"
+    header_bits = (hash_key << TYPEDEF_HASH_SHIFT) | RESERVED_META_FLAGS | COMPRESS_META_FLAG | len(body)
+
+    assert typeinfo.cls is pyfory.UnknownStruct
+    assert (header_bits & 0xFFF) != (original_header & 0xFFF)
+    assert _read_remote_typedef(reader, type_id, _typedef_frame(header_bits, body)) is typeinfo
+    assert reader.type_resolver._meta_shared_type_info[hash_key] is typeinfo
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_typedef_hit_checks_length(xlang):
+    reader = Fory(xlang=xlang, strict=False, compatible=True)
+    remote = make_dataclass("TruncatedTop52Remote", [("value", int)])
+    type_id, encoded = _remote_typedef(xlang, "security.TruncatedTop52Remote", remote)
+    _read_remote_typedef(reader, type_id, encoded)
+    hash_key = _typedef_hash_key(Buffer(encoded).read_int64())
+    truncated = _typedef_frame((hash_key << TYPEDEF_HASH_SHIFT) | 32, b"short")
+
+    # The concrete Buffer error is not an API contract; the hit must still use
+    # the current frame length for its bounds check instead of parsing the body.
+    with pytest.raises(Exception):
+        _read_remote_typedef(reader, type_id, truncated)
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_typedef_cache_signed_header(xlang):
+    reader = Fory(xlang=xlang, strict=False, compatible=True)
+    remote = make_dataclass("SignedTop52Remote", [("value", int)])
+    type_id, encoded = _remote_typedef(xlang, "security.SignedTop52Remote", remote)
+    typeinfo = _read_remote_typedef(reader, type_id, encoded)
+    hash_key = (1 << 51) | 0x123456789AB
+    body = b"hit"
+    header_bits = (hash_key << TYPEDEF_HASH_SHIFT) | len(body)
+    signed_header = _signed_int64(header_bits)
+    reader.type_resolver._meta_shared_type_info[hash_key] = typeinfo
+
+    assert signed_header < 0
+    assert _typedef_hash_key(signed_header) == hash_key
+    assert _read_remote_typedef(reader, type_id, _typedef_frame(header_bits, body)) is typeinfo
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_local_top52_cold_hit(xlang):
+    reader = Fory(
+        xlang=xlang,
+        strict=False,
+        compatible=True,
+        max_schema_versions_per_type=1,
+    )
+    reader.register(SimpleTypeDef, name="security.LocalTop52")
+    local_typeinfo = reader.type_resolver.get_type_info(SimpleTypeDef)
+    received = local_typeinfo.type_def.encoded
+    local_encoded = bytearray(received)
+    local_encoded[-1] ^= 1
+    local_typeinfo.type_def.encoded = bytes(local_encoded)
+    header = Buffer(received).read_int64()
+    local_header = Buffer(local_typeinfo.type_def.encoded).read_int64()
+    type_id, _ = reader.type_resolver.get_registered_type_ids(SimpleTypeDef)
+
+    assert received[8:] != local_typeinfo.type_def.encoded[8:]
+    assert _typedef_hash_key(header) == _typedef_hash_key(local_header)
+    assert reader.type_resolver._meta_shared_type_info == {}
+    assert _read_remote_typedef(reader, type_id, received) is local_typeinfo
+    assert _typedef_hash_key(header) not in reader.type_resolver._meta_shared_type_info
+
+    # With a one-version limit, accepting this distinct schema proves that the
+    # preceding local hash hit did not consume the remote-version allowance.
+    remote_v2 = make_dataclass("LocalTop52V2", [("value", int), ("extra", int)])
+    v2_type_id, v2_encoded = _remote_typedef(xlang, "security.LocalTop52", remote_v2)
+    v2_typeinfo = _read_remote_typedef(reader, v2_type_id, v2_encoded)
+    assert v2_typeinfo is not local_typeinfo
+    assert v2_typeinfo.cls is SimpleTypeDef
 
 
 @pytest.mark.skipif(
@@ -695,13 +779,13 @@ def test_unknown_typedef_cached_and_counted():
     assert typeinfo.decode_typename() == "CachedUnknown"
     assert typeinfo.cls is pyfory.UnknownStruct
     assert typeinfo.type_def.cls is pyfory.UnknownStruct
-    assert resolver._meta_shared_type_info[header] is typeinfo
+    assert resolver._meta_shared_type_info[_typedef_hash_key(header)] is typeinfo
     assert resolver._remote_schema_versions_by_type == {("security", "CachedUnknown"): 1}
     assert resolver._total_accepted_schema_versions == 1
 
 
 @pytest.mark.parametrize("xlang", [False, True])
-def test_exact_local_struct_typedef_populates_cache(xlang):
+def test_exact_local_struct_skips_cache(xlang):
     reader = Fory(
         xlang=xlang,
         strict=False,
@@ -715,12 +799,16 @@ def test_exact_local_struct_typedef_populates_cache(xlang):
 
     type_info = _read_remote_typedef(reader, type_id, encoded)
     assert type_info.cls is SimpleTypeDef
-    assert reader.type_resolver._meta_shared_type_info[header].cls is SimpleTypeDef
+    hash_key = _typedef_hash_key(header)
+    assert hash_key not in reader.type_resolver._meta_shared_type_info
+    assert reader.type_resolver._local_type_info_by_hash[hash_key] is type_info
 
     invalid_body = bytearray(encoded)
     invalid_body[-1] ^= 1
-    type_info = _read_remote_typedef(reader, type_id, bytes(invalid_body))
-    assert type_info.cls is SimpleTypeDef
+    cached_type_info = _read_remote_typedef(reader, type_id, bytes(invalid_body))
+    assert cached_type_info is type_info
+    assert reader.read_context.buffer.get_reader_index() == len(encoded) + 2
+    assert hash_key not in reader.type_resolver._meta_shared_type_info
 
 
 @pytest.mark.parametrize("xlang", [False, True])
@@ -828,6 +916,17 @@ def _read_remote_typedef(fory, type_id, encoded):
     fory.read_context.reset()
     fory.read_context.prepare(Buffer(buffer.to_bytes()))
     return fory.type_resolver.read_type_info(fory.read_context)
+
+
+def _signed_int64(value):
+    return value if value < (1 << 63) else value - (1 << 64)
+
+
+def _typedef_frame(header_bits, body):
+    buffer = Buffer.allocate(len(body) + 8)
+    buffer.write_int64(_signed_int64(header_bits))
+    buffer.write_bytes(body)
+    return buffer.to_bytes()
 
 
 def _corrupt_encoded_field_name(typedef, field_name):

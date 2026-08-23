@@ -193,7 +193,7 @@ pub struct MetaStringReaderResolver {
     // `dynamic_read` stores raw pointers into these Box owners (or the static empty value).
     // Boxes keep pointees stable across map/vector growth, and reset invalidates every pointer
     // before dropping a root owner.
-    hash_to_meta_string_bytes: HashMap<(i64, usize), Box<MetaStringBytes>>,
+    hash_to_meta_string_bytes: HashMap<i64, Box<MetaStringBytes>>,
     long_long_byte_map: HashMap<(u64, u64, usize, u8), Box<MetaStringBytes>>,
     #[allow(clippy::vec_box)]
     root_meta_string_bytes: Vec<Box<MetaStringBytes>>,
@@ -284,10 +284,9 @@ impl MetaStringReaderResolver {
         hash_code: i64,
     ) -> Result<&MetaStringBytes, Error> {
         self.check_dynamic_read_capacity()?;
-        let key = (hash_code, len);
-        if let Some(mb) = self.hash_to_meta_string_bytes.get(&key) {
-            // The hash-length key identifies bytes validated on the cache miss. A hit can skip
-            // the redundant body without hashing, allocation, or policy work.
+        if let Some(mb) = self.hash_to_meta_string_bytes.get(&hash_code) {
+            // The wire hash is the complete identity of a checked big meta string. The current
+            // frame length controls only the bounds-checked skip and never reopens validation.
             reader.skip(len)?;
             let ptr = mb.as_ref() as *const MetaStringBytes;
             self.update_dynamic_read(ptr);
@@ -304,7 +303,7 @@ impl MetaStringReaderResolver {
         if len <= Self::MAX_CACHED_READ_META_STRING_LENGTH
             && self.cached_meta_string_count() < Self::MAX_CACHED_READ_META_STRINGS
         {
-            self.hash_to_meta_string_bytes.insert(key, owner);
+            self.hash_to_meta_string_bytes.insert(hash_code, owner);
         } else {
             self.root_meta_string_bytes.push(owner);
         }

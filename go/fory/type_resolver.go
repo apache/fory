@@ -18,7 +18,6 @@
 package fory
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -184,7 +183,7 @@ type TypeResolver struct {
 
 	// meta share related
 	typeToTypeDef               map[reflect.Type]*TypeDef
-	defIdToTypeDef              map[int64]*TypeDef
+	defIdToTypeDef              map[uint64]*TypeDef
 	remoteSchemaVersionsByType  map[any]int
 	totalAcceptedSchemaVersions int64
 
@@ -226,7 +225,7 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		typeNameDecoder:  meta.NewDecoder('$', '_'),
 
 		typeToTypeDef:              make(map[reflect.Type]*TypeDef),
-		defIdToTypeDef:             make(map[int64]*TypeDef),
+		defIdToTypeDef:             make(map[uint64]*TypeDef),
 		remoteSchemaVersionsByType: make(map[any]int),
 		typePointerCache:           make(map[uintptr]*TypeInfo),
 		unionTypeCache:             make(map[reflect.Type]bool),
@@ -1485,7 +1484,9 @@ func (r *TypeResolver) recordRemoteTypeDef(typeKey any) {
 	r.totalAcceptedSchemaVersions++
 }
 
-func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeInfo {
+func (r *TypeResolver) readSharedTypeMeta(
+	buffer *ByteBuffer, expectedType reflect.Type, err *Error,
+) *TypeInfo {
 	context := r.fory.MetaContext()
 	if context == nil {
 		err.SetError(fmt.Errorf("MetaContext is nil - ensure compatible mode is enabled"))
@@ -1514,6 +1515,12 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 			err.SetError(fmt.Errorf("TypeInfo at index %d has nil Serializer (type=%v, typeID=%d)", index, info.Type, info.TypeID))
 			return nil
 		}
+		if expectedType != nil {
+			serializerForConcreteType(expectedType, info, err)
+			if err.HasError() {
+				return nil
+			}
+		}
 
 		return info
 	}
@@ -1523,16 +1530,38 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 	if err.HasError() {
 		return nil
 	}
+	identity := typeDefIdentity(id)
 
 	var td *TypeDef
-	if existingTd, exists := r.defIdToTypeDef[id]; exists {
-		// Header-cache hits intentionally skip without rehashing. Entries reach this cache only
-		// after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
-		// body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
+	if expectedType != nil {
+		// The selected concrete type owns its local checked TypeDef identity. Resolve that owner
+		// before the remote cache so a colliding remote identity cannot replace a typed local read.
+		localTd, localErr := r.getTypeDef(expectedType, true)
+		if localErr != nil {
+			err.SetError(localErr)
+			return nil
+		}
+		localIdentity, hasLocalIdentity := encodedTypeDefIdentity(localTd.encoded)
+		if hasLocalIdentity && localIdentity == identity {
+			skipTypeDef(buffer, id, err)
+			if err.HasError() {
+				return nil
+			}
+			td = localTd
+		}
+	}
+	if td == nil {
+		existingTd, exists := r.defIdToTypeDef[identity]
+		if !exists {
+			return r.readTypeDefInfo(buffer, id, context, expectedType, err)
+		}
+		// The top 52 header bits are the checked TypeDef identity. Low header bits describe only
+		// the current frame; skipTypeDef consumes its current size form without revalidation.
 		skipTypeDef(buffer, id, err)
+		if err.HasError() {
+			return nil
+		}
 		td = existingTd
-	} else {
-		return r.readTypeDefInfo(buffer, id, context, err)
 	}
 
 	typeInfo, typeInfoErr := td.getOrBuildTypeInfo(r)
@@ -1540,26 +1569,51 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 		err.SetError(typeInfoErr)
 		return nil
 	}
+	if expectedType != nil {
+		serializerForConcreteType(expectedType, typeInfo, err)
+		if err.HasError() {
+			return nil
+		}
+	}
 	context.readTypeInfos = append(context.readTypeInfos, typeInfo)
 	return typeInfo
 }
 
 //go:noinline
-func (r *TypeResolver) readTypeDefInfo(buffer *ByteBuffer, id int64, context *MetaContext, err *Error) *TypeInfo {
+func (r *TypeResolver) readTypeDefInfo(
+	buffer *ByteBuffer,
+	id int64,
+	context *MetaContext,
+	expectedType reflect.Type,
+	err *Error,
+) *TypeInfo {
 	td := readTypeDef(r.fory, buffer, id, err)
 	if err.HasError() {
 		return nil
 	}
+	identity := typeDefIdentity(id)
 	if typeInfo := r.localTypeInfoForTypeDef(td); typeInfo != nil {
 		localTd, localErr := r.localTypeDef(typeInfo)
 		if localErr != nil {
 			err.SetError(localErr)
 			return nil
 		}
-		if localTd != nil && bytes.Equal(localTd.encoded, td.encoded) {
-			r.defIdToTypeDef[id] = localTd
-			context.readTypeInfos = append(context.readTypeInfos, typeInfo)
-			return typeInfo
+		if localTd != nil {
+			localIdentity, hasLocalIdentity := encodedTypeDefIdentity(localTd.encoded)
+			// The remote body is already parsed and hash-validated. Top 52 identity equality is
+			// sufficient; low header bits and encoded body bytes are not a second local identity.
+			if hasLocalIdentity && localIdentity == identity {
+				if expectedType != nil {
+					serializerForConcreteType(expectedType, typeInfo, err)
+					if err.HasError() {
+						return nil
+					}
+				}
+				// Exact local metadata is a root-local owner. Only a validated non-local TypeDef
+				// may enter the persistent remote checked cache or schema-version accounting.
+				context.readTypeInfos = append(context.readTypeInfos, typeInfo)
+				return typeInfo
+			}
 		}
 	}
 	typeKey, limitErr := r.checkRemoteTypeDefLimit(td)
@@ -1572,7 +1626,15 @@ func (r *TypeResolver) readTypeDefInfo(buffer *ByteBuffer, id int64, context *Me
 		err.SetError(typeInfoErr)
 		return nil
 	}
-	r.defIdToTypeDef[id] = td
+	if expectedType != nil {
+		// Reject a resolved concrete-owner mismatch before publishing any persistent or
+		// root-local remote metadata state.
+		serializerForConcreteType(expectedType, typeInfo, err)
+		if err.HasError() {
+			return nil
+		}
+	}
+	r.defIdToTypeDef[identity] = td
 	r.recordRemoteTypeDef(typeKey)
 	context.readTypeInfos = append(context.readTypeInfos, typeInfo)
 	return typeInfo
@@ -2035,10 +2097,10 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 			return typeInfo
 		}
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
-		return r.readSharedTypeMeta(buffer, err)
+		return r.readSharedTypeMeta(buffer, nil, err)
 	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
-			return r.readSharedTypeMeta(buffer, err)
+			return r.readSharedTypeMeta(buffer, nil, err)
 		}
 		// ReadData namespace and type name metadata bytes
 		nsBytes := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
@@ -2079,7 +2141,9 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 
 // readTypeInfoWithTypeID reads type info when the typeID has already been read from buffer.
 // This is used by collection serializers that read typeID separately before deciding how to proceed.
-func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32, err *Error) *TypeInfo {
+func (r *TypeResolver) readTypeInfoWithTypeID(
+	buffer *ByteBuffer, typeID uint32, expectedType reflect.Type, err *Error,
+) *TypeInfo {
 	internalTypeID := TypeId(typeID)
 
 	switch internalTypeID {
@@ -2092,10 +2156,10 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 			return typeInfo
 		}
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
-		return r.readSharedTypeMeta(buffer, err)
+		return r.readSharedTypeMeta(buffer, expectedType, err)
 	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
-			return r.readSharedTypeMeta(buffer, err)
+			return r.readSharedTypeMeta(buffer, expectedType, err)
 		}
 		// ReadData namespace and type name metadata bytes
 		nsBytes := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
@@ -2145,10 +2209,10 @@ func (r *TypeResolver) consumeTypeInfoForCodec(buffer *ByteBuffer, err *Error) {
 	case ENUM, STRUCT, EXT, TYPED_UNION:
 		buffer.ReadVarUint32(err)
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
-		r.readSharedTypeMeta(buffer, err)
+		r.readSharedTypeMeta(buffer, nil, err)
 	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
-			r.readSharedTypeMeta(buffer, err)
+			r.readSharedTypeMeta(buffer, nil, err)
 			return
 		}
 		r.metaStringResolver.ReadMetaStringBytes(buffer, err)
@@ -2177,12 +2241,12 @@ func (r *TypeResolver) readTypeInfoForType(buffer *ByteBuffer, expectedType refl
 		return nil
 	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
-			typeInfo := r.readSharedTypeMeta(buffer, err)
+			typeInfo := r.readSharedTypeMeta(buffer, expectedType, err)
 			if err.HasError() {
 				return nil
 			}
 			if internalTypeID == NAMED_STRUCT {
-				return serializerForConcreteType(expectedType, typeInfo, err)
+				return typeInfo.Serializer
 			}
 			return nil
 		}
@@ -2201,11 +2265,11 @@ func (r *TypeResolver) readTypeInfoForType(buffer *ByteBuffer, expectedType refl
 		return nil
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
 		// Compatible mode: read type def from shared meta
-		typeInfo := r.readSharedTypeMeta(buffer, err)
+		typeInfo := r.readSharedTypeMeta(buffer, expectedType, err)
 		if err.HasError() {
 			return nil
 		}
-		return serializerForConcreteType(expectedType, typeInfo, err)
+		return typeInfo.Serializer
 	default:
 		// For other types, return nil - caller should handle
 		return nil

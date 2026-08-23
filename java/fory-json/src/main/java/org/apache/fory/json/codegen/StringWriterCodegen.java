@@ -23,6 +23,7 @@ import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
@@ -32,8 +33,8 @@ import org.apache.fory.reflect.TypeRef;
 final class StringWriterCodegen extends JsonWriterCodegen {
   private static final int MIN_SPLIT_MEMBERS = 10;
 
-  StringWriterCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
-    super(codegen, resolver);
+  StringWriterCodegen(JsonCodegen codegen, JsonTypeResolver resolver, ObjectCodec<?> objectOwner) {
+    super(codegen, resolver, objectOwner);
   }
 
   @Override
@@ -271,6 +272,18 @@ final class StringWriterCodegen extends JsonWriterCodegen {
                 index));
     expressions.add(increment(index));
     return expressions;
+  }
+
+  @Override
+  Expression writeNullField(
+      JsonFieldInfo property, int id, boolean commaKnown, Expression index, Expression writer) {
+    if (commaKnown && canPackUtf16Prefix(property, true)) {
+      return new Expression.Invoke(
+          writer, "writeNullField", stringPackedPrefixArgs(property, id, true));
+    }
+    return new Expression.ListExpression(
+        writeFieldName(property, id, commaKnown, index, writer),
+        new Expression.Invoke(writer, "writeNull"));
   }
 
   @Override

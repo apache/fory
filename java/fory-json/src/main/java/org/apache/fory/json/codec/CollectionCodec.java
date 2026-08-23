@@ -103,13 +103,26 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     this.createsArrayList = factory.createsArrayList();
   }
 
+  private static Object requireElement(JsonTypeInfo type, Object element) {
+    if (element == null && type.rejectsNull()) {
+      type.rejectNullValue();
+    }
+    return element;
+  }
+
+  private static void requireWriteElement(JsonTypeInfo type, Object element) {
+    if (element == null && type.rejectsNull()) {
+      type.rejectNullValue();
+    }
+  }
+
   public static CollectionCodec<?> create(
       Class<?> rawType, TypeRef<?> typeRef, JsonTypeResolver resolver) {
     TypeRef<?> elementTypeRef = CodecUtils.elementTypeRef(typeRef);
     Type elementType = elementTypeRef.getType();
     Class<?> elementRawType = CodecUtils.rawType(elementType, Object.class);
     CollectionFactory factory = collectionFactory(rawType, elementRawType);
-    JsonTypeInfo elementTypeInfo = resolver.getTypeInfo(elementType, elementRawType);
+    JsonTypeInfo elementTypeInfo = resolver.getTypeInfo(elementTypeRef);
     return create(factory, elementTypeInfo, resolver.canonicalObjectCodec(elementTypeInfo) != null);
   }
 
@@ -129,34 +142,34 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       CollectionFactory factory, JsonTypeInfo elementTypeInfo, boolean objectElement) {
     Object elementCodec = elementTypeInfo.stringWriter();
     if (elementCodec == ScalarCodecs.StringCodec.INSTANCE) {
-      return new StringCollectionCodec(factory);
+      return new StringCollectionCodec(factory, elementTypeInfo);
     }
     if (elementCodec == ScalarCodecs.BooleanCodec.BOXED) {
-      return new BooleanCollectionCodec(factory);
+      return new BooleanCollectionCodec(factory, elementTypeInfo);
     }
     if (elementCodec == ScalarCodecs.IntCodec.BOXED) {
-      return new IntCollectionCodec(factory);
+      return new IntCollectionCodec(factory, elementTypeInfo);
     }
     if (elementCodec == ScalarCodecs.LongCodec.BOXED) {
-      return new LongCollectionCodec(factory);
+      return new LongCollectionCodec(factory, elementTypeInfo);
     }
     if (elementCodec == ScalarCodecs.ShortCodec.BOXED) {
-      return new ShortCollectionCodec(factory);
+      return new ShortCollectionCodec(factory, elementTypeInfo);
     }
     if (elementCodec == ScalarCodecs.ByteCodec.BOXED) {
-      return new ByteCollectionCodec(factory);
+      return new ByteCollectionCodec(factory, elementTypeInfo);
     }
     if (elementCodec == ScalarCodecs.FloatCodec.BOXED) {
-      return new FloatCollectionCodec(factory);
+      return new FloatCollectionCodec(factory, elementTypeInfo);
     }
     if (elementCodec == ScalarCodecs.DoubleCodec.BOXED) {
-      return new DoubleCollectionCodec(factory);
+      return new DoubleCollectionCodec(factory, elementTypeInfo);
     }
     if (elementCodec == ScalarCodecs.BigIntegerCodec.INSTANCE) {
-      return new BigIntegerCollectionCodec(factory);
+      return new BigIntegerCollectionCodec(factory, elementTypeInfo);
     }
     if (elementCodec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
-      return new BigDecimalCollectionCodec(factory);
+      return new BigDecimalCollectionCodec(factory, elementTypeInfo);
     }
     if (objectElement) {
       return new ObjectCollectionCodec(factory, elementTypeInfo);
@@ -493,8 +506,19 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public abstract static class DirectCollectionCodec extends CollectionCodec<Collection<?>> {
-    DirectCollectionCodec(CollectionFactory factory) {
+    private final JsonTypeInfo elementTypeInfo;
+
+    DirectCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
       super(factory);
+      this.elementTypeInfo = elementTypeInfo;
+    }
+
+    final Object requireElement(Object element) {
+      return CollectionCodec.requireElement(elementTypeInfo, element);
+    }
+
+    final void requireWriteElement(Object element) {
+      CollectionCodec.requireWriteElement(elementTypeInfo, element);
     }
 
     @Override
@@ -514,7 +538,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(readLatin1Element(reader));
+          collection.add(requireElement(readLatin1Element(reader)));
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -543,7 +567,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(readUtf16Element(reader));
+          collection.add(requireElement(readUtf16Element(reader)));
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -572,7 +596,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(readUtf8Element(reader));
+          collection.add(requireElement(readUtf8Element(reader)));
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -592,7 +616,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES);
         return new ArrayList<>(0);
       }
-      Object e0 = readLatin1Element(reader);
+      Object e0 = requireElement(readLatin1Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + REFERENCE_BYTES);
@@ -600,7 +624,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e0);
         return list;
       }
-      Object e1 = readLatin1Element(reader);
+      Object e1 = requireElement(readLatin1Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 2 * REFERENCE_BYTES);
@@ -609,7 +633,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e1);
         return list;
       }
-      Object e2 = readLatin1Element(reader);
+      Object e2 = requireElement(readLatin1Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 3 * REFERENCE_BYTES);
@@ -619,7 +643,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e2);
         return list;
       }
-      Object e3 = readLatin1Element(reader);
+      Object e3 = requireElement(readLatin1Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 4 * REFERENCE_BYTES);
@@ -634,7 +658,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       // method smaller than C2's hot-inline limit, so a generated caller can absorb the collection
       // and element closure solely according to compilation order. The uncommon longer tail stays
       // separate below.
-      Object e4 = readLatin1Element(reader);
+      Object e4 = requireElement(readLatin1Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 5 * REFERENCE_BYTES);
@@ -646,7 +670,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e4);
         return list;
       }
-      Object e5 = readLatin1Element(reader);
+      Object e5 = requireElement(readLatin1Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 6 * REFERENCE_BYTES);
@@ -664,7 +688,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
 
     private ArrayList<Object> readLatin1ArrayListLongTail(
         Latin1JsonReader reader, Object e0, Object e1, Object e2, Object e3, Object e4, Object e5) {
-      Object e6 = readLatin1Element(reader);
+      Object e6 = requireElement(readLatin1Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 7 * REFERENCE_BYTES);
@@ -678,7 +702,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e6);
         return list;
       }
-      Object e7 = readLatin1Element(reader);
+      Object e7 = requireElement(readLatin1Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 8 * REFERENCE_BYTES);
@@ -703,13 +727,13 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       list.add(e5);
       list.add(e6);
       list.add(e7);
-      list.add(readLatin1Element(reader));
+      list.add(requireElement(readLatin1Element(reader)));
       int pendingSize = 0;
       while (reader.consumeNextCommaOrEndArray()) {
         if ((pendingSize & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
           reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
         }
-        list.add(readLatin1Element(reader));
+        list.add(requireElement(readLatin1Element(reader)));
         pendingSize++;
       }
       int tailSize = pendingSize & REFERENCE_BATCH_MASK;
@@ -728,7 +752,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES);
         return new ArrayList<>(0);
       }
-      Object e0 = readUtf16Element(reader);
+      Object e0 = requireElement(readUtf16Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + REFERENCE_BYTES);
@@ -736,7 +760,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e0);
         return list;
       }
-      Object e1 = readUtf16Element(reader);
+      Object e1 = requireElement(readUtf16Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 2 * REFERENCE_BYTES);
@@ -745,7 +769,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e1);
         return list;
       }
-      Object e2 = readUtf16Element(reader);
+      Object e2 = requireElement(readUtf16Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 3 * REFERENCE_BYTES);
@@ -755,7 +779,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e2);
         return list;
       }
-      Object e3 = readUtf16Element(reader);
+      Object e3 = requireElement(readUtf16Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 4 * REFERENCE_BYTES);
@@ -771,7 +795,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
 
     private ArrayList<Object> readUtf16ArrayListTail(
         Utf16JsonReader reader, Object e0, Object e1, Object e2, Object e3) {
-      Object e4 = readUtf16Element(reader);
+      Object e4 = requireElement(readUtf16Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 5 * REFERENCE_BYTES);
@@ -783,7 +807,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e4);
         return list;
       }
-      Object e5 = readUtf16Element(reader);
+      Object e5 = requireElement(readUtf16Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 6 * REFERENCE_BYTES);
@@ -801,7 +825,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
 
     private ArrayList<Object> readUtf16ArrayListLongTail(
         Utf16JsonReader reader, Object e0, Object e1, Object e2, Object e3, Object e4, Object e5) {
-      Object e6 = readUtf16Element(reader);
+      Object e6 = requireElement(readUtf16Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 7 * REFERENCE_BYTES);
@@ -815,7 +839,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e6);
         return list;
       }
-      Object e7 = readUtf16Element(reader);
+      Object e7 = requireElement(readUtf16Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 8 * REFERENCE_BYTES);
@@ -840,13 +864,13 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       list.add(e5);
       list.add(e6);
       list.add(e7);
-      list.add(readUtf16Element(reader));
+      list.add(requireElement(readUtf16Element(reader)));
       int pendingSize = 0;
       while (reader.consumeNextCommaOrEndArray()) {
         if ((pendingSize & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
           reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
         }
-        list.add(readUtf16Element(reader));
+        list.add(requireElement(readUtf16Element(reader)));
         pendingSize++;
       }
       int tailSize = pendingSize & REFERENCE_BATCH_MASK;
@@ -865,7 +889,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES);
         return new ArrayList<>(0);
       }
-      Object e0 = readUtf8Element(reader);
+      Object e0 = requireElement(readUtf8Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + REFERENCE_BYTES);
@@ -873,7 +897,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e0);
         return list;
       }
-      Object e1 = readUtf8Element(reader);
+      Object e1 = requireElement(readUtf8Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 2 * REFERENCE_BYTES);
@@ -882,7 +906,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e1);
         return list;
       }
-      Object e2 = readUtf8Element(reader);
+      Object e2 = requireElement(readUtf8Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 3 * REFERENCE_BYTES);
@@ -892,7 +916,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e2);
         return list;
       }
-      Object e3 = readUtf8Element(reader);
+      Object e3 = requireElement(readUtf8Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 4 * REFERENCE_BYTES);
@@ -908,7 +932,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
 
     private ArrayList<Object> readUtf8ArrayListTail(
         Utf8JsonReader reader, Object e0, Object e1, Object e2, Object e3) {
-      Object e4 = readUtf8Element(reader);
+      Object e4 = requireElement(readUtf8Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 5 * REFERENCE_BYTES);
@@ -920,7 +944,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e4);
         return list;
       }
-      Object e5 = readUtf8Element(reader);
+      Object e5 = requireElement(readUtf8Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 6 * REFERENCE_BYTES);
@@ -938,7 +962,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
 
     private ArrayList<Object> readUtf8ArrayListLongTail(
         Utf8JsonReader reader, Object e0, Object e1, Object e2, Object e3, Object e4, Object e5) {
-      Object e6 = readUtf8Element(reader);
+      Object e6 = requireElement(readUtf8Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 7 * REFERENCE_BYTES);
@@ -952,7 +976,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e6);
         return list;
       }
-      Object e7 = readUtf8Element(reader);
+      Object e7 = requireElement(readUtf8Element(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 8 * REFERENCE_BYTES);
@@ -977,13 +1001,13 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       list.add(e5);
       list.add(e6);
       list.add(e7);
-      list.add(readUtf8Element(reader));
+      list.add(requireElement(readUtf8Element(reader)));
       int pendingSize = 0;
       while (reader.consumeNextCommaOrEndArray()) {
         if ((pendingSize & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
           reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
         }
-        list.add(readUtf8Element(reader));
+        list.add(requireElement(readUtf8Element(reader)));
         pendingSize++;
       }
       int tailSize = pendingSize & REFERENCE_BATCH_MASK;
@@ -1020,6 +1044,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       int index = 0;
       for (Object element : value) {
         writer.writeComma(index++);
+        requireWriteElement(elementTypeInfo, element);
         codec.writeString(writer, element);
       }
       writer.writeArrayEnd();
@@ -1036,6 +1061,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       int index = 0;
       for (Object element : value) {
         writer.writeComma(index++);
+        requireWriteElement(elementTypeInfo, element);
         codec.writeUtf8(writer, element);
       }
       writer.writeArrayEnd();
@@ -1056,7 +1082,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(codec.readLatin1(reader));
+          collection.add(requireElement(elementTypeInfo, codec.readLatin1(reader)));
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -1083,7 +1109,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(codec.readUtf16(reader));
+          collection.add(requireElement(elementTypeInfo, codec.readUtf16(reader)));
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -1110,7 +1136,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(codec.readUtf8(reader));
+          collection.add(requireElement(elementTypeInfo, codec.readUtf8(reader)));
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -1144,12 +1170,14 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         for (int index = 0, size = list.size(); index < size; index++) {
           Object element = list.get(index);
           writer.writeComma(index);
+          requireWriteElement(elementTypeInfo, element);
           codec.writeString(writer, element);
         }
       } else {
         int index = 0;
         for (Object element : value) {
           writer.writeComma(index++);
+          requireWriteElement(elementTypeInfo, element);
           codec.writeString(writer, element);
         }
       }
@@ -1169,12 +1197,14 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         for (int index = 0, size = list.size(); index < size; index++) {
           Object element = list.get(index);
           writer.writeComma(index);
+          requireWriteElement(elementTypeInfo, element);
           codec.writeUtf8(writer, element);
         }
       } else {
         int index = 0;
         for (Object element : value) {
           writer.writeComma(index++);
+          requireWriteElement(elementTypeInfo, element);
           codec.writeUtf8(writer, element);
         }
       }
@@ -1199,7 +1229,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(codec.readLatin1(reader));
+          collection.add(requireElement(elementTypeInfo, codec.readLatin1(reader)));
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -1229,7 +1259,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(codec.readUtf16(reader));
+          collection.add(requireElement(elementTypeInfo, codec.readUtf16(reader)));
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -1259,7 +1289,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(codec.readUtf8(reader));
+          collection.add(requireElement(elementTypeInfo, codec.readUtf8(reader)));
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -1280,7 +1310,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES);
         return new ArrayList<>(0);
       }
-      Object e0 = codec.readLatin1(reader);
+      Object e0 = requireElement(elementTypeInfo, codec.readLatin1(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + REFERENCE_BYTES);
@@ -1288,7 +1318,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e0);
         return list;
       }
-      Object e1 = codec.readLatin1(reader);
+      Object e1 = requireElement(elementTypeInfo, codec.readLatin1(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 2 * REFERENCE_BYTES);
@@ -1297,7 +1327,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e1);
         return list;
       }
-      Object e2 = codec.readLatin1(reader);
+      Object e2 = requireElement(elementTypeInfo, codec.readLatin1(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 3 * REFERENCE_BYTES);
@@ -1307,7 +1337,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e2);
         return list;
       }
-      Object e3 = codec.readLatin1(reader);
+      Object e3 = requireElement(elementTypeInfo, codec.readLatin1(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 4 * REFERENCE_BYTES);
@@ -1322,7 +1352,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       // method smaller than C2's hot-inline limit, so a generated caller can absorb the collection
       // and element closure solely according to compilation order. The uncommon longer tail stays
       // separate below.
-      Object e4 = codec.readLatin1(reader);
+      Object e4 = requireElement(elementTypeInfo, codec.readLatin1(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 5 * REFERENCE_BYTES);
@@ -1334,7 +1364,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e4);
         return list;
       }
-      Object e5 = codec.readLatin1(reader);
+      Object e5 = requireElement(elementTypeInfo, codec.readLatin1(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 6 * REFERENCE_BYTES);
@@ -1359,7 +1389,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         Object e3,
         Object e4,
         Object e5) {
-      Object e6 = codec.readLatin1(reader);
+      Object e6 = requireElement(elementTypeInfo, codec.readLatin1(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 7 * REFERENCE_BYTES);
@@ -1373,7 +1403,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e6);
         return list;
       }
-      Object e7 = codec.readLatin1(reader);
+      Object e7 = requireElement(elementTypeInfo, codec.readLatin1(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 8 * REFERENCE_BYTES);
@@ -1400,13 +1430,13 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       list.add(e5);
       list.add(e6);
       list.add(e7);
-      list.add(codec.readLatin1(reader));
+      list.add(requireElement(elementTypeInfo, codec.readLatin1(reader)));
       int pendingSize = 0;
       while (reader.consumeNextCommaOrEndArray()) {
         if ((pendingSize & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
           reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
         }
-        list.add(codec.readLatin1(reader));
+        list.add(requireElement(elementTypeInfo, codec.readLatin1(reader)));
         pendingSize++;
       }
       int tailSize = pendingSize & REFERENCE_BATCH_MASK;
@@ -1426,7 +1456,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES);
         return new ArrayList<>(0);
       }
-      Object e0 = codec.readUtf16(reader);
+      Object e0 = requireElement(elementTypeInfo, codec.readUtf16(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + REFERENCE_BYTES);
@@ -1434,7 +1464,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e0);
         return list;
       }
-      Object e1 = codec.readUtf16(reader);
+      Object e1 = requireElement(elementTypeInfo, codec.readUtf16(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 2 * REFERENCE_BYTES);
@@ -1443,7 +1473,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e1);
         return list;
       }
-      Object e2 = codec.readUtf16(reader);
+      Object e2 = requireElement(elementTypeInfo, codec.readUtf16(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 3 * REFERENCE_BYTES);
@@ -1453,7 +1483,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e2);
         return list;
       }
-      Object e3 = codec.readUtf16(reader);
+      Object e3 = requireElement(elementTypeInfo, codec.readUtf16(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 4 * REFERENCE_BYTES);
@@ -1474,7 +1504,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         Object e1,
         Object e2,
         Object e3) {
-      Object e4 = codec.readUtf16(reader);
+      Object e4 = requireElement(elementTypeInfo, codec.readUtf16(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 5 * REFERENCE_BYTES);
@@ -1486,7 +1516,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e4);
         return list;
       }
-      Object e5 = codec.readUtf16(reader);
+      Object e5 = requireElement(elementTypeInfo, codec.readUtf16(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 6 * REFERENCE_BYTES);
@@ -1511,7 +1541,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         Object e3,
         Object e4,
         Object e5) {
-      Object e6 = codec.readUtf16(reader);
+      Object e6 = requireElement(elementTypeInfo, codec.readUtf16(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 7 * REFERENCE_BYTES);
@@ -1525,7 +1555,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e6);
         return list;
       }
-      Object e7 = codec.readUtf16(reader);
+      Object e7 = requireElement(elementTypeInfo, codec.readUtf16(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 8 * REFERENCE_BYTES);
@@ -1552,13 +1582,13 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       list.add(e5);
       list.add(e6);
       list.add(e7);
-      list.add(codec.readUtf16(reader));
+      list.add(requireElement(elementTypeInfo, codec.readUtf16(reader)));
       int pendingSize = 0;
       while (reader.consumeNextCommaOrEndArray()) {
         if ((pendingSize & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
           reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
         }
-        list.add(codec.readUtf16(reader));
+        list.add(requireElement(elementTypeInfo, codec.readUtf16(reader)));
         pendingSize++;
       }
       int tailSize = pendingSize & REFERENCE_BATCH_MASK;
@@ -1578,7 +1608,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES);
         return new ArrayList<>(0);
       }
-      Object e0 = codec.readUtf8(reader);
+      Object e0 = requireElement(elementTypeInfo, codec.readUtf8(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + REFERENCE_BYTES);
@@ -1586,7 +1616,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e0);
         return list;
       }
-      Object e1 = codec.readUtf8(reader);
+      Object e1 = requireElement(elementTypeInfo, codec.readUtf8(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 2 * REFERENCE_BYTES);
@@ -1595,7 +1625,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e1);
         return list;
       }
-      Object e2 = codec.readUtf8(reader);
+      Object e2 = requireElement(elementTypeInfo, codec.readUtf8(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 3 * REFERENCE_BYTES);
@@ -1605,7 +1635,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e2);
         return list;
       }
-      Object e3 = codec.readUtf8(reader);
+      Object e3 = requireElement(elementTypeInfo, codec.readUtf8(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 4 * REFERENCE_BYTES);
@@ -1619,7 +1649,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       // Keep the fifth exact-allocation lane in the collection owner. If this lane is split after
       // four elements, both resulting methods fall below C2's hot-inline limit and let an outer
       // fallback caller absorb the object-element closure according to compilation order.
-      Object e4 = codec.readUtf8(reader);
+      Object e4 = requireElement(elementTypeInfo, codec.readUtf8(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 5 * REFERENCE_BYTES);
@@ -1642,7 +1672,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         Object e2,
         Object e3,
         Object e4) {
-      Object e5 = codec.readUtf8(reader);
+      Object e5 = requireElement(elementTypeInfo, codec.readUtf8(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 6 * REFERENCE_BYTES);
@@ -1667,7 +1697,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         Object e3,
         Object e4,
         Object e5) {
-      Object e6 = codec.readUtf8(reader);
+      Object e6 = requireElement(elementTypeInfo, codec.readUtf8(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 7 * REFERENCE_BYTES);
@@ -1681,7 +1711,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e6);
         return list;
       }
-      Object e7 = codec.readUtf8(reader);
+      Object e7 = requireElement(elementTypeInfo, codec.readUtf8(reader));
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
         reader.reserveGraphMemory(ARRAY_LIST_OWNER_BYTES + 8 * REFERENCE_BYTES);
@@ -1708,13 +1738,13 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       list.add(e5);
       list.add(e6);
       list.add(e7);
-      list.add(codec.readUtf8(reader));
+      list.add(requireElement(elementTypeInfo, codec.readUtf8(reader)));
       int pendingSize = 0;
       while (reader.consumeNextCommaOrEndArray()) {
         if ((pendingSize & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
           reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
         }
-        list.add(codec.readUtf8(reader));
+        list.add(requireElement(elementTypeInfo, codec.readUtf8(reader)));
         pendingSize++;
       }
       int tailSize = pendingSize & REFERENCE_BATCH_MASK;
@@ -1727,8 +1757,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class StringCollectionCodec extends DirectCollectionCodec {
-    private StringCollectionCodec(CollectionFactory factory) {
-      super(factory);
+    private StringCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
     }
 
     @Override
@@ -1740,6 +1770,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       writer.writeArrayStart();
       int index = 0;
       for (Object element : value) {
+        requireWriteElement(element);
         writer.writeStringElement(index++, (String) element);
       }
       writer.writeArrayEnd();
@@ -1754,6 +1785,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       writer.writeArrayStart();
       int index = 0;
       for (Object element : value) {
+        requireWriteElement(element);
         writer.writeStringElement(index++, (String) element);
       }
       writer.writeArrayEnd();
@@ -1776,8 +1808,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class BooleanCollectionCodec extends DirectCollectionCodec {
-    private BooleanCollectionCodec(CollectionFactory factory) {
-      super(factory);
+    private BooleanCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
     }
 
     @Override
@@ -1791,6 +1823,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       for (Object element : value) {
         writer.writeComma(index++);
         if (element == null) {
+          requireWriteElement(null);
           writer.writeNull();
         } else {
           writer.writeBoolean((boolean) element);
@@ -1810,6 +1843,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       for (Object element : value) {
         writer.writeComma(index++);
         if (element == null) {
+          requireWriteElement(null);
           writer.writeNull();
         } else {
           writer.writeBoolean((boolean) element);
@@ -1835,8 +1869,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public abstract static class NumberCollectionCodec extends DirectCollectionCodec {
-    NumberCollectionCodec(CollectionFactory factory) {
-      super(factory);
+    NumberCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
     }
 
     @Override
@@ -1850,6 +1884,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       for (Object element : value) {
         writer.writeComma(index++);
         if (element == null) {
+          requireWriteElement(null);
           writer.writeNull();
         } else {
           writeNumber(writer, element);
@@ -1869,6 +1904,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       for (Object element : value) {
         writer.writeComma(index++);
         if (element == null) {
+          requireWriteElement(null);
           writer.writeNull();
         } else {
           writeNumber(writer, element);
@@ -1881,8 +1917,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class IntCollectionCodec extends NumberCollectionCodec {
-    private IntCollectionCodec(CollectionFactory factory) {
-      super(factory);
+    private IntCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
     }
 
     @Override
@@ -1907,8 +1943,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class LongCollectionCodec extends NumberCollectionCodec {
-    private LongCollectionCodec(CollectionFactory factory) {
-      super(factory);
+    private LongCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
     }
 
     @Override
@@ -1933,8 +1969,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class ShortCollectionCodec extends NumberCollectionCodec {
-    private ShortCollectionCodec(CollectionFactory factory) {
-      super(factory);
+    private ShortCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
     }
 
     @Override
@@ -1959,8 +1995,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class ByteCollectionCodec extends NumberCollectionCodec {
-    private ByteCollectionCodec(CollectionFactory factory) {
-      super(factory);
+    private ByteCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
     }
 
     @Override
@@ -1985,8 +2021,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class FloatCollectionCodec extends NumberCollectionCodec {
-    private FloatCollectionCodec(CollectionFactory factory) {
-      super(factory);
+    private FloatCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
     }
 
     @Override
@@ -2011,8 +2047,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class DoubleCollectionCodec extends NumberCollectionCodec {
-    private DoubleCollectionCodec(CollectionFactory factory) {
-      super(factory);
+    private DoubleCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
     }
 
     @Override
@@ -2037,8 +2073,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class BigIntegerCollectionCodec extends NumberCollectionCodec {
-    private BigIntegerCollectionCodec(CollectionFactory factory) {
-      super(factory);
+    private BigIntegerCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
     }
 
     @Override
@@ -2063,8 +2099,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class BigDecimalCollectionCodec extends NumberCollectionCodec {
-    private BigDecimalCollectionCodec(CollectionFactory factory) {
-      super(factory);
+    private BigDecimalCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
     }
 
     @Override

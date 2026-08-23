@@ -843,8 +843,8 @@ public sealed class RuntimeEdgeCaseTests
             lastRead = read;
         }
 
-        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(firstRead!), out _));
-        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(lastRead!), out _));
+        Assert.True(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(firstRead!), out _));
+        Assert.True(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(lastRead!), out _));
         Assert.Same(firstRead, ReadAndStoreTypeMeta(context, RemoteStructTypeMeta(1, "value")));
 
         TypeMeta exact = resolver
@@ -860,17 +860,17 @@ public sealed class RuntimeEdgeCaseTests
             Assert.Throws<InvalidDataException>(
                 () => ReadAndStoreTypeMeta(context, rejected));
         Assert.Contains("logical type limit", exception.Message, StringComparison.Ordinal);
-        Assert.False(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(rejected), out _));
+        Assert.False(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(rejected), out _));
 
         TypeMeta rejectedAgain =
             RemoteStructTypeMeta(maxLogicalKeys + 1, "other");
         Assert.Throws<InvalidDataException>(
             () => ReadAndStoreTypeMeta(context, rejectedAgain));
-        Assert.False(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(rejectedAgain), out _));
+        Assert.False(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(rejectedAgain), out _));
 
         TypeMeta existing = RemoteStructTypeMeta(1, "other");
         TypeMeta existingRead = ReadAndStoreTypeMeta(context, existing);
-        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(existingRead), out _));
+        Assert.True(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(existingRead), out _));
     }
 
     [Fact]
@@ -969,8 +969,8 @@ public sealed class RuntimeEdgeCaseTests
         TypeMeta firstRead = ReadAndStoreTypeMeta(context, first);
         TypeMeta secondRead = ReadAndStoreTypeMeta(context, second);
 
-        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(firstRead), out _));
-        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(secondRead), out _));
+        Assert.True(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(firstRead), out _));
+        Assert.True(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(secondRead), out _));
     }
 
     [Fact]
@@ -989,7 +989,25 @@ public sealed class RuntimeEdgeCaseTests
             ReadAnyTypeInfo(context, resolver, RemoteCompatibleStructTypeMeta(901, "Id", MapType())));
         TypeMeta accepted = ReadAndStoreTypeMeta(context, RemoteStructTypeMeta(901, "second"));
 
-        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(accepted), out _));
+        Assert.True(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(accepted), out _));
+    }
+
+    [Fact]
+    public void ExactTypeMetaUsesLocalOwner()
+    {
+        TypeResolver resolver = new();
+        resolver.Register(typeof(CustomPayload), 901);
+        Config config = ForyRuntime.Builder().Compatible(true).Build().Config;
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), resolver, config);
+        TypeMeta exact = resolver
+            .GetTypeInfo(typeof(CustomPayload))
+            .GetTypeMetaCacheEntry(trackRef: false)
+            .TypeMeta;
+
+        TypeMeta read = ReadAndStoreTypeMeta(context, exact);
+
+        Assert.Same(exact, read);
+        Assert.False(context.TryGetTypeMetaByHash(exact.HeaderHash, out _));
     }
 
     [Fact]
@@ -1004,11 +1022,18 @@ public sealed class RuntimeEdgeCaseTests
             .Config;
         ReadContext context = new(new ByteReader(Array.Empty<byte>()), resolver, config);
         TypeMeta remote = ReadAndStoreTypeMeta(context, RemoteStructTypeMeta(901, "remote"));
-        TypeMeta exact = resolver.GetTypeInfo(typeof(CustomPayload)).GetTypeMetaCacheEntry(trackRef: false).TypeMeta;
+        TypeInfo.TypeMetaCacheEntry local = resolver
+            .GetTypeInfo(typeof(CustomPayload))
+            .GetTypeMetaCacheEntry(trackRef: false);
+        Assert.All(local.TypeMeta.Fields, field => Assert.Equal(-1, field.AssignedFieldId));
 
-        TypeInfo typeInfo = ReadAnyTypeInfo(context, resolver, exact);
+        TypeInfo typeInfo = ReadAnyTypeInfo(context, resolver, local.TypeMeta);
 
-        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(remote), out _));
+        Assert.Same(local.TypeMeta, typeInfo.GetTypeMeta());
+        Assert.Same(local.CheckedTypeMeta, context.GetTypeMetaRef(0));
+        Assert.All(local.TypeMeta.Fields, field => Assert.Equal(-1, field.AssignedFieldId));
+        Assert.False(context.TryGetTypeMetaByHash(local.HeaderHash, out _));
+        Assert.True(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(remote), out _));
     }
 
     [Fact]
@@ -1029,13 +1054,12 @@ public sealed class RuntimeEdgeCaseTests
 
         TypeMeta remote = RemoteNamedNonStructTypeMeta(TypeId.NamedExt, "SharedEnum");
         ReadAndStoreTypeMeta(context, remote);
-        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(remote), out _));
+        Assert.True(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(remote), out _));
     }
 
     [Fact]
-    public void TypeMetaHeaderCacheHitSkipsCurrentBodySize()
+    public void TypeMetaHashHitSkipsBody()
     {
-        const ulong header = 0xffUL;
         TypeMeta typeMeta = new(
             (uint)TypeId.Struct,
             902,
@@ -1043,20 +1067,211 @@ public sealed class RuntimeEdgeCaseTests
             MetaString.Empty('$', '_'),
             registerByName: false,
             []);
+        ulong headerHash = EncodedTypeMetaHash(typeMeta);
+        ulong currentHeader =
+            (headerHash << TypeMetaConstants.TypeMetaHashShift) |
+            TypeMetaConstants.TypeMetaCompressedFlag |
+            (1UL << 9) |
+            1;
 
         ByteWriter writer = new();
         writer.WriteVarUInt32(0);
-        writer.WriteUInt64(header);
-        writer.WriteVarUInt32(0);
-        writer.WriteBytes(new byte[0xff]);
+        writer.WriteUInt64(currentHeader);
+        writer.WriteUInt8(0xaa);
         writer.WriteUInt8(0x7b);
 
         Config config = ForyRuntime.Builder().Compatible(false).Build().Config;
-        ReadContext context = new(new ByteReader(writer.ToArray()), new TypeResolver(), config);
-        context.StoreRemoteTypeMeta(header, typeMeta);
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), new TypeResolver(), config);
+        TypeMeta first = ReadAndStoreTypeMeta(context, typeMeta);
+        context.ResetFor(new ByteReader(writer.ToArray()));
 
-        Assert.Same(typeMeta, context.ReadTypeMeta());
+        Assert.Same(first, context.ReadTypeMeta());
         Assert.Equal(0x7b, context.Reader.ReadUInt8());
+    }
+
+    [Fact]
+    public void KnownTypeMetaHashUsesLocal()
+    {
+        TypeResolver resolver = new();
+        resolver.Register(typeof(CustomPayload), 902);
+        resolver.Register(typeof(DecimalEnvelope), 903);
+        TypeInfo typeInfo = resolver.GetTypeInfo(typeof(CustomPayload));
+        TypeInfo.TypeMetaCacheEntry local = typeInfo.GetTypeMetaCacheEntry(trackRef: false);
+        ulong currentHeader = (local.HeaderHash << TypeMetaConstants.TypeMetaHashShift) | 3;
+        TypeMeta remote = new(
+            (uint)TypeId.Struct,
+            903,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            [],
+            compressed: false,
+            headerHash: local.HeaderHash);
+
+        ByteWriter writer = new();
+        writer.WriteUInt8((byte)TypeId.CompatibleStruct);
+        writer.WriteVarUInt32(0);
+        writer.WriteUInt64(currentHeader);
+        writer.WriteBytes([0xaa, 0xbb, 0xcc]);
+        writer.WriteUInt8(0x7b);
+        byte[] frame = writer.ToArray();
+
+        Config config = ForyRuntime.Builder().Compatible(true).Build().Config;
+        ReadContext context = new(new ByteReader(frame), resolver, config);
+        resolver.ReadTypeInfo(resolver.GetSerializer<CustomPayload>(), context);
+
+        Assert.Same(local.TypeMeta, context.GetTypeMeta<CustomPayload>());
+        Assert.False(context.TryGetTypeMetaByHash(local.HeaderHash, out _));
+        Assert.Equal(0x7b, context.Reader.ReadUInt8());
+
+        ReadContext occupiedContext = new(new ByteReader(frame), resolver, config);
+        // Model a checked remote owner already bound to the same 52-bit identity.
+        TypeInfo remoteOwner = resolver
+            .GetTypeInfo(typeof(DecimalEnvelope))
+            .WithWireTypeInfo(TypeId.CompatibleStruct, remote);
+        occupiedContext.StoreRemoteTypeMeta(local.HeaderHash, remote, remoteOwner);
+        resolver.ReadTypeInfo(resolver.GetSerializer<CustomPayload>(), occupiedContext);
+
+        Assert.Same(local.TypeMeta, occupiedContext.GetTypeMeta<CustomPayload>());
+        Assert.True(occupiedContext.TryGetTypeMetaByHash(local.HeaderHash, out CheckedTypeMeta cached));
+        Assert.Same(remote, cached.TypeMeta);
+        Assert.Equal(0x7b, occupiedContext.Reader.ReadUInt8());
+    }
+
+    [Fact]
+    public void TypeMetaCacheOwnerMismatch()
+    {
+        TypeResolver resolver = new();
+        resolver.Register(typeof(CustomPayload), 902);
+        resolver.Register(typeof(DecimalEnvelope), 903);
+        TypeMeta remote = RemoteCompatibleStructTypeMeta(902, "Id");
+
+        ByteWriter firstWriter = new();
+        firstWriter.WriteUInt8((byte)TypeId.CompatibleStruct);
+        firstWriter.WriteVarUInt32(0);
+        firstWriter.WriteBytes(remote.Encode());
+
+        Config config = ForyRuntime.Builder().Compatible(true).Build().Config;
+        ReadContext context = new(new ByteReader(firstWriter.ToArray()), resolver, config);
+        resolver.ReadTypeInfo(resolver.GetSerializer<CustomPayload>(), context);
+
+        ulong headerHash = EncodedTypeMetaHash(remote);
+        Assert.True(context.TryGetTypeMetaByHash(headerHash, out CheckedTypeMeta cached));
+        Assert.Same(typeof(CustomPayload), cached.Owner!.Type);
+
+        ByteWriter secondWriter = new();
+        secondWriter.WriteUInt8((byte)TypeId.CompatibleStruct);
+        secondWriter.WriteVarUInt32(0);
+        secondWriter.WriteUInt64((headerHash << TypeMetaConstants.TypeMetaHashShift) | 1);
+        secondWriter.WriteUInt8(0xaa);
+        context.ResetFor(new ByteReader(secondWriter.ToArray()));
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() =>
+            resolver.ReadTypeInfo(resolver.GetSerializer<DecimalEnvelope>(), context));
+        Assert.Contains("owner", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TypeMetaRefOwnerMismatch()
+    {
+        TypeResolver resolver = new();
+        resolver.Register(typeof(CustomPayload), 902);
+        resolver.Register(typeof(DecimalEnvelope), 903);
+        TypeMeta remote = RemoteCompatibleStructTypeMeta(902, "Id");
+
+        ByteWriter writer = new();
+        writer.WriteUInt8((byte)TypeId.CompatibleStruct);
+        writer.WriteVarUInt32(0);
+        writer.WriteBytes(remote.Encode());
+        writer.WriteUInt8((byte)TypeId.CompatibleStruct);
+        writer.WriteVarUInt32(1);
+
+        Config config = ForyRuntime.Builder().Compatible(true).Build().Config;
+        ReadContext context = new(new ByteReader(writer.ToArray()), resolver, config);
+        resolver.ReadTypeInfo(resolver.GetSerializer<CustomPayload>(), context);
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() =>
+            resolver.ReadTypeInfo(resolver.GetSerializer<DecimalEnvelope>(), context));
+        Assert.Contains("owner", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnyTypeMetaHitReusesOwner()
+    {
+        TypeResolver resolver = new();
+        resolver.Register(typeof(CustomPayload), 902);
+        TypeMeta remote = RemoteCompatibleStructTypeMeta(902, "Id");
+        Config config = ForyRuntime.Builder().Compatible(true).Build().Config;
+
+        ByteWriter firstWriter = new();
+        firstWriter.WriteUInt8((byte)TypeId.CompatibleStruct);
+        firstWriter.WriteVarUInt32(0);
+        firstWriter.WriteBytes(remote.Encode());
+        ReadContext context = new(new ByteReader(firstWriter.ToArray()), resolver, config);
+        TypeInfo first = resolver.ReadAnyTypeInfo(context);
+
+        ulong headerHash = EncodedTypeMetaHash(remote);
+        ByteWriter secondWriter = new();
+        secondWriter.WriteUInt8((byte)TypeId.CompatibleStruct);
+        secondWriter.WriteVarUInt32(0);
+        secondWriter.WriteUInt64((headerHash << TypeMetaConstants.TypeMetaHashShift) | 2);
+        secondWriter.WriteBytes([0xaa, 0xbb]);
+        secondWriter.WriteUInt8(0x7b);
+        context.ResetFor(new ByteReader(secondWriter.ToArray()));
+
+        TypeInfo second = resolver.ReadAnyTypeInfo(context);
+
+        Assert.Same(first, second);
+        Assert.Equal(0x7b, context.Reader.ReadUInt8());
+    }
+
+    [Fact]
+    public void AnyTypeMetaRequiresBoundOwner()
+    {
+        TypeResolver resolver = new();
+        resolver.Register(typeof(CustomPayload), 902);
+        Config config = ForyRuntime.Builder().Compatible(true).Build().Config;
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), resolver, config);
+        TypeMeta incompatible = RemoteCompatibleStructTypeMeta(902, "Id", MapType());
+
+        ReadAndStoreTypeMeta(context, incompatible);
+        ulong headerHash = EncodedTypeMetaHash(incompatible);
+        Assert.True(context.TryGetTypeMetaByHash(headerHash, out CheckedTypeMeta cached));
+        Assert.Null(cached.Owner);
+
+        ByteWriter writer = new();
+        writer.WriteUInt8((byte)TypeId.CompatibleStruct);
+        writer.WriteVarUInt32(0);
+        writer.WriteUInt64((headerHash << TypeMetaConstants.TypeMetaHashShift) | 1);
+        writer.WriteUInt8(0xaa);
+        context.ResetFor(new ByteReader(writer.ToArray()));
+
+        InvalidDataException exception =
+            Assert.Throws<InvalidDataException>(() => resolver.ReadAnyTypeInfo(context));
+        Assert.Contains("owner", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TypeMetaHashHitRejectsTruncatedBody()
+    {
+        TypeResolver resolver = new();
+        resolver.Register(typeof(CustomPayload), 902);
+        TypeInfo.TypeMetaCacheEntry local = resolver
+            .GetTypeInfo(typeof(CustomPayload))
+            .GetTypeMetaCacheEntry(trackRef: false);
+        ulong currentHeader = (local.HeaderHash << TypeMetaConstants.TypeMetaHashShift) | 4;
+
+        ByteWriter writer = new();
+        writer.WriteUInt8((byte)TypeId.CompatibleStruct);
+        writer.WriteVarUInt32(0);
+        writer.WriteUInt64(currentHeader);
+        writer.WriteBytes([0xaa, 0xbb, 0xcc]);
+
+        Config config = ForyRuntime.Builder().Compatible(true).Build().Config;
+        ReadContext context = new(new ByteReader(writer.ToArray()), resolver, config);
+
+        Assert.ThrowsAny<ForyException>(() =>
+            resolver.ReadTypeInfo(resolver.GetSerializer<CustomPayload>(), context));
     }
 
     [Fact]
@@ -1077,7 +1292,7 @@ public sealed class RuntimeEdgeCaseTests
         InvalidDataException exception =
             Assert.Throws<InvalidDataException>(() => ReadAndStoreTypeMeta(context, rejected));
         Assert.Contains("MaxDepth", exception.Message, StringComparison.Ordinal);
-        Assert.False(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(rejected), out _));
+        Assert.False(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(rejected), out _));
 
         TypeMeta accepted = RemoteCompatibleStructTypeMeta(
             903,
@@ -1087,7 +1302,7 @@ public sealed class RuntimeEdgeCaseTests
         TypeMeta second = ReadAndStoreTypeMeta(context, accepted);
 
         Assert.Same(first, second);
-        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(accepted), out _));
+        Assert.True(context.TryGetTypeMetaByHash(EncodedTypeMetaHash(accepted), out _));
     }
 
     [Fact]
@@ -1302,9 +1517,9 @@ public sealed class RuntimeEdgeCaseTests
         return resolver.ReadAnyTypeInfo(context);
     }
 
-    private static ulong EncodedTypeMetaHeader(TypeMeta typeMeta)
+    private static ulong EncodedTypeMetaHash(TypeMeta typeMeta)
     {
-        return BitConverter.ToUInt64(typeMeta.Encode(), 0);
+        return BitConverter.ToUInt64(typeMeta.Encode(), 0) >> TypeMetaConstants.TypeMetaHashShift;
     }
 
     [Fact]

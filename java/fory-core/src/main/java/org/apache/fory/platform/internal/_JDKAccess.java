@@ -185,6 +185,25 @@ public class _JDKAccess {
     }
   }
 
+  @SuppressWarnings("unchecked")
+  public static <T> T makeObjPrimitiveConsumer(
+      Lookup lookup, MethodHandle handle, Class<?> consumerInterface, Class<?> valueType) {
+    MethodType consumerMethodType = MethodType.methodType(void.class, Object.class, valueType);
+    try {
+      CallSite callSite =
+          LambdaMetafactory.metafactory(
+              lookup,
+              "accept",
+              MethodType.methodType(consumerInterface),
+              consumerMethodType,
+              handle,
+              handle.type());
+      return (T) callSite.getTarget().invoke();
+    } catch (Throwable e) {
+      throw ExceptionUtils.throwException(e);
+    }
+  }
+
   private static MethodType boxedMethodType(MethodType methodType) {
     Class<?>[] paramTypes = new Class[methodType.parameterCount()];
     for (int i = 0; i < paramTypes.length; i++) {

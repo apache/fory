@@ -31,13 +31,13 @@ rows, standard JSON, schema-driven models, and Fory-backed gRPC services.
 
 ## Capabilities
 
-| Capability            | Use it for                                           | Documentation                                         |
-| --------------------- | ---------------------------------------------------- | ----------------------------------------------------- |
-| Object Serialization  | Reconstruct xlang or language-native object graphs   | [Object Serialization](object-serialization/index.md) |
-| Row Format            | Random and partial access to trusted analytical data | [Row Format](row-format/index.md)                     |
-| Fory JSON             | High-throughput standard JSON mapped to Java objects | [Fory JSON](json/index.md)                            |
-| Fory IDL and compiler | Generate language-native models from a shared schema | [Compiler](compiler/index.md)                         |
-| Fory gRPC             | Generate gRPC companions that marshal Fory models    | [Fory gRPC](grpc/index.md)                            |
+| Capability            | Use it for                                            | Documentation                                         |
+| --------------------- | ----------------------------------------------------- | ----------------------------------------------------- |
+| Object Serialization  | Reconstruct xlang or language-native object graphs    | [Object Serialization](object-serialization/index.md) |
+| Row Format            | Random and partial access to trusted analytical data  | [Row Format](row-format/index.md)                     |
+| Fory JSON             | High-throughput standard JSON for Java, Kotlin, Scala | [Fory JSON](json/index.md)                            |
+| Fory IDL and compiler | Generate language-native models from a shared schema  | [Compiler](compiler/index.md)                         |
+| Fory gRPC             | Generate gRPC companions that marshal Fory models     | [Fory gRPC](grpc/index.md)                            |
 
 ## Language guides
 
@@ -49,6 +49,9 @@ Binary Object Serialization provides multi-page language guides for
 [C#](object-serialization/csharp/index.md), [Swift](object-serialization/swift/index.md),
 [Dart](object-serialization/dart/index.md), [Scala](object-serialization/scala/index.md), and
 [Kotlin](object-serialization/kotlin/index.md).
+
+Fory JSON has language guides for [Kotlin](json/kotlin.md) and [Scala](json/scala.md) in addition
+to its Java API documentation.
 
 ## Reference and development
 

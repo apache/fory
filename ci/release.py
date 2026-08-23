@@ -55,18 +55,63 @@ GRAALVM_FEATURE_SERVICE_ENTRY = (
 MAVEN_RELEASE_CMD = (
     "mvn -T10 clean deploy --no-transfer-progress -DskipTests -Papache-release"
 )
-SCALA_RELEASE_CMDS = (
+MAVEN_SNAPSHOT_CMD = (
+    "mvn -T10 clean deploy --no-transfer-progress -DskipTests "
+    "-Dgpg.skip=true -DretryFailedDeploymentCount=3 -Psnapshot-publication"
+)
+KOTLIN_RELEASE_PACKAGE_CMD = (
+    "mvn -T10 clean package --no-transfer-progress -DskipTests -Papache-release"
+)
+KOTLIN_RELEASE_DEPLOY_CMD = (
+    "mvn -T10 deploy --no-transfer-progress -DskipTests -Papache-release"
+)
+KOTLIN_SNAPSHOT_PACKAGE_CMD = (
+    "mvn -T10 clean package --no-transfer-progress -DskipTests "
+    "-Dgpg.skip=true -Psnapshot-publication"
+)
+KOTLIN_SNAPSHOT_DEPLOY_CMD = (
+    "mvn -T10 deploy --no-transfer-progress -DskipTests "
+    "-Dgpg.skip=true -DretryFailedDeploymentCount=3 -Psnapshot-publication"
+)
+SCALA_RELEASE_COMMANDS = (
     "sbt clean",
-    "sbt +publishSigned",
+    "sbt 'project fory-scala' +publishSigned",
+    "sbt 'project fory-json-scala' +publishSigned",
     "sbt sonatypePrepare",
     "sbt sonatypeBundleUpload",
 )
+SCALA_SNAPSHOT_COMMANDS = (
+    "sbt clean",
+    "sbt 'project fory-scala' +publish",
+    "sbt 'project fory-json-scala' +publish",
+)
+JVM_PUBLICATION_MODES = ("release", "snapshot")
+JVM_PUBLICATION_CREDENTIALS = ("NEXUS_USERNAME", "NEXUS_PASSWORD")
+KOTLIN_PUBLIC_ARTIFACTS = (
+    "fory-kotlin",
+    "fory-kotlin-ksp",
+    "fory-json-kotlin",
+    "fory-json-kotlin-ksp",
+)
+KOTLIN_MODULE_NAMES = {
+    "fory-json-kotlin": "org.apache.fory.json.kotlin",
+    "fory-json-kotlin-ksp": "org.apache.fory.json.kotlin.ksp",
+}
+KOTLIN_SERVICE_PROVIDERS = {
+    "fory-kotlin-ksp": "org.apache.fory.kotlin.ksp.ForyKotlinSymbolProcessorProvider",
+    "fory-json-kotlin-ksp": (
+        "org.apache.fory.json.kotlin.ksp.ForyJsonKotlinSymbolProcessorProvider"
+    ),
+}
 RELEASE_DOC_ROOTS = (
     "README.md",
     "java/README.md",
     "java/fory-json/README.md",
+    "kotlin/README.md",
     "rust/README.md",
     "scala/README.md",
+    "scala/fory-scala/README.md",
+    "scala/fory-json-scala/README.md",
     "csharp/README.md",
     "swift/README.md",
     "dart/packages/fory/README.md",
@@ -193,55 +238,85 @@ def verify(v):
     logger.info("Verified checksum successfully")
 
 
-def publish_jvm(languages="all"):
-    """Publish Java, Kotlin, and Scala artifacts."""
+def publish_jvm(languages="all", mode="release"):
+    """Publish Java, Kotlin, and Scala artifacts through one ordered JVM owner."""
     langs = _jvm_release_langs(languages)
+    _require_publication_authority(mode)
     _ensure_openjdk25()
+    if "java" not in langs:
+        _verify_fory_core_mr_jar()
     for lang in langs:
         if lang == "java":
-            _publish_java()
+            _publish_java(mode)
             _verify_fory_core_mr_jar()
         elif lang == "kotlin":
-            _publish_kotlin()
+            _publish_kotlin(mode)
         elif lang == "scala":
-            _publish_scala()
+            _publish_scala(mode)
         else:
             raise NotImplementedError(f"Unsupported JVM release language: {lang}")
-    _verify_fory_core_mr_jar()
-
-
-def publish_java():
-    publish_jvm("java")
-
-
-def publish_kotlin():
-    publish_jvm("kotlin")
-
-
-def publish_scala():
-    publish_jvm("scala")
 
 
 def _jvm_release_langs(languages):
     if languages in (None, "", "all"):
         return list(JVM_RELEASE_LANGS)
-    langs = [lang.strip() for lang in languages.split(",") if lang.strip()]
-    unsupported = [lang for lang in langs if lang not in JVM_RELEASE_LANGS]
+    selected = {lang.strip() for lang in languages.split(",") if lang.strip()}
+    if not selected:
+        raise ValueError("JVM release language selection is empty")
+    unsupported = sorted(selected.difference(JVM_RELEASE_LANGS))
     if unsupported:
         raise ValueError(f"Unsupported JVM release language(s): {unsupported}")
-    return langs
+    return [lang for lang in JVM_RELEASE_LANGS if lang in selected]
 
 
-def _publish_java():
-    _run_release_cmd(MAVEN_RELEASE_CMD, "java")
+def _require_publication_authority(mode):
+    if mode not in JVM_PUBLICATION_MODES:
+        raise ValueError(f"Unsupported JVM publication mode: {mode}")
+    missing = [name for name in JVM_PUBLICATION_CREDENTIALS if not os.environ.get(name)]
+    if missing:
+        raise RuntimeError(f"JVM {mode} publication requires: {', '.join(missing)}")
+    if mode == "release" and not _has_gpg_secret_key():
+        raise RuntimeError("JVM release publication requires a GPG secret key")
+    os.environ["SONATYPE_USERNAME"] = os.environ["NEXUS_USERNAME"]
+    os.environ["SONATYPE_PASSWORD"] = os.environ["NEXUS_PASSWORD"]
 
 
-def _publish_kotlin():
-    _run_release_cmd(MAVEN_RELEASE_CMD, "kotlin")
+def _has_gpg_secret_key():
+    gpg = shutil.which("gpg")
+    if not gpg:
+        return False
+    result = subprocess.run(
+        [gpg, "--batch", "--list-secret-keys", "--with-colons"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0 and any(
+        line.startswith("sec:") for line in result.stdout.splitlines()
+    )
 
 
-def _publish_scala():
-    for command in SCALA_RELEASE_CMDS:
+def _publish_java(mode="release"):
+    command = MAVEN_RELEASE_CMD if mode == "release" else MAVEN_SNAPSHOT_CMD
+    _run_release_cmd(command, "java")
+
+
+def _publish_kotlin(mode="release"):
+    if mode == "release":
+        package_command = KOTLIN_RELEASE_PACKAGE_CMD
+        deploy_command = KOTLIN_RELEASE_DEPLOY_CMD
+    else:
+        package_command = KOTLIN_SNAPSHOT_PACKAGE_CMD
+        deploy_command = KOTLIN_SNAPSHOT_DEPLOY_CMD
+    _run_release_cmd(package_command, "kotlin")
+    verify_kotlin_artifacts()
+    _run_release_cmd(deploy_command, "kotlin")
+
+
+def _publish_scala(mode="release"):
+    commands = SCALA_RELEASE_COMMANDS if mode == "release" else SCALA_SNAPSHOT_COMMANDS
+    for command in commands:
         _run_release_cmd(command, "scala")
 
 
@@ -478,10 +553,101 @@ def _verify_fory_core_mr_jar():
     if not re.search(feature_declaration, javap.stdout):
         raise RuntimeError(f"{FORY_CORE_FEATURE} must remain a non-public final class")
     logger.info(
-        "Verified fory-core Multi-Release release jars: %s, %s",
-        jar_path,
-        sources_jar_path,
+        "Verified fory-core Multi-Release jars: %s, %s", jar_path, sources_jar_path
     )
+
+
+def verify_kotlin_artifacts():
+    """Open every public Kotlin artifact and validate its publication surface."""
+    version = _read_kotlin_version()
+    for artifact in KOTLIN_PUBLIC_ARTIFACTS:
+        module_dir = os.path.join(PROJECT_ROOT_DIR, "kotlin", artifact)
+        target_dir = os.path.join(module_dir, "target")
+        binary_path = os.path.join(target_dir, f"{artifact}-{version}.jar")
+        sources_path = os.path.join(target_dir, f"{artifact}-{version}-sources.jar")
+        javadoc_path = os.path.join(target_dir, f"{artifact}-{version}-javadoc.jar")
+        pom_path = os.path.join(module_dir, "pom.xml")
+        for path in (binary_path, sources_path, javadoc_path, pom_path):
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"Missing Kotlin publication artifact: {path}")
+        ET.parse(pom_path)
+        with zipfile.ZipFile(binary_path) as binary:
+            binary_names = binary.namelist()
+            for required in (
+                "META-INF/LICENSE",
+                "META-INF/NOTICE",
+                "META-INF/DEPENDENCIES",
+            ):
+                if required not in binary_names:
+                    raise RuntimeError(f"{binary_path} is missing {required}")
+            if not any(name.endswith(".class") for name in binary_names):
+                raise RuntimeError(f"{binary_path} contains no classes")
+            for name in binary_names:
+                if not name.endswith(".class"):
+                    continue
+                class_bytes = binary.read(name)
+                major_version = int.from_bytes(class_bytes[6:8], "big")
+                if major_version != 52:
+                    raise RuntimeError(
+                        f"{binary_path}!/{name} is JVM class version {major_version}, expected 52"
+                    )
+            module_name = KOTLIN_MODULE_NAMES.get(artifact)
+            if module_name:
+                manifest = binary.read("META-INF/MANIFEST.MF").decode("utf-8")
+                if f"Automatic-Module-Name: {module_name}" not in manifest:
+                    raise RuntimeError(
+                        f"{binary_path} is missing Automatic-Module-Name: {module_name}"
+                    )
+            provider = KOTLIN_SERVICE_PROVIDERS.get(artifact)
+            if provider:
+                service_path = (
+                    "META-INF/services/"
+                    "com.google.devtools.ksp.processing.SymbolProcessorProvider"
+                )
+                if service_path not in binary_names:
+                    raise RuntimeError(f"{binary_path} is missing {service_path}")
+                providers = binary.read(service_path).decode("utf-8").splitlines()
+                providers = [line.strip() for line in providers if line.strip()]
+                if providers != [provider]:
+                    raise RuntimeError(
+                        f"{binary_path}!/{service_path} must contain only {provider}; "
+                        f"found {providers}"
+                    )
+        with zipfile.ZipFile(sources_path) as sources:
+            source_names = set(sources.namelist())
+        expected_sources = set()
+        for source_root in ("src/main/kotlin", "src/main/java"):
+            root = os.path.join(module_dir, source_root)
+            if not os.path.isdir(root):
+                continue
+            for directory, _, files in os.walk(root):
+                for filename in files:
+                    if not filename.endswith((".kt", ".java")):
+                        continue
+                    expected_sources.add(
+                        os.path.relpath(
+                            os.path.join(directory, filename), root
+                        ).replace(os.sep, "/")
+                    )
+        if not expected_sources:
+            raise RuntimeError(
+                f"{module_dir} contains no authored Kotlin or Java sources"
+            )
+        packaged_sources = {
+            name for name in source_names if name.endswith((".kt", ".java"))
+        }
+        if packaged_sources != expected_sources:
+            raise RuntimeError(
+                f"{sources_path} has an incomplete or stale source surface: "
+                f"{sorted(packaged_sources ^ expected_sources)}"
+            )
+        with zipfile.ZipFile(javadoc_path) as javadocs:
+            javadoc_names = javadocs.namelist()
+        if "index.html" not in javadoc_names or not any(
+            name.endswith(".html") and name != "index.html" for name in javadoc_names
+        ):
+            raise RuntimeError(f"{javadoc_path} contains no Kotlin API documentation")
+        logger.info("Verified Kotlin publication artifacts for %s", artifact)
 
 
 def _fory_core_jar_path(classifier=None):
@@ -505,6 +671,18 @@ def _read_java_version():
     version = root.findtext("m:version", namespaces=namespace)
     if artifact != "fory-parent" or packaging != "pom" or not version:
         raise ValueError("Cannot find java/fory parent version")
+    return version
+
+
+def _read_kotlin_version():
+    pom = os.path.join(PROJECT_ROOT_DIR, "kotlin", "pom.xml")
+    root = ET.parse(pom).getroot()
+    namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
+    artifact = root.findtext("m:artifactId", namespaces=namespace)
+    packaging = root.findtext("m:packaging", namespaces=namespace)
+    version = root.findtext("m:version", namespaces=namespace)
+    if artifact != "fory-kotlin-parent" or packaging != "pom" or not version:
+        raise ValueError("Cannot find kotlin/fory-kotlin-parent version")
     return version
 
 
@@ -693,11 +871,36 @@ def bump_kotlin_version(new_version):
     for p in [
         "kotlin/fory-kotlin",
         "kotlin/fory-kotlin-ksp",
+        "kotlin/fory-json-kotlin",
+        "kotlin/fory-json-kotlin-ksp",
         "kotlin/fory-kotlin-tests",
+        "integration_tests/kotlin_json_corpus",
+        "integration_tests/graalvm_kotlin_tests",
         "integration_tests/grpc_tests/kotlin",
         "integration_tests/idl_tests/kotlin",
     ]:
         _bump_version(p, "pom.xml", new_version, _update_pom_parent_version)
+    for file in ["build.gradle", "README.md"]:
+        _bump_version(
+            "integration_tests/android_tests",
+            file,
+            new_version,
+            _update_android_kotlin_version,
+        )
+    _bump_version(
+        "benchmarks/kotlin",
+        "gradle.properties",
+        new_version,
+        _update_kotlin_benchmark_version,
+    )
+    for path, file in [
+        ("kotlin/fory-json-kotlin", "README.md"),
+        ("kotlin/fory-json-kotlin-ksp", "README.md"),
+        ("docs/json", "kotlin.md"),
+        ("docs/json", "getting-started.md"),
+        ("docs/start", "kotlin.md"),
+    ]:
+        _bump_version(path, file, new_version, _update_release_doc_lines)
 
 
 def bump_cpp_version(new_version):
@@ -839,6 +1042,24 @@ def _update_android_tests_dependency_version(lines, new_version):
             line,
         )
     return lines
+
+
+def _update_android_kotlin_version(lines, new_version):
+    for index, line in enumerate(lines):
+        lines[index] = re.sub(
+            r"(org\.apache\.fory:(?:fory-json-kotlin(?:-ksp)?|kotlin-json-corpus):)[^'`)\s]+",
+            r"\g<1>" + new_version,
+            line,
+        )
+    return lines
+
+
+def _update_kotlin_benchmark_version(lines, new_version):
+    for index, line in enumerate(lines):
+        if line.startswith("foryVersion="):
+            lines[index] = f"foryVersion={new_version}\n"
+            return lines
+    raise ValueError("No foryVersion entry found in Kotlin benchmark properties")
 
 
 def _update_scala_version(lines, v):
@@ -1432,30 +1653,23 @@ def _parse_args():
         default="all",
         help="comma separated JVM languages: java,kotlin,scala",
     )
+    publish_jvm_parser.add_argument(
+        "--mode",
+        choices=JVM_PUBLICATION_MODES,
+        default="release",
+        help="release stages signed artifacts; snapshot publishes unsigned snapshots",
+    )
     publish_jvm_parser.set_defaults(func=publish_jvm)
 
-    publish_java_parser = subparsers.add_parser(
-        "publish_java",
-        description="Publish Java artifacts",
+    verify_kotlin_parser = subparsers.add_parser(
+        "verify_kotlin_artifacts",
+        description="Verify Kotlin binary, source, API documentation, and POM artifacts",
     )
-    publish_java_parser.set_defaults(func=publish_java)
-
-    publish_kotlin_parser = subparsers.add_parser(
-        "publish_kotlin",
-        description="Publish Kotlin artifacts",
-    )
-    publish_kotlin_parser.set_defaults(func=publish_kotlin)
-
-    publish_scala_parser = subparsers.add_parser(
-        "publish_scala",
-        description="Publish Scala artifacts",
-    )
-    publish_scala_parser.set_defaults(func=publish_scala)
+    verify_kotlin_parser.set_defaults(func=verify_kotlin_artifacts)
 
     args = parser.parse_args()
     arg_dict = dict(vars(args))
     del arg_dict["func"]
-    print(arg_dict)
     args.func(**arg_dict)
 
 

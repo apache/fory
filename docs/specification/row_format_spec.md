@@ -516,7 +516,8 @@ Where N = number of fields, E = number of elements
 
 - Writers must zero padding bytes to prevent information leakage
 - Readers must validate offsets and sizes before accessing data
-- Buffer bounds checking is required for untrusted input
+- Row format accepts only trusted input; its offset and size checks are correctness and
+  defense-in-depth measures, not an untrusted-input security boundary
 
 ### Performance Considerations
 

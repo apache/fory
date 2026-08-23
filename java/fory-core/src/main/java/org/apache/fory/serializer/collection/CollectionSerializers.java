@@ -717,14 +717,20 @@ public class CollectionSerializers {
 
   public static final class ConcurrentHashMapKeySetViewSerializer
       extends CollectionSerializer<ConcurrentHashMap.KeySetView> {
+    // Compatible reads may cache remote schema metadata; local writes retain the original local
+    // holders and must not reuse read state.
     private final TypeInfoHolder mapTypeInfoHolder;
+    private final TypeInfoHolder mapTypeInfoReadHolder;
     private final TypeInfoHolder valueTypeInfoHolder;
+    private final TypeInfoHolder valueTypeInfoReadHolder;
 
     public ConcurrentHashMapKeySetViewSerializer(
         TypeResolver typeResolver, Class<ConcurrentHashMap.KeySetView> type) {
       super(typeResolver, type, false);
       mapTypeInfoHolder = typeResolver.nilTypeInfoHolder();
+      mapTypeInfoReadHolder = typeResolver.nilTypeInfoHolder();
       valueTypeInfoHolder = typeResolver.nilTypeInfoHolder();
+      valueTypeInfoReadHolder = typeResolver.nilTypeInfoHolder();
     }
 
     @Override
@@ -735,8 +741,8 @@ public class CollectionSerializers {
 
     @Override
     public ConcurrentHashMap.KeySetView read(ReadContext readContext) {
-      ConcurrentHashMap map = (ConcurrentHashMap) readContext.readRef(mapTypeInfoHolder);
-      Object value = readContext.readRef(valueTypeInfoHolder);
+      ConcurrentHashMap map = (ConcurrentHashMap) readContext.readRef(mapTypeInfoReadHolder);
+      Object value = readContext.readRef(valueTypeInfoReadHolder);
       readContext.reserveGraphMemory(KEY_SET_VIEW_OWNER_BYTES);
       return map.keySet(value);
     }

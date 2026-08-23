@@ -26,11 +26,17 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeMap;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonAnySetter;
@@ -51,9 +57,12 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonAnyPropertyTest extends ForyJsonTestModels {
+  private final boolean generated;
+
   @Factory(dataProvider = "enableCodegen")
   public JsonAnyPropertyTest(boolean codegen) {
     super(codegen);
+    generated = codegen;
   }
 
   @Test
@@ -78,6 +87,83 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
             "{\"id\":7,\"emoji😀\":8}".getBytes(StandardCharsets.UTF_8), MutableAny.class);
     assertEquals(utf8.properties, Collections.singletonMap("emoji😀", 8));
     assertGeneratedCapabilities(json, MutableAny.class);
+  }
+
+  @Test
+  public void mangledMethodBackedRoundTrip() throws Exception {
+    String simpleName = "MangledAny" + (generated ? "Generated" : "Interpreted");
+    Path root = Files.createTempDirectory("fory-json-mangled-any");
+    Path output = root.resolve("classes");
+    Path source = root.resolve("src/org/apache/fory/json/dynamic/" + simpleName + ".java");
+    Files.createDirectories(output);
+    Files.createDirectories(source.getParent());
+    String text =
+        "package org.apache.fory.json.dynamic;\n"
+            + "import java.util.LinkedHashMap;\n"
+            + "import java.util.Map;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "public final class "
+            + simpleName
+            + " {\n"
+            + "  @JsonIgnore public final Map<String, Object> values = new LinkedHashMap<>();\n"
+            + "  @JsonAnyGetter public Map<String, Object> anyGetterX() { return values; }\n"
+            + "  @JsonAnySetter public void anySetterX(String name, Object value) {"
+            + " values.put(name, value); }\n"
+            + "}\n";
+    Files.write(source, text.getBytes(StandardCharsets.UTF_8));
+    JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+    assertTrue(compiler != null);
+    assertEquals(
+        compiler.run(
+            null,
+            null,
+            null,
+            "-proc:none",
+            "-classpath",
+            System.getProperty("java.class.path"),
+            "-d",
+            output.toString(),
+            source.toString()),
+        0);
+    Path classFile = output.resolve("org/apache/fory/json/dynamic/" + simpleName + ".class");
+    byte[] bytecode = Files.readAllBytes(classFile);
+    replaceAscii(bytecode, "anyGetterX", "any-getter");
+    replaceAscii(bytecode, "anySetterX", "any-setter");
+    Files.write(classFile, bytecode);
+    try (URLClassLoader loader =
+        new URLClassLoader(
+            new URL[] {output.toUri().toURL()}, JsonAnyPropertyTest.class.getClassLoader())) {
+      Class<?> type = Class.forName("org.apache.fory.json.dynamic." + simpleName, true, loader);
+      ForyJson json =
+          ForyJson.builder()
+              .withCodegen(generated)
+              .withAsyncCompilation(false)
+              .withClassLoader(loader)
+              .build();
+      Object value = json.fromJson("{\"x\":1}", type);
+      Map<?, ?> values = (Map<?, ?>) type.getField("values").get(value);
+      assertEquals(((Number) values.get("x")).intValue(), 1);
+      assertEquals(json.toJson(value), "{\"x\":1}");
+      assertGeneratedWhenSupported(json, type);
+    }
+  }
+
+  private static void replaceAscii(byte[] bytes, String source, String target) {
+    byte[] sourceBytes = source.getBytes(StandardCharsets.ISO_8859_1);
+    byte[] targetBytes = target.getBytes(StandardCharsets.ISO_8859_1);
+    assertEquals(targetBytes.length, sourceBytes.length);
+    int replacements = 0;
+    for (int i = 0; i <= bytes.length - sourceBytes.length; i++) {
+      int j = 0;
+      while (j < sourceBytes.length && bytes[i + j] == sourceBytes[j]) {
+        j++;
+      }
+      if (j == sourceBytes.length) {
+        System.arraycopy(targetBytes, 0, bytes, i, targetBytes.length);
+        replacements++;
+      }
+    }
+    assertEquals(replacements, 1);
   }
 
   @Test
@@ -621,7 +707,7 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
             .get("byte")
             .value,
         3);
-    assertInterpretedCapabilities(json, type);
+    assertGeneratedCapabilities(json, type);
   }
 
   @Test
@@ -923,19 +1009,37 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
     resolver.lockJIT();
     try {
-      Object owner = resolver.getObjectCodec(type);
+      ObjectCodec<?> owner = resolver.getObjectCodec(type);
       JsonTypeInfo info = resolver.getTypeInfo(type, type);
-      if (!StringSerializer.isBytesBackedString()) {
-        resolver.latin1Reader((ObjectCodec<?>) owner);
-      }
-      assertGenerated(info.stringWriter(), owner);
-      assertGenerated(info.utf8Writer(), owner);
-      assertGenerated(info.latin1Reader(), owner);
-      assertGenerated(info.utf16Reader(), owner);
-      assertGenerated(info.utf8Reader(), owner);
+      assertGeneratedCapabilities(resolver, info, owner);
     } finally {
       resolver.unlockJIT();
     }
+  }
+
+  private void assertGeneratedCapabilities(ForyJson json, TypeRef<?> type) {
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
+    resolver.lockJIT();
+    try {
+      JsonTypeInfo info = resolver.getTypeInfo(type);
+      ObjectCodec<?> owner = resolver.canonicalObjectCodec(info);
+      assertTrue(owner != null);
+      assertGeneratedCapabilities(resolver, info, owner);
+    } finally {
+      resolver.unlockJIT();
+    }
+  }
+
+  private void assertGeneratedCapabilities(
+      JsonTypeResolver resolver, JsonTypeInfo info, ObjectCodec<?> owner) {
+    if (!StringSerializer.isBytesBackedString()) {
+      resolver.latin1Reader(owner);
+    }
+    assertGenerated(info.stringWriter(), owner);
+    assertGenerated(info.utf8Writer(), owner);
+    assertGenerated(info.latin1Reader(), owner);
+    assertGenerated(info.utf16Reader(), owner);
+    assertGenerated(info.utf8Reader(), owner);
   }
 
   private void assertGeneratedWriters(ForyJson json, Class<?> type) {
@@ -963,21 +1067,6 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
       assertGenerated(info.latin1Reader(), owner);
       assertGenerated(info.utf16Reader(), owner);
       assertGenerated(info.utf8Reader(), owner);
-    } finally {
-      resolver.unlockJIT();
-    }
-  }
-
-  private static void assertInterpretedCapabilities(ForyJson json, TypeRef<?> type) {
-    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
-    resolver.lockJIT();
-    try {
-      JsonTypeInfo info = resolver.getTypeInfo(type.getType(), type.getRawType());
-      Object owner = info.stringWriter();
-      assertSame(info.utf8Writer(), owner);
-      assertSame(info.latin1Reader(), owner);
-      assertSame(info.utf16Reader(), owner);
-      assertSame(info.utf8Reader(), owner);
     } finally {
       resolver.unlockJIT();
     }

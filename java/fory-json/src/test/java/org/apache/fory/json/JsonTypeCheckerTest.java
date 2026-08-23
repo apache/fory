@@ -27,13 +27,11 @@ import java.beans.Expression;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.json.annotation.JsonCodec;
-import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.data.Kind;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Float16;
@@ -41,8 +39,6 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonTypeCheckerTest extends ForyJsonTestModels {
-  private static final JsonValueCodec<String> STRING_NULL_CODEC = nullCodec();
-
   @Factory(dataProvider = "enableCodegen")
   public JsonTypeCheckerTest(boolean codegen) {
     super(codegen);
@@ -90,13 +86,13 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void customExactUsesChecker() {
+  public void customExactWriteUsesChecker() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(String.class, STRING_NULL_CODEC)
-            .withTypeChecker((className, context) -> !className.equals(String.class.getName()))
+            .registerCodec(CheckedBean.class, nullCodec())
+            .withTypeChecker((className, context) -> !className.equals(CheckedBean.class.getName()))
             .build();
-    assertThrows(InsecureException.class, () -> json.toJson("value"));
+    assertThrows(InsecureException.class, () -> json.toJson(new CheckedBean()));
   }
 
   @Test
@@ -109,29 +105,13 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void mapKeyIgnoresValueCodec() {
+  public void customExactReadUsesChecker() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(String.class, STRING_NULL_CODEC)
-            .withTypeChecker((className, context) -> !className.equals(String.class.getName()))
+            .registerCodec(CheckedBean.class, nullCodec())
+            .withTypeChecker((className, context) -> !className.equals(CheckedBean.class.getName()))
             .build();
-    StringKeyMap value = new StringKeyMap();
-    value.values = new LinkedHashMap<>();
-    value.values.put("key", 1);
-    assertEquals(json.toJson(value), "{\"values\":{\"key\":1}}");
-    assertEquals(
-        json.fromJson("{\"values\":{\"key\":2}}", StringKeyMap.class).values.get("key"),
-        Integer.valueOf(2));
-  }
-
-  @Test
-  public void customPrimitiveUsesChecker() {
-    ForyJson json =
-        newJsonBuilder()
-            .registerCodec(int.class, nullCodec())
-            .withTypeChecker((className, context) -> !className.equals(int.class.getName()))
-            .build();
-    assertThrows(InsecureException.class, () -> json.fromJson("1", int.class));
+    assertThrows(InsecureException.class, () -> json.fromJson("{}", CheckedBean.class));
   }
 
   @Test
@@ -195,26 +175,26 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void collectionScalarChecked() {
+  public void collectionCustomCodecChecked() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(Integer.class, nullCodec())
-            .withTypeChecker((className, context) -> !className.equals(Integer.class.getName()))
+            .registerCodec(CheckedBean.class, nullCodec())
+            .withTypeChecker((className, context) -> !className.equals(CheckedBean.class.getName()))
             .build();
     assertThrows(
-        InsecureException.class, () -> json.fromJson("[1]", new TypeRef<List<Integer>>() {}));
+        InsecureException.class, () -> json.fromJson("[{}]", new TypeRef<List<CheckedBean>>() {}));
   }
 
   @Test
-  public void mapScalarChecked() {
+  public void mapCustomCodecChecked() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(Integer.class, nullCodec())
-            .withTypeChecker((className, context) -> !className.equals(Integer.class.getName()))
+            .registerCodec(CheckedBean.class, nullCodec())
+            .withTypeChecker((className, context) -> !className.equals(CheckedBean.class.getName()))
             .build();
     assertThrows(
         InsecureException.class,
-        () -> json.fromJson("{\"one\":1}", new TypeRef<Map<String, Integer>>() {}));
+        () -> json.fromJson("{\"one\":{}}", new TypeRef<Map<String, CheckedBean>>() {}));
   }
 
   @Test
@@ -261,10 +241,6 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
 
   public static final class RejectedHolder {
     public RejectedValue value;
-  }
-
-  public static final class StringKeyMap {
-    public Map<String, Integer> values;
   }
 
   public static final class AnnotatedStringHolder {

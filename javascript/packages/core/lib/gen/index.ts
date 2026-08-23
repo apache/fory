@@ -39,8 +39,25 @@ import "./any";
 import "./union";
 import "./ext";
 import TypeResolver from "../typeResolver";
+import {
+  checkedTypeMetaSerializerSymbol,
+  checkedTypeMetaWireTypeIdSymbol,
+  localTypeMetaSymbol,
+  TypeMeta,
+} from "../meta/TypeMeta";
 
 CodegenRegistry.registerExternal(CompatibleScalarConverter);
+
+type SerializerFactoryBuilder = () => (
+  typeResolver: TypeResolver,
+  external: unknown,
+  typeInfo: TypeInfo,
+  options: { [key: string]: unknown },
+  localTypeMeta: TypeMeta | undefined,
+  localTypeMetaSymbol: symbol,
+  checkedTypeMetaSerializerSymbol: symbol,
+  checkedTypeMetaWireTypeIdSymbol: symbol,
+) => Serializer;
 
 export class Gen {
   static external = CodegenRegistry.getExternal();
@@ -50,7 +67,7 @@ export class Gen {
     private regOptions: { [key: string]: any } = {},
   ) {}
 
-  private generate(typeInfo: TypeInfo) {
+  private generate(typeInfo: TypeInfo): Serializer {
     const InnerGeneratorClass = CodegenRegistry.get(typeInfo.typeId);
     if (!InnerGeneratorClass) {
       throw new Error(`${typeInfo.typeId} generator not exists`);
@@ -63,13 +80,27 @@ export class Gen {
     );
 
     const funcString = generator.toSerializer();
+    let factoryBuilder: SerializerFactoryBuilder;
     if (this.typeResolver.config && this.typeResolver.config.hooks) {
       const afterCodeGenerated = this.typeResolver.config.hooks.afterCodeGenerated;
       if (typeof afterCodeGenerated === "function") {
-        return new Function(afterCodeGenerated(funcString));
+        factoryBuilder = new Function(afterCodeGenerated(funcString)) as SerializerFactoryBuilder;
+      } else {
+        factoryBuilder = new Function(funcString) as SerializerFactoryBuilder;
       }
+    } else {
+      factoryBuilder = new Function(funcString) as SerializerFactoryBuilder;
     }
-    return new Function(funcString);
+    return factoryBuilder()(
+      this.typeResolver,
+      Gen.external,
+      typeInfo,
+      this.regOptions,
+      generator.getLocalTypeMeta(),
+      localTypeMetaSymbol,
+      checkedTypeMetaSerializerSymbol,
+      checkedTypeMetaWireTypeIdSymbol,
+    );
   }
 
   private register(typeInfo: TypeInfo, serializer?: Serializer) {
@@ -100,16 +131,14 @@ export class Gen {
         Object.values(options.cases).forEach((x) => {
           this.traversalContainer(x);
         });
-        const func = this.generate(typeInfo);
-        this.register(typeInfo, func()(this.typeResolver, Gen.external, typeInfo, this.regOptions));
+        this.register(typeInfo, this.generate(typeInfo));
         return;
       } else if (options?.props && Object.keys(options.props).length > 0) {
         this.register(typeInfo);
         Object.values(options.props).forEach((x) => {
           this.traversalContainer(x);
         });
-        const func = this.generate(typeInfo);
-        this.register(typeInfo, func()(this.typeResolver, Gen.external, typeInfo, this.regOptions));
+        this.register(typeInfo, this.generate(typeInfo));
       } else if (!this.isRegistered(typeInfo) && TypeId.structType(typeInfo.typeId)) {
         // Forward reference to a struct type not yet fully defined — register a
         // placeholder so that serializer factories can capture the object
@@ -117,8 +146,7 @@ export class Gen {
         // when the real serializer is generated later.
         this.register(typeInfo);
       } else if (TypeId.enumType(typeInfo.typeId) && !this.isRegistered(typeInfo)) {
-        const func = this.generate(typeInfo);
-        this.register(typeInfo, func()(this.typeResolver, Gen.external, typeInfo, this.regOptions));
+        this.register(typeInfo, this.generate(typeInfo));
       }
     }
     if (typeInfo.typeId === TypeId.LIST) {
@@ -142,8 +170,7 @@ export class Gen {
   }
 
   reGenerateSerializer(typeInfo: TypeInfo) {
-    const func = this.generate(typeInfo);
-    return func()(this.typeResolver, Gen.external, typeInfo, this.regOptions);
+    return this.generate(typeInfo);
   }
 
   generateSerializer(typeInfo: TypeInfo) {

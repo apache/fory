@@ -81,8 +81,11 @@ import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.meta.TypeExtMeta;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Float16;
@@ -1488,7 +1491,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeUuid(value);
+        writer.writeUuid(value.getMostSignificantBits(), value.getLeastSignificantBits());
       }
     }
 
@@ -1497,7 +1500,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeUuid(value);
+        writer.writeUuid(value.getMostSignificantBits(), value.getLeastSignificantBits());
       }
     }
 
@@ -1857,7 +1860,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_INSTANT);
+        writer.writeIsoInstant(value.getEpochSecond(), value.getNano());
       }
     }
 
@@ -1866,7 +1869,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_INSTANT);
+        writer.writeIsoInstant(value.getEpochSecond(), value.getNano());
       }
     }
 
@@ -2665,45 +2668,85 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicReferenceCodec implements JsonValueCodec<AtomicReference<?>> {
-    private static final int SHALLOW_BYTES =
-        GraphMemoryEstimates.shallowObjectBytes(AtomicReference.class);
+  public static class AtomicReferenceCodec implements JsonValueCodec<AtomicReference<?>> {
+    static final int SHALLOW_BYTES = GraphMemoryEstimates.shallowObjectBytes(AtomicReference.class);
 
     private final JsonTypeInfo valueTypeInfo;
+    private final byte nullAction;
+
+    private static final byte PLATFORM_NULL = 0;
+    private static final byte OUTER_NULL = 1;
+    private static final byte VALUE_NULL = 2;
+    private static final byte REJECT_NULL = 3;
 
     public AtomicReferenceCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       this.valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+      nullAction = PLATFORM_NULL;
+    }
+
+    public AtomicReferenceCodec(TypeRef<?> referenceType, JsonTypeResolver resolver) {
+      this(referenceType, resolver.getTypeInfo(CodecUtils.elementTypeRef(referenceType)));
     }
 
     @Internal
-    public AtomicReferenceCodec(JsonTypeInfo valueTypeInfo) {
+    public AtomicReferenceCodec(TypeRef<?> referenceType, JsonTypeInfo valueTypeInfo) {
       this.valueTypeInfo = valueTypeInfo;
+      nullAction = atomicReferenceNullAction(referenceType, valueTypeInfo);
+    }
+
+    /** Selects the exact transparent child-null operation for one declared reference occurrence. */
+    @Internal
+    public static AtomicReferenceCodec create(
+        TypeRef<?> referenceType, JsonTypeInfo valueTypeInfo) {
+      TypeExtMeta metadata = referenceType.getTypeExtMeta();
+      if (metadata != null && valueTypeInfo.transparentNull()) {
+        if (metadata.nullable() && !metadata.nullableWrapper()) {
+          throw new ForyJsonException(
+              "Nullable AtomicReference with transparent-null content has ambiguous JSON null");
+        }
+        return new TransparentAtomicReferenceCodec(referenceType, valueTypeInfo);
+      }
+      if (metadata == null || valueTypeInfo.nullable()) {
+        return new NullMaterializingAtomicReferenceCodec(referenceType, valueTypeInfo);
+      }
+      return new AtomicReferenceCodec(referenceType, valueTypeInfo);
     }
 
     @Override
     public void writeString(StringJsonWriter writer, AtomicReference<?> value) {
       if (value == null) {
+        requireAtomicOwner();
         writer.writeNull();
       } else {
-        valueTypeInfo.stringWriter().writeString(writer, value.get());
+        Object element = value.get();
+        if (element == null && nullAction != PLATFORM_NULL) {
+          writeAtomicNull(writer);
+        } else {
+          valueTypeInfo.stringWriter().writeString(writer, element);
+        }
       }
     }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, AtomicReference<?> value) {
       if (value == null) {
+        requireAtomicOwner();
         writer.writeNull();
       } else {
-        valueTypeInfo.utf8Writer().writeUtf8(writer, value.get());
+        Object element = value.get();
+        if (element == null && nullAction != PLATFORM_NULL) {
+          writeAtomicNull(writer);
+        } else {
+          valueTypeInfo.utf8Writer().writeUtf8(writer, element);
+        }
       }
     }
 
     @Override
     public AtomicReference<?> readLatin1(Latin1JsonReader reader) {
       if (reader.tryReadNullToken()) {
-        reader.reserveGraphMemory(SHALLOW_BYTES);
-        return new AtomicReference<>();
+        return readAtomicNull(reader);
       }
       Object value = valueTypeInfo.latin1Reader().readLatin1(reader);
       reader.reserveGraphMemory(SHALLOW_BYTES);
@@ -2713,8 +2756,7 @@ public final class ScalarCodecs {
     @Override
     public AtomicReference<?> readUtf16(Utf16JsonReader reader) {
       if (reader.tryReadNullToken()) {
-        reader.reserveGraphMemory(SHALLOW_BYTES);
-        return new AtomicReference<>();
+        return readAtomicNull(reader);
       }
       Object value = valueTypeInfo.utf16Reader().readUtf16(reader);
       reader.reserveGraphMemory(SHALLOW_BYTES);
@@ -2724,9 +2766,86 @@ public final class ScalarCodecs {
     @Override
     public AtomicReference<?> readUtf8(Utf8JsonReader reader) {
       if (reader.tryReadNullToken()) {
-        reader.reserveGraphMemory(SHALLOW_BYTES);
-        return new AtomicReference<>();
+        return readAtomicNull(reader);
       }
+      Object value = valueTypeInfo.utf8Reader().readUtf8(reader);
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return new AtomicReference<>(value);
+    }
+
+    private void requireAtomicOwner() {
+      if (nullAction != PLATFORM_NULL && nullAction != OUTER_NULL) {
+        throw new ForyJsonException("Non-null AtomicReference occurrence cannot be null");
+      }
+    }
+
+    private void writeAtomicNull(JsonWriter writer) {
+      if (nullAction != VALUE_NULL) {
+        throw new ForyJsonException("AtomicReference value occurrence cannot be null");
+      }
+      writer.writeNull();
+    }
+
+    private AtomicReference<?> readAtomicNull(JsonReader reader) {
+      if (nullAction == OUTER_NULL) {
+        return null;
+      }
+      if (nullAction == REJECT_NULL) {
+        throw new ForyJsonException("AtomicReference value occurrence cannot be null");
+      }
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return new AtomicReference<>();
+    }
+
+    private static byte atomicReferenceNullAction(
+        TypeRef<?> referenceType, JsonTypeInfo valueTypeInfo) {
+      TypeExtMeta metadata = referenceType.getTypeExtMeta();
+      if (metadata == null) {
+        return PLATFORM_NULL;
+      }
+      boolean outerNullable = metadata.nullable() && !metadata.nullableWrapper();
+      boolean valueNullable = valueTypeInfo.nullable();
+      if (outerNullable && valueNullable) {
+        throw new ForyJsonException(
+            "Nullable AtomicReference with nullable content has ambiguous JSON null");
+      }
+      return outerNullable ? OUTER_NULL : valueNullable ? VALUE_NULL : REJECT_NULL;
+    }
+  }
+
+  private static final class NullMaterializingAtomicReferenceCodec extends AtomicReferenceCodec
+      implements TransparentNullCodec {
+    private NullMaterializingAtomicReferenceCodec(
+        TypeRef<?> referenceType, JsonTypeInfo valueTypeInfo) {
+      super(referenceType, valueTypeInfo);
+    }
+  }
+
+  private static final class TransparentAtomicReferenceCodec extends AtomicReferenceCodec
+      implements TransparentNullCodec {
+    private final JsonTypeInfo valueTypeInfo;
+
+    private TransparentAtomicReferenceCodec(TypeRef<?> referenceType, JsonTypeInfo valueTypeInfo) {
+      super(referenceType, valueTypeInfo);
+      this.valueTypeInfo = valueTypeInfo;
+    }
+
+    @Override
+    public AtomicReference<?> readLatin1(Latin1JsonReader reader) {
+      Object value = valueTypeInfo.latin1Reader().readLatin1(reader);
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return new AtomicReference<>(value);
+    }
+
+    @Override
+    public AtomicReference<?> readUtf16(Utf16JsonReader reader) {
+      Object value = valueTypeInfo.utf16Reader().readUtf16(reader);
+      reader.reserveGraphMemory(SHALLOW_BYTES);
+      return new AtomicReference<>(value);
+    }
+
+    @Override
+    public AtomicReference<?> readUtf8(Utf8JsonReader reader) {
       Object value = valueTypeInfo.utf8Reader().readUtf8(reader);
       reader.reserveGraphMemory(SHALLOW_BYTES);
       return new AtomicReference<>(value);
@@ -2969,8 +3088,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicReferenceArrayCodec
-      implements JsonValueCodec<AtomicReferenceArray<?>> {
+  public static class AtomicReferenceArrayCodec implements JsonValueCodec<AtomicReferenceArray<?>> {
     private static final int SHALLOW_BYTES =
         GraphMemoryEstimates.shallowObjectBytes(AtomicReferenceArray.class);
     private static final int ARRAY_BYTES = GraphMemoryEstimates.objectArrayBytes();
@@ -2986,9 +3104,21 @@ public final class ScalarCodecs {
       this.valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
     }
 
+    public AtomicReferenceArrayCodec(TypeRef<?> valueType, JsonTypeResolver resolver) {
+      this.valueTypeInfo = resolver.getTypeInfo(valueType);
+    }
+
     @Internal
     public AtomicReferenceArrayCodec(JsonTypeInfo valueTypeInfo) {
       this.valueTypeInfo = valueTypeInfo;
+    }
+
+    /** Selects the exact element-null operation for one declared atomic reference array. */
+    @Internal
+    public static AtomicReferenceArrayCodec create(JsonTypeInfo valueTypeInfo) {
+      return valueTypeInfo.rejectsNull()
+          ? new NonNullAtomicReferenceArrayCodec(valueTypeInfo)
+          : new AtomicReferenceArrayCodec(valueTypeInfo);
     }
 
     @Override
@@ -3002,7 +3132,7 @@ public final class ScalarCodecs {
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
-        codec.writeString(writer, array.get(i));
+        writeElement(writer, codec, array.get(i));
       }
       writer.writeArrayEnd();
     }
@@ -3018,7 +3148,7 @@ public final class ScalarCodecs {
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
-        codec.writeUtf8(writer, array.get(i));
+        writeElement(writer, codec, array.get(i));
       }
       writer.writeArrayEnd();
     }
@@ -3049,7 +3179,7 @@ public final class ScalarCodecs {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = codec.readUtf16(reader);
+        values[size++] = readElement(reader, codec);
       } while (reader.consumeNextCommaOrEndArray());
       finishArray(reader, size);
       return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
@@ -3074,7 +3204,7 @@ public final class ScalarCodecs {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = codec.readUtf8(reader);
+        values[size++] = readElement(reader, codec);
       } while (reader.consumeNextCommaOrEndArray());
       finishArray(reader, size);
       return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
@@ -3095,7 +3225,7 @@ public final class ScalarCodecs {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = codec.readLatin1(reader);
+        values[size++] = readElement(reader, codec);
       } while (reader.consumeNextCommaOrEndArray());
       finishArray(reader, size);
       return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
@@ -3113,27 +3243,114 @@ public final class ScalarCodecs {
         reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
       }
     }
+
+    void writeElement(StringJsonWriter writer, StringWriterCodec<Object> codec, Object element) {
+      codec.writeString(writer, element);
+    }
+
+    void writeElement(Utf8JsonWriter writer, Utf8WriterCodec<Object> codec, Object element) {
+      codec.writeUtf8(writer, element);
+    }
+
+    Object readElement(Latin1JsonReader reader, Latin1ReaderCodec<Object> codec) {
+      return codec.readLatin1(reader);
+    }
+
+    Object readElement(Utf16JsonReader reader, Utf16ReaderCodec<Object> codec) {
+      return codec.readUtf16(reader);
+    }
+
+    Object readElement(Utf8JsonReader reader, Utf8ReaderCodec<Object> codec) {
+      return codec.readUtf8(reader);
+    }
   }
 
-  public static final class OptionalCodec implements JsonValueCodec<Optional<?>> {
+  private static final class NonNullAtomicReferenceArrayCodec extends AtomicReferenceArrayCodec {
+    private NonNullAtomicReferenceArrayCodec(JsonTypeInfo valueTypeInfo) {
+      super(valueTypeInfo);
+    }
+
+    @Override
+    void writeElement(StringJsonWriter writer, StringWriterCodec<Object> codec, Object element) {
+      if (element == null) {
+        rejectNullAtomicArrayElement();
+      }
+      codec.writeString(writer, element);
+    }
+
+    @Override
+    void writeElement(Utf8JsonWriter writer, Utf8WriterCodec<Object> codec, Object element) {
+      if (element == null) {
+        rejectNullAtomicArrayElement();
+      }
+      codec.writeUtf8(writer, element);
+    }
+
+    @Override
+    Object readElement(Latin1JsonReader reader, Latin1ReaderCodec<Object> codec) {
+      if (reader.tryReadNullToken()) {
+        return rejectNullAtomicArrayElement();
+      }
+      return codec.readLatin1(reader);
+    }
+
+    @Override
+    Object readElement(Utf16JsonReader reader, Utf16ReaderCodec<Object> codec) {
+      if (reader.tryReadNullToken()) {
+        return rejectNullAtomicArrayElement();
+      }
+      return codec.readUtf16(reader);
+    }
+
+    @Override
+    Object readElement(Utf8JsonReader reader, Utf8ReaderCodec<Object> codec) {
+      if (reader.tryReadNullToken()) {
+        return rejectNullAtomicArrayElement();
+      }
+      return codec.readUtf8(reader);
+    }
+  }
+
+  private static Object rejectNullAtomicArrayElement() {
+    throw new ForyJsonException("AtomicReferenceArray element occurrence cannot be null");
+  }
+
+  public static final class OptionalCodec
+      implements JsonValueCodec<Optional<?>>, TransparentNullCodec {
     private static final int SHALLOW_BYTES =
         GraphMemoryEstimates.shallowObjectBytes(Optional.class);
 
     private final JsonTypeInfo valueTypeInfo;
+    private final boolean requireOwner;
 
     public OptionalCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       this.valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+      requireOwner = false;
+    }
+
+    public OptionalCodec(TypeRef<?> optionalType, JsonTypeResolver resolver) {
+      this(optionalType, resolver.getTypeInfo(CodecUtils.elementTypeRef(optionalType)));
     }
 
     @Internal
-    public OptionalCodec(JsonTypeInfo valueTypeInfo) {
+    public OptionalCodec(TypeRef<?> optionalType, JsonTypeInfo valueTypeInfo) {
       this.valueTypeInfo = valueTypeInfo;
+      TypeExtMeta metadata = optionalType.getTypeExtMeta();
+      requireOwner = metadata != null;
+      if (metadata != null && (metadata.nullable() || metadata.nullableWrapper())) {
+        throw new ForyJsonException("Nullable Optional has ambiguous JSON null: " + optionalType);
+      }
+      if (valueTypeInfo.nullable() || valueTypeInfo.transparentNull()) {
+        throw new ForyJsonException(
+            "Optional content must have one non-null JSON representation: " + optionalType);
+      }
     }
 
     @Override
     public void writeString(StringJsonWriter writer, Optional<?> value) {
       if (value == null) {
+        requireOptionalOwner();
         writer.writeNull();
         return;
       }
@@ -3148,6 +3365,7 @@ public final class ScalarCodecs {
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Optional<?> value) {
       if (value == null) {
+        requireOptionalOwner();
         writer.writeNull();
         return;
       }
@@ -3197,14 +3415,35 @@ public final class ScalarCodecs {
       reader.reserveGraphMemory(SHALLOW_BYTES);
       return Optional.of(value);
     }
+
+    private void requireOptionalOwner() {
+      if (requireOwner) {
+        throw new ForyJsonException("Non-null Optional occurrence cannot be null");
+      }
+    }
   }
 
-  public static final class OptionalIntCodec implements JsonValueCodec<OptionalInt> {
-    public static final OptionalIntCodec INSTANCE = new OptionalIntCodec();
+  private static void requireOptionalOwner(boolean required) {
+    if (required) {
+      throw new ForyJsonException("Non-null Optional occurrence cannot be null");
+    }
+  }
+
+  public static final class OptionalIntCodec
+      implements JsonValueCodec<OptionalInt>, TransparentNullCodec {
+    public static final OptionalIntCodec INSTANCE = new OptionalIntCodec(false);
+    @Internal public static final OptionalIntCodec NON_NULL = new OptionalIntCodec(true);
+
+    private final boolean requireOwner;
+
+    private OptionalIntCodec(boolean requireOwner) {
+      this.requireOwner = requireOwner;
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, OptionalInt value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }
@@ -3219,6 +3458,7 @@ public final class ScalarCodecs {
     @Override
     public void writeUtf8(Utf8JsonWriter writer, OptionalInt value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }
@@ -3246,12 +3486,21 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class OptionalLongCodec implements JsonValueCodec<OptionalLong> {
-    public static final OptionalLongCodec INSTANCE = new OptionalLongCodec();
+  public static final class OptionalLongCodec
+      implements JsonValueCodec<OptionalLong>, TransparentNullCodec {
+    public static final OptionalLongCodec INSTANCE = new OptionalLongCodec(false);
+    @Internal public static final OptionalLongCodec NON_NULL = new OptionalLongCodec(true);
+
+    private final boolean requireOwner;
+
+    private OptionalLongCodec(boolean requireOwner) {
+      this.requireOwner = requireOwner;
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, OptionalLong value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }
@@ -3266,6 +3515,7 @@ public final class ScalarCodecs {
     @Override
     public void writeUtf8(Utf8JsonWriter writer, OptionalLong value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }
@@ -3293,12 +3543,21 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class OptionalDoubleCodec implements JsonValueCodec<OptionalDouble> {
-    public static final OptionalDoubleCodec INSTANCE = new OptionalDoubleCodec();
+  public static final class OptionalDoubleCodec
+      implements JsonValueCodec<OptionalDouble>, TransparentNullCodec {
+    public static final OptionalDoubleCodec INSTANCE = new OptionalDoubleCodec(false);
+    @Internal public static final OptionalDoubleCodec NON_NULL = new OptionalDoubleCodec(true);
+
+    private final boolean requireOwner;
+
+    private OptionalDoubleCodec(boolean requireOwner) {
+      this.requireOwner = requireOwner;
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, OptionalDouble value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }
@@ -3313,6 +3572,7 @@ public final class ScalarCodecs {
     @Override
     public void writeUtf8(Utf8JsonWriter writer, OptionalDouble value) {
       if (value == null) {
+        requireOptionalOwner(requireOwner);
         writer.writeNull();
         return;
       }

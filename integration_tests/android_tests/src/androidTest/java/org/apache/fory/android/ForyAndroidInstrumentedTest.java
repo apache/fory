@@ -86,6 +86,21 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
+  public void generatedSealedJsonMixin() {
+    AndroidJsonScenarios.generatedSealedMixin();
+  }
+
+  @Test
+  public void kotlinJsonMetadataSurvivesMinification() {
+    AndroidKotlinJsonScenarios.metadataSurvivesMinification();
+  }
+
+  @Test
+  public void kotlinMixinForJavaSealedType() {
+    AndroidKotlinJsonScenarios.javaSealedMixinSurvivesMinification();
+  }
+
+  @Test
   public void androidRuntimeDisablesCodegenAndUnsafeCopies() {
     AndroidForyRuntimeScenarios.androidRuntimeDisablesCodegenAndUnsafeCopies();
   }

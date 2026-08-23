@@ -26,7 +26,13 @@ const runTest =
     : require("node:test").test;
 const { ReadContext } = require("../dist/lib/context");
 const { AnyHelper } = require("../dist/lib/gen/any");
-const { FieldInfo, TypeMeta } = require("../dist/lib/meta/TypeMeta");
+const {
+  checkedTypeMetaSerializerSymbol,
+  checkedTypeMetaWireTypeIdSymbol,
+  FieldInfo,
+  localTypeMetaSymbol,
+  TypeMeta,
+} = require("../dist/lib/meta/TypeMeta");
 const { TypeId } = require("../dist/lib/type");
 const { Type } = require("../dist/lib/typeInfo");
 
@@ -140,7 +146,9 @@ function detectAnySerializer(readContext, typeMeta) {
 
 function localSerializer(typeInfo) {
   const typeMeta = TypeMeta.fromTypeInfo(typeInfo);
+  typeMeta.getHash();
   return {
+    [localTypeMetaSymbol]: typeMeta,
     getHash() {
       return typeMeta.getHash();
     },
@@ -152,9 +160,6 @@ function localSerializer(typeInfo) {
     },
     getUserTypeId() {
       return typeInfo.userTypeId ?? -1;
-    },
-    getTypeMetaBytes() {
-      return typeMeta.toBytes();
     },
   };
 }
@@ -187,9 +192,7 @@ runTest("remote schema limit rejects extra versions", () => {
 runTest("remote TypeMeta key cap preserves persistent owner state", () => {
   const localMeta = remoteNamedNonStruct("LocalAtCap", TypeId.NAMED_ENUM);
   const localOwner = {
-    getTypeMetaBytes() {
-      return localMeta.toBytes();
-    },
+    [localTypeMetaSymbol]: localMeta,
   };
   const readContext = context(
     {
@@ -238,8 +241,8 @@ runTest("remote TypeMeta key cap preserves persistent owner state", () => {
   readTypeMeta(readContext, localMeta);
   assert.equal(readContext.remoteSchemaVersionsByType.size, MAX_REMOTE_TYPE_KEYS);
   assert.equal(readContext.totalAcceptedSchemaVersions, MAX_REMOTE_TYPE_KEYS + 1);
-  assert.equal(readContext.typeMetaCache.has(localMeta.getHash()), true);
-  assert.equal(readContext.typeMetaCache.size, MAX_REMOTE_TYPE_KEYS + 2);
+  assert.equal(readContext.typeMetaCache.has(localMeta.getHash()), false);
+  assert.equal(readContext.typeMetaCache.size, MAX_REMOTE_TYPE_KEYS + 1);
 });
 
 runTest("remote non-struct TypeMeta uses schema limit", () => {
@@ -278,11 +281,9 @@ runTest("exact local non-struct TypeMeta bypasses schema limit", () => {
   const enumInfo = Type.enum({ namespace: "example", typeName: "SharedEnum" }, { A: 0 });
   const enumMeta = TypeMeta.fromTypeInfo(enumInfo);
   const localSerializer = {
+    [localTypeMetaSymbol]: enumMeta,
     getTypeInfo() {
       return enumInfo;
-    },
-    getTypeMetaBytes() {
-      return enumMeta.toBytes();
     },
   };
   const readContext = context({
@@ -393,7 +394,7 @@ runTest("TypeMeta cache hit skips current body", () => {
   const typeMeta = remoteStruct("Cached", "value");
   const typeInfo = Type.struct(
     { namespace: "example", typeName: "Cached" },
-    { value: Type.int32({ encoding: "fixed" }) },
+    { localValue: Type.string() },
   );
   const original = localSerializer(typeInfo);
   const readContext = context({
@@ -474,18 +475,17 @@ runTest("exact local TypeMeta bypasses schema limit", () => {
   );
   const generatingOriginal = localSerializer(localTypeInfo);
   const localMeta = TypeMeta.fromTypeInfo(localTypeInfo);
-  const localBytes = localMeta.toBytes();
   const exactOriginal = {
+    [localTypeMetaSymbol]: localMeta,
+    [checkedTypeMetaWireTypeIdSymbol]: TypeId.NAMED_STRUCT,
     getHash() {
       return localMeta.getHash();
     },
     getTypeInfo() {
-      throw new Error("exact local compare must use encoded bytes");
-    },
-    getTypeMetaBytes() {
-      return localBytes;
+      throw new Error("exact local hit must use its TypeMeta owner");
     },
   };
+  localMeta[checkedTypeMetaSerializerSymbol] = exactOriginal;
   let activeOriginal = generatingOriginal;
   const localHash = generatingOriginal.getHash();
   const readContext = context({
@@ -602,19 +602,18 @@ runTest("failed Any TypeMeta does not consume schema limit", () => {
 runTest("exact Any TypeMeta bypasses schema limit", () => {
   const localTypeInfo = Type.struct(901, { value: Type.int32({ encoding: "fixed" }) });
   const generatingOriginal = localSerializer(localTypeInfo);
-  const localMeta = TypeMeta.fromTypeInfo(localTypeInfo);
-  const localBytes = localMeta.toBytes();
+  const localMeta = anyStruct("value", Type.int32({ encoding: "fixed" }));
   const exactOriginal = {
+    [localTypeMetaSymbol]: localMeta,
+    [checkedTypeMetaWireTypeIdSymbol]: TypeId.COMPATIBLE_STRUCT,
     getHash() {
       return localMeta.getHash();
     },
     getTypeInfo() {
-      throw new Error("exact local compare must use encoded bytes");
-    },
-    getTypeMetaBytes() {
-      return localBytes;
+      throw new Error("exact local hit must use its TypeMeta owner");
     },
   };
+  localMeta[checkedTypeMetaSerializerSymbol] = exactOriginal;
   let activeOriginal = generatingOriginal;
   const readContext = context({
     computeTypeId(typeInfo) {

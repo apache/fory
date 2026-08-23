@@ -228,6 +228,43 @@ public final class Utf16JsonReader extends JsonReader {
     return matches && index == expected.length();
   }
 
+  @Override
+  protected CharSequence decodeQuotedText(int start, int end) {
+    byte[] outBytes = stringDecodeBuffer;
+    int out = 0;
+    int offset = start;
+    while (offset < end) {
+      char ch = charAtFast(offset++);
+      if (ch == '\\') {
+        char escaped = charAtFast(offset++);
+        if (escaped == 'u') {
+          ch = scanUnicodeEscape(offset);
+          offset += 4;
+        } else {
+          ch = scanSimpleEscape(escaped, offset - 1);
+        }
+        if (Character.isHighSurrogate(ch)) {
+          offset += 2;
+          char low = scanUnicodeEscape(offset);
+          offset += 4;
+          outBytes = ensureStringDecodeCapacity(outBytes, out + 4);
+          out = putUtf16Char(outBytes, out, ch);
+          out = putUtf16Char(outBytes, out, low);
+          continue;
+        }
+      } else if (Character.isHighSurrogate(ch)) {
+        char low = charAtFast(offset++);
+        outBytes = ensureStringDecodeCapacity(outBytes, out + 4);
+        out = putUtf16Char(outBytes, out, ch);
+        out = putUtf16Char(outBytes, out, low);
+        continue;
+      }
+      outBytes = ensureStringDecodeCapacity(outBytes, out + 2);
+      out = putUtf16Char(outBytes, out, ch);
+    }
+    return decodedQuotedText(outBytes, out, true);
+  }
+
   private int scanEscape(int slash) {
     int cursor = slash + 1;
     if (cursor >= length) {
@@ -524,7 +561,17 @@ public final class Utf16JsonReader extends JsonReader {
     return readBooleanToken();
   }
 
+  private boolean readQuotedBooleanValue() {
+    beginQuotedScalar();
+    boolean value = readBooleanToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   private boolean readBooleanToken() {
+    if (position < length && charAtFast(position) == '"') {
+      return readQuotedBooleanValue();
+    }
     if (startsWithAscii("true")) {
       position += 4;
       return true;
@@ -551,6 +598,13 @@ public final class Utf16JsonReader extends JsonReader {
     return readIntToken();
   }
 
+  private int readQuotedIntValue() {
+    beginQuotedScalar();
+    int value = readIntToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   private int readIntToken() {
     int offset = position;
     int inputLength = length;
@@ -558,6 +612,9 @@ public final class Utf16JsonReader extends JsonReader {
       throw error("Expected digit");
     }
     char ch = charAtFast(offset);
+    if (ch == '"') {
+      return readQuotedIntValue();
+    }
     if (ch == '-') {
       return readNegativeIntToken(offset);
     }
@@ -668,6 +725,13 @@ public final class Utf16JsonReader extends JsonReader {
     return readLongToken();
   }
 
+  private long readQuotedLongValue() {
+    beginQuotedScalar();
+    long value = readLongToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   private long readLongToken() {
     int offset = position;
     int inputLength = length;
@@ -675,6 +739,9 @@ public final class Utf16JsonReader extends JsonReader {
       throw error("Expected digit");
     }
     char ch = charAtFast(offset);
+    if (ch == '"') {
+      return readQuotedLongValue();
+    }
     if (ch == '-') {
       return readNegativeLongToken(offset);
     }
@@ -775,6 +842,13 @@ public final class Utf16JsonReader extends JsonReader {
     return readBigDecimalToken();
   }
 
+  private BigDecimal readQuotedBigDecimalValue() {
+    beginQuotedScalar();
+    BigDecimal value = readBigDecimalToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   private BigDecimal readBigDecimalToken() {
     int offset = position;
     int start = offset;
@@ -783,6 +857,9 @@ public final class Utf16JsonReader extends JsonReader {
       return readBigDecimalFallback(start);
     }
     char ch = charAtFast(offset);
+    if (ch == '"') {
+      return readQuotedBigDecimalValue();
+    }
     if (ch == '-') {
       return readSignedBigDecimalToken(start);
     }
@@ -925,6 +1002,16 @@ public final class Utf16JsonReader extends JsonReader {
     return readDoubleToken();
   }
 
+  private double readQuotedDoubleValue() {
+    if (isQuotedNonFiniteNumber()) {
+      return readNonFiniteDoubleLiteral();
+    }
+    beginQuotedScalar();
+    double value = readDoubleToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   @Override
   public float readFloat() {
     skipWhitespaceFast();
@@ -945,6 +1032,16 @@ public final class Utf16JsonReader extends JsonReader {
     return readFloatToken();
   }
 
+  private float readQuotedFloatValue() {
+    if (isQuotedNonFiniteNumber()) {
+      return readNonFiniteFloatLiteral();
+    }
+    beginQuotedScalar();
+    float value = readFloatToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   private double readDoubleToken() {
     int offset = position;
     int inputLength = length;
@@ -952,6 +1049,9 @@ public final class Utf16JsonReader extends JsonReader {
       return readDoubleFallback(offset);
     }
     char ch = charAtFast(offset);
+    if (ch == '"') {
+      return readQuotedDoubleValue();
+    }
     if (ch == '-') {
       return readSignedDoubleToken(offset);
     }
@@ -965,6 +1065,9 @@ public final class Utf16JsonReader extends JsonReader {
       return readFloatFallback(offset);
     }
     char ch = charAtFast(offset);
+    if (ch == '"') {
+      return readQuotedFloatValue();
+    }
     if (ch == '-') {
       return readSignedFloatToken(offset);
     }
@@ -1752,7 +1855,7 @@ public final class Utf16JsonReader extends JsonReader {
       return value;
     }
     position = mark;
-    return readIsoLocalDateFallback(readStringToken());
+    return readIsoLocalDateFallback(readQuotedTextValue());
   }
 
   public OffsetDateTime readIsoOffsetDateTime() {
@@ -1763,7 +1866,7 @@ public final class Utf16JsonReader extends JsonReader {
       return value;
     }
     position = mark;
-    return readIsoOffsetDateTimeFallback(readStringToken());
+    return readIsoOffsetDateTimeFallback(readQuotedTextValue());
   }
 
   private String readStringToken() {

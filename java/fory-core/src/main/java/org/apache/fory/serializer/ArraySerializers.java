@@ -109,7 +109,10 @@ public final class ArraySerializers {
   @SuppressWarnings({"unchecked", "rawtypes"})
   public static final class ObjectArraySerializer extends Serializer<Object[]> {
     private final TypeResolver typeResolver;
+    // Compatible reads may cache remote schema metadata; local writes and copies retain the
+    // original local holder and must not reuse read state.
     private final TypeInfoHolder elementTypeInfoHolder;
+    private final TypeInfoHolder elementTypeInfoReadHolder;
 
     public ObjectArraySerializer(TypeResolver typeResolver, Class<?> cls) {
       super(typeResolver.getConfig(), (Class) cls);
@@ -119,6 +122,7 @@ public final class ArraySerializers {
       }
       Preconditions.checkArgument(cls.isArray() && !cls.getComponentType().isPrimitive());
       elementTypeInfoHolder = typeResolver.nilTypeInfoHolder();
+      elementTypeInfoReadHolder = typeResolver.nilTypeInfoHolder();
     }
 
     @Override
@@ -155,7 +159,7 @@ public final class ArraySerializers {
         readArrayElements(
             readContext,
             typeResolver,
-            elementTypeInfoHolder,
+            elementTypeInfoReadHolder,
             type.getComponentType(),
             value,
             numElements);

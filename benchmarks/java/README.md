@@ -53,6 +53,25 @@ cd .. && mvn -T10 install -DskipTests -Dcheckstyle.skip -Dlicense.skip -Dmaven.j
 mvn exec:java -Dexec.args="-f 3 -wi 5 -i 15 -t 1 -w 2s -r 2s -rf csv"
 ```
 
+## JSON benchmark
+
+Run the JSON benchmark with ordinary Jackson, which is the default:
+
+```bash
+./run_json.sh
+```
+
+Select [Jackson Blackbird](https://github.com/FasterXML/jackson-modules-base/tree/3.x/blackbird)
+3.2.1 explicitly. Jackson 3 and Blackbird require Java 17 or newer:
+
+```bash
+./run_json.sh --jackson blackbird
+```
+
+The script runs either ordinary Jackson or Jackson Blackbird, never both. The raw result, charts,
+and generated report contain only the selected implementation. Use `--libs` to change the other
+libraries included in the comparison.
+
 See `org.openjdk.jmh.runner.options.CommandLineOptions` for more information about jmh options:
 
 ```

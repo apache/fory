@@ -183,10 +183,14 @@ public class FieldGroups {
     public final TypeInfo typeInfo;
     public final Serializer serializer;
     public final GenericType genericType;
+    // Native compatible container reads may cache remote schema metadata; writes retain the
+    // original local holder and must not reuse read state.
     public final TypeInfoHolder classInfoHolder;
+    public final TypeInfoHolder classInfoReadHolder;
     public final TypeInfo containerTypeInfo;
     public final Serializer<?> containerSerializerOverride;
     public final FieldCodecCategory codecCategory;
+    final boolean requiresFieldValueTypeCheck;
 
     public SerializationFieldInfo(TypeResolver resolver, Descriptor d) {
       this(resolver, d, FieldCodecCategory.OTHER);
@@ -289,6 +293,9 @@ public class FieldGroups {
       } else {
         containerSerializerOverride = null;
       }
+      // Container fields retain distinct remote-read and local-write type metadata caches.
+      classInfoReadHolder =
+          codecCategory == FieldCodecCategory.CONTAINER ? resolver.nilTypeInfoHolder() : null;
       if (!resolver.isCrossLanguage()) {
         containerTypeInfo = null;
       } else {
@@ -299,6 +306,14 @@ public class FieldGroups {
           containerTypeInfo = null;
         }
       }
+      // Native container fields always read a wire-selected type unless a field serializer owns
+      // the body. This remains dynamic even when the declared container class is monomorphic;
+      // xlang containers and explicit field serializers select a fixed reader instead.
+      requiresFieldValueTypeCheck =
+          refMode == RefMode.TRACKING
+              || (codecCategory == FieldCodecCategory.CONTAINER
+                  ? !resolver.isCrossLanguage() && containerSerializerOverride == null
+                  : !useDeclaredTypeInfo);
     }
 
     private boolean needsClassInfoHolder(TypeResolver resolver, Class<?> cls) {

@@ -32,7 +32,6 @@ import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.UUID;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
@@ -210,6 +209,18 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       return;
     }
     writeLongUtf16(value);
+  }
+
+  @Override
+  public void writeUnsignedLong(long value) {
+    if (value >= 0) {
+      writeLong(value);
+      return;
+    }
+    long quotient = Long.divideUnsigned(value, 10);
+    int remainder = (int) Long.remainderUnsigned(value, 10);
+    writeLong(quotient);
+    writeByteRaw((byte) ('0' + remainder));
   }
 
   private void writeLongLatin1(long value) {
@@ -481,19 +492,44 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   }
 
   @Override
-  public void writeUuid(UUID value) {
+  public void writeUuid(long high, long low) {
     writeByteRaw((byte) '"');
-    long high = value.getMostSignificantBits();
     writeHex(high, 60, 8);
     writeByteRaw((byte) '-');
     writeHex(high, 28, 4);
     writeByteRaw((byte) '-');
     writeHex(high, 12, 4);
-    long low = value.getLeastSignificantBits();
     writeByteRaw((byte) '-');
     writeHex(low, 60, 4);
     writeByteRaw((byte) '-');
     writeHex(low, 44, 12);
+    writeByteRaw((byte) '"');
+  }
+
+  @Override
+  public void writeIsoInstant(long epochSecond, int nano) {
+    long date = isoDate(epochSecond, nano);
+    int secondOfDay = (int) Math.floorMod(epochSecond, 86_400);
+    int hour = secondOfDay / 3600;
+    int minute = (secondOfDay - hour * 3600) / 60;
+    int second = secondOfDay - hour * 3600 - minute * 60;
+    writeByteRaw((byte) '"');
+    writeIsoYear((int) (date >> 32));
+    writeByteRaw((byte) '-');
+    writeTwoDigits((int) ((date >>> 16) & 0xffff));
+    writeByteRaw((byte) '-');
+    writeTwoDigits((int) date & 0xffff);
+    writeByteRaw((byte) 'T');
+    writeTwoDigits(hour);
+    writeByteRaw((byte) ':');
+    writeTwoDigits(minute);
+    writeByteRaw((byte) ':');
+    writeTwoDigits(second);
+    if (nano != 0) {
+      writeByteRaw((byte) '.');
+      writeNano(nano);
+    }
+    writeByteRaw((byte) 'Z');
     writeByteRaw((byte) '"');
   }
 
@@ -553,8 +589,51 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeDuration(Duration value) {
+    long totalSeconds = value.getSeconds();
+    int nanos = value.getNano();
+    if (totalSeconds >= 0) {
+      long hours = totalSeconds / 3600;
+      int minutes = (int) (totalSeconds % 3600 / 60);
+      int seconds = (int) (totalSeconds % 60);
+      if (matchesIsoDurationShape(hours, minutes, seconds, nanos)) {
+        writeIsoDuration(false, false, hours, minutes, seconds, nanos);
+        return;
+      }
+    }
     writeByteRaw((byte) '"');
     writeDurationBody(value);
+    writeByteRaw((byte) '"');
+  }
+
+  @Override
+  public void writeIsoDuration(
+      boolean infinite, boolean negative, long hours, int minutes, int seconds, int nanos) {
+    checkIsoDuration(infinite, negative, hours, minutes, seconds, nanos);
+    writeByteRaw((byte) '"');
+    if (negative) {
+      writeByteRaw((byte) '-');
+    }
+    writeAscii("PT");
+    long outputHours = infinite ? 9_999_999_999_999L : hours;
+    boolean hasHours = outputHours != 0;
+    boolean hasSeconds = seconds != 0 || nanos != 0;
+    boolean hasMinutes = minutes != 0 || hasSeconds && hasHours;
+    if (hasHours) {
+      writeLong(outputHours);
+      writeByteRaw((byte) 'H');
+    }
+    if (hasMinutes) {
+      writeInt(minutes);
+      writeByteRaw((byte) 'M');
+    }
+    if (hasSeconds || !hasHours && !hasMinutes) {
+      writeInt(seconds);
+      if (nanos != 0) {
+        writeByteRaw((byte) '.');
+        writeNano(nanos);
+      }
+      writeByteRaw((byte) 'S');
+    }
     writeByteRaw((byte) '"');
   }
 
@@ -625,6 +704,32 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writeRaw(index == 0 ? field.stringNamePrefix() : field.stringCommaNamePrefix());
   }
 
+  public void writeNullField(
+      byte[] prefix,
+      long utf16Prefix0,
+      long utf16Prefix1,
+      long utf16Prefix2,
+      long utf16Prefix3,
+      int utf16PrefixLength) {
+    if (coder == LATIN1) {
+      int additional = prefix.length + 4;
+      if (position + additional > buffer.length) {
+        grow(additional);
+      }
+      writeRawLatin1NoEnsure(prefix);
+      LittleEndian.putInt32(buffer, position, 0x6c6c756e);
+      position += 4;
+      return;
+    }
+    int additional = Math.max(packedUtf16PrefixSize(utf16PrefixLength), utf16PrefixLength + 8);
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    writePackedUtf16ValueNoEnsure(
+        utf16Prefix0, utf16Prefix1, utf16Prefix2, utf16Prefix3, utf16PrefixLength);
+    writeAsciiUtf16NoEnsure("null", 4);
+  }
+
   @Override
   public void writeIntFieldName(int value) {
     writeByteRaw((byte) '"');
@@ -637,6 +742,14 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   public void writeLongFieldName(long value) {
     writeByteRaw((byte) '"');
     writeLong(value);
+    writeByteRaw((byte) '"');
+    writeByteRaw((byte) ':');
+  }
+
+  @Override
+  public void writeUnsignedLongFieldName(long value) {
+    writeByteRaw((byte) '"');
+    writeUnsignedLong(value);
     writeByteRaw((byte) '"');
     writeByteRaw((byte) ':');
   }
@@ -2596,6 +2709,20 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   private static int writePadded4(byte[] bytes, int pos, int value) {
     LittleEndian.putInt32(bytes, pos, DIGIT_QUADS[value]);
     return pos + 4;
+  }
+
+  private void writeIsoYear(int year) {
+    if (year >= 0 && year <= 9999) {
+      writePadded4(year);
+    } else if (year > 9999) {
+      writeByteRaw((byte) '+');
+      writeInt(year);
+    } else if (year >= -9999) {
+      writeByteRaw((byte) '-');
+      writePadded4(-year);
+    } else {
+      writeInt(year);
+    }
   }
 
   private void writeTwoDigits(int value) {

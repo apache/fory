@@ -78,6 +78,34 @@ private struct SkippedReferenceOwnerV2: Equatable {
     var keep: Int32 = 0
 }
 
+@ForyStruct
+private final class SkippedRecursiveNode {
+    var marker: Int32 = 0
+    var next: SkippedRecursiveNode?
+
+    required init() {}
+
+    init(marker: Int32, next: SkippedRecursiveNode? = nil) {
+        self.marker = marker
+        self.next = next
+    }
+}
+
+@ForyStruct
+private struct SkippedRecursiveOwnerV1 {
+    @ForyField(id: 1)
+    var removed: SkippedRecursiveNode = SkippedRecursiveNode()
+
+    @ForyField(id: 2)
+    var keep: Int32 = 0
+}
+
+@ForyStruct
+private struct SkippedRecursiveOwnerV2: Equatable {
+    @ForyField(id: 2)
+    var keep: Int32 = 0
+}
+
 @ForyStruct(evolving: false)
 private struct NamedCollectionItemV1 {
     @ForyField(id: 1)
@@ -96,9 +124,9 @@ private struct NamedCollectionItemV2: Equatable {
 @Test
 func skipsStaticReferenceBodies() throws {
     for trackRef in [false, true] {
-        // The collection TypeMeta consumes one generic level. Its static class
-        // items must not consume another level; only their Any field does.
-        let config = Config(trackRef: trackRef, compatible: true, maxDepth: 1)
+        // Each skipped class item consumes one materialization level and its
+        // dynamic field consumes the second level.
+        let config = Config(trackRef: trackRef, compatible: true, maxDepth: 2)
         let writer = Fory(config: config)
         try writer.register(SkippedReferenceBody.self, id: 9980)
         try writer.register(SkippedReferenceOwnerV1.self, id: 9981)
@@ -123,7 +151,7 @@ func skipsStaticReferenceBodies() throws {
 
 @Test
 func skipsStaticValueBody() throws {
-    let config = Config(trackRef: false, compatible: true, maxDepth: 0)
+    let config = Config(trackRef: false, compatible: true, maxDepth: 1)
     let writer = Fory(config: config)
     try writer.register(SkippedValueBody.self, id: 9982)
     try writer.register(SkippedValueOwnerV1.self, id: 9983)
@@ -137,6 +165,40 @@ func skipsStaticValueBody() throws {
         keep: 81
     )
     let decoded: SkippedValueOwnerV2 = try reader.deserialize(writer.serialize(source))
+    #expect(decoded.keep == source.keep)
+}
+
+@Test
+func skippedRecursiveBodyUsesDepth() throws {
+    let source = SkippedRecursiveOwnerV1(
+        removed: SkippedRecursiveNode(
+            marker: 1,
+            next: SkippedRecursiveNode(
+                marker: 2,
+                next: SkippedRecursiveNode(marker: 3)
+            )
+        ),
+        keep: 89
+    )
+    let writer = Fory(config: .init(trackRef: false, compatible: true, maxDepth: 8))
+    try writer.register(SkippedRecursiveNode.self, id: 9984)
+    try writer.register(SkippedRecursiveOwnerV1.self, id: 9985)
+    let bytes = try writer.serialize(source)
+
+    let limited = Fory(config: .init(trackRef: false, compatible: true, maxDepth: 2))
+    try limited.register(SkippedRecursiveNode.self, id: 9984)
+    try limited.register(SkippedRecursiveOwnerV2.self, id: 9985)
+    do {
+        let _: SkippedRecursiveOwnerV2 = try limited.deserialize(bytes)
+        Issue.record("expected maxDepth failure")
+    } catch {
+        #expect(String(describing: error).contains("maxDepth"))
+    }
+
+    let boundary = Fory(config: .init(trackRef: false, compatible: true, maxDepth: 3))
+    try boundary.register(SkippedRecursiveNode.self, id: 9984)
+    try boundary.register(SkippedRecursiveOwnerV2.self, id: 9985)
+    let decoded: SkippedRecursiveOwnerV2 = try boundary.deserialize(bytes)
     #expect(decoded.keep == source.keep)
 }
 

@@ -40,6 +40,8 @@
     <maven.compiler.source>8</maven.compiler.source>
     <maven.compiler.target>8</maven.compiler.target>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
+    <fory.processor.mr.classes>${project.build.directory}/multi-release-classes</fory.processor.mr.classes>
+    <fory.processor.test.classes>${project.build.directory}/java17-test-classes</fory.processor.test.classes>
   </properties>
 
   <dependencies>
@@ -71,6 +73,127 @@
           <proc>none</proc>
         </configuration>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <Multi-Release>true</Multi-Release>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>sealed-types-java17</id>
+      <activation><jdk>[17,)</jdk></activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <phase>package</phase>
+                <goals><goal>jar</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>compile-java17-sealed-types</id>
+                <phase>process-classes</phase>
+                <goals><goal>run</goal></goals>
+                <configuration>
+                  <target>
+                    <delete dir="${fory.processor.mr.classes}/17"/>
+                    <mkdir dir="${fory.processor.mr.classes}/17"/>
+                    <javac srcdir="${project.basedir}/src/main/java17"
+                           destdir="${fory.processor.mr.classes}/17"
+                           includeantruntime="false" fork="true"
+                           executable="${java.home}/bin/javac" debug="true">
+                      <include name="org/**/*.java"/>
+                      <classpath><pathelement location="${project.build.outputDirectory}"/></classpath>
+                      <compilerarg value="--release"/><compilerarg value="17"/>
+                      <compilerarg value="-sourcepath"/><compilerarg value=""/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>prepare-java17-test-classes</id>
+                <phase>process-test-classes</phase>
+                <goals><goal>run</goal></goals>
+                <configuration>
+                  <target>
+                    <delete dir="${fory.processor.test.classes}"/>
+                    <mkdir dir="${fory.processor.test.classes}"/>
+                    <copy todir="${fory.processor.test.classes}">
+                      <fileset dir="${project.build.outputDirectory}"/>
+                    </copy>
+                    <copy todir="${fory.processor.test.classes}" overwrite="true">
+                      <fileset dir="${fory.processor.mr.classes}/17"/>
+                    </copy>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>inject-java17-sealed-types</id>
+                <phase>package</phase>
+                <goals><goal>run</goal></goals>
+                <configuration>
+                  <target>
+                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
+                      <zipfileset dir="${fory.processor.mr.classes}/17"
+                                  prefix="META-INF/versions/17" includes="**/*.class"/>
+                    </jar>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>patch-multi-release-source-jar</id>
+                <phase>package</phase>
+                <goals><goal>run</goal></goals>
+                <configuration>
+                  <skip>${maven.source.skip}</skip>
+                  <target>
+                    <property
+                        name="multi.release.sources.jar"
+                        value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
+                    <available
+                        file="${multi.release.sources.jar}"
+                        property="multi.release.sources.jar.present"/>
+                    <fail
+                        unless="multi.release.sources.jar.present"
+                        message="Multi-release source patching requires ${multi.release.sources.jar}."/>
+                    <jar destfile="${multi.release.sources.jar}" update="true">
+                      <zipfileset dir="${project.basedir}/src/main/java17"
+                                  prefix="META-INF/versions/17">
+                        <include name="**/*.java"/>
+                      </zipfileset>
+                    </jar>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <classesDirectory>${fory.processor.test.classes}</classesDirectory>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
