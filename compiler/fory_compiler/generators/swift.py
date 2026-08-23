@@ -214,13 +214,31 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
         for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
             if self.is_imported_type(type_def):
                 continue
-            symbols.append(
-                self._scoped_symbol(scope, self._declared_type_name(type_def.name))
-            )
+            self._collect_declared_symbols(type_def, scope, [], symbols)
         symbols.append(
             self._scoped_symbol(scope, self._module_helper_name_for_schema(self.schema))
         )
         return symbols
+
+    def _collect_declared_symbols(
+        self,
+        type_def: Message | Enum | Union,
+        scope: str,
+        parent_stack: list[Message],
+        symbols: list[str],
+    ) -> None:
+        name = self._declared_type_name(type_def.name, parent_stack or None)
+        symbols.append(self._scoped_symbol(scope, name))
+        if not isinstance(type_def, Message):
+            return
+        nested_scope = self._scoped_symbol(scope, name)
+        nested_stack = parent_stack + [type_def]
+        for nested in (
+            list(type_def.nested_enums)
+            + list(type_def.nested_unions)
+            + list(type_def.nested_messages)
+        ):
+            self._collect_declared_symbols(nested, nested_scope, nested_stack, symbols)
 
     @staticmethod
     def _scoped_symbol(scope: str, name: str) -> str:

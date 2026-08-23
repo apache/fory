@@ -2590,14 +2590,46 @@ def test_swift_normalized_name_collision_fails_preflight():
         validate_swift_generation([(Path("normalized.fdl"), schema)])
 
 
-def test_swift_nested_normalized_name_collision_fails_preflight():
+def test_swift_packaged_normalized_name_collision_fails_preflight():
     schema = parse_fdl(
         "package demo.api;\n"
         "message my_type { string a = 1; }\n"
         "message MyType { string b = 1; }\n"
     )
     with pytest.raises(ValueError, match="Demo.Api.MyType"):
+        validate_swift_generation([(Path("packaged.fdl"), schema)])
+
+
+def test_swift_nested_type_collision_fails_preflight():
+    schema = parse_fdl(
+        "message Parent {\n"
+        "  message my_type { string a = 1; }\n"
+        "  message MyType { string b = 1; }\n"
+        "}\n"
+    )
+    with pytest.raises(ValueError, match=r"Parent\.MyType"):
         validate_swift_generation([(Path("nested.fdl"), schema)])
+
+
+def test_swift_deeply_nested_type_collision_fails_preflight():
+    schema = parse_fdl(
+        "message L1 {\n"
+        "  message L2 {\n"
+        "    message my_type { string a = 1; }\n"
+        "    message MyType { string b = 1; }\n"
+        "  }\n"
+        "}\n"
+    )
+    with pytest.raises(ValueError, match=r"L1\.L2\.MyType"):
+        validate_swift_generation([(Path("deep.fdl"), schema)])
+
+
+def test_swift_same_nested_name_under_distinct_parents_passes_preflight():
+    schema = parse_fdl(
+        "message A { message Inner { string a = 1; } }\n"
+        "message B { message Inner { string b = 1; } }\n"
+    )
+    assert validate_swift_generation([(Path("siblings.fdl"), schema)])
 
 
 def test_swift_flattened_helper_collision_fails_preflight():
