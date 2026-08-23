@@ -56,7 +56,7 @@ from fory_compiler.generators.kotlin import KotlinGenerator
 from fory_compiler.generators.python import PythonGenerator
 from fory_compiler.generators.rust import RustGenerator
 from fory_compiler.generators.scala import ScalaGenerator
-from fory_compiler.generators.swift import SwiftGenerator
+from fory_compiler.generators.swift import SwiftGenerator, validate_swift_generation
 from fory_compiler.ir.ast import Schema
 from fory_compiler.ir.validator import SchemaValidator
 
@@ -2496,20 +2496,34 @@ def test_csharp_grpc_dotnet_fixture(tmp_path: Path):
 
 def test_swift_common_root_package_emits_shared_namespace_enum():
     # Two schemas that share a top-level package component each emit `public enum
-    # Demo`, an invalid redeclaration when compiled into one Swift module. This is a
-    # model-generator limitation, not gRPC specific; gRPC companions inherit it, and
-    # the workaround is disjoint top-level packages. The build-level proof lives in
-    # the Swift toolchain tests under integration_tests/grpc_tests/swift.
-    shared = generate_files(
-        parse_fdl("package demo.shared;\nmessage SharedRequest { string name = 1; }\n"),
-        SwiftGenerator,
+    # Demo`, an invalid redeclaration when compiled into one Swift module. Preflight
+    # records that namespace enum so generation fails before the files are written.
+    shared_schema = parse_fdl(
+        "package demo.shared;\nmessage SharedRequest { string name = 1; }\n"
     )
-    greeter = generate_files(
-        parse_fdl("package demo.greeter;\nmessage LocalRequest { string name = 1; }\n"),
-        SwiftGenerator,
+    greeter_schema = parse_fdl(
+        "package demo.greeter;\nmessage LocalRequest { string name = 1; }\n"
     )
+    shared = generate_files(shared_schema, SwiftGenerator)
+    greeter = generate_files(greeter_schema, SwiftGenerator)
     assert "public enum Demo {" in next(iter(shared.values()))
     assert "public enum Demo {" in next(iter(greeter.values()))
+
+    with pytest.raises(ValueError, match="Demo"):
+        validate_swift_generation(
+            [
+                (Path("shared.fdl"), shared_schema),
+                (Path("greeter.fdl"), greeter_schema),
+            ]
+        )
+
+
+def test_swift_distinct_root_packages_pass_preflight():
+    alpha = parse_fdl("package alpha.one;\nmessage A { string x = 1; }\n")
+    beta = parse_fdl("package beta.two;\nmessage B { string y = 1; }\n")
+    assert validate_swift_generation(
+        [(Path("alpha.fdl"), alpha), (Path("beta.fdl"), beta)]
+    )
 
 
 def test_generated_message_signatures():

@@ -203,12 +203,12 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
         return file_name
 
     def swift_model_top_level_symbols(self) -> set[str]:
-        # In enum style with a package, types live nested under a shared namespace
-        # enum, so there are no collidable top-level names. Flatten and default
-        # packages put each type and the module helper at file scope.
-        components = self._package_components_for_schema(self.schema)
+        # In enum style with a package, types nest under a namespace enum, so the
+        # only file-scope declaration is that enum's first component. Flatten and
+        # default packages put each type and the module helper at file scope.
+        components = self._namespace_components_for_schema(self.schema)
         if self.get_namespace_style() == "enum" and components:
-            return set()
+            return {components[0]}
         symbols: set[str] = set()
         for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
             if self.is_imported_type(type_def):
