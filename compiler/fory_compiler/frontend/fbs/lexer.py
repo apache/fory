@@ -19,7 +19,7 @@
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import List
+from typing import List, Tuple
 
 
 class TokenType(Enum):
@@ -217,7 +217,7 @@ class Lexer:
         self.advance()  # closing quote
         return value
 
-    def read_number(self) -> tuple[TokenType, str]:
+    def read_number(self) -> Tuple[TokenType, str]:
         value = ""
         if self.peek() == "-":
             value += self.advance()

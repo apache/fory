@@ -18,7 +18,7 @@
 """Recursive descent parser for FDL."""
 
 import warnings
-from typing import List, Set, Optional
+from typing import List, Set, Optional, Tuple
 
 from fory_compiler.ir.ast import (
     Schema,
@@ -258,7 +258,7 @@ class Parser:
             source_format=self.source_format,
         )
 
-    def parse_package(self) -> tuple[str, Optional[str]]:
+    def parse_package(self) -> Tuple[str, Optional[str]]:
         """Parse a package declaration: package foo.bar [alias baz];"""
         self.consume(TokenType.PACKAGE)
 
