@@ -41,7 +41,7 @@ that compiles or runs the generated companions:
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/apache/fory.git", from: "1.2.0"),
+    .package(url: "https://github.com/apache/fory.git", exact: "$version"),
     .package(url: "https://github.com/grpc/grpc-swift.git", from: "1.23.0"),
 ],
 targets: [
