@@ -1149,6 +1149,24 @@ def test_swift_grpc_reserved_member_collision(rpc_name):
         generate_service_files(schema, SwiftGenerator)
 
 
+@pytest.mark.parametrize("rpc_name", ["_", "__", "___"])
+def test_swift_grpc_underscore_only_method(rpc_name):
+    schema = parse_fdl(
+        dedent(
+            f"""
+            package demo.naming;
+
+            message Req {{}}
+            message Res {{}}
+
+            service Greeter {{ rpc {rpc_name} (Req) returns (Res); }}
+            """
+        )
+    )
+    with pytest.raises(ValueError, match="Swift cannot use as a member name"):
+        generate_service_files(schema, SwiftGenerator)
+
+
 def test_swift_grpc_nested_and_imported_payloads(tmp_path: Path):
     common = tmp_path / "common.fdl"
     common.write_text(

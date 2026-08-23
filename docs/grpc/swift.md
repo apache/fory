@@ -210,6 +210,12 @@ on-the-wire message, which is the internal Fory wrapper; emitting interceptor
 hooks would expose that wrapper. Use a custom channel or server configuration for
 cross-cutting concerns instead.
 
+RPC names must produce a usable Swift member. The compiler rejects an rpc whose
+name is only underscores, because it normalizes to `_`, which Swift reserves for
+discards. It also rejects `handle`, `serviceName`, `channel`, and
+`defaultCallOptions`, which collide with members of the generated provider and
+client. Rename the rpc in the schema.
+
 Swift models put each package under a nested `enum` namespace, so two schemas that
 share a top-level package component (for example `demo.shared` and `demo.greeter`)
 both emit `public enum Demo`. The compiler rejects that with a top-level symbol

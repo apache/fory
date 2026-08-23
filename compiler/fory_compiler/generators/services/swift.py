@@ -43,7 +43,7 @@ class SwiftServiceMixin:
         services = [s for s in self.schema.services if not self.is_imported_type(s)]
         if not services:
             return []
-        self._check_swift_grpc_method_collisions(services)
+        self._check_swift_grpc_method_names(services)
         return [self._generate_swift_service(service) for service in services]
 
     def _grpc_prefix(self) -> str:
@@ -92,11 +92,16 @@ class SwiftServiceMixin:
     def _response_type(self, method: RpcMethod) -> str:
         return self._named_type_reference(method.response_type)
 
-    def _check_swift_grpc_method_collisions(self, services: List[Service]) -> None:
+    def _check_swift_grpc_method_names(self, services: List[Service]) -> None:
         for service in services:
             seen: Dict[str, str] = {}
             for method in service.methods:
                 swift_name = self._swift_grpc_method_name(method).strip("`")
+                if swift_name == "_":
+                    raise ValueError(
+                        f"Swift gRPC method {service.name}.{method.name} generates "
+                        "_, which Swift cannot use as a member name; rename the rpc"
+                    )
                 if swift_name in _SWIFT_GRPC_RESERVED_MEMBERS:
                     raise ValueError(
                         f"Swift gRPC method {service.name}.{method.name} generates "
