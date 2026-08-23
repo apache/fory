@@ -216,9 +216,11 @@ both emit `public enum Demo`. The compiler rejects that with a top-level symbol
 collision before it writes either file. This is a model-generation behavior, not
 specific to gRPC, but it also affects a service that imports across such packages.
 Give the schemas disjoint top-level packages (for example `shared.models` and
-`greeter.api`), or generate them into separate Swift modules with one `foryc`
-invocation each, because a single invocation runs the collision preflight across
-every schema it compiles.
+`greeter.api`). Generating into separate Swift modules with one `foryc` invocation
+each only helps unrelated schemas, because the preflight collects imports
+recursively: compiling `demo.greeter` still includes `demo.shared` in the graph and
+rejects the duplicate `Demo` even if the shared schema was generated in another
+invocation. An import graph needs disjoint top-level packages.
 
 ## Troubleshooting
 

@@ -58,12 +58,10 @@ if has_test_class "DartGrpcTest"; then
 fi
 # Swift toolchain tests (generated marshaller round-trip and concurrency). These
 # need the Swift toolchain rather than the JVM, so they run in their own package.
-if command -v swift >/dev/null 2>&1 && [ -d "${SCRIPT_DIR}/swift/interop" ]; then
+if has_test_class "SwiftGrpcTest" && command -v swift >/dev/null 2>&1 &&
+  [ -d "${SCRIPT_DIR}/swift/interop" ]; then
   cd "${SCRIPT_DIR}/swift/interop"
   swift test
-fi
-if has_test_class "SwiftGrpcTest"; then
-  cd "${SCRIPT_DIR}/swift/interop"
   swift build -c release --product interop
 fi
 cd "${ROOT_DIR}/integration_tests/grpc_tests/java"
