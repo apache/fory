@@ -17,6 +17,8 @@
 
 """Swift gRPC service companion generator (grpc-swift v1)."""
 
+from typing import Dict, List, Set
+
 from fory_compiler.generators.base import GeneratedFile
 from fory_compiler.generators.services.base import StreamingMode, streaming_mode
 from fory_compiler.ir.ast import RpcMethod, Service
@@ -37,7 +39,7 @@ _SWIFT_GRPC_RESERVED_MEMBERS = {
 class SwiftServiceMixin:
     """Generates Swift gRPC service companions backed by Fory serialization."""
 
-    def generate_services(self) -> list[GeneratedFile]:
+    def generate_services(self) -> List[GeneratedFile]:
         services = [s for s in self.schema.services if not self.is_imported_type(s)]
         if not services:
             return []
@@ -58,7 +60,7 @@ class SwiftServiceMixin:
         file_name = f"{self.to_pascal_case(service.name)}Grpc.swift"
         return f"{package_path}/{file_name}" if package_path else file_name
 
-    def swift_grpc_service_symbols(self, service: Service) -> list[str]:
+    def swift_grpc_service_symbols(self, service: Service) -> List[str]:
         base = self._service_symbol(service)
         modes = {streaming_mode(m) for m in service.methods}
         symbols = [
@@ -89,9 +91,9 @@ class SwiftServiceMixin:
     def _response_type(self, method: RpcMethod) -> str:
         return self._named_type_reference(method.response_type)
 
-    def _check_swift_grpc_method_collisions(self, services: list[Service]) -> None:
+    def _check_swift_grpc_method_collisions(self, services: List[Service]) -> None:
         for service in services:
-            seen: dict[str, str] = {}
+            seen: Dict[str, str] = {}
             for method in service.methods:
                 swift_name = self._swift_grpc_method_name(method).strip("`")
                 if swift_name in _SWIFT_GRPC_RESERVED_MEMBERS:
@@ -113,7 +115,7 @@ class SwiftServiceMixin:
         methods = service.methods
         modes = {streaming_mode(m) for m in methods}
 
-        lines: list[str] = []
+        lines: List[str] = []
         lines.append(self.get_license_header("//"))
         lines.append("")
         # gRPC symbols are package-prefixed with underscores, matching grpc-swift.
@@ -147,7 +149,7 @@ class SwiftServiceMixin:
         path = f"{package_path}/{file_name}" if package_path else file_name
         return GeneratedFile(path=path, content=content)
 
-    def _marshaller(self, base: str, module: str) -> list[str]:
+    def _marshaller(self, base: str, module: str) -> List[str]:
         # The Swift Fory instance is single-threaded, so keep one per thread.
         return [
             "private enum ForyRuntime {",
@@ -183,7 +185,7 @@ class SwiftServiceMixin:
             "}",
         ]
 
-    def _metadata(self, base: str, service: Service) -> list[str]:
+    def _metadata(self, base: str, service: Service) -> List[str]:
         full_name = self.get_grpc_service_name(service)
         lines = [f"enum {base}Metadata {{"]
         lines.append("    enum Methods {")
@@ -220,14 +222,14 @@ class SwiftServiceMixin:
             StreamingMode.BIDIRECTIONAL: ".bidirectionalStreaming",
         }[streaming_mode(method)]
 
-    def _adapters(self, base: str, modes: set[StreamingMode]) -> list[str]:
+    def _adapters(self, base: str, modes: Set[StreamingMode]) -> List[str]:
         streamed_response = bool(
             modes & {StreamingMode.SERVER_STREAMING, StreamingMode.BIDIRECTIONAL}
         )
         streamed_request = bool(
             modes & {StreamingMode.CLIENT_STREAMING, StreamingMode.BIDIRECTIONAL}
         )
-        lines: list[str] = []
+        lines: List[str] = []
         if streamed_response:
             lines += self._streaming_response_context(base)
             lines.append("")
@@ -243,7 +245,7 @@ class SwiftServiceMixin:
             lines.append("")
         return lines
 
-    def _streaming_response_context(self, base: str) -> list[str]:
+    def _streaming_response_context(self, base: str) -> List[str]:
         return [
             (
                 f"public struct {base}StreamingResponseContext<Response: Serializer & Sendable>"
@@ -258,7 +260,7 @@ class SwiftServiceMixin:
             "}",
         ]
 
-    def _unary_response_context(self, base: str) -> list[str]:
+    def _unary_response_context(self, base: str) -> List[str]:
         return [
             (
                 f"public struct {base}UnaryResponseContext<Response: Serializer & Sendable>"
@@ -272,7 +274,7 @@ class SwiftServiceMixin:
             "}",
         ]
 
-    def _async_response_stream(self, base: str) -> list[str]:
+    def _async_response_stream(self, base: str) -> List[str]:
         return [
             _ASYNC_AVAILABLE,
             (
@@ -286,7 +288,7 @@ class SwiftServiceMixin:
             "}",
         ]
 
-    def _async_request_stream(self, base: str) -> list[str]:
+    def _async_request_stream(self, base: str) -> List[str]:
         return [
             _ASYNC_AVAILABLE,
             (
@@ -307,7 +309,7 @@ class SwiftServiceMixin:
             "}",
         ]
 
-    def _client_response_stream(self, base: str) -> list[str]:
+    def _client_response_stream(self, base: str) -> List[str]:
         return [
             _ASYNC_AVAILABLE,
             (
@@ -328,7 +330,7 @@ class SwiftServiceMixin:
             "}",
         ]
 
-    def _provider(self, base: str, service: Service) -> list[str]:
+    def _provider(self, base: str, service: Service) -> List[str]:
         lines = [f"public protocol {base}Provider: CallHandlerProvider {{"]
         for method in service.methods:
             lines.extend(self._provider_requirement(base, method))
@@ -350,7 +352,7 @@ class SwiftServiceMixin:
         lines.append("}")
         return lines
 
-    def _handle_signature(self) -> list[str]:
+    def _handle_signature(self) -> List[str]:
         return [
             "    public func handle(",
             "        method name: Substring,",
@@ -358,7 +360,7 @@ class SwiftServiceMixin:
             "    ) -> GRPCServerHandlerProtocol? {",
         ]
 
-    def _provider_requirement(self, base: str, method: RpcMethod) -> list[str]:
+    def _provider_requirement(self, base: str, method: RpcMethod) -> List[str]:
         name = self._swift_grpc_method_name(method)
         req = self._request_type(method)
         res = self._response_type(method)
@@ -386,7 +388,7 @@ class SwiftServiceMixin:
             f"        -> EventLoopFuture<(StreamEvent<{req}>) -> Void>",
         ]
 
-    def _provider_handler_case(self, base: str, method: RpcMethod) -> list[str]:
+    def _provider_handler_case(self, base: str, method: RpcMethod) -> List[str]:
         name = self._swift_grpc_method_name(method)
         req = self._request_type(method)
         res = self._response_type(method)
@@ -426,7 +428,7 @@ class SwiftServiceMixin:
 
     def _client_stream_observer(
         self, base: str, name: str, req: str, ctx_kind: str
-    ) -> list[str]:
+    ) -> List[str]:
         return [
             "                observerFactory: { ctx in",
             (
@@ -455,7 +457,7 @@ class SwiftServiceMixin:
             StreamingMode.BIDIRECTIONAL: "BidirectionalStreamingServerHandler",
         }[mode]
 
-    def _async_provider(self, base: str, service: Service) -> list[str]:
+    def _async_provider(self, base: str, service: Service) -> List[str]:
         lines = [
             _ASYNC_AVAILABLE,
             f"public protocol {base}AsyncProvider: CallHandlerProvider, Sendable {{",
@@ -481,7 +483,7 @@ class SwiftServiceMixin:
         lines.append("}")
         return lines
 
-    def _async_provider_requirement(self, base: str, method: RpcMethod) -> list[str]:
+    def _async_provider_requirement(self, base: str, method: RpcMethod) -> List[str]:
         name = self._swift_grpc_method_name(method)
         req = self._request_type(method)
         res = self._response_type(method)
@@ -516,7 +518,7 @@ class SwiftServiceMixin:
             "    ) async throws",
         ]
 
-    def _async_provider_handler_case(self, base: str, method: RpcMethod) -> list[str]:
+    def _async_provider_handler_case(self, base: str, method: RpcMethod) -> List[str]:
         name = self._swift_grpc_method_name(method)
         req = self._request_type(method)
         res = self._response_type(method)
@@ -562,7 +564,7 @@ class SwiftServiceMixin:
             ]
         return head
 
-    def _async_client(self, base: str, service: Service) -> list[str]:
+    def _async_client(self, base: str, service: Service) -> List[str]:
         lines = [
             _ASYNC_AVAILABLE,
             f"public struct {base}AsyncClient: GRPCClient {{",
@@ -579,7 +581,7 @@ class SwiftServiceMixin:
         lines.append("}")
         return lines
 
-    def _async_client_method(self, base: str, method: RpcMethod) -> list[str]:
+    def _async_client_method(self, base: str, method: RpcMethod) -> List[str]:
         name = self._swift_grpc_method_name(method)
         req = self._request_type(method)
         res = self._response_type(method)

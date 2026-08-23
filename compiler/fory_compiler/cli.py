@@ -22,6 +22,7 @@ import copy
 import os
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
 from fory_compiler.frontend.base import FrontendError
 from fory_compiler.frontend.utils import parse_idl_file, resolve_import_path
@@ -64,9 +65,9 @@ def is_generated_file(path: Path) -> bool:
     return GENERATED_MARKER in content
 
 
-def scan_generated_files(root: Path, relative: bool) -> list[Path]:
+def scan_generated_files(root: Path, relative: bool) -> List[Path]:
     """Scan for generated files under root."""
-    matches: list[Path] = []
+    matches: List[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if not should_skip_dir(d)]
         for filename in filenames:
@@ -87,9 +88,9 @@ def scan_generated_files(root: Path, relative: bool) -> list[Path]:
 
 def resolve_imports(
     file_path: Path,
-    import_paths: list[Path] | None = None,
-    visited: set[Path] | None = None,
-    cache: dict[Path, Schema] | None = None,
+    import_paths: Optional[List[Path]] = None,
+    visited: Optional[Set[Path]] = None,
+    cache: Optional[Dict[Path, Schema]] = None,
 ) -> Schema:
     """
     Recursively resolve imports and merge all types into a single schema.
@@ -132,7 +133,7 @@ def resolve_imports(
     imported_messages = []
     imported_unions = []
     resolved_import_files = []
-    source_packages: dict[str, str | None] = {str(file_path): schema.package}
+    source_packages: Dict[str, Optional[str]] = {str(file_path): schema.package}
 
     for imp in schema.imports:
         # Resolve import path using search paths
@@ -192,7 +193,7 @@ def annotate_source_package(schema: Schema) -> None:
             type_def.source_package = schema.package
 
 
-def go_package_info(schema: Schema) -> tuple[str | None, str]:
+def go_package_info(schema: Schema) -> Tuple[Optional[str], str]:
     """Return (import_path, package_name) for Go."""
     go_package = schema.get_option("go_package")
     if go_package:
@@ -209,10 +210,10 @@ def go_package_info(schema: Schema) -> tuple[str | None, str]:
 
 def collect_schema_graph(
     file_path: Path,
-    import_paths: list[Path],
-    cache: dict[Path, Schema],
-    visiting: set[Path],
-) -> list[tuple[Path, Schema]] | None:
+    import_paths: List[Path],
+    cache: Dict[Path, Schema],
+    visiting: Set[Path],
+) -> Optional[List[Tuple[Path, Schema]]]:
     """Parse a schema and its imports before generated files are written."""
     file_path = file_path.resolve()
     if file_path in visiting:
@@ -258,7 +259,7 @@ def collect_schema_graph(
     return entries
 
 
-def validate_kotlin_import_packages(graph: list[tuple[Path, Schema]]) -> bool:
+def validate_kotlin_import_packages(graph: List[Tuple[Path, Schema]]) -> bool:
     """Check package combinations that Kotlin source cannot compile."""
     packages = {kotlin_package_for_schema(schema) for _, schema in graph}
     if None not in packages or len(packages) <= 1:
@@ -277,11 +278,11 @@ def validate_kotlin_import_packages(graph: list[tuple[Path, Schema]]) -> bool:
 
 
 def validate_kotlin_output_paths(
-    graph: list[tuple[Path, Schema]],
+    graph: List[Tuple[Path, Schema]],
     grpc: bool = False,
 ) -> bool:
     """Check Kotlin output paths for the current generation run."""
-    outputs: dict[str, list[str]] = {}
+    outputs: Dict[str, List[str]] = {}
     for path, schema in graph:
         for output_path, owner in kotlin_output_paths(schema, include_services=grpc):
             outputs.setdefault(output_path, []).append(f"{path} {owner}")
@@ -303,13 +304,13 @@ def validate_kotlin_output_paths(
 
 
 def validate_kotlin_generation(
-    files: list[Path],
-    import_paths: list[Path],
+    files: List[Path],
+    import_paths: List[Path],
     grpc: bool = False,
 ) -> bool:
     """Preflight Kotlin package and helper paths before writing output."""
-    cache: dict[Path, Schema] = {}
-    graph: list[tuple[Path, Schema]] = []
+    cache: Dict[Path, Schema] = {}
+    graph: List[Tuple[Path, Schema]] = []
     for file_path in files:
         file_graph = collect_schema_graph(file_path, import_paths, cache, set())
         if file_graph is None:
@@ -321,13 +322,13 @@ def validate_kotlin_generation(
 
 
 def validate_csharp_files(
-    files: list[Path],
-    import_paths: list[Path],
+    files: List[Path],
+    import_paths: List[Path],
     grpc: bool = False,
 ) -> bool:
     """Preflight C# generated paths and module owners before writing output."""
-    cache: dict[Path, Schema] = {}
-    graph: list[tuple[Path, Schema]] = []
+    cache: Dict[Path, Schema] = {}
+    graph: List[Tuple[Path, Schema]] = []
     for file_path in files:
         file_graph = collect_schema_graph(file_path, import_paths, cache, set())
         if file_graph is None:
@@ -341,14 +342,14 @@ def validate_csharp_files(
 
 
 def validate_swift_files(
-    files: list[Path],
-    import_paths: list[Path],
-    namespace_style: str | None = None,
+    files: List[Path],
+    import_paths: List[Path],
+    namespace_style: Optional[str] = None,
     grpc: bool = False,
 ) -> bool:
     """Preflight Swift output paths and top-level symbols before writing output."""
-    cache: dict[Path, Schema] = {}
-    graph: list[tuple[Path, Schema]] = []
+    cache: Dict[Path, Schema] = {}
+    graph: List[Tuple[Path, Schema]] = []
     for file_path in files:
         file_graph = collect_schema_graph(file_path, import_paths, cache, set())
         if file_graph is None:
@@ -361,7 +362,7 @@ def validate_swift_files(
         return False
 
 
-def validate_scala_import_packages(graph: list[tuple[Path, Schema]]) -> bool:
+def validate_scala_import_packages(graph: List[Tuple[Path, Schema]]) -> bool:
     """Check package combinations that Scala source cannot compile."""
     packages = {scala_package_for_schema(schema) for _, schema in graph}
     if None not in packages or len(packages) <= 1:
@@ -380,11 +381,11 @@ def validate_scala_import_packages(graph: list[tuple[Path, Schema]]) -> bool:
 
 
 def validate_scala_output_paths(
-    graph: list[tuple[Path, Schema]],
+    graph: List[Tuple[Path, Schema]],
     grpc: bool = False,
 ) -> bool:
     """Check Scala output paths for the current generation run."""
-    outputs: dict[str, list[str]] = {}
+    outputs: Dict[str, List[str]] = {}
     for path, schema in graph:
         for output_path, owner in scala_output_paths(schema, include_services=grpc):
             outputs.setdefault(output_path, []).append(f"{path} {owner}")
@@ -406,13 +407,13 @@ def validate_scala_output_paths(
 
 
 def validate_scala_generation(
-    files: list[Path],
-    import_paths: list[Path],
+    files: List[Path],
+    import_paths: List[Path],
     grpc: bool = False,
 ) -> bool:
     """Preflight Scala package and helper paths before writing output."""
-    cache: dict[Path, Schema] = {}
-    graph: list[tuple[Path, Schema]] = []
+    cache: Dict[Path, Schema] = {}
+    graph: List[Tuple[Path, Schema]] = []
     for file_path in files:
         file_graph = collect_schema_graph(file_path, import_paths, cache, set())
         if file_graph is None:
@@ -423,7 +424,7 @@ def validate_scala_generation(
     return validate_scala_output_paths(graph, grpc=grpc)
 
 
-def _find_go_module_root(base_go_out: Path) -> Path | None:
+def _find_go_module_root(base_go_out: Path) -> Optional[Path]:
     base_go_out = base_go_out.resolve()
     for candidate in (base_go_out, *base_go_out.parents):
         if (candidate / "go.mod").is_file():
@@ -431,7 +432,7 @@ def _find_go_module_root(base_go_out: Path) -> Path | None:
     return None
 
 
-def _read_go_module_path(go_module_root: Path) -> str | None:
+def _read_go_module_path(go_module_root: Path) -> Optional[str]:
     module_file = go_module_root / "go.mod"
     if not module_file.is_file():
         return None
@@ -480,7 +481,7 @@ def resolve_go_output_dir(base_go_out: Path, schema: Schema) -> Path:
     return base_go_out
 
 
-def parse_args(args: list[str] | None = None) -> argparse.Namespace:
+def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         prog="foryc",
@@ -689,7 +690,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
-def normalize_args(args: list[str] | None) -> list[str]:
+def normalize_args(args: Optional[List[str]]) -> List[str]:
     """Normalize args so compile is the default command."""
     if args is None:
         args = sys.argv[1:]
@@ -706,7 +707,7 @@ def normalize_args(args: list[str] | None) -> list[str]:
     return args
 
 
-def get_languages(lang_arg: str) -> list[str]:
+def get_languages(lang_arg: str) -> List[str]:
     """Parse the language argument into a list of languages."""
     if lang_arg == "all":
         return list(GENERATORS.keys())
@@ -725,19 +726,19 @@ def get_languages(lang_arg: str) -> list[str]:
 
 def compile_file(
     file_path: Path,
-    lang_output_dirs: dict[str, Path],
-    import_paths: list[Path] | None = None,
-    go_nested_type_style: str | None = None,
-    swift_namespace_style: str | None = None,
+    lang_output_dirs: Dict[str, Path],
+    import_paths: Optional[List[Path]] = None,
+    go_nested_type_style: Optional[str] = None,
+    swift_namespace_style: Optional[str] = None,
     emit_fdl: bool = False,
-    emit_fdl_path: Path | None = None,
-    resolve_cache: dict[Path, Schema] | None = None,
+    emit_fdl_path: Optional[Path] = None,
+    resolve_cache: Optional[Dict[Path, Schema]] = None,
     grpc: bool = False,
     grpc_web: bool = False,
     grpc_python_mode: str = "async",
     *,
-    generated_outputs: dict[Path, Path] | None = None,
-    generated_cpp_namespaces: dict[str, tuple[Path, str]] | None = None,
+    generated_outputs: Optional[Dict[Path, Path]] = None,
+    generated_cpp_namespaces: Optional[Dict[str, Tuple[Path, str]]] = None,
 ) -> bool:
     """Compile a single IDL file with import resolution.
 
@@ -856,7 +857,7 @@ def compile_file(
                 "cpp": "C++",
                 "javascript": "JavaScript",
             }.get(lang, lang.capitalize())
-            output_targets: list[Path] = []
+            output_targets: List[Path] = []
             for f in files:
                 target = (lang_output / f.path).resolve()
                 # Reject overwriting existing non-generated files
@@ -893,18 +894,18 @@ def compile_file(
 
 def compile_file_recursive(
     file_path: Path,
-    lang_output_dirs: dict[str, Path],
-    import_paths: list[Path],
-    go_nested_type_style: str | None,
-    swift_namespace_style: str | None,
+    lang_output_dirs: Dict[str, Path],
+    import_paths: List[Path],
+    go_nested_type_style: Optional[str],
+    swift_namespace_style: Optional[str],
     emit_fdl: bool,
-    emit_fdl_path: Path | None,
-    generated: set[Path],
-    stack: set[Path],
-    resolve_cache: dict[Path, Schema],
-    go_module_root: Path | None,
-    generated_outputs: dict[Path, Path],
-    generated_cpp_namespaces: dict[str, tuple[Path, str]],
+    emit_fdl_path: Optional[Path],
+    generated: Set[Path],
+    stack: Set[Path],
+    resolve_cache: Dict[Path, Schema],
+    go_module_root: Optional[Path],
+    generated_outputs: Dict[Path, Path],
+    generated_cpp_namespaces: Dict[str, Tuple[Path, str]],
     grpc: bool = False,
     grpc_web: bool = False,
     grpc_python_mode: str = "async",
@@ -1020,7 +1021,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
     }
 
     # Determine which languages to generate
-    lang_output_dirs: dict[str, Path] = {}
+    lang_output_dirs: Dict[str, Path] = {}
 
     # First, add languages specified via --{lang}_out (these use direct paths)
     for lang, out_dir in lang_specific_outputs.items():
@@ -1102,10 +1103,10 @@ def cmd_compile(args: argparse.Namespace) -> int:
         out_dir.mkdir(parents=True, exist_ok=True)
 
     success = True
-    generated: set[Path] = set()
-    resolve_cache: dict[Path, Schema] = {}
-    generated_outputs: dict[Path, Path] = {}
-    generated_cpp_namespaces: dict[str, tuple[Path, str]] = {}
+    generated: Set[Path] = set()
+    resolve_cache: Dict[Path, Schema] = {}
+    generated_outputs: Dict[Path, Path] = {}
+    generated_cpp_namespaces: Dict[str, Tuple[Path, str]] = {}
     for file_path in args.files:
         if not file_path.exists():
             print(f"Error: File not found: {file_path}", file=sys.stderr)
@@ -1160,7 +1161,7 @@ def cmd_scan_generated(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(args: list[str] | None = None) -> int:
+def main(args: Optional[List[str]] = None) -> int:
     """Main entry point."""
     parsed = parse_args(normalize_args(args))
 
