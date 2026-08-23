@@ -58,4 +58,28 @@ final class MarshallerThreadSafetyTests: XCTestCase {
       try GrpcFdl.ForyModule.getFory().deserialize(Data(outbound.readableBytesView))
     XCTAssertEqual(fromMarshaller, probe)
   }
+
+  func testSeparateModulesKeepOwnRuntimeOnOneThread() throws {
+    let allocator = ByteBufferAllocator()
+
+    let fdlRequest = GrpcFdl.GrpcFdlRequest(id: "fdl", count: 1, payload: "p")
+    var fdlBuffer = allocator.buffer(capacity: 64)
+    try GrpcFdl_FdlGrpcServiceMessage(fdlRequest).serialize(into: &fdlBuffer)
+    let fdlBack = try GrpcFdl_FdlGrpcServiceMessage<GrpcFdl.GrpcFdlRequest>(
+      serializedByteBuffer: &fdlBuffer)
+    XCTAssertEqual(fdlBack.value, fdlRequest)
+
+    let fbsRequest = GrpcFbs.GrpcFbsRequest(id: "fbs", count: 2, payload: "q")
+    var fbsBuffer = allocator.buffer(capacity: 64)
+    try GrpcFbs_FbsGrpcServiceMessage(fbsRequest).serialize(into: &fbsBuffer)
+    let fbsBack = try GrpcFbs_FbsGrpcServiceMessage<GrpcFbs.GrpcFbsRequest>(
+      serializedByteBuffer: &fbsBuffer)
+    XCTAssertEqual(fbsBack.value, fbsRequest)
+
+    var fdlAgain = allocator.buffer(capacity: 64)
+    try GrpcFdl_FdlGrpcServiceMessage(fdlRequest).serialize(into: &fdlAgain)
+    let fdlSecondPass = try GrpcFdl_FdlGrpcServiceMessage<GrpcFdl.GrpcFdlRequest>(
+      serializedByteBuffer: &fdlAgain)
+    XCTAssertEqual(fdlSecondPass.value, fdlRequest)
+  }
 }

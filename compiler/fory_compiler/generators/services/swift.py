@@ -153,7 +153,8 @@ class SwiftServiceMixin:
         # The Swift Fory instance is single-threaded, so keep one per thread.
         return [
             "private enum ForyRuntime {",
-            f'    private static let key = "org.apache.fory.grpc.{module}"',
+            f'    private static let key = "org.apache.fory.grpc." '
+            f"+ String(reflecting: {module}.self)",
             "    static func fory() throws -> Fory {",
             "        let storage = Thread.current.threadDictionary",
             "        if let existing = storage[key] as? Fory { return existing }",
