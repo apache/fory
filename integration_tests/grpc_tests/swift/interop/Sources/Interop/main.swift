@@ -453,10 +453,15 @@ private func runClient() async throws {
     target: .host(String(parts[0]), port: port),
     transportSecurity: .plaintext,
     eventLoopGroup: group)
-  defer { try? channel.close().wait() }
-  try await exerciseFdl(channel)
-  try await exerciseFbs(channel)
-  try await exercisePb(channel)
+  do {
+    try await exerciseFdl(channel)
+    try await exerciseFbs(channel)
+    try await exercisePb(channel)
+  } catch {
+    try? await channel.close().get()
+    throw error
+  }
+  try await channel.close().get()
   print("swift interop ok")
 }
 

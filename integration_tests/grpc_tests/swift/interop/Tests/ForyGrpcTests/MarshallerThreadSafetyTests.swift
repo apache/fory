@@ -23,10 +23,11 @@ import Testing
 @testable import ForyGrpcDefaultPackageTwo
 @testable import ForyGrpcGenerated
 
-// The generated marshaller uses one Fory per thread. CI runs this suite under
-// ThreadSanitizer with `--sanitize=thread --disable-xctest`. It is swift-testing
-// rather than XCTest because macOS refuses to load the sanitizer runtime into
-// XCTest's platform-signed `xctest` runner.
+// Exercises the generated marshaller across threads to show that its per-thread
+// Fory carries no data race, and that each module keeps its own instance.
+//
+// Written with swift-testing because ThreadSanitizer cannot load into the
+// platform-signed `xctest` runner that XCTest bundles use on macOS.
 @Suite struct MarshallerThreadSafetyTests {
   @Test func concurrentRoundTrip() {
     DispatchQueue.concurrentPerform(iterations: 2000) { i in
@@ -106,7 +107,8 @@ import Testing
       serializedByteBuffer: &oneBuffer)
     #expect(oneBack.value == one)
 
-    // Same thread, so a shared key would hand this the other module's Fory.
+    // Runs on the same thread, where a shared key would return the other
+    // module's Fory.
     let two = DefaultPackageTwoRequest(id: "two", count: 2)
     var twoBuffer = allocator.buffer(capacity: 64)
     try DefaultPackageTwoServiceMessage(two).serialize(into: &twoBuffer)

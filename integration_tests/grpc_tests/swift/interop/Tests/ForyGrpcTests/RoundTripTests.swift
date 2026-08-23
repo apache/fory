@@ -105,24 +105,47 @@ private final class FdlService: GrpcFdl_FdlGrpcServiceAsyncProvider {
   }
 }
 
-// Hosts the generated provider in-process and exercises the generated async client
-// across all four streaming modes (the relocated SwiftPM build-and-run fixture).
-final class RoundTripTests: XCTestCase {
-  func testInProcessAllStreamingModes() async throws {
+/// Runs `body` against a channel served by an in-process gRPC server, tearing down
+/// the channel, server, and event loop group in reverse order of creation on every
+/// exit path.
+private func withInProcessChannel<T>(
+  _ body: (GRPCChannel) async throws -> T
+) async throws -> T {
+  var teardown: [() async throws -> Void] = []
+  func unwind() async {
+    for step in teardown.reversed() { try? await step() }
+  }
+  do {
     let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-    defer { try? group.syncShutdownGracefully() }
+    teardown.append { try await group.shutdownGracefully() }
     let server = try await Server.insecure(group: group)
       .withServiceProviders([FdlService()])
       .bind(host: "127.0.0.1", port: 0)
       .get()
-    defer { try? server.close().wait() }
-    let port = server.channel.localAddress!.port!
+    teardown.append { try await server.close().get() }
     let channel = try GRPCChannelPool.with(
-      target: .host("127.0.0.1", port: port),
+      target: .host("127.0.0.1", port: server.channel.localAddress!.port!),
       transportSecurity: .plaintext,
       eventLoopGroup: group)
-    defer { try? channel.close().wait() }
+    teardown.append { try await channel.close().get() }
 
+    let value = try await body(channel)
+    await unwind()
+    return value
+  } catch {
+    await unwind()
+    throw error
+  }
+}
+
+final class RoundTripTests: XCTestCase {
+  func testInProcessAllStreamingModes() async throws {
+    try await withInProcessChannel { channel in
+      try await exerciseAllStreamingModes(channel)
+    }
+  }
+
+  private func exerciseAllStreamingModes(_ channel: GRPCChannel) async throws {
     let client = GrpcFdl_FdlGrpcServiceAsyncClient(channel: channel)
     let first = GrpcFdl.GrpcFdlRequest(id: "a", count: 1, payload: "alpha")
     let requests = [first, GrpcFdl.GrpcFdlRequest(id: "b", count: 2, payload: "beta")]

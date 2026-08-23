@@ -17,7 +17,9 @@ let package = Package(
       ],
       path: "Sources/Generated"
     ),
-    // Package-less schemas, one module each, both emitting a bare `ForyModule`.
+    // Package-less schemas, one module each. Both emit a bare `ForyModule`, so
+    // together they cover generated helpers whose textual paths are identical
+    // across modules.
     .target(
       name: "ForyGrpcDefaultPackageOne",
       dependencies: [
