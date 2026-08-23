@@ -195,8 +195,8 @@ Compile generated companions in Swift 5 language mode (use
 `swift-tools-version:5.9`, or set `swiftLanguageMode(.v5)` on the target in a
 6.x manifest). grpc-swift moves each request and response between the calling
 task and the event loop, so the wire wrapper requires a `Sendable` payload, and
-the generated Fory Swift models do not yet declare that conformance. Swift 6
-strict concurrency support follows once generated models are `Sendable`.
+generated Fory Swift models do not declare that conformance. This applies to
+every call shape, including unary calls, not only the streaming ones.
 
 ## Known Limitations
 
