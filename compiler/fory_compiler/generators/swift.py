@@ -202,20 +202,29 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
             return f"{package_path}/{file_name}"
         return file_name
 
-    def swift_model_top_level_symbols(self) -> set[str]:
-        # In enum style with a package, types nest under a namespace enum, so the
-        # only file-scope declaration is that enum's first component. Flatten and
-        # default packages put each type and the module helper at file scope.
+    def swift_declared_symbols(self) -> list[str]:
+        # Every declaration is reported with the Swift scope that contains it, and
+        # duplicates are kept so preflight can see a name claimed twice. Enum style
+        # nests types under a namespace enum, so it also owns that enum itself.
         components = self._namespace_components_for_schema(self.schema)
-        if self.get_namespace_style() == "enum" and components:
-            return {components[0]}
-        symbols: set[str] = set()
+        scope = ".".join(components) if self.get_namespace_style() == "enum" else ""
+        symbols: list[str] = []
+        if components and self.get_namespace_style() == "enum":
+            symbols.append(components[0])
         for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
             if self.is_imported_type(type_def):
                 continue
-            symbols.add(self._declared_type_name(type_def.name))
-        symbols.add(self._module_helper_name_for_schema(self.schema))
+            symbols.append(
+                self._scoped_symbol(scope, self._declared_type_name(type_def.name))
+            )
+        symbols.append(
+            self._scoped_symbol(scope, self._module_helper_name_for_schema(self.schema))
+        )
         return symbols
+
+    @staticmethod
+    def _scoped_symbol(scope: str, name: str) -> str:
+        return f"{scope}.{name}" if scope else name
 
     def module_file_name(self) -> str:
         if self.schema.source_file and not self.schema.source_file.startswith("<"):
@@ -1503,7 +1512,7 @@ def validate_swift_generation(
         output_owners.setdefault(generator.output_file_path(), []).append(
             f"{path} schema module"
         )
-        for symbol in generator.swift_model_top_level_symbols():
+        for symbol in generator.swift_declared_symbols():
             symbol_owners.setdefault(symbol, []).append(f"{path} schema type")
         if grpc:
             for service in schema.services:

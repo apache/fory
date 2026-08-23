@@ -2518,6 +2518,38 @@ def test_swift_common_root_package_emits_shared_namespace_enum():
         )
 
 
+def test_swift_helper_name_collision_fails_preflight():
+    schema = parse_fdl("message ForyModule { string a = 1; }\n")
+    with pytest.raises(ValueError, match="ForyModule"):
+        validate_swift_generation([(Path("helper.fdl"), schema)])
+
+
+def test_swift_normalized_name_collision_fails_preflight():
+    schema = parse_fdl(
+        "message my_type { string a = 1; }\nmessage MyType { string b = 1; }\n"
+    )
+    with pytest.raises(ValueError, match="MyType"):
+        validate_swift_generation([(Path("normalized.fdl"), schema)])
+
+
+def test_swift_nested_normalized_name_collision_fails_preflight():
+    schema = parse_fdl(
+        "package demo.api;\n"
+        "message my_type { string a = 1; }\n"
+        "message MyType { string b = 1; }\n"
+    )
+    with pytest.raises(ValueError, match="Demo.Api.MyType"):
+        validate_swift_generation([(Path("nested.fdl"), schema)])
+
+
+def test_swift_flattened_helper_collision_fails_preflight():
+    schema = parse_fdl("package demo.api;\nmessage ForyModule { string a = 1; }\n")
+    with pytest.raises(ValueError, match="Demo_Api_ForyModule"):
+        validate_swift_generation(
+            [(Path("flat.fdl"), schema)], namespace_style="flatten"
+        )
+
+
 def test_swift_distinct_root_packages_pass_preflight():
     alpha = parse_fdl("package alpha.one;\nmessage A { string x = 1; }\n")
     beta = parse_fdl("package beta.two;\nmessage B { string y = 1; }\n")
