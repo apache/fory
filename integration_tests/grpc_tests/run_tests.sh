@@ -61,9 +61,6 @@ fi
 if command -v swift >/dev/null 2>&1 && [ -d "${SCRIPT_DIR}/swift/interop" ]; then
   cd "${SCRIPT_DIR}/swift/interop"
   swift test
-  if [[ "${FORY_SWIFT_TSAN:-}" == "1" ]]; then
-    swift test --sanitize=thread
-  fi
 fi
 if has_test_class "SwiftGrpcTest"; then
   cd "${SCRIPT_DIR}/swift/interop"

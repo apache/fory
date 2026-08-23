@@ -17,6 +17,23 @@ let package = Package(
       ],
       path: "Sources/Generated"
     ),
+    // Package-less schemas, one module each, both emitting a bare `ForyModule`.
+    .target(
+      name: "ForyGrpcDefaultPackageOne",
+      dependencies: [
+        .product(name: "GRPC", package: "grpc-swift"),
+        .product(name: "Fory", package: "swift"),
+      ],
+      path: "Sources/GeneratedDefaultPackageOne"
+    ),
+    .target(
+      name: "ForyGrpcDefaultPackageTwo",
+      dependencies: [
+        .product(name: "GRPC", package: "grpc-swift"),
+        .product(name: "Fory", package: "swift"),
+      ],
+      path: "Sources/GeneratedDefaultPackageTwo"
+    ),
     .executableTarget(
       name: "interop",
       dependencies: [
@@ -30,6 +47,8 @@ let package = Package(
       name: "ForyGrpcTests",
       dependencies: [
         "ForyGrpcGenerated",
+        "ForyGrpcDefaultPackageOne",
+        "ForyGrpcDefaultPackageTwo",
         .product(name: "GRPC", package: "grpc-swift"),
         .product(name: "Fory", package: "swift"),
       ],
