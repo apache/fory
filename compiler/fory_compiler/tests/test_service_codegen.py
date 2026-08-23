@@ -22,6 +22,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from textwrap import dedent
+from typing import Dict, Tuple, Type
 
 import pytest
 
@@ -59,7 +60,7 @@ from fory_compiler.generators.swift import SwiftGenerator
 from fory_compiler.ir.ast import Schema
 from fory_compiler.ir.validator import SchemaValidator
 
-GENERATOR_CLASSES: tuple[type[BaseGenerator], ...] = (
+GENERATOR_CLASSES: Tuple[Type[BaseGenerator], ...] = (
     JavaGenerator,
     PythonGenerator,
     CppGenerator,
@@ -121,16 +122,16 @@ def parse_fbs(source: str) -> Schema:
 
 
 def generate_files(
-    schema: Schema, generator_cls: type[BaseGenerator]
-) -> dict[str, str]:
+    schema: Schema, generator_cls: Type[BaseGenerator]
+) -> Dict[str, str]:
     options = GeneratorOptions(output_dir=Path("/tmp"))
     generator = generator_cls(schema, options)
     return {item.path: item.content for item in generator.generate()}
 
 
 def generate_service_files(
-    schema: Schema, generator_cls: type[BaseGenerator]
-) -> dict[str, str]:
+    schema: Schema, generator_cls: Type[BaseGenerator]
+) -> Dict[str, str]:
     options = GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
     generator = generator_cls(schema, options)
     return {item.path: item.content for item in generator.generate_services()}
