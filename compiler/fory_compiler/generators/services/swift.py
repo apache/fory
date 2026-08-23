@@ -64,12 +64,13 @@ class SwiftServiceMixin:
         base = self._service_symbol(service)
         modes = {streaming_mode(m) for m in service.methods}
         symbols = [
-            f"{base}Message",
             f"{base}Metadata",
             f"{base}Provider",
             f"{base}AsyncProvider",
             f"{base}AsyncClient",
         ]
+        if service.methods:
+            symbols.append(f"{base}Message")
         if modes & {StreamingMode.SERVER_STREAMING, StreamingMode.BIDIRECTIONAL}:
             symbols += [
                 f"{base}StreamingResponseContext",

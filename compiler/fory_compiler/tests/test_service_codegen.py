@@ -975,6 +975,46 @@ def test_scala_grpc_marshaller():
     assert "org.apache.fory.scala.grpc" not in content
 
 
+def test_swift_empty_service_reserves_no_marshaller_symbol():
+    schema = parse_fdl(
+        "message GreeterMessage { string a = 1; }\nservice Greeter { }\n"
+    )
+    assert validate_swift_generation([(Path("empty.fdl"), schema)], grpc=True)
+
+
+@pytest.mark.parametrize(
+    "schema_source, has_methods",
+    [
+        ("message R { string a = 1; }\nservice Greeter { }\n", False),
+        (
+            "message R { string a = 1; }\n"
+            "service Greeter { rpc Call (R) returns (R); }\n",
+            True,
+        ),
+        (
+            "message R { string a = 1; }\n"
+            "service Greeter { rpc Stream (R) returns (stream R); }\n",
+            True,
+        ),
+    ],
+)
+def test_swift_grpc_declared_symbols_match_emitted(schema_source, has_methods):
+    schema = parse_fdl(schema_source)
+    options = GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
+    generator = SwiftGenerator(schema, options)
+    service = schema.services[0]
+    declared = set(generator.swift_grpc_service_symbols(service))
+    emitted = set(
+        re.findall(
+            r"^(?:public )?(?:struct|enum|protocol) ([A-Za-z_0-9]+)",
+            "".join(item.content for item in generator.generate_services()),
+            re.M,
+        )
+    )
+    assert declared == emitted
+    assert any(name.endswith("Message") for name in declared) is has_methods
+
+
 def test_swift_grpc_fory_marshaller():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     files = generate_service_files(schema, SwiftGenerator)
