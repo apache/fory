@@ -193,12 +193,10 @@ boundary works without extra registration.
 
 Compile generated companions in Swift 5 language mode (use
 `swift-tools-version:5.9`, or set `swiftLanguageMode(.v5)` on the target in a
-6.x manifest). The Fory wire wrapper is `Sendable`, but the async client's
-client-streaming and bidirectional methods pass your request and response model
-types through grpc-swift's `Sendable` streaming APIs, and the generated Fory
-Swift models are not yet `Sendable`. Server providers, the unary client, and the
-server-streaming client build under Swift 6 strict concurrency; full Swift 6
-support for the streaming client follows once generated models are `Sendable`.
+6.x manifest). grpc-swift moves each request and response between the calling
+task and the event loop, so the wire wrapper requires a `Sendable` payload, and
+the generated Fory Swift models do not yet declare that conformance. Swift 6
+strict concurrency support follows once generated models are `Sendable`.
 
 ## Known Limitations
 
@@ -214,11 +212,13 @@ cross-cutting concerns instead.
 
 Swift models put each package under a nested `enum` namespace, so two schemas that
 share a top-level package component (for example `demo.shared` and `demo.greeter`)
-both emit `public enum Demo`. Swift treats that as an invalid redeclaration when
-both compile into one module. This is a model-generation behavior, not specific to
-gRPC, but it also affects a service that imports across such packages. Give the
-schemas disjoint top-level packages (for example `shared.models` and
-`greeter.api`), or compile them as separate Swift modules.
+both emit `public enum Demo`. The compiler rejects that with a top-level symbol
+collision before it writes either file. This is a model-generation behavior, not
+specific to gRPC, but it also affects a service that imports across such packages.
+Give the schemas disjoint top-level packages (for example `shared.models` and
+`greeter.api`), or generate them into separate Swift modules with one `foryc`
+invocation each, because a single invocation runs the collision preflight across
+every schema it compiles.
 
 ## Troubleshooting
 
