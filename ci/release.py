@@ -86,7 +86,6 @@ SCALA_SNAPSHOT_COMMANDS = (
     "sbt 'project fory-json-scala' +publish",
 )
 JVM_PUBLICATION_MODES = ("release", "snapshot")
-JVM_PUBLICATION_CREDENTIALS = ("NEXUS_USERNAME", "NEXUS_PASSWORD")
 KOTLIN_PUBLIC_ARTIFACTS = (
     "fory-kotlin",
     "fory-kotlin-ksp",
@@ -272,13 +271,8 @@ def _jvm_release_langs(languages):
 def _require_publication_authority(mode):
     if mode not in JVM_PUBLICATION_MODES:
         raise ValueError(f"Unsupported JVM publication mode: {mode}")
-    missing = [name for name in JVM_PUBLICATION_CREDENTIALS if not os.environ.get(name)]
-    if missing:
-        raise RuntimeError(f"JVM {mode} publication requires: {', '.join(missing)}")
     if mode == "release" and not _has_gpg_secret_key():
         raise RuntimeError("JVM release publication requires a GPG secret key")
-    os.environ["SONATYPE_USERNAME"] = os.environ["NEXUS_USERNAME"]
-    os.environ["SONATYPE_PASSWORD"] = os.environ["NEXUS_PASSWORD"]
 
 
 def _has_gpg_secret_key():
