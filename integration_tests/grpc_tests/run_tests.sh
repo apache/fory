@@ -22,10 +22,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 TEST_CLASSES="${1:-PythonAsyncGrpcTest,PythonSyncGrpcTest,RustGrpcTest,GoGrpcTest,CppGrpcTest,KotlinGrpcTest,DartGrpcTest,SwiftGrpcTest}"
+SWIFT_INTEROP_DIR="${SCRIPT_DIR}/swift/interop"
 
 has_test_class() {
   [[ ",${TEST_CLASSES}," == *",$1,"* ]]
 }
+
+if has_test_class "SwiftGrpcTest" && ! command -v swift >/dev/null 2>&1; then
+  echo "Error: SwiftGrpcTest requires the Swift toolchain" >&2
+  exit 1
+fi
 
 if has_test_class "PythonAsyncGrpcTest" || has_test_class "PythonSyncGrpcTest"; then
   python -m pip install "grpcio>=1.62.2,<1.71"
@@ -58,9 +64,8 @@ if has_test_class "DartGrpcTest"; then
 fi
 # Swift toolchain tests (generated marshaller round-trip and concurrency). These
 # need the Swift toolchain rather than the JVM, so they run in their own package.
-if has_test_class "SwiftGrpcTest" && command -v swift >/dev/null 2>&1 &&
-  [ -d "${SCRIPT_DIR}/swift/interop" ]; then
-  cd "${SCRIPT_DIR}/swift/interop"
+if has_test_class "SwiftGrpcTest"; then
+  cd "${SWIFT_INTEROP_DIR}"
   swift test
   swift build -c release --product interop
 fi

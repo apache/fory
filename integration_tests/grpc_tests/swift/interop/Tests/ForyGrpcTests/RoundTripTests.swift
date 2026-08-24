@@ -112,9 +112,22 @@ private func withInProcessChannel<T>(
   _ body: (GRPCChannel) async throws -> T
 ) async throws -> T {
   var teardown: [() async throws -> Void] = []
-  func unwind() async {
-    for step in teardown.reversed() { try? await step() }
+  func unwind() async throws {
+    var firstError: Error?
+    // Setup locals are out of scope before unwind. Clear each closure after it
+    // runs so its transport owner is released before the event loop shuts down.
+    while !teardown.isEmpty {
+      var step: (() async throws -> Void)? = teardown.removeLast()
+      do {
+        try await step?()
+      } catch {
+        if firstError == nil { firstError = error }
+      }
+      step = nil
+    }
+    if let firstError { throw firstError }
   }
+  let operation: Result<T, Error>
   do {
     let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     teardown.append { try await group.shutdownGracefully() }
@@ -129,13 +142,17 @@ private func withInProcessChannel<T>(
       eventLoopGroup: group)
     teardown.append { try await channel.close().get() }
 
-    let value = try await body(channel)
-    await unwind()
-    return value
+    operation = .success(try await body(channel))
   } catch {
-    await unwind()
-    throw error
+    operation = .failure(error)
   }
+
+  do {
+    try await unwind()
+  } catch {
+    if case .success = operation { throw error }
+  }
+  return try operation.get()
 }
 
 final class RoundTripTests: XCTestCase {
