@@ -67,7 +67,6 @@ fi
 if has_test_class "SwiftGrpcTest"; then
   cd "${SWIFT_INTEROP_DIR}"
   swift test
-  swift build -c release --product interop
 fi
 cd "${ROOT_DIR}/integration_tests/grpc_tests/java"
 mvn -T16 --no-transfer-progress \

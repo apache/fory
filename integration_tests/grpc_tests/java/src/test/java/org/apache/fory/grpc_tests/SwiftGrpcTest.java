@@ -51,7 +51,7 @@ public class SwiftGrpcTest extends GrpcTestBase {
   private PeerCommand swiftCommand(String... args) {
     Path swiftRoot = grpcRoot().resolve("swift").resolve("interop");
     List<String> command = new ArrayList<>();
-    command.add(swiftRoot.resolve(".build").resolve("release").resolve("interop").toString());
+    command.add(swiftRoot.resolve(".build").resolve("debug").resolve("interop").toString());
     command.addAll(Arrays.asList(args));
     PeerCommand peerCommand = newPeerCommand(swiftRoot, command);
     putEnv(peerCommand, "ENABLE_FORY_DEBUG_OUTPUT", "1");

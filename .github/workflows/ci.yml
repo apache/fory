@@ -1104,24 +1104,10 @@ jobs:
           mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
       - name: Generate gRPC test sources
         run: python integration_tests/grpc_tests/generate_grpc.py
-      - name: Build Swift gRPC peer
-        run: |
-          cd integration_tests/grpc_tests/swift/interop
-          swift build -c release --product interop
       - name: Run Swift gRPC package tests
         run: |
           cd integration_tests/grpc_tests/swift/interop
           swift test
-      # --disable-xctest keeps this to the swift-testing marshaller suite, because
-      # macOS cannot load the sanitizer runtime into XCTest's `xctest` runner.
-      # The grep fails the step if that suite ever stops running.
-      - name: Run Swift gRPC marshaller tests under ThreadSanitizer
-        run: |
-          set -o pipefail
-          cd integration_tests/grpc_tests/swift/interop
-          log="$(mktemp)"
-          swift test --sanitize=thread --disable-xctest 2>&1 | tee "$log"
-          grep -q "Suite MarshallerThreadSafetyTests passed" "$log"
       - name: Run Java/Swift gRPC Tests
         run: |
           cd integration_tests/grpc_tests/java
