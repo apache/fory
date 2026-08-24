@@ -43,7 +43,7 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-json</artifactId>
-  <version>1.7.0-SNAPSHOT</version>
+  <version>1.7.0</version>
 </dependency>
 ```
 
@@ -57,7 +57,7 @@ repositories {
   mavenCentral()
 }
 
-implementation("org.apache.fory:fory-json:1.7.0-SNAPSHOT")
+implementation("org.apache.fory:fory-json:1.7.0")
 ```
 
 ### Kotlin
@@ -66,7 +66,7 @@ Kotlin/JVM applications add the optional Kotlin JSON runtime and use its single 
 
 ```kotlin title="build.gradle.kts"
 dependencies {
-  implementation("org.apache.fory:fory-json-kotlin:1.7.0-SNAPSHOT")
+  implementation("org.apache.fory:fory-json-kotlin:1.7.0")
 }
 ```
 

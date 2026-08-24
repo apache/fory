@@ -163,7 +163,7 @@ val fory = ForyScala.builder().withXlang(false)
 Add the dependency with sbt:
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.6.1"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.7.0"
 ```
 
 ## Additional Notes

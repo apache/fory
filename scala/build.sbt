@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-val foryVersion = "1.7.0-SNAPSHOT"
+val foryVersion = "1.7.0"
 val scala213Version = "2.13.18"
 val repositoryRoot = Def.setting((ThisBuild / baseDirectory).value.getParentFile)
 

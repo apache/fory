@@ -36,7 +36,7 @@ Create a console project and add the released package:
 ```bash
 dotnet new console -n ForyExample
 cd ForyExample
-dotnet add package Apache.Fory --version 1.6.1
+dotnet add package Apache.Fory --version 1.7.0
 ```
 
 Replace `Program.cs` with:
