@@ -17,7 +17,7 @@
 
 """Fory IDL compiler for Apache Fory."""
 
-__version__ = "1.7.0.dev0"
+__version__ = "1.7.0"
 
 from fory_compiler.frontend.fbs import FBSFrontend
 from fory_compiler.frontend.fdl import FDLFrontend

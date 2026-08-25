@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-  implementation("org.apache.fory:fory-json-kotlin:1.7.0-SNAPSHOT")
+  implementation("org.apache.fory:fory-json-kotlin:1.7.0")
 }
 ```
 
@@ -36,7 +36,7 @@ plugins {
 }
 
 dependencies {
-  ksp("org.apache.fory:fory-json-kotlin-ksp:1.7.0-SNAPSHOT")
+  ksp("org.apache.fory:fory-json-kotlin-ksp:1.7.0")
 }
 ```
 
