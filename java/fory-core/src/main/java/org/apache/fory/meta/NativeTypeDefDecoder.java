@@ -28,7 +28,10 @@ import static org.apache.fory.meta.TypeDef.COMPRESS_META_FLAG;
 import static org.apache.fory.meta.TypeDef.META_SIZE_MASKS;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
@@ -221,6 +224,7 @@ class NativeTypeDefDecoder {
       List<FieldInfo> fieldInfos = readFieldsInfo(typeDefBuf, resolver, className, numFields);
       classFields.addAll(fieldInfos);
     }
+    validateTagIds(classFields);
     Preconditions.checkNotNull(classSpec);
     boolean hasFieldMetadata = !classFields.isEmpty();
     // Native TypeDef can carry class-layer fields even when the root wire type is an enum,
@@ -329,27 +333,35 @@ class NativeTypeDefDecoder {
       //  `3 bits size + 2 bits field name encoding + nullability flag + ref tracking flag`
       int encodingFlags = (header >>> 2) & 0b11;
       boolean useTagID = encodingFlags == 3;
-      int size = header >>> 4;
-      if (size == 7) {
+      int inlineSize = header >>> 4;
+      long size = inlineSize;
+      int tagId = useTagID ? inlineSize : -1;
+      if (inlineSize == 7) {
         int extendedSize = buffer.readVarUInt32Small7();
-        if (extendedSize < 0 || extendedSize > Integer.MAX_VALUE - size - 1) {
+        if (useTagID) {
+          if (Integer.compareUnsigned(extendedSize, ForyField.MAX_ID - inlineSize) > 0) {
+            throw new DeserializationException("TypeDef field tag ID out of range");
+          }
+          tagId += extendedSize;
+        } else {
+          size += Integer.toUnsignedLong(extendedSize);
+        }
+      }
+      if (!useTagID) {
+        size += 1;
+        if (size > Integer.MAX_VALUE) {
           throw new DeserializationException("Invalid TypeDef field name size");
         }
-        size += extendedSize;
       }
-      size += 1;
 
       // Read field name or tag ID
       String fieldName;
-      short tagId = -1;
       if (useTagID) {
-        // When useTagID is true, size contains the tag ID
-        tagId = (short) (size - 1);
         // Use placeholder field name since tag ID is used for identification
         fieldName = "$tag" + tagId;
       } else {
         Encoding encoding = fieldNameEncodings[encodingFlags];
-        fieldName = Encoders.FIELD_NAME_DECODER.decode(buffer.readBytes(size), encoding);
+        fieldName = Encoders.FIELD_NAME_DECODER.decode(buffer.readBytes((int) size), encoding);
       }
 
       boolean nullable = (header & 0b010) != 0;
@@ -366,6 +378,21 @@ class NativeTypeDefDecoder {
       }
     }
     return fieldInfos;
+  }
+
+  private static void validateTagIds(List<FieldInfo> fields) {
+    Set<Integer> tagIds = null;
+    for (FieldInfo field : fields) {
+      if (field.hasFieldId()) {
+        if (tagIds == null) {
+          tagIds = new HashSet<>();
+        }
+        if (!tagIds.add(field.getFieldId())) {
+          throw new DeserializationException(
+              "Duplicate TypeDef field tag ID " + field.getFieldId());
+        }
+      }
+    }
   }
 
   static String readPkgName(MemoryBuffer buffer) {

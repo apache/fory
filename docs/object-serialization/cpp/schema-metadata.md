@@ -59,8 +59,9 @@ FORY_STRUCT(DataV2, id, (timestamp, fory::F().tagged()), version);
 FORY_STRUCT(Counter, FORY_PROPERTY(value, fory::F().varint()));
 ```
 
-`fory::F(id)` uses explicit id-based field identity. IDs must be
-non-negative:
+`fory::F(id)` uses explicit id-based field identity. Configured IDs must be
+unique within the complete struct schema and satisfy `0 <= id < 2^29` (`0`
+through `536870911`):
 
 ```cpp
 FORY_STRUCT(DataV2, (id, fory::F(0)), (timestamp, fory::F(1).tagged()),

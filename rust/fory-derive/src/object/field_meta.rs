@@ -35,11 +35,13 @@ use std::collections::HashMap;
 use syn::spanned::Spanned;
 use syn::{Field, GenericArgument, PathArguments, Type};
 
+const MAX_FIELD_ID: i32 = (1 << 29) - 1;
+
 /// Represents parsed `#[fory(...)]` field attributes
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct ForyFieldMeta {
-    /// Field tag ID: None = use field name, Some(>=0) = use tag ID
-    pub id: Option<i32>,
+    /// Field tag ID: -1 = use field name, non-negative = use tag ID.
+    pub id: i32,
     /// Whether the field can be null (None = use type-based default)
     pub nullable: Option<bool>,
     /// Whether to enable reference tracking (None = use type-based default)
@@ -60,6 +62,24 @@ pub struct ForyFieldMeta {
     pub tuple: Option<ForyTupleMeta>,
     /// Serializer selected for this exact value node.
     pub with: Option<Type>,
+}
+
+impl Default for ForyFieldMeta {
+    fn default() -> Self {
+        Self {
+            id: -1,
+            nullable: None,
+            r#ref: None,
+            skip: false,
+            encoding: None,
+            list: None,
+            array: false,
+            bytes: false,
+            map: None,
+            tuple: None,
+            with: None,
+        }
+    }
 }
 
 impl std::fmt::Debug for ForyFieldMeta {
@@ -163,14 +183,14 @@ impl ForyFieldMeta {
         ))
     }
 
-    /// Returns effective field ID or -1 for field name encoding
+    /// Returns the field ID or -1 for field name encoding.
     pub fn effective_id(&self) -> i32 {
-        self.id.unwrap_or(-1)
+        self.id
     }
 
     /// Returns true if this field should use tag ID encoding
     pub fn uses_tag_id(&self) -> bool {
-        self.id.is_some_and(|id| id >= 0)
+        self.id >= 0
     }
 
     pub fn element_meta(&self) -> ForyFieldMeta {
@@ -235,14 +255,20 @@ fn parse_meta_item(
             ));
         }
         let lit: syn::LitInt = nested.value()?.parse()?;
-        let id: i32 = lit.base10_parse()?;
+        let id: i128 = lit.base10_parse()?;
         if id < 0 {
             return Err(syn::Error::new(lit.span(), "id must be non-negative"));
         }
-        if meta.id.is_some() {
+        if id > i128::from(MAX_FIELD_ID) {
+            return Err(syn::Error::new(
+                lit.span(),
+                format!("id must not exceed {MAX_FIELD_ID}"),
+            ));
+        }
+        if meta.id >= 0 {
             return Err(syn::Error::new(nested.path.span(), "duplicate id config"));
         }
-        meta.id = Some(id);
+        meta.id = id as i32;
     } else if nested.path.is_ident("nullable") {
         let value = parse_bool_or_flag(&nested)?;
         if meta.nullable.is_some() {
@@ -556,20 +582,19 @@ pub fn validate_field_metas(fields_with_meta: &[(&Field, ForyFieldMeta)]) -> syn
             continue;
         }
 
-        if let Some(id) = meta.id {
-            if id >= 0 {
-                if let Some(existing) = id_to_field.get(&id) {
-                    let field_name = field.ident.as_ref().unwrap();
-                    return Err(syn::Error::new(
-                        field_name.span(),
-                        format!(
-                            "duplicate fory field id={} on fields '{}' and '{}'",
-                            id, existing, field_name
-                        ),
-                    ));
-                }
-                id_to_field.insert(id, field.ident.as_ref().unwrap());
+        let id = meta.id;
+        if id >= 0 {
+            if let Some(existing) = id_to_field.get(&id) {
+                let field_name = field.ident.as_ref().unwrap();
+                return Err(syn::Error::new(
+                    field_name.span(),
+                    format!(
+                        "duplicate fory field id={} on fields '{}' and '{}'",
+                        id, existing, field_name
+                    ),
+                ));
             }
+            id_to_field.insert(id, field.ident.as_ref().unwrap());
         }
     }
 
@@ -704,7 +729,7 @@ mod tests {
             name: String
         };
         let meta = parse_field_meta(&field).unwrap();
-        assert_eq!(meta.id, Some(0));
+        assert_eq!(meta.id, 0);
         assert_eq!(meta.nullable, None);
         assert_eq!(meta.r#ref, None);
         assert!(!meta.skip);
@@ -721,13 +746,22 @@ mod tests {
     }
 
     #[test]
+    fn rejects_tag_above_wire_domain() {
+        let field: Field = parse_quote! {
+            #[fory(id = 536870912)]
+            name: String
+        };
+        assert!(parse_field_meta(&field).is_err());
+    }
+
+    #[test]
     fn test_parse_full_attributes() {
         let field: Field = parse_quote! {
             #[fory(id = 1, nullable = true, ref = false)]
             data: Vec<u8>
         };
         let meta = parse_field_meta(&field).unwrap();
-        assert_eq!(meta.id, Some(1));
+        assert_eq!(meta.id, 1);
         assert_eq!(meta.nullable, Some(true));
         assert_eq!(meta.r#ref, Some(false));
     }
@@ -759,7 +793,7 @@ mod tests {
             data: String
         };
         let meta = parse_field_meta(&field).unwrap();
-        assert_eq!(meta.id, Some(2));
+        assert_eq!(meta.id, 2);
         assert_eq!(meta.nullable, Some(true));
         assert_eq!(meta.r#ref, Some(true));
     }
@@ -885,7 +919,7 @@ mod tests {
     fn test_explicit_attribute_overrides_default() {
         // Explicit nullable=true overrides default
         let meta = ForyFieldMeta {
-            id: Some(0),
+            id: 0,
             nullable: Some(true),
             r#ref: None,
             skip: false,
@@ -901,7 +935,7 @@ mod tests {
 
         // Explicit ref=false overrides default
         let meta = ForyFieldMeta {
-            id: Some(0),
+            id: 0,
             nullable: None,
             r#ref: Some(false),
             skip: false,

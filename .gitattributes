@@ -1,5 +1,9 @@
 benchmarks export-ignore
-integration_tests export-ignore
+# Compiler tests consume the shared IDL fixtures from released source archives.
+integration_tests/* export-ignore
+integration_tests/idl_tests -export-ignore
+integration_tests/idl_tests/* export-ignore
+integration_tests/idl_tests/idl -export-ignore
 
 javascript/**/*.cjs text eol=lf
 javascript/**/*.js text eol=lf

@@ -22,6 +22,7 @@ package org.apache.fory.json.scala
 import java.util.concurrent.atomic.AtomicBoolean
 
 import org.apache.fory.json.{ForyJsonException, JsonCodecFactory}
+import org.apache.fory.json.annotation.JsonSubTypes
 import org.apache.fory.json.codec.{AbstractJsonValueCodec, JsonValueCodec}
 import org.apache.fory.json.reader.JsonReader
 import org.apache.fory.json.resolver.JsonTypeResolver
@@ -45,6 +46,29 @@ enum StatefulResult derives ScalaJsonCodec {
 }
 
 final case class StatefulEnvelope(value: StatefulResult)
+
+@JsonSubTypes(property = "kind")
+sealed trait InferredEvent derives ScalaJsonCodec
+
+final case class InferredMessage(value: String) extends InferredEvent
+
+case object InferredIdle extends InferredEvent
+
+sealed trait InferredBranch extends InferredEvent
+
+final case class InferredLeaf(value: Int) extends InferredBranch
+
+class InferredOpen() extends InferredEvent {
+  var value: Int = 0
+}
+
+final class InferredDescendant() extends InferredOpen
+
+sealed class ConcreteSealed() extends InferredEvent {
+  var value: Int = 0
+}
+
+final class ConcreteLeaf() extends ConcreteSealed
 
 enum ExternalResult {
   case Ok(value: String)
@@ -249,5 +273,54 @@ class ScalaJsonDerivationSuite extends AnyFunSuite {
     assert(json.fromJson("\"Blue\"", classOf[Color]) == Color.Blue)
     assert(json.toJson(DisplayColor.Red) == "\"Red\"")
     assert(json.fromJson("\"Blue\"", classOf[DisplayColor]) == DisplayColor.Blue)
+  }
+
+  test("derived sealed hierarchy uses inferred subtype names") {
+    val runtimes = Seq(
+      ForyJsonScala.builder().withCodegen(false).build(),
+      ForyJsonScala.builder().withAsyncCompilation(false).build()
+    )
+    val open = new InferredOpen()
+    open.value = 4
+    val concrete = new ConcreteSealed()
+    concrete.value = 5
+    val leaf = new ConcreteLeaf()
+    leaf.value = 6
+    val values = Seq[(InferredEvent, String)](
+      InferredMessage("ready") -> "InferredMessage",
+      InferredIdle -> "InferredIdle",
+      InferredLeaf(3) -> "InferredLeaf",
+      open -> "InferredOpen",
+      concrete -> "ConcreteSealed",
+      leaf -> "ConcreteLeaf"
+    )
+    runtimes.foreach { json =>
+      values.foreach { (value, name) =>
+        val text = json.toJson(value, classOf[InferredEvent])
+        assert(text.contains(s"\"kind\":\"$name\""), text)
+        val decoded = json.fromJson(text, classOf[InferredEvent])
+        assert(decoded.getClass == value.getClass)
+      }
+      assertThrows[ForyJsonException](
+        json.toJson(new InferredDescendant(), classOf[InferredEvent])
+      )
+    }
+  }
+
+  test("type checker narrows a derived sealed hierarchy") {
+    val json = ForyJsonScala
+      .builder()
+      .withCodegen(false)
+      .withTypeChecker((name, _) => name != InferredIdle.getClass.getName)
+      .build()
+    assertThrows[ForyJsonException](
+      json.toJson(InferredIdle, classOf[InferredEvent])
+    )
+    assert(
+      json.fromJson(
+        "{\"kind\":\"InferredLeaf\",\"value\":7}",
+        classOf[InferredEvent]
+      ) == InferredLeaf(7)
+    )
   }
 }

@@ -104,6 +104,21 @@ is not reached through an explicitly selected static root or a registered
 enclosing owner, is serialization mechanics only and does not by itself
 authorize a dynamically selected class.
 
+Java Fory JSON treats an explicitly selected top-level class with an empty
+`JsonSubTypes.value` as one static schema authorization. That declaration authorizes the finite
+concrete closure proven by Java sealed metadata, Kotlin metadata, or a Scala 3 derived codec. The
+schema is application or build input; JSON supplies only a logical subtype name and cannot supply a
+class name or extend the closure. A concrete open or non-sealed member authorizes that exact class,
+not its descendants. A non-empty `JsonSubTypes.value` instead authorizes exactly the declared
+subset.
+
+Fory's fixed disallow list must accept the complete inferred closure. An application
+`JsonTypeChecker` may narrow inferred metadata to the exact accepted concrete classes; rejecting
+all candidates is a schema error. The checker also remains authoritative for every entry in an
+explicit table. Materializing a class outside the resulting finite table, admitting a descendant
+of an exact open member, or bypassing either policy is security-relevant. Discovering and selecting
+an allowed member of that validated table is not open dynamic class resolution.
+
 An application-provided custom deserialization policy is itself an application-owned trust
 decision. In Python's reduce path, strict mode with the default policy requires registration-owned
 authorization for a wire-selected global name before importing or resolving it. When an

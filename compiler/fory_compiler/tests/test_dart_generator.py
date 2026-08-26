@@ -80,6 +80,23 @@ def test_dart_generator_emits_annotated_structs_and_generated_part_registration(
     assert "_ScalarForySerializer" not in file.content
 
 
+def test_dart_generator_emits_max_field_tag():
+    file = generate_dart(
+        """
+        package demo;
+
+        message Tagged [id=100] {
+            int32 value = 536870911;
+        }
+        """
+    )
+
+    assert (
+        "@ForyField(type: Int32Type(encoding: Encoding.varint), id: 536870911)"
+        in file.content
+    )
+
+
 def test_dart_generator_keeps_enum_helpers_in_source_and_uses_generated_enum_registration():
     file = generate_dart(
         """

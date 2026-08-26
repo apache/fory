@@ -33,7 +33,10 @@ import static org.apache.fory.meta.TypeDefEncoder.SMALL_NUM_FIELDS_THRESHOLD;
 import static org.apache.fory.meta.TypeDefEncoder.STRUCT_FLAG;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.logging.Logger;
@@ -215,20 +218,32 @@ class TypeDefDecoder {
   private static List<FieldInfo> readFieldsInfo(
       MemoryBuffer buffer, XtypeResolver resolver, String className, int numFields) {
     List<FieldInfo> fieldInfos = new ArrayList<>();
+    Set<Integer> tagIds = null;
     for (int i = 0; i < numFields; i++) {
       // header: 2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag
       byte header = buffer.readByte();
       int encodingFlags = (header >>> 6) & 0b11;
       boolean useTagID = encodingFlags == 3;
-      int fieldNameSize = (header >>> 2) & 0b1111;
-      if (fieldNameSize == FIELD_NAME_SIZE_THRESHOLD) {
+      int inlineSize = (header >>> 2) & 0b1111;
+      long fieldNameSize = inlineSize;
+      int tagId = useTagID ? inlineSize : -1;
+      if (inlineSize == FIELD_NAME_SIZE_THRESHOLD) {
         int extendedSize = buffer.readVarUInt32Small7();
-        if (extendedSize < 0 || extendedSize > Integer.MAX_VALUE - fieldNameSize - 1) {
+        if (useTagID) {
+          if (Integer.compareUnsigned(extendedSize, ForyField.MAX_ID - inlineSize) > 0) {
+            throw new DeserializationException("TypeDef field tag ID out of range");
+          }
+          tagId += extendedSize;
+        } else {
+          fieldNameSize += Integer.toUnsignedLong(extendedSize);
+        }
+      }
+      if (!useTagID) {
+        fieldNameSize += 1;
+        if (fieldNameSize > Integer.MAX_VALUE) {
           throw new DeserializationException("Invalid TypeDef field name size");
         }
-        fieldNameSize += extendedSize;
       }
-      fieldNameSize += 1;
       boolean nullable = (header & 0b10) != 0;
       boolean trackingRef = (header & 0b1) != 0;
       int typeId = buffer.readUInt8();
@@ -237,15 +252,19 @@ class TypeDefDecoder {
 
       // read field name or tag ID
       if (useTagID) {
-        // When useTagID is true, fieldNameSize actually contains the tag ID
-        short tagId = (short) (fieldNameSize - 1);
+        if (tagIds == null) {
+          tagIds = new HashSet<>();
+        }
+        if (!tagIds.add(tagId)) {
+          throw new DeserializationException("Duplicate TypeDef field tag ID " + tagId);
+        }
         // Use a placeholder field name since tag ID is used for identification
         String fieldName = "$tag" + tagId; // TODO we could use id as String as field name
         fieldInfos.add(new FieldInfo(className, fieldName, fieldType, tagId));
       } else {
         Encoding encoding = fieldNameEncodings[encodingFlags];
         String wireFieldName =
-            Encoders.FIELD_NAME_DECODER.decode(buffer.readBytes(fieldNameSize), encoding);
+            Encoders.FIELD_NAME_DECODER.decode(buffer.readBytes((int) fieldNameSize), encoding);
         // Convert snake_case field names back to camelCase for Java field matching
         String fieldName = StringUtils.lowerUnderscoreToLowerCamelCase(wireFieldName);
         fieldInfos.add(new FieldInfo(className, fieldName, fieldType));

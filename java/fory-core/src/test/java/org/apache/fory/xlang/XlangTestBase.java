@@ -636,14 +636,56 @@ public abstract class XlangTestBase extends ForyTestBase {
   @ForyStruct
   static class SimpleStruct {
     HashMap<Integer, Double> f1;
+
+    @ForyField(id = 15)
     int f2;
+
     Item f3;
     String f4;
     Color f5;
     List<String> f6;
+
+    @ForyField(id = 65551)
     int f7;
+
     int f8; // Changed from Integer to int to match Rust
+
+    @ForyField(id = 536870911)
     int last; // Changed from Integer to int to match Rust
+  }
+
+  @Data
+  @ForyStruct
+  static class ExactFieldTags {
+    @ForyField(id = 15)
+    int first;
+
+    @ForyField(id = 65551)
+    int second;
+
+    @ForyField(id = 536870911)
+    int last;
+  }
+
+  @Test(
+      groups = {"xlang", "field-tag"},
+      dataProvider = "enableCodegenParallel")
+  public void testExactFieldTags(boolean enableCodegen) throws IOException {
+    Fory fory =
+        Fory.builder().withXlang(true).withCompatible(false).withCodegen(enableCodegen).build();
+    fory.register(ExactFieldTags.class, 104);
+    ExactFieldTags value = new ExactFieldTags();
+    value.first = 39;
+    value.second = 40;
+    value.last = 41;
+    serDeCheck(fory, value);
+
+    MemoryBuffer buffer = MemoryUtils.buffer(64);
+    fory.serialize(buffer, value);
+    ExecutionContext ctx =
+        prepareExecution("test_exact_field_tags", buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+    Assert.assertEquals(fory.deserialize(readBuffer(ctx.dataFile())), value);
   }
 
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")

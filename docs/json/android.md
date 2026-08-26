@@ -23,8 +23,9 @@ Fory JSON supports ordinary classes on Android API level 26 and later through th
 `fory-json` artifact. Runtime JSON code generation and asynchronous compilation are disabled
 automatically, so `ForyJson.builder().build()` uses the interpreted object mapper.
 
-Kotlin applications use the ordinary `fory-json-kotlin` runtime, which reads Kotlin/JVM metadata
-directly. KSP is needed only when R8 or ProGuard can rename or remove Kotlin model members.
+Kotlin applications use the ordinary `fory-json-kotlin` runtime. KSP is needed when R8 or ProGuard
+can rename or remove Kotlin model members or when a Kotlin-source Mixin adds inferred
+`JsonSubTypes` to a Java sealed target.
 
 ## Installation and Codec Model
 
@@ -48,8 +49,8 @@ dependencies {
 }
 ```
 
-If the application enables R8 or ProGuard, also apply KSP 2.3.8 and add the retention-rule
-processor:
+If the application enables R8 or ProGuard, or if a Kotlin-source Mixin adds inferred `JsonSubTypes`
+to a Java sealed target, also apply KSP 2.3.8:
 
 ```kotlin
 plugins {
@@ -63,8 +64,8 @@ dependencies {
 
 Create the runtime with `ForyJsonKotlin.builder()`. For a minified build, annotate every required
 Kotlin source model with `@JsonType`. For a third-party Kotlin target, declare a source-owned exact
-`@JsonMixin` instead. KSP emits exact R8 and ProGuard retention resources; it does not generate
-codecs or construction operations. Ensure those resources are packaged in the final application.
+`@JsonMixin` instead. If a Kotlin-source Mixin adds inferred `JsonSubTypes` to a Java sealed target,
+also apply `fory-annotation-processor` and compile on JDK 17 or newer.
 
 ## Custom Codecs
 
@@ -142,37 +143,33 @@ ForyJson json =
 ```
 
 Compile a non-empty Java-source Mixin for a Java target with `fory-annotation-processor`. The
-processor emits exact R8 rules and any pair-specific target operations that the built `ForyJson`
-instance can use. Registered codecs, effective type codecs, and built-in mappings keep their normal
-codec-selection precedence. An empty Mixin produces no generated output.
+registered Mixin remains scoped to its exact target. Registered codecs, effective type codecs, and
+built-in mappings keep their normal codec-selection precedence.
 
 A Mixin may place `JsonValidator` on a public abstract zero-argument `void` method that exactly
-matches a public target method. The generated pair calls that target method directly. The target
-does not need `JsonType` solely for a Mixin validator.
+matches a public target method. The target does not need `JsonType` solely for a Mixin validator.
 
-The target does not need `JsonType` merely because it has a Mixin. `JsonMixin` is itself the
-processor entry point for the pair. If a target also uses `JsonType`, the built `ForyJson` instance
-selects the pair-specific generated Java operations for a non-empty registered Mixin instead of
-combining the overlay with the target's directly generated operations.
+The target does not need `JsonType` merely because it has a Mixin. If the target also uses
+`JsonType`, the registered Mixin still defines the effective annotations for that `ForyJson`
+instance.
 
-Only one source is enabled for an exact target in one built `ForyJson` instance. A later registration for that
-target replaces an earlier registration on the builder, and `build()` snapshots the selected
-mapping. The processor may generate artifacts for multiple source alternatives; the built instance uses
-only the last registered source.
+Only one source is enabled for an exact target in one built `ForyJson` instance. A later
+registration for that target replaces an earlier registration on the builder, and `build()`
+snapshots the selected mapping.
 
-Use the processor-generated R8 rules for non-empty Mixins instead of broad package keep rules.
-
-If either the Mixin source or its exact target is Kotlin, process the source request with
-`fory-json-kotlin-ksp` instead. KSP emits only the exact retention rules for the target and Mixin.
+Use the Fory processors instead of broad package keep rules. A Java-only Mixin pair requires
+`fory-annotation-processor`; a pair involving Kotlin requires `fory-json-kotlin-ksp`. A
+Kotlin-source Mixin that adds inferred `JsonSubTypes` to a Java sealed target requires both and must
+be compiled on JDK 17 or newer.
 
 ## Reflection-Based Models
 
 Ordinary non-Record classes that omit `JsonType` can supply equivalent exact rules themselves unless
-they declare `JsonValidator`. Direct validators require the processor-generated calls from
-`JsonType`; do not replace them with reflection rules. Retain every model constructor, field,
-method, generic signature, declaration annotation, and parameter annotation used by Fory JSON,
-plus the public no-argument constructor of every annotation-selected codec. For a model without a
-validator:
+they declare `JsonValidator`. Direct validators require `JsonType` and
+`fory-annotation-processor`; manual reflection rules are not sufficient. Retain every model
+constructor, field, method, generic signature, declaration annotation, and parameter annotation
+used by Fory JSON, plus the public no-argument constructor of every annotation-selected codec. For
+a model without a validator:
 
 ```proguard
 -keepattributes Signature,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations
@@ -190,40 +187,38 @@ validator:
 The same exact-rule approach supports every `JsonCodec` member; it is not limited to complete-value
 codecs. `JsonType` is not required for codec selection on an ordinary class.
 
-This reflection-based section applies to Java models. Kotlin immutable models use validated
-Kotlin/JVM metadata on both the JVM and Android. For a minified Android build, use the Kotlin KSP
-processor to emit exact rules instead of writing broad package keep rules.
+This reflection-based section applies to Java models. Kotlin models use the Kotlin JSON module. For
+a minified Android build, apply KSP instead of writing broad package keep rules.
 
-For Java `@JsonType` models, generated operations and R8 rules also cover effective
-`JsonValidator` methods, `JsonValue` fields and effective methods, fixed `JsonRawValue` and
-`JsonBase64` fields and getters, `JsonFormat` date/time fields, their runtime annotations, and the
-Base64 codec constructor. Without `@JsonType`, those annotations still work through reflection,
-but a release-minified application must keep the exact annotated members, annotation attributes,
-and codec constructor itself. A `JsonValue` method may use a non-JavaBean name, so its manual rule
-must name that method explicitly.
+Java `@JsonType` models support effective `JsonValidator`, `JsonValue`, `JsonRawValue`,
+`JsonBase64`, and `JsonFormat` annotations. Without `@JsonType`, those annotations still work
+through reflection, but a release-minified application must keep the exact annotated members,
+annotation attributes, and codec constructor itself. A `JsonValue` method may use a non-JavaBean
+name, so its manual rule must name that method explicitly.
 
-Kotlin models use the same effective annotations through metadata. The KSP retention rules preserve
-the corresponding constructors, accessors, fields, annotations, generic signatures, and compiler
-default operations in a minified build. `JsonFormat` keeps the same direct-field and
-one-wrapper-level behavior as on the JVM, including `timezone` for `Instant`, `ZonedDateTime`, and
-`OffsetDateTime`.
+Kotlin models use the same effective annotations. Enable KSP for minified builds. `JsonFormat` keeps
+the same direct-field and one-wrapper-level behavior as on the JVM, including `timezone` for
+`Instant`, `ZonedDateTime`, and `OffsetDateTime`.
+
+Android supports inferred `JsonSubTypes` for Java and Kotlin sealed hierarchies. Java sealed
+inference requires `fory-annotation-processor` and JDK 17 or newer. Kotlin models in minified builds
+require `fory-json-kotlin-ksp`. For a Kotlin-source Mixin that adds inferred `JsonSubTypes` to a Java
+sealed target, apply both processors even when shrinking is disabled. Only the sealed hierarchy is
+considered; package and classpath subtype scanning are not supported.
 
 Android Fory JSON requires a retained no-argument constructor for an ordinary mutable class; it may
 be non-public when Android reflection can make it accessible. `JsonCreator` constructor-backed
 classes follow the normal creator rules instead. Retain every field and method used for reflection,
 or use an application codec when a model cannot satisfy those requirements. `JsonUnwrapped`
 supports mutable classes, creator-backed classes, and Records through their normal property and
-construction paths. When the containing model and its unwrapped children use `JsonType`, their
-generated Java operations or Kotlin metadata supply those operations. A minified Kotlin build must
-also package the exact KSP retention rules for every Kotlin model in the path.
+construction paths. Apply the normal `JsonType` requirements to the containing model and every
+unwrapped child. In a minified Kotlin build, annotate each required model and enable KSP.
 
 ## Records
 
-Android-desugared Records require processor-generated operations from either a direct `@JsonType`
-declaration or a compiled exact `@JsonMixin` pair. Manual R8 rules alone cannot reconstruct Record
-component order because Android does not provide the Java Record reflection APIs. This also applies
-to a Record whose complete representation is a `JsonValue` String: the generated Java operations
-identify the propagated component accessor and call an annotated one-String canonical constructor
-directly. Generated child codecs act on one level exactly as they do on the JVM. Every Record in a
-`JsonUnwrapped` path needs its own direct `JsonType` declaration or compiled exact `JsonMixin` pair.
-Use a complete value codec for deeper nested behavior.
+Android-desugared Records require either a direct `@JsonType` declaration or an exact `@JsonMixin`
+processed by `fory-annotation-processor`. Manual R8 rules alone are insufficient because Android
+does not provide the Java Record reflection APIs. This also applies to a Record whose complete
+representation is a `JsonValue` String. Every Record in a `JsonUnwrapped` path needs its own direct
+`JsonType` declaration or processed exact `JsonMixin`. Child codecs act on one level exactly as they
+do on the JVM; use a complete value codec for deeper nested behavior.

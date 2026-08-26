@@ -193,7 +193,7 @@ struct FieldNodeSpec {
 };
 
 struct FieldMeta {
-  int16_t id_ = -1;
+  int32_t id_ = -1;
   bool has_id_ = false;
   bool nullable_ = false;
   bool ref_ = false;
@@ -203,7 +203,7 @@ struct FieldMeta {
   bool compress_ = true;
   int16_t type_id_override_ = -1;
 
-  constexpr FieldMeta id(int16_t v) const {
+  constexpr FieldMeta id(int32_t v) const {
     auto copy = *this;
     copy.id_ = v;
     copy.has_id_ = true;
@@ -258,7 +258,7 @@ struct FieldMeta {
 };
 
 constexpr FieldMeta F() { return FieldMeta{}; }
-constexpr FieldMeta F(int16_t id) { return FieldMeta{}.id(id); }
+constexpr FieldMeta F(int32_t id) { return FieldMeta{}.id(id); }
 
 namespace T {
 

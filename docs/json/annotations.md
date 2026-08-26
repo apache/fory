@@ -27,22 +27,14 @@ Fory JSON provides these mapping and validation annotations in
 Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
 `JsonType` is not inherited, so mark each eligible concrete model that must participate in a
-platform build workflow. For Java source, the Fory annotation processor generates direct property
-and creator operations plus exact retention rules on the JVM and Android. A directly annotated
-`JsonValue` Record also receives generated value-access and canonical-constructor operations.
-Ordinary unannotated Java classes may still use reflection; on Android they need
-application-authored exact R8 rules. Android-desugared Records require processor-generated
-operations from either a direct `JsonType` declaration or a compiled exact `JsonMixin` pair.
-Outside Native Image, a directly annotated Java model that uses the default object codec fails
-during codec creation if its generated Java operations are missing.
+platform build workflow. For Java source, apply `fory-annotation-processor`. Ordinary unannotated
+Java classes may still use reflection; on Android they need application-authored exact R8 rules.
+Android-desugared Records require either a direct `JsonType` declaration or a compiled exact
+`JsonMixin` pair. Outside Native Image, a directly annotated Java model that uses the default object
+codec fails during codec creation if the annotation processor was not applied.
 
-Kotlin/JVM models are mapped from validated Kotlin metadata and do not require generated
-construction operations. In Android builds that use R8 or ProGuard, Kotlin KSP emits exact
-retention rules for Kotlin `@JsonType` models. It also processes an exact Mixin declared in
-application source when either the Mixin or its exact target is Kotlin. KSP does not generate codecs
-or construction operations. GraalVM Native Image discovers reachable Java and Kotlin `JsonType`
-declarations directly, and provider-selected configurations generate codecs while the image is
-built. See the [GraalVM guide](graalvm.md) and [Android guide](android.md) for the platform workflows.
+Kotlin/JVM models use the Kotlin JSON module. See the [Kotlin guide](kotlin.md),
+[GraalVM guide](graalvm.md), and [Android guide](android.md) for platform setup.
 
 ## Kotlin use-site targets
 
@@ -126,10 +118,10 @@ A `JsonCodec` supplied by a Mixin is the target's effective annotation. An exact
 `registerCodec` registration still wins, while the effective type annotation wins over a built-in
 mapping.
 
-On Android, compile a Java-source Mixin for a Java target with the Fory annotation processor. If
-either the Mixin source or its exact target is Kotlin, apply the Kotlin KSP processor instead so the
-pair's exact retention rules are packaged. GraalVM Native Image discovers reachable Mixins
-directly. See the platform guides linked above.
+On Android, a Java-only Mixin pair requires `fory-annotation-processor`; a pair involving Kotlin
+requires `fory-json-kotlin-ksp`. A Kotlin-source Mixin that adds inferred `JsonSubTypes` to a Java
+sealed target requires both and must be compiled on JDK 17 or newer. See the platform guides linked
+above.
 
 ## `JsonProperty`
 
@@ -715,8 +707,9 @@ reflection configuration for validators.
 
 ## `JsonSubTypes`
 
-`JsonSubTypes` declares the complete finite subtype table for an interface or abstract class. Each
-entry has a case-sensitive logical JSON name and exactly one trusted Java type source:
+`JsonSubTypes` declares a finite subtype table for an interface or abstract class. A non-empty
+`value` is the complete explicit table. Each entry has a case-sensitive logical JSON name and
+exactly one trusted Java type source:
 
 - `value = Circle.class`; or
 - `className = "com.example.shape.Circle"` using the exact Java binary name.
@@ -724,6 +717,32 @@ entry has a case-sensitive logical JSON name and exactly one trusted Java type s
 `className` is useful when an API JAR must not depend on an implementation JAR. It is resolved by
 the fixed builder class loader when the table is built. JSON input never supplies a Java class name
 and cannot add entries. Post-build subtype registration and open subtype discovery are not supported.
+
+Leave `value` empty to infer a sealed hierarchy:
+
+```java
+@JsonSubTypes(property = "kind")
+public sealed interface Shape permits Circle, Polygon {}
+
+public final class Circle implements Shape {}
+
+public sealed interface Polygon extends Shape permits Rectangle {}
+
+public final class Rectangle implements Polygon {}
+```
+
+Fory recursively traverses sealed abstract classes and interfaces. It adds every concrete class
+using its source simple name, including a concrete class that is itself sealed, and continues below
+a concrete sealed class. A concrete open or non-sealed class is added as one exact entry and its
+descendants are not admitted. An open abstract class or interface makes inference fail because that
+branch is not closed. Duplicate names and logical-name hash collisions also fail. These inferred
+names are wire names and are not transformed by the property naming strategy.
+
+Java sealed types require JDK 17 or newer. On Android, Java sealed inference also requires
+`fory-annotation-processor`, and minified Kotlin models require `fory-json-kotlin-ksp`. A
+Kotlin-source Mixin that adds inference to a Java sealed target requires both. Scala 3 sealed types
+use `derives ScalaJsonCodec` or builder derivation. Scala 2 sealed traits and classes are not
+inferred.
 
 The default `PROPERTY` inclusion writes an inline discriminator as the first output member:
 
@@ -788,12 +807,18 @@ Both wrappers may delegate to an exact custom subtype codec. All three inclusion
 plain JSON null unless codec precedence selects a custom complete-value codec for the declared
 base, replacing the annotation.
 
-The base must be an interface or abstract class. Every entry must resolve to a unique concrete,
-assignable class, and serialization accepts only an exact listed runtime class. Listing a parent
-does not implicitly admit its descendants. The annotation is read from the declared base itself and
-is not inherited from another annotated interface or abstract class. Readers accept only the
-configured inclusion; changing inclusion is a wire-format change and there is no dual-read
-fallback.
+The base must be an interface or abstract class. Every effective entry must be a unique concrete,
+assignable class, and serialization accepts only an exact table member. In an explicit table,
+listing a parent does not implicitly admit its descendants. The annotation is read from the
+declared base itself and is not inherited from another annotated interface or abstract class.
+Readers accept only the configured inclusion; changing inclusion is a wire-format change and there
+is no dual-read fallback.
 
-At GraalVM native-image runtime, annotate the base with `JsonType` and use class-literal entries
-rather than `className` entries. Listed class-literal subtypes are registered automatically.
+The selected top-level base authorizes its inferred static sealed closure. Use an explicit table
+when only a smaller subset should be available, or configure `JsonTypeChecker` to filter exact
+inferred candidates. The fixed disallow list must accept the complete inferred closure. An explicit
+table remains exact and fails if its entry conflicts with the checker.
+
+For GraalVM Native Image, annotate the base with `JsonType` when it is not otherwise reached from a
+provider root. Empty tables are supported for reachable Java, Kotlin, and Scala 3 sealed schemas.
+Explicit tables must use class-literal entries rather than `className`.

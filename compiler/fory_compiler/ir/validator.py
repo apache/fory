@@ -48,6 +48,7 @@ INVALID_MAP_KEY_KINDS = {
 }
 INVALID_MAP_KEY_MESSAGE = "map keys do not support any, binary, float, decimal, message, union, list, map, or array types"
 OPTIONAL_ANY_MESSAGE = "optional or nullable any is not supported; use any instead"
+MAX_FIELD_TAG_ID = (1 << 29) - 1
 
 
 @dataclass
@@ -227,6 +228,11 @@ class SchemaValidator:
             field_numbers = {}
             field_names = {}
             for f in message.fields:
+                if f.tag_id is not None and not 0 <= f.tag_id <= MAX_FIELD_TAG_ID:
+                    self._error(
+                        f"Field tag ID {f.tag_id} in {full_name} must be in [0, 2^29)",
+                        f.location,
+                    )
                 if f.number in field_numbers:
                     self._error(
                         f"Duplicate field number {f.number} in {full_name}: {f.name} and {field_numbers[f.number].name}",

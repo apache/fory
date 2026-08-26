@@ -290,14 +290,20 @@ type Item1 struct {
 
 type SimpleStruct struct {
 	F1   map[int32]float64
-	F2   int32
+	F2   int32 `fory:"id=15"`
 	F3   Item
 	F4   string
 	F5   Color
 	F6   []string
-	F7   int32
+	F7   int32 `fory:"id=65551"`
 	F8   int32
-	Last int32
+	Last int32 `fory:"id=536870911"`
+}
+
+type ExactFieldTags struct {
+	First  int32 `fory:"id=15"`
+	Second int32 `fory:"id=65551"`
+	Last   int32 `fory:"id=536870911"`
 }
 
 type EvolvingOverrideStruct struct {
@@ -760,6 +766,26 @@ func testSimpleStruct() {
 	serialized, err := f.Serialize(&obj)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
+	}
+	writeFile(dataFile, serialized)
+}
+
+func testExactFieldTags() {
+	dataFile := getDataFile()
+	f := fory.New(fory.WithXlang(true), fory.WithCompatible(false))
+	if err := f.RegisterStruct(ExactFieldTags{}, 104); err != nil {
+		panic(fmt.Sprintf("Failed to register ExactFieldTags: %v", err))
+	}
+	var value ExactFieldTags
+	if err := f.Deserialize(readFile(dataFile), &value); err != nil {
+		panic(fmt.Sprintf("Failed to deserialize ExactFieldTags: %v", err))
+	}
+	if value != (ExactFieldTags{First: 39, Second: 40, Last: 41}) {
+		panic(fmt.Sprintf("Unexpected ExactFieldTags: %+v", value))
+	}
+	serialized, err := f.Serialize(&value)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to serialize ExactFieldTags: %v", err))
 	}
 	writeFile(dataFile, serialized)
 }
@@ -2902,6 +2928,8 @@ func main() {
 		testCrossLanguageSerializer()
 	case "test_simple_struct":
 		testSimpleStruct()
+	case "test_exact_field_tags":
+		testExactFieldTags()
 	case "test_named_simple_struct":
 		testNamedSimpleStruct()
 	case "test_struct_evolving_override":

@@ -5,6 +5,8 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 ## Rules
 
 - Run all Maven commands from within `java/`.
+- The `java/` Maven aggregator must not contain a top-level `src/` directory. Keep Java
+  source-release legal files, including `LICENSE`, at the `java/` root.
 - Changes under `java/` must pass code style checks and tests.
 - When changes are limited to `fory-json` or `fory-format`, do not run `fory-core`
   tests. Install the changed module and its reactor dependencies with
@@ -77,7 +79,30 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - For GraalVM, use `fory codegen` to generate serializers when building native images. Do not add reflection configuration except for JDK `proxy`.
 - In Java native mode (`xlang=false`), only `Types.BOOL` through `Types.STRING` share type IDs with xlang mode. Other native-mode type IDs differ.
 - Choose one serializer ownership location per logical Java type family. Add native/xlang serializer variants only when the wire format or constructor contract truly differs.
-- Do not add normal-JVM process-global caches keyed by user classes, generated classes, serializer classes, classloaders, or class-bound method handles. Prefer per-runtime state, immutable shared metadata, or build-time-only template data.
+- Fory JSON must keep one immutable static set of exact Java types whose default representation is
+  implemented by type-specific `JsonReader` or `JsonWriter` methods. The set contains all primitive
+  scalar types and their boxed classes, `String`, `CharSequence`, `Number`, `BigInteger`,
+  `BigDecimal`, `UUID`, `LocalDate`, `LocalTime`, `LocalDateTime`, `Instant`, `Duration`, `ZoneOffset`,
+  `ZonedDateTime`, `Year`, `YearMonth`, `MonthDay`, `Period`, `OffsetTime`, `OffsetDateTime`,
+  `byte[]`, `String[]`, and `long[]`. Exact codec registration, exact codec-factory registration,
+  and exact factory handled-runtime-class claims for these types must fail before registry mutation
+  on every Java runtime, not only in GraalVM. Do not expand this set to every default codec: enums,
+  other arrays, collections, maps, atomics, optionals, `File`, `URI`, `Path`, `ByteBuffer`, calendar
+  and locale types, `Float16`, `BFloat16`, and user-defined types remain registerable. Field/type
+  `@JsonCodec`, `@JsonFormat`, and semantic metadata remain separate from exact registry mutation
+  and are fixed by the target class or effective Mixin.
+- Fory JSON `ObjectCodec` instances are resolver-owned and must not be registered directly. A
+  language module that supplies a custom object model must use a `JsonCodecFactory`. A configurable
+  factory's stable key must cover every option that can change its created codec class, object
+  model, or generated operations.
+- Do not add normal-JVM process-global caches keyed by user classes, generated classes, serializer
+  classes, classloaders, or class-bound method handles. Prefer per-runtime state, immutable shared
+  metadata, or build-time-only template data. The only exception is Fory JSON's generated-role
+  class cache in `JsonCodegen`, backed by `ClassValueCache.newClassKeySoftCache`: ordinary-JVM
+  values may contain only generated-class keys, binary names, and completed generated classes, not
+  codec instances, resolvers, configured classloaders, or `CodeGenerator`. Its GraalVM branch may
+  be strong only during hosted analysis and must be reset after the frozen Native registry is
+  published. Do not extend this exception to another cache or retained value.
 - Concrete serializers may opt into sharing only after auditing retained fields. Treat serializers retaining `TypeResolver`, `RefResolver`, mutable scratch buffers, runtime state, or classloader-sensitive state as non-shareable unless that state is externalized.
 - Resolver and serializer hot paths should keep the fast-path/null-slow-path shape obvious. Hoist repeated buffer or cache-state access into locals for multi-step operations and keep rebuild/restoration logic cold.
 - Remote metadata and class-token paths that materialize Java classes must keep

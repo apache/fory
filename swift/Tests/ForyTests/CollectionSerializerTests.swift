@@ -428,111 +428,95 @@ func annotatedCarrierMetadata() throws {
             ($0.fieldName, $0.fieldType)
         }
     )
-    #expect(
-        fields["id"]
-            == (try UInt32FixedCodec.fieldType(
-                nullable: false,
-                trackRef: false,
-                resolveSerializerTypeId: resolveSerializerTypeId
-            ))
+    let expectedID = try UInt32FixedCodec.fieldType(
+        nullable: false,
+        trackRef: false,
+        resolveSerializerTypeId: resolveSerializerTypeId
     )
-    #expect(
-        fields["values"]
-            == (try ArraySerializer<OptionalSerializer<Int32FixedCodec>>.fieldType(
-                nullable: false,
-                trackRef: false,
-                resolveSerializerTypeId: resolveSerializerTypeId
-            ))
+    let expectedValues = try ArraySerializer<OptionalSerializer<Int32FixedCodec>>.fieldType(
+        nullable: false,
+        trackRef: false,
+        resolveSerializerTypeId: resolveSerializerTypeId
     )
-    #expect(
-        fields["packedValues"]
-            == (try ArraySerializer<Int32FixedCodec>.fieldType(
-                nullable: false,
-                trackRef: false,
-                resolveSerializerTypeId: resolveSerializerTypeId
-            ))
+    let expectedPackedValues = try ArraySerializer<Int32FixedCodec>.fieldType(
+        nullable: false,
+        trackRef: false,
+        resolveSerializerTypeId: resolveSerializerTypeId
     )
-    #expect(
-        fields["packedUInt64Values"]
-            == (try ArraySerializer<UInt64FixedCodec>.fieldType(
-                nullable: false,
-                trackRef: false,
-                resolveSerializerTypeId: resolveSerializerTypeId
-            ))
+    let expectedPackedUInt64Values = try ArraySerializer<UInt64FixedCodec>.fieldType(
+        nullable: false,
+        trackRef: false,
+        resolveSerializerTypeId: resolveSerializerTypeId
     )
+
+    #expect(fields["id"] == expectedID)
+    #expect(fields["values"] == expectedValues)
+    #expect(fields["packedValues"] == expectedPackedValues)
+    #expect(fields["packedUInt64Values"] == expectedPackedUInt64Values)
     #expect(
         fields["denseValues"] == TypeMeta.FieldType(typeID: TypeId.int32Array.rawValue, nullable: false, trackRef: false)
     )
     #expect(
         fields["denseUInt64Values"] == TypeMeta.FieldType(typeID: TypeId.uint64Array.rawValue, nullable: false, trackRef: false)
     )
-    #expect(
-        fields["fixedSet"]
-            == (try SetSerializer<OptionalSerializer<Int32FixedCodec>>.fieldType(
-                nullable: false,
-                trackRef: false,
-                resolveSerializerTypeId: resolveSerializerTypeId
-            ))
+    let expectedFixedSet = try SetSerializer<OptionalSerializer<Int32FixedCodec>>.fieldType(
+        nullable: false,
+        trackRef: false,
+        resolveSerializerTypeId: resolveSerializerTypeId
     )
-    #expect(
-        fields["fixedNonNullSet"]
-            == (try SetSerializer<Int32FixedCodec>.fieldType(
-                nullable: false,
-                trackRef: false,
-                resolveSerializerTypeId: resolveSerializerTypeId
-            ))
+    let expectedFixedNonNullSet = try SetSerializer<Int32FixedCodec>.fieldType(
+        nullable: false,
+        trackRef: false,
+        resolveSerializerTypeId: resolveSerializerTypeId
     )
+    let expectedData = try DictionarySerializer<
+        OptionalSerializer<Int32FixedCodec>,
+        OptionalSerializer<Int32FixedCodec>
+    >.fieldType(
+        nullable: false,
+        trackRef: false,
+        resolveSerializerTypeId: resolveSerializerTypeId
+    )
+
+    #expect(fields["fixedSet"] == expectedFixedSet)
+    #expect(fields["fixedNonNullSet"] == expectedFixedNonNullSet)
     #expect(fields["fixedNonNullSet"]?.typeID == TypeId.set.rawValue)
-    #expect(
-        fields["data"]
-            == (try DictionarySerializer<
-                OptionalSerializer<Int32FixedCodec>,
-                OptionalSerializer<Int32FixedCodec>
-            >.fieldType(
-                nullable: false,
-                trackRef: false,
-                resolveSerializerTypeId: resolveSerializerTypeId
-            ))
-    )
+    #expect(fields["data"] == expectedData)
 
     let deepFields = Dictionary(
         uniqueKeysWithValues: DeepAnnotatedFieldCodecHolder.foryFieldsInfo(trackRef: false).map {
             ($0.fieldName, $0.fieldType)
         }
     )
-    #expect(
-        deepFields["data"]
-            == (try DictionarySerializer<
-                StringCodec,
-                ArraySerializer<
-                    DictionarySerializer<
-                        Int32FixedCodec,
-                        ArraySerializer<UInt32FixedCodec>
-                    >
-                >
-            >.fieldType(
-                nullable: false,
-                trackRef: false,
-                resolveSerializerTypeId: resolveSerializerTypeId
-            ))
+    let expectedDeepData = try DictionarySerializer<
+        StringCodec,
+        ArraySerializer<
+            DictionarySerializer<
+                Int32FixedCodec,
+                ArraySerializer<UInt32FixedCodec>
+            >
+        >
+    >.fieldType(
+        nullable: false,
+        trackRef: false,
+        resolveSerializerTypeId: resolveSerializerTypeId
     )
+    #expect(deepFields["data"] == expectedDeepData)
 
     let aliasFields = Dictionary(
         uniqueKeysWithValues: AliasAnnotatedFieldCodecHolder.foryFieldsInfo(trackRef: false).map {
             ($0.fieldName, $0.fieldType)
         }
     )
-    #expect(
-        aliasFields["data"]
-            == (try DictionarySerializer<
-                StringCodec,
-                ArraySerializer<OptionalSerializer<Int32FixedCodec>>
-            >.fieldType(
-                nullable: false,
-                trackRef: false,
-                resolveSerializerTypeId: resolveSerializerTypeId
-            ))
+    let expectedAliasData = try DictionarySerializer<
+        StringCodec,
+        ArraySerializer<OptionalSerializer<Int32FixedCodec>>
+    >.fieldType(
+        nullable: false,
+        trackRef: false,
+        resolveSerializerTypeId: resolveSerializerTypeId
     )
+    #expect(aliasFields["data"] == expectedAliasData)
 }
 
 @Test
@@ -826,7 +810,7 @@ func generatedReadProgress() throws {
         registerByName: false,
         fields: [
             TypeMeta.FieldInfo(
-                fieldID: nil,
+                fieldID: -1,
                 fieldName: "value",
                 fieldType: TypeMeta.FieldType(
                     typeID: TypeId.int32.rawValue,

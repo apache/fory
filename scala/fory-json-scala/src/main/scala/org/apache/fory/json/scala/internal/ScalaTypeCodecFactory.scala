@@ -76,6 +76,16 @@ private[scala] object ScalaTypeCodecFactory extends JsonCodecFactory {
     if (tupleArity >= 1) return new ScalaTupleCodec(tupleArity, rawType, runtimeType)
     if (name == "scala.Tuple$package$EmptyTuple$") return new ScalaEmptyTupleCodec(rawType)
 
+    if (resolver.isInferredSubtype(rawType)) {
+      val derivedCodec = ScalaDerivedCodec.find(rawType)
+      if (derivedCodec == null)
+        throw ScalaTypeSupport.unsupported(
+          typeRef,
+          "sealed hierarchy requires derives ScalaJsonCodec or builder register"
+        )
+      return derivedCodec.create(typeRef, resolver, runtimeType)
+    }
+
     if (classOf[scala.collection.Map[_, _]].isAssignableFrom(rawType)) {
       val selection = mapKind(rawType, runtimeType)
       if (selection == null)

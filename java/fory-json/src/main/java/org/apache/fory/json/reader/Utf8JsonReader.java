@@ -750,9 +750,19 @@ public final class Utf8JsonReader extends JsonReader {
     return readBooleanToken();
   }
 
+  private boolean readQuotedBooleanValue() {
+    beginQuotedScalar();
+    boolean value = readBooleanToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   private boolean readBooleanToken() {
     byte[] bytes = input;
     int offset = position;
+    if (offset < inputLimit && bytes[offset] == '"') {
+      return readQuotedBooleanValue();
+    }
     if (offset + 3 < inputLimit
         && bytes[offset] == 't'
         && bytes[offset + 1] == 'r'
@@ -791,6 +801,13 @@ public final class Utf8JsonReader extends JsonReader {
     return readIntToken();
   }
 
+  private int readQuotedIntValue() {
+    beginQuotedScalar();
+    int value = readIntToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   private int readIntToken() {
     byte[] bytes = input;
     int offset = position;
@@ -799,6 +816,9 @@ public final class Utf8JsonReader extends JsonReader {
       throw error("Expected digit");
     }
     int ch = bytes[offset];
+    if (ch == '"') {
+      return readQuotedIntValue();
+    }
     if (ch == '-') {
       return readNegativeIntToken(offset);
     }
@@ -915,9 +935,23 @@ public final class Utf8JsonReader extends JsonReader {
     return readLongToken();
   }
 
+  private long readQuotedLongValue() {
+    beginQuotedScalar();
+    long value = readLongToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   public BigDecimal readBigDecimal() {
     skipWhitespaceFast();
     return readBigDecimalToken();
+  }
+
+  private BigDecimal readQuotedBigDecimalValue() {
+    beginQuotedScalar();
+    BigDecimal value = readBigDecimalToken();
+    finishQuotedScalar();
+    return value;
   }
 
   public UUID readUuid() {
@@ -957,6 +991,16 @@ public final class Utf8JsonReader extends JsonReader {
     return readDoubleToken();
   }
 
+  private double readQuotedDoubleValue() {
+    if (isQuotedNonFiniteNumber()) {
+      return readNonFiniteDoubleLiteral();
+    }
+    beginQuotedScalar();
+    double value = readDoubleToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   public float readNextFloatValue() {
     if (position < inputLimit) {
       int ch = input[position];
@@ -969,6 +1013,16 @@ public final class Utf8JsonReader extends JsonReader {
 
   public float readFloatTokenValue() {
     return readFloatToken();
+  }
+
+  private float readQuotedFloatValue() {
+    if (isQuotedNonFiniteNumber()) {
+      return readNonFiniteFloatLiteral();
+    }
+    beginQuotedScalar();
+    float value = readFloatToken();
+    finishQuotedScalar();
+    return value;
   }
 
   // Long parsing deliberately repeats the initial digit checks, zero handling, block scan, and
@@ -986,6 +1040,9 @@ public final class Utf8JsonReader extends JsonReader {
       throw error("Expected digit");
     }
     int ch = bytes[offset];
+    if (ch == '"') {
+      return readQuotedLongValue();
+    }
     if (ch == '-') {
       return readNegativeLongToken(offset);
     }
@@ -1207,6 +1264,9 @@ public final class Utf8JsonReader extends JsonReader {
       return readBigDecimalFallback(start);
     }
     int ch = bytes[offset];
+    if (ch == '"') {
+      return readQuotedBigDecimalValue();
+    }
     if (ch == '-') {
       return readSignedBigDecimalToken(start);
     }
@@ -1384,6 +1444,9 @@ public final class Utf8JsonReader extends JsonReader {
       return readDoubleFallback(offset);
     }
     int ch = bytes[offset];
+    if (ch == '"') {
+      return readQuotedDoubleValue();
+    }
     if (ch == '-') {
       return readSignedDoubleToken(offset);
     }
@@ -1398,6 +1461,9 @@ public final class Utf8JsonReader extends JsonReader {
       return readFloatFallback(offset);
     }
     int ch = bytes[offset];
+    if (ch == '"') {
+      return readQuotedFloatValue();
+    }
     if (ch == '-') {
       return readSignedFloatToken(offset);
     }

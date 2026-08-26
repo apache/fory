@@ -96,6 +96,12 @@ struct FieldIdConfigured: Equatable {
 }
 
 @ForyStruct
+struct MaximumFieldId: Equatable {
+    @ForyField(id: 536870911)
+    var value: Int32
+}
+
+@ForyStruct
 struct FieldIdSource: Equatable {
     @ForyField(id: 1)
     var value: Int32
@@ -550,8 +556,8 @@ func typeMetaFieldLimitRejectsLargeStruct() throws {
         typeName: .empty(specialChar1: "$", specialChar2: "_"),
         registerByName: false,
         fields: [
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "first", fieldType: fieldType),
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "second", fieldType: fieldType)
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "first", fieldType: fieldType),
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "second", fieldType: fieldType)
         ]
     )
     let encoded = try meta.encode()
@@ -571,7 +577,7 @@ func typeMetaBodyLimitRejectsLargeMetadata() throws {
         registerByName: false,
         fields: [
             TypeMeta.FieldInfo(
-                fieldID: nil,
+                fieldID: -1,
                 fieldName: "value",
                 fieldType: TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false))
         ]
@@ -584,23 +590,48 @@ func typeMetaBodyLimitRejectsLargeMetadata() throws {
 }
 
 @Test
-func typeMetaRejectsLargeTaggedFieldID() {
+func typeMetaFieldTagDomain() throws {
+    let fieldType = TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
+    let meta = try TypeMeta(
+        typeID: TypeId.compatibleStruct.rawValue,
+        userTypeID: 1,
+        namespace: .empty(specialChar1: ".", specialChar2: "_"),
+        typeName: .empty(specialChar1: "$", specialChar2: "_"),
+        registerByName: false,
+        fields: [
+            TypeMeta.FieldInfo(fieldID: 536_870_911, fieldName: "maximum", fieldType: fieldType)
+        ]
+    )
+    let decoded = try TypeMeta.decode(meta.encode())
+    #expect(decoded.fields.map(\.fieldID) == [536_870_911])
+
     let body = ByteBuffer()
     body.writeUInt8(0b1000_0001)
     body.writeVarUInt32(1)
     body.writeUInt8(0b1111_1100)
-    body.writeVarUInt32(UInt32(Int(Int16.max) + 1 - 0b1111))
+    body.writeVarUInt32(536_870_912 - 0b1111)
     body.writeUInt8(UInt8(TypeId.int32.rawValue))
 
     let encoded = ByteBuffer()
     encoded.writeUInt64(UInt64(body.count))
     encoded.writeBytes(body.storage)
 
-    #expect(
-        throws: ForyError.invalidData(
-            "tagged field id \(Int(Int16.max) + 1) exceeds Int16 range")
-    ) {
+    #expect(throws: (any Error).self) {
         _ = try TypeMeta.decode(encoded)
+    }
+
+    #expect(throws: (any Error).self) {
+        _ = try TypeMeta(
+            typeID: TypeId.compatibleStruct.rawValue,
+            userTypeID: 1,
+            namespace: .empty(specialChar1: ".", specialChar2: "_"),
+            typeName: .empty(specialChar1: "$", specialChar2: "_"),
+            registerByName: false,
+            fields: [
+                TypeMeta.FieldInfo(fieldID: 7, fieldName: "first", fieldType: fieldType),
+                TypeMeta.FieldInfo(fieldID: 7, fieldName: "second", fieldType: fieldType)
+            ]
+        )
     }
 }
 
@@ -621,7 +652,7 @@ func schemaLimitTracksStructTypesSeparately() throws {
             registerByName: false,
             fields: [
                 TypeMeta.FieldInfo(
-                    fieldID: nil,
+                    fieldID: -1,
                     fieldName: fieldName,
                     fieldType: TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
                 )
@@ -772,7 +803,7 @@ func failedSchemaDoesNotConsumeLimit() throws {
             registerByName: false,
             fields: [
                 TypeMeta.FieldInfo(
-                    fieldID: nil,
+                    fieldID: -1,
                     fieldName: fieldName,
                     fieldType: fieldType
                 )
@@ -871,7 +902,7 @@ func cachedMetaChecksConcreteOwner() throws {
         registerByName: false,
         fields: [
             TypeMeta.FieldInfo(
-                fieldID: nil,
+                fieldID: -1,
                 fieldName: "remoteId",
                 fieldType: TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
             )
@@ -921,7 +952,7 @@ func failedStaticMetaDoesNotCount() throws {
             registerByName: false,
             fields: [
                 TypeMeta.FieldInfo(
-                    fieldID: nil,
+                    fieldID: -1,
                     fieldName: fieldName,
                     fieldType: TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
                 )
@@ -1467,7 +1498,7 @@ func macroNonPrimitiveFieldsSortByFieldIdentifier() throws {
         fields.map(\.fieldName) == [
             "intValue", "mapValue", "stringValue", "addressValue", "binaryValue"
         ])
-    #expect(fields.map(\.fieldID) == [nil, 10, 20, nil, nil])
+    #expect(fields.map(\.fieldID) == [-1, 10, 20, -1, -1])
 }
 
 @Test
@@ -1541,17 +1572,20 @@ func macroFieldIDsPopulateCompatibleTypeMeta() {
     let fields = FieldIdConfigured.foryFieldsInfo(trackRef: false)
     #expect(fields.count == 2)
 
-    var byID: [Int16: TypeMeta.FieldInfo] = [:]
-    for field in fields {
-        if let id = field.fieldID {
-            byID[id] = field
-        }
+    var byID: [Int32: TypeMeta.FieldInfo] = [:]
+    for field in fields where field.fieldID >= 0 {
+        byID[field.fieldID] = field
     }
 
     #expect(byID[2]?.fieldName == "stableID")
     #expect(byID[2]?.fieldType.typeID == TypeId.varint32.rawValue)
     #expect(byID[5]?.fieldName == "fixedValue")
     #expect(byID[5]?.fieldType.typeID == TypeId.int32.rawValue)
+}
+
+@Test
+func macroAcceptsMaximumFieldID() {
+    #expect(MaximumFieldId.foryFieldsInfo(trackRef: false).map(\.fieldID) == [536_870_911])
 }
 
 @Test
@@ -1762,12 +1796,12 @@ func typeMetaRoundTripByName() throws {
 
     let fields: [TypeMeta.FieldInfo] = [
         .init(
-            fieldID: nil,
+            fieldID: -1,
             fieldName: "createdAt",
             fieldType: .init(typeID: TypeId.varint64.rawValue, nullable: false)
         ),
         .init(
-            fieldID: nil,
+            fieldID: -1,
             fieldName: "tags",
             fieldType: .init(
                 typeID: TypeId.list.rawValue,
@@ -1776,7 +1810,7 @@ func typeMetaRoundTripByName() throws {
             )
         ),
         .init(
-            fieldID: nil,
+            fieldID: -1,
             fieldName: "attributes",
             fieldType: .init(
                 typeID: TypeId.map.rawValue,

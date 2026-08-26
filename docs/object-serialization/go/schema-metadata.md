@@ -47,6 +47,10 @@ type User struct {
 }
 ```
 
+Configured IDs must be unique within the struct schema and satisfy
+`0 <= id < 2^29` (`0` through `536870911`). Keep assigned IDs stable and do
+not reuse them for different fields.
+
 **Benefits**:
 
 - Smaller serialized size (numeric IDs vs field names)

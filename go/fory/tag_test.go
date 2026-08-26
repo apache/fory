@@ -43,14 +43,14 @@ func TestParseFieldSpecBasic(t *testing.T) {
 	typ := reflect.TypeOf(Example{})
 
 	idSpec := mustParseFieldSpec(t, typ.Field(0))
-	require.Equal(t, 0, idSpec.TagID)
+	require.Equal(t, int32(0), idSpec.TagID)
 	require.False(t, idSpec.NullableSet)
 	require.False(t, idSpec.RefSet)
 	require.EqualValues(t, VARINT32, idSpec.Type.TypeId())
 	require.False(t, idSpec.Type.Nullable)
 
 	versionSpec := mustParseFieldSpec(t, typ.Field(1))
-	require.Equal(t, 1, versionSpec.TagID)
+	require.Equal(t, int32(1), versionSpec.TagID)
 	require.True(t, versionSpec.NullableSet)
 	require.True(t, versionSpec.Nullable)
 	require.True(t, versionSpec.RefSet)
@@ -218,7 +218,7 @@ func TestSortFieldsOrdersNonPrimitivesByFieldIdentifier(t *testing.T) {
 	serializers := make([]Serializer, len(fieldNames))
 	typeIDs := []TypeId{STRING, MAP, NAMED_STRUCT, LIST, VARINT32}
 	nullables := []bool{false, false, false, false, false}
-	tagIDs := []int{20, 10, TagIDUseFieldName, TagIDUseFieldName, 30}
+	tagIDs := []int32{20, 10, TagIDUseFieldName, TagIDUseFieldName, 30}
 
 	_, sortedNames := sortFields(nil, fieldNames, serializers, typeIDs, nullables, tagIDs)
 
@@ -289,7 +289,7 @@ func TestParseFieldSpecRejectsInvalidTags(t *testing.T) {
 func TestValidateForyTagsStrict(t *testing.T) {
 	type Valid struct {
 		Field1 string  `fory:"id=0"`
-		Field2 []int32 `fory:"id=1,type=list(element=int32(encoding=fixed))"`
+		Field2 []int32 `fory:"id=536870911,type=list(element=int32(encoding=fixed))"`
 	}
 	type DuplicateIDs struct {
 		Field1 string `fory:"id=0"`
@@ -302,13 +302,30 @@ func TestValidateForyTagsStrict(t *testing.T) {
 	type InvalidID struct {
 		Field1 string `fory:"id=-1"`
 	}
+	type OversizedID struct {
+		Field1 string `fory:"id=536870912"`
+	}
+	type UnexportedInvalid struct {
+		Field1 string
+		hidden string `fory:"id=invalid"`
+	}
 
-	require.NoError(t, validateForyTags(reflect.TypeOf(Valid{})))
-	require.NoError(t, validateForyTags(reflect.TypeOf(IgnoredDuplicate{})))
-	require.Error(t, validateForyTags(reflect.TypeOf(DuplicateIDs{})))
-	err := validateForyTags(reflect.TypeOf(InvalidID{}))
+	require.NoError(t, New().RegisterStruct(Valid{}, 100))
+	require.NoError(t, New().RegisterStructByName(IgnoredDuplicate{}, "test.IgnoredDuplicate"))
+	require.NoError(t, New().RegisterStructByName(UnexportedInvalid{}, "test.UnexportedInvalid"))
+
+	byID := New()
+	require.Error(t, byID.RegisterStruct(DuplicateIDs{}, 101))
+	require.NoError(t, byID.RegisterStruct(Valid{}, 101))
+
+	byName := New()
+	require.Error(t, byName.RegisterStructByName(DuplicateIDs{}, "test.Shared"))
+	require.NoError(t, byName.RegisterStructByName(Valid{}, "test.Shared"))
+
+	err := New().RegisterStructByName(InvalidID{}, "test.InvalidID")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "id must be non-negative")
+	require.Error(t, New().RegisterStruct(OversizedID{}, 102))
 }
 
 func TestShouldIncludeField(t *testing.T) {

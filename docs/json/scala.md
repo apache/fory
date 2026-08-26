@@ -170,7 +170,7 @@ For a custom wire representation, extend `ScalaEnumerationCodec` and select the 
 `@JsonCodec`. The codec also implements the map-key contract, so its class can be used in
 `keyCodec`.
 
-## Scala 3 closed enums
+## Scala 3 closed enums and sealed hierarchies
 
 A parameterless Scala 3 enum uses its case name as a JSON string. Add `derives ScalaJsonCodec` to an
 enum with parameterized cases to define one closed wrapper-object representation for every case:
@@ -195,6 +195,25 @@ builder call site:
 ```scala
 val json = ForyJsonScala.builder().register[thirdparty.Result].build()
 ```
+
+For a Scala 3 sealed trait or class, add an empty `JsonSubTypes` annotation and derive
+`ScalaJsonCodec`:
+
+```scala
+import org.apache.fory.json.annotation.JsonSubTypes
+import org.apache.fory.json.scala.*
+
+@JsonSubTypes(property = "kind")
+sealed trait Event derives ScalaJsonCodec
+
+final case class Message(value: String) extends Event
+case object Idle extends Event
+```
+
+This example uses `Message` and `Idle` as logical subtype names. Derivation recursively traverses
+sealed branches. A concrete open class is one exact member and its descendants are not admitted; an
+open abstract branch is rejected. A non-empty annotation value remains an explicit subset. Scala 2
+sealed traits and classes are not supported by this inference feature.
 
 ### Packaging Derived Codecs in a Module
 
@@ -228,7 +247,7 @@ prevents an unrelated dependency from changing deserialization behavior. See
 
 ## GraalVM Native Image
 
-The Scala module uses the same build-time module registration on the JVM and in a native image.
-Application models, custom codecs, and derived enum schemas must be reachable when the native image
-is built. Generate Fory codecs as part of the native-image build rather than adding general
-reflection configuration. No Scala compiler, TASTy reader, or runtime macro execution is required.
+The Scala module uses the same registration on the JVM and in a native image. Application models,
+custom codecs, and derived enum or sealed schemas must be reachable when the native image is built.
+Generate Fory codecs as part of the native-image build rather than adding general reflection
+configuration.

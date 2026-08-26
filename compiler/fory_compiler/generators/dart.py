@@ -1039,7 +1039,7 @@ class DartGenerator(DartServiceGeneratorMixin, BaseGenerator):
         indent: int,
         parent_stack: Optional[List[Message]] = None,
     ) -> List[str]:
-        id_literal = str(field.number) if field.tag_id is not None else "null"
+        id_literal = str(field.number) if field.tag_id is not None else "-1"
         ident_literal = (
             str(field.number)
             if field.tag_id is not None

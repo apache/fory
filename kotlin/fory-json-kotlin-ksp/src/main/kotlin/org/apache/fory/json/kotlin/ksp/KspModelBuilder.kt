@@ -44,7 +44,7 @@ import com.google.devtools.ksp.symbol.Origin
 
 internal const val JSON_TYPE: String = "org.apache.fory.json.annotation.JsonType"
 internal const val JSON_MIXIN: String = "org.apache.fory.json.annotation.JsonMixin"
-private const val JSON_SUB_TYPES = "org.apache.fory.json.annotation.JsonSubTypes"
+internal const val JSON_SUB_TYPES: String = "org.apache.fory.json.annotation.JsonSubTypes"
 private const val JSON_SUB_TYPE = "org.apache.fory.json.annotation.JsonSubTypes.Type"
 private const val JSON_CODEC = "org.apache.fory.json.annotation.JsonCodec"
 private const val JSON_BASE64 = "org.apache.fory.json.annotation.JsonBase64"
@@ -78,35 +78,233 @@ internal class KspModelBuilder(
   fun direct(target: KSClassDeclaration): JsonModel? {
     if (target.origin != Origin.KOTLIN || target.containingFile == null) return null
     if (hasAnnotation(target, JSON_MIXIN)) return null
-    return kotlinModel(target, null)
+    val typeCodec = hasCompleteTypeCodec(target, null)
+    val model = if (typeCodec) typeCodecModel(target, null) else kotlinModel(target, null)
+    return model?.let {
+      if (emptySubTypes(target, null) && !typeCodec) sealedModel(target, null, it) else it
+    }
+  }
+
+  fun javaSubtypeGeneration(source: KSClassDeclaration): JavaSubtypeGeneration? {
+    if (source.origin != Origin.KOTLIN || source.containingFile == null) return null
+    val target = mixinTarget(source) ?: return null
+    if (isKotlin(target.origin) || !emptySubTypes(target, source)) return null
+    if (hasCompleteTypeCodec(target, source)) return null
+    val mixinBinaryName = binaryName(source) ?: return fail(source, "@JsonMixin must be named")
+    val mixinSourceName =
+      source.qualifiedName?.asString() ?: return fail(source, "@JsonMixin must be named")
+    return JavaSubtypeGeneration(
+      packageName = source.packageName.asString(),
+      simpleName =
+        escapeGeneratedName(mixinBinaryName.substringAfterLast('.')) + "_ForyJsonSubtypeGeneration",
+      mixinSourceName = mixinSourceName,
+      originatingFiles = originatingFiles(target, source),
+    )
   }
 
   fun mixin(source: KSClassDeclaration): JsonModel? {
     if (source.containingFile == null || source.origin !in SOURCE_ORIGINS) return null
     val target = mixinTarget(source) ?: return null
     if (source.origin == Origin.JAVA && !isKotlin(target.origin)) return null
-    return if (isKotlin(target.origin)) {
-      kotlinModel(target, source)
-    } else {
-      javaModel(target, source)
+    val typeCodec = hasCompleteTypeCodec(target, source)
+    val model =
+      if (typeCodec) typeCodecModel(target, source)
+      else if (isKotlin(target.origin)) kotlinModel(target, source) else javaModel(target, source)
+    return model?.let {
+      if (isKotlin(target.origin) && emptySubTypes(target, source) && !typeCodec) {
+        sealedModel(target, source, it)
+      } else {
+        it
+      }
     }
+  }
+
+  private fun emptySubTypes(
+    target: KSClassDeclaration,
+    mixin: KSClassDeclaration?,
+  ): Boolean {
+    val annotation = effectiveAnnotation(target, mixin, JSON_SUB_TYPES) ?: return false
+    val value = annotation.arguments.firstOrNull { it.name?.asString() == "value" }?.value
+    return value == null || value is Iterable<*> && value.none()
+  }
+
+  private fun hasCompleteTypeCodec(
+    target: KSClassDeclaration,
+    mixin: KSClassDeclaration?,
+  ): Boolean {
+    if (effectiveAnnotation(target, mixin, JSON_CODEC)?.let(::selectsValueCodec) == true) {
+      return true
+    }
+    if (mixin != null && removesAnnotation(mixin, JSON_CODEC)) return false
+    val candidates =
+      target
+        .getAllSuperTypes()
+        .mapNotNull { actual(it.declaration) as? KSClassDeclaration }
+        .distinctBy(::binaryName)
+        .mapNotNull { declaration ->
+          declaration.annotations
+            .firstOrNull { annotationName(it) == JSON_CODEC }
+            ?.let { declaration to it }
+        }
+        .toList()
+    return candidates.any { candidate ->
+      val owner = candidate.first
+      val dominated =
+        candidates.any { other ->
+          other.first != owner &&
+            owner.asStarProjectedType().isAssignableFrom(other.first.asStarProjectedType())
+        }
+      !dominated && selectsValueCodec(candidate.second)
+    }
+  }
+
+  private fun selectsValueCodec(annotation: KSAnnotation): Boolean {
+    val value =
+      annotation.arguments.firstOrNull { it.name?.asString() == "value" }?.value as? KSType
+        ?: return false
+    val declaration = actual(value.declaration) as? KSClassDeclaration ?: return false
+    return declaration.qualifiedName?.asString() !in CODEC_SENTINELS
+  }
+
+  private fun typeCodecModel(
+    target: KSClassDeclaration,
+    mixin: KSClassDeclaration?,
+  ): JsonModel? {
+    val targetName = binaryName(target) ?: return fail(target, "JSON target must be named")
+    val retention = Retention()
+    val origins = ArrayList(listOfNotNull(target.containingFile, mixin?.containingFile))
+    effectiveAnnotation(target, mixin, JSON_CODEC)?.let { annotation ->
+      retention.annotations += JSON_CODEC
+      collectCodecAnnotation(annotation, retention.codecs)
+    }
+    if (mixin == null || !removesAnnotation(mixin, JSON_CODEC)) {
+      target.getAllSuperTypes().forEach { supertype ->
+        val owner = actual(supertype.declaration) as? KSClassDeclaration ?: return@forEach
+        owner.annotations
+          .firstOrNull { annotationName(it) == JSON_CODEC }
+          ?.let { annotation ->
+            retention.annotations += JSON_CODEC
+            collectCodecAnnotation(annotation, retention.codecs)
+            binaryName(owner)?.let(retention.annotationOwners::add)
+            owner.containingFile?.let(origins::add)
+          }
+      }
+    }
+    if (mixin != null) {
+      retention.annotations += JSON_MIXIN
+      if (hasAnnotation(mixin, JSON_MIXIN_REMOVE)) retention.annotations += JSON_MIXIN_REMOVE
+    }
+    return JsonModel(
+      targetBinaryName = targetName,
+      members = emptyList(),
+      mixinBinaryName = mixin?.let(::binaryName),
+      originatingFiles = origins.distinct(),
+      retainedAnnotations = retention.annotations,
+      annotationOwnerTypes = retention.annotationOwners,
+      retainedTypes = emptySet(),
+      codecTypes = retention.codecs,
+      containerTypes = emptySet(),
+    )
+  }
+
+  private fun escapeGeneratedName(value: String): String {
+    val result = java.lang.StringBuilder(value.length + 32)
+    var index = 0
+    while (index < value.length) {
+      val codePoint = value.codePointAt(index)
+      when {
+        codePoint == '$'.code -> result.append("_d_")
+        codePoint == '_'.code -> result.append("_u_")
+        Character.isJavaIdentifierPart(codePoint) -> result.appendCodePoint(codePoint)
+        else -> result.append("_x").append(Integer.toHexString(codePoint)).append('_')
+      }
+      index += Character.charCount(codePoint)
+    }
+    return result.toString()
+  }
+
+  private fun sealedModel(
+    target: KSClassDeclaration,
+    mixin: KSClassDeclaration?,
+    root: JsonModel,
+  ): JsonModel? {
+    if (Modifier.SEALED !in target.modifiers) {
+      return fail(target, "Empty @JsonSubTypes requires a sealed type")
+    }
+    if (target.classKind != ClassKind.INTERFACE && Modifier.ABSTRACT !in target.modifiers) {
+      return fail(target, "@JsonSubTypes requires an interface or abstract base type")
+    }
+    // KSP symbols are trusted build-time schema metadata. Retaining the exact closure keeps
+    // runtime Kotlin metadata discovery finite and stable after R8/ProGuard.
+    val declarations = ArrayList<KSClassDeclaration>()
+    val closure = ArrayList<KSClassDeclaration>()
+    val retained = linkedSetOf<String>()
+    val visited = linkedSetOf<String>()
+    fun collect(sealedType: KSClassDeclaration): Boolean {
+      for (subtype in sealedType.getSealedSubclasses()) {
+        val binary = binaryName(subtype) ?: return false
+        if (!visited.add(binary)) continue
+        closure += subtype
+        retained += binary
+        val concrete =
+          subtype.classKind != ClassKind.INTERFACE && Modifier.ABSTRACT !in subtype.modifiers
+        if (concrete) declarations += subtype
+        if (Modifier.SEALED in subtype.modifiers) {
+          if (!collect(subtype)) return false
+        } else if (!concrete) {
+          fail<Any>(subtype, "Sealed JSON hierarchy has an open abstract branch")
+          return false
+        }
+      }
+      return true
+    }
+    if (!collect(target)) return null
+    if (declarations.isEmpty()) {
+      fail<Any>(target, "Sealed JSON hierarchy has no concrete subtype")
+      return null
+    }
+    declarations.sortBy { binaryName(it) }
+    val models = ArrayList<JsonModel>(declarations.size + 1)
+    models += root
+    for (declaration in declarations) {
+      models +=
+        if (isKotlin(declaration.origin)) kotlinModel(declaration, null) ?: return null
+        else javaModel(declaration, null) ?: return null
+    }
+    val closureFiles = closure.mapNotNull(KSClassDeclaration::containingFile)
+    return JsonModel(
+      targetBinaryName = root.targetBinaryName,
+      members = models.flatMap(JsonModel::members).distinct(),
+      mixinBinaryName = root.mixinBinaryName,
+      originatingFiles =
+        (models.flatMap(JsonModel::originatingFiles) +
+            closureFiles +
+            listOfNotNull(target.containingFile, mixin?.containingFile))
+          .distinct(),
+      retainedAnnotations = models.flatMap(JsonModel::retainedAnnotations).toSet(),
+      annotationOwnerTypes = models.flatMap(JsonModel::annotationOwnerTypes).toSet(),
+      retainedTypes = models.flatMap(JsonModel::retainedTypes).toSet() + retained,
+      codecTypes = models.flatMap(JsonModel::codecTypes).toSet(),
+      containerTypes = models.flatMap(JsonModel::containerTypes).toSet(),
+      aggregating = true,
+    )
   }
 
   private fun javaModel(
     target: KSClassDeclaration,
-    mixin: KSClassDeclaration,
+    mixin: KSClassDeclaration?,
   ): JsonModel? {
-    val targetName = binaryName(target) ?: return fail(target, "@JsonMixin target must be named")
+    val targetName = binaryName(target) ?: return fail(target, "JSON target must be named")
     val members =
       javaMembers(target, mixin) +
-        mixinMembers(mixin) +
+        (mixin?.let(::mixinMembers) ?: emptyList()) +
         listOfNotNull(javaAnySetter(target, mixin), javaCreator(target, mixin)) +
         validators(target, mixin)
     val retention = retention(target, mixin)
     return JsonModel(
       targetBinaryName = targetName,
       members = members,
-      mixinBinaryName = binaryName(mixin),
+      mixinBinaryName = mixin?.let(::binaryName),
       originatingFiles = originatingFiles(target, mixin),
       retainedAnnotations = retention.annotations,
       annotationOwnerTypes = retention.annotationOwners,
@@ -428,7 +626,7 @@ internal class KspModelBuilder(
 
   private fun javaMembers(
     target: KSClassDeclaration,
-    mixin: KSClassDeclaration,
+    mixin: KSClassDeclaration?,
   ): List<JvmMember> {
     val result = linkedMapOf<String, JvmMember>()
     for (property in target.getAllProperties()) {
@@ -500,7 +698,7 @@ internal class KspModelBuilder(
 
   private fun javaAnySetter(
     target: KSClassDeclaration,
-    mixin: KSClassDeclaration,
+    mixin: KSClassDeclaration?,
   ): JvmMember? {
     val methods = effectiveMethods(target, mixin, JSON_ANY_SETTER)
     if (methods.size > 1) {
@@ -567,7 +765,7 @@ internal class KspModelBuilder(
 
   private fun javaCreator(
     target: KSClassDeclaration,
-    mixin: KSClassDeclaration,
+    mixin: KSClassDeclaration?,
   ): JvmMember? {
     val candidates = ArrayList<KSFunctionDeclaration>()
     target
@@ -633,9 +831,10 @@ internal class KspModelBuilder(
 
   private fun hasEffectiveAnnotation(
     target: KSFunctionDeclaration,
-    mixin: KSClassDeclaration,
+    mixin: KSClassDeclaration?,
     annotation: String,
   ): Boolean {
+    if (mixin == null) return hasAnnotation(target, annotation)
     val source = matchingMixinFunction(target, mixin)
     if (source != null) {
       if (hasAnnotation(source, annotation)) return true
@@ -646,7 +845,7 @@ internal class KspModelBuilder(
 
   private fun hasEffectiveJsonAnnotation(
     target: KSFunctionDeclaration,
-    mixin: KSClassDeclaration,
+    mixin: KSClassDeclaration?,
   ): Boolean =
     effectiveAnnotations(target, mixin).any {
       annotationName(it).startsWith(JSON_ANNOTATION_PACKAGE)

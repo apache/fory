@@ -628,12 +628,12 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
       Descriptor descriptor = remoteDescriptors.get(i);
       putRemoteFieldInfo(remoteFieldInfosByKey, fieldInfo, descriptor);
     }
-    Map<Short, Integer> fieldIds = new HashMap<>();
+    Map<Integer, Integer> fieldIds = new HashMap<>();
     Map<String, Integer> fields = new HashMap<>();
     for (int i = 0; i < localDescriptors.size(); i++) {
       Descriptor descriptor = localDescriptors.get(i);
       if (descriptor.hasForyFieldId()) {
-        fieldIds.put((short) descriptor.getForyFieldId(), i);
+        fieldIds.put(descriptor.getForyFieldId(), i);
       }
       fields.put(fieldKey(descriptor), i);
     }
@@ -674,7 +674,7 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
       List<RemoteFieldInfo> remoteFields,
       SerializationFieldInfo[] remoteFieldInfosInWireOrder,
       Map<String, FieldInfo> remoteFieldInfosByKey,
-      Map<Short, Integer> fieldIds,
+      Map<Integer, Integer> fieldIds,
       Map<String, Integer> fields,
       List<Descriptor> localDescriptors,
       SerializationFieldInfo[] localFieldsById) {
@@ -732,7 +732,7 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
   }
 
   private int matchField(
-      FieldInfo fieldInfo, Map<Short, Integer> fieldIds, Map<String, Integer> fields) {
+      FieldInfo fieldInfo, Map<Integer, Integer> fieldIds, Map<String, Integer> fields) {
     Integer localId;
     if (fieldInfo.hasFieldId()) {
       localId = fieldIds.get(fieldInfo.getFieldId());

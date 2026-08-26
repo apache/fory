@@ -126,7 +126,7 @@ message Container {
 
 FlatBuffers `rpc_service` definitions are translated to Fory services. With
 `--grpc`, the compiler emits gRPC service companions for supported outputs such
-as Java, Python, Go, Rust, C#, Dart, Scala, Kotlin, and JavaScript. JavaScript
+as Java, Python, Go, Rust, C#, Swift, Dart, Scala, Kotlin, and JavaScript. JavaScript
 browser clients are generated with `--grpc-web`. These companions use Fory
 serialization for request and response payloads.
 

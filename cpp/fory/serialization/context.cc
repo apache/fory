@@ -702,15 +702,15 @@ ReadContext::read_type_meta_owner(const TypeInfo *expected_type_info) {
 
   FORY_TRY(remote_schema_key, check_remote_type_meta_limit(*parsed_meta));
 
-  // Create TypeInfo with field_ids assigned
+  // Create TypeInfo with local compatible dispatch IDs assigned.
   auto cached = std::make_unique<CachedTypeInfo>();
   TypeInfo *type_info = &cached->type_info;
   cached->concrete_owner = local_type_info;
   if (local_type_info) {
-    // Have local type - assign field_ids by comparing schemas
+    // Have local type - assign dispatch IDs by comparing schemas.
     // Note: Extension types don't have type_meta (only structs do)
     if (local_type_info->type_meta) {
-      FORY_RETURN_NOT_OK(TypeMeta::assign_field_ids(
+      FORY_RETURN_NOT_OK(TypeMeta::assign_local_dispatch_ids(
           local_type_info->type_meta.get(), parsed_meta->field_infos));
     }
     type_info->type_id = local_type_info->type_id;

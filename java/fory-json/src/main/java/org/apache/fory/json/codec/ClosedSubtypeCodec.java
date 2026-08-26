@@ -48,6 +48,9 @@ import org.apache.fory.reflect.TypeRef;
  * <p>Writing rejects fixed-schema discriminator collisions when branches are resolved, but never
  * queries an Any Map. Runtime dynamic-key conflicts are owned by the application; probing here
  * would invoke an Any getter twice and leak parent-specific policy into the child writer.
+ *
+ * <p>Input selects only a logical name from the already validated exact-class table. This codec
+ * never resolves a class name or expands the table while reading.
  */
 @Internal
 @SuppressWarnings("unchecked")

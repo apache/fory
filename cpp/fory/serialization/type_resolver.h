@@ -193,18 +193,19 @@ bool field_types_compatible_top_level(const FieldType &local,
 // FieldInfo - Field metadata (name, type, id)
 // ============================================================================
 
-/// Field information including name, type, and assigned field ID
+/// Field information including wire identity, type, and compatible dispatch.
 class FieldInfo {
 public:
-  int16_t field_id;       // Tag ID if configured; -1 means no ID
-  std::string field_name; // Field name
-  FieldType field_type;   // Field type information
+  int32_t field_id;         // Wire tag ID; -1 means name-based identity
+  int16_t matched_field_id; // Local compatible dispatch; -1 means unmatched
+  std::string field_name;   // Field name
+  FieldType field_type;     // Field type information
 
-  FieldInfo() : field_id(-1) {}
+  FieldInfo() : field_id(-1), matched_field_id(-1) {}
 
   FieldInfo(std::string name, FieldType type)
-      : field_id(-1), field_name(std::move(name)), field_type(std::move(type)) {
-  }
+      : field_id(-1), matched_field_id(-1), field_name(std::move(name)),
+        field_type(std::move(type)) {}
 
   /// write field info to buffer (for serialization)
   Result<std::vector<uint8_t>, Error> to_bytes() const;
@@ -275,11 +276,10 @@ public:
   /// get sorted field infos (sorted according to xlang spec)
   static std::vector<FieldInfo> sort_field_infos(std::vector<FieldInfo> fields);
 
-  /// Assign field IDs by comparing with local type
-  /// This is the key function for schema evolution!
+  /// Assign local compatible-reader dispatch IDs without changing wire tags.
   static Result<void, Error>
-  assign_field_ids(const TypeMeta *local_type,
-                   std::vector<FieldInfo> &remote_fields);
+  assign_local_dispatch_ids(const TypeMeta *local_type,
+                            std::vector<FieldInfo> &remote_fields);
 
   const std::vector<FieldInfo> &get_field_infos() const { return field_infos; }
   int64_t get_hash() const { return hash; }
@@ -331,6 +331,9 @@ private:
 // ============================================================================
 
 namespace detail {
+
+inline constexpr int32_t kFieldNameIdentity = -1;
+inline constexpr int32_t kMaxFieldTag = (1 << 29) - 1;
 
 inline uint32_t to_type_id(TypeId id) { return static_cast<uint32_t>(id); }
 
@@ -1075,12 +1078,14 @@ constexpr bool compute_track_ref() {
 }
 
 template <typename ActualFieldType, typename T, size_t Index>
-constexpr int16_t compute_field_id() {
+constexpr int32_t compute_field_id() {
   if constexpr (::fory::detail::has_field_config_v<T>) {
-    constexpr int16_t config_id =
+    constexpr int32_t config_id =
         ::fory::detail::GetFieldConfigEntry<T, Index>::id;
     if constexpr (::fory::detail::GetFieldConfigEntry<T, Index>::has_id) {
       static_assert(config_id >= 0, "Fory field id must be non-negative");
+      static_assert(config_id <= kMaxFieldTag,
+                    "Fory field id exceeds the wire TAG_ID range");
       return config_id;
     }
   }
@@ -1187,7 +1192,7 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
     constexpr bool is_nullable =
         compute_is_nullable<ActualFieldType, T, Index, UnwrappedFieldType>();
     constexpr bool track_ref = compute_track_ref<ActualFieldType, T, Index>();
-    constexpr int16_t field_id = compute_field_id<ActualFieldType, T, Index>();
+    constexpr int32_t field_id = compute_field_id<ActualFieldType, T, Index>();
 
     constexpr FieldNodeSpec spec =
         ::fory::detail::GetFieldConfigEntry<T, Index>::spec;
@@ -1233,7 +1238,7 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
     constexpr bool is_nullable =
         compute_is_nullable<ActualFieldType, T, Index, UnwrappedFieldType>();
     constexpr bool track_ref = compute_track_ref<ActualFieldType, T, Index>();
-    constexpr int16_t field_id = compute_field_id<ActualFieldType, T, Index>();
+    constexpr int32_t field_id = compute_field_id<ActualFieldType, T, Index>();
 
     constexpr FieldNodeSpec spec =
         ::fory::detail::GetFieldConfigEntry<T, Index>::spec;

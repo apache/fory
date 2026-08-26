@@ -349,9 +349,25 @@ public class ForyStructProcessorTest {
                 + "}\n");
     Assert.assertFalse(result.success);
     Assert.assertTrue(
-        result
-            .diagnostics()
-            .contains("@ForyField id must be -1 (no tag ID) or a non-negative tag ID"),
+        result.diagnostics().contains("@ForyField id must be -1 (no tag ID) or in [0, 2^29)"),
+        result.diagnostics());
+  }
+
+  @Test
+  public void testOversizedFieldIdFails() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.OversizedIdStruct",
+            "package test;\n"
+                + "import org.apache.fory.annotation.ForyField;\n"
+                + "import org.apache.fory.annotation.ForyStruct;\n"
+                + "@ForyStruct public class OversizedIdStruct {\n"
+                + "  @ForyField(id = 536870912) public int value;\n"
+                + "  public OversizedIdStruct() {}\n"
+                + "}\n");
+    Assert.assertFalse(result.success);
+    Assert.assertTrue(
+        result.diagnostics().contains("@ForyField id must be -1 (no tag ID) or in [0, 2^29)"),
         result.diagnostics());
   }
 

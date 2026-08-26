@@ -42,6 +42,7 @@ from typing import Any, Callable, Dict, Mapping, Optional
 FORY_FIELD_METADATA_KEY = "__fory__"
 FORY_OBJECT_METADATA_KEY = "__fory_object__"
 _FIELD_ID_UNSET = object()
+MAX_FIELD_ID = (1 << 29) - 1
 
 
 @dataclasses.dataclass(frozen=True)
@@ -50,7 +51,7 @@ class ForyFieldMeta:
     Fory field metadata extracted from field.metadata.
 
     Attributes:
-        id: Field tag ID. -1 is the internal sentinel for no configured ID; >=0 means use tag ID.
+        id: Field tag ID in [0, 2^29), or -1 as the internal no-ID sentinel.
         nullable: Whether null flag is written. Default False.
         ref: Whether reference tracking is enabled for this field. Default False.
         ignore: Whether to ignore this field during serialization. Default False.
@@ -128,8 +129,9 @@ def field(
     Args:
         id: Field tag ID (optional).
             - omitted: Use field name with meta string encoding
-            - >=0: Use numeric tag ID (more compact, stable across renames)
-            Must be unique within the class. Negative configured IDs are invalid.
+            - 0 <= id < 2^29: Use numeric tag ID (more compact, stable across renames)
+            Must be unique within the class. Negative configured IDs and values
+            greater than or equal to 2^29 are invalid.
 
         nullable: Whether to write null flag for this field.
             - False (default): Skip null flag, field cannot be None
@@ -180,6 +182,8 @@ def field(
         raise TypeError(f"id must be an int, got {type(id).__name__}")
     elif id < 0:
         raise ValueError(f"id must be non-negative, got {id}")
+    elif id > MAX_FIELD_ID:
+        raise ValueError(f"id must not exceed {MAX_FIELD_ID}, got {id}")
 
     # Build Fory metadata
     fory_meta = ForyFieldMeta(
@@ -252,6 +256,8 @@ def validate_field_metas(
     # Check tag ID uniqueness
     tag_ids_seen: Dict[int, str] = {}
     for field_name, meta in field_metas.items():
+        if meta.id < -1 or meta.id > MAX_FIELD_ID:
+            raise ValueError(f"Tag ID {meta.id} in class {cls.__name__} must be -1 or in [0, {MAX_FIELD_ID}]")
         if meta.id >= 0:
             if meta.id in tag_ids_seen:
                 raise ValueError(

@@ -275,13 +275,13 @@ public sealed class ClassInheritanceTests
     [Fact]
     public void WireAndStorageModelsAreFlattened()
     {
-        short?[] fieldIds = new TypeResolver()
+        int[] fieldIds = new TypeResolver()
             .GetTypeInfo<InheritedLeaf>()
             .TypeMetaFields(false)
             .Select(field => field.FieldId)
             .ToArray();
         Assert.Equal(
-            new short?[] { 1, 3, 5, 7, 8, 2, 4, 6 },
+            new[] { 1, 3, 5, 7, 8, 2, 4, 6 },
             fieldIds);
 
         Assert.Equal(28, ProviderShallowBytes(typeof(InheritedRoot)));

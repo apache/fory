@@ -83,8 +83,9 @@ struct User {
 **Notes**:
 
 - IDs must be unique within a struct
-- IDs must be non-negative
+- IDs must satisfy `0 <= id < 2^29` (`0` through `536870911`)
 - If not specified, field name is used in metadata (larger overhead)
+- Once assigned, keep an ID stable and do not reuse it for a different field
 
 ### Skipping Fields (`skip`)
 

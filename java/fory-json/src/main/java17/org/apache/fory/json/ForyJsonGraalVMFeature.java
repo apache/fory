@@ -64,13 +64,14 @@ import org.apache.fory.json.codec.Base64ByteArrayCodec;
 import org.apache.fory.json.codec.JsonUnwrappedInfo;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
-import org.apache.fory.json.codegen.JsonCodegenKey;
+import org.apache.fory.json.codegen.JsonCodegen;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonValidatorInfo;
 import org.apache.fory.json.resolver.CodecRegistry.FactoryBinding;
 import org.apache.fory.json.resolver.JsonGeneratedClassRegistry;
+import org.apache.fory.json.resolver.JsonNativeSubtypeRegistry;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonSharedRegistry.JsonMixinView;
 import org.apache.fory.json.resolver.JsonTypeResolver;
@@ -83,7 +84,7 @@ import org.apache.fory.util.record.RecordUtils;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
 
-/** Prepares reachable Fory JSON models and provider-selected codecs for Native Image. */
+/** Prepares reachable Fory JSON models and exact generated codecs for Native Image. */
 final class ForyJsonGraalVMFeature implements Feature {
   private static final String SCALA_DERIVED_CODEC_METHOD = "derived$ScalaJsonCodec";
   private static final String SCALA_JSON_CODEC_CLASS = "org.apache.fory.json.scala.ScalaJsonCodec";
@@ -95,6 +96,7 @@ final class ForyJsonGraalVMFeature implements Feature {
     "value", "element", "content", "mapKey", "mapValue"
   };
   private static final String SCALA_ENUM_CLASS = "scala.reflect.Enum";
+  private static final String SCALA_PRODUCT_CLASS = "scala.Product";
   private static final String[] SQL_TYPES = {
     "java.sql.Date", "java.sql.Time", "java.sql.Timestamp"
   };
@@ -107,17 +109,14 @@ final class ForyJsonGraalVMFeature implements Feature {
   private final Map<Class<?>, Set<Class<?>>> reachableMixins = new LinkedHashMap<>();
   private final Set<Class<?>> processedProviders = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedFactoryModels = ConcurrentHashMap.newKeySet();
-  private final Set<Class<?>> scalaDerivedModels = ConcurrentHashMap.newKeySet();
+  private final Set<Class<?>> scalaFactoryModels = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> scalaEnumerationOwners = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedCodecs = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedContainers = ConcurrentHashMap.newKeySet();
   private final Set<Executable> processedCreators = new LinkedHashSet<>();
   private final Set<ObjectCodec<?>> processedObjectModels =
       Collections.newSetFromMap(new IdentityHashMap<>());
-  // JsonCodegenKey stays loader-free so runtime configurations can reproduce it. Hosted resolvers
-  // remain loader-specific, while JsonGeneratedClassRegistry merges their generated capabilities.
-  private final Map<JsonCodegenKey, ArrayList<HostedConfiguration>> hostedConfigurations =
-      new LinkedHashMap<>();
+  private final ArrayList<HostedConfiguration> hostedConfigurations = new ArrayList<>();
 
   @Override
   public String getDescription() {
@@ -146,12 +145,16 @@ final class ForyJsonGraalVMFeature implements Feature {
       if (processedReachableTypes.add(type)) {
         changed |= registerContainer(type);
         changed |= registerDeclarations(type);
-        changed |= registerScalaDerivedCodec(access, type);
-        if (type.getDeclaredAnnotation(JsonType.class) != null) {
-          changed |= registerModel(access, type);
-        }
         JsonMixin mixin = type.getDeclaredAnnotation(JsonMixin.class);
-        if (mixin != null) {
+        if (mixin == null) {
+          boolean scalaModel = registerScalaModel(access, type);
+          changed |= scalaModel;
+          if ((type.getDeclaredAnnotation(JsonType.class) != null
+                  || type.getDeclaredAnnotation(JsonSubTypes.class) != null)
+              && !scalaModel) {
+            changed |= registerModel(access, type);
+          }
+        } else {
           changed |= registerMixin(access, type, mixin.target());
         }
         if (type.getDeclaredAnnotation(ForyJsonProvider.class) != null) {
@@ -159,6 +162,8 @@ final class ForyJsonGraalVMFeature implements Feature {
         }
         if (type == ForyJson.class) {
           registerBuiltInTypes(access);
+          hostedConfigurations.add(
+              new HostedConfiguration(ForyJson.builder().buildConfig()));
           changed = true;
         }
       }
@@ -169,22 +174,44 @@ final class ForyJsonGraalVMFeature implements Feature {
     }
   }
 
-  private boolean registerScalaDerivedCodec(DuringAnalysisAccess access, Class<?> type) {
-    boolean scalaEnum = false;
-    for (Class<?> interfaceType : type.getInterfaces()) {
-      if (interfaceType.getName().equals(SCALA_ENUM_CLASS)) {
-        scalaEnum = true;
-        break;
-      }
+  private boolean registerScalaModel(DuringAnalysisAccess access, Class<?> type) {
+    boolean scalaEnum = implementsInterface(type, SCALA_ENUM_CLASS);
+    boolean scalaProduct = implementsInterface(type, SCALA_PRODUCT_CLASS);
+    boolean derivedSchema = scalaEnum;
+    if (!derivedSchema) {
+      JsonSubTypes subTypes = type.getDeclaredAnnotation(JsonSubTypes.class);
+      derivedSchema = subTypes != null && subTypes.value().length == 0;
     }
-    if (!scalaEnum) {
+    if (!derivedSchema
+        && !(scalaProduct && type.getDeclaredAnnotation(JsonType.class) != null)) {
       return false;
     }
     Method method;
     try {
       method = type.getDeclaredMethod(SCALA_DERIVED_CODEC_METHOD);
     } catch (NoSuchMethodException ignored) {
-      return false;
+      JsonType jsonType = type.getDeclaredAnnotation(JsonType.class);
+      if (scalaEnum && jsonType != null) {
+        try {
+          method = type.getMethod("values");
+        } catch (NoSuchMethodException missingValues) {
+          return false;
+        }
+        int modifiers = method.getModifiers();
+        if (!Modifier.isPublic(modifiers)
+            || !Modifier.isStatic(modifiers)
+            || method.getParameterCount() != 0
+            || !method.getReturnType().isArray()
+            || method.getReturnType().getComponentType() != type) {
+          return false;
+        }
+        RuntimeReflection.register(method);
+      } else if (!scalaProduct || jsonType == null) {
+        return false;
+      }
+      scalaFactoryModels.add(type);
+      registerFactoryModel(access, type);
+      return true;
     }
     int modifiers = method.getModifiers();
     if (!Modifier.isPublic(modifiers)
@@ -194,8 +221,22 @@ final class ForyJsonGraalVMFeature implements Feature {
       return false;
     }
     RuntimeReflection.register(method);
-    scalaDerivedModels.add(type);
+    JsonCodecFactory factory;
+    try {
+      factory = (JsonCodecFactory) method.invoke(null);
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException(
+          "Cannot load derived Scala JSON codec for " + type.getName(), e);
+    }
+    if (factory == null) {
+      throw new IllegalStateException(
+          "Derived Scala JSON codec is null for " + type.getName());
+    }
+    scalaFactoryModels.add(type);
     registerFactoryModel(access, type);
+    for (Class<?> runtimeType : factory.handledRuntimeClasses()) {
+      registerFactoryModel(access, runtimeType);
+    }
     return true;
   }
 
@@ -244,25 +285,9 @@ final class ForyJsonGraalVMFeature implements Feature {
         throw providerFailure(
             providerClass, "provider method returned a codegen-disabled ForyJson: " + method, null);
       }
-      JsonCodegenKey key = config.codegenKey();
-      ArrayList<HostedConfiguration> configurations = hostedConfigurations.get(key);
-      if (configurations == null) {
-        configurations = new ArrayList<>();
-        hostedConfigurations.put(key, configurations);
-      }
-      ClassLoader classLoader = config.classLoader();
-      HostedConfiguration configuration = null;
-      for (HostedConfiguration candidate : configurations) {
-        if (candidate.classLoader == classLoader) {
-          configuration = candidate;
-          break;
-        }
-      }
-      if (configuration == null) {
-        configuration = new HostedConfiguration(config);
-        configurations.add(configuration);
-        changed = true;
-      }
+      HostedConfiguration configuration = new HostedConfiguration(config);
+      hostedConfigurations.add(configuration);
+      changed = true;
       ArrayList<Map.Entry<Class<?>, FactoryBinding>> bindings =
           new ArrayList<>(config.codecRegistry().factoryBindings().entrySet());
       bindings.sort(Comparator.comparing(entry -> entry.getKey().getName()));
@@ -344,48 +369,55 @@ final class ForyJsonGraalVMFeature implements Feature {
 
   private boolean generateConfigurations(DuringAnalysisAccess access) {
     boolean changed = false;
-    for (Map.Entry<JsonCodegenKey, ArrayList<HostedConfiguration>> entry :
-        hostedConfigurations.entrySet()) {
-      for (HostedConfiguration configuration : entry.getValue()) {
-        LinkedHashSet<Class<?>> selectedModels = new LinkedHashSet<>(processedModels);
-        selectedModels.addAll(configuration.factoryModels);
-        if (configuration.scalaJsonCodecs) {
-          selectedModels.addAll(scalaDerivedModels);
+    for (HostedConfiguration configuration : hostedConfigurations) {
+      LinkedHashSet<Class<?>> selectedModels = new LinkedHashSet<>(processedModels);
+      selectedModels.addAll(configuration.factoryModels);
+      if (configuration.scalaJsonCodecs) {
+        selectedModels.addAll(scalaFactoryModels);
+      }
+      for (Map.Entry<Class<?>, Set<Class<?>>> mixin : reachableMixins.entrySet()) {
+        if (mixin.getValue().contains(configuration.mixins.get(mixin.getKey()))) {
+          selectedModels.add(mixin.getKey());
         }
-        for (Map.Entry<Class<?>, Set<Class<?>>> mixin : reachableMixins.entrySet()) {
-          if (mixin.getValue().contains(configuration.mixins.get(mixin.getKey()))) {
-            selectedModels.add(mixin.getKey());
-          }
+      }
+      ArrayList<Class<?>> models = new ArrayList<>(selectedModels);
+      models.sort(Comparator.comparing(Class::getName));
+      boolean generated = false;
+      for (Class<?> model : models) {
+        // A raw generic Class is not a schema. Hosted capabilities are generated only when a
+        // concrete TypeRef occurrence is reached from a selected non-generic root; eagerly
+        // resolving the raw class would also make unreached bindings available in the image.
+        if (model.getTypeParameters().length != 0) {
+          continue;
         }
-        ArrayList<Class<?>> models = new ArrayList<>(selectedModels);
-        models.sort(Comparator.comparing(Class::getName));
-        for (Class<?> model : models) {
-          // A raw generic Class is not a schema. Hosted capabilities are generated only when a
-          // concrete TypeRef occurrence is reached from a selected non-generic root; eagerly
-          // resolving the raw class would also make unreached bindings available in the image.
-          if (model.getTypeParameters().length != 0) {
-            continue;
-          }
-          if (!configuration.processedModels.add(model)) {
-            continue;
-          }
-          List<ObjectCodec<?>> objectModels;
-          try {
-            objectModels = configuration.resolver.generateHostedCodecs(model);
-          } catch (RuntimeException | LinkageError e) {
-            throw new IllegalStateException(
-                "Cannot generate Fory JSON codecs for " + model.getName(), e);
-          }
-          objectModels.sort(Comparator.comparing(codec -> codec.type().getName()));
-          for (ObjectCodec<?> objectModel : objectModels) {
-            registerObjectModel(access, objectModel);
-          }
-          Set<Class<?>> generatedClasses =
-              JsonGeneratedClassRegistry.register(entry.getKey(), configuration.registry);
-          for (Class<?> generatedClass : generatedClasses) {
-            registerGeneratedClass(generatedClass);
-          }
-          changed = true;
+        if (!configuration.processedModels.add(model)) {
+          continue;
+        }
+        List<ObjectCodec<?>> objectModels;
+        try {
+          objectModels = configuration.resolver.generateHostedCodecs(model);
+        } catch (RuntimeException | LinkageError e) {
+          throw new IllegalStateException(
+              "Cannot generate Fory JSON codecs for " + model.getName(), e);
+        }
+        objectModels.sort(Comparator.comparing(codec -> codec.type().getName()));
+        for (ObjectCodec<?> objectModel : objectModels) {
+          registerObjectModel(access, objectModel);
+        }
+        boolean scalaModel = scalaFactoryModels.contains(model);
+        for (Class<?> subtype : configuration.resolver.resolvedSubtypeClasses(model)) {
+          changed |=
+              scalaModel
+                  ? registerFactoryModel(access, subtype)
+                  : registerModel(access, subtype);
+        }
+        generated = true;
+        changed = true;
+      }
+      if (generated) {
+        Set<Class<?>> generatedClasses = JsonGeneratedClassRegistry.register(configuration.registry);
+        for (Class<?> generatedClass : generatedClasses) {
+          registerGeneratedClass(generatedClass);
         }
       }
     }
@@ -661,7 +693,9 @@ final class ForyJsonGraalVMFeature implements Feature {
 
   @Override
   public void afterAnalysis(AfterAnalysisAccess access) {
+    JsonNativeSubtypeRegistry.freeze();
     JsonGeneratedClassRegistry.freeze();
+    JsonCodegen.resetGeneratedClassCache();
   }
 
   private void registerModelHierarchy(DuringAnalysisAccess access, Class<?> type) {
@@ -1107,8 +1141,18 @@ final class ForyJsonGraalVMFeature implements Feature {
     return null;
   }
 
+  private static boolean implementsInterface(Class<?> type, String interfaceName) {
+    for (Class<?> interfaceType : type.getInterfaces()) {
+      if (interfaceType.getName().equals(interfaceName)
+          || implementsInterface(interfaceType, interfaceName)) {
+        return true;
+      }
+    }
+    Class<?> superType = type.getSuperclass();
+    return superType != null && implementsInterface(superType, interfaceName);
+  }
+
   private static final class HostedConfiguration {
-    private final ClassLoader classLoader;
     private final JsonSharedRegistry registry;
     private final JsonTypeResolver resolver;
     private final Map<Class<?>, Class<?>> mixins;
@@ -1117,7 +1161,6 @@ final class ForyJsonGraalVMFeature implements Feature {
     private final Set<Class<?>> factoryModels = new LinkedHashSet<>();
 
     private HostedConfiguration(JsonConfig config) {
-      classLoader = config.classLoader();
       registry = JsonSharedRegistry.forHostedCodegen(config);
       resolver = new JsonTypeResolver(registry);
       mixins = config.mixins();

@@ -413,7 +413,7 @@ public class TypeDef implements Serializable {
       TypeResolver resolver, Class<?> cls, Collection<Descriptor> fieldDescriptors) {
     boolean isXlang = resolver.isCrossLanguage();
     Map<String, Descriptor> descriptorsMap = new HashMap<>();
-    Map<Short, Descriptor> fieldIdToDescriptorMap = new HashMap<>();
+    Map<Integer, Descriptor> fieldIdToDescriptorMap = new HashMap<>();
     Map<String, Descriptor> xlangNameDescriptors = null;
 
     if (isXlang) {
@@ -437,7 +437,7 @@ public class TypeDef implements Serializable {
       }
       if (descriptor.hasForyFieldId()) {
         int fieldId = descriptor.getForyFieldId();
-        if (fieldIdToDescriptorMap.containsKey((short) fieldId)) {
+        if (fieldIdToDescriptorMap.containsKey(fieldId)) {
           throw new IllegalArgumentException(
               "Duplicate field id "
                   + fieldId
@@ -446,15 +446,15 @@ public class TypeDef implements Serializable {
                   + " in class "
                   + cls.getName());
         }
-        fieldIdToDescriptorMap.put((short) fieldId, descriptor);
+        fieldIdToDescriptorMap.put(fieldId, descriptor);
       }
     }
     List<Descriptor> descriptors = new ArrayList<>(fieldsInfo.size());
     Collection<Descriptor> remoteDescriptors = null;
     Map<String, Descriptor> remoteDescriptorsMap = null;
-    Map<Short, Descriptor> remoteFieldIdToDescriptorMap = null;
+    Map<Integer, Descriptor> remoteFieldIdToDescriptorMap = null;
     Map<String, Map<String, Descriptor>> remoteDefinedClassDescriptors = new HashMap<>();
-    Map<String, Map<Short, Descriptor>> remoteDefinedClassFieldIds = new HashMap<>();
+    Map<String, Map<Integer, Descriptor>> remoteDefinedClassFieldIds = new HashMap<>();
     for (FieldInfo fieldInfo : fieldsInfo) {
       Descriptor descriptor;
       if (fieldInfo.hasFieldId()) {
@@ -495,7 +495,7 @@ public class TypeDef implements Serializable {
           String definedClass = fieldInfo.getDefinedClass();
           Map<String, Descriptor> definedClassDescriptors =
               remoteDefinedClassDescriptors.get(definedClass);
-          Map<Short, Descriptor> definedClassFieldIds =
+          Map<Integer, Descriptor> definedClassFieldIds =
               remoteDefinedClassFieldIds.get(definedClass);
           if (definedClassDescriptors == null) {
             Collection<Descriptor> descriptorsForDefinedClass =
@@ -539,11 +539,11 @@ public class TypeDef implements Serializable {
   private static void populateDescriptorMaps(
       Collection<Descriptor> descriptors,
       Map<String, Descriptor> descriptorsMap,
-      Map<Short, Descriptor> fieldIdToDescriptorMap) {
+      Map<Integer, Descriptor> fieldIdToDescriptorMap) {
     for (Descriptor descriptor : descriptors) {
       descriptorsMap.put(descriptor.getDeclaringClass() + "." + descriptor.getName(), descriptor);
       if (descriptor.hasForyFieldId()) {
-        fieldIdToDescriptorMap.put((short) descriptor.getForyFieldId(), descriptor);
+        fieldIdToDescriptorMap.put(descriptor.getForyFieldId(), descriptor);
       }
     }
   }

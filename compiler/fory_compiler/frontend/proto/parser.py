@@ -17,7 +17,7 @@
 
 """Recursive descent parser for proto3."""
 
-from typing import List
+from typing import List, Tuple
 
 from fory_compiler.frontend.proto.ast import (
     ProtoSchema,
@@ -162,7 +162,7 @@ class Parser:
         self.consume(TokenType.SEMI, "Expected ';' after import")
         return path
 
-    def parse_option_statement(self) -> tuple[str, object]:
+    def parse_option_statement(self) -> Tuple[str, object]:
         self.consume(TokenType.OPTION, "Expected 'option'")
         name = self.parse_option_name()
         self.consume(TokenType.EQUALS, "Expected '=' after option name")

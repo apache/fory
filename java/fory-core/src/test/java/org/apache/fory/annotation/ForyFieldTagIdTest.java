@@ -22,6 +22,7 @@ package org.apache.fory.annotation;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.lang.reflect.Field;
@@ -55,6 +56,11 @@ public class ForyFieldTagIdTest extends ForyTestBase {
     public String invalidField;
   }
 
+  public static class InvalidTagClass {
+    @ForyField(id = 1 << 29)
+    public String value;
+  }
+
   @Test(dataProvider = "languageAndCodegen")
   public void testFieldInfoCreationWithTagIds(boolean xlang, boolean codegen, boolean registered) {
     Fory fory =
@@ -84,16 +90,12 @@ public class ForyFieldTagIdTest extends ForyTestBase {
     // Verify field with id=0 has tag
     assertTrue(field0.hasFieldId(), "Field with id=0 should have tag in xlang=" + xlang);
     assertEquals(
-        field0.getFieldId(),
-        (short) 0,
-        "Field with id=0 should have tag value 0 in xlang=" + xlang);
+        field0.getFieldId(), 0, "Field with id=0 should have tag value 0 in xlang=" + xlang);
 
     // Verify field with id=5 has tag
     assertTrue(field5.hasFieldId(), "Field with id=5 should have tag in xlang=" + xlang);
     assertEquals(
-        field5.getFieldId(),
-        (short) 5,
-        "Field with id=5 should have tag value 5 in xlang=" + xlang);
+        field5.getFieldId(), 5, "Field with id=5 should have tag value 5 in xlang=" + xlang);
 
     // Verify field with annotation but no ID does NOT have tag
     assertFalse(
@@ -186,6 +188,14 @@ public class ForyFieldTagIdTest extends ForyTestBase {
     org.testng.Assert.assertThrows(
         IllegalArgumentException.class,
         () -> TypeDef.buildTypeDef(fory.getTypeResolver(), NegativeTagIdClass.class));
+  }
+
+  @Test
+  public void rejectsTagOutsideProtocolDomain() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> TypeDef.buildTypeDef(fory.getTypeResolver(), InvalidTagClass.class));
   }
 
   /** Helper method to find a FieldInfo by field name */

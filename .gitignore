@@ -148,6 +148,7 @@ csharp/tests/Fory.InheritanceConsumer/obj/
 csharp/artifacts/
 
 tasks/
+.local/
 benchmarks/python/proto/
 benchmarks/java/dependency-reduced-pom.xml
 benchmarks/go/go.test

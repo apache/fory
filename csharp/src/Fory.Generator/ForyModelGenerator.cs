@@ -26,6 +26,7 @@ namespace Apache.Fory.Generator;
 [Generator(LanguageNames.CSharp)]
 public sealed partial class ForyModelGenerator : IIncrementalGenerator
 {
+    private const int MaxFieldId = (1 << 29) - 1;
     private const uint UInt8ArrayTypeId = 48;
 
     private static readonly SymbolDisplayFormat FullNameFormat =
@@ -59,7 +60,7 @@ public sealed partial class ForyModelGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor InvalidFieldId = new(
         id: "FORY004",
         title: "Invalid Fory field id",
-        messageFormat: "Member '{0}' uses an invalid [ForyField] id; field ids must be non-negative and no greater than short.MaxValue",
+        messageFormat: "Member '{0}' uses an invalid [ForyField] id; field ids must be in the range 0 through 536870911",
         category: "Fory",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);

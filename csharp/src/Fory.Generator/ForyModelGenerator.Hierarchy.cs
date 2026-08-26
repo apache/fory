@@ -592,7 +592,7 @@ public sealed partial class ForyModelGenerator
             .GetMembers(expectedAccessorName)
             .OfType<IMethodSymbol>()
             .ToImmutableArray();
-        if (fieldIdValue is < -1 or > short.MaxValue ||
+        if (fieldIdValue is < -1 or > MaxFieldId ||
             readCandidates.Length != 1 ||
             !SymbolEqualityComparer.Default.Equals(
                 readCandidates[0],
@@ -667,7 +667,7 @@ public sealed partial class ForyModelGenerator
             diagnostics,
             schemaType,
             parseFieldAttribute: false,
-            fieldIdValue < 0 ? null : (short)fieldIdValue,
+            fieldIdValue,
             schemaDescriptorType);
         if (parsed is null || diagnostics.Count != diagnosticCount)
         {
@@ -809,25 +809,25 @@ public sealed partial class ForyModelGenerator
         IEnumerable<MemberModel> members,
         List<Diagnostic> diagnostics)
     {
-        Dictionary<short, MemberModel> fieldIds = [];
+        Dictionary<int, MemberModel> fieldIds = [];
         Dictionary<string, MemberModel> fieldNames = new(StringComparer.Ordinal);
         foreach (MemberModel member in members)
         {
-            if (member.FieldId.HasValue)
+            if (member.FieldId >= 0)
             {
-                if (fieldIds.TryGetValue(member.FieldId.Value, out MemberModel? previous))
+                if (fieldIds.TryGetValue(member.FieldId, out MemberModel? previous))
                 {
                     diagnostics.Add(Diagnostic.Create(
                         DuplicateStructuralField,
                         target.DeclarationLocation,
                         target.TargetTypeName,
-                        member.FieldId.Value.ToString(CultureInfo.InvariantCulture),
+                        member.FieldId.ToString(CultureInfo.InvariantCulture),
                         MemberDisplay(previous),
                         MemberDisplay(member)));
                 }
                 else
                 {
-                    fieldIds.Add(member.FieldId.Value, member);
+                    fieldIds.Add(member.FieldId, member);
                 }
             }
             else if (fieldNames.TryGetValue(member.FieldIdentifier, out MemberModel? previous))
@@ -891,9 +891,9 @@ public sealed partial class ForyModelGenerator
             member.DeclaringType.ToDisplayString(FullNameFormat);
         sb.Append(
             $"    [global::Apache.Fory.ForyGeneratedWireMember({member.DeclarationOrdinal}, typeof({declaringTypeName}), \"{EscapeString(member.Name)}\", \"{EscapeString(member.TargetMemberName)}\"");
-        if (member.FieldId.HasValue)
+        if (member.FieldId >= 0)
         {
-            sb.Append($", FieldId = {member.FieldId.Value}");
+            sb.Append($", FieldId = {member.FieldId}");
         }
 
         if (member.SchemaDescriptorType is not null)

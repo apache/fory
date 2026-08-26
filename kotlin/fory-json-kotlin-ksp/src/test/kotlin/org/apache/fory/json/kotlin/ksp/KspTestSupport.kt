@@ -101,6 +101,7 @@ internal fun jsonModel(
   retainedTypes: Set<String> = emptySet(),
   codecTypes: Set<String> = emptySet(),
   containerTypes: Set<String> = emptySet(),
+  aggregating: Boolean = false,
 ): JsonModel =
   JsonModel(
     targetBinaryName = targetBinaryName,
@@ -112,6 +113,7 @@ internal fun jsonModel(
     retainedTypes = retainedTypes,
     codecTypes = codecTypes,
     containerTypes = containerTypes,
+    aggregating = aggregating,
   )
 
 internal object SilentLogger : KSPLogger {

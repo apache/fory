@@ -19,7 +19,6 @@
 
 package org.apache.fory.json;
 
-import static org.apache.fory.json.JsonTestSupport.nullCodec;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
@@ -75,7 +74,7 @@ public class JsonRecordTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void customPrimitiveNull() throws Exception {
+  public void primitiveNull() throws Exception {
     if (JdkVersion.MAJOR_VERSION < 17) {
       throw new SkipException("Java record test requires JDK 17+");
     }
@@ -84,7 +83,7 @@ public class JsonRecordTest extends ForyJsonTestModels {
             "JsonPrimitiveRecord",
             "package org.apache.fory.json.records;\n"
                 + "public record JsonPrimitiveRecord(int value) {}\n");
-    ForyJson json = newJsonBuilder().registerCodec(int.class, nullCodec()).build();
+    ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.fromJson("{\"value\":null}", type));
     assertThrows(
         ForyJsonException.class,

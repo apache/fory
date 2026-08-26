@@ -57,6 +57,7 @@ struct Item {
 struct SimpleStruct {
     // field_order != sorted_order
     f1: HashMap<i32, f64>,
+    #[fory(id = 15)]
     f2: i32,
     f3: Item,
     // Use String (not Option<String>) to match Java's non-nullable String field
@@ -64,8 +65,20 @@ struct SimpleStruct {
     f5: Color,
     // Use Vec<String> to match Java's List<String> with non-nullable elements
     f6: Vec<String>,
+    #[fory(id = 65551)]
     f7: i32,
     f8: i32,
+    #[fory(id = 536870911)]
+    last: i32,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct ExactFieldTags {
+    #[fory(id = 15)]
+    first: i32,
+    #[fory(id = 65551)]
+    second: i32,
+    #[fory(id = 536870911)]
     last: i32,
 }
 
@@ -443,6 +456,24 @@ fn test_simple_struct() {
     let new_local_obj: SimpleStruct = fory.deserialize(&new_bytes).unwrap();
     assert_eq!(new_local_obj, local_obj);
     fs::write(&data_file_path, new_bytes).unwrap();
+}
+
+#[test]
+#[ignore]
+fn test_exact_field_tags() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+    let mut fory = Fory::builder().compatible(false).xlang(true).build();
+    fory.register::<ExactFieldTags>(104).unwrap();
+
+    let expected = ExactFieldTags {
+        first: 39,
+        second: 40,
+        last: 41,
+    };
+    let value: ExactFieldTags = fory.deserialize(&bytes).unwrap();
+    assert_eq!(value, expected);
+    fs::write(&data_file_path, fory.serialize(&value).unwrap()).unwrap();
 }
 
 #[test]

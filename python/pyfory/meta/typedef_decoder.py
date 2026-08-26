@@ -240,8 +240,15 @@ def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder, encodings: List
 def read_fields_info(buffer: Buffer, resolver, defined_class: str, num_fields: int) -> List[FieldInfo]:
     """Read field information from the buffer."""
     field_infos = []
+    tag_ids = None
     for _ in range(num_fields):
         field_info = read_field_info(buffer, resolver, defined_class)
+        if field_info.tag_id >= 0:
+            if tag_ids is None:
+                tag_ids = set()
+            if field_info.tag_id in tag_ids:
+                raise ValueError(f"Duplicate TypeDef field tag ID {field_info.tag_id}")
+            tag_ids.add(field_info.tag_id)
         field_infos.append(field_info)
     return field_infos
 

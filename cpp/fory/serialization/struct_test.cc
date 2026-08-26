@@ -136,6 +136,30 @@ struct MixedFieldIdentityStruct {
               alpha_value, (count, fory::F(2).varint()));
 };
 
+struct MaximumFieldTagStruct {
+  int32_t value;
+
+  bool operator==(const MaximumFieldTagStruct &other) const {
+    return value == other.value;
+  }
+
+  FORY_STRUCT(MaximumFieldTagStruct, (value, fory::F(536870911)));
+};
+
+struct HighTagCompatibleWriter {
+  std::string removed;
+  int32_t shared;
+
+  FORY_STRUCT(HighTagCompatibleWriter, (removed, fory::F(65551)),
+              (shared, fory::F(536870911)));
+};
+
+struct HighTagCompatibleReader {
+  int32_t shared = 0;
+
+  FORY_STRUCT(HighTagCompatibleReader, (shared, fory::F(536870911)));
+};
+
 struct SignedToUnsignedWriter {
   int32_t value;
 
@@ -734,7 +758,7 @@ inline FieldType make_test_field_type(TypeId type_id,
                    std::move(generics));
 }
 
-inline FieldInfo make_test_field_info(std::string name, int16_t field_id,
+inline FieldInfo make_test_field_info(std::string name, int32_t field_id,
                                       FieldType field_type) {
   FieldInfo info(std::move(name), std::move(field_type));
   info.field_id = field_id;
@@ -929,7 +953,7 @@ TEST(StructComprehensiveTest, UnsignedEncodingFieldMeta) {
         });
     return it == fields.end() ? nullptr : &*it;
   };
-  auto find_field_id = [&](int16_t id) -> const FieldInfo * {
+  auto find_field_id = [&](int32_t id) -> const FieldInfo * {
     auto it =
         std::find_if(fields.begin(), fields.end(), [&](const FieldInfo &field) {
           return field.field_id == id;
@@ -1318,7 +1342,7 @@ TEST(StructComprehensiveTest, FullyTaggedStructsUseNumericTagOrder) {
   EXPECT_EQ(fields[1].field_id, 2);
   EXPECT_EQ(fields[2].field_id, 10);
 
-  std::map<int16_t, const FieldInfo *> fields_by_id;
+  std::map<int32_t, const FieldInfo *> fields_by_id;
   for (const auto &field : fields) {
     fields_by_id.emplace(field.field_id, &field);
   }
@@ -1326,7 +1350,7 @@ TEST(StructComprehensiveTest, FullyTaggedStructsUseNumericTagOrder) {
   ASSERT_NE(fields_by_id.find(2), fields_by_id.end());
   ASSERT_NE(fields_by_id.find(10), fields_by_id.end());
 
-  auto fingerprint_part = [&](int16_t field_id) {
+  auto fingerprint_part = [&](int32_t field_id) {
     const FieldInfo &field = *fields_by_id[field_id];
     return std::to_string(field_id) + "," +
            std::to_string(field.field_type.type_id) + "," +
@@ -1371,6 +1395,56 @@ TEST(StructComprehensiveTest, MixedFieldIdentifiersUseProtocolOrder) {
   EXPECT_EQ(fields[2].field_id, -1);
   EXPECT_EQ(fields[3].field_name, "beta_value");
   EXPECT_EQ(fields[3].field_id, -1);
+}
+
+TEST(StructComprehensiveTest, FieldTagRange) {
+  MaximumFieldTagStruct value{42};
+  auto fory =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(fory.register_struct<MaximumFieldTagStruct>(631).ok());
+  auto encoded = fory.serialize(value);
+  ASSERT_TRUE(encoded.ok()) << encoded.error().to_string();
+  auto decoded = fory.deserialize<MaximumFieldTagStruct>(encoded.value());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  EXPECT_EQ(decoded.value(), value);
+
+  TypeMeta meta =
+      fory.type_resolver().clone_struct_meta<MaximumFieldTagStruct>();
+  ASSERT_EQ(meta.field_infos.size(), 1);
+  EXPECT_EQ(meta.field_infos[0].field_id, 536870911);
+
+  FieldInfo invalid("value", make_test_field_type(TypeId::INT32));
+  invalid.field_id = 536870912;
+  EXPECT_FALSE(invalid.to_bytes().ok());
+
+  Buffer invalid_wire;
+  invalid_wire.write_uint8(static_cast<uint8_t>((3u << 6) | (15u << 2)));
+  invalid_wire.write_var_uint32(536870912u - 15u);
+  invalid_wire.write_uint8(static_cast<uint8_t>(TypeId::INT32));
+  EXPECT_FALSE(FieldInfo::from_bytes(invalid_wire).ok());
+
+  TypeMeta duplicate;
+  duplicate.type_id = static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT);
+  duplicate.user_type_id = 632;
+  duplicate.field_infos = {
+      make_test_field_info("first", 7, make_test_field_type(TypeId::INT32)),
+      make_test_field_info("second", 7, make_test_field_type(TypeId::INT32))};
+  EXPECT_FALSE(duplicate.to_bytes().ok());
+}
+
+TEST(StructComprehensiveTest, CompatibleHighTagsRead) {
+  auto writer =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  auto reader =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(writer.register_struct<HighTagCompatibleWriter>(633).ok());
+  ASSERT_TRUE(reader.register_struct<HighTagCompatibleReader>(633).ok());
+
+  auto encoded = writer.serialize(HighTagCompatibleWriter{"skip", 42});
+  ASSERT_TRUE(encoded.ok()) << encoded.error().to_string();
+  auto decoded = reader.deserialize<HighTagCompatibleReader>(*encoded);
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  EXPECT_EQ(decoded->shared, 42);
 }
 
 TEST(StructComprehensiveTest, NonPrimitiveFieldsSortByFieldIdentifier) {
@@ -1434,7 +1508,7 @@ TEST(StructComprehensiveTest, FieldTypeCompatibilitySeparatesAdapters) {
 }
 
 TEST(StructComprehensiveTest,
-     AssignFieldIdsRejectsIncompatibleTaggedNestedTypes) {
+     LocalDispatchRejectsIncompatibleTaggedNestedTypes) {
   TypeMeta local_type;
   local_type.field_infos = {make_test_field_info(
       "items", 7,
@@ -1447,7 +1521,7 @@ TEST(StructComprehensiveTest,
                            {make_test_field_type(TypeId::VAR_UINT32),
                             make_test_field_type(TypeId::VAR_UINT32)}))};
   auto incompatible_result =
-      TypeMeta::assign_field_ids(&local_type, incompatible_remote);
+      TypeMeta::assign_local_dispatch_ids(&local_type, incompatible_remote);
   EXPECT_FALSE(incompatible_result.ok());
 
   std::vector<FieldInfo> nested_scalar_remote = {make_test_field_info(
@@ -1455,7 +1529,7 @@ TEST(StructComprehensiveTest,
       make_test_field_type(TypeId::LIST,
                            {make_test_field_type(TypeId::UINT32)}))};
   auto nested_scalar_result =
-      TypeMeta::assign_field_ids(&local_type, nested_scalar_remote);
+      TypeMeta::assign_local_dispatch_ids(&local_type, nested_scalar_remote);
   EXPECT_FALSE(nested_scalar_result.ok());
 
   TypeMeta scalar_local;
@@ -1463,9 +1537,11 @@ TEST(StructComprehensiveTest,
       "count", 8, make_test_field_type(TypeId::VAR_UINT32))};
   std::vector<FieldInfo> scalar_remote = {
       make_test_field_info("count", 8, make_test_field_type(TypeId::UINT32))};
-  auto scalar_result = TypeMeta::assign_field_ids(&scalar_local, scalar_remote);
+  auto scalar_result =
+      TypeMeta::assign_local_dispatch_ids(&scalar_local, scalar_remote);
   ASSERT_TRUE(scalar_result.ok());
-  EXPECT_EQ(scalar_remote[0].field_id, 1);
+  EXPECT_EQ(scalar_remote[0].field_id, 8);
+  EXPECT_EQ(scalar_remote[0].matched_field_id, 1);
 
   TypeMeta name_mode_local;
   name_mode_local.field_infos = {make_test_field_info(
@@ -1477,15 +1553,19 @@ TEST(StructComprehensiveTest,
       make_test_field_type(TypeId::LIST,
                            {make_test_field_type(TypeId::UINT32)}))};
   ASSERT_TRUE(
-      TypeMeta::assign_field_ids(&name_mode_local, mixed_mode_remote).ok());
-  EXPECT_EQ(mixed_mode_remote[0].field_id, -1);
+      TypeMeta::assign_local_dispatch_ids(&name_mode_local, mixed_mode_remote)
+          .ok());
+  EXPECT_EQ(mixed_mode_remote[0].field_id, 7);
+  EXPECT_EQ(mixed_mode_remote[0].matched_field_id, -1);
 
   std::vector<FieldInfo> name_remote = {make_test_field_info(
       "items", -1,
       make_test_field_type(TypeId::LIST,
                            {make_test_field_type(TypeId::UINT32)}))};
-  ASSERT_TRUE(TypeMeta::assign_field_ids(&local_type, name_remote).ok());
+  ASSERT_TRUE(
+      TypeMeta::assign_local_dispatch_ids(&local_type, name_remote).ok());
   EXPECT_EQ(name_remote[0].field_id, -1);
+  EXPECT_EQ(name_remote[0].matched_field_id, -1);
 
   TypeMeta mixed_local;
   mixed_local.field_infos = {
@@ -1496,17 +1576,22 @@ TEST(StructComprehensiveTest,
       make_test_field_info("alpha", -1, make_test_field_type(TypeId::BINARY)),
       make_test_field_info("tagged", 3, make_test_field_type(TypeId::STRING)),
       make_test_field_info("beta", -1, make_test_field_type(TypeId::VARINT32))};
-  ASSERT_TRUE(TypeMeta::assign_field_ids(&mixed_local, mixed_remote).ok());
-  EXPECT_EQ(mixed_remote[0].field_id, 2);
-  EXPECT_EQ(mixed_remote[1].field_id, 0);
-  EXPECT_EQ(mixed_remote[2].field_id, 4);
+  ASSERT_TRUE(
+      TypeMeta::assign_local_dispatch_ids(&mixed_local, mixed_remote).ok());
+  EXPECT_EQ(mixed_remote[0].field_id, -1);
+  EXPECT_EQ(mixed_remote[0].matched_field_id, 2);
+  EXPECT_EQ(mixed_remote[1].field_id, 3);
+  EXPECT_EQ(mixed_remote[1].matched_field_id, 0);
+  EXPECT_EQ(mixed_remote[2].field_id, -1);
+  EXPECT_EQ(mixed_remote[2].matched_field_id, 4);
 
   std::vector<FieldInfo> untagged_remote_for_tagged_local = {
       make_test_field_info("tagged", -1, make_test_field_type(TypeId::STRING))};
-  ASSERT_TRUE(
-      TypeMeta::assign_field_ids(&mixed_local, untagged_remote_for_tagged_local)
-          .ok());
+  ASSERT_TRUE(TypeMeta::assign_local_dispatch_ids(
+                  &mixed_local, untagged_remote_for_tagged_local)
+                  .ok());
   EXPECT_EQ(untagged_remote_for_tagged_local[0].field_id, -1);
+  EXPECT_EQ(untagged_remote_for_tagged_local[0].matched_field_id, -1);
 }
 
 TEST(StructComprehensiveTest, CompatibleSignedToUnsignedStructRead) {
@@ -1547,7 +1632,7 @@ TEST(StructComprehensiveTest, CompatibleNegativeSignedToUnsignedFails) {
   EXPECT_FALSE(result.ok());
 }
 
-TEST(StructComprehensiveTest, AssignFieldIdsRejectsMatchedIdOverflow) {
+TEST(StructComprehensiveTest, LocalDispatchRejectsMatchedIdOverflow) {
   constexpr size_t max_compatible_matched_field_index =
       (static_cast<size_t>(std::numeric_limits<int16_t>::max()) - 1) / 2;
   const FieldType field_type = make_test_field_type(TypeId::INT32);
@@ -1563,7 +1648,7 @@ TEST(StructComprehensiveTest, AssignFieldIdsRejectsMatchedIdOverflow) {
   std::vector<FieldInfo> remote_fields = {make_test_field_info(
       "field_" + std::to_string(max_compatible_matched_field_index + 1), -1,
       field_type)};
-  auto result = TypeMeta::assign_field_ids(&local_type, remote_fields);
+  auto result = TypeMeta::assign_local_dispatch_ids(&local_type, remote_fields);
 
   ASSERT_FALSE(result.ok());
   EXPECT_NE(result.error().message().find("exceeds max"), std::string::npos);

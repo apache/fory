@@ -24,7 +24,8 @@ from typing import ClassVar
 
 from fory_compiler.frontend.base import FrontendError
 from fory_compiler.frontend.utils import parse_idl_file
-from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.base import BaseGenerator, GeneratedFile, GeneratorOptions
+from fory_compiler.generators.services.swift import SwiftServiceMixin
 from fory_compiler.ir.ast import (
     ArrayType,
     Enum,
@@ -41,7 +42,7 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class SwiftGenerator(BaseGenerator):
+class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
     """Generates Swift types using Fory Swift model macros."""
 
     language_name = "swift"
@@ -200,6 +201,48 @@ class SwiftGenerator(BaseGenerator):
             package_path = self.schema.package.replace(".", "/")
             return f"{package_path}/{file_name}"
         return file_name
+
+    def swift_declared_symbols(self) -> list[str]:
+        # Every declaration is reported with the Swift scope that contains it, and
+        # duplicates are kept so preflight can see a name claimed twice. Enum style
+        # nests types under a namespace enum, so it also owns that enum itself.
+        components = self._namespace_components_for_schema(self.schema)
+        scope = ".".join(components) if self.get_namespace_style() == "enum" else ""
+        symbols: list[str] = []
+        if components and self.get_namespace_style() == "enum":
+            symbols.append(components[0])
+        for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
+            if self.is_imported_type(type_def):
+                continue
+            self._collect_declared_symbols(type_def, scope, [], symbols)
+        symbols.append(
+            self._scoped_symbol(scope, self._module_helper_name_for_schema(self.schema))
+        )
+        return symbols
+
+    def _collect_declared_symbols(
+        self,
+        type_def: Message | Enum | Union,
+        scope: str,
+        parent_stack: list[Message],
+        symbols: list[str],
+    ) -> None:
+        name = self._declared_type_name(type_def.name, parent_stack or None)
+        symbols.append(self._scoped_symbol(scope, name))
+        if not isinstance(type_def, Message):
+            return
+        nested_scope = self._scoped_symbol(scope, name)
+        nested_stack = parent_stack + [type_def]
+        for nested in (
+            list(type_def.nested_enums)
+            + list(type_def.nested_unions)
+            + list(type_def.nested_messages)
+        ):
+            self._collect_declared_symbols(nested, nested_scope, nested_stack, symbols)
+
+    @staticmethod
+    def _scoped_symbol(scope: str, name: str) -> str:
+        return f"{scope}.{name}" if scope else name
 
     def module_file_name(self) -> str:
         if self.schema.source_file and not self.schema.source_file.startswith("<"):
@@ -1469,3 +1512,56 @@ class SwiftGenerator(BaseGenerator):
 
         lines.append(f"{ind}" + "}")
         return lines
+
+
+def validate_swift_generation(
+    graph: list[tuple[Path, Schema]],
+    namespace_style: str | None = None,
+    grpc: bool = False,
+) -> bool:
+    """Preflight Swift output paths and top-level symbol owners before writing."""
+    output_owners: dict[str, list[str]] = {}
+    symbol_owners: dict[str, list[str]] = {}
+    for path, schema in graph:
+        options = GeneratorOptions(
+            output_dir=Path("."), swift_namespace_style=namespace_style
+        )
+        generator = SwiftGenerator(schema, options)
+        output_owners.setdefault(generator.output_file_path(), []).append(
+            f"{path} schema module"
+        )
+        for symbol in generator.swift_declared_symbols():
+            symbol_owners.setdefault(symbol, []).append(f"{path} schema type")
+        if grpc:
+            for service in schema.services:
+                if generator.is_imported_type(service):
+                    continue
+                output_owners.setdefault(
+                    generator.swift_grpc_output_path(service), []
+                ).append(f"{path} service {service.name}")
+                for symbol in generator.swift_grpc_service_symbols(service):
+                    symbol_owners.setdefault(symbol, []).append(
+                        f"{path} service {service.name}"
+                    )
+
+    _raise_swift_collision(
+        output_owners,
+        "Swift generated file path collision; rename schema files or services, "
+        "or use distinct packages",
+    )
+    _raise_swift_collision(
+        symbol_owners,
+        "Swift top-level symbol collision; rename schema types or services, "
+        "or use distinct packages",
+    )
+    return True
+
+
+def _raise_swift_collision(owners: dict[str, list[str]], message: str) -> None:
+    collisions = {key: names for key, names in owners.items() if len(names) > 1}
+    if not collisions:
+        return
+    details = ", ".join(
+        f"{key}: {', '.join(names)}" for key, names in sorted(collisions.items())
+    )
+    raise ValueError(f"{message}. Collisions: {details}")

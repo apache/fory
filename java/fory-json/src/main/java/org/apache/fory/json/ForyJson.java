@@ -19,6 +19,8 @@
 
 package org.apache.fory.json;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.ParameterizedType;
@@ -679,6 +681,22 @@ public final class ForyJson {
   }
 
   /**
+   * Reads the complete caller-owned stream as UTF-8 and parses exactly one JSON value using {@code
+   * type} as its declared Java type. This method does not close the stream.
+   */
+  public <T> T fromJson(InputStream input, Class<T> type) {
+    return fromJson(readAllBytes(input), type);
+  }
+
+  /**
+   * Reads the complete caller-owned stream as UTF-8 and parses exactly one JSON value using a
+   * generic type captured by {@link TypeRef}. This method does not close the stream.
+   */
+  public <T> T fromJson(InputStream input, TypeRef<T> typeRef) {
+    return fromJson(readAllBytes(input), typeRef);
+  }
+
+  /**
    * Parses exactly one UTF-8 JSON value from {@code bytes[offset, offset + length)} using {@code
    * type} as its declared Java type. Trailing non-whitespace content within that range is rejected.
    *
@@ -733,6 +751,15 @@ public final class ForyJson {
       } finally {
         release(entry);
       }
+    }
+  }
+
+  private static byte[] readAllBytes(InputStream input) {
+    Objects.requireNonNull(input, "input");
+    try {
+      return JsonInputStreams.readAllBytes(input);
+    } catch (IOException e) {
+      throw new ForyJsonException("Cannot read JSON input stream", e);
     }
   }
 

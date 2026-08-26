@@ -394,9 +394,9 @@ public class Descriptor {
     this.writeMethod = null;
     this.foryField = null;
     this.hasForyField = hasForyField;
-    if (hasForyField && foryFieldId < -1) {
+    if (hasForyField && (foryFieldId < -1 || foryFieldId > ForyField.MAX_ID)) {
       throw new IllegalArgumentException(
-          "@ForyField id must be -1 (no tag ID) or a non-negative tag ID for field " + name);
+          "@ForyField id must be -1 (no tag ID) or in [0, 2^29) for field " + name);
     }
     this.foryFieldId = hasForyField ? foryFieldId : -1;
     this.dynamic = hasForyField ? Objects.requireNonNull(dynamic) : ForyField.Dynamic.AUTO;
@@ -477,9 +477,9 @@ public class Descriptor {
             ? builder.foryField
             : (this.field == null ? null : this.field.getAnnotation(ForyField.class));
     if (builder.hasForyField) {
-      if (builder.foryFieldId < -1) {
+      if (builder.foryFieldId < -1 || builder.foryFieldId > ForyField.MAX_ID) {
         throw new IllegalArgumentException(
-            "@ForyField id must be -1 (no tag ID) or a non-negative tag ID for field " + name);
+            "@ForyField id must be -1 (no tag ID) or in [0, 2^29) for field " + name);
       }
       this.hasForyField = true;
       this.foryFieldId = builder.foryFieldId;
@@ -511,9 +511,9 @@ public class Descriptor {
       return -1;
     }
     int id = foryField.id();
-    if (id < -1) {
+    if (id < -1 || id > ForyField.MAX_ID) {
       throw new IllegalArgumentException(
-          "@ForyField id must be -1 (no tag ID) or a non-negative tag ID for field " + fieldName);
+          "@ForyField id must be -1 (no tag ID) or in [0, 2^29) for field " + fieldName);
     }
     return id;
   }

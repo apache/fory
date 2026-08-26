@@ -43,4 +43,12 @@ internal data class JsonModel(
   val retainedTypes: Set<String>,
   val codecTypes: Set<String>,
   val containerTypes: Set<String>,
+  val aggregating: Boolean = false,
+)
+
+internal data class JavaSubtypeGeneration(
+  val packageName: String,
+  val simpleName: String,
+  val mixinSourceName: String,
+  val originatingFiles: List<KSFile>,
 )

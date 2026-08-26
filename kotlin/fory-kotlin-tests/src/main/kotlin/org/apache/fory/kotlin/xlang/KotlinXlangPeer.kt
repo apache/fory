@@ -66,6 +66,9 @@ constructor(
 )
 
 @ForyStruct
+public data class KotlinMaximumFieldTag constructor(@ForyField(id = 536_870_911) val value: Int)
+
+@ForyStruct
 internal data class KotlinInternalUser
 constructor(
   @ForyField(id = 1) val id: UInt,
@@ -305,6 +308,7 @@ private fun staticSerializerRoundTrip(dataFile: String) {
 
   val fory = newFory()
   fory.register<KotlinUser>("kotlin.KotlinUser")
+  fory.register<KotlinMaximumFieldTag>("kotlin.KotlinMaximumFieldTag")
   fory.register<KotlinInternalUser>("kotlin.KotlinInternalUser")
   fory.register<KotlinConcreteCollections>("kotlin.KotlinConcreteCollections")
   fory.register<KotlinUnsignedCollections>("kotlin.KotlinUnsignedCollections")
@@ -332,6 +336,14 @@ private fun staticSerializerRoundTrip(dataFile: String) {
   check(descriptors[0].foryFieldId == 1)
   check(descriptors[0].typeRef.typeExtMeta.typeId() == Types.UINT32)
   check(descriptors[2].typeRef.typeExtMeta.typeId() == Types.VARINT64)
+
+  val maximumTag = KotlinMaximumFieldTag(42)
+  check(
+    fory.deserialize(fory.serialize(maximumTag), KotlinMaximumFieldTag::class.java) == maximumTag
+  )
+  val maximumTagSerializer = fory.getSerializer(KotlinMaximumFieldTag::class.java)
+  check(maximumTagSerializer is StaticGeneratedStructSerializer<*>)
+  check(maximumTagSerializer.generatedDescriptors.single().foryFieldId == 536_870_911)
 
   val internalUser = KotlinInternalUser(id = UInt.MAX_VALUE, name = "internal-static")
   check(

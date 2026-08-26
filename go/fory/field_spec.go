@@ -38,7 +38,7 @@ const (
 type FieldSpec struct {
 	Name        string
 	GoType      reflect.Type
-	TagID       int
+	TagID       int32
 	Ignore      bool
 	HasTag      bool
 	RawTag      string
@@ -392,7 +392,7 @@ func (t *TypeSpec) goTypeForResolver(resolver *TypeResolver) (reflect.Type, erro
 type parsedFieldTag struct {
 	hasTag      bool
 	rawTag      string
-	tagID       int
+	tagID       int32
 	idSet       bool
 	nullable    bool
 	nullableSet bool
@@ -489,15 +489,18 @@ func parseFieldTag(field reflect.StructField) (parsedFieldTag, error) {
 			if !hasValue {
 				return parsedFieldTag{}, InvalidTagErrorf("invalid fory tag on field %s: id requires a value", field.Name)
 			}
-			id, err := strconv.Atoi(value)
+			id, err := strconv.ParseInt(value, 10, 32)
 			if err != nil {
 				return parsedFieldTag{}, InvalidTagErrorf("invalid fory tag id=%q on field %s", value, field.Name)
 			}
 			if id < 0 {
 				return parsedFieldTag{}, InvalidTagErrorf("invalid fory tag id=%d on field %s: id must be non-negative", id, field.Name)
 			}
+			if id > int64(maxTypeDefTagID) {
+				return parsedFieldTag{}, InvalidTagErrorf("invalid fory tag id=%d on field %s: id exceeds TypeDef range", id, field.Name)
+			}
 			parsed.idSet = true
-			parsed.tagID = id
+			parsed.tagID = int32(id)
 		case "nullable":
 			var boolVal bool
 			if hasValue {

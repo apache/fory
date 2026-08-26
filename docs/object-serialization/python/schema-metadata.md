@@ -72,7 +72,7 @@ class User:
 
 | Parameter         | Type     | Default   | Description                          |
 | ----------------- | -------- | --------- | ------------------------------------ |
-| `id`              | `int`    | omitted   | Non-negative field tag ID            |
+| `id`              | `int`    | omitted   | Field tag ID in `0 <= id < 2^29`     |
 | `nullable`        | `bool`   | `False`   | Whether the field can be null        |
 | `ref`             | `bool`   | `False`   | Enable reference tracking            |
 | `ignore`          | `bool`   | `False`   | Exclude field from serialization     |
@@ -102,9 +102,10 @@ class User:
 
 **Notes**:
 
-- IDs must be unique within a class
-- IDs must be >= 0
+- IDs must be unique within the struct schema
+- IDs must satisfy `0 <= id < 2^29` (`0` through `536870911`)
 - If not specified, field name is used in metadata (larger overhead)
+- Once assigned, keep an ID stable and do not reuse it for a different field
 
 **Without field IDs** (field names used in metadata):
 

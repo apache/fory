@@ -271,7 +271,7 @@ func GroupFields(fields []FieldInfo) FieldGroup {
 	return g
 }
 
-func getFieldTagID(field *FieldInfo) int {
+func getFieldTagID(field *FieldInfo) int32 {
 	if field.Meta != nil {
 		if field.Meta.Spec != nil && field.Meta.Spec.TagID >= 0 {
 			return field.Meta.Spec.TagID
@@ -570,7 +570,7 @@ func isStructFieldType(spec *TypeSpec) bool {
 // FieldFingerprintInfo contains the information needed to compute a field's fingerprint.
 type FieldFingerprintInfo struct {
 	// FieldID is the tag ID if configured (>= 0), or -1 to use field name
-	FieldID int
+	FieldID int32
 	// FieldName is the snake_case field name (used when FieldID < 0)
 	FieldName string
 	// TypeSpec is the effective nested field type specification when available.
@@ -610,7 +610,7 @@ func ComputeStructFingerprint(fields []FieldFingerprintInfo) string {
 	type fieldWithKey struct {
 		field      FieldFingerprintInfo
 		sortKey    string
-		fieldID    int
+		fieldID    int32
 		hasFieldID bool
 	}
 	fieldsWithKeys := make([]fieldWithKey, 0, len(fields))
@@ -729,13 +729,13 @@ type triple struct {
 	serializer Serializer
 	name       string
 	nullable   bool
-	tagID      int // -1 = use field name, >=0 = use tag ID for sorting
+	tagID      int32 // -1 = use field name, >=0 = use tag ID for sorting
 }
 
 // getSortKeyText returns the text key used when fields do not both use numeric tag IDs.
 func (t triple) getSortKeyText() string {
 	if t.tagID >= 0 {
-		return strconv.Itoa(t.tagID)
+		return strconv.FormatInt(int64(t.tagID), 10)
 	}
 	return SnakeCase(t.name)
 }
@@ -761,7 +761,7 @@ func lessTripleSortKey(a, b triple) bool {
 func getFieldSortKeyText(f *FieldInfo) string {
 	tagID := getFieldTagID(f)
 	if tagID >= 0 {
-		return strconv.Itoa(tagID)
+		return strconv.FormatInt(int64(tagID), 10)
 	}
 	return f.Meta.Name
 }
@@ -796,7 +796,7 @@ func sortFields(
 	serializers []Serializer,
 	typeIds []TypeId,
 	nullables []bool,
-	tagIDs []int,
+	tagIDs []int32,
 ) ([]Serializer, []string) {
 	var (
 		typeTriples []triple

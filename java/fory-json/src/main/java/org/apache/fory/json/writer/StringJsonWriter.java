@@ -19,6 +19,10 @@
 
 package org.apache.fory.json.writer;
 
+import static org.apache.fory.json.writer.JsonAsciiWordPredicates.isJsonAsciiInt;
+import static org.apache.fory.json.writer.JsonAsciiWordPredicates.isJsonAsciiWord;
+import static org.apache.fory.json.writer.JsonAsciiWordPredicates.isJsonAsciiWords;
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -72,18 +76,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   private static final byte[] NEGATIVE_INFINITY_BYTES =
       "\"-Infinity\"".getBytes(StandardCharsets.ISO_8859_1);
   private static final long DECIMAL_8 = 100_000_000L;
-  private static final long HIGH_BITS = 0x8080808080808080L;
-  private static final int INT_HIGH_BITS = 0x80808080;
-  private static final long ASCII_CONTROL_OFFSET = 0x6060606060606060L;
-  private static final int INT_ASCII_CONTROL_OFFSET = 0x60606060;
-  private static final long ASCII_GT_QUOTE_OFFSET = 0x5D5D5D5D5D5D5D5DL;
-  private static final int INT_ASCII_GT_QUOTE_OFFSET = 0x5D5D5D5D;
-  private static final long ONE_BYTES = 0x0101010101010101L;
-  private static final int INT_ONE_BYTES = 0x01010101;
-  private static final long QUOTE_BYTES_COMPLEMENT = ~0x2222222222222222L;
-  private static final int INT_QUOTE_BYTES_COMPLEMENT = ~0x22222222;
-  private static final long BACKSLASH_BYTES_COMPLEMENT = ~0x5C5C5C5C5C5C5C5CL;
-  private static final int INT_BACKSLASH_BYTES_COMPLEMENT = ~0x5C5C5C5C;
   private static final int[] DIGIT_TRIPLES = new int[1000];
   private static final int[] DIGIT_QUADS = new int[10000];
   private static final long[] UTF16_DIGIT_QUADS = new long[10000];
@@ -2473,60 +2465,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   private static boolean isJsonLatin1Byte(byte value) {
     int ch = value & 0xff;
     return ch > 0x1F && ch != '"' && ch != '\\';
-  }
-
-  // Keep the exact uncommon fallback outside these per-word predicates. Folding it back in makes
-  // the standalone predicates too large for C2 to inline into the compact-string writers.
-  private static boolean isJsonAsciiWord(long word) {
-    long notBackslash = ((word ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS;
-    if ((notBackslash & (word + ASCII_GT_QUOTE_OFFSET)) == HIGH_BITS) {
-      return true;
-    }
-    return isJsonAsciiWordFallback(word);
-  }
-
-  private static boolean isJsonAsciiWordFallback(long word) {
-    long notBackslash = ((word ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS;
-    return (((word + ASCII_CONTROL_OFFSET) & ~word) & HIGH_BITS) == HIGH_BITS
-        && (((word ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS) == HIGH_BITS
-        && notBackslash == HIGH_BITS;
-  }
-
-  // Aggregate every exact rejection mask before branching. Splitting this back into per-word
-  // calls adds one common-path branch for each eight bytes written.
-  private static boolean isJsonAsciiWords(long word0, long word1) {
-    long notBackslash =
-        ((word0 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
-            & ((word1 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
-            & HIGH_BITS;
-    if ((notBackslash & (word0 + ASCII_GT_QUOTE_OFFSET) & (word1 + ASCII_GT_QUOTE_OFFSET))
-        == HIGH_BITS) {
-      return true;
-    }
-    return isJsonAsciiWordsFallback(word0, word1, notBackslash);
-  }
-
-  private static boolean isJsonAsciiWordsFallback(long word0, long word1, long notBackslash) {
-    return ((word0 + ASCII_CONTROL_OFFSET)
-            & (word1 + ASCII_CONTROL_OFFSET)
-            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & notBackslash)
-        == HIGH_BITS;
-  }
-
-  private static boolean isJsonAsciiInt(int word) {
-    int notBackslash = ((word ^ INT_BACKSLASH_BYTES_COMPLEMENT) + INT_ONE_BYTES) & INT_HIGH_BITS;
-    if ((notBackslash & (word + INT_ASCII_GT_QUOTE_OFFSET)) == INT_HIGH_BITS) {
-      return true;
-    }
-    return isJsonAsciiIntFallback(word, notBackslash);
-  }
-
-  private static boolean isJsonAsciiIntFallback(int word, int notBackslash) {
-    return (((word + INT_ASCII_CONTROL_OFFSET) & ~word) & INT_HIGH_BITS) == INT_HIGH_BITS
-        && (((word ^ INT_QUOTE_BYTES_COMPLEMENT) + INT_ONE_BYTES) & INT_HIGH_BITS) == INT_HIGH_BITS
-        && notBackslash == INT_HIGH_BITS;
   }
 
   private void writeIntNoEnsure(int value) {

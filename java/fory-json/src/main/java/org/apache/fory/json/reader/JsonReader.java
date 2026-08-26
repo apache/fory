@@ -60,6 +60,10 @@ import org.apache.fory.memory.NativeByteOrder;
  * {@link BigInteger} or {@link BigDecimal}; raw number text, primitive scans, and skipped values do
  * not inherit that resource policy.
  *
+ * <p>Declared boolean and numeric scalars accept their native JSON token or the same token text in
+ * quotes without a configuration gate. Quoted common paths consume only the quotes around the
+ * existing token parser, so they retain its allocation and validation behavior.
+ *
  * <p>Readers are mutable and confined to one borrowed {@code ForyJson} state. Concrete reset
  * methods borrow an input and reset the cursor, depth, and graph-memory budget; {@code clear()}
  * detaches that input and clears the root state before the state returns to the pool. A failed
@@ -68,6 +72,7 @@ import org.apache.fory.memory.NativeByteOrder;
  */
 public abstract class JsonReader {
   private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
+  private static final int INITIAL_BIG_DECIMAL_BUFFER_SIZE = 64;
   private static final byte[] EMPTY_BYTES = new byte[0];
   static final int MAX_BIG_DECIMAL_SCALE = 10_000;
   private static final int COMPACT_DECIMAL_MAX_SCALE = 18;
@@ -263,9 +268,10 @@ public abstract class JsonReader {
 
   private final QuotedTextView quotedTextView = new QuotedTextView(this);
   private final Object[] creatorArguments = new Object[1];
-  // Primitive floating fallback reuses this exact-boundary workspace. Reader construction is the
-  // cold owner so the first precision-sensitive scalar cannot allocate on the numeric hot path.
-  private final byte[] decimalBoundaryDigits = new byte[DECIMAL_BOUNDARY_DIGITS];
+  // Keep all reusable numeric arrays behind the original single workspace reference: adding an
+  // inherited reference here shifts concrete readers' representation fields and measurably harms
+  // their native-token hot paths. Reader construction remains the cold allocation owner.
+  private final NumericWorkspace numericWorkspace = new NumericWorkspace();
 
   protected JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
     this.config = config;
@@ -689,6 +695,13 @@ public abstract class JsonReader {
 
   public final boolean readBoolean() {
     skipWhitespace();
+    if (position < length() && charAt(position) == '"') {
+      return readQuotedBoolean();
+    }
+    return readBooleanToken();
+  }
+
+  private boolean readBooleanToken() {
     if (startsWith("true")) {
       position += 4;
       return true;
@@ -697,6 +710,13 @@ public abstract class JsonReader {
       return false;
     }
     throw error("Expected boolean");
+  }
+
+  private boolean readQuotedBoolean() {
+    beginQuotedScalar();
+    boolean value = readBooleanToken();
+    finishQuotedScalar();
+    return value;
   }
 
   public final String readNumberAsString() {
@@ -709,6 +729,12 @@ public abstract class JsonReader {
   }
 
   private String readNumberToken() {
+    int start = position;
+    scanNumberToken();
+    return slice(start, position);
+  }
+
+  private void scanNumberToken() {
     int start = position;
     if (position < length() && charAt(position) == '-') {
       position++;
@@ -728,11 +754,17 @@ public abstract class JsonReader {
     if (start == position) {
       throw error("Expected number");
     }
-    return slice(start, position);
   }
 
   public final int readInt() {
     skipWhitespace();
+    if (position < length() && charAt(position) == '"') {
+      return readQuotedInt();
+    }
+    return readIntToken();
+  }
+
+  private int readIntToken() {
     int start = position;
     int result = 0;
     int limit = -Integer.MAX_VALUE;
@@ -779,8 +811,22 @@ public abstract class JsonReader {
     return negative ? result : -result;
   }
 
+  private int readQuotedInt() {
+    beginQuotedScalar();
+    int value = readIntToken();
+    finishQuotedScalar();
+    return value;
+  }
+
   public final long readLong() {
     skipWhitespace();
+    if (position < length() && charAt(position) == '"') {
+      return readQuotedLong();
+    }
+    return readLongToken();
+  }
+
+  private long readLongToken() {
     int start = position;
     long result = 0;
     long limit = -Long.MAX_VALUE;
@@ -825,6 +871,13 @@ public abstract class JsonReader {
     }
     rejectFractionOrExponent();
     return negative ? result : -result;
+  }
+
+  private long readQuotedLong() {
+    beginQuotedScalar();
+    long value = readLongToken();
+    finishQuotedScalar();
+    return value;
   }
 
   /** Reads one canonical unsigned 32-bit JSON integer and returns its raw bits. */
@@ -881,13 +934,71 @@ public abstract class JsonReader {
 
   public BigInteger readBigInteger() {
     skipWhitespace();
-    int mark = position;
-    try {
-      return BigInteger.valueOf(readLong());
-    } catch (RuntimeException e) {
-      position = mark;
-      return parseBigInteger(readNumberAsString());
+    if (position < length() && charAt(position) == '"') {
+      return readQuotedBigInteger();
     }
+    return readBigIntegerToken();
+  }
+
+  private BigInteger readBigIntegerToken() {
+    int start = position;
+    long result = 0;
+    long limit = -Long.MAX_VALUE;
+    boolean negative = false;
+    if (position < length() && charAt(position) == '-') {
+      negative = true;
+      limit = Long.MIN_VALUE;
+      position++;
+    }
+    if (position >= length()) {
+      throw error("Expected digit");
+    }
+    char ch = charAt(position);
+    if (ch == '0') {
+      position++;
+      rejectLeadingDigit();
+      rejectFractionOrExponent();
+      return BigInteger.ZERO;
+    }
+    if (ch < '1' || ch > '9') {
+      throw error("Expected digit");
+    }
+    long multmin = limit / 10;
+    boolean overflow = false;
+    while (position < length()) {
+      ch = charAt(position);
+      if (ch < '0' || ch > '9') {
+        break;
+      }
+      if (!overflow) {
+        int digit = ch - '0';
+        if (result < multmin) {
+          overflow = true;
+        } else {
+          result *= 10;
+          if (result < limit + digit) {
+            overflow = true;
+          } else {
+            result -= digit;
+          }
+        }
+      }
+      position++;
+    }
+    rejectFractionOrExponent();
+    if (!overflow) {
+      return BigInteger.valueOf(negative ? result : -result);
+    }
+    // Overflow is normal for this arbitrary-precision target. Keeping it out of exception control
+    // flow avoids a transient allocation whose captured stack would differ on the quoted path.
+    return parseBigInteger(slice(start, position));
+  }
+
+  private BigInteger readQuotedBigInteger() {
+    beginQuotedScalar();
+    BigInteger value = readBigIntegerToken();
+    finishQuotedScalar();
+    return value;
   }
 
   public char readChar() {
@@ -975,7 +1086,47 @@ public abstract class JsonReader {
 
   protected final BigDecimal readBigDecimalFallback(int start) {
     position = start;
-    return parseBigDecimal(readNumberAsString());
+    scanNumberToken();
+    int numberLength = position - start;
+    if (numberLength > MAX_BIG_NUMBER_LENGTH) {
+      throwBigNumberLengthExceeded(position);
+    }
+    char[] chars = numericWorkspace.bigDecimalBuffer;
+    if (chars.length < numberLength) {
+      chars = new char[Math.max(numberLength, chars.length << 1)];
+      numericWorkspace.bigDecimalBuffer = chars;
+    }
+    for (int i = 0; i < numberLength; i++) {
+      chars[i] = charAt(start + i);
+    }
+    BigDecimal value;
+    try {
+      value = new BigDecimal(chars, 0, numberLength);
+    } catch (NumberFormatException e) {
+      throw new ForyJsonException("Invalid JSON big decimal at JSON position " + position, e);
+    }
+    int scale = value.scale();
+    if (scale > MAX_BIG_DECIMAL_SCALE || scale < -MAX_BIG_DECIMAL_SCALE) {
+      throwBigDecimalScaleExceeded();
+    }
+    return value;
+  }
+
+  protected final void beginQuotedScalar() {
+    position++;
+    // Concrete token parsers also dispatch an opening quote. Reject another raw quote at this
+    // boundary so malformed nested quoting cannot recursively re-enter the quoted cold path.
+    if (position < length() && charAt(position) == '"') {
+      throw error("Expected quoted scalar value");
+    }
+  }
+
+  protected final void finishQuotedScalar() {
+    if (position < length() && charAt(position) == '"') {
+      position++;
+      return;
+    }
+    throw error("Expected closing quote");
   }
 
   protected final BigDecimal readBigDecimalExponentValue(
@@ -1392,23 +1543,6 @@ public abstract class JsonReader {
     }
   }
 
-  final BigDecimal parseBigDecimal(String number) {
-    if (number.length() > MAX_BIG_NUMBER_LENGTH) {
-      throwBigNumberLengthExceeded(position);
-    }
-    BigDecimal value;
-    try {
-      value = new BigDecimal(number);
-    } catch (NumberFormatException e) {
-      throw new ForyJsonException("Invalid JSON big decimal at JSON position " + position, e);
-    }
-    int scale = value.scale();
-    if (scale > MAX_BIG_DECIMAL_SCALE || scale < -MAX_BIG_DECIMAL_SCALE) {
-      throwBigDecimalScaleExceeded();
-    }
-    return value;
-  }
-
   final void throwBigDecimalScaleExceeded() {
     throw error("JSON big decimal scale " + MAX_BIG_DECIMAL_SCALE + " exceeded");
   }
@@ -1627,9 +1761,6 @@ public abstract class JsonReader {
 
   protected final double readDoubleFallbackValue(int start) {
     position = start;
-    if (start < length() && charAt(start) == '"') {
-      return readNonFiniteDoubleLiteral();
-    }
     return readDoubleNumberFallback(start);
   }
 
@@ -1806,7 +1937,7 @@ public abstract class JsonReader {
 
   private double correctDoubleToken(boolean negative, double estimate, int start, int end) {
     long bits = Double.doubleToRawLongBits(estimate) & ~DOUBLE_SIGN_BIT;
-    byte[] boundary = decimalBoundaryDigits;
+    byte[] boundary = numericWorkspace.decimalBoundaryDigits;
     // Eighteen retained digits, one correctly rounded multiply/divide, and Math.pow's one-ULP
     // contract keep the estimate within this local window. The exact search is a correctness-only
     // fallback and is not expected on valid JDK implementations.
@@ -1940,9 +2071,6 @@ public abstract class JsonReader {
 
   protected final float readFloatFallbackValue(int start) {
     position = start;
-    if (start < length() && charAt(start) == '"') {
-      return readNonFiniteFloatLiteral();
-    }
     return readFloatNumberFallback(start);
   }
 
@@ -2110,7 +2238,7 @@ public abstract class JsonReader {
   private float correctFloatToken(boolean negative, float estimate, int start, int end) {
     int bits = Float.floatToRawIntBits(estimate);
     bits &= ~FLOAT_SIGN_BIT;
-    byte[] boundary = decimalBoundaryDigits;
+    byte[] boundary = numericWorkspace.decimalBoundaryDigits;
     for (int i = 0; i < 4; i++) {
       if (bits == FLOAT_INFINITY_BITS) {
         int packed = buildFloatBoundary(FLOAT_MAX_FINITE_BITS, FLOAT_INFINITY_BITS, boundary);
@@ -2481,9 +2609,7 @@ public abstract class JsonReader {
       position += 11;
       return Double.NEGATIVE_INFINITY;
     }
-    // Numeric strings are intentionally not coerced; only writer-emitted non-finite tokens
-    // are accepted here.
-    throw error("Expected finite JSON number or non-finite double string");
+    throw error("Expected quoted double");
   }
 
   protected final float readNonFiniteFloatLiteral() {
@@ -2499,9 +2625,13 @@ public abstract class JsonReader {
       position += 11;
       return Float.NEGATIVE_INFINITY;
     }
-    // Numeric strings are intentionally not coerced; only writer-emitted non-finite tokens
-    // are accepted here.
-    throw error("Expected finite JSON number or non-finite float string");
+    throw error("Expected quoted float");
+  }
+
+  protected final boolean isQuotedNonFiniteNumber() {
+    return matchesQuotedAscii("NaN")
+        || matchesQuotedAscii("Infinity")
+        || matchesQuotedAscii("-Infinity");
   }
 
   private boolean matchesQuotedAscii(String value) {
@@ -3101,6 +3231,11 @@ public abstract class JsonReader {
   }
 
   protected abstract String slice(int start, int end);
+
+  private static final class NumericWorkspace {
+    private final byte[] decimalBoundaryDigits = new byte[DECIMAL_BOUNDARY_DIGITS];
+    private char[] bigDecimalBuffer = new char[INITIAL_BIG_DECIMAL_BUFFER_SIZE];
+  }
 
   private static final class QuotedTextView implements CharSequence {
     private final JsonReader reader;

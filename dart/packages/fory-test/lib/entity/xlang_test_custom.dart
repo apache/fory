@@ -107,7 +107,7 @@ _refOverrideContainerForyFieldInfo = <GeneratedFieldInfo>[
   GeneratedFieldInfo(
     name: 'listField',
     identifier: 'list_field',
-    id: null,
+    id: -1,
     fieldType: GeneratedFieldType(
       type: List,
       typeId: TypeIds.list,
@@ -120,7 +120,7 @@ _refOverrideContainerForyFieldInfo = <GeneratedFieldInfo>[
   GeneratedFieldInfo(
     name: 'mapField',
     identifier: 'map_field',
-    id: null,
+    id: -1,
     fieldType: GeneratedFieldType(
       type: Map,
       typeId: TypeIds.map,
@@ -143,7 +143,7 @@ _refOverrideContainerForyFieldInfo = <GeneratedFieldInfo>[
   GeneratedFieldInfo(
     name: 'setField',
     identifier: 'set_field',
-    id: null,
+    id: -1,
     fieldType: GeneratedFieldType(
       type: Set,
       typeId: TypeIds.set,

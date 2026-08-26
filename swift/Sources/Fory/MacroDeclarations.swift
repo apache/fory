@@ -248,7 +248,7 @@ public struct ForyFieldType: Sendable {
 /// Configures a generated field, selects its exact serializer, or declares
 /// budget-only storage for an external structural serializer.
 public macro ForyField(
-    id: Int? = nil,
+    id: Int32 = -1,
     ignore: Bool = false,
     encoding: ForyFieldEncoding? = nil,
     type: ForyFieldType? = nil,

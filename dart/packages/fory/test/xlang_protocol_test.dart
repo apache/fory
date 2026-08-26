@@ -151,7 +151,7 @@ const _lateExtFieldType = GeneratedFieldType(
 GeneratedFieldInfo _generatedField(String name) => GeneratedFieldInfo(
   name: name,
   identifier: name,
-  id: null,
+  id: -1,
   fieldType: _intFieldType,
 );
 
@@ -165,7 +165,7 @@ GeneratedFieldInfo _taggedField(int id) => GeneratedFieldInfo(
 GeneratedFieldInfo _generatedMapField(String name) => GeneratedFieldInfo(
   name: name,
   identifier: name,
-  id: null,
+  id: -1,
   fieldType: _mapFieldType,
 );
 
@@ -184,7 +184,7 @@ GeneratedFieldInfo _generatedNestedListField(String name, int depth) {
   return GeneratedFieldInfo(
     name: name,
     identifier: name,
-    id: null,
+    id: -1,
     fieldType: fieldType,
   );
 }
@@ -218,7 +218,7 @@ void _rememberLateHolder() {
     const GeneratedFieldInfo(
       name: 'value',
       identifier: 'value',
-      id: null,
+      id: -1,
       fieldType: _lateExtFieldType,
     ),
   ]);
@@ -567,6 +567,14 @@ Uint8List _duplicateNamedTypeDef(Uint8List validBytes) {
     validBytes,
     (body) => _replaceUniqueBytes(body, second.bytes, first.bytes),
   );
+}
+
+List<int> _taggedInt32FieldBytes(int id) {
+  final buffer = Buffer();
+  buffer.writeByte((3 << 6) | (typeDefBigFieldNameThreshold << 2));
+  buffer.writeVarUint32Small7(id - typeDefBigFieldNameThreshold);
+  buffer.writeByte(TypeIds.int32);
+  return buffer.toBytes();
 }
 
 void main() {
@@ -1271,6 +1279,37 @@ void main() {
         throwsA(isA<StateError>()),
       );
       _readTypeMeta(reader, valid);
+    });
+
+    test('rejects field ids outside domain', () {
+      const name = 'example.FieldIdDomain';
+      const maxFieldId = (1 << 29) - 1;
+      final reader = TypeResolver(Config());
+      _rememberSchema(_SchemaLocal, <GeneratedFieldInfo>[
+        _taggedField(maxFieldId),
+      ]);
+      reader.registerGenerated(
+        _SchemaLocal,
+        namespace: 'example',
+        typeName: 'FieldIdDomain',
+      );
+      final valid = _typeMetaBytes(_SchemaRemoteA, name, <GeneratedFieldInfo>[
+        _taggedField(maxFieldId),
+      ]);
+      _readTypeMeta(reader, valid);
+
+      final malformed = _rewriteTypeDefBody(
+        valid,
+        (body) => _replaceUniqueBytes(
+          body,
+          _taggedInt32FieldBytes(maxFieldId),
+          _taggedInt32FieldBytes(maxFieldId + 1),
+        ),
+      );
+      expect(
+        () => _readTypeMeta(reader, malformed),
+        throwsA(isA<StateError>()),
+      );
     });
 
     test('rejects duplicate remote field names before caching', () {

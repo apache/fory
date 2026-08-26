@@ -21,7 +21,8 @@ license: |
 
 Fory Swift provides xlang Object Serialization and compiler-generated models.
 It is distributed through Swift Package Manager, uses Swift tools 6.0, and
-targets macOS 13 or later and iOS 16 or later.
+targets macOS 13 or later, iOS and tvOS 16 or later, watchOS 9 or later, and
+visionOS 1 or later. Linux requires a Swift 6.0 or later toolchain.
 
 ## Verify the Toolchain
 

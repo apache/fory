@@ -60,6 +60,7 @@ import javax.tools.StandardLocation;
 
 public final class ForyStructProcessor extends AbstractProcessor {
   private static final int REFERENCE_BYTES = 4;
+  private static final int MAX_FORY_FIELD_ID = (1 << 29) - 1;
   // Source classes are not loadable as Class<?> during annotation processing; generated struct
   // estimates add compile-time field widths to the shared JVM object-base component.
   private static final int JVM_OBJECT_BASE_BYTES = REFERENCE_BYTES + REFERENCE_BYTES;
@@ -79,6 +80,9 @@ public final class ForyStructProcessor extends AbstractProcessor {
   private static final String JSON_TYPE = "org.apache.fory.json.annotation.JsonType";
   private static final String JSON_MIXIN = "org.apache.fory.json.annotation.JsonMixin";
   private static final String JSON_MIXIN_REMOVE = "org.apache.fory.json.annotation.JsonMixinRemove";
+  private static final String JSON_SUB_TYPES = "org.apache.fory.json.annotation.JsonSubTypes";
+  private static final String JSON_SUBTYPE_GENERATION =
+      "org.apache.fory.json.codec.GeneratedJsonSubtypeTable.Generation";
   private static final String IGNORE = annotationClass("Ignore");
   private static final String INT32_TYPE = annotationClass("Int32Type");
   private static final String INT64_TYPE = annotationClass("Int64Type");
@@ -108,6 +112,8 @@ public final class ForyStructProcessor extends AbstractProcessor {
     annotations.add(JSON_TYPE);
     annotations.add(JSON_MIXIN);
     annotations.add(JSON_MIXIN_REMOVE);
+    annotations.add(JSON_SUB_TYPES);
+    annotations.add(JSON_SUBTYPE_GENERATION);
     return Collections.unmodifiableSet(annotations);
   }
 
@@ -316,6 +322,10 @@ public final class ForyStructProcessor extends AbstractProcessor {
       String binaryName, Map<Integer, VariableElement> fieldIds, VariableElement field) {
     ForyFieldMeta foryField = foryField(field);
     if (foryField.hasForyField && foryField.id >= 0) {
+      if (foryField.id > MAX_FORY_FIELD_ID) {
+        throw new InvalidStructException(
+            "@ForyField id must be smaller than 2^29 in " + binaryName, field);
+      }
       VariableElement previousField = fieldIds.put(foryField.id, field);
       if (previousField != null) {
         throw new InvalidStructException(
@@ -1186,9 +1196,9 @@ public final class ForyStructProcessor extends AbstractProcessor {
         dynamic = String.valueOf(value);
       }
     }
-    if (id < -1) {
+    if (id < -1 || id > MAX_FORY_FIELD_ID) {
       throw new InvalidStructException(
-          "@ForyField id must be -1 (no tag ID) or a non-negative tag ID", field);
+          "@ForyField id must be -1 (no tag ID) or in [0, 2^29)", field);
     }
     return new ForyFieldMeta(true, id, dynamic);
   }

@@ -126,6 +126,16 @@
               </execution>
             </executions>
           </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-assembly-plugin</artifactId>
+            <configuration>
+              <!-- Keep java/LICENSE when the source-release descriptor adds generated legal files. -->
+              <archiverConfig>
+                <duplicateBehavior>skip</duplicateBehavior>
+              </archiverConfig>
+            </configuration>
+          </plugin>
         </plugins>
       </build>
     </profile>
@@ -259,14 +269,6 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-gpg-plugin</artifactId>
           <version>1.6</version>
-          <executions>
-            <execution>
-              <id>sign-artifacts</id>
-              <goals>
-                <goal>sign</goal>
-              </goals>
-            </execution>
-          </executions>
         </plugin>
       </plugins>
     </pluginManagement>

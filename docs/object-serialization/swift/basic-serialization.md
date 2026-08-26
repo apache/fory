@@ -139,6 +139,10 @@ directly by a type, retroactive conformances, and separate custom serializers.
 - `String`
 - `Data`
 
+`Int` and `UInt` keep 64-bit wire encodings on every platform. When a decoded
+value is outside the native range on a 32-bit target, deserialization throws
+`ForyError.invalidData`.
+
 ### Date and time
 
 - `Date`

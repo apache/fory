@@ -153,8 +153,7 @@ class TypeDefEncoder {
                             + " in class "
                             + type.getName());
                   }
-                  return new FieldInfo(
-                      type.getName(), descriptor.getName(), fieldType, (short) tagId);
+                  return new FieldInfo(type.getName(), descriptor.getName(), fieldType, tagId);
                 }
                 // Negative is the annotation default sentinel for no configured tag ID; fall
                 // through to create regular FieldInfo. User-facing tag IDs must be non-negative.

@@ -206,7 +206,8 @@ f2 := fory.New(fory.WithTrackRef(true))  // Must match!
 
 **Common causes**:
 
-1. **Invalid tag ID**: ID must be non-negative
+1. **Invalid tag ID**: ID must satisfy `0 <= id < 2^29` (`0` through
+   `536870911`)
 
 ```go
 // Wrong: negative ID
@@ -217,6 +218,11 @@ type Bad struct {
 // Correct
 type Good struct {
     Field int `fory:"id=0"`
+}
+
+// Wrong: ID reaches the exclusive upper bound
+type TooLarge struct {
+    Field int `fory:"id=536870912"`
 }
 ```
 
@@ -256,7 +262,7 @@ type User struct {
 }
 ```
 
-2. **Use field IDs for consistent ordering**: Field IDs (non-negative integers) act as aliases for field names, used for both sorting and field matching during deserialization:
+2. **Use field IDs for consistent ordering**: Field IDs in the protocol range act as aliases for field names, used for both sorting and field matching during deserialization:
 
 ```go
 type User struct {

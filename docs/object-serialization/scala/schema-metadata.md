@@ -38,6 +38,10 @@ final case class Person(
 ) derives ForySerializer
 ```
 
+Configured field IDs must be unique within the struct schema and satisfy
+`0 <= id < 2^29` (`0` through `536870911`). Keep assigned IDs stable and do
+not reuse them for different fields. If `id` is omitted, the field name is used.
+
 Schema `optional T` fields are represented as `Option[T]`.
 
 ## Reference Tracking

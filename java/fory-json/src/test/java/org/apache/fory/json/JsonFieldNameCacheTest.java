@@ -19,7 +19,6 @@
 
 package org.apache.fory.json;
 
-import static org.apache.fory.json.JsonTestSupport.generatedCodecIdentity;
 import static org.apache.fory.json.JsonTestSupport.generatedUtf8WriterClass;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -67,9 +66,9 @@ public class JsonFieldNameCacheTest {
             .build();
     oneEntry.toJsonBytes(new TypedFields());
     twoEntries.toJsonBytes(new TypedFields());
-    assertEquals(
-        generatedCodecIdentity(generatedUtf8WriterClass(oneEntry, TypedFields.class)),
-        generatedCodecIdentity(generatedUtf8WriterClass(twoEntries, TypedFields.class)));
+    assertSame(
+        generatedUtf8WriterClass(oneEntry, TypedFields.class),
+        generatedUtf8WriterClass(twoEntries, TypedFields.class));
   }
 
   @Test

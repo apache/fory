@@ -79,6 +79,24 @@ sealed interface InvalidPropertyShape
 
 @JvmInline value class InvalidPropertyNumber(val value: Int) : InvalidPropertyShape
 
+@JsonSubTypes(property = "kind") sealed interface InferredShape
+
+data class InferredCircle(val radius: Int) : InferredShape
+
+data object InferredMarker : InferredShape
+
+sealed interface InferredBranch : InferredShape
+
+data class InferredLeaf(val value: String) : InferredBranch
+
+open class InferredOpen(val value: Int) : InferredShape
+
+class InferredDescendant(value: Int) : InferredOpen(value)
+
+@JsonSubTypes(property = "kind") sealed interface InvalidInferredShape
+
+abstract class OpenAbstractBranch : InvalidInferredShape
+
 class KotlinSealedRuntimeTest {
   @Test
   fun propertyShape() {
@@ -161,5 +179,53 @@ class KotlinSealedRuntimeTest {
     assertFailsWith<ForyJsonException> {
       json.fromJson("{\"kind\":\"number\",\"value\":1}", jsonTypeRef<InvalidPropertyShape>())
     }
+  }
+
+  @Test
+  fun inferredClosure() {
+    forEachJsonMode { json ->
+      val type = jsonTypeRef<InferredShape>()
+      val values =
+        listOf<InferredShape>(
+          InferredCircle(3),
+          InferredMarker,
+          InferredLeaf("leaf"),
+          InferredOpen(4),
+        )
+      val names = listOf("InferredCircle", "InferredMarker", "InferredLeaf", "InferredOpen")
+      values.zip(names).forEach { (value, name) ->
+        val text = json.toJson(value, type)
+        assertEquals(true, text.contains("\"kind\":\"$name\""), text)
+        for (decoded in
+          listOf(json.fromJson(text, type), json.fromJson(text.toByteArray(), type))) {
+          assertEquals(value::class, decoded::class)
+          if (value is InferredOpen) assertEquals(value.value, (decoded as InferredOpen).value)
+          else assertEquals(value, decoded)
+        }
+      }
+      assertFailsWith<ForyJsonException> { json.toJson(InferredDescendant(5), type) }
+    }
+  }
+
+  @Test
+  fun inferredCheckerSubset() {
+    KotlinJsonTestMode.entries.forEach { mode ->
+      val json =
+        newKotlinJson(mode) {
+          withTypeChecker { name, _ -> name != InferredMarker::class.java.name }
+        }
+      val type = jsonTypeRef<InferredShape>()
+      assertFailsWith<ForyJsonException> { json.toJson(InferredMarker, type) }
+      assertEquals(
+        InferredLeaf("accepted"),
+        json.fromJson("{\"kind\":\"InferredLeaf\",\"value\":\"accepted\"}", type),
+      )
+    }
+  }
+
+  @Test
+  fun rejectsInvalidInferredHierarchy() {
+    val json = newKotlinJson(KotlinJsonTestMode.INTERPRETED)
+    assertFailsWith<ForyJsonException> { json.fromJson("{}", jsonTypeRef<InvalidInferredShape>()) }
   }
 }

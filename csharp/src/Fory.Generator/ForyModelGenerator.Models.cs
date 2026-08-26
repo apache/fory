@@ -451,7 +451,7 @@ public sealed partial class ForyModelGenerator
             string typeName,
             bool isNullable,
             bool isNullableValueType,
-            short? fieldId,
+            int fieldId,
             TypeClassification classification,
             int group,
             bool isCollection,
@@ -512,7 +512,7 @@ public sealed partial class ForyModelGenerator
         public string TypeName { get; }
         public bool IsNullable { get; }
         public bool IsNullableValueType { get; }
-        public short? FieldId { get; }
+        public int FieldId { get; }
         public TypeClassification Classification { get; }
         public int Group { get; }
         public bool IsCollection { get; }

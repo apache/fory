@@ -191,11 +191,19 @@ object ForySerializerMacros {
       val refTracking = refAnnotation(field).orElse(topLevelTypeRefTracking(sourceType))
       val constructorOwned = constructorFieldSet.contains(field)
       val privateField = field.flags.is(Flags.Private)
+      val fieldId = annotationIntArg[ForyField](field, "id").getOrElse(-1)
+      if fieldId < -1 || fieldId > ForyField.MAX_ID then {
+        val message = s"@ForyField id must be in [-1, ${ForyField.MAX_ID}], got $fieldId"
+        field.pos match {
+          case Some(position) => report.errorAndAbort(message, position)
+          case None => report.errorAndAbort(message)
+        }
+      }
       FieldMeta(
         field,
         field.name,
         index,
-        annotationIntArg[ForyField](field, "id").getOrElse(-1),
+        fieldId,
         sourceType,
         wireType,
         option,

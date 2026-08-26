@@ -62,20 +62,34 @@ class SimpleStruct {
   @MapField(key: Int32Type())
   Map<int?, double?> f1 = <int?, double?>{};
 
-  @ForyField(type: Int32Type())
+  @ForyField(id: 15, type: Int32Type())
   int f2 = 0;
   Item f3 = Item();
   String f4 = '';
   Color f5 = Color.green;
   List<String?> f6 = <String?>[];
 
-  @ForyField(type: Int32Type())
+  @ForyField(id: 65551, type: Int32Type())
   int f7 = 0;
 
   @ForyField(type: Int32Type())
   int f8 = 0;
 
-  @ForyField(type: Int32Type())
+  @ForyField(id: 536870911, type: Int32Type())
+  int last = 0;
+}
+
+@ForyStruct()
+class ExactFieldTags {
+  ExactFieldTags();
+
+  @ForyField(id: 15, type: Int32Type())
+  int first = 0;
+
+  @ForyField(id: 65551, type: Int32Type())
+  int second = 0;
+
+  @ForyField(id: 536870911, type: Int32Type())
   int last = 0;
 }
 

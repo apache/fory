@@ -229,6 +229,10 @@ The text of each license is the standard Apache 2.0 license.
     Files:
       java/fory-core/src/main/java/org/apache/fory/io/ClassLoaderObjectInputStream.java
 
+* commons-lang3 (https://github.com/apache/commons-lang)
+    Files:
+      java/fory-core/src/main/java/org/apache/fory/util/StringUtils.java
+
 
 ================================================================
 BSD-3-Clause licenses

@@ -593,6 +593,36 @@ class IdChild extends IdBase {
       );
     });
 
+    test('accepts the largest field id', () async {
+      await _expectGenerationOutput(
+        source: '''
+@ForyStruct()
+class LargestFieldId {
+  LargestFieldId();
+
+  @ForyField(id: 0x1fffffff)
+  int value = 0;
+}
+''',
+        output: anything,
+      );
+    });
+
+    test('rejects field ids outside the protocol range', () async {
+      await _expectGenerationError(
+        source: '''
+@ForyStruct()
+class OversizedFieldId {
+  OversizedFieldId();
+
+  @ForyField(id: 0x20000000)
+  int value = 0;
+}
+''',
+        message: 'Fory field id must not exceed 536870911.',
+      );
+    });
+
     test('rejects duplicate canonical names across hierarchy layers', () async {
       await _expectGenerationError(
         source: '''

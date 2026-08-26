@@ -133,9 +133,8 @@ public class DescriptorBuilder {
     this.hasForyField = foryField != null;
     if (hasForyField) {
       this.foryFieldId = foryField.id();
-      if (foryFieldId < -1) {
-        throw new IllegalArgumentException(
-            "@ForyField id must be -1 (no tag ID) or a non-negative tag ID");
+      if (foryFieldId < -1 || foryFieldId > ForyField.MAX_ID) {
+        throw new IllegalArgumentException("@ForyField id must be -1 (no tag ID) or in [0, 2^29)");
       }
       this.dynamic = foryField.dynamic();
     } else {

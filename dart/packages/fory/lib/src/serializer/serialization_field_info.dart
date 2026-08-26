@@ -42,7 +42,7 @@ final class SerializationFieldInfo {
 
   String get identifier => field.identifier;
 
-  int? get id => field.id;
+  int get id => field.id;
 
   FieldType get fieldType => field.fieldType;
 

@@ -35,7 +35,10 @@ final class ForyField {
   final bool ignore;
 
   /// The stable numeric field identity used for schema evolution.
-  final int? id;
+  ///
+  /// Values must be in the range `0 <= id < 2^29`. The default `-1` means
+  /// that the field uses its name as its wire identity.
+  final int id;
 
   /// An optional override for the field's inferred nullability.
   final bool? nullable;
@@ -52,14 +55,14 @@ final class ForyField {
   /// Creates field-level serialization metadata.
   const ForyField({
     this.ignore = false,
-    this.id,
+    this.id = -1,
     this.nullable,
     this.ref = false,
     this.dynamic,
     this.type,
   }) : assert(
          !ignore ||
-             (id == null &&
+             (id == -1 &&
                  nullable == null &&
                  !ref &&
                  dynamic == null &&
@@ -69,14 +72,14 @@ final class ForyField {
 }
 
 final class ListField {
-  final int? id;
+  final int id;
   final bool? nullable;
   final bool ref;
   final bool? dynamic;
   final TypeSpec? element;
 
   const ListField({
-    this.id,
+    this.id = -1,
     this.nullable,
     this.ref = false,
     this.dynamic,
@@ -85,14 +88,14 @@ final class ListField {
 }
 
 final class ArrayField {
-  final int? id;
+  final int id;
   final bool? nullable;
   final bool ref;
   final bool? dynamic;
   final TypeSpec element;
 
   const ArrayField({
-    this.id,
+    this.id = -1,
     this.nullable,
     this.ref = false,
     this.dynamic,
@@ -101,14 +104,14 @@ final class ArrayField {
 }
 
 final class SetField {
-  final int? id;
+  final int id;
   final bool? nullable;
   final bool ref;
   final bool? dynamic;
   final TypeSpec? element;
 
   const SetField({
-    this.id,
+    this.id = -1,
     this.nullable,
     this.ref = false,
     this.dynamic,
@@ -117,7 +120,7 @@ final class SetField {
 }
 
 final class MapField {
-  final int? id;
+  final int id;
   final bool? nullable;
   final bool ref;
   final bool? dynamic;
@@ -125,7 +128,7 @@ final class MapField {
   final TypeSpec? value;
 
   const MapField({
-    this.id,
+    this.id = -1,
     this.nullable,
     this.ref = false,
     this.dynamic,

@@ -203,11 +203,8 @@ String schemaFingerprint(TypeDef typeDef) {
     ..sort((left, right) {
       final leftId = left.id;
       final rightId = right.id;
-      if ((leftId != null && leftId < 0) || (rightId != null && rightId < 0)) {
-        throw ArgumentError('Field id must be non-negative.');
-      }
-      final leftHasId = leftId != null;
-      final rightHasId = rightId != null;
+      final leftHasId = leftId >= 0;
+      final rightHasId = rightId >= 0;
       if (leftHasId && rightHasId) {
         final result = leftId.compareTo(rightId);
         return result == 0

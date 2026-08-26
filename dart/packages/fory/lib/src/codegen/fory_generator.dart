@@ -52,6 +52,7 @@ class DebugGeneratedFieldTypeSpec {
 }
 
 final class ForyGenerator extends Generator {
+  static const int _maxFieldId = (1 << 29) - 1;
   static const int _referenceBytes = 4;
   // Conservative lower bound for a retained generated Dart struct object itself. Field reference
   // slots are added separately; this is not a Fory wire header or a Dart VM layout probe.
@@ -1850,7 +1851,7 @@ final class ForyGenerator extends Generator {
     final names = <String, _GeneratedFieldSpec>{};
     for (final field in fields) {
       final id = field.id;
-      if (id != null) {
+      if (id >= 0) {
         final previous = ids[id];
         if (previous != null) {
           throw InvalidGenerationSourceError(
@@ -1950,11 +1951,18 @@ final class ForyGenerator extends Generator {
     final idValue = reader?.peek('id');
     final nullableValue = reader?.peek('nullable');
     final dynamicValue = reader?.peek('dynamic');
-    final rawFieldId =
-        idValue == null || idValue.isNull ? null : idValue.intValue;
-    if (rawFieldId != null && rawFieldId < 0) {
+    final rawFieldId = idValue == null || idValue.isNull
+        ? -1
+        : idValue.intValue;
+    if (rawFieldId < -1) {
       throw InvalidGenerationSourceError(
         'Fory field id must be non-negative.',
+        element: annotationField,
+      );
+    }
+    if (rawFieldId > _maxFieldId) {
+      throw InvalidGenerationSourceError(
+        'Fory field id must not exceed $_maxFieldId.',
         element: annotationField,
       );
     }
@@ -1973,7 +1981,7 @@ final class ForyGenerator extends Generator {
       type: effectiveType,
       displayType: _typeCodeString(effectiveType),
       wireName:
-          rawFieldId == null ? _toSnakeCase(annotationField.displayName) : null,
+          rawFieldId < 0 ? _toSnakeCase(annotationField.displayName) : null,
       id: rawFieldId,
       writable: writable,
       codegenName: codegenName,
@@ -3216,7 +3224,7 @@ final class ForyGenerator extends Generator {
   }
 
   String _fieldInfoLiteral(_GeneratedFieldSpec field) {
-    final identifier = field.id?.toString() ?? field.wireName!;
+    final identifier = field.id >= 0 ? field.id.toString() : field.wireName!;
     return '''
   GeneratedFieldInfo(
     name: '${field.name}',
@@ -4705,16 +4713,16 @@ GeneratedFieldType(
   ) {
     final leftId = left.id;
     final rightId = right.id;
-    if (leftId != null && leftId >= 0 && rightId != null && rightId >= 0) {
+    if (leftId >= 0 && rightId >= 0) {
       final idCompare = leftId.compareTo(rightId);
       if (idCompare != 0) {
         return idCompare;
       }
     }
-    if (leftId != null && leftId >= 0 && (rightId == null || rightId < 0)) {
+    if (leftId >= 0 && rightId < 0) {
       return -1;
     }
-    if ((leftId == null || leftId < 0) && rightId != null && rightId >= 0) {
+    if (leftId < 0 && rightId >= 0) {
       return 1;
     }
     final keyCompare = left.wireName!.compareTo(right.wireName!);
@@ -5917,7 +5925,7 @@ final class _GeneratedFieldSpec {
   final DartType type;
   final String displayType;
   final String? wireName;
-  final int? id;
+  final int id;
   final bool writable;
   final String codegenName;
   final FieldElement declaration;

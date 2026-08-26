@@ -99,6 +99,19 @@ internal object KotlinJsonCodecFactory : JsonCodecFactory {
       return KotlinValueClassCodecs.create(type)
     }
     if (rawType.getAnnotation(Metadata::class.java) == null) return null
+    if (resolver.isInferredSubtype(rawType)) {
+      resolver.cachedInferredSubtypeCodec(type, this)?.let {
+        return it
+      }
+      val table = KotlinSealedSubtypes.discover(rawType)
+      return resolver.createInferredSubtypeCodec(
+        type,
+        table.classes,
+        table.names,
+        this,
+        null,
+      )
+    }
     return resolver.createObjectCodec(
       type,
       KotlinMetadataModels.objectModel(type, resolver.creatorDeclarations(rawType)),

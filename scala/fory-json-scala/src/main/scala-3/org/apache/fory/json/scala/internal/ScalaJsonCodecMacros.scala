@@ -28,18 +28,50 @@ private[scala] object ScalaJsonCodecMacros {
     import quotes.reflect.*
 
     val root = TypeRepr.of[T].dealias.typeSymbol
-    if (!root.flags.is(Flags.Enum))
-      report.errorAndAbort(s"${root.fullName} is not a Scala 3 enum")
+    val enumRoot = root.flags.is(Flags.Enum)
+    if (!enumRoot && !root.flags.is(Flags.Sealed))
+      report.errorAndAbort(s"${root.fullName} is not a Scala 3 enum or sealed type")
+    if (!enumRoot && !root.flags.is(Flags.Abstract) && !root.flags.is(Flags.Trait))
+      report.errorAndAbort(s"${root.fullName} must be an abstract sealed class or sealed trait")
 
-    val cases = root.children.filter(_.flags.is(Flags.Case))
+    // Compiler symbols are trusted static schema metadata. JSON input never participates in this
+    // traversal and later selects only a logical name from the validated generated table.
+    val cases =
+      if (enumRoot) root.children.filter(_.flags.is(Flags.Case))
+      else {
+        val result = scala.collection.mutable.ArrayBuffer.empty[Symbol]
+        val visited = scala.collection.mutable.HashSet.empty[Symbol]
+        def collect(owner: Symbol): Unit =
+          owner.children.foreach { child =>
+            if (visited.add(child)) {
+              val concrete =
+                !child.flags.is(Flags.Abstract) && !child.flags.is(Flags.Trait)
+              if (concrete) result += child
+              if (child.flags.is(Flags.Sealed)) collect(child)
+              else if (!concrete)
+                report.errorAndAbort(
+                  s"Sealed JSON hierarchy has an open abstract branch ${child.fullName}"
+                )
+            }
+          }
+        collect(root)
+        result.toList
+      }
     if (cases.isEmpty)
-      report.errorAndAbort(s"${root.fullName} has no closed enum cases")
+      report.errorAndAbort(s"${root.fullName} has no concrete closed cases")
 
     val rootClass =
       Literal(ClassOfConstant(TypeRepr.of[T].dealias)).asExprOf[Class[?]]
     val caseExpressions = cases.map { child =>
       if (child.primaryConstructor == Symbol.noSymbol) {
-        val value = Select.unique(Ref(root.companionModule), child.name).asExpr
+        val value =
+          if (enumRoot) Select.unique(Ref(root.companionModule), child.name).asExpr
+          else {
+            val module = child.companionModule
+            if (module == Symbol.noSymbol)
+              report.errorAndAbort(s"Cannot resolve Scala singleton ${child.fullName}")
+            Ref(module).asExpr
+          }
         val singleton = '{ $value.asInstanceOf[AnyRef] }
         ('{ $singleton.getClass }, singleton)
       } else {

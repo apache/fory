@@ -451,7 +451,7 @@ type FieldDef struct {
 	nullable     bool
 	trackRef     bool
 	typeSpec     *TypeSpec
-	tagID        int // -1 = use field name, >=0 = use tag ID
+	tagID        int32 // -1 = use field name, >=0 = use tag ID
 }
 
 // String returns a string representation of FieldDef for debugging
@@ -532,7 +532,7 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 		fieldNames := make([]string, len(fieldDefs))
 		typeIds := make([]TypeId, len(fieldDefs))
 		nullables := make([]bool, len(fieldDefs))
-		tagIDs := make([]int, len(fieldDefs))
+		tagIDs := make([]int32, len(fieldDefs))
 		for i, entry := range entries {
 			serializers[i] = entry.serializer
 			fieldNames[i] = entry.fieldDef.name
@@ -941,6 +941,9 @@ func writeFieldDefs(typeResolver *TypeResolver, buffer *ByteBuffer, fieldDefs []
 
 // writeFieldDef writes a single field's definition
 func writeFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer, field FieldDef) error {
+	if field.tagID < TagIDUseFieldName || field.tagID > maxTypeDefTagID {
+		return fmt.Errorf("field tag ID %d is outside the TypeDef range", field.tagID)
+	}
 	// WriteData field header
 	// 2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag
 	offset := buffer.writerIndex
@@ -960,7 +963,7 @@ func writeFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer, field FieldDe
 		header |= FieldNameEncodingTagID << 6
 		// For tag ID, we encode the tag ID value in the size bits (4 bits)
 		// If tagID < 15, encode directly in header; otherwise use varint
-		if field.tagID < FieldNameSizeThreshold {
+		if field.tagID < int32(FieldNameSizeThreshold) {
 			header |= uint8(field.tagID&0x0F) << 2
 		} else {
 			header |= 0x0F << 2 // Max value, actual tag ID will follow
@@ -968,8 +971,8 @@ func writeFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer, field FieldDe
 		buffer.PutUint8(offset, header)
 
 		// Write extra varint for large tag IDs
-		if field.tagID >= FieldNameSizeThreshold {
-			buffer.WriteVarUint32(uint32(field.tagID - FieldNameSizeThreshold))
+		if field.tagID >= int32(FieldNameSizeThreshold) {
+			buffer.WriteVarUint32(uint32(field.tagID - int32(FieldNameSizeThreshold)))
 		}
 
 		// Write field type
@@ -1258,10 +1261,20 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 
 	// ReadData fields information
 	fieldInfos := make([]FieldDef, fieldCount)
+	var fieldTagIDs map[int32]struct{}
 	for i := 0; i < fieldCount; i++ {
 		fieldInfo, err := readFieldDef(fory.typeResolver, metaBuffer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read field def %d: %w", i, err)
+		}
+		if fieldInfo.tagID >= 0 {
+			if fieldTagIDs == nil {
+				fieldTagIDs = make(map[int32]struct{})
+			}
+			if _, exists := fieldTagIDs[fieldInfo.tagID]; exists {
+				return nil, fmt.Errorf("duplicate TypeDef field tag ID %d", fieldInfo.tagID)
+			}
+			fieldTagIDs[fieldInfo.tagID] = struct{}{}
 		}
 		fieldInfos[i] = fieldInfo
 	}
@@ -1394,16 +1407,16 @@ func readFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer) (FieldDef, err
 	// Check if using TAG_ID encoding
 	if nameEncodingFlag == FieldNameEncodingTagID {
 		// Read tag ID
-		tagID := sizeBits
+		tagID := int32(sizeBits)
 		if sizeBits == 0x0F {
 			extra := buffer.ReadVarUint32(&bufErr)
 			if bufErr.HasError() {
 				return FieldDef{}, bufErr.TakeError()
 			}
-			if uint64(extra) > uint64(MaxInt-FieldNameSizeThreshold) {
+			if extra > uint32(maxTypeDefTagID-int32(FieldNameSizeThreshold)) {
 				return FieldDef{}, fmt.Errorf("invalid TypeDef field tag ID")
 			}
-			tagID = FieldNameSizeThreshold + int(extra)
+			tagID = int32(FieldNameSizeThreshold) + int32(extra)
 		}
 
 		// Read field type

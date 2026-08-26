@@ -156,6 +156,12 @@ public class PythonXlangTest extends XlangTestBase {
 
   @Override
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testExactFieldTags(boolean enableCodegen) throws IOException {
+    super.testExactFieldTags(enableCodegen);
+  }
+
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testSimpleStruct(boolean enableCodegen) throws IOException {
     super.testSimpleStruct(enableCodegen);
   }

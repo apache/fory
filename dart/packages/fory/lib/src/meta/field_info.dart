@@ -32,8 +32,8 @@ final class FieldInfo {
   /// untagged fields, so the two identity domains remain distinct.
   final String identifier;
 
-  /// The numeric wire tag for a tagged field.
-  final int? id;
+  /// The numeric wire tag, or `-1` when [identifier] is a field name.
+  final int id;
 
   final FieldType fieldType;
 

@@ -231,11 +231,20 @@ public class TypeDefEncoderTest {
   // Test data: Class with large tag IDs
   @Data
   public static class ClassWithLargeTagIds {
-    @ForyField(id = 32000)
+    @ForyField(id = 15)
     private String field1;
 
-    @ForyField(id = 32767) // Max short value
-    private int field2;
+    @ForyField(id = 32768)
+    private String field2;
+
+    @ForyField(id = 65535)
+    private String field3;
+
+    @ForyField(id = 65551)
+    private String field4;
+
+    @ForyField(id = ForyField.MAX_ID)
+    private String field5;
   }
 
   public static class NestedUnionMapField {
@@ -382,15 +391,15 @@ public class TypeDefEncoderTest {
 
     // Verify all fields have the correct tag IDs
     Assert.assertTrue(fieldInfos.get(0).hasFieldId());
-    Assert.assertEquals(fieldInfos.get(0).getFieldId(), (short) 100);
+    Assert.assertEquals(fieldInfos.get(0).getFieldId(), 100);
     Assert.assertEquals(fieldInfos.get(0).getFieldName(), "field1");
 
     Assert.assertTrue(fieldInfos.get(1).hasFieldId());
-    Assert.assertEquals(fieldInfos.get(1).getFieldId(), (short) 200);
+    Assert.assertEquals(fieldInfos.get(1).getFieldId(), 200);
     Assert.assertEquals(fieldInfos.get(1).getFieldName(), "field2");
 
     Assert.assertTrue(fieldInfos.get(2).hasFieldId());
-    Assert.assertEquals(fieldInfos.get(2).getFieldId(), (short) 300);
+    Assert.assertEquals(fieldInfos.get(2).getFieldId(), 300);
     Assert.assertEquals(fieldInfos.get(2).getFieldName(), "field3");
   }
 
@@ -414,7 +423,7 @@ public class TypeDefEncoderTest {
 
     // annotatedField1 should have tag 50
     Assert.assertTrue(fieldInfos.get(0).hasFieldId());
-    Assert.assertEquals(fieldInfos.get(0).getFieldId(), (short) 50);
+    Assert.assertEquals(fieldInfos.get(0).getFieldId(), 50);
     Assert.assertEquals(fieldInfos.get(0).getFieldName(), "annotatedField1");
 
     // noAnnotation should not have a tag (uses field name)
@@ -427,7 +436,7 @@ public class TypeDefEncoderTest {
 
     // annotatedField2 should have tag 60
     Assert.assertTrue(fieldInfos.get(3).hasFieldId());
-    Assert.assertEquals(fieldInfos.get(3).getFieldId(), (short) 60);
+    Assert.assertEquals(fieldInfos.get(3).getFieldId(), 60);
     Assert.assertEquals(fieldInfos.get(3).getFieldName(), "annotatedField2");
   }
 
@@ -473,7 +482,7 @@ public class TypeDefEncoderTest {
 
     Assert.assertEquals(fieldInfos.size(), 1);
     Assert.assertTrue(fieldInfos.get(0).hasFieldId());
-    Assert.assertEquals(fieldInfos.get(0).getFieldId(), (short) 42);
+    Assert.assertEquals(fieldInfos.get(0).getFieldId(), 42);
     Assert.assertEquals(fieldInfos.get(0).getFieldName(), "field");
   }
 
@@ -532,18 +541,59 @@ public class TypeDefEncoderTest {
     List<Field> fields =
         Arrays.asList(
             getField(ClassWithLargeTagIds.class, "field1"),
-            getField(ClassWithLargeTagIds.class, "field2"));
+            getField(ClassWithLargeTagIds.class, "field2"),
+            getField(ClassWithLargeTagIds.class, "field3"),
+            getField(ClassWithLargeTagIds.class, "field4"),
+            getField(ClassWithLargeTagIds.class, "field5"));
 
     List<FieldInfo> fieldInfos =
         TypeDefEncoder.buildFieldsInfo(resolver, ClassWithLargeTagIds.class, fields);
 
-    Assert.assertEquals(fieldInfos.size(), 2);
+    Assert.assertEquals(fieldInfos.size(), 5);
 
     Assert.assertTrue(fieldInfos.get(0).hasFieldId());
-    Assert.assertEquals(fieldInfos.get(0).getFieldId(), (short) 32000);
+    Assert.assertEquals(fieldInfos.get(0).getFieldId(), 15);
 
     Assert.assertTrue(fieldInfos.get(1).hasFieldId());
-    Assert.assertEquals(fieldInfos.get(1).getFieldId(), (short) 32767);
+    Assert.assertEquals(fieldInfos.get(1).getFieldId(), 32768);
+    Assert.assertEquals(fieldInfos.get(2).getFieldId(), 65535);
+    Assert.assertEquals(fieldInfos.get(3).getFieldId(), 65551);
+    Assert.assertEquals(fieldInfos.get(4).getFieldId(), ForyField.MAX_ID);
+  }
+
+  @Test
+  public void testLargeTagIdsRoundTripAndMatch() {
+    Fory fory = Fory.builder().withXlang(true).withCompatible(true).withMetaShare(true).build();
+    fory.register(ClassWithLargeTagIds.class, 6004);
+
+    TypeDef local = TypeDef.buildTypeDef(fory.getTypeResolver(), ClassWithLargeTagIds.class);
+    TypeDef decoded =
+        TypeDef.readTypeDef(fory.getTypeResolver(), MemoryBuffer.fromByteArray(local.getEncoded()));
+
+    Assert.assertEquals(
+        decoded.getFieldsInfo().stream().map(FieldInfo::getFieldId).collect(Collectors.toList()),
+        Arrays.asList(15, 32768, 65535, 65551, ForyField.MAX_ID));
+    Map<Integer, String> matchedFields =
+        decoded.getDescriptors(fory.getTypeResolver(), ClassWithLargeTagIds.class).stream()
+            .collect(Collectors.toMap(Descriptor::getForyFieldId, Descriptor::getName));
+    Assert.assertEquals(matchedFields.get(15), "field1");
+    Assert.assertEquals(matchedFields.get(65551), "field4");
+
+    MemoryBuffer body = MemoryBuffer.newHeapBuffer(32);
+    body.writeByte(TypeDefEncoder.STRUCT_FLAG | TypeDefEncoder.COMPATIBLE_FLAG | 1);
+    body.writeVarUInt32(6004);
+    FieldTypes.FieldType fieldType = local.getFieldsInfo().get(0).getFieldType();
+    int header = (3 << 6) | (TypeDefEncoder.FIELD_NAME_SIZE_THRESHOLD << 2);
+    header |= fieldType.nullable() ? 0b10 : 0;
+    header |= fieldType.trackingRef() ? 1 : 0;
+    body.writeByte(header);
+    body.writeVarUInt32(ForyField.MAX_ID + 1 - TypeDefEncoder.FIELD_NAME_SIZE_THRESHOLD);
+    fieldType.writeCrossLanguage(body, false);
+    Assert.assertThrows(
+        RuntimeException.class,
+        () ->
+            TypeDef.readTypeDef(
+                fory.getTypeResolver(), NativeTypeDefEncoder.prependHeader(body, false)));
   }
 
   @Test

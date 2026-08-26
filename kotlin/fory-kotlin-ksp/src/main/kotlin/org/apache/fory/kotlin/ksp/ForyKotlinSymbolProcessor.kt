@@ -43,6 +43,7 @@ import java.util.Locale
 import org.apache.fory.codegen.GeneratedClassNames
 
 private const val MAX_DEFAULT_FIELDS = 12
+private const val MAX_FIELD_ID = (1 shl 29) - 1
 
 private data class ParsedStructFields(
   val construction: KotlinStructConstruction,
@@ -54,6 +55,13 @@ internal fun fieldLimitError(defaultFieldCount: Int): String? =
     "Kotlin KSP xlang serializers currently support at most $MAX_DEFAULT_FIELDS defaulted constructor fields because Kotlin source generation must call constructors with omitted default arguments"
   } else {
     null
+  }
+
+internal fun fieldIdError(id: Int, requireFieldId: Boolean): String? =
+  when {
+    id < -1 || (requireFieldId && id < 0) -> "@ForyField id must be a non-negative value"
+    id > MAX_FIELD_ID -> "@ForyField id must not exceed $MAX_FIELD_ID"
+    else -> null
   }
 
 internal fun structKindError(
@@ -402,8 +410,9 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
       return null
     }
     val fieldMeta = resolveForyField(property, parameter) ?: return null
-    if (fieldMeta.id < -1 || (requireForyId && fieldMeta.id < 0)) {
-      logger.error("@ForyField id must be a non-negative value", property)
+    val fieldIdDiagnostic = fieldIdError(fieldMeta.id, requireForyId)
+    if (fieldIdDiagnostic != null) {
+      logger.error(fieldIdDiagnostic, property)
       return null
     }
     if (fieldMeta.id >= 0 && !foryIds.add(fieldMeta.id)) {

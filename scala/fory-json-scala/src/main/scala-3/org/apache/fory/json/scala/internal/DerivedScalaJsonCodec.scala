@@ -39,11 +39,28 @@ private[scala] final class DerivedScalaJsonCodec[T](
     caseClasses.length == 0 || caseClasses.length != caseNames.length ||
     caseClasses.length != singletonCases.length
   )
-    throw new IllegalArgumentException("A derived Scala enum must have a non-empty case table")
+    throw new IllegalArgumentException("A derived Scala schema must have a non-empty case table")
 
   private val classes = caseClasses.clone()
   private val names = caseNames.clone()
   private val singletons = singletonCases.clone()
+  private var sortIndex = 1
+  while (sortIndex < classes.length) {
+    val sortedClass = classes(sortIndex)
+    val sortedName = names(sortIndex)
+    val sortedSingleton = singletons(sortIndex)
+    var prior = sortIndex
+    while (prior > 0 && classes(prior - 1).getName.compareTo(sortedClass.getName) > 0) {
+      classes(prior) = classes(prior - 1)
+      names(prior) = names(prior - 1)
+      singletons(prior) = singletons(prior - 1)
+      prior -= 1
+    }
+    classes(prior) = sortedClass
+    names(prior) = sortedName
+    singletons(prior) = sortedSingleton
+    sortIndex += 1
+  }
   private val handled: JList[Class[_]] = {
     val result = new ArrayList[Class[_]](classes.length)
     val classSet = new HashSet[Class[_]](classes.length * 2)
@@ -55,19 +72,19 @@ private[scala] final class DerivedScalaJsonCodec[T](
       if (
         caseClass == null || !rootType.isAssignableFrom(caseClass) ||
         Modifier.isAbstract(caseClass.getModifiers)
-      ) throw new IllegalArgumentException(s"Invalid derived Scala enum case $caseClass")
+      ) throw new IllegalArgumentException(s"Invalid derived Scala case $caseClass")
       if (name == null || name.isEmpty || !nameSet.add(name))
-        throw new IllegalArgumentException(s"Invalid derived Scala enum case name $name")
+        throw new IllegalArgumentException(s"Invalid derived Scala case name $name")
       val singleton = singletons(index)
       if (singleton != null && singleton.getClass != caseClass)
-        throw new IllegalArgumentException(s"Invalid derived Scala enum singleton $name")
+        throw new IllegalArgumentException(s"Invalid derived Scala singleton $name")
       if (classSet.add(caseClass)) result.add(caseClass)
       else {
         var prior = 0
         while (classes(prior) != caseClass) prior += 1
         if (singleton == null || singletons(prior) == null)
           throw new IllegalArgumentException(
-            s"Duplicate derived Scala enum case ${caseClass.getName}"
+            s"Duplicate derived Scala case ${caseClass.getName}"
           )
       }
       index += 1
@@ -97,6 +114,15 @@ private[scala] final class DerivedScalaJsonCodec[T](
   ): JsonValueCodec[_] = {
     val rawType = typeRef.getRawType
     if (rawType == rootType) {
+      if (resolver.isInferredSubtype(rootType)) {
+        return resolver.createInferredSubtypeCodec(
+          typeRef,
+          classes.clone(),
+          names.clone(),
+          null,
+          null
+        )
+      }
       return new ClosedSubtypeCodec(
         rootType,
         new JsonSubTypesInfo(Inclusion.WRAPPER_OBJECT, "", classes.clone(), names.clone()),
@@ -107,7 +133,7 @@ private[scala] final class DerivedScalaJsonCodec[T](
     }
     val index = classes.indexOf(rawType)
     if (index < 0)
-      throw new ForyJsonException(s"Derived Scala enum codec expected ${rootType.getName}")
+      throw new ForyJsonException(s"Derived Scala codec expected ${rootType.getName}")
     val singleton = singletons(index)
     if (singleton == null) ScalaObjectModels.caseClassCodec(typeRef, resolver)
     else ScalaObjectModels.fixedCodec(typeRef, resolver, singleton)

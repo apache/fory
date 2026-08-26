@@ -23,7 +23,7 @@ import org.apache.fory.json.{ForyJsonBuilder, JsonCodecFactory}
 
 import scala.reflect.ClassTag
 
-/** Compile-time JSON schema for one closed Scala 3 enum. */
+/** Compile-time JSON schema for a Scala 3 enum or sealed hierarchy. */
 trait ScalaJsonCodec[T] extends JsonCodecFactory
 
 object ScalaJsonCodec {
@@ -32,7 +32,7 @@ object ScalaJsonCodec {
 }
 
 extension (builder: ForyJsonBuilder)
-  /** Derives and registers a closed schema for a third-party Scala 3 enum. */
+  /** Derives and registers a closed schema for a third-party Scala 3 enum or sealed hierarchy. */
   inline def register[T](using tag: ClassTag[T]): ForyJsonBuilder =
     builder.registerCodec(
       tag.runtimeClass.asInstanceOf[Class[T]],

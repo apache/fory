@@ -41,7 +41,7 @@ pub(crate) struct ResolvedField<'a> {
     pub private_ident: syn::Ident,
     pub codec_ty: TokenStream,
     pub value_ty: &'a Type,
-    pub field_id: i16,
+    pub field_id: i32,
     pub has_selected_provider: bool,
     pub read_always_advances: TokenStream,
 }
@@ -271,7 +271,7 @@ pub(crate) fn build_bindings<'a>(
                 }));
             }
             let field_id = if meta.uses_tag_id() {
-                meta.effective_id() as i16
+                meta.effective_id()
             } else {
                 -1
             };
@@ -929,7 +929,7 @@ fn codec_for_child(ty: &Type, meta: &ForyFieldMeta) -> syn::Result<CodecSelectio
 
 fn transparent_child_meta(meta: &ForyFieldMeta) -> ForyFieldMeta {
     let mut child = meta.clone();
-    child.id = None;
+    child.id = -1;
     child.nullable = None;
     child.r#ref = None;
     child.skip = false;

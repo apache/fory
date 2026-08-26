@@ -42,6 +42,7 @@ class ProcessorResourceTest {
   fun writesOwnedResources() {
     val directSource = sourceFile("Profile.kt")
     val sealedSource = sourceFile("Shape.kt")
+    val branchSource = sourceFile("ShapeBranch.kt")
     val mixinSource = sourceFile("ProfileMixin.kt")
     val mixinTargetSource = sourceFile("ExternalProfile.java")
     val directCodecTypes = codecTypes("example.direct")
@@ -56,9 +57,10 @@ class ProcessorResourceTest {
         ),
         jsonModel(
           targetBinaryName = "example.Shape",
-          originatingFiles = listOf(sealedSource),
+          originatingFiles = listOf(sealedSource, branchSource),
           retainedAnnotations = setOf("org.apache.fory.json.annotation.JsonSubTypes"),
           retainedTypes = setOf("example.Circle"),
+          aggregating = true,
         ),
         jsonModel(
           targetBinaryName = "example.ExternalProfile",
@@ -104,7 +106,7 @@ class ProcessorResourceTest {
       val path = R8RulesWriter.resourcePath(model)
       assertEquals(R8RulesWriter.write(model), generator.text(path))
       val dependencies = generator.dependenciesByPath.getValue(path)
-      assertFalse(dependencies.aggregating, path)
+      assertEquals(model.aggregating, dependencies.aggregating, path)
       assertFalse(dependencies.isAllSources, path)
       assertEquals(model.originatingFiles.size, dependencies.originatingFiles.size, path)
       model.originatingFiles.forEachIndexed { index, source ->
@@ -122,6 +124,37 @@ class ProcessorResourceTest {
       generator.text("META-INF/proguard/fory-json-mixin-mixins.ProfileMixin.pro"),
       mixinCodecTypes,
     )
+  }
+
+  @Test
+  fun writesJavaSubtypeGeneration() {
+    val mixinSource = sourceFile("ShapeMixin.kt")
+    val targetSource = sourceFile("Shape.java")
+    val generation =
+      JavaSubtypeGeneration(
+        packageName = "mixins",
+        simpleName = "ShapeMixin_ForyJsonSubtypeGeneration",
+        mixinSourceName = "mixins.ShapeMixin",
+        originatingFiles = listOf(mixinSource, targetSource),
+      )
+    val generator = RecordingCodeGenerator()
+    val processor =
+      ForyJsonKotlinSymbolProcessorProvider()
+        .create(
+          SymbolProcessorEnvironment(emptyMap(), KotlinVersion.CURRENT, generator, SilentLogger)
+        )
+    val write = processor.javaClass.getDeclaredMethod("write", JavaSubtypeGeneration::class.java)
+    write.isAccessible = true
+
+    write.invoke(processor, generation)
+
+    val path = "mixins/ShapeMixin_ForyJsonSubtypeGeneration.java"
+    val source = generator.text(path)
+    assertTrue(source.contains("GeneratedJsonSubtypeTable.Generation"), source)
+    assertTrue(source.contains("mixin = \"mixins.ShapeMixin\""), source)
+    val dependencies = generator.dependenciesByPath.getValue(path)
+    assertTrue(dependencies.aggregating)
+    assertEquals(2, dependencies.originatingFiles.size)
   }
 
   private fun codecTypes(packageName: String): Set<String> =
@@ -142,7 +175,6 @@ class ProcessorResourceTest {
 }"""
       assertEquals(1, rules.split(exactRule).size - 1, codecType)
     }
-    assertEquals(codecTypes.size, rules.lineSequence().count { it == "  public <init>();" })
     assertFalse(rules.contains('*'), rules)
     assertFalse(rules.contains("JsonCodec\$NoJsonValueCodec"), rules)
     assertFalse(rules.contains("JsonCodec\$NoMapKeyCodec"), rules)

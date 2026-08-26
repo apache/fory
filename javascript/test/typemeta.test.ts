@@ -31,6 +31,7 @@ import { localTypeMetaSymbol, TypeMeta } from "../packages/core/lib/meta/TypeMet
 import { x64hash128 } from "../packages/core/lib/murmurHash3";
 import { BinaryReader } from "../packages/core/lib/reader";
 import { RefFlags, TypeId } from "../packages/core/lib/type";
+import { MAX_FIELD_ID } from "../packages/core/lib/typeInfo";
 import { BinaryWriter } from "../packages/core/lib/writer";
 import { describe, expect, test } from "@jest/globals";
 
@@ -200,6 +201,32 @@ describe("typemeta", () => {
     expect(() => Type.string().setId(-1)).toThrow("field id must be non-negative");
   });
 
+  test("bounds field ids to the signed int32 protocol domain", () => {
+    const maxTypeInfo = Type.struct(7014, {
+      value: Type.string().setId(MAX_FIELD_ID),
+    });
+    const maxBytes = TypeMeta.fromTypeInfo(maxTypeInfo).toBytes();
+    const maxReader = new BinaryReader({});
+    maxReader.reset(maxBytes);
+    expect(TypeMeta.fromBytes(maxReader).getFieldInfo()[0].fieldId).toBe(MAX_FIELD_ID);
+
+    const validTag = new BinaryWriter({});
+    validTag.writeVarUint32Small7(MAX_FIELD_ID - 15);
+    const invalidTag = new BinaryWriter({});
+    invalidTag.writeVarUint32Small7(MAX_FIELD_ID + 1 - 15);
+    const invalidBody = replaceFirstBytes(maxBytes.subarray(8), validTag.dump(), invalidTag.dump());
+    const invalidMeta = new BinaryWriter({});
+    invalidMeta.writeUint64((TypeMeta as any).buildHeader(invalidBody, false).header);
+    invalidMeta.buffer(invalidBody);
+    const invalidReader = new BinaryReader({});
+    invalidReader.reset(invalidMeta.dump());
+    expect(() => TypeMeta.fromBytes(invalidReader)).toThrow();
+
+    expect(() => Type.string().setId(MAX_FIELD_ID + 1)).toThrow();
+    expect(() => Type.string().setId(1.5)).toThrow();
+    expect(() => Type.string().setId(Number.NaN)).toThrow();
+  });
+
   test("orders name-based identifiers with ordinal comparison", () => {
     const typeMeta = TypeMeta.fromTypeInfo(
       Type.struct(7011, {
@@ -343,16 +370,22 @@ describe("typemeta", () => {
     const writer = writerFory.register(writerType);
     const reader = readerFory.register(readerType);
     const validTypeMeta = TypeMeta.fromTypeInfo(writerType, (writerFory as any).typeResolver);
-    const duplicateTypeMeta = TypeMeta.fromTypeInfo(writerType, (writerFory as any).typeResolver);
-    duplicateTypeMeta.getFieldInfo()[1].fieldId = 1;
-    const duplicateBytes = duplicateTypeMeta.toBytes();
+    const validTypeMetaBytes = validTypeMeta.toBytes();
+    const duplicateBody = Uint8Array.from(validTypeMetaBytes.subarray(8));
+    const secondFieldHeader = duplicateBody.lastIndexOf(0b1100_1000);
+    expect(secondFieldHeader).toBeGreaterThanOrEqual(0);
+    duplicateBody[secondFieldHeader] = 0b1100_0100;
+    const duplicateWriter = new BinaryWriter({});
+    duplicateWriter.writeUint64((TypeMeta as any).buildHeader(duplicateBody, false).header);
+    duplicateWriter.buffer(duplicateBody);
+    const duplicateBytes = duplicateWriter.dump();
     const parseReader = new BinaryReader({});
     parseReader.reset(duplicateBytes);
     expect(() => TypeMeta.fromBytes(parseReader)).toThrow("Duplicate field id 1");
 
     const value = { first: 1, second: 2 };
     const valid = writer.serialize(value);
-    const malformed = replaceFirstBytes(valid, validTypeMeta.toBytes(), duplicateBytes);
+    const malformed = replaceFirstBytes(valid, validTypeMetaBytes, duplicateBytes);
     const readContext = (readerFory as any).readContext;
 
     expect(() => reader.deserialize(malformed)).toThrow("Duplicate field id 1");

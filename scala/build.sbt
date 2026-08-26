@@ -38,7 +38,6 @@ ThisBuild / externalResolvers := Seq(
 )
 
 lazy val commonSettings = Seq(
-  apacheSonatypeLicenseFile := repositoryRoot.value / "LICENSE",
   apacheSonatypeNoticeFile := repositoryRoot.value / "NOTICE",
   description := "Apache Fory™ is a blazingly fast multi-language serialization framework powered by JIT and zero-copy.",
   homepage := Some(url("https://fory.apache.org/")),
@@ -65,6 +64,7 @@ lazy val foryScala = Project(id = "fory-scala", base = file("fory-scala"))
   .settings(commonSettings)
   .settings(
     name := "fory-scala",
+    apacheSonatypeLicenseFile := repositoryRoot.value / "scala" / "fory-scala" / "LICENSE",
     Compile / javacOptions ++= Seq("--release", "8"),
     libraryDependencies ++= Seq(
       "org.apache.fory" % "fory-core" % foryVersion,
@@ -77,6 +77,7 @@ lazy val foryJsonScala = Project(id = "fory-json-scala", base = file("fory-json-
   .settings(commonSettings)
   .settings(
     name := "fory-json-scala",
+    apacheSonatypeLicenseFile := repositoryRoot.value / "scala" / "fory-json-scala" / "LICENSE",
     Compile / javacOptions ++= Seq("--release", "8"),
     libraryDependencies ++= {
       val reflect =

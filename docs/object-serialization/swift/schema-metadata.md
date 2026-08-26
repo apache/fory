@@ -26,6 +26,7 @@ This page covers macro-level schema metadata in Swift.
 - `@ForyStruct` on struct/class models and external structural serializers
 - `@ForyEnum` on C-style enum models and external enum serializers
 - `@ForyUnion` and `@ForyCase` on associated-value enum models and external union serializers
+- `@ForyField(id: ...)` for stable numeric field identity
 - `@ForyField(encoding: ...)` on numeric fields
 - `@ForyField(with: ...)` for exact serializer selection
 - `@ListField`, `@ArrayField`, `@SetField`, and `@MapField` for collection field metadata
@@ -46,6 +47,23 @@ struct UserSerializer {
 Equivalent target arguments are available on `@ForyEnum` and `@ForyUnion`.
 See [External-Type Serialization](external-types.md) for target access and
 construction requirements.
+
+## `@ForyField(id:)`
+
+Assign an ID when field identity must remain stable across renames or schema
+evolution:
+
+```swift
+@ForyStruct
+struct User {
+    @ForyField(id: 1)
+    var name: String
+}
+```
+
+Configured IDs must be unique within the struct schema and satisfy
+`0 <= id < 2^29` (`0` through `536870911`). Keep assigned IDs stable and do
+not reuse them for different fields. Fields without an ID use their names.
 
 ## `@ForyField(with:)`
 

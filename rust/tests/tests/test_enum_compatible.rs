@@ -742,3 +742,58 @@ fn test_struct_with_enum_field_evolution() {
     assert_eq!(msg_v2.payload, "error");
     assert_eq!(msg_v2.priority, 1);
 }
+
+#[test]
+fn wide_variant_remap() {
+    #[derive(ForyUnion, Debug, PartialEq)]
+    enum WideEnumV1 {
+        #[fory(id = 0, default)]
+        Empty,
+        #[fory(id = 7)]
+        Original {
+            #[fory(id = 536870911)]
+            max: String,
+            #[fory(id = 31)]
+            small: bool,
+            #[fory(id = 65551)]
+            high: i64,
+        },
+    }
+
+    #[derive(ForyUnion, Debug, PartialEq)]
+    enum WideEnumV2 {
+        #[fory(id = 0, default)]
+        Empty,
+        #[fory(id = 7)]
+        Renamed {
+            #[fory(id = 65551)]
+            renamed_high: i64,
+            #[fory(id = 536870911)]
+            renamed_max: String,
+            #[fory(id = 31)]
+            renamed_small: bool,
+        },
+    }
+
+    let mut writer = Fory::builder().xlang(false).compatible(true).build();
+    writer.register::<WideEnumV1>(8000).unwrap();
+    let bytes = writer
+        .serialize(&WideEnumV1::Original {
+            max: "maximum".to_string(),
+            small: true,
+            high: 65_551,
+        })
+        .unwrap();
+
+    let mut reader = Fory::builder().xlang(false).compatible(true).build();
+    reader.register::<WideEnumV2>(8000).unwrap();
+    let decoded = reader.deserialize::<WideEnumV2>(&bytes).unwrap();
+    assert_eq!(
+        decoded,
+        WideEnumV2::Renamed {
+            renamed_high: 65_551,
+            renamed_max: "maximum".to_string(),
+            renamed_small: true,
+        }
+    );
+}

@@ -119,7 +119,7 @@ inline constexpr bool has_field_config_v = FieldConfigInfo<T>::has_config;
 template <typename T, size_t Index, typename = void>
 struct GetFieldConfigEntry {
   static constexpr Encoding encoding = Encoding::Default;
-  static constexpr int16_t id = -1;
+  static constexpr int32_t id = -1;
   static constexpr bool nullable = false;
   static constexpr bool ref = false;
   static constexpr int dynamic_value = -1;
@@ -153,7 +153,7 @@ private:
 public:
   static constexpr FieldEntry entry = find_entry<>();
   static constexpr Encoding encoding = entry.meta.encoding_;
-  static constexpr int16_t id = entry.meta.id_;
+  static constexpr int32_t id = entry.meta.id_;
   static constexpr bool nullable = entry.meta.nullable_;
   static constexpr bool ref = entry.meta.ref_;
   static constexpr int dynamic_value = entry.meta.dynamic_;
@@ -176,10 +176,10 @@ template <typename T> struct unwrap_field {
 template <typename T> using unwrap_field_t = typename unwrap_field<T>::type;
 
 template <typename T> struct field_tag_id {
-  static constexpr int16_t value = -1;
+  static constexpr int32_t value = -1;
 };
 template <typename T>
-inline constexpr int16_t field_tag_id_v = field_tag_id<T>::value;
+inline constexpr int32_t field_tag_id_v = field_tag_id<T>::value;
 
 template <typename T> struct field_is_nullable {
   static constexpr bool value = detail::is_optional_v<T>;

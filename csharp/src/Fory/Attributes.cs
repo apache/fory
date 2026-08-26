@@ -119,33 +119,24 @@ public sealed class ForyUnknownCaseAttribute : Attribute
 [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
 public sealed class ForyFieldAttribute : Attribute
 {
-    private short id = -1;
+    private int id = -1;
 
     public ForyFieldAttribute()
     {
     }
 
-    public ForyFieldAttribute(short id)
+    public ForyFieldAttribute(int id)
     {
         ValidateId(id);
         this.id = id;
     }
 
-    public ForyFieldAttribute(int id)
-    {
-        if (id is < 0 or > short.MaxValue)
-        {
-            throw new ArgumentOutOfRangeException(nameof(id));
-        }
-
-        this.id = (short)id;
-    }
-
     /// <summary>
-    /// Optional stable field tag id used for compatible metadata dispatch.
-    /// Use a non-negative value to emit numeric field ids instead of field names.
+    /// Stable field tag id used for compatible metadata dispatch.
+    /// Use a value from <c>0</c> through <c>536870911</c> to emit a numeric field id
+    /// instead of a field name.
     /// </summary>
-    public short Id
+    public int Id
     {
         get => id;
         set
@@ -186,9 +177,9 @@ public sealed class ForyFieldAttribute : Attribute
     /// </remarks>
     public string? TargetMemberName { get; set; }
 
-    private static void ValidateId(short id)
+    private static void ValidateId(int id)
     {
-        if (id < 0)
+        if (id is < 0 or > TypeMetaConstants.MaxFieldId)
         {
             throw new ArgumentOutOfRangeException(nameof(id));
         }

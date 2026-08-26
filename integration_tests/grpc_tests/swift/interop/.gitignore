@@ -1,0 +1,5 @@
+.build/
+Package.resolved
+Sources/Generated/
+Sources/GeneratedDefaultPackageOne/
+Sources/GeneratedDefaultPackageTwo/

@@ -104,14 +104,21 @@ class Item:
 @dataclass
 class SimpleStruct:
     f1: Dict[pyfory.Int32, pyfory.Float64] = None
-    f2: pyfory.Int32 = 0
+    f2: pyfory.Int32 = pyfory.field(15, default=0)
     f3: Item = None
     f4: str = ""
     f5: Color = None
     f6: List[str] = None
-    f7: pyfory.Int32 = 0
+    f7: pyfory.Int32 = pyfory.field(65551, default=0)
     f8: pyfory.Int32 = 0
-    last: pyfory.Int32 = 0
+    last: pyfory.Int32 = pyfory.field(536870911, default=0)
+
+
+@dataclass
+class ExactFieldTags:
+    first: pyfory.Int32 = pyfory.field(15, default=0)
+    second: pyfory.Int32 = pyfory.field(65551, default=0)
+    last: pyfory.Int32 = pyfory.field(536870911, default=0)
 
 
 @pyfory.dataclass
@@ -499,6 +506,20 @@ def test_simple_struct():
 
     with open(data_file, "wb") as f:
         f.write(new_bytes)
+
+
+def test_exact_field_tags():
+    """Round-trip the complete field-tag boundary set in schema-consistent mode."""
+    data_file = get_data_file()
+    with open(data_file, "rb") as f:
+        data_bytes = f.read()
+
+    fory = pyfory.Fory(xlang=True, compatible=False)
+    fory.register_type(ExactFieldTags, type_id=104)
+    value = fory.deserialize(data_bytes)
+    assert value == ExactFieldTags(first=39, second=40, last=41)
+    with open(data_file, "wb") as f:
+        f.write(fory.serialize(value))
 
 
 def test_named_simple_struct():

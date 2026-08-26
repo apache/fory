@@ -759,7 +759,8 @@ func scalarTrackRefMismatchIsRejected() throws {
     }
 
     let resolvedBothTracking = try remoteTracking.assigningFieldIDs(from: localTracking)
-    #expect(resolvedBothTracking.fields[0].fieldID == 0)
+    #expect(resolvedBothTracking.fields[0].fieldID == 1)
+    #expect(resolvedBothTracking.fields[0].matchedFieldID == 0)
 
     let localNullableTracking = try TypeMeta(
         typeID: TypeId.compatibleStruct.rawValue,
@@ -789,7 +790,8 @@ func scalarTrackRefMismatchIsRejected() throws {
         ])
     let resolvedBothNullableTracking = try remoteNullableTracking.assigningFieldIDs(
         from: localNullableTracking)
-    #expect(resolvedBothNullableTracking.fields[0].fieldID == 0)
+    #expect(resolvedBothNullableTracking.fields[0].fieldID == 1)
+    #expect(resolvedBothNullableTracking.fields[0].matchedFieldID == 0)
     try expectInvalidData {
         _ = try remoteNullableTracking.assigningFieldIDs(from: localTracking)
     }
@@ -810,8 +812,8 @@ func namedRemoteOnlyFieldIsSkipped() throws {
         typeName: empty,
         registerByName: false,
         fields: [
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "username", fieldType: stringType),
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "id", fieldType: intType)
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "username", fieldType: stringType),
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "id", fieldType: intType)
         ])
     let remote = try TypeMeta(
         typeID: TypeId.compatibleStruct.rawValue,
@@ -820,13 +822,15 @@ func namedRemoteOnlyFieldIsSkipped() throws {
         typeName: empty,
         registerByName: false,
         fields: [
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "email", fieldType: stringType),
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "id", fieldType: intType)
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "email", fieldType: stringType),
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "id", fieldType: intType)
         ])
 
     let resolved = try remote.assigningFieldIDs(from: local)
     #expect(resolved.fields[0].fieldID == -1)
-    #expect(resolved.fields[1].fieldID == 2)
+    #expect(resolved.fields[0].matchedFieldID == -1)
+    #expect(resolved.fields[1].fieldID == -1)
+    #expect(resolved.fields[1].matchedFieldID == 2)
 }
 
 @Test
@@ -853,8 +857,10 @@ func remoteOnlyFieldsSkipWhenLocalSchemaIsEmpty() throws {
         ])
 
     let resolved = try remote.assigningFieldIDs(from: local)
-    #expect(resolved.fields[0].fieldID == -1)
-    #expect(resolved.fields[1].fieldID == -1)
+    #expect(resolved.fields[0].fieldID == 1)
+    #expect(resolved.fields[0].matchedFieldID == -1)
+    #expect(resolved.fields[1].fieldID == 2)
+    #expect(resolved.fields[1].matchedFieldID == -1)
 }
 
 @Test
@@ -877,7 +883,7 @@ func nameRemoteFieldDoesNotMatchTaggedLocalField() throws {
         typeName: empty,
         registerByName: false,
         fields: [
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "value", fieldType: stringType)
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "value", fieldType: stringType)
         ])
 
     let resolved = try remote.assigningFieldIDs(from: local)
@@ -895,7 +901,7 @@ func duplicateRemoteNameBindingFails() throws {
         typeName: empty,
         registerByName: false,
         fields: [
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "value", fieldType: stringType)
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "value", fieldType: stringType)
         ])
     let remote = try TypeMeta(
         typeID: TypeId.compatibleStruct.rawValue,
@@ -904,8 +910,8 @@ func duplicateRemoteNameBindingFails() throws {
         typeName: empty,
         registerByName: false,
         fields: [
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "value", fieldType: stringType),
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "value", fieldType: stringType)
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "value", fieldType: stringType),
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "value", fieldType: stringType)
         ])
 
     #expect(throws: ForyError.invalidData("compatible field value duplicates local field value")) {
@@ -919,7 +925,7 @@ func matchedFieldIdOverflowFails() throws {
     let fieldType = TypeMeta.FieldType(typeID: TypeId.bool.rawValue, nullable: false)
     let overflowIndex = Int(Int16.max) / 2 + 1
     let localFields = (0...overflowIndex).map {
-        TypeMeta.FieldInfo(fieldID: nil, fieldName: "f\($0)", fieldType: fieldType)
+        TypeMeta.FieldInfo(fieldID: -1, fieldName: "f\($0)", fieldType: fieldType)
     }
     let local = try TypeMeta(
         typeID: TypeId.compatibleStruct.rawValue,
@@ -936,7 +942,7 @@ func matchedFieldIdOverflowFails() throws {
         registerByName: false,
         fields: [
             TypeMeta.FieldInfo(
-                fieldID: nil,
+                fieldID: -1,
                 fieldName: "f\(overflowIndex)",
                 fieldType: fieldType)
         ])
@@ -959,7 +965,7 @@ func matchedByteFamilyClassification() throws {
         typeName: empty,
         registerByName: false,
         fields: [
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "payload", fieldType: binaryType)
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "payload", fieldType: binaryType)
         ])
     let remoteUInt8Array = try TypeMeta(
         typeID: TypeId.compatibleStruct.rawValue,
@@ -968,7 +974,7 @@ func matchedByteFamilyClassification() throws {
         typeName: empty,
         registerByName: false,
         fields: [
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "payload", fieldType: uint8ArrayType)
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "payload", fieldType: uint8ArrayType)
         ])
     let remoteInt8Array = try TypeMeta(
         typeID: TypeId.compatibleStruct.rawValue,
@@ -977,11 +983,12 @@ func matchedByteFamilyClassification() throws {
         typeName: empty,
         registerByName: false,
         fields: [
-            TypeMeta.FieldInfo(fieldID: nil, fieldName: "payload", fieldType: int8ArrayType)
+            TypeMeta.FieldInfo(fieldID: -1, fieldName: "payload", fieldType: int8ArrayType)
         ])
 
     let resolved = try remoteUInt8Array.assigningFieldIDs(from: local)
-    #expect(resolved.fields[0].fieldID == 1)
+    #expect(resolved.fields[0].fieldID == -1)
+    #expect(resolved.fields[0].matchedFieldID == 1)
     try expectInvalidData {
         _ = try remoteInt8Array.assigningFieldIDs(from: local)
     }
@@ -998,7 +1005,7 @@ func matchedNestedScalarShapeAcceptsNullableDrift() throws {
         registerByName: false,
         fields: [
             TypeMeta.FieldInfo(
-                fieldID: nil,
+                fieldID: -1,
                 fieldName: "values",
                 fieldType: TypeMeta.FieldType(
                     typeID: TypeId.list.rawValue,
@@ -1013,7 +1020,7 @@ func matchedNestedScalarShapeAcceptsNullableDrift() throws {
         registerByName: false,
         fields: [
             TypeMeta.FieldInfo(
-                fieldID: nil,
+                fieldID: -1,
                 fieldName: "values",
                 fieldType: TypeMeta.FieldType(
                     typeID: TypeId.list.rawValue,
@@ -1022,7 +1029,8 @@ func matchedNestedScalarShapeAcceptsNullableDrift() throws {
         ])
 
     let resolved = try remote.assigningFieldIDs(from: local)
-    #expect(resolved.fields[0].fieldID == 1)
+    #expect(resolved.fields[0].fieldID == -1)
+    #expect(resolved.fields[0].matchedFieldID == 1)
 }
 
 @Test
@@ -1036,7 +1044,7 @@ func matchedNestedScalarShapeRejectsRefDrift() throws {
         registerByName: false,
         fields: [
             TypeMeta.FieldInfo(
-                fieldID: nil,
+                fieldID: -1,
                 fieldName: "values",
                 fieldType: TypeMeta.FieldType(
                     typeID: TypeId.list.rawValue,
@@ -1051,7 +1059,7 @@ func matchedNestedScalarShapeRejectsRefDrift() throws {
         registerByName: false,
         fields: [
             TypeMeta.FieldInfo(
-                fieldID: nil,
+                fieldID: -1,
                 fieldName: "values",
                 fieldType: TypeMeta.FieldType(
                     typeID: TypeId.list.rawValue,

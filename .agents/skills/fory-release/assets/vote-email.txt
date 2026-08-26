@@ -1,0 +1,62 @@
+Subject: [VOTE] Release Apache Fory v${release_version}-${rc}
+
+Hello, Apache Fory Community:
+
+This is a call for vote to release Apache Fory ${release_version}.
+
+Apache Fory is a blazingly fast multi-language serialization framework
+for idiomatic domain objects, schema IDL, and cross-language data exchange.
+
+The discussion thread:
+${discussion_url}
+
+The change list since Apache Fory ${previous_version}:
+https://github.com/apache/fory/compare/v${previous_version}...${rc_tag}
+
+The release candidate artifacts:
+https://dist.apache.org/repos/dist/dev/fory/${dist_version}/
+
+The Maven staging repositories:
+Java and Kotlin:
+https://repository.apache.org/content/repositories/${java_kotlin_staging_id}/
+Scala:
+https://repository.apache.org/content/repositories/${scala_staging_id}/
+
+The release tag:
+https://github.com/apache/fory/releases/tag/${rc_tag}
+
+The release commit:
+https://github.com/apache/fory/commit/${release_commit}
+
+The artifacts are signed with PGP key fingerprint
+${gpg_fingerprint}, corresponding to ${apache_email}. The key can be found in
+the KEYS file:
+https://downloads.apache.org/fory/KEYS
+
+The vote will remain open for at least 72 hours and close at
+${vote_deadline_utc}.
+
+Please vote accordingly:
+
+[ ] +1 approve
+[ ] +0 no opinion
+[ ] -1 disapprove (please explain why)
+
+To learn more about Fory, please see:
+https://fory.apache.org/
+
+Checklist for reference:
+
+[ ] The Fory source archive downloads successfully.
+[ ] Checksums and PGP signatures are valid.
+[ ] Source distribution names match the release version.
+[ ] LICENSE and NOTICE files are correct.
+[ ] Files have license headers where required.
+[ ] No compiled archives are bundled in the source archive.
+[ ] The release can be built from source.
+
+How to build and test:
+https://github.com/apache/fory/blob/${rc_tag}/docs/development/index.md
+
+Thanks,
+${release_manager_name}

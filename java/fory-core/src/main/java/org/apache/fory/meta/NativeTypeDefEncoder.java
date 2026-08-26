@@ -113,8 +113,7 @@ public class NativeTypeDefEncoder {
           }
           // Create FieldInfo with tag ID for optimized serialization
           fieldInfo =
-              new FieldInfo(
-                  descriptor.getDeclaringClass(), descriptor.getName(), fieldType, (short) tagId);
+              new FieldInfo(descriptor.getDeclaringClass(), descriptor.getName(), fieldType, tagId);
         } else {
           // Negative is the annotation default sentinel for no configured tag ID; use field name.
           fieldInfo =

@@ -20,7 +20,7 @@
 import { BinaryWriter } from "../writer";
 import { BinaryReader } from "../reader";
 import { Encoding, MetaStringDecoder, MetaStringEncoder } from "./MetaString";
-import { TypeInfo } from "../typeInfo";
+import { checkFieldId, TypeInfo } from "../typeInfo";
 import { TypeId } from "../type";
 import { x64hash128 } from "../murmurHash3";
 import { fromString } from "../platformBuffer";
@@ -150,7 +150,6 @@ export interface InnerFieldInfo {
   trackingRef?: boolean;
   nullable?: boolean;
   options?: InnerFieldInfoOptions;
-  fieldId?: number;
 }
 export class FieldInfo {
   constructor(
@@ -160,7 +159,7 @@ export class FieldInfo {
     public trackingRef = false,
     public nullable = false,
     public options: InnerFieldInfoOptions = {},
-    public fieldId?: number,
+    public fieldId = -1,
   ) {}
 
   getFieldName() {
@@ -176,7 +175,7 @@ export class FieldInfo {
   }
 
   hasFieldId() {
-    return typeof this.fieldId === "number" && this.fieldId >= 0;
+    return this.fieldId >= 0;
   }
 
   getFieldId() {
@@ -409,11 +408,9 @@ export class TypeMeta {
           fieldTypeId = TypeId.UNION;
         }
         const { trackingRef, nullable, id, userTypeId, options } = typeInfo;
-        if (typeof id === "number" && id < 0) {
-          throw new Error(`Field id for ${fieldName} must be non-negative`);
-        }
-        const fieldId = typeof id === "number" ? id : undefined;
-        if (fieldId !== undefined) {
+        const fieldId = id;
+        if (fieldId !== -1) {
+          checkFieldId(fieldId);
           if (usedFieldIds.has(fieldId)) {
             throw new Error(`Duplicate field id ${fieldId}`);
           }
@@ -542,7 +539,7 @@ export class TypeMeta {
     for (let i = 0; i < numFields; i++) {
       const fieldInfo = this.readFieldInfo(bodyReader);
       if (fieldInfo.hasFieldId()) {
-        const fieldId = fieldInfo.getFieldId()!;
+        const fieldId = fieldInfo.getFieldId();
         if (fieldIds?.has(fieldId)) {
           throw new Error(`Duplicate field id ${fieldId}`);
         }
@@ -636,9 +633,10 @@ export class TypeMeta {
     const { typeId, userTypeId, options } = this.readTypeId(reader);
 
     let fieldName: string;
-    let fieldId: number | undefined;
+    let fieldId = -1;
     if (encodingFlags === 3) {
       fieldId = size;
+      checkFieldId(fieldId);
       fieldName = `$tag${fieldId}`;
     } else {
       // Read field name
@@ -756,10 +754,8 @@ export class TypeMeta {
     const localNameById = new Map<number, string>();
     const localNameByNormalized = new Map<string, string>();
     for (const [fieldName, typeInfo] of Object.entries(localProps)) {
-      if (typeof typeInfo.id === "number") {
-        if (typeInfo.id < 0) {
-          throw new Error(`Field id for ${fieldName} must be non-negative`);
-        }
+      if (typeInfo.id !== -1) {
+        checkFieldId(typeInfo.id);
         localNameById.set(typeInfo.id, fieldName);
       }
       const normalized = TypeMeta.toSnakeCase(fieldName);
@@ -771,7 +767,7 @@ export class TypeMeta {
     return this.fields.map((fieldInfo) => {
       let resolvedName = fieldInfo.getFieldName();
       if (fieldInfo.hasFieldId()) {
-        const localName = localNameById.get(fieldInfo.getFieldId()!);
+        const localName = localNameById.get(fieldInfo.getFieldId());
         if (localName) {
           resolvedName = localName;
         }
@@ -896,6 +892,7 @@ export class TypeMeta {
   }
 
   private writeFieldsInfo(writer: BinaryWriter, fields: FieldInfo[]) {
+    let fieldIds: Set<number> | undefined;
     for (const fieldInfo of fields) {
       // header: 2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag
       let header = fieldInfo.trackingRef ? 1 : 0;
@@ -905,7 +902,15 @@ export class TypeMeta {
       let encoded: Uint8Array | null = null;
 
       if (fieldInfo.hasFieldId()) {
-        size = fieldInfo.getFieldId()!;
+        size = fieldInfo.getFieldId();
+        checkFieldId(size);
+        if (fieldIds?.has(size)) {
+          throw new Error(`Duplicate field id ${size}`);
+        }
+        if (fieldIds === undefined) {
+          fieldIds = new Set();
+        }
+        fieldIds.add(size);
         encodingFlags = 3; // TAG_ID encoding
       } else {
         // Convert camelCase to snake_case for xlang compatibility
@@ -1075,8 +1080,8 @@ export class TypeMeta {
     return result.join("");
   }
 
-  static getFieldSortKey(i: { fieldName: string; fieldId?: number }) {
-    if (i.fieldId !== undefined && i.fieldId !== null && i.fieldId >= 0) {
+  static getFieldSortKey(i: { fieldName: string; fieldId: number }) {
+    if (i.fieldId >= 0) {
       return `${i.fieldId}`;
     }
     return TypeMeta.toSnakeCase(i.fieldName);
@@ -1090,23 +1095,16 @@ export class TypeMeta {
   }
 
   static compareFieldSortKey(
-    a: { fieldName: string; fieldId?: number },
-    b: { fieldName: string; fieldId?: number },
+    a: { fieldName: string; fieldId: number },
+    b: { fieldName: string; fieldId: number },
   ) {
-    if (
-      a.fieldId !== undefined &&
-      a.fieldId !== null &&
-      a.fieldId >= 0 &&
-      b.fieldId !== undefined &&
-      b.fieldId !== null &&
-      b.fieldId >= 0
-    ) {
+    if (a.fieldId >= 0 && b.fieldId >= 0) {
       return a.fieldId - b.fieldId;
     }
-    if (a.fieldId !== undefined && a.fieldId !== null && a.fieldId >= 0) {
+    if (a.fieldId >= 0) {
       return -1;
     }
-    if (b.fieldId !== undefined && b.fieldId !== null && b.fieldId >= 0) {
+    if (b.fieldId >= 0) {
       return 1;
     }
     return TypeMeta.compareOrdinal(TypeMeta.getFieldSortKey(a), TypeMeta.getFieldSortKey(b));
@@ -1117,7 +1115,7 @@ export class TypeMeta {
       fieldName: string;
       nullable?: boolean;
       typeId: number;
-      fieldId?: number;
+      fieldId: number;
     },
   >(typeInfos: Array<T>): Array<T> {
     const primitiveFields: Array<T> = [];

@@ -39,8 +39,18 @@ OUTPUTS = {
     "cpp": TEST_DIR / "cpp/generated",
     "csharp": TEST_DIR / "csharp/generated",
     "kotlin": TEST_DIR / "kotlin/src/main/kotlin/generated",
+    "swift": TEST_DIR / "swift/interop/Sources/Generated",
     "dart": TEST_DIR / "dart/lib/generated",
 }
+
+SWIFT_SOURCES = TEST_DIR / "swift/interop/Sources"
+
+# Package-less schemas, one Swift module each, so both emit a bare `ForyModule`.
+# One invocation apiece: a single invocation rejects the duplicate declaration.
+SWIFT_MODULE_SCHEMAS = [
+    (TEST_DIR / "idl" / "grpc_default_package_one.fdl", "GeneratedDefaultPackageOne"),
+    (TEST_DIR / "idl" / "grpc_default_package_two.fdl", "GeneratedDefaultPackageTwo"),
+]
 
 
 def main() -> int:
@@ -48,7 +58,8 @@ def main() -> int:
     compiler_path = str(REPO_ROOT / "compiler")
     env["PYTHONPATH"] = compiler_path + os.pathsep + env.get("PYTHONPATH", "")
 
-    for root in OUTPUTS.values():
+    swift_module_roots = [SWIFT_SOURCES / name for _, name in SWIFT_MODULE_SCHEMAS]
+    for root in [*OUTPUTS.values(), *swift_module_roots]:
         root.mkdir(parents=True, exist_ok=True)
         subprocess.check_call(
             [
@@ -84,6 +95,7 @@ def main() -> int:
                 f"--cpp_out={OUTPUTS['cpp']}",
                 f"--csharp_out={OUTPUTS['csharp']}",
                 f"--kotlin_out={OUTPUTS['kotlin']}",
+                f"--swift_out={OUTPUTS['swift']}",
                 f"--dart_out={OUTPUTS['dart']}",
                 "--grpc",
             ],
@@ -99,6 +111,20 @@ def main() -> int:
                 f"--python_out={OUTPUTS['python_sync']}",
                 "--grpc",
                 "--grpc-python-mode=sync",
+            ],
+            env=env,
+        )
+
+    for schema, module_name in SWIFT_MODULE_SCHEMAS:
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "fory_compiler",
+                "compile",
+                str(schema),
+                f"--swift_out={SWIFT_SOURCES / module_name}",
+                "--grpc",
             ],
             env=env,
         )

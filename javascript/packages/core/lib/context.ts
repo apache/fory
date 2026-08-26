@@ -1644,8 +1644,8 @@ export class ReadContext {
       const localFieldTypeInfo = localProps?.[fieldInfo.getFieldName()];
       let fieldTypeInfo = this.fieldInfoToTypeInfo(fieldInfo, localFieldTypeInfo)
         .setNullable(fieldInfo.nullable)
-        .setTrackingRef(fieldInfo.trackingRef)
-        .setId(fieldInfo.fieldId);
+        .setTrackingRef(fieldInfo.trackingRef);
+      fieldTypeInfo.id = fieldInfo.fieldId;
       if (localFieldTypeInfo === undefined) {
         fieldTypeInfo = markCompatibleSkipRead(fieldTypeInfo);
       }

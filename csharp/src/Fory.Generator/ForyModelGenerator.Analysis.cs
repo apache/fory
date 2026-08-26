@@ -1396,11 +1396,11 @@ public sealed partial class ForyModelGenerator
         List<Diagnostic> diagnostics,
         SchemaTypeModel? schemaTypeOverride,
         bool parseFieldAttribute,
-        short? fieldIdOverride = null,
+        int fieldIdOverride = -1,
         ITypeSymbol? schemaDescriptorTypeOverride = null)
     {
         (bool isOptional, ITypeSymbol unwrappedType) = UnwrapNullable(memberType);
-        short? fieldId = fieldIdOverride;
+        int fieldId = fieldIdOverride;
         SchemaTypeModel? schemaType = schemaTypeOverride;
         ITypeSymbol? schemaDescriptorType = schemaDescriptorTypeOverride;
         bool invalidSchemaType = false;
@@ -1410,7 +1410,7 @@ public sealed partial class ForyModelGenerator
             if (fieldAttribute is not null)
             {
                 if (fieldAttribute.ConstructorArguments.Length == 1 &&
-                    TryGetFieldId(fieldAttribute.ConstructorArguments[0], memberSymbol, diagnostics, out short ctorFieldId))
+                    TryGetFieldId(fieldAttribute.ConstructorArguments[0], memberSymbol, diagnostics, out int ctorFieldId))
                 {
                     fieldId = ctorFieldId;
                 }
@@ -1419,7 +1419,7 @@ public sealed partial class ForyModelGenerator
                 {
                     if (string.Equals(namedArg.Key, "Id", StringComparison.Ordinal))
                     {
-                        if (TryGetFieldId(namedArg.Value, memberSymbol, diagnostics, out short parsedFieldId))
+                        if (TryGetFieldId(namedArg.Value, memberSymbol, diagnostics, out int parsedFieldId))
                         {
                             fieldId = parsedFieldId;
                         }
@@ -1897,7 +1897,7 @@ public sealed partial class ForyModelGenerator
         TypedConstant value,
         ISymbol memberSymbol,
         List<Diagnostic> diagnostics,
-        out short fieldId)
+        out int fieldId)
     {
         fieldId = default;
         object? raw = value.Value;
@@ -1931,7 +1931,7 @@ public sealed partial class ForyModelGenerator
                 numeric = v;
                 break;
             case ulong v:
-                if (v > (ulong)short.MaxValue)
+                if (v > MaxFieldId)
                 {
                     diagnostics.Add(Diagnostic.Create(
                         InvalidFieldId,
@@ -1946,7 +1946,7 @@ public sealed partial class ForyModelGenerator
                 return false;
         }
 
-        if (numeric < 0 || numeric > short.MaxValue)
+        if (numeric < 0 || numeric > MaxFieldId)
         {
             diagnostics.Add(Diagnostic.Create(
                 InvalidFieldId,
@@ -1955,7 +1955,7 @@ public sealed partial class ForyModelGenerator
             return false;
         }
 
-        fieldId = (short)numeric;
+        fieldId = (int)numeric;
         return true;
     }
 
@@ -1982,8 +1982,8 @@ public sealed partial class ForyModelGenerator
 
                 return 0;
             })
-            .ThenBy(m => m.FieldId.HasValue ? 0 : 1)
-            .ThenBy(m => m.FieldId.GetValueOrDefault())
+            .ThenBy(m => m.FieldId >= 0 ? 0 : 1)
+            .ThenBy(m => m.FieldId)
             .ThenBy(m => m.FieldIdentifier, StringComparer.Ordinal)
             .ToImmutableArray();
     }

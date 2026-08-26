@@ -590,6 +590,26 @@ import org.apache.fory.scala.ForyScala
       errors.exists(_.message.contains("at least one non-Unknown case")) shouldBe true
     }
 
+    "validate field tag range" in {
+      typeCheckErrors("""
+        import org.apache.fory.annotation.{ForyField, ForyStruct}
+        import org.apache.fory.scala.ForySerializer
+
+        @ForyStruct
+        final case class MaxFieldTag(@ForyField(id = 536870911) value: Int)
+            derives ForySerializer
+      """) shouldBe empty
+
+      typeCheckErrors("""
+        import org.apache.fory.annotation.{ForyField, ForyStruct}
+        import org.apache.fory.scala.ForySerializer
+
+        @ForyStruct
+        final case class InvalidFieldTag(@ForyField(id = 536870912) value: Int)
+            derives ForySerializer
+      """) should not be empty
+    }
+
     "serialize derived union unknown cases with original ids" in {
       val fory = xlangFory()
       val unknown = SearchTarget.Unknown(new UnknownCase(99, SearchUser("Future")))

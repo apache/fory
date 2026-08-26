@@ -152,7 +152,7 @@ Fory supports struct tags for field-level configuration:
 	}
 
 Available tags:
-  - id=N: Assign numeric field ID for compact encoding
+  - id=N: Assign a field ID in 0 <= N < 2^29 for compact encoding
   - "-": Exclude field from serialization
   - ref: Enable reference tracking for pointer/slice/map fields
   - nullable: Write null flag for pointer fields

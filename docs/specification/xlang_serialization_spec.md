@@ -840,17 +840,25 @@ Field info list:
 Each field is encoded as:
 
 ```
-| field header (1 byte) | field type info | [field name bytes] |
+| field header (1 byte) | [extended name or tag value] | field type info | [field name bytes] |
 ```
+
+The optional extended value is a `varuint32`. It is present when the four-bit
+size field is saturated for a long encoded name or an extended tag ID, as
+defined below.
 
 Field header layout:
 
 - Bits 6-7: field name encoding (`UTF8`, `ALL_TO_LOWER_SPECIAL`,
   `LOWER_UPPER_DIGIT_SPECIAL`, or `TAG_ID`)
 - Bits 2-5: size
-  - For name encoding: `size = (name_bytes_length - 1)`
-  - For tag ID: `size = tag_id`
-  - If `size == 0b1111`, read `varuint32(size - 15)` and add it
+  - For name encoding, let `logical_size = name_bytes_length - 1` and store
+    `size = min(logical_size, 15)`. If `logical_size >= 15`, write
+    `varuint32(logical_size - 15)` after the header; decoding adds that
+    extension to `15`, then adds `1` to obtain `name_bytes_length`.
+  - For tag ID: `size = min(tag_id, 15)`
+  - If a tag ID has `size == 0b1111`, write `varuint32(tag_id - 15)` after the
+    header; decoding adds that extension to `15`
 - Bit 1: nullable flag
 - Bit 0: reference tracking flag
 
@@ -865,6 +873,11 @@ Field type info:
 Field names:
 
 - If `TAG_ID` encoding is used, no name bytes are written.
+- Tag IDs are signed-32-bit protocol values in the range
+  `0 <= tag_id < 2^29` (`0` through `536870911`). The upper bound leaves the
+  complete protocol domain representable by every implementation's signed
+  32-bit field-ID type; the extended form still writes `tag_id - 15` with the
+  existing `varuint32` encoding.
 - Otherwise, write the encoded field name bytes as a meta string.
 - For xlang, field names are converted to `snake_case` before encoding for
   cross-language compatibility.
@@ -1718,10 +1731,11 @@ For every field, compute a stable identifier used for ordering:
 - If a non-negative tag ID is configured (e.g., `@ForyField(id=...)`), use the tag ID.
 - Otherwise, use the field name converted to `snake_case`.
 
-Configured tag IDs must be non-negative. A negative configured tag ID is invalid; languages may
-use a negative value only as a default or internal sentinel for "no tag ID configured", which falls
-back to the `snake_case` field name and is not a tag ID. Tag IDs must be unique within a type;
-duplicate tag IDs are invalid.
+Configured tag IDs must satisfy `0 <= tag_id < 2^29`. A negative configured tag ID is invalid;
+languages may use a negative value only as a default or internal sentinel for "no tag ID
+configured", which falls back to the `snake_case` field name and is not a tag ID. Values greater
+than or equal to `2^29` are invalid. Tag IDs must be unique within a type; duplicate tag IDs are
+invalid.
 
 Field identifiers compare as follows:
 

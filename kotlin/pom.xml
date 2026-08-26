@@ -172,6 +172,35 @@
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>3.3.1</version>
+                    <executions>
+                        <execution>
+                            <id>stage-dokka-legal-resources</id>
+                            <phase>prepare-package</phase>
+                            <goals>
+                                <goal>copy-resources</goal>
+                            </goals>
+                            <configuration>
+                                <!-- Dokka preserves and archives files already present in its output directory. -->
+                                <skip>${dokka.skip}</skip>
+                                <outputDirectory>${project.build.directory}/dokkaJavadocJar/META-INF</outputDirectory>
+                                <resources>
+                                    <resource>
+                                        <directory>${project.build.outputDirectory}/META-INF</directory>
+                                        <filtering>false</filtering>
+                                        <includes>
+                                            <include>LICENSE</include>
+                                            <include>NOTICE</include>
+                                        </includes>
+                                    </resource>
+                                </resources>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-source-plugin</artifactId>
                     <version>3.0.1</version>
                     <executions>

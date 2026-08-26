@@ -224,7 +224,6 @@ The text of each license is the standard Apache 2.0 license.
 * spark (https://github.com/apache/spark)
     Files:
       java/fory-core/src/main/java/org/apache/fory/codegen/Code.java
-      java/fory-core/src/main/java/org/apache/fory/memory/Platform.java
       java/fory-format/src/main/java/org/apache/fory/format/vectorized/ArrowWriter.java
 
 * commons-io (https://github.com/apache/commons-io)
@@ -272,6 +271,12 @@ The text of each license is the standard Apache 2.0 license.
     Files:
       scala/fory-json-scala/src/main/java/org/apache/fory/json/scala/JsonEnumeration.java
 
+* wast (https://github.com/wycst/wast)
+    Fory's probability-first printable-ASCII fast-path predicate is based in part on
+    WAST's JSON string escape predicate.
+    Files:
+      java/fory-json/src/main/java/org/apache/fory/json/writer/JsonAsciiWordPredicates.java
+
 
 ================================================================
 BSD-3-Clause licenses
@@ -305,7 +310,7 @@ The text of each license is also included in licenses/LICENSE-[project].txt
 
 * murmurHash3.js (https://github.com/karanlyons/murmurHash3.js)
     Files:
-      javascript/packages/fory/lib/murmurHash3.ts
+      javascript/packages/core/lib/murmurHash3.ts
 
 
 ================================================================
@@ -317,8 +322,8 @@ See project link for details.
 
 * smhasher (https://github.com/aappleby/smhasher)
     Files:
-      src/fory/thirdparty/MurmurHash3.cc
-      src/fory/thirdparty/MurmurHash3.h
+      cpp/fory/thirdparty/MurmurHash3.cc
+      cpp/fory/thirdparty/MurmurHash3.h
 
 * java_util (https://github.com/yonik/java_util)
     Files:

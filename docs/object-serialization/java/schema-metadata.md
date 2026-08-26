@@ -87,10 +87,10 @@ public class User {
 
 ### Parameters
 
-| Parameter | Type      | Default | Description                            |
-| --------- | --------- | ------- | -------------------------------------- |
-| `id`      | `int`     | `-1`    | Non-negative field tag ID, or no ID    |
-| `dynamic` | `Dynamic` | `AUTO`  | Control polymorphism for struct fields |
+| Parameter | Type      | Default | Description                                  |
+| --------- | --------- | ------- | -------------------------------------------- |
+| `id`      | `int`     | `-1`    | Field tag ID, or the internal no-ID sentinel |
+| `dynamic` | `Dynamic` | `AUTO`  | Control polymorphism for struct fields       |
 
 Use `@Nullable` on the field type or nested type position for nullable schema
 metadata and `@Ref` for reference tracking. `@ForyField` does not carry either
@@ -123,10 +123,11 @@ public class User {
 
 **Notes**:
 
-- IDs must be unique within a class
-- IDs must be >= 0 when configured
-- If not specified, the annotation default `-1` is ignored and field name is used in metadata
+- Configured IDs must satisfy `0 <= id < 2^29` (`0` through `536870911`)
+- IDs must be unique within the complete struct schema, including inherited fields
+- If not specified, the annotation default `-1` is the internal no-ID sentinel and the field name is used in metadata
   (larger overhead)
+- Once assigned, keep an ID stable and do not reuse it for a different field
 
 **Without field IDs** (field names used in metadata):
 

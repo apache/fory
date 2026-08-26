@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import logging
 import os
@@ -25,6 +26,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -33,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../")
 JVM_RELEASE_LANGS = ("java", "kotlin", "scala")
+JVM_RELEASE_WORKTREE_ENV = "FORY_JVM_RELEASE_WORKTREE"
 HOMEBREW_OPENJDK25 = "openjdk@25"
 HOMEBREW_BREW_PATHS = ("/opt/homebrew/bin/brew", "/usr/local/bin/brew")
 FORY_CORE_JDK25_ENTRY = (
@@ -52,8 +58,11 @@ FORY_CORE_NATIVE_IMAGE_PROPERTIES = (
 GRAALVM_FEATURE_SERVICE_ENTRY = (
     "META-INF/services/org.graalvm.nativeimage.hosted.Feature"
 )
-MAVEN_RELEASE_CMD = (
-    "mvn -T10 clean deploy --no-transfer-progress -DskipTests -Papache-release"
+JAVA_RELEASE_PACKAGE_CMD = (
+    "mvn -T10 clean package --no-transfer-progress -DskipTests -Papache-release"
+)
+JAVA_RELEASE_DEPLOY_CMD = (
+    "mvn -T10 deploy --no-transfer-progress -DskipTests -Papache-release"
 )
 MAVEN_SNAPSHOT_CMD = (
     "mvn -T10 clean deploy --no-transfer-progress -DskipTests "
@@ -86,7 +95,6 @@ SCALA_SNAPSHOT_COMMANDS = (
     "sbt 'project fory-json-scala' +publish",
 )
 JVM_PUBLICATION_MODES = ("release", "snapshot")
-JVM_PUBLICATION_CREDENTIALS = ("NEXUS_USERNAME", "NEXUS_PASSWORD")
 KOTLIN_PUBLIC_ARTIFACTS = (
     "fory-kotlin",
     "fory-kotlin-ksp",
@@ -128,6 +136,10 @@ RELEASE_DOC_ROOTS = (
 RELEASE_DOC_EXTS = (".md", ".example")
 VERSION_SUFFIX_PATTERN = r"(?i:-snapshot|-dev\d*|\.dev\d+|-(?:alpha|beta|rc)\.\d+)"
 VERSION_PATTERN = rf"\d+\.\d+\.\d+(?:{VERSION_SUFFIX_PATTERN})?"
+NEXUS_BASE_URL = "https://repository.apache.org"
+NEXUS_TIMEOUT_SECONDS = 30
+NEXUS_CLOSE_ATTEMPTS = 30
+NEXUS_CLOSE_INTERVAL_SECONDS = 10
 
 
 def prepare(v: str):
@@ -241,20 +253,223 @@ def verify(v):
 def publish_jvm(languages="all", mode="release"):
     """Publish Java, Kotlin, and Scala artifacts through one ordered JVM owner."""
     langs = _jvm_release_langs(languages)
+    release_worktree = os.environ.get(JVM_RELEASE_WORKTREE_ENV)
+    if mode == "release" and not release_worktree:
+        _publish_jvm_from_worktree(",".join(langs))
+        return
+    if mode == "release" and os.path.realpath(release_worktree) != os.path.realpath(
+        PROJECT_ROOT_DIR
+    ):
+        raise RuntimeError(f"Invalid {JVM_RELEASE_WORKTREE_ENV}: {release_worktree}")
     _require_publication_authority(mode)
     _ensure_openjdk25()
     if "java" not in langs:
-        _verify_fory_core_mr_jar()
+        if mode == "release":
+            _run_release_cmd(JAVA_RELEASE_PACKAGE_CMD, "java")
+            verify_java_artifacts()
+        else:
+            _verify_fory_core_mr_jar()
     for lang in langs:
         if lang == "java":
             _publish_java(mode)
-            _verify_fory_core_mr_jar()
         elif lang == "kotlin":
             _publish_kotlin(mode)
         elif lang == "scala":
             _publish_scala(mode)
         else:
             raise NotImplementedError(f"Unsupported JVM release language: {lang}")
+
+
+def close_jvm_staging(
+    v,
+    rc_tag,
+    java_kotlin_staging_id,
+    scala_staging_id,
+    verify_only=False,
+):
+    """Close and verify the two Nexus repositories created by publish_jvm."""
+    _check_release_version(v)
+    if not re.fullmatch(r"\d+\.\d+\.\d+", v):
+        raise ValueError(f"Invalid final release version: {v}")
+    if not re.fullmatch(rf"v{re.escape(v)}-rc\d+", rc_tag):
+        raise ValueError(f"RC tag {rc_tag} does not match release version {v}")
+    staging_ids = [java_kotlin_staging_id, scala_staging_id]
+    for staging_id in staging_ids:
+        if not re.fullmatch(r"orgapachefory-\d+", staging_id):
+            raise ValueError(f"Invalid Apache Fory staging repository ID: {staging_id}")
+    if len(set(staging_ids)) != len(staging_ids):
+        raise ValueError("Java/Kotlin and Scala staging repository IDs must differ")
+
+    authorization = _nexus_authorization()
+    expected_state = "closed" if verify_only else "open"
+    states = _nexus_states(staging_ids, authorization)
+    _require_nexus_state(states, expected_state)
+    if not verify_only:
+        payload = {
+            "data": {
+                "stagedRepositoryIds": staging_ids,
+                "description": f"Close Apache Fory {rc_tag} staging repositories",
+            }
+        }
+        status, _ = _nexus_request(
+            "/service/local/staging/bulk/close",
+            authorization,
+            method="POST",
+            payload=payload,
+        )
+        if status != 201:
+            raise RuntimeError(f"Nexus bulk close returned HTTP {status}, expected 201")
+        logger.info("Submitted one Nexus bulk close request for %s", staging_ids)
+        _wait_for_nexus_close(staging_ids, authorization)
+
+    _verify_nexus_downloads(v, java_kotlin_staging_id, scala_staging_id)
+
+
+def _nexus_authorization():
+    username = os.environ.get("NEXUS_USERNAME")
+    password = os.environ.get("NEXUS_PASSWORD")
+    if not username or not password:
+        raise RuntimeError(
+            "NEXUS_USERNAME and NEXUS_PASSWORD are required for Nexus staging"
+        )
+    credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+    return f"Basic {credentials}"
+
+
+def _nexus_request(path, authorization, method="GET", payload=None):
+    headers = {
+        "Accept": "application/json",
+        "Authorization": authorization,
+        "User-Agent": "apache-fory-release-helper/1",
+    }
+    body = None
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+        body = json.dumps(payload).encode()
+    request = urllib.request.Request(
+        f"{NEXUS_BASE_URL}{path}",
+        data=body,
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=NEXUS_TIMEOUT_SECONDS) as response:
+            return response.status, response.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read(4096).decode(errors="replace").strip()
+        raise RuntimeError(
+            f"Nexus {method} {path} failed with HTTP {exc.code}: {detail}"
+        ) from None
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Nexus {method} {path} failed: {exc.reason}") from None
+
+
+def _nexus_states(staging_ids, authorization):
+    status, body = _nexus_request(
+        "/service/local/staging/profile_repositories", authorization
+    )
+    if status != 200:
+        raise RuntimeError(
+            f"Nexus repository list returned HTTP {status}, expected 200"
+        )
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid Nexus repository-list response: {exc}") from None
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        raise RuntimeError("Nexus repository-list response has no data list")
+    repositories = {
+        item.get("repositoryId"): item for item in data if isinstance(item, dict)
+    }
+    missing = [
+        staging_id for staging_id in staging_ids if staging_id not in repositories
+    ]
+    if missing:
+        raise RuntimeError(f"Missing Nexus staging repositories: {missing}")
+    states = {
+        staging_id: repositories[staging_id].get("type") for staging_id in staging_ids
+    }
+    for staging_id, state in states.items():
+        logger.info("Nexus staging repository %s: %s", staging_id, state)
+    return states
+
+
+def _require_nexus_state(states, expected_state):
+    unexpected = {
+        staging_id: state
+        for staging_id, state in states.items()
+        if state != expected_state
+    }
+    if unexpected:
+        raise RuntimeError(
+            f"Nexus repositories must be {expected_state}; found {unexpected}"
+        )
+
+
+def _wait_for_nexus_close(staging_ids, authorization):
+    for attempt in range(1, NEXUS_CLOSE_ATTEMPTS + 1):
+        states = _nexus_states(staging_ids, authorization)
+        if all(state == "closed" for state in states.values()):
+            return
+        if attempt < NEXUS_CLOSE_ATTEMPTS:
+            time.sleep(NEXUS_CLOSE_INTERVAL_SECONDS)
+    _log_nexus_activity(staging_ids, authorization)
+    raise RuntimeError(
+        f"Nexus repositories did not close after {NEXUS_CLOSE_ATTEMPTS} checks"
+    )
+
+
+def _log_nexus_activity(staging_ids, authorization):
+    for staging_id in staging_ids:
+        path = f"/service/local/staging/repository/{staging_id}/activity"
+        try:
+            status, body = _nexus_request(path, authorization)
+            if status != 200:
+                logger.error(
+                    "Nexus activity for %s returned HTTP %s", staging_id, status
+                )
+                continue
+            try:
+                activity = json.dumps(json.loads(body), indent=2, sort_keys=True)
+            except json.JSONDecodeError:
+                activity = body[:8192].decode(errors="replace")
+            logger.error("Nexus activity for %s:\n%s", staging_id, activity)
+        except RuntimeError as exc:
+            logger.error("Unable to read Nexus activity for %s: %s", staging_id, exc)
+
+
+def _verify_nexus_downloads(v, java_kotlin_staging_id, scala_staging_id):
+    java_kotlin_url = f"{NEXUS_BASE_URL}/content/repositories/{java_kotlin_staging_id}/"
+    scala_url = f"{NEXUS_BASE_URL}/content/repositories/{scala_staging_id}/"
+    artifact_urls = [
+        java_kotlin_url,
+        f"{java_kotlin_url}org/apache/fory/fory-core/{v}/fory-core-{v}.jar",
+        f"{java_kotlin_url}org/apache/fory/fory-kotlin/{v}/fory-kotlin-{v}.jar",
+        scala_url,
+        f"{scala_url}org/apache/fory/fory-scala_2.13/{v}/fory-scala_2.13-{v}.jar",
+        f"{scala_url}org/apache/fory/fory-json-scala_3/{v}/fory-json-scala_3-{v}.jar",
+    ]
+    for url in artifact_urls:
+        request = urllib.request.Request(
+            url, headers={"User-Agent": "apache-fory-release-helper/1"}
+        )
+        try:
+            with urllib.request.urlopen(
+                request, timeout=NEXUS_TIMEOUT_SECONDS
+            ) as response:
+                status = response.status
+        except urllib.error.HTTPError as exc:
+            status = exc.code
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"Anonymous Nexus download failed for {url}: {exc.reason}"
+            )
+        logger.info("Anonymous Nexus download HTTP %s: %s", status, url)
+        if status != 200:
+            raise RuntimeError(
+                f"Anonymous Nexus download returned HTTP {status}: {url}"
+            )
 
 
 def _jvm_release_langs(languages):
@@ -272,13 +487,43 @@ def _jvm_release_langs(languages):
 def _require_publication_authority(mode):
     if mode not in JVM_PUBLICATION_MODES:
         raise ValueError(f"Unsupported JVM publication mode: {mode}")
-    missing = [name for name in JVM_PUBLICATION_CREDENTIALS if not os.environ.get(name)]
-    if missing:
-        raise RuntimeError(f"JVM {mode} publication requires: {', '.join(missing)}")
     if mode == "release" and not _has_gpg_secret_key():
         raise RuntimeError("JVM release publication requires a GPG secret key")
-    os.environ["SONATYPE_USERNAME"] = os.environ["NEXUS_USERNAME"]
-    os.environ["SONATYPE_PASSWORD"] = os.environ["NEXUS_PASSWORD"]
+
+
+def _publish_jvm_from_worktree(languages):
+    source_root = os.path.abspath(PROJECT_ROOT_DIR)
+    revision = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=source_root, text=True
+    ).strip()
+    with tempfile.TemporaryDirectory(prefix="fory-jvm-release-") as temp_dir:
+        worktree = os.path.join(temp_dir, "worktree")
+        subprocess.check_call(
+            ["git", "worktree", "add", "--detach", worktree, revision],
+            cwd=source_root,
+        )
+        try:
+            logger.info("Publishing JVM release from temporary worktree %s", worktree)
+            env = os.environ.copy()
+            env[JVM_RELEASE_WORKTREE_ENV] = worktree
+            subprocess.check_call(
+                [
+                    sys.executable,
+                    os.path.join(worktree, "ci", "release.py"),
+                    "publish_jvm",
+                    "-l",
+                    languages,
+                    "--mode",
+                    "release",
+                ],
+                cwd=worktree,
+                env=env,
+            )
+        finally:
+            subprocess.check_call(
+                ["git", "worktree", "remove", "--force", worktree],
+                cwd=source_root,
+            )
 
 
 def _has_gpg_secret_key():
@@ -298,8 +543,15 @@ def _has_gpg_secret_key():
 
 
 def _publish_java(mode="release"):
-    command = MAVEN_RELEASE_CMD if mode == "release" else MAVEN_SNAPSHOT_CMD
-    _run_release_cmd(command, "java")
+    if mode == "release":
+        _run_release_cmd(JAVA_RELEASE_PACKAGE_CMD, "java")
+        verify_java_artifacts()
+        _clean_release_path("java")
+        _run_release_cmd(JAVA_RELEASE_DEPLOY_CMD, "java")
+        verify_java_artifacts()
+    else:
+        _run_release_cmd(MAVEN_SNAPSHOT_CMD, "java")
+        _verify_fory_core_mr_jar()
 
 
 def _publish_kotlin(mode="release"):
@@ -311,10 +563,24 @@ def _publish_kotlin(mode="release"):
         deploy_command = KOTLIN_SNAPSHOT_DEPLOY_CMD
     _run_release_cmd(package_command, "kotlin")
     verify_kotlin_artifacts()
+    if mode == "release":
+        _clean_release_path("kotlin")
     _run_release_cmd(deploy_command, "kotlin")
+    if mode == "release":
+        verify_kotlin_artifacts()
 
 
 def _publish_scala(mode="release"):
+    # GitHub Actions exposes Maven's NEXUS_* variables, while SBT consumes
+    # SONATYPE_* directly. Forward only present values so local SBT credentials
+    # continue to work without requiring publication environment variables.
+    for nexus_name, sonatype_name in (
+        ("NEXUS_USERNAME", "SONATYPE_USERNAME"),
+        ("NEXUS_PASSWORD", "SONATYPE_PASSWORD"),
+    ):
+        value = os.environ.get(nexus_name)
+        if value:
+            os.environ.setdefault(sonatype_name, value)
     commands = SCALA_RELEASE_COMMANDS if mode == "release" else SCALA_SNAPSHOT_COMMANDS
     for command in commands:
         _run_release_cmd(command, "scala")
@@ -324,6 +590,12 @@ def _run_release_cmd(command, path):
     cwd = os.path.join(PROJECT_ROOT_DIR, path)
     logger.info("Run release command in %s: %s", cwd, command)
     subprocess.check_call(command, cwd=cwd, shell=True)
+
+
+def _clean_release_path(path):
+    cwd = os.path.join(PROJECT_ROOT_DIR, path)
+    logger.info("Restore temporary release path before deploy: %s", cwd)
+    subprocess.check_call(["git", "clean", "-ffdx", "."], cwd=cwd)
 
 
 def _ensure_openjdk25():
@@ -557,6 +829,72 @@ def _verify_fory_core_mr_jar():
     )
 
 
+def verify_java_artifacts():
+    """Validate Java binary and source-release artifacts before deployment."""
+    _verify_fory_core_mr_jar()
+    version = _read_java_version()
+    archive_path = os.path.join(
+        PROJECT_ROOT_DIR,
+        "java",
+        "target",
+        f"fory-parent-{version}-source-release.zip",
+    )
+    if not os.path.exists(archive_path):
+        raise FileNotFoundError(f"Missing Java source-release artifact: {archive_path}")
+
+    root = f"fory-parent-{version}/"
+    with zipfile.ZipFile(archive_path) as archive:
+        archive_files = [
+            entry.filename for entry in archive.infolist() if not entry.is_dir()
+        ]
+        outside_root = [name for name in archive_files if not name.startswith(root)]
+        if outside_root:
+            raise RuntimeError(
+                f"{archive_path} contains files outside {root}: {outside_root}"
+            )
+        relative_files = [name[len(root) :] for name in archive_files]
+        packaged_files = set()
+        duplicate_files = set()
+        for name in relative_files:
+            if name in packaged_files:
+                duplicate_files.add(name)
+            packaged_files.add(name)
+        if duplicate_files:
+            raise RuntimeError(
+                f"{archive_path} contains duplicate files: {sorted(duplicate_files)}"
+            )
+        license_text = archive.read(f"{root}LICENSE").decode("utf-8")
+
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", "java"],
+        cwd=PROJECT_ROOT_DIR,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    expected_files = {path[len("java/") :] for path in tracked}
+    expected_files.update({"DEPENDENCIES", "LICENSE", "NOTICE"})
+    unexpected = sorted(packaged_files.difference(expected_files))
+    missing = sorted(expected_files.difference(packaged_files))
+    if unexpected or missing:
+        raise RuntimeError(
+            f"{archive_path} does not match the tracked Java source tree: "
+            f"unexpected={unexpected}, missing={missing}"
+        )
+
+    license_path = os.path.join(PROJECT_ROOT_DIR, "java", "LICENSE")
+    with open(license_path, "r", encoding="utf-8") as license_file:
+        expected_license = license_file.read()
+    if license_text != expected_license:
+        raise RuntimeError(f"{archive_path} LICENSE does not match {license_path}")
+    logger.info(
+        "Verified Java source release contains %d tracked and legal files: %s",
+        len(packaged_files),
+        archive_path,
+    )
+
+
 def verify_kotlin_artifacts():
     """Open every public Kotlin artifact and validate its publication surface."""
     version = _read_kotlin_version()
@@ -643,6 +981,11 @@ def verify_kotlin_artifacts():
             )
         with zipfile.ZipFile(javadoc_path) as javadocs:
             javadoc_names = javadocs.namelist()
+        for required in ("META-INF/LICENSE", "META-INF/NOTICE"):
+            if javadoc_names.count(required) != 1:
+                raise RuntimeError(
+                    f"{javadoc_path} must contain exactly one {required}"
+                )
         if "index.html" not in javadoc_names or not any(
             name.endswith(".html") and name != "index.html" for name in javadoc_names
         ):
@@ -1660,6 +2003,46 @@ def _parse_args():
         help="release stages signed artifacts; snapshot publishes unsigned snapshots",
     )
     publish_jvm_parser.set_defaults(func=publish_jvm)
+
+    close_jvm_parser = subparsers.add_parser(
+        "close_jvm_staging",
+        description="Close and verify the two Nexus repositories from publish_jvm",
+    )
+    close_jvm_parser.add_argument(
+        "-v",
+        dest="v",
+        required=True,
+        help="final release version without a v prefix or RC suffix",
+    )
+    close_jvm_parser.add_argument(
+        "--rc-tag",
+        required=True,
+        help="immutable release-candidate tag",
+    )
+    close_jvm_parser.add_argument(
+        "--java-kotlin-id",
+        dest="java_kotlin_staging_id",
+        required=True,
+        help="staging repository ID produced by Java and Kotlin publication",
+    )
+    close_jvm_parser.add_argument(
+        "--scala-id",
+        dest="scala_staging_id",
+        required=True,
+        help="staging repository ID produced by Scala publication",
+    )
+    close_jvm_parser.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="require closed state and verify downloads without submitting a close",
+    )
+    close_jvm_parser.set_defaults(func=close_jvm_staging)
+
+    verify_java_parser = subparsers.add_parser(
+        "verify_java_artifacts",
+        description="Verify Java binary and source-release artifacts",
+    )
+    verify_java_parser.set_defaults(func=verify_java_artifacts)
 
     verify_kotlin_parser = subparsers.add_parser(
         "verify_kotlin_artifacts",

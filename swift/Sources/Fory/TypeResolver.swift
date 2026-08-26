@@ -654,10 +654,8 @@ final class TypeResolver {
         seedBuiltin(UInt16.self)
         seedBuiltin(UInt32.self)
         seedBuiltin(UInt64.self)
-        #if arch(arm64) || arch(x86_64)
-            seedBuiltin(Int.self, wireLookup: false)
-            seedBuiltin(UInt.self, wireLookup: false)
-        #endif
+        seedBuiltin(Int.self, wireLookup: false)
+        seedBuiltin(UInt.self, wireLookup: false)
         seedBuiltin(Float16.self)
         seedBuiltin(BFloat16.self)
         seedBuiltin(Float.self)

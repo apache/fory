@@ -25,7 +25,6 @@ import static org.apache.fory.json.JsonTestSupport.newStringWriter;
 import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Writer;
-import static org.apache.fory.json.JsonTestSupport.nullCodec;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
@@ -184,7 +183,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertTrue(optional.isPresent());
     assertEquals(optional.getAsDouble(), Double.POSITIVE_INFINITY);
 
-    assertThrows(ForyJsonException.class, () -> json.fromJson("\"1.0\"", Double.class));
+    assertEquals(json.fromJson("\"1.0\"", Double.class), Double.valueOf(1.0d));
     assertThrows(ForyJsonException.class, () -> json.fromJson("\"nan\"", Float.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("NaN", Double.class));
   }
@@ -242,6 +241,17 @@ public class JsonScalarTest extends ForyJsonTestModels {
             "{\"bool\":false,\"byteValue\":6,\"charValue\":\"z\",\"doubleValue\":3.5,"
                 + "\"floatValue\":2.5,\"intValue\":8,\"longValue\":9,\"shortValue\":7}",
             BoxedScalars.class);
+    assertBoxedScalars(value);
+    value =
+        json.fromJson(
+            "{\"bool\":\"false\",\"byteValue\":\"6\",\"charValue\":\"z\","
+                + "\"doubleValue\":\"3.5\",\"floatValue\":\"2.5\",\"intValue\":\"8\","
+                + "\"longValue\":\"9\",\"shortValue\":\"7\"}",
+            BoxedScalars.class);
+    assertBoxedScalars(value);
+  }
+
+  private static void assertBoxedScalars(BoxedScalars value) {
     assertEquals(value.bool, Boolean.FALSE);
     assertEquals(value.byteValue, Byte.valueOf((byte) 6));
     assertEquals(value.charValue, Character.valueOf('z'));
@@ -264,6 +274,18 @@ public class JsonScalarTest extends ForyJsonTestModels {
             values.replace("}", ",\"text\":\"" + ZH_TEXT + "\"}"), PrimitiveFields.class));
     assertPrimitiveFields(
         json.fromJson(values.getBytes(StandardCharsets.UTF_8), PrimitiveFields.class));
+
+    String quotedValues =
+        "{\"bool\":\"true\",\"byteValue\":\"2\",\"shortValue\":\"3\",\"intValue\":\"4\","
+            + "\"longValue\":\"5\",\"floatValue\":\"1.5\",\"doubleValue\":\"2.5\","
+            + "\"charValue\":\"x\"}";
+    assertPrimitiveFields(json.fromJson(quotedValues, PrimitiveFields.class));
+    assertPrimitiveFields(
+        json.fromJson(
+            quotedValues.replace("}", ",\"text\":\"" + ZH_TEXT + "\"}"), PrimitiveFields.class));
+    assertPrimitiveFields(
+        json.fromJson(quotedValues.getBytes(StandardCharsets.UTF_8), PrimitiveFields.class));
+    assertGeneratedWhenSupported(json, PrimitiveFields.class, codegen);
 
     String[] names = {
       "bool",
@@ -886,19 +908,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
     containers.bigIntegers = Arrays.asList(integer);
     assertSubtypeRejected(() -> json.toJson(containers), BigIntegerSubtype.class);
 
-    ForyJson custom =
-        newJsonBuilder(codegen)
-            .registerCodec(
-                BigInteger.class, new TaggedNumberCodec<>("integer", BigInteger.valueOf(42)))
-            .registerCodec(
-                BigDecimal.class, new TaggedNumberCodec<>("decimal", new BigDecimal("1.25")))
-            .build();
-    fields.integer = integer;
-    fields.decimal = decimal;
-    String expected = "{\"decimal\":\"decimal\",\"integer\":\"integer\"}";
-    assertEquals(custom.toJson(fields), expected);
-    assertEquals(new String(custom.toJsonBytes(fields), StandardCharsets.UTF_8), expected);
-
     ForyJson subtypeCustom =
         newJsonBuilder(codegen)
             .registerCodec(
@@ -1054,6 +1063,17 @@ public class JsonScalarTest extends ForyJsonTestModels {
     ForyJson json = newJson();
     assertEquals(json.fromJson("7", int.class), Integer.valueOf(7));
     assertEquals(json.fromJson("true", boolean.class), Boolean.TRUE);
+    assertEquals(json.fromJson("\"true\"", boolean.class), Boolean.TRUE);
+    assertEquals(json.fromJson("\"2\"", byte.class), Byte.valueOf((byte) 2));
+    assertEquals(json.fromJson("\"3\"", short.class), Short.valueOf((short) 3));
+    assertEquals(json.fromJson("\"4\"", int.class), Integer.valueOf(4));
+    assertEquals(json.fromJson("\"5\"", long.class), Long.valueOf(5));
+    assertEquals(json.fromJson("\"1.5\"", float.class), Float.valueOf(1.5f));
+    assertEquals(
+        json.fromJson("\"2.5\"".getBytes(StandardCharsets.UTF_8), double.class),
+        Double.valueOf(2.5d));
+    assertEquals(json.fromJson("\"123\"", BigInteger.class), BigInteger.valueOf(123));
+    assertEquals(json.fromJson("\"0.100\"", BigDecimal.class), new BigDecimal("0.100"));
     assertEquals(json.fromJson("0.100", BigDecimal.class), new BigDecimal("0.100"));
     assertEquals(json.fromJson("\"fory\"".getBytes(StandardCharsets.UTF_8), String.class), "fory");
     assertEquals(
@@ -1140,6 +1160,54 @@ public class JsonScalarTest extends ForyJsonTestModels {
         newUtf8Reader(duration.getBytes(StandardCharsets.UTF_8)).readDuration(), expectedDuration);
     assertEquals(newLatin1Reader(latin1Bytes(duration)).readDuration(), expectedDuration);
     assertEquals(utf16Reader(duration).readDuration(), expectedDuration);
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void readQuotedBigNumbers(boolean codegen) {
+    ForyJson json = newJson(codegen);
+    BigInteger integer = new BigInteger("123456789012345678901234567890");
+    BigDecimal decimal = new BigDecimal("12345678901234567890.1234500");
+
+    assertEquals(json.fromJson("\"" + integer + "\"", BigInteger.class), integer);
+    assertEquals(
+        json.fromJson(("\"" + decimal + "\"").getBytes(StandardCharsets.UTF_8), BigDecimal.class),
+        decimal);
+
+    String input = "{\"decimal\":\"" + decimal + "\",\"integer\":\"" + integer + "\"}";
+    Utf8ScalarFields latin1 = json.fromJson(input, Utf8ScalarFields.class);
+    Utf8ScalarFields utf8 =
+        json.fromJson(input.getBytes(StandardCharsets.UTF_8), Utf8ScalarFields.class);
+    assertEquals(latin1.decimal, decimal);
+    assertEquals(latin1.integer, integer);
+    assertEquals(utf8.decimal, decimal);
+    assertEquals(utf8.integer, integer);
+    assertGeneratedWhenSupported(json, Utf8ScalarFields.class, codegen);
+
+    assertQuotedBigIntegerReaders("123456789012345678901234567890");
+    assertQuotedBigDecimalReaders("12345678901234567890.1234500");
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void readQuotedScalarContainers(boolean codegen) {
+    ForyJson json = newJson(codegen);
+    assertEquals(
+        json.fromJson("[\"true\",\"false\"]".getBytes(StandardCharsets.UTF_8), boolean[].class),
+        new boolean[] {true, false});
+    assertEquals(json.fromJson("[\"2\",\"3\"]", byte[].class), new byte[] {2, 3});
+    assertEquals(json.fromJson("[\"4\",\"5\"]", short[].class), new short[] {4, 5});
+    assertEquals(json.fromJson("[\"6\",\"7\"]", int[].class), new int[] {6, 7});
+    assertEquals(
+        json.fromJson("[\"8\",\"9\"]".getBytes(StandardCharsets.UTF_8), long[].class),
+        new long[] {8, 9});
+    assertEquals(json.fromJson("[\"1.5\",\"2.5\"]", float[].class), new float[] {1.5f, 2.5f});
+    assertEquals(json.fromJson("[\"3.5\",\"4.5\"]", double[].class), new double[] {3.5d, 4.5d});
+    assertEquals(
+        json.fromJson(
+            "[\"10\",\"11\"]".getBytes(StandardCharsets.UTF_8), new TypeRef<List<Integer>>() {}),
+        Arrays.asList(10, 11));
+    assertEquals(
+        json.fromJson("{\"value\":\"12.5\"}", new TypeRef<Map<String, Double>>() {}).get("value"),
+        Double.valueOf(12.5d));
   }
 
   @Test
@@ -1344,7 +1412,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertThrows(ForyJsonException.class, () -> json.fromJson("01", Number.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("1.", Number.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("\"nan\"", Number.class));
-    assertThrows(ForyJsonException.class, () -> json.fromJson("\"1.25\"", Number.class));
+    assertEquals(json.fromJson("\"1.25\"", Number.class), Double.valueOf(1.25d));
     assertThrows(
         ForyJsonException.class, () -> json.fromJson("\"\\u004e\\u0061\\u004e\"", Number.class));
 
@@ -1747,6 +1815,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertThrows(
         ForyJsonException.class,
         () -> json.fromJson(repeat('1', BIG_NUMBER_LIMIT + 1), BigInteger.class));
+    assertEquals(json.fromJson("\"" + accepted + "\"", BigInteger.class), new BigInteger(accepted));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("\"" + repeat('1', BIG_NUMBER_LIMIT + 1) + "\"", BigInteger.class));
   }
 
   @Test
@@ -1759,6 +1831,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertThrows(
         ForyJsonException.class,
         () -> json.fromJson(repeat('1', BIG_NUMBER_LIMIT + 1), BigDecimal.class));
+    assertEquals(json.fromJson("\"" + accepted + "\"", BigDecimal.class), new BigDecimal(accepted));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("\"" + repeat('1', BIG_NUMBER_LIMIT + 1) + "\"", BigDecimal.class));
     String overflowFallback = repeat('9', 20) + "." + repeat('1', BIG_NUMBER_LIMIT + 1);
     assertBigDecimalLengthReject(newUtf8Reader(overflowFallback.getBytes(StandardCharsets.UTF_8)));
     assertBigDecimalLengthReject(newLatin1Reader(latin1Bytes(overflowFallback)));
@@ -1769,6 +1845,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public void guardBigDecimalScale() {
     ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.fromJson("1e-10001", BigDecimal.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"1e-10001\"", BigDecimal.class));
     assertBigDecimalReaders("1e10000");
     assertBigDecimalReaders("0.1e10001");
     assertBigDecimalReaders("0.1e-9999");
@@ -1802,6 +1879,8 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public void rejectInvalidBigNumbers() {
     ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.fromJson("1.5", BigInteger.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"1.5\"", BigInteger.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"value\"", BigDecimal.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("1e2147483648", BigDecimal.class));
     assertThrows(
         ForyJsonException.class,
@@ -1809,6 +1888,29 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertThrows(
         ForyJsonException.class, () -> newLatin1Reader(latin1Bytes("1e2")).readBigInteger());
     assertThrows(ForyJsonException.class, () -> utf16Reader("1e2").readBigInteger());
+  }
+
+  @Test
+  public void rejectInvalidQuotedScalars() {
+    ForyJson json = newJson();
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"truth\"", boolean.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"01\"", int.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"+1\"", long.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"32768\"", short.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"1x\"", double.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"1.5", float.class));
+
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"\"true\"\"", boolean.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"\"1\"\"", int.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"\"1\"\"", long.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"\"1\"\"", float.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"\"1\"\"", double.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"\"1\"\"", BigInteger.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"\"1\"\"", BigDecimal.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("\"\"1\"\"".getBytes(StandardCharsets.UTF_8), int.class));
+    assertThrows(ForyJsonException.class, () -> utf16Reader("\"\"1\"\"").readIntValue());
   }
 
   @Test
@@ -2213,127 +2315,35 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test(dataProvider = "enableCodegen")
-  public void customNumericCodecsOwnFields(boolean codegen) {
-    ForyJson json =
-        newJsonBuilder(codegen)
-            .registerCodec(float.class, new TaggedNumberCodec<>("float", Float.valueOf(11.5f)))
-            .registerCodec(Float.class, new TaggedNumberCodec<>("float", Float.valueOf(11.5f)))
-            .registerCodec(double.class, new TaggedNumberCodec<>("double", Double.valueOf(22.5d)))
-            .registerCodec(Double.class, new TaggedNumberCodec<>("double", Double.valueOf(22.5d)))
-            .registerCodec(
-                BigDecimal.class, new TaggedNumberCodec<>("decimal", new BigDecimal("33.5")))
-            .build();
-    CustomNumericFields fields = new CustomNumericFields();
-    fields.floatValue = 1.25f;
-    fields.floatBoxed = Float.valueOf(1.25f);
-    fields.doubleValue = 2.5d;
-    fields.doubleBoxed = Double.valueOf(2.5d);
-    fields.decimal = new BigDecimal("3.75");
-    String expected =
-        "{\"decimal\":\"decimal\",\"doubleBoxed\":\"double\","
-            + "\"doubleValue\":\"double\",\"floatBoxed\":\"float\","
-            + "\"floatValue\":\"float\"}";
-    assertEquals(json.toJson(fields), expected);
-    assertEquals(new String(json.toJsonBytes(fields), StandardCharsets.UTF_8), expected);
-    assertCustomNumericFields(json.fromJson(expected, CustomNumericFields.class));
-    assertCustomNumericFields(
-        json.fromJson(expected.getBytes(StandardCharsets.UTF_8), CustomNumericFields.class));
-    assertCustomNumericFields(
-        json.fromJson(
-            "{\"ignored\":\"\u0100\",\"decimal\":\"decimal\","
-                + "\"doubleBoxed\":\"double\",\"doubleValue\":\"double\","
-                + "\"floatBoxed\":\"float\",\"floatValue\":\"float\"}",
-            CustomNumericFields.class));
-    assertGeneratedWhenSupported(json, CustomNumericFields.class, codegen);
-  }
-
-  @Test(dataProvider = "enableCodegen")
-  public void customPrimitiveNull(boolean codegen) {
-    ForyJson json = newJsonBuilder(codegen).registerCodec(int.class, nullCodec()).build();
+  public void primitiveNull(boolean codegen) {
+    ForyJson json = newJson(codegen);
     assertThrows(ForyJsonException.class, () -> json.fromJson("null", int.class));
     assertThrows(
         ForyJsonException.class,
         () -> json.fromJson("null".getBytes(StandardCharsets.UTF_8), int.class));
     assertThrows(
-        ForyJsonException.class,
-        () -> json.fromJson("{\"value\":null}", CustomPrimitiveField.class));
+        ForyJsonException.class, () -> json.fromJson("{\"value\":null}", PrimitiveField.class));
     assertThrows(
         ForyJsonException.class,
-        () -> json.fromJson("{\"ignored\":\"\u0100\",\"value\":null}", CustomPrimitiveField.class));
-    assertThrows(
-        ForyJsonException.class,
-        () ->
-            json.fromJson(
-                "{\"value\":null}".getBytes(StandardCharsets.UTF_8), CustomPrimitiveField.class));
-    assertGeneratedWhenSupported(json, CustomPrimitiveField.class, codegen);
-
-    assertThrows(
-        ForyJsonException.class,
-        () -> json.fromJson("{\"value\":null}", CustomPrimitiveSetter.class));
-    assertThrows(
-        ForyJsonException.class,
-        () ->
-            json.fromJson("{\"ignored\":\"\u0100\",\"value\":null}", CustomPrimitiveSetter.class));
+        () -> json.fromJson("{\"ignored\":\"\u0100\",\"value\":null}", PrimitiveField.class));
     assertThrows(
         ForyJsonException.class,
         () ->
             json.fromJson(
-                "{\"value\":null}".getBytes(StandardCharsets.UTF_8), CustomPrimitiveSetter.class));
-    assertGeneratedWhenSupported(json, CustomPrimitiveSetter.class, codegen);
-  }
+                "{\"value\":null}".getBytes(StandardCharsets.UTF_8), PrimitiveField.class));
+    assertGeneratedWhenSupported(json, PrimitiveField.class, codegen);
 
-  @Test(dataProvider = "enableCodegen")
-  public void customNumericCodecsOwnContainers(boolean codegen) {
-    ForyJson json =
-        newJsonBuilder(codegen)
-            .registerCodec(float.class, new TaggedNumberCodec<>("float", Float.valueOf(11.5f)))
-            .registerCodec(Float.class, new TaggedNumberCodec<>("float", Float.valueOf(11.5f)))
-            .registerCodec(
-                BigDecimal.class, new TaggedNumberCodec<>("decimal", new BigDecimal("33.5")))
-            .build();
-    CustomNumericContainers value = new CustomNumericContainers();
-    value.decimalArray = new BigDecimal[] {new BigDecimal("1.25")};
-    value.decimals = new LinkedHashMap<>();
-    value.decimals.put("a", new BigDecimal("1.25"));
-    value.floatArray = new Float[] {Float.valueOf(2.5f)};
-    value.floats = Arrays.asList(Float.valueOf(2.5f));
-    value.primitiveFloats = new float[] {2.5f};
-    String expected =
-        "{\"decimalArray\":[\"decimal\"],\"decimals\":{\"a\":\"decimal\"},"
-            + "\"floatArray\":[\"float\"],\"floats\":[\"float\"],"
-            + "\"primitiveFloats\":[\"float\"]}";
-    assertEquals(json.toJson(value), expected);
-    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
-    assertCustomNumericContainers(json.fromJson(expected, CustomNumericContainers.class));
-    assertCustomNumericContainers(
-        json.fromJson(expected.getBytes(StandardCharsets.UTF_8), CustomNumericContainers.class));
-    assertCustomNumericContainers(
-        json.fromJson(
-            "{\"ignored\":\"\u0100\"," + expected.substring(1), CustomNumericContainers.class));
-    assertGeneratedWhenSupported(json, CustomNumericContainers.class, codegen);
-  }
-
-  @Test(dataProvider = "enableCodegen")
-  public void customScalarCodecsOwnDirectContainers(boolean codegen) {
-    ForyJson json =
-        newJsonBuilder(codegen)
-            .registerCodec(String.class, new TaggedStringCodec("string", "decoded"))
-            .registerCodec(long.class, new TaggedNumberCodec<>("long", Long.valueOf(7L)))
-            .build();
-    CustomDirectContainers value = new CustomDirectContainers();
-    value.longs = new long[] {1L};
-    value.names = Arrays.asList("source");
-    value.strings = new String[] {"source"};
-    String expected = "{\"longs\":[\"long\"],\"names\":[\"string\"]," + "\"strings\":[\"string\"]}";
-    assertEquals(json.toJson(value), expected);
-    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
-    assertCustomDirectContainers(json.fromJson(expected, CustomDirectContainers.class));
-    assertCustomDirectContainers(
-        json.fromJson(expected.getBytes(StandardCharsets.UTF_8), CustomDirectContainers.class));
-    assertCustomDirectContainers(
-        json.fromJson(
-            "{\"ignored\":\"\u0100\"," + expected.substring(1), CustomDirectContainers.class));
-    assertGeneratedWhenSupported(json, CustomDirectContainers.class, codegen);
+    assertThrows(
+        ForyJsonException.class, () -> json.fromJson("{\"value\":null}", PrimitiveSetter.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("{\"ignored\":\"\u0100\",\"value\":null}", PrimitiveSetter.class));
+    assertThrows(
+        ForyJsonException.class,
+        () ->
+            json.fromJson(
+                "{\"value\":null}".getBytes(StandardCharsets.UTF_8), PrimitiveSetter.class));
+    assertGeneratedWhenSupported(json, PrimitiveSetter.class, codegen);
   }
 
   @Test
@@ -2462,38 +2472,16 @@ public class JsonScalarTest extends ForyJsonTestModels {
     public float floatValue;
   }
 
-  public static final class CustomNumericFields {
-    public BigDecimal decimal;
-    public Double doubleBoxed;
-    public double doubleValue;
-    public Float floatBoxed;
-    public float floatValue;
-  }
-
-  public static final class CustomPrimitiveField {
+  public static final class PrimitiveField {
     public int value;
   }
 
-  public static final class CustomPrimitiveSetter {
+  public static final class PrimitiveSetter {
     private int stored;
 
     public void setValue(int value) {
       stored = value;
     }
-  }
-
-  public static final class CustomNumericContainers {
-    public BigDecimal[] decimalArray;
-    public Map<String, BigDecimal> decimals;
-    public Float[] floatArray;
-    public List<Float> floats;
-    public float[] primitiveFloats;
-  }
-
-  public static final class CustomDirectContainers {
-    public long[] longs;
-    public List<String> names;
-    public String[] strings;
   }
 
   public static final class FloatingArrays {
@@ -3024,75 +3012,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
   }
 
-  private static final class TaggedStringCodec implements JsonValueCodec<String> {
-    private final String token;
-    private final String decoded;
-
-    private TaggedStringCodec(String token, String decoded) {
-      this.token = token;
-      this.decoded = decoded;
-    }
-
-    @Override
-    public void writeString(StringJsonWriter writer, String value) {
-      writer.writeString(token);
-    }
-
-    @Override
-    public void writeUtf8(Utf8JsonWriter writer, String value) {
-      writer.writeString(token);
-    }
-
-    @Override
-    public String readLatin1(Latin1JsonReader reader) {
-      assertEquals(reader.readString(), token);
-      return decoded;
-    }
-
-    @Override
-    public String readUtf16(Utf16JsonReader reader) {
-      assertEquals(reader.readString(), token);
-      return decoded;
-    }
-
-    @Override
-    public String readUtf8(Utf8JsonReader reader) {
-      assertEquals(reader.readString(), token);
-      return decoded;
-    }
-  }
-
   private static Utf16JsonReader utf16Reader(String input) {
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
     return newUtf16Reader().reset(input, bytes);
-  }
-
-  private static void assertCustomNumericFields(CustomNumericFields fields) {
-    assertEquals(Float.floatToRawIntBits(fields.floatValue), Float.floatToRawIntBits(11.5f));
-    assertEquals(
-        Float.floatToRawIntBits(fields.floatBoxed.floatValue()), Float.floatToRawIntBits(11.5f));
-    assertEquals(Double.doubleToRawLongBits(fields.doubleValue), Double.doubleToRawLongBits(22.5d));
-    assertEquals(
-        Double.doubleToRawLongBits(fields.doubleBoxed.doubleValue()),
-        Double.doubleToRawLongBits(22.5d));
-    assertEquals(fields.decimal, new BigDecimal("33.5"));
-  }
-
-  private static void assertCustomNumericContainers(CustomNumericContainers value) {
-    assertEquals(value.decimalArray[0], new BigDecimal("33.5"));
-    assertEquals(value.decimals.get("a"), new BigDecimal("33.5"));
-    assertEquals(
-        Float.floatToRawIntBits(value.floatArray[0].floatValue()), Float.floatToRawIntBits(11.5f));
-    assertEquals(
-        Float.floatToRawIntBits(value.floats.get(0).floatValue()), Float.floatToRawIntBits(11.5f));
-    assertEquals(Float.floatToRawIntBits(value.primitiveFloats[0]), Float.floatToRawIntBits(11.5f));
-  }
-
-  private static void assertCustomDirectContainers(CustomDirectContainers value) {
-    assertEquals(value.longs, new long[] {7L});
-    assertEquals(value.names, Arrays.asList("decoded"));
-    assertEquals(value.strings, new String[] {"decoded"});
   }
 
   private static void assertGeneratedFloatingFields(GeneratedFloatingFields value) {
@@ -3291,11 +3214,27 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(utf16Reader(token).readBigInteger(), expected);
   }
 
+  private static void assertQuotedBigIntegerReaders(String token) {
+    String quoted = "\"" + token + "\"";
+    BigInteger expected = new BigInteger(token);
+    assertEquals(newUtf8Reader(quoted.getBytes(StandardCharsets.UTF_8)).readBigInteger(), expected);
+    assertEquals(newLatin1Reader(latin1Bytes(quoted)).readBigInteger(), expected);
+    assertEquals(utf16Reader(quoted).readBigInteger(), expected);
+  }
+
   private static void assertBigDecimalReaders(String token) {
     BigDecimal expected = new BigDecimal(token);
     assertEquals(newUtf8Reader(token.getBytes(StandardCharsets.UTF_8)).readBigDecimal(), expected);
     assertEquals(newLatin1Reader(latin1Bytes(token)).readBigDecimal(), expected);
     assertEquals(utf16Reader(token).readBigDecimal(), expected);
+  }
+
+  private static void assertQuotedBigDecimalReaders(String token) {
+    String quoted = "\"" + token + "\"";
+    BigDecimal expected = new BigDecimal(token);
+    assertEquals(newUtf8Reader(quoted.getBytes(StandardCharsets.UTF_8)).readBigDecimal(), expected);
+    assertEquals(newLatin1Reader(latin1Bytes(quoted)).readBigDecimal(), expected);
+    assertEquals(utf16Reader(quoted).readBigDecimal(), expected);
   }
 
   private static void assertSubtypeRejected(Runnable action, Class<?> type) {

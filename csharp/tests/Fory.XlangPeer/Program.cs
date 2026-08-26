@@ -194,6 +194,7 @@ internal static class Program
             "test_string_serializer" => CaseStringSerializer(input),
             "test_cross_language_serializer" => CaseCrossLanguageSerializer(input),
             "test_simple_struct" => CaseSimpleStruct(input),
+            "test_exact_field_tags" => CaseExactFieldTags(input),
             "test_named_simple_struct" => CaseNamedSimpleStruct(input),
             "test_struct_evolving_override" => CaseStructEvolvingOverride(input),
             "test_list" => CaseList(input),
@@ -459,6 +460,13 @@ internal static class Program
         ForyRuntime fory = BuildFory(compatible: true);
         RegisterSimpleById(fory);
         return RoundTripSingle<SimpleStruct>(input, fory);
+    }
+
+    private static byte[] CaseExactFieldTags(byte[] input)
+    {
+        ForyRuntime fory = BuildFory(compatible: false);
+        fory.Register<ExactFieldTags>(104);
+        return RoundTripSingle<ExactFieldTags>(input, fory);
     }
 
     private static byte[] CaseNamedSimpleStruct(byte[] input)
@@ -1269,13 +1277,27 @@ public sealed class Item
 public sealed class SimpleStruct
 {
     public Dictionary<int, double> F1 { get; set; } = [];
+    [ForyField(15)]
     public int F2 { get; set; }
     public Item F3 { get; set; } = new();
     public string F4 { get; set; } = string.Empty;
     public Color F5 { get; set; }
     public List<string> F6 { get; set; } = [];
+    [ForyField(65551)]
     public int F7 { get; set; }
     public int F8 { get; set; }
+    [ForyField(536870911)]
+    public int Last { get; set; }
+}
+
+[ForyStruct]
+public sealed class ExactFieldTags
+{
+    [ForyField(15)]
+    public int First { get; set; }
+    [ForyField(65551)]
+    public int Second { get; set; }
+    [ForyField(536870911)]
     public int Last { get; set; }
 }
 

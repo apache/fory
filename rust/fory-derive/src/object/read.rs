@@ -368,8 +368,8 @@ pub(crate) fn gen_read_compatible_target(
         })
         .enumerate()
         .flat_map(|(sorted_idx, binding)| {
-            let direct_field_id = (sorted_idx * 2) as i16;
-            let compatible_field_id = (sorted_idx * 2 + 1) as i16;
+            let direct_field_id = (sorted_idx * 2) as i32;
+            let compatible_field_id = (sorted_idx * 2 + 1) as i32;
             let field_index = sorted_idx;
             let direct_body = binding.read_compatible_direct();
             let compatible_body = binding.read_compatible_conversion();
@@ -474,16 +474,16 @@ pub(crate) fn gen_read_compatible_target(
                     == local_variant_type_meta.get_type_name().original.as_str()
             {
                 // Same-name variant TypeMeta is resolved by the synthetic variant TypeInfo during
-                // parsing, so its field ids are already doubled matched dispatch ids. Running
-                // schema matching here again would treat those internal ids as explicit wire ids
-                // and skip every field.
+                // parsing, so matched_field_id already contains local dispatch while field_id
+                // still preserves wire identity. Reuse that owner result instead of rebuilding the
+                // same matching maps and compatibility decisions here.
                 remote_meta.get_field_infos()
             } else {
                 // Compatible enums match variants by tag first. If that tag now names a different
                 // local variant, the remote synthetic variant TypeMeta could not be classified by
                 // name during parsing, so the selected local variant owns the field remap here.
                 remapped_fields = remote_meta.get_field_infos().clone();
-                fory_core::meta::assign_remote_field_ids(local_fields, &mut remapped_fields)?;
+                fory_core::meta::match_remote_fields(local_fields, &mut remapped_fields)?;
                 &remapped_fields
             };
             let local_fields_ptr = local_fields.as_ptr();
@@ -527,7 +527,7 @@ pub(crate) fn gen_read_compatible_target(
         #schema_setup
         #(#declare_ts)*
         for _field in fields.iter() {
-            match _field.field_id {
+            match _field.matched_field_id {
                 #(#match_arms)*
                 #skip_arm
                 #invalid_arm

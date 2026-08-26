@@ -154,7 +154,7 @@ func remoteSchemaLogicalKeyLimitPersists() throws {
         if let fieldName {
             fields = [
                 TypeMeta.FieldInfo(
-                    fieldID: nil,
+                    fieldID: -1,
                     fieldName: fieldName,
                     fieldType: TypeMeta.FieldType(
                         typeID: TypeId.int32.rawValue,

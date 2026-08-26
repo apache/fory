@@ -39,6 +39,7 @@ from pyfory.meta.typedef import (
 )
 from pyfory.meta.metastring import MetaStringEncoder
 from pyfory._fory import NO_USER_TYPE_ID
+from pyfory.field import MAX_FIELD_ID
 from pyfory.types import TypeId
 
 from pyfory.serialization import Buffer
@@ -224,6 +225,8 @@ def write_field_info(buffer: Buffer, field_info: FieldInfo):
     if field_info.uses_tag_id():
         # TAG_ID encoding (encoding = 0b11 at bits 6-7)
         tag_id = field_info.tag_id
+        if tag_id > MAX_FIELD_ID:
+            raise ValueError(f"tag_id must not exceed {MAX_FIELD_ID}, got {tag_id}")
         header |= FIELD_NAME_ENCODING_TAG_ID << 6  # encoding at bits 6-7
 
         if tag_id >= TAG_ID_SIZE_THRESHOLD:

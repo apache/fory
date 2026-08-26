@@ -317,12 +317,12 @@ participate in field order.
 
 Field identifiers are selected as follows:
 
-- If a field has an explicit non-negative `@ForyField(id = ...)`, that numeric
-  ID is the field identifier.
-- Otherwise, the Java field name converted to snake_case is the field
-  identifier.
-- Negative annotation values are not valid field IDs. The annotation default
-  value `-1` means no explicit ID and is ignored for identifier selection.
+- If a field has an explicit `@ForyField(id = ...)` in the range
+  `0 <= id < 2^29`, that numeric ID is the field identifier.
+- The annotation default `id = -1`, including a field without an explicit
+  `@ForyField` ID, uses the Java field name converted to snake_case.
+- Every other annotation ID is invalid; values below `-1` and values greater
+  than or equal to `2^29` do not select name-based identity.
 
 Identifier comparison is:
 
@@ -448,7 +448,8 @@ For name encodings, bits `4..6` store `encoded_length - 1` when it is less than
 
 For tag ID encoding, bits `4..6` store the numeric field ID when it is less than
 `7`. If the value is `7`, read an extra `varuint32` and add it to `7`. Field IDs
-must be non-negative. Duplicate field IDs in one TypeDef are invalid.
+must satisfy `0 <= tag_id < 2^29`; the largest legal value is `536870911`.
+Duplicate field IDs in one TypeDef are invalid.
 
 ### Field Type
 

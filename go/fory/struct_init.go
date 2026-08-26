@@ -116,7 +116,7 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 	var serializers []Serializer
 	var typeIds []TypeId
 	var nullables []bool
-	var tagIDs []int
+	var tagIDs []int32
 
 	for i := 0; i < type_.NumField(); i++ {
 		field := type_.Field(i)
@@ -340,7 +340,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 	localNullableByIndex := make(map[int]bool)
 	localTrackRefByIndex := make(map[int]bool)
 	localSpecByIndex := make(map[int]*TypeSpec)
-	fieldTagIDToBinding := make(map[int]localFieldBinding)
+	fieldTagIDToBinding := make(map[int32]localFieldBinding)
 	for i := 0; i < type_.NumField(); i++ {
 		field := type_.Field(i)
 		if field.PkgPath != "" {

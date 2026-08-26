@@ -506,7 +506,7 @@ func TestTypeDefExtendedFieldCountHeaderDoesNotSetRegisterByName(t *testing.T) {
 	for i := range fields {
 		fields[i] = FieldDef{
 			typeSpec: NewSimpleTypeSpec(INT32),
-			tagID:    i + 1,
+			tagID:    int32(i + 1),
 		}
 	}
 	typeDef := NewTypeDef(uint32(STRUCT), 700, nil, nil, false, false, fields)
@@ -516,6 +516,29 @@ func TestTypeDefExtendedFieldCountHeaderDoesNotSetRegisterByName(t *testing.T) {
 	header := buffer.Bytes()[0]
 	require.Equal(t, byte(StructTypeDefFlag|SmallNumFieldsThreshold), header)
 	require.Zero(t, header&RegisterByNameFlag)
+}
+
+func TestTypeDefFieldTagDomain(t *testing.T) {
+	field := FieldDef{typeSpec: NewSimpleTypeSpec(INT32), tagID: maxTypeDefTagID}
+	buffer := NewByteBuffer(nil)
+	require.NoError(t, writeFieldDef(nil, buffer, field))
+	buffer.SetReaderIndex(0)
+	decoded, err := readFieldDef(nil, buffer)
+	require.NoError(t, err)
+	require.Equal(t, maxTypeDefTagID, decoded.tagID)
+
+	field.tagID = TagIDUseFieldName - 1
+	require.Error(t, writeFieldDef(nil, NewByteBuffer(nil), field))
+	field.tagID = maxTypeDefTagID + 1
+	require.Error(t, writeFieldDef(nil, NewByteBuffer(nil), field))
+
+	buffer = NewByteBuffer(nil)
+	require.NoError(t, buffer.WriteByte(byte(FieldNameEncodingTagID<<6|0x0F<<2)))
+	buffer.WriteVarUint32(uint32(maxTypeDefTagID+1) - FieldNameSizeThreshold)
+	NewSimpleTypeSpec(INT32).write(buffer)
+	buffer.SetReaderIndex(0)
+	_, err = readFieldDef(nil, buffer)
+	require.Error(t, err)
 }
 
 func TestTypeDefRejectsMetadataHashMismatch(t *testing.T) {

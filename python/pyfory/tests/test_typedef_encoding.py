@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional
 import pytest
 
 import pyfory
+from pyfory.field import MAX_FIELD_ID
 from pyfory.meta import typedef as typedef_module
 from pyfory.meta import typedef_decoder
 from pyfory.serialization import Buffer, ENABLE_FORY_CYTHON_SERIALIZATION
@@ -56,6 +57,8 @@ from pyfory.meta.typedef_encoder import (
     FIELD_NAME_ENCODER,
     encode_typedef,
     prepend_header,
+    write_namespace,
+    write_typename,
 )
 from pyfory.meta.typedef_decoder import decode_typedef
 from pyfory.serializer import PyArraySerializer
@@ -395,6 +398,39 @@ def test_decode_typedef_rejects_hash_consistent_malformed_body():
 
     with pytest.raises(Exception):
         decode_typedef(Buffer(encoded), fory.type_resolver)
+
+
+def test_remote_tag_identity_domain():
+    int_type = FieldType(TypeId.INT32, True, False, False)
+
+    def encoded_tag_fields(tag_ids):
+        body = Buffer.allocate(128)
+        body.write_uint8(STRUCT_TYPEDEF_FLAG | REGISTER_BY_NAME_FLAG | typedef_module.COMPATIBLE_TYPEDEF_FLAG | len(tag_ids))
+        write_namespace(body, "example")
+        write_typename(body, "TaggedRemote")
+        for tag_id in tag_ids:
+            body.write_uint8((typedef_module.FIELD_NAME_ENCODING_TAG_ID << 6) | (min(tag_id, typedef_module.TAG_ID_SIZE_THRESHOLD) << 2))
+            if tag_id >= typedef_module.TAG_ID_SIZE_THRESHOLD:
+                body.write_var_uint32(tag_id - typedef_module.TAG_ID_SIZE_THRESHOLD)
+            int_type.write(body, False)
+        return prepend_header(body.to_bytes(0, body.get_writer_index()), False)
+
+    decoded = decode_typedef(
+        Buffer(encoded_tag_fields([0, 15, MAX_FIELD_ID])),
+        Fory(xlang=True, compatible=True).type_resolver,
+    )
+    assert [field.tag_id for field in decoded.fields] == [0, 15, MAX_FIELD_ID]
+
+    with pytest.raises(ValueError):
+        decode_typedef(
+            Buffer(encoded_tag_fields([MAX_FIELD_ID + 1])),
+            Fory(xlang=True, compatible=True).type_resolver,
+        )
+    with pytest.raises(ValueError, match="Duplicate TypeDef field tag ID"):
+        decode_typedef(
+            Buffer(encoded_tag_fields([7, 7])),
+            Fory(xlang=True, compatible=True).type_resolver,
+        )
 
 
 def test_namespace_encoding():

@@ -23,7 +23,7 @@ This page covers schema metadata for C# generated serializers.
 
 ## `[ForyStruct]` and `[ForyField]`
 
-Use `[ForyStruct]` to enable source-generated serializers. Use `[ForyField]` to assign an optional stable non-negative field id or to override the Fory schema type used for a field.
+Use `[ForyStruct]` to enable source-generated serializers. Use `[ForyField]` to assign an optional stable field ID or to override the Fory schema type used for a field. Configured IDs must be unique within the complete struct schema and satisfy `0 <= id < 2^29` (`0` through `536870911`).
 
 External-type serialization puts `Target` on a local abstract serializer
 declaration. Its properties own the field names, IDs, schema descriptors,
@@ -77,6 +77,7 @@ public sealed class Metrics
 ```
 
 `Id` is optional. When it is omitted, compatible mode still matches the field by name.
+Once assigned, keep an ID stable and do not reuse it for a different field.
 
 ```csharp
 using Apache.Fory;

@@ -491,6 +491,11 @@ void _runCase(String caseName) {
       _registerSimpleById(fory);
       _roundTripFory(fory);
       return;
+    case 'test_exact_field_tags':
+      final fory = _newFory();
+      registerXlangType(fory, ExactFieldTags, id: 104);
+      _roundTripFory(fory);
+      return;
     case 'test_named_simple_struct':
       final fory = _newFory(compatible: true);
       _registerSimpleByName(fory);

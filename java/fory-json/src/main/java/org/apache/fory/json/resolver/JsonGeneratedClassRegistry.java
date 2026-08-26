@@ -26,175 +26,138 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.codec.GeneratedJsonCodec;
-import org.apache.fory.json.codegen.JsonCodegenKey;
+import org.apache.fory.json.codegen.GeneratedCodecKey;
 import org.apache.fory.json.resolver.JsonSharedRegistry.GeneratedClasses;
 import org.apache.fory.reflect.TypeRef;
 
-/** Frozen Native Image mapping from JSON configuration semantics to generated classes. */
+/** Frozen exact-key registry of generated JSON classes retained in a Native Image. */
 @Internal
 public final class JsonGeneratedClassRegistry {
-  private static Map<JsonCodegenKey, MutableConfiguration> pending = new HashMap<>();
-  private static Map<JsonCodegenKey, Configuration> configurations = Collections.emptyMap();
-  private static boolean frozen;
+  private static Map<GeneratedCodecKey, Class<?>> pendingClasses = new HashMap<>();
+  private static Map<CompanionKey, GeneratedJsonCodec<?>> pendingCompanions = new HashMap<>();
+  private static Map<GeneratedCodecKey, Class<?>> generatedClasses = Collections.emptyMap();
+  private static CompanionEntry[] companionEntries = new CompanionEntry[0];
 
   private JsonGeneratedClassRegistry() {}
 
   /** Publishes one hosted configuration's generated classes during Native Image analysis. */
-  public static synchronized Set<Class<?>> register(
-      JsonCodegenKey key, JsonSharedRegistry hostedRegistry) {
-    if (frozen) {
+  public static synchronized Set<Class<?>> register(JsonSharedRegistry hostedRegistry) {
+    if (pendingClasses == null) {
       throw new IllegalStateException("Fory JSON generated class registry is frozen");
     }
-    GeneratedClasses generatedClasses = hostedRegistry.generatedClasses();
-    MutableConfiguration configuration = pending.get(key);
-    if (configuration == null) {
-      configuration = new MutableConfiguration();
-      pending.put(key, configuration);
-    }
+    GeneratedClasses generated = hostedRegistry.generatedClasses();
     LinkedHashSet<Class<?>> added = new LinkedHashSet<>();
-    configuration.merge(generatedClasses, added);
-    configurations = snapshot();
+    mergeClasses(generated.classes(), added);
+    mergeSourceCodecs(generated.sourceCodecs(), pendingCompanions, added);
     return added;
   }
 
-  /** Finalizes generated class lookup after Native Image analysis. */
+  /** Finalizes Native runtime lookup and releases hosted mutable state. */
   public static synchronized void freeze() {
-    if (frozen) {
+    if (pendingClasses == null) {
       return;
     }
-    pending = null;
-    frozen = true;
+    generatedClasses = pendingClasses;
+    snapshotCompanions();
+    pendingClasses = null;
+    pendingCompanions = null;
   }
 
-  private static Map<JsonCodegenKey, Configuration> snapshot() {
-    Map<JsonCodegenKey, Configuration> snapshot = new HashMap<>(pending.size());
-    for (Map.Entry<JsonCodegenKey, MutableConfiguration> entry : pending.entrySet()) {
-      snapshot.put(entry.getKey(), entry.getValue().freeze());
+  static Class<?> generatedClass(GeneratedCodecKey key) {
+    Map<GeneratedCodecKey, Class<?>> pending = pendingClasses;
+    if (pending != null) {
+      return pending.get(key);
     }
-    return Collections.unmodifiableMap(snapshot);
+    return generatedClasses.get(key);
   }
 
-  static Configuration configuration(JsonCodegenKey key) {
-    return configurations.get(key);
+  static GeneratedJsonCodec<?> sourceCodec(CompanionKey key) {
+    Map<CompanionKey, GeneratedJsonCodec<?>> pending = pendingCompanions;
+    if (pending != null) {
+      return pending.get(key);
+    }
+    for (CompanionEntry entry : companionEntries) {
+      if (entry.key.equals(key)) {
+        return entry.codec;
+      }
+    }
+    return null;
+  }
+
+  private static void mergeClasses(Map<GeneratedCodecKey, Class<?>> source, Set<Class<?>> added) {
+    for (Map.Entry<GeneratedCodecKey, Class<?>> entry : source.entrySet()) {
+      GeneratedCodecKey key = entry.getKey();
+      Class<?> generatedClass = entry.getValue();
+      Class<?> previous = pendingClasses.putIfAbsent(key, generatedClass);
+      if (previous == null) {
+        added.add(generatedClass);
+      } else if (previous != generatedClass) {
+        throw new IllegalStateException(
+            "Conflicting generated Fory JSON classes for " + key.targetClass().getName());
+      }
+    }
   }
 
   static void mergeSourceCodecs(
-      Map<TypeRef<?>, GeneratedJsonCodec<?>> source,
-      Map<TypeRef<?>, GeneratedJsonCodec<?>> target,
+      Map<CompanionKey, ? extends GeneratedJsonCodec<?>> source,
+      Map<CompanionKey, GeneratedJsonCodec<?>> target,
       Set<Class<?>> added) {
-    for (Map.Entry<TypeRef<?>, GeneratedJsonCodec<?>> entry : source.entrySet()) {
-      TypeRef<?> type = entry.getKey();
+    for (Map.Entry<CompanionKey, ? extends GeneratedJsonCodec<?>> entry : source.entrySet()) {
       GeneratedJsonCodec<?> codec = entry.getValue();
-      GeneratedJsonCodec<?> previous = target.putIfAbsent(type, codec);
+      GeneratedJsonCodec<?> previous = target.putIfAbsent(entry.getKey(), codec);
       if (previous == null) {
         added.add(codec.getClass());
       } else if (previous.getClass() != codec.getClass()) {
         throw new IllegalStateException(
-            "Conflicting source-generated Fory JSON companions for " + type);
+            "Conflicting source-generated Fory JSON companions for " + entry.getKey().type);
       }
     }
   }
 
-  static final class Configuration {
-    private final Map<TypeRef<?>, Class<?>> stringWriters;
-    private final Map<TypeRef<?>, Class<?>> utf8Writers;
-    private final Map<TypeRef<?>, Class<?>> latin1Readers;
-    private final Map<TypeRef<?>, Class<?>> utf16Readers;
-    private final Map<TypeRef<?>, Class<?>> utf8Readers;
-    private final Map<TypeRef<?>, Class<?>> utf8CollectionWriters;
-    private final Map<TypeRef<?>, Class<?>> utf8CollectionReaders;
-    private final Map<TypeRef<?>, GeneratedJsonCodec<?>> sourceCodecs;
-
-    private Configuration(MutableConfiguration source) {
-      stringWriters = immutableValues(source.stringWriters);
-      utf8Writers = immutableValues(source.utf8Writers);
-      latin1Readers = immutableValues(source.latin1Readers);
-      utf16Readers = immutableValues(source.utf16Readers);
-      utf8Readers = immutableValues(source.utf8Readers);
-      utf8CollectionWriters = immutableValues(source.utf8CollectionWriters);
-      utf8CollectionReaders = immutableValues(source.utf8CollectionReaders);
-      sourceCodecs = immutableValues(source.sourceCodecs);
-    }
-
-    Class<?> stringWriter(TypeRef<?> type) {
-      return stringWriters.get(type);
-    }
-
-    Class<?> utf8Writer(TypeRef<?> type) {
-      return utf8Writers.get(type);
-    }
-
-    Class<?> latin1Reader(TypeRef<?> type) {
-      return latin1Readers.get(type);
-    }
-
-    Class<?> utf16Reader(TypeRef<?> type) {
-      return utf16Readers.get(type);
-    }
-
-    Class<?> utf8Reader(TypeRef<?> type) {
-      return utf8Readers.get(type);
-    }
-
-    Class<?> utf8CollectionWriter(TypeRef<?> type) {
-      return utf8CollectionWriters.get(type);
-    }
-
-    Class<?> utf8CollectionReader(TypeRef<?> type) {
-      return utf8CollectionReaders.get(type);
-    }
-
-    GeneratedJsonCodec<?> sourceCodec(TypeRef<?> type) {
-      return sourceCodecs.get(type);
-    }
-
-    private static <K, V> Map<K, V> immutableValues(Map<K, V> values) {
-      return values.isEmpty()
-          ? Collections.emptyMap()
-          : Collections.unmodifiableMap(new HashMap<>(values));
+  private static void snapshotCompanions() {
+    // Companion keys retain TypeRef and Mixin identity hashes. Freeze them as entries so Native
+    // runtime lookup uses equality instead of a hosted HashMap bucket computed before image start.
+    companionEntries = new CompanionEntry[pendingCompanions.size()];
+    int index = 0;
+    for (Map.Entry<CompanionKey, GeneratedJsonCodec<?>> entry : pendingCompanions.entrySet()) {
+      companionEntries[index++] = new CompanionEntry(entry.getKey(), entry.getValue());
     }
   }
 
-  private static final class MutableConfiguration {
-    private final Map<TypeRef<?>, Class<?>> stringWriters = new HashMap<>();
-    private final Map<TypeRef<?>, Class<?>> utf8Writers = new HashMap<>();
-    private final Map<TypeRef<?>, Class<?>> latin1Readers = new HashMap<>();
-    private final Map<TypeRef<?>, Class<?>> utf16Readers = new HashMap<>();
-    private final Map<TypeRef<?>, Class<?>> utf8Readers = new HashMap<>();
-    private final Map<TypeRef<?>, Class<?>> utf8CollectionWriters = new HashMap<>();
-    private final Map<TypeRef<?>, Class<?>> utf8CollectionReaders = new HashMap<>();
-    private final Map<TypeRef<?>, GeneratedJsonCodec<?>> sourceCodecs = new HashMap<>();
+  static final class CompanionKey {
+    private final TypeRef<?> type;
+    private final Class<?> mixinType;
 
-    private void merge(GeneratedClasses source, Set<Class<?>> added) {
-      merge(source.stringWriters(), stringWriters, added);
-      merge(source.utf8Writers(), utf8Writers, added);
-      merge(source.latin1Readers(), latin1Readers, added);
-      merge(source.utf16Readers(), utf16Readers, added);
-      merge(source.utf8Readers(), utf8Readers, added);
-      merge(source.utf8CollectionWriters(), utf8CollectionWriters, added);
-      merge(source.utf8CollectionReaders(), utf8CollectionReaders, added);
-      JsonGeneratedClassRegistry.mergeSourceCodecs(source.sourceCodecs(), sourceCodecs, added);
+    CompanionKey(TypeRef<?> type, Class<?> mixinType) {
+      this.type = type;
+      this.mixinType = mixinType;
     }
 
-    private static <K> void merge(
-        Map<K, Class<?>> source, Map<K, Class<?>> target, Set<Class<?>> added) {
-      for (Map.Entry<K, Class<?>> entry : source.entrySet()) {
-        merge(entry.getKey(), entry.getValue(), target, added);
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) {
+        return true;
       }
-    }
-
-    private static <K> void merge(
-        K key, Class<?> generatedClass, Map<K, Class<?>> target, Set<Class<?>> added) {
-      Class<?> previous = target.putIfAbsent(key, generatedClass);
-      if (previous == null) {
-        added.add(generatedClass);
-      } else if (previous != generatedClass) {
-        throw new IllegalStateException("Conflicting generated Fory JSON classes for " + key);
+      if (!(other instanceof CompanionKey)) {
+        return false;
       }
+      CompanionKey that = (CompanionKey) other;
+      return type.equals(that.type) && mixinType == that.mixinType;
     }
 
-    private Configuration freeze() {
-      return new Configuration(this);
+    @Override
+    public int hashCode() {
+      return type.hashCode() * 31 + System.identityHashCode(mixinType);
+    }
+  }
+
+  private static final class CompanionEntry {
+    private final CompanionKey key;
+    private final GeneratedJsonCodec<?> codec;
+
+    private CompanionEntry(CompanionKey key, GeneratedJsonCodec<?> codec) {
+      this.key = key;
+      this.codec = codec;
     }
   }
 }

@@ -28,8 +28,8 @@ object surface.
 Kotlin type tokens and metadata are trusted schema declarations, not input authority. The Kotlin
 module validates the logical type, physical JVM carrier, and constructor/default operations before
 parsing. JSON input cannot select a class, constructor, compiler default target, object, companion,
-module, codec, or callable. A closed `JsonSubTypes` value selects only a logical name from the
-application-declared finite table.
+module, codec, or callable. `JsonSubTypes` selects only a logical name from a finite table: either
+the explicit entries or the inferred sealed hierarchy.
 
 ## Type Policy And Class Loading
 
@@ -53,6 +53,14 @@ both serialization and parsing, so it must be thread-safe. Built-in scalar
 types normally do not invoke the custom checker, but an application codec for
 a built-in target makes that target subject to the checker. A custom codec
 never bypasses the fixed disallow list.
+
+An empty `JsonSubTypes.value` authorizes the statically sealed closure of the selected top-level
+base. This is still a closed set: JSON cannot name a class, search the classpath, or admit a later
+descendant of an exact open member. If the complete sealed closure is broader than the endpoint
+should trust, declare a non-empty explicit subtype table or use `withTypeChecker` to reject exact
+inferred classes. The fixed disallow list validates the complete inferred closure; the custom
+checker narrows that closure, and rejecting every inferred class is an error. Explicit subtype
+tables are exact declarations and fail if the checker rejects an entry.
 
 `withClassLoader` sets the loader for annotation-declared subtype `className`
 entries. Without it, `build()` snapshots the current thread context class

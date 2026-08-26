@@ -506,6 +506,9 @@ func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTyp
 
 	switch type_.Kind() {
 	case reflect.Struct:
+		if err := validateForyTags(type_); err != nil {
+			return err
+		}
 		if err := validateOptionalFields(type_); err != nil {
 			return err
 		}
@@ -670,6 +673,9 @@ func (r *TypeResolver) registerStructByName(type_ reflect.Type, namespace, typeN
 	}
 	if typeName == "" {
 		return fmt.Errorf("typeName must be non-empty")
+	}
+	if err := validateForyTags(type_); err != nil {
+		return err
 	}
 	tag := joinRegisteredName(namespace, typeName)
 	serializer := newStructSerializer(type_, tag)

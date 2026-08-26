@@ -88,7 +88,7 @@ final class GeneratedFieldType {
 final class GeneratedFieldInfo {
   final String name;
   final String identifier;
-  final int? id;
+  final int id;
   final GeneratedFieldType fieldType;
 
   const GeneratedFieldInfo({

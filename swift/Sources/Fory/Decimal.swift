@@ -19,9 +19,18 @@ import Foundation
 
 private let decimalSmallPositiveMax: UInt64 = 0x3fff_ffff_ffff_ffff
 private let decimalSmallNegativeAbsMax: UInt64 = 0x4000_0000_0000_0000
-private let decimalLengthMask: UInt8 = 0x0f
-private let decimalNegativeMask: UInt8 = 0x10
-private let decimalCompactMask: UInt8 = 0x20
+#if os(Linux)
+    // Corelibs Foundation reverses the NSDecimal flag bitfield order used by Darwin.
+    private let decimalLengthMask: UInt8 = 0xf0
+    private let decimalLengthShift: UInt8 = 4
+    private let decimalNegativeMask: UInt8 = 0x08
+    private let decimalCompactMask: UInt8 = 0x04
+#else
+    private let decimalLengthMask: UInt8 = 0x0f
+    private let decimalLengthShift: UInt8 = 0
+    private let decimalNegativeMask: UInt8 = 0x10
+    private let decimalCompactMask: UInt8 = 0x20
+#endif
 private let decimalHeaderSize = 4
 private let decimalMaxMantissaWords = 8
 private let decimalMaxMagnitudeBytes = decimalMaxMantissaWords * 2
@@ -146,7 +155,8 @@ private func foundationDecimalWireState(_ value: Decimal) -> FoundationDecimalWi
     return withUnsafeBytes(of: &compact) { raw in
         let exponent = Int8(bitPattern: raw[0])
         let flags = raw[1]
-        let length = min(Int(flags & decimalLengthMask), decimalMaxMantissaWords)
+        let length = min(
+            Int((flags & decimalLengthMask) >> decimalLengthShift), decimalMaxMantissaWords)
         let isNegative = (flags & decimalNegativeMask) != 0
 
         var magnitude: [UInt8] = []
@@ -178,7 +188,7 @@ private func buildFoundationDecimal(
     withUnsafeMutableBytes(of: &value) { raw in
         raw.initializeMemory(as: UInt8.self, repeating: 0)
         raw[0] = UInt8(bitPattern: exponent)
-        var flags = UInt8(truncatingIfNeeded: mantissa.length)
+        var flags = UInt8(truncatingIfNeeded: mantissa.length) << decimalLengthShift
         if signum < 0 && !normalized.isEmpty {
             flags |= decimalNegativeMask
         }

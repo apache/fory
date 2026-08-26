@@ -58,12 +58,11 @@ abstract class GeneratedJsonBase<F, P> {
 
 /** Processor-generated declaration-codec and R8 rule fixture. */
 @JsonType
-@JsonSubTypes(
-    property = "kind",
-    value = {@JsonSubTypes.Type(value = GeneratedJsonSubtype.class, name = "generated")})
-public abstract class GeneratedJsonModel
+@JsonSubTypes(property = "kind")
+public abstract sealed class GeneratedJsonModel
     extends GeneratedJsonBase<
-        GeneratedJsonModel.DeclaredValue, GeneratedJsonModel.InheritedPropertyValue> {
+        GeneratedJsonModel.DeclaredValue, GeneratedJsonModel.InheritedPropertyValue>
+    permits GeneratedJsonSubtype {
   private static final AtomicInteger CODEC_CALLS = new AtomicInteger();
   private static final AtomicInteger KEY_CODEC_CALLS = new AtomicInteger();
 

@@ -46,13 +46,26 @@ private struct SimpleStruct {
     // schema marks map keys/values and list elements nullable even when the
     // sample payload contains only non-null values.
     var f1: [Int32?: Double?] = [:]
+    @ForyField(id: 15)
     var f2: Int32 = 0
     var f3: Item = Item()
     var f4: String = ""
     var f5: PeerColor = .green
     var f6: [String?] = []
+    @ForyField(id: 65551)
     var f7: Int32 = 0
     var f8: Int32 = 0
+    @ForyField(id: 536870911)
+    var last: Int32 = 0
+}
+
+@ForyStruct
+private struct ExactFieldTags {
+    @ForyField(id: 15)
+    var first: Int32 = 0
+    @ForyField(id: 65551)
+    var second: Int32 = 0
+    @ForyField(id: 536870911)
     var last: Int32 = 0
 }
 
@@ -453,7 +466,7 @@ private func isDebugEnabled() -> Bool {
 
 private func debugLog(_ message: String) {
     if isDebugEnabled() {
-        fputs("[swift-xlang-peer] \(message)\n", stderr)
+        FileHandle.standardError.write(Data("[swift-xlang-peer] \(message)\n".utf8))
     }
 }
 
@@ -690,6 +703,12 @@ private func handleSimpleStruct(_ bytes: [UInt8]) throws -> [UInt8] {
     try fory.register(Item.self, id: 102)
     try fory.register(SimpleStruct.self, id: 103)
     return try roundTripSingle(bytes, fory: fory, as: SimpleStruct.self)
+}
+
+private func handleExactFieldTags(_ bytes: [UInt8]) throws -> [UInt8] {
+    let fory = Fory(config: .init(trackRef: false, compatible: false))
+    try fory.register(ExactFieldTags.self, id: 104)
+    return try roundTripSingle(bytes, fory: fory, as: ExactFieldTags.self)
 }
 
 private func handleNamedSimpleStruct(_ bytes: [UInt8]) throws -> [UInt8] {
@@ -1165,6 +1184,8 @@ private func rewritePayload(caseName: String, bytes: [UInt8]) throws -> [UInt8] 
         return try handleCrossLanguageSerializer(bytes)
     case "test_simple_struct":
         return try handleSimpleStruct(bytes)
+    case "test_exact_field_tags":
+        return try handleExactFieldTags(bytes)
     case "test_named_simple_struct":
         return try handleNamedSimpleStruct(bytes)
     case "test_struct_evolving_override":
@@ -1280,6 +1301,6 @@ private func run() throws {
 do {
     try run()
 } catch {
-    fputs("Swift xlang peer failed: \(error)\n", stderr)
+    FileHandle.standardError.write(Data("Swift xlang peer failed: \(error)\n".utf8))
     exit(1)
 }

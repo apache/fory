@@ -168,32 +168,29 @@ fn is_forward_field_internal(ty: &Type, struct_name: &str) -> bool {
 
 #[derive(Clone)]
 struct FieldSortKey {
-    id: Option<i32>,
+    id: i32,
     text: String,
 }
 
 impl FieldSortKey {
     fn id(id: i32) -> Self {
         Self {
-            id: Some(id),
+            id,
             text: id.to_string(),
         }
     }
 
     fn name(name: String) -> Self {
-        Self {
-            id: None,
-            text: name,
-        }
+        Self { id: -1, text: name }
     }
 }
 
 fn compare_field_sort_key(a: &FieldSortKey, b: &FieldSortKey) -> std::cmp::Ordering {
-    match (a.id, b.id) {
-        (Some(id_a), Some(id_b)) => id_a.cmp(&id_b),
-        (Some(_), None) => std::cmp::Ordering::Less,
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        _ => a.text.cmp(&b.text),
+    match (a.id >= 0, b.id >= 0) {
+        (true, true) => a.id.cmp(&b.id),
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        (false, false) => a.text.cmp(&b.text),
     }
 }
 

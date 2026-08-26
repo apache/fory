@@ -17,6 +17,46 @@
 
 import Foundation
 
+// Int and UInt keep their 64-bit wire encodings on every architecture. Native
+// 32-bit targets must reject out-of-range values instead of trapping during conversion.
+@usableFromInline
+@inline(__always)
+internal func checkedInt64ToInt(_ value: Int64) throws -> Int {
+    #if arch(arm64) || arch(x86_64)
+        return Int(value)
+    #else
+        guard let result = Int(exactly: value) else {
+            throw int64ToIntOverflow(value)
+        }
+        return result
+    #endif
+}
+
+@usableFromInline
+@inline(__always)
+internal func checkedUInt64ToUInt(_ value: UInt64) throws -> UInt {
+    #if arch(arm64) || arch(x86_64)
+        return UInt(value)
+    #else
+        guard let result = UInt(exactly: value) else {
+            throw uint64ToUIntOverflow(value)
+        }
+        return result
+    #endif
+}
+
+@usableFromInline
+@inline(never)
+internal func int64ToIntOverflow(_ value: Int64) -> ForyError {
+    ForyError.invalidData("int64 value \(value) overflows Int")
+}
+
+@usableFromInline
+@inline(never)
+internal func uint64ToUIntOverflow(_ value: UInt64) -> ForyError {
+    ForyError.invalidData("uint64 value \(value) overflows UInt")
+}
+
 extension Bool: Serializer {
     public static var staticTypeId: TypeId { .bool }
     public static var readDataAlwaysAdvances: Bool { true }
@@ -224,53 +264,51 @@ extension UInt64: Serializer {
     }
 }
 
-#if arch(arm64) || arch(x86_64)
-    extension Int: Serializer {
-        public static var staticTypeId: TypeId { .varint64 }
-        public static var readDataAlwaysAdvances: Bool { true }
+extension Int: Serializer {
+    public static var staticTypeId: TypeId { .varint64 }
+    public static var readDataAlwaysAdvances: Bool { true }
 
-        public static func defaultValue(_ context: ReadContext) throws -> Int { 0 }
+    public static func defaultValue(_ context: ReadContext) throws -> Int { 0 }
 
-        public static func writeTypeInfo(_ context: WriteContext) throws {
-            context.writeStaticTypeInfo(staticTypeId)
-        }
-
-        public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
-            try context.readStaticTypeInfo(staticTypeId)
-        }
-
-        public static func writeData(_ value: Self, _ context: WriteContext) throws {
-            context.buffer.writeVarInt64(Int64(value))
-        }
-
-        public static func readData(_ context: ReadContext) throws -> Int {
-            Int(try context.buffer.readVarInt64())
-        }
+    public static func writeTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
     }
 
-    extension UInt: Serializer {
-        public static var staticTypeId: TypeId { .varUInt64 }
-        public static var readDataAlwaysAdvances: Bool { true }
-
-        public static func defaultValue(_ context: ReadContext) throws -> UInt { 0 }
-
-        public static func writeTypeInfo(_ context: WriteContext) throws {
-            context.writeStaticTypeInfo(staticTypeId)
-        }
-
-        public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
-            try context.readStaticTypeInfo(staticTypeId)
-        }
-
-        public static func writeData(_ value: Self, _ context: WriteContext) throws {
-            context.buffer.writeVarUInt64(UInt64(value))
-        }
-
-        public static func readData(_ context: ReadContext) throws -> UInt {
-            UInt(try context.buffer.readVarUInt64())
-        }
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
     }
-#endif
+
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeVarInt64(Int64(value))
+    }
+
+    public static func readData(_ context: ReadContext) throws -> Int {
+        try checkedInt64ToInt(context.buffer.readVarInt64())
+    }
+}
+
+extension UInt: Serializer {
+    public static var staticTypeId: TypeId { .varUInt64 }
+    public static var readDataAlwaysAdvances: Bool { true }
+
+    public static func defaultValue(_ context: ReadContext) throws -> UInt { 0 }
+
+    public static func writeTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
+    }
+
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeVarUInt64(UInt64(value))
+    }
+
+    public static func readData(_ context: ReadContext) throws -> UInt {
+        try checkedUInt64ToUInt(context.buffer.readVarUInt64())
+    }
+}
 
 extension Float: Serializer {
     public static var staticTypeId: TypeId { .float32 }

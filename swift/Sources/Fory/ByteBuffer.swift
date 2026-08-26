@@ -836,7 +836,7 @@ public final class ByteBuffer {
             if isASCII {
                 return String(decoding: utf8Bytes, as: UTF8.self)
             }
-            if #available(macOS 15.0, iOS 18.0, *) {
+            if #available(macOS 15.0, iOS 18.0, tvOS 18.0, watchOS 11.0, visionOS 2.0, *) {
                 return String(validating: utf8Bytes, as: UTF8.self)
             }
             return String(bytes: utf8Bytes, encoding: .utf8)

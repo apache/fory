@@ -694,7 +694,7 @@ public sealed class TypeResolver
                     for (int fieldIdx = 0; fieldIdx < fields.Count; fieldIdx++)
                     {
                         TypeMetaFieldInfo field = fields[fieldIdx];
-                        hash = MixUInt32(hash, field.FieldId.HasValue ? (uint)field.FieldId.Value + 1u : 0u);
+                        hash = MixUInt32(hash, field.FieldId >= 0 ? (uint)field.FieldId + 1u : 0u);
                         hash = MixString(hash, field.FieldName);
                         hash = MixFieldType(hash, field.FieldType);
                     }

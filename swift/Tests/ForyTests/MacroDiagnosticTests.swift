@@ -158,6 +158,26 @@ func duplicateFieldIDsAreRejected() {
 }
 
 @Test
+func rejectsFieldIDOutsideDomain() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadID {
+            @ForyField(id: 536870912)
+            var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            struct BadID {
+                var value: Int32 = 0
+            }
+            """,
+        message: "@ForyField id must be < 2^29"
+    )
+}
+
+@Test
 func unionPayloadHintsMustMatchPayloadType() {
     assertForyDiagnostic(
         """

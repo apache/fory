@@ -28,6 +28,9 @@ import java.lang.annotation.Target;
 @Target({ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER})
 public @interface ForyField {
 
+  /** Largest field tag ID accepted by the cross-language protocol. */
+  int MAX_ID = (1 << 29) - 1;
+
   /** Controls polymorphism behavior for struct fields in cross-language serialization. */
   enum Dynamic {
     /**
@@ -57,8 +60,8 @@ public @interface ForyField {
    *       encoding
    * </ul>
    *
-   * <p>Configured tag IDs are values {@code >= 0}; they must be unique within the class and stable
-   * across versions. Values below {@code -1} are invalid.
+   * <p>Configured tag IDs are in {@code [0, 2^29)}; they must be unique within the class and stable
+   * across versions. Values below {@code -1} or above {@link #MAX_ID} are invalid.
    */
   int id() default -1;
 

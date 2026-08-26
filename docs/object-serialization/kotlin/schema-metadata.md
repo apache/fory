@@ -51,6 +51,10 @@ Use `@ForyField(id = 1)` on constructor properties. `@field:ForyField(id = 1)` i
 for field-backed properties. Do not use `@get:ForyField` or `@set:ForyField`; accessors are not
 schema fields and the processor rejects them.
 
+Configured field IDs must be unique within the struct schema and satisfy
+`0 <= id < 2^29` (`0` through `536870911`). Keep assigned IDs stable and do
+not reuse them for different fields. If `id` is omitted, the field name is used.
+
 ## Nullability
 
 Use Kotlin `?` to describe nullable schema positions. Nullability is preserved inside collections

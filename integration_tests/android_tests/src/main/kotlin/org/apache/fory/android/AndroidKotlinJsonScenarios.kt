@@ -22,6 +22,8 @@ package org.apache.fory.android
 import org.apache.fory.integration.kotlin.json.corpus.PlatformCorpusChecks
 import org.apache.fory.integration.kotlin.json.corpus.PlatformJavaProfileMixin
 import org.apache.fory.json.annotation.JsonType
+import org.apache.fory.json.annotation.JsonMixin
+import org.apache.fory.json.annotation.JsonSubTypes
 import org.apache.fory.json.kotlin.ForyJsonKotlin
 import org.apache.fory.json.kotlin.jsonTypeRef
 
@@ -73,6 +75,10 @@ internal data class AndroidKotlinDefaults(
 )
 
 internal object AndroidKotlinJsonScenarios {
+    @JsonMixin(target = KspJavaShape::class)
+    @JsonSubTypes(property = "kind")
+    private interface KspJavaShapeMixin
+
     @JvmStatic
     fun metadataSurvivesMinification() {
         val json =
@@ -98,6 +104,15 @@ internal object AndroidKotlinJsonScenarios {
         check(json.fromJson("{}", jsonTypeRef<AndroidKotlinMarker>()) === AndroidKotlinMarker)
 
         PlatformCorpusChecks.verifyRoundTrip(json)
+    }
+
+    @JvmStatic
+    fun javaSealedMixinSurvivesMinification() {
+        val json = ForyJsonKotlin.builder().registerMixin(KspJavaShapeMixin::class.java).build()
+        val text = json.toJson(KspJavaShape.Circle(37), KspJavaShape::class.java)
+        check(text == "{\"kind\":\"Circle\",\"radius\":37}")
+        val decoded = json.fromJson(text, KspJavaShape::class.java)
+        check(decoded is KspJavaShape.Circle && decoded.radius == 37)
     }
 
 }

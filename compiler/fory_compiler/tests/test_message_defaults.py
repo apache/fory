@@ -68,3 +68,26 @@ def test_fdl_field_numbers_set_tag_ids():
     assert validator.validate()
     field = schema.messages[0].fields[0]
     assert field.tag_id == field.number
+
+
+def test_field_tag_domain():
+    valid_schema = Parser.from_source(
+        """
+        message Tagged {
+            int32 value = 536870911;
+        }
+        """
+    ).parse()
+    valid = SchemaValidator(valid_schema)
+    assert valid.validate(), valid.errors
+
+    invalid_schema = Parser.from_source(
+        """
+        message Tagged {
+            int32 value = 536870912;
+        }
+        """
+    ).parse()
+    invalid = SchemaValidator(invalid_schema)
+    assert not invalid.validate()
+    assert any("must be in [0, 2^29)" in str(error) for error in invalid.errors)

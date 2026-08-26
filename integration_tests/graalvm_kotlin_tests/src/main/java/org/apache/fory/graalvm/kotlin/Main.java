@@ -25,7 +25,7 @@ import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.annotation.ForyJsonProvider;
 import org.apache.fory.json.kotlin.ForyJsonKotlin;
 
-/** Native Image acceptance application for provider-selected Kotlin JSON capabilities. */
+/** Native Image acceptance application for provider-added Kotlin JSON capabilities. */
 public final class Main {
   private Main() {}
 

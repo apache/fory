@@ -106,3 +106,11 @@ With non-empty package and `flatten` style, the helper is prefixed too (for exam
 
 For schemas without explicit `[id=...]`, installation uses computed numeric IDs.
 If `option enable_auto_type_id = false;` is set, generated code uses name-based registration APIs.
+
+Generated models declare `Equatable` where every field supports it, but they do
+not declare `Sendable`. Compile them in Swift 5 language mode; Swift 6 strict
+concurrency rejects passing them across an isolation boundary.
+
+## gRPC Service Companions
+
+With `--grpc`, Swift emits one `<Service>Grpc.swift` per service containing `<Base>Provider`, `<Base>AsyncProvider`, `<Base>AsyncClient`, and `<Base>Metadata`, where `<Base>` carries the package prefix. See [Swift gRPC](../../grpc/swift.md) for dependencies, streaming shapes, and usage.

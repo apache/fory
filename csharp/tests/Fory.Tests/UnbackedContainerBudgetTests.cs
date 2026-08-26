@@ -303,7 +303,7 @@ public sealed class UnbackedContainerBudgetTests
         TypeMetaFieldInfo[] fields = new TypeMetaFieldInfo[fieldTypes.Length];
         for (int i = 0; i < fieldTypes.Length; i++)
         {
-            fields[i] = new TypeMetaFieldInfo((short)i, $"field{i}", fieldTypes[i]);
+            fields[i] = new TypeMetaFieldInfo(i, $"field{i}", fieldTypes[i]);
         }
 
         return new TypeMeta(

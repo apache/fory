@@ -69,6 +69,7 @@ String name = '';
 ```
 
 Once a payload is shared across services, never reuse an `id` for a different field.
+Configured IDs must satisfy `0 <= id < 2^29` (`0` through `536870911`).
 
 An ordinary child has one flattened field namespace. IDs must therefore be
 unique across all fields included from its child, superclass, and

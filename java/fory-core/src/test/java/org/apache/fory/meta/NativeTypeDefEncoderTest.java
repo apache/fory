@@ -519,6 +519,52 @@ public class NativeTypeDefEncoderTest {
   }
 
   @Test
+  public void testRejectsInheritedDuplicateTag() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .requireClassRegistration(false)
+            .build();
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), TaggedChild.class);
+    byte[] encoded = typeDef.getEncoded();
+    MemoryBuffer encodedBuffer = MemoryBuffer.fromByteArray(encoded);
+    long header = encodedBuffer.readInt64();
+    byte[] body =
+        NativeTypeDefDecoder.decodeTypeDefBuf(
+                encodedBuffer, (ClassResolver) fory.getTypeResolver(), header)
+            .f0;
+
+    List<FieldInfo> fields =
+        buildFieldsInfo((ClassResolver) fory.getTypeResolver(), TaggedChild.class);
+    FieldInfo parentField =
+        fields.stream()
+            .filter(field -> field.getDefinedClass().equals(TaggedParent.class.getName()))
+            .findFirst()
+            .orElseThrow(AssertionError::new);
+    FieldInfo childField =
+        fields.stream()
+            .filter(field -> field.getDefinedClass().equals(TaggedChild.class.getName()))
+            .findFirst()
+            .orElseThrow(AssertionError::new);
+    byte[] parentFieldBytes = encodedFieldInfo(parentField);
+    byte[] childFieldBytes = encodedFieldInfo(childField);
+    Assert.assertEquals(childFieldBytes.length, parentFieldBytes.length);
+
+    int childFieldOffset = indexOf(body, childFieldBytes, 0);
+    Assert.assertTrue(childFieldOffset >= 0);
+    System.arraycopy(parentFieldBytes, 0, body, childFieldOffset, parentFieldBytes.length);
+    MemoryBuffer malformedBody = MemoryBuffer.newHeapBuffer(body.length);
+    malformedBody.writeBytes(body);
+    MemoryBuffer malformed = NativeTypeDefEncoder.prependHeader(malformedBody, false);
+
+    Assert.assertThrows(
+        DeserializationException.class,
+        () -> TypeDef.readTypeDef(fory.getTypeResolver(), malformed));
+  }
+
+  @Test
   public void testRejectsNamespaceEncoding() {
     Fory fory =
         Fory.builder()
@@ -599,6 +645,12 @@ public class NativeTypeDefEncoderTest {
     Assert.assertTrue(index >= Long.BYTES);
     malformed[index + needleBytes.length - 1] ^= 1;
     return malformed;
+  }
+
+  private static byte[] encodedFieldInfo(FieldInfo fieldInfo) {
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(16);
+    NativeTypeDefEncoder.writeFieldsInfo(buffer, Collections.singletonList(fieldInfo));
+    return buffer.getBytes(0, buffer.writerIndex());
   }
 
   private static byte[] rewriteHeaderWithBodyOnlyHash(TypeDef typeDef) {
@@ -765,6 +817,33 @@ public class NativeTypeDefEncoderTest {
     private int fieldC;
   }
 
+  public static class ClassWithLargeTagIds {
+    @ForyField(id = 15)
+    private String field15;
+
+    @ForyField(id = 32768)
+    private String field32768;
+
+    @ForyField(id = 65535)
+    private String field65535;
+
+    @ForyField(id = 65551)
+    private String field65551;
+
+    @ForyField(id = ForyField.MAX_ID)
+    private String fieldMax;
+  }
+
+  public static class TaggedParent {
+    @ForyField(id = 10)
+    private int parentValue;
+  }
+
+  public static class TaggedChild extends TaggedParent {
+    @ForyField(id = 20)
+    private int childValue;
+  }
+
   @Data
   public static class ClassWithMixedFields {
     @ForyField(id = 15)
@@ -800,6 +879,20 @@ public class NativeTypeDefEncoderTest {
     for (FieldInfo fieldInfo : fieldsInfo) {
       Assert.assertTrue(fieldInfo.hasFieldId());
     }
+  }
+
+  @Test
+  public void testLargeTagIdsRoundTrip() {
+    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(true).build();
+
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), ClassWithLargeTagIds.class);
+    TypeDef decoded =
+        TypeDef.readTypeDef(
+            fory.getTypeResolver(), MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+
+    Assert.assertEquals(
+        decoded.getFieldsInfo().stream().map(FieldInfo::getFieldId).toArray(),
+        new Object[] {15, 32768, 65535, 65551, ForyField.MAX_ID});
   }
 
   @Test

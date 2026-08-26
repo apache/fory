@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.resolver.CodecRegistry;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
@@ -81,9 +82,9 @@ public final class ForyJsonBuilder {
 
   /**
    * Enables generated object codecs for supported classes. Enabled by default and automatically
-   * disabled on Android. In a GraalVM native image, generated codecs are available only for
-   * configurations returned by a reachable {@link
-   * org.apache.fory.json.annotation.ForyJsonProvider}; other configurations use interpreted codecs.
+   * disabled on Android. A GraalVM Native Image includes generated codecs for the default
+   * configuration and for each reachable {@link org.apache.fory.json.annotation.ForyJsonProvider}
+   * configuration. Models without a matching generated codec use the interpreted codec.
    */
   public ForyJsonBuilder withCodegen(boolean codegenEnabled) {
     this.codegenEnabled = codegenEnabled;
@@ -210,13 +211,26 @@ public final class ForyJsonBuilder {
    * <p>The same codec instance may be called concurrently by pooled JSON states and must therefore
    * be thread-safe. Building snapshots the registration map, although the registered codec objects
    * themselves are intentionally shared.
+   *
+   * <p>Resolver-owned {@link ObjectCodec} instances cannot be registered directly. Register a
+   * {@link JsonCodecFactory} that creates the object codec for the receiving resolver instead.
+   *
+   * <p>Exact registration is rejected for primitive and boxed scalar types, {@link String}, {@link
+   * CharSequence}, {@link Number}, standard big-number, UUID, and {@code java.time} scalar types,
+   * plus {@code byte[]}, {@code String[]}, and {@code long[]}. Those types are owned by dedicated
+   * reader/writer operations. Occurrence annotations such as {@code JsonCodec} remain supported.
    */
   public <T> ForyJsonBuilder registerCodec(Class<T> type, JsonValueCodec<T> codec) {
     codecRegistry.register(type, codec);
     return this;
   }
 
-  /** Registers a resolver-owned complete codec factory for one exact class. */
+  /**
+   * Registers a resolver-owned complete codec factory for one exact class.
+   *
+   * <p>The exact type restrictions documented by {@link #registerCodec(Class, JsonValueCodec)}
+   * apply to this registration as well.
+   */
   public <T> ForyJsonBuilder registerCodec(Class<T> type, JsonCodecFactory factory) {
     codecRegistry.registerFactory(type, factory);
     return this;
@@ -253,6 +267,10 @@ public final class ForyJsonBuilder {
    *
    * <p>The checker must be thread-safe because one {@link ForyJson} instance can be used
    * concurrently.
+   *
+   * <p>For an empty {@code JsonSubTypes.value}, the checker filters exact classes from the inferred
+   * sealed closure. Rejecting every candidate is an error. A non-empty subtype table is an exact
+   * declaration and fails if the checker rejects an entry.
    */
   public ForyJsonBuilder withTypeChecker(JsonTypeChecker typeChecker) {
     this.typeChecker = typeChecker;
@@ -261,6 +279,10 @@ public final class ForyJsonBuilder {
 
   /** Builds a JSON runtime from the current builder state. */
   public ForyJson build() {
+    return new ForyJson(buildConfig());
+  }
+
+  JsonConfig buildConfig() {
     ClassLoader fixedClassLoader = classLoader;
     if (fixedClassLoader == null) {
       fixedClassLoader = Thread.currentThread().getContextClassLoader();
@@ -273,24 +295,22 @@ public final class ForyJsonBuilder {
         asyncCompilationEnabled && effectiveCodegen && !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE;
     ModuleInstaller.InstalledModules installed =
         ModuleInstaller.install(new ArrayList<>(modules), codecRegistry, mixins);
-    return new ForyJson(
-        new JsonConfig(
-            writeNullFields,
-            effectiveCodegen,
-            effectiveAsyncCompilation,
-            propertyDiscoveryEnabled,
-            propertyNamingStrategy,
-            fixedClassLoader,
-            maxDepth,
-            maxCachedFieldNames,
-            maxGraphMemoryBytes,
-            concurrencyLevel,
-            bufferSizeLimitBytes,
-            installed.codecs,
-            installed.mixins,
-            installed.factories,
-            installed.moduleIdentities,
-            installed.factoryIdentities,
-            typeChecker));
+    return new JsonConfig(
+        writeNullFields,
+        effectiveCodegen,
+        effectiveAsyncCompilation,
+        propertyDiscoveryEnabled,
+        propertyNamingStrategy,
+        fixedClassLoader,
+        maxDepth,
+        maxCachedFieldNames,
+        maxGraphMemoryBytes,
+        concurrencyLevel,
+        bufferSizeLimitBytes,
+        installed.codecs,
+        installed.mixins,
+        installed.factories,
+        installed.factoryIdentities,
+        typeChecker);
   }
 }

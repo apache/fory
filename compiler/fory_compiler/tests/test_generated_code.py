@@ -697,6 +697,26 @@ def test_generated_registration_uses_single_name_for_dart_python_swift():
     assert "namespace:" not in swift_output
 
 
+def test_dart_union_field_sentinel():
+    schema = parse_proto(
+        """
+        syntax = "proto3";
+        package demo;
+
+        message Envelope {
+            oneof value {
+                string note = 1;
+                uint32 count = 2;
+            }
+        }
+        """
+    )
+
+    dart_output = render_files(generate_files(schema, DartGenerator))
+    assert dart_output.count("\n        id: -1,") == 2
+    assert "\n        id: null," not in dart_output
+
+
 def test_java_default_package_import_registers_dependency(tmp_path):
     common = tmp_path / "common.fdl"
     common.write_text(

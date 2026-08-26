@@ -130,6 +130,12 @@ public class RustXlangTest extends XlangTestBase {
     super.testCrossLanguageSerializer();
   }
 
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testExactFieldTags(boolean enableCodegen) throws java.io.IOException {
+    super.testExactFieldTags(enableCodegen);
+  }
+
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testSimpleStruct(boolean enableCodegen) throws java.io.IOException {
     super.testSimpleStruct(enableCodegen);

@@ -146,6 +146,12 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - When a user corrects a non-obvious invariant, encode it in the nearest source comment before continuing, and also update `AGENTS.md`, `.agents/**`, docs, or specs when the rule is reusable beyond one file. Do not rely only on chat history, task notes, commit messages, or benchmark logs for corrections that protect security, protocol behavior, ownership, naming, or hot-path performance.
 - Reject semantic hacks. Do not bypass broken semantics by deleting cases, simplifying callers, adding coercion hooks, or using workaround fallbacks; fix the underlying bug and prove it with focused tests.
 - Protect hot paths. Avoid per-call allocations, callback objects, result tuples or records, unnecessary runtime branches, and wrapper-class substitutions in hot codec/runtime paths; prefer conditional imports and allocation-free concrete implementations where they fit the language.
+- Fory JSON declared boolean and numeric scalar targets accept either their native JSON token or
+  the same token text enclosed in quotes without a configuration gate. Keep coercion in the
+  existing reader operation used by root, generated, array, collection, and map paths; dynamic
+  `Object` quoted values remain strings. Quoted scalar common paths must parse directly from reader
+  storage with no intermediate object allocation, reuse the unquoted token parser, and keep larger
+  quoted handling in a separate cold method so native token parsing does not regress.
 - Decoder depth and the generic-type stack paired with that depth use root-operation failure cleanup. Nested decoders decrement depth and pop generic types only after successful child reads; do not add nested `try/finally` to restore them after exceptions. The root operation's `finally`/reset must clear both decoder depth and the generic-type stack.
 - Keep public APIs minimal. Public APIs must match user ownership and mental model, not internal implementation details; generated flows stay type-owned, while custom serializer registration stays explicit.
 - A Fory instance may register types or serializers only before its first root
@@ -194,11 +200,16 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
   "Unsupported" instead.
 - After editing Markdown files outside `tasks/`, run `prettier --write <file>` on each changed Markdown file before finishing. Do not format Markdown under `tasks/`.
 - User guide docs must explain user-visible behavior, commands, and examples.
-  Do not add implementation details, internal ownership rationale, build flags,
-  or type-id-space caveats unless they directly clarify a confusion users can
-  act on. Translate internal owner-model details into concrete user actions, and
-  avoid phrases such as "serializer-owned capability" or "registration alone
-  does not..." in user-facing docs.
+  Do not expose implementation details unless readers must know them to choose an
+  API, configure a build, understand observable behavior, or resolve a documented
+  failure. Internal mechanisms such as metadata owners, generated tables,
+  processor handoffs, caches, reflection fallbacks, hosted discovery, and codegen
+  ownership belong in internal docs such as `docs/security/**`, source comments,
+  or task records. State required dependencies, platform versions,
+  configuration, and user-visible constraints directly without explaining the
+  internal mechanism that enforces them. If an implementation detail does not
+  change a concrete user action or supported behavior, omit it from user-facing
+  documentation.
 - Add comments only when behavior is hard to understand or an algorithm is non-obvious.
 - Do not remove existing code comments unless they are stale, misleading, redundant, or no longer necessary after the change.
 - Only add tests that verify internal behaviors or fix specific bugs; do not create unnecessary tests unless requested.

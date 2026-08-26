@@ -80,7 +80,6 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -91,6 +90,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.codegen.CodeGenerator;
@@ -107,9 +107,11 @@ import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.codec.ArrayCodec;
+import org.apache.fory.json.codec.ClosedSubtypeCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.GeneratedJsonCodec;
+import org.apache.fory.json.codec.GeneratedJsonSubtypeTable;
 import org.apache.fory.json.codec.GuavaCodecs;
 import org.apache.fory.json.codec.JsonSubTypesInfo;
 import org.apache.fory.json.codec.JsonValueCodec;
@@ -118,15 +120,14 @@ import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;
+import org.apache.fory.json.codegen.GeneratedCodecKey;
 import org.apache.fory.json.codegen.JsonCodegen;
-import org.apache.fory.json.codegen.JsonCodegenKey;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.meta.JsonAnySetterAccessor;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.resolver.CodecRegistry.FactoryBinding;
-import org.apache.fory.json.resolver.JsonGeneratedClassRegistry.Configuration;
-import org.apache.fory.meta.TypeExtMeta;
+import org.apache.fory.json.resolver.JsonGeneratedClassRegistry.CompanionKey;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -179,7 +180,7 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<String, Boolean> typeCheckCache;
   private final Object typeCheckCacheLock;
   private final JsonCodegen codegen;
-  private final JsonCodegenKey nativeCodegenKey;
+  private final boolean nativeCodegenEnabled;
   private final boolean hostedCodegen;
   private final boolean asyncCompilationEnabled;
   private final ExecutorService compilationService;
@@ -198,16 +199,9 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<Class<? extends MapKeyCodec>, MapKeyCodec> mapKeyCodecs;
   private final ConcurrentHashMap<Class<?>, GeneratedJsonCodec<?>> generatedCodecs;
   private final Set<Class<?>> typesWithoutGeneratedCodec;
-  private final ConcurrentHashMap<TypeRef<?>, GeneratedJsonCodec<?>> generatedCodecCapabilities;
-  private final ConcurrentHashMap<TypeRef<?>, CompletableFuture<Class<?>>> stringWriterClasses;
-  private final ConcurrentHashMap<TypeRef<?>, CompletableFuture<Class<?>>> utf8WriterClasses;
-  private final ConcurrentHashMap<TypeRef<?>, CompletableFuture<Class<?>>> latin1ReaderClasses;
-  private final ConcurrentHashMap<TypeRef<?>, CompletableFuture<Class<?>>> utf16ReaderClasses;
-  private final ConcurrentHashMap<TypeRef<?>, CompletableFuture<Class<?>>> utf8ReaderClasses;
-  private final ConcurrentHashMap<TypeRef<?>, CompletableFuture<Class<?>>>
-      utf8CollectionWriterClasses;
-  private final ConcurrentHashMap<TypeRef<?>, CompletableFuture<Class<?>>>
-      utf8CollectionReaderClasses;
+  private final ConcurrentHashMap<CompanionKey, GeneratedJsonCodec<?>> generatedCodecCapabilities;
+  private final ConcurrentHashMap<GeneratedCodecKey, CompletableFuture<Class<?>>>
+      generatedClassFutures;
   // Only ForyJson's fixed-pool reader-local caches publish production entries here, and each reader
   // owns its configured entry limit. This reference-reuse table does not own a second capacity
   // policy.
@@ -239,8 +233,8 @@ public final class JsonSharedRegistry {
         }
       }
     }
-    // Hosted compilation produces classes shared by configurations with the same source shape.
-    // Runtime type policy is intentionally not part of that shape and remains enforced by each
+    // Hosted compilation shares classes only for equal generated-class keys. Runtime type policy
+    // is intentionally not part of that key and remains enforced by each
     // runtime resolver before it installs a generated capability.
     typeChecker = hostedCodegen ? null : config.typeChecker();
     typeCheckContext = hostedCodegen ? null : config.typeCheckContext();
@@ -264,22 +258,15 @@ public final class JsonSharedRegistry {
     generatedCodecs = new ConcurrentHashMap<>();
     typesWithoutGeneratedCodec = ConcurrentHashMap.newKeySet();
     generatedCodecCapabilities = new ConcurrentHashMap<>();
-    stringWriterClasses = new ConcurrentHashMap<>();
-    utf8WriterClasses = new ConcurrentHashMap<>();
-    latin1ReaderClasses = new ConcurrentHashMap<>();
-    utf16ReaderClasses = new ConcurrentHashMap<>();
-    utf8ReaderClasses = new ConcurrentHashMap<>();
-    utf8CollectionWriterClasses = new ConcurrentHashMap<>();
-    utf8CollectionReaderClasses = new ConcurrentHashMap<>();
+    generatedClassFutures = new ConcurrentHashMap<>();
     cachedFieldNames = new ConcurrentHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
     this.hostedCodegen = hostedCodegen;
     boolean createCompiler =
         codegenEnabled && (hostedCodegen || !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE);
-    codegen =
-        createCompiler ? new JsonCodegen(config.codegenKey(), classLoader, hostedCodegen) : null;
-    nativeCodegenKey =
-        codegenEnabled && GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE ? config.codegenKey() : null;
+    codegen = createCompiler ? new JsonCodegen(hostedCodegen) : null;
+    nativeCodegenEnabled =
+        codegenEnabled && GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && !hostedCodegen;
     asyncCompilationEnabled = createCompiler && !hostedCodegen && config.asyncCompilationEnabled();
     this.compilationService = compilationService;
     registerExactCodecs();
@@ -302,36 +289,18 @@ public final class JsonSharedRegistry {
     if (codegen == null || asyncCompilationEnabled) {
       throw new IllegalStateException("Generated class snapshots require synchronous codegen");
     }
-    Map<TypeRef<?>, Class<?>> stringWriters = completedClasses(stringWriterClasses);
-    Map<TypeRef<?>, Class<?>> utf8Writers = completedClasses(utf8WriterClasses);
-    Map<TypeRef<?>, Class<?>> latin1Readers = completedClasses(latin1ReaderClasses);
-    Map<TypeRef<?>, Class<?>> utf16Readers = completedClasses(utf16ReaderClasses);
-    Map<TypeRef<?>, Class<?>> utf8Readers = completedClasses(utf8ReaderClasses);
-    Map<TypeRef<?>, Class<?>> utf8CollectionWriters = completedClasses(utf8CollectionWriterClasses);
-    Map<TypeRef<?>, Class<?>> utf8CollectionReaders = completedClasses(utf8CollectionReaderClasses);
-    Map<TypeRef<?>, GeneratedJsonCodec<?>> sourceCodecs =
-        immutableSnapshot(generatedCodecCapabilities);
-    return new GeneratedClasses(
-        stringWriters,
-        utf8Writers,
-        latin1Readers,
-        utf16Readers,
-        utf8Readers,
-        utf8CollectionWriters,
-        utf8CollectionReaders,
-        sourceCodecs);
+    Map<GeneratedCodecKey, Class<?>> classes = completedClasses(generatedClassFutures);
+    Map<CompanionKey, GeneratedJsonCodec<?>> sourceCodecs =
+        generatedCodecCapabilities.isEmpty()
+            ? Collections.emptyMap()
+            : Collections.unmodifiableMap(new HashMap<>(generatedCodecCapabilities));
+    return new GeneratedClasses(classes, sourceCodecs);
   }
 
-  private static <K, V> Map<K, V> immutableSnapshot(Map<K, V> values) {
-    return values.isEmpty()
-        ? Collections.emptyMap()
-        : Collections.unmodifiableMap(new HashMap<>(values));
-  }
-
-  private static <K> Map<K, Class<?>> completedClasses(
-      Map<K, CompletableFuture<Class<?>>> futures) {
-    Map<K, Class<?>> classes = new HashMap<>(futures.size());
-    for (Map.Entry<K, CompletableFuture<Class<?>>> entry : futures.entrySet()) {
+  private static Map<GeneratedCodecKey, Class<?>> completedClasses(
+      Map<GeneratedCodecKey, CompletableFuture<Class<?>>> futures) {
+    Map<GeneratedCodecKey, Class<?>> classes = new HashMap<>(futures.size());
+    for (Map.Entry<GeneratedCodecKey, CompletableFuture<Class<?>>> entry : futures.entrySet()) {
       CompletableFuture<Class<?>> future = entry.getValue();
       if (!future.isDone() || future.isCompletedExceptionally()) {
         throw new IllegalStateException(
@@ -347,229 +316,91 @@ public final class JsonSharedRegistry {
   }
 
   static final class GeneratedClasses {
-    private final Map<TypeRef<?>, Class<?>> stringWriters;
-    private final Map<TypeRef<?>, Class<?>> utf8Writers;
-    private final Map<TypeRef<?>, Class<?>> latin1Readers;
-    private final Map<TypeRef<?>, Class<?>> utf16Readers;
-    private final Map<TypeRef<?>, Class<?>> utf8Readers;
-    private final Map<TypeRef<?>, Class<?>> utf8CollectionWriters;
-    private final Map<TypeRef<?>, Class<?>> utf8CollectionReaders;
-    private final Map<TypeRef<?>, GeneratedJsonCodec<?>> sourceCodecs;
+    private final Map<GeneratedCodecKey, Class<?>> classes;
+    private final Map<CompanionKey, GeneratedJsonCodec<?>> sourceCodecs;
 
     private GeneratedClasses(
-        Map<TypeRef<?>, Class<?>> stringWriters,
-        Map<TypeRef<?>, Class<?>> utf8Writers,
-        Map<TypeRef<?>, Class<?>> latin1Readers,
-        Map<TypeRef<?>, Class<?>> utf16Readers,
-        Map<TypeRef<?>, Class<?>> utf8Readers,
-        Map<TypeRef<?>, Class<?>> utf8CollectionWriters,
-        Map<TypeRef<?>, Class<?>> utf8CollectionReaders,
-        Map<TypeRef<?>, GeneratedJsonCodec<?>> sourceCodecs) {
-      this.stringWriters = stringWriters;
-      this.utf8Writers = utf8Writers;
-      this.latin1Readers = latin1Readers;
-      this.utf16Readers = utf16Readers;
-      this.utf8Readers = utf8Readers;
-      this.utf8CollectionWriters = utf8CollectionWriters;
-      this.utf8CollectionReaders = utf8CollectionReaders;
+        Map<GeneratedCodecKey, Class<?>> classes,
+        Map<CompanionKey, GeneratedJsonCodec<?>> sourceCodecs) {
+      this.classes = classes;
       this.sourceCodecs = sourceCodecs;
     }
 
-    Map<TypeRef<?>, Class<?>> stringWriters() {
-      return stringWriters;
+    Map<GeneratedCodecKey, Class<?>> classes() {
+      return classes;
     }
 
-    Map<TypeRef<?>, Class<?>> utf8Writers() {
-      return utf8Writers;
-    }
-
-    Map<TypeRef<?>, Class<?>> latin1Readers() {
-      return latin1Readers;
-    }
-
-    Map<TypeRef<?>, Class<?>> utf16Readers() {
-      return utf16Readers;
-    }
-
-    Map<TypeRef<?>, Class<?>> utf8Readers() {
-      return utf8Readers;
-    }
-
-    Map<TypeRef<?>, Class<?>> utf8CollectionWriters() {
-      return utf8CollectionWriters;
-    }
-
-    Map<TypeRef<?>, Class<?>> utf8CollectionReaders() {
-      return utf8CollectionReaders;
-    }
-
-    Map<TypeRef<?>, GeneratedJsonCodec<?>> sourceCodecs() {
+    Map<CompanionKey, GeneratedJsonCodec<?>> sourceCodecs() {
       return sourceCodecs;
     }
   }
 
   CompletableFuture<Class<?>> stringWriterClass(
-      JsonTypeInfo typeInfo, ObjectCodec<?> owner, JsonTypeResolver resolver) {
-    TypeRef<?> generatedType = generatedCapabilityType(typeInfo.typeRef());
-    return generatedClassFuture(
-        stringWriterClasses,
-        generatedType,
-        () -> codegen.compileStringWriter(generatedType, owner, resolver));
+      GeneratedCodecKey key, ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(key, () -> codegen.compileStringWriter(key, owner, resolver));
   }
 
   CompletableFuture<Class<?>> utf8WriterClass(
-      JsonTypeInfo typeInfo, ObjectCodec<?> owner, JsonTypeResolver resolver) {
-    TypeRef<?> generatedType = generatedCapabilityType(typeInfo.typeRef());
-    return generatedClassFuture(
-        utf8WriterClasses,
-        generatedType,
-        () -> codegen.compileUtf8Writer(generatedType, owner, resolver));
+      GeneratedCodecKey key, ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(key, () -> codegen.compileUtf8Writer(key, owner, resolver));
   }
 
   CompletableFuture<Class<?>> latin1ReaderClass(
-      JsonTypeInfo typeInfo, ObjectCodec<?> owner, JsonTypeResolver resolver) {
-    TypeRef<?> generatedType = generatedCapabilityType(typeInfo.typeRef());
-    return generatedClassFuture(
-        latin1ReaderClasses,
-        generatedType,
-        () -> codegen.compileLatin1Reader(generatedType, owner, resolver));
+      GeneratedCodecKey key, ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(key, () -> codegen.compileLatin1Reader(key, owner, resolver));
   }
 
   CompletableFuture<Class<?>> utf16ReaderClass(
-      JsonTypeInfo typeInfo, ObjectCodec<?> owner, JsonTypeResolver resolver) {
-    TypeRef<?> generatedType = generatedCapabilityType(typeInfo.typeRef());
-    return generatedClassFuture(
-        utf16ReaderClasses,
-        generatedType,
-        () -> codegen.compileUtf16Reader(generatedType, owner, resolver));
+      GeneratedCodecKey key, ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(key, () -> codegen.compileUtf16Reader(key, owner, resolver));
   }
 
   CompletableFuture<Class<?>> utf8ReaderClass(
-      JsonTypeInfo typeInfo, ObjectCodec<?> owner, JsonTypeResolver resolver) {
-    TypeRef<?> generatedType = generatedCapabilityType(typeInfo.typeRef());
-    return generatedClassFuture(
-        utf8ReaderClasses,
-        generatedType,
-        () -> codegen.compileUtf8Reader(generatedType, owner, resolver));
+      GeneratedCodecKey key, ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(key, () -> codegen.compileUtf8Reader(key, owner, resolver));
   }
 
-  CompletableFuture<Class<?>> utf8CollectionWriterClass(
-      TypeRef<?> declaredType, CollectionCodec<?> owner) {
-    TypeRef<?> generatedType = generatedCapabilityType(declaredType);
-    return generatedClassFuture(
-        utf8CollectionWriterClasses,
-        generatedType,
-        () -> codegen.compileUtf8CollectionWriter(generatedType, owner));
+  CompletableFuture<Class<?>> utf8CollectionWriterClass(GeneratedCodecKey key) {
+    return generatedClassFuture(key, () -> codegen.compileUtf8CollectionWriter(key));
   }
 
-  CompletableFuture<Class<?>> utf8CollectionReaderClass(
-      TypeRef<?> declaredType, CollectionCodec<?> owner) {
-    TypeRef<?> generatedType = generatedCapabilityType(declaredType);
-    return generatedClassFuture(
-        utf8CollectionReaderClasses,
-        generatedType,
-        () -> codegen.compileUtf8CollectionReader(generatedType, owner));
+  CompletableFuture<Class<?>> utf8CollectionReaderClass(GeneratedCodecKey key) {
+    return generatedClassFuture(key, () -> codegen.compileUtf8CollectionReader(key));
   }
 
   boolean generatedCapabilitiesEnabled() {
-    return codegen != null || nativeConfiguration() != null;
+    return codegen != null || nativeCodegenEnabled;
   }
 
   boolean hostedCodegen() {
     return hostedCodegen;
   }
 
-  boolean missingNativeConfiguration() {
-    return nativeCodegenKey != null && nativeConfiguration() == null;
-  }
-
   boolean nativeGeneratedClasses() {
-    return nativeCodegenKey != null && codegen == null && nativeConfiguration() != null;
+    return nativeCodegenEnabled;
   }
 
-  Class<?> nativeStringWriterClass(TypeRef<?> type) {
-    Configuration configuration = nativeConfiguration();
-    return configuration == null ? null : configuration.stringWriter(generatedCapabilityType(type));
+  Class<?> nativeGeneratedClass(GeneratedCodecKey key) {
+    return nativeCodegenEnabled ? JsonGeneratedClassRegistry.generatedClass(key) : null;
   }
 
-  Class<?> nativeUtf8WriterClass(TypeRef<?> type) {
-    Configuration configuration = nativeConfiguration();
-    return configuration == null ? null : configuration.utf8Writer(generatedCapabilityType(type));
-  }
-
-  Class<?> nativeLatin1ReaderClass(TypeRef<?> type) {
-    Configuration configuration = nativeConfiguration();
-    return configuration == null ? null : configuration.latin1Reader(generatedCapabilityType(type));
-  }
-
-  Class<?> nativeUtf16ReaderClass(TypeRef<?> type) {
-    Configuration configuration = nativeConfiguration();
-    return configuration == null ? null : configuration.utf16Reader(generatedCapabilityType(type));
-  }
-
-  Class<?> nativeUtf8ReaderClass(TypeRef<?> type) {
-    Configuration configuration = nativeConfiguration();
-    return configuration == null ? null : configuration.utf8Reader(generatedCapabilityType(type));
-  }
-
-  Class<?> nativeUtf8CollectionWriterClass(TypeRef<?> type) {
-    Configuration configuration = nativeConfiguration();
-    return configuration == null
-        ? null
-        : configuration.utf8CollectionWriter(generatedCapabilityType(type));
-  }
-
-  Class<?> nativeUtf8CollectionReaderClass(TypeRef<?> type) {
-    Configuration configuration = nativeConfiguration();
-    return configuration == null
-        ? null
-        : configuration.utf8CollectionReader(generatedCapabilityType(type));
-  }
-
-  static TypeRef<?> generatedCapabilityType(TypeRef<?> type) {
-    TypeExtMeta metadata = type.getTypeExtMeta();
-    if (metadata == null
-        || metadata.typeId() != Types.UNKNOWN
-        || metadata.trackingRef()
-        || metadata.nullableWrapper()
-        || metadata.covariant()) {
-      return type;
-    }
-    // Generated codecs own the value body after the outer occurrence null gate. Ordinary outer
-    // nullability therefore cannot change generated source, while every nested occurrence and any
-    // non-default outer semantic fact must remain part of the structural capability identity.
-    return TypeRef.ofSemanticTypeArguments(
-        type.getType(),
-        null,
-        type.hasExplicitTypeArguments() ? type.getTypeArguments() : null,
-        type.isArray() ? type.getComponentType() : null);
-  }
-
-  private Configuration nativeConfiguration() {
-    return nativeCodegenKey == null
-        ? null
-        : JsonGeneratedClassRegistry.configuration(nativeCodegenKey);
-  }
-
-  private <K> CompletableFuture<Class<?>> generatedClassFuture(
-      ConcurrentHashMap<K, CompletableFuture<Class<?>>> classes,
-      K key,
-      Callable<Class<?>> compiler) {
-    CompletableFuture<Class<?>> existing = classes.get(key);
+  private CompletableFuture<Class<?>> generatedClassFuture(
+      GeneratedCodecKey key, Supplier<Class<?>> compiler) {
+    CompletableFuture<Class<?>> existing = generatedClassFutures.get(key);
     if (existing != null) {
       return existing;
     }
     CompletableFuture<Class<?>> candidate = new CompletableFuture<>();
-    existing = classes.putIfAbsent(key, candidate);
+    existing = generatedClassFutures.putIfAbsent(key, candidate);
     if (existing != null) {
       return existing;
     }
     Runnable task =
         () -> {
           try {
-            candidate.complete(compiler.call());
+            candidate.complete(compiler.get());
           } catch (Throwable failure) {
-            classes.remove(key, candidate);
+            generatedClassFutures.remove(key, candidate);
             candidate.completeExceptionally(failure);
           }
         };
@@ -584,7 +415,7 @@ public final class JsonSharedRegistry {
     try {
       service.execute(task);
     } catch (RuntimeException | Error failure) {
-      classes.remove(key, candidate);
+      generatedClassFutures.remove(key, candidate);
       candidate.completeExceptionally(failure);
       throw failure;
     }
@@ -633,15 +464,16 @@ public final class JsonSharedRegistry {
 
   private GeneratedJsonCodec<?> generatedCodec(TypeRef<?> type, boolean requireCompanion) {
     if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && !hostedCodegen) {
-      Configuration configuration = nativeConfiguration();
       // Native hosted analysis owns reflection reachability and generated capabilities. A Java
       // annotation-processor companion is an optional faster operation source, not a prerequisite.
-      return configuration == null ? null : configuration.sourceCodec(type);
+      return JsonGeneratedClassRegistry.sourceCodec(
+          new CompanionKey(type, mixinType(type.getRawType())));
     }
     GeneratedJsonCodec<?> codec =
         generatedCodec(type.getRawType(), requireCompanion && !hostedCodegen);
     if (codec != null && hostedCodegen) {
-      GeneratedJsonCodec<?> previous = generatedCodecCapabilities.putIfAbsent(type, codec);
+      CompanionKey key = new CompanionKey(type, mixinType(type.getRawType()));
+      GeneratedJsonCodec<?> previous = generatedCodecCapabilities.putIfAbsent(key, codec);
       if (previous != null && previous != codec) {
         throw new IllegalStateException("Conflicting generated JSON companions for " + type);
       }
@@ -703,6 +535,19 @@ public final class JsonSharedRegistry {
             + " for "
             + representation
             + " "
+            + type.getName()
+            + "; enable the Fory annotation processor and preserve its generated R8 rules");
+  }
+
+  private static ForyJsonException missingGeneratedSubtypeTable(Class<?> type, Class<?> mixinType) {
+    String name =
+        mixinType == null
+            ? generatedSubtypeTableBinaryName(type)
+            : generatedMixinSubtypeTableBinaryName(mixinType, type);
+    return new ForyJsonException(
+        "Missing generated JSON subtype table "
+            + name
+            + " for "
             + type.getName()
             + "; enable the Fory annotation processor and preserve its generated R8 rules");
   }
@@ -1045,6 +890,10 @@ public final class JsonSharedRegistry {
     return GeneratedClassNames.withSuffix(type.getName(), "_ForyJsonCodec");
   }
 
+  private static String generatedSubtypeTableBinaryName(Class<?> type) {
+    return GeneratedClassNames.withSuffix(type.getName(), "_ForyJsonSubTypes");
+  }
+
   private static String generatedMixinCodecBinaryName(Class<?> mixinType, Class<?> targetType) {
     String sourceName = mixinType.getName();
     int packageEnd = sourceName.lastIndexOf('.');
@@ -1057,12 +906,20 @@ public final class JsonSharedRegistry {
         + "_ForyJsonCodec";
   }
 
-  public JsonValueCodec<?> createCodec(
-      Class<?> rawType, TypeRef<?> typeRef, JsonTypeResolver localResolver) {
-    return createCodec(rawType, typeRef, localResolver, null, false);
+  private static String generatedMixinSubtypeTableBinaryName(
+      Class<?> mixinType, Class<?> targetType) {
+    String codecName = generatedMixinCodecBinaryName(mixinType, targetType);
+    return codecName.substring(0, codecName.length() - "_ForyJsonCodec".length())
+        + "_ForyJsonSubTypes";
   }
 
-  JsonValueCodec<?> createCodec(
+  public JsonValueCodec<?> createCodec(
+      Class<?> rawType, TypeRef<?> typeRef, JsonTypeResolver localResolver) {
+    ResolvedCodec resolved = resolveCodec(rawType, typeRef, localResolver, null, false);
+    return resolved == null ? null : resolved.codec;
+  }
+
+  ResolvedCodec resolveCodec(
       Class<?> rawType,
       TypeRef<?> typeRef,
       JsonTypeResolver localResolver,
@@ -1070,11 +927,13 @@ public final class JsonSharedRegistry {
       boolean runtimeType) {
     JsonValueCodec<?> customCodec = customCodec(rawType);
     if (customCodec != null) {
-      return customCodec;
+      return new ResolvedCodec(customCodec, null);
     }
     FactoryBinding exactFactory = customCodecs.getFactory(rawType);
     if (exactFactory != null) {
-      return createExactCodec(rawType, typeRef, exactFactory, localResolver, runtimeType);
+      return new ResolvedCodec(
+          createExactCodec(rawType, typeRef, exactFactory, localResolver, runtimeType),
+          exactFactory.key());
     }
     if (childFactory != null) {
       // A parent-derived subtype is only the default model. Exact application registration above
@@ -1085,7 +944,7 @@ public final class JsonSharedRegistry {
             "Closed JSON subtype factory did not create the exact ObjectCodec for "
                 + rawType.getName());
       }
-      return childCodec;
+      return new ResolvedCodec(childCodec, childFactory.factoryKey());
     }
     if (typeRef.getTypeExtMeta() != null
         && (rawType == OptionalInt.class
@@ -1095,27 +954,27 @@ public final class JsonSharedRegistry {
         throw new ForyJsonException("Nullable Optional has ambiguous JSON null: " + typeRef);
       }
       if (rawType == OptionalInt.class) {
-        return ScalarCodecs.OptionalIntCodec.NON_NULL;
+        return new ResolvedCodec(ScalarCodecs.OptionalIntCodec.NON_NULL, null);
       }
       if (rawType == OptionalLong.class) {
-        return ScalarCodecs.OptionalLongCodec.NON_NULL;
+        return new ResolvedCodec(ScalarCodecs.OptionalLongCodec.NON_NULL, null);
       }
-      return ScalarCodecs.OptionalDoubleCodec.NON_NULL;
+      return new ResolvedCodec(ScalarCodecs.OptionalDoubleCodec.NON_NULL, null);
     }
     boolean semanticToken =
         typeRef.getTypeExtMeta() != null && typeRef.getTypeExtMeta().typeId() != Types.UNKNOWN;
     if (semanticToken) {
       // The exact JVM carrier codec cannot erase an explicit semantic type. The installed module
       // owns that representation even when the semantic value uses a primitive carrier.
-      JsonValueCodec<?> codec = createModuleCodec(typeRef, localResolver, runtimeType);
-      if (codec == null) {
+      ResolvedCodec resolved = createModuleCodec(typeRef, localResolver, runtimeType);
+      if (resolved == null) {
         throw new ForyJsonException("No installed JSON module owns semantic type " + typeRef);
       }
-      return codec;
+      return resolved;
     }
     JsonValueCodec<?> codec = exactCodecs.get(rawType);
     if (codec != null) {
-      return codec;
+      return new ResolvedCodec(codec, null);
     }
     if (rawType == Class.class) {
       // JSON strings must not be treated as class-loading authority by the default codecs.
@@ -1129,58 +988,64 @@ public final class JsonSharedRegistry {
       throw new ForyJsonException("Unsupported JSON type " + rawType);
     }
     if (rawType.isEnum()) {
-      return new ScalarCodecs.EnumCodec(rawType);
+      return new ResolvedCodec(new ScalarCodecs.EnumCodec(rawType), null);
     }
     if (rawType.isArray()) {
-      return ArrayCodec.create(rawType, typeRef, localResolver);
+      return new ResolvedCodec(ArrayCodec.create(rawType, typeRef, localResolver), null);
     }
     if (rawType == Optional.class) {
-      return new ScalarCodecs.OptionalCodec(typeRef, localResolver);
+      return new ResolvedCodec(new ScalarCodecs.OptionalCodec(typeRef, localResolver), null);
     }
     if (rawType == AtomicReference.class) {
       JsonTypeInfo contentInfo = localResolver.getTypeInfo(CodecUtils.elementTypeRef(typeRef));
-      return ScalarCodecs.AtomicReferenceCodec.create(typeRef, contentInfo);
+      return new ResolvedCodec(
+          ScalarCodecs.AtomicReferenceCodec.create(typeRef, contentInfo), null);
     }
     if (rawType == AtomicReferenceArray.class) {
       JsonTypeInfo elementInfo = localResolver.getTypeInfo(CodecUtils.elementTypeRef(typeRef));
-      return ScalarCodecs.AtomicReferenceArrayCodec.create(elementInfo);
+      return new ResolvedCodec(ScalarCodecs.AtomicReferenceArrayCodec.create(elementInfo), null);
     }
     if (Calendar.class.isAssignableFrom(rawType)) {
-      return ScalarCodecs.CalendarCodec.INSTANCE;
+      return new ResolvedCodec(ScalarCodecs.CalendarCodec.INSTANCE, null);
     }
     if (Date.class.isAssignableFrom(rawType)) {
-      return ScalarCodecs.DateCodec.INSTANCE;
+      return new ResolvedCodec(ScalarCodecs.DateCodec.INSTANCE, null);
     }
     if (ZoneId.class.isAssignableFrom(rawType)) {
-      return ScalarCodecs.ZoneIdCodec.INSTANCE;
+      return new ResolvedCodec(ScalarCodecs.ZoneIdCodec.INSTANCE, null);
     }
     if (ByteBuffer.class.isAssignableFrom(rawType)) {
-      return ScalarCodecs.ByteBufferCodec.INSTANCE;
+      return new ResolvedCodec(ScalarCodecs.ByteBufferCodec.INSTANCE, null);
     }
     if (File.class.isAssignableFrom(rawType)) {
-      return ScalarCodecs.FileCodec.INSTANCE;
+      return new ResolvedCodec(ScalarCodecs.FileCodec.INSTANCE, null);
     }
     if (Path.class.isAssignableFrom(rawType)) {
-      return ScalarCodecs.PathCodec.INSTANCE;
+      return new ResolvedCodec(ScalarCodecs.PathCodec.INSTANCE, null);
     }
-    codec = createModuleCodec(typeRef, localResolver, runtimeType);
-    if (codec != null) {
-      return codec;
+    ResolvedCodec resolved = createModuleCodec(typeRef, localResolver, runtimeType);
+    if (resolved != null) {
+      return resolved;
+    }
+    if (inferredSubTypes(rawType)) {
+      return new ResolvedCodec(
+          new ClosedSubtypeCodec(rawType, subTypesInfo(rawType), typeRef), null);
     }
     if (Number.class.isAssignableFrom(rawType) || CharSequence.class.isAssignableFrom(rawType)) {
       throw new ForyJsonException("Unsupported JSON type " + rawType);
     }
     if (Collection.class.isAssignableFrom(rawType)) {
-      return CollectionCodec.create(rawType, typeRef, localResolver);
+      return new ResolvedCodec(CollectionCodec.create(rawType, typeRef, localResolver), null);
     }
     if (Map.class.isAssignableFrom(rawType)) {
-      return MapCodec.create(rawType, typeRef, localResolver);
+      return new ResolvedCodec(MapCodec.create(rawType, typeRef, localResolver), null);
     }
     return null;
   }
 
   JsonValueCodec<?> createRuntimeCodec(Class<?> rawType, JsonTypeResolver localResolver) {
-    return createCodec(rawType, TypeRef.of(rawType), localResolver, null, true);
+    ResolvedCodec resolved = resolveCodec(rawType, TypeRef.of(rawType), localResolver, null, true);
+    return resolved == null ? null : resolved.codec;
   }
 
   private JsonValueCodec<?> createExactCodec(
@@ -1211,7 +1076,7 @@ public final class JsonSharedRegistry {
     return binding.target;
   }
 
-  private JsonValueCodec<?> createModuleCodec(
+  private ResolvedCodec createModuleCodec(
       TypeRef<?> typeRef, JsonTypeResolver localResolver, boolean runtimeType) {
     JsonValueCodec<?> selected = null;
     UnsupportedJsonTypeException unsupported = null;
@@ -1243,13 +1108,31 @@ public final class JsonSharedRegistry {
     }
     if (claims.size() == 1) {
       if (selected != null) {
-        return selected;
+        return new ResolvedCodec(selected, claims.get(0));
       }
       throw unsupported;
     }
     claims.sort(String::compareTo);
     throw new ForyJsonException(
         "Conflicting JSON codec factories for " + typeRef.getType() + ": " + claims);
+  }
+
+  static final class ResolvedCodec {
+    private final JsonValueCodec<?> codec;
+    private final String factoryKey;
+
+    private ResolvedCodec(JsonValueCodec<?> codec, String factoryKey) {
+      this.codec = codec;
+      this.factoryKey = factoryKey;
+    }
+
+    JsonValueCodec<?> codec() {
+      return codec;
+    }
+
+    String factoryKey() {
+      return factoryKey;
+    }
   }
 
   private static final class ExactFactoryBinding {
@@ -1698,9 +1581,29 @@ public final class JsonSharedRegistry {
     return cause == null ? new ForyJsonException(message) : new ForyJsonException(message, cause);
   }
 
+  boolean hasSubTypes(Class<?> baseType) {
+    return effectiveSubTypes(baseType) != null;
+  }
+
+  boolean inferredSubTypes(Class<?> baseType) {
+    JsonSubTypes annotation = effectiveSubTypes(baseType);
+    return annotation != null && annotation.value().length == 0;
+  }
+
+  JsonSubTypesInfo explicitSubTypesInfo(Class<?> baseType) {
+    JsonSubTypes annotation = effectiveSubTypes(baseType);
+    return annotation == null || annotation.value().length == 0 ? null : subTypesInfo(baseType);
+  }
+
+  JsonSubTypesInfo cachedSubTypesInfo(Class<?> baseType) {
+    synchronized (subTypesCache) {
+      return subTypesCache.get(baseType);
+    }
+  }
+
   JsonSubTypesInfo subTypesInfo(Class<?> baseType) {
     try {
-      JsonSubTypes annotation = annotation(baseType, baseType, JsonSubTypes.class);
+      JsonSubTypes annotation = effectiveSubTypes(baseType);
       if (annotation == null) {
         return null;
       }
@@ -1709,7 +1612,14 @@ public final class JsonSharedRegistry {
         if (cached != null) {
           return cached;
         }
-        JsonSubTypesInfo resolved = buildSubTypesInfo(baseType, annotation);
+        JsonSubTypesInfo resolved;
+        if (annotation.value().length == 0) {
+          InferredSubtypes inferred = javaInferredSubtypes(baseType);
+          resolved =
+              buildInferredSubTypesInfo(baseType, annotation, inferred.classes, inferred.names);
+        } else {
+          resolved = buildExplicitSubTypesInfo(baseType, annotation);
+        }
         subTypesCache.put(baseType, resolved);
         return resolved;
       }
@@ -1718,7 +1628,34 @@ public final class JsonSharedRegistry {
     }
   }
 
-  private JsonSubTypesInfo buildSubTypesInfo(Class<?> baseType, JsonSubTypes annotation) {
+  JsonSubTypesInfo inferredSubTypesInfo(
+      Class<?> baseType, Class<?>[] candidateClasses, String[] candidateNames) {
+    try {
+      JsonSubTypes annotation = effectiveSubTypes(baseType);
+      if (annotation == null || annotation.value().length != 0) {
+        throw new ForyJsonException(
+            "Inferred subtype metadata requires empty @JsonSubTypes on " + baseType.getName());
+      }
+      synchronized (subTypesCache) {
+        JsonSubTypesInfo cached = subTypesCache.get(baseType);
+        if (cached != null) {
+          return cached;
+        }
+        JsonSubTypesInfo resolved =
+            buildInferredSubTypesInfo(baseType, annotation, candidateClasses, candidateNames);
+        subTypesCache.put(baseType, resolved);
+        return resolved;
+      }
+    } catch (ForyJsonException e) {
+      throw mixinSchemaFailure(baseType, e);
+    }
+  }
+
+  private JsonSubTypes effectiveSubTypes(Class<?> baseType) {
+    return annotation(baseType, baseType, JsonSubTypes.class);
+  }
+
+  private static void validateSubTypesDeclaration(Class<?> baseType, JsonSubTypes annotation) {
     if (!baseType.isInterface() && !Modifier.isAbstract(baseType.getModifiers())) {
       throw new ForyJsonException(
           "@JsonSubTypes requires an interface or abstract type " + baseType);
@@ -1733,10 +1670,13 @@ public final class JsonSharedRegistry {
     } else if (!property.isEmpty()) {
       throw new ForyJsonException(inclusion + " @JsonSubTypes must not declare property");
     }
+  }
+
+  private JsonSubTypesInfo buildExplicitSubTypesInfo(Class<?> baseType, JsonSubTypes annotation) {
+    validateSubTypesDeclaration(baseType, annotation);
+    Inclusion inclusion = annotation.inclusion();
+    String property = annotation.property();
     JsonSubTypes.Type[] entries = annotation.value();
-    if (entries.length == 0) {
-      throw new ForyJsonException("@JsonSubTypes must declare at least one subtype");
-    }
     String[] names = new String[entries.length];
     String[] classNames = new String[entries.length];
     boolean hasStringEntry = false;
@@ -1804,6 +1744,208 @@ public final class JsonSharedRegistry {
       classes[i] = subtype;
     }
     return new JsonSubTypesInfo(inclusion, property, classes, names);
+  }
+
+  private JsonSubTypesInfo buildInferredSubTypesInfo(
+      Class<?> baseType,
+      JsonSubTypes annotation,
+      Class<?>[] candidateClasses,
+      String[] candidateNames) {
+    validateSubTypesDeclaration(baseType, annotation);
+    if (candidateClasses == null || candidateNames == null) {
+      throw new ForyJsonException("Missing inferred subtype metadata for " + baseType.getName());
+    }
+    if (candidateClasses.length == 0 || candidateClasses.length != candidateNames.length) {
+      throw new ForyJsonException("Invalid inferred subtype metadata for " + baseType.getName());
+    }
+    Class<?>[] classes = candidateClasses.clone();
+    String[] names = candidateNames.clone();
+    for (Class<?> subtype : classes) {
+      if (subtype == null) {
+        throw new ForyJsonException(
+            "Inferred subtype metadata contains null for " + baseType.getName());
+      }
+    }
+    sortSubtypes(classes, names);
+    Set<Class<?>> classIdentities =
+        Collections.newSetFromMap(new IdentityHashMap<Class<?>, Boolean>());
+    Set<String> binaryNames = new HashSet<>();
+    for (Class<?> subtype : classes) {
+      validateSubtype(baseType, subtype);
+      if (!classIdentities.add(subtype) || !binaryNames.add(subtype.getName())) {
+        throw new ForyJsonException("Duplicate closed JSON subtype " + subtype.getName());
+      }
+      // The selected static base authorizes its complete sealed closure. The fixed disallow list
+      // can invalidate that schema; the configurable checker below may only narrow exact entries.
+      DisallowedList.checkNotInDisallowedList(subtype.getName());
+    }
+    // Validate the complete static closure before configuration-level narrowing. A checker cannot
+    // turn an ambiguous schema into a valid table by hiding one duplicate or colliding name.
+    validateSubtypeNames(names);
+    JsonNativeSubtypeRegistry.publish(baseType, mixinType(baseType), classes, names);
+    JsonTypeChecker checker = typeChecker;
+    if (checker != null) {
+      int accepted = 0;
+      for (int i = 0; i < classes.length; i++) {
+        boolean allowed;
+        try {
+          allowed = checkType(classes[i].getName(), checker);
+        } catch (InsecureException ignored) {
+          allowed = false;
+        }
+        if (allowed) {
+          classes[accepted] = classes[i];
+          names[accepted] = names[i];
+          accepted++;
+        }
+      }
+      if (accepted == 0) {
+        throw new ForyJsonException(
+            "JsonTypeChecker rejected every inferred subtype of " + baseType.getName());
+      }
+      classes = java.util.Arrays.copyOf(classes, accepted);
+      names = java.util.Arrays.copyOf(names, accepted);
+    }
+    return new JsonSubTypesInfo(annotation.inclusion(), annotation.property(), classes, names);
+  }
+
+  private static void validateSubtype(Class<?> baseType, Class<?> subtype) {
+    if (subtype == null) {
+      throw new ForyJsonException(
+          "Inferred subtype metadata contains null for " + baseType.getName());
+    }
+    int modifiers = subtype.getModifiers();
+    if (subtype == Void.class
+        || subtype.isPrimitive()
+        || subtype.isArray()
+        || subtype.isInterface()
+        || Modifier.isAbstract(modifiers)
+        || !baseType.isAssignableFrom(subtype)) {
+      throw new ForyJsonException(
+          "Invalid closed JSON subtype " + subtype.getName() + " for " + baseType.getName());
+    }
+  }
+
+  private static void validateSubtypeNames(String[] names) {
+    Set<String> logicalNames = new HashSet<>();
+    Set<Long> logicalHashes = new HashSet<>();
+    for (String name : names) {
+      validateJsonName(name, "subtype");
+      if (!logicalNames.add(name)) {
+        throw new ForyJsonException("Invalid or duplicate JSON subtype name " + name);
+      }
+      long hash = org.apache.fory.json.meta.JsonFieldNameHash.hash(name);
+      if (!logicalHashes.add(Long.valueOf(hash))) {
+        throw new ForyJsonException("JSON subtype name hash collision for " + name);
+      }
+    }
+  }
+
+  private static void sortSubtypes(Class<?>[] classes, String[] names) {
+    for (int i = 1; i < classes.length; i++) {
+      Class<?> subtype = classes[i];
+      String name = names[i];
+      int j = i;
+      while (j > 0 && classes[j - 1].getName().compareTo(subtype.getName()) > 0) {
+        classes[j] = classes[j - 1];
+        names[j] = names[j - 1];
+        j--;
+      }
+      classes[j] = subtype;
+      names[j] = name;
+    }
+  }
+
+  private InferredSubtypes javaInferredSubtypes(Class<?> baseType) {
+    JsonNativeSubtypeRegistry.Table nativeTable =
+        JsonNativeSubtypeRegistry.table(baseType, mixinType(baseType));
+    if (nativeTable != null) {
+      return new InferredSubtypes(nativeTable.classes, nativeTable.names);
+    }
+    // Native Image runtime must consume the closure embedded during hosted analysis. Its Java
+    // sealed reflection metadata may be incomplete, so rediscovery here could silently change the
+    // authorized table instead of reporting a missing build-time schema root.
+    if (GraalvmSupport.isGraalRuntime()) {
+      throw new ForyJsonException(
+          "Missing embedded inferred subtype table for " + baseType.getName());
+    }
+    // A generated table owns source-level discriminator names after class-file obfuscation. Prefer
+    // it on every JVM; sealed reflection remains the unprocessed Java 17 fallback.
+    GeneratedJsonSubtypeTable table = loadGeneratedSubtypeTable(baseType);
+    if (table != null) {
+      return generatedSubtypes(baseType, table);
+    }
+    if (AndroidSupport.IS_ANDROID) {
+      throw missingGeneratedSubtypeTable(baseType, mixinType(baseType));
+    }
+    Class<?>[] classes = SealedClassSupport.subtypes(baseType);
+    if (classes != null) {
+      String[] names = new String[classes.length];
+      for (int i = 0; i < classes.length; i++) {
+        names[i] = classes[i].getSimpleName();
+      }
+      return new InferredSubtypes(classes, names);
+    }
+    throw new ForyJsonException(
+        "Empty @JsonSubTypes requires Java 17 sealed metadata or a generated subtype table for "
+            + baseType.getName());
+  }
+
+  private static InferredSubtypes generatedSubtypes(
+      Class<?> baseType, GeneratedJsonSubtypeTable table) {
+    try {
+      if (table.type() != baseType) {
+        throw new ForyJsonException(
+            "Generated JSON subtype table has the wrong base for " + baseType.getName());
+      }
+      return new InferredSubtypes(table.subtypes(), table.names());
+    } catch (RuntimeException | LinkageError e) {
+      if (e instanceof ForyJsonException) {
+        throw (ForyJsonException) e;
+      }
+      throw new ForyJsonException(
+          "Cannot read generated JSON subtype metadata for " + baseType.getName(), e);
+    }
+  }
+
+  private GeneratedJsonSubtypeTable loadGeneratedSubtypeTable(Class<?> baseType) {
+    Class<?> mixinType = mixinType(baseType);
+    String generatedName =
+        mixinType == null
+            ? generatedSubtypeTableBinaryName(baseType)
+            : generatedMixinSubtypeTableBinaryName(mixinType, baseType);
+    Class<?> generatedClass;
+    try {
+      generatedClass =
+          Class.forName(
+              generatedName,
+              false,
+              mixinType == null ? baseType.getClassLoader() : mixinType.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      return null;
+    } catch (LinkageError e) {
+      throw new ForyJsonException("Cannot load generated JSON subtype table " + generatedName, e);
+    }
+    if (!GeneratedJsonSubtypeTable.class.isAssignableFrom(generatedClass)
+        || !Modifier.isPublic(generatedClass.getModifiers())) {
+      throw new ForyJsonException("Invalid generated JSON subtype table " + generatedName);
+    }
+    try {
+      return (GeneratedJsonSubtypeTable) generatedClass.getConstructor().newInstance();
+    } catch (ReflectiveOperationException e) {
+      throw new ForyJsonException(
+          "Cannot construct generated JSON subtype table " + generatedName, unwrap(e));
+    }
+  }
+
+  private static final class InferredSubtypes {
+    private final Class<?>[] classes;
+    private final String[] names;
+
+    private InferredSubtypes(Class<?>[] classes, String[] names) {
+      this.classes = classes;
+      this.names = names;
+    }
   }
 
   private void checkSecureName(String className) {

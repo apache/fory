@@ -50,6 +50,24 @@ const byName = Type.struct(
 
 Use `.` inside `typeName` to add a namespace prefix.
 
+## Field IDs
+
+Call `setId(id)` on a field type to assign a stable numeric field identity:
+
+```ts
+const userType = Type.struct(
+  { typeId: 1001 },
+  {
+    id: Type.int64().setId(0),
+    name: Type.string().setId(1),
+  },
+);
+```
+
+Configured IDs must be unique within the struct schema and satisfy
+`0 <= id < 2^29` (`0` through `536870911`). Keep assigned IDs stable and do
+not reuse them for different fields. Fields without an ID use their names.
+
 ## Decorator Metadata
 
 Decorators keep the schema next to a TypeScript class declaration:

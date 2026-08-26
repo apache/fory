@@ -65,6 +65,8 @@ final class JsonTypeProcessor {
   private static final String JSON_MIXIN_REMOVE = JSON_PACKAGE + ".annotation.JsonMixinRemove";
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
   private static final String JSON_SUB_TYPES = JSON_PACKAGE + ".annotation.JsonSubTypes";
+  private static final String JSON_SUBTYPE_GENERATION =
+      JSON_PACKAGE + ".codec.GeneratedJsonSubtypeTable.Generation";
   private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
   private static final String JSON_PROPERTY = JSON_PACKAGE + ".annotation.JsonProperty";
   private static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
@@ -102,15 +104,26 @@ final class JsonTypeProcessor {
 
   void process(RoundEnvironment roundEnvironment) {
     validateMixinControls(roundEnvironment);
+    collectSubtypeGenerations(roundEnvironment);
     TypeElement jsonType = elements.getTypeElement(JSON_TYPE);
-    if (jsonType == null) {
+    TypeElement jsonSubTypes = elements.getTypeElement(JSON_SUB_TYPES);
+    if (jsonType == null && jsonSubTypes == null) {
       processMixins(roundEnvironment);
       return;
     }
     Deque<TypeElement> pending = new ArrayDeque<>();
-    for (Element element : roundEnvironment.getElementsAnnotatedWith(jsonType)) {
-      if (element instanceof TypeElement) {
-        pending.add((TypeElement) element);
+    if (jsonType != null) {
+      for (Element element : roundEnvironment.getElementsAnnotatedWith(jsonType)) {
+        if (element instanceof TypeElement) {
+          pending.add((TypeElement) element);
+        }
+      }
+    }
+    if (jsonSubTypes != null) {
+      for (Element element : roundEnvironment.getElementsAnnotatedWith(jsonSubTypes)) {
+        if (element instanceof TypeElement) {
+          pending.add((TypeElement) element);
+        }
       }
     }
     while (!pending.isEmpty()) {
@@ -123,8 +136,11 @@ final class JsonTypeProcessor {
         continue;
       }
       try {
+        AnnotationMirror subtypesAnnotation = annotationMirror(type, JSON_SUB_TYPES);
+        boolean typeCodec = codecSourceWriter.hasCompleteTypeCodec(type, null);
         Model model = inspect(type);
-        if (hasAnnotation(type, JSON_TYPE)) {
+        boolean inferred = !typeCodec && emptySubtypes(subtypesAnnotation);
+        if (!typeCodec && hasAnnotation(type, JSON_TYPE) && subtypesAnnotation == null) {
           GeneratedJsonCodecSourceWriter.Result generated = codecSourceWriter.write(type);
           if (generated != null) {
             model.companionBinaryName = generated.companionBinaryName;
@@ -138,10 +154,26 @@ final class JsonTypeProcessor {
             }
           }
         }
-        List<TypeElement> subtypes = classLiteralSubtypes(type, model.binaryFallbackTypes);
+        List<TypeElement> subtypes;
+        if (typeCodec) {
+          subtypes = Collections.emptyList();
+        } else if (inferred) {
+          validateSubtypeRoot(type);
+          subtypes = sealedSubtypes(type);
+          model.subtypeTableBinaryName = emitSubtypeTable(type, null, subtypes);
+          model.nameTypes.add(model.binaryName);
+          mergeSubtypeModels(model, subtypes);
+        } else {
+          if (subtypesAnnotation != null) {
+            validateSubtypeRoot(type);
+          }
+          subtypes = classLiteralSubtypes(type, model.binaryFallbackTypes);
+        }
         model.sort();
         emitR8(model);
-        pending.addAll(subtypes);
+        if (!inferred && !typeCodec) {
+          pending.addAll(subtypes);
+        }
       } catch (GeneratedJsonCodecSourceWriter.InvalidJsonTypeException e) {
         messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
       } catch (InvalidJsonTypeException e) {
@@ -154,6 +186,27 @@ final class JsonTypeProcessor {
       }
     }
     processMixins(roundEnvironment);
+  }
+
+  private void collectSubtypeGenerations(RoundEnvironment roundEnvironment) {
+    TypeElement generationType = elements.getTypeElement(JSON_SUBTYPE_GENERATION);
+    if (generationType == null) {
+      return;
+    }
+    for (Element element : roundEnvironment.getElementsAnnotatedWith(generationType)) {
+      AnnotationMirror generation = annotationMirror(element, JSON_SUBTYPE_GENERATION);
+      AnnotationValue value = generation == null ? null : annotationValue(generation, "mixin");
+      TypeElement mixin =
+          value != null && value.getValue() instanceof String
+              ? elements.getTypeElement((String) value.getValue())
+              : null;
+      if (mixin == null) {
+        messager.printMessage(
+            Diagnostic.Kind.ERROR, "Cannot resolve generated JSON subtype Mixin", element);
+        continue;
+      }
+      pendingMixins.put(elements.getBinaryName(mixin).toString(), mixin);
+    }
   }
 
   private void validateMixinControls(RoundEnvironment roundEnvironment) {
@@ -223,11 +276,15 @@ final class JsonTypeProcessor {
         if (annotations.isEmpty()) {
           continue;
         }
+        AnnotationMirror subtypesAnnotation = annotationMirror(annotations, target, JSON_SUB_TYPES);
+        boolean inferred = emptySubtypes(subtypesAnnotation);
         boolean directTypeCodec = codecSourceWriter.hasDirectTypeCodec(target, annotations);
         boolean typeCodec =
             directTypeCodec || codecSourceWriter.hasCompleteTypeCodec(target, annotations);
         GeneratedJsonCodecSourceWriter.Result generated =
-            typeCodec ? null : codecSourceWriter.writePair(annotations);
+            typeCodec || subtypesAnnotation != null
+                ? null
+                : codecSourceWriter.writePair(annotations);
         Model model =
             typeCodec
                 ? inspectTypeCodec(target, annotations, directTypeCodec)
@@ -250,7 +307,19 @@ final class JsonTypeProcessor {
           }
         }
         if (!typeCodec) {
-          collectPairClosure(model, target, annotations);
+          if (inferred) {
+            validateSubtypeRoot(target);
+            List<TypeElement> subtypes = sealedSubtypes(target);
+            model.subtypeTableBinaryName = emitSubtypeTable(target, mixin, subtypes);
+            model.nameTypes.add(model.binaryName);
+            model.nameTypes.add(mixinBinaryName);
+            mergeSubtypeModels(model, subtypes);
+          } else {
+            if (subtypesAnnotation != null) {
+              validateSubtypeRoot(target);
+            }
+            collectPairClosure(model, target, annotations);
+          }
         }
         model.sort();
         emitR8(model);
@@ -646,6 +715,17 @@ final class JsonTypeProcessor {
       }
       builder.append("}\n");
     }
+    if (model.subtypeTableBinaryName != null) {
+      builder
+          .append("-keep,allowoptimization class ")
+          .append(model.subtypeTableBinaryName)
+          .append(" {\n")
+          .append("  public <init>();\n")
+          .append("  public java.lang.Class type();\n")
+          .append("  public java.lang.Class[] subtypes();\n")
+          .append("  public java.lang.String[] names();\n")
+          .append("}\n");
+    }
     return builder.toString();
   }
 
@@ -690,6 +770,187 @@ final class JsonTypeProcessor {
     }
     subtypesToProcess.sort(Comparator.comparing(type -> elements.getBinaryName(type).toString()));
     return subtypesToProcess;
+  }
+
+  private boolean emptySubtypes(AnnotationMirror annotation) {
+    if (annotation == null) {
+      return false;
+    }
+    AnnotationValue value = annotationValue(annotation, "value");
+    return value != null
+        && value.getValue() instanceof List<?>
+        && ((List<?>) value.getValue()).isEmpty();
+  }
+
+  private void validateSubtypeRoot(TypeElement root) {
+    if (!root.getKind().isInterface() && !root.getModifiers().contains(Modifier.ABSTRACT)) {
+      throw new InvalidJsonTypeException(
+          "@JsonSubTypes requires an interface or abstract type", root);
+    }
+  }
+
+  private List<TypeElement> sealedSubtypes(TypeElement root) {
+    if (!SealedTypeSupport.isSealed(root)) {
+      throw new InvalidJsonTypeException(
+          "Empty @JsonSubTypes requires a sealed Java type; run the processor on JDK 17 or newer",
+          root);
+    }
+    List<TypeElement> result = new ArrayList<>();
+    Set<String> visited = new HashSet<>();
+    collectSealedSubtypes(root, result, visited);
+    if (result.isEmpty()) {
+      throw new InvalidJsonTypeException("Sealed JSON hierarchy has no concrete subtype", root);
+    }
+    result.sort(Comparator.comparing(type -> elements.getBinaryName(type).toString()));
+    Set<String> names = new HashSet<>();
+    Set<Long> hashes = new HashSet<>();
+    for (TypeElement subtype : result) {
+      String name = subtype.getSimpleName().toString();
+      if (!names.add(name)) {
+        throw new InvalidJsonTypeException("Duplicate inferred JSON subtype name " + name, subtype);
+      }
+      if (!hashes.add(Long.valueOf(jsonNameHash(name)))) {
+        throw new InvalidJsonTypeException(
+            "Inferred JSON subtype name hash collision for " + name, subtype);
+      }
+    }
+    return result;
+  }
+
+  private void collectSealedSubtypes(
+      TypeElement sealedType, List<TypeElement> result, Set<String> visited) {
+    List<? extends TypeElement> direct = SealedTypeSupport.directSubtypes(sealedType);
+    if (direct == null) {
+      throw new InvalidJsonTypeException(
+          "Sealed Java metadata is unavailable; run the processor on JDK 17 or newer", sealedType);
+    }
+    for (TypeElement subtype : direct) {
+      String binaryName = elements.getBinaryName(subtype).toString();
+      if (!visited.add(binaryName)) {
+        continue;
+      }
+      boolean concrete =
+          subtype.getKind().isClass() && !subtype.getModifiers().contains(Modifier.ABSTRACT);
+      if (concrete) {
+        validateSubtypeAccess(sealedType, subtype);
+        result.add(subtype);
+      }
+      if (SealedTypeSupport.isSealed(subtype)) {
+        collectSealedSubtypes(subtype, result, visited);
+      } else if (!concrete) {
+        throw new InvalidJsonTypeException(
+            "Sealed JSON hierarchy has an open abstract branch " + binaryName, subtype);
+      }
+    }
+  }
+
+  private void validateSubtypeAccess(TypeElement root, TypeElement subtype) {
+    String generatedPackage = elements.getPackageOf(root).getQualifiedName().toString();
+    String subtypePackage = elements.getPackageOf(subtype).getQualifiedName().toString();
+    for (Element current = subtype;
+        current instanceof TypeElement;
+        current = current.getEnclosingElement()) {
+      Set<Modifier> modifiers = current.getModifiers();
+      if (modifiers.contains(Modifier.PRIVATE)
+          || !generatedPackage.equals(subtypePackage) && !modifiers.contains(Modifier.PUBLIC)) {
+        throw new InvalidJsonTypeException(
+            "Generated subtype table cannot access " + elements.getBinaryName(subtype), subtype);
+      }
+    }
+  }
+
+  private void mergeSubtypeModels(Model model, List<TypeElement> subtypes) {
+    for (TypeElement subtype : subtypes) {
+      Model child = inspectModel(subtype, null);
+      model.merge(child);
+    }
+  }
+
+  private String emitSubtypeTable(
+      TypeElement target, TypeElement mixin, List<TypeElement> subtypes) {
+    TypeElement owner = mixin == null ? target : mixin;
+    PackageElement packageElement = elements.getPackageOf(owner);
+    String packageName =
+        packageElement.isUnnamed() ? "" : packageElement.getQualifiedName().toString();
+    String targetBinaryName = elements.getBinaryName(target).toString();
+    String simpleName =
+        mixin == null
+            ? GeneratedTypeNames.jsonSubtypeSimpleName(targetBinaryName)
+            : GeneratedTypeNames.jsonMixinSubtypeSimpleName(
+                elements.getBinaryName(mixin).toString(), targetBinaryName);
+    String generatedName = packageName.isEmpty() ? simpleName : packageName + "." + simpleName;
+    List<Element> origins = new ArrayList<>();
+    origins.add(owner);
+    if (owner != target) {
+      origins.add(target);
+    }
+    origins.addAll(subtypes);
+    validateSubtypeAccess(owner, target);
+    for (TypeElement subtype : subtypes) {
+      validateSubtypeAccess(owner, subtype);
+    }
+    try {
+      javax.tools.JavaFileObject file =
+          filer.createSourceFile(generatedName, origins.toArray(new Element[0]));
+      try (Writer writer = file.openWriter()) {
+        if (!packageName.isEmpty()) {
+          writer.write("package " + packageName + ";\n\n");
+        }
+        writer.write(
+            "public final class "
+                + simpleName
+                + " implements org.apache.fory.json.codec.GeneratedJsonSubtypeTable {\n");
+        writer.write("  public " + simpleName + "() {}\n");
+        writer.write(
+            "  public java.lang.Class<?> type() { return "
+                + target.getQualifiedName()
+                + ".class; }\n");
+        writer.write(
+            "  public java.lang.Class<?>[] subtypes() { return new java.lang.Class<?>[] {");
+        for (int i = 0; i < subtypes.size(); i++) {
+          if (i != 0) {
+            writer.write(", ");
+          }
+          writer.write(subtypes.get(i).getQualifiedName() + ".class");
+        }
+        writer.write("}; }\n");
+        writer.write("  public java.lang.String[] names() { return new java.lang.String[] {");
+        for (int i = 0; i < subtypes.size(); i++) {
+          if (i != 0) {
+            writer.write(", ");
+          }
+          writer.write("\"" + subtypes.get(i).getSimpleName() + "\"");
+        }
+        writer.write("}; }\n}\n");
+      }
+      return generatedName;
+    } catch (IOException e) {
+      throw new InvalidJsonTypeException(
+          "Failed to write generated JSON subtype table: " + e, owner);
+    }
+  }
+
+  private static long jsonNameHash(String name) {
+    if (!name.isEmpty() && name.length() <= Long.BYTES) {
+      boolean latin1 = true;
+      long value = 0;
+      for (int i = 0; i < name.length(); i++) {
+        char ch = name.charAt(i);
+        if (ch > 0xFF || ch == 0) {
+          latin1 = false;
+          break;
+        }
+        value |= ((long) ch) << (i << 3);
+      }
+      if (latin1 && value != 0) {
+        return value;
+      }
+    }
+    long hash = 0xcbf29ce484222325L;
+    for (int i = 0; i < name.length(); i++) {
+      hash = (hash ^ name.charAt(i)) * 0x100000001b3L;
+    }
+    return hash;
   }
 
   private void collectPairClosure(
@@ -1141,10 +1402,12 @@ final class JsonTypeProcessor {
     final Set<String> binaryFallbackTypes = new LinkedHashSet<>();
     final Set<String> annotationOwnerTypes = new LinkedHashSet<>();
     final Set<String> nameTypes = new LinkedHashSet<>();
+    final Set<TypeElement> originatingTypes = new LinkedHashSet<>();
     JsonMixinAnnotations annotations;
     TypeElement mixin;
     String resourceIdentity;
     String companionBinaryName;
+    String subtypeTableBinaryName;
     boolean companionHasAnySetter;
     boolean companionHasCreator;
     boolean companionHasCreatorFactory;
@@ -1155,6 +1418,7 @@ final class JsonTypeProcessor {
       this.target = target;
       this.binaryName = binaryName;
       resourceIdentity = binaryName;
+      originatingTypes.add(target);
     }
 
     void addR8Member(R8Member member) {
@@ -1193,10 +1457,16 @@ final class JsonTypeProcessor {
       binaryFallbackTypes.addAll(other.binaryFallbackTypes);
       annotationOwnerTypes.addAll(other.annotationOwnerTypes);
       nameTypes.addAll(other.nameTypes);
+      originatingTypes.addAll(other.originatingTypes);
     }
 
     Element[] originatingElements() {
-      return mixin == null ? new Element[] {target} : new Element[] {mixin, target};
+      List<Element> elements = new ArrayList<>();
+      if (mixin != null) {
+        elements.add(mixin);
+      }
+      elements.addAll(originatingTypes);
+      return elements.toArray(new Element[0]);
     }
 
     private static boolean containsNested(Set<String> names) {

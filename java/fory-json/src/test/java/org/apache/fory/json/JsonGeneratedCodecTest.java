@@ -19,13 +19,13 @@
 
 package org.apache.fory.json;
 
-import static org.apache.fory.json.JsonTestSupport.generatedCodecIdentity;
 import static org.apache.fory.json.JsonTestSupport.generatedUtf8WriterClass;
 import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import java.lang.reflect.Field;
@@ -51,7 +51,6 @@ import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.testng.annotations.Test;
 
 public class JsonGeneratedCodecTest extends ForyJsonTestModels {
-  private static final String GENERATED_SUFFIX = "ForyJsonCodec";
 
   @Test(dataProvider = "enableCodegen")
   public void writeRecursiveGeneratedTypes(boolean codegen) {
@@ -183,7 +182,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
   }
 
   @Test(dataProvider = "enableCodegen")
-  public void sameConfigUsesSameId(boolean codegen) throws Exception {
+  public void sameConfigUsesSameClass(boolean codegen) {
     ForyJson first = newJson(codegen);
     ForyJson second = newJson(codegen);
     ForyJson writeNullFields = newJsonBuilder(codegen).writeNullFields(true).build();
@@ -210,29 +209,9 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     assertEquals(firstCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
     assertEquals(
         secondCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
-    assertGeneratedName(firstCodecClass, PublicFields.class, "Utf8Writer");
-    assertGeneratedName(secondCodecClass, PublicFields.class, "Utf8Writer");
-    assertGeneratedName(writeNullCodecClass, PublicFields.class, "Utf8Writer");
-    assertGeneratedName(snakeCaseCodecClass, PublicFields.class, "Utf8Writer");
-    assertEquals(generatedCodecIdentity(secondCodecClass), generatedCodecIdentity(firstCodecClass));
-    assertNotEquals(
-        generatedCodecIdentity(writeNullCodecClass), generatedCodecIdentity(firstCodecClass));
-    assertNotEquals(
-        generatedCodecIdentity(snakeCaseCodecClass), generatedCodecIdentity(firstCodecClass));
-  }
-
-  @Test
-  public void boundedGeneratedName() {
-    ForyJson json = newJson(true);
-    json.toJsonBytes(new ModelWithANameLongEnoughToRequireDeterministicPrefixTruncation());
-    Class<?> generated =
-        generatedUtf8WriterClass(
-            json, ModelWithANameLongEnoughToRequireDeterministicPrefixTruncation.class);
-    assertTrue(
-        generated.getSimpleName().length()
-            <= 32 + "Utf8Writer".length() + GENERATED_SUFFIX.length() + 1 + 64,
-        generated.getName());
-    assertEquals(generatedCodecIdentity(generated).length(), 64);
+    assertSame(secondCodecClass, firstCodecClass);
+    assertNotSame(writeNullCodecClass, firstCodecClass);
+    assertNotSame(snakeCaseCodecClass, firstCodecClass);
   }
 
   @Test
@@ -484,10 +463,6 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     public int altar;
   }
 
-  public static final class ModelWithANameLongEnoughToRequireDeterministicPrefixTruncation {
-    public int value;
-  }
-
   public static class WideFields {
     public int f0;
     public String f1;
@@ -578,14 +553,5 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     assertTrue(value.set instanceof LinkedHashSet);
     assertEquals(value.set.size(), 2);
     assertEquals(value.set.iterator().next().name, name + 10);
-  }
-
-  private static void assertGeneratedName(
-      Class<?> generatedClass, Class<?> valueType, String role) {
-    String simpleName = generatedClass.getSimpleName();
-    assertTrue(simpleName.startsWith(valueType.getSimpleName()), generatedClass.getName());
-    assertTrue(simpleName.contains(role + GENERATED_SUFFIX), generatedClass.getName());
-    assertTrue(simpleName.contains(GENERATED_SUFFIX + "_"), generatedClass.getName());
-    assertEquals(generatedCodecIdentity(generatedClass).length(), 64, generatedClass.getName());
   }
 }

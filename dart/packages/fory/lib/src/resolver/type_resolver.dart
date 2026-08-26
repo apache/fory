@@ -315,10 +315,10 @@ String? _fieldIdentityError(List<FieldInfo> fields) {
   final fieldsByName = <String, FieldInfo>{};
   for (final field in fields) {
     final id = field.id;
-    if (id != null) {
-      if (id < 0) {
-        return 'Field id $id must be non-negative.';
-      }
+    if (id < -1 || id > TypeResolver._maxFieldId) {
+      return 'Field id is outside the protocol range.';
+    }
+    if (id >= 0) {
       if (field.identifier != id.toString()) {
         return 'Tagged field ${field.name} has textual identifier '
             '${field.identifier}, which must match field id $id.';
@@ -355,6 +355,7 @@ List<FieldInfo> _validateLocalFieldInfos(List<FieldInfo> fields) {
 }
 
 final class TypeResolver {
+  static const int _maxFieldId = (1 << 29) - 1;
   static const int _minRemoteTypeMetaLimit = 8192;
   static const int _maxRemoteTypeMetaKeys = 8192;
 
@@ -1176,9 +1177,9 @@ final class TypeResolver {
 
   void _writeTypeDefField(Buffer target, FieldInfo field) {
     final fieldType = field.fieldType;
-    final usesTag = field.id != null;
+    final usesTag = field.id >= 0;
     final encodedName = usesTag ? null : fieldNameMetaString(field.identifier);
-    var size = usesTag ? field.id! : encodedName!.bytes.length - 1;
+    var size = usesTag ? field.id : encodedName!.bytes.length - 1;
     var header = fieldType.ref ? 1 : 0;
     if (fieldType.nullable) {
       header |= 1 << 1;
@@ -1562,7 +1563,10 @@ final class TypeResolver {
     }
     size += 1;
     final isTag = encoding == 3;
-    final tagId = isTag ? size - 1 : null;
+    final tagId = isTag ? size - 1 : -1;
+    if (tagId > _maxFieldId) {
+      throw StateError('Field id exceeds the protocol range.');
+    }
     final fieldType = _readTypeDefFieldType(
       source,
       typeId: source.readUint8(),

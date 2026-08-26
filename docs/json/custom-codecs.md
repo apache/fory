@@ -72,6 +72,23 @@ ForyJson json =
         .build();
 ```
 
+Exact `registerCodec` and exact-class factory registration are not allowed for types with
+dedicated reader/writer operations:
+
+- `boolean`, `byte`, `short`, `int`, `long`, `float`, `double`, and `char`, including their boxed
+  classes
+- `String`, `CharSequence`, `Number`, `BigInteger`, `BigDecimal`, and `UUID`
+- `LocalDate`, `LocalTime`, `LocalDateTime`, `Instant`, `Duration`, `ZoneOffset`, `ZonedDateTime`,
+  `Year`, `YearMonth`, `MonthDay`, `Period`, `OffsetTime`, and `OffsetDateTime`
+- `byte[]`, `String[]`, and `long[]`
+
+The restriction is exact; it does not include application subclasses. It also does not disable
+occurrence-level `JsonCodec`, `JsonFormat`, or other semantic mappings. Use those mechanisms when a
+field or parameter of one of these types needs a different representation.
+
+`ObjectCodec` instances belong to the resolver that created them and cannot be registered directly.
+Use an exact `JsonCodecFactory` when a language module needs to supply an object model.
+
 Use `JsonCodecFactory` when one factory owns a family of declared or parameterized types:
 
 ```java
@@ -86,6 +103,10 @@ ForyJson json =
         .withModule(context -> context.registerCodecFactory(factory))
         .build();
 ```
+
+A configurable factory must override `factoryKey()` with a deterministic value covering every
+option that can change the created codec class, object model, or generated operations. The default
+factory class name is sufficient only for a configuration-free factory.
 
 `runtimeType` is `true` only when the factory is selecting a codec for the actual class of a value
 during a dynamic write. Declared roots and composite child types receive `false`. A composite codec
@@ -310,8 +331,8 @@ decoded keys must match the declared key type.
 
 An annotation codec class must be public, concrete, top-level or static nested, and have a public
 no-argument constructor. One instance is shared by all annotated sites and concurrent operations of
-the built `ForyJson`, so it must be thread-safe. Use `registerCodec(Target.class, instance)` when a
-complete-value codec needs configuration.
+the built `ForyJson`, so it must be thread-safe. For an eligible type, use
+`registerCodec(Target.class, instance)` when a complete-value codec needs configuration.
 
 Outside GraalVM Native Image, a named Java module must export or open the codec package to
 `org.apache.fory.json`. Native Image prepares annotation-codec constructors during image

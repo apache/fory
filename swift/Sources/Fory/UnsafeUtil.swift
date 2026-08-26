@@ -511,7 +511,7 @@ public enum UnsafeUtil {
         from bytes: UnsafeBufferPointer<UInt8>,
         index: inout Int
     ) throws -> Int {
-        Int(try readVarInt64(from: bytes, index: &index))
+        try checkedInt64ToInt(readVarInt64(from: bytes, index: &index))
     }
 
     @inlinable
@@ -520,7 +520,7 @@ public enum UnsafeUtil {
         from bytes: UnsafeBufferPointer<UInt8>,
         index: inout Int
     ) throws -> UInt {
-        UInt(try readVarUInt64(from: bytes, index: &index))
+        try checkedUInt64ToUInt(readVarUInt64(from: bytes, index: &index))
     }
 
     @inlinable
@@ -608,7 +608,7 @@ public enum UnsafeUtil {
         length: Int,
         index: inout Int
     ) throws -> Int {
-        Int(try readVarInt64(from: base, length: length, index: &index))
+        try checkedInt64ToInt(readVarInt64(from: base, length: length, index: &index))
     }
 
     @inlinable
@@ -618,7 +618,7 @@ public enum UnsafeUtil {
         length: Int,
         index: inout Int
     ) throws -> UInt {
-        UInt(try readVarUInt64(from: base, length: length, index: &index))
+        try checkedUInt64ToUInt(readVarUInt64(from: base, length: length, index: &index))
     }
 
     @inlinable

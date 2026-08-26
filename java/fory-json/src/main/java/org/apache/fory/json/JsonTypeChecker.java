@@ -37,6 +37,11 @@ import org.apache.fory.exception.InsecureException;
  * <p>Decisions are shared by class name across the runtime's pooled states and cached up to a
  * bounded number of distinct names. Once the cache is full, new names invoke the checker each time
  * rather than growing untrusted state.
+ *
+ * <p>For an inferred sealed {@code JsonSubTypes} table, this checker may reject exact concrete
+ * candidates to narrow the statically authorized closure; rejecting every candidate fails schema
+ * construction. An explicit non-empty subtype table remains exact and fails if any entry is
+ * rejected. Fory's fixed disallow list validates the complete inferred closure before narrowing.
  */
 @FunctionalInterface
 public interface JsonTypeChecker {

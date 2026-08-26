@@ -20,7 +20,7 @@
 package org.apache.fory.json.scala
 
 import org.apache.fory.json.ForyJson
-import org.apache.fory.json.annotation.{ForyJsonProvider, JsonProperty, JsonType}
+import org.apache.fory.json.annotation.{ForyJsonProvider, JsonProperty, JsonSubTypes, JsonType}
 
 @JsonType
 case class NativeNode(value: Int, next: Option[NativeNode] = None)
@@ -36,6 +36,13 @@ enum NativeResult derives ScalaJsonCodec {
   case Error(code: Int)
   case Pending
 }
+
+@JsonSubTypes(property = "kind")
+sealed trait NativeEvent derives ScalaJsonCodec
+
+final case class NativeMessage(value: String) extends NativeEvent
+
+case object NativeIdle extends NativeEvent
 
 @JsonType
 enum NativeColor {
@@ -63,6 +70,13 @@ object ScalaJsonNativeImageMain {
 
     val result: NativeResult = NativeResult.Ok("ready")
     require(json.fromJson(json.toJson(result), classOf[NativeResult]) == result)
+    val event: NativeEvent = NativeMessage("sealed")
+    require(
+      json.fromJson(json.toJson(event, classOf[NativeEvent]), classOf[NativeEvent]) == event
+    )
+    require(
+      json.fromJson(json.toJson(NativeIdle, classOf[NativeEvent]), classOf[NativeEvent]) eq NativeIdle
+    )
     require(json.fromJson(json.toJson(NativeColor.Blue), classOf[NativeColor]) == NativeColor.Blue)
     println("Fory Scala JSON native image succeeded")
   }

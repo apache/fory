@@ -1334,7 +1334,7 @@ public sealed class RuntimeEdgeCaseTests
         TypeMetaFieldInfo[] fields = new TypeMetaFieldInfo[fieldNames.Length];
         for (int i = 0; i < fieldNames.Length; i++)
         {
-            fields[i] = new TypeMetaFieldInfo(null, fieldNames[i], new TypeMetaFieldType((uint)TypeId.Int32, nullable: false));
+            fields[i] = new TypeMetaFieldInfo(-1, fieldNames[i], new TypeMetaFieldType((uint)TypeId.Int32, nullable: false));
         }
 
         return new TypeMeta(
@@ -1376,7 +1376,7 @@ public sealed class RuntimeEdgeCaseTests
             MetaString.Empty('.', '_'),
             MetaString.Empty('$', '_'),
             registerByName: false,
-            [new TypeMetaFieldInfo(null, fieldName, fieldType)]);
+            [new TypeMetaFieldInfo(-1, fieldName, fieldType)]);
     }
 
     private static TypeMetaFieldType MapType()

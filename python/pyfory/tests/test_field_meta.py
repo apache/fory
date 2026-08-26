@@ -27,6 +27,7 @@ import pyfory
 from pyfory import Fory, Float64, Int32
 from pyfory.field import (
     ForyFieldMeta,
+    MAX_FIELD_ID,
     extract_field_meta,
 )
 
@@ -95,6 +96,12 @@ class TestFieldFunction:
         for f in fields(TestClass):
             meta = extract_field_meta(f)
             assert meta.uses_tag_id()
+
+    def test_field_tag_id_domain(self):
+        max_field = pyfory.field(MAX_FIELD_ID)
+        assert extract_field_meta(max_field).id == MAX_FIELD_ID
+        with pytest.raises(ValueError):
+            pyfory.field(MAX_FIELD_ID + 1)
 
     def test_nullable_field(self):
         """Test nullable field."""

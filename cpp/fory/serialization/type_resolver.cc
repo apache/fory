@@ -29,6 +29,7 @@
 #include <limits>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace fory {
 namespace serialization {
@@ -160,7 +161,12 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
   // write field header:
   // header: | field_name_encoding:2bits | size:4bits | nullability:1bit |
   // track_ref:1bit |
-  const bool use_tag_id = field_id >= 0;
+  if (FORY_PREDICT_FALSE(field_id < detail::kFieldNameIdentity ||
+                         field_id > detail::kMaxFieldTag)) {
+    return Unexpected(
+        Error::invalid("Field tag exceeds the wire TAG_ID range"));
+  }
+  const bool use_tag_id = field_id != detail::kFieldNameIdentity;
   uint8_t encoding_idx = use_tag_id ? 3 : 0; // TAG_ID or UTF8
   std::vector<uint8_t> encoded_name;
   if (!use_tag_id) {
@@ -188,10 +194,13 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
     }
     encoded_name = std::move(encoded.bytes);
   }
-  const size_t size_field =
-      use_tag_id ? static_cast<size_t>(field_id) : encoded_name.size() - 1;
-  uint8_t header =
-      (std::min(FIELD_NAME_SIZE_THRESHOLD, size_field) << 2) & 0x3C;
+  const uint32_t tag_id = use_tag_id ? static_cast<uint32_t>(field_id) : 0;
+  const size_t name_size_field = use_tag_id ? 0 : encoded_name.size() - 1;
+  const uint8_t inline_size =
+      use_tag_id ? std::min<uint32_t>(FIELD_NAME_SIZE_THRESHOLD, tag_id)
+                 : static_cast<uint8_t>(std::min<size_t>(
+                       FIELD_NAME_SIZE_THRESHOLD, name_size_field));
+  uint8_t header = (inline_size << 2) & 0x3C;
 
   if (field_type.track_ref) {
     header |= 1; // bit 0 for ref tracking
@@ -203,8 +212,12 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
 
   buffer.write_uint8(header);
 
-  if (size_field >= FIELD_NAME_SIZE_THRESHOLD) {
-    buffer.write_var_uint32(size_field - FIELD_NAME_SIZE_THRESHOLD);
+  if (use_tag_id && tag_id >= FIELD_NAME_SIZE_THRESHOLD) {
+    buffer.write_var_uint32(
+        static_cast<uint32_t>(tag_id - FIELD_NAME_SIZE_THRESHOLD));
+  } else if (!use_tag_id && name_size_field >= FIELD_NAME_SIZE_THRESHOLD) {
+    buffer.write_var_uint32(
+        static_cast<uint32_t>(name_size_field - FIELD_NAME_SIZE_THRESHOLD));
   }
 
   // write field type
@@ -236,13 +249,25 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
   bool use_tag_id = encoding_idx == 3;
   bool track_ref = (header & 0b01u) != 0;
   bool nullable = (header & 0b10u) != 0;
-  size_t size_field = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD);
-  if (size_field == FIELD_NAME_SIZE_THRESHOLD) {
+  const uint32_t inline_size = (header >> 2) & FIELD_NAME_SIZE_THRESHOLD;
+  uint32_t tag_id = use_tag_id ? inline_size : 0;
+  size_t name_size_field = use_tag_id ? 0 : inline_size;
+  if (inline_size == FIELD_NAME_SIZE_THRESHOLD) {
     uint32_t extra = buffer.read_var_uint32(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
-    size_field += extra;
+    if (use_tag_id) {
+      if (FORY_PREDICT_FALSE(extra >
+                             static_cast<uint32_t>(detail::kMaxFieldTag) -
+                                 inline_size)) {
+        return Unexpected(
+            Error::invalid_data("Field tag exceeds the wire TAG_ID range"));
+      }
+      tag_id += extra;
+    } else {
+      name_size_field += extra;
+    }
   }
 
   // Read field type with nullable and track_ref from header
@@ -251,7 +276,7 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
 
   if (use_tag_id) {
     FieldInfo info("", std::move(field_type));
-    info.field_id = static_cast<int16_t>(size_field);
+    info.field_id = static_cast<int32_t>(tag_id);
     return info;
   }
 
@@ -262,7 +287,7 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
   // We mirror that here using MetaStringDecoder with '$' and '_' as
   // special characters (same as Encoders.FIELD_NAME_DECODER).
 
-  const size_t name_size = size_field + 1;
+  const size_t name_size = name_size_field + 1;
   if (FORY_PREDICT_FALSE(
           name_size >
           static_cast<size_t>(std::numeric_limits<uint32_t>::max()))) {
@@ -636,15 +661,24 @@ parse_type_meta_body(Buffer &body, const TypeMeta *local_type_info,
   }
   std::vector<FieldInfo> field_infos;
   field_infos.reserve(num_fields);
+  std::unordered_set<int32_t> field_tags;
   for (size_t i = 0; i < num_fields; ++i) {
     FORY_TRY(field, FieldInfo::from_bytes(body));
+    if (local_type_info == nullptr && field.field_id >= 0) {
+      if (field_tags.empty()) {
+        field_tags.reserve(num_fields);
+      }
+      if (!field_tags.emplace(field.field_id).second) {
+        return Unexpected(Error::invalid_data("Duplicate field tag"));
+      }
+    }
     field_infos.push_back(std::move(field));
   }
 
   // Remote fields are already in sender data order and must not be re-sorted.
   if (local_type_info != nullptr) {
     FORY_RETURN_IF_ERROR(
-        TypeMeta::assign_field_ids(local_type_info, field_infos));
+        TypeMeta::assign_local_dispatch_ids(local_type_info, field_infos));
   }
   if (FORY_PREDICT_FALSE(body.remaining_size() != 0)) {
     return Unexpected(Error::invalid_data(
@@ -691,6 +725,17 @@ Result<std::vector<uint8_t>, Error> TypeMeta::to_bytes() const {
   if (FORY_PREDICT_FALSE(!is_struct && num_fields != 0)) {
     return Unexpected(
         Error::invalid_data("Non-struct TypeMeta cannot carry field metadata"));
+  }
+  std::unordered_set<int32_t> field_tags;
+  for (const auto &field : field_infos) {
+    if (field.field_id >= 0) {
+      if (field_tags.empty()) {
+        field_tags.reserve(num_fields);
+      }
+      if (!field_tags.emplace(field.field_id).second) {
+        return Unexpected(Error::invalid("Duplicate field tag"));
+      }
+    }
   }
 
   if (is_struct) {
@@ -842,8 +887,14 @@ TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header,
   return meta;
 }
 
-Result<void, Error> TypeMeta::skip_bytes_for_validated_header(Buffer &buffer,
-                                                              int64_t header) {
+// This helper runs on every compatible metadata-cache hit. Keep its entry on a
+// cache-line boundary so growth in unrelated cold metadata codecs cannot change
+// cache-hit throughput through link-layout drift.
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((aligned(64)))
+#endif
+Result<void, Error>
+TypeMeta::skip_bytes_for_validated_header(Buffer &buffer, int64_t header) {
   // Header-cache hits intentionally skip opaque metadata. This path must not
   // allocate or materialize the body from the attacker-declared size.
   Error error;
@@ -1271,11 +1322,29 @@ TypeMeta::sort_field_infos(std::vector<FieldInfo> fields) {
 // ============================================================================
 
 Result<void, Error>
-TypeMeta::assign_field_ids(const TypeMeta *local_type,
-                           std::vector<FieldInfo> &remote_fields) {
+TypeMeta::assign_local_dispatch_ids(const TypeMeta *local_type,
+                                    std::vector<FieldInfo> &remote_fields) {
+  if (FORY_PREDICT_FALSE(local_type == nullptr)) {
+    return Unexpected(Error::invalid("Local TypeMeta is required"));
+  }
   const auto &local_fields = local_type->field_infos;
   constexpr size_t max_compatible_matched_field_index =
       (static_cast<size_t>(std::numeric_limits<int16_t>::max()) - 1) / 2;
+  const auto invalid_wire_id = [](int32_t field_id) {
+    return field_id < detail::kFieldNameIdentity ||
+           field_id > detail::kMaxFieldTag;
+  };
+  if (FORY_PREDICT_FALSE(std::any_of(local_fields.begin(), local_fields.end(),
+                                     [&](const FieldInfo &field) {
+                                       return invalid_wire_id(field.field_id);
+                                     }) ||
+                         std::any_of(remote_fields.begin(), remote_fields.end(),
+                                     [&](const FieldInfo &field) {
+                                       return invalid_wire_id(field.field_id);
+                                     }))) {
+    return Unexpected(
+        Error::invalid("Field tag exceeds the wire TAG_ID range"));
+  }
 
   // Primary mapping: field name -> sorted index in local schema
   std::unordered_map<std::string, size_t> local_field_index_map;
@@ -1284,11 +1353,23 @@ TypeMeta::assign_field_ids(const TypeMeta *local_type,
     local_field_index_map.emplace(local_fields[i].field_name, i);
   }
   // Tag ID mapping when field IDs are explicitly configured.
-  std::unordered_map<int16_t, size_t> local_field_id_map;
+  std::unordered_map<int32_t, size_t> local_field_id_map;
   local_field_id_map.reserve(local_fields.size());
   for (size_t i = 0; i < local_fields.size(); ++i) {
-    if (local_fields[i].field_id >= 0) {
-      local_field_id_map.emplace(local_fields[i].field_id, i);
+    if (local_fields[i].field_id >= 0 &&
+        !local_field_id_map.emplace(local_fields[i].field_id, i).second) {
+      return Unexpected(Error::invalid("Duplicate local field tag"));
+    }
+  }
+  std::unordered_set<int32_t> remote_field_ids;
+  for (const auto &remote_field : remote_fields) {
+    if (remote_field.field_id >= 0) {
+      if (remote_field_ids.empty()) {
+        remote_field_ids.reserve(remote_fields.size());
+      }
+      if (!remote_field_ids.emplace(remote_field.field_id).second) {
+        return Unexpected(Error::invalid_data("Duplicate remote field tag"));
+      }
     }
   }
   // Track which local fields have already been matched so that each
@@ -1311,7 +1392,7 @@ TypeMeta::assign_field_ids(const TypeMeta *local_type,
             std::to_string(local_index) + " exceeds max " +
             std::to_string(max_compatible_matched_field_index)));
       }
-      remote_field.field_id = static_cast<int16_t>(local_index * 2);
+      remote_field.matched_field_id = static_cast<int16_t>(local_index * 2);
       used[local_index] = true;
       return true;
     }
@@ -1324,7 +1405,7 @@ TypeMeta::assign_field_ids(const TypeMeta *local_type,
             std::to_string(local_index) + " exceeds max " +
             std::to_string(max_compatible_matched_field_index)));
       }
-      remote_field.field_id = static_cast<int16_t>(local_index * 2 + 1);
+      remote_field.matched_field_id = static_cast<int16_t>(local_index * 2 + 1);
       used[local_index] = true;
       return true;
     }
@@ -1383,7 +1464,7 @@ TypeMeta::assign_field_ids(const TypeMeta *local_type,
 
     if (!matched) {
       // No suitable local field found -> mark as skipped.
-      remote_field.field_id = -1;
+      remote_field.matched_field_id = -1;
     }
   }
   return Result<void, Error>();

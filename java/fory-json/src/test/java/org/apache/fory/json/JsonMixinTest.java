@@ -19,10 +19,10 @@
 
 package org.apache.fory.json;
 
-import static org.apache.fory.json.JsonTestSupport.generatedCodecIdentity;
 import static org.apache.fory.json.JsonTestSupport.generatedUtf8WriterClass;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -216,12 +216,12 @@ public class JsonMixinTest extends ForyJsonTestModels {
       second.toJsonBytes(new NameTarget("second"));
       repeated.toJsonBytes(new NameTarget("repeat"));
       equivalent.toJsonBytes(new NameTarget("equal"));
-      assertEquals(
-          generatedCodecIdentity(generatedUtf8WriterClass(repeated, NameTarget.class)),
-          generatedCodecIdentity(generatedUtf8WriterClass(equivalent, NameTarget.class)));
-      assertNotEquals(
-          generatedCodecIdentity(generatedUtf8WriterClass(first, NameTarget.class)),
-          generatedCodecIdentity(generatedUtf8WriterClass(second, NameTarget.class)));
+      assertSame(
+          generatedUtf8WriterClass(repeated, NameTarget.class),
+          generatedUtf8WriterClass(equivalent, NameTarget.class));
+      assertNotSame(
+          generatedUtf8WriterClass(first, NameTarget.class),
+          generatedUtf8WriterClass(second, NameTarget.class));
     }
     assertGeneratedWhenSupported(first, NameTarget.class);
     assertGeneratedWhenSupported(second, NameTarget.class);

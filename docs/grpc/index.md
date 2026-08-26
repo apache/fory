@@ -96,7 +96,7 @@ different generated service contract.
 
 ## Language Guides
 
-Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Dart, Scala, and Kotlin have documented gRPC
+Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin have documented gRPC
 companions. Use the [support matrix](../introduction/support-matrix.md) and the selected language page
 for current dependencies and streaming support.
 
@@ -112,3 +112,4 @@ for current dependencies and streaming support.
 | Dart                  | [Dart](dart.md)                       |
 | Scala                 | [Scala](scala.md)                     |
 | Kotlin                | [Kotlin](kotlin.md)                   |
+| Swift                 | [Swift](swift.md)                     |

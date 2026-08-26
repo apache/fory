@@ -123,6 +123,56 @@ public sealed class ForyGeneratorTests
     }
 
     [Fact]
+    public void LargeForyFieldIdReportsDiagnostic()
+    {
+        const string source = """
+            using Apache.Fory;
+
+            namespace GeneratedDiagnostics;
+
+            [ForyStruct]
+            public sealed class InvalidFieldId
+            {
+                [ForyField(536_870_912)]
+                public int Value { get; set; }
+            }
+            """;
+
+        CSharpCompilation compilation = CreateCompilation(source);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ForyModelGenerator());
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> diagnostics);
+
+        ImmutableArray<Diagnostic> generatorDiagnostics = driver.GetRunResult().Diagnostics;
+        Assert.Contains(generatorDiagnostics.Concat(diagnostics), diagnostic => diagnostic.Id == "FORY004");
+        Assert.DoesNotContain(output.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Id != "FORY004");
+    }
+
+    [Fact]
+    public void MaximumForyFieldIdCompiles()
+    {
+        const string source = """
+            using Apache.Fory;
+
+            namespace GeneratedDiagnostics;
+
+            [ForyStruct]
+            public sealed class TaggedField
+            {
+                [ForyField(536_870_911)]
+                public int Value { get; set; }
+            }
+            """;
+
+        CSharpCompilation compilation = CreateCompilation(source);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ForyModelGenerator());
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> diagnostics);
+
+        Assert.DoesNotContain(
+            diagnostics.Concat(output.GetDiagnostics()),
+            diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
     public void UnionRequiresRealCaseBeyondUnknown()
     {
         const string source = """
@@ -968,15 +1018,15 @@ public sealed class ForyGeneratorTests
             leafGenerated,
             StringComparison.Ordinal);
         Assert.Contains(
-            "TypeMetaFieldInfo((short)4,",
+            "TypeMetaFieldInfo(4,",
             leafGenerated,
             StringComparison.Ordinal);
         Assert.Contains(
-            "TypeMetaFieldInfo((short)6,",
+            "TypeMetaFieldInfo(6,",
             leafGenerated,
             StringComparison.Ordinal);
         Assert.Contains(
-            "TypeMetaFieldInfo((short)8,",
+            "TypeMetaFieldInfo(8,",
             leafGenerated,
             StringComparison.Ordinal);
         Assert.DoesNotContain(

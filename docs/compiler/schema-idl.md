@@ -908,7 +908,8 @@ union_field := ['repeated'] field_type IDENTIFIER '=' INTEGER [field_options] ';
 Services define RPC method contracts in Fory IDL. They are optional: schemas
 with services still generate the normal data model types, and gRPC service code
 is generated only when the compiler is run with `--grpc` for supported language
-outputs such as Java, Python, Go, Rust, C#, Dart, Scala, Kotlin, and JavaScript.
+outputs such as Java, Python, Go, Rust, C#, Swift, Dart, Scala, Kotlin, and
+JavaScript.
 JavaScript browser gRPC-Web clients are generated with `--grpc-web`.
 
 ```protobuf
@@ -974,6 +975,11 @@ Fields define the properties of a message.
 ```protobuf
 field_type field_name = field_number;
 ```
+
+`field_number` is the field tag ID. It must be unique within the message and
+satisfy `0 <= field_number < 2^29` (`0` through `536870911`). Keep
+assigned field numbers stable and reserve removed numbers instead of reusing
+them for different fields.
 
 ### With Modifiers
 
@@ -1148,22 +1154,22 @@ Use `ref(thread_safe=false)` in Fory IDL (or
 
 ## Field Numbers
 
-Each field must have a unique positive integer identifier:
+Each field must have a unique tag ID in the protocol range:
 
 ```protobuf
 message Example {
-    string first = 1;
-    string second = 2;
-    string third = 3;
+    string first = 0;
+    string second = 1;
+    string third = 2;
 }
 ```
 
 **Rules and best practices:**
 
 - Numbers must be unique within a message.
-- Numbers must be positive integers.
+- Numbers must satisfy `0 <= field_number < 2^29` (`0` through `536870911`).
 - Gaps are allowed and are useful when fields are removed.
-- Prefer sequential numbering from `1`.
+- Prefer sequential numbering.
 - Never reuse a removed field number for a different field.
 
 ## Type System

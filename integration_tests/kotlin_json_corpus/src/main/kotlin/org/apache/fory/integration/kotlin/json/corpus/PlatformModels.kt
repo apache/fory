@@ -21,6 +21,7 @@ package org.apache.fory.integration.kotlin.json.corpus
 
 import kotlin.jvm.JvmInline
 import org.apache.fory.json.annotation.JsonCodec
+import org.apache.fory.json.annotation.JsonMixin
 import org.apache.fory.json.annotation.JsonSubTypes
 import org.apache.fory.json.annotation.JsonType
 import org.apache.fory.json.codec.AbstractJsonValueCodec
@@ -38,20 +39,19 @@ public data class PlatformAccount(
 
 @JsonType @JvmInline public value class PlatformId(public val value: Long)
 
-@JsonType
-@JsonSubTypes(
-  value =
-    [
-      JsonSubTypes.Type(value = PlatformCircle::class, name = "circle"),
-      JsonSubTypes.Type(value = PlatformMarker::class, name = "marker"),
-    ],
-  property = "kind",
-)
-public sealed interface PlatformShape
+@JsonType @JsonSubTypes(property = "kind") public sealed interface PlatformShape
 
 @JsonType public data class PlatformCircle(public val radius: Int) : PlatformShape
 
 @JsonType public data object PlatformMarker : PlatformShape
+
+public sealed interface PlatformBranch : PlatformShape
+
+@JsonType public data class PlatformSquare(public val size: Int) : PlatformBranch
+
+@JsonType public open class PlatformOpen(public val value: Int) : PlatformShape
+
+public class PlatformOpenDescendant(value: Int) : PlatformOpen(value)
 
 public data class PlatformToken(public val value: String)
 
@@ -64,6 +64,35 @@ public class PlatformTokenCodec : AbstractJsonValueCodec<PlatformToken>() {
     val value = reader.readString() ?: return null
     return PlatformToken(value)
   }
+}
+
+@JsonSubTypes
+@JsonCodec(PlatformDirectOverrideCodec::class)
+public data class PlatformDirectOverride(public val value: String)
+
+public class PlatformDirectOverrideCodec : AbstractJsonValueCodec<PlatformDirectOverride>() {
+  override fun write(writer: JsonWriter, value: PlatformDirectOverride?) {
+    if (value == null) writer.writeNull() else writer.writeString(value.value)
+  }
+
+  override fun read(reader: JsonReader): PlatformDirectOverride? =
+    reader.readString()?.let(::PlatformDirectOverride)
+}
+
+public data class PlatformMixinOverride(public val value: String)
+
+@JsonMixin(target = PlatformMixinOverride::class)
+@JsonSubTypes
+@JsonCodec(PlatformMixinOverrideCodec::class)
+public interface PlatformMixinOverrideAnnotations
+
+public class PlatformMixinOverrideCodec : AbstractJsonValueCodec<PlatformMixinOverride>() {
+  override fun write(writer: JsonWriter, value: PlatformMixinOverride?) {
+    if (value == null) writer.writeNull() else writer.writeString(value.value)
+  }
+
+  override fun read(reader: JsonReader): PlatformMixinOverride? =
+    reader.readString()?.let(::PlatformMixinOverride)
 }
 
 @JsonType

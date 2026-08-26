@@ -206,10 +206,16 @@ public extension FieldCodec {
         hasDeclaredChildren: Bool
     ) throws {
         if refMode != .none {
-            if refMode == .tracking, isRefType {
-                let object = value as AnyObject
-                if context.refWriter.tryWriteRef(buffer: context.buffer, object: object) {
-                    return
+            if refMode == .tracking {
+                if isRefType {
+                    let object = value as AnyObject
+                    if context.refWriter.tryWriteRef(buffer: context.buffer, object: object) {
+                        return
+                    }
+                } else {
+                    // Peers that track every object assign this value a ref id too.
+                    context.buffer.writeInt8(RefFlag.refValue.rawValue)
+                    context.refWriter.reserveRefID()
                 }
             } else {
                 context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
@@ -853,7 +859,7 @@ public enum IntVarintCodec: FieldCodec {
     }
 
     public static func readFieldData(_ context: ReadContext) throws -> Int {
-        Int(try context.buffer.readVarInt64())
+        try checkedInt64ToInt(context.buffer.readVarInt64())
     }
 }
 
@@ -868,7 +874,7 @@ public enum IntFixedCodec: FieldCodec {
     }
 
     public static func readFieldData(_ context: ReadContext) throws -> Int {
-        Int(try context.buffer.readInt64())
+        try checkedInt64ToInt(context.buffer.readInt64())
     }
 }
 
@@ -883,7 +889,7 @@ public enum IntTaggedCodec: FieldCodec {
     }
 
     public static func readFieldData(_ context: ReadContext) throws -> Int {
-        Int(try context.buffer.readTaggedInt64())
+        try checkedInt64ToInt(context.buffer.readTaggedInt64())
     }
 }
 
@@ -898,7 +904,7 @@ public enum UIntVarintCodec: FieldCodec {
     }
 
     public static func readFieldData(_ context: ReadContext) throws -> UInt {
-        UInt(try context.buffer.readVarUInt64())
+        try checkedUInt64ToUInt(context.buffer.readVarUInt64())
     }
 }
 
@@ -913,7 +919,7 @@ public enum UIntFixedCodec: FieldCodec {
     }
 
     public static func readFieldData(_ context: ReadContext) throws -> UInt {
-        UInt(try context.buffer.readUInt64())
+        try checkedUInt64ToUInt(context.buffer.readUInt64())
     }
 }
 
@@ -928,7 +934,7 @@ public enum UIntTaggedCodec: FieldCodec {
     }
 
     public static func readFieldData(_ context: ReadContext) throws -> UInt {
-        UInt(try context.buffer.readTaggedUInt64())
+        try checkedUInt64ToUInt(context.buffer.readTaggedUInt64())
     }
 }
 
@@ -1508,7 +1514,7 @@ private func readIntArrayPayload(
     var values: [Int] = []
     values.reserveCapacity(count)
     for _ in 0..<count {
-        values.append(Int(try context.buffer.readInt64()))
+        try values.append(checkedInt64ToInt(context.buffer.readInt64()))
     }
     return values
 }
@@ -1526,7 +1532,7 @@ private func readUIntArrayPayload(
     var values: [UInt] = []
     values.reserveCapacity(count)
     for _ in 0..<count {
-        values.append(UInt(try context.buffer.readUInt64()))
+        try values.append(checkedUInt64ToUInt(context.buffer.readUInt64()))
     }
     return values
 }
@@ -1696,13 +1702,14 @@ private func readCompatibleElementPayload<ElementCodec: FieldCodec>(
     {
         switch remoteTypeID {
         case .int64:
-            return uncheckedScalarCast(Int(try context.buffer.readInt64()), to: ElementCodec.Target.self)
+            return uncheckedScalarCast(
+                try IntFixedCodec.readFieldData(context), to: ElementCodec.Target.self)
         case .varint64:
             return uncheckedScalarCast(
-                Int(try context.buffer.readVarInt64()), to: ElementCodec.Target.self)
+                try IntVarintCodec.readFieldData(context), to: ElementCodec.Target.self)
         case .taggedInt64:
             return uncheckedScalarCast(
-                Int(try context.buffer.readTaggedInt64()), to: ElementCodec.Target.self)
+                try IntTaggedCodec.readFieldData(context), to: ElementCodec.Target.self)
         default:
             break
         }
@@ -1741,13 +1748,14 @@ private func readCompatibleElementPayload<ElementCodec: FieldCodec>(
     {
         switch remoteTypeID {
         case .uint64:
-            return uncheckedScalarCast(UInt(try context.buffer.readUInt64()), to: ElementCodec.Target.self)
+            return uncheckedScalarCast(
+                try UIntFixedCodec.readFieldData(context), to: ElementCodec.Target.self)
         case .varUInt64:
             return uncheckedScalarCast(
-                UInt(try context.buffer.readVarUInt64()), to: ElementCodec.Target.self)
+                try UIntVarintCodec.readFieldData(context), to: ElementCodec.Target.self)
         case .taggedUInt64:
             return uncheckedScalarCast(
-                UInt(try context.buffer.readTaggedUInt64()), to: ElementCodec.Target.self)
+                try UIntTaggedCodec.readFieldData(context), to: ElementCodec.Target.self)
         default:
             break
         }

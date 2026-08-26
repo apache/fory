@@ -26,13 +26,19 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Declares the complete, finite subtype table for an interface or abstract base type.
+ * Declares a complete, finite subtype table for an interface or abstract base type.
  *
  * <p>JSON contains only the logical {@link Type#name() subtype name}; it never contains or selects
  * a Java class name. Every entry is resolved from either a class literal or a static binary class
  * name supplied by trusted application code. The table is validated atomically before it can be
  * used, including assignability, concreteness, duplicate-name, security, and type-checker rules.
  * Runtime registration and open subtype discovery are intentionally unsupported.
+ *
+ * <p>When {@link #value()} is empty, Fory infers the concrete members of the base's sealed
+ * hierarchy. The user-selected base authorizes that static closure; JSON input still selects only a
+ * prevalidated logical name and never discovers a class. A non-empty value is an exact explicit
+ * subset. Applications that do not trust the complete sealed closure should declare that subset or
+ * configure {@code JsonTypeChecker}, which filters inferred exact candidates before publication.
  *
  * <p>{@link Inclusion#PROPERTY} is the default representation and writes an inline discriminator
  * property as the first object member. {@link Inclusion#WRAPPER_OBJECT} writes one outer member
@@ -48,8 +54,13 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface JsonSubTypes {
-  /** Returns the complete closed subtype table. */
-  Type[] value();
+  /**
+   * Returns the exact subtype table, or an empty array to infer the base's sealed hierarchy.
+   *
+   * <p>An explicit non-empty table is not extended by sealed inference. Inferred logical names are
+   * source simple names and therefore remain stable JSON schema names.
+   */
+  Type[] value() default {};
 
   /**
    * Returns the wire shape used to combine the logical subtype name with its value.

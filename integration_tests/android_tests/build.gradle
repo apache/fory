@@ -115,10 +115,13 @@ dependencies {
     androidTestImplementation 'androidx.test:runner:1.6.2'
 }
 
-def kotlinJsonRuleModels = [
-        'org.apache.fory.android.AndroidKotlinAccount',
-        'org.apache.fory.android.AndroidKotlinDefaults',
-        'org.apache.fory.android.AndroidKotlinMarker',
+def kotlinJsonRules = [
+        'fory-json-org.apache.fory.android.AndroidKotlinAccount.pro':
+                'org.apache.fory.android.AndroidKotlinAccount',
+        'fory-json-org.apache.fory.android.AndroidKotlinDefaults.pro':
+                'org.apache.fory.android.AndroidKotlinDefaults',
+        'fory-json-org.apache.fory.android.AndroidKotlinMarker.pro':
+                'org.apache.fory.android.AndroidKotlinMarker',
 ]
 
 tasks.register('verifyKotlinJsonRules') {
@@ -128,9 +131,7 @@ tasks.register('verifyKotlinJsonRules') {
             def ruleDir = layout.buildDirectory
                     .dir("generated/ksp/${variant}/resources/META-INF/proguard")
                     .get().asFile
-            def expected = kotlinJsonRuleModels.collectEntries { model ->
-                [("fory-json-${model}.pro"): model]
-            }
+            def expected = kotlinJsonRules
             def actual = fileTree(ruleDir).matching { include 'fory-json-*.pro' }.files
                     .collectEntries { rule -> [(rule.name): rule] }
             if (actual.keySet() != expected.keySet()) {
@@ -144,6 +145,14 @@ tasks.register('verifyKotlinJsonRules') {
                 if (!actual[name].readLines('UTF-8').contains(exactKeep)) {
                     throw new GradleException("${actual[name]} does not retain exact model ${model}")
                 }
+            }
+            def request = layout.buildDirectory.file(
+                    "generated/ksp/${variant}/java/org/apache/fory/android/" +
+                            "AndroidKotlinJsonScenarios_d_KspJavaShapeMixin_" +
+                            "ForyJsonSubtypeGeneration.java").get().asFile
+            if (!request.isFile() || !request.text.contains(
+                    'GeneratedJsonSubtypeTable.Generation')) {
+                throw new GradleException("Missing generated Java subtype request ${request}")
             }
         }
     }

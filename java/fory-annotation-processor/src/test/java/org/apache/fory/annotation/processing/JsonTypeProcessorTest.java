@@ -1683,6 +1683,139 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void inferredSubtypeTable() throws Exception {
+    assumeJava17Source();
+    CompilationResult result =
+        compile(
+            "test.Shape",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonSubTypes;\n"
+                + "@JsonSubTypes(property = \"kind\")\n"
+                + "public sealed interface Shape permits Shape.Circle, Shape.Branch, Shape.Open {\n"
+                + "  final class Circle implements Shape { public int value; public Circle() {} }\n"
+                + "  sealed abstract class Branch implements Shape permits Branch.Leaf {\n"
+                + "    public static final class Leaf extends Branch { public int value; public Leaf() {} }\n"
+                + "  }\n"
+                + "  non-sealed class Open implements Shape { public int value; public Open() {} }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String generated = "test/Shape_ForyJsonSubTypes.java";
+    assertTrue(result.hasGeneratedSource(generated));
+    String source = result.generatedSource(generated);
+    assertTrue(source.contains("Shape.Branch.Leaf.class"), source);
+    assertTrue(source.contains("Shape.Circle.class"), source);
+    assertTrue(source.contains("Shape.Open.class"), source);
+    String rules = result.generatedResource(RULE_PREFIX + "test.Shape.pro");
+    assertTrue(rules.contains("-keep,allowoptimization class test.Shape\n"), rules);
+    assertTrue(rules.contains("class test.Shape_ForyJsonSubTypes"), rules);
+    assertTrue(rules.contains("int value;"), rules);
+
+    ClassLoader loader = result.classLoader();
+    Class<?> root = loader.loadClass("test.Shape");
+    Class<?> circle = loader.loadClass("test.Shape$Circle");
+    Object value = circle.getConstructor().newInstance();
+    circle.getField("value").setInt(value, 3);
+    for (ForyJson json : jsonRuntimes(loader)) {
+      @SuppressWarnings({"rawtypes", "unchecked"})
+      String text = json.toJson(value, (Class) root);
+      assertEquals(text, "{\"kind\":\"Circle\",\"value\":3}");
+      assertEquals(json.fromJson(text, root).getClass(), circle);
+    }
+  }
+
+  @Test
+  public void customCodecOverridesInferredSubtypes() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.CustomShape",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonSubTypes(property = \"kind\")\n"
+                + "@JsonCodec(CustomShape.Codec.class) public final class CustomShape {\n"
+                + valueCodec("Codec")
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertFalse(result.hasGeneratedSource("test/CustomShape_ForyJsonSubTypes.java"));
+    String rules = result.generatedResource(RULE_PREFIX + "test.CustomShape.pro");
+    assertTrue(rules.contains("class test.CustomShape$Codec { public <init>(); }"), rules);
+  }
+
+  @Test
+  public void inferredMixinTable() throws Exception {
+    assumeJava17Source();
+    CompilationResult result =
+        compile(
+            "test.MixinShape",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public sealed interface MixinShape permits MixinShape.Value {\n"
+                + "  final class Value implements MixinShape { public int id; public Value() {} }\n"
+                + "}\n"
+                + "@JsonMixin(target = MixinShape.class)\n"
+                + "@JsonSubTypes(property = \"kind\") interface ShapeMixin {}\n");
+    assertTrue(result.success, result.diagnostics());
+    String table = "test/ShapeMixin_ForyJsonMixin_test_x2e_MixinShape_ForyJsonSubTypes.java";
+    assertTrue(result.hasGeneratedSource(table));
+    String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.ShapeMixin.pro");
+    assertTrue(rules.contains("-keep,allowoptimization class test.MixinShape\n"), rules);
+    assertTrue(rules.contains("-keep,allowoptimization class test.ShapeMixin\n"), rules);
+    ClassLoader loader = result.classLoader();
+    Class<?> root = loader.loadClass("test.MixinShape");
+    Class<?> valueType = loader.loadClass("test.MixinShape$Value");
+    Class<?> mixin = loader.loadClass("test.ShapeMixin");
+    Object value = valueType.getConstructor().newInstance();
+    valueType.getField("id").setInt(value, 4);
+    for (boolean codegen : new boolean[] {false, true}) {
+      ForyJson json =
+          ForyJson.builder()
+              .withCodegen(codegen)
+              .withAsyncCompilation(false)
+              .withClassLoader(loader)
+              .registerMixin(mixin)
+              .build();
+      @SuppressWarnings({"rawtypes", "unchecked"})
+      String text = json.toJson(value, (Class) root);
+      assertEquals(text, "{\"kind\":\"Value\",\"id\":4}");
+      assertEquals(json.fromJson(text, root).getClass(), valueType);
+    }
+  }
+
+  @Test
+  public void rejectOpenAbstractSubtype() throws Exception {
+    assumeJava17Source();
+    CompilationResult result =
+        compile(
+            "test.InvalidShape",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonSubTypes;\n"
+                + "@JsonSubTypes(property = \"kind\")\n"
+                + "public sealed interface InvalidShape permits OpenBranch {}\n"
+                + "non-sealed abstract class OpenBranch implements InvalidShape {}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result.diagnostics().contains("open abstract branch test.OpenBranch"),
+        result.diagnostics());
+  }
+
+  @Test
+  public void rejectInaccessibleSubtypeRoot() throws Exception {
+    assumeJava17Source();
+    CompilationResult result =
+        compile(
+            "test.Container",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonSubTypes;\n"
+                + "public class Container {\n"
+                + "  @JsonSubTypes private sealed interface Root permits Leaf {}\n"
+                + "  public static final class Leaf implements Root {}\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result.diagnostics().contains("Generated subtype table cannot access test.Container$Root"),
+        result.diagnostics());
+  }
+
+  @Test
   public void enumRules() throws Exception {
     CompilationResult result =
         compile(
@@ -2054,6 +2187,20 @@ public class JsonTypeProcessorTest {
     }
   }
 
+  private static void assumeJava17Source() {
+    String version = System.getProperty("java.specification.version");
+    if (version.startsWith("1.")) {
+      version = version.substring(2);
+    }
+    int dotIndex = version.indexOf('.');
+    if (dotIndex >= 0) {
+      version = version.substring(0, dotIndex);
+    }
+    if (Integer.parseInt(version) < 17) {
+      throw new SkipException("Source test requires JDK 17 or newer");
+    }
+  }
+
   private static final class CompilationResult {
     final Path classRoot;
     final Path generatedRoot;
@@ -2077,6 +2224,11 @@ public class JsonTypeProcessorTest {
 
     boolean hasGeneratedResource(String relativePath) {
       return Files.exists(classRoot.resolve(relativePath));
+    }
+
+    String generatedSource(String relativePath) throws IOException {
+      return new String(
+          Files.readAllBytes(generatedRoot.resolve(relativePath)), StandardCharsets.UTF_8);
     }
 
     String generatedResource(String relativePath) throws IOException {

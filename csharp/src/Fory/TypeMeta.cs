@@ -35,6 +35,7 @@ internal static class TypeMetaConstants
     public const ulong TypeMetaSizeMask = 0xFF;
     public const ulong TypeMetaHashSeed = 47;
     public const uint NoUserTypeId = uint.MaxValue;
+    public const int MaxFieldId = (1 << 29) - 1;
 }
 
 public static class TypeMetaEncodings
@@ -269,15 +270,23 @@ public sealed class TypeMetaFieldType : IEquatable<TypeMetaFieldType>
 
 public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
 {
-    public TypeMetaFieldInfo(short? fieldId, string fieldName, TypeMetaFieldType fieldType)
+    public TypeMetaFieldInfo(int fieldId, string fieldName, TypeMetaFieldType fieldType)
     {
+        if (fieldId is < -1 or > TypeMetaConstants.MaxFieldId)
+        {
+            throw new ArgumentOutOfRangeException(nameof(fieldId));
+        }
+
         FieldId = fieldId;
         FieldName = fieldName;
         FieldType = fieldType;
         AssignedFieldId = -1;
     }
 
-    public short? FieldId { get; }
+    /// <summary>
+    /// Stable field tag, or <c>-1</c> when the field is identified by name.
+    /// </summary>
+    public int FieldId { get; }
 
     public string FieldName { get; }
 
@@ -300,14 +309,9 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
             header |= 0b10;
         }
 
-        if (FieldId.HasValue)
+        if (FieldId >= 0)
         {
-            short fieldId = FieldId.Value;
-            if (fieldId < 0)
-            {
-                throw new EncodingException("negative field id is invalid");
-            }
-
+            int fieldId = FieldId;
             int size = fieldId;
             header |= 0b11 << 6;
             if (size >= TypeMetaConstants.FieldNameSizeThreshold)
@@ -357,12 +361,29 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
         byte header = reader.ReadUInt8();
         int encodingFlags = (header >> 6) & 0b11;
         int size = (header >> 2) & 0b1111;
+        int fieldId = encodingFlags == 3 ? size : -1;
         if (size == TypeMetaConstants.FieldNameSizeThreshold)
         {
-            size += (int)reader.ReadVarUInt32();
+            uint extension = reader.ReadVarUInt32();
+            if (encodingFlags == 3)
+            {
+                if (extension > (uint)(TypeMetaConstants.MaxFieldId - TypeMetaConstants.FieldNameSizeThreshold))
+                {
+                    throw new InvalidDataException("field id exceeds the protocol range");
+                }
+
+                fieldId += (int)extension;
+            }
+            else
+            {
+                size = checked(size + (int)extension);
+            }
         }
 
-        size += 1;
+        if (encodingFlags != 3)
+        {
+            size = checked(size + 1);
+        }
 
         bool nullable = (header & 0b10) != 0;
         bool trackRef = (header & 0b1) != 0;
@@ -370,7 +391,6 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
 
         if (encodingFlags == 3)
         {
-            short fieldId = unchecked((short)(size - 1));
             return new TypeMetaFieldInfo(fieldId, $"$tag{fieldId}", fieldType);
         }
 
@@ -383,7 +403,7 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
         string name = MetaStringDecoder.FieldName.Decode(
             nameBytes,
             TypeMetaEncodings.FieldNameMetaStringEncodings[encodingFlags]).Value;
-        return new TypeMetaFieldInfo(null, name, fieldType);
+        return new TypeMetaFieldInfo(-1, name, fieldType);
     }
 
     public bool Equals(TypeMetaFieldInfo? other)
@@ -447,15 +467,31 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
             }
         }
 
+        IReadOnlyList<TypeMetaFieldInfo> ownedFields = Array.AsReadOnly(fields.ToArray());
+        HashSet<int>? fieldIds = null;
+        foreach (TypeMetaFieldInfo field in ownedFields)
+        {
+            if (field.FieldId < 0)
+            {
+                continue;
+            }
+
+            fieldIds ??= [];
+            if (!fieldIds.Add(field.FieldId))
+            {
+                throw new EncodingException($"duplicate field id {field.FieldId}");
+            }
+        }
+
         TypeId = typeId;
         UserTypeId = userTypeId;
         NamespaceName = namespaceName;
         TypeName = typeName;
         RegisterByName = registerByName;
-        Fields = fields;
+        Fields = ownedFields;
         Compressed = compressed;
         HeaderHash = headerHash;
-        ReadDataAlwaysAdvances = fields.Any(static field => field.FieldType.FieldReadAlwaysAdvances);
+        ReadDataAlwaysAdvances = ownedFields.Any(static field => field.FieldType.FieldReadAlwaysAdvances);
     }
 
     public uint? TypeId { get; }
@@ -767,13 +803,13 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         ArgumentNullException.ThrowIfNull(localFieldInfos);
 
         Dictionary<string, (int Index, TypeMetaFieldInfo Field)> localByName = new(localFieldInfos.Count, StringComparer.Ordinal);
-        Dictionary<short, (int Index, TypeMetaFieldInfo Field)> localById = new(localFieldInfos.Count);
+        Dictionary<int, (int Index, TypeMetaFieldInfo Field)> localById = new(localFieldInfos.Count);
         for (int i = 0; i < localFieldInfos.Count; i++)
         {
             TypeMetaFieldInfo localField = localFieldInfos[i];
-            if (localField.FieldId.HasValue && localField.FieldId.Value >= 0)
+            if (localField.FieldId >= 0)
             {
-                short fieldId = localField.FieldId.Value;
+                int fieldId = localField.FieldId;
                 if (!localById.TryAdd(fieldId, (i, localField)))
                 {
                     throw new InvalidDataException(
@@ -786,34 +822,22 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
             }
         }
 
-        HashSet<short>? remoteFieldIds = null;
         HashSet<int> usedLocalFields = [];
         for (int i = 0; i < remoteTypeMeta.Fields.Count; i++)
         {
             TypeMetaFieldInfo remoteField = remoteTypeMeta.Fields[i];
             remoteField.CompatibleScalarRead = null;
-            if (remoteField.FieldId.HasValue && remoteField.FieldId.Value >= 0)
-            {
-                short fieldId = remoteField.FieldId.Value;
-                remoteFieldIds ??= [];
-                if (!remoteFieldIds.Add(fieldId))
-                {
-                    throw new InvalidDataException(
-                        $"duplicate remote field id {fieldId} in compatible type metadata");
-                }
-            }
 
             int localIndex = -1;
             TypeMetaFieldInfo? localMatch = null;
 
-            if (remoteField.FieldId.HasValue &&
-                remoteField.FieldId.Value >= 0 &&
-                localById.TryGetValue(remoteField.FieldId.Value, out (int Index, TypeMetaFieldInfo Field) byId))
+            if (remoteField.FieldId >= 0 &&
+                localById.TryGetValue(remoteField.FieldId, out (int Index, TypeMetaFieldInfo Field) byId))
             {
                 localIndex = byId.Index;
                 localMatch = byId.Field;
             }
-            else if (!remoteField.FieldId.HasValue)
+            else if (remoteField.FieldId < 0)
             {
                 if (localByName.TryGetValue(remoteField.FieldName, out (int Index, TypeMetaFieldInfo Field) byName))
                 {

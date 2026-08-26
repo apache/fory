@@ -1357,7 +1357,7 @@ public sealed class ForyRuntimeTests
         resolver.GetTypeInfo<NestedSchemaByName>();
         TypeMetaFieldInfo field = Assert.Single(resolver.GetTypeInfo<NestedSchemaByName>().TypeMetaFields(false));
 
-        Assert.Null(field.FieldId);
+        Assert.Equal(-1, field.FieldId);
         Assert.Equal("values", field.FieldName);
         Assert.Equal((uint)TypeId.Map, field.FieldType.TypeId);
         Assert.Equal((uint)TypeId.UInt32, field.FieldType.Generics[0].TypeId);
@@ -1374,10 +1374,39 @@ public sealed class ForyRuntimeTests
         resolver.GetTypeInfo<NestedSchemaById>();
         TypeMetaFieldInfo field = Assert.Single(resolver.GetTypeInfo<NestedSchemaById>().TypeMetaFields(false));
 
-        Assert.Equal((short)3, field.FieldId);
+        Assert.Equal(3, field.FieldId);
         Assert.Equal((uint)TypeId.Map, field.FieldType.TypeId);
         Assert.Equal((uint)TypeId.UInt32, field.FieldType.Generics[0].TypeId);
         Assert.Equal((uint)TypeId.TaggedUInt64, field.FieldType.Generics[1].Generics[0].TypeId);
+    }
+
+    [Fact]
+    public void ForyFieldIdRange()
+    {
+        Assert.Equal(536_870_911, new ForyFieldAttribute(536_870_911).Id);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ForyFieldAttribute(-1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ForyFieldAttribute(536_870_912));
+
+        TypeMeta typeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            515,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            [new TypeMetaFieldInfo(536_870_911, "value", new TypeMetaFieldType((uint)TypeId.VarInt32, false))]);
+        Assert.Equal(536_870_911, Assert.Single(TypeMeta.Decode(typeMeta.Encode()).Fields).FieldId);
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new TypeMetaFieldInfo(536_870_912, "value", new TypeMetaFieldType((uint)TypeId.VarInt32, false)));
+        Assert.Throws<EncodingException>(() => new TypeMeta(
+            (uint)TypeId.CompatibleStruct,
+            516,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            [
+                new TypeMetaFieldInfo(7, "first", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+                new TypeMetaFieldInfo(7, "second", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+            ]));
     }
 
     [Fact]
@@ -1576,7 +1605,7 @@ public sealed class ForyRuntimeTests
         List<TypeMetaFieldInfo> localFields =
         [
             new TypeMetaFieldInfo(
-                null,
+                -1,
                 "values",
                 new TypeMetaFieldType(
                     (uint)TypeId.Map,
@@ -1595,7 +1624,7 @@ public sealed class ForyRuntimeTests
             false,
             [
                 new TypeMetaFieldInfo(
-                    null,
+                    -1,
                     "values",
                     new TypeMetaFieldType(
                         (uint)TypeId.Map,
@@ -1622,7 +1651,7 @@ public sealed class ForyRuntimeTests
         List<TypeMetaFieldInfo> localFields =
         [
             new TypeMetaFieldInfo(
-                null,
+                -1,
                 "values",
                 new TypeMetaFieldType(
                     (uint)TypeId.List,
@@ -1639,7 +1668,7 @@ public sealed class ForyRuntimeTests
             false,
             [
                 new TypeMetaFieldInfo(
-                    null,
+                    -1,
                     "values",
                     new TypeMetaFieldType(
                         (uint)TypeId.List,
@@ -1659,7 +1688,7 @@ public sealed class ForyRuntimeTests
             false,
             [
                 new TypeMetaFieldInfo(
-                    null,
+                    -1,
                     "values",
                     new TypeMetaFieldType(
                         (uint)TypeId.List,
@@ -1702,7 +1731,7 @@ public sealed class ForyRuntimeTests
         List<TypeMetaFieldInfo> localNested =
         [
             new TypeMetaFieldInfo(
-                null,
+                -1,
                 "value",
                 new TypeMetaFieldType(
                     (uint)TypeId.List,
@@ -1718,7 +1747,7 @@ public sealed class ForyRuntimeTests
             false,
             [
                 new TypeMetaFieldInfo(
-                    null,
+                    -1,
                     "value",
                     new TypeMetaFieldType(
                         (uint)TypeId.List,
@@ -3159,13 +3188,13 @@ public sealed class ForyRuntimeTests
     {
         List<TypeMetaFieldInfo> localFields =
         [
-            new TypeMetaFieldInfo(null, "int_value", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+            new TypeMetaFieldInfo(-1, "int_value", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
             new TypeMetaFieldInfo(2, "name", new TypeMetaFieldType((uint)TypeId.String, true)),
         ];
         List<TypeMetaFieldInfo> remoteFields =
         [
             new TypeMetaFieldInfo(2, "$tag2", new TypeMetaFieldType((uint)TypeId.String, true)),
-            new TypeMetaFieldInfo(null, "intValue", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+            new TypeMetaFieldInfo(-1, "intValue", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
             new TypeMetaFieldInfo(99, "$tag99", new TypeMetaFieldType((uint)TypeId.String, true)),
         ];
         TypeMeta remoteTypeMeta = new(
@@ -3191,7 +3220,7 @@ public sealed class ForyRuntimeTests
         ];
         List<TypeMetaFieldInfo> remoteFields =
         [
-            new TypeMetaFieldInfo(null, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
+            new TypeMetaFieldInfo(-1, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
         ];
         TypeMeta remoteTypeMeta = new(
             (uint)TypeId.CompatibleStruct,
@@ -3210,12 +3239,12 @@ public sealed class ForyRuntimeTests
     {
         List<TypeMetaFieldInfo> localFields =
         [
-            new TypeMetaFieldInfo(null, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
+            new TypeMetaFieldInfo(-1, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
         ];
         List<TypeMetaFieldInfo> remoteFields =
         [
-            new TypeMetaFieldInfo(null, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
-            new TypeMetaFieldInfo(null, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
+            new TypeMetaFieldInfo(-1, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
+            new TypeMetaFieldInfo(-1, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
         ];
         TypeMeta remoteTypeMeta = new(
             (uint)TypeId.CompatibleStruct,
@@ -3326,16 +3355,11 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
-    public void TypeMetaAssignFieldIdsThrowsOnDuplicateRemoteFieldId()
+    public void TypeMetaOwnsFields()
     {
-        List<TypeMetaFieldInfo> localFields =
-        [
-            new TypeMetaFieldInfo(9, "value", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
-        ];
         List<TypeMetaFieldInfo> remoteFields =
         [
             new TypeMetaFieldInfo(9, "$tag9a", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
-            new TypeMetaFieldInfo(9, "$tag9b", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
         ];
         TypeMeta remoteTypeMeta = new(
             (uint)TypeId.CompatibleStruct,
@@ -3344,10 +3368,13 @@ public sealed class ForyRuntimeTests
             MetaString.Empty('$', '_'),
             registerByName: false,
             remoteFields);
+        byte[] encoded = remoteTypeMeta.Encode();
 
-        InvalidDataException exception = Assert.Throws<InvalidDataException>(
-            () => TypeMeta.AssignFieldIds(remoteTypeMeta, localFields));
-        Assert.Contains("duplicate remote field id 9", exception.Message, StringComparison.Ordinal);
+        remoteFields.Add(
+            new TypeMetaFieldInfo(9, "$tag9b", new TypeMetaFieldType((uint)TypeId.VarInt32, false)));
+
+        Assert.Single(remoteTypeMeta.Fields);
+        Assert.Equal(encoded, remoteTypeMeta.Encode());
     }
 
     private static byte[] RewriteCompatibleTypeMetaTypeId(byte[] payload, uint embeddedTypeId)

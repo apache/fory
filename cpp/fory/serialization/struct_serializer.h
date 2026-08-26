@@ -1497,23 +1497,29 @@ template <typename T> struct CompileTimeFieldHelpers {
 
   /// Returns the tag ID for the field at Index.
   /// Returns -1 if no tag ID is defined.
-  template <size_t Index> static constexpr int16_t field_tag_id() {
+  template <size_t Index> static constexpr int32_t field_tag_id() {
     if constexpr (FieldCount == 0) {
       return -1;
     } else {
       using RawFieldType = RawFieldTypeFor<Index>;
 
       if constexpr (::fory::detail::has_field_config_v<T>) {
-        constexpr int16_t config_id =
+        constexpr int32_t config_id =
             ::fory::detail::GetFieldConfigEntry<T, Index>::id;
         if constexpr (::fory::detail::GetFieldConfigEntry<T, Index>::has_id) {
           static_assert(config_id >= 0, "Fory field id must be non-negative");
+          static_assert(config_id <=
+                            ::fory::serialization::detail::kMaxFieldTag,
+                        "Fory field id exceeds the wire TAG_ID range");
           return config_id;
         }
       }
       if constexpr (is_fory_field_v<RawFieldType>) {
         static_assert(RawFieldType::tag_id >= 0,
                       "Fory field id must be non-negative");
+        static_assert(RawFieldType::tag_id <=
+                          ::fory::serialization::detail::kMaxFieldTag,
+                      "Fory field id exceeds the wire TAG_ID range");
         return RawFieldType::tag_id;
       }
       // No tag ID defined
@@ -1524,7 +1530,7 @@ template <typename T> struct CompileTimeFieldHelpers {
   }
 
   template <size_t... Indices>
-  static constexpr std::array<int16_t, FieldCount>
+  static constexpr std::array<int32_t, FieldCount>
   make_field_ids(std::index_sequence<Indices...>) {
     if constexpr (FieldCount == 0) {
       return {};
@@ -1891,8 +1897,24 @@ template <typename T> struct CompileTimeFieldHelpers {
   static inline constexpr std::array<bool, FieldCount> nullable_flags =
       make_nullable_flags(std::make_index_sequence<FieldCount>{});
 
-  static inline constexpr std::array<int16_t, FieldCount> field_ids =
+  static inline constexpr std::array<int32_t, FieldCount> field_ids =
       make_field_ids(std::make_index_sequence<FieldCount>{});
+
+  static constexpr bool field_tags_unique() {
+    for (size_t i = 0; i < FieldCount; ++i) {
+      if (field_ids[i] < 0) {
+        continue;
+      }
+      for (size_t j = i + 1; j < FieldCount; ++j) {
+        if (field_ids[i] == field_ids[j]) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  static_assert(field_tags_unique(), "Fory field ids must be unique");
 
   /// Flags for fields whose types are nullable wrappers (optional/shared_ptr/
   /// unique_ptr/weak_ptr), which require ref/null flags in the wire format.
@@ -1953,9 +1975,9 @@ template <typename T> struct CompileTimeFieldHelpers {
         return names;
       }();
 
-  static constexpr size_t tag_id_length(int16_t value) {
+  static constexpr size_t tag_id_length(uint32_t value) {
     size_t count = 1;
-    int16_t v = value;
+    uint32_t v = value;
     while (v >= 10) {
       v /= 10;
       ++count;
@@ -1964,9 +1986,9 @@ template <typename T> struct CompileTimeFieldHelpers {
   }
 
   static constexpr size_t identifier_length(size_t index) {
-    int16_t id = field_ids[index];
+    int32_t id = field_ids[index];
     if (id >= 0) {
-      return tag_id_length(id);
+      return tag_id_length(static_cast<uint32_t>(id));
     }
     return snake_case_lengths[index];
   }
@@ -2008,8 +2030,8 @@ template <typename T> struct CompileTimeFieldHelpers {
           for (size_t i = 0; i < FieldCount; ++i) {
             size_t length = identifier_lengths[i];
             if (field_ids[i] >= 0) {
-              int16_t value = field_ids[i];
-              int16_t divisor = 1;
+              uint32_t value = static_cast<uint32_t>(field_ids[i]);
+              uint32_t divisor = 1;
               for (size_t j = 1; j < length; ++j) {
                 divisor *= 10;
               }
@@ -3578,7 +3600,7 @@ read_exact_primitive_run(T &obj, ReadContext &ctx,
       constexpr int16_t next_matched_id =
           static_cast<int16_t>(next_sorted_idx * 2);
       if (remote_idx + 1 < remote_fields.size() &&
-          remote_fields[remote_idx + 1].field_id == next_matched_id) {
+          remote_fields[remote_idx + 1].matched_field_id == next_matched_id) {
         ++remote_idx;
         read_exact_primitive_run<T, next_sorted_idx>(obj, ctx, remote_fields,
                                                      remote_idx, offset);
@@ -4439,7 +4461,7 @@ read_struct_fields_impl_fast(T &obj, ReadContext &ctx,
 }
 
 /// Read struct fields with schema evolution (compatible mode)
-/// Reads fields in remote schema order, dispatching by field_id to local fields
+/// Reads fields in remote schema order, dispatching by the matched local ID.
 template <typename T, size_t... Indices>
 FORY_NOINLINE void
 read_struct_fields_compatible(T &obj, ReadContext &ctx,
@@ -4512,7 +4534,7 @@ read_struct_fields_compatible(T &obj, ReadContext &ctx,
   // Iterate through remote fields in their serialization order
   for (size_t remote_idx = 0; remote_idx < remote_fields.size(); ++remote_idx) {
     const auto &remote_field = remote_fields[remote_idx];
-    int16_t field_id = remote_field.field_id;
+    int16_t field_id = remote_field.matched_field_id;
 
     if (field_id == -1) {
       if (use_exact_offset_reads) {
@@ -4956,7 +4978,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
         decltype(fory_field_info(std::declval<const T &>()));
     constexpr size_t field_count = FieldDescriptor::Size;
 
-    // remote_type_info is from the stream, with field_ids already assigned
+    // remote_type_info is from the stream, with dispatch IDs already assigned.
     if (!remote_type_info || !remote_type_info->type_meta) {
       ctx.set_error(Error::type_error("Remote type metadata not available"));
       return T{};

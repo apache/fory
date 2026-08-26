@@ -155,7 +155,7 @@ jobs:
             echo "rust=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^(swift/)' <<< "$changed_files"; then
+          if grep -Eq '^(Package\.swift$|swift/)' <<< "$changed_files"; then
             echo "swift=true" >> "$GITHUB_OUTPUT"
           else
             echo "swift=false" >> "$GITHUB_OUTPUT"
@@ -195,6 +195,24 @@ jobs:
         run: |
           cd compiler
           pytest -q fory_compiler/tests
+
+  compiler_import:
+    name: Compiler Import ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9"]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+      - name: Import the compiler CLI
+        run: |
+          cd compiler
+          python -c "import fory_compiler.cli"
 
   java:
     name: Java CI
@@ -463,6 +481,50 @@ jobs:
           cd swift
           swift-format lint --configuration .swift-format --recursive --strict Sources Tests Package.swift
 
+  swift_linux:
+    name: Swift Linux CI
+    needs: changes
+    if: needs.changes.outputs.swift == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run Swift unit tests
+        env:
+          ENABLE_FORY_DEBUG_OUTPUT: "1"
+        run: |
+          swift --version
+          cd swift
+          swift test
+
+  swift_apple_platforms:
+    name: Swift ${{ matrix.platform }} Build
+    needs: changes
+    if: needs.changes.outputs.swift == 'true'
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: tvOS
+            sdk: appletvos
+            triple: arm64-apple-tvos16.0
+          - platform: watchOS
+            sdk: watchos
+            triple: arm64_32-apple-watchos9.0
+          - platform: visionOS
+            sdk: xros
+            triple: arm64-apple-xros1.0
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build Swift package
+        run: |
+          sdk_path="$(xcrun --sdk "${{ matrix.sdk }}" --show-sdk-path)"
+          swift build \
+            --package-path . \
+            --target Fory \
+            --triple "${{ matrix.triple }}" \
+            --sdk "$sdk_path"
+
   swift_xlang:
     name: Swift Xlang Test
     runs-on: macos-latest
@@ -497,7 +559,7 @@ jobs:
             ~/.swiftpm
             ~/Library/Caches/org.swift.swiftpm
             swift/.build
-          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-xlang-release-${{ steps.swift-package-cache.outputs.toolchain }}-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-xlang-release-${{ steps.swift-package-cache.outputs.toolchain }}-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**', 'swift/Tests/ForyXlangTests/**') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swiftpm-xlang-release-${{ steps.swift-package-cache.outputs.toolchain }}-
       - name: Prebuild Swift xlang peer for cache reuse
@@ -1055,6 +1117,45 @@ jobs:
         run: |
           cd integration_tests/grpc_tests/java
           mvn -T16 --no-transfer-progress -Dtest=DartGrpcTest test
+
+  grpc_java_swift_tests:
+    name: Java/Swift gRPC Tests
+    needs: changes
+    if: needs.changes.outputs.grpc_tests == 'true' || needs.changes.outputs.swift == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: "pip"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Install Java artifacts for gRPC tests
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Generate gRPC test sources
+        run: python integration_tests/grpc_tests/generate_grpc.py
+      - name: Run Swift gRPC package tests
+        run: |
+          cd integration_tests/grpc_tests/swift/interop
+          swift test
+      - name: Run Java/Swift gRPC Tests
+        run: |
+          cd integration_tests/grpc_tests/java
+          mvn -T16 --no-transfer-progress -Dtest=SwiftGrpcTest test
 
   javascript:
     name: JavaScript CI
