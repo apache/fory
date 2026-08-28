@@ -34,9 +34,8 @@ on:
       - "**.md"
       - "**.yml"
       - "**.yaml"
-    paths-ignore:
-      - "kotoba/**"
-      - ".github/workflows/kotoba*.yml"
+      - "!kotoba/**"
+      - "!.github/workflows/kotoba*.yml"
 
 permissions:
   contents: read
