@@ -1,0 +1,93 @@
+;; Licensed to the Apache Software Foundation (ASF) under one
+;; or more contributor license agreements.  See the NOTICE file
+;; distributed with this work for additional information
+;; regarding copyright ownership.  The ASF licenses this file
+;; to you under the Apache License, Version 2.0 (the
+;; "License"); you may not use this file except in compliance
+;; with the License.  You may obtain a copy of the License at
+;;
+;;   http://www.apache.org/licenses/LICENSE-2.0
+;;
+;; Unless required by applicable law or agreed to in writing,
+;; software distributed under the License is distributed on an
+;; "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+;; KIND, either express or implied.  See the License for the
+;; specific language governing permissions and limitations
+;; under the License.
+
+;; Honest Kotoba v1 Fory binding: xlang header + one VARINT64 record.
+;; Vendored fixture bytes (hex): 01ff0754
+;; Layout from docs/specification/xlang_serialization_spec.md:
+;;   byte0 bitmap: bit0 xlang, bit1 oob, bits2-7 reserved-zero
+;;   byte1 NOT_NULL_VALUE_FLAG (0xFF) because root ref tracking is null-only
+;;   byte2 VARINT64 type id 7 as small7 varuint32
+;;   byte3 zigzag(42)=84 as one-byte unsigned varint (value < 128)
+;; i64-v1 only: no vectors, no IEEE floats, no FFI, no general varint loop.
+
+(ns fory.header)
+
+(defn fixture-b0 [] 0x01)
+(defn fixture-b1 [] 0xFF)
+(defn fixture-b2 [] 0x07)
+(defn fixture-b3 [] 0x54)
+
+(defn xlang-bit [] 1)
+(defn oob-bit [] 2)
+(defn reserved-mask [] 0xFC)
+(defn not-null-flag [] 0xFF)
+(defn varint64-type [] 7)
+(defn record-value [] 42)
+
+(defn header-ok? [b]
+  (if (= (bit-and b (xlang-bit)) (xlang-bit))
+    (if (zero? (bit-and b (reserved-mask))) 1 0)
+    0))
+
+(defn header-rejects-native? []
+  (if (zero? (header-ok? 0)) 1 0))
+
+(defn header-rejects-reserved? []
+  (if (zero? (header-ok? 5)) 1 0))
+
+(defn zigzag-encode [n]
+  (* n 2))
+
+(defn zigzag-decode [u]
+  (bit-xor (quot u 2) (- 0 (bit-and u 1))))
+
+(defn encode-b0 [] (xlang-bit))
+(defn encode-b1 [] (not-null-flag))
+(defn encode-b2 [] (varint64-type))
+(defn encode-b3 [] (zigzag-encode (record-value)))
+
+(defn encode-matches-fixture? []
+  (if (= (encode-b0) (fixture-b0))
+    (if (= (encode-b1) (fixture-b1))
+      (if (= (encode-b2) (fixture-b2))
+        (if (= (encode-b3) (fixture-b3)) 1 0)
+        0)
+      0)
+    0))
+
+(defn decode-value []
+  (zigzag-decode (fixture-b3)))
+
+(defn decode-ok? []
+  (if (= (header-ok? (fixture-b0)) 1)
+    (if (zero? (bit-and (fixture-b0) (oob-bit)))
+      (if (= (fixture-b1) (not-null-flag))
+        (if (= (fixture-b2) (varint64-type))
+          (if (= (decode-value) (record-value)) 1 0)
+          0)
+        0)
+      0)
+    0))
+
+(defn main []
+  (if (= (header-rejects-native?) 1)
+    (if (= (header-rejects-reserved?) 1)
+      (if (= (decode-ok?) 1)
+        (if (= (encode-matches-fixture?) 1) 1 0)
+        0)
+      0)
+    0))
