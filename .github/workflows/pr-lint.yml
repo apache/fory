@@ -26,6 +26,9 @@ on:
       - opened
       - edited
       - synchronize
+    paths-ignore:
+      - "kotoba/**"
+      - ".github/workflows/kotoba*.yml"
 
 permissions:
   pull-requests: read

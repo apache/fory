@@ -19,7 +19,13 @@ name: ASF GitHub Actions Allowlist
 
 on:
   push:
+    paths-ignore:
+      - "kotoba/**"
+      - ".github/workflows/kotoba*.yml"
   pull_request:
+    paths-ignore:
+      - "kotoba/**"
+      - ".github/workflows/kotoba*.yml"
 
 permissions:
   contents: read

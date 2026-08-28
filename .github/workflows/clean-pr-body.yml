@@ -24,6 +24,9 @@ on:
   pull_request_target:
     types:
       - opened
+    paths-ignore:
+      - "kotoba/**"
+      - ".github/workflows/kotoba*.yml"
 
 permissions:
   pull-requests: write
