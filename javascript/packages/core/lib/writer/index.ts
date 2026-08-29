@@ -25,7 +25,6 @@ import { toBFloat16Bits } from "../types/bfloat16";
 
 const MAX_POOL_SIZE = 1024 * 1024 * 3; // 3MB
 const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
-const MIN_SAFE_BIGINT = BigInt(Number.MIN_SAFE_INTEGER);
 // Zigzag in doubles needs -v * 2 - 1 to stay exact. Below -(2^52) that value is
 // an odd integer above 2^53, which rounds to an even neighbor and flips the
 // decoded sign, so those values must take the bigint zigzag path.
