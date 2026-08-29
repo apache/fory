@@ -26,6 +26,11 @@ import { toBFloat16Bits } from "../types/bfloat16";
 const MAX_POOL_SIZE = 1024 * 1024 * 3; // 3MB
 const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 const MIN_SAFE_BIGINT = BigInt(Number.MIN_SAFE_INTEGER);
+// Zigzag in doubles needs -v * 2 - 1 to stay exact. Below -(2^52) that value is
+// an odd integer above 2^53, which rounds to an even neighbor and flips the
+// decoded sign, so those values must take the bigint zigzag path.
+const MIN_VAR_INT64_NUMBER = -4503599627370496; // -(2^52)
+const MIN_VAR_INT64_BIGINT = BigInt(MIN_VAR_INT64_NUMBER);
 
 function getInternalStringDetector() {
   try {
@@ -455,12 +460,12 @@ export class BinaryWriter {
 
   writeVarInt64(v: bigint | number) {
     if (typeof v !== "bigint") {
-      if (Number.isSafeInteger(v)) {
+      if (Number.isSafeInteger(v) && v >= MIN_VAR_INT64_NUMBER) {
         this.writeVarUInt64Number(v >= 0 ? v * 2 : -v * 2 - 1);
         return;
       }
       v = BigInt(v);
-    } else if (v >= MIN_SAFE_BIGINT && v <= MAX_SAFE_BIGINT) {
+    } else if (v >= MIN_VAR_INT64_BIGINT && v <= MAX_SAFE_BIGINT) {
       const value = Number(v);
       this.writeVarUInt64Number(value >= 0 ? value * 2 : -value * 2 - 1);
       return;
