@@ -2952,6 +2952,32 @@ describe("typemeta", () => {
 
     expect(result).toBeInstanceOf(EmptyWrapper);
   });
+
+  // Bytes a spec-conformant peer (for example Java) emits for a named struct
+  // with namespace "example", typeName "Type_1", and one fixed int32 field
+  // "v". The type name uses LOWER_UPPER_DIGIT_SPECIAL, where char value 63 is
+  // "_" per the spec's type-name special-char set ("$", "_").
+  const specTypeNameMetaBytes = new Uint8Array([
+    16, 64, 45, 74, 58, 106, 49, 48, 161, 21, 18, 224, 99, 214, 64, 22, 90, 193, 226, 127, 168, 64,
+    4, 84,
+  ]);
+
+  test("decodes spec char value 63 in type names as underscore", () => {
+    const reader = new BinaryReader({});
+    reader.reset(specTypeNameMetaBytes);
+    const decoded = TypeMeta.fromBytes(reader);
+    expect(decoded.getTypeName()).toBe("Type_1");
+  });
+
+  test("encodes underscore type names with the spec charset", () => {
+    const meta = TypeMeta.fromTypeInfo(
+      Type.struct(
+        { namespace: "example", typeName: "Type_1" },
+        { v: Type.int32({ encoding: "fixed" }) },
+      ),
+    );
+    expect(Array.from(meta.toBytes())).toEqual(Array.from(specTypeNameMetaBytes));
+  });
 });
 
 function typeMetaBodyOffset(bytes: Uint8Array) {
