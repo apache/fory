@@ -213,4 +213,22 @@ describe("map", () => {
       expect(serializer.deserialize(valid)).toEqual(value);
     }
   });
+
+  test("should large declared map work", () => {
+    // The generated map write must reserve writer capacity for its entries.
+    // Without it, unchecked DataView writes past the buffer end threw a
+    // RangeError once the map body outgrew the initial buffer.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(
+      Type.struct(
+        { namespace: "example", typeName: "BigMap" },
+        { m: Type.map(Type.int32({ encoding: "fixed" }), Type.int32({ encoding: "fixed" })) },
+      ),
+    );
+    const m = new Map<number, number>();
+    for (let i = 0; i < 30000; i++) {
+      m.set(i, i + 1);
+    }
+    expect(deserialize(serialize({ m })).m.get(29999)).toBe(30000);
+  });
 });

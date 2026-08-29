@@ -323,6 +323,18 @@ describe("array", () => {
     );
     expect(containsBytes(bfloat16Bytes, [0x80, 0x3f, 0x00, 0xc0])).toBe(true);
   });
+
+  test("should large any-typed list work", () => {
+    // The dynamic element write path must reserve writer capacity per item.
+    // Without it, single-byte writes past the buffer end were silent no-ops
+    // while the cursor advanced, so dump() returned uninitialized tail bytes.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.list(Type.any()));
+    const arr = new Array(150000).fill(1);
+    const result = deserialize(serialize(arr)) as number[];
+    expect(result.length).toBe(150000);
+    expect(result.every((x) => x === 1)).toBe(true);
+  });
 });
 
 function containsBytes(bytes: Uint8Array, needle: number[]) {
