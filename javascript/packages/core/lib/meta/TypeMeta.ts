@@ -33,7 +33,6 @@ const fieldEncoder = new MetaStringEncoder("$", "_");
 const fieldDecoder = new MetaStringDecoder("$", "_");
 const pkgEncoder = new MetaStringEncoder(".", "_");
 const pkgDecoder = new MetaStringDecoder(".", "_");
-// Spec special-char set for type names is ("$", "_").
 const typeNameEncoder = new MetaStringEncoder("$", "_");
 const typeNameDecoder = new MetaStringDecoder("$", "_");
 
