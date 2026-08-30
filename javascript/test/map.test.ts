@@ -231,4 +231,18 @@ describe("map", () => {
     }
     expect(deserialize(serialize({ m })).m.get(29999)).toBe(30000);
   });
+
+  test("should large any-typed map work", () => {
+    // A map with dynamic key/value types writes through MapAnySerializer,
+    // which must reserve writer capacity per entry.
+    // Numeric entries only: string bodies reserve internally, which would
+    // mask a missing per-entry reserve.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.map(Type.any(), Type.any()));
+    const m = new Map<any, any>();
+    for (let i = 0; i < 30000; i++) {
+      m.set(i, i % 2 === 0 ? BigInt(i) : i * 3);
+    }
+    expect(deserialize(serialize(m))).toEqual(m);
+  });
 });

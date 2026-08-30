@@ -335,6 +335,35 @@ describe("array", () => {
     expect(result.length).toBe(150000);
     expect(result.every((x) => x === 1)).toBe(true);
   });
+
+  test("should large mixed-type list work", () => {
+    // Mixed element types disable the same-type aggregate reserve, so this
+    // exercises the per-item reserves in the dynamic write loops, with and
+    // without null elements. Numeric elements only: string bodies reserve
+    // internally, which would mask a missing per-item reserve.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.list(Type.any()));
+    const arr: (number | bigint | null)[] = [];
+    for (let i = 0; i < 50000; i++) {
+      arr.push(i, BigInt(i), i % 100 === 0 ? null : -i);
+    }
+    expect(deserialize(serialize(arr))).toEqual(arr);
+
+    const noNulls = arr.filter((x) => x !== null);
+    expect(deserialize(serialize(noNulls))).toEqual(noNulls);
+  });
+
+  test("should reserialize unknown struct with a large declared list", () => {
+    // Reserializing an unknown compatible struct writes declared list fields
+    // through CollectionAnySerializer.writeDeclared, which must reserve
+    // writer capacity for the whole list body.
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writer = writerFory.register(Type.struct(7501, { values: Type.list(Type.int32()) }));
+    const values = new Array(30000).fill(123456789);
+    const unknown = readerFory.deserialize(writer.serialize({ values }));
+    expect(writer.deserialize(readerFory.serialize(unknown))).toEqual({ values });
+  });
 });
 
 function containsBytes(bytes: Uint8Array, needle: number[]) {
