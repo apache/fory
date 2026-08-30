@@ -633,11 +633,11 @@ public class ReflectionUtils {
       if (canonicalName.contains("$")) {
         // nested scala object type can't be accessed in java by using canonicalName. This includes
         // a nested module class, whose own name ends with `$`: the canonical name of a companion
-        // declared two or more levels inside an object mixes `.` and `$` separators, which the
-        // generated-code compiler mangles back into a name that resolves to nothing
-        // ("pkg.A$B$ declares no member type C$"). A module class only one level deep keeps its
-        // canonical name, because only its last segment ends with `$`, so the nesting-level bound
-        // below is load bearing in both directions.
+        // declared two or more levels inside an object has a `$`-terminated segment in the
+        // middle of its canonical name, one per enclosing module class, and the generated-code
+        // compiler cannot resolve through those ("pkg.A$B$ declares no member type C$"). One level
+        // deep is enclosed by the mirror class instead, so `pkg.A.C$` ends with the only `$` and
+        // still resolves: the nesting-level bound below is load bearing in both directions.
         // see more detailed in
         // https://stackoverflow.com/questions/30809070/accessing-scala-nested-classes-from-java
         int nestedLevels = 0;

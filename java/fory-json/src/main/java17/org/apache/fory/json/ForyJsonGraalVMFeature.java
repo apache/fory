@@ -117,7 +117,7 @@ final class ForyJsonGraalVMFeature implements Feature {
   // Reflection-only registrations are tracked apart from processedCreators, whose membership also
   // means a creator handle was retained.
   private final Set<Method> processedReflectiveMethods = new LinkedHashSet<>();
-  private final Set<Class<?>> scalaCompanionsConsidered = new LinkedHashSet<>();
+  private final Set<Class<?>> typesConsideredForScalaCompanion = new LinkedHashSet<>();
   private final Set<ObjectCodec<?>> processedObjectModels =
       Collections.newSetFromMap(new IdentityHashMap<>());
   private final ArrayList<HostedConfiguration> hostedConfigurations = new ArrayList<>();
@@ -880,7 +880,7 @@ final class ForyJsonGraalVMFeature implements Feature {
    * reflectively while rebuilding the object model at image runtime.
    */
   private void registerScalaCompanion(Class<?> type) {
-    if (!scalaCompanionsConsidered.add(type) || hasScalaStaticFactory(type)) {
+    if (!typesConsideredForScalaCompanion.add(type) || hasScalaStaticFactory(type)) {
       return;
     }
     Class<?> companion;

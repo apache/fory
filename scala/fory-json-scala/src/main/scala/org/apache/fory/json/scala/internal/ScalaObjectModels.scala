@@ -32,16 +32,26 @@ private[scala] object ScalaObjectModels {
     if (!classOf[Product].isAssignableFrom(typeClass) || name.startsWith("scala.Tuple")) {
       return false
     }
-    val companion = companionOwner(typeClass, committed = false)
-    if (companion != null) return findPrimaryConstructor(typeClass, companion) != null
-    // A case class that cannot reach its companion, such as one declared inside a class or a
-    // method, is still a case class. Claim it so the codec reports the exact reason instead of
-    // leaving it to a generic object model that silently drops every property. A generated `copy`
-    // returning the declaring class together with a declared `productPrefix`, which `Product`
-    // otherwise supplies by default, is the compiler marker of a case class. Standard-library
-    // types keep their own mapping. A reachable companion whose constructor this module does not
-    // support, such as a varargs or non-public primary constructor, keeps its previous handling.
-    !name.startsWith("scala.") && declaresCopy(typeClass) && declaresProductPrefix(typeClass)
+    // Recognition answers a predicate for every Product reaching this module, including types it
+    // does not own, and reflecting over a companion or a case class resolves member descriptors.
+    // A type whose members reference absent classes must simply be declined here; the owning path
+    // reports the failure. Ambiguity stays loud: it means this module does own the type and cannot
+    // pick a constructor.
+    try {
+      val companion = companionOwner(typeClass, committed = false)
+      if (companion != null) findPrimaryConstructor(typeClass, companion) != null
+      else {
+        // A case class that cannot reach its companion, such as one declared inside a class or a
+        // method, is still a case class. Claim it so the codec reports the exact reason instead of
+        // leaving it to a generic object model that silently drops every property. A generated
+        // `copy` returning the declaring class together with a declared `productPrefix`, which
+        // `Product` otherwise supplies by default, is the compiler marker of a case class.
+        // Standard-library types keep their own mapping. A reachable companion whose constructor
+        // this module does not support, such as a varargs or non-public primary constructor, keeps
+        // its previous handling.
+        !name.startsWith("scala.") && declaresCopy(typeClass) && declaresProductPrefix(typeClass)
+      }
+    } catch { case _: LinkageError => false }
   }
 
   def caseClassCodec(typeRef: TypeRef[_], resolver: JsonTypeResolver): ObjectCodec[_] = {
@@ -227,11 +237,9 @@ private[scala] object ScalaObjectModels {
    * only for a top-level companion, so a case class declared inside an `object` keeps them as
    * instance members of the companion singleton.
    */
-  private final class CompanionOwner(
-      val owner: Class[_],
-      val singleton: Field,
-      val staticForwarders: Boolean
-  )
+  private final class CompanionOwner(val owner: Class[_], val singleton: Field) {
+    def staticForwarders: Boolean = singleton == null
+  }
 
   // `fory-json` mirrors this companion rule in two places that must stay in sync: the
   // `ownerType + "$"` check in JsonCreatorInfo.buildDefaultInvokers, and the native-image
@@ -250,7 +258,7 @@ private[scala] object ScalaObjectModels {
       if (
         method.getName == "apply" && Modifier.isStatic(method.getModifiers) &&
         !method.isBridge && !method.isSynthetic && method.getReturnType == typeClass
-      ) return new CompanionOwner(typeClass, null, true)
+      ) return new CompanionOwner(typeClass, null)
       index += 1
     }
     val companionName = typeClass.getName + "$"
@@ -267,7 +275,7 @@ private[scala] object ScalaObjectModels {
       }
     val field = singletonField(companionClass)
     if (!Modifier.isPublic(companionClass.getModifiers) || field == null) null
-    else new CompanionOwner(companionClass, field, false)
+    else new CompanionOwner(companionClass, field)
   }
 
   private def companionInstance(typeRef: TypeRef[_], companion: CompanionOwner): AnyRef = {
