@@ -117,7 +117,7 @@ final class ForyJsonGraalVMFeature implements Feature {
   // Reflection-only registrations are tracked apart from processedCreators, whose membership also
   // means a creator handle was retained.
   private final Set<Method> processedReflectiveMethods = new LinkedHashSet<>();
-  private final Set<Class<?>> languageSingletonOwners = new LinkedHashSet<>();
+  private final Set<Class<?>> scalaCompanionOwners = new LinkedHashSet<>();
   private final Set<ObjectCodec<?>> processedObjectModels =
       Collections.newSetFromMap(new IdentityHashMap<>());
   private final ArrayList<HostedConfiguration> hostedConfigurations = new ArrayList<>();
@@ -454,7 +454,7 @@ final class ForyJsonGraalVMFeature implements Feature {
           RuntimeReflection.register(defaultMethod);
         }
       }
-      registerLanguageSingletonOwner(creator.executable().getDeclaringClass());
+      registerScalaCompanion(creator.executable().getDeclaringClass());
     }
     for (JsonFieldInfo field : objectModel.writeFields()) {
       registerFieldAccessor(access, field.writeField(), field.writeGetter(), null);
@@ -874,13 +874,13 @@ final class ForyJsonGraalVMFeature implements Feature {
   }
 
   /**
-   * Registers the singleton that owns a type's constructor metadata when the type does not carry
-   * static forwarders for it. A Scala case class declared inside an object keeps `apply` and its
-   * constructor defaults on the companion singleton, and the language module resolves that
-   * singleton reflectively while rebuilding the object model at image runtime.
+   * Registers the Scala companion that owns a type's constructor metadata when the type carries no
+   * static forwarders for it. A case class declared inside an object keeps `apply` and its
+   * constructor defaults on the companion singleton, and the Scala module resolves that singleton
+   * reflectively while rebuilding the object model at image runtime.
    */
-  private void registerLanguageSingletonOwner(Class<?> type) {
-    if (!languageSingletonOwners.add(type) || hasStaticFactory(type)) {
+  private void registerScalaCompanion(Class<?> type) {
+    if (!scalaCompanionOwners.add(type) || hasScalaStaticFactory(type)) {
       return;
     }
     Class<?> companion;
@@ -906,9 +906,11 @@ final class ForyJsonGraalVMFeature implements Feature {
     RuntimeReflection.register(companion);
     RuntimeReflection.register(field);
     for (Method method : companion.getMethods()) {
+      // Exactly the members the language module looks up on the singleton: the factory it matches
+      // against the primary constructor, and the constructor defaults.
       if (method.getDeclaringClass() == companion
           && !Modifier.isStatic(method.getModifiers())
-          && (method.getReturnType() == type
+          && (("apply".equals(method.getName()) && method.getReturnType() == type)
               || method.getName().startsWith("$lessinit$greater$default$"))
           && processedReflectiveMethods.add(method)) {
         RuntimeReflection.register(method);
@@ -916,7 +918,7 @@ final class ForyJsonGraalVMFeature implements Feature {
     }
   }
 
-  private static boolean hasStaticFactory(Class<?> type) {
+  private static boolean hasScalaStaticFactory(Class<?> type) {
     for (Method method : type.getMethods()) {
       if (Modifier.isStatic(method.getModifiers())
           && method.getReturnType() == type

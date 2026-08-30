@@ -167,6 +167,41 @@ public final class JsonObjectModel {
       String[] parameterNames,
       Method[] accessors,
       Method[] defaultMethods,
+      int[] defaultMaskBits,
+      boolean[] parameterNullable,
+      TypeRef<?>[] parameterTypes,
+      String[] propertyNames,
+      Method[] propertyGetters,
+      Method[] propertySetters,
+      TypeRef<?>[] propertyTypes,
+      boolean[] propertyReconstructible,
+      boolean[] propertyRequired) {
+    this(
+        creator,
+        invocationCreator,
+        defaultConstructor,
+        parameterNames,
+        accessors,
+        defaultMethods,
+        null,
+        defaultMaskBits,
+        parameterNullable,
+        parameterTypes,
+        propertyNames,
+        propertyGetters,
+        propertySetters,
+        propertyTypes,
+        propertyReconstructible,
+        propertyRequired);
+  }
+
+  private JsonObjectModel(
+      Executable creator,
+      Executable invocationCreator,
+      Constructor<?> defaultConstructor,
+      String[] parameterNames,
+      Method[] accessors,
+      Method[] defaultMethods,
       Object defaultsReceiver,
       int[] defaultMaskBits,
       boolean[] parameterNullable,
@@ -337,6 +372,7 @@ public final class JsonObjectModel {
       }
     }
     HashSet<String> names = new HashSet<>();
+    boolean hasInstanceDefault = false;
     for (int i = 0; i < parameterNames.length; i++) {
       String name = parameterNames[i];
       if (name == null || name.isEmpty() || !names.add(name)) {
@@ -358,6 +394,11 @@ public final class JsonObjectModel {
         throw new IllegalArgumentException(
             "JSON constructor default receiver does not own " + defaultMethods[i]);
       }
+      hasInstanceDefault |= defaultMethods[i] != null;
+    }
+    if (defaultsReceiver != null && !hasInstanceDefault) {
+      throw new IllegalArgumentException(
+          "A JSON constructor default receiver requires at least one instance default");
     }
     names.clear();
     for (int i = 0; i < propertyNames.length; i++) {

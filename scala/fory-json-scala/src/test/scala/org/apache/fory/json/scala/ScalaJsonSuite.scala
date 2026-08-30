@@ -82,6 +82,16 @@ class OuterHolder {
   case class Bound(id: Int)
 }
 
+// Declared in a method of an object, so it captures no outer instance and its companion is a
+// local module with no MODULE$. A method-local case class inside a class hits the outer check
+// instead.
+object MethodLocalHolder {
+  def create(): Any = {
+    case class MethodLocal(id: Int)
+    MethodLocal(1)
+  }
+}
+
 case class NullableRequired(value: String)
 
 case class UserId(value: Int) extends AnyVal
@@ -244,13 +254,16 @@ class ScalaJsonSuite extends AnyFunSuite {
   test("case class declared inside a class is rejected") {
     val json = ForyJsonScala.builder().withCodegen(false).build()
     val holder = new OuterHolder
-    assertThrows[UnsupportedJsonTypeException](json.toJson(holder.Bound(1)))
+    // Both rejections assert their message: an outer-bound case class also has no reachable
+    // companion, so only the message distinguishes the outer check from the companion check.
+    val error = intercept[UnsupportedJsonTypeException](json.toJson(holder.Bound(1)))
+    assert(error.getMessage.contains("without its outer instance"))
   }
 
   test("case class declared inside a method is rejected") {
-    case class MethodLocal(id: Int)
     val json = ForyJsonScala.builder().withCodegen(false).build()
-    assertThrows[UnsupportedJsonTypeException](json.toJson(MethodLocal(1)))
+    val error = intercept[UnsupportedJsonTypeException](json.toJson(MethodLocalHolder.create()))
+    assert(error.getMessage.contains("companion is not reachable"))
   }
 
   test("required constructor values cannot be omitted as null") {

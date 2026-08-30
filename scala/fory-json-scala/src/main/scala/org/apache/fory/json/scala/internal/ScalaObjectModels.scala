@@ -33,14 +33,15 @@ private[scala] object ScalaObjectModels {
       return false
     }
     val companion = companionOwner(typeClass)
-    if (companion != null && findPrimaryConstructor(typeClass, companion) != null) return true
+    if (companion != null) return findPrimaryConstructor(typeClass, companion) != null
     // A case class that cannot reach its companion, such as one declared inside a class or a
     // method, is still a case class. Claim it so the codec reports the exact reason instead of
     // leaving it to a generic object model that silently drops every property. A generated `copy`
     // returning the declaring class together with a declared `productPrefix`, which `Product`
     // otherwise supplies by default, is the compiler marker of a case class. Standard-library
-    // types keep their own mapping.
-    !name.startsWith("scala.") && copyMethod(typeClass) != null && declaresProductPrefix(typeClass)
+    // types keep their own mapping. A reachable companion whose constructor this module does not
+    // support, such as a varargs or non-public primary constructor, keeps its previous handling.
+    !name.startsWith("scala.") && declaresCopy(typeClass) && declaresProductPrefix(typeClass)
   }
 
   def caseClassCodec(typeRef: TypeRef[_], resolver: JsonTypeResolver): ObjectCodec[_] = {
@@ -105,7 +106,7 @@ private[scala] object ScalaObjectModels {
     // case class without defaults keeps a receiver-free model.
     val defaultsReceiver =
       if (companion.staticForwarders || defaults.forall(_ == null)) null
-      else companionInstance(typeRef, companion.owner)
+      else companionInstance(typeRef, companion)
     resolver.createObjectCodec(
       typeRef,
       new JsonObjectModel(
@@ -200,13 +201,11 @@ private[scala] object ScalaObjectModels {
     } catch { case _: NoSuchMethodException => false }
   }
 
-  private def copyMethod(typeClass: Class[_]): Method = {
-    typeClass.getMethods
-      .find(method =>
-        method.getName == "copy" && !Modifier.isStatic(method.getModifiers) &&
-          !method.isBridge && !method.isSynthetic && method.getReturnType == typeClass
-      )
-      .orNull
+  private def declaresCopy(typeClass: Class[_]): Boolean = {
+    typeClass.getMethods.exists(method =>
+      method.getName == "copy" && !Modifier.isStatic(method.getModifiers) &&
+        !method.isBridge && !method.isSynthetic && method.getReturnType == typeClass
+    )
   }
 
   private def outerField(typeClass: Class[_]): Field = {
@@ -228,8 +227,15 @@ private[scala] object ScalaObjectModels {
    * only for a top-level companion, so a case class declared inside an `object` keeps them as
    * instance members of the companion singleton.
    */
-  private final class CompanionOwner(val owner: Class[_], val staticForwarders: Boolean)
+  private final class CompanionOwner(
+      val owner: Class[_],
+      val singleton: Field,
+      val staticForwarders: Boolean
+  )
 
+  // `fory-json` mirrors this companion rule in two places that must stay in sync: the
+  // `ownerType + "$"` check in JsonCreatorInfo.buildDefaultInvokers, and the native-image
+  // registration in ForyJsonGraalVMFeature.
   // Recognition must not initialize the companion. Resolving the owner keeps the singleton
   // unloaded so deciding whether a type is a supported case class never runs a user object body;
   // caseClassCodec reads MODULE$ only once it commits to building the model.
@@ -241,24 +247,32 @@ private[scala] object ScalaObjectModels {
       if (
         method.getName == "apply" && Modifier.isStatic(method.getModifiers) &&
         !method.isBridge && !method.isSynthetic && method.getReturnType == typeClass
-      ) return new CompanionOwner(typeClass, true)
+      ) return new CompanionOwner(typeClass, null, true)
       index += 1
     }
+    val companionName = typeClass.getName + "$"
     val companionClass =
-      try Class.forName(typeClass.getName + "$", false, typeClass.getClassLoader)
-      catch { case _: ClassNotFoundException | _: LinkageError => return null }
-    if (!Modifier.isPublic(companionClass.getModifiers) || singletonField(companionClass) == null) {
-      null
-    } else new CompanionOwner(companionClass, false)
+      try Class.forName(companionName, false, typeClass.getClassLoader)
+      catch {
+        // Absence means the type has no companion. A companion that exists but cannot be linked,
+        // including one missing native-image reflection metadata, is a real failure and must not
+        // be reported as an unreachable companion.
+        case _: ClassNotFoundException => return null
+        case error: LinkageError =>
+          throw new ForyJsonException(s"Cannot load Scala companion $companionName", error)
+      }
+    val field = singletonField(companionClass)
+    if (!Modifier.isPublic(companionClass.getModifiers) || field == null) null
+    else new CompanionOwner(companionClass, field, false)
   }
 
-  private def companionInstance(typeRef: TypeRef[_], companionClass: Class[_]): AnyRef = {
+  private def companionInstance(typeRef: TypeRef[_], companion: CompanionOwner): AnyRef = {
     val instance =
-      try singletonField(companionClass).get(null)
+      try companion.singleton.get(null)
       catch {
         case error: ReflectiveOperationException =>
           throw new ForyJsonException(
-            s"Cannot read Scala companion singleton ${companionClass.getName}",
+            s"Cannot read Scala companion singleton ${companion.owner.getName}",
             error
           )
       }

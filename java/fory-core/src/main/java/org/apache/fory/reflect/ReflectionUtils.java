@@ -634,7 +634,9 @@ public class ReflectionUtils {
         // nested scala object type can't be accessed in java by using canonicalName. This includes
         // a nested module class, whose own name ends with `$`: the canonical name of a companion
         // declared two or more levels inside an object mixes `.` and `$` separators and names no
-        // resolvable type.
+        // resolvable type. A module class only one level deep keeps its canonical name: only its
+        // last segment ends with `$`, which resolves, so the nesting-level bound below is load
+        // bearing in both directions.
         // see more detailed in
         // https://stackoverflow.com/questions/30809070/accessing-scala-nested-classes-from-java
         int nestedLevels = 0;
