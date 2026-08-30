@@ -63,6 +63,15 @@ def java_major_version():
     return int(version.split(".")[0])
 
 
+def kotlin_version_option(version):
+    """Return the Maven property for an explicit stable Kotlin version."""
+    if version is None:
+        return ""
+    if re.fullmatch(r"\d+\.\d+\.\d+", version) is None:
+        raise ValueError(f"Invalid Kotlin version: {version}")
+    return f"-Dkotlin.version={version}"
+
+
 def install_java_json(include_jpms=False):
     """Install the Java artifacts consumed by Kotlin JSON modules."""
     modules = "fory-json,fory-annotation-processor"
@@ -87,20 +96,24 @@ def install_java_json(include_jpms=False):
     )
 
 
-def install_artifacts(include_corpus=True, modules=PRODUCTION_MODULES):
+def install_artifacts(
+    include_corpus=True, modules=PRODUCTION_MODULES, kotlin_version=None
+):
     """Install Kotlin production artifacts and the shared JSON corpus."""
     # Artifact consumers need only main JARs. Test stages compile their own test sources later.
+    version_option = kotlin_version_option(kotlin_version)
     common.cd_project_subdir("kotlin")
     common.exec_cmd(
         "mvn -T16 --batch-mode --no-transfer-progress "
         f"-pl {modules} -am clean install -Dmaven.test.skip=true "
-        "-Ddokka.skip=true -Dmaven.source.skip=true"
+        f"-Ddokka.skip=true -Dmaven.source.skip=true {version_option}"
     )
     if include_corpus:
         common.cd_project_subdir("integration_tests/kotlin_json_corpus")
         common.exec_cmd(
             "mvn -T16 --batch-mode --no-transfer-progress clean install "
-            "-Dmaven.test.skip=true -Ddokka.skip=true -Dmaven.source.skip=true"
+            "-Dmaven.test.skip=true -Ddokka.skip=true -Dmaven.source.skip=true "
+            f"{version_option}"
         )
         verify_corpus_artifact()
 
@@ -164,24 +177,30 @@ def _kotlin_version():
     return version
 
 
-def run_tests():
+def run_tests(kotlin_version=None):
     """Run the Kotlin JVM matrix for the active JDK."""
     logging.info("Executing fory kotlin tests")
     os.environ.setdefault("ENABLE_FORY_DEBUG_OUTPUT", "1")
     major = java_major_version()
+    version_option = kotlin_version_option(kotlin_version)
     install_java_json(include_jpms=major == 25)
     modules = PRODUCTION_MODULES if major >= 17 else LOW_JDK_MODULES
-    install_artifacts(include_corpus=major >= 17, modules=modules)
+    install_artifacts(
+        include_corpus=major >= 17,
+        modules=modules,
+        kotlin_version=kotlin_version,
+    )
     common.cd_project_subdir("kotlin")
     if major >= 17:
         common.exec_cmd(
-            "mvn -T16 --batch-mode --no-transfer-progress test -DfailIfNoTests=false"
+            "mvn -T16 --batch-mode --no-transfer-progress test "
+            f"-DfailIfNoTests=false {version_option}"
         )
         common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress spotless:check")
         common.cd_project_subdir("integration_tests/kotlin_json_corpus")
         common.exec_cmd(
             "mvn -T16 --batch-mode --no-transfer-progress clean test "
-            "-DfailIfNoTests=false"
+            f"-DfailIfNoTests=false {version_option}"
         )
     else:
         logging.info(
@@ -189,14 +208,14 @@ def run_tests():
         )
         common.exec_cmd(
             "mvn -T16 --batch-mode --no-transfer-progress "
-            f"-pl {LOW_JDK_MODULES} -am test -DfailIfNoTests=false"
+            f"-pl {LOW_JDK_MODULES} -am test -DfailIfNoTests=false {version_option}"
         )
     if major == 25:
         common.cd_project_subdir("kotlin")
         common.exec_cmd(
             "mvn -T16 --batch-mode --no-transfer-progress "
             f"-pl {PRODUCTION_MODULES} -am package -DskipTests "
-            "-Dgpg.skip=true -Papache-release"
+            f"-Dgpg.skip=true -Papache-release {version_option}"
         )
         common.cd_project_subdir("")
         common.exec_cmd("python ci/release.py verify_kotlin_artifacts")
@@ -206,28 +225,34 @@ def run_tests():
     logging.info("Executing fory kotlin tests succeeds")
 
 
-def run_native_json():
+def run_native_json(kotlin_version=None):
     """Build and execute the dedicated Kotlin JSON Native Image fixture."""
     os.environ.setdefault("ENABLE_FORY_DEBUG_OUTPUT", "1")
+    version_option = kotlin_version_option(kotlin_version)
     install_java_json()
-    install_artifacts(include_corpus=True)
+    install_artifacts(include_corpus=True, kotlin_version=kotlin_version)
     common.cd_project_subdir("integration_tests/graalvm_kotlin_tests")
     common.exec_cmd(
-        "mvn --batch-mode --no-transfer-progress -DskipTests=true -Pnative clean package"
+        "mvn --batch-mode --no-transfer-progress -DskipTests=true -Pnative clean package "
+        f"{version_option}"
     )
     common.exec_cmd("./target/main")
 
 
-def run(task="tests"):
+def run(task="tests", kotlin_version=None):
     """Run the selected Kotlin CI task."""
     if task == "tests":
-        run_tests()
+        run_tests(kotlin_version)
     elif task == "install-json":
         install_java_json()
-        install_artifacts(include_corpus=True, modules=JSON_MODULES)
+        install_artifacts(
+            include_corpus=True,
+            modules=JSON_MODULES,
+            kotlin_version=kotlin_version,
+        )
     elif task == "install-kotlin":
-        install_artifacts(include_corpus=True)
+        install_artifacts(include_corpus=True, kotlin_version=kotlin_version)
     elif task == "native-json":
-        run_native_json()
+        run_native_json(kotlin_version)
     else:
         raise ValueError(f"Unsupported Kotlin CI task: {task}")
