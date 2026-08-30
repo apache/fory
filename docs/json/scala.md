@@ -51,7 +51,7 @@ constructor arguments exactly as Scala defines them. A missing parameter without
 error. Mutable body properties are applied after construction.
 
 A case class may be declared at the top level, or inside an `object` at any nesting depth, as long
-as every enclosing scope is itself an `object`. A case class enclosed by a `class` or by a method
+as every enclosing scope is itself an `object`. A case class enclosed by a `class`, a trait, or a method
 is rejected for both reading and writing, because Fory cannot reach the enclosing instance or the
 companion it needs to rebuild the value.
 

@@ -29,6 +29,16 @@ object NativeWeekday extends Enumeration {
 object NativeNested {
   @JsonType
   case class Reading(value: Int, unit: String = "px")
+
+  // No default: the companion is still needed to match `apply` against the primary constructor.
+  @JsonType
+  case class Plain(value: Int)
+
+  object Deep {
+    // Two levels inside an object: also depends on the nested-module literal name.
+    @JsonType
+    case class Nested(value: Int, unit: String = "em")
+  }
 }
 
 @JsonType
@@ -55,6 +65,11 @@ object ScalaJsonEnumerationNativeImageMain {
     val reading = NativeNested.Reading(3, "em")
     require(json.fromJson(json.toJson(reading), classOf[NativeNested.Reading]) == reading)
     require(json.fromJson("{\"value\":3}", classOf[NativeNested.Reading]).unit == "px")
+    val plain = NativeNested.Plain(4)
+    require(json.fromJson(json.toJson(plain), classOf[NativeNested.Plain]) == plain)
+    val deep = NativeNested.Deep.Nested(5, "rem")
+    require(json.fromJson(json.toJson(deep), classOf[NativeNested.Deep.Nested]) == deep)
+    require(json.fromJson("{\"value\":5}", classOf[NativeNested.Deep.Nested]).unit == "em")
     println("Fory Scala 2 Enumeration native image succeeded")
   }
 }

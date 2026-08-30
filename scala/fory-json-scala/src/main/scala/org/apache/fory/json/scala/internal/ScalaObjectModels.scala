@@ -32,7 +32,7 @@ private[scala] object ScalaObjectModels {
     if (!classOf[Product].isAssignableFrom(typeClass) || name.startsWith("scala.Tuple")) {
       return false
     }
-    val companion = companionOwner(typeClass)
+    val companion = companionOwner(typeClass, committed = false)
     if (companion != null) return findPrimaryConstructor(typeClass, companion) != null
     // A case class that cannot reach its companion, such as one declared inside a class or a
     // method, is still a case class. Claim it so the codec reports the exact reason instead of
@@ -49,10 +49,10 @@ private[scala] object ScalaObjectModels {
     if (outerField(typeClass) != null) {
       throw ScalaTypeSupport.unsupported(
         typeRef,
-        "case class declared inside a class cannot be reconstructed without its outer instance"
+        "case class declared inside a class or trait cannot be reconstructed without its outer instance"
       )
     }
-    val companion = companionOwner(typeClass)
+    val companion = companionOwner(typeClass, committed = true)
     if (companion == null) {
       throw ScalaTypeSupport.unsupported(
         typeRef,
@@ -239,7 +239,10 @@ private[scala] object ScalaObjectModels {
   // Recognition must not initialize the companion. Resolving the owner keeps the singleton
   // unloaded so deciding whether a type is a supported case class never runs a user object body;
   // caseClassCodec reads MODULE$ only once it commits to building the model.
-  private def companionOwner(typeClass: Class[_]): CompanionOwner = {
+  // `committed` separates recognition from binding. Recognition answers a predicate for every
+  // Product that reaches this module, including types it does not own, so a companion that exists
+  // but cannot link must not fail that type there. Only the owning path reports it.
+  private def companionOwner(typeClass: Class[_], committed: Boolean): CompanionOwner = {
     val methods = typeClass.getMethods
     var index = 0
     while (index < methods.length) {
@@ -259,6 +262,7 @@ private[scala] object ScalaObjectModels {
         // be reported as an unreachable companion.
         case _: ClassNotFoundException => return null
         case error: LinkageError =>
+          if (!committed) return null
           throw new ForyJsonException(s"Cannot load Scala companion $companionName", error)
       }
     val field = singletonField(companionClass)

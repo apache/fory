@@ -372,7 +372,7 @@ public final class JsonObjectModel {
       }
     }
     HashSet<String> names = new HashSet<>();
-    boolean hasInstanceDefault = false;
+    boolean hasDefaultMethod = false;
     for (int i = 0; i < parameterNames.length; i++) {
       String name = parameterNames[i];
       if (name == null || name.isEmpty() || !names.add(name)) {
@@ -394,9 +394,9 @@ public final class JsonObjectModel {
         throw new IllegalArgumentException(
             "JSON constructor default receiver does not own " + defaultMethods[i]);
       }
-      hasInstanceDefault |= defaultMethods[i] != null;
+      hasDefaultMethod |= defaultMethods[i] != null;
     }
-    if (defaultsReceiver != null && !hasInstanceDefault) {
+    if (defaultsReceiver != null && !hasDefaultMethod) {
       throw new IllegalArgumentException(
           "A JSON constructor default receiver requires at least one instance default");
     }
