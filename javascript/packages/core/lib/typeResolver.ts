@@ -358,10 +358,12 @@ export default class TypeResolver {
         }
         return this.varint32Serializer;
       }
-      if (v > MaxInt32 || v < MinInt32) {
-        return this.float64Serializer;
+      // A non-integer number is a float64 value; narrow to float32 only when
+      // that representation is exact, otherwise precision is silently lost.
+      if (Math.fround(v) === v) {
+        return this.float32Serializer;
       }
-      return this.float32Serializer;
+      return this.float64Serializer;
     }
 
     if (typeof v === "bigint") {

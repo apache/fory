@@ -115,4 +115,13 @@ describe("bool", () => {
     const result = deserialize(bin);
     expect(result).toEqual("hello");
   });
+
+  test("should keep float64 precision for non-integer values", () => {
+    // Non-integer numbers narrow to float32 only when exactly representable;
+    // otherwise the dynamic dispatch must pick float64.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.list(Type.any()));
+    const values = [0.1, 1 / 3, 1234.5678, -0.7, 1.5, 3000000000.5];
+    expect(deserialize(serialize(values))).toEqual(values);
+  });
 });
