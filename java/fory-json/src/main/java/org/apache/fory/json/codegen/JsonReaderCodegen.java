@@ -74,6 +74,7 @@ abstract class JsonReaderCodegen {
   private static final boolean LITTLE_ENDIAN = NativeByteOrder.IS_LITTLE_ENDIAN;
   private static final long UTF16_PAIR_MASK = 0x0000FFFF0000FFFFL;
   private static final long UTF16_BYTE_MASK = 0x00FF00FF00FF00FFL;
+  private static final String DEFAULTS_OWNER_LOCAL = "defaultsOwner";
 
   final JsonCodegen codegen;
   final JsonTypeResolver resolver;
@@ -1321,7 +1322,12 @@ abstract class JsonReaderCodegen {
     return new Expression.Cast(value, TypeRef.of(parameterType));
   }
 
-  /** Reads the language singleton that owns instance constructor defaults, such as a companion. */
+  /**
+   * Reads the language singleton that owns instance constructor defaults, such as a companion.
+   * Each defaulted parameter needs its own expression: generated code for one expression instance
+   * is emitted once, at its first use site, and every use site here is a separate missing-argument
+   * block, so a shared instance would reference a local declared in a sibling block.
+   */
   private Expression defaultsReceiver(Method method) {
     return new Expression.Cast(
         new Expression.Invoke(
@@ -1468,12 +1474,42 @@ abstract class JsonReaderCodegen {
     ctx.addMethod("private final", methodName, body.toString(), type, Object[].class, "arguments");
   }
 
+  /** Declares the shared instance-default receiver local when the creator binds one. */
+  private void appendDefaultsOwnerLocal(
+      CodegenContext ctx,
+      StringBuilder body,
+      JsonCreatorInfo creator,
+      String creatorExpression,
+      int parameterCount) {
+    Class<?> owner = null;
+    for (int i = 0; i < parameterCount; i++) {
+      Method method = creator.defaultMethod(i);
+      if (method != null && !Modifier.isStatic(method.getModifiers())) {
+        owner = method.getDeclaringClass();
+        break;
+      }
+    }
+    if (owner == null) {
+      return;
+    }
+    String ownerType = ctx.type(owner);
+    body.append(ownerType)
+        .append(' ')
+        .append(DEFAULTS_OWNER_LOCAL)
+        .append(" = ((")
+        .append(ownerType)
+        .append(") ")
+        .append(creatorExpression)
+        .append(".defaultsReceiver());\n");
+  }
+
   private void appendWorkspaceDefaults(
       CodegenContext ctx,
       StringBuilder body,
       JsonCreatorInfo creator,
       String creatorExpression,
       Class<?>[] parameterTypes) {
+    appendDefaultsOwnerLocal(ctx, body, creator, creatorExpression, parameterTypes.length);
     for (int i = 0; i < parameterTypes.length; i++) {
       Method method = creator.defaultMethod(i);
       body.append("if (")
@@ -1502,15 +1538,9 @@ abstract class JsonReaderCodegen {
         }
       } else {
         body.append("arguments[").append(i).append("] = ");
-        if (Modifier.isStatic(method.getModifiers())) {
-          body.append(ctx.type(method.getDeclaringClass()));
-        } else {
-          body.append("((")
-              .append(ctx.type(method.getDeclaringClass()))
-              .append(") ")
-              .append(creatorExpression)
-              .append(".defaultsReceiver())");
-        }
+        body.append(Modifier.isStatic(method.getModifiers())
+                ? ctx.type(method.getDeclaringClass())
+                : DEFAULTS_OWNER_LOCAL);
         body.append('.').append(method.getName()).append('(');
         Class<?>[] dependencies = method.getParameterTypes();
         for (int j = 0; j < dependencies.length; j++) {

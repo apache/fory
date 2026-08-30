@@ -626,7 +626,9 @@ public final class JsonCreatorInfo {
       boolean instanceDefault = !java.lang.reflect.Modifier.isStatic(method.getModifiers());
       Class<?> declaringClass = method.getDeclaringClass();
       if ((instanceDefault
-              ? defaultsReceiver == null || !declaringClass.isInstance(defaultsReceiver)
+              ? defaultsReceiver == null
+                  || !declaringClass.isInstance(defaultsReceiver)
+                  || !declaringClass.getName().equals(ownerType.getName() + "$")
               : defaultsReceiver != null || declaringClass != ownerType)
           || !method.getName().equals("$lessinit$greater$default$" + (i + 1))
           || method.getParameterCount() > i

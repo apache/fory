@@ -26,6 +26,11 @@ object NativeWeekday extends Enumeration {
   val Monday, Tuesday = Value
 }
 
+object NativeNested {
+  @JsonType
+  case class Reading(value: Int, unit: String = "px")
+}
+
 @JsonType
 case class NativeEnumerationSchedule(
     @JsonEnumeration(classOf[NativeWeekday.type]) day: NativeWeekday.Value,
@@ -45,6 +50,11 @@ object ScalaJsonEnumerationNativeImageMain {
       List(NativeWeekday.Monday, NativeWeekday.Tuesday)
     )
     require(json.fromJson(json.toJson(value), classOf[NativeEnumerationSchedule]) == value)
+    // A case class declared inside an object binds `apply` and its constructor defaults on the
+    // companion singleton, which the image must reach reflectively at runtime.
+    val reading = NativeNested.Reading(3, "em")
+    require(json.fromJson(json.toJson(reading), classOf[NativeNested.Reading]) == reading)
+    require(json.fromJson("{\"value\":3}", classOf[NativeNested.Reading]).unit == "px")
     println("Fory Scala 2 Enumeration native image succeeded")
   }
 }

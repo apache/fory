@@ -1134,9 +1134,10 @@ public final class JsonCodegen {
         return false;
       }
       Method defaultMethod = creator.defaultMethod(i);
-      // JsonCreatorInfo guarantees that a default method belongs to the creator owner and that its
-      // dependency types are the preceding creator parameters. The generated reader still invokes
-      // that exact method, so validate its access from the final definition context as well.
+      // JsonCreatorInfo guarantees that a default method belongs to the creator owner, or to the
+      // language singleton that owns instance defaults, and that its dependency types are the
+      // preceding creator parameters. The generated reader invokes that exact method on that exact
+      // declaring class, so validate its access from the final definition context as well.
       if (defaultMethod != null && !canCall(defaultMethod)) {
         return false;
       }

@@ -62,8 +62,19 @@ object NestedModels {
 
   case class Region(origin: Point, size: Int = 2)
 
+  case class Span(from: Int)(val to: Int = from + 1)
+
+  case class UnwrappedNested(code: Int = 5) {
+    var note: String = "default-note"
+  }
+
+  case class UnwrappedOwner(
+      id: Int = 3,
+      @JsonUnwrapped nested: UnwrappedNested = UnwrappedNested()
+  )
+
   object Inner {
-    case class Depth(level: Int)
+    case class Depth(level: Int, unit: String = "px")
   }
 }
 
@@ -201,8 +212,32 @@ class ScalaJsonSuite extends AnyFunSuite {
       // emits static forwarders only for a top-level companion.
       val defaulted = json.fromJson("{\"origin\":{\"x\":1,\"y\":\"a\"}}", classOf[NestedModels.Region])
       assert(defaulted.size == 2)
-      val depth = NestedModels.Inner.Depth(3)
+      // A doubly nested companion must also be spelled correctly by generated readers.
+      val depth = NestedModels.Inner.Depth(3, "em")
       assert(json.fromJson(json.toJson(depth), classOf[NestedModels.Inner.Depth]) == depth)
+      assert(json.fromJson("{\"level\":3}", classOf[NestedModels.Inner.Depth]).unit == "px")
+    }
+  }
+
+  test("nested case class defaults use preceding parameter lists") {
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      assert(json.fromJson("{\"from\":4}", classOf[NestedModels.Span]).to == 5)
+    }
+  }
+
+  test("nested unwrapped creators apply defaults") {
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      val value =
+        json.fromJson("{\"note\":\"child\"}", classOf[NestedModels.UnwrappedOwner])
+      assert(value.id == 3)
+      assert(value.nested.code == 5)
+      assert(value.nested.note == "child")
     }
   }
 
@@ -210,6 +245,12 @@ class ScalaJsonSuite extends AnyFunSuite {
     val json = ForyJsonScala.builder().withCodegen(false).build()
     val holder = new OuterHolder
     assertThrows[UnsupportedJsonTypeException](json.toJson(holder.Bound(1)))
+  }
+
+  test("case class declared inside a method is rejected") {
+    case class MethodLocal(id: Int)
+    val json = ForyJsonScala.builder().withCodegen(false).build()
+    assertThrows[UnsupportedJsonTypeException](json.toJson(MethodLocal(1)))
   }
 
   test("required constructor values cannot be omitted as null") {

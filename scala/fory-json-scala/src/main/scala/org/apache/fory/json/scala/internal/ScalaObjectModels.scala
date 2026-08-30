@@ -36,9 +36,11 @@ private[scala] object ScalaObjectModels {
     if (companion != null && findPrimaryConstructor(typeClass, companion) != null) return true
     // A case class that cannot reach its companion, such as one declared inside a class or a
     // method, is still a case class. Claim it so the codec reports the exact reason instead of
-    // leaving it to a generic object model that silently drops every property. `copy` returning
-    // the declaring class is the compiler marker; standard-library types keep their own mapping.
-    !name.startsWith("scala.") && copyMethod(typeClass) != null
+    // leaving it to a generic object model that silently drops every property. A generated `copy`
+    // returning the declaring class together with a declared `productPrefix`, which `Product`
+    // otherwise supplies by default, is the compiler marker of a case class. Standard-library
+    // types keep their own mapping.
+    !name.startsWith("scala.") && copyMethod(typeClass) != null && declaresProductPrefix(typeClass)
   }
 
   def caseClassCodec(typeRef: TypeRef[_], resolver: JsonTypeResolver): ObjectCodec[_] = {
@@ -99,6 +101,11 @@ private[scala] object ScalaObjectModels {
     // @JsonEnumeration binds an erased Enumeration.Value parameter to the exact MODULE$ owner.
     val logicalParameterTypes = propertyTypes.take(names.length)
     val defaults = constructorDefaults(typeClass, companion, parameterTypes)
+    // The receiver belongs to the model only when a default is actually bound to it, so a nested
+    // case class without defaults keeps a receiver-free model.
+    val defaultsReceiver =
+      if (companion.staticForwarders || defaults.forall(_ == null)) null
+      else companionInstance(typeRef, companion.owner)
     resolver.createObjectCodec(
       typeRef,
       new JsonObjectModel(
@@ -107,7 +114,7 @@ private[scala] object ScalaObjectModels {
         names,
         accessors,
         defaults,
-        companion.receiver,
+        defaultsReceiver,
         Array.fill(names.length)(-1),
         Array.fill(names.length)(true),
         logicalParameterTypes,
@@ -186,6 +193,13 @@ private[scala] object ScalaObjectModels {
     }
   }
 
+  private def declaresProductPrefix(typeClass: Class[_]): Boolean = {
+    try {
+      val method = typeClass.getDeclaredMethod("productPrefix")
+      method.getReturnType == classOf[String] && !method.isSynthetic
+    } catch { case _: NoSuchMethodException => false }
+  }
+
   private def copyMethod(typeClass: Class[_]): Method = {
     typeClass.getMethods
       .find(method =>
@@ -212,10 +226,13 @@ private[scala] object ScalaObjectModels {
    * Owner of the compiler-generated `apply` and `$lessinit$greater$default$N` members of a case
    * class. Scala mirrors those companion members as static forwarders on the case class itself
    * only for a top-level companion, so a case class declared inside an `object` keeps them as
-   * instance members of the companion singleton. `receiver` is null for the static form.
+   * instance members of the companion singleton.
    */
-  private final class CompanionOwner(val owner: Class[_], val receiver: AnyRef)
+  private final class CompanionOwner(val owner: Class[_], val staticForwarders: Boolean)
 
+  // Recognition must not initialize the companion. Resolving the owner keeps the singleton
+  // unloaded so deciding whether a type is a supported case class never runs a user object body;
+  // caseClassCodec reads MODULE$ only once it commits to building the model.
   private def companionOwner(typeClass: Class[_]): CompanionOwner = {
     val methods = typeClass.getMethods
     var index = 0
@@ -223,15 +240,32 @@ private[scala] object ScalaObjectModels {
       val method = methods(index)
       if (
         method.getName == "apply" && Modifier.isStatic(method.getModifiers) &&
-        method.getReturnType == typeClass
-      ) return new CompanionOwner(typeClass, null)
+        !method.isBridge && !method.isSynthetic && method.getReturnType == typeClass
+      ) return new CompanionOwner(typeClass, true)
       index += 1
     }
     val companionClass =
       try Class.forName(typeClass.getName + "$", false, typeClass.getClassLoader)
       catch { case _: ClassNotFoundException | _: LinkageError => return null }
-    val field = singletonField(companionClass)
-    if (field == null) null else new CompanionOwner(companionClass, field.get(null))
+    if (!Modifier.isPublic(companionClass.getModifiers) || singletonField(companionClass) == null) {
+      null
+    } else new CompanionOwner(companionClass, false)
+  }
+
+  private def companionInstance(typeRef: TypeRef[_], companionClass: Class[_]): AnyRef = {
+    val instance =
+      try singletonField(companionClass).get(null)
+      catch {
+        case error: ReflectiveOperationException =>
+          throw new ForyJsonException(
+            s"Cannot read Scala companion singleton ${companionClass.getName}",
+            error
+          )
+      }
+    if (instance == null) {
+      throw ScalaTypeSupport.unsupported(typeRef, "case class companion singleton is not initialized")
+    }
+    instance
   }
 
   private def findPrimaryConstructor(
@@ -240,7 +274,7 @@ private[scala] object ScalaObjectModels {
   ): Constructor[_] = {
     val constructors = typeClass.getConstructors
     val methods = companion.owner.getMethods
-    val staticApply = companion.receiver == null
+    val staticApply = companion.staticForwarders
     var selected: Constructor[_] = null
     var index = 0
     while (index < constructors.length) {
@@ -310,7 +344,7 @@ private[scala] object ScalaObjectModels {
     // owner for a top-level companion, otherwise instance members of the companion singleton.
     // A default in a later parameter list receives the preceding parameter lists as arguments.
     val defaults = new Array[Method](parameterTypes.length)
-    val staticDefault = companion.receiver == null
+    val staticDefault = companion.staticForwarders
     var index = 0
     while (index < defaults.length) {
       val name = "$lessinit$greater$default$" + (index + 1)

@@ -114,6 +114,10 @@ final class ForyJsonGraalVMFeature implements Feature {
   private final Set<Class<?>> processedCodecs = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedContainers = ConcurrentHashMap.newKeySet();
   private final Set<Executable> processedCreators = new LinkedHashSet<>();
+  // Reflection-only registrations are tracked apart from processedCreators, whose membership also
+  // means a creator handle was retained.
+  private final Set<Method> processedReflectiveMethods = new LinkedHashSet<>();
+  private final Set<Class<?>> languageSingletonOwners = new LinkedHashSet<>();
   private final Set<ObjectCodec<?>> processedObjectModels =
       Collections.newSetFromMap(new IdentityHashMap<>());
   private final ArrayList<HostedConfiguration> hostedConfigurations = new ArrayList<>();
@@ -442,12 +446,15 @@ final class ForyJsonGraalVMFeature implements Feature {
         }
         if (Modifier.isStatic(defaultMethod.getModifiers())) {
           registerCreator(defaultMethod);
-        } else if (processedCreators.add(defaultMethod)) {
-          // An instance default is invoked on the language singleton that owns it, so its bound
-          // invoker already lives in the creator metadata. Only reflection access is needed.
+        } else if (processedReflectiveMethods.add(defaultMethod)) {
+          // An instance default is bound to its owning singleton when the creator metadata is
+          // rebuilt at image runtime. creatorHandle spreads an argument array over the exact
+          // parameter count, which does not describe a method that also takes a receiver, so the
+          // method is only made reflectively available here.
           RuntimeReflection.register(defaultMethod);
         }
       }
+      registerLanguageSingletonOwner(creator.executable().getDeclaringClass());
     }
     for (JsonFieldInfo field : objectModel.writeFields()) {
       registerFieldAccessor(access, field.writeField(), field.writeGetter(), null);
@@ -864,6 +871,62 @@ final class ForyJsonGraalVMFeature implements Feature {
     }
     Constructor<?> constructor = RecordUtils.getRecordConstructor(type).f0;
     registerCreator(constructor);
+  }
+
+  /**
+   * Registers the singleton that owns a type's constructor metadata when the type does not carry
+   * static forwarders for it. A Scala case class declared inside an object keeps `apply` and its
+   * constructor defaults on the companion singleton, and the language module resolves that
+   * singleton reflectively while rebuilding the object model at image runtime.
+   */
+  private void registerLanguageSingletonOwner(Class<?> type) {
+    if (!languageSingletonOwners.add(type) || hasStaticFactory(type)) {
+      return;
+    }
+    Class<?> companion;
+    try {
+      companion = Class.forName(type.getName() + "$", false, type.getClassLoader());
+    } catch (ClassNotFoundException | LinkageError e) {
+      return;
+    }
+    Field field;
+    try {
+      field = companion.getField("MODULE$");
+    } catch (NoSuchFieldException e) {
+      return;
+    }
+    int modifiers = field.getModifiers();
+    if (field.getType() != companion
+        || !Modifier.isPublic(companion.getModifiers())
+        || !Modifier.isPublic(modifiers)
+        || !Modifier.isStatic(modifiers)
+        || !Modifier.isFinal(modifiers)) {
+      return;
+    }
+    RuntimeReflection.register(companion);
+    RuntimeReflection.register(field);
+    for (Method method : companion.getMethods()) {
+      if (method.getDeclaringClass() == companion
+          && !Modifier.isStatic(method.getModifiers())
+          && (method.getReturnType() == type
+              || method.getName().startsWith("$lessinit$greater$default$"))
+          && processedReflectiveMethods.add(method)) {
+        RuntimeReflection.register(method);
+      }
+    }
+  }
+
+  private static boolean hasStaticFactory(Class<?> type) {
+    for (Method method : type.getMethods()) {
+      if (Modifier.isStatic(method.getModifiers())
+          && method.getReturnType() == type
+          && !method.isBridge()
+          && !method.isSynthetic()
+          && "apply".equals(method.getName())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private void registerCreator(Executable executable) {

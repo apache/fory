@@ -630,8 +630,11 @@ public class ReflectionUtils {
       // qualifier name of scala object type will ends with `.`
       canonicalName = clsName.substring(0, clsName.length() - 1).replace("$", ".") + "$";
     } else {
-      if (!canonicalName.endsWith("$") && canonicalName.contains("$")) {
-        // nested scala object type can't be accessed in java by using canonicalName
+      if (canonicalName.contains("$")) {
+        // nested scala object type can't be accessed in java by using canonicalName. This includes
+        // a nested module class, whose own name ends with `$`: the canonical name of a companion
+        // declared two or more levels inside an object mixes `.` and `$` separators and names no
+        // resolvable type.
         // see more detailed in
         // https://stackoverflow.com/questions/30809070/accessing-scala-nested-classes-from-java
         int nestedLevels = 0;

@@ -51,8 +51,8 @@ constructor arguments exactly as Scala defines them. A missing parameter without
 error. Mutable body properties are applied after construction.
 
 A case class may be declared at the top level or inside an `object`, at any nesting depth. A case
-class declared inside a `class` or inside a method is rejected, because Fory cannot reach the
-enclosing instance or companion it needs to rebuild the value.
+class declared inside a `class` or inside a method is rejected for both reading and writing,
+because Fory cannot reach the enclosing instance or companion it needs to rebuild the value.
 
 Fory JSON annotations can be placed directly on Scala constructor properties:
 
