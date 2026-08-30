@@ -35,6 +35,13 @@ export function toFloat16Bits(value: number) {
     return sign | 0x7c00;
   }
 
+  if (exponent < -24) {
+    // Too small for a float16 subnormal. Larger shifts below would wrap
+    // (JS masks shift counts with & 31) and leave garbage bits, so
+    // underflow to signed zero.
+    return sign;
+  }
+
   if (exponent < -14) {
     return sign | ((significand | 0x800000) >> (13 - 14 - exponent));
   }

@@ -154,6 +154,20 @@ describe("number", () => {
     expect(result.a).toBe(NaN);
   });
 
+  test("should float16 underflow tiny magnitudes to signed zero", () => {
+    // Magnitudes below the smallest float16 subnormal must encode as zero;
+    // shift counts of 32 or more wrapped (JS masks them with & 31) and left
+    // garbage bits in the half.
+    const fory = new Fory({ compatible: false, ref: true });
+    const { serialize, deserialize } = fory.register(
+      Type.struct({ typeName: "example.f16zero" }, { a: Type.float16() }),
+    );
+    expect(deserialize(serialize({ a: 1e-10 })).a).toBe(0);
+    expect(deserialize(serialize({ a: 1e-11 })).a).toBe(0);
+    expect(deserialize(serialize({ a: 1e-40 })).a).toBe(0);
+    expect(deserialize(serialize({ a: -1e-10 })).a).toBe(-0);
+  });
+
   test("should float16 Infinity work", () => {
     const fory = new Fory({ compatible: false, ref: true });
     const serializer = fory.register(
