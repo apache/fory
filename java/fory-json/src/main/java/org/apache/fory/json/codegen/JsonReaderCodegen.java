@@ -1307,12 +1307,28 @@ abstract class JsonReaderCodegen {
       inputs[i] = new Expression.Cast(arguments.values[i], TypeRef.of(dependencies[i])).inline();
     }
     Expression value =
-        new Expression.StaticInvoke(
-            method.getDeclaringClass(),
-            method.getName(),
-            TypeRef.of(method.getReturnType()),
-            inputs);
+        Modifier.isStatic(method.getModifiers())
+            ? new Expression.StaticInvoke(
+                method.getDeclaringClass(),
+                method.getName(),
+                TypeRef.of(method.getReturnType()),
+                inputs)
+            : new Expression.Invoke(
+                defaultsReceiver(method),
+                method.getName(),
+                TypeRef.of(method.getReturnType()),
+                inputs);
     return new Expression.Cast(value, TypeRef.of(parameterType));
+  }
+
+  /** Reads the language singleton that owns instance constructor defaults, such as a companion. */
+  private Expression defaultsReceiver(Method method) {
+    return new Expression.Cast(
+        new Expression.Invoke(
+            fieldRef("creator", JsonCreatorInfo.class),
+            "defaultsReceiver",
+            TypeRef.of(Object.class)),
+        TypeRef.of(method.getDeclaringClass()));
   }
 
   private Expression finishCreator(
@@ -1485,13 +1501,17 @@ abstract class JsonReaderCodegen {
               .append(";\n");
         }
       } else {
-        body.append("arguments[")
-            .append(i)
-            .append("] = ")
-            .append(ctx.type(method.getDeclaringClass()))
-            .append('.')
-            .append(method.getName())
-            .append('(');
+        body.append("arguments[").append(i).append("] = ");
+        if (Modifier.isStatic(method.getModifiers())) {
+          body.append(ctx.type(method.getDeclaringClass()));
+        } else {
+          body.append("((")
+              .append(ctx.type(method.getDeclaringClass()))
+              .append(") ")
+              .append(creatorExpression)
+              .append(".defaultsReceiver())");
+        }
+        body.append('.').append(method.getName()).append('(');
         Class<?>[] dependencies = method.getParameterTypes();
         for (int j = 0; j < dependencies.length; j++) {
           if (j != 0) {

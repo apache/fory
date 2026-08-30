@@ -67,6 +67,7 @@ public final class JsonCreatorInfo {
   private final MethodHandle invoker;
   private final GeneratedJsonCodec<?> generatedCodec;
   private final Method[] defaultMethods;
+  private final Object defaultsReceiver;
   private final MethodHandle[] defaultInvokers;
   private final Constructor<?> defaultConstructor;
   private final MethodHandle defaultConstructorInvoker;
@@ -97,6 +98,7 @@ public final class JsonCreatorInfo {
         null,
         null,
         null,
+        null,
         null);
   }
 
@@ -109,6 +111,7 @@ public final class JsonCreatorInfo {
       Object[] defaults,
       GeneratedJsonCodec<?> generatedCodec,
       Method[] defaultMethods,
+      Object defaultsReceiver,
       String[] parameterNames,
       Constructor<?> defaultConstructor,
       int[] defaultMaskBits,
@@ -121,6 +124,7 @@ public final class JsonCreatorInfo {
         defaults,
         generatedCodec,
         defaultMethods,
+        defaultsReceiver,
         parameterNames,
         defaultConstructor,
         defaultMaskBits,
@@ -136,6 +140,7 @@ public final class JsonCreatorInfo {
         null,
         new JsonCreatorFieldInfo[0],
         new Object[0],
+        null,
         null,
         null,
         null,
@@ -159,6 +164,7 @@ public final class JsonCreatorInfo {
       Object[] defaults,
       GeneratedJsonCodec<?> generatedCodec,
       Method[] defaultMethods,
+      Object defaultsReceiver,
       String[] parameterNames,
       Constructor<?> defaultConstructor,
       int[] defaultMaskBits,
@@ -178,10 +184,11 @@ public final class JsonCreatorInfo {
     this.fixedInstance = fixedInstance;
     this.parameterNames = parameterNames == null ? null : parameterNames.clone();
     this.defaultMethods = defaultMethods == null ? null : defaultMethods.clone();
+    this.defaultsReceiver = defaultsReceiver;
     defaultInvokers =
         this.defaultMethods == null
             ? null
-            : buildDefaultInvokers(ownerType, executable, this.defaultMethods);
+            : buildDefaultInvokers(ownerType, executable, this.defaultMethods, defaultsReceiver);
     defaultConstructorInvoker =
         defaultConstructor == null
             ? null
@@ -210,6 +217,7 @@ public final class JsonCreatorInfo {
     defaults = source.defaults;
     generatedCodec = source.generatedCodec;
     defaultMethods = source.defaultMethods;
+    defaultsReceiver = source.defaultsReceiver;
     defaultInvokers = source.defaultInvokers;
     defaultConstructor = source.defaultConstructor;
     defaultConstructorInvoker = source.defaultConstructorInvoker;
@@ -409,6 +417,12 @@ public final class JsonCreatorInfo {
     return defaultMethods == null ? null : defaultMethods[index];
   }
 
+  /** Returns the receiver of instance constructor defaults, or null when they are static. */
+  @Internal
+  public Object defaultsReceiver() {
+    return defaultsReceiver;
+  }
+
   /** Evaluates one prevalidated language-defined constructor default. */
   @Internal
   public Object defaultValue(int index, Object[] arguments) {
@@ -596,7 +610,7 @@ public final class JsonCreatorInfo {
   }
 
   private static MethodHandle[] buildDefaultInvokers(
-      Class<?> ownerType, Executable executable, Method[] defaultMethods) {
+      Class<?> ownerType, Executable executable, Method[] defaultMethods, Object defaultsReceiver) {
     if (defaultMethods.length != executable.getParameterCount()) {
       throw new ForyJsonException("Constructor default count does not match " + executable);
     }
@@ -607,8 +621,13 @@ public final class JsonCreatorInfo {
       if (method == null) {
         continue;
       }
-      if ((method.getDeclaringClass() != ownerType
-              || !java.lang.reflect.Modifier.isStatic(method.getModifiers()))
+      // A default is either a static member of the created type or an instance member of the
+      // language singleton that owns it, such as a Scala companion of a nested case class.
+      boolean instanceDefault = !java.lang.reflect.Modifier.isStatic(method.getModifiers());
+      Class<?> declaringClass = method.getDeclaringClass();
+      if ((instanceDefault
+              ? defaultsReceiver == null || !declaringClass.isInstance(defaultsReceiver)
+              : defaultsReceiver != null || declaringClass != ownerType)
           || !method.getName().equals("$lessinit$greater$default$" + (i + 1))
           || method.getParameterCount() > i
           || !java.lang.reflect.Modifier.isPublic(method.getModifiers())
@@ -622,8 +641,10 @@ public final class JsonCreatorInfo {
         }
       }
       try {
-        MethodHandle target =
-            _JDKAccess._trustedLookup(method.getDeclaringClass()).unreflect(method);
+        MethodHandle target = _JDKAccess._trustedLookup(declaringClass).unreflect(method);
+        if (instanceDefault) {
+          target = target.bindTo(defaultsReceiver);
+        }
         invokers[i] = workspaceInvoker(target, dependencyTypes);
       } catch (IllegalAccessException e) {
         throw new ForyJsonException("Cannot access JSON constructor default " + method, e);

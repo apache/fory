@@ -437,8 +437,15 @@ final class ForyJsonGraalVMFeature implements Feature {
       }
       for (int i = 0; i < creator.argumentCount(); i++) {
         Method defaultMethod = creator.defaultMethod(i);
-        if (defaultMethod != null) {
+        if (defaultMethod == null) {
+          continue;
+        }
+        if (Modifier.isStatic(defaultMethod.getModifiers())) {
           registerCreator(defaultMethod);
+        } else if (processedCreators.add(defaultMethod)) {
+          // An instance default is invoked on the language singleton that owns it, so its bound
+          // invoker already lives in the creator metadata. Only reflection access is needed.
+          RuntimeReflection.register(defaultMethod);
         }
       }
     }

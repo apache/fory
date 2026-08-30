@@ -25,6 +25,7 @@ import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.annotation.{JsonIgnore, JsonProperty, JsonUnwrapped}
 import org.apache.fory.json.codec.AbstractJsonValueCodec
 import org.apache.fory.json.reader.JsonReader
+import org.apache.fory.json.resolver.UnsupportedJsonTypeException
 import org.apache.fory.json.writer.JsonWriter
 import org.apache.fory.reflect.TypeRef
 import org.scalatest.funsuite.AnyFunSuite
@@ -54,6 +55,20 @@ case class UnwrappedState(
     @JsonUnwrapped details: UnwrappedDetails = UnwrappedDetails()
 ) {
   var label: String = "default-label"
+}
+
+object NestedModels {
+  case class Point(x: Int, y: String)
+
+  case class Region(origin: Point, size: Int = 2)
+
+  object Inner {
+    case class Depth(level: Int)
+  }
+}
+
+class OuterHolder {
+  case class Bound(id: Int)
 }
 
 case class NullableRequired(value: String)
@@ -171,6 +186,30 @@ class ScalaJsonSuite extends AnyFunSuite {
       assert(value.details.code == 5)
       assert(value.details.note == "child")
     }
+  }
+
+  test("case class declared inside an object") {
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      val region = NestedModels.Region(NestedModels.Point(1, "a"), 4)
+      val encoded = json.toJson(region)
+      assert(encoded.contains("\"origin\""))
+      assert(json.fromJson(encoded, classOf[NestedModels.Region]) == region)
+      // Scala 2 keeps `apply` and the constructor defaults on the companion singleton because it
+      // emits static forwarders only for a top-level companion.
+      val defaulted = json.fromJson("{\"origin\":{\"x\":1,\"y\":\"a\"}}", classOf[NestedModels.Region])
+      assert(defaulted.size == 2)
+      val depth = NestedModels.Inner.Depth(3)
+      assert(json.fromJson(json.toJson(depth), classOf[NestedModels.Inner.Depth]) == depth)
+    }
+  }
+
+  test("case class declared inside a class is rejected") {
+    val json = ForyJsonScala.builder().withCodegen(false).build()
+    val holder = new OuterHolder
+    assertThrows[UnsupportedJsonTypeException](json.toJson(holder.Bound(1)))
   }
 
   test("required constructor values cannot be omitted as null") {

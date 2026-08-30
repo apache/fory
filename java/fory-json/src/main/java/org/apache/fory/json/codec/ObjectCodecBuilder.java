@@ -1720,6 +1720,7 @@ final class ObjectCodecBuilder {
         creatorDefaults(rawTypes),
         generatedCodec,
         defaultMethods,
+        objectModel.defaultsReceiver(),
         names,
         objectModel.defaultConstructor(),
         defaultMaskBits,
