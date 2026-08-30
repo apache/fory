@@ -948,7 +948,7 @@ public abstract class TypeResolver {
               && cachedTypeInfo.getTypeDef() == localTypeDef) {
             typeInfo = cachedTypeInfo;
           } else {
-            typeInfo = createMetaSharedTypeInfo(localTypeDef, targetClass);
+            typeInfo = getOrCreateLocalTypeInfo(localTypeDef, targetClass);
           }
         }
       }
@@ -1145,7 +1145,7 @@ public abstract class TypeResolver {
     checkClassForDeserialization(cls);
     TypeDef localTypeDef = matchingLocalTypeDef(headerHash, cls);
     if (localTypeDef != null) {
-      return createMetaSharedTypeInfo(localTypeDef, cls);
+      return getOrCreateLocalTypeInfo(localTypeDef, cls);
     }
     TypeInfo typeInfo = extRegistry.typeInfoByHeaderHash.get(headerHash);
     return typeInfo != null ? typeInfo : cacheMetaSharedTypeInfo(typeDef, cls);
@@ -1155,6 +1155,17 @@ public abstract class TypeResolver {
     TypeInfo typeInfo = createMetaSharedTypeInfo(typeDef, cls);
     extRegistry.typeInfoByHeaderHash.put(TypeDef.headerHash(typeDef.getId()), typeInfo);
     return typeInfo;
+  }
+
+  private TypeInfo getOrCreateLocalTypeInfo(TypeDef localTypeDef, Class<?> cls) {
+    long headerHash = TypeDef.headerHash(localTypeDef.getId());
+    TypeInfo typeInfo = extRegistry.typeInfoByHeaderHash.get(headerHash);
+    // A target-local match must replace a remote hint, but once the exact local owner is cached it
+    // must be reused. Recreating it resubmits compatible codec generation for every scoped read.
+    if (typeInfo != null && typeInfo.getType() == cls && typeInfo.getTypeDef() == localTypeDef) {
+      return typeInfo;
+    }
+    return cacheMetaSharedTypeInfo(localTypeDef, cls);
   }
 
   private TypeInfo buildCachedMetaSharedTypeInfo(TypeDef typeDef) {
@@ -1192,9 +1203,9 @@ public abstract class TypeResolver {
     checkClassForDeserialization(cls);
     TypeDef localTypeDef = matchingLocalTypeDef(TypeDef.headerHash(typeDef.getId()), cls);
     if (localTypeDef != null) {
-      // Local metadata is an expected owner, not a remotely checked cache entry. Keep it out of
-      // both remote caches so future header hits cannot mistake local warm-up for remote approval.
-      return createMetaSharedTypeInfo(localTypeDef, cls);
+      // This resolver cache stores the concrete owner selected by the schema hash. Shared remote
+      // TypeDef state and schema-version accounting remain untouched for an exact-local match.
+      return getOrCreateLocalTypeInfo(localTypeDef, cls);
     }
     Object remoteTypeKey = remoteTypeKey(typeDef);
     sharedRegistry.checkRemoteTypeDefLimit(typeDef, remoteTypeKey);

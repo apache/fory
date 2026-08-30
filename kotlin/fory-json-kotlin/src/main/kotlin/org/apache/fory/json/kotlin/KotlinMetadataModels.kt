@@ -634,6 +634,8 @@ internal object KotlinMetadataTypes {
         ?: throw ForyJsonException("Unsupported Kotlin metadata on ${type.name}: missing @Metadata")
     val metadata =
       try {
+        // readStrict owns metadata-version compatibility. Callers validate the concrete Kotlin
+        // declaration and its matching JVM members instead of gating compiler minor versions.
         KotlinClassMetadata.readStrict(annotation)
       } catch (cause: IllegalArgumentException) {
         throw ForyJsonException("Unsupported Kotlin metadata on ${type.name}", cause)
@@ -641,12 +643,6 @@ internal object KotlinMetadataTypes {
     if (metadata !is KotlinClassMetadata.Class) {
       throw ForyJsonException(
         "Unsupported Kotlin metadata on ${type.name}: not a class declaration",
-      )
-    }
-    val version = metadata.version
-    if (version.major != 2 || version.minor != 3) {
-      throw ForyJsonException(
-        "Unsupported Kotlin metadata on ${type.name}: ABI $version; expected 2.3",
       )
     }
     return metadata

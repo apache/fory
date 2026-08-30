@@ -25,8 +25,8 @@ Fory JSON; it does not change Fory's binary protocols.
 
 ## Installation
 
-The runtime supports Kotlin/JVM metadata ABI 2.3 and is built with Kotlin 2.3.20. Use the same Fory
-version for every module:
+The runtime accepts model metadata supported by Kotlin's strict metadata reader and is built with
+Kotlin 2.3.20. Use the same Fory version for every module:
 
 ```kotlin title="build.gradle.kts"
 plugins {

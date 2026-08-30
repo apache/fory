@@ -33,8 +33,8 @@ const fieldEncoder = new MetaStringEncoder("$", "_");
 const fieldDecoder = new MetaStringDecoder("$", "_");
 const pkgEncoder = new MetaStringEncoder(".", "_");
 const pkgDecoder = new MetaStringDecoder(".", "_");
-const typeNameEncoder = new MetaStringEncoder("$", ".");
-const typeNameDecoder = new MetaStringDecoder("$", ".");
+const typeNameEncoder = new MetaStringEncoder("$", "_");
+const typeNameDecoder = new MetaStringDecoder("$", "_");
 
 const COMPRESS_META_FLAG = 1n << 8n;
 const RESERVED_META_FLAGS = 0b111n << 9n;

@@ -45,6 +45,10 @@ public class TypeDefHeaderHashTest {
     public int value;
   }
 
+  public static class OtherHeaderHashType {
+    public long value;
+  }
+
   @Test
   public void testLocalHashHit() {
     Fory writer = newFory(null);
@@ -66,8 +70,40 @@ public class TypeDefHeaderHashTest {
 
     assertSame(typeInfo.getTypeDef(), localTypeDef);
     assertEquals(frame.readerIndex(), frame.size());
-    assertSame(resolver.extRegistry.typeInfoByHeaderHash.get(headerHash), remoteOwner);
+    assertSame(resolver.extRegistry.typeInfoByHeaderHash.get(headerHash), typeInfo);
     assertSame(sharedRegistry.remoteTypeDefByHeaderHash.get(headerHash), wireTypeDef);
+  }
+
+  @Test
+  public void testLocalTypeInfoReuse() {
+    Fory writer = newFory(null);
+    writer.register(HeaderHashType.class, TYPE_NAME);
+    writer.register(OtherHeaderHashType.class, "test.OtherHeaderHashType");
+    TypeDef firstTypeDef = writer.getTypeResolver().getTypeDef(HeaderHashType.class, true);
+    TypeDef secondTypeDef = writer.getTypeResolver().getTypeDef(OtherHeaderHashType.class, true);
+
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory reader = newFory(sharedRegistry);
+    reader.register(HeaderHashType.class, TYPE_NAME);
+    reader.register(OtherHeaderHashType.class, "test.OtherHeaderHashType");
+    TypeResolver resolver = reader.getTypeResolver();
+
+    TypeInfo first =
+        resolver.readSharedClassMeta(
+            prepare(reader, opaqueMetaFrame(firstTypeDef, 5, 5)), HeaderHashType.class);
+    TypeInfo second =
+        resolver.readSharedClassMeta(
+            prepare(reader, opaqueMetaFrame(secondTypeDef, 5, 5)), OtherHeaderHashType.class);
+    TypeInfo firstAgain =
+        resolver.readSharedClassMeta(
+            prepare(reader, opaqueMetaFrame(firstTypeDef, 5, 5)), HeaderHashType.class);
+    TypeInfo secondAgain =
+        resolver.readSharedClassMeta(
+            prepare(reader, opaqueMetaFrame(secondTypeDef, 5, 5)), OtherHeaderHashType.class);
+
+    assertSame(firstAgain, first);
+    assertSame(secondAgain, second);
+    Assert.assertTrue(sharedRegistry.remoteTypeDefByHeaderHash.isEmpty());
   }
 
   @Test
@@ -88,7 +124,7 @@ public class TypeDefHeaderHashTest {
     TypeInfo typeInfo = readTypeInfo(reader, typeFrame(typeId, wireTypeDef));
 
     assertSame(typeInfo.getTypeDef(), localTypeDef);
-    Assert.assertNull(resolver.extRegistry.typeInfoByHeaderHash.get(headerHash));
+    assertSame(resolver.extRegistry.typeInfoByHeaderHash.get(headerHash), typeInfo);
     Assert.assertFalse(sharedRegistry.remoteTypeDefByHeaderHash.containsKey(headerHash));
   }
 
