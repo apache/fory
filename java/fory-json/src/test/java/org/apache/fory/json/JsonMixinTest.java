@@ -267,7 +267,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
         newJsonBuilder().registerMixin(RepresentationRemoveMixin.class).build();
     assertEquals(
         representation.toJson(new RepresentationRemoveTarget()),
-        "{\"name\":\"name\",\"raw\":\"1\",\"bytes\":[1],"
+        "{\"name\":\"name\",\"raw\":\"1\",\"bytes\":\"AQ==\","
             + "\"child\":{\"label\":\"kid\"},\"hidden\":7}");
 
     ForyJson anyField = newJsonBuilder().registerMixin(AnyFieldRemoveMixin.class).build();

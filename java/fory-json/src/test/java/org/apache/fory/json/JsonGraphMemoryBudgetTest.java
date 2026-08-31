@@ -174,7 +174,7 @@ public class JsonGraphMemoryBudgetTest extends ForyJsonTestModels {
     assertEquals(
         assertClassBudget("[true]", boolean[].class, headerBytes + Byte.BYTES),
         new boolean[] {true});
-    assertEquals(assertClassBudget("[1]", byte[].class, headerBytes + Byte.BYTES), new byte[] {1});
+    assertEquals(assertClassBudget("\"AQ==\"", byte[].class, headerBytes + Byte.BYTES), new byte[] {1});
     assertEquals(
         assertClassBudget("[2]", short[].class, headerBytes + Short.BYTES), new short[] {2});
     assertEquals(assertClassBudget("[3]", int[].class, headerBytes + Integer.BYTES), new int[] {3});

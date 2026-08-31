@@ -58,7 +58,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
     this.componentType = componentType;
   }
 
-  public static <T> ArrayCodec<T> create(
+  public static <T> JsonValueCodec<T> create(
       Class<T> arrayType, TypeRef<?> arrayTypeRef, JsonTypeResolver resolver) {
     if (!arrayType.isArray()) {
       throw new ForyJsonException("Unsupported JSON array type " + arrayType);
@@ -70,7 +70,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   @Internal
-  public static <T> ArrayCodec<T> create(Class<T> arrayType, JsonTypeInfo componentTypeInfo) {
+  public static <T> JsonValueCodec<T> create(Class<T> arrayType, JsonTypeInfo componentTypeInfo) {
     if (!arrayType.isArray()) {
       throw new ForyJsonException("Unsupported JSON array type " + arrayType);
     }
@@ -90,7 +90,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         && componentCodec == ScalarCodecs.ShortCodec.PRIMITIVE) {
       return bind(ShortArrayCodec.INSTANCE);
     } else if (componentType == byte.class && componentCodec == ScalarCodecs.ByteCodec.PRIMITIVE) {
-      return bind(ByteArrayCodec.INSTANCE);
+      return bind(Base64ByteArrayCodec.INSTANCE);
     } else if (componentType == char.class && componentCodec == ScalarCodecs.CharCodec.PRIMITIVE) {
       return bind(CharArrayCodec.INSTANCE);
     } else if (componentType == float.class
@@ -161,7 +161,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
 
   /** Returns the exact unsigned primitive-array specialization for one semantic array id. */
   @Internal
-  public static <T> ArrayCodec<T> createUnsignedPrimitive(
+  public static <T> JsonValueCodec<T> createUnsignedPrimitive(
       Class<T> arrayType, int typeId, boolean writeLongAsString) {
     if (arrayType == byte[].class && typeId == Types.UINT8_ARRAY) {
       return bind(ByteArrayCodec.UNSIGNED);
@@ -183,9 +183,9 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   @SuppressWarnings("unchecked")
-  private static <T> ArrayCodec<T> bind(ArrayCodec<?> codec) {
+  private static <T> JsonValueCodec<T> bind(JsonValueCodec<?> codec) {
     // The factory has matched the runtime array class to this exact singleton implementation.
-    return (ArrayCodec<T>) codec;
+    return (JsonValueCodec<T>) codec;
   }
 
   // Package visibility lets Java 8 nested codecs call these helpers without synthetic accessors.

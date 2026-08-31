@@ -45,6 +45,7 @@ import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.NativeByteOrder;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 
 /**
  * Representation-neutral JSON cursor and common scalar parsing owner.
@@ -511,7 +512,9 @@ public abstract class JsonReader {
     }
     int end = position;
     int padding = (int) (shape & 3);
-    byte[] decoded = new byte[(encodedLength >>> 2) * 3 - padding];
+    int decodedLength = (encodedLength >>> 2) * 3 - padding;
+    reserveGraphMemory(GraphMemoryEstimates.objectArrayBytes() + decodedLength);
+    byte[] decoded = new byte[decodedLength];
     position = bodyStart;
     decodeBase64(decoded, encodedLength);
     position = end;
