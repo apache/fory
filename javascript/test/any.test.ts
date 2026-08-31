@@ -18,6 +18,7 @@
  */
 
 import Fory, { Type } from "../packages/core/index";
+import { TypeId } from "../packages/core/lib/type";
 import { describe, expect, test } from "@jest/globals";
 
 describe("bool", () => {
@@ -59,7 +60,7 @@ describe("bool", () => {
   test("should write float work", () => {
     const fory = new Fory({ compatible: false });
     const bin = fory.serialize(123.123);
-    expect(fory.deserialize(bin).toFixed(3)).toBe("123.123");
+    expect(fory.deserialize(bin)).toBe(123.123);
   });
 
   test("should write bigint work", () => {
@@ -116,7 +117,28 @@ describe("bool", () => {
     expect(result).toEqual("hello");
   });
 
-  test("should keep float64 precision for non-integer values", () => {
+  test.each([
+    [1.5, TypeId.FLOAT32],
+    [-1.5, TypeId.FLOAT32],
+    [2 ** -149, TypeId.FLOAT32],
+    [-(2 ** -149), TypeId.FLOAT32],
+    [0.1, TypeId.FLOAT64],
+    [1 / 3, TypeId.FLOAT64],
+    [-0.7, TypeId.FLOAT64],
+    [1.5 + Number.EPSILON, TypeId.FLOAT64],
+    [Number.MIN_VALUE, TypeId.FLOAT64],
+    [-Number.MIN_VALUE, TypeId.FLOAT64],
+    [3000000000.5, TypeId.FLOAT64],
+  ])("should dispatch %p as type %p", (value, typeId) => {
+    const fory = new Fory({ compatible: false });
+    // Round trips alone also pass if every value is written as float64.
+    expect(fory.typeResolver.getSerializerByData(value)).toBe(
+      fory.typeResolver.getSerializerById(typeId),
+    );
+    expect(fory.deserialize(fory.serialize(value))).toBe(value);
+  });
+
+  test("should preserve mixed float precision", () => {
     // Non-integer numbers narrow to float32 only when exactly representable;
     // otherwise the dynamic dispatch must pick float64.
     const fory = new Fory({ compatible: false });
