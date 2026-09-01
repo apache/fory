@@ -105,6 +105,11 @@ public data class PlatformRoot(
   public val profile: PlatformJavaProfile,
   @field:JsonCodec(PlatformTokenCodec::class) public val token: PlatformToken,
   public val box: PlatformBox<String>,
+  @field:JsonByteArray(JsonByteArray.Format.ARRAY)
+  public val numbers: ByteArray = byteArrayOf(1, -2, 3),
+  @get:JsonByteArray(JsonByteArray.Format.BASE64)
+  public val binary: ByteArray = byteArrayOf(1, -2, 3),
+  public val defaultBytes: ByteArray = byteArrayOf(1, -2, 3),
 )
 
 internal fun platformRootValue(): PlatformRoot =
@@ -117,10 +122,3 @@ internal fun platformRootValue(): PlatformRoot =
     token = PlatformToken("custom"),
     box = PlatformBox("generic"),
   )
-
-@JsonType
-public data class PlatformByteArrays(
-  @field:JsonByteArray(JsonByteArray.Format.ARRAY) public val numbers: ByteArray,
-  @get:JsonByteArray(JsonByteArray.Format.BASE64) public val binary: ByteArray,
-  public val defaultBytes: ByteArray,
-)

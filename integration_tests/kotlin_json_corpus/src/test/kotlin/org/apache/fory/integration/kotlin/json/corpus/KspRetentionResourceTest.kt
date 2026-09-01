@@ -47,14 +47,14 @@ public class KspRetentionResourceTest {
     assertTrue(sealed.contains("class $PACKAGE.PlatformSquare"), sealed)
     assertTrue(sealed.contains("class $PACKAGE.PlatformOpen"), sealed)
     assertFalse(sealed.contains("class $PACKAGE.PlatformOpenDescendant"), sealed)
-    assertConstructor(rules("PlatformRoot"), "$PACKAGE.PlatformTokenCodec")
-    val byteArrays = rules("PlatformByteArrays")
+    val root = rules("PlatformRoot")
+    assertConstructor(root, "$PACKAGE.PlatformTokenCodec")
     assertTrue(
-      byteArrays.contains("@interface org.apache.fory.json.annotation.JsonByteArray"),
-      byteArrays
+      root.contains("@interface org.apache.fory.json.annotation.JsonByteArray"),
+      root,
     )
-    assertConstructor(byteArrays, "org.apache.fory.json.codec.Base64ByteArrayCodec")
-    assertConstructor(byteArrays, "org.apache.fory.json.codec.ArrayCodec\$SignedByteArrayCodec")
+    assertConstructor(root, "org.apache.fory.json.codec.Base64ByteArrayCodec")
+    assertConstructor(root, "org.apache.fory.json.codec.ArrayCodec\$SignedByteArrayCodec")
     assertConstructor(
       rules("PlatformDirectOverride"),
       "$PACKAGE.PlatformDirectOverrideCodec",
@@ -105,7 +105,6 @@ public class KspRetentionResourceTest {
       setOf(
         "META-INF/proguard/fory-json-$PACKAGE.PlatformAccount.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformBox.pro",
-        "META-INF/proguard/fory-json-$PACKAGE.PlatformByteArrays.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformCircle.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformDirectOverride.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformId.pro",
