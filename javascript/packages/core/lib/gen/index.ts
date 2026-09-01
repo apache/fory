@@ -18,7 +18,7 @@
  */
 
 import { TypeId, Serializer } from "../type";
-import { TypeInfo } from "../typeInfo";
+import { containerDeclaresElementTypes, TypeInfo } from "../typeInfo";
 import { CodegenRegistry } from "./router";
 import { CodecBuilder } from "./builder";
 import { Scope } from "./scope";
@@ -175,6 +175,12 @@ export class Gen {
 
   generateSerializer(typeInfo: TypeInfo) {
     this.traversalContainer(typeInfo);
+    if (containerDeclaresElementTypes(typeInfo)) {
+      // The type-id keyed registry only holds the dynamic container
+      // serializer; a container with declared element types gets a dedicated
+      // serializer for this registration.
+      return this.generate(typeInfo);
+    }
     const serializer = this.typeResolver.getSerializerByTypeInfo(typeInfo);
     if (serializer?._initialized) {
       return serializer;

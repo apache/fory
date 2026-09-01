@@ -77,6 +77,25 @@ describe("array", () => {
     expect(deserialize(serialize({ c: [o, o] }))).toEqual({ c: [o, o] });
   });
 
+  test("should root list use declared element type", () => {
+    // A root Type.list(...) registration previously fell back to the internal
+    // any-typed list serializer, silently discarding declared element types:
+    // declared float32 must narrow, while dynamic dispatch keeps float64.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.list(Type.float32()));
+    expect(deserialize(serialize([0.1]))).toEqual([Math.fround(0.1)]);
+
+    // The dynamic list serializer must stay untouched by the registration.
+    expect(fory.deserialize(fory.serialize([0.1, "a"]))).toEqual([0.1, "a"]);
+  });
+
+  test("should root set use declared element type", () => {
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.set(Type.float32()));
+    expect(deserialize(serialize(new Set([0.1])))).toEqual(new Set([Math.fround(0.1)]));
+    expect(fory.deserialize(fory.serialize(new Set([0.1, "a"])))).toEqual(new Set([0.1, "a"]));
+  });
+
   test("preserves a self-reference in a dynamic list", () => {
     const fory = new Fory({ compatible: false, ref: true });
     const value: any[] = [];
