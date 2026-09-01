@@ -45,7 +45,6 @@ import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.NativeByteOrder;
-import org.apache.fory.serializer.GraphMemoryEstimates;
 
 /**
  * Representation-neutral JSON cursor and common scalar parsing owner.
@@ -535,7 +534,7 @@ public abstract class JsonReader {
       throw error("Invalid Base64 JSON string length");
     }
     int decodedLength = (bodyLength >>> 2) * 3 - padding;
-    reserveGraphMemory(GraphMemoryEstimates.objectArrayBytes() + decodedLength);
+    // Base64 is a binary leaf: validated input bounds its storage, not the graph memory budget.
     byte[] decoded = new byte[decodedLength];
     decodeBase64(decoded, bodyStart, end);
     return decoded;
@@ -552,7 +551,6 @@ public abstract class JsonReader {
     int end = position;
     int padding = (int) (shape & 3);
     int decodedLength = (encodedLength >>> 2) * 3 - padding;
-    reserveGraphMemory(GraphMemoryEstimates.objectArrayBytes() + decodedLength);
     byte[] decoded = new byte[decodedLength];
     position = bodyStart;
     decodeBase64Escaped(decoded, encodedLength);
@@ -615,8 +613,7 @@ public abstract class JsonReader {
   private void decodeBase64Escaped(byte[] decoded, int encodedLength) {
     int output = 0;
     for (int index = 0; index < encodedLength; index += 4) {
-      int bits =
-          (base64Digit(readBase64Char()) << 18) | (base64Digit(readBase64Char()) << 12);
+      int bits = (base64Digit(readBase64Char()) << 18) | (base64Digit(readBase64Char()) << 12);
       char third = readBase64Char();
       char fourth = readBase64Char();
       if (third != '=') {

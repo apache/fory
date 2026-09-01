@@ -20,6 +20,7 @@
 package org.apache.fory.integration.kotlin.json.corpus
 
 import org.apache.fory.json.ForyJson
+import org.apache.fory.json.kotlin.jsonTypeRef
 
 /** Executes the same representative round trip on the JVM, Android, and Native Image. */
 public object PlatformCorpusChecks {
@@ -32,6 +33,23 @@ public object PlatformCorpusChecks {
     check(text.contains("\"display_label\":\"mixin\""))
     verifyRoot(json.fromJson(text, type))
     verifyRoot(json.fromJson(json.toJsonBytes(decoded, type), type))
+    verifyByteArrays(json)
+  }
+
+  private fun verifyByteArrays(json: ForyJson) {
+    val type = jsonTypeRef<PlatformByteArrays>()
+    val bytes = byteArrayOf(1, -2, 3)
+    val value = PlatformByteArrays(bytes, bytes, bytes)
+    val text = json.toJson(value, type)
+    check(text.contains("\"numbers\":[1,-2,3]"))
+    check(text.contains("\"binary\":\"Af4D\""))
+    check(text.contains("\"defaultBytes\":\"Af4D\""))
+    for (decoded in
+      listOf(json.fromJson(text, type), json.fromJson(json.toJsonBytes(value, type), type))) {
+      check(decoded.numbers.contentEquals(bytes))
+      check(decoded.binary.contentEquals(bytes))
+      check(decoded.defaultBytes.contentEquals(bytes))
+    }
   }
 
   private fun verifyRoot(actual: PlatformRoot) {

@@ -20,6 +20,7 @@
 package org.apache.fory.integration.kotlin.json.corpus
 
 import kotlin.jvm.JvmInline
+import org.apache.fory.json.annotation.JsonByteArray
 import org.apache.fory.json.annotation.JsonCodec
 import org.apache.fory.json.annotation.JsonMixin
 import org.apache.fory.json.annotation.JsonSubTypes
@@ -116,3 +117,10 @@ internal fun platformRootValue(): PlatformRoot =
     token = PlatformToken("custom"),
     box = PlatformBox("generic"),
   )
+
+@JsonType
+public data class PlatformByteArrays(
+  @field:JsonByteArray(JsonByteArray.Format.ARRAY) public val numbers: ByteArray,
+  @get:JsonByteArray(JsonByteArray.Format.BASE64) public val binary: ByteArray,
+  public val defaultBytes: ByteArray,
+)

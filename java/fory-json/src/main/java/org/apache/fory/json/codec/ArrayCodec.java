@@ -1262,7 +1262,6 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public abstract static class ByteArrayCodec extends ArrayCodec<byte[]> {
-    private static final ByteArrayCodec INSTANCE = new SignedByteArrayCodec();
     private static final ByteArrayCodec UNSIGNED = new UnsignedByteArrayCodec();
 
     private ByteArrayCodec() {
@@ -1394,7 +1393,10 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
     }
   }
 
-  private static final class SignedByteArrayCodec extends ByteArrayCodec {
+  /** A complete {@code byte[]} codec using a JSON array of signed byte values. */
+  public static final class SignedByteArrayCodec extends ByteArrayCodec {
+    public SignedByteArrayCodec() {}
+
     @Override
     void writeElement(StringJsonWriter writer, byte value) {
       writer.writeInt(value);

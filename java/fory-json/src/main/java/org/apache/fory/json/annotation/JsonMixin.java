@@ -37,7 +37,7 @@ import java.lang.annotation.Target;
  * access, invocation, and value.
  *
  * <p>A Mixin may contribute {@link JsonAnyGetter}, {@link JsonAnyProperty}, {@link JsonAnySetter},
- * {@link JsonBase64}, {@link JsonCodec}, {@link JsonCreator}, {@link JsonFormat}, {@link
+ * {@link JsonByteArray}, {@link JsonCodec}, {@link JsonCreator}, {@link JsonFormat}, {@link
  * JsonIgnore}, {@link JsonProperty}, {@link JsonPropertyOrder}, {@link JsonRawValue}, {@link
  * JsonSubTypes}, {@link JsonUnwrapped}, {@link JsonValidator}, and {@link JsonValue}. {@link
  * JsonType} remains a marker declared directly on a model and cannot be contributed or removed by a

@@ -49,7 +49,7 @@ import org.apache.fory.json.annotation.ForyJsonProvider;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonAnySetter;
-import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonFormat;
@@ -489,6 +489,20 @@ public final class ForyJsonExample {
         new String(json.toJsonBytes(raw), StandardCharsets.UTF_8).equals("{\"body\":{\"id\":1}}"));
     Preconditions.checkArgument(
         json.fromJson("{\"body\":\"text\"}", RawValue.class).body.equals("text"));
+    ArrayBytes arrayBytes = new ArrayBytes();
+    arrayBytes.value = new byte[] {1, -2, 3};
+    Preconditions.checkArgument(json.toJson(arrayBytes).equals("{\"value\":[1,-2,3]}"));
+    Preconditions.checkArgument(
+        new String(json.toJsonBytes(arrayBytes), StandardCharsets.UTF_8)
+            .equals("{\"value\":[1,-2,3]}"));
+    Preconditions.checkArgument(
+        Arrays.equals(
+            json.fromJson("{\"value\":[1,-2,3]}", ArrayBytes.class).value, arrayBytes.value));
+    Preconditions.checkArgument(
+        Arrays.equals(
+            json.fromJson("{\"value\":[1,-2,3]}".getBytes(StandardCharsets.UTF_8), ArrayBytes.class)
+                .value,
+            arrayBytes.value));
     Base64Bytes base64Bytes = new Base64Bytes();
     base64Bytes.value = new byte[] {1, 2, 3};
     Preconditions.checkArgument(json.toJson(base64Bytes).equals("{\"value\":\"AQID\"}"));
@@ -1274,8 +1288,15 @@ public final class ForyJsonExample {
   }
 
   @JsonType
+  public static final class ArrayBytes {
+    @JsonByteArray(JsonByteArray.Format.ARRAY)
+    public byte[] value;
+  }
+
+  @JsonType
   public static final class Base64Bytes {
-    @JsonBase64 public byte[] value;
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    public byte[] value;
   }
 
   @JsonType

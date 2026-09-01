@@ -31,7 +31,7 @@ import java.util.List;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
-import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonIgnore;
@@ -187,7 +187,7 @@ final class JsonValueDeclaration {
       throw new ForyJsonException("Invalid @JsonValue field " + field);
     }
     if (registry.annotation(type, field, JsonCodec.class) != null
-        || registry.annotation(type, field, JsonBase64.class) != null
+        || registry.annotation(type, field, JsonByteArray.class) != null
         || registry.annotation(type, field, JsonFormat.class) != null
         || registry.annotation(type, field, JsonAnyProperty.class) != null
         || registry.annotation(type, field, JsonUnwrapped.class) != null
@@ -209,7 +209,7 @@ final class JsonValueDeclaration {
       throw new ForyJsonException("Invalid @JsonValue method " + method);
     }
     if (registry.annotation(type, method, JsonCodec.class) != null
-        || registry.annotation(type, method, JsonBase64.class) != null
+        || registry.annotation(type, method, JsonByteArray.class) != null
         || registry.annotation(type, method, JsonAnyGetter.class) != null
         || registry.annotation(type, method, JsonUnwrapped.class) != null
         || registry.annotation(type, method, JsonIgnore.class) != null) {

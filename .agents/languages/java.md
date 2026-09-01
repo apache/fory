@@ -91,6 +91,11 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   and locale types, `Float16`, `BFloat16`, and user-defined types remain registerable. Field/type
   `@JsonCodec`, `@JsonFormat`, and semantic metadata remain separate from exact registry mutation
   and are fixed by the target class or effective Mixin.
+- Fory JSON `byte[]` defaults to a Base64 string. `@JsonByteArray` selects required
+  `Format.BASE64` or `Format.ARRAY` for an exact byte-array field or getter in both directions.
+  Keep selection in the existing property codec path, including Mixin, Java processor, Kotlin
+  KSP, and GraalVM handling. Numeric arrays use signed-byte semantics and graph-memory accounting;
+  Base64 values remain binary leaves outside that budget.
 - Fory JSON `ObjectCodec` instances are resolver-owned and must not be registered directly. A
   language module that supplies a custom object model must use a `JsonCodecFactory`. A configurable
   factory's stable key must cover every option that can change its created codec class, object

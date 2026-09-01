@@ -51,7 +51,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.json.annotation.ForyJsonProvider;
 import org.apache.fory.json.annotation.JsonAnySetter;
-import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonMixin;
@@ -60,6 +60,7 @@ import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.annotation.JsonValidator;
 import org.apache.fory.json.annotation.JsonValue;
+import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.Base64ByteArrayCodec;
 import org.apache.fory.json.codec.JsonUnwrappedInfo;
 import org.apache.fory.json.codec.ObjectCodec;
@@ -999,8 +1000,12 @@ final class ForyJsonGraalVMFeature implements Feature {
 
   private void registerOccurrenceCodecs(JsonMixinView annotations, AnnotatedElement element) {
     registerCodecs(annotation(annotations, element, JsonCodec.class));
-    if (annotation(annotations, element, JsonBase64.class) != null) {
-      registerCodec(Base64ByteArrayCodec.class);
+    JsonByteArray byteArray = annotation(annotations, element, JsonByteArray.class);
+    if (byteArray != null) {
+      registerCodec(
+          byteArray.value() == JsonByteArray.Format.ARRAY
+              ? ArrayCodec.SignedByteArrayCodec.class
+              : Base64ByteArrayCodec.class);
     }
   }
 

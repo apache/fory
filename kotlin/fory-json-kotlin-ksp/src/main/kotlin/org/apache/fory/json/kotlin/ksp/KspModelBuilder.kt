@@ -47,7 +47,7 @@ internal const val JSON_MIXIN: String = "org.apache.fory.json.annotation.JsonMix
 internal const val JSON_SUB_TYPES: String = "org.apache.fory.json.annotation.JsonSubTypes"
 private const val JSON_SUB_TYPE = "org.apache.fory.json.annotation.JsonSubTypes.Type"
 private const val JSON_CODEC = "org.apache.fory.json.annotation.JsonCodec"
-private const val JSON_BASE64 = "org.apache.fory.json.annotation.JsonBase64"
+private const val JSON_BYTE_ARRAY = "org.apache.fory.json.annotation.JsonByteArray"
 private const val JSON_ANY_SETTER = "org.apache.fory.json.annotation.JsonAnySetter"
 private const val JSON_VALIDATOR = "org.apache.fory.json.annotation.JsonValidator"
 private const val JSON_CREATOR = "org.apache.fory.json.annotation.JsonCreator"
@@ -1147,7 +1147,14 @@ internal class KspModelBuilder(
     result.annotations += name
     when (name) {
       JSON_CODEC -> collectCodecAnnotation(annotation, result.codecs)
-      JSON_BASE64 -> result.codecs += BASE64_CODEC
+      JSON_BYTE_ARRAY -> {
+        val format =
+          annotation.arguments.first { it.name?.asString() == "value" }.value as KSClassDeclaration
+        result.codecs +=
+          if (format.simpleName.asString() == "ARRAY")
+            "org.apache.fory.json.codec.ArrayCodec\$SignedByteArrayCodec"
+          else BASE64_CODEC
+      }
       JSON_SUB_TYPES -> collectSubtypeTypes(annotation, result.types)
       else ->
         annotation.arguments.forEach { argument -> collectTypeValue(argument.value, result.types) }

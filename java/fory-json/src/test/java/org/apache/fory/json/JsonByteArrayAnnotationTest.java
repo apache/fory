@@ -27,7 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
-import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
@@ -40,10 +40,79 @@ import org.testng.SkipException;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
-public class JsonBase64AnnotationTest extends ForyJsonTestModels {
+public class JsonByteArrayAnnotationTest extends ForyJsonTestModels {
   @Factory(dataProvider = "enableCodegen")
-  public JsonBase64AnnotationTest(boolean codegen) {
+  public JsonByteArrayAnnotationTest(boolean codegen) {
     super(codegen);
+  }
+
+  @Test
+  public void arrayRoundTrip() {
+    ForyJson json = newJson();
+    ArrayField value = new ArrayField();
+    byte[][] values = {new byte[0], {-128}, {1, -2, 127}};
+    String[] encoded = {"[]", "[-128]", "[1,-2,127]"};
+    for (int i = 0; i < values.length; i++) {
+      value.bytes = values[i];
+      String text = "{\"bytes\":" + encoded[i] + "}";
+      assertEquals(json.toJson(value), text);
+      assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), text);
+      assertEquals(json.fromJson(text, ArrayField.class).bytes, values[i]);
+      assertEquals(
+          json.fromJson(text.getBytes(StandardCharsets.UTF_8), ArrayField.class).bytes, values[i]);
+      assertEquals(
+          json.fromJson("{\"ignored\":\"汉\",\"bytes\":" + encoded[i] + "}", ArrayField.class).bytes,
+          values[i]);
+    }
+    assertNull(json.fromJson("{\"bytes\":null}", ArrayField.class).bytes);
+    for (String encodedValue : new String[] {"[128]", "[-129]", "[null]", "\"AQ==\""}) {
+      assertThrows(
+          ForyJsonException.class,
+          () -> json.fromJson("{\"bytes\":" + encodedValue + "}", ArrayField.class));
+    }
+    assertGeneratedWhenSupported(json, ArrayField.class, codegenEnabled());
+  }
+
+  @Test
+  public void arrayGetter() {
+    ForyJson json = newJson();
+    ArrayGetter value = new ArrayGetter();
+    value.bytes = new byte[] {1, -2};
+    assertEquals(json.toJson(value), "{\"bytes\":[1,-2]}");
+    assertEquals(json.fromJson("{\"bytes\":[1,-2]}", ArrayGetter.class).bytes, value.bytes);
+  }
+
+  @Test
+  public void conflictingFormats() {
+    assertThrows(ForyJsonException.class, () -> newJson().toJson(new ConflictingFormat()));
+  }
+
+  public static final class ArrayField {
+    @JsonByteArray(JsonByteArray.Format.ARRAY)
+    public byte[] bytes;
+  }
+
+  public static final class ArrayGetter {
+    private byte[] bytes;
+
+    @JsonByteArray(JsonByteArray.Format.ARRAY)
+    public byte[] getBytes() {
+      return bytes;
+    }
+
+    public void setBytes(byte[] bytes) {
+      this.bytes = bytes;
+    }
+  }
+
+  public static final class ConflictingFormat {
+    @JsonByteArray(JsonByteArray.Format.ARRAY)
+    public byte[] bytes = {1};
+
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    public byte[] getBytes() {
+      return bytes;
+    }
   }
 
   @Test
@@ -151,10 +220,10 @@ public class JsonBase64AnnotationTest extends ForyJsonTestModels {
     }
     Class<?> type =
         compileRecordClass(
-            "JsonBase64Record",
+            "JsonByteArrayRecord",
             "package org.apache.fory.json.records;\n"
-                + "import org.apache.fory.json.annotation.JsonBase64;\n"
-                + "public record JsonBase64Record(@JsonBase64 byte[] bytes) {}\n");
+                + "import org.apache.fory.json.annotation.JsonByteArray;\n"
+                + "public record JsonByteArrayRecord(@JsonByteArray(JsonByteArray.Format.BASE64) byte[] bytes) {}\n");
     Object value = type.getConstructor(byte[].class).newInstance((Object) new byte[] {1, 2, 3});
     for (ForyJson json : new ForyJson[] {newJson(), newJsonBuilder().withFieldMode(true).build()}) {
       assertEquals(json.toJson(value), "{\"bytes\":\"AQID\"}");
@@ -199,13 +268,16 @@ public class JsonBase64AnnotationTest extends ForyJsonTestModels {
   }
 
   public static final class Base64Field {
-    @JsonBase64 public byte[] bytes;
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    public byte[] bytes;
   }
 
   @JsonPropertyOrder({"text", "bytes"})
   public static final class UnicodeBase64 {
     public String text;
-    @JsonBase64 public byte[] bytes;
+
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    public byte[] bytes;
   }
 
   public static final class Base64Getter {
@@ -217,7 +289,7 @@ public class JsonBase64AnnotationTest extends ForyJsonTestModels {
       this.bytes = bytes;
     }
 
-    @JsonBase64
+    @JsonByteArray(JsonByteArray.Format.BASE64)
     public byte[] getBytes() {
       return bytes;
     }
@@ -228,19 +300,20 @@ public class JsonBase64AnnotationTest extends ForyJsonTestModels {
   }
 
   public static final class Base64ReadOnly {
-    @JsonBase64
+    @JsonByteArray(JsonByteArray.Format.BASE64)
     @JsonIgnore(ignoreRead = false, ignoreWrite = true)
     public byte[] bytes;
   }
 
   public static final class Base64WriteOnly {
-    @JsonBase64
+    @JsonByteArray(JsonByteArray.Format.BASE64)
     @JsonIgnore(ignoreRead = true, ignoreWrite = false)
     public byte[] bytes;
   }
 
   public static final class PropertyListBase64 {
-    @JsonBase64 public final byte[] bytes;
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    public final byte[] bytes;
 
     @JsonCreator({"bytes"})
     public PropertyListBase64(byte[] bytes) {
@@ -249,7 +322,8 @@ public class JsonBase64AnnotationTest extends ForyJsonTestModels {
   }
 
   public static final class ParameterLocalBase64 {
-    @JsonBase64 public final byte[] bytes;
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    public final byte[] bytes;
 
     @JsonCreator
     public ParameterLocalBase64(@JsonProperty("bytes") byte[] bytes) {
@@ -258,7 +332,7 @@ public class JsonBase64AnnotationTest extends ForyJsonTestModels {
   }
 
   public static final class Base64Always {
-    @JsonBase64
+    @JsonByteArray(JsonByteArray.Format.BASE64)
     @JsonProperty(include = JsonProperty.Include.ALWAYS)
     public byte[] bytes;
   }
@@ -269,33 +343,41 @@ public class JsonBase64AnnotationTest extends ForyJsonTestModels {
   }
 
   public static final class NonBinaryBase64 {
-    @JsonBase64 public String value = "x";
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    public String value = "x";
   }
 
   public static final class StaticBase64 {
-    @JsonBase64 public static byte[] value = {1};
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    public static byte[] value = {1};
   }
 
   public static final class CodecBase64 {
-    @JsonBase64
+    @JsonByteArray(JsonByteArray.Format.BASE64)
     @JsonCodec(Base64ByteArrayCodec.class)
     public byte[] value = {1};
   }
 
   public static final class RawBase64 {
-    @JsonBase64 @JsonRawValue public byte[] value = {1};
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    @JsonRawValue
+    public byte[] value = {1};
   }
 
   public static final class IgnoredBase64 {
-    @JsonBase64 @JsonIgnore public byte[] value = {1};
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    @JsonIgnore
+    public byte[] value = {1};
   }
 
   public static final class AnyFieldBase64 {
-    @JsonBase64 @JsonAnyProperty public Map<String, byte[]> values;
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    @JsonAnyProperty
+    public Map<String, byte[]> values;
   }
 
   public static final class AnyGetterBase64 {
-    @JsonBase64
+    @JsonByteArray(JsonByteArray.Format.BASE64)
     @JsonAnyGetter
     public Map<String, byte[]> getValues() {
       return null;
