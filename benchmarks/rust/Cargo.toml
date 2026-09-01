@@ -20,5 +20,5 @@ members = ["local", "xlang"]
 resolver = "2"
 
 [workspace.package]
-version = "1.8.0-alpha.0"
+version = "1.7.1"
 edition = "2021"

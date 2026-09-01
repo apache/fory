@@ -11,11 +11,11 @@ exact target-Mixin behavior. Mixin coverage registers the source at runtime
 after R8 minification so broad application keep rules cannot hide missing
 processor output.
 
-The tests consume `org.apache.fory:fory-core:1.8.0-SNAPSHOT`,
-`org.apache.fory:fory-json:1.8.0-SNAPSHOT`,
-`org.apache.fory:fory-annotation-processor:1.8.0-SNAPSHOT`,
-`org.apache.fory:fory-json-kotlin:1.8.0-SNAPSHOT`,
-`org.apache.fory:fory-json-kotlin-ksp:1.8.0-SNAPSHOT`, and the shared Kotlin JSON
+The tests consume `org.apache.fory:fory-core:1.7.1`,
+`org.apache.fory:fory-json:1.7.1`,
+`org.apache.fory:fory-annotation-processor:1.7.1`,
+`org.apache.fory:fory-json-kotlin:1.7.1`,
+`org.apache.fory:fory-json-kotlin-ksp:1.7.1`, and the shared Kotlin JSON
 corpus from the local Maven repository. From the repository root, install the
 Java, Kotlin, KSP, and corpus artifacts through the single Kotlin CI owner before
 running Gradle. The fixture uses Gradle 8.13, Android Gradle Plugin 8.13.2,

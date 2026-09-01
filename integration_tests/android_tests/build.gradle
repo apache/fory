@@ -99,15 +99,15 @@ kotlin {
 }
 
 dependencies {
-    implementation('org.apache.fory:fory-core:1.8.0-SNAPSHOT') {
+    implementation('org.apache.fory:fory-core:1.7.1') {
         exclude group: 'com.google.guava', module: 'guava'
         exclude group: 'org.codehaus.janino', module: 'janino'
     }
-    implementation 'org.apache.fory:fory-json:1.8.0-SNAPSHOT'
-    implementation 'org.apache.fory:fory-json-kotlin:1.8.0-SNAPSHOT'
-    implementation 'org.apache.fory:kotlin-json-corpus:1.8.0-SNAPSHOT'
-    ksp 'org.apache.fory:fory-json-kotlin-ksp:1.8.0-SNAPSHOT'
-    annotationProcessor 'org.apache.fory:fory-annotation-processor:1.8.0-SNAPSHOT'
+    implementation 'org.apache.fory:fory-json:1.7.1'
+    implementation 'org.apache.fory:fory-json-kotlin:1.7.1'
+    implementation 'org.apache.fory:kotlin-json-corpus:1.7.1'
+    ksp 'org.apache.fory:fory-json-kotlin-ksp:1.7.1'
+    annotationProcessor 'org.apache.fory:fory-annotation-processor:1.7.1'
     implementation 'com.google.guava:guava:32.1.2-android'
     implementation 'org.slf4j:slf4j-api:2.0.12'
 
