@@ -248,4 +248,17 @@ describe("object", () => {
     expect(evolvingSerializer.deserialize(evolvingPayload)).toEqual({ f1: "payload" });
     expect(fixedSerializer.deserialize(fixedPayload)).toEqual({ f1: "payload" });
   });
+
+  test("should user type id 0 work", () => {
+    // TypeInfo allows user type ids in [0, 0xfffffffe]; a truthiness check on
+    // the numeric id treated 0 as "no id given" and threw.
+    const structInfo = Type.struct(0, { a: Type.int32() });
+    expect(structInfo.userTypeId).toBe(0);
+    expect(() => Type.enum(0, { A: 0 })).not.toThrow();
+    expect(() => Type.ext(0)).not.toThrow();
+
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(structInfo);
+    expect(deserialize(serialize({ a: 7 }))).toEqual({ a: 7 });
+  });
 });
