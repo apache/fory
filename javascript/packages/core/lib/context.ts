@@ -306,9 +306,12 @@ export class MetaStringWriter {
   }
 
   reset() {
+    // Entries push themselves back on the next root's first write, so the
+    // list must be truncated or it grows by every past root serialization.
     this.disposeMetaStringBytes.forEach((item) => {
       item.dynamicWriteStringId = -1;
     });
+    this.disposeMetaStringBytes.length = 0;
     this.dynamicNameId = 0;
   }
 }

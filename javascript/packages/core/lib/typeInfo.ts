@@ -277,10 +277,8 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     if (typeId !== undefined && typeName !== undefined) {
       throw new Error(`type name ${typeName} and id ${typeId} should not be set at the same time`);
     }
-    if (!typeId) {
-      if (!typeName) {
-        throw new Error(`type name and type id should be set at least one`);
-      }
+    if (typeId === undefined && !typeName) {
+      throw new Error(`type name and type id should be set at least one`);
     }
     if (typeId === undefined) {
       const resolved = resolveNameParts(namespace, typeName!);
@@ -339,10 +337,8 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     if (typeId !== undefined && typeName !== undefined) {
       throw new Error(`type name ${typeName} and id ${typeId} should not be set at the same time`);
     }
-    if (!typeId) {
-      if (!typeName) {
-        throw new Error(`type name and type id should be set at least one`);
-      }
+    if (typeId === undefined && !typeName) {
+      throw new Error(`type name and type id should be set at least one`);
     }
     if (typeId === undefined) {
       const resolved = resolveNameParts(namespace, typeName!);
@@ -404,10 +400,8 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     if (typeId !== undefined && typeName !== undefined) {
       throw new Error(`type name ${typeName} and id ${typeId} should not be set at the same time`);
     }
-    if (!typeId) {
-      if (!typeName) {
-        throw new Error(`type name and type id should be set at least one`);
-      }
+    if (typeId === undefined && !typeName) {
+      throw new Error(`type name and type id should be set at least one`);
     }
     if (typeId === undefined) {
       const resolved = resolveNameParts(namespace, typeName!);
