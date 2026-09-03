@@ -139,11 +139,14 @@ export class Gen {
           this.traversalContainer(x);
         });
         this.register(typeInfo, this.generate(typeInfo));
-      } else if (!this.isRegistered(typeInfo) && TypeId.structType(typeInfo.typeId)) {
-        // Forward reference to a struct type not yet fully defined — register a
-        // placeholder so that serializer factories can capture the object
-        // reference.  The placeholder will be filled in via Object.assign
-        // when the real serializer is generated later.
+      } else if (
+        !this.isRegistered(typeInfo) &&
+        (TypeId.structType(typeInfo.typeId) || TypeId.extType(typeInfo.typeId))
+      ) {
+        // Forward reference to a struct or ext type not yet fully defined —
+        // register a placeholder so that serializer factories can capture the
+        // object reference.  The placeholder will be filled in via
+        // Object.assign when the real serializer is generated later.
         this.register(typeInfo);
       } else if (TypeId.enumType(typeInfo.typeId) && !this.isRegistered(typeInfo)) {
         this.register(typeInfo, this.generate(typeInfo));
