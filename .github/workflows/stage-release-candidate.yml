@@ -1,0 +1,210 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# All `uses:` action pins in this workflow must come from the Apache action allowlist:
+# https://github.com/apache/infrastructure-actions/blob/main/actions.yml
+
+name: Stage Release Candidate
+run-name: "Stage Fory ${{ github.ref_name }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Stage the source release to ATR
+        default: true
+        type: boolean
+      jvm:
+        description: Stage JVM artifacts to Nexus
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  # Nexus repository ownership is discovered by comparing the global repository
+  # list before and after publication, so release-candidate staging must be serial.
+  group: stage-release-candidate
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.repository == 'apache/fory'
+    runs-on: ubuntu-24.04
+    outputs:
+      rc-tag: ${{ steps.release.outputs.rc-tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Validate release candidate tag
+        id: release
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          STAGE_JVM: ${{ inputs.jvm }}
+          STAGE_SOURCE: ${{ inputs.source }}
+        run: |
+          set -euo pipefail
+          if [[ "$STAGE_SOURCE" != "true" && "$STAGE_JVM" != "true" ]]; then
+            echo "Enable at least one release-candidate staging job."
+            exit 1
+          fi
+          if [[ "$REF_TYPE" != "tag" ]]; then
+            echo "Run this workflow on an immutable release-candidate tag."
+            exit 1
+          fi
+          if [[ "$REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-rc([0-9]+)$ ]]; then
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "rc-tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "Expected a tag matching vX.Y.Z-rcN, got: $REF_NAME"
+            exit 1
+          fi
+
+      - name: Checkout release candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Verify release versions
+        shell: bash
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 ci/release.py bump_version -version "$VERSION" -l all
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "The RC tag does not contain the requested release versions."
+            git diff --stat
+            exit 1
+          fi
+
+  stage-source:
+    needs: validate
+    if: ${{ needs.validate.result == 'success' && inputs.source }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout release candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Import release signing key
+        shell: bash
+        env:
+          FORY_GPG_SECRET_KEY: ${{ secrets.FORY_GPG_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$FORY_GPG_SECRET_KEY" | \
+            gpg --batch --import --import-options import-show
+
+      - name: Build source release
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "Apache Fory Release Automation"
+          git config user.email "dev@fory.apache.org"
+          python3 ci/release.py build -v "$VERSION"
+
+      - name: Upload source release to ATR
+        uses: apache/tooling-actions/upload-to-atr@ca6ed9e095c40db61c42a90db2599bb2fbc2319f
+        with:
+          project: fory
+          version: ${{ needs.validate.outputs.version }}
+
+  stage-jvm:
+    needs: validate
+    if: ${{ needs.validate.result == 'success' && inputs.jvm }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout release candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Set up Java 25 and Apache Nexus
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: 25
+          server-id: apache.releases.https
+          server-username: NEXUS_USERNAME
+          server-password: NEXUS_PASSWORD
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@c7d2d6258b4bd0d3ec5129e6b3453199d3c79729 # v1.5.8
+
+      - name: Import release signing key
+        shell: bash
+        env:
+          FORY_GPG_SECRET_KEY: ${{ secrets.FORY_GPG_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$FORY_GPG_SECRET_KEY" | \
+            gpg --batch --import --import-options import-show
+
+      - name: Stage and verify JVM artifacts
+        id: stage
+        shell: bash
+        env:
+          NEXUS_USERNAME: ${{ secrets.NEXUS_STAGE_DEPLOYER_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_STAGE_DEPLOYER_PW }}
+          RC_TAG: ${{ needs.validate.outputs.rc-tag }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 ci/release.py stage_jvm \
+            -v "$VERSION" \
+            --rc-tag "$RC_TAG" \
+            --output "$RUNNER_TEMP/fory-jvm-staging.json"
+
+      - name: Summarize Nexus staging repositories
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          metadata="$RUNNER_TEMP/fory-jvm-staging.json"
+          if [[ ! -f "$metadata" ]]; then
+            exit 0
+          fi
+          java_kotlin_id="$(jq -r .java_kotlin_staging_id "$metadata")"
+          scala_id="$(jq -r '.scala_staging_id // empty' "$metadata")"
+          {
+            echo "### Nexus staging repositories"
+            echo
+            echo "- Staging result: \`${{ steps.stage.outcome }}\`"
+            if [[ -n "$java_kotlin_id" && "$java_kotlin_id" != "null" ]]; then
+              echo "- Java/Kotlin: \`$java_kotlin_id\`"
+              echo "- Scala: \`$scala_id\`"
+            else
+              while IFS= read -r staging_id; do
+                echo "- Open repository requiring review: \`$staging_id\`"
+              done < <(jq -r '.new_staging_ids[]?' "$metadata")
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

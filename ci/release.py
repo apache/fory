@@ -159,7 +159,7 @@ def prepare(v: str):
         raise
 
 
-def build(v: str):
+def build(v: str, skip_sign: bool = False):
     """version format: 0.5.1"""
     logger.info("Start to prepare release artifacts for version %s", v)
     _check_release_version(v)
@@ -184,8 +184,21 @@ def build(v: str):
     src_tar = f"apache-fory-{v}-src.tar.gz"
     _check_all_committed()
     _strip_unnecessary_license()
+    # git archive includes the commit ID and time. Keep this temporary commit
+    # identical for CI and keyless local rebuilds, and never sign the commit.
+    commit_time = subprocess.check_output(
+        ["git", "show", "-s", "--format=%cI", "HEAD"], text=True
+    ).strip()
+    commit_env = os.environ.copy()
+    for role in ("AUTHOR", "COMMITTER"):
+        commit_env[f"GIT_{role}_NAME"] = "Apache Fory Release Automation"
+        commit_env[f"GIT_{role}_EMAIL"] = "dev@fory.apache.org"
+        commit_env[f"GIT_{role}_DATE"] = commit_time
     subprocess.check_call(
-        "git add LICENSE && git commit -m 'remove benchmark from license'", shell=True
+        "git add LICENSE && git -c commit.gpgsign=false commit "
+        "-m 'remove benchmark from license'",
+        shell=True,
+        env=commit_env,
     )
     subprocess.check_call(
         f"git archive --format=tar.gz "
@@ -195,12 +208,13 @@ def build(v: str):
     )
     subprocess.check_call("git reset --hard HEAD~", shell=True)
     os.chdir("dist")
-    logger.info("Start to generate signature")
-    subprocess.check_call(
-        f"gpg --armor --output {src_tar}.asc --detach-sig {src_tar}", shell=True
-    )
+    if not skip_sign:
+        logger.info("Start to generate signature")
+        subprocess.check_call(
+            f"gpg --armor --output {src_tar}.asc --detach-sig {src_tar}", shell=True
+        )
     subprocess.check_call(f"sha512sum {src_tar} >{src_tar}.sha512", shell=True)
-    verify(v)
+    verify(v, signature=not skip_sign)
 
 
 def _check_release_version(v: str):
@@ -242,10 +256,11 @@ def _strip_unnecessary_license():
             f.write(text)
 
 
-def verify(v):
+def verify(v, signature=True):
     src_tar = f"apache-fory-{v}-src.tar.gz"
-    subprocess.check_call(f"gpg --verify {src_tar}.asc {src_tar}", shell=True)
-    logger.info("Verified signature")
+    if signature:
+        subprocess.check_call(f"gpg --verify {src_tar}.asc {src_tar}", shell=True)
+        logger.info("Verified signature")
     subprocess.check_call(f"sha512sum --check {src_tar}.sha512", shell=True)
     logger.info("Verified checksum successfully")
 
@@ -280,6 +295,67 @@ def publish_jvm(languages="all", mode="release"):
             raise NotImplementedError(f"Unsupported JVM release language: {lang}")
 
 
+def stage_jvm(v, rc_tag, output=None):
+    """Publish, discover, close, and verify the JVM staging repositories."""
+    _validate_release_candidate(v, rc_tag)
+    _require_jvm_release_version(v)
+    authorization = _nexus_authorization()
+    repositories_before = set(_nexus_repositories(authorization))
+
+    try:
+        publish_jvm()
+        repositories = _nexus_repositories(authorization)
+        java_kotlin_id, scala_id = _discover_jvm_staging_repositories(
+            v,
+            repositories_before,
+            repositories,
+            authorization,
+        )
+    except Exception:
+        _record_failed_jvm_staging(repositories_before, authorization, output)
+        raise
+
+    staging = {
+        "java_kotlin_staging_id": java_kotlin_id,
+        "new_staging_ids": sorted(
+            _new_fory_staging_repositories(repositories_before, repositories)
+        ),
+        "scala_staging_id": scala_id,
+    }
+    logger.info(
+        "Created Nexus staging repositories: Java/Kotlin=%s, Scala=%s",
+        java_kotlin_id,
+        scala_id,
+    )
+    if output:
+        _write_staging_metadata(output, staging)
+
+    close_jvm_staging(v, rc_tag, java_kotlin_id, scala_id)
+
+
+def _record_failed_jvm_staging(repositories_before, authorization, output):
+    try:
+        repositories = _nexus_repositories(authorization)
+        staging_ids = sorted(
+            _new_fory_staging_repositories(repositories_before, repositories)
+        )
+        if staging_ids:
+            logger.error(
+                "JVM publication failed after creating open repositories: %s",
+                staging_ids,
+            )
+        if output:
+            _write_staging_metadata(output, {"new_staging_ids": staging_ids})
+    except Exception as exc:
+        logger.error("Unable to inspect Nexus repositories after failure: %s", exc)
+
+
+def _write_staging_metadata(output, staging):
+    with open(output, "w", encoding="utf-8") as f:
+        json.dump(staging, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+
 def close_jvm_staging(
     v,
     rc_tag,
@@ -288,11 +364,7 @@ def close_jvm_staging(
     verify_only=False,
 ):
     """Close and verify the two Nexus repositories created by publish_jvm."""
-    _check_release_version(v)
-    if not re.fullmatch(r"\d+\.\d+\.\d+", v):
-        raise ValueError(f"Invalid final release version: {v}")
-    if not re.fullmatch(rf"v{re.escape(v)}-rc\d+", rc_tag):
-        raise ValueError(f"RC tag {rc_tag} does not match release version {v}")
+    _validate_release_candidate(v, rc_tag)
     staging_ids = [java_kotlin_staging_id, scala_staging_id]
     for staging_id in staging_ids:
         if not re.fullmatch(r"orgapachefory-\d+", staging_id):
@@ -323,6 +395,29 @@ def close_jvm_staging(
         _wait_for_nexus_close(staging_ids, authorization)
 
     _verify_nexus_downloads(v, java_kotlin_staging_id, scala_staging_id)
+
+
+def _validate_release_candidate(v, rc_tag):
+    _check_release_version(v)
+    if not re.fullmatch(r"\d+\.\d+\.\d+", v):
+        raise ValueError(f"Invalid final release version: {v}")
+    if not re.fullmatch(rf"v{re.escape(v)}-rc\d+", rc_tag):
+        raise ValueError(f"RC tag {rc_tag} does not match release version {v}")
+
+
+def _require_jvm_release_version(v):
+    versions = {
+        "Java": _read_java_version(),
+        "Kotlin": _read_kotlin_version(),
+        "Scala": _read_scala_version(),
+    }
+    mismatches = {
+        language: version for language, version in versions.items() if version != v
+    }
+    if mismatches:
+        raise RuntimeError(
+            f"JVM project versions must match release version {v}: {mismatches}"
+        )
 
 
 def _nexus_authorization():
@@ -364,7 +459,7 @@ def _nexus_request(path, authorization, method="GET", payload=None):
         raise RuntimeError(f"Nexus {method} {path} failed: {exc.reason}") from None
 
 
-def _nexus_states(staging_ids, authorization):
+def _nexus_repositories(authorization):
     status, body = _nexus_request(
         "/service/local/staging/profile_repositories", authorization
     )
@@ -379,9 +474,11 @@ def _nexus_states(staging_ids, authorization):
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, list):
         raise RuntimeError("Nexus repository-list response has no data list")
-    repositories = {
-        item.get("repositoryId"): item for item in data if isinstance(item, dict)
-    }
+    return {item.get("repositoryId"): item for item in data if isinstance(item, dict)}
+
+
+def _nexus_states(staging_ids, authorization):
+    repositories = _nexus_repositories(authorization)
     missing = [
         staging_id for staging_id in staging_ids if staging_id not in repositories
     ]
@@ -393,6 +490,71 @@ def _nexus_states(staging_ids, authorization):
     for staging_id, state in states.items():
         logger.info("Nexus staging repository %s: %s", staging_id, state)
     return states
+
+
+def _discover_jvm_staging_repositories(
+    v,
+    repositories_before,
+    repositories,
+    authorization,
+):
+    candidates = _new_fory_staging_repositories(
+        repositories_before,
+        repositories,
+    )
+    java_kotlin_ids = _matching_staging_repositories(
+        candidates,
+        (
+            f"org/apache/fory/fory-core/{v}/fory-core-{v}.jar",
+            f"org/apache/fory/fory-kotlin/{v}/fory-kotlin-{v}.jar",
+        ),
+        authorization,
+    )
+    scala_ids = _matching_staging_repositories(
+        candidates,
+        (
+            f"org/apache/fory/fory-scala_2.13/{v}/fory-scala_2.13-{v}.jar",
+            f"org/apache/fory/fory-json-scala_3/{v}/fory-json-scala_3-{v}.jar",
+        ),
+        authorization,
+    )
+    if len(java_kotlin_ids) != 1 or len(scala_ids) != 1:
+        raise RuntimeError(
+            "Expected one new Java/Kotlin and one new Scala staging repository; "
+            f"found Java/Kotlin={java_kotlin_ids}, Scala={scala_ids}, "
+            f"new repositories={sorted(candidates)}"
+        )
+    java_kotlin_id = java_kotlin_ids[0]
+    scala_id = scala_ids[0]
+    if java_kotlin_id == scala_id:
+        raise RuntimeError("Java/Kotlin and Scala staging repositories must differ")
+    states = {
+        staging_id: candidates[staging_id].get("type")
+        for staging_id in (java_kotlin_id, scala_id)
+    }
+    _require_nexus_state(states, "open")
+    return java_kotlin_id, scala_id
+
+
+def _new_fory_staging_repositories(repositories_before, repositories):
+    return {
+        staging_id: repository
+        for staging_id, repository in repositories.items()
+        if staging_id not in repositories_before
+        and re.fullmatch(r"orgapachefory-\d+", staging_id or "")
+    }
+
+
+def _matching_staging_repositories(candidates, artifact_paths, authorization):
+    matches = []
+    for staging_id in sorted(candidates):
+        base_url = f"{NEXUS_BASE_URL}/content/repositories/{staging_id}/"
+        if all(
+            _nexus_download_status(base_url + path, authorization) == 200
+            for path in artifact_paths
+        ):
+            matches.append(staging_id)
+    return matches
 
 
 def _require_nexus_state(states, expected_state):
@@ -451,25 +613,27 @@ def _verify_nexus_downloads(v, java_kotlin_staging_id, scala_staging_id):
         f"{scala_url}org/apache/fory/fory-json-scala_3/{v}/fory-json-scala_3-{v}.jar",
     ]
     for url in artifact_urls:
-        request = urllib.request.Request(
-            url, headers={"User-Agent": "apache-fory-release-helper/1"}
-        )
-        try:
-            with urllib.request.urlopen(
-                request, timeout=NEXUS_TIMEOUT_SECONDS
-            ) as response:
-                status = response.status
-        except urllib.error.HTTPError as exc:
-            status = exc.code
-        except urllib.error.URLError as exc:
-            raise RuntimeError(
-                f"Anonymous Nexus download failed for {url}: {exc.reason}"
-            )
+        status = _nexus_download_status(url)
         logger.info("Anonymous Nexus download HTTP %s: %s", status, url)
         if status != 200:
             raise RuntimeError(
                 f"Anonymous Nexus download returned HTTP {status}: {url}"
             )
+
+
+def _nexus_download_status(url, authorization=None):
+    headers = {"User-Agent": "apache-fory-release-helper/1"}
+    if authorization:
+        headers["Authorization"] = authorization
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=NEXUS_TIMEOUT_SECONDS) as response:
+            return response.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except urllib.error.URLError as exc:
+        access = "Authenticated" if authorization else "Anonymous"
+        raise RuntimeError(f"{access} Nexus download failed for {url}: {exc.reason}")
 
 
 def _jvm_release_langs(languages):
@@ -1027,6 +1191,15 @@ def _read_kotlin_version():
     if artifact != "fory-kotlin-parent" or packaging != "pom" or not version:
         raise ValueError("Cannot find kotlin/fory-kotlin-parent version")
     return version
+
+
+def _read_scala_version():
+    build = os.path.join(PROJECT_ROOT_DIR, "scala", "build.sbt")
+    with open(build, "r", encoding="utf-8") as f:
+        matches = re.findall(r'^val foryVersion = "([^"]+)"$', f.read(), re.MULTILINE)
+    if len(matches) != 1:
+        raise ValueError("Cannot find the unique Scala Fory version")
+    return matches[0]
 
 
 def bump_version(**kwargs):
@@ -1991,6 +2164,11 @@ def _parse_args():
         description="Build release artifacts",
     )
     release_parser.add_argument("-v", type=str, help="new version")
+    release_parser.add_argument(
+        "--skip-sign",
+        action="store_true",
+        help="build and checksum the source archive without invoking GPG",
+    )
     release_parser.set_defaults(func=build)
 
     verify_parser = subparsers.add_parser(
@@ -2018,6 +2196,27 @@ def _parse_args():
         help="release stages signed artifacts; snapshot publishes unsigned snapshots",
     )
     publish_jvm_parser.set_defaults(func=publish_jvm)
+
+    stage_jvm_parser = subparsers.add_parser(
+        "stage_jvm",
+        description="Publish, discover, close, and verify JVM staging repositories",
+    )
+    stage_jvm_parser.add_argument(
+        "-v",
+        dest="v",
+        required=True,
+        help="final release version without a v prefix or RC suffix",
+    )
+    stage_jvm_parser.add_argument(
+        "--rc-tag",
+        required=True,
+        help="immutable release-candidate tag",
+    )
+    stage_jvm_parser.add_argument(
+        "--output",
+        help="optional JSON path for the discovered staging repository IDs",
+    )
+    stage_jvm_parser.set_defaults(func=stage_jvm)
 
     close_jvm_parser = subparsers.add_parser(
         "close_jvm_staging",
