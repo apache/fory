@@ -63,7 +63,7 @@ or later.
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.7.0</version>
+  <version>1.7.1</version>
 </dependency>
 ```
 
@@ -71,7 +71,7 @@ or later.
 
 ```kotlin
 // Binary object serialization
-implementation("org.apache.fory:fory-core:1.7.0")
+implementation("org.apache.fory:fory-core:1.7.1")
 ```
 
 #### JDK 25 and Later

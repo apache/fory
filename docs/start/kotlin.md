@@ -44,7 +44,7 @@ repositories {
 }
 
 dependencies {
-  implementation("org.apache.fory:fory-kotlin:1.7.0")
+  implementation("org.apache.fory:fory-kotlin:1.7.1")
 }
 ```
 
@@ -88,7 +88,7 @@ module when interoperating with ordinary JSON APIs, browsers, logs, or other JSO
 
 ```kotlin title="build.gradle.kts"
 dependencies {
-  implementation("org.apache.fory:fory-json-kotlin:1.7.0")
+  implementation("org.apache.fory:fory-json-kotlin:1.7.1")
 }
 ```
 

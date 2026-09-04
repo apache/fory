@@ -95,28 +95,28 @@ aligned. `fory-json` includes `fory-core` transitively.
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.7.0</version>
+  <version>1.7.1</version>
 </dependency>
 
 <!-- Row format -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
-  <version>1.7.0</version>
+  <version>1.7.1</version>
 </dependency>
 
 <!-- JSON serialization -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-json</artifactId>
-  <version>1.7.0</version>
+  <version>1.7.1</version>
 </dependency>
 
 <!-- Optional: Serializers for Protobuf data -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-extensions</artifactId>
-  <version>1.7.0</version>
+  <version>1.7.1</version>
 </dependency>
 ```
 
@@ -125,13 +125,13 @@ aligned. `fory-json` includes `fory-core` transitively.
 ```gradle
 dependencies {
     // Binary object serialization
-    implementation 'org.apache.fory:fory-core:1.7.0'
+    implementation 'org.apache.fory:fory-core:1.7.1'
     // Row format
-    implementation 'org.apache.fory:fory-format:1.7.0'
+    implementation 'org.apache.fory:fory-format:1.7.1'
     // JSON serialization
-    implementation 'org.apache.fory:fory-json:1.7.0'
+    implementation 'org.apache.fory:fory-json:1.7.1'
     // Optional: Protobuf serializers and metadata compression
-    implementation 'org.apache.fory:fory-extensions:1.7.0'
+    implementation 'org.apache.fory:fory-extensions:1.7.1'
 }
 ```
 
