@@ -26,6 +26,32 @@ import { Decimal } from "./types/decimal";
 const targetFields = new WeakMap<new () => any, { [key: string]: TypeInfo }>();
 export const MAX_FIELD_ID = (1 << 29) - 1;
 
+/**
+ * Whether this container TypeInfo declares concrete element types instead of
+ * dynamic `any` elements. Such a TypeInfo is a usage schema for one
+ * registration: it needs its own generated serializer and must not replace
+ * the dynamic container serializer in the type-id keyed registry.
+ */
+export function containerDeclaresElementTypes(typeInfo: TypeInfo): boolean {
+  if (typeInfo.typeId === TypeId.LIST) {
+    const inner = typeInfo.options?.inner;
+    return inner !== undefined && inner.typeId !== TypeId.UNKNOWN;
+  }
+  if (typeInfo.typeId === TypeId.SET) {
+    const inner = typeInfo.options?.key;
+    return inner !== undefined && inner.typeId !== TypeId.UNKNOWN;
+  }
+  if (typeInfo.typeId === TypeId.MAP) {
+    const key = typeInfo.options?.key;
+    const value = typeInfo.options?.value;
+    return (
+      (key !== undefined && key.typeId !== TypeId.UNKNOWN) ||
+      (value !== undefined && value.typeId !== TypeId.UNKNOWN)
+    );
+  }
+  return false;
+}
+
 export function checkFieldId(fieldId: number) {
   if (Number.isFinite(fieldId) && fieldId < 0) {
     throw new Error("field id must be non-negative");

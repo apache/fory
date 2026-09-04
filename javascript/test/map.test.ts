@@ -97,6 +97,20 @@ describe("map", () => {
     });
   });
 
+  test("should root map use declared key and value types", () => {
+    // A root Type.map(...) registration previously fell back to the internal
+    // any-typed map serializer, silently discarding declared key/value types:
+    // declared float32 must narrow, while dynamic dispatch keeps float64.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.map(Type.string(), Type.float32()));
+    expect(deserialize(serialize(new Map([["a", 0.1]])))).toEqual(
+      new Map([["a", Math.fround(0.1)]]),
+    );
+
+    // The dynamic map serializer must stay untouched by the registration.
+    expect(fory.deserialize(fory.serialize(new Map([[1, "x"]])))).toEqual(new Map([[1, "x"]]));
+  });
+
   test("preserves shared dynamic map entries", () => {
     const fory = new Fory({ compatible: false, ref: true });
     @Type.struct(301, {
