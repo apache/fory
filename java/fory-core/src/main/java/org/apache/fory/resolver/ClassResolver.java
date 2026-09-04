@@ -969,6 +969,44 @@ public class ClassResolver extends TypeResolver {
     return typeId;
   }
 
+  // Cache of classes that a configured SerializerFactory would custom-serialize (i.e. non-struct).
+  private final java.util.Set<Class<?>> factoryCustomTrue = new java.util.HashSet<>();
+  private final java.util.Set<Class<?>> factoryCustomFalse = new java.util.HashSet<>();
+  private final java.util.Set<Class<?>> factoryCustomProbing = new java.util.HashSet<>();
+
+  /**
+   * Whether {@link #createSerializerFromFactory} would supply a custom (non-struct) serializer for
+   * the class. Keeps the TypeDef root kind consistent with what the writer encodes, without forcing
+   * serializer construction during class-metadata building. On any error or re-entrancy the class is
+   * treated conservatively as struct-owned.
+   */
+  private boolean isCustomSerializedByFactory(Class<?> cls) {
+    if (factoryCustomTrue.contains(cls)) {
+      return true;
+    }
+    if (factoryCustomFalse.contains(cls)) {
+      return false;
+    }
+    if (!factoryCustomProbing.add(cls)) {
+      // re-entrant probe for the same class: bail out conservatively
+      return false;
+    }
+    try {
+      if (createSerializerFromFactory(cls) != null) {
+        factoryCustomTrue.add(cls);
+        return true;
+      }
+      factoryCustomFalse.add(cls);
+      return false;
+    } catch (Throwable t) {
+      // Conservative: treat as struct-owned if the factory cannot answer safely here.
+      factoryCustomFalse.add(cls);
+      return false;
+    } finally {
+      factoryCustomProbing.remove(cls);
+    }
+  }
+
   public int getTypeDefRootTypeId(Class<?> cls, boolean hasFieldMetadata) {
     if (hasFieldMetadata) {
       // Preserve the normal TypeInfo/name cache so locally generated or dynamically registered
@@ -979,6 +1017,11 @@ public class ClassResolver extends TypeResolver {
         // Their natural serializers may delegate field IO internally, but the TypeDef root kind
         // must still resolve to the non-struct serializer family on the reader.
         return normalizeTypeDefRootTypeId(cls, typeId);
+      }
+      if (isCustomSerializedByFactory(cls)) {
+        // A factory custom serializer is non-struct on the writer (NAMED_EXT); the reader must not
+        // downgrade it to a struct/compatible root kind just because it has no TypeInfo yet.
+        return Types.NAMED_EXT;
       }
       return getFieldMetadataTypeIdForTypeDef(cls);
     }
@@ -994,7 +1037,13 @@ public class ClassResolver extends TypeResolver {
       }
       return normalizeTypeDefRootTypeId(cls, typeInfo.typeId);
     }
-    return usesNonStructTypeDef(cls) ? Types.NAMED_EXT : buildUnregisteredTypeId(cls, null);
+    if (usesNonStructTypeDef(cls)) {
+      return Types.NAMED_EXT;
+    }
+    if (isCustomSerializedByFactory(cls)) {
+      return Types.NAMED_EXT;
+    }
+    return buildUnregisteredTypeId(cls, null);
   }
 
   private int getFieldMetadataTypeIdForTypeDef(Class<?> cls) {
