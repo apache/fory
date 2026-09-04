@@ -23,7 +23,10 @@ import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
 import org.apache.fory.format.type.Field;
 
-/** Encoder to encode/decode object in the map container by toMap/fromMap row. */
+/**
+ * Encoder to encode/decode object in the map container by toMap/fromMap row. A MapEncoder instance
+ * is reusable but not thread-safe.
+ */
 public interface MapEncoder<T> extends Encoder<T> {
   Field keyField();
 

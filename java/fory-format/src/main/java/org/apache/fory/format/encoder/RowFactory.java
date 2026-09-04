@@ -19,17 +19,17 @@
 
 package org.apache.fory.format.encoder;
 
-import org.apache.fory.format.row.binary.BinaryArray;
-import org.apache.fory.format.type.Field;
+import org.apache.fory.format.row.binary.BinaryRow;
 
 /**
- * Encoder to encode/decode object in the list container by toArray/fromArray row. An ArrayEncoder
- * instance is reusable but not thread-safe.
+ * Allocates fresh {@link BinaryRow} instances for a fixed schema. Obtained once per schema from
+ * {@link Encoding#newRowFactory}. The compact format captures its schema-derived layout (offsets,
+ * widths, nullability) in the factory so every {@link #newRow} call reuses it; the default format
+ * builds a {@link BinaryRow} directly per call, matching {@code BinaryRowWriter#newRow}. Either way
+ * the schema-evolution decode path holds one factory per historical schema, giving it the same
+ * per-decode cost as the current-schema path that reads through the writer's cached layout.
  */
-public interface ArrayEncoder<T> extends Encoder<T> {
-  Field field();
-
-  T fromArray(BinaryArray array);
-
-  BinaryArray toArray(T obj);
+@FunctionalInterface
+interface RowFactory {
+  BinaryRow newRow();
 }
