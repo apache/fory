@@ -726,7 +726,8 @@ public abstract class TypeResolver {
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
         typeInfo = readSharedClassMeta(readContext, targetClass, cachedTypeInfo);
-        break;
+        // readSharedClassMeta caches the source TypeInfo, before target adaptation.
+        return typeInfo.serializer == null ? ensureSerializerForTypeInfo(typeInfo) : typeInfo;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
@@ -735,6 +736,7 @@ public abstract class TypeResolver {
           typeInfo = readTypeInfoFromBytes(readContext, cachedTypeInfo, typeId);
         } else {
           typeInfo = readSharedClassMeta(readContext, targetClass, cachedTypeInfo);
+          return typeInfo.serializer == null ? ensureSerializerForTypeInfo(typeInfo) : typeInfo;
         }
         break;
       case Types.LIST:
@@ -906,6 +908,9 @@ public abstract class TypeResolver {
   private TypeInfo readSharedClassMeta(
       ReadContext readContext, Class<?> targetClass, TypeInfo cachedTypeInfo) {
     TypeInfo typeInfo = readSharedClassTypeInfo(readContext, targetClass, cachedTypeInfo);
+    // A hash identifies the wire schema, not the requested target class. Keep source hints
+    // unchanged so alternating targets reuse their own entries in transformedTypeInfo.
+    typeInfoCache[readContext.getDepth()] = typeInfo;
     Class<?> readClass = typeInfo.getType();
     if (targetClass != readClass) {
       return getTargetTypeInfo(typeInfo, targetClass);
@@ -938,21 +943,7 @@ public abstract class TypeResolver {
       long header = buffer.readInt64();
       long headerHash = TypeDef.headerHash(header);
       typeInfo = null;
-      if (targetClass != null) {
-        TypeDef localTypeDef = matchingLocalTypeDef(headerHash, targetClass);
-        if (localTypeDef != null) {
-          // An expected local schema owns this header before transformed or remote hints. A
-          // transformed hint can carry the same hash while retaining a remote TypeDef owner.
-          if (cachedTypeInfo != null
-              && cachedTypeInfo.getType() == targetClass
-              && cachedTypeInfo.getTypeDef() == localTypeDef) {
-            typeInfo = cachedTypeInfo;
-          } else {
-            typeInfo = getOrCreateLocalTypeInfo(localTypeDef, targetClass);
-          }
-        }
-      }
-      if (typeInfo == null && cachedTypeInfo != null) {
+      if (cachedTypeInfo != null) {
         TypeDef cachedTypeDef = cachedTypeInfo.getTypeDef();
         // The 52-bit hash is the schema identity. Low header bits describe only this frame and
         // must not reopen validation of a concrete TypeInfo already bound by a checked miss.
@@ -980,6 +971,15 @@ public abstract class TypeResolver {
     if (typeDef != null) {
       TypeDef.skipTypeDef(buffer, header);
       return buildCachedMetaSharedTypeInfo(typeDef);
+    }
+    // Local schema resolution belongs to a cache miss. Repeating it before the cache lookups
+    // sends every scoped read through the shared TypeDef maps, even after all types are known.
+    if (targetClass != null) {
+      TypeDef localTypeDef = matchingLocalTypeDef(headerHash, targetClass);
+      if (localTypeDef != null) {
+        TypeDef.skipTypeDef(buffer, header);
+        return getOrCreateLocalTypeInfo(localTypeDef, targetClass);
+      }
     }
     typeDef = TypeDef.readTypeDef(this, buffer, header);
     // The target check is needed only for a newly parsed TypeDef, before it can be
@@ -1040,9 +1040,14 @@ public abstract class TypeResolver {
       TypeInfo typeInfo, Class<?> targetClass, long typeDefHeaderHash) {
     Class<?> readClass = typeInfo.getType();
     TypeInfo newTypeInfo;
+    // Select a local schema only once for this source/target cache entry. Target-specific
+    // TypeInfo must not replace the source owner in the hash-only metadata cache.
+    TypeDef localTypeDef = matchingLocalTypeDef(typeDefHeaderHash, targetClass);
     // Keep assignable target matches cached here. Calling Class.isAssignableFrom for every
     // collection element is a hot-path regression for wildcard/object element targets.
-    if (targetClass.isAssignableFrom(readClass)) {
+    if (localTypeDef != null) {
+      newTypeInfo = createMetaSharedTypeInfo(localTypeDef, targetClass);
+    } else if (targetClass.isAssignableFrom(readClass)) {
       newTypeInfo = typeInfo;
     } else {
       TypeDef typeDef = typeInfo.getTypeDef();
@@ -1160,8 +1165,8 @@ public abstract class TypeResolver {
   private TypeInfo getOrCreateLocalTypeInfo(TypeDef localTypeDef, Class<?> cls) {
     long headerHash = TypeDef.headerHash(localTypeDef.getId());
     TypeInfo typeInfo = extRegistry.typeInfoByHeaderHash.get(headerHash);
-    // A target-local match must replace a remote hint, but once the exact local owner is cached it
-    // must be reused. Recreating it resubmits compatible codec generation for every scoped read.
+    // Reuse the source schema owner across scoped reads. Target adaptations are cached separately
+    // in transformedTypeInfo and must not replace this hash-only entry.
     if (typeInfo != null && typeInfo.getType() == cls && typeInfo.getTypeDef() == localTypeDef) {
       return typeInfo;
     }
