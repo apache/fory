@@ -24,7 +24,7 @@ import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertSame;
 
-import java.lang.reflect.Method;
+import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.Fory;
 import org.apache.fory.TestUtils;
@@ -34,6 +34,7 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.serializer.UnknownClass;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class TypeDefHeaderHashTest {
@@ -47,6 +48,15 @@ public class TypeDefHeaderHashTest {
 
   public static class OtherHeaderHashType {
     public long value;
+  }
+
+  public static class FirstTarget {
+    public int value;
+  }
+
+  public static class SecondTarget {
+    public int value;
+    public int extra;
   }
 
   @Test
@@ -70,8 +80,12 @@ public class TypeDefHeaderHashTest {
 
     assertSame(typeInfo.getTypeDef(), localTypeDef);
     assertEquals(frame.readerIndex(), frame.size());
-    assertSame(resolver.extRegistry.typeInfoByHeaderHash.get(headerHash), typeInfo);
+    assertSame(resolver.extRegistry.typeInfoByHeaderHash.get(headerHash), remoteOwner);
     assertSame(sharedRegistry.remoteTypeDefByHeaderHash.get(headerHash), wireTypeDef);
+    assertSame(
+        resolver.readSharedClassMeta(
+            prepare(reader, opaqueMetaFrame(wireTypeDef, 5, 5)), HeaderHashType.class),
+        typeInfo);
   }
 
   @Test
@@ -129,7 +143,7 @@ public class TypeDefHeaderHashTest {
   }
 
   @Test
-  public void testTargetLocalBeatsHint() throws Exception {
+  public void testTargetLocalBeatsHint() {
     Fory writer = newFory(null);
     writer.register(HeaderHashType.class, TYPE_NAME);
     TypeResolver writerResolver = writer.getTypeResolver();
@@ -140,22 +154,137 @@ public class TypeDefHeaderHashTest {
     reader.register(HeaderHashType.class, TYPE_NAME);
     TypeResolver resolver = reader.getTypeResolver();
     TypeDef localTypeDef = resolver.getTypeDef(HeaderHashType.class, true);
-    Method getTargetTypeInfo =
-        TypeResolver.class.getDeclaredMethod("getTargetTypeInfo", TypeInfo.class, Class.class);
-    getTargetTypeInfo.setAccessible(true);
-    TypeInfo transformedHint =
-        (TypeInfo)
-            getTargetTypeInfo.invoke(
-                resolver, new TypeInfo(Object.class, localTypeDef), HeaderHashType.class);
+    TypeInfo sourceHint = new TypeInfo(Object.class, wireTypeDef);
     TypeInfo[] typeInfoCache = TestUtils.getFieldValue(resolver, "typeInfoCache");
-    typeInfoCache[0] = transformedHint;
+    typeInfoCache[0] = sourceHint;
     MemoryBuffer frame = opaqueTypeFrame(typeId, wireTypeDef, 6, 6);
 
     TypeInfo typeInfo = resolver.readTypeInfo(prepare(reader, frame), HeaderHashType.class);
 
-    assertNotSame(typeInfo, transformedHint);
+    assertNotSame(typeInfo, sourceHint);
     assertSame(typeInfo.getTypeDef(), localTypeDef);
+    assertSame(typeInfoCache[0], sourceHint);
     assertEquals(frame.readerIndex(), frame.size());
+  }
+
+  @DataProvider
+  public Object[][] modes() {
+    return new Object[][] {{false, false}, {false, true}, {true, false}, {true, true}};
+  }
+
+  @Test(dataProvider = "modes")
+  public void testTargetTypeInfoReuse(boolean xlang, boolean codegen) throws Exception {
+    Fory writer = compatibleFory(xlang, codegen);
+    writer.register(HeaderHashType.class, 201);
+    HeaderHashType value = new HeaderHashType();
+    value.value = 42;
+    byte[] bytes = writer.serialize(value);
+    TypeDef typeDef = writer.getTypeResolver().getTypeDef(HeaderHashType.class, true);
+    int typeId = writer.getTypeResolver().getTypeInfo(HeaderHashType.class).getTypeId();
+
+    Fory reader = compatibleFory(xlang, codegen);
+    reader.register(HeaderHashType.class, 201);
+    reader.register(FirstTarget.class, 202);
+    reader.register(SecondTarget.class, 203);
+    TypeResolver resolver = reader.getTypeResolver();
+    TypeInfo first =
+        resolver.readTypeInfo(prepare(reader, typeFrame(typeId, typeDef)), FirstTarget.class);
+    TypeInfo source =
+        resolver.extRegistry.typeInfoByHeaderHash.get(TypeDef.headerHash(typeDef.getId()));
+    assertSame(source.getType(), HeaderHashType.class);
+    Field cacheField = TypeResolver.class.getDeclaredField("typeInfoCache");
+    cacheField.setAccessible(true);
+    TypeInfo[] hints = (TypeInfo[]) cacheField.get(resolver);
+    assertSame(hints[0], source);
+    TypeInfo second =
+        resolver.readTypeInfo(prepare(reader, typeFrame(typeId, typeDef)), SecondTarget.class);
+    assertNotSame(first, second);
+    assertSame(first.getType(), FirstTarget.class);
+    assertSame(second.getType(), SecondTarget.class);
+    MemoryBuffer references = MemoryBuffer.newHeapBuffer(typeDef.getEncoded().length + 16);
+    references.writeUInt8(typeId);
+    references.writeVarUInt32(0);
+    references.writeBytes(typeDef.getEncoded());
+    references.writeUInt8(typeId);
+    references.writeVarUInt32(1);
+    references.writeUInt8(typeId);
+    references.writeVarUInt32(1);
+    ReadContext context = prepare(reader, readable(references));
+    assertSame(resolver.readTypeInfo(context, FirstTarget.class), first);
+    assertSame(resolver.readTypeInfo(context, SecondTarget.class), second);
+    assertSame(resolver.readTypeInfo(context), source);
+    for (int i = 0; i < 3; i++) {
+      assertSame(
+          resolver.readTypeInfo(prepare(reader, typeFrame(typeId, typeDef)), FirstTarget.class),
+          first);
+      assertSame(
+          resolver.readTypeInfo(prepare(reader, typeFrame(typeId, typeDef)), SecondTarget.class),
+          second);
+      assertSame(hints[0], source);
+      assertSame(reader.getReadContext().getMetaReadContext().readTypeInfos.get(0), source);
+      assertSame(
+          resolver.extRegistry.typeInfoByHeaderHash.get(TypeDef.headerHash(typeDef.getId())),
+          source);
+      assertEquals(reader.deserialize(bytes, FirstTarget.class).value, 42);
+      SecondTarget converted = reader.deserialize(bytes, SecondTarget.class);
+      assertEquals(converted.value, 42);
+      assertEquals(converted.extra, 0);
+      assertEquals(((HeaderHashType) reader.deserialize(bytes)).value, 42);
+    }
+  }
+
+  @Test
+  public void testCachedLocalMetadata() {
+    Fory reader = compatibleFory(false, false);
+    TypeResolver template = reader.getTypeResolver();
+    AtomicInteger localQueries = new AtomicInteger();
+    ClassResolver resolver =
+        new ClassResolver(
+            template.config,
+            template.extRegistry.classLoader,
+            template.sharedRegistry,
+            template.jitContext) {
+          @Override
+          public TypeInfo getTypeInfo(Class<?> cls, boolean createIfAbsent) {
+            if (!createIfAbsent) {
+              localQueries.incrementAndGet();
+            }
+            return super.getTypeInfo(cls, createIfAbsent);
+          }
+        };
+    resolver.initialize();
+    resolver.register(HeaderHashType.class, 201);
+    resolver.register(FirstTarget.class, 202);
+    TypeDef typeDef = resolver.getTypeDef(HeaderHashType.class, true);
+    TypeInfo source =
+        resolver.readSharedClassMeta(
+            prepare(reader, opaqueMetaFrame(typeDef, 5, 5)), HeaderHashType.class);
+    TypeInfo target =
+        resolver.readSharedClassMeta(
+            prepare(reader, opaqueMetaFrame(typeDef, 5, 5)), FirstTarget.class);
+    int initialQueries = localQueries.get();
+    Assert.assertTrue(initialQueries > 0);
+    for (int i = 0; i < 3; i++) {
+      assertSame(
+          resolver.readSharedClassMeta(
+              prepare(reader, opaqueMetaFrame(typeDef, 5, 5)), HeaderHashType.class),
+          source);
+      assertSame(
+          resolver.readSharedClassMeta(
+              prepare(reader, opaqueMetaFrame(typeDef, 5, 5)), FirstTarget.class),
+          target);
+    }
+    assertEquals(localQueries.get(), initialQueries);
+  }
+
+  private static Fory compatibleFory(boolean xlang, boolean codegen) {
+    return Fory.builder()
+        .withXlang(xlang)
+        .withCodegen(codegen)
+        .withCompatible(true)
+        .withScopedMetaShare(true)
+        .withAsyncCompilation(false)
+        .build();
   }
 
   @Test
@@ -248,7 +377,12 @@ public class TypeDefHeaderHashTest {
 
   private static ReadContext prepare(Fory fory, MemoryBuffer buffer) {
     ReadContext readContext = fory.getReadContext();
-    readContext.setMetaReadContext(new MetaReadContext());
+    MetaReadContext metaReadContext = readContext.getMetaReadContext();
+    if (metaReadContext == null) {
+      readContext.setMetaReadContext(new MetaReadContext());
+    } else {
+      metaReadContext.readTypeInfos.clear();
+    }
     readContext.prepare(buffer, null, false);
     return readContext;
   }

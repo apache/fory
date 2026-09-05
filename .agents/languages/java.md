@@ -110,6 +110,11 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   published. Do not extend this exception to another cache or retained value.
 - Concrete serializers may opt into sharing only after auditing retained fields. Treat serializers retaining `TypeResolver`, `RefResolver`, mutable scratch buffers, runtime state, or classloader-sensitive state as non-shareable unless that state is externalized.
 - Resolver and serializer hot paths should keep the fast-path/null-slow-path shape obvious. Hoist repeated buffer or cache-state access into locals for multi-step operations and keep rebuild/restoration logic cold.
+- Java compatible metadata hash caches and depth hints retain the source `TypeInfo`, before
+  requested-target adaptation. Store target-specific results in the existing `transformedTypeInfo`
+  cache, keyed by target `Class` identity with source `Class` and primitive header-hash comparisons
+  in its entries; do not allocate tuple keys. Resolve local schemas only on metadata-cache or
+  target-conversion-cache misses. A hit must not repeat `matchingLocalTypeDef` or `getTypeDef`.
 - Remote metadata and class-token paths that materialize Java classes must keep
   `TypeResolver.loadClass` or an equivalent owner in the path so
   `TypeChecker.checkType` and `DisallowedList` run on the remote class name
