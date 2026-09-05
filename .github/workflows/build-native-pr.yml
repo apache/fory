@@ -21,10 +21,20 @@
 name: Build Native PR Wheels
 on:
   pull_request:
-    paths: [ci/**, python/**, .github/workflows/**]
+    paths:
+      - ci/**
+      - python/**
+      - .github/workflows/**
+      - "!kotoba/**"
+      - "!.github/workflows/kotoba*.yml"
   push:
     branches: [main]
-    paths: [ci/**, python/**, .github/workflows/**]
+    paths:
+      - ci/**
+      - python/**
+      - .github/workflows/**
+      - "!kotoba/**"
+      - "!.github/workflows/kotoba*.yml"
 
 jobs:
   build-windows:

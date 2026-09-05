@@ -24,6 +24,9 @@ on:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - "kotoba/**"
+      - ".github/workflows/kotoba*.yml"
   push:
     branches:
       - main
@@ -31,6 +34,8 @@ on:
       - "**.md"
       - "**.yml"
       - "**.yaml"
+      - "!kotoba/**"
+      - "!.github/workflows/kotoba*.yml"
 
 permissions:
   contents: read

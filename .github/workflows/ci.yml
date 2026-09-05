@@ -33,6 +33,9 @@ on:
       - "test*"
     tags:
       - v*
+    paths-ignore:
+      - "kotoba/**"
+      - ".github/workflows/kotoba*.yml"
   pull_request:
     paths-ignore:
       - "**/*.md"
@@ -42,6 +45,8 @@ on:
       - "licenses/**"
       - "DISCLAIMER"
       - "NOTICE"
+      - "kotoba/**"
+      - ".github/workflows/kotoba*.yml"
     types: ["opened", "reopened", "synchronize"]
 
 permissions:

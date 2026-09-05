@@ -15,29 +15,28 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: ASF GitHub Actions Allowlist
+name: Kotoba v1
 
 on:
   push:
-    paths-ignore:
+    paths:
       - "kotoba/**"
-      - ".github/workflows/kotoba*.yml"
+      - ".github/workflows/kotoba.yml"
   pull_request:
-    paths-ignore:
+    paths:
       - "kotoba/**"
-      - ".github/workflows/kotoba*.yml"
+      - ".github/workflows/kotoba.yml"
 
 permissions:
   contents: read
 
 jobs:
-  asf-allowlist-check:
+  checks:
+    name: Header and one-record fixture
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Check ASF GitHub Actions allowlist
-        uses: apache/infrastructure-actions/allowlist-check@bddab88ea4e4874c2c159c18f3017b51ec278d03
-        with:
-          scan-glob: ".github/**/*.y*ml"
+      - name: Run Kotoba v1 checks
+        run: bash kotoba/checks.sh
