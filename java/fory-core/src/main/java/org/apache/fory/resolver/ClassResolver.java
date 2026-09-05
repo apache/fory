@@ -247,6 +247,11 @@ public class ClassResolver extends TypeResolver {
   private final ObjectMap<TypeNameBytes, TypeInfo> compositeNameBytes2TypeInfo =
       new ObjectMap<>(16, foryMapLoadFactor);
   private final ShimDispatcher shimDispatcher;
+  // Caches whether a configured SerializerFactory would supply a custom serializer for each class.
+  // Used by isCustomSerializedByFactory() to keep TypeDef root kind consistent between writer and
+  // reader without repeatedly invoking the factory. Thread-safe for cross-instance scenarios.
+  private final ConcurrentHashMap<Class<?>, Boolean> extSerializerFlagCache =
+      new ConcurrentHashMap<>();
 
   public ClassResolver(
       Config config,
@@ -969,42 +974,14 @@ public class ClassResolver extends TypeResolver {
     return typeId;
   }
 
-  // Cache of classes that a configured SerializerFactory would custom-serialize (i.e. non-struct).
-  private final java.util.Set<Class<?>> factoryCustomTrue = new java.util.HashSet<>();
-  private final java.util.Set<Class<?>> factoryCustomFalse = new java.util.HashSet<>();
-  private final java.util.Set<Class<?>> factoryCustomProbing = new java.util.HashSet<>();
-
-  /**
-   * Whether {@link #createSerializerFromFactory} would supply a custom (non-struct) serializer for
-   * the class. Keeps the TypeDef root kind consistent with what the writer encodes, without forcing
-   * serializer construction during class-metadata building. On any error or re-entrancy the class is
-   * treated conservatively as struct-owned.
-   */
   private boolean isCustomSerializedByFactory(Class<?> cls) {
-    if (factoryCustomTrue.contains(cls)) {
-      return true;
-    }
-    if (factoryCustomFalse.contains(cls)) {
-      return false;
-    }
-    if (!factoryCustomProbing.add(cls)) {
-      // re-entrant probe for the same class: bail out conservatively
-      return false;
-    }
-    try {
-      if (createSerializerFromFactory(cls) != null) {
-        factoryCustomTrue.add(cls);
-        return true;
+    return extSerializerFlagCache.computeIfAbsent(cls, c -> {
+      try {
+        return createSerializerFromFactory(c) != null;
+      } catch (Throwable t) {
+        return false;
       }
-      factoryCustomFalse.add(cls);
-      return false;
-    } catch (Throwable t) {
-      // Conservative: treat as struct-owned if the factory cannot answer safely here.
-      factoryCustomFalse.add(cls);
-      return false;
-    } finally {
-      factoryCustomProbing.remove(cls);
-    }
+    });
   }
 
   public int getTypeDefRootTypeId(Class<?> cls, boolean hasFieldMetadata) {
