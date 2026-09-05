@@ -247,11 +247,6 @@ public class ClassResolver extends TypeResolver {
   private final ObjectMap<TypeNameBytes, TypeInfo> compositeNameBytes2TypeInfo =
       new ObjectMap<>(16, foryMapLoadFactor);
   private final ShimDispatcher shimDispatcher;
-  // Caches whether a configured SerializerFactory would supply a custom serializer for each class.
-  // Used by isCustomSerializedByFactory() to keep TypeDef root kind consistent between writer and
-  // reader without repeatedly invoking the factory. Thread-safe for cross-instance scenarios.
-  private final ConcurrentHashMap<Class<?>, Boolean> extSerializerFlagCache =
-      new ConcurrentHashMap<>();
 
   public ClassResolver(
       Config config,
@@ -974,16 +969,6 @@ public class ClassResolver extends TypeResolver {
     return typeId;
   }
 
-  private boolean isCustomSerializedByFactory(Class<?> cls) {
-    return extSerializerFlagCache.computeIfAbsent(cls, c -> {
-      try {
-        return createSerializerFromFactory(c) != null;
-      } catch (Throwable t) {
-        return false;
-      }
-    });
-  }
-
   public int getTypeDefRootTypeId(Class<?> cls, boolean hasFieldMetadata) {
     if (hasFieldMetadata) {
       // Preserve the normal TypeInfo/name cache so locally generated or dynamically registered
@@ -994,11 +979,6 @@ public class ClassResolver extends TypeResolver {
         // Their natural serializers may delegate field IO internally, but the TypeDef root kind
         // must still resolve to the non-struct serializer family on the reader.
         return normalizeTypeDefRootTypeId(cls, typeId);
-      }
-      if (isCustomSerializedByFactory(cls)) {
-        // A factory custom serializer is non-struct on the writer (NAMED_EXT); the reader must not
-        // downgrade it to a struct/compatible root kind just because it has no TypeInfo yet.
-        return Types.NAMED_EXT;
       }
       return getFieldMetadataTypeIdForTypeDef(cls);
     }
@@ -1014,13 +994,7 @@ public class ClassResolver extends TypeResolver {
       }
       return normalizeTypeDefRootTypeId(cls, typeInfo.typeId);
     }
-    if (usesNonStructTypeDef(cls)) {
-      return Types.NAMED_EXT;
-    }
-    if (isCustomSerializedByFactory(cls)) {
-      return Types.NAMED_EXT;
-    }
-    return buildUnregisteredTypeId(cls, null);
+    return usesNonStructTypeDef(cls) ? Types.NAMED_EXT : buildUnregisteredTypeId(cls, null);
   }
 
   private int getFieldMetadataTypeIdForTypeDef(Class<?> cls) {

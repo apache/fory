@@ -1226,10 +1226,24 @@ public abstract class TypeResolver {
     }
     // A declared polymorphic target can be an unregistered interface or abstract class. It has no
     // concrete local metadata owner, so do not materialize a TypeDef merely to probe for a hit.
-    if (getTypeInfo(cls, false) == null) {
+    TypeInfo typeInfo = getTypeInfo(cls, false);
+    if (typeInfo == null) {
       return null;
     }
-    TypeDef localTypeDef = getTypeDef(cls, true);
+    TypeDef localTypeDef = typeInfo.typeDef;
+    if (localTypeDef == null) {
+      if (typeInfo.serializer == null) {
+        if (!cls.isEnum() && ReflectionUtils.isAbstract(cls)) {
+          return null;
+        }
+        // Resolve this concrete read root before choosing its metadata shape. A provisional
+        // TypeInfo cannot distinguish a struct from a factory extension serializer.
+        typeInfo = getTypeInfo(cls);
+      }
+      // The serializer owns its TypeDef: guessing field metadata for an extension can cache a
+      // struct definition and corrupt a later write. Cold local structs must still match locally.
+      localTypeDef = buildTypeDef(typeInfo);
+    }
     return TypeDef.headerHash(localTypeDef.getId()) == headerHash ? localTypeDef : null;
   }
 
