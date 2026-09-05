@@ -26,14 +26,14 @@ Apache Fory Row Format is a cache-friendly, random-access binary format designed
 - **Random Field Access**: Read individual fields without deserializing the entire row
 - **Zero-Copy Operations**: Direct memory access without data transformation
 - **Cache-Friendly Layout**: Optimized memory layout for CPU cache efficiency
-- **Cross-Language Support**: Consistent binary format across Java, C++, Python, and Rust
+- **Cross-Language Support**: Consistent binary format across Java, C++, Python, Rust, and Go
 
 Fory provides two row format variants:
 
-| Format          | Languages               | Use Case                       |
-| --------------- | ----------------------- | ------------------------------ |
-| Standard Format | Java, C++, Python, Rust | Cross-language compatibility   |
-| Compact Format  | Java only               | Space efficiency, smaller rows |
+| Format          | Languages                   | Use Case                       |
+| --------------- | --------------------------- | ------------------------------ |
+| Standard Format | Java, C++, Python, Rust, Go | Cross-language compatibility   |
+| Compact Format  | Java only                   | Space efficiency, smaller rows |
 
 ## Format Comparison
 

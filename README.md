@@ -800,11 +800,32 @@ ArrayData scores = scoresField.get(row);
 int secondScore = scores.getInt32(1);
 ```
 
+**Go**
+
+```go
+import "github.com/apache/fory/go/fory/row"
+
+type User struct {
+    Id     int32
+    Name   string
+    Scores []int32
+}
+
+encoder, _ := row.NewEncoder[User]()
+binary, _ := encoder.ToRow(&User{Id: 1, Name: "Alice", Scores: []int32{98, 100, 95}})
+
+schema := encoder.Schema()
+r := row.NewRow(schema, binary)
+name := r.String(schema.FieldIndex("name"))
+secondScore := r.Array(schema.FieldIndex("scores")).Int32(1)
+```
+
 For Java imports, nested structs, arrays/maps, Arrow integration, and partial
 deserialization, see the [Java row-format guide](docs/row-format/java.md),
 [Python row-format guide](docs/row-format/python.md),
 [C++ row-format guide](docs/row-format/cpp.md),
-[Rust row-format guide](docs/row-format/rust.md), and
+[Rust row-format guide](docs/row-format/rust.md),
+[Go row-format guide](docs/row-format/go.md), and
 [row-format specification](docs/specification/row_format_spec.md).
 
 ## Fory JSON

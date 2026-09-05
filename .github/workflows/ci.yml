@@ -1805,6 +1805,8 @@ jobs:
           mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.GoXlangTest
+          cd ../fory-format
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.format.GoCrossLanguageTest
       - name: Run Go IDL Tests
         run: ./integration_tests/idl_tests/run_go_tests.sh
 

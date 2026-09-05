@@ -21,7 +21,7 @@ license: |
 
 ## A Standard Row peer cannot read Compact Row bytes
 
-Compact Row is a Java-only row family. Use Standard Row on Java, Python, C++, and Rust for shared
+Compact Row is a Java-only row family. Use Standard Row on Java, Python, C++, Rust, and Go for shared
 bytes.
 
 ## A field lookup fails
