@@ -19,10 +19,13 @@
 
 #pragma once
 
+#include "fory/util/error.h"
+#include "fory/util/result.h"
 #include "macros.h"
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -68,6 +71,16 @@ namespace detail {
 bool utf8_to_utf16_checked(const char *utf8, size_t size, bool is_little_endian,
                            std::u16string &utf16);
 
+inline bool latin1_utf8_size(size_t input_size, size_t non_ascii_count,
+                             size_t &output_size) {
+  if (FORY_PREDICT_FALSE(non_ascii_count >
+                         std::numeric_limits<size_t>::max() - input_size)) {
+    return false;
+  }
+  output_size = input_size + non_ascii_count;
+  return true;
+}
+
 } // namespace detail
 
 // inline
@@ -102,7 +115,10 @@ inline void utf16_surrogate_pair_to_utf8(uint16_t high, uint16_t low,
 // Convert Latin1 encoded bytes to UTF-8 string.
 // Latin1 (ISO-8859-1) maps bytes 0-127 to ASCII and bytes 128-255 to
 // Unicode code points U+0080 to U+00FF.
-inline std::string latin1_to_utf8(const uint8_t *data, size_t length) {
+namespace detail {
+
+inline Result<std::string, Error> latin1_to_utf8_checked(const uint8_t *data,
+                                                         size_t length) {
   if (length == 0) {
     return std::string();
   }
@@ -112,11 +128,24 @@ inline std::string latin1_to_utf8(const uint8_t *data, size_t length) {
     return std::string(reinterpret_cast<const char *>(data), length);
   }
 
-  // Calculate exact output size to avoid reallocation
-  // ASCII bytes (< 128) need 1 byte, non-ASCII need 2 bytes in UTF-8
+  // Lengths at most half the size_t range cannot overflow when every byte
+  // expands. This keeps uint32_t wire lengths on 64-bit targets on the direct
+  // accumulation path while larger target-dependent lengths use checked math.
   size_t utf8_len = 0;
-  for (size_t i = 0; i < length; ++i) {
-    utf8_len += (data[i] < 128) ? 1 : 2;
+  if (length <= std::numeric_limits<size_t>::max() / 2) {
+    for (size_t i = 0; i < length; ++i) {
+      utf8_len += (data[i] < 128) ? 1 : 2;
+    }
+  } else {
+    size_t non_ascii_count = 0;
+    for (size_t i = 0; i < length; ++i) {
+      non_ascii_count += data[i] >= 128;
+    }
+    if (FORY_PREDICT_FALSE(
+            !detail::latin1_utf8_size(length, non_ascii_count, utf8_len))) {
+      return Unexpected(
+          Error::invalid_data("Latin1 UTF-8 size exceeds size_t range"));
+    }
   }
 
   std::string result;
@@ -137,6 +166,8 @@ inline std::string latin1_to_utf8(const uint8_t *data, size_t length) {
 
   return result;
 }
+
+} // namespace detail
 
 // Convert UTF-16 code units to UTF-8 string.
 // Handles surrogate pairs for characters outside BMP.

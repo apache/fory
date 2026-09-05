@@ -1193,7 +1193,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         json.fromJson("[\"true\",\"false\"]".getBytes(StandardCharsets.UTF_8), boolean[].class),
         new boolean[] {true, false});
-    assertEquals(json.fromJson("[\"2\",\"3\"]", byte[].class), new byte[] {2, 3});
+    assertEquals(json.fromJson("\"AgM=\"", byte[].class), new byte[] {2, 3});
     assertEquals(json.fromJson("[\"4\",\"5\"]", short[].class), new short[] {4, 5});
     assertEquals(json.fromJson("[\"6\",\"7\"]", int[].class), new int[] {6, 7});
     assertEquals(

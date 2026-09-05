@@ -19,8 +19,6 @@ import Foundation
 import Testing
 @testable import Fory
 
-private let secondsPerDay = 86_400.0
-
 @ForyStruct
 private struct DateMacroHolder {
     var day: LocalDate = LocalDate()
@@ -29,11 +27,7 @@ private struct DateMacroHolder {
     var timestamp: Date = Date(timeIntervalSince1970: 0)
 }
 
-private func midnightUTC(epochDay: Int32) -> Date {
-    Date(timeIntervalSince1970: Double(epochDay) * secondsPerDay)
-}
-
-private func localDate(_ epochDay: Int32) -> LocalDate {
+private func localDate(_ epochDay: Int64) -> LocalDate {
     .init(epochDay: epochDay)
 }
 
@@ -53,10 +47,40 @@ func dateAndTimestampRoundTrip() throws {
     let dayDecoded: LocalDate = try fory.deserialize(dayData)
     #expect(dayDecoded == day)
 
+    for boundary in [Int64.min, Int64.max] {
+        let boundaryDate = LocalDate(epochDay: boundary)
+        let boundaryData = try fory.serialize(boundaryDate)
+        let boundaryDecoded: LocalDate = try fory.deserialize(boundaryData)
+        #expect(boundaryDecoded == boundaryDate)
+    }
+
     let duration = Duration.seconds(-7) + Duration.nanoseconds(12_000_000)
     let durationData = try fory.serialize(duration)
     let durationDecoded: Duration = try fory.deserialize(durationData)
     #expect(durationDecoded == duration)
+
+    let durationBody = ByteBuffer()
+    let durationContext = WriteContext(
+        buffer: durationBody,
+        typeResolver: TypeResolver(trackRef: false),
+        trackRef: false
+    )
+    try Duration.writeData(Duration.milliseconds(-500), durationContext)
+    #expect(try durationBody.readVarInt64() == -1)
+    #expect(try durationBody.readInt32() == 500_000_000)
+
+    var malformedDuration = try fory.serialize(Duration.zero)
+    let invalidNanos = ByteBuffer()
+    invalidNanos.writeInt32(1_000_000_000)
+    malformedDuration.replaceSubrange(
+        (malformedDuration.count - 4)..<malformedDuration.count,
+        with: invalidNanos.copyToData()
+    )
+    #expect(throws: (any Error).self) {
+        let _: Duration = try fory.deserialize(malformedDuration)
+    }
+    let durationAfterFailure: Duration = try fory.deserialize(durationData)
+    #expect(durationAfterFailure == duration)
 
     let instant = Date(timeIntervalSince1970: 1_731_234_567.123_456_7)
     let instantData = try fory.serialize(instant)

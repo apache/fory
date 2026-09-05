@@ -241,6 +241,7 @@ export class CollectionAnySerializer {
       this.writeElementsHeader(value);
     if (isSame) {
       serializer!.writeTypeInfo(sample);
+      this.writeContext.writer.reserve((serializer!.fixedSize + 1) * size);
       if (trackingRef) {
         for (const item of value) {
           if (!serializer!.writeRefOrNull(item)) {
@@ -262,12 +263,16 @@ export class CollectionAnySerializer {
         }
       }
     } else {
+      // Mixed-type elements resolve a serializer per item, so capacity is
+      // reserved per item; the upfront byte per element covers null flags.
+      this.writeContext.writer.reserve(size);
       if (trackingRef) {
         for (const item of value) {
           if (item === null || item === undefined) {
             this.writeContext.writer.writeInt8(RefFlags.NullFlag);
           } else {
             const serializer = this.writeContext.typeResolver.getSerializerByData(item);
+            this.writeContext.writer.reserve(serializer!.fixedSize);
             serializer!.writeRef(item);
           }
         }
@@ -277,6 +282,7 @@ export class CollectionAnySerializer {
             this.writeContext.writer.writeInt8(RefFlags.NullFlag);
           } else {
             const serializer = this.writeContext.typeResolver.getSerializerByData(item);
+            this.writeContext.writer.reserve(serializer!.fixedSize);
             this.writeContext.writer.writeInt8(RefFlags.NotNullValueFlag);
             serializer!.writeNoRef(item);
           }
@@ -284,6 +290,7 @@ export class CollectionAnySerializer {
       } else {
         for (const item of value) {
           const serializer = this.writeContext.typeResolver.getSerializerByData(item);
+          this.writeContext.writer.reserve(serializer!.fixedSize);
           serializer!.writeNoRef(item);
         }
       }
@@ -307,6 +314,7 @@ export class CollectionAnySerializer {
       }
     }
     this.writeContext.writer.writeUint8(flags);
+    this.writeContext.writer.reserve((serializer.fixedSize + 1) * size);
     if (flags & CollectionFlags.TRACKING_REF) {
       for (const item of value) {
         if (!serializer.writeRefOrNull(item)) {

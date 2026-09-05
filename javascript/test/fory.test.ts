@@ -90,4 +90,21 @@ describe("fory", () => {
     const result = serialize.deserialize(serialize.serialize(input));
     expect(result).toEqual(expected ?? input);
   }
+
+  test("should meta string state not grow across root serializations", () => {
+    // Meta string owners re-push themselves on every root serialize; if
+    // reset() does not truncate the dispose list, it grows without bound and
+    // every reset walks the whole history.
+    const fory = new Fory({ compatible: false });
+    const { serialize } = fory.register(
+      Type.struct({ namespace: "example", typeName: "Item" }, { a: Type.int32() }),
+    );
+    serialize({ a: 1 });
+    const metaStringWriter = (fory as any).writeContext.metaStringWriter;
+    const baseline = metaStringWriter.disposeMetaStringBytes.length;
+    for (let i = 0; i < 100; i++) {
+      serialize({ a: i });
+    }
+    expect(metaStringWriter.disposeMetaStringBytes.length).toBe(baseline);
+  });
 });

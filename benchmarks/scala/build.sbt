@@ -26,7 +26,7 @@ lazy val root = (project in file("."))
     name := "fory-scala-json-benchmarks",
     resolvers += Resolver.mavenLocal,
     libraryDependencies ++= Seq(
-      "org.apache.fory" %% "fory-json-scala" % "1.7.0-SNAPSHOT",
+      "org.apache.fory" %% "fory-json-scala" % "1.8.0-SNAPSHOT",
       "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core" % "2.40.1",
       "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-macros" % "2.40.1" % Provided,
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.22.1",

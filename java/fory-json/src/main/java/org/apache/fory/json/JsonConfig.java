@@ -37,6 +37,7 @@ public final class JsonConfig {
   private static final int MAX_CACHED_FIELD_NAMES = 1 << 29;
 
   private final boolean writeNullFields;
+  private final boolean writeLongAsString;
   private final boolean codegenEnabled;
   private final boolean asyncCompilationEnabled;
   private final boolean propertyDiscoveryEnabled;
@@ -56,6 +57,7 @@ public final class JsonConfig {
 
   JsonConfig(
       boolean writeNullFields,
+      boolean writeLongAsString,
       boolean codegenEnabled,
       boolean asyncCompilationEnabled,
       boolean propertyDiscoveryEnabled,
@@ -72,6 +74,7 @@ public final class JsonConfig {
       List<String> factoryIdentities,
       JsonTypeChecker typeChecker) {
     this.writeNullFields = writeNullFields;
+    this.writeLongAsString = writeLongAsString;
     this.codegenEnabled = codegenEnabled;
     this.asyncCompilationEnabled = asyncCompilationEnabled;
     this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
@@ -95,6 +98,13 @@ public final class JsonConfig {
 
   public boolean writeNullFields() {
     return writeNullFields;
+  }
+
+  /**
+   * Returns whether built-in signed and module-provided unsigned 64-bit values write as strings.
+   */
+  public boolean writeLongAsString() {
+    return writeLongAsString;
   }
 
   public boolean codegenEnabled() {

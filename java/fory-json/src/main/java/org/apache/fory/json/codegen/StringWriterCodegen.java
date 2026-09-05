@@ -183,7 +183,10 @@ final class StringWriterCodegen extends JsonWriterCodegen {
         method = "writeObjectStartWithIntField";
         break;
       case LONG:
-        method = "writeObjectStartWithLongField";
+        method =
+            property.writesLongAsString()
+                ? "writeObjectStartWithLongAsStringField"
+                : "writeObjectStartWithLongField";
         break;
       default:
         throw new ForyJsonException(
@@ -212,7 +215,10 @@ final class StringWriterCodegen extends JsonWriterCodegen {
       boolean commaKnown,
       Expression index,
       Expression writer) {
-    String method = longValue ? "writeLongField" : "writeIntField";
+    String method =
+        longValue
+            ? property.writesLongAsString() ? "writeLongAsStringField" : "writeLongField"
+            : "writeIntField";
     if (commaKnown) {
       if (canPackUtf16Prefix(property, true)) {
         return new Expression.Invoke(

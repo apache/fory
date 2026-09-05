@@ -25,6 +25,7 @@ import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
@@ -68,6 +69,7 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.codec.ArrayCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.data.FastContainers;
@@ -128,9 +130,10 @@ public class JsonContainerTest extends ForyJsonTestModels {
   @Test
   public void unsignedArrayOverflow() {
     byte[] input = "[4294967295]".getBytes(StandardCharsets.UTF_8);
-    ArrayCodec<byte[]> uint8 = ArrayCodec.createUnsignedPrimitive(byte[].class, Types.UINT8_ARRAY);
-    ArrayCodec<short[]> uint16 =
-        ArrayCodec.createUnsignedPrimitive(short[].class, Types.UINT16_ARRAY);
+    JsonValueCodec<byte[]> uint8 =
+        ArrayCodec.createUnsignedPrimitive(byte[].class, Types.UINT8_ARRAY, false);
+    JsonValueCodec<short[]> uint16 =
+        ArrayCodec.createUnsignedPrimitive(short[].class, Types.UINT16_ARRAY, false);
 
     assertThrows(ForyJsonException.class, () -> uint8.readUtf8(newUtf8Reader(input)));
     assertThrows(ForyJsonException.class, () -> uint8.readLatin1(newLatin1Reader(input)));
@@ -605,9 +608,25 @@ public class JsonContainerTest extends ForyJsonTestModels {
     assertEquals(
         json.fromJson("[true,false]".getBytes(StandardCharsets.UTF_8), boolean[].class),
         new boolean[] {true, false});
-    assertEquals(json.fromJson("[1,-2,3]", byte[].class), new byte[] {1, -2, 3});
+    assertEquals(json.fromJson("\"Af4D\"", byte[].class), new byte[] {1, -2, 3});
     assertEquals(json.fromJson("[\"a\",\"你\"]", char[].class), new char[] {'a', '你'});
     assertThrows(ForyJsonException.class, () -> json.fromJson("[1,null]", int[].class));
+  }
+
+  @Test
+  public void byteArrayDefaultsToBase64() {
+    ForyJson json = newJson();
+    assertEquals(json.toJson(new byte[] {1, -2, 3}), "\"Af4D\"");
+    assertEquals(
+        new String(json.toJsonBytes(new byte[] {1, -2, 3}), StandardCharsets.UTF_8), "\"Af4D\"");
+    assertEquals(json.fromJson("\"Af4D\"", byte[].class), new byte[] {1, -2, 3});
+    assertEquals(
+        json.fromJson("\"Af4D\"".getBytes(StandardCharsets.UTF_8), byte[].class),
+        new byte[] {1, -2, 3});
+    assertEquals(json.toJson(new byte[0]), "\"\"");
+    assertEquals(json.toJson(null, byte[].class), "null");
+    assertNull(json.fromJson("null", byte[].class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("[1,-2,3]", byte[].class));
   }
 
   @Test

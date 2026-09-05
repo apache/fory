@@ -15,11 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use fory_core::Fory;
+use fory_core::{resolver::RefReader, Fory, ReadContext, TypeResolver, WriteContext};
 use fory_derive::ForyStruct;
+use static_assertions::{assert_impl_all, assert_not_impl_any};
 use std::collections::HashSet;
 use std::sync::{Arc, Barrier};
 use std::thread;
+
+assert_impl_all!(Fory: Send, Sync);
+assert_not_impl_any!(TypeResolver: Send, Sync);
+assert_not_impl_any!(ReadContext<'static>: Send, Sync);
+assert_not_impl_any!(WriteContext<'static>: Send, Sync);
+assert_not_impl_any!(RefReader: Send, Sync);
 
 #[test]
 fn test_simple_multi_thread() {

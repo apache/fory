@@ -40,12 +40,22 @@ import org.apache.fory.type.Types
  */
 @OptIn(ExperimentalUnsignedTypes::class)
 internal object KotlinUnsignedArrayCodecs {
-  fun create(rawType: Class<*>, typeId: Int): JsonValueCodec<*>? =
+  fun create(
+    rawType: Class<*>,
+    typeId: Int,
+    writeLongAsString: Boolean,
+  ): JsonValueCodec<*>? =
     when (rawType) {
       UByteArray::class.java -> requireType(rawType, typeId, Types.UINT8_ARRAY, UByteArrayCodec)
       UShortArray::class.java -> requireType(rawType, typeId, Types.UINT16_ARRAY, UShortArrayCodec)
       UIntArray::class.java -> requireType(rawType, typeId, Types.UINT32_ARRAY, UIntArrayCodec)
-      ULongArray::class.java -> requireType(rawType, typeId, Types.UINT64_ARRAY, ULongArrayCodec)
+      ULongArray::class.java ->
+        requireType(
+          rawType,
+          typeId,
+          Types.UINT64_ARRAY,
+          if (writeLongAsString) ULongArrayCodec.QUOTED else ULongArrayCodec.NUMERIC,
+        )
       else -> null
     }
 
@@ -65,7 +75,7 @@ internal object KotlinUnsignedArrayCodecs {
 
   private object UByteArrayCodec : JsonValueCodec<UByteArray> {
     private val delegate =
-      ArrayCodec.createUnsignedPrimitive(ByteArray::class.java, Types.UINT8_ARRAY)
+      ArrayCodec.createUnsignedPrimitive(ByteArray::class.java, Types.UINT8_ARRAY, false)
     private val wrapperBytes = GraphMemoryEstimates.shallowObjectBytes(UByteArray::class.java)
 
     override fun writeString(writer: StringJsonWriter, value: UByteArray?) =
@@ -95,7 +105,7 @@ internal object KotlinUnsignedArrayCodecs {
 
   private object UShortArrayCodec : JsonValueCodec<UShortArray> {
     private val delegate =
-      ArrayCodec.createUnsignedPrimitive(ShortArray::class.java, Types.UINT16_ARRAY)
+      ArrayCodec.createUnsignedPrimitive(ShortArray::class.java, Types.UINT16_ARRAY, false)
     private val wrapperBytes = GraphMemoryEstimates.shallowObjectBytes(UShortArray::class.java)
 
     override fun writeString(writer: StringJsonWriter, value: UShortArray?) =
@@ -125,7 +135,7 @@ internal object KotlinUnsignedArrayCodecs {
 
   private object UIntArrayCodec : JsonValueCodec<UIntArray> {
     private val delegate =
-      ArrayCodec.createUnsignedPrimitive(IntArray::class.java, Types.UINT32_ARRAY)
+      ArrayCodec.createUnsignedPrimitive(IntArray::class.java, Types.UINT32_ARRAY, false)
     private val wrapperBytes = GraphMemoryEstimates.shallowObjectBytes(UIntArray::class.java)
 
     override fun writeString(writer: StringJsonWriter, value: UIntArray?) =
@@ -150,9 +160,20 @@ internal object KotlinUnsignedArrayCodecs {
     }
   }
 
-  private object ULongArrayCodec : JsonValueCodec<ULongArray> {
-    private val delegate =
-      ArrayCodec.createUnsignedPrimitive(LongArray::class.java, Types.UINT64_ARRAY)
+  private class ULongArrayCodec(
+    private val delegate: JsonValueCodec<LongArray>,
+  ) : JsonValueCodec<ULongArray> {
+    companion object {
+      val NUMERIC =
+        ULongArrayCodec(
+          ArrayCodec.createUnsignedPrimitive(LongArray::class.java, Types.UINT64_ARRAY, false)
+        )
+      val QUOTED =
+        ULongArrayCodec(
+          ArrayCodec.createUnsignedPrimitive(LongArray::class.java, Types.UINT64_ARRAY, true)
+        )
+    }
+
     private val wrapperBytes = GraphMemoryEstimates.shallowObjectBytes(ULongArray::class.java)
 
     override fun writeString(writer: StringJsonWriter, value: ULongArray?) =

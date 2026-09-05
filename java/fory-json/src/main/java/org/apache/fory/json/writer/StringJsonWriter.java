@@ -204,6 +204,25 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   }
 
   @Override
+  public void writeLongAsString(long value) {
+    if (coder == LATIN1) {
+      if (position + 22 > buffer.length) {
+        grow(22);
+      }
+      buffer[position++] = (byte) '"';
+      writeLongLatin1NoEnsure(value);
+      buffer[position++] = (byte) '"';
+      return;
+    }
+    if (position + 44 > buffer.length) {
+      grow(44);
+    }
+    writeUtf16ByteNoEnsure((byte) '"');
+    writeLongUtf16NoEnsure(value);
+    writeUtf16ByteNoEnsure((byte) '"');
+  }
+
+  @Override
   public void writeUnsignedLong(long value) {
     if (value >= 0) {
       writeLong(value);
@@ -213,6 +232,25 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     int remainder = (int) Long.remainderUnsigned(value, 10);
     writeLong(quotient);
     writeByteRaw((byte) ('0' + remainder));
+  }
+
+  @Override
+  public void writeUnsignedLongAsString(long value) {
+    if (coder == LATIN1) {
+      if (position + 22 > buffer.length) {
+        grow(22);
+      }
+      buffer[position++] = (byte) '"';
+      writeUnsignedLongLatin1NoEnsure(value);
+      buffer[position++] = (byte) '"';
+      return;
+    }
+    if (position + 44 > buffer.length) {
+      grow(44);
+    }
+    writeUtf16ByteNoEnsure((byte) '"');
+    writeUnsignedLongUtf16NoEnsure(value);
+    writeUtf16ByteNoEnsure((byte) '"');
   }
 
   private void writeLongLatin1(long value) {
@@ -1120,6 +1158,199 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writePackedUtf16ValueNoEnsure(
         utf16Prefix0, utf16Prefix1, utf16Prefix2, utf16Prefix3, utf16PrefixLength);
     writeLongUtf16NoEnsure(value);
+  }
+
+  public void writeLongAsStringField(
+      byte[] namePrefix, byte[] commaNamePrefix, int index, long value) {
+    writeLongAsStringField(index == 0 ? namePrefix : commaNamePrefix, value);
+  }
+
+  public void writeLongAsStringField(
+      byte[] namePrefix,
+      byte[] commaNamePrefix,
+      byte[] utf16NamePrefix,
+      byte[] utf16CommaNamePrefix,
+      int index,
+      long value) {
+    if (coder == LATIN1) {
+      writeLongAsStringField(index == 0 ? namePrefix : commaNamePrefix, value);
+      return;
+    }
+    writeLongAsStringFieldUtf16Value(index == 0 ? utf16NamePrefix : utf16CommaNamePrefix, value);
+  }
+
+  public void writeLongAsStringField(byte[] prefix, long value) {
+    if (coder == LATIN1) {
+      writeLongAsStringFieldLatin1(prefix, value);
+      return;
+    }
+    writeLongAsStringFieldUtf16(prefix, value);
+  }
+
+  public void writeLongAsStringField(byte[] prefix, byte[] utf16Prefix, long value) {
+    if (coder == LATIN1) {
+      writeLongAsStringFieldLatin1(prefix, value);
+      return;
+    }
+    writeLongAsStringFieldUtf16Value(utf16Prefix, value);
+  }
+
+  public void writeLongAsStringField(
+      byte[] prefix,
+      long utf16Prefix0,
+      long utf16Prefix1,
+      long utf16Prefix2,
+      long utf16Prefix3,
+      int utf16PrefixLength,
+      long value) {
+    if (coder == LATIN1) {
+      writeLongAsStringFieldLatin1(prefix, value);
+      return;
+    }
+    writeLongAsStringFieldUtf16Packed(
+        utf16Prefix0, utf16Prefix1, utf16Prefix2, utf16Prefix3, utf16PrefixLength, value);
+  }
+
+  private void writeLongAsStringFieldLatin1(byte[] prefix, long value) {
+    int additional = prefix.length + 22;
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    writeRawLatin1NoEnsure(prefix);
+    buffer[position++] = (byte) '"';
+    writeLongLatin1NoEnsure(value);
+    buffer[position++] = (byte) '"';
+  }
+
+  private void writeLongAsStringFieldUtf16(byte[] prefix, long value) {
+    int additional = (prefix.length << 1) + 44;
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    writeRawUtf16NoEnsure(prefix);
+    writeUtf16ByteNoEnsure((byte) '"');
+    writeLongUtf16NoEnsure(value);
+    writeUtf16ByteNoEnsure((byte) '"');
+  }
+
+  private void writeLongAsStringFieldUtf16Value(byte[] utf16Prefix, long value) {
+    int additional = utf16Prefix.length + 44;
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    writeRawUtf16ValueNoEnsure(utf16Prefix);
+    writeUtf16ByteNoEnsure((byte) '"');
+    writeLongUtf16NoEnsure(value);
+    writeUtf16ByteNoEnsure((byte) '"');
+  }
+
+  private void writeLongAsStringFieldUtf16Packed(
+      long utf16Prefix0,
+      long utf16Prefix1,
+      long utf16Prefix2,
+      long utf16Prefix3,
+      int utf16PrefixLength,
+      long value) {
+    int additional = Math.max(packedUtf16PrefixSize(utf16PrefixLength), utf16PrefixLength + 44);
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    writePackedUtf16ValueNoEnsure(
+        utf16Prefix0, utf16Prefix1, utf16Prefix2, utf16Prefix3, utf16PrefixLength);
+    writeUtf16ByteNoEnsure((byte) '"');
+    writeLongUtf16NoEnsure(value);
+    writeUtf16ByteNoEnsure((byte) '"');
+  }
+
+  public void writeObjectStartWithLongAsStringField(byte[] namePrefix, long value) {
+    enterDepth();
+    if (coder == LATIN1) {
+      writeObjectStartWithLongAsStringFieldLatin1(namePrefix, value);
+      return;
+    }
+    writeObjectStartWithLongAsStringFieldUtf16(namePrefix, value);
+  }
+
+  public void writeObjectStartWithLongAsStringField(
+      byte[] namePrefix, byte[] utf16NamePrefix, long value) {
+    enterDepth();
+    if (coder == LATIN1) {
+      writeObjectStartWithLongAsStringFieldLatin1(namePrefix, value);
+      return;
+    }
+    writeObjectStartWithLongAsStringFieldUtf16Value(utf16NamePrefix, value);
+  }
+
+  public void writeObjectStartWithLongAsStringField(
+      byte[] namePrefix,
+      long utf16Prefix0,
+      long utf16Prefix1,
+      long utf16Prefix2,
+      long utf16Prefix3,
+      int utf16PrefixLength,
+      long value) {
+    enterDepth();
+    if (coder == LATIN1) {
+      writeObjectStartWithLongAsStringFieldLatin1(namePrefix, value);
+      return;
+    }
+    writeObjectStartWithLongAsStringFieldUtf16Packed(
+        utf16Prefix0, utf16Prefix1, utf16Prefix2, utf16Prefix3, utf16PrefixLength, value);
+  }
+
+  private void writeObjectStartWithLongAsStringFieldLatin1(byte[] namePrefix, long value) {
+    int additional = namePrefix.length + 23;
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    buffer[position++] = (byte) '{';
+    writeRawLatin1NoEnsure(namePrefix);
+    buffer[position++] = (byte) '"';
+    writeLongLatin1NoEnsure(value);
+    buffer[position++] = (byte) '"';
+  }
+
+  private void writeObjectStartWithLongAsStringFieldUtf16(byte[] namePrefix, long value) {
+    int additional = ((namePrefix.length + 1) << 1) + 44;
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    writeUtf16ByteNoEnsure((byte) '{');
+    writeRawUtf16NoEnsure(namePrefix);
+    writeUtf16ByteNoEnsure((byte) '"');
+    writeLongUtf16NoEnsure(value);
+    writeUtf16ByteNoEnsure((byte) '"');
+  }
+
+  private void writeObjectStartWithLongAsStringFieldUtf16Value(byte[] utf16NamePrefix, long value) {
+    int additional = utf16NamePrefix.length + 46;
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    writeUtf16ByteNoEnsure((byte) '{');
+    writeRawUtf16ValueNoEnsure(utf16NamePrefix);
+    writeUtf16ByteNoEnsure((byte) '"');
+    writeLongUtf16NoEnsure(value);
+    writeUtf16ByteNoEnsure((byte) '"');
+  }
+
+  private void writeObjectStartWithLongAsStringFieldUtf16Packed(
+      long utf16Prefix0,
+      long utf16Prefix1,
+      long utf16Prefix2,
+      long utf16Prefix3,
+      int utf16PrefixLength,
+      long value) {
+    int additional = Math.max(packedUtf16PrefixSize(utf16PrefixLength), utf16PrefixLength + 46);
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    writeUtf16ByteNoEnsure((byte) '{');
+    writePackedUtf16ValueNoEnsure(
+        utf16Prefix0, utf16Prefix1, utf16Prefix2, utf16Prefix3, utf16PrefixLength);
+    writeUtf16ByteNoEnsure((byte) '"');
+    writeLongUtf16NoEnsure(value);
+    writeUtf16ByteNoEnsure((byte) '"');
   }
 
   public void writeStringField(byte[] namePrefix, byte[] commaNamePrefix, int index, String value) {
@@ -2507,6 +2738,17 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writePositiveLongLatin1NoEnsure(value);
   }
 
+  private void writeUnsignedLongLatin1NoEnsure(long value) {
+    if (value >= 0) {
+      writeLongLatin1NoEnsure(value);
+      return;
+    }
+    long quotient = Long.divideUnsigned(value, 10);
+    int remainder = (int) Long.remainderUnsigned(value, 10);
+    writeLongLatin1NoEnsure(quotient);
+    buffer[position++] = (byte) ('0' + remainder);
+  }
+
   private void writePositiveLongLatin1NoEnsure(long value) {
     if (value <= Integer.MAX_VALUE) {
       writePositiveIntNoEnsure((int) value);
@@ -2561,6 +2803,17 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       value = -value;
     }
     position = writePositiveLongUtf16(bytes, pos, value);
+  }
+
+  private void writeUnsignedLongUtf16NoEnsure(long value) {
+    if (value >= 0) {
+      writeLongUtf16NoEnsure(value);
+      return;
+    }
+    long quotient = Long.divideUnsigned(value, 10);
+    int remainder = (int) Long.remainderUnsigned(value, 10);
+    writeLongUtf16NoEnsure(quotient);
+    writeUtf16ByteNoEnsure((byte) ('0' + remainder));
   }
 
   private void writePositiveIntNoEnsure(int value) {

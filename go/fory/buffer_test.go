@@ -218,3 +218,66 @@ func TestReadVarUint32Small7StreamRejectsOverflowFifthByte(t *testing.T) {
 	_ = buf.ReadVarUint32Small7(&err)
 	require.True(t, err.HasError())
 }
+
+func TestVaruint36SixByteBoundary(t *testing.T) {
+	const value = uint64(1<<35 | 0x1234567)
+
+	encoded := NewByteBuffer(make([]byte, 16))
+	encoded.WriteVaruint36Small(value)
+	standard := NewByteBuffer(make([]byte, 16))
+	standard.WriteVarUint64(value)
+	require.Equal(t, standard.Bytes(), encoded.Bytes())
+	require.Len(t, encoded.Bytes(), 6)
+	require.NotZero(t, encoded.Bytes()[4]&0x80)
+
+	fastData := make([]byte, 8)
+	copy(fastData, encoded.Bytes())
+	fast := NewByteBuffer(fastData)
+	var fastErr Error
+	require.Equal(t, value, fast.ReadVaruint36Small(&fastErr))
+	require.True(t, fastErr.Ok())
+	require.Equal(t, 6, fast.ReaderIndex())
+
+	slow := NewByteBuffer(encoded.Bytes())
+	var slowErr Error
+	require.Equal(t, value, slow.ReadVaruint36Small(&slowErr))
+	require.True(t, slowErr.Ok())
+	require.Equal(t, 6, slow.ReaderIndex())
+}
+
+func TestUnalignedBufferReadPaths(t *testing.T) {
+	tests := []struct {
+		name  string
+		value uint64
+		write func(*ByteBuffer, uint64)
+		read  func(*ByteBuffer) uint64
+	}{
+		{
+			name:  "varuint36",
+			value: 1<<35 | 0x12345,
+			write: func(buf *ByteBuffer, value uint64) { buf.WriteVaruint36Small(value) },
+			read:  func(buf *ByteBuffer) uint64 { return buf.ReadVaruint36Small(nil) },
+		},
+		{
+			name:  "varuint64",
+			value: 0xfedcba9876543210,
+			write: func(buf *ByteBuffer, value uint64) { buf.WriteVarUint64(value) },
+			read:  func(buf *ByteBuffer) uint64 { return buf.ReadVarUint64(nil) },
+		},
+		{
+			name:  "tagged_uint64",
+			value: 0x1122334455667788,
+			write: func(buf *ByteBuffer, value uint64) { buf.WriteTaggedUint64(value) },
+			read:  func(buf *ByteBuffer) uint64 { return buf.ReadTaggedUint64(nil) },
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := NewByteBuffer(make([]byte, 32))
+			buf.WriteByte_(0)
+			tc.write(buf, tc.value)
+			buf.SetReaderIndex(1)
+			require.Equal(t, tc.value, tc.read(buf))
+		})
+	}
+}

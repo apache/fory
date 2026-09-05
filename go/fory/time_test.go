@@ -18,6 +18,7 @@
 package fory
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -121,4 +122,30 @@ func TestDurationFromWireBounds(t *testing.T) {
 
 	_, err = durationFromWire(0, int32(nanosPerSecond))
 	require.Error(t, err)
+}
+
+func TestEpochDayInt64Range(t *testing.T) {
+	tests := []struct {
+		days  int64
+		year  int64
+		month time.Month
+		day   int
+	}{
+		{MinInt64, -25252734927764585, time.June, 7},
+		{MaxInt64, 25252734927768524, time.July, 27},
+	}
+	for _, tc := range tests {
+		date, err := DateFromEpochDay(tc.days)
+		if strconv.IntSize == 32 {
+			require.Error(t, err)
+			continue
+		}
+		require.NoError(t, err)
+		require.Equal(t, tc.year, int64(date.Year))
+		require.Equal(t, tc.month, date.Month)
+		require.Equal(t, tc.day, date.Day)
+		roundTrip, err := DateToEpochDay(date)
+		require.NoError(t, err)
+		require.Equal(t, tc.days, roundTrip)
+	}
 }

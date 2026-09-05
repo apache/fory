@@ -15,11 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//go:build amd64 || arm64 || 386 || arm || loong64 || ppc64le || riscv64 || wasm
+//go:build mips64le || mipsle
 
 package fory
 
 const (
-	isLittleEndian        = true
-	useNativeEndianAccess = true
+	isLittleEndian = true
+	// MIPS requires aligned typed loads and stores. Buffer positions are not
+	// guaranteed to be naturally aligned, so use the byte-wise fallbacks there.
+	useNativeEndianAccess = false
 )

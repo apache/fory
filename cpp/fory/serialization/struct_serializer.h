@@ -173,20 +173,22 @@ FORY_ALWAYS_INLINE uint32_t put_primitive_at(T value, Buffer &buffer,
     int32_t val = static_cast<int32_t>(value);
     uint32_t zigzag =
         (static_cast<uint32_t>(val) << 1) ^ static_cast<uint32_t>(val >> 31);
-    return buffer.put_var_uint32(offset, zigzag);
+    return buffer.put_var_uint32_unchecked(offset, zigzag);
   } else if constexpr (std::is_same_v<T, uint32_t> ||
                        std::is_same_v<T, unsigned int>) {
-    return buffer.put_var_uint32(offset, static_cast<uint32_t>(value));
+    return buffer.put_var_uint32_unchecked(offset,
+                                           static_cast<uint32_t>(value));
   } else if constexpr (std::is_same_v<T, int64_t> ||
                        std::is_same_v<T, long long>) {
     // varint64 with zigzag encoding
     int64_t val = static_cast<int64_t>(value);
     uint64_t zigzag =
         (static_cast<uint64_t>(val) << 1) ^ static_cast<uint64_t>(val >> 63);
-    return buffer.put_var_uint64(offset, zigzag);
+    return buffer.put_var_uint64_unchecked(offset, zigzag);
   } else if constexpr (std::is_same_v<T, uint64_t> ||
                        std::is_same_v<T, unsigned long long>) {
-    return buffer.put_var_uint64(offset, static_cast<uint64_t>(value));
+    return buffer.put_var_uint64_unchecked(offset,
+                                           static_cast<uint64_t>(value));
   } else if constexpr (std::is_same_v<T, int32_t> || std::is_same_v<T, int>) {
     buffer.unsafe_put<int32_t>(offset, static_cast<int32_t>(value));
     return 4;
@@ -270,23 +272,25 @@ FORY_ALWAYS_INLINE uint32_t put_varint_at(T value, Buffer &buffer,
     int32_t val = static_cast<int32_t>(value);
     uint32_t zigzag =
         (static_cast<uint32_t>(val) << 1) ^ static_cast<uint32_t>(val >> 31);
-    return buffer.put_var_uint32(offset, zigzag);
+    return buffer.put_var_uint32_unchecked(offset, zigzag);
   } else if constexpr (std::is_same_v<T, int64_t> ||
                        std::is_same_v<T, long long>) {
     // varint64 with zigzag encoding
     int64_t val = static_cast<int64_t>(value);
     uint64_t zigzag =
         (static_cast<uint64_t>(val) << 1) ^ static_cast<uint64_t>(val >> 63);
-    return buffer.put_var_uint64(offset, zigzag);
+    return buffer.put_var_uint64_unchecked(offset, zigzag);
   } else if constexpr (std::is_same_v<T, uint32_t> ||
                        std::is_same_v<T, unsigned int>) {
     // Unsigned 32-bit varint (no zigzag)
-    return buffer.put_var_uint32(offset, static_cast<uint32_t>(value));
+    return buffer.put_var_uint32_unchecked(offset,
+                                           static_cast<uint32_t>(value));
   } else if constexpr (std::is_same_v<T, uint64_t> ||
                        std::is_same_v<T, unsigned long long>) {
     // Unsigned 64-bit varint (no zigzag) - used for VAR_UINT64 and
     // TAGGED_UINT64
-    return buffer.put_var_uint64(offset, static_cast<uint64_t>(value));
+    return buffer.put_var_uint64_unchecked(offset,
+                                           static_cast<uint64_t>(value));
   } else {
     static_assert(sizeof(T) == 0, "Unsupported varint type");
     return 0;
@@ -428,7 +432,8 @@ FORY_ALWAYS_INLINE uint32_t write_configurable_int_at(FieldType value,
       return 8;
     }
     if constexpr (enc == Encoding::Tagged) {
-      return buffer.put_tagged_int64(offset, static_cast<int64_t>(value));
+      return buffer.put_tagged_int64_unchecked(offset,
+                                               static_cast<int64_t>(value));
     }
     return put_varint_at<FieldType>(value, buffer, offset);
   } else {
@@ -442,7 +447,8 @@ FORY_ALWAYS_INLINE uint32_t write_configurable_int_at(FieldType value,
     }
     if constexpr (enc == Encoding::Tagged) {
       if constexpr (is_configurable_int64_v<FieldType>) {
-        return buffer.put_tagged_uint64(offset, static_cast<uint64_t>(value));
+        return buffer.put_tagged_uint64_unchecked(offset,
+                                                  static_cast<uint64_t>(value));
       }
       return put_varint_at<FieldType>(value, buffer, offset);
     }
@@ -2437,13 +2443,13 @@ template <typename T> struct CompileTimeFieldHelpers {
           total += 4; // fixed 4 bytes
           break;
         case TypeId::VARINT32:
-          total += 5; // varint max for 32-bit
+          total += 8; // five logical bytes use an eight-byte physical store
           break;
         case TypeId::UINT32:
           total += 4; // fixed 4 bytes
           break;
         case TypeId::VAR_UINT32:
-          total += 5; // varint max for 32-bit
+          total += 8; // five logical bytes use an eight-byte physical store
           break;
         case TypeId::FLOAT32:
           total += 4;
@@ -2533,7 +2539,8 @@ write_fixed_primitive_fields(const T &obj, Buffer &buffer,
   (write_single_fixed_field<T, Indices>(obj, buffer, base_offset), ...);
 
   // Update writer_index once with total fixed bytes (compile-time constant)
-  buffer.writer_index(base_offset + Helpers::leading_fixed_size_bytes);
+  buffer.unsafe_set_writer_index(base_offset +
+                                 Helpers::leading_fixed_size_bytes);
 }
 
 /// Helper to write a single varint primitive field.
@@ -2646,7 +2653,7 @@ write_primitive_fields_fast(const T &obj, Buffer &buffer,
     uint32_t offset = buffer.writer_index();
     write_varint_primitive_fields<T, fixed_count>(
         obj, buffer, offset, std::make_index_sequence<varint_count>{});
-    buffer.writer_index(offset);
+    buffer.unsafe_set_writer_index(offset);
   }
 
   // Phase 3: write remaining primitives (if any) using dedicated helper
@@ -2656,7 +2663,7 @@ write_primitive_fields_fast(const T &obj, Buffer &buffer,
     write_remaining_primitive_fields<T, fast_count>(
         obj, buffer, offset,
         std::make_index_sequence<total_count - fast_count>{});
-    buffer.writer_index(offset);
+    buffer.unsafe_set_writer_index(offset);
   }
 }
 

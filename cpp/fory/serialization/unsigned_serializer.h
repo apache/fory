@@ -333,11 +333,11 @@ template <size_t N> struct Serializer<std::array<uint8_t, N>> {
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
     writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(N));
+        buffer.put_var_uint32_unchecked(writer_index, static_cast<uint32_t>(N));
     if constexpr (N > 0) {
       buffer.unsafe_put(writer_index, arr.data(), N * sizeof(uint8_t));
     }
-    buffer.writer_index(writer_index + N * sizeof(uint8_t));
+    buffer.unsafe_set_writer_index(writer_index + N * sizeof(uint8_t));
   }
 
   static inline void write_data_generic(const std::array<uint8_t, N> &arr,
@@ -422,11 +422,11 @@ template <size_t N> struct Serializer<std::array<uint16_t, N>> {
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
     writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(N));
+        buffer.put_var_uint32_unchecked(writer_index, static_cast<uint32_t>(N));
     if constexpr (N > 0) {
       buffer.unsafe_put(writer_index, arr.data(), N * sizeof(uint16_t));
     }
-    buffer.writer_index(writer_index + N * sizeof(uint16_t));
+    buffer.unsafe_set_writer_index(writer_index + N * sizeof(uint16_t));
   }
 
   static inline void write_data_generic(const std::array<uint16_t, N> &arr,
@@ -511,11 +511,11 @@ template <size_t N> struct Serializer<std::array<uint32_t, N>> {
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
     writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(N));
+        buffer.put_var_uint32_unchecked(writer_index, static_cast<uint32_t>(N));
     if constexpr (N > 0) {
       buffer.unsafe_put(writer_index, arr.data(), N * sizeof(uint32_t));
     }
-    buffer.writer_index(writer_index + N * sizeof(uint32_t));
+    buffer.unsafe_set_writer_index(writer_index + N * sizeof(uint32_t));
   }
 
   static inline void write_data_generic(const std::array<uint32_t, N> &arr,
@@ -600,11 +600,11 @@ template <size_t N> struct Serializer<std::array<uint64_t, N>> {
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
     writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(N));
+        buffer.put_var_uint32_unchecked(writer_index, static_cast<uint32_t>(N));
     if constexpr (N > 0) {
       buffer.unsafe_put(writer_index, arr.data(), N * sizeof(uint64_t));
     }
-    buffer.writer_index(writer_index + N * sizeof(uint64_t));
+    buffer.unsafe_set_writer_index(writer_index + N * sizeof(uint64_t));
   }
 
   static inline void write_data_generic(const std::array<uint64_t, N> &arr,
@@ -693,12 +693,13 @@ template <> struct Serializer<std::vector<uint8_t>> {
     size_t max_size = 8 + vec.size();
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
-    writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(vec.size()));
+    writer_index += buffer.put_var_uint32_unchecked(
+        writer_index, static_cast<uint32_t>(vec.size()));
     if (!vec.empty()) {
       buffer.unsafe_put(writer_index, vec.data(), vec.size());
     }
-    buffer.writer_index(writer_index + static_cast<uint32_t>(vec.size()));
+    buffer.unsafe_set_writer_index(writer_index +
+                                   static_cast<uint32_t>(vec.size()));
   }
 
   static inline void write_data_generic(const std::vector<uint8_t> &vec,
@@ -786,13 +787,14 @@ template <> struct Serializer<std::vector<uint16_t>> {
     size_t max_size = 8 + static_cast<size_t>(total_bytes);
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
-    writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(total_bytes));
+    writer_index += buffer.put_var_uint32_unchecked(
+        writer_index, static_cast<uint32_t>(total_bytes));
     if (total_bytes > 0) {
       buffer.unsafe_put(writer_index, vec.data(),
                         static_cast<uint32_t>(total_bytes));
     }
-    buffer.writer_index(writer_index + static_cast<uint32_t>(total_bytes));
+    buffer.unsafe_set_writer_index(writer_index +
+                                   static_cast<uint32_t>(total_bytes));
   }
 
   static inline void write_data_generic(const std::vector<uint16_t> &vec,
@@ -891,13 +893,14 @@ template <> struct Serializer<std::vector<uint32_t>> {
     size_t max_size = 8 + static_cast<size_t>(total_bytes);
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
-    writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(total_bytes));
+    writer_index += buffer.put_var_uint32_unchecked(
+        writer_index, static_cast<uint32_t>(total_bytes));
     if (total_bytes > 0) {
       buffer.unsafe_put(writer_index, vec.data(),
                         static_cast<uint32_t>(total_bytes));
     }
-    buffer.writer_index(writer_index + static_cast<uint32_t>(total_bytes));
+    buffer.unsafe_set_writer_index(writer_index +
+                                   static_cast<uint32_t>(total_bytes));
   }
 
   static inline void write_data_generic(const std::vector<uint32_t> &vec,
@@ -996,13 +999,14 @@ template <> struct Serializer<std::vector<uint64_t>> {
     size_t max_size = 8 + static_cast<size_t>(total_bytes);
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
-    writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(total_bytes));
+    writer_index += buffer.put_var_uint32_unchecked(
+        writer_index, static_cast<uint32_t>(total_bytes));
     if (total_bytes > 0) {
       buffer.unsafe_put(writer_index, vec.data(),
                         static_cast<uint32_t>(total_bytes));
     }
-    buffer.writer_index(writer_index + static_cast<uint32_t>(total_bytes));
+    buffer.unsafe_set_writer_index(writer_index +
+                                   static_cast<uint32_t>(total_bytes));
   }
 
   static inline void write_data_generic(const std::vector<uint64_t> &vec,

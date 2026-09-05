@@ -1307,12 +1307,34 @@ abstract class JsonReaderCodegen {
       inputs[i] = new Expression.Cast(arguments.values[i], TypeRef.of(dependencies[i])).inline();
     }
     Expression value =
-        new Expression.StaticInvoke(
-            method.getDeclaringClass(),
-            method.getName(),
-            TypeRef.of(method.getReturnType()),
-            inputs);
+        Modifier.isStatic(method.getModifiers())
+            ? new Expression.StaticInvoke(
+                method.getDeclaringClass(),
+                method.getName(),
+                TypeRef.of(method.getReturnType()),
+                inputs)
+            : new Expression.Invoke(
+                defaultsReceiver(method),
+                method.getName(),
+                TypeRef.of(method.getReturnType()),
+                inputs);
     return new Expression.Cast(value, TypeRef.of(parameterType));
+  }
+
+  /**
+   * Reads the language singleton that owns instance constructor defaults, such as a Scala
+   * companion. Each defaulted parameter needs its own expression, because generated code for one
+   * expression instance is emitted once at its first use site, and every use site here is a
+   * separate missing-argument block, so a shared instance would reference a local declared in a
+   * sibling block.
+   */
+  private Expression defaultsReceiver(Method method) {
+    return new Expression.Cast(
+        new Expression.Invoke(
+            fieldRef("creator", JsonCreatorInfo.class),
+            "defaultsReceiver",
+            TypeRef.of(Object.class)),
+        TypeRef.of(method.getDeclaringClass()));
   }
 
   private Expression finishCreator(
@@ -1485,13 +1507,19 @@ abstract class JsonReaderCodegen {
               .append(";\n");
         }
       } else {
-        body.append("arguments[")
-            .append(i)
-            .append("] = ")
-            .append(ctx.type(method.getDeclaringClass()))
-            .append('.')
-            .append(method.getName())
-            .append('(');
+        body.append("arguments[").append(i).append("] = ");
+        if (Modifier.isStatic(method.getModifiers())) {
+          body.append(ctx.type(method.getDeclaringClass()));
+        } else {
+          // Fetched on the missing-argument branch, not once per construction: a creator whose
+          // properties are all present must not pay for a receiver it never reads.
+          body.append("((")
+              .append(ctx.type(method.getDeclaringClass()))
+              .append(") ")
+              .append(creatorExpression)
+              .append(".defaultsReceiver())");
+        }
+        body.append('.').append(method.getName()).append('(');
         Class<?>[] dependencies = method.getParameterTypes();
         for (int j = 0; j < dependencies.length; j++) {
           if (j != 0) {

@@ -31,7 +31,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.fory.json.annotation.JsonAnyProperty;
-import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
@@ -801,7 +801,9 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
 
   public static class ValueRepresentationChild {
     @JsonRawValue public String raw;
-    @JsonBase64 public byte[] bytes;
+
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    public byte[] bytes;
   }
 
   public static class ValueObjectParent {

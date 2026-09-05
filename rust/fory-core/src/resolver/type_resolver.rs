@@ -730,12 +730,6 @@ pub struct TypeResolver {
     xlang: bool,
 }
 
-// Safety: TypeResolver instances are only shared through higher-level synchronization that
-// guarantees thread confinement for mutations, so marking them Send/Sync preserves existing
-// invariants despite internal Rc usage.
-unsafe impl Send for TypeResolver {}
-unsafe impl Sync for TypeResolver {}
-
 const NO_TYPE_ID: TypeId = TypeId::UNKNOWN;
 
 impl Default for TypeResolver {

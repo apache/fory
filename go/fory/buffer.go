@@ -274,10 +274,10 @@ func (b *ByteBuffer) WriteInt32(value int32) {
 }
 
 func (b *ByteBuffer) WriteLength(value int) {
-	b.grow(4)
 	if value >= MaxInt32 {
 		panic(fmt.Errorf("too long: %d", value))
 	}
+	// WriteVarUint32 already reserves eight bytes for its bulk encoding.
 	b.WriteVarUint32(uint32(value))
 }
 
@@ -590,7 +590,7 @@ func (b *ByteBuffer) UnsafeWriteVarUint32(value uint32) int8 {
 	if value>>14 == 0 {
 		// Bulk write 2 bytes
 		encoded := uint16((value&0x7F)|0x80) | uint16(value>>7)<<8
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint16)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
 		} else {
 			b.data[b.writerIndex] = byte(encoded)
@@ -604,7 +604,7 @@ func (b *ByteBuffer) UnsafeWriteVarUint32(value uint32) int8 {
 		encoded := uint32((value&0x7F)|0x80) |
 			uint32(((value>>7)&0x7F)|0x80)<<8 |
 			uint32(value>>14)<<16
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint32)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
 		} else {
 			b.data[b.writerIndex] = byte(encoded)
@@ -620,7 +620,7 @@ func (b *ByteBuffer) UnsafeWriteVarUint32(value uint32) int8 {
 			uint32(((value>>7)&0x7F)|0x80)<<8 |
 			uint32(((value>>14)&0x7F)|0x80)<<16 |
 			uint32(value>>21)<<24
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint32)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
 		} else {
 			binary.LittleEndian.PutUint32(b.data[b.writerIndex:], encoded)
@@ -634,7 +634,7 @@ func (b *ByteBuffer) UnsafeWriteVarUint32(value uint32) int8 {
 		uint64(((value>>14)&0x7F)|0x80)<<16 |
 		uint64(((value>>21)&0x7F)|0x80)<<24 |
 		uint64(value>>28)<<32
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		*(*uint64)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
 	} else {
 		binary.LittleEndian.PutUint64(b.data[b.writerIndex:], encoded)
@@ -651,7 +651,7 @@ func (b *ByteBuffer) UnsafeWriteByte(v byte) {
 
 // UnsafeWriteInt16 writes an int16 without grow check.
 func (b *ByteBuffer) UnsafeWriteInt16(v int16) {
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		*(*int16)(unsafe.Pointer(&b.data[b.writerIndex])) = v
 	} else {
 		binary.LittleEndian.PutUint16(b.data[b.writerIndex:], uint16(v))
@@ -661,7 +661,7 @@ func (b *ByteBuffer) UnsafeWriteInt16(v int16) {
 
 // UnsafeWriteInt32 writes an int32 without grow check.
 func (b *ByteBuffer) UnsafeWriteInt32(v int32) {
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		*(*int32)(unsafe.Pointer(&b.data[b.writerIndex])) = v
 	} else {
 		binary.LittleEndian.PutUint32(b.data[b.writerIndex:], uint32(v))
@@ -671,7 +671,7 @@ func (b *ByteBuffer) UnsafeWriteInt32(v int32) {
 
 // UnsafeWriteInt64 writes an int64 without grow check.
 func (b *ByteBuffer) UnsafeWriteInt64(v int64) {
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		*(*int64)(unsafe.Pointer(&b.data[b.writerIndex])) = v
 	} else {
 		binary.LittleEndian.PutUint64(b.data[b.writerIndex:], uint64(v))
@@ -682,7 +682,7 @@ func (b *ByteBuffer) UnsafeWriteInt64(v int64) {
 // UnsafeReadInt32 reads an int32 without bounds check.
 func (b *ByteBuffer) UnsafeReadInt32() int32 {
 	var v int32
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		v = *(*int32)(unsafe.Pointer(&b.data[b.readerIndex]))
 	} else {
 		v = int32(binary.LittleEndian.Uint32(b.data[b.readerIndex:]))
@@ -694,7 +694,7 @@ func (b *ByteBuffer) UnsafeReadInt32() int32 {
 // UnsafeReadInt64 reads an int64 without bounds check.
 func (b *ByteBuffer) UnsafeReadInt64() int64 {
 	var v int64
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		v = *(*int64)(unsafe.Pointer(&b.data[b.readerIndex]))
 	} else {
 		v = int64(binary.LittleEndian.Uint64(b.data[b.readerIndex:]))
@@ -706,7 +706,7 @@ func (b *ByteBuffer) UnsafeReadInt64() int64 {
 // UnsafeReadUint32 reads a uint32 without bounds check.
 func (b *ByteBuffer) UnsafeReadUint32() uint32 {
 	var v uint32
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		v = *(*uint32)(unsafe.Pointer(&b.data[b.readerIndex]))
 	} else {
 		v = binary.LittleEndian.Uint32(b.data[b.readerIndex:])
@@ -718,7 +718,7 @@ func (b *ByteBuffer) UnsafeReadUint32() uint32 {
 // UnsafeReadUint64 reads a uint64 without bounds check.
 func (b *ByteBuffer) UnsafeReadUint64() uint64 {
 	var v uint64
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		v = *(*uint64)(unsafe.Pointer(&b.data[b.readerIndex]))
 	} else {
 		v = binary.LittleEndian.Uint64(b.data[b.readerIndex:])
@@ -729,7 +729,7 @@ func (b *ByteBuffer) UnsafeReadUint64() uint64 {
 
 // UnsafeWriteFloat32 writes a float32 without grow check.
 func (b *ByteBuffer) UnsafeWriteFloat32(v float32) {
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		*(*float32)(unsafe.Pointer(&b.data[b.writerIndex])) = v
 	} else {
 		binary.LittleEndian.PutUint32(b.data[b.writerIndex:], math.Float32bits(v))
@@ -739,7 +739,7 @@ func (b *ByteBuffer) UnsafeWriteFloat32(v float32) {
 
 // UnsafeWriteFloat64 writes a float64 without grow check.
 func (b *ByteBuffer) UnsafeWriteFloat64(v float64) {
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		*(*float64)(unsafe.Pointer(&b.data[b.writerIndex])) = v
 	} else {
 		binary.LittleEndian.PutUint64(b.data[b.writerIndex:], math.Float64bits(v))
@@ -772,7 +772,7 @@ func (b *ByteBuffer) UnsafePutVarUint32(offset int, value uint32) int {
 	}
 	if value>>14 == 0 {
 		encoded := uint16((value&0x7F)|0x80) | uint16(value>>7)<<8
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint16)(unsafe.Pointer(&b.data[offset])) = encoded
 		} else {
 			b.data[offset] = byte(encoded)
@@ -784,7 +784,7 @@ func (b *ByteBuffer) UnsafePutVarUint32(offset int, value uint32) int {
 		encoded := uint32((value&0x7F)|0x80) |
 			uint32(((value>>7)&0x7F)|0x80)<<8 |
 			uint32(value>>14)<<16
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint32)(unsafe.Pointer(&b.data[offset])) = encoded
 		} else {
 			b.data[offset] = byte(encoded)
@@ -798,7 +798,7 @@ func (b *ByteBuffer) UnsafePutVarUint32(offset int, value uint32) int {
 			uint32(((value>>7)&0x7F)|0x80)<<8 |
 			uint32(((value>>14)&0x7F)|0x80)<<16 |
 			uint32(value>>21)<<24
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint32)(unsafe.Pointer(&b.data[offset])) = encoded
 		} else {
 			binary.LittleEndian.PutUint32(b.data[offset:], encoded)
@@ -810,7 +810,7 @@ func (b *ByteBuffer) UnsafePutVarUint32(offset int, value uint32) int {
 		uint64(((value>>14)&0x7F)|0x80)<<16 |
 		uint64(((value>>21)&0x7F)|0x80)<<24 |
 		uint64(value>>28)<<32
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		*(*uint64)(unsafe.Pointer(&b.data[offset])) = encoded
 	} else {
 		binary.LittleEndian.PutUint64(b.data[offset:], encoded)
@@ -836,7 +836,7 @@ func (b *ByteBuffer) UnsafePutVarUint64(offset int, value uint64) int {
 	}
 	if value>>14 == 0 {
 		encoded := uint16((value&0x7F)|0x80) | uint16(value>>7)<<8
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint16)(unsafe.Pointer(&b.data[offset])) = encoded
 		} else {
 			b.data[offset] = byte(encoded)
@@ -848,7 +848,7 @@ func (b *ByteBuffer) UnsafePutVarUint64(offset int, value uint64) int {
 		encoded := uint32((value&0x7F)|0x80) |
 			uint32(((value>>7)&0x7F)|0x80)<<8 |
 			uint32(value>>14)<<16
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint32)(unsafe.Pointer(&b.data[offset])) = encoded
 		} else {
 			b.data[offset] = byte(encoded)
@@ -862,7 +862,7 @@ func (b *ByteBuffer) UnsafePutVarUint64(offset int, value uint64) int {
 			uint32(((value>>7)&0x7F)|0x80)<<8 |
 			uint32(((value>>14)&0x7F)|0x80)<<16 |
 			uint32(value>>21)<<24
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint32)(unsafe.Pointer(&b.data[offset])) = encoded
 		} else {
 			binary.LittleEndian.PutUint32(b.data[offset:], encoded)
@@ -875,7 +875,7 @@ func (b *ByteBuffer) UnsafePutVarUint64(offset int, value uint64) int {
 			uint64(((value>>14)&0x7F)|0x80)<<16 |
 			uint64(((value>>21)&0x7F)|0x80)<<24 |
 			uint64(value>>28)<<32
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint64)(unsafe.Pointer(&b.data[offset])) = encoded
 		} else {
 			binary.LittleEndian.PutUint64(b.data[offset:], encoded)
@@ -889,7 +889,7 @@ func (b *ByteBuffer) UnsafePutVarUint64(offset int, value uint64) int {
 			uint64(((value>>21)&0x7F)|0x80)<<24 |
 			uint64(((value>>28)&0x7F)|0x80)<<32 |
 			uint64(value>>35)<<40
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint64)(unsafe.Pointer(&b.data[offset])) = encoded
 		} else {
 			binary.LittleEndian.PutUint64(b.data[offset:], encoded)
@@ -904,7 +904,7 @@ func (b *ByteBuffer) UnsafePutVarUint64(offset int, value uint64) int {
 			uint64(((value>>28)&0x7F)|0x80)<<32 |
 			uint64(((value>>35)&0x7F)|0x80)<<40 |
 			uint64(value>>42)<<48
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint64)(unsafe.Pointer(&b.data[offset])) = encoded
 		} else {
 			binary.LittleEndian.PutUint64(b.data[offset:], encoded)
@@ -920,7 +920,7 @@ func (b *ByteBuffer) UnsafePutVarUint64(offset int, value uint64) int {
 			uint64(((value>>35)&0x7F)|0x80)<<40 |
 			uint64(((value>>42)&0x7F)|0x80)<<48 |
 			uint64(value>>49)<<56
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint64)(unsafe.Pointer(&b.data[offset])) = encoded
 		} else {
 			binary.LittleEndian.PutUint64(b.data[offset:], encoded)
@@ -936,7 +936,7 @@ func (b *ByteBuffer) UnsafePutVarUint64(offset int, value uint64) int {
 		uint64(((value>>35)&0x7F)|0x80)<<40 |
 		uint64(((value>>42)&0x7F)|0x80)<<48 |
 		uint64(((value>>49)&0x7F)|0x80)<<56
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		*(*uint64)(unsafe.Pointer(&b.data[offset])) = encoded
 	} else {
 		binary.LittleEndian.PutUint64(b.data[offset:], encoded)
@@ -992,7 +992,17 @@ func (b *ByteBuffer) WriteVarUint64(value uint64) {
 // WriteVaruint36Small writes a varint optimized for small values (up to 36 bits)
 // Used for string headers: (length << 2) | encoding
 func (b *ByteBuffer) WriteVaruint36Small(value uint64) {
-	b.grow(5)
+	if value >= 0x10000000 {
+		if value >= 1<<36 {
+			panic(fmt.Errorf("varuint36small overflow: %d", value))
+		}
+		// The 36th bit continues into a sixth byte; this region must use
+		// standard varuint64 encoding rather than treating byte five as raw.
+		b.WriteVarUint64(value)
+		return
+	}
+
+	b.grow(4)
 	offset := b.writerIndex
 	data := b.data[offset:]
 
@@ -1014,13 +1024,6 @@ func (b *ByteBuffer) WriteVaruint36Small(value uint64) {
 		data[2] = byte((value>>14)&0x7F) | 0x80
 		data[3] = byte(value >> 21)
 		b.writerIndex += 4
-	} else {
-		data[0] = byte(value&0x7F) | 0x80
-		data[1] = byte((value>>7)&0x7F) | 0x80
-		data[2] = byte((value>>14)&0x7F) | 0x80
-		data[3] = byte((value>>21)&0x7F) | 0x80
-		data[4] = byte(value >> 28)
-		b.writerIndex += 5
 	}
 }
 
@@ -1028,16 +1031,16 @@ func (b *ByteBuffer) WriteVaruint36Small(value uint64) {
 // Used for string headers: (length << 2) | encoding
 func (b *ByteBuffer) ReadVaruint36Small(err *Error) uint64 {
 	if b.remaining() >= 8 {
-		return b.readVaruint36SmallFast()
+		return b.readVaruint36SmallFast(err)
 	}
 	return b.readVaruint36SmallSlow(err)
 }
 
-func (b *ByteBuffer) readVaruint36SmallFast() uint64 {
+func (b *ByteBuffer) readVaruint36SmallFast(err *Error) uint64 {
 	// Single instruction load using unsafe pointer cast (little-endian only)
 	// On big-endian systems, use binary.LittleEndian which the compiler optimizes
 	var bulk uint64
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		bulk = *(*uint64)(unsafe.Pointer(&b.data[b.readerIndex]))
 	} else {
 		bulk = binary.LittleEndian.Uint64(b.data[b.readerIndex:])
@@ -1057,7 +1060,18 @@ func (b *ByteBuffer) readVaruint36SmallFast() uint64 {
 				result |= (bulk >> 3) & 0xFE00000
 				if (bulk & 0x80000000) != 0 {
 					readLen = 5
-					result |= (bulk >> 4) & 0xFF0000000
+					result |= (bulk >> 4) & 0x7F0000000
+					if (bulk & 0x8000000000) != 0 {
+						sixth := byte(bulk >> 40)
+						if sixth > 1 {
+							if err != nil {
+								*err = DeserializationError("varuint36small overflow")
+							}
+							return 0
+						}
+						readLen = 6
+						result |= uint64(sixth) << 35
+					}
 				}
 			}
 		}
@@ -1068,9 +1082,7 @@ func (b *ByteBuffer) readVaruint36SmallFast() uint64 {
 
 func (b *ByteBuffer) readVaruint36SmallSlow(err *Error) uint64 {
 	var result uint64
-	var shift uint
-
-	for {
+	for shift := uint(0); shift < 35; shift += 7 {
 		if b.readerIndex >= len(b.data) {
 			if !b.fill(1, err) {
 				return 0
@@ -1082,12 +1094,21 @@ func (b *ByteBuffer) readVaruint36SmallSlow(err *Error) uint64 {
 		if (byteVal & 0x80) == 0 {
 			return result
 		}
-		shift += 7
-		if shift >= 36 {
-			*err = DeserializationError("varuint36small overflow")
+	}
+	if b.readerIndex >= len(b.data) {
+		if !b.fill(1, err) {
 			return 0
 		}
 	}
+	sixth := b.data[b.readerIndex]
+	b.readerIndex++
+	if sixth > 1 {
+		if err != nil {
+			*err = DeserializationError("varuint36small overflow")
+		}
+		return 0
+	}
+	return result | uint64(sixth)<<35
 }
 
 // ReadVarint64 reads the varint encoded with zig-zag (compatible with Java's readVarint64).
@@ -1111,7 +1132,7 @@ func (b *ByteBuffer) WriteTaggedInt64(value int64) {
 	} else {
 		b.grow(9)
 		b.data[b.writerIndex] = 0b1
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*int64)(unsafe.Pointer(&b.data[b.writerIndex+1])) = value
 		} else {
 			binary.LittleEndian.PutUint64(b.data[b.writerIndex+1:], uint64(value))
@@ -1130,7 +1151,7 @@ func (b *ByteBuffer) ReadTaggedInt64(err *Error) int64 {
 		}
 	}
 	var i int32
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		i = *(*int32)(unsafe.Pointer(&b.data[b.readerIndex]))
 	} else {
 		i = int32(binary.LittleEndian.Uint32(b.data[b.readerIndex:]))
@@ -1145,7 +1166,7 @@ func (b *ByteBuffer) ReadTaggedInt64(err *Error) int64 {
 		}
 	}
 	var value int64
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		value = *(*int64)(unsafe.Pointer(&b.data[b.readerIndex+1]))
 	} else {
 		value = int64(binary.LittleEndian.Uint64(b.data[b.readerIndex+1:]))
@@ -1164,7 +1185,7 @@ func (b *ByteBuffer) WriteTaggedUint64(value uint64) {
 	} else {
 		b.grow(9)
 		b.data[b.writerIndex] = 0b1
-		if isLittleEndian {
+		if useNativeEndianAccess {
 			*(*uint64)(unsafe.Pointer(&b.data[b.writerIndex+1])) = value
 		} else {
 			binary.LittleEndian.PutUint64(b.data[b.writerIndex+1:], value)
@@ -1183,7 +1204,7 @@ func (b *ByteBuffer) ReadTaggedUint64(err *Error) uint64 {
 		}
 	}
 	var i uint32
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		i = *(*uint32)(unsafe.Pointer(&b.data[b.readerIndex]))
 	} else {
 		i = binary.LittleEndian.Uint32(b.data[b.readerIndex:])
@@ -1198,7 +1219,7 @@ func (b *ByteBuffer) ReadTaggedUint64(err *Error) uint64 {
 		}
 	}
 	var value uint64
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		value = *(*uint64)(unsafe.Pointer(&b.data[b.readerIndex+1]))
 	} else {
 		value = binary.LittleEndian.Uint64(b.data[b.readerIndex+1:])
@@ -1219,7 +1240,7 @@ func (b *ByteBuffer) ReadVarUint64(err *Error) uint64 {
 func (b *ByteBuffer) readVarUint64Fast() uint64 {
 	// Single instruction load using unsafe pointer cast (little-endian only)
 	var bulk uint64
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		bulk = *(*uint64)(unsafe.Pointer(&b.data[b.readerIndex]))
 	} else {
 		bulk = binary.LittleEndian.Uint64(b.data[b.readerIndex:])
@@ -1374,7 +1395,7 @@ func (b *ByteBuffer) readVarUint32Fast(err *Error) uint32 {
 	// Single instruction load using unsafe pointer cast (little-endian only)
 	// On big-endian systems, use binary.LittleEndian which the compiler optimizes
 	var bulk uint64
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		bulk = *(*uint64)(unsafe.Pointer(&b.data[b.readerIndex]))
 	} else {
 		bulk = binary.LittleEndian.Uint64(b.data[b.readerIndex:])
@@ -1540,7 +1561,7 @@ func (b *ByteBuffer) UnsafePutTaggedInt64(offset int, value int64) int {
 		return 4
 	}
 	b.data[offset] = 0b1
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		*(*int64)(unsafe.Pointer(&b.data[offset+1])) = value
 	} else {
 		binary.LittleEndian.PutUint64(b.data[offset+1:], uint64(value))
@@ -1558,7 +1579,7 @@ func (b *ByteBuffer) UnsafePutTaggedUint64(offset int, value uint64) int {
 		return 4
 	}
 	b.data[offset] = 0b1
-	if isLittleEndian {
+	if useNativeEndianAccess {
 		*(*uint64)(unsafe.Pointer(&b.data[offset+1])) = value
 	} else {
 		binary.LittleEndian.PutUint64(b.data[offset+1:], value)

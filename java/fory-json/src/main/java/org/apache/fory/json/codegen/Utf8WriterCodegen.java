@@ -187,7 +187,10 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
         method = "writeObjectStartWithIntField";
         break;
       case LONG:
-        method = "writeObjectStartWithLongField";
+        method =
+            property.writesLongAsString()
+                ? "writeObjectStartWithLongAsStringField"
+                : "writeObjectStartWithLongField";
         break;
       default:
         throw new ForyJsonException(
@@ -226,13 +229,21 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
       boolean commaKnown,
       Expression index,
       Expression writer) {
-    String method = longValue ? "writeLongField" : "writeIntField";
+    String method =
+        longValue
+            ? property.writesLongAsString() ? "writeLongAsStringField" : "writeLongField"
+            : "writeIntField";
     if (commaKnown) {
       if (canPackPrefix(property, true)) {
         if (inlineSchemaWrites) {
           return new Expression.ListExpression(
               directPackedPrefix(property, id),
-              new Expression.Invoke(writer, longValue ? "writeLong" : "writeInt", value));
+              new Expression.Invoke(
+                  writer,
+                  longValue
+                      ? property.writesLongAsString() ? "writeLongAsString" : "writeLong"
+                      : "writeInt",
+                  value));
         }
         return new Expression.Invoke(writer, method, packedPrefixArgs(property, true, value));
       }
@@ -367,6 +378,9 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
     }
     if (rawType == long[].class && codecType == ArrayCodec.LongArrayCodec.class) {
       return new Expression.Invoke(writer, "writeLongArray", value);
+    }
+    if (rawType == long[].class && codecType == ArrayCodec.LongAsStringArrayCodec.class) {
+      return new Expression.Invoke(writer, "writeLongArrayAsString", value);
     }
     return null;
   }

@@ -347,6 +347,11 @@ def parse_args():
         default="tests",
         help="Kotlin CI task to execute",
     )
+    kotlin_parser.add_argument(
+        "--kotlin-version",
+        default=None,
+        help="Override the Kotlin compiler and library version",
+    )
     kotlin_parser.set_defaults(func=kotlin.run)
 
     # Python subparser

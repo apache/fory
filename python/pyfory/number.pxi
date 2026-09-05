@@ -61,19 +61,19 @@ cdef class _ForyArray:
     cpdef Py_ssize_t _size(self):
         raise NotImplementedError
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         raise NotImplementedError
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         raise NotImplementedError
 
     cpdef _append(self, object value):
         raise NotImplementedError
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         raise NotImplementedError
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         raise NotImplementedError
 
     cpdef _clear(self):
@@ -109,12 +109,12 @@ cdef class _ForyArray:
         cdef Py_ssize_t i
         cdef Py_ssize_t n = self._size()
         for i in range(n):
-            yield self._get(i)
+            yield self._get_unchecked(i)
 
     def __getitem__(self, index):
         if isinstance(index, slice):
-            return type(self)(self._get(i) for i in range(*index.indices(self._size())))
-        return self._get(self._normalize_index(index))
+            return type(self)(self._get_unchecked(i) for i in range(*index.indices(self._size())))
+        return self._get_unchecked(self._normalize_index(index))
 
     def __setitem__(self, index, value):
         cdef list items
@@ -124,7 +124,7 @@ cdef class _ForyArray:
             self._clear()
             self.extend(items)
             return
-        self._set(self._normalize_index(index), value)
+        self._set_unchecked(self._normalize_index(index), value)
 
     def __delitem__(self, index):
         cdef list items
@@ -134,7 +134,7 @@ cdef class _ForyArray:
             self._clear()
             self.extend(items)
             return
-        self._delete(self._normalize_index(index))
+        self._delete_unchecked(self._normalize_index(index))
 
     def __repr__(self):
         return f"{type(self).__name__}({list(self)!r})"
@@ -163,12 +163,12 @@ cdef class _ForyArray:
     def __reversed__(self):
         cdef Py_ssize_t i
         for i in range(self._size() - 1, -1, -1):
-            yield self._get(i)
+            yield self._get_unchecked(i)
 
     def __contains__(self, value):
         cdef Py_ssize_t i
         for i in range(self._size()):
-            if self._get(i) == value:
+            if self._get_unchecked(i) == value:
                 return True
         return False
 
@@ -205,12 +205,12 @@ cdef class _ForyArray:
             self._append(value)
 
     def insert(self, index, value):
-        self._insert(self._normalize_insert_index(index), value)
+        self._insert_unchecked(self._normalize_insert_index(index), value)
 
     def pop(self, index=-1):
         cdef Py_ssize_t i = self._normalize_index(index)
-        cdef object value = self._get(i)
-        self._delete(i)
+        cdef object value = self._get_unchecked(i)
+        self._delete_unchecked(i)
         return value
 
     def clear(self):
@@ -226,7 +226,7 @@ cdef class _ForyArray:
         cdef Py_ssize_t i
         cdef Py_ssize_t total = 0
         for i in range(self._size()):
-            if self._get(i) == value:
+            if self._get_unchecked(i) == value:
                 total += 1
         return total
 
@@ -244,12 +244,12 @@ cdef class _ForyArray:
         if end > n:
             end = n
         for i in range(begin, end):
-            if self._get(i) == value:
+            if self._get_unchecked(i) == value:
                 return i
         raise ValueError(f"{value!r} is not in array")
 
     def remove(self, value):
-        self._delete(self.index(value))
+        self._delete_unchecked(self.index(value))
 
     def reverse(self):
         cdef list items = list(self)
@@ -270,19 +270,19 @@ cdef class BoolArray(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return bool(<int>self._values[index])
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = _bool_to_byte(value)
 
     cpdef _append(self, object value):
         self._values.push_back(_bool_to_byte(value))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, _bool_to_byte(value))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -299,19 +299,19 @@ cdef class Int8Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return <int>self._values[index]
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = <int8_t>_check_int_value(value, -128, 127, "Int8Array")
 
     cpdef _append(self, object value):
         self._values.push_back(<int8_t>_check_int_value(value, -128, 127, "Int8Array"))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, <int8_t>_check_int_value(value, -128, 127, "Int8Array"))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -332,19 +332,19 @@ cdef class Int16Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return <int>self._values[index]
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = <int16_t>_check_int_value(value, -32768, 32767, "Int16Array")
 
     cpdef _append(self, object value):
         self._values.push_back(<int16_t>_check_int_value(value, -32768, 32767, "Int16Array"))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, <int16_t>_check_int_value(value, -32768, 32767, "Int16Array"))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -365,19 +365,19 @@ cdef class Int32Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return <int>self._values[index]
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = <int32_t>_check_int_value(value, -2147483648, 2147483647, "Int32Array")
 
     cpdef _append(self, object value):
         self._values.push_back(<int32_t>_check_int_value(value, -2147483648, 2147483647, "Int32Array"))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, <int32_t>_check_int_value(value, -2147483648, 2147483647, "Int32Array"))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -398,19 +398,19 @@ cdef class Int64Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return <int64_t>self._values[index]
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = <int64_t>_check_int_value(value, -9223372036854775808, 9223372036854775807, "Int64Array")
 
     cpdef _append(self, object value):
         self._values.push_back(<int64_t>_check_int_value(value, -9223372036854775808, 9223372036854775807, "Int64Array"))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, <int64_t>_check_int_value(value, -9223372036854775808, 9223372036854775807, "Int64Array"))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -431,19 +431,19 @@ cdef class UInt8Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return <int>self._values[index]
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = <uint8_t>_check_int_value(value, 0, 255, "UInt8Array")
 
     cpdef _append(self, object value):
         self._values.push_back(<uint8_t>_check_int_value(value, 0, 255, "UInt8Array"))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, <uint8_t>_check_int_value(value, 0, 255, "UInt8Array"))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -460,19 +460,19 @@ cdef class UInt16Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return <int>self._values[index]
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = <uint16_t>_check_int_value(value, 0, 65535, "UInt16Array")
 
     cpdef _append(self, object value):
         self._values.push_back(<uint16_t>_check_int_value(value, 0, 65535, "UInt16Array"))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, <uint16_t>_check_int_value(value, 0, 65535, "UInt16Array"))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -493,19 +493,19 @@ cdef class UInt32Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return <uint32_t>self._values[index]
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = <uint32_t>_check_int_value(value, 0, 4294967295, "UInt32Array")
 
     cpdef _append(self, object value):
         self._values.push_back(<uint32_t>_check_int_value(value, 0, 4294967295, "UInt32Array"))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, <uint32_t>_check_int_value(value, 0, 4294967295, "UInt32Array"))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -526,19 +526,19 @@ cdef class UInt64Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return <uint64_t>self._values[index]
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = <uint64_t>_check_int_value(value, 0, 18446744073709551615, "UInt64Array")
 
     cpdef _append(self, object value):
         self._values.push_back(<uint64_t>_check_int_value(value, 0, 18446744073709551615, "UInt64Array"))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, <uint64_t>_check_int_value(value, 0, 18446744073709551615, "UInt64Array"))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -562,19 +562,19 @@ cdef class Float16Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return _float16_bits_to_float(self._values[index])
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = _coerce_float16_bits(value)
 
     cpdef _append(self, object value):
         self._values.push_back(_coerce_float16_bits(value))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, _coerce_float16_bits(value))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -594,19 +594,19 @@ cdef class BFloat16Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return _bfloat16_bits_to_float(self._values[index])
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = _coerce_bfloat16_bits(value)
 
     cpdef _append(self, object value):
         self._values.push_back(_coerce_bfloat16_bits(value))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, _coerce_bfloat16_bits(value))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -623,19 +623,19 @@ cdef class Float32Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return <float>self._values[index]
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = <float>_check_float_value(value, "Float32Array")
 
     cpdef _append(self, object value):
         self._values.push_back(<float>_check_float_value(value, "Float32Array"))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, <float>_check_float_value(value, "Float32Array"))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):
@@ -656,19 +656,19 @@ cdef class Float64Array(_ForyArray):
     cpdef Py_ssize_t _size(self):
         return <Py_ssize_t>self._values.size()
 
-    cpdef object _get(self, Py_ssize_t index):
+    cdef object _get_unchecked(self, Py_ssize_t index):
         return <double>self._values[index]
 
-    cpdef _set(self, Py_ssize_t index, object value):
+    cdef _set_unchecked(self, Py_ssize_t index, object value):
         self._values[index] = _check_float_value(value, "Float64Array")
 
     cpdef _append(self, object value):
         self._values.push_back(_check_float_value(value, "Float64Array"))
 
-    cpdef _insert(self, Py_ssize_t index, object value):
+    cdef _insert_unchecked(self, Py_ssize_t index, object value):
         self._values.insert(self._values.begin() + index, _check_float_value(value, "Float64Array"))
 
-    cpdef _delete(self, Py_ssize_t index):
+    cdef _delete_unchecked(self, Py_ssize_t index):
         self._values.erase(self._values.begin() + index)
 
     cpdef _clear(self):

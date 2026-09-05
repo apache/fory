@@ -71,7 +71,7 @@ final class JsonTypeProcessor {
   private static final String JSON_PROPERTY = JSON_PACKAGE + ".annotation.JsonProperty";
   private static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
   private static final String JSON_RAW_VALUE = JSON_PACKAGE + ".annotation.JsonRawValue";
-  private static final String JSON_BASE64 = JSON_PACKAGE + ".annotation.JsonBase64";
+  private static final String JSON_BYTE_ARRAY = JSON_PACKAGE + ".annotation.JsonByteArray";
   private static final String JSON_UNWRAPPED = JSON_PACKAGE + ".annotation.JsonUnwrapped";
   private static final String JSON_VALIDATOR = JSON_PACKAGE + ".annotation.JsonValidator";
   private static final String BASE64_CODEC = JSON_PACKAGE + ".codec.Base64ByteArrayCodec";
@@ -569,8 +569,13 @@ final class JsonTypeProcessor {
   private void collectOccurrenceCodec(
       JsonMixinAnnotations annotations, Element element, Model model) {
     collectCodecAnnotation(annotationMirror(annotations, element, JSON_CODEC), model);
-    if (hasAnnotation(annotations, element, JSON_BASE64)) {
-      model.codecTypes.add(BASE64_CODEC);
+    AnnotationMirror byteArray = annotationMirror(annotations, element, JSON_BYTE_ARRAY);
+    if (byteArray != null) {
+      VariableElement format = (VariableElement) annotationValue(byteArray, "value").getValue();
+      model.codecTypes.add(
+          format.getSimpleName().contentEquals("ARRAY")
+              ? JSON_PACKAGE + ".codec.ArrayCodec$SignedByteArrayCodec"
+              : BASE64_CODEC);
     }
   }
 
@@ -1134,7 +1139,7 @@ final class JsonTypeProcessor {
         || hasAnnotation(annotations, method, JSON_CODEC)
         || hasAnnotation(annotations, method, JSON_VALUE)
         || hasAnnotation(annotations, method, JSON_RAW_VALUE)
-        || hasAnnotation(annotations, method, JSON_BASE64)
+        || hasAnnotation(annotations, method, JSON_BYTE_ARRAY)
         || hasAnnotation(annotations, method, JSON_VALIDATOR)
         || hasJsonAnnotations(annotations, method.getParameters())) {
       return true;

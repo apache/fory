@@ -23,9 +23,63 @@
 #include "fory/type/temporal.h"
 #include <chrono>
 #include <limits>
+#include <string>
+#include <utility>
 
 namespace fory {
 namespace serialization {
+
+namespace detail {
+
+constexpr int64_t NANOS_PER_SECOND = 1'000'000'000;
+constexpr int64_t MIN_NANO_SECONDS = -9'223'372'037;
+constexpr int64_t MIN_NANO_REMAINDER = 145'224'192;
+constexpr int64_t MAX_NANO_SECONDS = 9'223'372'036;
+constexpr int64_t MAX_NANO_REMAINDER = 854'775'807;
+
+FORY_NOINLINE inline Unexpected<Error>
+temporal_range_error(const char *type_name) {
+  return Unexpected(Error::invalid_data(std::string(type_name) +
+                                        " exceeds the int64 nanosecond range"));
+}
+
+inline Result<std::chrono::nanoseconds, Error>
+temporal_nanos_from_parts(int64_t seconds, int64_t nanos,
+                          const char *type_name) {
+  int64_t carry = nanos / NANOS_PER_SECOND;
+  int64_t remainder = nanos % NANOS_PER_SECOND;
+  if (remainder < 0) {
+    --carry;
+    remainder += NANOS_PER_SECOND;
+  }
+  if (FORY_PREDICT_FALSE(
+          (carry > 0 &&
+           seconds > std::numeric_limits<int64_t>::max() - carry) ||
+          (carry < 0 &&
+           seconds < std::numeric_limits<int64_t>::min() - carry))) {
+    return temporal_range_error(type_name);
+  }
+  seconds += carry;
+  if (FORY_PREDICT_FALSE(
+          seconds < MIN_NANO_SECONDS || seconds > MAX_NANO_SECONDS ||
+          (seconds == MIN_NANO_SECONDS && remainder < MIN_NANO_REMAINDER) ||
+          (seconds == MAX_NANO_SECONDS && remainder > MAX_NANO_REMAINDER))) {
+    return temporal_range_error(type_name);
+  }
+
+  int64_t total_nanos;
+  if (seconds < 0) {
+    // The minimum int64 value normalizes to -9,223,372,037 seconds,
+    // whose direct nanosecond multiplication already overflows.
+    total_nanos =
+        (seconds + 1) * NANOS_PER_SECOND - (NANOS_PER_SECOND - remainder);
+  } else {
+    total_nanos = seconds * NANOS_PER_SECOND + remainder;
+  }
+  return std::chrono::nanoseconds(total_nanos);
+}
+
+} // namespace detail
 
 // ============================================================================
 // Duration Serializer
@@ -102,8 +156,12 @@ template <> struct Serializer<Duration> {
       return Duration();
     }
     int32_t nanos = ctx.read_int32(ctx.error());
-    return Duration(std::chrono::seconds(seconds) +
-                    std::chrono::nanoseconds(nanos));
+    auto result = detail::temporal_nanos_from_parts(seconds, nanos, "Duration");
+    if (FORY_PREDICT_FALSE(!result.ok())) {
+      ctx.set_error(std::move(result).error());
+      return Duration();
+    }
+    return Duration(std::move(result).value());
   }
 
   static inline Duration read_with_type_info(ReadContext &ctx, RefMode ref_mode,
@@ -193,8 +251,13 @@ template <> struct Serializer<Timestamp> {
       return Timestamp();
     }
     uint32_t nanos = ctx.read_uint32(ctx.error());
-    return Timestamp(std::chrono::seconds(seconds) +
-                     std::chrono::nanoseconds(nanos));
+    auto result = detail::temporal_nanos_from_parts(
+        seconds, static_cast<int64_t>(nanos), "Timestamp");
+    if (FORY_PREDICT_FALSE(!result.ok())) {
+      ctx.set_error(std::move(result).error());
+      return Timestamp();
+    }
+    return Timestamp(std::move(result).value());
   }
 
   static inline Timestamp read_with_type_info(ReadContext &ctx,

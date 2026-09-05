@@ -42,7 +42,7 @@ import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonAnySetter;
-import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonFormat;
@@ -1079,7 +1079,7 @@ final class ObjectCodecBuilder {
         || method.isAnnotationPresent(JsonAnySetter.class)
         || method.isAnnotationPresent(JsonValue.class)
         || method.isAnnotationPresent(JsonRawValue.class)
-        || method.isAnnotationPresent(JsonBase64.class)
+        || method.isAnnotationPresent(JsonByteArray.class)
         || method.isAnnotationPresent(JsonValidator.class)) {
       return true;
     }
@@ -1094,7 +1094,7 @@ final class ObjectCodecBuilder {
     return method.isAnnotationPresent(JsonAnyGetter.class)
         || method.isAnnotationPresent(JsonValue.class)
         || method.isAnnotationPresent(JsonRawValue.class)
-        || method.isAnnotationPresent(JsonBase64.class)
+        || method.isAnnotationPresent(JsonByteArray.class)
         || getterPropertyName(method) != null;
   }
 
@@ -1720,6 +1720,7 @@ final class ObjectCodecBuilder {
         creatorDefaults(rawTypes),
         generatedCodec,
         defaultMethods,
+        objectModel.defaultsReceiver(),
         names,
         objectModel.defaultConstructor(),
         defaultMaskBits,
@@ -1881,8 +1882,8 @@ final class ObjectCodecBuilder {
         if (annotations.has(field, JsonFormat.class)) {
           validateFormatField(field, annotations);
         }
-        if (annotations.has(field, JsonBase64.class)) {
-          validateBase64Field(field, annotations);
+        if (annotations.has(field, JsonByteArray.class)) {
+          validateByteArrayField(field, annotations);
         }
         if (annotations.has(field, JsonRawValue.class)) {
           validateRawField(field, annotations);
@@ -1939,8 +1940,8 @@ final class ObjectCodecBuilder {
           validateRawMethod(
               type, method, propertyDiscoveryEnabled, record, generatedCodec, annotations);
         }
-        if (annotations.has(method, JsonBase64.class)) {
-          validateBase64Method(
+        if (annotations.has(method, JsonByteArray.class)) {
+          validateByteArrayMethod(
               type, method, propertyDiscoveryEnabled, record, generatedCodec, annotations);
         }
         if (annotations.has(method, JsonUnwrapped.class)) {
@@ -2007,8 +2008,8 @@ final class ObjectCodecBuilder {
         validateRawMethod(
             type, method, propertyDiscoveryEnabled, record, generatedCodec, annotations);
       }
-      if (annotations.has(method, JsonBase64.class)) {
-        validateBase64Method(
+      if (annotations.has(method, JsonByteArray.class)) {
+        validateByteArrayMethod(
             type, method, propertyDiscoveryEnabled, record, generatedCodec, annotations);
       }
       if (annotations.has(method, JsonUnwrapped.class)) {
@@ -2306,7 +2307,7 @@ final class ObjectCodecBuilder {
       throw new ForyJsonException("Invalid @JsonRawValue field " + field);
     }
     if (annotations.has(field, JsonCodec.class)
-        || annotations.has(field, JsonBase64.class)
+        || annotations.has(field, JsonByteArray.class)
         || annotations.has(field, JsonAnyProperty.class)) {
       throw new ForyJsonException("Conflicting JSON annotations on @JsonRawValue field " + field);
     }
@@ -2338,24 +2339,24 @@ final class ObjectCodecBuilder {
       throw new ForyJsonException("Invalid @JsonRawValue method " + method);
     }
     if (annotations.has(method, JsonCodec.class)
-        || annotations.has(method, JsonBase64.class)
+        || annotations.has(method, JsonByteArray.class)
         || annotations.has(method, JsonAnyGetter.class)) {
       throw new ForyJsonException("Conflicting JSON annotations on @JsonRawValue method " + method);
     }
   }
 
-  private static void validateBase64Field(Field field, Annotations annotations) {
+  private static void validateByteArrayField(Field field, Annotations annotations) {
     if (!isEligibleField(field) || field.getType() != byte[].class) {
-      throw new ForyJsonException("Invalid @JsonBase64 field " + field);
+      throw new ForyJsonException("Invalid @JsonByteArray field " + field);
     }
     if (annotations.has(field, JsonCodec.class)
         || annotations.has(field, JsonRawValue.class)
         || annotations.has(field, JsonAnyProperty.class)) {
-      throw new ForyJsonException("Conflicting JSON annotations on @JsonBase64 field " + field);
+      throw new ForyJsonException("Conflicting JSON annotations on @JsonByteArray field " + field);
     }
     JsonIgnore ignore = annotations.get(field, JsonIgnore.class);
     if (ignore != null && ignore.ignoreRead() && ignore.ignoreWrite()) {
-      throw new ForyJsonException("@JsonBase64 has no JSON read or write direction: " + field);
+      throw new ForyJsonException("@JsonByteArray has no JSON read or write direction: " + field);
     }
   }
 
@@ -2364,7 +2365,7 @@ final class ObjectCodecBuilder {
       throw new ForyJsonException("Invalid @JsonFormat field " + field);
     }
     if (annotations.has(field, JsonCodec.class)
-        || annotations.has(field, JsonBase64.class)
+        || annotations.has(field, JsonByteArray.class)
         || annotations.has(field, JsonRawValue.class)
         || annotations.has(field, JsonAnyProperty.class)
         || annotations.has(field, JsonUnwrapped.class)
@@ -2377,7 +2378,7 @@ final class ObjectCodecBuilder {
     }
   }
 
-  private static void validateBase64Method(
+  private static void validateByteArrayMethod(
       Class<?> type,
       Method method,
       boolean propertyDiscoveryEnabled,
@@ -2387,7 +2388,7 @@ final class ObjectCodecBuilder {
     if ((!propertyDiscoveryEnabled
             && !(record
                 && isPropagatedRecordAnnotation(
-                    type, method, JsonBase64.class, generatedCodec, annotations)))
+                    type, method, JsonByteArray.class, generatedCodec, annotations)))
         || !isEligibleAccessor(method)
         || method.isVarArgs()
         || method.getTypeParameters().length != 0
@@ -2395,12 +2396,13 @@ final class ObjectCodecBuilder {
         || method.getReturnType() != byte[].class
         || ((!record && getterPropertyName(method) == null)
             || (record && !isRecordAccessor(type, method, generatedCodec)))) {
-      throw new ForyJsonException("Invalid @JsonBase64 method " + method);
+      throw new ForyJsonException("Invalid @JsonByteArray method " + method);
     }
     if (annotations.has(method, JsonCodec.class)
         || annotations.has(method, JsonRawValue.class)
         || annotations.has(method, JsonAnyGetter.class)) {
-      throw new ForyJsonException("Conflicting JSON annotations on @JsonBase64 method " + method);
+      throw new ForyJsonException(
+          "Conflicting JSON annotations on @JsonByteArray method " + method);
     }
   }
 
@@ -3392,18 +3394,25 @@ final class ObjectCodecBuilder {
 
     private void mergeCodec(AnnotatedElement source) {
       JsonCodec declared = annotations.get(source, JsonCodec.class);
-      if (annotations.has(source, JsonBase64.class)) {
+      JsonByteArray byteArray = annotations.get(source, JsonByteArray.class);
+      if (byteArray != null) {
         if (formatAnnotation != null) {
-          throw formatConflict(source, "@JsonBase64");
+          throw formatConflict(source, "@JsonByteArray");
         }
         if (declared != null || codecAnnotation != null) {
           throw new ForyJsonException(
-              "@JsonBase64 cannot coexist with @JsonCodec for property " + name);
+              "@JsonByteArray cannot coexist with @JsonCodec for property " + name);
         }
-        if (valueCodecClass == null) {
-          valueCodecClass = Base64ByteArrayCodec.class;
-          codecSource = source;
+        Class<? extends JsonValueCodec<?>> codecClass =
+            byteArray.value() == JsonByteArray.Format.ARRAY
+                ? ArrayCodec.SignedByteArrayCodec.class
+                : Base64ByteArrayCodec.class;
+        if (valueCodecClass != null && valueCodecClass != codecClass) {
+          throw new ForyJsonException(
+              "Conflicting @JsonByteArray declarations for property " + name);
         }
+        valueCodecClass = codecClass;
+        codecSource = source;
         return;
       }
       if (declared != null && formatAnnotation != null) {
@@ -3411,7 +3420,7 @@ final class ObjectCodecBuilder {
       }
       if (declared != null && valueCodecClass != null) {
         throw new ForyJsonException(
-            "@JsonBase64 cannot coexist with @JsonCodec for property " + name);
+            "@JsonByteArray cannot coexist with @JsonCodec for property " + name);
       }
       if (declared == null) {
         return;

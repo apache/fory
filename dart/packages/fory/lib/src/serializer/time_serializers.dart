@@ -25,6 +25,12 @@ import 'package:fory/src/types/local_date.dart';
 import 'package:fory/src/types/timestamp.dart';
 
 const int _nanosecondsPerSecond = 1000000000;
+final BigInt _minDurationMicroseconds = -(BigInt.one << 63);
+final BigInt _maxDurationMicroseconds = (BigInt.one << 63) - BigInt.one;
+// DateTime supports 100,000,000 days from the epoch; these bounds are
+// microseconds, not the SDK's millisecond representation of that range.
+final BigInt _minDateTimeMicroseconds = BigInt.from(-8640000000000000000);
+final BigInt _maxDateTimeMicroseconds = BigInt.from(8640000000000000000);
 final Expando<_ExactDurationWire> _exactDurationWire =
     Expando<_ExactDurationWire>('fory_exact_duration_wire');
 
@@ -61,6 +67,22 @@ void _validateDateTimeNanoseconds(int nanoseconds) {
   }
 }
 
+int _checkedTemporalInt(
+  BigInt value,
+  String carrier,
+  BigInt minimum,
+  BigInt maximum,
+) {
+  if (value < minimum || value > maximum) {
+    throw StateError('$value is outside the platform $carrier range.');
+  }
+  final converted = value.toInt();
+  if (BigInt.from(converted) != value) {
+    throw StateError('$value is outside the platform $carrier range.');
+  }
+  return converted;
+}
+
 Int64 durationWireSeconds(Duration value) {
   final exact = _exactDurationWire[value];
   if (exact != null && exact.microseconds == value.inMicroseconds) {
@@ -86,8 +108,13 @@ Duration durationFromWire(Int64 seconds, int nanoseconds) {
   }
   final totalNanoseconds =
       seconds.toBigInt() * BigInt.from(_nanosecondsPerSecond) +
-          BigInt.from(nanoseconds);
-  final microseconds = (totalNanoseconds ~/ BigInt.from(1000)).toInt();
+      BigInt.from(nanoseconds);
+  final microseconds = _checkedTemporalInt(
+    totalNanoseconds ~/ BigInt.from(1000),
+    'Duration',
+    _minDurationMicroseconds,
+    _maxDurationMicroseconds,
+  );
   final value = Duration(microseconds: microseconds);
   if (nanoseconds.remainder(1000) != 0) {
     _exactDurationWire[value] = _ExactDurationWire(
@@ -118,8 +145,9 @@ Int64 dateTimeWireSeconds(DateTime value) {
 
 int dateTimeWireNanoseconds(DateTime value) {
   final utcValue = value.toUtc();
-  var micros =
-      utcValue.microsecondsSinceEpoch.remainder(Duration.microsecondsPerSecond);
+  var micros = utcValue.microsecondsSinceEpoch.remainder(
+    Duration.microsecondsPerSecond,
+  );
   if (micros < 0) {
     micros += Duration.microsecondsPerSecond;
   }
@@ -135,9 +163,14 @@ DateTime dateTimeFromWire(Int64 seconds, int nanoseconds) {
   _validateDateTimeNanoseconds(nanoseconds);
   final microseconds =
       seconds.toBigInt() * BigInt.from(Duration.microsecondsPerSecond) +
-          BigInt.from(nanoseconds ~/ 1000);
+      BigInt.from(nanoseconds ~/ 1000);
   return DateTime.fromMicrosecondsSinceEpoch(
-    microseconds.toInt(),
+    _checkedTemporalInt(
+      microseconds,
+      'DateTime',
+      _minDateTimeMicroseconds,
+      _maxDateTimeMicroseconds,
+    ),
     isUtc: true,
   );
 }
@@ -195,7 +228,9 @@ final class TimestampSerializer extends Serializer<Timestamp> {
   @override
   Timestamp read(ReadContext context) {
     return timestampFromWire(
-        context.buffer.readInt64(), context.buffer.readUint32());
+      context.buffer.readInt64(),
+      context.buffer.readUint32(),
+    );
   }
 }
 

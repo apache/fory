@@ -53,15 +53,24 @@ inline void write_string_data(const char *data, size_t size,
   // Always use UTF-8 encoding for cross-language compatibility.
   // Per xlang spec: write size shifted left by 2 bits, with encoding
   // (UTF8) in the lower 2 bits. Use varuint36small encoding.
-  uint64_t length = static_cast<uint64_t>(size);
-  uint64_t size_with_encoding =
-      (length << 2) | static_cast<uint64_t>(StringEncoding::UTF8);
-  ctx.write_var_uint36_small(size_with_encoding);
-
-  // write string bytes
-  if (size > 0) {
-    ctx.write_bytes(data, size);
+  if (FORY_PREDICT_FALSE(size >
+                         std::numeric_limits<uint32_t>::max() - size_t{9})) {
+    ctx.set_error(Error::invalid("String byte size exceeds uint32_t range"));
+    return;
   }
+  const uint64_t length = static_cast<uint64_t>(size);
+  const uint64_t size_with_encoding =
+      (length << 2) | static_cast<uint64_t>(StringEncoding::UTF8);
+  Buffer &buffer = ctx.buffer();
+  buffer.grow(static_cast<uint32_t>(size + 9));
+  uint32_t writer_index = buffer.writer_index();
+  writer_index +=
+      buffer.put_var_uint64_unchecked(writer_index, size_with_encoding);
+  if (size > 0) {
+    buffer.unsafe_put(writer_index, data, static_cast<uint32_t>(size));
+  }
+  buffer.unsafe_set_writer_index(writer_index + static_cast<uint32_t>(size));
+  ctx.try_flush();
 }
 
 /// write UTF-16 string data, converting to UTF-8 or using native encoding
@@ -129,7 +138,12 @@ inline std::string read_string_data(ReadContext &ctx) {
   // Handle different encodings
   switch (encoding) {
   case StringEncoding::LATIN1: {
-    std::string result = latin1_to_utf8(data, length_u32);
+    auto converted = ::fory::detail::latin1_to_utf8_checked(data, length_u32);
+    if (FORY_PREDICT_FALSE(!converted.ok())) {
+      ctx.set_error(std::move(converted).error());
+      return std::string();
+    }
+    std::string result = std::move(converted).value();
     buffer.unsafe_increase_reader_index(length_u32);
     return result;
   }

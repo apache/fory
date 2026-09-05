@@ -20,6 +20,16 @@
 import Fory, { Type } from "../packages/core/index";
 import { describe, expect, test } from "@jest/globals";
 import { TypeId } from "../packages/core/lib/type";
+import { BinaryWriter } from "../packages/core/lib/writer";
+
+function temporalBytes(typeId: number, writeBody: (writer: BinaryWriter) => void) {
+  const writer = new BinaryWriter({});
+  writer.writeUint8(1);
+  writer.writeInt8(-1);
+  writer.writeUint8(typeId);
+  writeBody(writer);
+  return writer.dump();
+}
 
 describe("datetime", () => {
   test("should date work", () => {
@@ -50,5 +60,40 @@ describe("datetime", () => {
     const encoded = fory.serialize(value, serializer);
     expect(Array.from(encoded)).toEqual([0x01, 0xff, TypeId.DATE, 0x01]);
     expect(fory.deserialize(encoded, serializer)).toEqual(value);
+  });
+
+  test("rejects temporal values outside JavaScript ranges", () => {
+    const timestampFory = new Fory({ compatible: false, ref: true });
+    const timestamp = timestampFory.register(Type.timestamp()).serializer;
+    const timestampBytes = temporalBytes(TypeId.TIMESTAMP, (writer) => {
+      writer.writeInt64((1n << 63n) - 1n);
+      writer.writeInt32(0);
+    });
+    expect(() => timestampFory.deserialize(timestampBytes, timestamp)).toThrow();
+
+    const durationFory = new Fory({ compatible: false, ref: true });
+    const duration = durationFory.register(Type.duration()).serializer;
+    const durationBytes = temporalBytes(TypeId.DURATION, (writer) => {
+      writer.writeVarInt64((1n << 63n) - 1n);
+      writer.writeInt32(0);
+    });
+    expect(() => durationFory.deserialize(durationBytes, duration)).toThrow();
+
+    const normalizedDurationFory = new Fory({ compatible: false, ref: true });
+    const normalizedDuration = normalizedDurationFory.register(Type.duration()).serializer;
+    const normalizedDurationBytes = temporalBytes(TypeId.DURATION, (writer) => {
+      writer.writeVarInt64(-9_007_199_254_741n);
+      writer.writeInt32(9_000_000);
+    });
+    expect(normalizedDurationFory.deserialize(normalizedDurationBytes, normalizedDuration)).toBe(
+      -9_007_199_254_740_991,
+    );
+
+    const dateFory = new Fory({ compatible: false, ref: true });
+    const date = dateFory.register(Type.date()).serializer;
+    const dateBytes = temporalBytes(TypeId.DATE, (writer) => {
+      writer.writeVarInt64((1n << 63n) - 1n);
+    });
+    expect(() => dateFory.deserialize(dateBytes, date)).toThrow();
   });
 });

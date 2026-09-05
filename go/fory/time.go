@@ -78,9 +78,17 @@ func daysFromCivil(year int64, month time.Month, day int64) int64 {
 }
 
 func civilFromDays(days int64) (int64, time.Month, int) {
-	z := days + 719468
-	era := floorDiv(z, 146097)
-	doe := z - era*146097
+	// Normalize the epoch offset within a 400-year era so the full int64
+	// epoch-day range does not overflow before conversion.
+	era := days / 146097
+	doe := days % 146097
+	if doe < 0 {
+		era--
+		doe += 146097
+	}
+	doe += 719468
+	era += doe / 146097
+	doe %= 146097
 	yoe := (doe - doe/1460 + doe/36524 - doe/146096) / 365
 	year := yoe + era*400
 	doy := doe - (365*yoe + yoe/4 - yoe/100)

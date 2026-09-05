@@ -617,7 +617,7 @@ class KotlinBuiltInCodecsTest {
     readName: String,
     writeName: String,
   ) {
-    val direct = KotlinUnsignedCodecs.scalar(typeId, false, false) as DirectUnboxedValueCodec
+    val direct = KotlinUnsignedCodecs.scalar(typeId, false, false, false) as DirectUnboxedValueCodec
     assertEquals(carrier, direct.carrierType())
     val readMethod = direct.readCarrierMethod()
     assertEquals(readName, readMethod.name)

@@ -51,7 +51,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.json.annotation.ForyJsonProvider;
 import org.apache.fory.json.annotation.JsonAnySetter;
-import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonMixin;
@@ -60,6 +60,7 @@ import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.annotation.JsonValidator;
 import org.apache.fory.json.annotation.JsonValue;
+import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.Base64ByteArrayCodec;
 import org.apache.fory.json.codec.JsonUnwrappedInfo;
 import org.apache.fory.json.codec.ObjectCodec;
@@ -114,6 +115,10 @@ final class ForyJsonGraalVMFeature implements Feature {
   private final Set<Class<?>> processedCodecs = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedContainers = ConcurrentHashMap.newKeySet();
   private final Set<Executable> processedCreators = new LinkedHashSet<>();
+  // Reflection-only registrations are tracked apart from processedCreators, whose membership also
+  // means a creator handle was retained.
+  private final Set<Method> processedReflectiveMethods = new LinkedHashSet<>();
+  private final Set<Class<?>> typesConsideredForScalaCompanion = new LinkedHashSet<>();
   private final Set<ObjectCodec<?>> processedObjectModels =
       Collections.newSetFromMap(new IdentityHashMap<>());
   private final ArrayList<HostedConfiguration> hostedConfigurations = new ArrayList<>();
@@ -437,10 +442,20 @@ final class ForyJsonGraalVMFeature implements Feature {
       }
       for (int i = 0; i < creator.argumentCount(); i++) {
         Method defaultMethod = creator.defaultMethod(i);
-        if (defaultMethod != null) {
+        if (defaultMethod == null) {
+          continue;
+        }
+        if (Modifier.isStatic(defaultMethod.getModifiers())) {
           registerCreator(defaultMethod);
+        } else if (processedReflectiveMethods.add(defaultMethod)) {
+          // An instance default is bound to its owning singleton when the creator metadata is
+          // rebuilt at image runtime. creatorHandle spreads an argument array over the exact
+          // parameter count, which does not describe a method that also takes a receiver, so the
+          // method is only made reflectively available here.
+          RuntimeReflection.register(defaultMethod);
         }
       }
+      registerScalaCompanion(creator.executable().getDeclaringClass());
     }
     for (JsonFieldInfo field : objectModel.writeFields()) {
       registerFieldAccessor(access, field.writeField(), field.writeGetter(), null);
@@ -859,6 +874,64 @@ final class ForyJsonGraalVMFeature implements Feature {
     registerCreator(constructor);
   }
 
+  /**
+   * Registers the Scala companion that owns a type's constructor metadata when the type carries no
+   * static forwarders for it. A case class declared inside an object keeps `apply` and its
+   * constructor defaults on the companion singleton, and the Scala module resolves that singleton
+   * reflectively while rebuilding the object model at image runtime.
+   */
+  private void registerScalaCompanion(Class<?> type) {
+    if (!typesConsideredForScalaCompanion.add(type) || hasScalaStaticFactory(type)) {
+      return;
+    }
+    Class<?> companion;
+    try {
+      companion = Class.forName(type.getName() + "$", false, type.getClassLoader());
+    } catch (ClassNotFoundException | LinkageError e) {
+      return;
+    }
+    Field field;
+    try {
+      field = companion.getField("MODULE$");
+    } catch (NoSuchFieldException e) {
+      return;
+    }
+    int modifiers = field.getModifiers();
+    if (field.getType() != companion
+        || !Modifier.isPublic(companion.getModifiers())
+        || !Modifier.isPublic(modifiers)
+        || !Modifier.isStatic(modifiers)
+        || !Modifier.isFinal(modifiers)) {
+      return;
+    }
+    RuntimeReflection.register(companion);
+    RuntimeReflection.register(field);
+    for (Method method : companion.getMethods()) {
+      // Exactly the members the language module looks up on the singleton: the factory it matches
+      // against the primary constructor, and the constructor defaults.
+      if (method.getDeclaringClass() == companion
+          && !Modifier.isStatic(method.getModifiers())
+          && (("apply".equals(method.getName()) && method.getReturnType() == type)
+              || method.getName().startsWith("$lessinit$greater$default$"))
+          && processedReflectiveMethods.add(method)) {
+        RuntimeReflection.register(method);
+      }
+    }
+  }
+
+  private static boolean hasScalaStaticFactory(Class<?> type) {
+    for (Method method : type.getMethods()) {
+      if (Modifier.isStatic(method.getModifiers())
+          && method.getReturnType() == type
+          && !method.isBridge()
+          && !method.isSynthetic()
+          && "apply".equals(method.getName())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private void registerCreator(Executable executable) {
     if (processedCreators.add(executable)) {
       RuntimeReflection.register(executable);
@@ -927,8 +1000,12 @@ final class ForyJsonGraalVMFeature implements Feature {
 
   private void registerOccurrenceCodecs(JsonMixinView annotations, AnnotatedElement element) {
     registerCodecs(annotation(annotations, element, JsonCodec.class));
-    if (annotation(annotations, element, JsonBase64.class) != null) {
-      registerCodec(Base64ByteArrayCodec.class);
+    JsonByteArray byteArray = annotation(annotations, element, JsonByteArray.class);
+    if (byteArray != null) {
+      registerCodec(
+          byteArray.value() == JsonByteArray.Format.ARRAY
+              ? ArrayCodec.SignedByteArrayCodec.class
+              : Base64ByteArrayCodec.class);
     }
   }
 

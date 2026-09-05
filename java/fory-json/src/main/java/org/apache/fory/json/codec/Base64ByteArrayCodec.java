@@ -27,6 +27,8 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 
 /** A complete {@code byte[]} codec using a quoted standard Base64 JSON string. */
 public final class Base64ByteArrayCodec implements JsonValueCodec<byte[]> {
+  public static final Base64ByteArrayCodec INSTANCE = new Base64ByteArrayCodec();
+
   public Base64ByteArrayCodec() {}
 
   @Override

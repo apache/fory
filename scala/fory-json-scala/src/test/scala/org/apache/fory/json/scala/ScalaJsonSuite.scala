@@ -20,11 +20,13 @@
 package org.apache.fory.json.scala
 
 import java.nio.charset.StandardCharsets.UTF_8
+import java.util.concurrent.atomic.AtomicLong
 
 import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.annotation.{JsonIgnore, JsonProperty, JsonUnwrapped}
 import org.apache.fory.json.codec.AbstractJsonValueCodec
 import org.apache.fory.json.reader.JsonReader
+import org.apache.fory.json.resolver.UnsupportedJsonTypeException
 import org.apache.fory.json.writer.JsonWriter
 import org.apache.fory.reflect.TypeRef
 import org.scalatest.funsuite.AnyFunSuite
@@ -56,9 +58,54 @@ case class UnwrappedState(
   var label: String = "default-label"
 }
 
+object NestedModels {
+  case class Point(x: Int, y: String)
+
+  case class Region(origin: Point, size: Int = 2)
+
+  case class Span(from: Int)(val to: Int = from + 1)
+
+  case class UnwrappedNested(code: Int = 5) {
+    var note: String = "default-note"
+  }
+
+  case class UnwrappedOwner(
+      id: Int = 3,
+      @JsonUnwrapped nested: UnwrappedNested = UnwrappedNested()
+  )
+
+  object Inner {
+    case class Depth(level: Int, unit: String = "px")
+  }
+}
+
+class OuterHolder {
+  case class Bound(id: Int)
+}
+
+// Declared in a method of an object, so it captures no outer instance and its companion is a
+// local module with no MODULE$. A method-local case class inside a class hits the outer check
+// instead.
+object MethodLocalHolder {
+  def create(): Any = {
+    case class MethodLocal(id: Int)
+    MethodLocal(1)
+  }
+}
+
 case class NullableRequired(value: String)
 
 case class UserId(value: Int) extends AnyVal
+
+case class LongId(value: Long) extends AnyVal
+
+case class LongStringValues(
+    aFirst: Long,
+    boxed: java.lang.Long,
+    values: Array[Long],
+    id: LongId,
+    atomic: AtomicLong
+)
 
 case class UnitValue(value: Unit)
 
@@ -108,6 +155,53 @@ case class CodecSlots(
 )
 
 class ScalaJsonSuite extends AnyFunSuite {
+  test("long as string") {
+    val value =
+      LongStringValues(
+        Long.MinValue,
+        Long.MaxValue,
+        Array(-1L, 0L, Long.MaxValue),
+        LongId(7L),
+        new AtomicLong(Long.MaxValue)
+      )
+    val list = List(1L, 9007199254740992L)
+    val map = Map("max" -> Long.MaxValue)
+    val optional = Some(9007199254740992L): Option[Long]
+    val listType = ScalaTypeRef[List[Long]]
+    val mapType = ScalaTypeRef[Map[String, Long]]
+    val optionType = ScalaTypeRef[Option[Long]]
+    for (json <- Seq(
+        ForyJsonScala.builder().writeLongAsString(true).withCodegen(false).build(),
+        ForyJsonScala.builder().writeLongAsString(true).withAsyncCompilation(false).build()
+      )) {
+      val encoded = json.toJson(value)
+      assert(encoded.contains("\"aFirst\":\"-9223372036854775808\""), encoded)
+      assert(encoded.contains("\"boxed\":\"9223372036854775807\""), encoded)
+      assert(
+        encoded.contains("\"values\":[\"-1\",\"0\",\"9223372036854775807\"]"),
+        encoded
+      )
+      assert(encoded.contains("\"id\":\"7\""), encoded)
+      assert(encoded.contains("\"atomic\":\"9223372036854775807\""), encoded)
+      assert(new String(json.toJsonBytes(value), UTF_8) == encoded)
+      assert(json.toJson(list, listType) == "[\"1\",\"9007199254740992\"]")
+      assert(json.toJson(map, mapType) == "{\"max\":\"9223372036854775807\"}")
+      assert(json.toJson(optional, optionType) == "\"9007199254740992\"")
+      assert(json.fromJson("[\"1\",9007199254740992]", listType) == list)
+      assert(json.fromJson("{\"max\":\"9223372036854775807\"}", mapType) == map)
+      assert(json.fromJson("\"9007199254740992\"", optionType) == optional)
+
+      val decoded = json.fromJson(encoded, classOf[LongStringValues])
+      assert(decoded.aFirst == value.aFirst)
+      assert(decoded.boxed == value.boxed)
+      assert(decoded.values.sameElements(value.values))
+      assert(decoded.id == value.id)
+      assert(decoded.atomic.get() == value.atomic.get())
+      assert(json.fromJson("\"9223372036854775807\"", classOf[Long]) == Long.MaxValue)
+      assert(json.fromJson("9223372036854775807", classOf[Long]) == Long.MaxValue)
+    }
+  }
+
   test("case class collections and recursive option") {
     val json = ForyJsonScala.builder().withCodegen(false).build()
     val node = Node(1, Some(Node(2, None)))
@@ -171,6 +265,63 @@ class ScalaJsonSuite extends AnyFunSuite {
       assert(value.details.code == 5)
       assert(value.details.note == "child")
     }
+  }
+
+  test("case class declared inside an object") {
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      val region = NestedModels.Region(NestedModels.Point(1, "a"), 4)
+      val encoded = json.toJson(region)
+      assert(encoded.contains("\"origin\""))
+      assert(json.fromJson(encoded, classOf[NestedModels.Region]) == region)
+      // Scala 2 keeps `apply` and the constructor defaults on the companion singleton because it
+      // emits static forwarders only for a top-level companion.
+      val defaulted = json.fromJson("{\"origin\":{\"x\":1,\"y\":\"a\"}}", classOf[NestedModels.Region])
+      assert(defaulted.size == 2)
+      // A doubly nested companion must also be spelled correctly by generated readers.
+      val depth = NestedModels.Inner.Depth(3, "em")
+      assert(json.fromJson(json.toJson(depth), classOf[NestedModels.Inner.Depth]) == depth)
+      assert(json.fromJson("{\"level\":3}", classOf[NestedModels.Inner.Depth]).unit == "px")
+    }
+  }
+
+  test("nested case class defaults use preceding parameter lists") {
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      assert(json.fromJson("{\"from\":4}", classOf[NestedModels.Span]).to == 5)
+    }
+  }
+
+  test("nested unwrapped creators apply defaults") {
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      val value =
+        json.fromJson("{\"note\":\"child\"}", classOf[NestedModels.UnwrappedOwner])
+      assert(value.id == 3)
+      assert(value.nested.code == 5)
+      assert(value.nested.note == "child")
+    }
+  }
+
+  test("case class declared inside a class is rejected") {
+    val json = ForyJsonScala.builder().withCodegen(false).build()
+    val holder = new OuterHolder
+    // Both rejections assert their message: an outer-bound case class also has no reachable
+    // companion, so only the message distinguishes the outer check from the companion check.
+    val error = intercept[UnsupportedJsonTypeException](json.toJson(holder.Bound(1)))
+    assert(error.getMessage.contains("without its outer instance"))
+  }
+
+  test("case class declared inside a method is rejected") {
+    val json = ForyJsonScala.builder().withCodegen(false).build()
+    val error = intercept[UnsupportedJsonTypeException](json.toJson(MethodLocalHolder.create()))
+    assert(error.getMessage.contains("companion is not reachable"))
   }
 
   test("required constructor values cannot be omitted as null") {

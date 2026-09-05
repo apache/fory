@@ -85,6 +85,61 @@ func byteBufferReplaceMutationAndSnapshots() throws {
 }
 
 @Test
+func invalidCursorMutationRejected() throws {
+    let buffer = ByteBuffer(bytes: [0x2A])
+
+    buffer.setCursor(-1)
+    #expect(buffer.getCursor() == 0)
+    #expect(try buffer.readUInt8() == 0x2A)
+
+    buffer.moveBack(2)
+    #expect(buffer.getCursor() == 1)
+
+    buffer.moveBack(Int.min)
+    #expect(buffer.getCursor() == 1)
+}
+
+@Test
+func negativeVarUIntIndicesRejected() throws {
+    let bytes: [UInt8] = [0]
+    try bytes.withUnsafeBufferPointer { buffer in
+        var bufferIndex32 = -1
+        #expect(throws: (any Error).self) {
+            _ = try UnsafeUtil.readVarUInt32(from: buffer, index: &bufferIndex32)
+        }
+
+        var bufferIndex64 = Int.min
+        #expect(throws: (any Error).self) {
+            _ = try UnsafeUtil.readVarUInt64(from: buffer, index: &bufferIndex64)
+        }
+
+        let base = try #require(buffer.baseAddress)
+        var pointerIndex32 = -1
+        #expect(throws: (any Error).self) {
+            _ = try UnsafeUtil.readVarUInt32(
+                from: base,
+                length: buffer.count,
+                index: &pointerIndex32)
+        }
+
+        var pointerIndex64 = Int.min
+        #expect(throws: (any Error).self) {
+            _ = try UnsafeUtil.readVarUInt64(
+                from: base,
+                length: buffer.count,
+                index: &pointerIndex64)
+        }
+    }
+
+    #expect(throws: (any Error).self) {
+        try UnsafeUtil.checkReadable(
+            length: Int.max,
+            index: Int.max - 1,
+            need: Int.max)
+    }
+}
+
+@Test
 func byteBufferVarUIntBoundariesUseExpectedSizes() throws {
     let values32: [UInt32] = [
         0,

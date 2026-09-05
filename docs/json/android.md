@@ -130,12 +130,12 @@ on the `ForyJson` builder that should use it:
 
 ```java
 import org.apache.fory.json.ForyJson;
-import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonMixin;
 
 @JsonMixin(target = ThirdPartyInvoice.class)
 public abstract class ThirdPartyInvoiceMixin {
-  @JsonBase64 byte[] signature;
+  @JsonByteArray(JsonByteArray.Format.BASE64) byte[] signature;
 }
 
 ForyJson json =
@@ -191,7 +191,7 @@ This reflection-based section applies to Java models. Kotlin models use the Kotl
 a minified Android build, apply KSP instead of writing broad package keep rules.
 
 Java `@JsonType` models support effective `JsonValidator`, `JsonValue`, `JsonRawValue`,
-`JsonBase64`, and `JsonFormat` annotations. Without `@JsonType`, those annotations still work
+`JsonByteArray`, and `JsonFormat` annotations. Without `@JsonType`, those annotations still work
 through reflection, but a release-minified application must keep the exact annotated members,
 annotation attributes, and codec constructor itself. A `JsonValue` method may use a non-JavaBean
 name, so its manual rule must name that method explicitly.

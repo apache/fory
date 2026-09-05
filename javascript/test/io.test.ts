@@ -259,6 +259,15 @@ function num2Bin(num: number) {
       expect(reader.stringLatin1(len)).toBe(str);
     });
 
+    test("should read exact 36-bit string headers", () => {
+      const reader = new BinaryReader(config);
+      reader.reset(new Uint8Array([0x80, 0x80, 0x80, 0x80, 0x80, 0x01, 0x7f]));
+
+      expect(reader.readVarUint36Small()).toBe(2 ** 35);
+      expect(reader.readGetCursor()).toBe(6);
+      expect(reader.readUint8()).toBe(0x7f);
+    });
+
     test("should short utf8 string work", () => {
       const writer = new BinaryWriter(config);
       const str = new Array(1).fill("hello 你好 😁").join("");
@@ -309,6 +318,12 @@ function num2Bin(num: number) {
 
       reader.reset(new Uint8Array([3]));
       expect(() => reader.stringWithHeader()).toThrow(/Unsupported string encoding/);
+
+      reader.reset(new Uint8Array([0x82, 0x80, 0x80, 0x80, 0x80, 0x01]));
+      expect(() => reader.stringWithHeader()).toThrow();
+
+      reader.reset(new Uint8Array([0x80, 0x80, 0x80, 0x80, 0x80]));
+      expect(() => reader.stringWithHeader()).toThrow();
     });
 
     test("should buffer work", () => {

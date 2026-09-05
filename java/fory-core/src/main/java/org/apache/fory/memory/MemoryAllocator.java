@@ -31,7 +31,9 @@ public interface MemoryAllocator {
 
   /**
    * Grows an existing buffer to accommodate the new capacity. The implementation must grow the
-   * buffer in-place by modifying the existing buffer instance.
+   * buffer in-place by modifying the existing buffer instance. A successful return guarantees that
+   * {@code buffer.size()} is at least {@code newCapacity}; callers intentionally do not repeat this
+   * postcondition check on the hot path.
    *
    * @param buffer the existing buffer to grow
    * @param newCapacity the required new capacity

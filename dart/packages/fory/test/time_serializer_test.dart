@@ -27,6 +27,32 @@ part 'time_serializer_test.fory.dart';
 Timestamp _timestamp(int seconds, int nanoseconds) =>
     Timestamp(Int64(seconds), nanoseconds);
 
+Buffer _dateBuffer(Int64 epochDay) {
+  return Buffer(32)
+    ..writeUint8(0x01)
+    ..writeUint8(0xff)
+    ..writeUint8(TypeIds.date)
+    ..writeVarInt64(epochDay);
+}
+
+Buffer _durationBuffer(Int64 seconds) {
+  return Buffer(32)
+    ..writeUint8(0x01)
+    ..writeUint8(0xff)
+    ..writeUint8(TypeIds.duration)
+    ..writeVarInt64(seconds)
+    ..writeInt32(0);
+}
+
+Buffer _dateTimeBuffer(Int64 seconds) {
+  return Buffer(32)
+    ..writeUint8(0x01)
+    ..writeUint8(0xff)
+    ..writeUint8(TypeIds.timestamp)
+    ..writeInt64(seconds)
+    ..writeUint32(0);
+}
+
 @ForyStruct()
 class TimeEnvelope {
   TimeEnvelope();
@@ -105,6 +131,25 @@ void main() {
       expect(fory.deserialize<LocalDate>(bytes), equals(value));
     });
 
+    test('rejects epoch days outside the DateTime range', () {
+      final fory = Fory();
+      for (final day in <Int64>[
+        Int64.parseHex('7fffffffffffffff'),
+        Int64.parseHex('8000000000000000'),
+      ]) {
+        expect(
+          () => fory.deserializeFrom<LocalDate>(_dateBuffer(day)),
+          throwsA(anything),
+        );
+      }
+      expect(
+        fory.deserialize<LocalDate>(
+          fory.serialize(const LocalDate(1970, 1, 1)),
+        ),
+        const LocalDate(1970, 1, 1),
+      );
+    });
+
     test(
       'LocalDate convenience methods bridge DateTime and epoch-day forms',
       () {
@@ -159,6 +204,21 @@ void main() {
           fory.deserialize<DateTime>(fory.serialize(value)),
           equals(value),
         );
+      }
+    });
+
+    test('accepts DateTime carrier boundaries', () {
+      final fory = Fory();
+      for (final seconds in <Int64>[
+        Int64(8640000000000),
+        Int64(-8640000000000),
+      ]) {
+        final value = fory.deserializeFrom<DateTime>(_dateTimeBuffer(seconds));
+        expect(
+          value.microsecondsSinceEpoch,
+          seconds.toInt() * Duration.microsecondsPerSecond,
+        );
+        expect(fory.deserialize<DateTime>(fory.serialize(value)), value);
       }
     });
 
@@ -236,6 +296,29 @@ void main() {
           equals(value),
         );
       }
+    });
+
+    test('rejects temporal seconds outside platform carriers', () {
+      final fory = Fory();
+      for (final seconds in <Int64>[
+        Int64.parseHex('7fffffffffffffff'),
+        Int64.parseHex('8000000000000000'),
+      ]) {
+        expect(
+          () => fory.deserializeFrom<Duration>(_durationBuffer(seconds)),
+          throwsA(anything),
+        );
+        expect(
+          () => fory.deserializeFrom<DateTime>(_dateTimeBuffer(seconds)),
+          throwsA(anything),
+        );
+      }
+      expect(
+        fory.deserialize<Duration>(fory.serialize(Duration.zero)),
+        Duration.zero,
+      );
+      final epoch = DateTime.fromMicrosecondsSinceEpoch(0, isUtc: true);
+      expect(fory.deserialize<DateTime>(fory.serialize(epoch)), epoch);
     });
 
     test('round-trips generated time fields in schema-consistent mode', () {

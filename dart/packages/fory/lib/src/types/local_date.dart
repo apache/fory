@@ -19,6 +19,9 @@
 
 import 'package:fory/src/types/int64.dart';
 
+const int _minEpochDay = -100000000;
+const int _maxEpochDay = 100000000;
+
 /// Calendar date without time-of-day or time-zone information.
 final class LocalDate implements Comparable<LocalDate> {
   /// Year component.
@@ -35,8 +38,12 @@ final class LocalDate implements Comparable<LocalDate> {
 
   /// Creates a date from the xlang epoch-day representation.
   factory LocalDate.fromEpochDay(Int64 epochDay) {
+    final day = epochDay.toBigInt();
+    if (day < BigInt.from(_minEpochDay) || day > BigInt.from(_maxEpochDay)) {
+      throw StateError('Epoch day $day is outside the Dart DateTime range.');
+    }
     final instant = DateTime.fromMillisecondsSinceEpoch(
-      epochDay.toInt() * Duration.millisecondsPerDay,
+      day.toInt() * Duration.millisecondsPerDay,
       isUtc: true,
     );
     return LocalDate(instant.year, instant.month, instant.day);
@@ -50,9 +57,9 @@ final class LocalDate implements Comparable<LocalDate> {
 
   /// Converts this date to xlang epoch-day form.
   Int64 toEpochDay() => Int64(
-        DateTime.utc(year, month, day).millisecondsSinceEpoch ~/
-            Duration.millisecondsPerDay,
-      );
+    DateTime.utc(year, month, day).millisecondsSinceEpoch ~/
+        Duration.millisecondsPerDay,
+  );
 
   /// Converts this date to a UTC [DateTime] at midnight.
   DateTime toDateTime() => DateTime.utc(year, month, day);

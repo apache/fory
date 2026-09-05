@@ -17,29 +17,51 @@
  * under the License.
  */
 
-const float32View = new Float32Array(1);
-const int32View = new Int32Array(float32View.buffer);
+const float64View = new DataView(new ArrayBuffer(8));
 
 export function toFloat16Bits(value: number) {
-  float32View[0] = value;
-  const floatValue = int32View[0];
-  const sign = (floatValue >>> 16) & 0x8000;
-  const exponent = ((floatValue >>> 23) & 0xff) - 127;
-  const significand = floatValue & 0x7fffff;
+  // Round directly from binary64: narrowing to binary32 first can move a value
+  // onto a binary16 midpoint and change the ties-to-even result.
+  float64View.setFloat64(0, value);
+  const high = float64View.getUint32(0);
+  const sign = (high >>> 16) & 0x8000;
+  const exponent = ((high >>> 20) & 0x7ff) - 1023;
+  let significand = high & 0xfffff;
 
-  if (exponent === 128) {
-    return sign | 0x7c00 | (significand !== 0 ? 0x0200 : 0);
+  if (exponent === 1024) {
+    return sign | 0x7c00 | (significand !== 0 || float64View.getUint32(4) !== 0 ? 0x0200 : 0);
   }
 
   if (exponent > 15) {
     return sign | 0x7c00;
   }
 
-  if (exponent < -14) {
-    return sign | ((significand | 0x800000) >> (13 - 14 - exponent));
+  if (exponent < -25) {
+    // Below half the smallest subnormal, round to signed zero before the
+    // shift count can reach 32 and wrap in JavaScript.
+    return sign;
   }
 
-  return sign | ((exponent + 15) << 10) | (significand >> 13);
+  let shift = 10;
+  let bits = (exponent + 15) << 10;
+  if (exponent < -14) {
+    shift = -exponent - 4;
+    significand |= 0x100000;
+    bits = 0;
+  }
+  bits |= significand >>> shift;
+  const remainder = significand & ((1 << shift) - 1);
+  const halfway = 1 << (shift - 1);
+  // The low binary64 word distinguishes an exact tie from a value above it.
+  // Increment the complete encoding so rounding can carry into the exponent.
+  if (
+    remainder > halfway ||
+    (remainder === halfway && (float64View.getUint32(4) !== 0 || (bits & 1) !== 0))
+  ) {
+    bits++;
+  }
+
+  return sign | bits;
 }
 
 export function fromFloat16Bits(bits: number): number {

@@ -202,14 +202,34 @@ impl<'a> Writer<'a> {
 
     #[inline(always)]
     fn write_u24(&mut self, value: u32) {
-        let bytes = value.to_le_bytes();
-        self.bf.extend_from_slice(&bytes[..3]);
+        let offset = self.bf.len();
+        self.bf.reserve(4);
+        // The four-byte store stays inside reserved capacity; only the three wire bytes become
+        // initialized vector contents.
+        unsafe {
+            self.bf
+                .as_mut_ptr()
+                .add(offset)
+                .cast::<u32>()
+                .write_unaligned(value.to_le());
+            self.bf.set_len(offset + 3);
+        }
     }
 
     #[inline(always)]
     fn write_u40(&mut self, value: u64) {
-        let bytes = value.to_le_bytes();
-        self.bf.extend_from_slice(&bytes[..5]);
+        let offset = self.bf.len();
+        self.bf.reserve(8);
+        // The eight-byte store stays inside reserved capacity; only the five wire bytes become
+        // initialized vector contents.
+        unsafe {
+            self.bf
+                .as_mut_ptr()
+                .add(offset)
+                .cast::<u64>()
+                .write_unaligned(value.to_le());
+            self.bf.set_len(offset + 5);
+        }
     }
 
     // ============ VAR_UINT32 (TypeId = 12) ============
@@ -506,31 +526,47 @@ impl<'a> Writer<'a> {
         if value < 0x80 {
             self.bf.push(value as u8);
         } else if value < 0x4000 {
-            let b0 = ((value & 0x7F) as u8) | 0x80;
+            let b0 = ((value as u8) & 0x7f) | 0x80;
             let b1 = (value >> 7) as u8;
-            let combined = ((b1 as u16) << 8) | (b0 as u16);
-            self.write_u16(combined);
+            self.write_u16(((b1 as u16) << 8) | b0 as u16);
         } else if value < 0x200000 {
-            let b0 = (value & 0x7F) | 0x80;
-            let b1 = ((value >> 7) & 0x7F) | 0x80;
-            let b2 = value >> 14;
-            let combined = b0 | (b1 << 8) | (b2 << 16);
-            self.write_u32(combined as u32);
+            let b0 = ((value as u8) & 0x7f) | 0x80;
+            let b1 = (((value >> 7) as u8) & 0x7f) | 0x80;
+            let b2 = (value >> 14) as u8;
+            self.write_u24(((b2 as u32) << 16) | ((b1 as u32) << 8) | b0 as u32);
         } else if value < 0x10000000 {
-            let b0 = (value & 0x7F) | 0x80;
-            let b1 = ((value >> 7) & 0x7F) | 0x80;
-            let b2 = ((value >> 14) & 0x7F) | 0x80;
-            let b3 = value >> 21;
-            let combined = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
-            self.write_u32(combined as u32);
+            let b0 = ((value as u8) & 0x7f) | 0x80;
+            let b1 = (((value >> 7) as u8) & 0x7f) | 0x80;
+            let b2 = (((value >> 14) as u8) & 0x7f) | 0x80;
+            let b3 = (value >> 21) as u8;
+            self.write_u32(
+                ((b3 as u32) << 24) | ((b2 as u32) << 16) | ((b1 as u32) << 8) | b0 as u32,
+            );
+        } else if value < (1u64 << 35) {
+            let b0 = ((value as u8) & 0x7f) | 0x80;
+            let b1 = (((value >> 7) as u8) & 0x7f) | 0x80;
+            let b2 = (((value >> 14) as u8) & 0x7f) | 0x80;
+            let b3 = (((value >> 21) as u8) & 0x7f) | 0x80;
+            let b4 = (value >> 28) as u8;
+            self.write_u40(
+                ((b4 as u64) << 32)
+                    | ((b3 as u64) << 24)
+                    | ((b2 as u64) << 16)
+                    | ((b1 as u64) << 8)
+                    | b0 as u64,
+            );
         } else {
-            let b0 = (value & 0x7F) | 0x80;
-            let b1 = ((value >> 7) & 0x7F) | 0x80;
-            let b2 = ((value >> 14) & 0x7F) | 0x80;
-            let b3 = ((value >> 21) & 0x7F) | 0x80;
-            let b4 = value >> 28;
-            let combined = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24) | (b4 << 32);
-            self.write_u64(combined);
+            // Standard seven-bit varuint framing needs a sixth byte for bit 35.
+            let b0 = ((value as u8) & 0x7f) | 0x80;
+            let b1 = (((value >> 7) as u8) & 0x7f) | 0x80;
+            let b2 = (((value >> 14) as u8) & 0x7f) | 0x80;
+            let b3 = (((value >> 21) as u8) & 0x7f) | 0x80;
+            let b4 = (((value >> 28) as u8) & 0x7f) | 0x80;
+            let b5 = (value >> 35) as u8;
+            self.write_u32(
+                ((b3 as u32) << 24) | ((b2 as u32) << 16) | ((b1 as u32) << 8) | b0 as u32,
+            );
+            self.write_u16(((b5 as u16) << 8) | b4 as u16);
         }
     }
 }
@@ -608,13 +644,6 @@ impl<'a> Reader<'a> {
         } else {
             Ok(())
         }
-    }
-
-    #[inline(always)]
-    fn read_u8_uncheck(&mut self) -> u8 {
-        let result = unsafe { self.bf.get_unchecked(self.cursor) };
-        self.move_next(1);
-        *result
     }
 
     #[inline(always)]
@@ -985,20 +1014,31 @@ impl<'a> Reader<'a> {
         Ok(string)
     }
 
+    /// Reads bytes without validating UTF-8.
+    ///
+    /// # Safety
+    ///
+    /// The next `len` bytes must be valid UTF-8. Violating this requirement creates an invalid
+    /// [`String`] and breaks its required invariant.
+    ///
+    /// ```compile_fail
+    /// use fory_core::buffer::Reader;
+    ///
+    /// let mut reader = Reader::new(b"valid");
+    /// let _ = reader.read_utf8_string_unchecked(5);
+    /// ```
     #[inline(always)]
-    pub fn read_utf8_string_unchecked(&mut self, len: usize) -> Result<String, Error> {
+    pub unsafe fn read_utf8_string_unchecked(&mut self, len: usize) -> Result<String, Error> {
         self.check_bound(len)?;
-        // don't use simd for memory copy, copy_non_overlapping is faster
+        let mut vec = Vec::with_capacity(len);
+        let src = unsafe { self.bf.as_ptr().add(self.cursor) };
+        let dst = vec.as_mut_ptr();
         unsafe {
-            let mut vec = Vec::with_capacity(len);
-            let src = self.bf.as_ptr().add(self.cursor);
-            let dst = vec.as_mut_ptr();
-            // Use fastest possible copy - copy_nonoverlapping compiles to memcpy
             std::ptr::copy_nonoverlapping(src, dst, len);
             vec.set_len(len);
-            self.move_next(len);
-            Ok(String::from_utf8_unchecked(vec))
         }
+        self.move_next(len);
+        Ok(unsafe { String::from_utf8_unchecked(vec) })
     }
 
     #[inline(always)]
@@ -1060,8 +1100,8 @@ impl<'a> Reader<'a> {
         let slice = self.slice_after_cursor();
 
         if slice.len() >= 8 {
-            // here already check bound
-            let bulk = self.read_u64()?;
+            // Decode speculatively without advancing so malformed input leaves the cursor intact.
+            let bulk = LittleEndian::read_u64(&slice[..8]);
             let mut result = bulk & 0x7F;
             let mut read_idx = start;
 
@@ -1076,7 +1116,17 @@ impl<'a> Reader<'a> {
                         result |= (bulk >> 3) & 0xFE00000;
                         if (bulk & 0x80000000) != 0 {
                             read_idx += 1;
-                            result |= (bulk >> 4) & 0xFF0000000;
+                            result |= (bulk >> 4) & 0x7F0000000;
+                            if (bulk & 0x8000000000) != 0 {
+                                let sixth = ((bulk >> 40) & 0xFF) as u8;
+                                // Only bit 35 belongs to a 36-bit value; continuation or higher
+                                // payload bits would extend the value beyond the wire type.
+                                if sixth > 1 {
+                                    return Err(Error::invalid_data("var_u36_small overflow"));
+                                }
+                                read_idx += 1;
+                                result |= (sixth as u64) << 35;
+                            }
                         }
                     }
                 }
@@ -1086,18 +1136,22 @@ impl<'a> Reader<'a> {
         }
 
         let mut result = 0u64;
-        let mut shift = 0;
-        while self.cursor < self.bf.len() {
-            let b = self.read_u8_uncheck();
-            result |= ((b & 0x7F) as u64) << shift;
+        for index in 0..5 {
+            let b = self.value_at(start + index)?;
+            result |= ((b & 0x7F) as u64) << (index * 7);
             if (b & 0x80) == 0 {
-                break;
-            }
-            shift += 7;
-            if shift >= 36 {
-                return Err(Error::encode_error("var_u36_small overflow"));
+                self.cursor = start + index + 1;
+                return Ok(result);
             }
         }
+
+        let sixth = self.value_at(start + 5)?;
+        // The sixth group may contain only bit 35 and must terminate the varuint.
+        if sixth > 1 {
+            return Err(Error::invalid_data("var_u36_small overflow"));
+        }
+        result |= (sixth as u64) << 35;
+        self.cursor = start + 6;
         Ok(result)
     }
 }

@@ -19,6 +19,7 @@
 
 #include <codecvt>
 #include <iostream>
+#include <limits>
 #include <locale>
 #include <random>
 
@@ -95,6 +96,33 @@ TEST(StringUtilTest, TestisLatin1) {
     EXPECT_TRUE(is_latin1(std::u16string(i, '.') + u"\x80"));  //  in Latin-1
     EXPECT_FALSE(is_latin1(std::u16string(i, '.') +
                            std::u16string({256}))); // Ā (not in Latin-1)
+  }
+}
+
+TEST(StringUtilTest, Latin1SizeBoundary) {
+  constexpr size_t max_size = std::numeric_limits<size_t>::max();
+  const size_t input_size = max_size / 2 + 1;
+  const size_t largest_extra = max_size - input_size;
+  size_t output_size = 0;
+
+  ASSERT_LE(largest_extra, input_size);
+  EXPECT_TRUE(detail::latin1_utf8_size(input_size, largest_extra, output_size));
+  EXPECT_EQ(output_size, max_size);
+
+  output_size = 1;
+  EXPECT_FALSE(
+      detail::latin1_utf8_size(input_size, largest_extra + 1, output_size));
+  EXPECT_EQ(output_size, 1);
+
+  constexpr size_t max_wire_length = std::numeric_limits<uint32_t>::max();
+  if constexpr (sizeof(size_t) == sizeof(uint32_t)) {
+    EXPECT_FALSE(detail::latin1_utf8_size(max_wire_length, max_wire_length,
+                                          output_size));
+  } else {
+    EXPECT_TRUE(detail::latin1_utf8_size(max_wire_length, max_wire_length,
+                                         output_size));
+    EXPECT_EQ(static_cast<uint64_t>(output_size),
+              static_cast<uint64_t>(max_wire_length) * 2);
   }
 }
 

@@ -25,7 +25,7 @@ module works on the ordinary JVM and GraalVM Native Image. Android is not suppor
 ## Setup
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-json-scala" % "1.6.1"
+libraryDependencies += "org.apache.fory" %% "fory-json-scala" % "1.7.1"
 ```
 
 `ForyJsonScala.builder()` installs the Scala module and returns the standard Fory JSON builder:
@@ -41,6 +41,11 @@ val person = json.fromJson(text, classOf[Person])
 ```
 
 Reuse the resulting `ForyJson` instance. It is immutable and thread-safe after construction.
+Use `ForyJsonScala.builder().writeLongAsString(true)` to emit Scala `Long` values, including
+declared collection and map values, `Option[Long]`, `Long`-backed value classes, and Java Long-like
+wrappers as quoted decimal strings. Readers accept both quoted and unquoted integer tokens.
+Use `ScalaTypeRef` when a parameterized declaration contains `Long` because normal JVM signatures
+can erase Scala value-type arguments to `Object`.
 
 ## Case classes and annotations
 
@@ -49,6 +54,11 @@ constructor-default methods for missing defaulted parameters; it does not parse 
 or mutate constructor `val` fields. Defaults in later parameter lists receive the preceding
 constructor arguments exactly as Scala defines them. A missing parameter without a default is an
 error. Mutable body properties are applied after construction.
+
+A case class may be declared at the top level, or inside an `object` at any nesting depth, as long
+as every enclosing scope is itself an `object`. A case class enclosed by a `class`, a trait, or a
+method is rejected for both reading and writing, because Fory cannot reach the enclosing instance
+or the companion it needs to rebuild the value.
 
 Fory JSON annotations can be placed directly on Scala constructor properties:
 

@@ -627,13 +627,11 @@ public enum UnsafeUtil {
         from bytes: UnsafeBufferPointer<UInt8>,
         index: inout Int
     ) throws -> UInt32 {
+        try checkReadable(bytes, index: index, need: 1)
         guard let base = bytes.baseAddress else {
             throw ForyError.outOfBounds(cursor: index, need: 1, length: bytes.count)
         }
         let available = bytes.count - index
-        guard available > 0 else {
-            throw ForyError.outOfBounds(cursor: index, need: 1, length: bytes.count)
-        }
 
         let b0 = base[index]
         if b0 < 0x80 {
@@ -681,10 +679,11 @@ public enum UnsafeUtil {
         from bytes: UnsafeBufferPointer<UInt8>,
         index: inout Int
     ) throws -> UInt64 {
-        let available = bytes.count - index
+        try checkReadable(bytes, index: index, need: 1)
         guard let base = bytes.baseAddress else {
             throw ForyError.outOfBounds(cursor: index, need: 1, length: bytes.count)
         }
+        let available = bytes.count - index
         if available >= 9 {
             let offset = index
             let b0 = base[offset]
@@ -841,10 +840,8 @@ public enum UnsafeUtil {
         length: Int,
         index: inout Int
     ) throws -> UInt32 {
+        try checkReadable(length: length, index: index, need: 1)
         let available = length - index
-        guard available > 0 else {
-            throw ForyError.outOfBounds(cursor: index, need: 1, length: length)
-        }
 
         let b0 = base[index]
         if b0 < 0x80 {
@@ -893,6 +890,7 @@ public enum UnsafeUtil {
         length: Int,
         index: inout Int
     ) throws -> UInt64 {
+        try checkReadable(length: length, index: index, need: 1)
         let available = length - index
         if available >= 9 {
             let offset = index
@@ -1122,7 +1120,8 @@ public enum UnsafeUtil {
         index: Int,
         need: Int
     ) throws {
-        if index < 0 || need < 0 || index + need > bytes.count {
+        let length = bytes.count
+        if index < 0 || need < 0 || index > length || need > length - index {
             throw ForyError.outOfBounds(cursor: index, need: need, length: bytes.count)
         }
     }
@@ -1134,7 +1133,7 @@ public enum UnsafeUtil {
         index: Int,
         need: Int
     ) throws {
-        if index < 0 || need < 0 || index + need > length {
+        if length < 0 || index < 0 || need < 0 || index > length || need > length - index {
             throw ForyError.outOfBounds(cursor: index, need: need, length: length)
         }
     }

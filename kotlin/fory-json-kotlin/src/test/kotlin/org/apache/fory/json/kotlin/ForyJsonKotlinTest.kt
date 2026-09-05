@@ -19,9 +19,11 @@
 
 package org.apache.fory.json.kotlin
 
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import org.apache.fory.json.ForyJsonException
@@ -46,6 +48,24 @@ class ForyJsonKotlinTest {
   data class ReferencedDefault(val base: Int, val derived: Int = base + 1)
 
   data class UnsignedValues(val count: UInt, val total: ULong, val optional: UInt?)
+
+  @JvmInline value class SignedLongId(val value: Long)
+
+  @JvmInline value class UnsignedLongId(val value: ULong)
+
+  @OptIn(ExperimentalUnsignedTypes::class)
+  data class LongStringValues(
+    val signed: Long,
+    val signedNullable: Long?,
+    val unsigned: ULong,
+    val nullable: ULong?,
+    val unsignedArray: ULongArray,
+    val unsignedList: List<ULong>,
+    val unsignedMap: Map<String, ULong>,
+    val signedId: SignedLongId,
+    val unsignedId: UnsignedLongId,
+    val atomic: AtomicLong,
+  )
 
   object Marker
 
@@ -134,6 +154,108 @@ class ForyJsonKotlinTest {
     assertEquals(ULong.MAX_VALUE, fory.fromJson("18446744073709551615", jsonTypeRef<ULong>()))
     val listType = jsonTypeRef<List<UInt>>()
     assertEquals(listOf(0u, UInt.MAX_VALUE), fory.fromJson("[0,4294967295]", listType))
+  }
+
+  @OptIn(ExperimentalUnsignedTypes::class)
+  @Test
+  fun longAsString() {
+    val value =
+      LongStringValues(
+        Long.MIN_VALUE,
+        9_007_199_254_740_992L,
+        ULong.MAX_VALUE,
+        7uL,
+        ulongArrayOf(0uL, ULong.MAX_VALUE),
+        listOf(1uL, ULong.MAX_VALUE),
+        linkedMapOf("max" to ULong.MAX_VALUE),
+        SignedLongId(Long.MAX_VALUE),
+        UnsignedLongId(ULong.MAX_VALUE),
+        AtomicLong(Long.MAX_VALUE),
+      )
+    val type = jsonTypeRef<LongStringValues>()
+    for (mode in listOf(KotlinJsonTestMode.INTERPRETED, KotlinJsonTestMode.SYNCHRONOUS)) {
+      val json = newKotlinJson(mode) { writeLongAsString(true) }
+      val encoded = json.toJson(value, type)
+      assertTrue(encoded.contains("\"signed\":\"-9223372036854775808\""), encoded)
+      assertTrue(encoded.contains("\"signedNullable\":\"9007199254740992\""), encoded)
+      assertTrue(encoded.contains("\"unsigned\":\"18446744073709551615\""), encoded)
+      assertTrue(encoded.contains("\"nullable\":\"7\""), encoded)
+      assertTrue(
+        encoded.contains("\"unsignedArray\":[\"0\",\"18446744073709551615\"]"),
+        encoded,
+      )
+      assertTrue(
+        encoded.contains("\"unsignedList\":[\"1\",\"18446744073709551615\"]"),
+        encoded,
+      )
+      assertTrue(
+        encoded.contains("\"unsignedMap\":{\"max\":\"18446744073709551615\"}"),
+        encoded,
+      )
+      assertTrue(encoded.contains("\"signedId\":\"9223372036854775807\""), encoded)
+      assertTrue(
+        encoded.contains("\"unsignedId\":\"18446744073709551615\""),
+        encoded,
+      )
+      assertTrue(encoded.contains("\"atomic\":\"9223372036854775807\""), encoded)
+      val decoded = json.fromJson(encoded, type)
+      assertEquals(value.signed, decoded.signed)
+      assertEquals(value.signedNullable, decoded.signedNullable)
+      assertEquals(value.unsigned, decoded.unsigned)
+      assertEquals(value.nullable, decoded.nullable)
+      assertTrue(value.unsignedArray.contentEquals(decoded.unsignedArray))
+      assertEquals(value.unsignedList, decoded.unsignedList)
+      assertEquals(value.unsignedMap, decoded.unsignedMap)
+      assertEquals(value.signedId, decoded.signedId)
+      assertEquals(value.unsignedId, decoded.unsignedId)
+      assertEquals(value.atomic.get(), decoded.atomic.get())
+      assertEquals(encoded, json.toJsonBytes(value, type).toString(Charsets.UTF_8))
+      assertEquals(ULong.MAX_VALUE, json.fromJson("18446744073709551615", jsonTypeRef<ULong>()))
+      assertEquals(
+        ULong.MAX_VALUE,
+        json.fromJson("\"18446744073709551615\"", jsonTypeRef<ULong>()),
+      )
+      assertFailsWith<ForyJsonException> {
+        json.fromJson("\"18446744073709551616\"", jsonTypeRef<ULong>())
+      }
+
+      if (mode == KotlinJsonTestMode.SYNCHRONOUS) {
+        val refs =
+          generatedClassBytes(json, "LongStringVal")
+            .filterKeys { it.contains("WriterForyJsonCodec") }
+            .values
+            .flatMap(::generatedMethodRefs)
+        assertTrue(
+          refs.any {
+            it.owner == "org/apache/fory/json/kotlin/KotlinUnsignedCodecs" &&
+              it.name == "writeULongAsStringRaw" &&
+              it.descriptor == "(Lorg/apache/fory/json/writer/JsonWriter;J)V"
+          },
+          refs.toString(),
+        )
+        assertTrue(
+          refs.any {
+            it.owner == "org/apache/fory/json/writer/StringJsonWriter" &&
+              it.name == "writeLongAsStringField"
+          },
+          refs.toString(),
+        )
+        assertTrue(
+          refs.any {
+            it.owner == "org/apache/fory/json/writer/Utf8JsonWriter" &&
+              it.name == "writeLongAsStringField"
+          },
+          refs.toString(),
+        )
+        assertFalse(
+          refs.any {
+            it.owner == "org/apache/fory/json/resolver/JsonTypeResolver" &&
+              it.name == "writeLongAsString" &&
+              it.descriptor == "()Z"
+          }
+        )
+      }
+    }
   }
 
   @Test

@@ -805,7 +805,7 @@ final class MemoryOps {
 
   static long readVarUint36Small(MemoryBuffer buffer) {
     int readIdx = buffer.readerIndex;
-    if (buffer.size - readIdx < 5) {
+    if (buffer.size - readIdx < 6) {
       return readVarUint36Slow(buffer);
     }
     int heapIndex = heapIndex(buffer, readIdx);
@@ -817,7 +817,7 @@ final class MemoryOps {
   static long readVarUint36Small(byte[] source, int index) {
     long result = 0;
     int shift = 0;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
       int b = source[index + i] & 0xFF;
       result |= (long) (b & 0x7F) << shift;
       if ((b & 0x80) == 0) {
@@ -825,7 +825,7 @@ final class MemoryOps {
       }
       shift += 7;
     }
-    return result | ((long) source[index + 4] & 0xFF) << 28;
+    return result | ((long) source[index + 5] & 0x01) << 35;
   }
 
   static long readVarInt64(MemoryBuffer buffer) {
@@ -1484,7 +1484,11 @@ final class MemoryOps {
           result |= (b & 0x7F) << 21;
           if ((b & 0x80) != 0) {
             b = readByte(buffer);
-            result |= (b & 0xFF) << 28;
+            result |= (b & 0x7F) << 28;
+            if ((b & 0x80) != 0) {
+              b = readByte(buffer);
+              result |= (b & 0x01) << 35;
+            }
           }
         }
       }
@@ -1579,7 +1583,7 @@ final class MemoryOps {
 
   static int putVarUint36Small(byte[] target, int index, long value) {
     int start = index;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
       if ((value >>> 7) == 0) {
         target[index++] = (byte) value;
         return index - start;
@@ -1623,12 +1627,12 @@ final class MemoryOps {
   }
 
   static int varUint36SmallBytes(byte[] source, int index) {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
       if ((source[index + i] & 0x80) == 0) {
         return i + 1;
       }
     }
-    return 5;
+    return 6;
   }
 
   static int varUInt64Bytes(byte[] source, int index) {

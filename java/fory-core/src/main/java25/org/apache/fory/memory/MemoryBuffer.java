@@ -57,11 +57,11 @@ import org.apache.fory.io.ForyStreamReader;
  * <p>Warning: The instance of this class should not be held at GraalVM build time; build-time heap
  * buffers do not represent the runtime heap layout.
  *
- * <p>In the Java 25 multi-release implementation, absolute random-access get/put methods are
- * internal fast paths. Callers must pass legal indices and ranges; read/write entry points perform
- * logical {@link MemoryBuffer} range validation before reaching these methods. The implementation
- * relies on {@link VarHandle}, array, and {@link ByteBuffer} access only for JVM memory safety and
- * does not repeat root Unsafe-style logical bounds checks.
+ * <p>The Java 25 multi-release implementation intentionally does not duplicate logical range
+ * checks around indexed array, absolute {@link ByteBuffer}, or {@link VarHandle} access. Those JVM
+ * accessors own bounds enforcement and already fail safely. The exact exception type, message, and
+ * detection point are not contracts, so adding checks only to make an invalid access fail earlier
+ * or more precisely would burden every hot buffer operation without improving memory safety.
  *
  * <p>Note(chaokunyang): Buffer operations are very common, and jvm inline and branch elimination is
  * not reliable even in c2 compiler, so we try to inline and avoid checks as we can manually. jvm
@@ -1452,10 +1452,16 @@ public final class MemoryBuffer {
       storeInt(address + index, (int) encoded);
       return 4;
     }
-    // 0xff0000000: 0b11111111 << 28. Note eight `1` here instead of seven.
-    encoded |= ((value & 0xff0000000L) << 4) | 0x80000000L;
+    // The fifth byte carries seven data bits. Bit 35 uses a sixth byte so this
+    // specialized string-header encoding stays standard VarUint64 on the wire.
+    encoded |= ((value & 0x7f0000000L) << 4) | 0x80000000L;
+    if (value >>> 35 == 0) {
+      storeLong(address + index, encoded);
+      return 5;
+    }
+    encoded |= 0x8000000000L | ((value >>> 35) << 40);
     storeLong(address + index, encoded);
-    return 5;
+    return 6;
   }
 
   private int putVarUint36SmallBigEndian(int index, long encoded, long value) {
@@ -1479,10 +1485,14 @@ public final class MemoryBuffer {
       storeInt(address + index, Integer.reverseBytes((int) encoded));
       return 4;
     }
-    // 0xff0000000: 0b11111111 << 28. Note eight `1` here instead of seven.
-    encoded |= ((value & 0xff0000000L) << 4) | 0x80000000L;
+    encoded |= ((value & 0x7f0000000L) << 4) | 0x80000000L;
+    if (value >>> 35 == 0) {
+      storeLong(address + index, Long.reverseBytes(encoded));
+      return 5;
+    }
+    encoded |= 0x8000000000L | ((value >>> 35) << 40);
     storeLong(address + index, Long.reverseBytes(encoded));
-    return 5;
+    return 6;
   }
 
   /**
@@ -1906,7 +1916,11 @@ public final class MemoryBuffer {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + numBytes;
     ensure(newIdx);
-    writeCharsFromArray(address + writerIdx, values, CHAR_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      writeCharsFromArray(address + writerIdx, values, CHAR_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      writeCharsBigEndian(values, offset, numElements, writerIdx);
+    }
     writerIndex = newIdx;
   }
 
@@ -1925,7 +1939,11 @@ public final class MemoryBuffer {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + numBytes;
     ensure(newIdx);
-    writeShortsFromArray(address + writerIdx, values, SHORT_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      writeShortsFromArray(address + writerIdx, values, SHORT_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      writeShortsBigEndian(values, offset, numElements, writerIdx);
+    }
     writerIndex = newIdx;
   }
 
@@ -1944,7 +1962,11 @@ public final class MemoryBuffer {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + numBytes;
     ensure(newIdx);
-    writeIntsFromArray(address + writerIdx, values, INT_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      writeIntsFromArray(address + writerIdx, values, INT_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      writeIntsBigEndian(values, offset, numElements, writerIdx);
+    }
     writerIndex = newIdx;
   }
 
@@ -1963,7 +1985,11 @@ public final class MemoryBuffer {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + numBytes;
     ensure(newIdx);
-    writeLongsFromArray(address + writerIdx, values, LONG_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      writeLongsFromArray(address + writerIdx, values, LONG_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      writeLongsBigEndian(values, offset, numElements, writerIdx);
+    }
     writerIndex = newIdx;
   }
 
@@ -1982,7 +2008,11 @@ public final class MemoryBuffer {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + numBytes;
     ensure(newIdx);
-    writeFloatsFromArray(address + writerIdx, values, FLOAT_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      writeFloatsFromArray(address + writerIdx, values, FLOAT_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      writeFloatsBigEndian(values, offset, numElements, writerIdx);
+    }
     writerIndex = newIdx;
   }
 
@@ -2001,14 +2031,57 @@ public final class MemoryBuffer {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + numBytes;
     ensure(newIdx);
-    writeDoublesFromArray(address + writerIdx, values, DOUBLE_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      writeDoublesFromArray(address + writerIdx, values, DOUBLE_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      writeDoublesBigEndian(values, offset, numElements, writerIdx);
+    }
     writerIndex = newIdx;
+  }
+
+  // Big-endian JVMs use the scalar little-endian primitives here. Keeping these methods separate
+  // leaves native bulk copy as the only little-endian hot path.
+  private void writeCharsBigEndian(char[] values, int offset, int length, int writerIdx) {
+    for (int i = 0; i < length; i++) {
+      _unsafePutInt16(writerIdx + i * 2, (short) values[offset + i]);
+    }
+  }
+
+  private void writeShortsBigEndian(short[] values, int offset, int length, int writerIdx) {
+    for (int i = 0; i < length; i++) {
+      _unsafePutInt16(writerIdx + i * 2, values[offset + i]);
+    }
+  }
+
+  private void writeIntsBigEndian(int[] values, int offset, int length, int writerIdx) {
+    for (int i = 0; i < length; i++) {
+      _unsafePutInt32(writerIdx + i * 4, values[offset + i]);
+    }
+  }
+
+  private void writeLongsBigEndian(long[] values, int offset, int length, int writerIdx) {
+    for (int i = 0; i < length; i++) {
+      _unsafePutInt64(writerIdx + i * 8, values[offset + i]);
+    }
+  }
+
+  private void writeFloatsBigEndian(float[] values, int offset, int length, int writerIdx) {
+    for (int i = 0; i < length; i++) {
+      _unsafePutInt32(writerIdx + i * 4, Float.floatToRawIntBits(values[offset + i]));
+    }
+  }
+
+  private void writeDoublesBigEndian(double[] values, int offset, int length, int writerIdx) {
+    for (int i = 0; i < length; i++) {
+      _unsafePutInt64(writerIdx + i * 8, Double.doubleToRawLongBits(values[offset + i]));
+    }
   }
 
   /** For off-heap buffer, this will make a heap buffer internally. */
   public void grow(int neededSize) {
     int length = writerIndex + neededSize;
     if (length > size) {
+      // MemoryAllocator owns the requested-capacity postcondition; do not recheck it here.
       globalAllocator.grow(this, length);
     }
   }
@@ -2016,6 +2089,7 @@ public final class MemoryBuffer {
   /** For off-heap buffer, this will make a heap buffer internally. */
   public void ensure(int length) {
     if (length > size) {
+      // MemoryAllocator owns the requested-capacity postcondition; do not recheck it here.
       globalAllocator.grow(this, length);
     }
   }
@@ -2616,8 +2690,11 @@ public final class MemoryBuffer {
       result |= (bulkValue >>> 3) & 0xfe00000;
       if ((bulkValue & 0x80000000L) != 0) {
         readIdx++;
-        // 0xff0000000: 0b11111111 << 28
-        result |= (bulkValue >>> 4) & 0xff0000000L;
+        result |= (bulkValue >>> 4) & 0x7f0000000L;
+        if ((bulkValue & 0x8000000000L) != 0) {
+          readIdx++;
+          result |= (bulkValue >>> 5) & 0x800000000L;
+        }
       }
     }
     readerIndex = readIdx;
@@ -2642,7 +2719,11 @@ public final class MemoryBuffer {
           result |= (b & 0x7F) << 21;
           if ((b & 0x80) != 0) {
             b = readByte();
-            result |= (b & 0xFF) << 28;
+            result |= (b & 0x7F) << 28;
+            if ((b & 0x80) != 0) {
+              b = readByte();
+              result |= (b & 0x01) << 35;
+            }
           }
         }
       }
@@ -3275,7 +3356,11 @@ public final class MemoryBuffer {
       streamReader.readChars(values, 0, numBytes >>> 1);
       return;
     }
-    readCharsToArray(address + readerIdx, values, CHAR_ARRAY_OFFSET, numBytes);
+    if (LITTLE_ENDIAN) {
+      readCharsToArray(address + readerIdx, values, CHAR_ARRAY_OFFSET, numBytes);
+    } else {
+      readCharsBigEndian(values, 0, numBytes >>> 1, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
   }
 
@@ -3290,7 +3375,11 @@ public final class MemoryBuffer {
       streamReader.readShorts(values, 0, numBytes >>> 1);
       return;
     }
-    readShortsToArray(address + readerIdx, values, SHORT_ARRAY_OFFSET, numBytes);
+    if (LITTLE_ENDIAN) {
+      readShortsToArray(address + readerIdx, values, SHORT_ARRAY_OFFSET, numBytes);
+    } else {
+      readShortsBigEndian(values, 0, numBytes >>> 1, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
   }
 
@@ -3305,7 +3394,11 @@ public final class MemoryBuffer {
       streamReader.readInts(values, 0, numBytes >>> 2);
       return;
     }
-    readIntsToArray(address + readerIdx, values, INT_ARRAY_OFFSET, numBytes);
+    if (LITTLE_ENDIAN) {
+      readIntsToArray(address + readerIdx, values, INT_ARRAY_OFFSET, numBytes);
+    } else {
+      readIntsBigEndian(values, 0, numBytes >>> 2, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
   }
 
@@ -3320,7 +3413,11 @@ public final class MemoryBuffer {
       streamReader.readLongs(values, 0, numBytes >>> 3);
       return;
     }
-    readLongsToArray(address + readerIdx, values, LONG_ARRAY_OFFSET, numBytes);
+    if (LITTLE_ENDIAN) {
+      readLongsToArray(address + readerIdx, values, LONG_ARRAY_OFFSET, numBytes);
+    } else {
+      readLongsBigEndian(values, 0, numBytes >>> 3, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
   }
 
@@ -3335,7 +3432,11 @@ public final class MemoryBuffer {
       streamReader.readFloats(values, 0, numBytes >>> 2);
       return;
     }
-    readFloatsToArray(address + readerIdx, values, FLOAT_ARRAY_OFFSET, numBytes);
+    if (LITTLE_ENDIAN) {
+      readFloatsToArray(address + readerIdx, values, FLOAT_ARRAY_OFFSET, numBytes);
+    } else {
+      readFloatsBigEndian(values, 0, numBytes >>> 2, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
   }
 
@@ -3350,7 +3451,11 @@ public final class MemoryBuffer {
       streamReader.readDoubles(values, 0, numBytes >>> 3);
       return;
     }
-    readDoublesToArray(address + readerIdx, values, DOUBLE_ARRAY_OFFSET, numBytes);
+    if (LITTLE_ENDIAN) {
+      readDoublesToArray(address + readerIdx, values, DOUBLE_ARRAY_OFFSET, numBytes);
+    } else {
+      readDoublesBigEndian(values, 0, numBytes >>> 3, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
   }
 
@@ -3383,7 +3488,11 @@ public final class MemoryBuffer {
       return;
     }
     int readerIdx = readerIndex;
-    readCharsToArray(address + readerIdx, chars, CHAR_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      readCharsToArray(address + readerIdx, chars, CHAR_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      readCharsBigEndian(chars, offset, numElements, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
   }
 
@@ -3412,7 +3521,11 @@ public final class MemoryBuffer {
       return;
     }
     int readerIdx = readerIndex;
-    readShortsToArray(address + readerIdx, values, SHORT_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      readShortsToArray(address + readerIdx, values, SHORT_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      readShortsBigEndian(values, offset, numElements, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
   }
 
@@ -3427,7 +3540,11 @@ public final class MemoryBuffer {
       return;
     }
     int readerIdx = readerIndex;
-    readIntsToArray(address + readerIdx, values, INT_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      readIntsToArray(address + readerIdx, values, INT_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      readIntsBigEndian(values, offset, numElements, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
   }
 
@@ -3442,7 +3559,11 @@ public final class MemoryBuffer {
       return;
     }
     int readerIdx = readerIndex;
-    readLongsToArray(address + readerIdx, values, LONG_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      readLongsToArray(address + readerIdx, values, LONG_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      readLongsBigEndian(values, offset, numElements, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
   }
 
@@ -3457,7 +3578,11 @@ public final class MemoryBuffer {
       return;
     }
     int readerIdx = readerIndex;
-    readFloatsToArray(address + readerIdx, values, FLOAT_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      readFloatsToArray(address + readerIdx, values, FLOAT_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      readFloatsBigEndian(values, offset, numElements, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
   }
 
@@ -3472,8 +3597,48 @@ public final class MemoryBuffer {
       return;
     }
     int readerIdx = readerIndex;
-    readDoublesToArray(address + readerIdx, values, DOUBLE_ARRAY_OFFSET + offset, numBytes);
+    if (LITTLE_ENDIAN) {
+      readDoublesToArray(address + readerIdx, values, DOUBLE_ARRAY_OFFSET + offset, numBytes);
+    } else {
+      readDoublesBigEndian(values, offset, numElements, readerIdx);
+    }
     readerIndex = readerIdx + numBytes;
+  }
+
+  private void readCharsBigEndian(char[] values, int offset, int length, int readerIdx) {
+    for (int i = 0; i < length; i++) {
+      values[offset + i] = (char) _unsafeGetInt16(readerIdx + i * 2);
+    }
+  }
+
+  private void readShortsBigEndian(short[] values, int offset, int length, int readerIdx) {
+    for (int i = 0; i < length; i++) {
+      values[offset + i] = _unsafeGetInt16(readerIdx + i * 2);
+    }
+  }
+
+  private void readIntsBigEndian(int[] values, int offset, int length, int readerIdx) {
+    for (int i = 0; i < length; i++) {
+      values[offset + i] = _unsafeGetInt32(readerIdx + i * 4);
+    }
+  }
+
+  private void readLongsBigEndian(long[] values, int offset, int length, int readerIdx) {
+    for (int i = 0; i < length; i++) {
+      values[offset + i] = _unsafeGetInt64(readerIdx + i * 8);
+    }
+  }
+
+  private void readFloatsBigEndian(float[] values, int offset, int length, int readerIdx) {
+    for (int i = 0; i < length; i++) {
+      values[offset + i] = Float.intBitsToFloat(_unsafeGetInt32(readerIdx + i * 4));
+    }
+  }
+
+  private void readDoublesBigEndian(double[] values, int offset, int length, int readerIdx) {
+    for (int i = 0; i < length; i++) {
+      values[offset + i] = Double.longBitsToDouble(_unsafeGetInt64(readerIdx + i * 8));
+    }
   }
 
   public void checkReadableBytes(int minimumReadableBytes) {
@@ -3846,11 +4011,16 @@ public final class MemoryBuffer {
       int newSize =
           newCapacity < BUFFER_GROW_STEP_THRESHOLD
               ? newCapacity << 1
-              : (int) Math.min(newCapacity * 1.5d, Integer.MAX_VALUE - 8);
+              : largeGrowthCapacity(newCapacity);
 
       byte[] data = new byte[newSize];
       buffer.get(0, data, 0, buffer.size());
       buffer.initHeapBuffer(data, 0, data.length);
+    }
+
+    private static int largeGrowthCapacity(int newCapacity) {
+      return Math.max(
+          newCapacity, (int) Math.min(newCapacity * 1.5d, Integer.MAX_VALUE - 8));
     }
   }
 

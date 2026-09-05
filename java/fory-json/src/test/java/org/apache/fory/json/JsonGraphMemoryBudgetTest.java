@@ -38,6 +38,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.annotation.JsonAnyProperty;
+import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonUnwrapped;
@@ -174,7 +175,6 @@ public class JsonGraphMemoryBudgetTest extends ForyJsonTestModels {
     assertEquals(
         assertClassBudget("[true]", boolean[].class, headerBytes + Byte.BYTES),
         new boolean[] {true});
-    assertEquals(assertClassBudget("[1]", byte[].class, headerBytes + Byte.BYTES), new byte[] {1});
     assertEquals(
         assertClassBudget("[2]", short[].class, headerBytes + Short.BYTES), new short[] {2});
     assertEquals(assertClassBudget("[3]", int[].class, headerBytes + Integer.BYTES), new int[] {3});
@@ -191,6 +191,37 @@ public class JsonGraphMemoryBudgetTest extends ForyJsonTestModels {
         assertClassBytesBudget(
             "[7]".getBytes(StandardCharsets.UTF_8), int[].class, headerBytes + Integer.BYTES),
         new int[] {7});
+  }
+
+  @Test
+  public void byteArrayRepresentations() {
+    long arrayBytes = shallow(ArrayBytes.class) + GraphMemoryEstimates.objectArrayBytes() + 1;
+    assertEquals(
+        assertClassBudget("{\"bytes\":[1]}", ArrayBytes.class, arrayBytes).bytes, new byte[] {1});
+    assertEquals(
+        assertClassBytesBudget(
+                "{\"bytes\":[1]}".getBytes(StandardCharsets.UTF_8), ArrayBytes.class, arrayBytes)
+            .bytes,
+        new byte[] {1});
+    ForyJson binaryJson = jsonWithBudget(shallow(BinaryBytes.class));
+    for (String encoded : new String[] {"AQ==", "A\\u0051=="}) {
+      String input = "{\"bytes\":\"" + encoded + "\"}";
+      assertEquals(binaryJson.fromJson(input, BinaryBytes.class).bytes, new byte[] {1});
+      assertEquals(
+          binaryJson.fromJson(input.getBytes(StandardCharsets.UTF_8), BinaryBytes.class).bytes,
+          new byte[] {1});
+      assertEquals(jsonWithBudget(1).fromJson("\"" + encoded + "\"", byte[].class), new byte[] {1});
+    }
+  }
+
+  public static final class ArrayBytes {
+    @JsonByteArray(JsonByteArray.Format.ARRAY)
+    public byte[] bytes;
+  }
+
+  public static final class BinaryBytes {
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    public byte[] bytes;
   }
 
   @Test

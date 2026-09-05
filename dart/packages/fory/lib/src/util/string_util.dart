@@ -106,7 +106,7 @@ String readStringFromBuffer(Buffer buffer, int byteLength, int encoding) {
 
 void _writeLatin1(Buffer buffer, String value) {
   final length = value.length;
-  final header = (length << 2) | stringLatin1Encoding;
+  final header = length * 4 + stringLatin1Encoding;
   final headerLength = _varUint36SmallLength(header);
   buffer.ensureWritable(headerLength + length);
   final bytes = bufferBytes(buffer);
@@ -121,7 +121,7 @@ void _writeLatin1(Buffer buffer, String value) {
 
 void _writeUtf8(Buffer buffer, String value) {
   final maxUtf8Length = value.length * 3;
-  final provisionalHeader = (maxUtf8Length << 2) | stringUtf8Encoding;
+  final provisionalHeader = maxUtf8Length * 4 + stringUtf8Encoding;
   final provisionalHeaderLength = _varUint36SmallLength(provisionalHeader);
   buffer.ensureWritable(provisionalHeaderLength + maxUtf8Length);
   final bytes = bufferBytes(buffer);
@@ -129,7 +129,7 @@ void _writeUtf8(Buffer buffer, String value) {
   final payloadStart = start + provisionalHeaderLength;
   final payloadEnd = _writeUtf8Bytes(bytes, payloadStart, value);
   final utf8Length = payloadEnd - payloadStart;
-  final header = (utf8Length << 2) | stringUtf8Encoding;
+  final header = utf8Length * 4 + stringUtf8Encoding;
   final headerLength = _writeVarUint36Small(bytes, start, header);
   final headerShift = provisionalHeaderLength - headerLength;
   if (headerShift > 0) {
@@ -212,6 +212,9 @@ bool _isTrailSurrogate(int codeUnit) =>
     codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
 
 int _writeVarUint36Small(Uint8List target, int offset, int value) {
+  if (value > 0x7fffffff) {
+    return _writeVarUint36Large(target, offset, value);
+  }
   final start = offset;
   var remaining = value;
   while (remaining >= 0x80) {
@@ -223,12 +226,34 @@ int _writeVarUint36Small(Uint8List target, int offset, int value) {
   return offset - start + 1;
 }
 
-int _varUint36SmallLength(int value) {
-  var length = 1;
+@pragma('vm:never-inline')
+int _writeVarUint36Large(Uint8List target, int offset, int value) {
+  final start = offset;
   var remaining = value;
   while (remaining >= 0x80) {
-    remaining >>>= 7;
-    length += 1;
+    target[offset] = (remaining % 0x80) | 0x80;
+    offset += 1;
+    remaining ~/= 0x80;
   }
-  return length;
+  target[offset] = remaining;
+  return offset - start + 1;
+}
+
+int _varUint36SmallLength(int value) {
+  if (value < 0x80) {
+    return 1;
+  }
+  if (value < 0x4000) {
+    return 2;
+  }
+  if (value < 0x200000) {
+    return 3;
+  }
+  if (value < 0x10000000) {
+    return 4;
+  }
+  if (value < 0x800000000) {
+    return 5;
+  }
+  return 6;
 }

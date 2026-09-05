@@ -215,6 +215,7 @@ original key type. Null map keys are rejected.
 | Builder method                         | Default                                   | User-visible effect                                        |
 | -------------------------------------- | ----------------------------------------- | ---------------------------------------------------------- |
 | `writeNullFields(boolean)`             | `false`                                   | Default inclusion of null object properties                |
+| `writeLongAsString(boolean)`           | `false`                                   | Write built-in 64-bit integer values as decimal strings    |
 | `withCodegen(boolean)`                 | `true`                                    | Enable generated object codecs                             |
 | `withAsyncCompilation(boolean)`        | `true`                                    | Compile generated codecs asynchronously                    |
 | `withFieldMode(boolean)`               | `false`                                   | When true, discover fields without getters/setters         |
@@ -224,6 +225,14 @@ original key type. Null map keys are rejected.
 | `withBufferSizeLimitBytes(int)`        | 2 MiB                                     | Maximum reusable capacity retained by each pooled writer   |
 | `registerCodec(type, codec)`           | None                                      | Replace an eligible exact class's complete JSON codec      |
 | `registerMixin(mixinType)`             | None                                      | Apply one annotation Mixin to its exact declared target    |
+
+Enable `writeLongAsString(true)` when 64-bit integer values must pass through JavaScript without
+`Number` precision loss. The setting writes built-in `long`/`Long`, `AtomicLong`,
+`AtomicLongArray`, and `OptionalLong` values as quoted decimal strings. It also follows declared
+Long children through arrays, collections, map values, `Optional<Long>`, `AtomicReference<Long>`,
+and equivalent language-module containers. Readers accept both numeric and quoted integer tokens
+regardless of this setting. Custom codecs and occurrence-level codec or format annotations retain
+their own output shape.
 
 Concurrency-level and buffer-retention limits must be positive. The cached-field-name limit
 applies independently to each reader; zero disables this cache. It bounds only cached field names,

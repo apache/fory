@@ -125,44 +125,62 @@ void main() {
     test('handles payload header boundaries and utf8 header compaction', () {
       final cases =
           <({int byteLength, int encoding, int headerLength, String value})>[
-        (
-          value: _repeat('a', 31),
-          encoding: stringLatin1Encoding,
-          byteLength: 31,
-          headerLength: 1
-        ),
-        (
-          value: _repeat('a', 32),
-          encoding: stringLatin1Encoding,
-          byteLength: 32,
-          headerLength: 2
-        ),
-        (
-          value: _repeat('😀', 7),
-          encoding: stringUtf8Encoding,
-          byteLength: 28,
-          headerLength: 1
-        ),
-        (
-          value: _repeat('😀', 8),
-          encoding: stringUtf8Encoding,
-          byteLength: 32,
-          headerLength: 2
-        ),
-        (
-          value: _repeat('你', 31),
-          encoding: stringUtf8Encoding,
-          byteLength: 93,
-          headerLength: 2
-        ),
-      ];
+            (
+              value: _repeat('a', 31),
+              encoding: stringLatin1Encoding,
+              byteLength: 31,
+              headerLength: 1,
+            ),
+            (
+              value: _repeat('a', 32),
+              encoding: stringLatin1Encoding,
+              byteLength: 32,
+              headerLength: 2,
+            ),
+            (
+              value: _repeat('😀', 7),
+              encoding: stringUtf8Encoding,
+              byteLength: 28,
+              headerLength: 1,
+            ),
+            (
+              value: _repeat('😀', 8),
+              encoding: stringUtf8Encoding,
+              byteLength: 32,
+              headerLength: 2,
+            ),
+            (
+              value: _repeat('你', 31),
+              encoding: stringUtf8Encoding,
+              byteLength: 93,
+              headerLength: 2,
+            ),
+            (
+              value: _repeat('a', 4095),
+              encoding: stringLatin1Encoding,
+              byteLength: 4095,
+              headerLength: 2,
+            ),
+            (
+              value: _repeat('a', 4096),
+              encoding: stringLatin1Encoding,
+              byteLength: 4096,
+              headerLength: 3,
+            ),
+          ];
 
       for (final testCase in cases) {
         final payload = _writeAndReadPayload(testCase.value);
-        expect(payload.encoding, equals(testCase.encoding),
-            reason: testCase.value);
-        expect(payload.byteLength, equals(testCase.byteLength),
-            reason: testCase.value);
+        expect(
+          payload.encoding,
+          equals(testCase.encoding),
+          reason: testCase.value,
+        );
+        expect(
+          payload.byteLength,
+          equals(testCase.byteLength),
+          reason: testCase.value,
+        );
         expect(
           payload.bytes.length - payload.byteLength,
           equals(testCase.headerLength),
@@ -208,14 +226,15 @@ void main() {
         (input: _repeat('😀', 64), expected: _repeat('😀', 64)),
         (
           input: '${_repeat('x', 500)}${_repeat('你', 500)}',
-          expected: '${_repeat('x', 500)}${_repeat('你', 500)}'
+          expected: '${_repeat('x', 500)}${_repeat('你', 500)}',
         ),
         (input: 'x\uD800y', expected: 'x\uFFFDy'),
       ];
 
       for (final testCase in cases) {
-        final roundTrip =
-            fory.deserialize<String>(fory.serialize(testCase.input));
+        final roundTrip = fory.deserialize<String>(
+          fory.serialize(testCase.input),
+        );
         expect(roundTrip, equals(testCase.expected));
       }
     });
@@ -261,9 +280,9 @@ void main() {
         _repeat('你', 64),
       ];
 
-      final roundTrip = fory.deserialize<Object?>(
-        fory.serialize(values, trackRef: true),
-      ) as List<Object?>;
+      final roundTrip =
+          fory.deserialize<Object?>(fory.serialize(values, trackRef: true))
+              as List<Object?>;
 
       expect(roundTrip, orderedEquals(expected));
     });
@@ -290,9 +309,7 @@ void main() {
 }
 
 ({Uint8List bytes, int encoding, int byteLength, String decoded})
-    _writeAndReadPayload(
-  String value,
-) {
+_writeAndReadPayload(String value) {
   final buffer = Buffer();
   writeString(buffer, value);
   return _readPayload(buffer.toBytes());
@@ -304,7 +321,7 @@ void main() {
   final buffer = Buffer.wrap(Uint8List.fromList(bytes));
   final header = buffer.readVarUint36Small();
   final encoding = header & 0x03;
-  final byteLength = header >>> 2;
+  final byteLength = header ~/ 4;
   final decoded = readStringFromBuffer(buffer, byteLength, encoding);
   expect(buffer.readableBytes, equals(0));
   return (
@@ -331,7 +348,7 @@ Buffer _utf16RootBuffer(String value) {
     ..writeUint8(0x01)
     ..writeByte(-1)
     ..writeVarUint32Small7(TypeIds.string)
-    ..writeVarUint36Small((bytes.length << 2) | stringUtf16Encoding)
+    ..writeVarUint36Small(bytes.length * 4 + stringUtf16Encoding)
     ..writeBytes(bytes);
 }
 

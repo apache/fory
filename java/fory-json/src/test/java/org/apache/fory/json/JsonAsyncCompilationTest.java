@@ -1317,6 +1317,7 @@ public class JsonAsyncCompilationTest {
     JsonConfig config =
         new JsonConfig(
             false,
+            false,
             true,
             true,
             true,

@@ -189,6 +189,16 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   @Override
+  public void writeLongAsString(long value) {
+    if (position + 22 > buffer.length) {
+      grow(22);
+    }
+    buffer[position++] = (byte) '"';
+    writeLongNoEnsure(value);
+    buffer[position++] = (byte) '"';
+  }
+
+  @Override
   public void writeUnsignedLong(long value) {
     if (value >= 0) {
       writeLong(value);
@@ -198,6 +208,23 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     int remainder = (int) Long.remainderUnsigned(value, 10);
     writeLong(quotient);
     buffer[position++] = (byte) ('0' + remainder);
+  }
+
+  @Override
+  public void writeUnsignedLongAsString(long value) {
+    if (position + 22 > buffer.length) {
+      grow(22);
+    }
+    buffer[position++] = (byte) '"';
+    if (value >= 0) {
+      writeLongNoEnsure(value);
+    } else {
+      long quotient = Long.divideUnsigned(value, 10);
+      int remainder = (int) Long.remainderUnsigned(value, 10);
+      writeLongNoEnsure(quotient);
+      buffer[position++] = (byte) ('0' + remainder);
+    }
+    buffer[position++] = (byte) '"';
   }
 
   @Override
@@ -978,6 +1005,76 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeLongFieldNoEnsure(value);
   }
 
+  public void writeLongAsStringField(
+      byte[] namePrefix, byte[] commaNamePrefix, int index, long value) {
+    writeLongAsStringField(index == 0 ? namePrefix : commaNamePrefix, value);
+  }
+
+  public void writeLongAsStringField(byte[] prefix, long value) {
+    int additional = prefix.length + 22;
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    writeRawNoEnsure(prefix);
+    buffer[position++] = (byte) '"';
+    writeLongFieldNoEnsure(value);
+    buffer[position++] = (byte) '"';
+  }
+
+  public void writeLongAsStringField(long prefix0, long prefix1, int prefixLength, long value) {
+    int additional = Math.max(packedPrefixSize(prefixLength), prefixLength + 22);
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+    buffer[position++] = (byte) '"';
+    writeLongFieldNoEnsure(value);
+    buffer[position++] = (byte) '"';
+  }
+
+  public void writeLongAsStringField(
+      long namePrefix0,
+      long namePrefix1,
+      long commaPrefix0,
+      long commaPrefix1,
+      int namePrefixLength,
+      int commaPrefixLength,
+      int index,
+      long value) {
+    if (index == 0) {
+      writeLongAsStringField(namePrefix0, namePrefix1, namePrefixLength, value);
+    } else {
+      writeLongAsStringField(commaPrefix0, commaPrefix1, commaPrefixLength, value);
+    }
+  }
+
+  public void writeObjectStartWithLongAsStringField(byte[] namePrefix, long value) {
+    enterDepth();
+    int additional = namePrefix.length + 23;
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    buffer[position++] = (byte) '{';
+    writeRawNoEnsure(namePrefix);
+    buffer[position++] = (byte) '"';
+    writeLongFieldNoEnsure(value);
+    buffer[position++] = (byte) '"';
+  }
+
+  public void writeObjectStartWithLongAsStringField(
+      long prefix0, long prefix1, int prefixLength, long value) {
+    enterDepth();
+    int additional = Math.max(packedPrefixSize(prefixLength), prefixLength + 23);
+    if (position + additional > buffer.length) {
+      grow(additional);
+    }
+    buffer[position++] = (byte) '{';
+    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+    buffer[position++] = (byte) '"';
+    writeLongFieldNoEnsure(value);
+    buffer[position++] = (byte) '"';
+  }
+
   public void writeObjectStartWithRawValue(long prefix0, long prefix1, int prefixLength) {
     // Generated codecs prepack '{' with the first field prefix so this writer-owned buffer update
     // needs one capacity check. Keep the String value in the generated caller: writeString is a
@@ -1169,6 +1266,119 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
             }
           }
         }
+      }
+    }
+    buffer[position++] = ']';
+    exitDepth();
+  }
+
+  /**
+   * Writes a long array whose elements are quoted decimal strings.
+   *
+   * <p>This intentionally preserves the independent, pair-unrolled generated-caller boundary of
+   * {@link #writeLongArray(long[])}. Keep the signed-Long formatting in each lane so generated
+   * callers do not absorb the complete array loop after a small element helper is inlined.
+   */
+  public void writeLongArrayAsString(long[] values) {
+    enterDepth();
+    if (position + 2 > buffer.length) {
+      grow(2);
+    }
+    buffer[position++] = '[';
+    int length = values.length;
+    if (length != 0) {
+      if (position + 24 > buffer.length) {
+        grow(24);
+      }
+      buffer[position++] = '"';
+      {
+        long value = values[0];
+        if (value == Long.MIN_VALUE) {
+          writeRawNoEnsure(MIN_LONG_BYTES);
+        } else {
+          if (value < 0) {
+            buffer[position++] = (byte) '-';
+            value = -value;
+          }
+          if (value <= Integer.MAX_VALUE) {
+            writePositiveIntNoEnsure((int) value);
+          } else {
+            position = writePositiveLong(buffer, position, value);
+          }
+        }
+      }
+      buffer[position++] = '"';
+
+      int i = 1;
+      if ((length & 1) == 0) {
+        if (position + 24 > buffer.length) {
+          grow(24);
+        }
+        buffer[position++] = ',';
+        buffer[position++] = '"';
+        {
+          long value = values[i];
+          if (value == Long.MIN_VALUE) {
+            writeRawNoEnsure(MIN_LONG_BYTES);
+          } else {
+            if (value < 0) {
+              buffer[position++] = (byte) '-';
+              value = -value;
+            }
+            if (value <= Integer.MAX_VALUE) {
+              writePositiveIntNoEnsure((int) value);
+            } else {
+              position = writePositiveLong(buffer, position, value);
+            }
+          }
+        }
+        buffer[position++] = '"';
+        i++;
+      }
+
+      for (; i < length; i += 2) {
+        if (position + 48 > buffer.length) {
+          grow(48);
+        }
+        buffer[position++] = ',';
+        buffer[position++] = '"';
+        {
+          long value = values[i];
+          if (value == Long.MIN_VALUE) {
+            writeRawNoEnsure(MIN_LONG_BYTES);
+          } else {
+            if (value < 0) {
+              buffer[position++] = (byte) '-';
+              value = -value;
+            }
+            if (value <= Integer.MAX_VALUE) {
+              writePositiveIntNoEnsure((int) value);
+            } else {
+              position = writePositiveLong(buffer, position, value);
+            }
+          }
+        }
+        buffer[position++] = '"';
+
+        buffer[position++] = ',';
+        buffer[position++] = '"';
+        {
+          long value = values[i + 1];
+          if (value == Long.MIN_VALUE) {
+            writeRawNoEnsure(MIN_LONG_BYTES);
+          } else {
+            if (value < 0) {
+              buffer[position++] = (byte) '-';
+              value = -value;
+            }
+            if (value <= Integer.MAX_VALUE) {
+              writePositiveIntNoEnsure((int) value);
+            } else {
+              position = writePositiveLong(buffer, position, value);
+            }
+          }
+        }
+        buffer[position++] = '"';
       }
     }
     buffer[position++] = ']';

@@ -20,6 +20,7 @@ use crate::error::Error;
 use crate::serializer::util::read_basic_type_info;
 use crate::serializer::Serializer;
 use crate::type_id::TypeId;
+use std::convert::TryFrom;
 use std::sync::Arc;
 
 #[allow(dead_code)]
@@ -27,6 +28,22 @@ enum StrEncoding {
     Latin1 = 0,
     Utf16 = 1,
     Utf8 = 2,
+}
+
+#[inline(always)]
+pub(super) fn checked_string_len(len: u64) -> Result<usize, Error> {
+    match usize::try_from(len) {
+        Ok(len) => Ok(len),
+        Err(_) => Err(string_len_overflow(len)),
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn string_len_overflow(len: u64) -> Error {
+    Error::invalid_data(format!(
+        "string byte length {len} exceeds the platform address space"
+    ))
 }
 
 impl Serializer for String {
@@ -45,12 +62,14 @@ impl Serializer for String {
     #[inline(always)]
     fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let header = context.reader.read_var_u36_small()?;
-        let len = (header >> 2) as usize;
+        let len = checked_string_len(header >> 2)?;
         match header & 0b11 {
             0 => context.reader.read_latin1_string(len),
             1 => context.reader.read_utf16_string(len),
             2 if context.is_check_string_read() => context.reader.read_utf8_string(len),
-            2 => context.reader.read_utf8_string_unchecked(len),
+            // SAFETY: Disabling string checks is an explicit trusted-input contract. The default
+            // configuration validates UTF-8 before constructing a String.
+            2 => unsafe { context.reader.read_utf8_string_unchecked(len) },
             encoding => Err(Error::encoding_error(format!(
                 "wrong encoding value: {}",
                 encoding
@@ -89,5 +108,22 @@ impl Serializer for String {
     #[inline(always)]
     fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         read_basic_type_info::<Self>(context)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checked_length_range() {
+        assert_eq!(checked_string_len(17).unwrap(), 17);
+
+        let beyond_u32 = u64::from(u32::MAX) + 1;
+        if usize::BITS > u32::BITS {
+            assert_eq!(checked_string_len(beyond_u32).unwrap() as u64, beyond_u32);
+        } else {
+            assert!(checked_string_len(beyond_u32).is_err());
+        }
     }
 }

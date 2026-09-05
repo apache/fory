@@ -15,12 +15,15 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import array
+
 import pytest
 
-from pyfory.serialization import Buffer
+import pyfory
+from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION, Buffer
 from pyfory.tests.core import require_pyarrow
 from pyfory.tests.test_stream import OneByteStream
-from pyfory.utils import lazy_import
+from pyfory.utils import clear_bit, get_bit, lazy_import, set_bit, set_bit_to
 
 pa = lazy_import("pyarrow")
 
@@ -118,7 +121,6 @@ def test_buffer():
     binary = b"b" * 100
     buffer.write_bytes(binary)
     buffer.write_bytes_and_size(binary)
-    print(f"buffer size {buffer.size()}, writer_index {buffer.get_writer_index()}")
     new_buffer = Buffer(buffer.get_bytes(0, buffer.get_writer_index()))
     assert new_buffer.read_bool() is True
     assert new_buffer.read_int8() == -1
@@ -173,6 +175,174 @@ def test_to_bytes_rejects_out_of_bounds_range():
         buffer.to_bytes(99, 1)
     with pytest.raises(ValueError, match="out of bound"):
         buffer.to_bytes(2, 2)
+
+
+def test_buffer_native_ranges():
+    with pytest.raises(Exception):
+        Buffer(b"abc", 4)
+    with pytest.raises(Exception):
+        Buffer(b"abc", 1, -1)
+    with pytest.raises(Exception):
+        Buffer(memoryview(b"abcd")[::2])
+    negative_singleton = memoryview(bytearray(b"x"))[::-1]
+    assert negative_singleton.c_contiguous
+    assert Buffer(negative_singleton).to_bytes() == b"x"
+    with pytest.raises(Exception):
+        Buffer.allocate(-1)
+
+    buffer = Buffer.allocate(4)
+    with pytest.raises(Exception):
+        buffer.set_writer_index(5)
+    with pytest.raises(Exception):
+        buffer.grow(-1)
+    with pytest.raises(Exception):
+        buffer.reserve(-1)
+    buffer.set_writer_index(1)
+    with pytest.raises(Exception):
+        buffer.grow(2**31 - 1)
+    with pytest.raises(Exception):
+        buffer.put_bytes(2**32 - 1, b"x")
+
+
+def test_buffer_copy_ranges():
+    source = array.array("I", [0x01020304, 0x05060708, 0x090A0B0C])
+    wrapped = Buffer(source)
+    assert wrapped.size() == memoryview(source).nbytes
+    assert wrapped.to_bytes() == memoryview(source).cast("B").tobytes()
+
+    target = Buffer.allocate(source.itemsize * 2)
+    target.put_buffer(0, source, 1, 2)
+    assert target.to_bytes() == memoryview(source).cast("B")[source.itemsize :].tobytes()
+
+    writer = Buffer.allocate(1)
+    writer.write_buffer(source, src_index=1, length_=2)
+    assert writer.get_writer_index() == source.itemsize * 2
+    assert writer.get_bytes(0, writer.get_writer_index()) == target.to_bytes()
+
+    with pytest.raises(Exception):
+        target.put_buffer(0, source, -1, 1)
+    with pytest.raises(Exception):
+        target.put_buffer(0, source, 2, 2)
+    with pytest.raises(Exception):
+        target.put_buffer(0, memoryview(b"abcd")[::2], 0, 1)
+    with pytest.raises(Exception):
+        target.put_buffer(1, source, 0, 2)
+    with pytest.raises(Exception):
+        writer.write_buffer(source, src_index=4)
+
+
+def test_buffer_export_mutability():
+    immutable = Buffer(b"\0" * 16)
+    immutable_view = memoryview(immutable)
+    assert immutable_view.readonly
+    with pytest.raises(TypeError):
+        immutable_view[0] = 1
+    with pytest.raises(BufferError):
+        immutable.reserve(32)
+    immutable_view.release()
+
+    immutable.reserve(32)
+    immutable.grow(1)
+    immutable.ensure(32)
+    immutable.put_bytes(0, b"")
+    immutable.put_buffer(0, b"", 0, 0)
+    immutable.write_bytes(b"")
+    immutable.write_buffer(b"")
+    immutable.write(b"")
+    assert immutable.get_bytes(0, 16) == b"\0" * 16
+
+    mutations = (
+        lambda: immutable.put_uint8(0, 1),
+        lambda: immutable.put_bytes(0, b"x"),
+        lambda: immutable.put_buffer(0, b"x", 0, 1),
+        lambda: immutable.write_uint8(1),
+        lambda: immutable.write_bytes(b"x"),
+        lambda: immutable.write_buffer(b"x"),
+        lambda: immutable.write(b"x"),
+        lambda: immutable.write_string("x"),
+        lambda: set_bit(immutable, 0, 0),
+        lambda: clear_bit(immutable, 0, 0),
+        lambda: set_bit_to(immutable, 0, 0, True),
+    )
+    for mutate in mutations:
+        with pytest.raises(Exception):
+            mutate()
+
+    backing = bytearray(b"abcd")
+    writable = Buffer(backing)
+    writable_view = memoryview(writable)
+    assert not writable_view.readonly
+    writable.put_uint8(0, ord("x"))
+    writable_view[1] = ord("y")
+    assert backing == bytearray(b"xycd")
+    writable.set_writer_index(4)
+    with pytest.raises(BufferError):
+        writable.write_uint8(1)
+    assert bytes(writable_view) == b"xycd"
+    writable_view.release()
+    writable.write_uint8(1)
+
+    with pytest.raises(BufferError):
+        memoryview(Buffer.from_stream(OneByteStream(b"x")))
+
+
+def test_write_context_writable_buffer():
+    fory = pyfory.Fory()
+    readonly = Buffer(b"\0")
+    if ENABLE_FORY_CYTHON_SERIALIZATION:
+        with pytest.raises(Exception):
+            fory.write_context.prepare(readonly)
+        assert fory.write_context.buffer is None
+    else:
+        fory.write_context.prepare(readonly)
+        with pytest.raises(Exception):
+            fory.write_context.write_int8(1)
+    assert readonly.to_bytes() == b"\0"
+
+    fory.write_context.reset()
+    backing = bytearray(b"\0")
+    writable = Buffer(backing)
+    fory.write_context.prepare(writable)
+    fory.write_context.write_int8(1)
+    assert backing == bytearray(b"\1")
+    fory.write_context.reset()
+
+
+def test_bulk_pointer_ranges():
+    target = Buffer.allocate(1)
+
+    np = pytest.importorskip("numpy")
+    huge = np.lib.stride_tricks.as_strided(np.zeros(1, dtype=np.uint8), shape=(2**31,), strides=(1,))
+    assert memoryview(huge).nbytes == 2**31
+    with pytest.raises(Exception):
+        Buffer(huge)
+    with pytest.raises(Exception):
+        target.write_buffer(huge)
+    assert target.get_writer_index() == 0
+    with pytest.raises(Exception):
+        pyfory.mmh3.hash_buffer(huge)
+
+
+def test_bit_helper_ranges():
+    buffer = Buffer.allocate(1)
+    set_bit(buffer, 0, 7)
+    assert get_bit(buffer, 0, 7)
+    clear_bit(buffer, 0, 7)
+    assert not get_bit(buffer, 0, 7)
+    set_bit_to(buffer, 0, 0, True)
+    assert get_bit(buffer, 0, 0)
+
+    for operation in (get_bit, set_bit, clear_bit):
+        with pytest.raises(Exception):
+            operation(buffer, 0, 8)
+        with pytest.raises(Exception):
+            operation(buffer, 1, 0)
+    with pytest.raises(Exception):
+        set_bit_to(buffer, 2**32 - 1, 2**32 - 1, True)
+
+
+def test_hash_buffer_empty_input():
+    assert pyfory.mmh3.hash_buffer(b"") == (0, 0)
 
 
 def test_readline_without_newline_does_not_read_out_of_bounds():
@@ -237,7 +407,7 @@ def test_buffer_protocol():
 
 def test_grow():
     binary = b"a" * 10
-    buffer = Buffer(binary)
+    buffer = Buffer(bytearray(binary))
     assert not buffer.own_data()
     buffer.write_bytes(binary)
     assert not buffer.own_data()
@@ -247,55 +417,58 @@ def test_grow():
 
 def test_write_var_uint64():
     buf = Buffer.allocate(32)
-    check_varuint64(buf, -1, 9)
+    cases = (
+        (1, 1),
+        (1 << 6, 1),
+        (1 << 7, 2),
+        (1 << 13, 2),
+        (1 << 14, 3),
+        (1 << 20, 3),
+        (1 << 21, 4),
+        (1 << 27, 4),
+        (1 << 28, 5),
+        (1 << 35, 6),
+        (1 << 42, 7),
+        (1 << 49, 8),
+        (1 << 56, 9),
+        ((1 << 63) - 1, 9),
+        (1 << 63, 9),
+        ((1 << 64) - 1, 9),
+    )
     for i in range(32):
         for j in range(i):
             buf.write_int8(1)
             buf.read_int8()
-        check_varuint64(buf, -1, 9)
-        check_varuint64(buf, 1, 1)
-        check_varuint64(buf, 1 << 6, 1)
-        check_varuint64(buf, 1 << 7, 2)
-        check_varuint64(buf, -(2**6), 9)
-        check_varuint64(buf, -(2**7), 9)
-        check_varuint64(buf, 1 << 13, 2)
-        check_varuint64(buf, 1 << 14, 3)
-        check_varuint64(buf, -(2**13), 9)
-        check_varuint64(buf, -(2**14), 9)
-        check_varuint64(buf, 1 << 20, 3)
-        check_varuint64(buf, 1 << 21, 4)
-        check_varuint64(buf, -(2**20), 9)
-        check_varuint64(buf, -(2**21), 9)
-        check_varuint64(buf, 1 << 27, 4)
-        check_varuint64(buf, 1 << 28, 5)
-        check_varuint64(buf, -(2**27), 9)
-        check_varuint64(buf, -(2**28), 9)
-        check_varuint64(buf, 1 << 30, 5)
-        check_varuint64(buf, -(2**30), 9)
-        check_varuint64(buf, 1 << 31, 5)
-        check_varuint64(buf, -(2**31), 9)
-        check_varuint64(buf, 1 << 32, 5)
-        check_varuint64(buf, -(2**32), 9)
-        check_varuint64(buf, 1 << 34, 5)
-        check_varuint64(buf, -(2**34), 9)
-        check_varuint64(buf, 1 << 35, 6)
-        check_varuint64(buf, -(2**35), 9)
-        check_varuint64(buf, 1 << 41, 6)
-        check_varuint64(buf, -(2**41), 9)
-        check_varuint64(buf, 1 << 42, 7)
-        check_varuint64(buf, -(2**42), 9)
-        check_varuint64(buf, 1 << 48, 7)
-        check_varuint64(buf, -(2**48), 9)
-        check_varuint64(buf, 1 << 49, 8)
-        check_varuint64(buf, -(2**49), 9)
-        check_varuint64(buf, 1 << 55, 8)
-        check_varuint64(buf, -(2**55), 9)
-        check_varuint64(buf, 1 << 56, 9)
-        check_varuint64(buf, -(2**56), 9)
-        check_varuint64(buf, 1 << 62, 9)
-        check_varuint64(buf, -(2**62), 9)
-        check_varuint64(buf, 1 << 63 - 1, 9)
-        check_varuint64(buf, -(2**63), 9)
+        for value, bytes_written in cases:
+            check_varuint64(buf, value, bytes_written)
+    with pytest.raises(Exception):
+        buf.write_var_uint64(-1)
+
+
+def test_int24_declared_range():
+    buffer = Buffer.allocate(16)
+    values = (-(1 << 23), -32769, 32768, (1 << 23) - 1)
+    for value in values:
+        buffer.write_int24(value)
+    for value in values:
+        assert buffer.read_int24() == value
+    for index, value in enumerate(values):
+        buffer.put_int24(index * 3, value)
+        assert buffer.get_int24(index * 3) == value
+
+
+@pyfory.dataclass
+class UInt64Value:
+    value: pyfory.UInt64 = 0
+
+
+def test_var_uint64_fory_round_trip():
+    fory = pyfory.Fory(xlang=True, compatible=False, ref=False)
+    fory.register_type(UInt64Value)
+    value = UInt64Value((1 << 64) - 1)
+    assert fory.deserialize(fory.serialize(value)) == value
+    with pytest.raises(Exception):
+        fory.serialize(UInt64Value(-1))
 
 
 def check_varuint64(buf: Buffer, value: int, bytes_written: int):
@@ -457,7 +630,3 @@ def test_stream_buffer_short_read_error():
     reader = Buffer.from_stream(OneByteStream(b"\x01\x02\x03"))
     with pytest.raises(Exception, match="Buffer out of bound"):
         reader.read_uint32()
-
-
-if __name__ == "__main__":
-    test_grow()

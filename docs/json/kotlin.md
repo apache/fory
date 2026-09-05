@@ -25,8 +25,8 @@ Fory JSON; it does not change Fory's binary protocols.
 
 ## Installation
 
-The runtime supports Kotlin/JVM metadata ABI 2.3 and is built with Kotlin 2.3.20. Use the same Fory
-version for every module:
+The runtime accepts model metadata supported by Kotlin's strict metadata reader and is built with
+Kotlin 2.3.20. Use the same Fory version for every module:
 
 ```kotlin title="build.gradle.kts"
 plugins {
@@ -41,7 +41,7 @@ repositories {
 }
 
 dependencies {
-  implementation("org.apache.fory:fory-json-kotlin:1.7.0-SNAPSHOT")
+  implementation("org.apache.fory:fory-json-kotlin:1.7.1")
 }
 ```
 
@@ -54,7 +54,7 @@ plugins {
 }
 
 dependencies {
-  ksp("org.apache.fory:fory-json-kotlin-ksp:1.7.0-SNAPSHOT")
+  ksp("org.apache.fory:fory-json-kotlin-ksp:1.7.1")
 }
 ```
 
@@ -86,6 +86,12 @@ val accountType = jsonTypeRef<Account>()
 val text = json.toJson(Account(7u, "Alice"), accountType)
 val decoded = json.fromJson(text, accountType)
 ```
+
+Use `ForyJsonKotlin.builder().writeLongAsString(true)` when signed `Long` and unsigned `ULong`
+values must be emitted as quoted decimal strings. The setting also applies to their declared
+collection and map values, nullable values, Kotlin value classes backed by them, `ULongArray`, and
+the Java Long-like wrappers supported by the core JSON runtime. Readers accept both quoted and
+unquoted integer tokens.
 
 `jsonTypeRef<T>()` is a type token, not a codec lookup. Construct it once and reuse it. A Java
 `Class` or ordinary Java `TypeRef` cannot express distinctions such as `List<Account?>`, `UInt`, or
@@ -274,7 +280,7 @@ their normal Fory JSON representation when used from Kotlin:
 | text                               | `String`, exact `CharSequence`, `StringBuilder`, and `StringBuffer` use String shapes                                                                                                                                                                                                      |
 | arbitrary/reduced-precision number | `BigInteger`, `BigDecimal`, Fory `Float16`, and `BFloat16` use their core numeric shapes and limits                                                                                                                                                                                        |
 | enum                               | quoted enum constant name                                                                                                                                                                                                                                                                  |
-| Java/Kotlin arrays                 | normal JSON arrays; `ByteArray` is numeric unless `JsonBase64` selects binary; unsigned semantic arrays are listed below                                                                                                                                                                   |
+| Java/Kotlin arrays                 | normal JSON arrays except `ByteArray`, which uses Base64 strings by default; `@field:JsonByteArray(JsonByteArray.Format.ARRAY)` selects numeric arrays; unsigned semantic arrays are listed below                                                                                          |
 | Optional and atomic                | `Optional<T>`, primitive Optionals, atomic scalars/references, and atomic arrays keep their transparent core shapes subject to the nullability rules above                                                                                                                                 |
 | quoted JDK values                  | `Currency`, `File`, `URI`, `Path`, `Pattern`, `UUID`, `Locale`, `Charset`, and `TimeZone` keep their core String shapes                                                                                                                                                                    |
 | legacy date/time                   | `Date`, `Calendar`, and available `java.sql.Date`, `Time`, and `Timestamp` keep their epoch-millisecond shapes                                                                                                                                                                             |

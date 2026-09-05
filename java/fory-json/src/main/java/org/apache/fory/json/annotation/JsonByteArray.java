@@ -26,14 +26,25 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Selects a quoted standard Base64 JSON string as the representation of one exact {@code byte[]}
- * field or getter.
+ * Selects the JSON representation of one exact {@code byte[]} field or getter for both reading and
+ * writing. Unannotated byte arrays use a quoted standard Base64 string.
  *
- * <p>Writing encodes the bytes without an intermediate String, and reading decodes the JSON string
- * directly into bytes. Null inclusion and omission follow the property's normal configuration, and
- * an included null is written as JSON {@code null}.
+ * <p>Null inclusion and omission follow the property's normal configuration, and an included null
+ * is written as JSON {@code null}. This annotation cannot be combined with {@link JsonCodec} on the
+ * same logical property.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD})
-public @interface JsonBase64 {}
+public @interface JsonByteArray {
+  /** Returns the representation used when reading and writing this property. */
+  Format value();
+
+  /** The supported JSON representations of a byte array. */
+  enum Format {
+    /** A quoted standard Base64 string with padding. */
+    BASE64,
+    /** A JSON array of signed byte values in the range {@code [-128, 127]}. */
+    ARRAY
+  }
+}

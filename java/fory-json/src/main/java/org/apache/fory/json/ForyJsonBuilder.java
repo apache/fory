@@ -50,6 +50,7 @@ import org.apache.fory.platform.GraalvmSupport;
  */
 public final class ForyJsonBuilder {
   private boolean writeNullFields;
+  private boolean writeLongAsString;
   private boolean codegenEnabled = true;
   private boolean asyncCompilationEnabled = true;
   private boolean propertyDiscoveryEnabled = true;
@@ -77,6 +78,21 @@ public final class ForyJsonBuilder {
    */
   public ForyJsonBuilder writeNullFields(boolean writeNullFields) {
     this.writeNullFields = writeNullFields;
+    return this;
+  }
+
+  /**
+   * Writes signed 64-bit integer values owned by Fory's built-in JSON codecs as quoted decimal
+   * strings. This includes {@code long}/{@link Long}, {@code AtomicLong}, {@code AtomicLongArray},
+   * {@code OptionalLong}, and generic containers whose declared value is {@code Long}. Disabled by
+   * default.
+   *
+   * <p>This setting also applies to corresponding 64-bit unsigned scalar bindings installed by a
+   * language module. Exact custom codecs and occurrence-level codec or format annotations retain
+   * ownership of their complete representation.
+   */
+  public ForyJsonBuilder writeLongAsString(boolean writeLongAsString) {
+    this.writeLongAsString = writeLongAsString;
     return this;
   }
 
@@ -297,6 +313,7 @@ public final class ForyJsonBuilder {
         ModuleInstaller.install(new ArrayList<>(modules), codecRegistry, mixins);
     return new JsonConfig(
         writeNullFields,
+        writeLongAsString,
         effectiveCodegen,
         effectiveAsyncCompilation,
         propertyDiscoveryEnabled,

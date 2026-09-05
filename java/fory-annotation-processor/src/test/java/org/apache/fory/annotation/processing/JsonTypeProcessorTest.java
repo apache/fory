@@ -877,7 +877,7 @@ public class JsonTypeProcessorTest {
             "package test;\n"
                 + "import org.apache.fory.json.annotation.*;\n"
                 + "@JsonType public record EncodedRecord(\n"
-                + "    @JsonRawValue String raw, @JsonBase64 byte[] bytes) {}\n");
+                + "    @JsonRawValue String raw, @JsonByteArray(JsonByteArray.Format.ARRAY) byte[] bytes) {}\n");
     assertTrue(result.success, result.diagnostics());
     ClassLoader loader = result.classLoader();
     Class<?> type = loader.loadClass("test.EncodedRecord");
@@ -885,8 +885,8 @@ public class JsonTypeProcessorTest {
         type.getConstructor(String.class, byte[].class)
             .newInstance("{\"id\":1}", new byte[] {1, 2, 3});
     for (ForyJson json : jsonRuntimes(loader)) {
-      assertEquals(json.toJson(value), "{\"raw\":{\"id\":1},\"bytes\":\"AQID\"}");
-      Object decoded = json.fromJson("{\"raw\":\"text\",\"bytes\":\"AQI=\"}", type);
+      assertEquals(json.toJson(value), "{\"raw\":{\"id\":1},\"bytes\":[1,2,3]}");
+      Object decoded = json.fromJson("{\"raw\":\"text\",\"bytes\":[1,2]}", type);
       assertEquals(type.getMethod("raw").invoke(decoded), "text");
       assertTrue(
           Arrays.equals((byte[]) type.getMethod("bytes").invoke(decoded), new byte[] {1, 2}));
@@ -902,7 +902,7 @@ public class JsonTypeProcessorTest {
                 + "import java.util.Arrays;\n"
                 + "import org.apache.fory.json.annotation.*;\n"
                 + "@JsonType public final class EncodedCreator {\n"
-                + "  @JsonBase64 public final byte[] bytes;\n"
+                + "  @JsonByteArray(JsonByteArray.Format.BASE64) public final byte[] bytes;\n"
                 + "  @JsonCreator({\"bytes\"}) public EncodedCreator(byte[] bytes) {\n"
                 + "    this.bytes = bytes;\n"
                 + "  }\n"
@@ -1858,7 +1858,7 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
-  public void valueRawAndBase64Rules() throws Exception {
+  public void valueRawAndByteArrayRules() throws Exception {
     Map<String, String> sources = new LinkedHashMap<>();
     sources.put(
         "test.ValueModel",
@@ -1875,7 +1875,8 @@ public class JsonTypeProcessorTest {
             + "import org.apache.fory.json.annotation.*;\n"
             + "@JsonType public final class RawModel {\n"
             + "  @JsonRawValue public String body;\n"
-            + "  @JsonBase64 public byte[] bytes;\n"
+            + "  @JsonByteArray(JsonByteArray.Format.BASE64) public byte[] bytes;\n"
+            + "  @JsonByteArray(JsonByteArray.Format.ARRAY) public byte[] numbers;\n"
             + "  private String other;\n"
             + "  @JsonRawValue public String getOther() { return other; }\n"
             + "  public void setOther(String other) { this.other = other; }\n"
@@ -1893,6 +1894,10 @@ public class JsonTypeProcessorTest {
         valueRules.contains("@interface org.apache.fory.json.annotation.JsonRawValue"), valueRules);
 
     String rawRules = result.generatedResource(RULE_PREFIX + "test.RawModel.pro");
+    assertTrue(
+        rawRules.contains(
+            "class org.apache.fory.json.codec.ArrayCodec$SignedByteArrayCodec { public <init>(); }"),
+        rawRules);
     assertTrue(result.hasGeneratedSource("test/RawModel_ForyJsonCodec.java"));
     assertTrue(rawRules.contains("java.lang.String body;"), rawRules);
     assertTrue(rawRules.contains("byte[] bytes;"), rawRules);
@@ -1900,7 +1905,7 @@ public class JsonTypeProcessorTest {
     assertTrue(
         rawRules.contains("@interface org.apache.fory.json.annotation.JsonRawValue"), rawRules);
     assertTrue(
-        rawRules.contains("@interface org.apache.fory.json.annotation.JsonBase64"), rawRules);
+        rawRules.contains("@interface org.apache.fory.json.annotation.JsonByteArray"), rawRules);
     assertFalse(
         rawRules.contains("@interface org.apache.fory.json.annotation.JsonCodec"), rawRules);
     assertTrue(

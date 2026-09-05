@@ -13,6 +13,7 @@ Load this file when changing `rust/` or Rust xlang behavior.
 - Do not set `FORY_PANIC_ON_ERROR=1` when running the full Rust test suite, because some tests assert on error contents.
 - Avoid cosmetic filesystem or module churn when logical module names and call sites are already stable.
 - Operation contexts such as `ReadContext` and `WriteContext` should sit beside the runtime facade and aggregate resolver, buffer, and config state; they are not resolver-owned submodules.
+- `Fory` is the only cross-thread runtime owner. `TypeResolver`, `ReadContext`, `WriteContext`, and `RefReader` must remain `!Send + !Sync`; shared root operations deep-clone resolver state into thread-local contexts. Do not restore unsafe auto-trait implementations on those internal owners or replace their hot-path `Rc` values with `Arc` to make them shareable.
 - Runtime carriers belong in `types/`, and schema or type-hash helpers belong with metadata hashing rather than generic wire/type-id modules.
 - Rust derive-generated runtime paths are owned by the selected runtime crate: normal downstream crates depend on `fory`, and `fory-derive` must resolve that facade with `proc-macro-crate` and emit through `fory::__private`; direct lower-level crates may resolve `fory-core`. Do not add raw crate-path string attributes such as `#[fory(crate = "...")]`.
 - `fory-core` `macro_rules!` exports, including `register_trait_type!` and helpers, must use `$crate` for runtime paths so facade re-exports stay hygienic.

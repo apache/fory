@@ -358,6 +358,13 @@ struct StringTestStruct {
   FORY_STRUCT(StringTestStruct, empty, ascii, utf8, long_text);
 };
 
+struct HybridVarintStruct {
+  int32_t value;
+  std::string text;
+
+  FORY_STRUCT(HybridVarintStruct, value, text);
+};
+
 // Nested structs
 struct Point2D {
   int32_t x;
@@ -1033,6 +1040,21 @@ TEST(StructComprehensiveTest, BoundingBoxDoubleNested) {
 
 TEST(StructComprehensiveTest, SceneMultipleNested) {
   test_roundtrip(Scene{{0, 0, 10}, {100, 100, 200}, {{0, 0}, {800, 600}}});
+}
+
+TEST(StructComprehensiveTest, HybridVarintReservesPhysicalStore) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  WriteContext write_ctx(fory.config(), fory.type_resolver().clone());
+  std::array<uint8_t, 8> storage{};
+  write_ctx.buffer() = Buffer(storage.data(), 5, false);
+
+  HybridVarintStruct value{std::numeric_limits<int32_t>::min(), "x"};
+  detail::write_struct_fields_impl(value, write_ctx,
+                                   std::make_index_sequence<2>{}, false);
+
+  EXPECT_FALSE(write_ctx.has_error());
+  EXPECT_NE(write_ctx.buffer().data(), storage.data());
 }
 
 TEST(StructComprehensiveTest, VectorStructEmpty) {

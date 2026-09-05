@@ -35,7 +35,12 @@ import org.apache.fory.type.Types
 /** Width- and carrier-specialized codecs for Kotlin unsigned scalars. */
 @OptIn(ExperimentalUnsignedTypes::class)
 internal object KotlinUnsignedCodecs {
-  fun scalar(typeId: Int, boxedResult: Boolean, nullable: Boolean): JsonValueCodec<Any?> =
+  fun scalar(
+    typeId: Int,
+    boxedResult: Boolean,
+    nullable: Boolean,
+    writeLongAsString: Boolean,
+  ): JsonValueCodec<Any?> =
     when (typeId) {
       Types.UINT8 ->
         if (nullable) UByteCodec.NULLABLE
@@ -46,8 +51,13 @@ internal object KotlinUnsignedCodecs {
       Types.UINT32 ->
         if (nullable) UIntCodec.NULLABLE else if (boxedResult) UIntCodec.BOXED else UIntCarrierCodec
       Types.UINT64 ->
-        if (nullable) ULongCodec.NULLABLE
-        else if (boxedResult) ULongCodec.BOXED else ULongCarrierCodec
+        if (writeLongAsString) {
+          if (nullable) ULongAsStringCodec.NULLABLE
+          else if (boxedResult) ULongAsStringCodec.BOXED else ULongAsStringCarrierCodec
+        } else {
+          if (nullable) ULongCodec.NULLABLE
+          else if (boxedResult) ULongCodec.BOXED else ULongCarrierCodec
+        }
       else -> throw ForyJsonException("Unknown Kotlin unsigned JSON type id $typeId")
     }
 
@@ -92,6 +102,11 @@ internal object KotlinUnsignedCodecs {
   @JvmStatic
   @JvmName("writeULongRaw")
   fun writeULongRaw(writer: JsonWriter, value: Long) = writer.writeUnsignedLong(value)
+
+  @JvmStatic
+  @JvmName("writeULongAsStringRaw")
+  fun writeULongAsStringRaw(writer: JsonWriter, value: Long) =
+    writer.writeUnsignedLongAsString(value)
 
   private class UByteCodec(private val nullable: Boolean) : JsonValueCodec<Any?> {
     companion object {
@@ -371,6 +386,77 @@ internal object KotlinUnsignedCodecs {
 
     override fun writeUtf8Carrier(writer: Utf8JsonWriter, carrier: Any) =
       writeULongRaw(writer, carrier as Long)
+
+    override fun readCarrierMethod(): Method = Methods.read
+
+    override fun writeCarrierMethod(): Method = Methods.write
+  }
+
+  private class ULongAsStringCodec(private val nullable: Boolean) : JsonValueCodec<Any?> {
+    companion object {
+      val BOXED: JsonValueCodec<Any?> = ULongAsStringCodec(false)
+      val NULLABLE: JsonValueCodec<Any?> = ULongAsStringCodec(true)
+    }
+
+    override fun writeString(writer: StringJsonWriter, value: Any?) = write(writer, value)
+
+    override fun writeUtf8(writer: Utf8JsonWriter, value: Any?) = write(writer, value)
+
+    override fun readLatin1(reader: Latin1JsonReader): Any? = read(reader)
+
+    override fun readUtf16(reader: Utf16JsonReader): Any? = read(reader)
+
+    override fun readUtf8(reader: Utf8JsonReader): Any? = read(reader)
+
+    private fun write(writer: JsonWriter, value: Any?) {
+      if (value == null) {
+        writeNull(writer, nullable)
+        return
+      }
+      writeULongAsStringRaw(writer, (value as ULong).toLong())
+    }
+
+    private fun read(reader: JsonReader): Any? {
+      if (reader.tryReadNullToken()) return readNull(nullable)
+      return readULongRaw(reader).toULong()
+    }
+  }
+
+  private object ULongAsStringCarrierCodec : JsonValueCodec<Any?>, DirectUnboxedValueCodec {
+    private object Methods {
+      val read: Method =
+        KotlinUnsignedCodecs::class.java.getMethod("readULongRaw", JsonReader::class.java)
+      val write: Method =
+        KotlinUnsignedCodecs::class
+          .java
+          .getMethod("writeULongAsStringRaw", JsonWriter::class.java, java.lang.Long.TYPE)
+    }
+
+    override fun writeString(writer: StringJsonWriter, value: Any?) =
+      writeStringCarrier(writer, value ?: rejectNull())
+
+    override fun writeUtf8(writer: Utf8JsonWriter, value: Any?) =
+      writeUtf8Carrier(writer, value ?: rejectNull())
+
+    override fun readLatin1(reader: Latin1JsonReader): Any = readLatin1Carrier(reader)
+
+    override fun readUtf16(reader: Utf16JsonReader): Any = readUtf16Carrier(reader)
+
+    override fun readUtf8(reader: Utf8JsonReader): Any = readUtf8Carrier(reader)
+
+    override fun carrierType(): Class<*> = java.lang.Long.TYPE
+
+    override fun readLatin1Carrier(reader: Latin1JsonReader): Any = readULongRaw(reader)
+
+    override fun readUtf16Carrier(reader: Utf16JsonReader): Any = readULongRaw(reader)
+
+    override fun readUtf8Carrier(reader: Utf8JsonReader): Any = readULongRaw(reader)
+
+    override fun writeStringCarrier(writer: StringJsonWriter, carrier: Any) =
+      writeULongAsStringRaw(writer, carrier as Long)
+
+    override fun writeUtf8Carrier(writer: Utf8JsonWriter, carrier: Any) =
+      writeULongAsStringRaw(writer, carrier as Long)
 
     override fun readCarrierMethod(): Method = Methods.read
 

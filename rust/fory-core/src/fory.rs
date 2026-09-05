@@ -450,6 +450,14 @@ pub struct Fory {
     config: Config,
 }
 
+// Safety: Fory is the only cross-thread owner of its resolvers. Registration requires exclusive
+// access, and root operations permanently freeze the registry before the finalized resolver is
+// shared. Fory never exposes the Rc values in either resolver. Each thread deep-clones the
+// finalized resolver into thread-local contexts, so Rc counts and mutable context state remain
+// confined to one thread.
+unsafe impl Send for Fory {}
+unsafe impl Sync for Fory {}
+
 impl Default for Fory {
     fn default() -> Self {
         Self::builder().build()

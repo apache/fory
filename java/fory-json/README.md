@@ -42,14 +42,14 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-json</artifactId>
-  <version>1.6.1</version>
+  <version>1.7.1</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-json:1.6.1")
+implementation("org.apache.fory:fory-json:1.7.1")
 ```
 
 On JDK 25 and later, opening `java.lang.invoke` to Fory core is also recommended. It avoids

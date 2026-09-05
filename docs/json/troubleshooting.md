@@ -37,7 +37,7 @@ license: |
 | OutputStream write fails                   | The underlying `IOException` is wrapped as the cause of `ForyJsonException`                                                                         |
 | Kotlin null or missing member fails        | Check the exact `jsonTypeRef`, constructor default, and nullable occurrence; null does not request a compiler default                               |
 | Raw/star/projected Kotlin generic fails    | Supply a complete `jsonTypeRef<T>()`; `in` and star projections cannot reconstruct one exact schema                                                 |
-| Unsupported Kotlin metadata                | Compile the model with a supported Kotlin 2.3 compiler and ensure its validated JVM members match the metadata                                      |
+| Unsupported Kotlin metadata                | Ensure the resolved `kotlin-metadata-jvm` supports the model compiler's metadata and that validated JVM members match it                            |
 | Kotlin model fails after Android shrinking | Apply KSP; for an exact Mixin, use it when either its source or target is Kotlin, and verify that the generated rules are packaged                  |
 | Kotlin model is absent in Native Image     | Install `ForyJsonKotlin` from a reachable `ForyJsonProvider`, enable code generation, and make the exact binding reachable from that configuration  |
 

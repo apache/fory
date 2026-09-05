@@ -262,7 +262,7 @@ def test_write_multi_record_batch(schema_file_path, data_file_path):
 def test_buffer(data_file_path):
     with open(data_file_path, "rb") as f:
         data_bytes = f.read()
-        buffer = pyfory.Buffer(data_bytes)
+        buffer = pyfory.Buffer(bytearray(data_bytes))
         assert buffer.read_bool() is True
         assert buffer.read_int8() == 2**7 - 1
         assert buffer.read_int16() == 2**15 - 1
@@ -664,7 +664,7 @@ def test_oob_buffer(in_band_file_path, out_of_band_file_path):
     with open(in_band_file_path, "rb") as f:
         in_band_bytes = f.read()
     with open(out_of_band_file_path, "rb") as f:
-        out_of_band_buffer = pyfory.Buffer(f.read())
+        out_of_band_buffer = pyfory.Buffer(bytearray(f.read()))
     fory = pyfory.Fory(xlang=True, compatible=False, ref=True)
     n_buffers = out_of_band_buffer.read_int32()
     buffers = []

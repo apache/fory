@@ -58,7 +58,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
     this.componentType = componentType;
   }
 
-  public static <T> ArrayCodec<T> create(
+  public static <T> JsonValueCodec<T> create(
       Class<T> arrayType, TypeRef<?> arrayTypeRef, JsonTypeResolver resolver) {
     if (!arrayType.isArray()) {
       throw new ForyJsonException("Unsupported JSON array type " + arrayType);
@@ -70,7 +70,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   @Internal
-  public static <T> ArrayCodec<T> create(Class<T> arrayType, JsonTypeInfo componentTypeInfo) {
+  public static <T> JsonValueCodec<T> create(Class<T> arrayType, JsonTypeInfo componentTypeInfo) {
     if (!arrayType.isArray()) {
       throw new ForyJsonException("Unsupported JSON array type " + arrayType);
     }
@@ -80,6 +80,9 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       return bind(IntArrayCodec.INSTANCE);
     } else if (componentType == long.class && componentCodec == ScalarCodecs.LongCodec.PRIMITIVE) {
       return bind(LongArrayCodec.INSTANCE);
+    } else if (componentType == long.class
+        && componentCodec == ScalarCodecs.LongAsStringCodec.PRIMITIVE) {
+      return bind(LongAsStringArrayCodec.INSTANCE);
     } else if (componentType == boolean.class
         && componentCodec == ScalarCodecs.BooleanCodec.PRIMITIVE) {
       return bind(BooleanArrayCodec.INSTANCE);
@@ -87,7 +90,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         && componentCodec == ScalarCodecs.ShortCodec.PRIMITIVE) {
       return bind(ShortArrayCodec.INSTANCE);
     } else if (componentType == byte.class && componentCodec == ScalarCodecs.ByteCodec.PRIMITIVE) {
-      return bind(ByteArrayCodec.INSTANCE);
+      return bind(Base64ByteArrayCodec.INSTANCE);
     } else if (componentType == char.class && componentCodec == ScalarCodecs.CharCodec.PRIMITIVE) {
       return bind(CharArrayCodec.INSTANCE);
     } else if (componentType == float.class
@@ -106,6 +109,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
           componentTypeInfo.rejectsNull()
               ? BoxedLongArrayCodec.NON_NULL
               : BoxedLongArrayCodec.INSTANCE);
+    } else if (componentType == Long.class
+        && componentCodec == ScalarCodecs.LongAsStringCodec.BOXED) {
+      return bind(
+          componentTypeInfo.rejectsNull()
+              ? BoxedLongAsStringArrayCodec.NON_NULL
+              : BoxedLongAsStringArrayCodec.INSTANCE);
     } else if (componentType == Boolean.class
         && componentCodec == ScalarCodecs.BooleanCodec.BOXED) {
       return bind(
@@ -152,7 +161,8 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
 
   /** Returns the exact unsigned primitive-array specialization for one semantic array id. */
   @Internal
-  public static <T> ArrayCodec<T> createUnsignedPrimitive(Class<T> arrayType, int typeId) {
+  public static <T> JsonValueCodec<T> createUnsignedPrimitive(
+      Class<T> arrayType, int typeId, boolean writeLongAsString) {
     if (arrayType == byte[].class && typeId == Types.UINT8_ARRAY) {
       return bind(ByteArrayCodec.UNSIGNED);
     }
@@ -163,16 +173,19 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       return bind(IntArrayCodec.UNSIGNED);
     }
     if (arrayType == long[].class && typeId == Types.UINT64_ARRAY) {
-      return bind(LongArrayCodec.UNSIGNED);
+      return bind(
+          writeLongAsString
+              ? UnsignedLongAsStringArrayCodec.INSTANCE
+              : UnsignedLongArrayCodec.INSTANCE);
     }
     throw new ForyJsonException(
         "Unsigned JSON array semantic id " + typeId + " does not match " + arrayType.getName());
   }
 
   @SuppressWarnings("unchecked")
-  private static <T> ArrayCodec<T> bind(ArrayCodec<?> codec) {
+  private static <T> JsonValueCodec<T> bind(JsonValueCodec<?> codec) {
     // The factory has matched the runtime array class to this exact singleton implementation.
-    return (ArrayCodec<T>) codec;
+    return (JsonValueCodec<T>) codec;
   }
 
   // Package visibility lets Java 8 nested codecs call these helpers without synthetic accessors.
@@ -389,11 +402,10 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   // Keep the signed codec as the exact final loop owner. Routing signed long arrays through a
   // semantic element hook makes C2 inline the root and array loop into one unstable graph; the
   // unsigned codec below owns separate primitive operations so neither warmed path branches.
-  public static final class LongArrayCodec extends ArrayCodec<long[]> {
+  public static class LongArrayCodec extends ArrayCodec<long[]> {
     private static final LongArrayCodec INSTANCE = new LongArrayCodec();
-    private static final ArrayCodec<long[]> UNSIGNED = new UnsignedLongArrayCodec();
 
-    private LongArrayCodec() {
+    protected LongArrayCodec() {
       super(long.class);
     }
 
@@ -734,7 +746,44 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
     }
   }
 
-  private static final class UnsignedLongArrayCodec extends ArrayCodec<long[]> {
+  /** Exact signed long-array specialization which writes each element as a JSON string. */
+  public static final class LongAsStringArrayCodec extends LongArrayCodec {
+    private static final LongAsStringArrayCodec INSTANCE = new LongAsStringArrayCodec();
+
+    private LongAsStringArrayCodec() {}
+
+    @Override
+    public void writeString(StringJsonWriter writer, long[] value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      writer.writeArrayStart();
+      for (int i = 0; i < value.length; i++) {
+        writer.writeComma(i);
+        writer.writeLongAsString(value[i]);
+      }
+      writer.writeArrayEnd();
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, long[] value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      writer.writeArrayStart();
+      for (int i = 0; i < value.length; i++) {
+        writer.writeComma(i);
+        writer.writeLongAsString(value[i]);
+      }
+      writer.writeArrayEnd();
+    }
+  }
+
+  private static class UnsignedLongArrayCodec extends ArrayCodec<long[]> {
+    private static final UnsignedLongArrayCodec INSTANCE = new UnsignedLongArrayCodec();
+
     private UnsignedLongArrayCodec() {
       super(long.class);
     }
@@ -864,6 +913,41 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       } while (reader.consumeNextCommaOrEndArray());
       finishPrimitiveArray(reader, size, Long.BYTES);
       return Arrays.copyOf(values, size);
+    }
+  }
+
+  private static final class UnsignedLongAsStringArrayCodec extends UnsignedLongArrayCodec {
+    private static final UnsignedLongAsStringArrayCodec INSTANCE =
+        new UnsignedLongAsStringArrayCodec();
+
+    private UnsignedLongAsStringArrayCodec() {}
+
+    @Override
+    public void writeString(StringJsonWriter writer, long[] value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      writer.writeArrayStart();
+      for (int i = 0; i < value.length; i++) {
+        writer.writeComma(i);
+        writer.writeUnsignedLongAsString(value[i]);
+      }
+      writer.writeArrayEnd();
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, long[] value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      writer.writeArrayStart();
+      for (int i = 0; i < value.length; i++) {
+        writer.writeComma(i);
+        writer.writeUnsignedLongAsString(value[i]);
+      }
+      writer.writeArrayEnd();
     }
   }
 
@@ -1178,7 +1262,6 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public abstract static class ByteArrayCodec extends ArrayCodec<byte[]> {
-    private static final ByteArrayCodec INSTANCE = new SignedByteArrayCodec();
     private static final ByteArrayCodec UNSIGNED = new UnsignedByteArrayCodec();
 
     private ByteArrayCodec() {
@@ -1310,7 +1393,10 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
     }
   }
 
-  private static final class SignedByteArrayCodec extends ByteArrayCodec {
+  /** A complete {@code byte[]} codec using a JSON array of signed byte values. */
+  public static final class SignedByteArrayCodec extends ByteArrayCodec {
+    public SignedByteArrayCodec() {}
+
     @Override
     void writeElement(StringJsonWriter writer, byte value) {
       writer.writeInt(value);
@@ -2662,12 +2748,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
     }
   }
 
-  public static final class BoxedLongArrayCodec extends ArrayCodec<Long[]> {
+  public static class BoxedLongArrayCodec extends ArrayCodec<Long[]> {
     private static final BoxedLongArrayCodec INSTANCE = new BoxedLongArrayCodec(false);
     private static final BoxedLongArrayCodec NON_NULL = new BoxedLongArrayCodec(true);
     private final boolean rejectsNull;
 
-    private BoxedLongArrayCodec(boolean rejectsNull) {
+    protected BoxedLongArrayCodec(boolean rejectsNull) {
       super(Long.class);
       this.rejectsNull = rejectsNull;
     }
@@ -2794,6 +2880,58 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       reader.expectNextToken(']');
       finishReferenceArray(reader, size);
       return Arrays.copyOf(values, size);
+    }
+  }
+
+  private static final class BoxedLongAsStringArrayCodec extends BoxedLongArrayCodec {
+    private static final BoxedLongAsStringArrayCodec INSTANCE =
+        new BoxedLongAsStringArrayCodec(false);
+    private static final BoxedLongAsStringArrayCodec NON_NULL =
+        new BoxedLongAsStringArrayCodec(true);
+
+    private final boolean rejectsNull;
+
+    private BoxedLongAsStringArrayCodec(boolean rejectsNull) {
+      super(rejectsNull);
+      this.rejectsNull = rejectsNull;
+    }
+
+    @Override
+    public void writeString(StringJsonWriter writer, Long[] value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      writer.writeArrayStart();
+      for (int i = 0; i < value.length; i++) {
+        writer.writeComma(i);
+        Long element = value[i];
+        if (element == null) {
+          writeReferenceNull(writer, rejectsNull);
+        } else {
+          writer.writeLongAsString(element);
+        }
+      }
+      writer.writeArrayEnd();
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, Long[] value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      writer.writeArrayStart();
+      for (int i = 0; i < value.length; i++) {
+        writer.writeComma(i);
+        Long element = value[i];
+        if (element == null) {
+          writeReferenceNull(writer, rejectsNull);
+        } else {
+          writer.writeLongAsString(element);
+        }
+      }
+      writer.writeArrayEnd();
     }
   }
 

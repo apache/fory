@@ -70,6 +70,8 @@ Type.bfloat16();
 
 `float16` and `bfloat16` are useful when interoperating with languages or payloads that use reduced-precision numeric formats.
 
+`Type.float16()` rounds numbers to the nearest half-precision value, choosing the value with an even least-significant bit when the input is exactly halfway between two values. Float16 array conversion uses the same rounding rule. Signed zero, infinities, and NaN are preserved; values can underflow to signed zero or overflow to signed infinity.
+
 ## Arrays and Typed Arrays
 
 ### Lists

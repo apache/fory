@@ -126,7 +126,17 @@ public class MemoryOpsTest {
   @Test
   public void testVarUint36MatchesMemoryBuffer() {
     long[] values = {
-      0L, 1L, 127L, 128L, 16_383L, 16_384L, Integer.MAX_VALUE, 0xFFFFFFFFFL, 1L << 36
+      0L,
+      1L,
+      127L,
+      128L,
+      16_383L,
+      16_384L,
+      Integer.MAX_VALUE,
+      0xFFFFFFFFFL,
+      (1L << 35) - 1,
+      1L << 35,
+      (1L << 36) - 1
     };
     for (long value : values) {
       byte[] bytes = new byte[8];
@@ -135,7 +145,7 @@ public class MemoryOpsTest {
       int expectedSize = buffer._unsafePutVarUint36Small(0, value);
       assertEquals(size, expectedSize);
       assertEquals(Arrays.copyOf(bytes, size), buffer.getBytes(0, expectedSize));
-      assertEquals(MemoryOps.readVarUint36Small(bytes, 0), value & 0xFFFFFFFFFL);
+      assertEquals(MemoryOps.readVarUint36Small(bytes, 0), value);
       assertEquals(MemoryOps.varUint36SmallBytes(bytes, 0), size);
     }
   }

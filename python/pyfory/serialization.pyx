@@ -1275,7 +1275,6 @@ cdef class Fory:
         write_context.c_buffer = buffer.c_buffer
         write_context.buffer_callback = buffer_callback
         write_context.unsupported_callback = unsupported_callback
-        write_context.depth = 0
         mask_index = buffer.get_writer_index()
         buffer.grow(1)
         buffer.set_writer_index(mask_index + 1)

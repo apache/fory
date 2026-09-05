@@ -43,13 +43,15 @@ internal object KotlinJsonCodecFactory : JsonCodecFactory {
         semanticId,
         !rawType.isPrimitive,
         type.typeExtMeta.nullable(),
+        resolver.writeLongAsString(),
       )
     }
     if (semanticId in Types.UINT8_ARRAY..Types.UINT64_ARRAY) {
-      KotlinUnsignedArrayCodecs.create(rawType, semanticId)?.let {
+      val writeLongAsString = resolver.writeLongAsString()
+      KotlinUnsignedArrayCodecs.create(rawType, semanticId, writeLongAsString)?.let {
         return it
       }
-      return ArrayCodec.createUnsignedPrimitive(rawType, semanticId)
+      return ArrayCodec.createUnsignedPrimitive(rawType, semanticId, writeLongAsString)
     }
     if (rawType == Unit::class.java) {
       return if (type.typeExtMeta?.nullable() == true) {

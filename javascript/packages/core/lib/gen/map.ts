@@ -209,6 +209,11 @@ export class MapAnySerializer {
         this.valueSerializer !== null
           ? this.valueSerializer
           : this.writeContext.typeResolver.getSerializerByData(v);
+      this.writeContext.writer.reserve(
+        (keySerializer ? keySerializer.fixedSize : 1) +
+          (valueSerializer ? valueSerializer.fixedSize : 1) +
+          2,
+      );
 
       const header = mapChunkWriter.next(
         new ElementInfo(
@@ -421,6 +426,9 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
 
     return `
       ${this.builder.writer.writeVarUint32Small7(`${accessor}.size`)}
+      ${this.builder.writer.reserve(
+        `${this.keyGenerator.getFixedSize() + this.valueGenerator.getFixedSize() + 2} * ${accessor}.size`,
+      )};
       let ${lastKeyIsNull} = false;
       let ${lastValueIsNull} = false;
       let ${chunkSize} = 0;

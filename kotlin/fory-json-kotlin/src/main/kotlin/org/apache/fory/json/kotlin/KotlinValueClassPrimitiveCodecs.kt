@@ -51,7 +51,7 @@ internal object KotlinValueClassCapabilities {
       }
       java.lang.Byte.TYPE -> {
         if (typeId == Types.UINT8) {
-          val expected = KotlinUnsignedCodecs.scalar(typeId, false, false)
+          val expected = KotlinUnsignedCodecs.scalar(typeId, false, false, false)
           if (exact(child, expected)) {
             operations.typed<KotlinByteValueClassOperations<Any>>()?.let {
               return UByteCapability(it)
@@ -65,7 +65,7 @@ internal object KotlinValueClassCapabilities {
       }
       java.lang.Short.TYPE -> {
         if (typeId == Types.UINT16) {
-          val expected = KotlinUnsignedCodecs.scalar(typeId, false, false)
+          val expected = KotlinUnsignedCodecs.scalar(typeId, false, false, false)
           if (exact(child, expected)) {
             operations.typed<KotlinShortValueClassOperations<Any>>()?.let {
               return UShortCapability(it)
@@ -79,7 +79,7 @@ internal object KotlinValueClassCapabilities {
       }
       java.lang.Integer.TYPE -> {
         if (typeId == Types.UINT32) {
-          val expected = KotlinUnsignedCodecs.scalar(typeId, false, false)
+          val expected = KotlinUnsignedCodecs.scalar(typeId, false, false, false)
           if (exact(child, expected)) {
             operations.typed<KotlinIntValueClassOperations<Any>>()?.let {
               return UIntCapability(it)
@@ -93,15 +93,27 @@ internal object KotlinValueClassCapabilities {
       }
       java.lang.Long.TYPE -> {
         if (typeId == Types.UINT64) {
-          val expected = KotlinUnsignedCodecs.scalar(typeId, false, false)
-          if (exact(child, expected)) {
+          val numeric = KotlinUnsignedCodecs.scalar(typeId, false, false, false)
+          if (exact(child, numeric)) {
             operations.typed<KotlinLongValueClassOperations<Any>>()?.let {
               return ULongCapability(it)
+            }
+          }
+          val quoted = KotlinUnsignedCodecs.scalar(typeId, false, false, true)
+          if (exact(child, quoted)) {
+            operations.typed<KotlinLongValueClassOperations<Any>>()?.let {
+              return ULongAsStringCapability(it)
             }
           }
         } else if (typeId == Types.UNKNOWN && exact(child, ScalarCodecs.LongCodec.PRIMITIVE)) {
           operations.typed<KotlinLongValueClassOperations<Any>>()?.let {
             return LongCapability(it)
+          }
+        } else if (
+          typeId == Types.UNKNOWN && exact(child, ScalarCodecs.LongAsStringCodec.PRIMITIVE)
+        ) {
+          operations.typed<KotlinLongValueClassOperations<Any>>()?.let {
+            return LongAsStringCapability(it)
           }
         }
       }
@@ -223,6 +235,25 @@ private class LongCapability(
 
   override fun writeUtf8(writer: Utf8JsonWriter, value: Any) =
     writer.writeLong(operations.unboxLong(value))
+
+  override fun readLatin1(reader: Latin1JsonReader): Any =
+    operations.constructLong(reader, reader.readLongValue())
+
+  override fun readUtf16(reader: Utf16JsonReader): Any =
+    operations.constructLong(reader, reader.readLongValue())
+
+  override fun readUtf8(reader: Utf8JsonReader): Any =
+    operations.constructLong(reader, reader.readLongValue())
+}
+
+private class LongAsStringCapability(
+  private val operations: KotlinLongValueClassOperations<Any>,
+) : KotlinValueClassCapability {
+  override fun writeString(writer: StringJsonWriter, value: Any) =
+    writer.writeLongAsString(operations.unboxLong(value))
+
+  override fun writeUtf8(writer: Utf8JsonWriter, value: Any) =
+    writer.writeLongAsString(operations.unboxLong(value))
 
   override fun readLatin1(reader: Latin1JsonReader): Any =
     operations.constructLong(reader, reader.readLongValue())
@@ -356,6 +387,25 @@ private class ULongCapability(
 
   override fun writeUtf8(writer: Utf8JsonWriter, value: Any) =
     KotlinUnsignedCodecs.writeULongRaw(writer, operations.unboxLong(value))
+
+  override fun readLatin1(reader: Latin1JsonReader): Any =
+    operations.constructLong(reader, KotlinUnsignedCodecs.readULongRaw(reader))
+
+  override fun readUtf16(reader: Utf16JsonReader): Any =
+    operations.constructLong(reader, KotlinUnsignedCodecs.readULongRaw(reader))
+
+  override fun readUtf8(reader: Utf8JsonReader): Any =
+    operations.constructLong(reader, KotlinUnsignedCodecs.readULongRaw(reader))
+}
+
+private class ULongAsStringCapability(
+  private val operations: KotlinLongValueClassOperations<Any>,
+) : KotlinValueClassCapability {
+  override fun writeString(writer: StringJsonWriter, value: Any) =
+    KotlinUnsignedCodecs.writeULongAsStringRaw(writer, operations.unboxLong(value))
+
+  override fun writeUtf8(writer: Utf8JsonWriter, value: Any) =
+    KotlinUnsignedCodecs.writeULongAsStringRaw(writer, operations.unboxLong(value))
 
   override fun readLatin1(reader: Latin1JsonReader): Any =
     operations.constructLong(reader, KotlinUnsignedCodecs.readULongRaw(reader))

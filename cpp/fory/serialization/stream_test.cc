@@ -155,6 +155,25 @@ private:
   OneByteOutputStreamBuf buf_;
 };
 
+class CountingOutputStream final : public OutputStream {
+public:
+  Result<void, Error> write_to_stream(const uint8_t *src,
+                                      uint32_t length) override {
+    ++write_calls_;
+    data_.insert(data_.end(), src, src + length);
+    return Result<void, Error>();
+  }
+
+  Result<void, Error> flush_stream() override { return Result<void, Error>(); }
+
+  const std::vector<uint8_t> &data() const { return data_; }
+  uint32_t write_calls() const { return write_calls_; }
+
+private:
+  std::vector<uint8_t> data_;
+  uint32_t write_calls_ = 0;
+};
+
 static inline void register_stream_types(Fory &fory) {
   uint32_t type_id = 1;
   fory.register_struct<StreamPoint>(type_id++);
@@ -358,6 +377,21 @@ TEST(StreamSerializationTest, SerializeToOutputStreamRoundTrip) {
   auto roundtrip = fory.deserialize<StreamEnvelope>(bytes);
   ASSERT_TRUE(roundtrip.ok()) << roundtrip.error().to_string();
   EXPECT_EQ(roundtrip.value(), original);
+}
+
+TEST(StreamSerializationTest, LargeStringsFlushIncrementally) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  std::vector<std::string> original{std::string(5000, 'a'),
+                                    std::string(5000, 'b')};
+  auto expected = fory.serialize(original);
+  ASSERT_TRUE(expected.ok()) << expected.error().to_string();
+
+  CountingOutputStream writer;
+  auto streamed = fory.serialize(writer, original);
+  ASSERT_TRUE(streamed.ok()) << streamed.error().to_string();
+  EXPECT_GE(writer.write_calls(), 2U);
+  EXPECT_EQ(writer.data(), expected.value());
 }
 
 TEST(StreamSerializationTest, SerializeToOStreamOverloadParity) {

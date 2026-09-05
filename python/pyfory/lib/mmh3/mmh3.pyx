@@ -22,6 +22,9 @@
 from libc.stdint cimport uint64_t, int64_t, int32_t
 
 
+cdef unsigned char _empty_hash_data = 0
+
+
 cdef uint32_t hash32(void* key, int length, uint32_t seed) nogil:
     cdef int32_t out
     MurmurHash3_x86_32(key, length, seed, &out)
@@ -46,7 +49,18 @@ cpdef tuple hash_unicode(unicode value, uint32_t seed=0):
     return hash_buffer(value.encode('utf8'), seed=seed)
 
 
-cpdef tuple hash_buffer(const unsigned char[:] value, uint32_t seed=0):
+cpdef tuple hash_buffer(value, uint32_t seed=0):
     cdef int64_t[2] out
-    MurmurHash3_x64_128(&value[0], value.nbytes, seed, &out)
+    cdef object view = memoryview(value)
+    cdef const unsigned char[::1] data_view
+    cdef Py_ssize_t length = view.nbytes
+    cdef const unsigned char* data = &_empty_hash_data
+    if not view.c_contiguous:
+        raise ValueError("Hash input must be C-contiguous")
+    if length > 2147483647:
+        raise OverflowError(f"Buffer length {length} exceeds the native hash limit")
+    data_view = view
+    if length > 0:
+        data = &data_view[0]
+    MurmurHash3_x64_128(data, <int>length, seed, &out)
     return out[0], out[1]

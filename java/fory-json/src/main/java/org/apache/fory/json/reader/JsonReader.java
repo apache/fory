@@ -502,6 +502,45 @@ public abstract class JsonReader {
       throw error("Expected Base64 JSON string");
     }
     int bodyStart = position;
+    int end = -1;
+    int padding = 0;
+    while (position < length()) {
+      char ch = charAt(position++);
+      if (ch == '"') {
+        end = position - 1;
+        break;
+      }
+      if (ch == '\\') {
+        // Rare: an escaped character in the body, fall back to the validating two-pass path
+        position = bodyStart;
+        return readBase64Escaped(bodyStart);
+      }
+      if (ch == '=') {
+        if (++padding > 2) {
+          throw error("Invalid Base64 JSON string padding");
+        }
+      } else if (padding != 0 || base64Digit(ch) < 0) {
+        throw error("Invalid Base64 JSON string");
+      }
+    }
+    if (end < 0) {
+      throw error("Unterminated Base64 JSON string");
+    }
+    int bodyLength = end - bodyStart;
+    if (bodyLength == 0) {
+      return EMPTY_BYTES;
+    }
+    if ((bodyLength & 3) != 0) {
+      throw error("Invalid Base64 JSON string length");
+    }
+    int decodedLength = (bodyLength >>> 2) * 3 - padding;
+    // Base64 is a binary leaf: validated input bounds its storage, not the graph memory budget.
+    byte[] decoded = new byte[decodedLength];
+    decodeBase64(decoded, bodyStart, end);
+    return decoded;
+  }
+
+  private byte[] readBase64Escaped(int bodyStart) {
     // Validate and consume the complete encoded text before allocating, so untrusted input can
     // only request decoded storage proportional to code units already proven readable.
     long shape = scanBase64Shape();
@@ -511,9 +550,10 @@ public abstract class JsonReader {
     }
     int end = position;
     int padding = (int) (shape & 3);
-    byte[] decoded = new byte[(encodedLength >>> 2) * 3 - padding];
+    int decodedLength = (encodedLength >>> 2) * 3 - padding;
+    byte[] decoded = new byte[decodedLength];
     position = bodyStart;
-    decodeBase64(decoded, encodedLength);
+    decodeBase64Escaped(decoded, encodedLength);
     position = end;
     return decoded;
   }
@@ -539,7 +579,7 @@ public abstract class JsonReader {
           throw error("Invalid Base64 JSON string padding");
         }
       } else {
-        if (padding != 0 || decodeBase64Digit(ch) < 0) {
+        if (padding != 0 || base64Digit(ch) < 0) {
           throw error("Invalid Base64 JSON string");
         }
       }
@@ -548,18 +588,39 @@ public abstract class JsonReader {
     throw error("Unterminated Base64 JSON string");
   }
 
-  private void decodeBase64(byte[] decoded, int encodedLength) {
+  private void decodeBase64(byte[] decoded, int start, int end) {
+    int output = 0;
+    for (int index = start; index < end; index += 4) {
+      int bits = (base64Digit(charAt(index)) << 18) | (base64Digit(charAt(index + 1)) << 12);
+      char third = charAt(index + 2);
+      char fourth = charAt(index + 3);
+      if (third != '=') {
+        bits |= base64Digit(third) << 6;
+      }
+      if (fourth != '=') {
+        bits |= base64Digit(fourth);
+      }
+      decoded[output++] = (byte) (bits >>> 16);
+      if (output < decoded.length) {
+        decoded[output++] = (byte) (bits >>> 8);
+        if (output < decoded.length) {
+          decoded[output++] = (byte) bits;
+        }
+      }
+    }
+  }
+
+  private void decodeBase64Escaped(byte[] decoded, int encodedLength) {
     int output = 0;
     for (int index = 0; index < encodedLength; index += 4) {
-      int bits =
-          (decodeBase64Digit(readBase64Char()) << 18) | (decodeBase64Digit(readBase64Char()) << 12);
+      int bits = (base64Digit(readBase64Char()) << 18) | (base64Digit(readBase64Char()) << 12);
       char third = readBase64Char();
       char fourth = readBase64Char();
       if (third != '=') {
-        bits |= decodeBase64Digit(third) << 6;
+        bits |= base64Digit(third) << 6;
       }
       if (fourth != '=') {
-        bits |= decodeBase64Digit(fourth);
+        bits |= base64Digit(fourth);
       }
       decoded[output++] = (byte) (bits >>> 16);
       if (output < decoded.length) {
@@ -576,20 +637,25 @@ public abstract class JsonReader {
     return ch == '\\' ? readEscapedFieldNameChar() : ch;
   }
 
-  private static int decodeBase64Digit(char ch) {
-    if (ch >= 'A' && ch <= 'Z') {
-      return ch - 'A';
+  private static final byte[] BASE64_DIGIT_VALUES = new byte[128];
+
+  static {
+    java.util.Arrays.fill(BASE64_DIGIT_VALUES, (byte) -1);
+    for (char c = 'A'; c <= 'Z'; c++) {
+      BASE64_DIGIT_VALUES[c] = (byte) (c - 'A');
     }
-    if (ch >= 'a' && ch <= 'z') {
-      return ch - 'a' + 26;
+    for (char c = 'a'; c <= 'z'; c++) {
+      BASE64_DIGIT_VALUES[c] = (byte) (c - 'a' + 26);
     }
-    if (ch >= '0' && ch <= '9') {
-      return ch - '0' + 52;
+    for (char c = '0'; c <= '9'; c++) {
+      BASE64_DIGIT_VALUES[c] = (byte) (c - '0' + 52);
     }
-    if (ch == '+') {
-      return 62;
-    }
-    return ch == '/' ? 63 : -1;
+    BASE64_DIGIT_VALUES['+'] = 62;
+    BASE64_DIGIT_VALUES['/'] = 63;
+  }
+
+  private static int base64Digit(char ch) {
+    return ch < 128 ? BASE64_DIGIT_VALUES[ch] : -1;
   }
 
   public String readCharSequence() {
@@ -892,6 +958,13 @@ public abstract class JsonReader {
   /** Reads one canonical unsigned 64-bit JSON integer and returns its raw bits. */
   public final long readUnsignedLong() {
     skipWhitespace();
+    if (position < length() && charAt(position) == '"') {
+      beginQuotedScalar();
+      long value = readUnsignedDigits();
+      rejectFractionOrExponent();
+      finishQuotedScalar();
+      return value;
+    }
     long value = readUnsignedDigits();
     rejectFractionOrExponent();
     return value;

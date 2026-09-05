@@ -138,6 +138,12 @@ public final class JsonTypeResolver {
     return sharedRegistry;
   }
 
+  /** Returns whether this runtime writes default 64-bit integral values as JSON strings. */
+  @Internal
+  public boolean writeLongAsString() {
+    return sharedRegistry.writeLongAsString();
+  }
+
   @Internal
   public void lockJIT() {
     jitContext.lock();

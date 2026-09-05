@@ -93,8 +93,8 @@ struct Serializer<
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
     // write array length in bytes
-    writer_index += buffer.put_var_uint32(writer_index,
-                                          static_cast<uint32_t>(N * sizeof(T)));
+    writer_index += buffer.put_var_uint32_unchecked(
+        writer_index, static_cast<uint32_t>(N * sizeof(T)));
 
     // write data
     if constexpr (N > 0) {
@@ -110,7 +110,7 @@ struct Serializer<
         }
       }
     }
-    buffer.writer_index(writer_index + N * sizeof(T));
+    buffer.unsafe_set_writer_index(writer_index + N * sizeof(T));
   }
 
   static inline void write_data_generic(const std::array<T, N> &arr,
@@ -221,14 +221,14 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
     uint32_t writer_index = buffer.writer_index();
     // write array length
     writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(N));
+        buffer.put_var_uint32_unchecked(writer_index, static_cast<uint32_t>(N));
 
     // write each boolean as a byte
     for (size_t i = 0; i < N; ++i) {
       buffer.unsafe_put_byte(writer_index + i,
                              static_cast<uint8_t>(arr[i] ? 1 : 0));
     }
-    buffer.writer_index(writer_index + N);
+    buffer.unsafe_set_writer_index(writer_index + N);
   }
 
   static inline void write_data_generic(const std::array<bool, N> &arr,
@@ -323,7 +323,7 @@ template <size_t N> struct Serializer<std::array<float16_t, N>> {
     constexpr size_t max_size = 8 + N * sizeof(float16_t);
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
-    writer_index += buffer.put_var_uint32(
+    writer_index += buffer.put_var_uint32_unchecked(
         writer_index, static_cast<uint32_t>(N * sizeof(float16_t)));
     if constexpr (N > 0) {
       if constexpr (FORY_LITTLE_ENDIAN) {
@@ -336,7 +336,7 @@ template <size_t N> struct Serializer<std::array<float16_t, N>> {
         }
       }
     }
-    buffer.writer_index(writer_index + N * sizeof(float16_t));
+    buffer.unsafe_set_writer_index(writer_index + N * sizeof(float16_t));
   }
 
   static inline void write_data_generic(const std::array<float16_t, N> &arr,
@@ -436,7 +436,7 @@ template <size_t N> struct Serializer<std::array<bfloat16_t, N>> {
     constexpr size_t max_size = 8 + N * sizeof(bfloat16_t);
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
-    writer_index += buffer.put_var_uint32(
+    writer_index += buffer.put_var_uint32_unchecked(
         writer_index, static_cast<uint32_t>(N * sizeof(bfloat16_t)));
     if constexpr (N > 0) {
       if constexpr (FORY_LITTLE_ENDIAN) {
@@ -449,7 +449,7 @@ template <size_t N> struct Serializer<std::array<bfloat16_t, N>> {
         }
       }
     }
-    buffer.writer_index(writer_index + N * sizeof(bfloat16_t));
+    buffer.unsafe_set_writer_index(writer_index + N * sizeof(bfloat16_t));
   }
 
   static inline void write_data_generic(const std::array<bfloat16_t, N> &arr,

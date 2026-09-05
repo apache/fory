@@ -241,7 +241,6 @@ class WriteContext:
         "buffer_callback",
         "unsupported_callback",
         "context_objects",
-        "depth",
     )
 
     def __init__(self, config: Config, type_resolver):
@@ -259,7 +258,6 @@ class WriteContext:
         self.buffer_callback = None
         self.unsupported_callback = None
         self.context_objects = {}
-        self.depth = 0
 
     def __getattr__(self, name):
         buffer = object.__getattribute__(self, "buffer")
@@ -271,7 +269,6 @@ class WriteContext:
         self.buffer = buffer
         self.buffer_callback = buffer_callback
         self.unsupported_callback = unsupported_callback
-        self.depth = 0
 
     def reset(self):
         self.ref_writer.reset()
@@ -283,7 +280,6 @@ class WriteContext:
         self.buffer = None
         self.buffer_callback = None
         self.unsupported_callback = None
-        self.depth = 0
 
     def add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj
@@ -293,12 +289,6 @@ class WriteContext:
 
     def get_context_object(self, key, default=None):
         return self.context_objects.get(id(key), default)
-
-    def increase_depth(self, diff=1):
-        self.depth += diff
-
-    def decrease_depth(self, diff=1):
-        self.depth -= diff
 
     def write_ref_or_null(self, obj):
         return self.ref_writer.write_ref_or_null(self.buffer, obj)
@@ -325,9 +315,7 @@ class WriteContext:
 
     def write_non_ref(self, obj, serializer=None, typeinfo=None):
         if serializer is not None:
-            self.increase_depth()
             serializer.write(self, obj)
-            self.decrease_depth()
             return
         cls = type(obj)
         if cls is str:
@@ -349,9 +337,7 @@ class WriteContext:
         if typeinfo is None:
             typeinfo = self.type_resolver.get_type_info(cls)
         self.type_resolver.write_type_info(self, typeinfo)
-        self.increase_depth()
         typeinfo.serializer.write(self, obj)
-        self.decrease_depth()
 
     def write_no_ref(self, obj, serializer=None, typeinfo=None):
         self.write_non_ref(obj, serializer=serializer, typeinfo=typeinfo)

@@ -109,6 +109,9 @@ public abstract class JsonWriter {
 
   public abstract void writeLong(long value);
 
+  /** Writes a signed 64-bit value as a quoted decimal JSON string. */
+  public abstract void writeLongAsString(long value);
+
   /** Writes raw unsigned 32-bit bits as a decimal JSON number. */
   public void writeUnsignedInt(int value) {
     writeLong(Integer.toUnsignedLong(value));
@@ -116,6 +119,9 @@ public abstract class JsonWriter {
 
   /** Writes raw unsigned 64-bit bits as a decimal JSON number. */
   public abstract void writeUnsignedLong(long value);
+
+  /** Writes raw unsigned 64-bit bits as a quoted decimal JSON string. */
+  public abstract void writeUnsignedLongAsString(long value);
 
   public abstract void writeFloat(float value);
 

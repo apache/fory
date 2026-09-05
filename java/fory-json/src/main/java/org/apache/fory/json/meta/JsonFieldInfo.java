@@ -32,6 +32,7 @@ import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.DirectUnboxedValueCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.TransparentUnboxedValueCodec;
 import org.apache.fory.json.codec.UnboxedValueCodec;
 import org.apache.fory.json.reader.JsonReader;
@@ -81,6 +82,7 @@ public final class JsonFieldInfo {
   private static final int KIND_RAW_STRING = 16;
   private static final int KIND_NULL = 17;
   private static final int KIND_UNBOXED = 18;
+  private static final int KIND_LONG_AS_STRING = 19;
   private static final int WRITE_NULL_MASK = Integer.MIN_VALUE;
   private static final int REQUIRE_NON_NULL_MASK = 1 << 30;
   private static final int READ_INDEX_MASK = REQUIRE_NON_NULL_MASK - 1;
@@ -463,6 +465,11 @@ public final class JsonFieldInfo {
     return writeKindId == KIND_RAW_STRING;
   }
 
+  /** Returns whether the resolved built-in Long binding writes quoted decimal digits. */
+  public boolean writesLongAsString() {
+    return writeKind == JsonFieldKind.LONG && isLongAsString(writeTypeInfo);
+  }
+
   public JsonFieldAccessor writeAccessor() {
     return writeAccessor;
   }
@@ -579,7 +586,13 @@ public final class JsonFieldInfo {
       }
       if (!rawString && writeRawType != void.class) {
         writeKind = writeTypeInfo.kind();
-        writeKindId = writeUnboxedValueCodec == null ? kindId(writeKind) : KIND_UNBOXED;
+        if (writeUnboxedValueCodec != null) {
+          writeKindId = KIND_UNBOXED;
+        } else if (writeKind == JsonFieldKind.LONG && isLongAsString(writeTypeInfo)) {
+          writeKindId = KIND_LONG_AS_STRING;
+        } else {
+          writeKindId = kindId(writeKind);
+        }
       }
       if (writeUnboxedValueCodec != null
           && !writeOccurrenceTypeInfo.nullable()
@@ -608,6 +621,12 @@ public final class JsonFieldInfo {
       readPrimitiveKindId =
           readUnboxedValueCodec == null ? primitiveKindId(readRawType, readKind) : KIND_UNBOXED;
     }
+  }
+
+  private static boolean isLongAsString(JsonTypeInfo typeInfo) {
+    Object codec = typeInfo.stringWriter();
+    return codec == ScalarCodecs.LongAsStringCodec.PRIMITIVE
+        || codec == ScalarCodecs.LongAsStringCodec.BOXED;
   }
 
   private UnboxedValueCodec requireUnboxed(
@@ -1108,6 +1127,13 @@ public final class JsonFieldInfo {
         writer.writeLongField(
             stringNamePrefix, stringCommaNamePrefix, index, writeAccessor.getLong(object));
         return true;
+      case KIND_LONG_AS_STRING:
+        if (!writeRawType.isPrimitive()) {
+          return writeStringLongAsString(writer, object, index);
+        }
+        writer.writeLongAsStringField(
+            stringNamePrefix, stringCommaNamePrefix, index, writeAccessor.getLong(object));
+        return true;
       case KIND_FLOAT:
         if (!writeRawType.isPrimitive()) {
           return writeStringScalar(writer, object, index);
@@ -1188,6 +1214,13 @@ public final class JsonFieldInfo {
           return writeUtf8Scalar(writer, object, index);
         }
         writer.writeLongField(
+            utf8NamePrefix, utf8CommaNamePrefix, index, writeAccessor.getLong(object));
+        return true;
+      case KIND_LONG_AS_STRING:
+        if (!writeRawType.isPrimitive()) {
+          return writeUtf8LongAsString(writer, object, index);
+        }
+        writer.writeLongAsStringField(
             utf8NamePrefix, utf8CommaNamePrefix, index, writeAccessor.getLong(object));
         return true;
       case KIND_FLOAT:
@@ -1292,6 +1325,21 @@ public final class JsonFieldInfo {
     }
   }
 
+  private boolean writeStringLongAsString(StringJsonWriter writer, Object object, int index) {
+    Long value = (Long) writeAccessor.getObject(object);
+    if (value == null && !writeNull()) {
+      return omitNullValue();
+    }
+    if (value == null) {
+      writer.writeFieldName(this, index);
+      writer.writeNull();
+    } else {
+      writer.writeLongAsStringField(
+          stringNamePrefix, stringCommaNamePrefix, index, value.longValue());
+    }
+    return true;
+  }
+
   private boolean writeUtf8Scalar(Utf8JsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
     if (value == null && !writeNull()) {
@@ -1326,6 +1374,20 @@ public final class JsonFieldInfo {
         writeUtf8ScalarValue(writer, value);
         return true;
     }
+  }
+
+  private boolean writeUtf8LongAsString(Utf8JsonWriter writer, Object object, int index) {
+    Long value = (Long) writeAccessor.getObject(object);
+    if (value == null && !writeNull()) {
+      return omitNullValue();
+    }
+    if (value == null) {
+      writer.writeFieldName(this, index);
+      writer.writeNull();
+    } else {
+      writer.writeLongAsStringField(utf8NamePrefix, utf8CommaNamePrefix, index, value.longValue());
+    }
+    return true;
   }
 
   private boolean writeStringText(StringJsonWriter writer, Object object, int index) {

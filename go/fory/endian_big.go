@@ -19,6 +19,9 @@
 
 package fory
 
-// isLittleEndian is a compile-time constant for big-endian architectures.
-// This enables dead code elimination - the compiler removes little-endian branches entirely.
-const isLittleEndian = false
+const (
+	// These compile-time constants let the compiler eliminate the unsupported
+	// native-endian and unaligned access paths entirely.
+	isLittleEndian        = false
+	useNativeEndianAccess = false
+)

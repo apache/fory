@@ -46,6 +46,8 @@ var (
 	intIntMapMaxLength        = maxGraphCount(intIntMapElemBytes)
 )
 
+// All primitive map writers must keep one traversal across chunks. A new range
+// per chunk can repeat or omit entries because Go map order is not guaranteed.
 // writeMapStringString writes map[string]string using chunk protocol
 // When hasGenerics=true, element types are known so we set DECL_TYPE flags and skip type info
 func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool) {
@@ -55,37 +57,32 @@ func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool
 		return
 	}
 
-	// WriteData chunks of entries
 	remaining := length
-	for remaining > 0 {
-		chunkSize := remaining
-		if chunkSize > MAX_CHUNK_SIZE {
-			chunkSize = MAX_CHUNK_SIZE
-		}
+	chunkRemaining := 0
+	for k, v := range m {
+		if chunkRemaining == 0 {
+			chunkRemaining = remaining
+			if chunkRemaining > MAX_CHUNK_SIZE {
+				chunkRemaining = MAX_CHUNK_SIZE
+			}
 
-		if hasGenerics {
-			// Element types are known from generics, set DECL_TYPE flags
-			buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
-			buf.WriteUint8(uint8(chunkSize))
-		} else {
-			// Write type info for generic reader compatibility
-			buf.WriteUint8(0)
-			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteUint8(uint8(STRING)) // key type
-			buf.WriteUint8(uint8(STRING)) // value type
-		}
-
-		// WriteData chunk entries
-		count := 0
-		for k, v := range m {
-			writeString(buf, k)
-			writeString(buf, v)
-			count++
-			if count >= chunkSize {
-				break
+			if hasGenerics {
+				// Element types are known from generics, set DECL_TYPE flags
+				buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+				buf.WriteUint8(uint8(chunkRemaining))
+			} else {
+				// Write type info for generic reader compatibility
+				buf.WriteUint8(0)
+				buf.WriteUint8(uint8(chunkRemaining))
+				buf.WriteUint8(uint8(STRING)) // key type
+				buf.WriteUint8(uint8(STRING)) // value type
 			}
 		}
-		remaining -= chunkSize
+
+		writeString(buf, k)
+		writeString(buf, v)
+		remaining--
+		chunkRemaining--
 	}
 }
 
@@ -172,32 +169,29 @@ func writeMapStringInt64(buf *ByteBuffer, m map[string]int64, hasGenerics bool) 
 	}
 
 	remaining := length
-	for remaining > 0 {
-		chunkSize := remaining
-		if chunkSize > MAX_CHUNK_SIZE {
-			chunkSize = MAX_CHUNK_SIZE
-		}
+	chunkRemaining := 0
+	for k, v := range m {
+		if chunkRemaining == 0 {
+			chunkRemaining = remaining
+			if chunkRemaining > MAX_CHUNK_SIZE {
+				chunkRemaining = MAX_CHUNK_SIZE
+			}
 
-		if hasGenerics {
-			buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
-			buf.WriteUint8(uint8(chunkSize))
-		} else {
-			buf.WriteUint8(0)
-			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteUint8(uint8(STRING))   // key type
-			buf.WriteUint8(uint8(VARINT64)) // value type
-		}
-
-		count := 0
-		for k, v := range m {
-			writeString(buf, k)
-			buf.WriteVarint64(v)
-			count++
-			if count >= chunkSize {
-				break
+			if hasGenerics {
+				buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+				buf.WriteUint8(uint8(chunkRemaining))
+			} else {
+				buf.WriteUint8(0)
+				buf.WriteUint8(uint8(chunkRemaining))
+				buf.WriteUint8(uint8(STRING))   // key type
+				buf.WriteUint8(uint8(VARINT64)) // value type
 			}
 		}
-		remaining -= chunkSize
+
+		writeString(buf, k)
+		buf.WriteVarint64(v)
+		remaining--
+		chunkRemaining--
 	}
 }
 
@@ -256,32 +250,29 @@ func writeMapStringInt32(buf *ByteBuffer, m map[string]int32, hasGenerics bool) 
 	}
 
 	remaining := length
-	for remaining > 0 {
-		chunkSize := remaining
-		if chunkSize > MAX_CHUNK_SIZE {
-			chunkSize = MAX_CHUNK_SIZE
-		}
+	chunkRemaining := 0
+	for k, v := range m {
+		if chunkRemaining == 0 {
+			chunkRemaining = remaining
+			if chunkRemaining > MAX_CHUNK_SIZE {
+				chunkRemaining = MAX_CHUNK_SIZE
+			}
 
-		if hasGenerics {
-			buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
-			buf.WriteUint8(uint8(chunkSize))
-		} else {
-			buf.WriteUint8(0)
-			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteUint8(uint8(STRING))   // key type
-			buf.WriteUint8(uint8(VARINT32)) // value type
-		}
-
-		count := 0
-		for k, v := range m {
-			writeString(buf, k)
-			buf.WriteVarint32(v)
-			count++
-			if count >= chunkSize {
-				break
+			if hasGenerics {
+				buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+				buf.WriteUint8(uint8(chunkRemaining))
+			} else {
+				buf.WriteUint8(0)
+				buf.WriteUint8(uint8(chunkRemaining))
+				buf.WriteUint8(uint8(STRING))   // key type
+				buf.WriteUint8(uint8(VARINT32)) // value type
 			}
 		}
-		remaining -= chunkSize
+
+		writeString(buf, k)
+		buf.WriteVarint32(v)
+		remaining--
+		chunkRemaining--
 	}
 }
 
@@ -340,32 +331,29 @@ func writeMapStringInt(buf *ByteBuffer, m map[string]int, hasGenerics bool) {
 	}
 
 	remaining := length
-	for remaining > 0 {
-		chunkSize := remaining
-		if chunkSize > MAX_CHUNK_SIZE {
-			chunkSize = MAX_CHUNK_SIZE
-		}
+	chunkRemaining := 0
+	for k, v := range m {
+		if chunkRemaining == 0 {
+			chunkRemaining = remaining
+			if chunkRemaining > MAX_CHUNK_SIZE {
+				chunkRemaining = MAX_CHUNK_SIZE
+			}
 
-		if hasGenerics {
-			buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
-			buf.WriteUint8(uint8(chunkSize))
-		} else {
-			buf.WriteUint8(0)
-			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteUint8(uint8(STRING))   // key type
-			buf.WriteUint8(uint8(VARINT64)) // value type (int serialized as varint64)
-		}
-
-		count := 0
-		for k, v := range m {
-			writeString(buf, k)
-			buf.WriteVarint64(int64(v))
-			count++
-			if count >= chunkSize {
-				break
+			if hasGenerics {
+				buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+				buf.WriteUint8(uint8(chunkRemaining))
+			} else {
+				buf.WriteUint8(0)
+				buf.WriteUint8(uint8(chunkRemaining))
+				buf.WriteUint8(uint8(STRING))   // key type
+				buf.WriteUint8(uint8(VARINT64)) // value type (int serialized as varint64)
 			}
 		}
-		remaining -= chunkSize
+
+		writeString(buf, k)
+		buf.WriteVarint64(int64(v))
+		remaining--
+		chunkRemaining--
 	}
 }
 
@@ -424,32 +412,29 @@ func writeMapStringFloat64(buf *ByteBuffer, m map[string]float64, hasGenerics bo
 	}
 
 	remaining := length
-	for remaining > 0 {
-		chunkSize := remaining
-		if chunkSize > MAX_CHUNK_SIZE {
-			chunkSize = MAX_CHUNK_SIZE
-		}
+	chunkRemaining := 0
+	for k, v := range m {
+		if chunkRemaining == 0 {
+			chunkRemaining = remaining
+			if chunkRemaining > MAX_CHUNK_SIZE {
+				chunkRemaining = MAX_CHUNK_SIZE
+			}
 
-		if hasGenerics {
-			buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
-			buf.WriteUint8(uint8(chunkSize))
-		} else {
-			buf.WriteUint8(0)
-			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteUint8(uint8(STRING))  // key type
-			buf.WriteUint8(uint8(FLOAT64)) // value type
-		}
-
-		count := 0
-		for k, v := range m {
-			writeString(buf, k)
-			buf.WriteFloat64(v)
-			count++
-			if count >= chunkSize {
-				break
+			if hasGenerics {
+				buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+				buf.WriteUint8(uint8(chunkRemaining))
+			} else {
+				buf.WriteUint8(0)
+				buf.WriteUint8(uint8(chunkRemaining))
+				buf.WriteUint8(uint8(STRING))  // key type
+				buf.WriteUint8(uint8(FLOAT64)) // value type
 			}
 		}
-		remaining -= chunkSize
+
+		writeString(buf, k)
+		buf.WriteFloat64(v)
+		remaining--
+		chunkRemaining--
 	}
 }
 
@@ -508,32 +493,29 @@ func writeMapStringBool(buf *ByteBuffer, m map[string]bool, hasGenerics bool) {
 	}
 
 	remaining := length
-	for remaining > 0 {
-		chunkSize := remaining
-		if chunkSize > MAX_CHUNK_SIZE {
-			chunkSize = MAX_CHUNK_SIZE
-		}
+	chunkRemaining := 0
+	for k, v := range m {
+		if chunkRemaining == 0 {
+			chunkRemaining = remaining
+			if chunkRemaining > MAX_CHUNK_SIZE {
+				chunkRemaining = MAX_CHUNK_SIZE
+			}
 
-		if hasGenerics {
-			buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
-			buf.WriteUint8(uint8(chunkSize))
-		} else {
-			buf.WriteUint8(0)
-			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteUint8(uint8(STRING)) // key type
-			buf.WriteUint8(uint8(BOOL))   // value type
-		}
-
-		count := 0
-		for k, v := range m {
-			writeString(buf, k)
-			buf.WriteBool(v)
-			count++
-			if count >= chunkSize {
-				break
+			if hasGenerics {
+				buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+				buf.WriteUint8(uint8(chunkRemaining))
+			} else {
+				buf.WriteUint8(0)
+				buf.WriteUint8(uint8(chunkRemaining))
+				buf.WriteUint8(uint8(STRING)) // key type
+				buf.WriteUint8(uint8(BOOL))   // value type
 			}
 		}
-		remaining -= chunkSize
+
+		writeString(buf, k)
+		buf.WriteBool(v)
+		remaining--
+		chunkRemaining--
 	}
 }
 
@@ -596,32 +578,29 @@ func writeMapInt32Int32(buf *ByteBuffer, m map[int32]int32, hasGenerics bool) {
 	}
 
 	remaining := length
-	for remaining > 0 {
-		chunkSize := remaining
-		if chunkSize > MAX_CHUNK_SIZE {
-			chunkSize = MAX_CHUNK_SIZE
-		}
+	chunkRemaining := 0
+	for k, v := range m {
+		if chunkRemaining == 0 {
+			chunkRemaining = remaining
+			if chunkRemaining > MAX_CHUNK_SIZE {
+				chunkRemaining = MAX_CHUNK_SIZE
+			}
 
-		if hasGenerics {
-			buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
-			buf.WriteUint8(uint8(chunkSize))
-		} else {
-			buf.WriteUint8(0)
-			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteUint8(uint8(VARINT32)) // key type
-			buf.WriteUint8(uint8(VARINT32)) // value type
-		}
-
-		count := 0
-		for k, v := range m {
-			buf.WriteVarint32(k)
-			buf.WriteVarint32(v)
-			count++
-			if count >= chunkSize {
-				break
+			if hasGenerics {
+				buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+				buf.WriteUint8(uint8(chunkRemaining))
+			} else {
+				buf.WriteUint8(0)
+				buf.WriteUint8(uint8(chunkRemaining))
+				buf.WriteUint8(uint8(VARINT32)) // key type
+				buf.WriteUint8(uint8(VARINT32)) // value type
 			}
 		}
-		remaining -= chunkSize
+
+		buf.WriteVarint32(k)
+		buf.WriteVarint32(v)
+		remaining--
+		chunkRemaining--
 	}
 }
 
@@ -680,32 +659,29 @@ func writeMapInt64Int64(buf *ByteBuffer, m map[int64]int64, hasGenerics bool) {
 	}
 
 	remaining := length
-	for remaining > 0 {
-		chunkSize := remaining
-		if chunkSize > MAX_CHUNK_SIZE {
-			chunkSize = MAX_CHUNK_SIZE
-		}
+	chunkRemaining := 0
+	for k, v := range m {
+		if chunkRemaining == 0 {
+			chunkRemaining = remaining
+			if chunkRemaining > MAX_CHUNK_SIZE {
+				chunkRemaining = MAX_CHUNK_SIZE
+			}
 
-		if hasGenerics {
-			buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
-			buf.WriteUint8(uint8(chunkSize))
-		} else {
-			buf.WriteUint8(0)
-			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteUint8(uint8(VARINT64)) // key type
-			buf.WriteUint8(uint8(VARINT64)) // value type
-		}
-
-		count := 0
-		for k, v := range m {
-			buf.WriteVarint64(k)
-			buf.WriteVarint64(v)
-			count++
-			if count >= chunkSize {
-				break
+			if hasGenerics {
+				buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+				buf.WriteUint8(uint8(chunkRemaining))
+			} else {
+				buf.WriteUint8(0)
+				buf.WriteUint8(uint8(chunkRemaining))
+				buf.WriteUint8(uint8(VARINT64)) // key type
+				buf.WriteUint8(uint8(VARINT64)) // value type
 			}
 		}
-		remaining -= chunkSize
+
+		buf.WriteVarint64(k)
+		buf.WriteVarint64(v)
+		remaining--
+		chunkRemaining--
 	}
 }
 
@@ -764,32 +740,29 @@ func writeMapIntInt(buf *ByteBuffer, m map[int]int, hasGenerics bool) {
 	}
 
 	remaining := length
-	for remaining > 0 {
-		chunkSize := remaining
-		if chunkSize > MAX_CHUNK_SIZE {
-			chunkSize = MAX_CHUNK_SIZE
-		}
+	chunkRemaining := 0
+	for k, v := range m {
+		if chunkRemaining == 0 {
+			chunkRemaining = remaining
+			if chunkRemaining > MAX_CHUNK_SIZE {
+				chunkRemaining = MAX_CHUNK_SIZE
+			}
 
-		if hasGenerics {
-			buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
-			buf.WriteUint8(uint8(chunkSize))
-		} else {
-			buf.WriteUint8(0)
-			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteUint8(uint8(VARINT64)) // key type (int serialized as varint64)
-			buf.WriteUint8(uint8(VARINT64)) // value type
-		}
-
-		count := 0
-		for k, v := range m {
-			buf.WriteVarint64(int64(k))
-			buf.WriteVarint64(int64(v))
-			count++
-			if count >= chunkSize {
-				break
+			if hasGenerics {
+				buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+				buf.WriteUint8(uint8(chunkRemaining))
+			} else {
+				buf.WriteUint8(0)
+				buf.WriteUint8(uint8(chunkRemaining))
+				buf.WriteUint8(uint8(VARINT64)) // key type (int serialized as varint64)
+				buf.WriteUint8(uint8(VARINT64)) // value type
 			}
 		}
-		remaining -= chunkSize
+
+		buf.WriteVarint64(int64(k))
+		buf.WriteVarint64(int64(v))
+		remaining--
+		chunkRemaining--
 	}
 }
 

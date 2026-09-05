@@ -50,21 +50,21 @@ private func timestampDate(seconds: Int64, nanos: UInt32) -> Date {
 }
 
 @inline(__always)
-private func localDateEpochDay(for date: Date) throws -> Int32 {
+private func localDateEpochDay(for date: Date) throws -> Int64 {
     let days = floor(date.timeIntervalSince1970 / secondsPerDay)
-    guard days >= Double(Int32.min), days <= Double(Int32.max) else {
+    guard let epochDay = Int64(exactly: days) else {
         throw dateEpochOutOfRange()
     }
-    return Int32(days)
+    return epochDay
 }
 
 @inline(__always)
-private func localDateFromEpochDay(_ epochDay: Int32) -> Date {
+private func localDateFromEpochDay(_ epochDay: Int64) -> Date {
     Date(timeIntervalSince1970: Double(epochDay) * secondsPerDay)
 }
 
 @inline(__always)
-private func localDateComponents(_ epochDay: Int32) -> DateComponents {
+private func localDateComponents(_ epochDay: Int64) -> DateComponents {
     localDateCalendar.dateComponents([.year, .month, .day], from: localDateFromEpochDay(epochDay))
 }
 
@@ -169,12 +169,17 @@ private func readTypeID(_ context: ReadContext, expectedTypeIDs: [TypeId]) throw
 
 @inline(never)
 private func dateEpochOutOfRange() -> ForyError {
-    ForyError.encodingError("date epochDay is out of Int32 range")
+    ForyError.encodingError("date epochDay is out of Int64 range")
 }
 
 @inline(never)
-private func invalidDateEpochDay() -> ForyError {
-    ForyError.invalidData("date epochDay is out of Int32 range")
+private func invalidDurationNanos(_ nanos: Int32) -> ForyError {
+    ForyError.invalidData("duration nanoseconds \(nanos) are outside [0, 1000000000)")
+}
+
+@inline(never)
+private func durationOutOfRange() -> ForyError {
+    ForyError.encodingError("duration is outside the normalized wire range")
 }
 
 @inline(never)
@@ -206,13 +211,13 @@ private func unexpectedScalarTypeIDs(_ expected: [TypeId], actual: UInt32) -> Fo
 /// A calendar date without time-of-day or timezone, encoded as Fory `date`.
 public struct LocalDate: Serializer, Equatable, Hashable, Comparable {
     /// Days since 1970-01-01 in the UTC Gregorian calendar.
-    public var epochDay: Int32
+    public var epochDay: Int64
 
-    public init(epochDay: Int32 = 0) {
+    public init(epochDay: Int64 = 0) {
         self.epochDay = epochDay
     }
 
-    public static func fromEpochDay(_ epochDay: Int32) -> LocalDate {
+    public static func fromEpochDay(_ epochDay: Int64) -> LocalDate {
         .init(epochDay: epochDay)
     }
 
@@ -233,7 +238,7 @@ public struct LocalDate: Serializer, Equatable, Hashable, Comparable {
         self.epochDay = try localDateEpochDay(for: utcDate)
     }
 
-    public func toEpochDay() -> Int32 {
+    public func toEpochDay() -> Int64 {
         epochDay
     }
 
@@ -293,7 +298,7 @@ public extension WriteContext {
 
     @inline(__always)
     func writeLocalDate(_ value: LocalDate) throws {
-        buffer.writeVarInt64(Int64(value.epochDay))
+        buffer.writeVarInt64(value.epochDay)
     }
 
     @inline(__always)
@@ -335,10 +340,7 @@ public extension ReadContext {
 
     @inline(__always)
     func readLocalDate() throws -> LocalDate {
-        guard let epochDay = Int32(exactly: try buffer.readVarInt64()) else {
-            throw invalidDateEpochDay()
-        }
-        return .init(epochDay: epochDay)
+        .init(epochDay: try buffer.readVarInt64())
     }
 
     @inline(__always)
@@ -410,18 +412,29 @@ extension Duration: Serializer {
 
     public static func writeData(_ value: Self, _ context: WriteContext) throws {
         let components = value.components
-        let nanos = components.attoseconds / 1_000_000_000
+        var seconds = components.seconds
+        var nanos = components.attoseconds / 1_000_000_000
         let remainder = components.attoseconds % 1_000_000_000
         if remainder != 0 {
             throw ForyError.encodingError("Duration precision finer than nanoseconds is not supported")
         }
-        context.buffer.writeVarInt64(components.seconds)
+        if nanos < 0 {
+            guard seconds > Int64.min else {
+                throw durationOutOfRange()
+            }
+            seconds -= 1
+            nanos += nanosPerSecond
+        }
+        context.buffer.writeVarInt64(seconds)
         context.buffer.writeInt32(Int32(nanos))
     }
 
     public static func readData(_ context: ReadContext) throws -> Duration {
         let seconds = try context.buffer.readVarInt64()
         let nanos = try context.buffer.readInt32()
+        guard nanos >= 0, nanos < Int32(nanosPerSecond) else {
+            throw invalidDurationNanos(nanos)
+        }
         return .seconds(seconds) + .nanoseconds(Int64(nanos))
     }
 }

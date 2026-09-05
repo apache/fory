@@ -37,7 +37,7 @@ import java.util.UUID;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonAnySetter;
-import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
@@ -267,7 +267,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
         newJsonBuilder().registerMixin(RepresentationRemoveMixin.class).build();
     assertEquals(
         representation.toJson(new RepresentationRemoveTarget()),
-        "{\"name\":\"name\",\"raw\":\"1\",\"bytes\":[1],"
+        "{\"name\":\"name\",\"raw\":\"1\",\"bytes\":\"AQ==\","
             + "\"child\":{\"label\":\"kid\"},\"hidden\":7}");
 
     ForyJson anyField = newJsonBuilder().registerMixin(AnyFieldRemoveMixin.class).build();
@@ -437,7 +437,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
                 + mixinName
                 + " {\n"
                 + "  @JsonProperty(\"display_name\") String name;\n"
-                + "  @JsonBase64 byte[] bytes;\n"
+                + "  @JsonByteArray(JsonByteArray.Format.BASE64) byte[] bytes;\n"
                 + "  "
                 + mixinName
                 + "(\n"
@@ -511,7 +511,9 @@ public class JsonMixinTest extends ForyJsonTestModels {
     String name;
 
     @JsonRawValue String body;
-    @JsonBase64 byte[] bytes;
+
+    @JsonByteArray(JsonByteArray.Format.BASE64)
+    byte[] bytes;
 
     @JsonUnwrapped(prefix = "child_")
     BasicChild child;
@@ -830,7 +832,9 @@ public class JsonMixinTest extends ForyJsonTestModels {
     public String name = "name";
 
     @JsonRawValue public String raw = "1";
-    @JsonBase64 public byte[] bytes = new byte[] {1};
+
+    @JsonByteArray(JsonByteArray.Format.ARRAY)
+    public byte[] bytes = new byte[] {1};
 
     @JsonUnwrapped(prefix = "child_")
     public BasicChild child = new BasicChild("kid");
@@ -846,7 +850,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
     @JsonMixinRemove(JsonRawValue.class)
     String raw;
 
-    @JsonMixinRemove(JsonBase64.class)
+    @JsonMixinRemove(JsonByteArray.class)
     byte[] bytes;
 
     @JsonMixinRemove(JsonUnwrapped.class)

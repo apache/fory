@@ -45,6 +45,7 @@ final class JsonTestSupport {
           false,
           false,
           false,
+          false,
           true,
           PropertyNamingStrategy.LOWER_CAMEL_CASE,
           JsonTestSupport.class.getClassLoader(),

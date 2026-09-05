@@ -24,6 +24,48 @@ import { CodegenRegistry } from "./router";
 import { TypeId } from "../type";
 import { Scope } from "./scope";
 
+const MAX_DATE_MILLIS = 8_640_000_000_000_000;
+const MAX_DATE_SECONDS = 8_640_000_000_000n;
+const MAX_DATE_DAYS = 100_000_000n;
+const NANOS_PER_SECOND = 1_000_000_000n;
+const NANOS_PER_MILLISECOND = 1_000_000n;
+const MAX_DURATION_NANOS = 9_007_199_254_740_991_000_000n;
+
+export function timestampFromWire(seconds: bigint, nanos: number): Date {
+  // The wire carries the full int64 range, while JavaScript Date accepts only
+  // +/-100,000,000 days. Check the BigInt before converting it to Number so an
+  // unrepresentable timestamp cannot silently round into a different value.
+  if (seconds < -MAX_DATE_SECONDS || seconds > MAX_DATE_SECONDS) {
+    throw new Error("timestamp is outside the JavaScript Date range");
+  }
+  const millis = Number(seconds) * 1000 + Math.floor(nanos / 1_000_000);
+  if (!Number.isSafeInteger(millis) || Math.abs(millis) > MAX_DATE_MILLIS) {
+    throw new Error("timestamp is outside the JavaScript Date range");
+  }
+  return new Date(millis);
+}
+
+export function durationFromWire(seconds: bigint, nanos: number): number {
+  const totalNanos = seconds * NANOS_PER_SECOND + BigInt(nanos);
+  if (totalNanos < -MAX_DURATION_NANOS || totalNanos > MAX_DURATION_NANOS) {
+    throw new Error("duration is outside the JavaScript number range");
+  }
+  const wholeMillis = totalNanos / NANOS_PER_MILLISECOND;
+  const subMillisecondNanos = totalNanos % NANOS_PER_MILLISECOND;
+  return Number(wholeMillis) + Number(subMillisecondNanos) / 1_000_000;
+}
+
+export function dateFromWire(days: bigint, epoch: number): Date {
+  if (days < -MAX_DATE_DAYS || days > MAX_DATE_DAYS) {
+    throw new Error("date is outside the JavaScript Date range");
+  }
+  const millis = epoch + Number(days) * 86_400_000;
+  if (!Number.isSafeInteger(millis) || Math.abs(millis) > MAX_DATE_MILLIS) {
+    throw new Error("date is outside the JavaScript Date range");
+  }
+  return new Date(millis);
+}
+
 class TimestampSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
 
@@ -48,7 +90,7 @@ class TimestampSerializerGenerator extends BaseSerializerGenerator {
   read(accessor: (expr: string) => string): string {
     const seconds = this.builder.reader.readInt64();
     const nanos = this.builder.reader.readUint32();
-    return accessor(`new Date(Number(${seconds}) * 1000 + Math.floor(${nanos} / 1000000))`);
+    return accessor(`external.timestampFromWire(${seconds}, ${nanos})`);
   }
 
   getFixedSize(): number {
@@ -80,7 +122,7 @@ class DurationSerializerGenerator extends BaseSerializerGenerator {
   read(accessor: (expr: string) => string): string {
     const seconds = this.builder.reader.readVarInt64();
     const nanos = this.builder.reader.readInt32();
-    return accessor(`Number(${seconds}) * 1000 + ${nanos} / 1000000`);
+    return accessor(`external.durationFromWire(${seconds}, ${nanos})`);
   }
 
   getFixedSize(): number {
@@ -109,9 +151,7 @@ class DateSerializerGenerator extends BaseSerializerGenerator {
 
   read(accessor: (expr: string) => string): string {
     const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
-    return accessor(
-      `new Date(${epoch} + (Number(${this.builder.reader.readVarInt64()}) * (24 * 60 * 60) * 1000))`,
-    );
+    return accessor(`external.dateFromWire(${this.builder.reader.readVarInt64()}, ${epoch})`);
   }
 
   getFixedSize(): number {
@@ -122,3 +162,6 @@ class DateSerializerGenerator extends BaseSerializerGenerator {
 CodegenRegistry.register(TypeId.DURATION, DurationSerializerGenerator);
 CodegenRegistry.register(TypeId.TIMESTAMP, TimestampSerializerGenerator);
 CodegenRegistry.register(TypeId.DATE, DateSerializerGenerator);
+CodegenRegistry.registerExternal(timestampFromWire);
+CodegenRegistry.registerExternal(durationFromWire);
+CodegenRegistry.registerExternal(dateFromWire);

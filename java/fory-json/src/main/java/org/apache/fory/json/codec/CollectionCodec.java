@@ -153,6 +153,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     if (elementCodec == ScalarCodecs.LongCodec.BOXED) {
       return new LongCollectionCodec(factory, elementTypeInfo);
     }
+    if (elementCodec == ScalarCodecs.LongAsStringCodec.BOXED) {
+      return new LongAsStringCollectionCodec(factory, elementTypeInfo);
+    }
     if (elementCodec == ScalarCodecs.ShortCodec.BOXED) {
       return new ShortCollectionCodec(factory, elementTypeInfo);
     }
@@ -1942,8 +1945,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     }
   }
 
-  public static final class LongCollectionCodec extends NumberCollectionCodec {
-    private LongCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+  public static class LongCollectionCodec extends NumberCollectionCodec {
+    protected LongCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
       super(factory, elementTypeInfo);
     }
 
@@ -1965,6 +1968,17 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     @Override
     Object readUtf8Element(Utf8JsonReader reader) {
       return reader.tryReadNextNullToken() ? null : reader.readNextLongValue();
+    }
+  }
+
+  private static final class LongAsStringCollectionCodec extends LongCollectionCodec {
+    private LongAsStringCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory, elementTypeInfo);
+    }
+
+    @Override
+    void writeNumber(JsonWriter writer, Object value) {
+      writer.writeLongAsString((long) value);
     }
   }
 

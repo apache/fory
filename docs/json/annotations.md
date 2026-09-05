@@ -21,7 +21,7 @@ license: |
 
 Fory JSON provides these mapping and validation annotations in
 `org.apache.fory.json.annotation`:
-`JsonAnyGetter`, `JsonAnyProperty`, `JsonAnySetter`, `JsonBase64`, `JsonCodec`, `JsonCreator`, `JsonFormat`,
+`JsonAnyGetter`, `JsonAnyProperty`, `JsonAnySetter`, `JsonByteArray`, `JsonCodec`, `JsonCreator`, `JsonFormat`,
 `JsonIgnore`, `JsonProperty`, `JsonPropertyOrder`, `JsonRawValue`, `JsonSubTypes`, `JsonUnwrapped`,
 `JsonValidator`, and `JsonValue`. `JsonType` is a separate build-time model marker. They are
 Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
@@ -356,28 +356,36 @@ Any-property features are independent.
 as a trusted raw root value. That combination is serialization-only: the ordinary one-String
 `JsonCreator` cannot turn an input object or array into a String.
 
-## `JsonBase64`
+## `JsonByteArray`
 
-`JsonBase64` selects a quoted standard Base64 JSON string for one exact `byte[]` field or getter:
+Unannotated `byte[]` values use quoted standard Base64 JSON strings. `JsonByteArray` selects
+`BASE64` or `ARRAY` for one exact `byte[]` field or getter, in both reading and writing:
 
 ```java
-import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonByteArray;
 
 public final class Attachment {
-  @JsonBase64
+  @JsonByteArray(JsonByteArray.Format.ARRAY)
+  public byte[] numbers;
+
+  @JsonByteArray(JsonByteArray.Format.BASE64)
   public byte[] content;
 }
 ```
 
-Bytes `{1, 2, 3}` are written as `{"content":"AQID"}` and decoded back to the original array.
-Fory writes the Base64 characters directly to the JSON output and decodes directly from the JSON
-input without creating an intermediate String. Standard Base64 padding is preserved. Java null
-follows the property's normal inclusion rule and reads from JSON null as null.
+For bytes `{1, -2, 3}`, `numbers` is written as `[1,-2,3]` and `content` as `"Af4D"`.
+`ARRAY` reads JSON arrays using the signed byte range `[-128, 127]`; `BASE64` reads standard
+Base64 strings and preserves padding when writing. Each representation also accepts JSON null,
+and null output follows the property's normal inclusion rule. The default Base64 codec does not
+accept numeric-array input; select `ARRAY` for a property that uses that format.
 
-The annotation is not a type-use annotation and does not change ordinary unannotated `byte[]`
-properties, container elements, or Map values. It cannot share a logical property with
-`JsonRawValue`, an occurrence `JsonCodec`, `JsonFormat`, or an Any declaration. The equivalent explicit codec is
-`@JsonCodec(Base64ByteArrayCodec.class)`.
+The format is required when the annotation is present. It applies only to the annotated byte-array
+property, not to container elements or map values. Mixin declarations can select or remove it.
+It cannot share a logical property with `JsonRawValue`, an occurrence `JsonCodec`, `JsonFormat`,
+or an Any declaration. Conflicting formats on the field and getter of one property are rejected.
+
+Base64 values are binary leaves excluded from the graph-memory budget. Numeric arrays count their
+array storage against that budget; see [Security](security.md#depth-and-graph-memory-limits).
 
 ## `JsonFormat`
 
@@ -439,7 +447,7 @@ unwrapped values are intentionally rejected. Types with ambiguous formatting sem
 legacy and SQL date types, `Duration`, `Period`, `TimeZone`, `ZoneId`, and `ZoneOffset`, are not
 supported. A wrapper with a complete registered, annotation-selected, polymorphic, or `JsonValue`
 representation is also rejected because that representation owns the whole wrapper.
-`JsonFormat` cannot share a field with `JsonCodec`, `JsonBase64`, `JsonRawValue`, `JsonAnyProperty`,
+`JsonFormat` cannot share a field with `JsonCodec`, `JsonByteArray`, `JsonRawValue`, `JsonAnyProperty`,
 `JsonUnwrapped`, or `JsonValue`.
 
 ## `JsonUnwrapped`

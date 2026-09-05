@@ -519,6 +519,36 @@ void main() {
         );
       }
     });
+
+    test('uses canonical varuint36 small framing', () {
+      const cases = <({List<int> bytes, int value})>[
+        (bytes: <int>[0xff, 0xff, 0xff, 0x7f], value: 0x0fffffff),
+        (bytes: <int>[0x80, 0x80, 0x80, 0x80, 0x01], value: 0x10000000),
+        (bytes: <int>[0x80, 0x80, 0x80, 0x80, 0x80, 0x01], value: 0x800000000),
+        (bytes: <int>[0xff, 0xff, 0xff, 0xff, 0xff, 0x01], value: 0xfffffffff),
+      ];
+
+      for (final testCase in cases) {
+        final buffer = Buffer();
+        buffer.writeVarUint36Small(testCase.value);
+        expect(buffer.toBytes(), orderedEquals(testCase.bytes));
+
+        final wrapped = Buffer.wrap(Uint8List.fromList(testCase.bytes));
+        expect(wrapped.readVarUint36Small(), equals(testCase.value));
+        expect(wrapped.readableBytes, equals(0));
+      }
+    });
+
+    test('rejects values outside varuint36 small range', () {
+      for (final value in const <int>[-1, 0x1000000000]) {
+        expect(() => Buffer().writeVarUint36Small(value), throwsA(anything));
+      }
+
+      final malformed = Buffer.wrap(
+        Uint8List.fromList(const <int>[0xff, 0xff, 0xff, 0xff, 0xff, 0x02]),
+      );
+      expect(malformed.readVarUint36Small, throwsA(anything));
+    });
   });
 }
 

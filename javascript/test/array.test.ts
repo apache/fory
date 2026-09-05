@@ -215,6 +215,21 @@ describe("array", () => {
     expect(Array.from(result.a6 as Iterable<number>)[2]).toBeCloseTo(-4.5, 1);
   });
 
+  test("rounds float16 arrays to nearest even", () => {
+    const values = [4e-8, 1 + 2 ** -11, 1 + 3 * 2 ** -11, 1 + 2 ** -11 + 2 ** -52, -65520];
+    const expected = [2 ** -24, 1, 1 + 2 ** -9, 1 + 2 ** -10, -Infinity];
+    const array = new ForyFloat16Array(values);
+    expect(Array.from(array)).toEqual(expected);
+
+    const fory = new Fory({ compatible: false, ref: true });
+    const { serialize, deserialize } = fory.register(
+      Type.struct({ typeName: "example.f16round" }, { values: Type.float16Array() }),
+    );
+    for (const input of [values, array]) {
+      expect(Array.from(deserialize(serialize({ values: input })).values)).toEqual(expected);
+    }
+  });
+
   test("should bfloat16Array work", () => {
     const typeinfo = Type.struct(
       {
@@ -322,6 +337,47 @@ describe("array", () => {
       bfloat16Serializer,
     );
     expect(containsBytes(bfloat16Bytes, [0x80, 0x3f, 0x00, 0xc0])).toBe(true);
+  });
+
+  test("should large any-typed list work", () => {
+    // The dynamic element write path must reserve writer capacity per item.
+    // Without it, single-byte writes past the buffer end were silent no-ops
+    // while the cursor advanced, so dump() returned uninitialized tail bytes.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.list(Type.any()));
+    const arr = new Array(150000).fill(1);
+    const result = deserialize(serialize(arr)) as number[];
+    expect(result.length).toBe(150000);
+    expect(result.every((x) => x === 1)).toBe(true);
+  });
+
+  test("should large mixed-type list work", () => {
+    // Mixed element types disable the same-type aggregate reserve, so this
+    // exercises the per-item reserves in the dynamic write loops, with and
+    // without null elements. Numeric elements only: string bodies reserve
+    // internally, which would mask a missing per-item reserve.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.list(Type.any()));
+    const arr: (number | bigint | null)[] = [];
+    for (let i = 0; i < 50000; i++) {
+      arr.push(i, BigInt(i), i % 100 === 0 ? null : -i);
+    }
+    expect(deserialize(serialize(arr))).toEqual(arr);
+
+    const noNulls = arr.filter((x) => x !== null);
+    expect(deserialize(serialize(noNulls))).toEqual(noNulls);
+  });
+
+  test("should reserialize unknown struct with a large declared list", () => {
+    // Reserializing an unknown compatible struct writes declared list fields
+    // through CollectionAnySerializer.writeDeclared, which must reserve
+    // writer capacity for the whole list body.
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writer = writerFory.register(Type.struct(7501, { values: Type.list(Type.int32()) }));
+    const values = new Array(30000).fill(123456789);
+    const unknown = readerFory.deserialize(writer.serialize({ values }));
+    expect(writer.deserialize(readerFory.serialize(unknown))).toEqual({ values });
   });
 });
 

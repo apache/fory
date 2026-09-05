@@ -53,7 +53,7 @@ final class JsonMixinAnnotations {
   private static final String JSON_ANY_GETTER = JSON_PACKAGE + ".annotation.JsonAnyGetter";
   private static final String JSON_ANY_PROPERTY = JSON_PACKAGE + ".annotation.JsonAnyProperty";
   private static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
-  private static final String JSON_BASE64 = JSON_PACKAGE + ".annotation.JsonBase64";
+  private static final String JSON_BYTE_ARRAY = JSON_PACKAGE + ".annotation.JsonByteArray";
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
   private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
   private static final String JSON_FORMAT = JSON_PACKAGE + ".annotation.JsonFormat";
@@ -73,7 +73,7 @@ final class JsonMixinAnnotations {
                   JSON_ANY_GETTER,
                   JSON_ANY_PROPERTY,
                   JSON_ANY_SETTER,
-                  JSON_BASE64,
+                  JSON_BYTE_ARRAY,
                   JSON_CODEC,
                   JSON_CREATOR,
                   JSON_FORMAT,

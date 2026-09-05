@@ -187,6 +187,7 @@ public final class JsonSharedRegistry {
   private final boolean propertyDiscoveryEnabled;
   private final PropertyNamingStrategy propertyNamingStrategy;
   private final boolean writeNullFields;
+  private final boolean writeLongAsString;
   private final ClassLoader classLoader;
   private final JsonMixinAnnotations mixinAnnotations;
   private final IdentityHashMap<Class<?>, JsonSubTypesInfo> subTypesCache;
@@ -243,6 +244,7 @@ public final class JsonSharedRegistry {
     this.propertyDiscoveryEnabled = config.propertyDiscoveryEnabled();
     propertyNamingStrategy = config.propertyNamingStrategy();
     writeNullFields = config.writeNullFields();
+    writeLongAsString = config.writeLongAsString();
     classLoader = config.classLoader();
     mixinAnnotations = new JsonMixinAnnotations(config);
     exactCodecs = new IdentityHashMap<>();
@@ -957,7 +959,11 @@ public final class JsonSharedRegistry {
         return new ResolvedCodec(ScalarCodecs.OptionalIntCodec.NON_NULL, null);
       }
       if (rawType == OptionalLong.class) {
-        return new ResolvedCodec(ScalarCodecs.OptionalLongCodec.NON_NULL, null);
+        return new ResolvedCodec(
+            writeLongAsString
+                ? ScalarCodecs.OptionalLongAsStringCodec.NON_NULL
+                : ScalarCodecs.OptionalLongCodec.NON_NULL,
+            null);
       }
       return new ResolvedCodec(ScalarCodecs.OptionalDoubleCodec.NON_NULL, null);
     }
@@ -1213,6 +1219,10 @@ public final class JsonSharedRegistry {
 
   boolean writeNullFields() {
     return writeNullFields;
+  }
+
+  boolean writeLongAsString() {
+    return writeLongAsString;
   }
 
   ClassLoader classLoader() {
@@ -2146,8 +2156,14 @@ public final class JsonSharedRegistry {
     exactCodecs.put(Boolean.class, ScalarCodecs.BooleanCodec.BOXED);
     exactCodecs.put(int.class, ScalarCodecs.IntCodec.PRIMITIVE);
     exactCodecs.put(Integer.class, ScalarCodecs.IntCodec.BOXED);
-    exactCodecs.put(long.class, ScalarCodecs.LongCodec.PRIMITIVE);
-    exactCodecs.put(Long.class, ScalarCodecs.LongCodec.BOXED);
+    exactCodecs.put(
+        long.class,
+        writeLongAsString
+            ? ScalarCodecs.LongAsStringCodec.PRIMITIVE
+            : ScalarCodecs.LongCodec.PRIMITIVE);
+    exactCodecs.put(
+        Long.class,
+        writeLongAsString ? ScalarCodecs.LongAsStringCodec.BOXED : ScalarCodecs.LongCodec.BOXED);
     exactCodecs.put(short.class, ScalarCodecs.ShortCodec.PRIMITIVE);
     exactCodecs.put(Short.class, ScalarCodecs.ShortCodec.BOXED);
     exactCodecs.put(byte.class, ScalarCodecs.ByteCodec.PRIMITIVE);
@@ -2168,8 +2184,16 @@ public final class JsonSharedRegistry {
     exactCodecs.put(AtomicBoolean.class, ScalarCodecs.AtomicBooleanCodec.INSTANCE);
     exactCodecs.put(AtomicInteger.class, ScalarCodecs.AtomicIntegerCodec.INSTANCE);
     exactCodecs.put(AtomicIntegerArray.class, ScalarCodecs.AtomicIntegerArrayCodec.INSTANCE);
-    exactCodecs.put(AtomicLong.class, ScalarCodecs.AtomicLongCodec.INSTANCE);
-    exactCodecs.put(AtomicLongArray.class, ScalarCodecs.AtomicLongArrayCodec.INSTANCE);
+    exactCodecs.put(
+        AtomicLong.class,
+        writeLongAsString
+            ? ScalarCodecs.AtomicLongAsStringCodec.INSTANCE
+            : ScalarCodecs.AtomicLongCodec.INSTANCE);
+    exactCodecs.put(
+        AtomicLongArray.class,
+        writeLongAsString
+            ? ScalarCodecs.AtomicLongArrayAsStringCodec.INSTANCE
+            : ScalarCodecs.AtomicLongArrayCodec.INSTANCE);
     exactCodecs.put(Currency.class, ScalarCodecs.CurrencyCodec.INSTANCE);
     exactCodecs.put(File.class, ScalarCodecs.FileCodec.INSTANCE);
     exactCodecs.put(URI.class, ScalarCodecs.UriCodec.INSTANCE);
@@ -2201,7 +2225,11 @@ public final class JsonSharedRegistry {
     exactCodecs.put(MinguoDate.class, ScalarCodecs.MinguoDateCodec.INSTANCE);
     exactCodecs.put(ThaiBuddhistDate.class, ScalarCodecs.ThaiBuddhistDateCodec.INSTANCE);
     exactCodecs.put(OptionalInt.class, ScalarCodecs.OptionalIntCodec.INSTANCE);
-    exactCodecs.put(OptionalLong.class, ScalarCodecs.OptionalLongCodec.INSTANCE);
+    exactCodecs.put(
+        OptionalLong.class,
+        writeLongAsString
+            ? ScalarCodecs.OptionalLongAsStringCodec.INSTANCE
+            : ScalarCodecs.OptionalLongCodec.INSTANCE);
     exactCodecs.put(OptionalDouble.class, ScalarCodecs.OptionalDoubleCodec.INSTANCE);
     exactCodecs.put(ByteBuffer.class, ScalarCodecs.ByteBufferCodec.INSTANCE);
     GuavaCodecs.registerExactCodecs(exactCodecs);

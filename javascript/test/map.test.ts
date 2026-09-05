@@ -213,4 +213,36 @@ describe("map", () => {
       expect(serializer.deserialize(valid)).toEqual(value);
     }
   });
+
+  test("should large declared map work", () => {
+    // The generated map write must reserve writer capacity for its entries.
+    // Without it, unchecked DataView writes past the buffer end threw a
+    // RangeError once the map body outgrew the initial buffer.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(
+      Type.struct(
+        { namespace: "example", typeName: "BigMap" },
+        { m: Type.map(Type.int32({ encoding: "fixed" }), Type.int32({ encoding: "fixed" })) },
+      ),
+    );
+    const m = new Map<number, number>();
+    for (let i = 0; i < 30000; i++) {
+      m.set(i, i + 1);
+    }
+    expect(deserialize(serialize({ m })).m.get(29999)).toBe(30000);
+  });
+
+  test("should large any-typed map work", () => {
+    // A map with dynamic key/value types writes through MapAnySerializer,
+    // which must reserve writer capacity per entry.
+    // Numeric entries only: string bodies reserve internally, which would
+    // mask a missing per-entry reserve.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.map(Type.any(), Type.any()));
+    const m = new Map<any, any>();
+    for (let i = 0; i < 30000; i++) {
+      m.set(i, i % 2 === 0 ? BigInt(i) : i * 3);
+    }
+    expect(deserialize(serialize(m))).toEqual(m);
+  });
 });

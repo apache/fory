@@ -47,7 +47,14 @@ public class KspRetentionResourceTest {
     assertTrue(sealed.contains("class $PACKAGE.PlatformSquare"), sealed)
     assertTrue(sealed.contains("class $PACKAGE.PlatformOpen"), sealed)
     assertFalse(sealed.contains("class $PACKAGE.PlatformOpenDescendant"), sealed)
-    assertConstructor(rules("PlatformRoot"), "$PACKAGE.PlatformTokenCodec")
+    val root = rules("PlatformRoot")
+    assertConstructor(root, "$PACKAGE.PlatformTokenCodec")
+    assertTrue(
+      root.contains("@interface org.apache.fory.json.annotation.JsonByteArray"),
+      root,
+    )
+    assertConstructor(root, "org.apache.fory.json.codec.Base64ByteArrayCodec")
+    assertConstructor(root, "org.apache.fory.json.codec.ArrayCodec\$SignedByteArrayCodec")
     assertConstructor(
       rules("PlatformDirectOverride"),
       "$PACKAGE.PlatformDirectOverrideCodec",

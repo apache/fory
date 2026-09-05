@@ -63,39 +63,60 @@ fn test_var_i32() {
 
 #[test]
 fn test_var_u36_small() {
-    let test_data: Vec<u64> = vec![
-        // 1 byte
-        0,
-        1,
-        127,
-        // 2 bytes
-        128,
-        300,
-        16_383,
-        // 3 bytes
-        16_384,
-        20_000,
-        2_097_151,
-        // 4 bytes
-        2_097_152,
-        100_000_000,
-        268_435_455,
-        // 5 bytes (36-bit max)
-        268_435_456,
-        1_000_000_000,
-        68_719_476_735, // max 36-bit
+    let cases: &[(u64, &[u8])] = &[
+        (0, &[0x00]),
+        (127, &[0x7f]),
+        (128, &[0x80, 0x01]),
+        (16_383, &[0xff, 0x7f]),
+        (16_384, &[0x80, 0x80, 0x01]),
+        (2_097_151, &[0xff, 0xff, 0x7f]),
+        (2_097_152, &[0x80, 0x80, 0x80, 0x01]),
+        (268_435_455, &[0xff, 0xff, 0xff, 0x7f]),
+        (268_435_456, &[0x80, 0x80, 0x80, 0x80, 0x01]),
+        ((1_u64 << 35) - 1, &[0xff, 0xff, 0xff, 0xff, 0x7f]),
+        (1_u64 << 35, &[0x80, 0x80, 0x80, 0x80, 0x80, 0x01]),
+        ((1_u64 << 36) - 1, &[0xff, 0xff, 0xff, 0xff, 0xff, 0x01]),
     ];
 
-    for &data in &test_data {
+    for &(value, expected) in cases {
         let mut buffer = vec![];
         let mut writer = Writer::from_buffer(&mut buffer);
-        writer.write_var_u36_small(data);
-        let buf = writer.dump();
+        writer.write_var_u36_small(value);
+        assert_eq!(writer.dump(), expected, "wrong wire bytes for {value}");
 
-        let mut reader = Reader::new(buf.as_slice());
-        let value = reader.read_var_u36_small().unwrap();
-        assert_eq!(value, data, "failed for data {}", data);
+        let mut short_reader = Reader::new(expected);
+        assert_eq!(short_reader.read_var_u36_small().unwrap(), value);
+        assert_eq!(short_reader.get_cursor(), expected.len());
+
+        let mut framed = expected.to_vec();
+        framed.push(0x2a);
+        framed.extend_from_slice(&[0; 8]);
+        let mut long_reader = Reader::new(&framed);
+        assert_eq!(long_reader.read_var_u36_small().unwrap(), value);
+        assert_eq!(long_reader.read_u8().unwrap(), 0x2a);
     }
+}
+
+#[test]
+fn test_var_u36_bad_framing() {
+    for len in 1..=5 {
+        let bytes = vec![0x80; len];
+        let mut reader = Reader::new(&bytes);
+        assert!(reader.read_var_u36_small().is_err());
+    }
+
+    for bytes in [
+        [0x80, 0x80, 0x80, 0x80, 0x80, 0x02],
+        [0x80, 0x80, 0x80, 0x80, 0x80, 0x80],
+    ] {
+        let mut reader = Reader::new(&bytes);
+        assert!(reader.read_var_u36_small().is_err());
+    }
+
+    let padded = [0x80, 0x80, 0x80, 0x80, 0x80, 0x02, 0x2a, 0x2b];
+    let mut reader = Reader::new(&padded);
+    assert!(reader.read_var_u36_small().is_err());
+    assert_eq!(reader.get_cursor(), 0);
 }
 
 #[test]

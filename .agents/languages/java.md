@@ -91,6 +91,11 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   and locale types, `Float16`, `BFloat16`, and user-defined types remain registerable. Field/type
   `@JsonCodec`, `@JsonFormat`, and semantic metadata remain separate from exact registry mutation
   and are fixed by the target class or effective Mixin.
+- Fory JSON `byte[]` defaults to a Base64 string. `@JsonByteArray` selects required
+  `Format.BASE64` or `Format.ARRAY` for an exact byte-array field or getter in both directions.
+  Keep selection in the existing property codec path, including Mixin, Java processor, Kotlin
+  KSP, and GraalVM handling. Numeric arrays use signed-byte semantics and graph-memory accounting;
+  Base64 values remain binary leaves outside that budget.
 - Fory JSON `ObjectCodec` instances are resolver-owned and must not be registered directly. A
   language module that supplies a custom object model must use a `JsonCodecFactory`. A configurable
   factory's stable key must cover every option that can change its created codec class, object
@@ -159,6 +164,27 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - In `MemoryBuffer` and `MemoryOps` hot paths, duplicate small straight-line copy/read/write logic
   when that keeps control flow direct. Do not add private helper indirection to hot paths just to
   reduce local code duplication; keep helpers for slow, cold, or error paths.
+- `MemoryBuffer` semantic primitive-array `write*` and `read*` methods own the canonical
+  little-endian element order. Keep native bulk copy as the little-endian hot path and isolate
+  big-endian conversion in separate slow helpers; serializers must not duplicate that endian
+  branch. The explicit `copyTo*Array` and `copyFrom*Array` methods remain raw native-memory copies,
+  so their format owner must handle byte order when required.
+- Add a Java `MemoryBuffer` check only when its absence can cause a JVM or native crash, OOM, or
+  attacker-controlled memory amplification. Delayed, masked, less precise, or differently typed
+  failures do not justify a check, and neither does an incorrect decoded result without one of
+  those crash or memory consequences. Do not duplicate an array, `ByteBuffer`, `VarHandle`, stream,
+  or other existing bounds owner merely to move or normalize an error.
+- The JDK 25 `MemoryBuffer` overlay intentionally does not duplicate logical range checks around
+  indexed array, absolute `ByteBuffer`, or `VarHandle` access. Those JVM accessors own physical
+  bounds enforcement and already provide a controlled failure; the exact exception type, message,
+  and detection point are not contracts. Do not copy JDK 8-24 Unsafe-path checks into the overlay
+  solely to make invalid access fail earlier or more precisely. Keep an explicit check before
+  allocation, capacity growth, or another side effect when it is needed to prevent a crash, OOM, or
+  attacker-controlled memory amplification that the access owner cannot contain.
+- `MemoryAllocator.grow` owns the postcondition that a successful return leaves the buffer capacity
+  at least the requested capacity. Callers must reject invalid or overflowed requests before the
+  call, but must not recheck the allocator postcondition afterward; fix a violating allocator at
+  the allocator implementation.
 - In JDK 25 Fory JSON C2-sensitive code, preserve measured, naturally large hot-method boundaries.
   A method that exceeds HotSpot's 325-byte hot-inline limit through real representation, scalar,
   array, collection, or generated-schema work is an independent subtree owner. Generated group

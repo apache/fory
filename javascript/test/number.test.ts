@@ -19,6 +19,7 @@
 
 import Fory, { Type } from "../packages/core/index";
 import { describe, expect, test } from "@jest/globals";
+import { toFloat16Bits } from "../packages/core/lib/types/float16";
 
 describe("number", () => {
   test("should i8 work", () => {
@@ -152,6 +153,61 @@ describe("number", () => {
     const input = fory.serialize({ a: NaN }, serializer);
     const result = fory.deserialize(input);
     expect(result.a).toBe(NaN);
+  });
+
+  test("should float16 underflow tiny magnitudes to signed zero", () => {
+    // Magnitudes below half the smallest float16 subnormal encode as zero;
+    // shift counts of 32 or more wrapped (JS masks them with & 31) and left
+    // garbage bits in the half.
+    const fory = new Fory({ compatible: false, ref: true });
+    const { serialize, deserialize } = fory.register(
+      Type.struct({ typeName: "example.f16zero" }, { a: Type.float16() }),
+    );
+    expect(deserialize(serialize({ a: 1e-10 })).a).toBe(0);
+    expect(deserialize(serialize({ a: 1e-11 })).a).toBe(0);
+    expect(deserialize(serialize({ a: 1e-40 })).a).toBe(0);
+    expect(deserialize(serialize({ a: -1e-10 })).a).toBe(-0);
+  });
+
+  test.each([
+    [0, 0x0000],
+    [Number.MIN_VALUE, 0x0000],
+    [2 ** -25 - 2 ** -78, 0x0000],
+    [2 ** -25, 0x0000],
+    [2 ** -25 + 2 ** -77, 0x0001],
+    [4e-8, 0x0001],
+    [2 ** -24, 0x0001],
+    [3 * 2 ** -25 - 2 ** -76, 0x0001],
+    [3 * 2 ** -25, 0x0002],
+    [2 ** -14 - 2 ** -25 - 2 ** -67, 0x03ff],
+    [2 ** -14 - 2 ** -25, 0x0400],
+    [2 ** -14, 0x0400],
+    [1 + 2 ** -11, 0x3c00],
+    [1 + 2 ** -11 + 2 ** -52, 0x3c01],
+    [1.0008, 0x3c01],
+    [1 + 3 * 2 ** -11 - 2 ** -52, 0x3c01],
+    [1 + 3 * 2 ** -11, 0x3c02],
+    [2 - 2 ** -11 - 2 ** -52, 0x3fff],
+    [2 - 2 ** -11, 0x4000],
+    [65504, 0x7bff],
+    [65520 - 2 ** -37, 0x7bff],
+    [65520, 0x7c00],
+    [Number.MAX_VALUE, 0x7c00],
+    [Infinity, 0x7c00],
+  ])("rounds float16 %s to bits %s", (value, bits) => {
+    expect(toFloat16Bits(value)).toBe(bits);
+    expect(toFloat16Bits(-value)).toBe(bits | 0x8000);
+  });
+
+  test("rounds float16 fields to nearest even", () => {
+    const fory = new Fory({ compatible: false, ref: true });
+    const { serialize, deserialize } = fory.register(
+      Type.struct({ typeName: "example.f16round" }, { a: Type.float16() }),
+    );
+    expect(deserialize(serialize({ a: 4e-8 })).a).toBe(2 ** -24);
+    expect(deserialize(serialize({ a: 1 + 3 * 2 ** -11 })).a).toBe(1 + 2 ** -9);
+    expect(deserialize(serialize({ a: 1 + 2 ** -11 + 2 ** -52 })).a).toBe(1 + 2 ** -10);
+    expect(deserialize(serialize({ a: -65520 })).a).toBe(-Infinity);
   });
 
   test("should float16 Infinity work", () => {

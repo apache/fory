@@ -269,7 +269,7 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				if !ok {
 					v = 0
 				}
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					*(*int16)(unsafe.Pointer(&data[bufOffset])) = v
 				} else {
 					binary.LittleEndian.PutUint16(data[bufOffset:], uint16(v))
@@ -279,7 +279,7 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				if !ok {
 					v = 0
 				}
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					*(*uint16)(unsafe.Pointer(&data[bufOffset])) = v
 				} else {
 					binary.LittleEndian.PutUint16(data[bufOffset:], v)
@@ -289,7 +289,7 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				if !ok {
 					v = 0
 				}
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					*(*int32)(unsafe.Pointer(&data[bufOffset])) = v
 				} else {
 					binary.LittleEndian.PutUint32(data[bufOffset:], uint32(v))
@@ -299,7 +299,7 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				if !ok {
 					v = 0
 				}
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					*(*uint32)(unsafe.Pointer(&data[bufOffset])) = v
 				} else {
 					binary.LittleEndian.PutUint32(data[bufOffset:], v)
@@ -309,7 +309,7 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				if !ok {
 					v = 0
 				}
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					*(*int64)(unsafe.Pointer(&data[bufOffset])) = v
 				} else {
 					binary.LittleEndian.PutUint64(data[bufOffset:], uint64(v))
@@ -319,7 +319,7 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				if !ok {
 					v = 0
 				}
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					*(*uint64)(unsafe.Pointer(&data[bufOffset])) = v
 				} else {
 					binary.LittleEndian.PutUint64(data[bufOffset:], v)
@@ -329,7 +329,7 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				if !ok {
 					v = 0
 				}
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					*(*float32)(unsafe.Pointer(&data[bufOffset])) = v
 				} else {
 					binary.LittleEndian.PutUint32(data[bufOffset:], math.Float32bits(v))
@@ -339,7 +339,7 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				if !ok {
 					v = 0
 				}
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					*(*float64)(unsafe.Pointer(&data[bufOffset])) = v
 				} else {
 					binary.LittleEndian.PutUint64(data[bufOffset:], math.Float64bits(v))
@@ -349,7 +349,7 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				if !ok {
 					v = 0
 				}
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					*(*uint16)(unsafe.Pointer(&data[bufOffset])) = v
 				} else {
 					binary.LittleEndian.PutUint16(data[bufOffset:], v)
@@ -1495,7 +1495,7 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				storeFieldValue(field.Kind, fieldPtr, optInfo, data[bufOffset])
 			case PrimitiveInt16DispatchId:
 				var v int16
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					v = *(*int16)(unsafe.Pointer(&data[bufOffset]))
 				} else {
 					v = int16(binary.LittleEndian.Uint16(data[bufOffset:]))
@@ -1503,7 +1503,7 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
 			case PrimitiveUint16DispatchId:
 				var v uint16
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					v = *(*uint16)(unsafe.Pointer(&data[bufOffset]))
 				} else {
 					v = binary.LittleEndian.Uint16(data[bufOffset:])
@@ -1511,7 +1511,7 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
 			case PrimitiveInt32DispatchId:
 				var v int32
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					v = *(*int32)(unsafe.Pointer(&data[bufOffset]))
 				} else {
 					v = int32(binary.LittleEndian.Uint32(data[bufOffset:]))
@@ -1519,7 +1519,7 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
 			case PrimitiveUint32DispatchId:
 				var v uint32
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					v = *(*uint32)(unsafe.Pointer(&data[bufOffset]))
 				} else {
 					v = binary.LittleEndian.Uint32(data[bufOffset:])
@@ -1527,7 +1527,7 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
 			case PrimitiveInt64DispatchId:
 				var v int64
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					v = *(*int64)(unsafe.Pointer(&data[bufOffset]))
 				} else {
 					v = int64(binary.LittleEndian.Uint64(data[bufOffset:]))
@@ -1535,7 +1535,7 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
 			case PrimitiveUint64DispatchId:
 				var v uint64
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					v = *(*uint64)(unsafe.Pointer(&data[bufOffset]))
 				} else {
 					v = binary.LittleEndian.Uint64(data[bufOffset:])
@@ -1543,7 +1543,7 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
 			case PrimitiveFloat32DispatchId:
 				var v float32
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					v = *(*float32)(unsafe.Pointer(&data[bufOffset]))
 				} else {
 					v = math.Float32frombits(binary.LittleEndian.Uint32(data[bufOffset:]))
@@ -1551,7 +1551,7 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
 			case PrimitiveFloat64DispatchId:
 				var v float64
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					v = *(*float64)(unsafe.Pointer(&data[bufOffset]))
 				} else {
 					v = math.Float64frombits(binary.LittleEndian.Uint64(data[bufOffset:]))
@@ -1559,7 +1559,7 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
 			case PrimitiveFloat16DispatchId:
 				var v uint16
-				if isLittleEndian {
+				if useNativeEndianAccess {
 					v = *(*uint16)(unsafe.Pointer(&data[bufOffset]))
 				} else {
 					v = binary.LittleEndian.Uint16(data[bufOffset:])
@@ -2560,7 +2560,7 @@ func readExactFixedPrimitiveRun(ctx *ReadContext, fields []FieldInfo, start int,
 			bufOffset++
 		case PrimitiveInt16DispatchId:
 			var v int16
-			if isLittleEndian {
+			if useNativeEndianAccess {
 				v = *(*int16)(unsafe.Pointer(&data[bufOffset]))
 			} else {
 				v = int16(binary.LittleEndian.Uint16(data[bufOffset:]))
@@ -2569,7 +2569,7 @@ func readExactFixedPrimitiveRun(ctx *ReadContext, fields []FieldInfo, start int,
 			bufOffset += 2
 		case PrimitiveUint16DispatchId:
 			var v uint16
-			if isLittleEndian {
+			if useNativeEndianAccess {
 				v = *(*uint16)(unsafe.Pointer(&data[bufOffset]))
 			} else {
 				v = binary.LittleEndian.Uint16(data[bufOffset:])
@@ -2578,7 +2578,7 @@ func readExactFixedPrimitiveRun(ctx *ReadContext, fields []FieldInfo, start int,
 			bufOffset += 2
 		case PrimitiveInt32DispatchId:
 			var v int32
-			if isLittleEndian {
+			if useNativeEndianAccess {
 				v = *(*int32)(unsafe.Pointer(&data[bufOffset]))
 			} else {
 				v = int32(binary.LittleEndian.Uint32(data[bufOffset:]))
@@ -2587,7 +2587,7 @@ func readExactFixedPrimitiveRun(ctx *ReadContext, fields []FieldInfo, start int,
 			bufOffset += 4
 		case PrimitiveUint32DispatchId:
 			var v uint32
-			if isLittleEndian {
+			if useNativeEndianAccess {
 				v = *(*uint32)(unsafe.Pointer(&data[bufOffset]))
 			} else {
 				v = binary.LittleEndian.Uint32(data[bufOffset:])
@@ -2596,7 +2596,7 @@ func readExactFixedPrimitiveRun(ctx *ReadContext, fields []FieldInfo, start int,
 			bufOffset += 4
 		case PrimitiveInt64DispatchId:
 			var v int64
-			if isLittleEndian {
+			if useNativeEndianAccess {
 				v = *(*int64)(unsafe.Pointer(&data[bufOffset]))
 			} else {
 				v = int64(binary.LittleEndian.Uint64(data[bufOffset:]))
@@ -2605,7 +2605,7 @@ func readExactFixedPrimitiveRun(ctx *ReadContext, fields []FieldInfo, start int,
 			bufOffset += 8
 		case PrimitiveUint64DispatchId:
 			var v uint64
-			if isLittleEndian {
+			if useNativeEndianAccess {
 				v = *(*uint64)(unsafe.Pointer(&data[bufOffset]))
 			} else {
 				v = binary.LittleEndian.Uint64(data[bufOffset:])
@@ -2614,7 +2614,7 @@ func readExactFixedPrimitiveRun(ctx *ReadContext, fields []FieldInfo, start int,
 			bufOffset += 8
 		case PrimitiveFloat32DispatchId:
 			var v float32
-			if isLittleEndian {
+			if useNativeEndianAccess {
 				v = *(*float32)(unsafe.Pointer(&data[bufOffset]))
 			} else {
 				v = math.Float32frombits(binary.LittleEndian.Uint32(data[bufOffset:]))
@@ -2623,7 +2623,7 @@ func readExactFixedPrimitiveRun(ctx *ReadContext, fields []FieldInfo, start int,
 			bufOffset += 4
 		case PrimitiveFloat64DispatchId:
 			var v float64
-			if isLittleEndian {
+			if useNativeEndianAccess {
 				v = *(*float64)(unsafe.Pointer(&data[bufOffset]))
 			} else {
 				v = math.Float64frombits(binary.LittleEndian.Uint64(data[bufOffset:]))
@@ -2632,7 +2632,7 @@ func readExactFixedPrimitiveRun(ctx *ReadContext, fields []FieldInfo, start int,
 			bufOffset += 8
 		case PrimitiveFloat16DispatchId:
 			var v uint16
-			if isLittleEndian {
+			if useNativeEndianAccess {
 				v = *(*uint16)(unsafe.Pointer(&data[bufOffset]))
 			} else {
 				v = binary.LittleEndian.Uint16(data[bufOffset:])

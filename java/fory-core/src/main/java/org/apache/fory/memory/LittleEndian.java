@@ -67,8 +67,13 @@ public class LittleEndian {
     arr[index++] = (byte) (v >>> 7 | 0x80);
     arr[index++] = (byte) (v >>> 14 | 0x80);
     arr[index++] = (byte) (v >>> 21 | 0x80);
-    arr[index] = (byte) (v >>> 28);
-    return 5;
+    if (v >>> 35 == 0) {
+      arr[index] = (byte) (v >>> 28);
+      return 5;
+    }
+    arr[index++] = (byte) (v >>> 28 | 0x80);
+    arr[index] = (byte) (v >>> 35);
+    return 6;
   }
 
   public static long getInt64(byte[] o, int index) {

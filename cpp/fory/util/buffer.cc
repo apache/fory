@@ -100,13 +100,23 @@ Buffer::~Buffer() {
 }
 
 bool Buffer::equals(const Buffer &other, int64_t nbytes) const {
+  if (FORY_PREDICT_FALSE(nbytes < 0)) {
+    return false;
+  }
+  if (nbytes == 0) {
+    return true;
+  }
+  const uint64_t length = static_cast<uint64_t>(nbytes);
   return this == &other ||
-         (size_ >= nbytes && other.size_ >= nbytes &&
+         (size_ >= length && other.size_ >= length &&
           (data_ == other.data_ ||
            !memcmp(data_, other.data_, static_cast<size_t>(nbytes))));
 }
 
 bool Buffer::equals(const Buffer &other) const {
+  if (size_ == 0 && other.size_ == 0) {
+    return true;
+  }
   return this == &other ||
          (size_ == other.size_ &&
           (data_ == other.data_ ||
@@ -115,11 +125,27 @@ bool Buffer::equals(const Buffer &other) const {
 
 void Buffer::copy(const uint32_t start, const uint32_t nbytes,
                   std::shared_ptr<Buffer> &out) const {
-  std::memcpy(out->data(), data_ + start, static_cast<size_t>(nbytes));
+  FORY_CHECK(FORY_PREDICT_TRUE(out != nullptr))
+      << "Cannot copy into a null Buffer";
+  FORY_CHECK(FORY_PREDICT_TRUE(range_in_bounds(start, nbytes)))
+      << "Buffer out of bound: " << start << " + " << nbytes << " > " << size_;
+  FORY_CHECK(FORY_PREDICT_TRUE(nbytes <= out->size()))
+      << "Buffer out of bound: 0 + " << nbytes << " > " << out->size();
+  if (nbytes == 0) {
+    return;
+  }
+  std::memmove(out->data(), data_ + start, static_cast<size_t>(nbytes));
 }
 
 void Buffer::copy(uint32_t start, uint32_t nbytes, Buffer &out) const {
-  std::memcpy(out.data(), data_ + start, static_cast<size_t>(nbytes));
+  FORY_CHECK(FORY_PREDICT_TRUE(range_in_bounds(start, nbytes)))
+      << "Buffer out of bound: " << start << " + " << nbytes << " > " << size_;
+  FORY_CHECK(FORY_PREDICT_TRUE(nbytes <= out.size()))
+      << "Buffer out of bound: 0 + " << nbytes << " > " << out.size();
+  if (nbytes == 0) {
+    return;
+  }
+  std::memmove(out.data(), data_ + start, static_cast<size_t>(nbytes));
 }
 
 void Buffer::copy(uint32_t start, uint32_t nbytes, uint8_t *out) const {
@@ -128,15 +154,22 @@ void Buffer::copy(uint32_t start, uint32_t nbytes, uint8_t *out) const {
 
 void Buffer::copy(uint32_t start, uint32_t nbytes, uint8_t *out,
                   uint32_t offset) const {
+  if (nbytes == 0) {
+    return;
+  }
   std::memcpy(out + offset, data_ + start, static_cast<size_t>(nbytes));
 }
 
 void Buffer::copy_from(uint32_t offset, const uint8_t *src, uint32_t src_offset,
                        uint32_t nbytes) {
-  auto new_size = offset + nbytes;
-  if (new_size > size_) {
-    reserve(new_size * 2);
+  if (nbytes == 0) {
+    return;
   }
+  const uint64_t required_size = static_cast<uint64_t>(offset) + nbytes;
+  FORY_CHECK(
+      FORY_PREDICT_TRUE(required_size <= std::numeric_limits<uint32_t>::max()))
+      << "Buffer overflow offset " << offset << " length " << nbytes;
+  grow_to_fit(static_cast<uint32_t>(required_size));
   std::memcpy(data_ + offset, src + src_offset, static_cast<size_t>(nbytes));
 }
 
@@ -176,6 +209,23 @@ Buffer *allocate_buffer(uint32_t size) {
   } else {
     return nullptr;
   }
+}
+
+void Buffer::grow_checked(uint64_t required_size, uint32_t min_capacity) {
+  FORY_CHECK(required_size < std::numeric_limits<uint32_t>::max())
+      << "Buffer overflow writer_index" << writer_index_ << " diff "
+      << min_capacity;
+  grow_to_fit(static_cast<uint32_t>(required_size));
+}
+
+void Buffer::fail_range(uint32_t offset, uint32_t length) const {
+  FORY_CHECK(false) << "Buffer out of bound: " << offset << " + " << length
+                    << " > " << size_;
+}
+
+void Buffer::fail_writer_index(uint64_t target) const {
+  FORY_CHECK(false) << "Buffer overflow writer_index " << writer_index_
+                    << " target writer_index " << target << " size " << size_;
 }
 
 } // namespace fory

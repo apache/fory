@@ -18,6 +18,7 @@
  */
 
 import { OwnershipError } from "../packages/core/lib/error";
+import { BinaryReader } from "../packages/core/lib/reader";
 import { BinaryWriter } from "../packages/core/lib/writer";
 import { describe, expect, test } from "@jest/globals";
 
@@ -62,5 +63,35 @@ describe("writer", () => {
       return;
     }
     throw new Error("unreachable code");
+  });
+
+  test("varint64 round-trips negative values beyond 2^52", () => {
+    // The number fast path computes zigzag as -v * 2 - 1 in doubles; below
+    // -(2^52) that intermediate rounds to an even neighbor and flips the
+    // decoded sign, so such values must use the exact bigint zigzag path.
+    const values: (bigint | number)[] = [
+      -(2n ** 52n),
+      -(2n ** 52n + 1n),
+      -(2n ** 53n - 1n),
+      -4503599627370497,
+      2n ** 53n - 1n,
+      -1n,
+      0,
+    ];
+    for (const value of values) {
+      const writer = new BinaryWriter({});
+      writer.writeVarInt64(value);
+      const reader = new BinaryReader({});
+      reader.reset(writer.dump());
+      expect(reader.readVarInt64()).toBe(BigInt(value));
+    }
+  });
+
+  test("sliInt64 round-trips negative values beyond 2^52", () => {
+    const writer = new BinaryWriter({});
+    writer.writeSliInt64(-(2n ** 52n + 1n));
+    const reader = new BinaryReader({});
+    reader.reset(writer.dump());
+    expect(reader.readSliInt64()).toBe(-(2n ** 52n + 1n));
   });
 });

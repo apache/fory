@@ -13,6 +13,11 @@ Load this file when changing `cpp/`, Cython build plumbing, or C++ xlang behavio
 - When invoking a method that returns `Result`, use `FORY_TRY` unless you are in control-flow logic that cannot use it cleanly.
 - Wrap error checks with `FORY_PREDICT_FALSE` for branch prediction.
 - Continue on trivial errors; return early only for critical errors such as buffer overflow.
+- `ReadContext` intentionally records codec errors for inspection at existing serializer or root
+  safepoints. After an error, work may continue only while it remains bounds-safe and cannot cause
+  resource amplification, publish reference or cache state that survives root cleanup, or return
+  success past the required safepoint. Do not add per-field checks, cursor rollback, or tests that
+  pin the first detection point solely to make an error earlier or more precise.
 - Put private methods last in class definitions, immediately before private fields.
 - Do not redesign alias-based or low-level public type shapes to add convenience methods unless the user explicitly asks for that API change.
 - For cross-language feature ports, match protocol behavior but use idiomatic C++ ownership and layering instead of mirroring Java structure literally.

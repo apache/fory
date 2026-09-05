@@ -17,7 +17,7 @@
 
 module(
     name = "fory",
-    version = "1.7.0",
+    version = "1.8.0",
 )
 
 # Platforms (needed for platform-specific build configurations)

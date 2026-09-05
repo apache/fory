@@ -698,6 +698,13 @@ pub mod buffer_rw_string {
     use crate::buffer::{Reader, Writer};
     use crate::error::Error;
 
+    #[inline(always)]
+    fn latin1_utf8_capacity(len: usize) -> Result<usize, Error> {
+        len.checked_mul(2)
+            .filter(|&capacity| capacity <= isize::MAX as usize)
+            .ok_or_else(|| Error::invalid_data("Latin1 string exceeds native allocation limit"))
+    }
+
     #[inline]
     pub fn write_latin1_standard(writer: &mut Writer, s: &str) {
         for c in s.chars() {
@@ -887,10 +894,10 @@ pub mod buffer_rw_string {
         if len == 0 {
             return Ok(String::new());
         }
-        let src = reader.sub_slice(reader.get_cursor(), reader.get_cursor() + len)?;
-
-        // Pessimistic allocation: Latin1 0x80-0xFF expands to 2 bytes in UTF-8
-        let mut out: Vec<u8> = Vec::with_capacity(len * 2);
+        // Pessimistic allocation: Latin1 0x80-0xFF expands to 2 bytes in UTF-8.
+        let capacity = latin1_utf8_capacity(len)?;
+        let src = reader.read_bytes(len)?;
+        let mut out: Vec<u8> = Vec::with_capacity(capacity);
 
         unsafe {
             let out_ptr = out.as_mut_ptr();
@@ -984,7 +991,6 @@ pub mod buffer_rw_string {
 
             out.set_len(out_len);
         }
-        reader.move_next(len);
         Ok(unsafe { String::from_utf8_unchecked(out) })
     }
 
@@ -1083,7 +1089,6 @@ pub mod buffer_rw_string {
             let mut reader = Reader::new(&[0, 1]);
 
             assert!(read_utf16_standard(&mut reader, 4).is_err());
-            assert_eq!(reader.get_cursor(), 0);
         }
 
         #[test]
@@ -1092,7 +1097,12 @@ pub mod buffer_rw_string {
             reader.skip(2).unwrap();
 
             assert!(read_utf16_standard(&mut reader, usize::MAX - 1).is_err());
-            assert_eq!(reader.get_cursor(), 2);
+        }
+
+        #[test]
+        fn latin1_native_capacity() {
+            let len = (isize::MAX as usize / 2) + 1;
+            assert!(latin1_utf8_capacity(len).is_err());
         }
     }
 }

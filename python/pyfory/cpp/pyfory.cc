@@ -956,7 +956,7 @@ static int write_primitive_sequence(PyObject **items, Py_ssize_t size,
         }
         const uint64_t zigzag =
             (static_cast<uint64_t>(v) << 1) ^ static_cast<uint64_t>(v >> 63);
-        offset += buffer->put_var_uint64(offset, zigzag);
+        offset += buffer->put_var_uint64_unchecked(offset, zigzag);
       }
       buffer->increase_writer_index(offset - writer_index);
     }
@@ -980,7 +980,7 @@ static int write_primitive_sequence(PyObject **items, Py_ssize_t size,
         }
         const uint32_t zigzag =
             (static_cast<uint32_t>(v) << 1) ^ static_cast<uint32_t>(v >> 31);
-        offset += buffer->put_var_uint32(offset, zigzag);
+        offset += buffer->put_var_uint32_unchecked(offset, zigzag);
       }
       buffer->increase_writer_index(offset - writer_index);
     }

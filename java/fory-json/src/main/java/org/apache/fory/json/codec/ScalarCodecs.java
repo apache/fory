@@ -412,12 +412,12 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class LongCodec implements JsonValueCodec<Long> {
+  public static class LongCodec implements JsonValueCodec<Long> {
     public static final LongCodec PRIMITIVE = new LongCodec(true);
     public static final LongCodec BOXED = new LongCodec(false);
     private final boolean primitive;
 
-    private LongCodec(boolean primitive) {
+    protected LongCodec(boolean primitive) {
       this.primitive = primitive;
     }
 
@@ -461,6 +461,34 @@ public final class ScalarCodecs {
         return primitive ? primitiveNull(long.class) : null;
       }
       return reader.readLong();
+    }
+  }
+
+  /** Built-in signed Long binding which writes decimal digits as a JSON string. */
+  public static final class LongAsStringCodec extends LongCodec {
+    public static final LongAsStringCodec PRIMITIVE = new LongAsStringCodec(true);
+    public static final LongAsStringCodec BOXED = new LongAsStringCodec(false);
+
+    private LongAsStringCodec(boolean primitive) {
+      super(primitive);
+    }
+
+    @Override
+    public void writeString(StringJsonWriter writer, Long value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLongAsString(value);
+      }
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, Long value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLongAsString(value);
+      }
     }
   }
 
@@ -2631,8 +2659,10 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicLongCodec implements JsonValueCodec<AtomicLong> {
+  public static class AtomicLongCodec implements JsonValueCodec<AtomicLong> {
     public static final AtomicLongCodec INSTANCE = new AtomicLongCodec();
+
+    protected AtomicLongCodec() {}
 
     @Override
     public void writeString(StringJsonWriter writer, AtomicLong value) {
@@ -2665,6 +2695,31 @@ public final class ScalarCodecs {
     @Override
     public AtomicLong readUtf8(Utf8JsonReader reader) {
       return reader.tryReadNullToken() ? null : new AtomicLong(reader.readLong());
+    }
+  }
+
+  /** Built-in AtomicLong binding which writes its Long value as a JSON string. */
+  public static final class AtomicLongAsStringCodec extends AtomicLongCodec {
+    public static final AtomicLongAsStringCodec INSTANCE = new AtomicLongAsStringCodec();
+
+    private AtomicLongAsStringCodec() {}
+
+    @Override
+    public void writeString(StringJsonWriter writer, AtomicLong value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLongAsString(value.get());
+      }
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, AtomicLong value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLongAsString(value.get());
+      }
     }
   }
 
@@ -2970,8 +3025,10 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicLongArrayCodec implements JsonValueCodec<AtomicLongArray> {
+  public static class AtomicLongArrayCodec implements JsonValueCodec<AtomicLongArray> {
     public static final AtomicLongArrayCodec INSTANCE = new AtomicLongArrayCodec();
+
+    protected AtomicLongArrayCodec() {}
 
     @Override
     public void writeString(StringJsonWriter writer, AtomicLongArray value) {
@@ -3085,6 +3142,43 @@ public final class ScalarCodecs {
       reader.expect(']');
       reader.exitDepth();
       return new AtomicLongArray(Arrays.copyOf(values, size));
+    }
+  }
+
+  /** Built-in AtomicLongArray binding which writes each Long value as a JSON string. */
+  public static final class AtomicLongArrayAsStringCodec extends AtomicLongArrayCodec {
+    public static final AtomicLongArrayAsStringCodec INSTANCE = new AtomicLongArrayAsStringCodec();
+
+    private AtomicLongArrayAsStringCodec() {}
+
+    @Override
+    public void writeString(StringJsonWriter writer, AtomicLongArray value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      AtomicLongArray array = value;
+      writer.writeArrayStart();
+      for (int i = 0, length = array.length(); i < length; i++) {
+        writer.writeComma(i);
+        writer.writeLongAsString(array.get(i));
+      }
+      writer.writeArrayEnd();
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, AtomicLongArray value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      AtomicLongArray array = value;
+      writer.writeArrayStart();
+      for (int i = 0, length = array.length(); i < length; i++) {
+        writer.writeComma(i);
+        writer.writeLongAsString(array.get(i));
+      }
+      writer.writeArrayEnd();
     }
   }
 
@@ -3486,14 +3580,14 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class OptionalLongCodec
+  public static class OptionalLongCodec
       implements JsonValueCodec<OptionalLong>, TransparentNullCodec {
     public static final OptionalLongCodec INSTANCE = new OptionalLongCodec(false);
     @Internal public static final OptionalLongCodec NON_NULL = new OptionalLongCodec(true);
 
-    private final boolean requireOwner;
+    protected final boolean requireOwner;
 
-    private OptionalLongCodec(boolean requireOwner) {
+    protected OptionalLongCodec(boolean requireOwner) {
       this.requireOwner = requireOwner;
     }
 
@@ -3540,6 +3634,48 @@ public final class ScalarCodecs {
     @Override
     public OptionalLong readUtf8(Utf8JsonReader reader) {
       return reader.tryReadNullToken() ? OptionalLong.empty() : OptionalLong.of(reader.readLong());
+    }
+  }
+
+  /** Built-in OptionalLong binding which writes its present Long value as a JSON string. */
+  public static final class OptionalLongAsStringCodec extends OptionalLongCodec {
+    public static final OptionalLongAsStringCodec INSTANCE = new OptionalLongAsStringCodec(false);
+
+    @Internal
+    public static final OptionalLongAsStringCodec NON_NULL = new OptionalLongAsStringCodec(true);
+
+    private OptionalLongAsStringCodec(boolean requireOwner) {
+      super(requireOwner);
+    }
+
+    @Override
+    public void writeString(StringJsonWriter writer, OptionalLong value) {
+      if (value == null) {
+        requireOptionalOwner(requireOwner);
+        writer.writeNull();
+        return;
+      }
+      OptionalLong optional = value;
+      if (optional.isPresent()) {
+        writer.writeLongAsString(optional.getAsLong());
+      } else {
+        writer.writeNull();
+      }
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, OptionalLong value) {
+      if (value == null) {
+        requireOptionalOwner(requireOwner);
+        writer.writeNull();
+        return;
+      }
+      OptionalLong optional = value;
+      if (optional.isPresent()) {
+        writer.writeLongAsString(optional.getAsLong());
+      } else {
+        writer.writeNull();
+      }
     }
   }
 
