@@ -1231,19 +1231,15 @@ public abstract class TypeResolver {
       return null;
     }
     TypeDef localTypeDef = typeInfo.typeDef;
-    if (localTypeDef == null) {
-      if (typeInfo.serializer == null) {
-        if (!cls.isEnum() && ReflectionUtils.isAbstract(cls)) {
-          return null;
-        }
-        // Resolve this concrete read root before choosing its metadata shape. A provisional
-        // TypeInfo cannot distinguish a struct from a factory extension serializer.
-        typeInfo = getTypeInfo(cls);
-      }
-      // The serializer owns its TypeDef: guessing field metadata for an extension can cache a
-      // struct definition and corrupt a later write. Cold local structs must still match locally.
+    if (localTypeDef == null && typeInfo.serializer != null) {
       localTypeDef = buildTypeDef(typeInfo);
     }
+    if (localTypeDef != null && TypeDef.headerHash(localTypeDef.getId()) == headerHash) {
+      return localTypeDef;
+    }
+    // Class layers can use a field schema independently of the serializer's root definition.
+    // Keep this probe metadata-only: creating serializers here changes registration/codegen order.
+    localTypeDef = getTypeDef(cls, true);
     return TypeDef.headerHash(localTypeDef.getId()) == headerHash ? localTypeDef : null;
   }
 
