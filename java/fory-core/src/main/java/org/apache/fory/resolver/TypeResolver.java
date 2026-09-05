@@ -1231,10 +1231,20 @@ public abstract class TypeResolver {
     }
     // A declared polymorphic target can be an unregistered interface or abstract class. It has no
     // concrete local metadata owner, so do not materialize a TypeDef merely to probe for a hit.
-    if (getTypeInfo(cls, false) == null) {
+    TypeInfo typeInfo = getTypeInfo(cls, false);
+    if (typeInfo == null) {
       return null;
     }
-    TypeDef localTypeDef = getTypeDef(cls, true);
+    TypeDef localTypeDef = typeInfo.typeDef;
+    if (localTypeDef == null && typeInfo.serializer != null) {
+      localTypeDef = buildTypeDef(typeInfo);
+    }
+    if (localTypeDef != null && TypeDef.headerHash(localTypeDef.getId()) == headerHash) {
+      return localTypeDef;
+    }
+    // Class layers can use a field schema independently of the serializer's root definition.
+    // Keep this probe metadata-only: creating serializers here changes registration/codegen order.
+    localTypeDef = getTypeDef(cls, true);
     return TypeDef.headerHash(localTypeDef.getId()) == headerHash ? localTypeDef : null;
   }
 
