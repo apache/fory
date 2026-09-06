@@ -252,10 +252,10 @@ public class MetaStringTest {
     MetaStringEncoder encoder = new MetaStringEncoder('_', '$');
     String nonAsciiString = "こんにちは"; // Non-ASCII string
 
-    try {
-      encoder.encode(nonAsciiString, MetaString.Encoding.LOWER_SPECIAL);
-    } catch (IllegalArgumentException e) {
-      assertEquals(e.getMessage(), "Non-ASCII characters in meta string are not allowed");
-    }
+    IllegalArgumentException exception =
+        expectThrows(
+            IllegalArgumentException.class,
+            () -> encoder.encode(nonAsciiString, MetaString.Encoding.LOWER_SPECIAL));
+    assertEquals(exception.getMessage(), "Non-ASCII characters in meta string are not allowed");
   }
 }
