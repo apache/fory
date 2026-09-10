@@ -2914,13 +2914,14 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private static int parse2(byte[] bytes, int index) {
-    int high = bytes[index] - '0';
-    int low = bytes[index + 1] - '0';
-    if ((high | low | (9 - high) | (9 - low)) < 0) {
+    int chunk = (bytes[index] & 0xff) | ((bytes[index + 1] & 0xff) << 8);
+    // Check both ASCII lanes together; valid digits cannot borrow across lanes.
+    int digits = chunk - 0x3030;
+    if (((digits | (0x3939 - chunk)) & 0x8080) != 0) {
       // A JSON escape can occur inside a digit pair; let the decoded-text parser handle it.
       return -1;
     }
-    return high * 10 + low;
+    return (digits & 0xff) * 10 + (digits >>> 8);
   }
 
   private static boolean isDigit(byte b) {

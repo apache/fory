@@ -135,6 +135,31 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readTimeDigitPairs() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    // Keep seconds absent so this test exercises parse2.
+    byte[] token = "\"01:02\"".getBytes(StandardCharsets.UTF_8);
+    for (int first = 0; first < 256; first++) {
+      for (int second : new int[] {'0', '9', 0, 47, 58, 127, 128, 255}) {
+        token[4] = (byte) first;
+        token[5] = (byte) second;
+        reader.reset(token);
+        if (first >= '0' && first <= '5' && second >= '0' && second <= '9') {
+          assertEquals(
+              reader.readIsoLocalTime(), LocalTime.of(1, (first - '0') * 10 + second - '0'));
+          reader.finish();
+        } else {
+          assertThrows(RuntimeException.class, () -> reader.readIsoLocalTime());
+        }
+      }
+    }
+    for (int minutes = 0; minutes < 60; minutes++) {
+      LocalTime time = LocalTime.of(1, minutes);
+      assertToken(ScalarCodecs.LocalTimeCodec.INSTANCE, time.toString(), time);
+    }
+  }
+
+  @Test
   public void readTemporalComponents() {
     Random random = new Random(8045792L);
     ZoneId[] zones = {
