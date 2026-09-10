@@ -323,6 +323,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       writeBigNumberText(BigNumberDigits.formatInt128(value, 0));
       return;
     }
+    if (bitLength <= BigNumberDigits.MAX_ITERATIVE_BITS) {
+      writeBigNumberText(BigNumberDigits.formatMagnitude(value, 0, bitLength));
+      return;
+    }
     writeBigNumberText(value.toString());
   }
 
@@ -2285,6 +2289,11 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
         int bitLength = coefficient.bitLength();
         if (bitLength > 63 && bitLength <= 127) {
           writeBigNumberText(BigNumberDigits.formatInt128(coefficient, value.scale()));
+          return;
+        }
+        if (bitLength > 127 && bitLength <= BigNumberDigits.MAX_ITERATIVE_BITS) {
+          writeBigNumberText(
+              BigNumberDigits.formatMagnitude(coefficient, value.scale(), bitLength));
           return;
         }
       }

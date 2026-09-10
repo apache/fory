@@ -32,6 +32,9 @@ import java.nio.charset.StandardCharsets;
 final class BigNumberDigits {
   // Packed 1-3 digit stores write one four-byte word; concrete writers reserve this tail once.
   static final int PACKED_WRITE_SLACK = 3;
+  // Repeated division is quadratic in magnitude size. Keep it bounded and leave larger values
+  // with the JDK's recursive conversion; this range also avoids intermediate quotient objects.
+  static final int MAX_ITERATIVE_BITS = 4096;
   static final long[] LONG_POWERS_OF_TEN = {
     1L,
     10L,
@@ -105,7 +108,51 @@ final class BigNumberDigits {
     while (digits[start] == '0' && start < 63) {
       start++;
     }
-    int end = 64;
+    return formatDigits(digits, start, 64, scale, negative);
+  }
+
+  /** Formats a bounded exact JDK coefficient above the signed 128-bit range. */
+  static String formatMagnitude(BigInteger value, int scale, int bitLength) {
+    byte[] magnitude = value.abs().toByteArray();
+    int wordCount = (magnitude.length + 3) >>> 2;
+    int[] words = new int[wordCount];
+    for (int i = 0; i < magnitude.length; i++) {
+      words[wordCount - 1 - (i >>> 2)] |=
+          (magnitude[magnitude.length - 1 - i] & 0xff) << ((i & 3) << 3);
+    }
+    // A group contains more than 29 bits. Negative powers of two have one extra magnitude bit.
+    // Eight leading bytes and sixteen trailing bytes cover either decimal layout and its sign.
+    int end = 8 + ((bitLength + 30) / 29) * 9;
+    byte[] digits = new byte[end + 16];
+    int start = end;
+    int first = 0;
+    while (first < wordCount) {
+      long remainder = 0;
+      for (int i = first; i < wordCount; i++) {
+        // The remainder is below 10^9; appending an unsigned limb still fits a positive long.
+        long dividend = (remainder << 32) | (words[i] & 0xffffffffL);
+        long quotient = dividend / 1_000_000_000L;
+        words[i] = (int) quotient;
+        remainder = dividend - quotient * 1_000_000_000L;
+      }
+      while (first < wordCount && words[first] == 0) {
+        first++;
+      }
+      int group = (int) remainder;
+      for (int i = 0; i < 9; i++) {
+        int quotient = group / 10;
+        digits[--start] = (byte) ('0' + group - quotient * 10);
+        group = quotient;
+      }
+    }
+    while (digits[start] == '0' && start < end - 1) {
+      start++;
+    }
+    return formatDigits(digits, start, end, scale, value.signum() < 0);
+  }
+
+  private static String formatDigits(
+      byte[] digits, int start, int end, int scale, boolean negative) {
     int precision = end - start;
     long exponent = (long) precision - scale - 1;
     if (scale != 0) {

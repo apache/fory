@@ -932,6 +932,53 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeCoefficientGroups() {
+    for (int bits : new int[] {127, 128, 129, 255, 256, 1023, 1024, 4095, 4096, 4097}) {
+      BigInteger boundary = BigInteger.ONE.shiftLeft(bits);
+      for (int delta = -1; delta <= 1; delta++) {
+        BigInteger value = boundary.add(BigInteger.valueOf(delta));
+        for (BigInteger signed : new BigInteger[] {value, value.negate()}) {
+          assertWriterNumber(signed, signed.toString());
+          int precision = signed.abs().toString().length();
+          for (int scale :
+              new int[] {
+                0,
+                1,
+                precision - 1,
+                precision,
+                precision + 5,
+                precision + 6,
+                Integer.MIN_VALUE,
+                Integer.MAX_VALUE
+              }) {
+            assertBigDecimalWriter(signed, scale);
+          }
+        }
+      }
+    }
+    for (int groups : new int[] {5, 15, 55, 120}) {
+      BigInteger boundary = BigInteger.TEN.pow(groups * 9);
+      for (int delta = -1; delta <= 1; delta++) {
+        BigInteger value = boundary.add(BigInteger.valueOf(delta));
+        assertWriterNumber(value, value.toString());
+        assertWriterNumber(value.negate(), value.negate().toString());
+        assertBigDecimalWriter(value, groups * 9 / 2);
+        assertBigDecimalWriter(value.negate(), groups * 9 + 5);
+      }
+    }
+    Random random = new Random(7213);
+    for (int i = 0; i < 256; i++) {
+      int bits = 128 + random.nextInt(4097 - 128);
+      BigInteger value = new BigInteger(bits, random).setBit(bits - 1);
+      if (random.nextBoolean()) {
+        value = value.negate();
+      }
+      assertWriterNumber(value, value.toString());
+      assertBigDecimalWriter(value, random.nextInt(2401) - 1200);
+    }
+  }
+
+  @Test
   public void writeCompactBigDecimalCorners() {
     long[] coefficients = {
       0L,
