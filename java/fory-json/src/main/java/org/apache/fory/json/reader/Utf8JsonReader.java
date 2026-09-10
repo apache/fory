@@ -955,6 +955,68 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   @Override
+  void scanNumberToken() {
+    byte[] bytes = input;
+    int limit = inputLimit;
+    int offset = position;
+    if (offset < limit && bytes[offset] == '-') {
+      offset++;
+    }
+    if (offset >= limit) {
+      position = offset;
+      throw error("Expected digit");
+    }
+    int first = bytes[offset];
+    if (first == '0') {
+      offset++;
+      if (offset < limit && bytes[offset] >= '0' && bytes[offset] <= '9') {
+        position = offset;
+        throw error("Leading zero in number");
+      }
+    } else if (first >= '1' && first <= '9') {
+      offset = scanNumberDigits(bytes, offset, limit);
+    } else {
+      position = offset;
+      throw error("Expected digit");
+    }
+    if (offset < limit && bytes[offset] == '.') {
+      int fraction = ++offset;
+      offset = scanNumberDigits(bytes, offset, limit);
+      if (offset == fraction) {
+        position = offset;
+        throw error("Expected digit");
+      }
+    }
+    if (offset < limit && (bytes[offset] == 'e' || bytes[offset] == 'E')) {
+      offset++;
+      if (offset < limit && (bytes[offset] == '+' || bytes[offset] == '-')) {
+        offset++;
+      }
+      int exponent = offset;
+      offset = scanNumberDigits(bytes, offset, limit);
+      if (offset == exponent) {
+        position = offset;
+        throw error("Expected digit");
+      }
+    }
+    position = offset;
+  }
+
+  private static int scanNumberDigits(byte[] bytes, int offset, int limit) {
+    while (offset <= limit - 8) {
+      long chunk = LittleEndian.getInt64(bytes, offset);
+      if ((((chunk - ASCII_ZEROES) | (ASCII_NINES - chunk)) & ASCII_HIGH_BITS) != 0) {
+        break;
+      }
+      offset += 8;
+    }
+    while (offset < limit && bytes[offset] >= '0' && bytes[offset] <= '9') {
+      offset++;
+    }
+    return offset;
+  }
+
+  @Override
   public BigInteger readBigInteger() {
     skipWhitespaceFast();
     if (position < inputLimit && input[position] == '"') {
@@ -1040,21 +1102,10 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private BigInteger readBigIntegerTail(int start, int offset) {
-    byte[] bytes = input;
-    int limit = inputLimit;
-    while (offset <= limit - 8) {
-      long chunk = LittleEndian.getInt64(bytes, offset);
-      if ((((chunk - ASCII_ZEROES) | (ASCII_NINES - chunk)) & ASCII_HIGH_BITS) != 0) {
-        break;
-      }
-      offset += 8;
-    }
-    while (offset < limit && bytes[offset] >= '0' && bytes[offset] <= '9') {
-      offset++;
-    }
+    offset = scanNumberDigits(input, offset, inputLimit);
     position = offset;
     rejectFractionOrExponentFast();
-    return parseBigInteger(slice(start, offset));
+    return parseBigInteger(input, start, offset);
   }
 
   public BigDecimal readBigDecimal() {

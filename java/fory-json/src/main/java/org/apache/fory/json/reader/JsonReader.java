@@ -21,6 +21,7 @@ package org.apache.fory.json.reader;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -658,7 +659,7 @@ public abstract class JsonReader {
     return slice(start, position);
   }
 
-  private void scanNumberToken() {
+  void scanNumberToken() {
     int start = position;
     if (position < length() && charAt(position) == '-') {
       position++;
@@ -1038,17 +1039,17 @@ public abstract class JsonReader {
     }
     // The scanner has validated the decimal grammar. Preserve every coefficient digit, including
     // trailing zeroes, and reuse integer conversion instead of repeating JDK decimal digit parsing.
-    String coefficient;
+    byte[] bytes = bigNumberBytes(number);
+    BigInteger unscaled;
     if (point < 0) {
-      coefficient = number.substring(0, coefficientEnd);
+      unscaled = parseBigInteger(bytes, 0, coefficientEnd);
     } else {
-      coefficient =
-          new StringBuilder(coefficientEnd - 1)
-              .append(number, 0, point)
-              .append(number, point + 1, coefficientEnd)
-              .toString();
+      byte[] coefficient = new byte[coefficientEnd - 1];
+      System.arraycopy(bytes, 0, coefficient, 0, point);
+      System.arraycopy(bytes, point + 1, coefficient, point, coefficientEnd - point - 1);
+      unscaled = parseBigInteger(coefficient, 0, coefficient.length);
     }
-    return new BigDecimal(parseBigInteger(coefficient), (int) scale);
+    return new BigDecimal(unscaled, (int) scale);
   }
 
   protected final void beginQuotedScalar() {
@@ -1777,16 +1778,33 @@ public abstract class JsonReader {
   }
 
   final BigInteger parseBigInteger(String number) {
-    int length = number.length();
-    if (length > MAX_BIG_NUMBER_LENGTH) {
+    byte[] bytes = bigNumberBytes(number);
+    return parseBigInteger(bytes, 0, bytes.length);
+  }
+
+  private byte[] bigNumberBytes(String number) {
+    if (StringSerializer.isBytesBackedString() && StringSerializer.getStringCoder(number) == 0) {
+      return StringSerializer.getStringBytes(number);
+    }
+    // Bound the transcoding allocation on JDK8 or when compact strings are disabled.
+    if (number.length() > MAX_BIG_NUMBER_LENGTH) {
+      throwBigNumberLengthExceeded(position);
+    }
+    return number.getBytes(StandardCharsets.ISO_8859_1);
+  }
+
+  final BigInteger parseBigInteger(byte[] bytes, int start, int end) {
+    // UTF8 callers lend a span already validated within the input limit. The converter does not
+    // retain it; the resulting BigInteger owns its magnitude storage.
+    if (end - start > MAX_BIG_NUMBER_LENGTH) {
       throwBigNumberLengthExceeded(position);
     }
     // Callers have validated ASCII integer or coefficient syntax. Accumulate eighteen digits at a
     // time in unsigned 64-bit words; each multiplication produces an exact high half and one carry.
     // The length gate above bounds scratch storage by the text already proven readable.
-    boolean negative = number.charAt(0) == '-';
-    int offset = negative ? 1 : 0;
-    int digits = length - offset;
+    boolean negative = bytes[start] == '-';
+    int offset = start + (negative ? 1 : 0);
+    int digits = end - offset;
     int capacity = (digits + 17) / 18;
     long[] words = numericWorkspace.bigIntegerBuffer;
     if (words.length < capacity) {
@@ -1794,10 +1812,10 @@ public abstract class JsonReader {
       numericWorkspace.bigIntegerBuffer = words;
     }
     int firstEnd = offset + (digits - 1) % 18 + 1;
-    words[0] = parseDecimalChunk(number, offset, firstEnd);
+    words[0] = parseDecimalChunk(bytes, offset, firstEnd);
     int wordCount = 1;
-    for (offset = firstEnd; offset < length; offset += 18) {
-      long carry = parseDecimalChunk(number, offset, offset + 18);
+    for (offset = firstEnd; offset < end; offset += 18) {
+      long carry = parseDecimalChunk(bytes, offset, offset + 18);
       for (int i = 0; i < wordCount; i++) {
         long word = words[i];
         long product = word * 1_000_000_000_000_000_000L;
@@ -1810,32 +1828,35 @@ public abstract class JsonReader {
         words[wordCount++] = carry;
       }
     }
-    byte[] magnitude = new byte[wordCount * Long.BYTES];
-    for (int i = 0; i < wordCount; i++) {
+    long highWord = words[wordCount - 1];
+    if (wordCount == 1 && highWord >= 0) {
+      return BigInteger.valueOf(negative ? -highWord : highWord);
+    }
+    int leadingBytes = Long.numberOfLeadingZeros(highWord) >>> 3;
+    byte[] magnitude = new byte[wordCount * Long.BYTES - leadingBytes];
+    // A non-compact magnitude has at least eight bytes. Emit its partial high word first; the
+    // following full-word stores overwrite any padding, so no leading-zero byte scan is needed.
+    LittleEndian.putInt64(magnitude, 0, Long.reverseBytes(highWord) >>> (leadingBytes << 3));
+    for (int i = 0; i < wordCount - 1; i++) {
       LittleEndian.putInt64(
           magnitude, magnitude.length - (i + 1) * Long.BYTES, Long.reverseBytes(words[i]));
     }
     return new BigInteger(negative ? -1 : 1, magnitude);
   }
 
-  private static long parseDecimalChunk(String number, int start, int end) {
+  private static long parseDecimalChunk(byte[] bytes, int start, int end) {
     long value = 0;
-    if (end - start >= 8
-        && StringSerializer.isBytesBackedString()
-        && StringSerializer.getStringCoder(number) == 0) {
-      byte[] bytes = StringSerializer.getStringBytes(number);
-      do {
-        // The complete token has already passed ASCII digit validation.
-        long digits = LittleEndian.getInt64(bytes, start) - 0x3030_3030_3030_3030L;
-        long pairs = (digits * 10 + (digits >>> 8)) & 0x00ff_00ff_00ff_00ffL;
-        long groups = (pairs * 100 + (pairs >>> 16)) & 0x0000_ffff_0000_ffffL;
-        long block = (groups & 0xffff) * 10_000 + (groups >>> 32);
-        value = value * 100_000_000 + block;
-        start += 8;
-      } while (end - start >= 8);
+    while (end - start >= 8) {
+      // The complete token has already passed ASCII digit validation.
+      long digits = LittleEndian.getInt64(bytes, start) - 0x3030_3030_3030_3030L;
+      long pairs = (digits * 10 + (digits >>> 8)) & 0x00ff_00ff_00ff_00ffL;
+      long groups = (pairs * 100 + (pairs >>> 16)) & 0x0000_ffff_0000_ffffL;
+      long block = (groups & 0xffff) * 10_000 + (groups >>> 32);
+      value = value * 100_000_000 + block;
+      start += 8;
     }
     for (int i = start; i < end; i++) {
-      value = value * 10 + number.charAt(i) - '0';
+      value = value * 10 + bytes[i] - '0';
     }
     return value;
   }

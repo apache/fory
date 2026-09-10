@@ -975,6 +975,53 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readNumberSpans() {
+    String[] numbers = {
+      "0",
+      "-0",
+      "0.0000123456789012345678901234567890",
+      "-123456789012345678901234567890.00001234567890123456789e+040",
+      "123456789012345678901234567890E-0000000000000000000000000000000030"
+    };
+    for (String number : numbers) {
+      for (int offset = 0; offset < 8; offset++) {
+        byte[] token = number.getBytes(StandardCharsets.US_ASCII);
+        byte[] input = new byte[offset + token.length + 8];
+        Arrays.fill(input, (byte) '9');
+        System.arraycopy(token, 0, input, offset, token.length);
+        Utf8JsonReader reader = newUtf8Reader(input);
+        reader.reset(input, offset, token.length);
+        assertEquals(reader.readNumberAsString(), number);
+      }
+    }
+    for (String number : new String[] {"-", "01", "-01", "1.", "1e", "1E+", "1e-", "1e+-2"}) {
+      assertThrows(
+          ForyJsonException.class,
+          () -> newUtf8Reader(number.getBytes(StandardCharsets.UTF_8)).readNumberAsString());
+    }
+  }
+
+  @Test
+  public void readBigIntegerSlices() {
+    Random random = new Random(937);
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int bits = 65; bits <= 1024; bits += 17) {
+      BigInteger value = new BigInteger(bits, random).setBit(bits - 1);
+      for (int sign : new int[] {1, -1}) {
+        BigInteger expected = value.multiply(BigInteger.valueOf(sign));
+        byte[] token = expected.toString().getBytes(StandardCharsets.US_ASCII);
+        for (int offset = 0; offset < 8; offset++) {
+          byte[] input = new byte[offset + token.length + 8];
+          Arrays.fill(input, (byte) '9');
+          System.arraycopy(token, 0, input, offset, token.length);
+          reader.reset(input, offset, token.length);
+          assertEquals(reader.readBigInteger(), expected);
+        }
+      }
+    }
+  }
+
+  @Test
   public void writeLargeBigInteger() {
     BigInteger value = BigInteger.TEN.pow(9_216);
     assertWriterNumber(value, value.toString());
@@ -1866,7 +1913,11 @@ public class JsonScalarTest extends ForyJsonTestModels {
     ForyJson json =
         newJsonBuilder().registerCodec(ModeAwareValue.class, new ModeAwareCodec()).build();
     ModeAwareValue value = json.fromJson("{}", ModeAwareValue.class);
-    String expected = StringSerializer.isBytesBackedString() ? "latin1" : "utf16";
+    // A byte-backed String still uses UTF16 when compact strings are disabled.
+    String expected =
+        StringSerializer.isBytesBackedString() && StringSerializer.getStringCoder("{}") == 0
+            ? "latin1"
+            : "utf16";
     assertEquals(value.mode, expected);
   }
 
@@ -1890,7 +1941,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         new String(json.toJsonBytes(holder), StandardCharsets.UTF_8), "{\"value\":\"utf8-null\"}");
 
-    String stringMode = StringSerializer.isBytesBackedString() ? "latin1-null" : "utf16-null";
+    String stringMode =
+        StringSerializer.isBytesBackedString() && StringSerializer.getStringCoder("null") == 0
+            ? "latin1-null"
+            : "utf16-null";
     assertEquals(json.fromJson("null", NullOwnedValue.class).mode, stringMode);
     assertEquals(
         json.fromJson("null".getBytes(StandardCharsets.UTF_8), NullOwnedValue.class).mode,
@@ -1942,6 +1996,12 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public void guardBigIntegerLength() {
     ForyJson json = newJson();
     String accepted = repeat('1', BIG_NUMBER_LIMIT);
+    for (boolean quoted : new boolean[] {false, true}) {
+      String oversized = quoted ? '"' + accepted + "1\"" : accepted + '1';
+      assertThrows(
+          ForyJsonException.class,
+          () -> newUtf8Reader(oversized.getBytes(StandardCharsets.UTF_8)).readBigInteger());
+    }
     assertEquals(
         json.fromJson(accepted.getBytes(StandardCharsets.UTF_8), BigInteger.class),
         new BigInteger(accepted));
