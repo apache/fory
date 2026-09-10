@@ -105,6 +105,39 @@ public class JsonScalarTest extends ForyJsonTestModels {
   private static final int BIG_NUMBER_LIMIT = 10_000;
 
   @Test
+  public void readBooleanSlices() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (String token : new String[] {"true", "false", "\"true\"", "\"false\""}) {
+      byte[] encoded = token.getBytes(StandardCharsets.UTF_8);
+      for (int offset = 0; offset < 8; offset++) {
+        byte[] bytes = new byte[offset + encoded.length + 8];
+        Arrays.fill(bytes, (byte) 'x');
+        System.arraycopy(encoded, 0, bytes, offset, encoded.length);
+        for (int length = 0; length < encoded.length; length++) {
+          reader.reset(bytes, offset, length);
+          // A complete token remains in the backing array beyond the declared input slice.
+          assertThrows(ForyJsonException.class, () -> reader.readBooleanValue());
+        }
+        reader.reset(bytes, offset, encoded.length);
+        assertEquals(reader.readBooleanValue(), token.contains("true"));
+        reader.finish();
+        for (int index = 0; index < encoded.length; index++) {
+          byte saved = bytes[offset + index];
+          bytes[offset + index] = 'x';
+          reader.reset(bytes, offset, encoded.length);
+          assertThrows(
+              ForyJsonException.class,
+              () -> {
+                reader.readBooleanValue();
+                reader.finish();
+              });
+          bytes[offset + index] = saved;
+        }
+      }
+    }
+  }
+
+  @Test
   public void writeBooleanBufferBoundaries() {
     for (int capacity = 0; capacity <= 24; capacity++) {
       Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);

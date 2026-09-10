@@ -93,8 +93,10 @@ public final class Utf8JsonReader extends JsonReader {
   private static final long ASCII_ZEROES = 0x3030_3030_3030_3030L;
   private static final long ASCII_NINES = 0x3939_3939_3939_3939L;
   private static final long ASCII_HIGH_BITS = 0x8080_8080_8080_8080L;
-  // Little-endian packed ASCII bytes for "null".
+  // Little-endian packed ASCII bytes for the fixed JSON literals.
   private static final int NULL_LITERAL = 0x6C6C756E;
+  private static final int TRUE_LITERAL = 0x65757274;
+  private static final int FALSE_PREFIX = 0x736C6166;
 
   /** The generated String-array loop consumed the closing bracket. */
   @Internal public static final int STRING_ARRAY_END = 0;
@@ -772,24 +774,21 @@ public final class Utf8JsonReader extends JsonReader {
   private boolean readBooleanToken() {
     byte[] bytes = input;
     int offset = position;
-    if (offset < inputLimit && bytes[offset] == '"') {
-      return readQuotedBooleanValue();
+    int limit = inputLimit;
+    // Prove the whole word is in the input slice, independently of the backing array's length.
+    if (offset <= limit - 4) {
+      int word = LittleEndian.getInt32(bytes, offset);
+      if (word == TRUE_LITERAL) {
+        position = offset + 4;
+        return true;
+      }
+      if (word == FALSE_PREFIX && offset < limit - 4 && bytes[offset + 4] == 'e') {
+        position = offset + 5;
+        return false;
+      }
     }
-    if (offset + 3 < inputLimit
-        && bytes[offset] == 't'
-        && bytes[offset + 1] == 'r'
-        && bytes[offset + 2] == 'u'
-        && bytes[offset + 3] == 'e') {
-      position = offset + 4;
-      return true;
-    } else if (offset + 4 < inputLimit
-        && bytes[offset] == 'f'
-        && bytes[offset + 1] == 'a'
-        && bytes[offset + 2] == 'l'
-        && bytes[offset + 3] == 's'
-        && bytes[offset + 4] == 'e') {
-      position = offset + 5;
-      return false;
+    if (offset < limit && bytes[offset] == '"') {
+      return readQuotedBooleanValue();
     }
     throw error("Expected boolean");
   }
