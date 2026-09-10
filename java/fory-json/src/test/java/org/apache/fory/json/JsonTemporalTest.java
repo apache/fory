@@ -270,6 +270,33 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeZoneOffsetTokens() {
+    Utf8JsonWriter writer = newUtf8Writer(new byte[0]);
+    for (int seconds = -64800; seconds <= 64800; seconds++) {
+      ZoneOffset value = ZoneOffset.ofTotalSeconds(seconds);
+      writer.reset();
+      ScalarCodecs.ZoneOffsetCodec.INSTANCE.writeUtf8(writer, value);
+      assertEquals(
+          new String(writer.toJsonBytes(), StandardCharsets.UTF_8), '"' + value.getId() + '"');
+    }
+    for (int seconds : new int[] {0, 1, -1, 60, -60, 64800, -64800}) {
+      ZoneOffset value = ZoneOffset.ofTotalSeconds(seconds);
+      for (int capacity = 0; capacity <= 16; capacity++) {
+        writer = newUtf8Writer(new byte[capacity]);
+        String prefix = "       ".substring(0, capacity & 7);
+        writer.writeRawValue(prefix);
+        ScalarCodecs.ZoneOffsetCodec.INSTANCE.writeUtf8(writer, value);
+        assertEquals(
+            new String(writer.toJsonBytes(), StandardCharsets.UTF_8),
+            prefix + '"' + value.getId() + '"');
+      }
+    }
+    writer.reset();
+    ScalarCodecs.ZoneOffsetCodec.INSTANCE.writeUtf8(writer, null);
+    assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), "null");
+  }
+
+  @Test
   public void writeYearBoundaries() {
     int[] years = {
       Year.MIN_VALUE,

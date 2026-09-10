@@ -1989,8 +1989,28 @@ public final class ScalarCodecs {
     public void writeUtf8(Utf8JsonWriter writer, ZoneOffset value) {
       if (value == null) {
         writer.writeNull();
+        return;
+      }
+      // ZoneOffset IDs are canonical ASCII: Z, +/-HH:mm, or +/-HH:mm:ss. They require no escaping.
+      String id = value.getId();
+      int length = id.length();
+      if (length == 1) {
+        writer.writeRawValue(0x225a22L, 0, 3);
+        return;
+      }
+      long first =
+          '"'
+              | ((long) (value.getTotalSeconds() < 0 ? '-' : '+') << 8)
+              | ((long) id.charAt(1) << 16)
+              | ((long) id.charAt(2) << 24)
+              | ((long) ':' << 32)
+              | ((long) id.charAt(4) << 40)
+              | ((long) id.charAt(5) << 48);
+      if (length == 6) {
+        writer.writeRawValue(first | ((long) '"' << 56), 0, 8);
       } else {
-        writer.writeString(value.getId());
+        long second = id.charAt(7) | ((long) id.charAt(8) << 8) | ((long) '"' << 16);
+        writer.writeRawValue(first | ((long) ':' << 56), second, 11);
       }
     }
 
