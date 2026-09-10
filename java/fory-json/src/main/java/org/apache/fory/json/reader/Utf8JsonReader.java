@@ -1357,6 +1357,10 @@ public final class Utf8JsonReader extends JsonReader {
     if (((digits | (ASCII_NINES - chunk)) & ASCII_HIGH_BITS) != 0) {
       return -1;
     }
+    return combineEightDigits(digits);
+  }
+
+  private static int combineEightDigits(long digits) {
     long pairs = (digits * 10 + (digits >>> 8)) & 0x00FF_00FF_00FF_00FFL;
     long quads = (pairs * 100 + (pairs >>> 16)) & 0x0000_FFFF_0000_FFFFL;
     return (int) ((quads & 0xFFFF) * 10_000 + (quads >>> 32));
@@ -2849,6 +2853,31 @@ public final class Utf8JsonReader extends JsonReader {
 
   private int readFractionNanos(int start) {
     byte[] bytes = input;
+    int inputLimit = this.inputLimit;
+    if (start <= inputLimit - 8) {
+      long chunk = LittleEndian.getInt64(bytes, start);
+      long digits = chunk - ASCII_ZEROES;
+      long stopMask = (digits | (ASCII_NINES - chunk)) & ASCII_HIGH_BITS;
+      if (stopMask != 0) {
+        int count = Long.numberOfTrailingZeros(stopMask) >>> 3;
+        // Valid prefix lanes cannot borrow. Clear the suffix to pad the fraction on the right;
+        // eight decimal places followed by one zero give nanoseconds without a variable scale.
+        digits &= (1L << (count << 3)) - 1;
+        position = start + count;
+        return combineEightDigits(digits) * 10;
+      }
+      int nano = combineEightDigits(digits) * 10;
+      int end = start + 8;
+      if (end < inputLimit) {
+        int last = bytes[end] - '0';
+        if (last >= 0 && last <= 9) {
+          nano += last;
+          end++;
+        }
+      }
+      position = end;
+      return nano;
+    }
     int end = start;
     int limit = Math.min(inputLimit, start + 9);
     int nano = 0;

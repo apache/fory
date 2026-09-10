@@ -160,6 +160,54 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readFractionPrefixes() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    Random random = new Random(4615);
+    for (int length = 0; length <= 9; length++) {
+      for (int sample = 0; sample < 64; sample++) {
+        StringBuilder fraction = new StringBuilder();
+        for (int i = 0; i < length; i++) {
+          fraction.append((char) ('0' + random.nextInt(10)));
+        }
+        String timeText = "01:02:03." + fraction;
+        LocalTime expected = LocalTime.parse(timeText);
+        String token = '"' + timeText + '"';
+        // Trailing tokens provide eight readable bytes even for short fractional prefixes.
+        byte[] bytes = (token + ",123456789").getBytes(StandardCharsets.UTF_8);
+        reader.reset(bytes);
+        assertEquals(reader.readIsoLocalTime(), expected);
+        reader.expectNextToken(',');
+        assertEquals(reader.readInt(), 123456789);
+        reader.finish();
+        for (int offset = 0; offset < 4; offset++) {
+          byte[] slice = new byte[offset + bytes.length];
+          System.arraycopy(bytes, 0, slice, offset, bytes.length);
+          reader.reset(slice, offset, token.length());
+          assertEquals(reader.readIsoLocalTime(), expected);
+          reader.finish();
+          reader.reset(slice, offset, token.length() - 1);
+          assertThrows(RuntimeException.class, () -> reader.readIsoLocalTime());
+        }
+        assertToken(ScalarCodecs.LocalTimeCodec.INSTANCE, timeText, expected);
+        assertToken(
+            ScalarCodecs.OffsetTimeCodec.INSTANCE,
+            timeText + "+01:30",
+            OffsetTime.of(expected, ZoneOffset.ofHoursMinutes(1, 30)));
+      }
+    }
+    for (int position = 0; position < 9; position++) {
+      for (int value : new int[] {0, 31, 47, 58, 127, 128, 192, 255}) {
+        byte[] bytes = "\"01:02:03.123456789\",123456789".getBytes(StandardCharsets.UTF_8);
+        bytes[10 + position] = (byte) value;
+        reader.reset(bytes);
+        assertThrows(RuntimeException.class, () -> reader.readIsoLocalTime());
+      }
+    }
+    assertEscapes(ScalarCodecs.LocalTimeCodec.INSTANCE, LocalTime.of(1, 2, 3, 123456789));
+    rejectToken(ScalarCodecs.LocalTimeCodec.INSTANCE, "01:02:03.1234567890");
+  }
+
+  @Test
   public void readTemporalComponents() {
     Random random = new Random(8045792L);
     ZoneId[] zones = {
