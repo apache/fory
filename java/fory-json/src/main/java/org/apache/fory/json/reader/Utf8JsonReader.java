@@ -28,6 +28,7 @@ import java.time.LocalTime;
 import java.time.MonthDay;
 import java.time.OffsetDateTime;
 import java.time.OffsetTime;
+import java.time.Year;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -2460,6 +2461,21 @@ public final class Utf8JsonReader extends JsonReader {
     }
     position = mark;
     return super.readZonedDateTime();
+  }
+
+  @Override
+  public Year readYear() {
+    skipWhitespaceFast();
+    int offset = position;
+    byte[] bytes = input;
+    if (offset <= inputLimit - 6 && bytes[offset] == '"' && bytes[offset + 5] == '"') {
+      int year = parseFourDigits(bytes, offset + 1, inputLimit);
+      if (year >= 0) {
+        position = offset + 6;
+        return Year.of(year);
+      }
+    }
+    return super.readYear();
   }
 
   @Override

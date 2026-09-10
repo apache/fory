@@ -37,10 +37,12 @@ import java.time.MonthDay;
 import java.time.OffsetDateTime;
 import java.time.OffsetTime;
 import java.time.Period;
+import java.time.Year;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.Locale;
 import java.util.Random;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
@@ -52,6 +54,39 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.testng.annotations.Test;
 
 public class JsonTemporalTest extends ForyJsonTestModels {
+  @Test
+  public void readYearSlices() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int value : new int[] {0, 1, 999, 1000, 2024, 9999}) {
+      String text = String.format(Locale.ROOT, "%04d", value);
+      assertToken(ScalarCodecs.YearCodec.INSTANCE, text, Year.of(value));
+      byte[] token = ('"' + text + '"').getBytes(StandardCharsets.UTF_8);
+      for (int offset = 0; offset < 8; offset++) {
+        byte[] bytes = new byte[offset + token.length + 8];
+        System.arraycopy(token, 0, bytes, offset, token.length);
+        for (int length = 0; length < token.length; length++) {
+          reader.reset(bytes, offset, length);
+          assertThrows(ForyJsonException.class, () -> reader.readYear());
+        }
+        reader.reset(bytes, offset, token.length);
+        assertEquals(reader.readYear(), Year.of(value));
+        reader.finish();
+        for (int digit = 1; digit <= 4; digit++) {
+          byte saved = bytes[offset + digit];
+          bytes[offset + digit] = 'x';
+          reader.reset(bytes, offset, token.length);
+          assertThrows(ForyJsonException.class, () -> reader.readYear());
+          bytes[offset + digit] = saved;
+        }
+      }
+    }
+    for (int value : new int[] {-999999999, -10000, -1, 0, 1, 10000, 999999999}) {
+      assertToken(ScalarCodecs.YearCodec.INSTANCE, Integer.toString(value), Year.of(value));
+    }
+    assertToken(ScalarCodecs.YearCodec.INSTANCE, "+2024", Year.of(2024));
+    assertEscapes(ScalarCodecs.YearCodec.INSTANCE, Year.of(2024));
+  }
+
   @Test
   public void readTemporalComponents() {
     Random random = new Random(8045792L);
