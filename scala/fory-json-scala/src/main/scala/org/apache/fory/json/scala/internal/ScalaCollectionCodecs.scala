@@ -21,7 +21,7 @@ package org.apache.fory.json.scala.internal
 
 import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.annotation.JsonCodec
-import org.apache.fory.json.codec.{CompositeJsonCodec, MapKeyCodec}
+import org.apache.fory.json.codec.{ArrayCodec, CompositeJsonCodec, JsonValueCodec, MapKeyCodec, ScalarCodecs}
 import org.apache.fory.json.reader.{JsonReader, Latin1JsonReader, Utf16JsonReader, Utf8JsonReader}
 import org.apache.fory.json.resolver.{JsonTypeInfo, JsonTypeResolver}
 import org.apache.fory.json.writer.{StringJsonWriter, Utf8JsonWriter}
@@ -197,6 +197,7 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
     else ScalaCollectionCodecs.ReferenceBytes
   private var elementInfo: JsonTypeInfo = _
   private var elementClassTag: ClassTag[Any] = _
+  private var booleanArrayCodec: JsonValueCodec[Array[Boolean]] = _
 
   override def resolveTypes(typeRef: TypeRef[_], resolver: JsonTypeResolver): Unit = {
     val arguments = ScalaTypeSupport.runtimeArguments(
@@ -210,6 +211,17 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
       kind == ScalaCollectionCodecs.ImmutableArraySeqKind ||
       kind == ScalaCollectionCodecs.MutableArraySeqKind
     ) elementClassTag = ScalaTypeSupport.classTag(ScalaTypeSupport.rawType(arguments(0)))
+    if (kind == ScalaCollectionCodecs.ImmutableArraySeqKind) {
+      val codec = elementInfo.stringWriter()
+      if (
+        codec == ScalarCodecs.NaturalCodec.INSTANCE ||
+        codec == ScalarCodecs.BooleanCodec.PRIMITIVE || codec == ScalarCodecs.BooleanCodec.BOXED
+      ) booleanArrayCodec = ArrayCodec.create(
+        classOf[Array[Boolean]],
+        TypeRef.of(classOf[Array[Boolean]]),
+        resolver
+      )
+    }
   }
 
   override def resolveTypes(
@@ -233,6 +245,14 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
       return
     }
     ScalaCollectionCodecs.requireSupportedRuntime(value.getClass)
+    // Only a primitive backing array and a built-in element codec share the array representation.
+    // Annotated elements and reference-backed ArraySeq values retain their resolved element writer.
+    if (booleanArrayCodec != null) value match {
+      case array: scala.collection.immutable.ArraySeq.ofBoolean =>
+        booleanArrayCodec.writeString(writer, array.unsafeArray)
+        return
+      case _ =>
+    }
     val codec = elementInfo.stringWriter()
     val iterator = value.iterator
     writer.writeArrayStart()
@@ -251,6 +271,14 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
       return
     }
     ScalaCollectionCodecs.requireSupportedRuntime(value.getClass)
+    // Only a primitive backing array and a built-in element codec share the array representation.
+    // Annotated elements and reference-backed ArraySeq values retain their resolved element writer.
+    if (booleanArrayCodec != null) value match {
+      case array: scala.collection.immutable.ArraySeq.ofBoolean =>
+        booleanArrayCodec.writeUtf8(writer, array.unsafeArray)
+        return
+      case _ =>
+    }
     val codec = elementInfo.utf8Writer()
     val iterator = value.iterator
     writer.writeArrayStart()

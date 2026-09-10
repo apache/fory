@@ -148,6 +148,18 @@ final class TaggedStringCodec extends AbstractJsonValueCodec[String] {
   }
 }
 
+final class BooleanLabelCodec extends AbstractJsonValueCodec[Boolean] {
+  override def write(writer: JsonWriter, value: Boolean): Unit =
+    writer.writeString(if (value) "yes" else "no")
+
+  override def read(reader: JsonReader): Boolean = reader.readString() == "yes"
+}
+
+case class BooleanArraySeqValue(
+    @org.apache.fory.json.annotation.JsonCodec(elementCodec = classOf[BooleanLabelCodec])
+    values: scala.collection.immutable.ArraySeq[Boolean]
+)
+
 case class Schedule(
     @org.apache.fory.json.annotation.JsonCodec(value = classOf[WeekdayCodec]) day: Weekday.Value
 )
@@ -445,6 +457,33 @@ class ScalaJsonSuite extends AnyFunSuite {
     val exclusiveType = ScalaTypeRef[scala.collection.immutable.NumericRange.Exclusive[Long]]
     val exclusive = scala.collection.immutable.NumericRange(1L, 10L, 2L)
     assert(json.fromJson(json.toJson(exclusive, exclusiveType), exclusiveType) == exclusive)
+  }
+
+  test("Boolean ArraySeq writers preserve element codecs") {
+    import scala.collection.immutable.ArraySeq
+    val booleanType = ScalaTypeRef[ArraySeq[Boolean]]
+    val boxedType = ScalaTypeRef[ArraySeq[java.lang.Boolean]]
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      for (size <- Seq(0, 1, 2, 33, 1025)) {
+        val values = ArraySeq.tabulate(size)(i => i % 3 == 0)
+        val expected = values.mkString("[", ",", "]")
+        assert(json.toJson(values) == expected)
+        assert(new String(json.toJsonBytes(values), UTF_8) == expected)
+        assert(json.toJson(values, booleanType) == expected)
+        assert(new String(json.toJsonBytes(values, booleanType), UTF_8) == expected)
+      }
+      val boxed = ArraySeq[java.lang.Boolean](true, null, false)
+      assert(json.toJson(boxed, boxedType) == "[true,null,false]")
+      assert(new String(json.toJsonBytes(boxed, boxedType), UTF_8) == "[true,null,false]")
+      val custom = BooleanArraySeqValue(ArraySeq(true, false, true))
+      val expected = "{\"values\":[\"yes\",\"no\",\"yes\"]}"
+      assert(json.toJson(custom) == expected)
+      assert(new String(json.toJsonBytes(custom), UTF_8) == expected)
+      assert(json.fromJson(expected, classOf[BooleanArraySeqValue]) == custom)
+    }
   }
 
   test("strict collections maps and bit sets") {
