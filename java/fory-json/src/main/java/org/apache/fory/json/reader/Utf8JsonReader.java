@@ -1447,7 +1447,35 @@ public final class Utf8JsonReader extends JsonReader {
       position = offset;
       rejectLeadingDigitFast();
     } else if (ch >= '1' && ch <= '9') {
-      do {
+      // Eighteen digits fit in a positive long; defer overflow checks to the remaining digits.
+      int safeEnd = offset + Math.min(18, inputLimit - offset);
+      if (safeEnd - offset >= 8) {
+        int block = parseEightDigits(bytes, offset, safeEnd);
+        if (block >= 0) {
+          unscaled = block;
+          offset += 8;
+          if (safeEnd - offset >= 8) {
+            block = parseEightDigits(bytes, offset, safeEnd);
+            if (block >= 0) {
+              unscaled = unscaled * EIGHT_DIGITS + block;
+              offset += 8;
+            }
+          }
+        }
+      }
+      while (offset < safeEnd) {
+        ch = bytes[offset];
+        if (ch < '0' || ch > '9') {
+          break;
+        }
+        unscaled = unscaled * 10 + ch - '0';
+        offset++;
+      }
+      while (offset < inputLimit) {
+        ch = bytes[offset];
+        if (ch < '0' || ch > '9') {
+          break;
+        }
         int digit = ch - '0';
         if (unscaled > LONG_MAX_DIV_10
             || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
@@ -1455,11 +1483,7 @@ public final class Utf8JsonReader extends JsonReader {
         }
         unscaled = unscaled * 10 + digit;
         offset++;
-        if (offset >= inputLimit) {
-          break;
-        }
-        ch = bytes[offset];
-      } while (ch >= '0' && ch <= '9');
+      }
     } else {
       return readBigDecimalFallback(start);
     }
@@ -1512,7 +1536,35 @@ public final class Utf8JsonReader extends JsonReader {
       position = offset;
       rejectLeadingDigitFast();
     } else if (ch >= '1' && ch <= '9') {
-      do {
+      // Eighteen digits fit in a positive long; defer overflow checks to the remaining digits.
+      int safeEnd = offset + Math.min(18, inputLimit - offset);
+      if (safeEnd - offset >= 8) {
+        int block = parseEightDigits(bytes, offset, safeEnd);
+        if (block >= 0) {
+          unscaled = block;
+          offset += 8;
+          if (safeEnd - offset >= 8) {
+            block = parseEightDigits(bytes, offset, safeEnd);
+            if (block >= 0) {
+              unscaled = unscaled * EIGHT_DIGITS + block;
+              offset += 8;
+            }
+          }
+        }
+      }
+      while (offset < safeEnd) {
+        ch = bytes[offset];
+        if (ch < '0' || ch > '9') {
+          break;
+        }
+        unscaled = unscaled * 10 + ch - '0';
+        offset++;
+      }
+      while (offset < inputLimit) {
+        ch = bytes[offset];
+        if (ch < '0' || ch > '9') {
+          break;
+        }
         int digit = ch - '0';
         if (unscaled > LONG_MAX_DIV_10
             || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
@@ -1520,11 +1572,7 @@ public final class Utf8JsonReader extends JsonReader {
         }
         unscaled = unscaled * 10 + digit;
         offset++;
-        if (offset >= inputLimit) {
-          break;
-        }
-        ch = bytes[offset];
-      } while (ch >= '0' && ch <= '9');
+      }
     } else {
       return readBigDecimalFallback(start);
     }

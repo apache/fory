@@ -63,6 +63,7 @@ import java.time.chrono.HijrahDate;
 import java.time.chrono.JapaneseDate;
 import java.time.chrono.MinguoDate;
 import java.time.chrono.ThaiBuddhistDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
@@ -1032,6 +1033,44 @@ public class JsonScalarTest extends ForyJsonTestModels {
       String decimalText = decimal.toString();
       assertWriterNumber(decimal, decimalText);
       assertBigDecimalReaders(decimalText);
+    }
+  }
+
+  @Test
+  public void readDecimalPrefixes() {
+    List<String> coefficients = new ArrayList<>();
+    for (int digits : new int[] {1, 7, 8, 9, 15, 16, 17, 18, 19, 20, 38}) {
+      for (int delta = -1; delta <= 1; delta++) {
+        coefficients.add(BigInteger.TEN.pow(digits).add(BigInteger.valueOf(delta)).toString());
+      }
+    }
+    coefficients.add(Long.toString(Long.MAX_VALUE));
+    coefficients.add(BigInteger.ONE.shiftLeft(63).toString());
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (String coefficient : coefficients) {
+      for (String sign : new String[] {"", "-"}) {
+        for (String suffix : new String[] {"", ".0", ".0000100e-7", "e+10000", "E-10000"}) {
+          String token = sign + coefficient + suffix;
+          BigDecimal expected = new BigDecimal(token);
+          assertBigDecimalReaders(token);
+          assertQuotedBigDecimalReaders(token);
+          byte[] value = token.getBytes(StandardCharsets.UTF_8);
+          for (int offset = 0; offset < 4; offset++) {
+            byte[] bytes = new byte[offset + value.length + 8];
+            Arrays.fill(bytes, (byte) '9');
+            System.arraycopy(value, 0, bytes, offset, value.length);
+            reader.reset(bytes, offset, value.length);
+            assertEquals(reader.readBigDecimal(), expected);
+            reader.finish();
+          }
+          byte[] sequence = (token + ",123456789").getBytes(StandardCharsets.UTF_8);
+          reader.reset(sequence);
+          assertEquals(reader.readBigDecimal(), expected);
+          reader.expectNextToken(',');
+          assertEquals(reader.readIntValue(), 123456789);
+          reader.finish();
+        }
+      }
     }
   }
 
