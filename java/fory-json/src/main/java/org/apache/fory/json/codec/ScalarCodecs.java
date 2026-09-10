@@ -408,7 +408,8 @@ public final class ScalarCodecs {
       if (reader.tryReadNullToken()) {
         return primitive ? primitiveNull(int.class) : null;
       }
-      return reader.readInt();
+      // The null-token probe already consumed whitespace for this concrete representation.
+      return reader.readIntTokenValue();
     }
 
     @Override
@@ -416,7 +417,8 @@ public final class ScalarCodecs {
       if (reader.tryReadNullToken()) {
         return primitive ? primitiveNull(int.class) : null;
       }
-      return reader.readInt();
+      // The null-token probe already consumed whitespace for this concrete representation.
+      return reader.readIntTokenValue();
     }
 
     @Override
@@ -424,7 +426,8 @@ public final class ScalarCodecs {
       if (reader.tryReadNullToken()) {
         return primitive ? primitiveNull(int.class) : null;
       }
-      return reader.readInt();
+      // The null-token probe already consumed whitespace for this concrete representation.
+      return reader.readIntTokenValue();
     }
   }
 
