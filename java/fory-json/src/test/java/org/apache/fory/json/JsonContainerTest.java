@@ -816,6 +816,28 @@ public class JsonContainerTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeBooleanArrayBoundaries() {
+    boolean[][] arrays = {
+      {},
+      {true},
+      {false},
+      {true, false, true, true, false, false},
+      {false, true, false, false, true, true}
+    };
+    ForyJson json = newJson();
+    for (boolean[] values : arrays) {
+      String expected = json.toJson(values);
+      for (int capacity = 0; capacity <= 32; capacity++) {
+        Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+        JsonValueCodec<boolean[]> codec =
+            ArrayCodec.create(boolean[].class, TypeRef.of(boolean[].class), writer.typeResolver());
+        codec.writeUtf8(writer, values);
+        assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+      }
+    }
+  }
+
+  @Test
   public void writeCharArrayBoundaries() {
     char[][] arrays = {
       {}, {'x'}, {' ', 'a', '\\', '"', '\u0001', '\u4e2d', '\u007f', '\u07ff', '\ufffd', '9'}

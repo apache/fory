@@ -943,9 +943,13 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       }
       boolean[] array = value;
       writer.writeArrayStart();
-      for (int i = 0; i < array.length; i++) {
-        writer.writeComma(i);
-        writer.writeBoolean(array[i]);
+      if (array.length != 0) {
+        writer.writeBoolean(array[0]);
+        for (int i = 1; i < array.length; i++) {
+          boolean element = array[i];
+          // Include the comma with true/false so the writer checks capacity and advances once.
+          writer.writeRawValue(element ? 0x65_7572_742cL : 0x6573_6c61_662cL, 0, element ? 5 : 6);
+        }
       }
       writer.writeArrayEnd();
     }
