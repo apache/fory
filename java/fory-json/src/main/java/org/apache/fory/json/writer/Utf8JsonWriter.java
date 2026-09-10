@@ -526,24 +526,31 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     int hour = secondOfDay / 3600;
     int minute = (secondOfDay - hour * 3600) / 60;
     int second = secondOfDay - hour * 3600 - minute * 60;
-    writeByteRaw((byte) '"');
-    writeIsoYear((int) (date >> 32));
-    writeByteRaw((byte) '-');
-    writeTwoDigitsValue((int) ((date >>> 16) & 0xffff));
-    writeByteRaw((byte) '-');
-    writeTwoDigitsValue((int) date & 0xffff);
-    writeByteRaw((byte) 'T');
-    writeTwoDigitsValue(hour);
-    writeByteRaw((byte) ':');
-    writeTwoDigitsValue(minute);
-    writeByteRaw((byte) ':');
-    writeTwoDigitsValue(second);
-    if (nano != 0) {
-      writeByteRaw((byte) '.');
-      writeNano(nano);
+    int pos = position;
+    // A signed ten-digit year and a nine-digit fraction need at most 39 bytes, including quotes.
+    if (pos > buffer.length - 39) {
+      grow(39);
     }
-    writeByteRaw((byte) 'Z');
-    writeByteRaw((byte) '"');
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writeIsoYear(bytes, pos, (int) (date >> 32));
+    bytes[pos++] = '-';
+    pos = writeTwoDigits(bytes, pos, (int) ((date >>> 16) & 0xffff));
+    bytes[pos++] = '-';
+    pos = writeTwoDigits(bytes, pos, (int) date & 0xffff);
+    bytes[pos++] = 'T';
+    pos = writeTwoDigits(bytes, pos, hour);
+    bytes[pos++] = ':';
+    pos = writeTwoDigits(bytes, pos, minute);
+    bytes[pos++] = ':';
+    pos = writeTwoDigits(bytes, pos, second);
+    if (nano != 0) {
+      bytes[pos++] = '.';
+      pos = writeNano(bytes, pos, nano);
+    }
+    bytes[pos++] = 'Z';
+    bytes[pos++] = '"';
+    position = pos;
   }
 
   @Override
@@ -857,20 +864,62 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeDuration(Duration value) {
-    long totalSeconds = value.getSeconds();
-    int nanos = value.getNano();
-    if (totalSeconds >= 0) {
-      long hours = totalSeconds / 3600;
-      int minutes = (int) (totalSeconds % 3600 / 60);
-      int seconds = (int) (totalSeconds % 60);
-      if (matchesIsoDurationShape(hours, minutes, seconds, nanos)) {
-        writeIsoDuration(false, false, hours, minutes, seconds, nanos);
-        return;
-      }
+    long seconds = value.getSeconds();
+    int nano = value.getNano();
+    long hours = seconds / 3600;
+    int minutes = (int) ((seconds % 3600) / 60);
+    int secs = (int) (seconds % 60);
+    int pos = position;
+    // Signed hours need at most 17 bytes; all components, fraction and quotes fit in 40 bytes.
+    if (pos > buffer.length - 40) {
+      grow(40);
     }
-    writeByteRaw((byte) '"');
-    writeDurationBody(value);
-    writeByteRaw((byte) '"');
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    bytes[pos++] = 'P';
+    bytes[pos++] = 'T';
+    if (hours != 0) {
+      long magnitude = hours;
+      if (magnitude < 0) {
+        bytes[pos++] = '-';
+        // Dividing seconds by 3600 makes this magnitude safe even for Long.MIN_VALUE.
+        magnitude = -magnitude;
+      }
+      pos =
+          magnitude <= Integer.MAX_VALUE
+              ? writePositiveInt(bytes, pos, (int) magnitude)
+              : writePositiveLong(bytes, pos, magnitude);
+      bytes[pos++] = 'H';
+    }
+    if (minutes != 0) {
+      int magnitude = minutes;
+      if (magnitude < 0) {
+        bytes[pos++] = '-';
+        magnitude = -magnitude;
+      }
+      pos = writePositiveInt(bytes, pos, magnitude);
+      bytes[pos++] = 'M';
+    }
+    if (secs != 0 || nano != 0 || hours == 0 && minutes == 0) {
+      int magnitude = secs;
+      if (secs < 0) {
+        bytes[pos++] = '-';
+        // A positive nano adjustment reduces the magnitude of the negative seconds component.
+        magnitude = nano == 0 ? -secs : -secs - 1;
+      }
+      pos = writePositiveInt(bytes, pos, magnitude);
+      if (nano != 0) {
+        int fraction = secs < 0 ? 1_000_000_000 - nano : nano;
+        bytes[pos++] = '.';
+        pos = writePadded9(bytes, pos, fraction);
+        while (bytes[pos - 1] == '0') {
+          pos--;
+        }
+      }
+      bytes[pos++] = 'S';
+    }
+    bytes[pos++] = '"';
+    position = pos;
   }
 
   @Override
@@ -898,7 +947,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       writeInt(seconds);
       if (nanos != 0) {
         writeByteRaw((byte) '.');
-        writeNano(nanos);
+        if (position > buffer.length - 9) {
+          grow(9);
+        }
+        position = writeNano(buffer, position, nanos);
       }
       writeByteRaw((byte) 'S');
     }
@@ -2121,116 +2173,29 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeByteRaw((byte) '"');
   }
 
-  private void writeIsoYear(int year) {
+  private static int writeIsoYear(byte[] bytes, int pos, int year) {
     if (year >= 0 && year <= 9999) {
-      writePadded4Value(year);
-    } else if (year > 9999) {
-      writeByteRaw((byte) '+');
-      writeInt(year);
-    } else if (year >= -9999) {
-      writeByteRaw((byte) '-');
-      writePadded4Value(-year);
-    } else {
-      writeInt(year);
+      return writePadded4(bytes, pos, year);
     }
+    bytes[pos++] = year < 0 ? (byte) '-' : (byte) '+';
+    // isoDate has limited the year to +/- 1,000,000,000, so negation fits an int.
+    int magnitude = year < 0 ? -year : year;
+    return magnitude <= 9999
+        ? writePadded4(bytes, pos, magnitude)
+        : writePositiveInt(bytes, pos, magnitude);
   }
 
-  private void writePadded4Value(int value) {
-    if (position + 4 > buffer.length) {
-      grow(4);
-    }
-    position = writePadded4(buffer, position, value);
-  }
-
-  private void writeTwoDigitsValue(int value) {
-    int high = value / 10;
-    writeByteRaw((byte) ('0' + high));
-    writeByteRaw((byte) ('0' + value - high * 10));
-  }
-
-  private void writeNano(int nano) {
+  private static int writeNano(byte[] bytes, int pos, int nano) {
     if (nano % 1_000_000 == 0) {
-      writePadded3Value(nano / 1_000_000);
-      return;
+      return writePadded3(bytes, pos, nano / 1_000_000);
     }
     if (nano % 1000 == 0) {
       int micros = nano / 1000;
       int high = micros / 1000;
-      writePadded3Value(high);
-      writePadded3Value(micros - high * 1000);
-      return;
+      pos = writePadded3(bytes, pos, high);
+      return writePadded3(bytes, pos, micros - high * 1000);
     }
-    int first = nano / 100_000_000;
-    int remainder = nano - first * 100_000_000;
-    int middle = remainder / 10_000;
-    writeByteRaw((byte) ('0' + first));
-    writePadded4Value(middle);
-    writePadded4Value(remainder - middle * 10_000);
-  }
-
-  private void writePadded3Value(int value) {
-    if (position + 3 > buffer.length) {
-      grow(3);
-    }
-    position = writePadded3(buffer, position, value);
-  }
-
-  private void writeDurationBody(Duration value) {
-    long seconds = value.getSeconds();
-    int nano = value.getNano();
-    if (seconds == 0 && nano == 0) {
-      writeAscii("PT0S");
-      return;
-    }
-    writeAscii("PT");
-    long hours = seconds / 3600;
-    int minutes = (int) ((seconds % 3600) / 60);
-    int secs = (int) (seconds % 60);
-    if (hours != 0) {
-      writeLong(hours);
-      writeByteRaw((byte) 'H');
-    }
-    if (minutes != 0) {
-      writeInt(minutes);
-      writeByteRaw((byte) 'M');
-    }
-    if (secs == 0 && nano == 0 && (hours != 0 || minutes != 0)) {
-      return;
-    }
-    if (secs < 0 && nano > 0) {
-      if (secs == -1) {
-        writeAscii("-0");
-      } else {
-        writeInt(secs + 1);
-      }
-    } else {
-      writeInt(secs);
-    }
-    if (nano > 0) {
-      int fraction = secs < 0 ? 2_000_000_000 - nano : 1_000_000_000 + nano;
-      writeDurationFraction(fraction);
-    }
-    writeByteRaw((byte) 'S');
-  }
-
-  private void writeDurationFraction(int value) {
-    int fraction = value % 1_000_000_000;
-    int digits = 9;
-    while (fraction % 10 == 0) {
-      fraction /= 10;
-      digits--;
-    }
-    writeByteRaw((byte) '.');
-    int divisor = 1;
-    for (int i = 1; i < digits; i++) {
-      divisor *= 10;
-    }
-    for (int i = 0; i < digits; i++) {
-      int digit = fraction / divisor;
-      writeByteRaw((byte) ('0' + digit));
-      fraction -= digit * divisor;
-      divisor /= 10;
-    }
+    return writePadded9(bytes, pos, nano);
   }
 
   private void writeCodePoint(int codePoint) {
@@ -2640,6 +2605,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   // The full-width formatter is one real-work owner shared by the deliberately separate scalar,
   // field, and array entries above. Passing the byte array and cursor and returning the new cursor
   // lets each caller keep buffer/position state live across the call and publish position once.
+  // Callers handle int-sized magnitudes first; this path always emits a leading group and eight
+  // digits.
   // Do not replace this with a writer callback, carrier object, or mutable-writer lookup. Whether
   // this leaf inlines is measured independently; the guaranteed greater-than-325-BCI boundary for
   // long[] is writeLongArray, so do not copy this formatter into generated callers merely to make

@@ -237,6 +237,76 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeInstantBoundaries() {
+    long[] seconds = {
+      Instant.MIN.getEpochSecond(),
+      Instant.MAX.getEpochSecond(),
+      -1,
+      0,
+      LocalDate.of(-9999, 1, 1).atStartOfDay().toEpochSecond(ZoneOffset.UTC),
+      LocalDate.of(-1, 1, 1).atStartOfDay().toEpochSecond(ZoneOffset.UTC),
+      LocalDate.of(0, 1, 1).atStartOfDay().toEpochSecond(ZoneOffset.UTC),
+      LocalDate.of(9999, 12, 31).atStartOfDay().toEpochSecond(ZoneOffset.UTC),
+      LocalDate.of(10000, 1, 1).atStartOfDay().toEpochSecond(ZoneOffset.UTC)
+    };
+    int[] nanos = {0, 1, 1000, 1_000_000, 1_000_010, 123456789, 999999999};
+    for (long second : seconds) {
+      for (int nano : nanos) {
+        Instant value = Instant.ofEpochSecond(second, nano);
+        for (int capacity = 0; capacity <= 40; capacity++) {
+          Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+          String prefix = "       ".substring(0, capacity & 7);
+          writer.writeRawValue(prefix);
+          writer.writeIsoInstant(second, nano);
+          assertEquals(
+              new String(writer.toJsonBytes(), StandardCharsets.UTF_8),
+              prefix + '"' + value.toString() + '"');
+        }
+      }
+    }
+    for (int nano : nanos) {
+      assertWriter(ScalarCodecs.DurationCodec.INSTANCE, Duration.ofSeconds(3661, nano));
+    }
+  }
+
+  @Test
+  public void writeDurationBoundaries() {
+    long[] seconds = {
+      Long.MIN_VALUE,
+      -2147483648L * 3600,
+      -2147483647L * 3600,
+      -3661,
+      -3600,
+      -60,
+      -1,
+      0,
+      1,
+      60,
+      3600,
+      3661,
+      2147483647L * 3600,
+      2147483648L * 3600,
+      Long.MAX_VALUE
+    };
+    int[] nanos = {0, 1, 1000, 1_000_000, 1_000_010, 123456789, 999999999};
+    for (long second : seconds) {
+      for (int nano : nanos) {
+        Duration value = Duration.ofSeconds(second, nano);
+        StringJsonWriter string = newStringWriter(new byte[1]);
+        string.writeDuration(value);
+        for (int capacity = 0; capacity <= 40; capacity++) {
+          Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+          String prefix = "       ".substring(0, capacity & 7);
+          writer.writeRawValue(prefix);
+          writer.writeDuration(value);
+          assertEquals(
+              new String(writer.toJsonBytes(), StandardCharsets.UTF_8), prefix + string.toJson());
+        }
+      }
+    }
+  }
+
+  @Test
   public void writeTemporalFormats() {
     int[] years = {-999999999, -1, 0, 1, 9999, 10000, 999999999};
     int[] nanos = {0, 1, 10, 100, 1000, 1000010, 100000000, 123456789, 999999999};
