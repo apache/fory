@@ -2157,6 +2157,23 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readFloatingDecimalPowers() {
+    Random random = new Random(58390412L);
+    for (int exponent = -343; exponent <= 309; exponent++) {
+      long[] significands = {
+        1, Long.MAX_VALUE, 12345678901234567L, random.nextLong() & Long.MAX_VALUE
+      };
+      for (long significand : significands) {
+        String token = significand + "e" + exponent;
+        assertDoubleBits(token);
+        assertDoubleBits("-" + token);
+        assertFloatBits(token);
+        assertFloatBits("-" + token);
+      }
+    }
+  }
+
+  @Test
   public void readDoubleFallbackTokens() {
     assertDoubleBits("1.25e2");
     assertDoubleBits("-7.5E-3");
@@ -2168,6 +2185,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
     long one = Double.doubleToRawLongBits(1.0d);
     assertDoubleBits("0." + repeat('0', 100_001) + "1e100002", one);
     assertDoubleBits("1" + repeat('0', 100_001) + "e-100001", one);
+    assertDoubleBits(
+        "0." + repeat('0', 100_001) + "123456789012345678901e100002",
+        Double.doubleToRawLongBits(Double.parseDouble("1.23456789012345678901")));
+    assertDoubleBits("0." + repeat('0', 100_001) + "1e99970", Double.doubleToRawLongBits(1e-32));
   }
 
   @Test
@@ -2228,6 +2249,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
     int one = Float.floatToRawIntBits(1.0f);
     assertFloatBits("0." + repeat('0', 100_001) + "1e100002", one);
     assertFloatBits("1" + repeat('0', 100_001) + "e-100001", one);
+    assertFloatBits(
+        "0." + repeat('0', 100_001) + "123456789012345678901e100002",
+        Float.floatToRawIntBits(Float.parseFloat("1.23456789012345678901")));
+    assertFloatBits("0." + repeat('0', 100_001) + "1e99970", Float.floatToRawIntBits(1e-32f));
     assertTrue(Float.isNaN(newUtf8Reader("\"NaN\"".getBytes(StandardCharsets.UTF_8)).readFloat()));
     assertEquals(newLatin1Reader(latin1Bytes("\"Infinity\"")).readFloat(), Float.POSITIVE_INFINITY);
     assertEquals(utf16Reader("\"-Infinity\"").readFloat(), Float.NEGATIVE_INFINITY);

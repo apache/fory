@@ -667,6 +667,19 @@ public class JsonContainerTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void rejectNullFloatingElements() {
+    ForyJson json = newJson();
+    for (Class<?> type : new Class<?>[] {float[].class, double[].class}) {
+      for (String text : new String[] {"[null]", "[1.5, null]", "[1e40,  null]"}) {
+        assertThrows(ForyJsonException.class, () -> json.fromJson(text, type));
+        assertThrows(
+            ForyJsonException.class,
+            () -> json.fromJson(text.getBytes(StandardCharsets.UTF_8), type));
+      }
+    }
+  }
+
+  @Test
   public void writeLongArrays() {
     ForyJson json = newJson();
     LongArrayUtf16Root root = new LongArrayUtf16Root();

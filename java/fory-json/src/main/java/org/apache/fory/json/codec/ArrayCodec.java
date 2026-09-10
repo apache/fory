@@ -1620,10 +1620,10 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         finishPrimitiveArray(reader, 0, Float.BYTES);
         return new float[0];
       }
+      // The primitive token reader already rejects null; probing it again rescans every element.
       float[] values = new float[8];
       int size = 0;
       do {
-        rejectNull(reader);
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Float.BYTES);
         }
@@ -1633,7 +1633,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         values[size++] = reader.readNextFloatValue();
       } while (reader.consumeNextCommaOrEndArray());
       finishPrimitiveArray(reader, size, Float.BYTES);
-      return Arrays.copyOf(values, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
     }
 
     @Override
@@ -1650,7 +1650,6 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       float[] values = new float[8];
       int size = 0;
       do {
-        rejectNull(reader);
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Float.BYTES);
         }
@@ -1660,7 +1659,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         values[size++] = reader.readNextFloatValue();
       } while (reader.consumeNextCommaOrEndArray());
       finishPrimitiveArray(reader, size, Float.BYTES);
-      return Arrays.copyOf(values, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
     }
 
     @Override
@@ -1677,7 +1676,6 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       float[] values = new float[8];
       int size = 0;
       do {
-        rejectNull(reader);
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Float.BYTES);
         }
@@ -1687,7 +1685,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         values[size++] = reader.readNextFloatValue();
       } while (reader.consumeNextCommaOrEndArray());
       finishPrimitiveArray(reader, size, Float.BYTES);
-      return Arrays.copyOf(values, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
     }
   }
 
@@ -1742,7 +1740,6 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       double[] values = new double[8];
       int size = 0;
       do {
-        rejectNull(reader);
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Double.BYTES);
         }
@@ -1752,7 +1749,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         values[size++] = reader.readNextDoubleValue();
       } while (reader.consumeNextCommaOrEndArray());
       finishPrimitiveArray(reader, size, Double.BYTES);
-      return Arrays.copyOf(values, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
     }
 
     @Override
@@ -1769,7 +1766,6 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       double[] values = new double[8];
       int size = 0;
       do {
-        rejectNull(reader);
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Double.BYTES);
         }
@@ -1779,7 +1775,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         values[size++] = reader.readNextDoubleValue();
       } while (reader.consumeNextCommaOrEndArray());
       finishPrimitiveArray(reader, size, Double.BYTES);
-      return Arrays.copyOf(values, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
     }
 
     @Override
@@ -1796,7 +1792,6 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       double[] values = new double[8];
       int size = 0;
       do {
-        rejectNull(reader);
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Double.BYTES);
         }
@@ -1806,7 +1801,7 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         values[size++] = reader.readNextDoubleValue();
       } while (reader.consumeNextCommaOrEndArray());
       finishPrimitiveArray(reader, size, Double.BYTES);
-      return Arrays.copyOf(values, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
     }
   }
 

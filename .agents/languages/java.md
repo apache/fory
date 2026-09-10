@@ -190,6 +190,10 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   at least the requested capacity. Callers must reject invalid or overflowed requests before the
   call, but must not recheck the allocator postcondition afterward; fix a violating allocator at
   the allocator implementation.
+- Fory JSON floating-point parsing may materialize uncommon numeric tokens for JDK conversion
+  when that improves measured performance. Preserve direct compact-decimal paths and JSON grammar
+  validation; use `Float.parseFloat` for float fallbacks to avoid double rounding. Do not restore
+  expensive decimal-boundary construction merely to eliminate temporary allocations.
 - In JDK 25 Fory JSON C2-sensitive code, preserve measured, naturally large hot-method boundaries.
   A method that exceeds HotSpot's 325-byte hot-inline limit through real representation, scalar,
   array, collection, or generated-schema work is an independent subtree owner. Generated group

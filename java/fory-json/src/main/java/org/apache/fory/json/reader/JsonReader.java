@@ -54,11 +54,11 @@ import org.apache.fory.memory.NativeByteOrder;
  * text view. Concrete readers own input storage, string decoding, field-name probes, and direct
  * primitive numeric fast paths for their representation.
  *
- * <p>Primitive {@code int}, {@code long}, {@code float}, and {@code double} parsing does not
- * materialize a String or arbitrary-precision number. Precision-sensitive floating input uses the
- * reusable boundary workspace. The internal length and scale limits apply only when constructing
- * {@link BigInteger} or {@link BigDecimal}; raw number text, primitive scans, and skipped values do
- * not inherit that resource policy.
+ * <p>Primitive numeric common paths parse directly from the input. Floating-point conversion uses
+ * integer bounds on decimal powers and delegates ambiguous rounding or long mantissas to the JDK.
+ * The internal length and scale limits apply only when constructing {@link BigInteger} or {@link
+ * BigDecimal}; raw number text, primitive scans, and skipped values do not inherit that resource
+ * policy.
  *
  * <p>Declared boolean and numeric scalars accept their native JSON token or the same token text in
  * quotes without a configuration gate. Quoted common paths consume only the quotes around the
@@ -102,8 +102,6 @@ public abstract class JsonReader {
   private static final int DOUBLE_FRACTION_BITS = 52;
   private static final long DOUBLE_SIGN_BIT = 0x8000_0000_0000_0000L;
   private static final long DOUBLE_FRACTION_MASK = (1L << DOUBLE_FRACTION_BITS) - 1;
-  private static final long DOUBLE_INFINITY_BITS = 0x7ff0_0000_0000_0000L;
-  private static final long DOUBLE_MAX_FINITE_BITS = 0x7fef_ffff_ffff_ffffL;
   private static final long[] COMPACT_DOUBLE_MANTISSAS = {
     0x8000_0000_0000_0000L,
     0xcccc_cccc_cccc_ccccL,
@@ -125,7 +123,6 @@ public abstract class JsonReader {
     0xb877_aa32_36a4_b449L,
     0x9392_ee8e_921d_5d07L
   };
-  private static final int DECIMAL_BOUNDARY_DIGITS = 768;
   private static final double[] DOUBLE_POWERS_OF_TEN = {
     1.0d,
     10.0d,
@@ -150,8 +147,6 @@ public abstract class JsonReader {
   private static final int FLOAT_SIGN_BIT = 0x8000_0000;
   private static final int FLOAT_FRACTION_MASK = (1 << FLOAT_FRACTION_BITS) - 1;
   private static final int FLOAT_EXPONENT_MASK = 0x7f80_0000;
-  private static final int FLOAT_INFINITY_BITS = 0x7f80_0000;
-  private static final int FLOAT_MAX_FINITE_BITS = 0x7f7f_ffff;
   // Past twice the maximum token digit count, an exponent cannot be canceled back into the
   // finite float range by integer, fractional, or truncated digits.
   private static final long TOKEN_EXPONENT_LIMIT = 2L * Integer.MAX_VALUE + 1_000L;
@@ -1732,6 +1727,10 @@ public abstract class JsonReader {
     if (unscaled == 0) {
       return negative ? -0.0f : 0.0f;
     }
+    long converted = decimalToBinary(unscaled, scale, FLOAT_FRACTION_BITS, -126, 127);
+    if (converted >= 0) {
+      return Float.intBitsToFloat((int) converted | (negative ? FLOAT_SIGN_BIT : 0));
+    }
     long divisor = LONG_POWERS_OF_TEN[scale];
     float estimate = (float) unscaled / (float) divisor;
     int bits = correctCompactFloat(unscaled, divisor, Float.floatToRawIntBits(estimate));
@@ -1832,281 +1831,120 @@ public abstract class JsonReader {
     return exponent == 0 ? -1074 : exponent - 1075;
   }
 
+  // Validate JSON grammar before JDK conversion: its accepted syntax also includes non-JSON
+  // numbers. Materializing the uncommon token avoids the much greater cost of constructing
+  // decimal midpoint boundaries, while preserving subnormals and exact halfway rounding.
   protected final double readDoubleFallbackValue(int start) {
     position = start;
-    return readDoubleNumberFallback(start);
+    scanNumberToken();
+    return Double.parseDouble(floatingToken(start, position));
   }
 
   protected final double readDoubleExponentValue(
       boolean negative, long unscaled, int scale, int start, int exponentOffset) {
     long adjustedScale = readExponentScale(exponentOffset, scale);
-    return doubleFromDecimal(negative, unscaled, adjustedScale, false, start, position);
+    return readScannedDoubleValue(negative, unscaled, adjustedScale, start, position);
   }
 
   protected final double readScannedDoubleValue(
       boolean negative, long unscaled, long scale, int start, int end) {
-    return doubleFromDecimal(negative, unscaled, scale, false, start, end);
-  }
-
-  // Mantissa overflow is the only concrete-reader fallback that rescans a valid token. It keeps
-  // the first 18 significant digits for a close estimate and compares the original token with
-  // exact IEEE midpoints, so primitive double parsing never materializes a String or big number.
-  private double readDoubleNumberFallback(int start) {
-    int offset = start;
-    int inputLength = length();
-    boolean negative = false;
-    if (offset < inputLength && charAt(offset) == '-') {
-      negative = true;
-      offset++;
-    }
-    if (offset >= inputLength) {
-      throw numberError(offset, "Expected double");
-    }
-
-    int ch = charAt(offset);
-    long significand = 0;
-    int storedDigits = 0;
-    int truncatedDigits = 0;
-    int fractionDigits = 0;
-    boolean nonZeroSeen = false;
-    boolean sticky = false;
-    if (ch == '0') {
-      offset++;
-      if (offset < inputLength) {
-        ch = charAt(offset);
-        if (ch >= '0' && ch <= '9') {
-          throw numberError(offset, "Leading zero in number");
-        }
-      }
-    } else if (ch >= '1' && ch <= '9') {
-      do {
-        int digit = ch - '0';
-        if (digit != 0 || nonZeroSeen) {
-          nonZeroSeen = true;
-          if (storedDigits < 18) {
-            significand = significand * 10 + digit;
-            storedDigits++;
-          } else {
-            truncatedDigits++;
-            sticky |= digit != 0;
-          }
-        }
-        offset++;
-        ch = offset < inputLength ? charAt(offset) : -1;
-      } while (ch >= '0' && ch <= '9');
-    } else {
-      throw numberError(offset, "Expected double");
-    }
-
-    if (offset < inputLength && charAt(offset) == '.') {
-      offset++;
-      int fractionStart = offset;
-      while (offset < inputLength) {
-        ch = charAt(offset);
-        if (ch < '0' || ch > '9') {
-          break;
-        }
-        int digit = ch - '0';
-        if (digit != 0 || nonZeroSeen) {
-          nonZeroSeen = true;
-          if (storedDigits < 18) {
-            significand = significand * 10 + digit;
-            storedDigits++;
-          } else {
-            truncatedDigits++;
-            sticky |= digit != 0;
-          }
-        }
-        fractionDigits++;
-        offset++;
-      }
-      if (offset == fractionStart) {
-        throw numberError(offset, "Expected digit");
-      }
-    }
-
-    long exponent = 0;
-    if (offset < inputLength) {
-      ch = charAt(offset);
-      if (ch == 'e' || ch == 'E') {
-        offset++;
-        boolean negativeExponent = false;
-        if (offset < inputLength) {
-          ch = charAt(offset);
-          if (ch == '-' || ch == '+') {
-            negativeExponent = ch == '-';
-            offset++;
-          }
-        }
-        int exponentStart = offset;
-        while (offset < inputLength) {
-          ch = charAt(offset);
-          if (ch < '0' || ch > '9') {
-            break;
-          }
-          if (exponent < TOKEN_EXPONENT_LIMIT) {
-            exponent = exponent * 10 + ch - '0';
-            if (exponent > TOKEN_EXPONENT_LIMIT) {
-              exponent = TOKEN_EXPONENT_LIMIT;
-            }
-          }
-          offset++;
-        }
-        if (offset == exponentStart) {
-          throw numberError(offset, "Expected exponent digit");
-        }
-        if (negativeExponent) {
-          exponent = -exponent;
-        }
-      }
-    }
-
-    position = offset;
-    if (!nonZeroSeen) {
+    if (unscaled == 0) {
       return negative ? -0.0d : 0.0d;
     }
-    long scale = (long) fractionDigits - exponent - truncatedDigits;
-    return doubleFromDecimal(negative, significand, scale, sticky, start, offset);
-  }
-
-  private double doubleFromDecimal(
-      boolean negative, long significand, long scale, boolean sticky, int start, int end) {
-    if (significand == 0) {
-      return negative ? -0.0d : 0.0d;
+    if (scale >= 0 && scale <= COMPACT_DECIMAL_MAX_SCALE) {
+      return compactDoubleValue(negative, unscaled, (int) scale);
     }
-    if (!sticky) {
-      if (scale >= 0 && scale <= COMPACT_DECIMAL_MAX_SCALE) {
-        return compactDoubleValue(negative, significand, (int) scale);
-      }
-      if (scale < 0 && scale >= -COMPACT_DECIMAL_MAX_SCALE) {
-        long multiplied = multiplyByPowerOfTen(significand, (int) -scale);
-        if (multiplied >= 0) {
-          return compactDoubleValue(negative, multiplied, 0);
-        }
+    if (scale < 0 && scale >= -COMPACT_DECIMAL_MAX_SCALE) {
+      long multiplied = multiplyByPowerOfTen(unscaled, (int) -scale);
+      if (multiplied >= 0) {
+        return compactDoubleValue(negative, multiplied, 0);
       }
     }
-    double estimate = approximateDouble(significand, scale);
-    return correctDoubleToken(negative, estimate, start, end);
-  }
-
-  private static double approximateDouble(long significand, long scale) {
-    long decimalExponent = -scale;
-    if (decimalExponent > 308) {
-      return Double.POSITIVE_INFINITY;
+    long bits = decimalToBinary(unscaled, scale, DOUBLE_FRACTION_BITS, -1022, 1023);
+    if (bits < 0) {
+      return Double.parseDouble(floatingToken(start, end));
     }
-    if (decimalExponent < -342) {
-      return 0.0d;
-    }
-    double value = (double) significand;
-    if (decimalExponent > 0) {
-      return value * Math.pow(10.0d, decimalExponent);
-    }
-    if (decimalExponent >= -308) {
-      return value / Math.pow(10.0d, -decimalExponent);
-    }
-    value /= 1.0e308d;
-    return value / Math.pow(10.0d, -decimalExponent - 308);
-  }
-
-  private double correctDoubleToken(boolean negative, double estimate, int start, int end) {
-    long bits = Double.doubleToRawLongBits(estimate) & ~DOUBLE_SIGN_BIT;
-    byte[] boundary = numericWorkspace.decimalBoundaryDigits;
-    // Eighteen retained digits, one correctly rounded multiply/divide, and Math.pow's one-ULP
-    // contract keep the estimate within this local window. The exact search is a correctness-only
-    // fallback and is not expected on valid JDK implementations.
-    for (int i = 0; i < 4; i++) {
-      if (bits == DOUBLE_INFINITY_BITS) {
-        int packed = buildDoubleBoundary(DOUBLE_MAX_FINITE_BITS, DOUBLE_INFINITY_BITS, boundary);
-        int cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
-        if (cmp < 0) {
-          bits = DOUBLE_MAX_FINITE_BITS;
-          continue;
-        }
-        return signedDouble(negative, bits);
-      }
-      if (bits == 0) {
-        int packed = buildDoubleBoundary(0, 1, boundary);
-        int cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
-        if (cmp > 0) {
-          bits = 1;
-          continue;
-        }
-        return signedDouble(negative, bits);
-      }
-
-      int packed = buildDoubleBoundary(bits - 1, bits, boundary);
-      int cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
-      if (cmp < 0 || (cmp == 0 && (bits & 1) != 0)) {
-        bits--;
-        continue;
-      }
-
-      packed = buildDoubleBoundary(bits, bits + 1, boundary);
-      cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
-      if (cmp > 0 || (cmp == 0 && (bits & 1) != 0)) {
-        bits++;
-        continue;
-      }
-      return signedDouble(negative, bits);
-    }
-    return signedDouble(negative, exactDoubleTokenBits(start, end, boundary));
-  }
-
-  private long exactDoubleTokenBits(int start, int end, byte[] boundary) {
-    long low = 0;
-    long high = DOUBLE_INFINITY_BITS;
-    while (low < high) {
-      long middle = (low + high) >>> 1;
-      int packed = buildDoubleBoundary(middle, middle + 1, boundary);
-      int cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
-      if (cmp < 0) {
-        high = middle;
-      } else if (cmp > 0) {
-        low = middle + 1;
-      } else {
-        return (middle & 1) == 0 ? middle : middle + 1;
-      }
-    }
-    return low;
-  }
-
-  private static double signedDouble(boolean negative, long bits) {
-    if (negative) {
-      bits |= DOUBLE_SIGN_BIT;
-    }
-    return Double.longBitsToDouble(bits);
-  }
-
-  private static int buildDoubleBoundary(long lowBits, long highBits, byte[] digits) {
-    long numerator;
-    int binaryExponent;
-    if (highBits == DOUBLE_INFINITY_BITS) {
-      numerator = (1L << (DOUBLE_FRACTION_BITS + 2)) - 1;
-      binaryExponent = 970;
-    } else {
-      long lowMantissa = doubleMantissa(lowBits);
-      int lowExponent = doubleBinaryExponent(lowBits);
-      long highMantissa = doubleMantissa(highBits);
-      int highExponent = doubleBinaryExponent(highBits);
-      int exponent = Math.min(lowExponent, highExponent);
-      numerator =
-          (lowMantissa << (lowExponent - exponent)) + (highMantissa << (highExponent - exponent));
-      binaryExponent = exponent - 1;
-    }
-    int length = writeBoundaryDigits(numerator, binaryExponent, digits);
-    int scale = binaryExponent < 0 ? -binaryExponent : 0;
-    return (length << 16) | scale;
+    return Double.longBitsToDouble(bits | (negative ? DOUBLE_SIGN_BIT : 0));
   }
 
   protected final float readFloatExponentValue(
       boolean negative, long unscaled, int scale, int start, int exponentOffset) {
     long adjustedScale = readExponentScale(exponentOffset, scale);
-    return floatFromDecimal(negative, unscaled, adjustedScale, false, start, position);
+    return readScannedFloatValue(negative, unscaled, adjustedScale, start, position);
   }
 
   protected final float readScannedFloatValue(
       boolean negative, long unscaled, long scale, int start, int end) {
-    return floatFromDecimal(negative, unscaled, scale, false, start, end);
+    if (unscaled == 0) {
+      return negative ? -0.0f : 0.0f;
+    }
+    if (scale >= 0 && scale <= COMPACT_DECIMAL_MAX_SCALE) {
+      return compactFloatValue(negative, unscaled, (int) scale);
+    }
+    if (scale < 0 && scale >= -COMPACT_DECIMAL_MAX_SCALE) {
+      long multiplied = multiplyByPowerOfTen(unscaled, (int) -scale);
+      if (multiplied >= 0) {
+        return compactFloatValue(negative, multiplied, 0);
+      }
+    }
+    long bits = decimalToBinary(unscaled, scale, FLOAT_FRACTION_BITS, -126, 127);
+    if (bits < 0) {
+      // Parsing as double first would round some halfway values twice.
+      return Float.parseFloat(floatingToken(start, end));
+    }
+    return Float.intBitsToFloat((int) bits | (negative ? FLOAT_SIGN_BIT : 0));
+  }
+
+  private static long decimalToBinary(
+      long unscaled, long scale, int fractionBits, int minExponent, int maxExponent) {
+    if (scale > 342) {
+      return 0;
+    }
+    if (scale < -308) {
+      return (long) (maxExponent - minExponent + 2) << fractionBits;
+    }
+    int decimalExponent = (int) -scale;
+    int shift = Long.numberOfLeadingZeros(unscaled);
+    long high =
+        DecimalMath.unsignedMultiplyHigh(
+            unscaled << shift, DecimalPowers.MANTISSAS[decimalExponent + 342]);
+    int binaryExponent = (int) ((decimalExponent * 217706L) >> 16) + 1 - shift;
+    int leadingZeros = Long.numberOfLeadingZeros(high);
+    int exponent = 63 - leadingZeros + binaryExponent;
+    int discardedBits =
+        Math.max(63 - leadingZeros - fractionBits, minExponent - fractionBits - binaryExponent);
+    if (discardedBits > 64) {
+      return 0;
+    }
+    // The table rounds its normalized power down by less than one, and the high product drops
+    // less than one more unit. The exact value is therefore in [high, high + 2) * 2^binaryExponent.
+    // Return a result only if that whole interval lies on the same side of the rounding midpoint.
+    // A normalized positive signed-long significand is at most unsigned -2, so high + 2 cannot
+    // wrap.
+    if (discardedBits == 64) {
+      if (Long.compareUnsigned(high, Long.MIN_VALUE) > 0) {
+        return 1;
+      }
+      return Long.compareUnsigned(high + 2, Long.MIN_VALUE) < 0 ? 0 : -1;
+    }
+    long remainder = high & ((1L << discardedBits) - 1);
+    long halfway = 1L << (discardedBits - 1);
+    if (remainder <= halfway && remainder + 2 >= halfway) {
+      return -1;
+    }
+    long significand = (high >>> discardedBits) + (remainder > halfway ? 1 : 0);
+    if (exponent < minExponent) {
+      return significand;
+    }
+    if (significand == (1L << (fractionBits + 1))) {
+      significand >>>= 1;
+      exponent++;
+    }
+    if (exponent > maxExponent) {
+      return (long) (maxExponent - minExponent + 2) << fractionBits;
+    }
+    return ((long) (exponent - minExponent + 1) << fractionBits)
+        | (significand & ((1L << fractionBits) - 1));
   }
 
   private long readExponentScale(int offset, long scale) {
@@ -2144,254 +1982,66 @@ public abstract class JsonReader {
 
   protected final float readFloatFallbackValue(int start) {
     position = start;
-    return readFloatNumberFallback(start);
+    scanNumberToken();
+    return Float.parseFloat(floatingToken(start, position));
   }
 
-  // Float fallback remains reader-owned: it must not materialize a number String or construct
-  // arbitrary-precision numbers. Big number allocation is owned only by BigInteger/BigDecimal.
-  private float readFloatNumberFallback(int start) {
-    int offset = start;
-    int inputLength = length();
-    boolean negative = false;
-    if (offset < inputLength && charAt(offset) == '-') {
-      negative = true;
-      offset++;
+  private String floatingToken(int start, int end) {
+    if (end - start <= 1024) {
+      return slice(start, end);
     }
-    if (offset >= inputLength) {
-      throw numberError(offset, "Expected float");
-    }
+    return normalizeFloatingToken(start, end);
+  }
 
-    int ch = charAt(offset);
-    long significand = 0;
-    int storedDigits = 0;
-    int truncatedDigits = 0;
+  private String normalizeFloatingToken(int start, int end) {
+    // JDK 8 bounds the parsed exponent using significant digits, excluding leading fractional
+    // zeros. Move the decimal point after removing those zeros so cancelling exponents remain
+    // correct. Retain every significant digit: truncation here could change halfway rounding.
+    boolean negative = charAt(start) == '-';
+    int offset = negative ? start + 1 : start;
+    int first = -1;
+    int last = -1;
     int fractionDigits = 0;
-    boolean nonZeroSeen = false;
-    boolean sticky = false;
-
-    if (ch == '0') {
-      offset++;
-      if (offset < inputLength) {
-        ch = charAt(offset);
-        if (ch >= '0' && ch <= '9') {
-          throw numberError(offset, "Leading zero in number");
-        }
-      }
-    } else if (ch >= '1' && ch <= '9') {
-      do {
-        int digit = ch - '0';
-        if (digit != 0 || nonZeroSeen) {
-          nonZeroSeen = true;
-          if (storedDigits < 18) {
-            significand = significand * 10 + digit;
-            storedDigits++;
-          } else {
-            truncatedDigits++;
-            sticky |= digit != 0;
-          }
-        }
-        offset++;
-        ch = offset < inputLength ? charAt(offset) : -1;
-      } while (ch >= '0' && ch <= '9');
-    } else {
-      throw numberError(offset, "Expected float");
-    }
-
-    if (offset < inputLength && charAt(offset) == '.') {
-      offset++;
-      int fractionStart = offset;
-      while (offset < inputLength) {
-        ch = charAt(offset);
-        if (ch < '0' || ch > '9') {
-          break;
-        }
-        int digit = ch - '0';
-        if (digit != 0 || nonZeroSeen) {
-          nonZeroSeen = true;
-          if (storedDigits < 18) {
-            significand = significand * 10 + digit;
-            storedDigits++;
-          } else {
-            truncatedDigits++;
-            sticky |= digit != 0;
-          }
-        }
-        fractionDigits++;
-        offset++;
-      }
-      if (offset == fractionStart) {
-        throw numberError(offset, "Expected digit");
-      }
-    }
-
-    long exponent = 0;
-    if (offset < inputLength) {
-      ch = charAt(offset);
+    int trailingZeros = 0;
+    boolean fraction = false;
+    while (offset < end) {
+      char ch = charAt(offset);
       if (ch == 'e' || ch == 'E') {
-        offset++;
-        boolean negativeExponent = false;
-        if (offset < inputLength) {
-          ch = charAt(offset);
-          if (ch == '-' || ch == '+') {
-            negativeExponent = ch == '-';
-            offset++;
-          }
-        }
-        int exponentStart = offset;
-        while (offset < inputLength) {
-          ch = charAt(offset);
-          if (ch < '0' || ch > '9') {
-            break;
-          }
-          if (exponent < TOKEN_EXPONENT_LIMIT) {
-            exponent = exponent * 10 + ch - '0';
-            if (exponent > TOKEN_EXPONENT_LIMIT) {
-              exponent = TOKEN_EXPONENT_LIMIT;
-            }
-          }
-          offset++;
-        }
-        if (offset == exponentStart) {
-          throw numberError(offset, "Expected exponent digit");
-        }
-        if (negativeExponent) {
-          exponent = -exponent;
-        }
+        break;
       }
-    }
-
-    position = offset;
-    if (!nonZeroSeen) {
-      return negative ? -0.0f : 0.0f;
-    }
-    long scale = (long) fractionDigits - exponent - truncatedDigits;
-    return floatFromDecimal(negative, significand, scale, sticky, start, offset);
-  }
-
-  private float floatFromDecimal(
-      boolean negative, long significand, long scale, boolean sticky, int start, int end) {
-    if (significand == 0) {
-      return negative ? -0.0f : 0.0f;
-    }
-    if (!sticky) {
-      if (scale >= 0 && scale <= COMPACT_DECIMAL_MAX_SCALE) {
-        return compactFloatValue(negative, significand, (int) scale);
-      }
-      if (scale < 0 && scale >= -COMPACT_DECIMAL_MAX_SCALE) {
-        long multiplied = multiplyByPowerOfTen(significand, (int) -scale);
-        if (multiplied >= 0) {
-          return compactFloatValue(negative, multiplied, 0);
-        }
-      }
-    }
-    float result = approximateFloat(negative, significand, scale);
-    return correctFloatToken(negative, result, start, end);
-  }
-
-  private static float approximateFloat(boolean negative, long significand, long scale) {
-    double value = (double) significand;
-    long decimalExponent = -scale;
-    if (decimalExponent > 0) {
-      if (decimalExponent > 50) {
-        return negative ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
-      }
-      value *= Math.pow(10.0d, decimalExponent);
-    } else if (decimalExponent < 0) {
-      if (decimalExponent < -350) {
-        return negative ? -0.0f : 0.0f;
-      }
-      value /= Math.pow(10.0d, -decimalExponent);
-    }
-    float result = (float) value;
-    return negative ? -result : result;
-  }
-
-  // Long float tokens can sit within one double ULP of a float midpoint. Correct the close
-  // estimate against exact adjacent-float boundaries so fallback never needs a number String.
-  private float correctFloatToken(boolean negative, float estimate, int start, int end) {
-    int bits = Float.floatToRawIntBits(estimate);
-    bits &= ~FLOAT_SIGN_BIT;
-    byte[] boundary = numericWorkspace.decimalBoundaryDigits;
-    for (int i = 0; i < 4; i++) {
-      if (bits == FLOAT_INFINITY_BITS) {
-        int packed = buildFloatBoundary(FLOAT_MAX_FINITE_BITS, FLOAT_INFINITY_BITS, boundary);
-        int cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
-        if (cmp < 0) {
-          bits = FLOAT_MAX_FINITE_BITS;
-          continue;
-        }
-        return signedFloat(negative, bits);
-      }
-      if (bits == 0) {
-        int packed = buildFloatBoundary(0, 1, boundary);
-        int cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
-        if (cmp > 0) {
-          bits = 1;
-          continue;
-        }
-        return signedFloat(negative, bits);
-      }
-
-      int packed = buildFloatBoundary(bits - 1, bits, boundary);
-      int cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
-      if (cmp < 0 || (cmp == 0 && !isEvenFloat(bits))) {
-        bits--;
-        continue;
-      }
-
-      packed = buildFloatBoundary(bits, bits + 1, boundary);
-      cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
-      if (cmp > 0 || (cmp == 0 && !isEvenFloat(bits))) {
-        bits++;
-        continue;
-      }
-      return signedFloat(negative, bits);
-    }
-    return signedFloat(negative, exactFloatTokenBits(start, end, boundary));
-  }
-
-  private int exactFloatTokenBits(int start, int end, byte[] boundary) {
-    int low = 0;
-    int high = FLOAT_INFINITY_BITS;
-    while (low < high) {
-      int middle = (low + high) >>> 1;
-      int packed = buildFloatBoundary(middle, middle + 1, boundary);
-      int cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
-      if (cmp < 0) {
-        high = middle;
-      } else if (cmp > 0) {
-        low = middle + 1;
+      if (ch == '.') {
+        fraction = true;
       } else {
-        return isEvenFloat(middle) ? middle : middle + 1;
+        if (fraction) {
+          fractionDigits++;
+        }
+        if (ch != '0') {
+          if (first < 0) {
+            first = offset;
+          }
+          last = offset;
+          trailingZeros = 0;
+        } else {
+          trailingZeros++;
+        }
+      }
+      offset++;
+    }
+    if (first < 0) {
+      return negative ? "-0" : "0";
+    }
+    long scale = offset < end ? readExponentScale(offset, fractionDigits) : fractionDigits;
+    StringBuilder token = new StringBuilder(last - first + 32);
+    if (negative) {
+      token.append('-');
+    }
+    for (int i = first; i <= last; i++) {
+      char ch = charAt(i);
+      if (ch != '.') {
+        token.append(ch);
       }
     }
-    return low;
-  }
-
-  private static float signedFloat(boolean negative, int bits) {
-    float result = Float.intBitsToFloat(bits);
-    return negative ? -result : result;
-  }
-
-  private static int buildFloatBoundary(int lowBits, int highBits, byte[] digits) {
-    int numerator;
-    int binaryExponent;
-    if (highBits == FLOAT_INFINITY_BITS) {
-      numerator = (1 << (FLOAT_FRACTION_BITS + 2)) - 1;
-      binaryExponent = 103;
-    } else {
-      int lowMantissa = floatMantissa(lowBits);
-      int lowExponent = floatBinaryExponent(lowBits);
-      int highMantissa = floatMantissa(highBits);
-      int highExponent = floatBinaryExponent(highBits);
-      int exponent = Math.min(lowExponent, highExponent);
-      numerator =
-          (lowMantissa << (lowExponent - exponent)) + (highMantissa << (highExponent - exponent));
-      binaryExponent = exponent - 1;
-    }
-    int length = writeBoundaryDigits(numerator, binaryExponent, digits);
-    int scale = binaryExponent < 0 ? -binaryExponent : 0;
-    return (length << 16) | scale;
+    return token.append('e').append((long) trailingZeros - scale).toString();
   }
 
   private static int floatMantissa(int bits) {
@@ -2402,146 +2052,6 @@ public abstract class JsonReader {
   private static int floatBinaryExponent(int bits) {
     int exponent = (bits & FLOAT_EXPONENT_MASK) >>> FLOAT_FRACTION_BITS;
     return exponent == 0 ? -149 : exponent - 150;
-  }
-
-  private static int writeBoundaryDigits(long numerator, int binaryExponent, byte[] digits) {
-    int length = 0;
-    long value = numerator;
-    do {
-      digits[length++] = (byte) (value % 10);
-      value /= 10;
-    } while (value != 0);
-    int factor = binaryExponent >= 0 ? 2 : 5;
-    int count = binaryExponent >= 0 ? binaryExponent : -binaryExponent;
-    for (int i = 0; i < count; i++) {
-      length = multiplyDecimalDigits(digits, length, factor);
-    }
-    for (int left = 0, right = length - 1; left < right; left++, right--) {
-      byte digit = digits[left];
-      digits[left] = digits[right];
-      digits[right] = digit;
-    }
-    return length;
-  }
-
-  private static int multiplyDecimalDigits(byte[] digits, int length, int factor) {
-    int carry = 0;
-    for (int i = 0; i < length; i++) {
-      int product = digits[i] * factor + carry;
-      digits[i] = (byte) (product % 10);
-      carry = product / 10;
-    }
-    while (carry != 0) {
-      digits[length++] = (byte) (carry % 10);
-      carry /= 10;
-    }
-    return length;
-  }
-
-  private int compareTokenToBoundary(
-      int start, int end, byte[] boundaryDigits, int boundaryLength, int boundaryScale) {
-    int offset = start;
-    if (offset < end && charAt(offset) == '-') {
-      offset++;
-    }
-    int scan = offset;
-    int digitCount = 0;
-    int fractionDigits = 0;
-    boolean fraction = false;
-    boolean significant = false;
-    while (scan < end) {
-      int ch = charAt(scan);
-      if (ch >= '0' && ch <= '9') {
-        if (ch != '0' || significant) {
-          significant = true;
-          digitCount++;
-        }
-        if (fraction) {
-          fractionDigits++;
-        }
-        scan++;
-      } else if (ch == '.') {
-        fraction = true;
-        scan++;
-      } else {
-        break;
-      }
-    }
-    if (!significant) {
-      return -1;
-    }
-    long exponent = 0;
-    if (scan < end) {
-      int ch = charAt(scan);
-      if (ch == 'e' || ch == 'E') {
-        scan++;
-        boolean negativeExponent = false;
-        if (scan < end) {
-          ch = charAt(scan);
-          if (ch == '-' || ch == '+') {
-            negativeExponent = ch == '-';
-            scan++;
-          }
-        }
-        while (scan < end) {
-          ch = charAt(scan);
-          if (ch < '0' || ch > '9') {
-            break;
-          }
-          if (exponent < TOKEN_EXPONENT_LIMIT) {
-            exponent = exponent * 10 + ch - '0';
-            if (exponent > TOKEN_EXPONENT_LIMIT) {
-              exponent = TOKEN_EXPONENT_LIMIT;
-            }
-          }
-          scan++;
-        }
-        if (negativeExponent) {
-          exponent = -exponent;
-        }
-      }
-    }
-
-    long adjustedLength = (long) digitCount + exponent - fractionDigits;
-    long boundaryAdjustedLength = (long) boundaryLength - boundaryScale;
-    if (adjustedLength != boundaryAdjustedLength) {
-      return adjustedLength < boundaryAdjustedLength ? -1 : 1;
-    }
-
-    scan = offset;
-    significant = false;
-    int emitted = 0;
-    int max = Math.max(digitCount, boundaryLength);
-    for (int i = 0; i < max; i++) {
-      int digit = 0;
-      if (emitted < digitCount) {
-        while (scan < end) {
-          int ch = charAt(scan++);
-          if (ch == 'e' || ch == 'E') {
-            break;
-          }
-          if (ch < '0' || ch > '9') {
-            continue;
-          }
-          if (ch == '0' && !significant) {
-            continue;
-          }
-          significant = true;
-          digit = ch - '0';
-          emitted++;
-          break;
-        }
-      }
-      int boundaryDigit = i < boundaryLength ? boundaryDigits[i] : 0;
-      if (digit != boundaryDigit) {
-        return digit < boundaryDigit ? -1 : 1;
-      }
-    }
-    return 0;
-  }
-
-  private static boolean isEvenFloat(int bits) {
-    return (bits & 1) == 0;
   }
 
   private static long multiplyByPowerOfTen(long value, int power) {
@@ -3306,7 +2816,6 @@ public abstract class JsonReader {
   protected abstract String slice(int start, int end);
 
   private static final class NumericWorkspace {
-    private final byte[] decimalBoundaryDigits = new byte[DECIMAL_BOUNDARY_DIGITS];
     private char[] bigDecimalBuffer = new char[INITIAL_BIG_DECIMAL_BUFFER_SIZE];
   }
 
