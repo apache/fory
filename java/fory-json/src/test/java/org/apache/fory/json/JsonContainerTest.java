@@ -667,15 +667,52 @@ public class JsonContainerTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void rejectNullFloatingElements() {
+  public void rejectNullPrimitiveElements() {
     ForyJson json = newJson();
-    for (Class<?> type : new Class<?>[] {float[].class, double[].class}) {
-      for (String text : new String[] {"[null]", "[1.5, null]", "[1e40,  null]"}) {
+    for (Class<?> type :
+        new Class<?>[] {
+          boolean[].class,
+          int[].class,
+          long[].class,
+          short[].class,
+          char[].class,
+          float[].class,
+          double[].class
+        }) {
+      String element = type == boolean[].class ? "true" : type == char[].class ? "\"a\"" : "1";
+      for (String text :
+          new String[] {
+            "[null]",
+            "[" + element + ", null]",
+            "[" + String.join(",", Collections.nCopies(9, element)) + ", null]"
+          }) {
         assertThrows(ForyJsonException.class, () -> json.fromJson(text, type));
         assertThrows(
             ForyJsonException.class,
             () -> json.fromJson(text.getBytes(StandardCharsets.UTF_8), type));
       }
+    }
+  }
+
+  @Test
+  public void readCharArrayBoundaries() {
+    ForyJson json = newJson();
+    for (int size : new int[] {0, 1, 7, 8, 9, 15, 16, 17, 1024, 1025}) {
+      char[] values = new char[size];
+      char[] characters = {'a', '\u0000', '\t', '\\', '"', '\u00e9', '\u4f60'};
+      for (int i = 0; i < size; i++) {
+        values[i] = characters[i % characters.length];
+      }
+      String text = json.toJson(values);
+      assertEquals(json.fromJson(text, char[].class), values);
+      assertEquals(json.fromJson(text.getBytes(StandardCharsets.UTF_8), char[].class), values);
+    }
+    assertEquals(json.fromJson("[\"\\u0061\",\"b\"]", char[].class), new char[] {'a', 'b'});
+    for (String text : new String[] {"[\"\"]", "[\"ab\"]", "[\"a\",null]"}) {
+      assertThrows(ForyJsonException.class, () -> json.fromJson(text, char[].class));
+      assertThrows(
+          ForyJsonException.class,
+          () -> json.fromJson(text.getBytes(StandardCharsets.UTF_8), char[].class));
     }
   }
 
