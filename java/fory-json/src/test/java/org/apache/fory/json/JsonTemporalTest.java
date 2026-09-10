@@ -270,6 +270,39 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeDateCalendar() {
+    Utf8JsonWriter utf8 = newUtf8Writer(new byte[1]);
+    StringJsonWriter string = newStringWriter(new byte[1]);
+    LocalDate first = LocalDate.of(1600, 3, 1);
+    for (int day = 0; day < 146097; day++) {
+      assertDate(utf8, string, first.plusDays(day));
+    }
+    Random random = new Random(2701);
+    for (int year = 0; year <= 9999; year++) {
+      LocalDate date = LocalDate.of(year, 1, 1);
+      assertDate(utf8, string, date.plusDays(random.nextInt(date.lengthOfYear())));
+    }
+    for (int capacity = 0; capacity <= 16; capacity++) {
+      utf8 = newUtf8Writer(new byte[capacity]);
+      String prefix = "       ".substring(0, capacity & 7);
+      utf8.writeRawValue(prefix);
+      utf8.writeLocalDate(LocalDate.of(9999, 12, 31));
+      assertEquals(
+          new String(utf8.toJsonBytes(), StandardCharsets.UTF_8), prefix + "\"9999-12-31\"");
+    }
+  }
+
+  private static void assertDate(Utf8JsonWriter utf8, StringJsonWriter string, LocalDate value) {
+    utf8.reset();
+    string.reset();
+    utf8.writeLocalDate(value);
+    string.writeLocalDate(value);
+    String expected = '"' + value.toString() + '"';
+    assertEquals(new String(utf8.toJsonBytes(), StandardCharsets.UTF_8), expected);
+    assertEquals(string.toJson(), expected);
+  }
+
+  @Test
   public void writeDurationBoundaries() {
     long[] seconds = {
       Long.MIN_VALUE,
