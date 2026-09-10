@@ -169,12 +169,28 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeNull() {
-    writeAscii("null");
+    if (position + 4 > buffer.length) {
+      grow(4);
+    }
+    LittleEndian.putInt32(buffer, position, 0x6c6c756e);
+    position += 4;
   }
 
   @Override
   public void writeBoolean(boolean value) {
-    writeAscii(value ? "true" : "false");
+    if (position + 5 > buffer.length) {
+      grow(5);
+    }
+    writeBooleanNoEnsure(value);
+  }
+
+  private void writeBooleanNoEnsure(boolean value) {
+    int offset = position;
+    LittleEndian.putInt32(buffer, offset, value ? 0x65757274 : 0x736c6166);
+    if (!value) {
+      buffer[offset + 4] = 'e';
+    }
+    position = offset + (value ? 4 : 5);
   }
 
   @Override
@@ -1070,7 +1086,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       grow(additional);
     }
     writeRawNoEnsure(prefix);
-    writeAsciiNoEnsure(value ? "true" : "false");
+    writeBooleanNoEnsure(value);
   }
 
   public void writeIntField(byte[] namePrefix, byte[] commaNamePrefix, int index, int value) {

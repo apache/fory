@@ -103,6 +103,31 @@ import org.testng.annotations.Test;
 public class JsonScalarTest extends ForyJsonTestModels {
   private static final int BIG_NUMBER_LIMIT = 10_000;
 
+  @Test
+  public void writeBooleanBufferBoundaries() {
+    for (int capacity = 0; capacity <= 24; capacity++) {
+      Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+      writer.writeArrayStart();
+      writer.writeBoolean(true);
+      writer.writeComma(1);
+      writer.writeBoolean(false);
+      writer.writeComma(2);
+      writer.writeNull();
+      writer.writeArrayEnd();
+      assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), "[true,false,null]");
+
+      writer.reset();
+      writer.writeObjectStart();
+      writer.writeBooleanField(
+          "\"x\":".getBytes(StandardCharsets.UTF_8),
+          ",\"x\":".getBytes(StandardCharsets.UTF_8),
+          0,
+          false);
+      writer.writeObjectEnd();
+      assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), "{\"x\":false}");
+    }
+  }
+
   @Test(dataProvider = "enableCodegen")
   public void writeBoxedScalars(boolean codegen) {
     ForyJson json = newJson(codegen);
