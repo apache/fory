@@ -76,7 +76,6 @@ import org.apache.fory.serializer.StringSerializer;
  */
 public abstract class JsonReader {
   private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
-  private static final int INITIAL_BIG_DECIMAL_BUFFER_SIZE = 64;
   private static final byte[] EMPTY_BYTES = new byte[0];
   static final int MAX_BIG_DECIMAL_SCALE = 10_000;
   private static final int COMPACT_DECIMAL_MAX_SCALE = 18;
@@ -1021,25 +1020,33 @@ public abstract class JsonReader {
     if (numberLength > MAX_BIG_NUMBER_LENGTH) {
       throwBigNumberLengthExceeded(position);
     }
-    char[] chars = numericWorkspace.bigDecimalBuffer;
-    if (chars.length < numberLength) {
-      chars = new char[Math.max(numberLength, chars.length << 1)];
-      numericWorkspace.bigDecimalBuffer = chars;
+    String number = slice(start, position);
+    int exponent = number.indexOf('e');
+    if (exponent < 0) {
+      exponent = number.indexOf('E');
     }
-    for (int i = 0; i < numberLength; i++) {
-      chars[i] = charAt(start + i);
+    int coefficientEnd = exponent < 0 ? numberLength : exponent;
+    int point = number.indexOf('.');
+    long scale = point < 0 ? 0 : coefficientEnd - point - 1;
+    if (exponent >= 0) {
+      scale = readExponentScale(start + exponent, scale);
     }
-    BigDecimal value;
-    try {
-      value = new BigDecimal(chars, 0, numberLength);
-    } catch (NumberFormatException e) {
-      throw new ForyJsonException("Invalid JSON big decimal at JSON position " + position, e);
-    }
-    int scale = value.scale();
     if (scale > MAX_BIG_DECIMAL_SCALE || scale < -MAX_BIG_DECIMAL_SCALE) {
       throwBigDecimalScaleExceeded();
     }
-    return value;
+    // The scanner has validated the decimal grammar. Preserve every coefficient digit, including
+    // trailing zeroes, and reuse integer conversion instead of repeating JDK decimal digit parsing.
+    String coefficient;
+    if (point < 0) {
+      coefficient = number.substring(0, coefficientEnd);
+    } else {
+      coefficient =
+          new StringBuilder(coefficientEnd - 1)
+              .append(number, 0, point)
+              .append(number, point + 1, coefficientEnd)
+              .toString();
+    }
+    return new BigDecimal(parseBigInteger(coefficient), (int) scale);
   }
 
   protected final void beginQuotedScalar() {
@@ -1733,7 +1740,7 @@ public abstract class JsonReader {
     if (length > MAX_BIG_NUMBER_LENGTH) {
       throwBigNumberLengthExceeded(position);
     }
-    // Both callers have validated ASCII integer syntax. Accumulate eighteen decimal digits at a
+    // Callers have validated ASCII integer or coefficient syntax. Accumulate eighteen digits at a
     // time in unsigned 64-bit words; each multiplication produces an exact high half and one carry.
     // The length gate above bounds scratch storage by the text already proven readable.
     boolean negative = number.charAt(0) == '-';
@@ -2996,7 +3003,6 @@ public abstract class JsonReader {
   protected abstract String slice(int start, int end);
 
   private static final class NumericWorkspace {
-    private char[] bigDecimalBuffer = new char[INITIAL_BIG_DECIMAL_BUFFER_SIZE];
     private long[] bigIntegerBuffer = new long[4];
   }
 

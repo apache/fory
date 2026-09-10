@@ -1958,6 +1958,31 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readInflatedDecimalForms() {
+    for (String token :
+        new String[] {
+          "123456789012345678901234567890.0000",
+          "0.000000000000000000012345678901234567890e+100",
+          "100000000000000000000E-10000",
+          "0.999999999999999999999999E+10000"
+        }) {
+      assertBigDecimalReaders(token);
+      assertBigDecimalReaders("-" + token);
+      assertQuotedBigDecimalReaders(token);
+      assertQuotedBigDecimalReaders("-" + token);
+    }
+    for (String exponent : new String[] {"10001", "-10001", "999999999999999999"}) {
+      String token = "123456789012345678901e" + exponent;
+      assertThrows(
+          ForyJsonException.class,
+          () -> newUtf8Reader(token.getBytes(StandardCharsets.UTF_8)).readBigDecimal());
+      assertThrows(
+          ForyJsonException.class, () -> newLatin1Reader(latin1Bytes(token)).readBigDecimal());
+      assertThrows(ForyJsonException.class, () -> utf16Reader(token).readBigDecimal());
+    }
+  }
+
+  @Test
   public void readCompactBigDecimalExponents() {
     assertBigDecimalReaders("1.25e2");
     assertBigDecimalReaders("-7.5E-3");
