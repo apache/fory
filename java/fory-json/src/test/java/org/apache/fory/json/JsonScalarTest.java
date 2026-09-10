@@ -2419,6 +2419,24 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readFloatCoefficientBounds() {
+    long[] prefixes = {1L << 56, 1L << 59, Long.MAX_VALUE / 100, Long.MAX_VALUE / 10};
+    for (long prefix : prefixes) {
+      for (int delta = -1; delta <= 1; delta++) {
+        for (String tail : new String[] {"0", "7", "8", "9", "00", "07", "08", "99"}) {
+          String coefficient = (prefix + delta) + tail;
+          for (String token : new String[] {coefficient, (prefix + delta) + "." + tail}) {
+            int expected = Float.floatToRawIntBits(Float.parseFloat(token));
+            assertFloatBits(token, expected);
+            assertFloatBits("-" + token);
+            assertFloatBits("\"" + token + "\"", expected);
+          }
+        }
+      }
+    }
+  }
+
+  @Test
   public void readCompactFloatRounding() {
     Random random = new Random(6138429L);
     for (int bits = 1; bits <= 63; bits++) {

@@ -1418,7 +1418,7 @@ public final class Utf8JsonReader extends JsonReader {
     if ((unscaled >>> 56) == 0) {
       return true;
     }
-    long adjusted = unscaled + ((pair + 120) >>> 7);
+    long adjusted = unscaled + ((pair + (127 - LONG_MAX_MOD_100)) >>> 7);
     return Long.compareUnsigned(adjusted, LONG_MAX_DIV_100) <= 0;
   }
 
@@ -1723,8 +1723,7 @@ public final class Utf8JsonReader extends JsonReader {
           break;
         }
         int pair = high * 10 + low;
-        if (unscaled > LONG_MAX_DIV_100
-            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+        if (!canAppendTwoDigits(unscaled, pair)) {
           return readFloatFallback(start);
         }
         unscaled = unscaled * 100 + pair;
@@ -1733,8 +1732,7 @@ public final class Utf8JsonReader extends JsonReader {
       if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
-          if (unscaled > LONG_MAX_DIV_10
-              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+          if (!canAppendDigit(unscaled, digit)) {
             return readFloatFallback(start);
           }
           unscaled = unscaled * 10 + digit;
@@ -1774,8 +1772,7 @@ public final class Utf8JsonReader extends JsonReader {
           break;
         }
         int pair = high * 10 + low;
-        if (unscaled > LONG_MAX_DIV_100
-            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+        if (!canAppendTwoDigits(unscaled, pair)) {
           return readFloatFallback(start);
         }
         unscaled = unscaled * 100 + pair;
@@ -1784,8 +1781,7 @@ public final class Utf8JsonReader extends JsonReader {
       if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
-          if (unscaled > LONG_MAX_DIV_10
-              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+          if (!canAppendDigit(unscaled, digit)) {
             return readFloatFallback(start);
           }
           unscaled = unscaled * 10 + digit;
@@ -1811,8 +1807,7 @@ public final class Utf8JsonReader extends JsonReader {
           break;
         }
         int pair = high * 10 + low;
-        if (unscaled > LONG_MAX_DIV_100
-            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+        if (!canAppendTwoDigits(unscaled, pair)) {
           return readFloatFallback(start);
         }
         unscaled = unscaled * 100 + pair;
@@ -1822,8 +1817,7 @@ public final class Utf8JsonReader extends JsonReader {
       if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
-          if (unscaled > LONG_MAX_DIV_10
-              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+          if (!canAppendDigit(unscaled, digit)) {
             return readFloatFallback(start);
           }
           unscaled = unscaled * 10 + digit;
@@ -1851,8 +1845,7 @@ public final class Utf8JsonReader extends JsonReader {
           break;
         }
         int pair = high * 10 + low;
-        if (unscaled > LONG_MAX_DIV_100
-            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+        if (!canAppendTwoDigits(unscaled, pair)) {
           return readFloatFallback(start);
         }
         unscaled = unscaled * 100 + pair;
@@ -1862,8 +1855,7 @@ public final class Utf8JsonReader extends JsonReader {
       if (offset < inputLimit) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
-          if (unscaled > LONG_MAX_DIV_10
-              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+          if (!canAppendDigit(unscaled, digit)) {
             return readFloatFallback(start);
           }
           unscaled = unscaled * 10 + digit;
