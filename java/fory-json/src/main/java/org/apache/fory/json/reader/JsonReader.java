@@ -2697,9 +2697,8 @@ public abstract class JsonReader {
     }
     char ch = charAt(position);
     if (ch == '"') {
-      // Unknown values are validation-only. Hashing validates the complete escaped string without
-      // materializing storage that no object can own.
-      readStringHash();
+      // Skipped text still needs escape and Unicode validation, but no decoded storage or hash.
+      position = scanStringEnd(position);
     } else if (ch == '{') {
       skipObject();
     } else if (ch == '[') {
@@ -2935,7 +2934,7 @@ public abstract class JsonReader {
     }
     do {
       skipWhitespace();
-      readString();
+      position = scanStringEnd(position);
       expect(':');
       skipValue();
     } while (consume(','));
