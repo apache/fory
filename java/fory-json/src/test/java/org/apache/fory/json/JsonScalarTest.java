@@ -128,6 +128,31 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
   }
 
+  @Test
+  public void writeCharBufferBoundaries() {
+    char[] values = new char[260];
+    for (int i = 0; i < 256; i++) {
+      values[i] = (char) i;
+    }
+    values[256] = '\u07ff';
+    values[257] = '\u0800';
+    values[258] = '\u4f60';
+    values[259] = '\uffff';
+    for (char value : values) {
+      StringJsonWriter expected = newStringWriter();
+      expected.writeArrayStart();
+      expected.writeChar(value);
+      expected.writeArrayEnd();
+      for (int capacity = 0; capacity <= 8; capacity++) {
+        Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+        writer.writeArrayStart();
+        writer.writeChar(value);
+        writer.writeArrayEnd();
+        assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), expected.toJson());
+      }
+    }
+  }
+
   @Test(dataProvider = "enableCodegen")
   public void writeBoxedScalars(boolean codegen) {
     ForyJson json = newJson(codegen);

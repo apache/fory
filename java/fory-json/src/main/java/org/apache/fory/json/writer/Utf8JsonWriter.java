@@ -333,6 +333,17 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeChar(char value) {
+    if (isJsonAscii(value)) {
+      int offset = position;
+      if (offset + 3 > buffer.length) {
+        grow(3);
+      }
+      buffer[offset] = '"';
+      buffer[offset + 1] = (byte) value;
+      buffer[offset + 2] = '"';
+      position = offset + 3;
+      return;
+    }
     if (Character.isSurrogate(value)) {
       throw new ForyJsonException("JSON char cannot be a surrogate: " + Integer.toHexString(value));
     }
