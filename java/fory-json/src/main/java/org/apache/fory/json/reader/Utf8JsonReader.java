@@ -955,10 +955,12 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   @Override
-  void scanNumberToken() {
+  long scanNumberToken() {
     byte[] bytes = input;
     int limit = inputLimit;
     int offset = position;
+    int point = -1;
+    int exponent = -1;
     if (offset < limit && bytes[offset] == '-') {
       offset++;
     }
@@ -980,6 +982,7 @@ public final class Utf8JsonReader extends JsonReader {
       throw error("Expected digit");
     }
     if (offset < limit && bytes[offset] == '.') {
+      point = offset;
       int fraction = ++offset;
       offset = scanNumberDigits(bytes, offset, limit);
       if (offset == fraction) {
@@ -988,18 +991,20 @@ public final class Utf8JsonReader extends JsonReader {
       }
     }
     if (offset < limit && (bytes[offset] == 'e' || bytes[offset] == 'E')) {
+      exponent = offset;
       offset++;
       if (offset < limit && (bytes[offset] == '+' || bytes[offset] == '-')) {
         offset++;
       }
-      int exponent = offset;
+      int exponentStart = offset;
       offset = scanNumberDigits(bytes, offset, limit);
-      if (offset == exponent) {
+      if (offset == exponentStart) {
         position = offset;
         throw error("Expected digit");
       }
     }
     position = offset;
+    return ((long) point << 32) | (exponent & 0xffff_ffffL);
   }
 
   private static int scanNumberDigits(byte[] bytes, int offset, int limit) {
@@ -1423,6 +1428,38 @@ public final class Utf8JsonReader extends JsonReader {
     }
     long adjusted = unscaled + (block > LONG_MAX_MOD_EIGHT_DIGITS ? 1 : 0);
     return Long.compareUnsigned(adjusted, LONG_MAX_DIV_EIGHT_DIGITS) <= 0;
+  }
+
+  @Override
+  protected BigDecimal readBigDecimalFallback(int start) {
+    position = start;
+    long separators = scanNumberToken();
+    int end = position;
+    if (end - start > MAX_BIG_NUMBER_LENGTH) {
+      throwBigNumberLengthExceeded(end);
+    }
+    byte[] bytes = input;
+    int point = (int) (separators >>> 32);
+    int exponent = (int) separators;
+    int coefficientEnd = exponent < 0 ? end : exponent;
+    long scale = point < 0 ? 0 : coefficientEnd - point - 1;
+    if (exponent >= 0) {
+      scale = readExponentScale(exponent, scale);
+    }
+    if (scale > MAX_BIG_DECIMAL_SCALE || scale < -MAX_BIG_DECIMAL_SCALE) {
+      throwBigDecimalScaleExceeded();
+    }
+    // The scanner proved this borrowed ASCII span. Only removing the point needs a new array.
+    BigInteger unscaled;
+    if (point < 0) {
+      unscaled = parseBigInteger(bytes, start, coefficientEnd);
+    } else {
+      byte[] coefficient = new byte[coefficientEnd - start - 1];
+      System.arraycopy(bytes, start, coefficient, 0, point - start);
+      System.arraycopy(bytes, point + 1, coefficient, point - start, coefficientEnd - point - 1);
+      unscaled = parseBigInteger(coefficient, 0, coefficient.length);
+    }
+    return new BigDecimal(unscaled, (int) scale);
   }
 
   private BigDecimal readBigDecimalToken() {

@@ -77,7 +77,7 @@ import org.apache.fory.serializer.StringSerializer;
  * intentionally avoid cleanup-only {@code try/finally} regions.
  */
 public abstract class JsonReader {
-  private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
+  static final int MAX_BIG_NUMBER_LENGTH = 10_000;
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final byte[] HEX_VALUES = hexValues();
   static final int MAX_BIG_DECIMAL_SCALE = 10_000;
@@ -659,17 +659,22 @@ public abstract class JsonReader {
     return slice(start, position);
   }
 
-  void scanNumberToken() {
+  // Absolute point/exponent offsets occupy the high/low 32 bits; -1 means a separator is absent.
+  long scanNumberToken() {
     int start = position;
+    int point = -1;
+    int exponent = -1;
     if (position < length() && charAt(position) == '-') {
       position++;
     }
     readIntegerDigits();
     if (position < length() && charAt(position) == '.') {
+      point = position;
       position++;
       readDigits();
     }
     if (position < length() && (charAt(position) == 'e' || charAt(position) == 'E')) {
+      exponent = position;
       position++;
       if (position < length() && (charAt(position) == '+' || charAt(position) == '-')) {
         position++;
@@ -679,6 +684,7 @@ public abstract class JsonReader {
     if (start == position) {
       throw error("Expected number");
     }
+    return ((long) point << 32) | (exponent & 0xffff_ffffL);
   }
 
   public final int readInt() {
@@ -1016,20 +1022,23 @@ public abstract class JsonReader {
     return parseOffsetTimeValue(readQuotedTextValue());
   }
 
-  protected final BigDecimal readBigDecimalFallback(int start) {
+  protected BigDecimal readBigDecimalFallback(int start) {
     position = start;
-    scanNumberToken();
+    long separators = scanNumberToken();
     int numberLength = position - start;
     if (numberLength > MAX_BIG_NUMBER_LENGTH) {
       throwBigNumberLengthExceeded(position);
     }
     String number = slice(start, position);
-    int exponent = number.indexOf('e');
-    if (exponent < 0) {
-      exponent = number.indexOf('E');
+    int exponent = (int) separators;
+    if (exponent >= 0) {
+      exponent -= start;
     }
     int coefficientEnd = exponent < 0 ? numberLength : exponent;
-    int point = number.indexOf('.');
+    int point = (int) (separators >>> 32);
+    if (point >= 0) {
+      point -= start;
+    }
     long scale = point < 0 ? 0 : coefficientEnd - point - 1;
     if (exponent >= 0) {
       scale = readExponentScale(start + exponent, scale);
@@ -1865,7 +1874,7 @@ public abstract class JsonReader {
     throw error("JSON big decimal scale " + MAX_BIG_DECIMAL_SCALE + " exceeded");
   }
 
-  private void throwBigNumberLengthExceeded(int offset) {
+  final void throwBigNumberLengthExceeded(int offset) {
     position = offset;
     throw error("JSON big number length " + MAX_BIG_NUMBER_LENGTH + " exceeded");
   }
@@ -2197,7 +2206,7 @@ public abstract class JsonReader {
         | (significand & ((1L << fractionBits) - 1));
   }
 
-  private long readExponentScale(int offset, long scale) {
+  final long readExponentScale(int offset, long scale) {
     offset++;
     boolean negativeExponent = false;
     if (offset < length()) {

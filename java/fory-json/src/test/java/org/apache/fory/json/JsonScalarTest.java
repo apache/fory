@@ -1075,6 +1075,40 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readDecimalByteSpans() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (String number :
+        new String[] {
+          "123456789012345678901234567890",
+          "123456789012345678901234567890.0000",
+          "1.234567890123456789012345678900E+10000",
+          "0.00000000000001234567890123456789012345678900e100",
+          "123456789012345678901234567890E-10000"
+        }) {
+      for (String sign : new String[] {"", "-"}) {
+        String token = sign + number;
+        BigDecimal expected = new BigDecimal(token);
+        assertBigDecimalReaders(token);
+        assertQuotedBigDecimalReaders(token);
+        byte[] value = token.getBytes(StandardCharsets.UTF_8);
+        for (int offset = 0; offset < 8; offset++) {
+          byte[] bytes = new byte[offset + value.length + 16];
+          Arrays.fill(bytes, (byte) '9');
+          System.arraycopy(value, 0, bytes, offset, value.length);
+          reader.reset(bytes, offset, value.length);
+          assertEquals(reader.readBigDecimal(), expected);
+          reader.finish();
+        }
+        reader.reset((token + ",123456789").getBytes(StandardCharsets.UTF_8));
+        assertEquals(reader.readBigDecimal(), expected);
+        reader.expectNextToken(',');
+        assertEquals(reader.readIntValue(), 123456789);
+        reader.finish();
+      }
+    }
+  }
+
+  @Test
   public void readBigIntegerDelimiters() {
     String[] values = {
       "0",
