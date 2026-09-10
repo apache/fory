@@ -3797,17 +3797,16 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private void skipWhitespaceFast() {
-    while (position < inputLimit) {
-      int ch = input[position];
-      if (ch > ' ') {
-        return;
-      }
-      if (isWhitespace(ch)) {
-        position++;
-      } else {
-        return;
-      }
+    int offset = position;
+    int limit = inputLimit;
+    byte[] bytes = input;
+    if (offset >= limit || bytes[offset] > ' ') {
+      return;
     }
+    while (offset < limit && isWhitespace(bytes[offset])) {
+      offset++;
+    }
+    position = offset;
   }
 
   private static boolean isWhitespace(int ch) {
