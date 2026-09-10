@@ -98,6 +98,17 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   private static final MapKeyCodec OBJECT_KEY_CODEC =
       new MapKeyCodec() {
         @Override
+        public void writeName(JsonWriter writer, Object key) {
+          if (key instanceof Integer) {
+            writer.writeIntFieldName((int) key);
+          } else if (key instanceof Long) {
+            writer.writeLongFieldName((long) key);
+          } else {
+            MapKeyCodec.super.writeName(writer, key);
+          }
+        }
+
+        @Override
         public String toName(Object key) {
           if (key instanceof String) {
             return (String) key;

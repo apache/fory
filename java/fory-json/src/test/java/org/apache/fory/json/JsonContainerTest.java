@@ -325,6 +325,33 @@ public class JsonContainerTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeMixedMapKeys() {
+    Map<Object, Boolean> value = new LinkedHashMap<>();
+    value.put(Integer.MIN_VALUE, true);
+    value.put(Integer.MAX_VALUE, false);
+    value.put(Long.MIN_VALUE, true);
+    value.put(Long.MAX_VALUE, false);
+    value.put(0, true);
+    value.put(-1L, false);
+    value.put(new BigDecimal("1.20"), true);
+    value.put(2.5, false);
+    value.put((short) 3, true);
+    value.put(true, false);
+    value.put('"', true);
+    value.put("\\", false);
+    value.put(Kind.FAST, true);
+    String expected =
+        "{\"-2147483648\":true,\"2147483647\":false,\"-9223372036854775808\":true,"
+            + "\"9223372036854775807\":false,\"0\":true,\"-1\":false,\"1.20\":true,"
+            + "\"2.5\":false,\"3\":true,\"true\":false,\"\\\"\":true,\"\\\\\":false,\"FAST\":true}";
+    for (boolean quotedLongs : new boolean[] {false, true}) {
+      ForyJson json = newJsonBuilder().writeLongAsString(quotedLongs).build();
+      assertEquals(json.toJson(value), expected);
+      assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+    }
+  }
+
+  @Test
   public void readTypeRefOptional() {
     ForyJson json = newJson();
     Optional<TokenValues> value =
