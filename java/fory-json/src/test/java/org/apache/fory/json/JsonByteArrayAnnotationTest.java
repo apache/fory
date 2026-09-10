@@ -152,12 +152,13 @@ public class JsonByteArrayAnnotationTest extends ForyJsonTestModels {
     }
     assertEquals(
         json.fromJson("{\"bytes\":\"A\\u0051I=\"}", Base64Field.class).bytes, new byte[] {1, 2});
-    assertThrows(
-        ForyJsonException.class, () -> json.fromJson("{\"bytes\":\"A===\"}", Base64Field.class));
-    assertThrows(
-        ForyJsonException.class, () -> json.fromJson("{\"bytes\":\"AA=A\"}", Base64Field.class));
-    assertThrows(
-        ForyJsonException.class, () -> json.fromJson("{\"bytes\":\"A\"}", Base64Field.class));
+    for (String invalid : new String[] {"A===", "AA=A", "A", "AQ", "AQI"}) {
+      String input = "{\"bytes\":\"" + invalid + "\"}";
+      assertThrows(ForyJsonException.class, () -> json.fromJson(input, Base64Field.class));
+      assertThrows(
+          ForyJsonException.class,
+          () -> json.fromJson(input.getBytes(StandardCharsets.UTF_8), Base64Field.class));
+    }
   }
 
   @Test
