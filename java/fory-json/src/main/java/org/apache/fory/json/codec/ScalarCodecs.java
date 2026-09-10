@@ -1814,7 +1814,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_LOCAL_TIME);
+        writer.writeLocalTime(value);
       }
     }
 
@@ -1823,7 +1823,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_LOCAL_TIME);
+        writer.writeLocalTime(value);
       }
     }
 
@@ -1851,7 +1851,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        writer.writeLocalDateTime(value);
       }
     }
 
@@ -1860,7 +1860,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        writer.writeLocalDateTime(value);
       }
     }
 
@@ -2060,7 +2060,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_ZONED_DATE_TIME);
+        writer.writeZonedDateTime(value);
       }
     }
 
@@ -2069,7 +2069,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_ZONED_DATE_TIME);
+        writer.writeZonedDateTime(value);
       }
     }
 
@@ -2129,16 +2129,12 @@ public final class ScalarCodecs {
   public static final class YearMonthCodec implements JsonValueCodec<YearMonth> {
     public static final YearMonthCodec INSTANCE = new YearMonthCodec();
 
-    private static final class Formatter {
-      private static final DateTimeFormatter INSTANCE = DateTimeFormatter.ofPattern("uuuu-MM");
-    }
-
     @Override
     public void writeString(StringJsonWriter writer, YearMonth value) {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, Formatter.INSTANCE);
+        writer.writeYearMonth(value);
       }
     }
 
@@ -2147,7 +2143,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, Formatter.INSTANCE);
+        writer.writeYearMonth(value);
       }
     }
 
@@ -2170,16 +2166,12 @@ public final class ScalarCodecs {
   public static final class MonthDayCodec implements JsonValueCodec<MonthDay> {
     public static final MonthDayCodec INSTANCE = new MonthDayCodec();
 
-    private static final class Formatter {
-      private static final DateTimeFormatter INSTANCE = DateTimeFormatter.ofPattern("--MM-dd");
-    }
-
     @Override
     public void writeString(StringJsonWriter writer, MonthDay value) {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, Formatter.INSTANCE);
+        writer.writeMonthDay(value);
       }
     }
 
@@ -2188,7 +2180,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, Formatter.INSTANCE);
+        writer.writeMonthDay(value);
       }
     }
 
@@ -2253,7 +2245,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_OFFSET_TIME);
+        writer.writeOffsetTime(value);
       }
     }
 
@@ -2262,7 +2254,7 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeTemporal(value, DateTimeFormatter.ISO_OFFSET_TIME);
+        writer.writeOffsetTime(value);
       }
     }
 

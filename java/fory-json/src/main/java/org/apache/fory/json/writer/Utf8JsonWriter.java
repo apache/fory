@@ -35,10 +35,15 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.MonthDay;
 import java.time.OffsetDateTime;
+import java.time.OffsetTime;
 import java.time.Period;
 import java.time.Year;
+import java.time.YearMonth;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
@@ -537,8 +542,12 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   public void writeOffsetDateTime(OffsetDateTime value) {
     LocalDate date = value.toLocalDate();
     int year = date.getYear();
-    if (year < 0 || year > 9999 || value.getOffset().getTotalSeconds() != 0) {
+    if (year < 0 || year > 9999) {
       writeTemporal(value, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+      return;
+    }
+    if (value.getOffset().getTotalSeconds() != 0) {
+      writeOffsetDateTimeValue(value);
       return;
     }
     int pos = position;
@@ -628,6 +637,189 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     bytes[pos++] = (byte) 'Z';
     bytes[pos++] = (byte) '"';
     position = pos;
+  }
+
+  @Override
+  public void writeLocalTime(LocalTime value) {
+    int pos = position;
+    if (pos + 20 > buffer.length) {
+      grow(20);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writeIsoTimeBytes(bytes, pos, value);
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeLocalDateTime(LocalDateTime value) {
+    int year = value.getYear();
+    if (year < 0 || year > 9999) {
+      writeTemporal(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+      return;
+    }
+    int pos = position;
+    if (pos + 31 > buffer.length) {
+      grow(31);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
+    bytes[pos++] = 'T';
+    pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeOffsetTime(OffsetTime value) {
+    int pos = position;
+    if (pos + 29 > buffer.length) {
+      grow(29);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
+    pos = writeOffsetBytes(bytes, pos, value.getOffset().getTotalSeconds());
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  private void writeOffsetDateTimeValue(OffsetDateTime value) {
+    int pos = position;
+    if (pos + 40 > buffer.length) {
+      grow(40);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos =
+        writeLocalDateBytes(
+            bytes, pos, value.getYear(), value.getMonthValue(), value.getDayOfMonth());
+    bytes[pos++] = 'T';
+    pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
+    pos = writeOffsetBytes(bytes, pos, value.getOffset().getTotalSeconds());
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeZonedDateTime(ZonedDateTime value) {
+    int year = value.getYear();
+    if (year < 0 || year > 9999) {
+      writeTemporal(value, DateTimeFormatter.ISO_ZONED_DATE_TIME);
+      return;
+    }
+    boolean region = !value.getZone().equals(value.getOffset());
+    String zoneId = value.getZone().getId();
+    int additional = 42 + zoneId.length();
+    int pos = position;
+    if (pos + additional > buffer.length) {
+      grow(additional);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
+    bytes[pos++] = 'T';
+    pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
+    pos = writeOffsetBytes(bytes, pos, value.getOffset().getTotalSeconds());
+    if (region) {
+      bytes[pos++] = '[';
+      // ZoneId's region syntax is ASCII and excludes JSON quoting and escape characters.
+      for (int i = 0; i < zoneId.length(); i++) {
+        bytes[pos++] = (byte) zoneId.charAt(i);
+      }
+      bytes[pos++] = ']';
+    }
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeYearMonth(YearMonth value) {
+    int year = value.getYear();
+    if (year < 0 || year > 9999) {
+      super.writeYearMonth(value);
+      return;
+    }
+    int pos = position;
+    if (pos + 9 > buffer.length) {
+      grow(9);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writePadded4(bytes, pos, year);
+    bytes[pos++] = '-';
+    pos = writeTwoDigits(bytes, pos, value.getMonthValue());
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeMonthDay(MonthDay value) {
+    int pos = position;
+    if (pos + 9 > buffer.length) {
+      grow(9);
+    }
+    byte[] bytes = buffer;
+    int month = DIGIT_QUADS[value.getMonthValue()] >>> 16;
+    int day = DIGIT_QUADS[value.getDayOfMonth()] >>> 16;
+    LittleEndian.putInt64(
+        bytes, pos, 0x2d2d22L | ((long) month << 24) | ((long) '-' << 40) | ((long) day << 48));
+    pos += 8;
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  private static int writeIsoTimeBytes(byte[] bytes, int pos, LocalTime value) {
+    int hour = DIGIT_QUADS[value.getHour()] >>> 16;
+    int minute = DIGIT_QUADS[value.getMinute()] >>> 16;
+    int second = DIGIT_QUADS[value.getSecond()] >>> 16;
+    LittleEndian.putInt64(
+        bytes,
+        pos,
+        (hour & 0xffffL)
+            | ((long) ':' << 16)
+            | ((long) minute << 24)
+            | ((long) ':' << 40)
+            | ((long) second << 48));
+    pos += 8;
+    int nano = value.getNano();
+    if (nano != 0) {
+      bytes[pos++] = '.';
+      pos = writePadded9(bytes, pos, nano);
+      while (bytes[pos - 1] == '0') {
+        pos--;
+      }
+    }
+    return pos;
+  }
+
+  private static int writeOffsetBytes(byte[] bytes, int pos, int totalSeconds) {
+    if (totalSeconds == 0) {
+      bytes[pos++] = 'Z';
+      return pos;
+    }
+    int seconds = Math.abs(totalSeconds);
+    int hours = seconds / 3600;
+    int minutes = (seconds - hours * 3600) / 60;
+    seconds -= hours * 3600 + minutes * 60;
+    long hourDigits = DIGIT_QUADS[hours] >>> 16;
+    long minuteDigits = DIGIT_QUADS[minutes] >>> 16;
+    // Callers reserve the nine-byte offset form even when the seconds are absent.
+    LittleEndian.putInt64(
+        bytes,
+        pos,
+        (totalSeconds < 0 ? '-' : '+')
+            | (hourDigits << 8)
+            | ((long) ':' << 24)
+            | (minuteDigits << 32));
+    pos += 6;
+    if (seconds != 0) {
+      bytes[pos++] = ':';
+      pos = writeTwoDigits(bytes, pos, seconds);
+    }
+    return pos;
   }
 
   @Override

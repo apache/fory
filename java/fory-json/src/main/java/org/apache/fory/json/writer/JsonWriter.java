@@ -23,9 +23,15 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.MonthDay;
 import java.time.OffsetDateTime;
+import java.time.OffsetTime;
 import java.time.Period;
 import java.time.Year;
+import java.time.YearMonth;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
 import java.util.Objects;
@@ -200,6 +206,47 @@ public abstract class JsonWriter {
 
   public void writeOffsetDateTime(OffsetDateTime value) {
     writeString(value.toString());
+  }
+
+  /** Writes a quoted ISO local time, including seconds and the shortest exact fraction. */
+  @Internal
+  public void writeLocalTime(LocalTime value) {
+    writeTemporal(value, DateTimeFormatter.ISO_LOCAL_TIME);
+  }
+
+  /** Writes a quoted ISO local date-time. */
+  @Internal
+  public void writeLocalDateTime(LocalDateTime value) {
+    writeTemporal(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+  }
+
+  /** Writes a quoted ISO offset time. */
+  @Internal
+  public void writeOffsetTime(OffsetTime value) {
+    writeTemporal(value, DateTimeFormatter.ISO_OFFSET_TIME);
+  }
+
+  /** Writes a quoted ISO zoned date-time, retaining a region ID when present. */
+  @Internal
+  public void writeZonedDateTime(ZonedDateTime value) {
+    writeTemporal(value, DateTimeFormatter.ISO_ZONED_DATE_TIME);
+  }
+
+  /** Writes a quoted ISO year and month, with a sign for extended positive years. */
+  @Internal
+  public void writeYearMonth(YearMonth value) {
+    writeTemporal(value, TemporalFormats.YEAR_MONTH);
+  }
+
+  /** Writes a quoted ISO month and day. */
+  @Internal
+  public void writeMonthDay(MonthDay value) {
+    writeTemporal(value, TemporalFormats.MONTH_DAY);
+  }
+
+  private static final class TemporalFormats {
+    private static final DateTimeFormatter YEAR_MONTH = DateTimeFormatter.ofPattern("uuuu-MM");
+    private static final DateTimeFormatter MONTH_DAY = DateTimeFormatter.ofPattern("--MM-dd");
   }
 
   public void writeTemporal(TemporalAccessor value, DateTimeFormatter formatter) {

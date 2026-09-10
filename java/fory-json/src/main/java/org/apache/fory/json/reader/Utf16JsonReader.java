@@ -2268,6 +2268,9 @@ public final class Utf16JsonReader extends JsonReader {
     int year = parse4(dateStart);
     int month = parse2(dateStart + 5);
     int day = parse2(dateStart + 8);
+    if (year < 0 || month < 0 || day < 0) {
+      return null;
+    }
     int end = dateStart + 10;
     char ch = charAtFast(end);
     if (ch == '"') {
@@ -2304,6 +2307,9 @@ public final class Utf16JsonReader extends JsonReader {
     int day = parse2(start + 8);
     int hour = parse2(start + 11);
     int minute = parse2(start + 14);
+    if (year < 0 || month < 0 || day < 0 || hour < 0 || minute < 0) {
+      return null;
+    }
     return tryReadIsoOffsetDateTimeTail(start + 16, inputLength, year, month, day, hour, minute);
   }
 
@@ -2313,6 +2319,9 @@ public final class Utf16JsonReader extends JsonReader {
     int nano = 0;
     if (index < inputLength && charAtFast(index) == ':') {
       second = parse2(index + 1);
+      if (second < 0) {
+        return null;
+      }
       index += 3;
       if (index < inputLength && charAtFast(index) == '.') {
         int fractionStart = index + 1;
@@ -2321,7 +2330,7 @@ public final class Utf16JsonReader extends JsonReader {
           fractionEnd++;
         }
         if (fractionEnd == fractionStart) {
-          throw new IllegalArgumentException();
+          return null;
         }
         if (fractionEnd - fractionStart > 9) {
           throw error("OffsetDateTime fractional seconds exceed nanosecond precision");
@@ -2412,6 +2421,9 @@ public final class Utf16JsonReader extends JsonReader {
     if (charAtFast(end) != '"') {
       return Long.MIN_VALUE;
     }
+    if (hour < 0 || minute < 0 || second < 0) {
+      return Long.MIN_VALUE;
+    }
     int total = hour * 3600 + minute * 60 + second;
     if (offset == '-') {
       total = -total;
@@ -2431,14 +2443,17 @@ public final class Utf16JsonReader extends JsonReader {
   }
 
   private int parse4(int index) {
-    return parse2(index) * 100 + parse2(index + 2);
+    int high = parse2(index);
+    int low = parse2(index + 2);
+    return high < 0 || low < 0 ? -1 : high * 100 + low;
   }
 
   private int parse2(int index) {
     int high = charAtFast(index) - '0';
     int low = charAtFast(index + 1) - '0';
     if (high < 0 || high > 9 || low < 0 || low > 9) {
-      throw new IllegalArgumentException();
+      // A JSON escape can occur inside a digit pair; let the decoded-text parser handle it.
+      return -1;
     }
     return high * 10 + low;
   }

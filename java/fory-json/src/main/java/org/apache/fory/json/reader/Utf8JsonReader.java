@@ -20,9 +20,17 @@
 package org.apache.fory.json.reader;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.MonthDay;
 import java.time.OffsetDateTime;
+import java.time.OffsetTime;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.UUID;
 import org.apache.fory.annotation.Internal;
@@ -52,6 +60,9 @@ import org.apache.fory.serializer.StringSerializer;
  */
 public final class Utf8JsonReader extends JsonReader {
   private static final byte[] EMPTY_BYTES = new byte[0];
+  private static final int[] NANO_SCALE = {
+    1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000
+  };
   private static final int INITIAL_STRING_DECODE_BUFFER_SIZE = 1024;
   private static final int RETAINED_STRING_DECODE_BUFFER_SIZE = 8192;
   private static final boolean LITTLE_ENDIAN = NativeByteOrder.IS_LITTLE_ENDIAN;
@@ -1487,7 +1498,7 @@ public final class Utf8JsonReader extends JsonReader {
       while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
-        if (high < 0 || high > 9 || low < 0 || low > 9) {
+        if ((high | low | (9 - high) | (9 - low)) < 0) {
           break;
         }
         int pair = high * 10 + low;
@@ -1538,7 +1549,7 @@ public final class Utf8JsonReader extends JsonReader {
       while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
-        if (high < 0 || high > 9 || low < 0 || low > 9) {
+        if ((high | low | (9 - high) | (9 - low)) < 0) {
           break;
         }
         int pair = high * 10 + low;
@@ -1575,7 +1586,7 @@ public final class Utf8JsonReader extends JsonReader {
       while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
-        if (high < 0 || high > 9 || low < 0 || low > 9) {
+        if ((high | low | (9 - high) | (9 - low)) < 0) {
           break;
         }
         int pair = high * 10 + low;
@@ -1615,7 +1626,7 @@ public final class Utf8JsonReader extends JsonReader {
       while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
-        if (high < 0 || high > 9 || low < 0 || low > 9) {
+        if ((high | low | (9 - high) | (9 - low)) < 0) {
           break;
         }
         int pair = high * 10 + low;
@@ -1708,7 +1719,7 @@ public final class Utf8JsonReader extends JsonReader {
       while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
-        if (high < 0 || high > 9 || low < 0 || low > 9) {
+        if ((high | low | (9 - high) | (9 - low)) < 0) {
           break;
         }
         int pair = high * 10 + low;
@@ -1753,7 +1764,7 @@ public final class Utf8JsonReader extends JsonReader {
       while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
-        if (high < 0 || high > 9 || low < 0 || low > 9) {
+        if ((high | low | (9 - high) | (9 - low)) < 0) {
           break;
         }
         int pair = high * 10 + low;
@@ -1805,7 +1816,7 @@ public final class Utf8JsonReader extends JsonReader {
       while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
-        if (high < 0 || high > 9 || low < 0 || low > 9) {
+        if ((high | low | (9 - high) | (9 - low)) < 0) {
           break;
         }
         int pair = high * 10 + low;
@@ -1850,7 +1861,7 @@ public final class Utf8JsonReader extends JsonReader {
       while (offset + 1 < inputLimit) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
-        if (high < 0 || high > 9 || low < 0 || low > 9) {
+        if ((high | low | (9 - high) | (9 - low)) < 0) {
           break;
         }
         int pair = high * 10 + low;
@@ -2220,6 +2231,146 @@ public final class Utf8JsonReader extends JsonReader {
     return readStringToken();
   }
 
+  @Override
+  public LocalTime readIsoLocalTime() {
+    skipWhitespaceFast();
+    int mark = position;
+    if (mark < inputLimit && input[mark] == '"') {
+      LocalTime value = tryReadTime(mark + 1);
+      if (value != null && position < inputLimit && input[position] == '"') {
+        position++;
+        return value;
+      }
+    }
+    position = mark;
+    return super.readIsoLocalTime();
+  }
+
+  @Override
+  public LocalDateTime readIsoLocalDateTime() {
+    skipWhitespaceFast();
+    int mark = position;
+    LocalDateTime value = tryReadDateTime();
+    if (value != null && position < inputLimit && input[position] == '"') {
+      position++;
+      return value;
+    }
+    position = mark;
+    return super.readIsoLocalDateTime();
+  }
+
+  @Override
+  public Instant readIsoInstant() {
+    skipWhitespaceFast();
+    int mark = position;
+    // ISO_INSTANT requires seconds. Leap seconds and 24:00 remain with its JDK parser.
+    if (mark + 17 < inputLimit && input[mark + 17] == ':') {
+      LocalDateTime value = tryReadDateTime();
+      if (value != null
+          && position + 1 < inputLimit
+          && input[position] == 'Z'
+          && input[position + 1] == '"') {
+        position += 2;
+        return value.toInstant(ZoneOffset.UTC);
+      }
+    }
+    position = mark;
+    return super.readIsoInstant();
+  }
+
+  @Override
+  public OffsetTime readOffsetTime() {
+    skipWhitespaceFast();
+    int mark = position;
+    if (mark < inputLimit && input[mark] == '"') {
+      LocalTime time = tryReadTime(mark + 1);
+      if (time != null) {
+        ZoneOffset offset = tryReadOffset();
+        if (offset != null && position < inputLimit && input[position] == '"') {
+          position++;
+          return OffsetTime.of(time, offset);
+        }
+      }
+    }
+    position = mark;
+    return super.readOffsetTime();
+  }
+
+  @Override
+  public ZonedDateTime readZonedDateTime() {
+    skipWhitespaceFast();
+    int mark = position;
+    LocalDateTime dateTime = tryReadDateTime();
+    if (dateTime != null) {
+      ZoneOffset offset = tryReadOffset();
+      if (offset != null && position < inputLimit) {
+        if (input[position] == '"') {
+          position++;
+          return ZonedDateTime.ofInstant(dateTime, offset, offset);
+        }
+        if (input[position] == '[') {
+          int start = position + 1;
+          int end = start;
+          while (end < inputLimit
+              && input[end] >= 0x20
+              && input[end] != ']'
+              && input[end] != '"'
+              && input[end] != '\\') {
+            end++;
+          }
+          if (end + 1 < inputLimit && input[end] == ']' && input[end + 1] == '"') {
+            ZoneId zone = ZoneId.of(newLatin1String(start, end));
+            position = end + 2;
+            // Resolve the explicit offset before applying region rules, also across DST gaps.
+            return ZonedDateTime.ofInstant(dateTime, offset, zone);
+          }
+        }
+      }
+    }
+    position = mark;
+    return super.readZonedDateTime();
+  }
+
+  @Override
+  public YearMonth readYearMonth() {
+    skipWhitespaceFast();
+    int offset = position;
+    byte[] bytes = input;
+    if (offset <= inputLimit - 9
+        && bytes[offset] == '"'
+        && bytes[offset + 5] == '-'
+        && bytes[offset + 8] == '"') {
+      int year = parseFourDigits(bytes, offset + 1, inputLimit);
+      int month = parse2(bytes, offset + 6);
+      if (year >= 0 && month >= 0) {
+        position = offset + 9;
+        return YearMonth.of(year, month);
+      }
+    }
+    return super.readYearMonth();
+  }
+
+  @Override
+  public MonthDay readMonthDay() {
+    skipWhitespaceFast();
+    int offset = position;
+    byte[] bytes = input;
+    if (offset <= inputLimit - 9
+        && bytes[offset] == '"'
+        && bytes[offset + 1] == '-'
+        && bytes[offset + 2] == '-'
+        && bytes[offset + 5] == '-'
+        && bytes[offset + 8] == '"') {
+      int month = parse2(bytes, offset + 3);
+      int day = parse2(bytes, offset + 6);
+      if (month >= 0 && day >= 0) {
+        position = offset + 9;
+        return MonthDay.of(month, day);
+      }
+    }
+    return super.readMonthDay();
+  }
+
   public LocalDate readIsoLocalDate() {
     skipWhitespaceFast();
     int mark = position;
@@ -2436,9 +2587,12 @@ public final class Utf8JsonReader extends JsonReader {
     if (bytes[dateStart + 4] != '-' || bytes[dateStart + 7] != '-') {
       return null;
     }
-    int year = parse4(bytes, dateStart);
+    int year = parseFourDigits(bytes, dateStart, inputLimit);
     int month = parse2(bytes, dateStart + 5);
     int day = parse2(bytes, dateStart + 8);
+    if (year < 0 || month < 0 || day < 0) {
+      return null;
+    }
     int end = dateStart + 10;
     int ch = bytes[end];
     if (ch == '"') {
@@ -2457,87 +2611,129 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private OffsetDateTime tryReadIsoOffsetDateTimeToken() {
+    LocalDateTime dateTime = tryReadDateTime();
+    if (dateTime != null) {
+      ZoneOffset offset = tryReadOffset();
+      if (offset != null && position < inputLimit && input[position] == '"') {
+        position++;
+        return OffsetDateTime.of(dateTime, offset);
+      }
+    }
+    return null;
+  }
+
+  private LocalDateTime tryReadDateTime() {
     byte[] bytes = input;
-    int offset = position;
-    int length = inputLimit;
-    if (offset > length - 19 || bytes[offset] != '"') {
-      return null;
-    }
-    offset++;
-    int start = offset;
-    if (bytes[start + 4] != '-'
+    int start = position + 1;
+    if (start > inputLimit - 16
+        || bytes[start - 1] != '"'
+        || bytes[start + 4] != '-'
         || bytes[start + 7] != '-'
-        || bytes[start + 10] != 'T'
-        || bytes[start + 13] != ':') {
+        || bytes[start + 10] != 'T') {
       return null;
     }
-    int year = parse4(bytes, start);
+    LocalTime time = tryReadTime(start + 11);
+    if (time == null) {
+      return null;
+    }
+    int year = parseFourDigits(bytes, start, inputLimit);
     int month = parse2(bytes, start + 5);
     int day = parse2(bytes, start + 8);
-    int hour = parse2(bytes, start + 11);
-    int minute = parse2(bytes, start + 14);
-    return tryReadIsoOffsetDateTimeTail(bytes, start + 16, length, year, month, day, hour, minute);
-  }
-
-  private OffsetDateTime tryReadIsoOffsetDateTimeTail(
-      byte[] bytes, int index, int length, int year, int month, int day, int hour, int minute) {
-    int second = 0;
-    int nano = 0;
-    if (index < length && bytes[index] == ':') {
-      second = parse2(bytes, index + 1);
-      index += 3;
-      if (index < length && bytes[index] == '.') {
-        int fractionStart = index + 1;
-        int fractionEnd = fractionStart;
-        while (fractionEnd < length && isDigit(bytes[fractionEnd])) {
-          fractionEnd++;
-        }
-        if (fractionEnd == fractionStart) {
-          throw new IllegalArgumentException();
-        }
-        if (fractionEnd - fractionStart > 9) {
-          throw error("OffsetDateTime fractional seconds exceed nanosecond precision");
-        }
-        nano = parseNano(bytes, fractionStart, fractionEnd);
-        index = fractionEnd;
-      }
-    }
-    if (index < length && bytes[index] == 'Z') {
-      if (index + 1 >= length || bytes[index + 1] != '"') {
-        return null;
-      }
-      position = index + 2;
-      return OffsetDateTime.of(year, month, day, hour, minute, second, nano, ZoneOffset.UTC);
-    }
-    return tryReadIsoOffsetDateTimeOffsetTail(
-        bytes, index, length, year, month, day, hour, minute, second, nano);
-  }
-
-  private OffsetDateTime tryReadIsoOffsetDateTimeOffsetTail(
-      byte[] bytes,
-      int index,
-      int length,
-      int year,
-      int month,
-      int day,
-      int hour,
-      int minute,
-      int second,
-      int nano) {
-    long offsetAndEnd = tryParseOffsetAndEnd(bytes, index, length);
-    if (offsetAndEnd == Long.MIN_VALUE) {
+    if (year < 0 || month < 0 || day < 0) {
       return null;
     }
-    position = (int) offsetAndEnd;
-    return OffsetDateTime.of(
-        year,
-        month,
-        day,
-        hour,
-        minute,
-        second,
-        nano,
-        ZoneOffset.ofTotalSeconds((int) (offsetAndEnd >> 32)));
+    return LocalDateTime.of(LocalDate.of(year, month, day), time);
+  }
+
+  private LocalTime tryReadTime(int start) {
+    byte[] bytes = input;
+    int limit = inputLimit;
+    if (start > limit - 5 || bytes[start + 2] != ':') {
+      return null;
+    }
+    int hour;
+    int minute;
+    int second = 0;
+    int nano = 0;
+    int end;
+    boolean hasSeconds = start <= limit - 8 && bytes[start + 5] == ':';
+    if (hasSeconds) {
+      long text = LittleEndian.getInt64(bytes, start);
+      // Replace the two known colons with zero digits before validating all six digit lanes.
+      long digitText = (text & ~0x0000ff0000ff0000L) | 0x0000300000300000L;
+      long digits = digitText - ASCII_ZEROES;
+      if (((digits | (ASCII_NINES - digitText)) & ASCII_HIGH_BITS) != 0) {
+        return null;
+      }
+      hour = (int) (digits & 0xff) * 10 + (int) ((digits >>> 8) & 0xff);
+      minute = (int) ((digits >>> 24) & 0xff) * 10 + (int) ((digits >>> 32) & 0xff);
+      second = (int) ((digits >>> 48) & 0xff) * 10 + (int) (digits >>> 56);
+      end = start + 8;
+    } else {
+      hour = parse2(bytes, start);
+      minute = parse2(bytes, start + 3);
+      end = start + 5;
+    }
+    position = end;
+    if (hasSeconds && end < limit && bytes[end] == '.') {
+      nano = readFractionNanos(end + 1);
+    }
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+      return null;
+    }
+    return LocalTime.of(hour, minute, second, nano);
+  }
+
+  private int readFractionNanos(int start) {
+    byte[] bytes = input;
+    int end = start;
+    int limit = Math.min(inputLimit, start + 9);
+    int nano = 0;
+    while (end < limit) {
+      int digit = bytes[end] - '0';
+      if (digit < 0 || digit > 9) {
+        break;
+      }
+      nano = nano * 10 + digit;
+      end++;
+    }
+    position = end;
+    return nano * NANO_SCALE[9 - end + start];
+  }
+
+  private ZoneOffset tryReadOffset() {
+    byte[] bytes = input;
+    int start = position;
+    int limit = inputLimit;
+    if (start >= limit) {
+      return null;
+    }
+    if (bytes[start] == 'Z') {
+      position = start + 1;
+      return ZoneOffset.UTC;
+    }
+    int sign = bytes[start];
+    if ((sign != '+' && sign != '-') || start > limit - 6 || bytes[start + 3] != ':') {
+      return null;
+    }
+    int hours = parse2(bytes, start + 1);
+    int minutes = parse2(bytes, start + 4);
+    int seconds = 0;
+    int end = start + 6;
+    if (end < limit && bytes[end] == ':') {
+      if (end > limit - 3) {
+        return null;
+      }
+      seconds = parse2(bytes, end + 1);
+      end += 3;
+    }
+    if (hours < 0 || minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) {
+      return null;
+    }
+    int total = hours * 3600 + minutes * 60 + seconds;
+    ZoneOffset offset = ZoneOffset.ofTotalSeconds(sign == '-' ? -total : total);
+    position = end;
+    return offset;
   }
 
   private int tryScanSimpleStringTail(byte[] bytes, int offset) {
@@ -2554,64 +2750,12 @@ public final class Utf8JsonReader extends JsonReader {
     throw error("Unterminated string");
   }
 
-  private static long tryParseOffsetAndEnd(byte[] bytes, int index, int length) {
-    if (index >= length) {
-      return Long.MIN_VALUE;
-    }
-    int offset = bytes[index];
-    if (offset == 'Z') {
-      if (index + 1 >= length || bytes[index + 1] != '"') {
-        return Long.MIN_VALUE;
-      }
-      return ((long) (index + 2)) & 0xFFFF_FFFFL;
-    }
-    if (offset != '+' && offset != '-') {
-      return Long.MIN_VALUE;
-    }
-    if (index + 6 >= length || bytes[index + 3] != ':') {
-      return Long.MIN_VALUE;
-    }
-    int hour = parse2(bytes, index + 1);
-    int minute = parse2(bytes, index + 4);
-    int second = 0;
-    int end = index + 6;
-    if (bytes[end] == ':') {
-      if (end + 3 >= length) {
-        throw new IllegalArgumentException();
-      }
-      second = parse2(bytes, end + 1);
-      end += 3;
-    }
-    if (bytes[end] != '"') {
-      return Long.MIN_VALUE;
-    }
-    int total = hour * 3600 + minute * 60 + second;
-    if (offset == '-') {
-      total = -total;
-    }
-    return ((long) total << 32) | ((long) (end + 1) & 0xFFFF_FFFFL);
-  }
-
-  private static int parseNano(byte[] bytes, int start, int end) {
-    int nano = 0;
-    for (int i = start; i < end; i++) {
-      nano = nano * 10 + bytes[i] - '0';
-    }
-    for (int i = end - start; i < 9; i++) {
-      nano *= 10;
-    }
-    return nano;
-  }
-
-  private static int parse4(byte[] bytes, int index) {
-    return parse2(bytes, index) * 100 + parse2(bytes, index + 2);
-  }
-
   private static int parse2(byte[] bytes, int index) {
     int high = bytes[index] - '0';
     int low = bytes[index + 1] - '0';
-    if (high < 0 || high > 9 || low < 0 || low > 9) {
-      throw new IllegalArgumentException();
+    if ((high | low | (9 - high) | (9 - low)) < 0) {
+      // A JSON escape can occur inside a digit pair; let the decoded-text parser handle it.
+      return -1;
     }
     return high * 10 + low;
   }

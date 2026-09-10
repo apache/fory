@@ -32,6 +32,7 @@ import java.time.OffsetTime;
 import java.time.Period;
 import java.time.Year;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Objects;
@@ -1446,7 +1447,8 @@ public abstract class JsonReader {
 
   private LocalTime parseLocalTimeValue(CharSequence value) {
     try {
-      return LocalTime.parse(value);
+      LocalTime time = parseIsoTime(value, 0, value.length());
+      return time != null ? time : LocalTime.parse(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.LocalTime", e);
     }
@@ -1454,6 +1456,10 @@ public abstract class JsonReader {
 
   private LocalDateTime parseLocalDateTimeValue(CharSequence value) {
     try {
+      LocalDateTime dateTime = parseIsoDateTime(value, value.length());
+      if (dateTime != null) {
+        return dateTime;
+      }
       return LocalDateTime.parse(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.LocalDateTime", e);
@@ -1462,6 +1468,13 @@ public abstract class JsonReader {
 
   private Instant parseInstantValue(CharSequence value) {
     try {
+      int end = value.length() - 1;
+      if (end >= 19 && value.charAt(end) == 'Z') {
+        LocalDateTime dateTime = parseIsoDateTime(value, end);
+        if (dateTime != null) {
+          return dateTime.toInstant(ZoneOffset.UTC);
+        }
+      }
       return Instant.parse(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.Instant", e);
@@ -1470,6 +1483,10 @@ public abstract class JsonReader {
 
   private Duration parseDurationValue(CharSequence value) {
     try {
+      Duration duration = parseIsoDuration(value);
+      if (duration != null) {
+        return duration;
+      }
       return Duration.parse(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.Duration", e);
@@ -1478,6 +1495,24 @@ public abstract class JsonReader {
 
   private ZonedDateTime parseZonedDateTimeValue(CharSequence value) {
     try {
+      int end = value.length();
+      int zoneStart = indexOf(value, '[', 16);
+      int offsetEnd = zoneStart < 0 ? end : zoneStart;
+      int offsetStart = isoOffsetStart(value, 16, offsetEnd);
+      if (offsetStart >= 0 && (zoneStart < 0 || value.charAt(end - 1) == ']')) {
+        ZoneOffset offset = parseIsoOffset(value, offsetStart, offsetEnd);
+        LocalDateTime dateTime = parseIsoDateTime(value, offsetStart);
+        if (offset != null && dateTime != null) {
+          ZoneId zone =
+              zoneStart < 0
+                  ? offset
+                  : ZoneId.of(value.subSequence(zoneStart + 1, end - 1).toString());
+          // ISO parsing resolves an explicit offset to an instant before applying the region's
+          // rules, including when the supplied local time falls in a gap or uses another offset.
+          // JDK 8's generic parser can discard that explicit offset; preserve the encoded instant.
+          return ZonedDateTime.ofInstant(dateTime, offset, zone);
+        }
+      }
       return ZonedDateTime.parse(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.ZonedDateTime", e);
@@ -1494,6 +1529,9 @@ public abstract class JsonReader {
 
   private YearMonth parseYearMonthValue(CharSequence value) {
     try {
+      if (value.length() == 7 && value.charAt(4) == '-') {
+        return YearMonth.of(parse4(value, 0), parse2(value, 5));
+      }
       return YearMonth.parse(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.YearMonth", e);
@@ -1502,6 +1540,12 @@ public abstract class JsonReader {
 
   private MonthDay parseMonthDayValue(CharSequence value) {
     try {
+      if (value.length() == 7
+          && value.charAt(0) == '-'
+          && value.charAt(1) == '-'
+          && value.charAt(4) == '-') {
+        return MonthDay.of(parse2(value, 2), parse2(value, 5));
+      }
       return MonthDay.parse(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.MonthDay", e);
@@ -1510,6 +1554,10 @@ public abstract class JsonReader {
 
   private Period parsePeriodValue(CharSequence value) {
     try {
+      Period period = parseIsoPeriod(value);
+      if (period != null) {
+        return period;
+      }
       return Period.parse(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.Period", e);
@@ -1518,10 +1566,229 @@ public abstract class JsonReader {
 
   private OffsetTime parseOffsetTimeValue(CharSequence value) {
     try {
+      int end = value.length();
+      int offsetStart = isoOffsetStart(value, 5, end);
+      if (offsetStart >= 0) {
+        ZoneOffset offset = parseIsoOffset(value, offsetStart, end);
+        LocalTime time = parseIsoTime(value, 0, offsetStart);
+        if (offset != null && time != null) {
+          return OffsetTime.of(time, offset);
+        }
+      }
       return OffsetTime.parse(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.OffsetTime", e);
     }
+  }
+
+  private static LocalDateTime parseIsoDateTime(CharSequence value, int end) {
+    if (end < 16 || value.charAt(4) != '-' || value.charAt(7) != '-' || value.charAt(10) != 'T') {
+      return null;
+    }
+    LocalTime time = parseIsoTime(value, 11, end);
+    if (time == null) {
+      return null;
+    }
+    LocalDate date = LocalDate.of(parse4(value, 0), parse2(value, 5), parse2(value, 8));
+    return LocalDateTime.of(date, time);
+  }
+
+  private static LocalTime parseIsoTime(CharSequence value, int start, int end) {
+    int length = end - start;
+    if (length < 5 || value.charAt(start + 2) != ':') {
+      return null;
+    }
+    int hour = parse2(value, start);
+    int minute = parse2(value, start + 3);
+    int second = 0;
+    int nano = 0;
+    if (length != 5) {
+      if (length < 8 || value.charAt(start + 5) != ':') {
+        return null;
+      }
+      second = parse2(value, start + 6);
+      if (length != 8) {
+        if (length > 18 || value.charAt(start + 8) != '.') {
+          return null;
+        }
+        for (int i = start + 9; i < end; i++) {
+          int digit = value.charAt(i) - '0';
+          if (digit < 0 || digit > 9) {
+            return null;
+          }
+          nano = nano * 10 + digit;
+        }
+        nano *= (int) LONG_POWERS_OF_TEN[18 - length];
+      }
+    }
+    // ISO_INSTANT additionally accepts leap seconds and midnight at 24:00. Its JDK parser owns
+    // those uncommon forms; normal LocalTime construction cannot represent them.
+    if (hour > 23 || minute > 59 || second > 59) {
+      return null;
+    }
+    return LocalTime.of(hour, minute, second, nano);
+  }
+
+  private static int isoOffsetStart(CharSequence value, int start, int end) {
+    for (int i = start; i < end; i++) {
+      char ch = value.charAt(i);
+      if (ch == 'Z' || ch == '+' || ch == '-') {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private static ZoneOffset parseIsoOffset(CharSequence value, int start, int end) {
+    int length = end - start;
+    if (value.charAt(start) == 'Z') {
+      return length == 1 ? ZoneOffset.UTC : null;
+    }
+    if ((length != 6 && length != 9) || value.charAt(start + 3) != ':') {
+      return null;
+    }
+    int hour = parse2(value, start + 1);
+    int minute = parse2(value, start + 4);
+    int second = 0;
+    if (length == 9) {
+      if (value.charAt(start + 6) != ':') {
+        return null;
+      }
+      second = parse2(value, start + 7);
+    }
+    if (minute > 59 || second > 59) {
+      return null;
+    }
+    int seconds = hour * 3600 + minute * 60 + second;
+    return ZoneOffset.ofTotalSeconds(value.charAt(start) == '-' ? -seconds : seconds);
+  }
+
+  private static Duration parseIsoDuration(CharSequence value) {
+    int length = value.length();
+    if (length < 4 || value.charAt(0) != 'P' || value.charAt(1) != 'T') {
+      return null;
+    }
+    int offset = 2;
+    int previousUnit = 0;
+    long seconds = 0;
+    int nanos = 0;
+    while (offset < length) {
+      boolean negative = value.charAt(offset) == '-';
+      if (negative) {
+        offset++;
+      }
+      int start = offset;
+      long component = 0;
+      while (offset < length) {
+        int digit = value.charAt(offset) - '0';
+        if (digit < 0 || digit > 9) {
+          break;
+        }
+        component = Math.subtractExact(Math.multiplyExact(component, 10L), digit);
+        offset++;
+      }
+      if (offset == start || offset == length) {
+        return null;
+      }
+      if (!negative) {
+        component = Math.negateExact(component);
+      }
+      char suffix = value.charAt(offset++);
+      if (suffix == '.') {
+        int multiplier = 100_000_000;
+        while (offset < length) {
+          int digit = value.charAt(offset) - '0';
+          if (digit < 0 || digit > 9) {
+            break;
+          }
+          if (multiplier == 0) {
+            return null;
+          }
+          nanos += digit * multiplier;
+          multiplier /= 10;
+          offset++;
+        }
+        if (offset == length || value.charAt(offset++) != 'S') {
+          return null;
+        }
+        // Keep the lexical sign for -0.fraction; JDK 8 loses it when parsing the integer zero.
+        if (negative) {
+          nanos = -nanos;
+        }
+        suffix = 'S';
+      }
+      int unit;
+      int factor;
+      if (suffix == 'H') {
+        unit = 1;
+        factor = 3600;
+      } else if (suffix == 'M') {
+        unit = 2;
+        factor = 60;
+      } else if (suffix == 'S') {
+        unit = 3;
+        factor = 1;
+      } else {
+        return null;
+      }
+      if (unit <= previousUnit) {
+        return null;
+      }
+      previousUnit = unit;
+      seconds = Math.addExact(seconds, Math.multiplyExact(component, (long) factor));
+    }
+    return Duration.ofSeconds(seconds, nanos);
+  }
+
+  private static Period parseIsoPeriod(CharSequence value) {
+    int length = value.length();
+    if (length < 3 || value.charAt(0) != 'P') {
+      return null;
+    }
+    int offset = 1;
+    int previousUnit = 0;
+    int years = 0;
+    int months = 0;
+    int days = 0;
+    while (offset < length) {
+      boolean negative = value.charAt(offset) == '-';
+      if (negative) {
+        offset++;
+      }
+      int start = offset;
+      long component = 0;
+      while (offset < length) {
+        int digit = value.charAt(offset) - '0';
+        if (digit < 0 || digit > 9) {
+          break;
+        }
+        component = Math.addExact(Math.multiplyExact(component, 10L), digit);
+        offset++;
+      }
+      if (offset == start || offset == length) {
+        return null;
+      }
+      int amount = Math.toIntExact(negative ? -component : component);
+      char suffix = value.charAt(offset++);
+      int unit;
+      if (suffix == 'Y') {
+        unit = 1;
+        years = amount;
+      } else if (suffix == 'M') {
+        unit = 2;
+        months = amount;
+      } else if (suffix == 'D') {
+        unit = 3;
+        days = amount;
+      } else {
+        return null;
+      }
+      if (unit <= previousUnit) {
+        return null;
+      }
+      previousUnit = unit;
+    }
+    return Period.of(years, months, days);
   }
 
   private ForyJsonException invalidStringValue(String type, RuntimeException e) {
