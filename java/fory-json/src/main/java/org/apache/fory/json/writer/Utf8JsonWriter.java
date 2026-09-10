@@ -985,9 +985,21 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeYear(Year value) {
-    writeByteRaw((byte) '"');
-    writeInt(value.getValue());
-    writeByteRaw((byte) '"');
+    int year = value.getValue();
+    int pos = position;
+    // Year is limited to +/-999,999,999: its signed magnitude and quotes fit in twelve bytes.
+    if (pos > buffer.length - 12) {
+      grow(12);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    if (year < 0) {
+      bytes[pos++] = '-';
+      year = -year;
+    }
+    pos = writePositiveInt(bytes, pos, year);
+    bytes[pos++] = '"';
+    position = pos;
   }
 
   @Override

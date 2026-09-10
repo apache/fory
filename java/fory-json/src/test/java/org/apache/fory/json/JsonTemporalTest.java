@@ -270,6 +270,37 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeYearBoundaries() {
+    int[] years = {
+      Year.MIN_VALUE,
+      -10000,
+      -1000,
+      -1,
+      0,
+      1,
+      9,
+      10,
+      99,
+      100,
+      999,
+      1000,
+      9999,
+      10000,
+      Year.MAX_VALUE
+    };
+    for (int year : years) {
+      for (int capacity = 0; capacity <= 16; capacity++) {
+        Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+        String prefix = "       ".substring(0, capacity & 7);
+        writer.writeRawValue(prefix);
+        ScalarCodecs.YearCodec.INSTANCE.writeUtf8(writer, Year.of(year));
+        assertEquals(
+            new String(writer.toJsonBytes(), StandardCharsets.UTF_8), prefix + '"' + year + '"');
+      }
+    }
+  }
+
+  @Test
   public void writeDateCalendar() {
     Utf8JsonWriter utf8 = newUtf8Writer(new byte[1]);
     StringJsonWriter string = newStringWriter(new byte[1]);
