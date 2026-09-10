@@ -108,7 +108,7 @@ public abstract class JsonReader {
   private static final int DOUBLE_FRACTION_BITS = 52;
   private static final long DOUBLE_SIGN_BIT = 0x8000_0000_0000_0000L;
   private static final long DOUBLE_FRACTION_MASK = (1L << DOUBLE_FRACTION_BITS) - 1;
-  private static final long[] COMPACT_DOUBLE_MANTISSAS = {
+  private static final long[] COMPACT_DECIMAL_MANTISSAS = {
     0x8000_0000_0000_0000L,
     0xcccc_cccc_cccc_ccccL,
     0xa3d7_0a3d_70a3_d70aL,
@@ -1917,7 +1917,8 @@ public abstract class JsonReader {
   private static long tryCompactDoubleBits(long unscaled, int scale) {
     int leadingZeros = Long.numberOfLeadingZeros(unscaled);
     long upper =
-        DecimalMath.unsignedMultiplyHigh(unscaled << leadingZeros, COMPACT_DOUBLE_MANTISSAS[scale]);
+        DecimalMath.unsignedMultiplyHigh(
+            unscaled << leadingZeros, COMPACT_DECIMAL_MANTISSAS[scale]);
     int upperBit = (int) (upper >>> 63);
     long mantissa = upper >>> (upperBit + 9);
     leadingZeros += 1 ^ upperBit;
@@ -1986,9 +1987,9 @@ public abstract class JsonReader {
     if (unscaled == 0) {
       return negative ? -0.0f : 0.0f;
     }
-    long converted = decimalToBinary(unscaled, scale, FLOAT_FRACTION_BITS, -126, 127);
+    int converted = tryCompactFloatBits(unscaled, scale);
     if (converted >= 0) {
-      return Float.intBitsToFloat((int) converted | (negative ? FLOAT_SIGN_BIT : 0));
+      return Float.intBitsToFloat(converted | (negative ? FLOAT_SIGN_BIT : 0));
     }
     long divisor = LONG_POWERS_OF_TEN[scale];
     float estimate = (float) unscaled / (float) divisor;
@@ -1997,6 +1998,29 @@ public abstract class JsonReader {
       bits |= FLOAT_SIGN_BIT;
     }
     return Float.intBitsToFloat(bits);
+  }
+
+  private static int tryCompactFloatBits(long unscaled, int scale) {
+    int shift = Long.numberOfLeadingZeros(unscaled);
+    long high =
+        DecimalMath.unsignedMultiplyHigh(unscaled << shift, COMPACT_DECIMAL_MANTISSAS[scale]);
+    int upperBit = (int) (high >>> 63);
+    int discardedBits = 39 + upperBit;
+    long remainder = high & ((1L << discardedBits) - 1);
+    long halfway = 1L << (discardedBits - 1);
+    // A positive long divided by 10^scale (0..18) is normal and finite. As in decimalToBinary,
+    // the exact high product lies in [high, high + 2); only a midpoint overlap needs correction.
+    // Round at float precision here: converting through double can round a midpoint twice.
+    if (remainder <= halfway && remainder + 2 >= halfway) {
+      return -1;
+    }
+    int significand = (int) (high >>> discardedBits) + (remainder > halfway ? 1 : 0);
+    int exponent = (int) ((-scale * 217706L) >> 16) + 63 + upperBit - shift;
+    if (significand == (1 << (FLOAT_FRACTION_BITS + 1))) {
+      significand >>>= 1;
+      exponent++;
+    }
+    return ((exponent + 127) << FLOAT_FRACTION_BITS) | (significand & FLOAT_FRACTION_MASK);
   }
 
   private static int correctCompactFloat(long unscaled, long divisor, int bits) {

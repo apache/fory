@@ -2419,6 +2419,38 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readCompactFloatRounding() {
+    Random random = new Random(6138429L);
+    for (int bits = 1; bits <= 63; bits++) {
+      for (int scale = 0; scale <= 18; scale++) {
+        for (int i = 0; i < 4; i++) {
+          long unscaled = (random.nextLong() & Long.MAX_VALUE) >>> (63 - bits);
+          String token = BigDecimal.valueOf(unscaled, scale).toPlainString();
+          assertFloatBits(token);
+          assertFloatBits("-" + token);
+          assertFloatBits("\"" + token + "\"", Float.floatToRawIntBits(Float.parseFloat(token)));
+        }
+      }
+    }
+    int[] fractions = {0, 1, 0x003f_ffff, 0x007f_fffe};
+    for (int exponent = 126; exponent <= 189; exponent++) {
+      for (int fraction : fractions) {
+        int low = (exponent << 23) | fraction;
+        BigDecimal midpoint = floatBoundaryValue(low, low + 1);
+        if (midpoint.scale() >= 0
+            && midpoint.scale() <= 18
+            && midpoint.unscaledValue().bitLength() < 63) {
+          for (int units = -1; units <= 1; units++) {
+            BigDecimal value = midpoint.add(BigDecimal.valueOf(units, midpoint.scale()));
+            assertFloatBits(value.toPlainString());
+            assertFloatBits(value.negate().toPlainString());
+          }
+        }
+      }
+    }
+  }
+
+  @Test
   public void parseCompactZeroDecimals() {
     assertDoubleBits("0.0000000000000000");
     assertDoubleBits("-0.0000000000000000");
