@@ -1895,8 +1895,9 @@ public abstract class JsonReader {
   }
 
   protected static double compactDoubleValue(boolean negative, long unscaled, int scale) {
-    if (unscaled == 0) {
-      return negative ? -0.0d : 0.0d;
+    if (unscaled == 0 || scale == 0) {
+      double value = (double) unscaled;
+      return negative ? -value : value;
     }
     long bits = tryCompactDoubleBits(unscaled, scale);
     if (bits == 0) {
@@ -1984,8 +1985,9 @@ public abstract class JsonReader {
   }
 
   protected static float compactFloatValue(boolean negative, long unscaled, int scale) {
-    if (unscaled == 0) {
-      return negative ? -0.0f : 0.0f;
+    if (unscaled == 0 || scale == 0) {
+      float value = (float) unscaled;
+      return negative ? -value : value;
     }
     int converted = tryCompactFloatBits(unscaled, scale);
     if (converted >= 0) {

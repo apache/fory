@@ -2437,6 +2437,37 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readFloatingIntegerRounding() {
+    List<BigInteger> values = new ArrayList<>();
+    values.add(BigInteger.ZERO);
+    values.add(BigInteger.valueOf(Long.MAX_VALUE));
+    for (int exponent = 24; exponent < 63; exponent++) {
+      BigInteger base = BigInteger.ONE.shiftLeft(exponent);
+      values.add(base);
+      values.add(base.add(BigInteger.ONE.shiftLeft(exponent - 24)));
+      if (exponent >= 53) {
+        values.add(base.add(BigInteger.ONE.shiftLeft(exponent - 53)));
+      }
+    }
+    for (BigInteger value : values) {
+      for (int delta = -1; delta <= 1; delta++) {
+        BigInteger integer = value.add(BigInteger.valueOf(delta));
+        if (integer.signum() < 0 || integer.bitLength() > 63) {
+          continue;
+        }
+        for (String suffix : new String[] {"", "e0", ".000e3"}) {
+          String token = integer + suffix;
+          assertDoubleBits(token);
+          assertDoubleBits("-" + token);
+          assertFloatBits(token);
+          assertFloatBits("-" + token);
+          assertFloatBits("\"" + token + "\"", Float.floatToRawIntBits(Float.parseFloat(token)));
+        }
+      }
+    }
+  }
+
+  @Test
   public void readCompactFloatRounding() {
     Random random = new Random(6138429L);
     for (int bits = 1; bits <= 63; bits++) {
