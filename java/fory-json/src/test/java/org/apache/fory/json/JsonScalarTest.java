@@ -926,6 +926,36 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readBigIntegerDelimiters() {
+    String[] values = {
+      "0",
+      "-0",
+      "9223372036854775807",
+      "-9223372036854775808",
+      "9223372036854775808",
+      "-9223372036854775809",
+      "340282366920938463463374607431768211455"
+    };
+    for (String value : values) {
+      BigInteger expected = new BigInteger(value);
+      for (boolean quoted : new boolean[] {false, true}) {
+        String token = quoted ? '"' + value + '"' : value;
+        Utf8JsonReader reader =
+            newUtf8Reader((" \n" + token + ",42").getBytes(StandardCharsets.UTF_8));
+        assertEquals(reader.readBigInteger(), expected);
+        reader.expectNextToken(',');
+        assertEquals(reader.readInt(), 42);
+        for (String suffix : new String[] {".0", "e0", "E+0"}) {
+          String invalid = quoted ? '"' + value + suffix + '"' : value + suffix;
+          assertThrows(
+              ForyJsonException.class,
+              () -> newUtf8Reader(invalid.getBytes(StandardCharsets.UTF_8)).readBigInteger());
+        }
+      }
+    }
+  }
+
+  @Test
   public void readBigIntegerCarries() {
     for (int delta = -1; delta <= 1; delta++) {
       BigInteger value = BigInteger.ONE.shiftLeft(63).add(BigInteger.valueOf(delta));
