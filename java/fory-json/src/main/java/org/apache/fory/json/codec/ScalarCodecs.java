@@ -97,7 +97,8 @@ import org.apache.fory.type.Float16;
  * built-in instances also identify direct array, collection, map, field, and generated-code paths;
  * replacing one with a custom codec intentionally disables those built-in shortcuts. The dynamic
  * {@code Object} codec maps arrays and objects to {@link org.apache.fory.json.JsonArray} and {@link
- * org.apache.fory.json.JsonObject}, and dispatches writes through the active writer's resolver.
+ * org.apache.fory.json.JsonObject}, and dispatches non-Boolean writes through the active writer's
+ * resolver.
  *
  * <p>Arbitrary-precision resource guards remain owned by reader construction of {@link BigInteger}
  * and {@link BigDecimal}. Primitive numeric readers retain their direct overflow and IEEE-754
@@ -129,6 +130,12 @@ public final class ScalarCodecs {
         writer.writeNull();
         return;
       }
+      // Boolean is a fixed built-in, exempt from type checks and not replaceable by registration.
+      // Occurrence-specific annotations select their codec before reaching this natural dispatcher.
+      if (value instanceof Boolean) {
+        writer.writeBoolean((Boolean) value);
+        return;
+      }
       JsonTypeInfo typeInfo = writer.typeResolver().getRuntimeTypeInfo(value.getClass());
       typeInfo.stringWriter().writeString(writer, value);
     }
@@ -137,6 +144,12 @@ public final class ScalarCodecs {
     public void writeUtf8(Utf8JsonWriter writer, Object value) {
       if (value == null) {
         writer.writeNull();
+        return;
+      }
+      // Boolean is a fixed built-in, exempt from type checks and not replaceable by registration.
+      // Occurrence-specific annotations select their codec before reaching this natural dispatcher.
+      if (value instanceof Boolean) {
+        writer.writeBoolean((Boolean) value);
         return;
       }
       JsonTypeInfo typeInfo = writer.typeResolver().getRuntimeTypeInfo(value.getClass());
