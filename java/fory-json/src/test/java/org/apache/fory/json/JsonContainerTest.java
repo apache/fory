@@ -23,6 +23,7 @@ import static org.apache.fory.json.JsonTestSupport.generatedUtf8WriterClass;
 import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
+import static org.apache.fory.json.JsonTestSupport.newUtf8Writer;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNull;
@@ -79,6 +80,7 @@ import org.apache.fory.json.data.Nested;
 import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Types;
 import org.testng.annotations.Factory;
@@ -811,6 +813,25 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
     assertThrows(ForyJsonException.class, () -> json.fromJson("[128]", Byte[].class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("[\"ab\"]", Character[].class));
+  }
+
+  @Test
+  public void writeCharArrayBoundaries() {
+    char[][] arrays = {
+      {}, {'x'}, {' ', 'a', '\\', '"', '\u0001', '\u4e2d', '\u007f', '\u07ff', '\ufffd', '9'}
+    };
+    ForyJson json = newJson();
+    for (char[] values : arrays) {
+      String expected = json.toJson(values);
+      for (int capacity = 0; capacity <= 32; capacity++) {
+        Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+        JsonValueCodec<char[]> codec =
+            ArrayCodec.create(char[].class, TypeRef.of(char[].class), writer.typeResolver());
+        codec.writeUtf8(writer, values);
+        assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+      }
+    }
+    assertThrows(ForyJsonException.class, () -> json.toJsonBytes(new char[] {'a', '\ud800'}));
   }
 
   @Test

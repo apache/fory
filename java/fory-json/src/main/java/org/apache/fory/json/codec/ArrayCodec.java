@@ -1435,9 +1435,19 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       }
       char[] array = value;
       writer.writeArrayStart();
-      for (int i = 0; i < array.length; i++) {
-        writer.writeComma(i);
-        writer.writeChar(array[i]);
+      if (array.length != 0) {
+        writer.writeChar(array[0]);
+        for (int i = 1; i < array.length; i++) {
+          char ch = array[i];
+          if (ch >= 0x20 && ch < 0x80 && ch != '"' && ch != '\\') {
+            // The array owns the separator. For unescaped ASCII, emit the comma and quoted
+            // character together through the writer's existing packed output operation.
+            writer.writeRawValue(0x2200_222cL | ((long) ch << 16), 0, 4);
+          } else {
+            writer.writeComma(1);
+            writer.writeChar(ch);
+          }
+        }
       }
       writer.writeArrayEnd();
     }

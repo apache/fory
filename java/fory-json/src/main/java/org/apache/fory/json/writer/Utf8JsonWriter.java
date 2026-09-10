@@ -335,12 +335,11 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   public void writeChar(char value) {
     if (isJsonAscii(value)) {
       int offset = position;
-      if (offset + 3 > buffer.length) {
-        grow(3);
+      if (offset + 4 > buffer.length) {
+        grow(4);
       }
-      buffer[offset] = '"';
-      buffer[offset + 1] = (byte) value;
-      buffer[offset + 2] = '"';
+      // Reserve the full store; the fourth byte lies beyond this value's logical end.
+      LittleEndian.putInt32(buffer, offset, '"' | (value << 8) | ('"' << 16));
       position = offset + 3;
       return;
     }
