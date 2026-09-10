@@ -291,7 +291,15 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
     writer.writeArrayEnd()
   }
 
+  // A primitive schema can use the array decoder; boxed and custom elements retain their codec.
+  // The array decoder owns depth and backing storage; this owner reserves only the wrapper.
   override def readLatin1(reader: Latin1JsonReader): scala.collection.Iterable[Any] = {
+    if (booleanArrayCodec != null && elementClassTag.runtimeClass == java.lang.Boolean.TYPE) {
+      val values = booleanArrayCodec.readLatin1(reader)
+      if (values == null) return null
+      reader.reserveGraphMemory(ScalaCollectionCodecs.BooleanArraySeqBytes)
+      return new scala.collection.immutable.ArraySeq.ofBoolean(values)
+    }
     if (reader.tryReadNullToken()) return null
     reader.enterDepth()
     reader.expectNextToken('[')
@@ -315,6 +323,12 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
   }
 
   override def readUtf16(reader: Utf16JsonReader): scala.collection.Iterable[Any] = {
+    if (booleanArrayCodec != null && elementClassTag.runtimeClass == java.lang.Boolean.TYPE) {
+      val values = booleanArrayCodec.readUtf16(reader)
+      if (values == null) return null
+      reader.reserveGraphMemory(ScalaCollectionCodecs.BooleanArraySeqBytes)
+      return new scala.collection.immutable.ArraySeq.ofBoolean(values)
+    }
     if (reader.tryReadNullToken()) return null
     reader.enterDepth()
     reader.expectNextToken('[')
@@ -338,6 +352,12 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
   }
 
   override def readUtf8(reader: Utf8JsonReader): scala.collection.Iterable[Any] = {
+    if (booleanArrayCodec != null && elementClassTag.runtimeClass == java.lang.Boolean.TYPE) {
+      val values = booleanArrayCodec.readUtf8(reader)
+      if (values == null) return null
+      reader.reserveGraphMemory(ScalaCollectionCodecs.BooleanArraySeqBytes)
+      return new scala.collection.immutable.ArraySeq.ofBoolean(values)
+    }
     if (reader.tryReadNullToken()) return null
     reader.enterDepth()
     reader.expectNextToken('[')
@@ -618,6 +638,8 @@ private[scala] object ScalaCollectionCodecs {
   val ReferenceBytes = GraphMemoryEstimates.REFERENCE_BYTES
   val ListNodeBytes = GraphMemoryEstimates.shallowObjectBytes(classOf[scala.collection.immutable.::[_]])
   val ListBatchBytes = BatchSize * ListNodeBytes
+  val BooleanArraySeqBytes =
+    GraphMemoryEstimates.shallowObjectBytes(classOf[scala.collection.immutable.ArraySeq.ofBoolean])
   private val MapEntryBytes = 2 * ReferenceBytes
   private val MapBatchBytes = BatchSize * MapEntryBytes
 

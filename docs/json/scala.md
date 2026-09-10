@@ -106,7 +106,6 @@ a required parameter whose type can be empty; add a constructor default to allow
 | parameterless Scala 3 enum                                  | string case name                                |
 | Scala 2 `Enumeration`                                       | string through an owner-bound codec             |
 
-Strict standard-library collections are reconstructed through their standard Scala builders.
 `Either` writes compact `l` and `r` member names. Readers also accept the legacy `left` and
 `right` member names.
 Fory does not add a Scala-specific collection-size limit; the codecs use the same input-length,

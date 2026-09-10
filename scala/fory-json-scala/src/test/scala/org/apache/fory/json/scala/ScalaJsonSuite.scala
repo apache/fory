@@ -29,6 +29,7 @@ import org.apache.fory.json.reader.JsonReader
 import org.apache.fory.json.resolver.UnsupportedJsonTypeException
 import org.apache.fory.json.writer.JsonWriter
 import org.apache.fory.reflect.TypeRef
+import org.apache.fory.serializer.GraphMemoryEstimates
 import org.scalatest.funsuite.AnyFunSuite
 
 case class Node(value: Int, next: Option[Node])
@@ -483,7 +484,72 @@ class ScalaJsonSuite extends AnyFunSuite {
       assert(json.toJson(custom) == expected)
       assert(new String(json.toJsonBytes(custom), UTF_8) == expected)
       assert(json.fromJson(expected, classOf[BooleanArraySeqValue]) == custom)
+      assert(json.fromJson(expected.getBytes(UTF_8), classOf[BooleanArraySeqValue]) == custom)
+      assert(json.fromJson("[true,null,false]", boxedType) == boxed)
+      assert(json.fromJson("[true,null,false]".getBytes(UTF_8), boxedType) == boxed)
     }
+  }
+
+  test("Boolean ArraySeq reading") {
+    import scala.collection.immutable.ArraySeq
+    val booleanType = ScalaTypeRef[ArraySeq[Boolean]]
+    val anyType = ScalaTypeRef[ArraySeq[Any]]
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      for (size <- Seq(0, 1, 8, 9, 1024, 1025, 17)) {
+        val expected = ArraySeq.tabulate(size)(i => i % 3 == 0)
+        val input = expected.mkString("[", ",", "]")
+        val first = json.fromJson(input.getBytes(UTF_8), booleanType)
+        assert(first == expected)
+        assert(json.fromJson(input, booleanType) == expected)
+        assert(json.fromJson("[\"true\",false]", booleanType) == ArraySeq(true, false))
+        assert(json.fromJson("[\"true\",false]".getBytes(UTF_8), booleanType) == ArraySeq(true, false))
+        assert(first == expected)
+      }
+      assert(json.fromJson("null", booleanType) == null)
+      assert(json.fromJson("null".getBytes(UTF_8), booleanType) == null)
+      assert(
+        json.fromJson("[true,\"false\",null]".getBytes(UTF_8), anyType) ==
+          ArraySeq[Any](true, "false", null)
+      )
+      for (invalid <- Seq("[true,", "[null]", "[[true]]", "[\"bad\"]")) {
+        assertThrows[ForyJsonException](json.fromJson(invalid, booleanType))
+        assertThrows[ForyJsonException](json.fromJson(invalid.getBytes(UTF_8), booleanType))
+        assert(json.fromJson("[true]", booleanType) == ArraySeq(true))
+        assert(json.fromJson("[false]".getBytes(UTF_8), booleanType) == ArraySeq(false))
+      }
+    }
+  }
+
+  test("Boolean ArraySeq memory and depth") {
+    import scala.collection.immutable.ArraySeq
+    val booleanType = ScalaTypeRef[ArraySeq[Boolean]]
+    val nestedType = ScalaTypeRef[Vector[ArraySeq[Boolean]]]
+    val wrapperBytes = GraphMemoryEstimates.shallowObjectBytes(classOf[ArraySeq.ofBoolean])
+    val headerBytes = GraphMemoryEstimates.objectArrayBytes()
+    for (size <- Seq(0, 17, 1024, 1025)) {
+      val budget = wrapperBytes + headerBytes + size
+      val json = ForyJsonScala.builder().withCodegen(false).withMaxGraphMemoryBytes(budget).build()
+      val expected = ArraySeq.fill(size)(true)
+      val input = expected.mkString("[", ",", "]")
+      assert(json.fromJson(input, booleanType) == expected)
+      assert(json.fromJson(input.getBytes(UTF_8), booleanType) == expected)
+      val tooMany = ArraySeq.fill(size + 1)(true).mkString("[", ",", "]")
+      assertThrows[ForyJsonException](json.fromJson(tooMany, booleanType))
+      assertThrows[ForyJsonException](json.fromJson(tooMany.getBytes(UTF_8), booleanType))
+      assert(json.fromJson(input.getBytes(UTF_8), booleanType) == expected)
+    }
+    val depthOne = ForyJsonScala.builder().withCodegen(false).maxDepth(1).build()
+    for (input <- Seq("[[true]]", "[[\"true\"]]")) {
+      assertThrows[ForyJsonException](depthOne.fromJson(input, nestedType))
+      assertThrows[ForyJsonException](depthOne.fromJson(input.getBytes(UTF_8), nestedType))
+      assert(depthOne.fromJson("[true]", booleanType) == ArraySeq(true))
+    }
+    val depthTwo = ForyJsonScala.builder().withCodegen(false).maxDepth(2).build()
+    assert(depthTwo.fromJson("[[true]]", nestedType) == Vector(ArraySeq(true)))
+    assert(depthTwo.fromJson("[[true]]".getBytes(UTF_8), nestedType) == Vector(ArraySeq(true)))
   }
 
   test("strict collections maps and bit sets") {
