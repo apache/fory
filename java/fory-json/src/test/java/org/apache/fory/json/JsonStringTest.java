@@ -23,6 +23,7 @@ import static org.apache.fory.json.JsonTestSupport.currentStateField;
 import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
 import static org.apache.fory.json.JsonTestSupport.newStringWriter;
 import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
+import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
@@ -42,6 +43,7 @@ import org.apache.fory.json.data.UnicodeValues;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.memory.NativeByteOrder;
@@ -49,6 +51,53 @@ import org.apache.fory.serializer.StringSerializer;
 import org.testng.annotations.Test;
 
 public class JsonStringTest extends ForyJsonTestModels {
+  @Test
+  public void readUnicodeEscapeSlices() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (char value : new char[] {0, 0x7f, 0xff, 0x100, 0x20ac, 0xabcd, 0xd7ff, 0xe000, 0xffff}) {
+      for (String hex :
+          new String[] {String.format("%04x", (int) value), String.format("%04X", (int) value)}) {
+        for (String prefix : new String[] {"", "\\u0100"}) {
+          String token = "\"" + prefix + "\\u" + hex + "\"";
+          byte[] encoded = token.getBytes(StandardCharsets.UTF_8);
+          for (int offset = 0; offset < 8; offset++) {
+            byte[] bytes = new byte[offset + encoded.length + 8];
+            System.arraycopy(encoded, 0, bytes, offset, encoded.length);
+            for (int length = 0; length < encoded.length; length++) {
+              reader.reset(bytes, offset, length);
+              assertThrows(ForyJsonException.class, () -> reader.readString());
+            }
+            reader.reset(bytes, offset, encoded.length);
+            assertEquals(reader.readString(), (prefix.isEmpty() ? "" : "\u0100") + value);
+            reader.finish();
+            for (int digit = 0; digit < 4; digit++) {
+              int index = offset + prefix.length() + 3 + digit;
+              byte saved = bytes[index];
+              bytes[index] = 'x';
+              reader.reset(bytes, offset, encoded.length);
+              assertThrows(ForyJsonException.class, () -> reader.readString());
+              bytes[index] = saved;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  public void readUtf16Escapes() {
+    ForyJson json = newJson();
+    String prefix = "\"\\u0100";
+    assertEquals(
+        readUtf8String(json, prefix + "\\n\\uD834\\uDD1E\\t\\u20ac\""),
+        "\u0100\n\uD834\uDD1E\t\u20ac");
+    for (String suffix :
+        new String[] {"\\uD800", "\\uDC00", "\\uD800\\n", "\\uD800\\u0100", "\\uD800\\uDC0x"}) {
+      assertThrows(ForyJsonException.class, () -> readUtf8String(json, prefix + suffix + "\""));
+      assertEquals(readUtf8String(json, prefix + "\\u20ac\""), "\u0100\u20ac");
+    }
+  }
+
   @Test(dataProvider = "enableCodegen")
   public void escapeStrings(boolean codegen) {
     ForyJson json = newJson(codegen);

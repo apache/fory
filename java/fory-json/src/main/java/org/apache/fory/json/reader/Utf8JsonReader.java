@@ -3486,7 +3486,16 @@ public final class Utf8JsonReader extends JsonReader {
         this.position = position;
         char ch = readEscapedStringChar();
         position = this.position;
-        if (Character.isHighSurrogate(ch)) {
+        if (!Character.isSurrogate(ch)) {
+          if (out + 2 > capacity) {
+            bytes = growStringDecodeBuffer(bytes, out + 2);
+            capacity = bytes.length;
+          }
+          out = putUtf16Char(bytes, out, ch);
+        } else {
+          if (!Character.isHighSurrogate(ch)) {
+            throw error("Unpaired low surrogate escape");
+          }
           char low = readLowSurrogateEscape();
           position = this.position;
           if (out + 4 > capacity) {
@@ -3495,14 +3504,6 @@ public final class Utf8JsonReader extends JsonReader {
           }
           out = putUtf16Char(bytes, out, ch);
           out = putUtf16Char(bytes, out, low);
-        } else if (Character.isLowSurrogate(ch)) {
-          throw error("Unpaired low surrogate escape");
-        } else {
-          if (out + 2 > capacity) {
-            bytes = growStringDecodeBuffer(bytes, out + 2);
-            capacity = bytes.length;
-          }
-          out = putUtf16Char(bytes, out, ch);
         }
       } else if (b < 0x20) {
         this.position = position;
@@ -3624,6 +3625,20 @@ public final class Utf8JsonReader extends JsonReader {
       out = putUtf16Char(bytes, out, Character.lowSurrogate(codePoint));
     }
     return readStringUtf16Tail(bytes, out);
+  }
+
+  @Override
+  protected char readUnicodeEscape() {
+    int offset = position;
+    if (offset > inputLimit - 4) {
+      throw error("Short unicode escape");
+    }
+    int value = hexValue4(input, offset);
+    if (value < 0) {
+      throw error("Invalid hex digit");
+    }
+    position = offset + 4;
+    return (char) value;
   }
 
   private char readEscapedStringChar() {

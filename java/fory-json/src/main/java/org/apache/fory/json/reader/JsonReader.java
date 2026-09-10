@@ -79,7 +79,7 @@ import org.apache.fory.serializer.StringSerializer;
 public abstract class JsonReader {
   private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
   private static final byte[] EMPTY_BYTES = new byte[0];
-  private static final byte[] UUID_HEX_VALUES = uuidHexValues();
+  private static final byte[] HEX_VALUES = hexValues();
   static final int MAX_BIG_DECIMAL_SCALE = 10_000;
   private static final int COMPACT_DECIMAL_MAX_SCALE = 18;
   private static final long[] LONG_POWERS_OF_TEN = {
@@ -1114,14 +1114,14 @@ public abstract class JsonReader {
   static UUID parseUuidBytes(byte[] bytes, int start) {
     // The concrete reader has already checked the token bounds and separators.
     // Invalid digits remain negative through packing, so one test validates all eight groups.
-    int a = uuidHex4(bytes, start);
-    int b = uuidHex4(bytes, start + 4);
-    int c = uuidHex4(bytes, start + 9);
-    int d = uuidHex4(bytes, start + 14);
-    int e = uuidHex4(bytes, start + 19);
-    int f = uuidHex4(bytes, start + 24);
-    int g = uuidHex4(bytes, start + 28);
-    int h = uuidHex4(bytes, start + 32);
+    int a = hexValue4(bytes, start);
+    int b = hexValue4(bytes, start + 4);
+    int c = hexValue4(bytes, start + 9);
+    int d = hexValue4(bytes, start + 14);
+    int e = hexValue4(bytes, start + 19);
+    int f = hexValue4(bytes, start + 24);
+    int g = hexValue4(bytes, start + 28);
+    int h = hexValue4(bytes, start + 32);
     if ((a | b | c | d | e | f | g | h) < 0) {
       throw new IllegalArgumentException();
     }
@@ -1130,15 +1130,15 @@ public abstract class JsonReader {
         ((long) e << 48) | ((long) f << 32) | ((long) g << 16) | h);
   }
 
-  private static int uuidHex4(byte[] bytes, int offset) {
-    byte[] values = UUID_HEX_VALUES;
+  static int hexValue4(byte[] bytes, int offset) {
+    byte[] values = HEX_VALUES;
     return (values[bytes[offset] & 0xff] << 12)
         | (values[bytes[offset + 1] & 0xff] << 8)
         | (values[bytes[offset + 2] & 0xff] << 4)
         | values[bytes[offset + 3] & 0xff];
   }
 
-  private static byte[] uuidHexValues() {
+  private static byte[] hexValues() {
     byte[] values = new byte[256];
     Arrays.fill(values, (byte) -1);
     for (int i = 0; i < 10; i++) {
@@ -3040,7 +3040,7 @@ public abstract class JsonReader {
     }
   }
 
-  protected final char readUnicodeEscape() {
+  protected char readUnicodeEscape() {
     if (position + 4 > length()) {
       throw error("Short unicode escape");
     }
