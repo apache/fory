@@ -144,8 +144,8 @@ public abstract class JsonWriter {
   }
 
   // Concrete writers own compact BigDecimal formatting and canonical arbitrary-precision text
-  // copying. BigInteger values outside long range use the JDK conversion, whose recursive large
-  // magnitude algorithm avoids the repeated quotient/remainder allocation of a local chunk loop.
+  // copying. Bounded coefficients may use primitive digit arithmetic; larger magnitudes retain
+  // the JDK's recursive conversion rather than a repeated allocating quotient/remainder loop.
   public abstract void writeBigInteger(BigInteger value);
 
   public abstract void writeBigDecimal(BigDecimal value);

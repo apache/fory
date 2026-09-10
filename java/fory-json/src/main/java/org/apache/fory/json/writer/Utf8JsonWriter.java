@@ -314,8 +314,13 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     if (value.getClass() != BigInteger.class) {
       throwUnsupportedBigNumber(value.getClass());
     }
-    if (BigNumberDigits.fitsLong(value)) {
+    int bitLength = value.bitLength();
+    if (bitLength <= 63) {
       writeLong(value.longValue());
+      return;
+    }
+    if (bitLength <= 127) {
+      writeBigNumberText(BigNumberDigits.formatInt128(value, 0));
       return;
     }
     writeBigNumberText(value.toString());
@@ -2275,6 +2280,14 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   private void writeInflatedBigDecimal(BigDecimal value) {
     if (value.getClass() == BigDecimal.class) {
+      BigInteger coefficient = value.unscaledValue();
+      if (coefficient.getClass() == BigInteger.class) {
+        int bitLength = coefficient.bitLength();
+        if (bitLength > 63 && bitLength <= 127) {
+          writeBigNumberText(BigNumberDigits.formatInt128(coefficient, value.scale()));
+          return;
+        }
+      }
       writeBigNumberText(value.toString());
       return;
     }

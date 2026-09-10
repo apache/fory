@@ -902,6 +902,36 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeWideCoefficients() {
+    for (int bit = 63; bit <= 128; bit++) {
+      BigInteger boundary = BigInteger.ONE.shiftLeft(bit);
+      for (int delta = -1; delta <= 1; delta++) {
+        BigInteger value = boundary.add(BigInteger.valueOf(delta));
+        for (BigInteger signed : new BigInteger[] {value, value.negate()}) {
+          assertWriterNumber(signed, signed.toString());
+          for (int scale : new int[] {0, 1, 20, 39, 44, 45, Integer.MIN_VALUE, Integer.MAX_VALUE}) {
+            assertBigDecimalWriter(signed, scale);
+          }
+        }
+      }
+    }
+    Random random = new Random(8817);
+    for (int i = 0; i < 1000; i++) {
+      int bits = 64 + random.nextInt(64);
+      BigInteger value = new BigInteger(bits, random).setBit(bits - 1);
+      if (random.nextBoolean()) {
+        value = value.negate();
+      }
+      assertWriterNumber(value, value.toString());
+      int precision = value.abs().toString().length();
+      for (int scale :
+          new int[] {-1, 0, 1, precision - 1, precision, precision + 5, precision + 6}) {
+        assertBigDecimalWriter(value, scale);
+      }
+    }
+  }
+
+  @Test
   public void writeCompactBigDecimalCorners() {
     long[] coefficients = {
       0L,
