@@ -46,7 +46,9 @@ import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
+import org.apache.fory.serializer.StringSerializer;
 
 /**
  * Representation-neutral JSON cursor and common scalar parsing owner.
@@ -1727,14 +1729,67 @@ public abstract class JsonReader {
   }
 
   final BigInteger parseBigInteger(String number) {
-    if (number.length() > MAX_BIG_NUMBER_LENGTH) {
+    int length = number.length();
+    if (length > MAX_BIG_NUMBER_LENGTH) {
       throwBigNumberLengthExceeded(position);
     }
-    try {
-      return new BigInteger(number);
-    } catch (NumberFormatException e) {
-      throw new ForyJsonException("Invalid JSON big integer at JSON position " + position, e);
+    // Both callers have validated ASCII integer syntax. Accumulate eighteen decimal digits at a
+    // time in unsigned 64-bit words; each multiplication produces an exact high half and one carry.
+    // The length gate above bounds scratch storage by the text already proven readable.
+    boolean negative = number.charAt(0) == '-';
+    int offset = negative ? 1 : 0;
+    int digits = length - offset;
+    int capacity = (digits + 17) / 18;
+    long[] words = numericWorkspace.bigIntegerBuffer;
+    if (words.length < capacity) {
+      words = new long[capacity];
+      numericWorkspace.bigIntegerBuffer = words;
     }
+    int firstEnd = offset + (digits - 1) % 18 + 1;
+    words[0] = parseDecimalChunk(number, offset, firstEnd);
+    int wordCount = 1;
+    for (offset = firstEnd; offset < length; offset += 18) {
+      long carry = parseDecimalChunk(number, offset, offset + 18);
+      for (int i = 0; i < wordCount; i++) {
+        long word = words[i];
+        long product = word * 1_000_000_000_000_000_000L;
+        long high = DecimalMath.unsignedMultiplyHigh(word, 1_000_000_000_000_000_000L);
+        long sum = product + carry;
+        words[i] = sum;
+        carry = high + (Long.compareUnsigned(sum, product) < 0 ? 1 : 0);
+      }
+      if (carry != 0) {
+        words[wordCount++] = carry;
+      }
+    }
+    byte[] magnitude = new byte[wordCount * Long.BYTES];
+    for (int i = 0; i < wordCount; i++) {
+      LittleEndian.putInt64(
+          magnitude, magnitude.length - (i + 1) * Long.BYTES, Long.reverseBytes(words[i]));
+    }
+    return new BigInteger(negative ? -1 : 1, magnitude);
+  }
+
+  private static long parseDecimalChunk(String number, int start, int end) {
+    long value = 0;
+    if (end - start >= 8
+        && StringSerializer.isBytesBackedString()
+        && StringSerializer.getStringCoder(number) == 0) {
+      byte[] bytes = StringSerializer.getStringBytes(number);
+      do {
+        // The complete token has already passed ASCII digit validation.
+        long digits = LittleEndian.getInt64(bytes, start) - 0x3030_3030_3030_3030L;
+        long pairs = (digits * 10 + (digits >>> 8)) & 0x00ff_00ff_00ff_00ffL;
+        long groups = (pairs * 100 + (pairs >>> 16)) & 0x0000_ffff_0000_ffffL;
+        long block = (groups & 0xffff) * 10_000 + (groups >>> 32);
+        value = value * 100_000_000 + block;
+        start += 8;
+      } while (end - start >= 8);
+    }
+    for (int i = start; i < end; i++) {
+      value = value * 10 + number.charAt(i) - '0';
+    }
+    return value;
   }
 
   final void throwBigDecimalScaleExceeded() {
@@ -2942,6 +2997,7 @@ public abstract class JsonReader {
 
   private static final class NumericWorkspace {
     private char[] bigDecimalBuffer = new char[INITIAL_BIG_DECIMAL_BUFFER_SIZE];
+    private long[] bigIntegerBuffer = new long[4];
   }
 
   private static final class QuotedTextView implements CharSequence {

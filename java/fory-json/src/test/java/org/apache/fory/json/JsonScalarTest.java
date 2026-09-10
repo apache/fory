@@ -900,6 +900,25 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readBigIntegerCarries() {
+    for (int delta = -1; delta <= 1; delta++) {
+      BigInteger value = BigInteger.ONE.shiftLeft(63).add(BigInteger.valueOf(delta));
+      assertBigIntegerReaders(value.toString());
+      assertBigIntegerReaders(value.negate().toString());
+      assertQuotedBigIntegerReaders(value.toString());
+      assertQuotedBigIntegerReaders(value.negate().toString());
+    }
+    for (int bits = 64; bits <= 2048; bits += 64) {
+      BigInteger boundary = BigInteger.ONE.shiftLeft(bits);
+      for (int delta = -1; delta <= 1; delta++) {
+        BigInteger value = boundary.add(BigInteger.valueOf(delta));
+        assertBigIntegerReaders(value.toString());
+        assertBigIntegerReaders(value.negate().toString());
+      }
+    }
+  }
+
+  @Test
   public void writeLargeBigInteger() {
     BigInteger value = BigInteger.TEN.pow(9_216);
     assertWriterNumber(value, value.toString());
