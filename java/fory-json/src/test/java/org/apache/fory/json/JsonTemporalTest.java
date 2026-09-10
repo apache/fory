@@ -88,6 +88,53 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readZoneOffsetSlices() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int seconds = -64800; seconds <= 64800; seconds++) {
+      ZoneOffset expected = ZoneOffset.ofTotalSeconds(seconds);
+      byte[] token = ('"' + expected.getId() + '"').getBytes(StandardCharsets.UTF_8);
+      reader.reset(token);
+      assertEquals(ScalarCodecs.ZoneOffsetCodec.INSTANCE.readUtf8(reader), expected);
+      reader.finish();
+    }
+    for (String text : new String[] {"Z", "+01:30", "-07:20:13", "+18:00", "-18:00"}) {
+      ZoneOffset expected = ZoneOffset.of(text);
+      assertToken(ScalarCodecs.ZoneOffsetCodec.INSTANCE, text, expected);
+      byte[] token = ('"' + text + '"').getBytes(StandardCharsets.UTF_8);
+      for (int offset = 0; offset < 8; offset++) {
+        byte[] bytes = new byte[offset + token.length + 8];
+        System.arraycopy(token, 0, bytes, offset, token.length);
+        for (int length = 0; length < token.length; length++) {
+          reader.reset(bytes, offset, length);
+          assertThrows(RuntimeException.class, () -> reader.readZoneOffset());
+        }
+        reader.reset(bytes, offset, token.length);
+        assertEquals(reader.readZoneOffset(), expected);
+        reader.finish();
+      }
+      assertEscapes(ScalarCodecs.ZoneOffsetCodec.INSTANCE, expected);
+    }
+    for (String text : new String[] {"+1", "-01", "+0130", "-072013", "+00", "-00"}) {
+      assertToken(ScalarCodecs.ZoneOffsetCodec.INSTANCE, text, ZoneOffset.of(text));
+    }
+    for (String text : new String[] {"+19:00", "-18:00:01", "+0x:30", "+01:x0", "+01:30:0x"}) {
+      rejectToken(ScalarCodecs.ZoneOffsetCodec.INSTANCE, text);
+    }
+    byte[] input = " [null, \"+01:30\",\"Z\"]".getBytes(StandardCharsets.UTF_8);
+    ForyJson json = ForyJson.builder().build();
+    assertEquals(
+        json.fromJson(input, ZoneOffset[].class),
+        new ZoneOffset[] {null, ZoneOffset.ofHoursMinutes(1, 30), ZoneOffset.UTC});
+    assertThrows(
+        RuntimeException.class,
+        () ->
+            json.fromJson("[\"-18:00:01\"]".getBytes(StandardCharsets.UTF_8), ZoneOffset[].class));
+    assertEquals(
+        json.fromJson(input, ZoneOffset[].class),
+        new ZoneOffset[] {null, ZoneOffset.ofHoursMinutes(1, 30), ZoneOffset.UTC});
+  }
+
+  @Test
   public void readTemporalComponents() {
     Random random = new Random(8045792L);
     ZoneId[] zones = {

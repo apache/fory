@@ -2411,6 +2411,22 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   @Override
+  public ZoneOffset readZoneOffset() {
+    skipWhitespaceFast();
+    int mark = position;
+    if (mark < inputLimit && input[mark] == '"') {
+      position = mark + 1;
+      ZoneOffset offset = tryReadOffset();
+      if (offset != null && position < inputLimit && input[position] == '"') {
+        position++;
+        return offset;
+      }
+    }
+    position = mark;
+    return super.readZoneOffset();
+  }
+
+  @Override
   public OffsetTime readOffsetTime() {
     skipWhitespaceFast();
     int mark = position;
