@@ -68,6 +68,7 @@ import java.util.BitSet;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
@@ -1311,6 +1312,39 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         json.fromJson("\"PT1H1M1.123\\u0053\"", Duration.class),
         Duration.ofSeconds(3661, 123_000_000));
+  }
+
+  @Test
+  public void readUuidHexDigits() {
+    Random random = new Random(765_318L);
+    for (int i = 0; i < 128; i++) {
+      UUID expected = new UUID(random.nextLong(), random.nextLong());
+      String text = expected.toString();
+      if ((i & 1) != 0) {
+        text = text.toUpperCase(Locale.ROOT);
+      }
+      String encoded = '"' + text + '"';
+      assertEquals(newUtf8Reader(encoded.getBytes(StandardCharsets.UTF_8)).readUuid(), expected);
+      assertEquals(newLatin1Reader(latin1Bytes(encoded)).readUuid(), expected);
+      assertEquals(utf16Reader(encoded).readUuid(), expected);
+    }
+    String text = "01234567-89ab-cdef-ABCD-EF0123456789";
+    for (int i = 0; i < text.length(); i++) {
+      String invalid = '"' + text.substring(0, i) + 'g' + text.substring(i + 1) + '"';
+      assertThrows(
+          ForyJsonException.class,
+          () -> newUtf8Reader(invalid.getBytes(StandardCharsets.UTF_8)).readUuid());
+      assertThrows(ForyJsonException.class, () -> newLatin1Reader(latin1Bytes(invalid)).readUuid());
+      String escaped =
+          '"'
+              + text.substring(0, i)
+              + String.format("\\u%04x", (int) text.charAt(i))
+              + text.substring(i + 1)
+              + '"';
+      UUID expected = UUID.fromString(text);
+      assertEquals(newUtf8Reader(escaped.getBytes(StandardCharsets.UTF_8)).readUuid(), expected);
+      assertEquals(newLatin1Reader(latin1Bytes(escaped)).readUuid(), expected);
+    }
   }
 
   @Test
