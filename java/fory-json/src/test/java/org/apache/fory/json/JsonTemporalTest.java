@@ -209,6 +209,47 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readDateCalendar() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    LocalDate first = LocalDate.of(0, 3, 1);
+    for (int day = 0; day < 146097; day++) {
+      LocalDate expected = first.plusDays(day);
+      reader.reset(('"' + expected.toString() + '"').getBytes(StandardCharsets.US_ASCII));
+      assertEquals(reader.readIsoLocalDate(), expected);
+      reader.finish();
+      reader.reset(
+          ('"' + expected.toString() + "T23:59:59.999999999\",17")
+              .getBytes(StandardCharsets.US_ASCII));
+      assertEquals(reader.readIsoLocalDateTime(), expected.atTime(LocalTime.MAX));
+      reader.expectNextToken(',');
+      assertEquals(reader.readInt(), 17);
+      reader.finish();
+    }
+    for (String text : new String[] {"0000-01-01", "1900-02-28", "2000-02-29", "9999-12-31"}) {
+      assertToken(ScalarCodecs.LocalDateCodec.INSTANCE, text, LocalDate.parse(text));
+    }
+    ForyJson json = ForyJson.builder().build();
+    for (String text :
+        new String[] {
+          "2024-00-01",
+          "2024-13-01",
+          "2024-01-00",
+          "2024-01-32",
+          "2024-04-31",
+          "1900-02-29",
+          "2024-02-30"
+        }) {
+      byte[] date = ('"' + text + '"').getBytes(StandardCharsets.US_ASCII);
+      byte[] dateTime = ('"' + text + "T23:59:59\"").getBytes(StandardCharsets.US_ASCII);
+      assertThrows(RuntimeException.class, () -> json.fromJson(date, LocalDate.class));
+      assertThrows(RuntimeException.class, () -> json.fromJson(dateTime, LocalDateTime.class));
+      assertEquals(
+          json.fromJson("\"2000-02-29\"".getBytes(StandardCharsets.US_ASCII), LocalDate.class),
+          LocalDate.of(2000, 2, 29));
+    }
+  }
+
+  @Test
   public void readTimeComponents() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
     int[] seconds = {0, 1, 30, 59};

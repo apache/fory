@@ -72,6 +72,7 @@ public final class Utf8JsonReader extends JsonReader {
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final MethodHandle INSTANT_FACTORY = instantFactory();
   private static final MethodHandle LOCAL_TIME_FACTORY = localTimeFactory();
+  private static final MethodHandle LOCAL_DATE_FACTORY = localDateFactory();
   private static final int[] NANO_SCALE = {
     1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000
   };
@@ -3121,7 +3122,7 @@ public final class Utf8JsonReader extends JsonReader {
     int ch = bytes[end];
     if (ch == '"') {
       position = end + 1;
-      return LocalDate.of(year, month, day);
+      return localDate(year, month, day);
     }
     if (ch == 'T') {
       int stringEnd = tryScanSimpleStringTail(bytes, end + 1);
@@ -3129,7 +3130,7 @@ public final class Utf8JsonReader extends JsonReader {
         return null;
       }
       position = stringEnd;
-      return LocalDate.of(year, month, day);
+      return localDate(year, month, day);
     }
     return null;
   }
@@ -3166,7 +3167,39 @@ public final class Utf8JsonReader extends JsonReader {
     if (year < 0 || month < 0 || day < 0) {
       return null;
     }
-    return LocalDateTime.of(LocalDate.of(year, month, day), time);
+    return LocalDateTime.of(localDate(year, month, day), time);
+  }
+
+  private static LocalDate localDate(int year, int month, int day) {
+    // Both UTF-8 date parsers prove a four-digit year. Check the month/day ranges before the
+    // JDK factory, which still owns the calendar validation for short months and leap years.
+    if (LOCAL_DATE_FACTORY == null || month < 1 || month > 12 || day < 1 || day > 31) {
+      return LocalDate.of(year, month, day);
+    }
+    try {
+      return (LocalDate) LOCAL_DATE_FACTORY.invokeExact(year, month, day);
+    } catch (ThreadDeath e) {
+      throw e;
+    } catch (VirtualMachineError e) {
+      throw e;
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot construct JSON local date", e);
+    }
+  }
+
+  private static MethodHandle localDateFactory() {
+    if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return null;
+    }
+    try {
+      return _JDKAccess._trustedLookup(LocalDate.class)
+          .findStatic(
+              LocalDate.class,
+              "create",
+              MethodType.methodType(LocalDate.class, int.class, int.class, int.class));
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      return null;
+    }
   }
 
   private LocalTime tryReadTime(int start) {
