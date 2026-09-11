@@ -65,6 +65,7 @@ import java.time.chrono.MinguoDate;
 import java.time.chrono.ThaiBuddhistDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -309,6 +310,41 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(json.toJson(new NaturalValues()), expected);
     assertEquals(
         new String(json.toJsonBytes(new NaturalValues()), StandardCharsets.UTF_8), expected);
+  }
+
+  @Test
+  public void writeBase64() {
+    ForyJson json = newJson();
+    for (int length :
+        new int[] {
+          0, 1, 2, 3, 10, 30, 31, 32, 33, 34, 63, 64, 65, 511, 512, 513, 1023, 1024, 1025
+        }) {
+      byte[] value = new byte[length];
+      for (int i = 0; i < length; i++) {
+        value[i] = (byte) (i * 73 + 19);
+      }
+      String encoded = Base64.getEncoder().encodeToString(value);
+      String expected = "[\"prefix\",\"" + encoded + "\",0]";
+      for (int capacity : new int[] {1, encoded.length() + 4, expected.length()}) {
+        Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+        writer.writeArrayStart();
+        writer.writeString("prefix");
+        writer.writeComma(1);
+        writer.writeBase64(value);
+        writer.writeComma(2);
+        writer.writeInt(0);
+        writer.writeArrayEnd();
+        assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+      }
+      assertEquals(json.fromJson(json.toJsonBytes(value), byte[].class), value);
+    }
+    for (int pair = 0; pair < 4096; pair++) {
+      int bits = (pair << 12) | (4095 - pair);
+      byte[] value = {(byte) (bits >>> 16), (byte) (bits >>> 8), (byte) bits};
+      assertEquals(
+          new String(json.toJsonBytes(value), StandardCharsets.UTF_8),
+          "\"" + Base64.getEncoder().encodeToString(value) + "\"");
+    }
   }
 
   private enum EnumName {

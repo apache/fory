@@ -48,6 +48,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
@@ -75,9 +76,7 @@ import org.apache.fory.serializer.StringSerializer;
 public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private static final byte[] MIN_INT_BYTES =
       "-2147483648".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
-  private static final byte[] BASE64_DIGITS =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-          .getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+  private static final short[] BASE64_PAIRS = new short[4096];
   private static final byte[] MIN_LONG_BYTES =
       "-9223372036854775808".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final byte[] NAN_BYTES =
@@ -94,6 +93,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private static final boolean STRING_BYTES_BACKED = StringSerializer.isBytesBackedString();
 
   static {
+    String base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (int i = 0; i < BASE64_PAIRS.length; i++) {
+      BASE64_PAIRS[i] = (short) (base64Digits.charAt(i >>> 6) | (base64Digits.charAt(i & 63) << 8));
+    }
     for (int i = 0; i < HEX_PAIRS.length; i++) {
       int high = i >>> 4;
       int low = i & 15;
@@ -1800,6 +1803,15 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     }
     byte[] target = buffer;
     target[pos++] = '"';
+    // Small values cannot amortize the temporary array used by the JDK bulk encoder.
+    if (value.length >= 32) {
+      byte[] encoded = Base64.getEncoder().encode(value);
+      System.arraycopy(encoded, 0, target, pos, encodedLength);
+      pos += encodedLength;
+      target[pos++] = '"';
+      position = pos;
+      return;
+    }
     int index = 0;
     int end = value.length - 2;
     while (index < end) {
@@ -1807,10 +1819,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
           ((value[index++] & 0xff) << 16)
               | ((value[index++] & 0xff) << 8)
               | (value[index++] & 0xff);
-      target[pos++] = BASE64_DIGITS[bits >>> 18];
-      target[pos++] = BASE64_DIGITS[(bits >>> 12) & 0x3f];
-      target[pos++] = BASE64_DIGITS[(bits >>> 6) & 0x3f];
-      target[pos++] = BASE64_DIGITS[bits & 0x3f];
+      LittleEndian.putInt32(
+          target, pos, BASE64_PAIRS[bits >>> 12] | (BASE64_PAIRS[bits & 0xfff] << 16));
+      pos += 4;
     }
     int remaining = value.length - index;
     if (remaining != 0) {
@@ -1818,10 +1829,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       if (remaining == 2) {
         bits |= (value[index + 1] & 0xff) << 8;
       }
-      target[pos++] = BASE64_DIGITS[bits >>> 18];
-      target[pos++] = BASE64_DIGITS[(bits >>> 12) & 0x3f];
-      target[pos++] = remaining == 2 ? BASE64_DIGITS[(bits >>> 6) & 0x3f] : (byte) '=';
-      target[pos++] = '=';
+      int third = remaining == 2 ? BASE64_PAIRS[bits & 0xfff] & 0xff : '=';
+      LittleEndian.putInt32(target, pos, BASE64_PAIRS[bits >>> 12] | (third << 16) | ('=' << 24));
+      pos += 4;
     }
     target[pos++] = '"';
     position = pos;
