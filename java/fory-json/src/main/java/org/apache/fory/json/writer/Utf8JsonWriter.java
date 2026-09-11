@@ -600,7 +600,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     }
     byte[] bytes = buffer;
     bytes[pos++] = (byte) '"';
-    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
+    // Valid month/day components fit in one byte, bounding the shared helper's table indices.
+    pos =
+        writeLocalDateBytes(
+            bytes, pos, year, value.getMonthValue() & 0xff, value.getDayOfMonth() & 0xff);
     bytes[pos++] = (byte) '"';
     position = pos;
   }

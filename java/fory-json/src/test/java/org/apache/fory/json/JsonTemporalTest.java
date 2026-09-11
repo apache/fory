@@ -1272,6 +1272,16 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeCalendarComponents() {
+    for (int month = 1; month <= 12; month++) {
+      int days = LocalDate.of(2024, month, 1).lengthOfMonth();
+      for (int day = 1; day <= days; day++) {
+        assertWriter(ScalarCodecs.LocalDateCodec.INSTANCE, LocalDate.of(2024, month, day));
+      }
+    }
+  }
+
+  @Test
   public void writeTemporalFormats() {
     int[] years = {-999999999, -1, 0, 1, 9999, 10000, 999999999};
     int[] nanos = {
