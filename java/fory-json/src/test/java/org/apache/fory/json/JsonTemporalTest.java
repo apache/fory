@@ -786,6 +786,26 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readZonedCalendar() {
+    ZoneId[] zones = {ZoneId.of("Europe/Paris"), ZoneId.of("America/New_York"), ZoneId.of("UTC")};
+    for (int year : new int[] {0, 1, 399, 400, 1970, 2000, 2024, 9999}) {
+      for (int month = 1; month <= 12; month++) {
+        LocalDateTime dateTime = LocalDateTime.of(year, month, 1, 0, 0, 0, 123456789);
+        for (ZoneId zone : zones) {
+          for (ZoneOffset offset :
+              new ZoneOffset[] {ZoneOffset.UTC, ZoneOffset.MIN, ZoneOffset.MAX}) {
+            String text = dateTime.toString() + offset + '[' + zone.getId() + ']';
+            assertToken(
+                ScalarCodecs.ZonedDateTimeCodec.INSTANCE,
+                text,
+                ZonedDateTime.ofInstant(dateTime, offset, zone));
+          }
+        }
+      }
+    }
+  }
+
+  @Test
   public void readZonedTransitions() {
     for (String id :
         new String[] {

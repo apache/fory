@@ -2536,7 +2536,14 @@ public final class Utf8JsonReader extends JsonReader {
     if (end > limit - 2 || bytes[end] != 'Z' || bytes[end + 1] != '"') {
       return null;
     }
-    // Neri and Schneider, Proposition 6.2: https://arxiv.org/abs/2102.06959.
+    int epochDay = epochDay(year, month, day);
+    position = end + 2;
+    return instant(epochDay * 86400L + hour * 3600 + minute * 60 + second, nano);
+  }
+
+  private static int epochDay(int year, int month, int day) {
+    // Both component parsers prove a four-digit year. Neri and Schneider, Proposition 6.2:
+    // https://arxiv.org/abs/2102.06959.
     // Moving four-digit years forward one Gregorian cycle keeps January/February of year zero
     // nonnegative. The epoch adjustment removes that cycle, and every product fits an int.
     int marchYear = year + 400;
@@ -2546,15 +2553,12 @@ public final class Utf8JsonReader extends JsonReader {
       marchMonth += 12;
     }
     int century = marchYear / 100;
-    int epochDay =
-        ((1461 * marchYear) >>> 2)
-            - century
-            + (century >>> 2)
-            + ((979 * marchMonth - 2919) >>> 5)
-            + day
-            - 865566;
-    position = end + 2;
-    return instant(epochDay * 86400L + hour * 3600 + minute * 60 + second, nano);
+    return ((1461 * marchYear) >>> 2)
+        - century
+        + (century >>> 2)
+        + ((979 * marchMonth - 2919) >>> 5)
+        + day
+        - 865566;
   }
 
   private static Instant instant(long seconds, int nano) {
@@ -2813,7 +2817,11 @@ public final class Utf8JsonReader extends JsonReader {
     }
     // The explicit offset determines the instant, including gaps and overlaps. An equal offset
     // at that instant proves the parsed local date/time is already correct, so it can be reused.
-    Instant instant = dateTime.toInstant(offset);
+    long seconds =
+        epochDay(dateTime.getYear(), dateTime.getMonthValue(), dateTime.getDayOfMonth()) * 86400L
+            + dateTime.toLocalTime().toSecondOfDay()
+            - offset.getTotalSeconds();
+    Instant instant = Instant.ofEpochSecond(seconds, dateTime.getNano());
     if (!zone.getRules().getOffset(instant).equals(offset)) {
       return ZonedDateTime.ofInstant(instant, zone);
     }
