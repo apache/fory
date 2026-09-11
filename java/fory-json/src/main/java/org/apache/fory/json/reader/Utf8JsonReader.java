@@ -1774,7 +1774,40 @@ public final class Utf8JsonReader extends JsonReader {
     } else {
       return readFloatFallback(start);
     }
-    return readPositiveFloatTail(bytes, offset, inputLimit, start, unscaled);
+    int scale = 0;
+    if (offset < inputLimit && bytes[offset] == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset + 1 < inputLimit) {
+        int high = bytes[offset] - '0';
+        int low = bytes[offset + 1] - '0';
+        if ((high | low | (9 - high) | (9 - low)) < 0) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (!canAppendTwoDigits(unscaled, pair)) {
+          return readFloatFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        scale += 2;
+        offset += 2;
+      }
+      if (offset < inputLimit) {
+        int digit = bytes[offset] - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (!canAppendDigit(unscaled, digit)) {
+            return readFloatFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          scale++;
+          offset++;
+        }
+      }
+      if (offset == fractionStart) {
+        return readFloatFallback(start);
+      }
+    }
+    return finishFloatToken(bytes, offset, inputLimit, start, unscaled, scale);
   }
 
   private float readSignedFloatToken(int start) {
@@ -1823,49 +1856,6 @@ public final class Utf8JsonReader extends JsonReader {
     } else {
       return readFloatFallback(start);
     }
-    return readSignedFloatTail(bytes, offset, inputLimit, start, unscaled);
-  }
-
-  private float readPositiveFloatTail(
-      byte[] bytes, int offset, int inputLimit, int start, long unscaled) {
-    int scale = 0;
-    if (offset < inputLimit && bytes[offset] == '.') {
-      offset++;
-      int fractionStart = offset;
-      while (offset + 1 < inputLimit) {
-        int high = bytes[offset] - '0';
-        int low = bytes[offset + 1] - '0';
-        if ((high | low | (9 - high) | (9 - low)) < 0) {
-          break;
-        }
-        int pair = high * 10 + low;
-        if (!canAppendTwoDigits(unscaled, pair)) {
-          return readFloatFallback(start);
-        }
-        unscaled = unscaled * 100 + pair;
-        scale += 2;
-        offset += 2;
-      }
-      if (offset < inputLimit) {
-        int digit = bytes[offset] - '0';
-        if (digit >= 0 && digit <= 9) {
-          if (!canAppendDigit(unscaled, digit)) {
-            return readFloatFallback(start);
-          }
-          unscaled = unscaled * 10 + digit;
-          scale++;
-          offset++;
-        }
-      }
-      if (offset == fractionStart) {
-        return readFloatFallback(start);
-      }
-    }
-    return finishFloatToken(bytes, offset, inputLimit, start, unscaled, scale);
-  }
-
-  private float readSignedFloatTail(
-      byte[] bytes, int offset, int inputLimit, int start, long unscaled) {
     int scale = 0;
     if (offset < inputLimit && bytes[offset] == '.') {
       offset++;
