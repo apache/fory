@@ -300,6 +300,54 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readPeriodSlices() {
+    int[] amounts = {Integer.MIN_VALUE, -1000000000, -1, 0, 1, 1000000000, Integer.MAX_VALUE};
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int years : amounts) {
+      for (int months : amounts) {
+        for (int days : amounts) {
+          Period expected = Period.of(years, months, days);
+          String text = expected.toString();
+          assertToken(ScalarCodecs.PeriodCodec.INSTANCE, text, expected);
+          byte[] token = ('"' + text + '"').getBytes(StandardCharsets.US_ASCII);
+          for (int offset = 0; offset < 8; offset++) {
+            byte[] input = new byte[offset + token.length + 8];
+            System.arraycopy(token, 0, input, offset, token.length);
+            for (int length = 0; length < token.length; length++) {
+              reader.reset(input, offset, length);
+              assertThrows(ForyJsonException.class, reader::readPeriod);
+            }
+            reader.reset(input, offset, token.length);
+            assertEquals(reader.readPeriod(), expected);
+            reader.finish();
+          }
+          reader.reset(('"' + text + "\" 17").getBytes(StandardCharsets.US_ASCII));
+          assertEquals(reader.readPeriod(), expected);
+          assertEquals(reader.readInt(), 17);
+        }
+      }
+    }
+    for (String text :
+        new String[] {
+          "P+1Y+2M+3D", "P01Y002M0003D", "P-00Y-01M-002D", "P2W", "-P1Y2M", "p1y", "P0Y0M0D"
+        }) {
+      assertToken(ScalarCodecs.PeriodCodec.INSTANCE, text, Period.parse(text));
+    }
+    assertToken(ScalarCodecs.PeriodCodec.INSTANCE, "\\u00501\\u00592M3D", Period.of(1, 2, 3));
+    ForyJson json = ForyJson.builder().build();
+    for (String text :
+        new String[] {
+          "P", "P1D1Y", "P1Y1Y", "P2147483648D", "P-2147483649M", "P1.0Y", "P1e0D", "P1Y\\x"
+        }) {
+      byte[] token = ('"' + text + '"').getBytes(StandardCharsets.UTF_8);
+      assertThrows(ForyJsonException.class, () -> json.fromJson(token, Period.class));
+      assertEquals(
+          json.fromJson("\"P1Y2M3D\"".getBytes(StandardCharsets.UTF_8), Period.class),
+          Period.of(1, 2, 3));
+    }
+  }
+
+  @Test
   public void readTemporalGrammar() {
     for (String text :
         new String[] {"00:00", "23:59:59", "12:30:45.", "12:30:45.1", "12:30:45.000000001"}) {

@@ -29,6 +29,7 @@ import java.time.LocalTime;
 import java.time.MonthDay;
 import java.time.OffsetDateTime;
 import java.time.OffsetTime;
+import java.time.Period;
 import java.time.Year;
 import java.time.YearMonth;
 import java.time.ZoneId;
@@ -37,6 +38,7 @@ import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.UUID;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
@@ -2582,6 +2584,65 @@ public final class Utf8JsonReader extends JsonReader {
     Duration value = Duration.ofSeconds(seconds, nanos);
     position = offset + 1;
     return value;
+  }
+
+  @Override
+  public Period readPeriod() {
+    skipWhitespaceFast();
+    int mark = position;
+    try {
+      Period value = tryReadPeriod();
+      if (value != null) {
+        return value;
+      }
+    } catch (ForyJsonException e) {
+      // ISO components also allow plus signs and leading zeros, unlike JSON integers.
+    }
+    position = mark;
+    return super.readPeriod();
+  }
+
+  private Period tryReadPeriod() {
+    byte[] bytes = input;
+    int limit = inputLimit;
+    int offset = position;
+    if (offset > limit - 5 || bytes[offset] != '"' || bytes[offset + 1] != 'P') {
+      return null;
+    }
+    position = offset + 2;
+    int previousUnit = 0;
+    int years = 0;
+    int months = 0;
+    int days = 0;
+    while (position < limit && bytes[position] != '"') {
+      int amount = readIntToken();
+      if (position == limit) {
+        return null;
+      }
+      int suffix = bytes[position++];
+      int unit;
+      if (suffix == 'Y') {
+        unit = 1;
+        years = amount;
+      } else if (suffix == 'M') {
+        unit = 2;
+        months = amount;
+      } else if (suffix == 'D') {
+        unit = 3;
+        days = amount;
+      } else {
+        return null;
+      }
+      if (unit <= previousUnit) {
+        return null;
+      }
+      previousUnit = unit;
+    }
+    if (previousUnit == 0 || position == limit) {
+      return null;
+    }
+    position++;
+    return Period.of(years, months, days);
   }
 
   @Override
