@@ -2532,21 +2532,23 @@ public final class Utf8JsonReader extends JsonReader {
     if (end > limit - 2 || bytes[end] != 'Z' || bytes[end + 1] != '"') {
       return null;
     }
-    // March-based years put each leap day at the end of its year. Four-digit years keep all
-    // day arithmetic in int range; January/February of year zero belong to the preceding era.
-    int marchYear = month <= 2 ? year - 1 : year;
-    int era = marchYear < 0 ? -1 : marchYear / 400;
-    int yearOfEra = marchYear - era * 400;
-    int marchMonth = month > 2 ? month - 3 : month + 9;
+    // Neri and Schneider, Proposition 6.2: https://arxiv.org/abs/2102.06959.
+    // Moving four-digit years forward one Gregorian cycle keeps January/February of year zero
+    // nonnegative. The epoch adjustment removes that cycle, and every product fits an int.
+    int marchYear = year + 400;
+    int marchMonth = month;
+    if (month <= 2) {
+      marchYear--;
+      marchMonth += 12;
+    }
+    int century = marchYear / 100;
     int epochDay =
-        era * 146097
-            + yearOfEra * 365
-            + yearOfEra / 4
-            - yearOfEra / 100
-            + (153 * marchMonth + 2) / 5
+        ((1461 * marchYear) >>> 2)
+            - century
+            + (century >>> 2)
+            + ((979 * marchMonth - 2919) >>> 5)
             + day
-            - 1
-            - 719468;
+            - 865566;
     position = end + 2;
     return instant(epochDay * 86400L + hour * 3600 + minute * 60 + second, nano);
   }

@@ -628,7 +628,7 @@ public class JsonTemporalTest extends ForyJsonTestModels {
       int year = index < 400 ? index : extraYears[index - 400];
       for (int month = 1; month <= 12; month++) {
         LocalDate first = LocalDate.of(year, month, 1);
-        for (int day : new int[] {1, first.lengthOfMonth()}) {
+        for (int day = 1; day <= first.lengthOfMonth(); day++) {
           Instant expected =
               LocalDateTime.of(
                       year,
