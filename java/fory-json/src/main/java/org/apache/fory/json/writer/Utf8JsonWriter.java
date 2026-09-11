@@ -777,7 +777,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     }
     boolean region = !value.getZone().equals(value.getOffset());
     String zoneId = value.getZone().getId();
-    int additional = 42 + zoneId.length();
+    int zoneIdLength = zoneId.length();
+    int additional = 42 + zoneIdLength;
     int pos = position;
     if (pos + additional > buffer.length) {
       grow(additional);
@@ -790,9 +791,15 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     pos = writeOffsetBytes(bytes, pos, value.getOffset());
     if (region) {
       bytes[pos++] = '[';
-      // ZoneId's region syntax is ASCII and excludes JSON quoting and escape characters.
-      for (int i = 0; i < zoneId.length(); i++) {
-        bytes[pos++] = (byte) zoneId.charAt(i);
+      // ZoneId's canonical region syntax is ASCII. The enclosing reservation includes the full ID.
+      byte[] zoneBytes = STRING_BYTES_BACKED ? StringSerializer.getStringBytes(zoneId) : null;
+      if (zoneBytes != null && zoneBytes.length == zoneIdLength) {
+        System.arraycopy(zoneBytes, 0, bytes, pos, zoneIdLength);
+        pos += zoneIdLength;
+      } else {
+        for (int i = 0; i < zoneIdLength; i++) {
+          bytes[pos++] = (byte) zoneId.charAt(i);
+        }
       }
       bytes[pos++] = ']';
     }

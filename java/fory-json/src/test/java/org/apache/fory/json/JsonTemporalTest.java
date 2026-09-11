@@ -978,6 +978,38 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeZonedRegions() {
+    Set<ZoneId> zones = new HashSet<>();
+    for (String id : ZoneId.getAvailableZoneIds()) {
+      zones.add(ZoneId.of(id));
+    }
+    zones.add(ZoneOffset.UTC);
+    zones.add(ZoneOffset.ofHoursMinutesSeconds(-7, -13, -29));
+    for (ZoneId zone : zones) {
+      for (int nanos : new int[] {0, 1, 123456789}) {
+        ZonedDateTime value = LocalDateTime.of(2024, 2, 29, 12, 13, 14, nanos).atZone(zone);
+        StringJsonWriter string = newStringWriter(new byte[1]);
+        string.writeZonedDateTime(value);
+        String expected = string.toJson();
+        for (int capacity :
+            new int[] {0, 1, expected.length() - 1, expected.length(), expected.length() + 1}) {
+          Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+          writer.writeArrayStart();
+          writer.writeZonedDateTime(value);
+          writer.writeComma(1);
+          writer.writeInt(17);
+          writer.writeArrayEnd();
+          assertEquals(
+              new String(writer.toJsonBytes(), StandardCharsets.UTF_8), "[" + expected + ",17]");
+          writer.reset();
+          writer.writeZonedDateTime(value);
+          assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+        }
+      }
+    }
+  }
+
+  @Test
   public void writeOffsetTokens() {
     LocalTime time = LocalTime.of(12, 34, 56, 123456789);
     for (int seconds :
