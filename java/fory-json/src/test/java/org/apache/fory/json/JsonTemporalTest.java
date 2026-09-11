@@ -56,6 +56,27 @@ import org.testng.annotations.Test;
 
 public class JsonTemporalTest extends ForyJsonTestModels {
   @Test
+  public void readMonthDayComponents() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int month = 0; month <= 13; month++) {
+      for (int day = 0; day <= 32; day++) {
+        String token = String.format(Locale.ROOT, "\"--%02d-%02d\" 17", month, day);
+        reader.reset(token.getBytes(StandardCharsets.US_ASCII));
+        MonthDay expected;
+        try {
+          expected = MonthDay.of(month, day);
+        } catch (java.time.DateTimeException e) {
+          assertThrows(RuntimeException.class, reader::readMonthDay);
+          continue;
+        }
+        assertEquals(reader.readMonthDay(), expected);
+        assertEquals(reader.readInt(), 17);
+        reader.finish();
+      }
+    }
+  }
+
+  @Test
   public void readYearMonthComponents() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
     for (int year = 0; year <= 9999; year++) {

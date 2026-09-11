@@ -74,6 +74,7 @@ public final class Utf8JsonReader extends JsonReader {
   private static final MethodHandle LOCAL_TIME_FACTORY = localTimeFactory();
   private static final MethodHandle LOCAL_DATE_FACTORY = localDateFactory();
   private static final MethodHandle YEAR_MONTH_CONSTRUCTOR = yearMonthConstructor();
+  private static final MethodHandle MONTH_DAY_CONSTRUCTOR = monthDayConstructor();
   private static final int[] NANO_SCALE = {
     1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000
   };
@@ -2921,10 +2922,39 @@ public final class Utf8JsonReader extends JsonReader {
       int day = parse2(bytes, offset + 6);
       if (month >= 0 && day >= 0) {
         position = offset + 9;
-        return MonthDay.of(month, day);
+        return monthDay(month, day);
       }
     }
     return super.readMonthDay();
+  }
+
+  private static MonthDay monthDay(int month, int day) {
+    // Every month contains days 1 through 28. The JDK factory keeps ownership of the remaining
+    // calendar cases, including February 29, and of invalid components.
+    if (MONTH_DAY_CONSTRUCTOR == null || month < 1 || month > 12 || day < 1 || day > 28) {
+      return MonthDay.of(month, day);
+    }
+    try {
+      return (MonthDay) MONTH_DAY_CONSTRUCTOR.invokeExact(month, day);
+    } catch (ThreadDeath e) {
+      throw e;
+    } catch (VirtualMachineError e) {
+      throw e;
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot construct JSON month-day", e);
+    }
+  }
+
+  private static MethodHandle monthDayConstructor() {
+    if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return null;
+    }
+    try {
+      return _JDKAccess._trustedLookup(MonthDay.class)
+          .findConstructor(MonthDay.class, MethodType.methodType(void.class, int.class, int.class));
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      return null;
+    }
   }
 
   public LocalDate readIsoLocalDate() {
