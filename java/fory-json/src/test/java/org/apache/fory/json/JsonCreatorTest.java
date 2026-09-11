@@ -236,6 +236,43 @@ public class JsonCreatorTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void creatorFieldWhitespace() {
+    ForyJson json = newJson();
+    for (String space : new String[] {"", " ", "\n  ", "\t", "\r\n"}) {
+      String input =
+          "{" + space + "\"id\"" + space + ": 7," + space + "\"name\"" + space + ":\"alice\"}";
+      User value = json.fromJson(input.getBytes(StandardCharsets.UTF_8), User.class);
+      assertEquals(value.id, 7L);
+      assertEquals(value.name, "alice");
+      PrefixCreator prefix =
+          json.fromJson(
+              ("{" + space + "\"abcOne\"" + space + ":3," + space + "\"abcTwo\"" + space + ":4}")
+                  .getBytes(StandardCharsets.UTF_8),
+              PrefixCreator.class);
+      assertEquals(prefix.abcOne, 3);
+      assertEquals(prefix.abcTwo, 4);
+    }
+    for (String input :
+        new String[] {
+          "{ \"id\" : 7, \"unknown\" : [1,{\"value\":2}], \"name\" : \"alice\"}",
+          "{ \"name\" : \"alice\", \"id\" : 7}",
+          "{ \"id\" : 1, \"name\" : \"alice\", \"id\" : 7}",
+          "{ \"i\\u0064\" : 7, \"name\" : \"alice\"}"
+        }) {
+      User value = json.fromJson(input.getBytes(StandardCharsets.UTF_8), User.class);
+      assertEquals(value.id, 7L);
+      assertEquals(value.name, "alice");
+    }
+    for (String input : new String[] {"{ \"id\" 7}", "{ \"id\" : null}", "{ \"id\" : 7, "}) {
+      assertThrows(
+          ForyJsonException.class,
+          () -> json.fromJson(input.getBytes(StandardCharsets.UTF_8), User.class));
+      assertEquals(
+          json.fromJson("{ \"id\" : 9}".getBytes(StandardCharsets.UTF_8), User.class).id, 9L);
+    }
+  }
+
+  @Test
   public void malformedFieldNames() {
     ForyJson json = newJson();
     assertThrows(
