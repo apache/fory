@@ -267,8 +267,16 @@ public class JsonTemporalTest extends ForyJsonTestModels {
 
   @Test
   public void readNullableOffsetTime() {
-    JsonValueCodec<OffsetTime> codec = ScalarCodecs.OffsetTimeCodec.INSTANCE;
-    OffsetTime value = OffsetTime.of(1, 2, 3, 4, ZoneOffset.ofHours(5));
+    assertNullableTemporal(
+        ScalarCodecs.OffsetTimeCodec.INSTANCE, OffsetTime.of(1, 2, 3, 4, ZoneOffset.ofHours(5)));
+  }
+
+  @Test
+  public void readNullableInstant() {
+    assertNullableTemporal(ScalarCodecs.InstantCodec.INSTANCE, Instant.ofEpochSecond(-123456, 789));
+  }
+
+  private static <T> void assertNullableTemporal(JsonValueCodec<T> codec, T value) {
     for (String prefix : new String[] {"", " ", "\t\r\n"}) {
       for (boolean isNull : new boolean[] {true, false}) {
         String token = prefix + (isNull ? "null" : '"' + value.toString() + '"') + ",17";
@@ -276,7 +284,7 @@ public class JsonTemporalTest extends ForyJsonTestModels {
         Utf8JsonReader utf8 = newUtf8Reader(bytes);
         Latin1JsonReader latin1 = newLatin1Reader(bytes);
         Utf16JsonReader utf16 = newUtf16Reader(token);
-        OffsetTime expected = isNull ? null : value;
+        T expected = isNull ? null : value;
         assertEquals(codec.readUtf8(utf8), expected);
         assertEquals(codec.readLatin1(latin1), expected);
         assertEquals(codec.readUtf16(utf16), expected);

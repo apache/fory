@@ -1950,17 +1950,17 @@ public final class ScalarCodecs {
 
     @Override
     public Instant readUtf8(Utf8JsonReader reader) {
-      return reader.tryReadNullToken() ? null : reader.readIsoInstant();
+      return reader.tryReadNextNullToken() ? null : reader.readIsoInstant();
     }
 
     @Override
     public Instant readLatin1(Latin1JsonReader reader) {
-      return reader.tryReadNullToken() ? null : reader.readIsoInstant();
+      return reader.tryReadNextNullToken() ? null : reader.readIsoInstant();
     }
 
     @Override
     public Instant readUtf16(Utf16JsonReader reader) {
-      return reader.tryReadNullToken() ? null : reader.readIsoInstant();
+      return reader.tryReadNextNullToken() ? null : reader.readIsoInstant();
     }
   }
 
