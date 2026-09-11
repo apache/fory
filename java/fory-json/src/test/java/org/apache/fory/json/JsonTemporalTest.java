@@ -43,6 +43,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.zone.ZoneOffsetTransition;
 import java.time.zone.ZoneRules;
 import java.time.zone.ZoneRulesProvider;
 import java.util.Arrays;
@@ -682,6 +683,49 @@ public class JsonTemporalTest extends ForyJsonTestModels {
           json.fromJson(
               "\"1970-01-01T00:00:00Z\"".getBytes(StandardCharsets.US_ASCII), Instant.class),
           Instant.EPOCH);
+    }
+  }
+
+  @Test
+  public void readZonedTransitions() {
+    for (String id :
+        new String[] {
+          "Europe/Paris",
+          "America/New_York",
+          "Australia/Lord_Howe",
+          "Pacific/Apia",
+          "Asia/Kathmandu"
+        }) {
+      ZoneId zone = ZoneId.of(id);
+      for (int year : new int[] {1890, 1910, 1940, 1970, 1990, 2011, 2024, 2100}) {
+        Instant probe = LocalDate.of(year, 1, 1).atStartOfDay().toInstant(ZoneOffset.UTC);
+        ZoneOffsetTransition transition = zone.getRules().nextTransition(probe);
+        if (transition == null) {
+          continue;
+        }
+        for (LocalDateTime boundary :
+            new LocalDateTime[] {transition.getDateTimeBefore(), transition.getDateTimeAfter()}) {
+          for (int seconds : new int[] {-1, 0, 1, 1800}) {
+            LocalDateTime dateTime = boundary.plusSeconds(seconds).withNano(123456789);
+            for (ZoneOffset offset :
+                new ZoneOffset[] {
+                  transition.getOffsetBefore(),
+                  transition.getOffsetAfter(),
+                  ZoneOffset.UTC,
+                  ZoneOffset.MAX
+                }) {
+              ZonedDateTime expected = ZonedDateTime.ofInstant(dateTime, offset, zone);
+              String text = dateTime.toString() + offset + "[" + id + "]";
+              assertToken(ScalarCodecs.ZonedDateTimeCodec.INSTANCE, text, expected);
+              Utf8JsonReader reader =
+                  newUtf8Reader(("\"" + text + "\",17").getBytes(StandardCharsets.UTF_8));
+              assertEquals(reader.readZonedDateTime(), expected);
+              reader.expect(',');
+              assertEquals(reader.readInt(), 17);
+            }
+          }
+        }
+      }
     }
   }
 

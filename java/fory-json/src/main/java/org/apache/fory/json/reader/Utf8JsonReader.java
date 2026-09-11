@@ -75,6 +75,7 @@ public final class Utf8JsonReader extends JsonReader {
   private static final MethodHandle LOCAL_DATE_FACTORY = localDateFactory();
   private static final MethodHandle YEAR_MONTH_CONSTRUCTOR = yearMonthConstructor();
   private static final MethodHandle MONTH_DAY_CONSTRUCTOR = monthDayConstructor();
+  private static final MethodHandle ZONED_DATE_TIME_CONSTRUCTOR = zonedDateTimeConstructor();
   private static final int[] NANO_SCALE = {
     1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000
   };
@@ -2797,14 +2798,48 @@ public final class Utf8JsonReader extends JsonReader {
           if (end + 1 < inputLimit && input[end] == ']' && input[end + 1] == '"') {
             ZoneId zone = ZoneId.of(newLatin1String(start, end));
             position = end + 2;
-            // Resolve the explicit offset before applying region rules, also across DST gaps.
-            return ZonedDateTime.ofInstant(dateTime, offset, zone);
+            return zonedDateTime(dateTime, offset, zone);
           }
         }
       }
     }
     position = mark;
     return super.readZonedDateTime();
+  }
+
+  private static ZonedDateTime zonedDateTime(
+      LocalDateTime dateTime, ZoneOffset offset, ZoneId zone) {
+    if (ZONED_DATE_TIME_CONSTRUCTOR == null) {
+      return ZonedDateTime.ofInstant(dateTime, offset, zone);
+    }
+    // The explicit offset determines the instant, including gaps and overlaps. An equal offset
+    // at that instant proves the parsed local date/time is already correct, so it can be reused.
+    Instant instant = dateTime.toInstant(offset);
+    if (!zone.getRules().getOffset(instant).equals(offset)) {
+      return ZonedDateTime.ofInstant(instant, zone);
+    }
+    try {
+      return (ZonedDateTime) ZONED_DATE_TIME_CONSTRUCTOR.invokeExact(dateTime, offset, zone);
+    } catch (ThreadDeath | VirtualMachineError e) {
+      throw e;
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot construct JSON zoned date-time", e);
+    }
+  }
+
+  private static MethodHandle zonedDateTimeConstructor() {
+    if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return null;
+    }
+    try {
+      return _JDKAccess._trustedLookup(ZonedDateTime.class)
+          .findConstructor(
+              ZonedDateTime.class,
+              MethodType.methodType(
+                  void.class, LocalDateTime.class, ZoneOffset.class, ZoneId.class));
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      return null;
+    }
   }
 
   @Override
