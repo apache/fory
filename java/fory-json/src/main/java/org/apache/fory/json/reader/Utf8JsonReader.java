@@ -1753,12 +1753,12 @@ public final class Utf8JsonReader extends JsonReader {
       unscaled = ch - '0';
       offset++;
       while (offset + 1 < inputLimit) {
-        int high = bytes[offset] - '0';
-        int low = bytes[offset + 1] - '0';
-        if ((high | low | (9 - high) | (9 - low)) < 0) {
+        int chunk = (bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8);
+        int digits = chunk - 0x3030; // The two subtractions detect non-digit lanes.
+        if (((digits | (0x3939 - chunk)) & 0x8080) != 0) {
           break;
         }
-        int pair = high * 10 + low;
+        int pair = (digits & 0xff) * 10 + (digits >>> 8);
         if (!canAppendTwoDigits(unscaled, pair)) {
           return readFloatFallback(start);
         }
@@ -1783,12 +1783,12 @@ public final class Utf8JsonReader extends JsonReader {
       offset++;
       int fractionStart = offset;
       while (offset + 1 < inputLimit) {
-        int high = bytes[offset] - '0';
-        int low = bytes[offset + 1] - '0';
-        if ((high | low | (9 - high) | (9 - low)) < 0) {
+        int chunk = (bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8);
+        int digits = chunk - 0x3030;
+        if (((digits | (0x3939 - chunk)) & 0x8080) != 0) {
           break;
         }
-        int pair = high * 10 + low;
+        int pair = (digits & 0xff) * 10 + (digits >>> 8);
         if (!canAppendTwoDigits(unscaled, pair)) {
           return readFloatFallback(start);
         }
@@ -1835,12 +1835,12 @@ public final class Utf8JsonReader extends JsonReader {
       unscaled = ch - '0';
       offset++;
       while (offset + 1 < inputLimit) {
-        int high = bytes[offset] - '0';
-        int low = bytes[offset + 1] - '0';
-        if ((high | low | (9 - high) | (9 - low)) < 0) {
+        int chunk = (bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8);
+        int digits = chunk - 0x3030;
+        if (((digits | (0x3939 - chunk)) & 0x8080) != 0) {
           break;
         }
-        int pair = high * 10 + low;
+        int pair = (digits & 0xff) * 10 + (digits >>> 8);
         if (!canAppendTwoDigits(unscaled, pair)) {
           return readFloatFallback(start);
         }
@@ -1865,12 +1865,12 @@ public final class Utf8JsonReader extends JsonReader {
       offset++;
       int fractionStart = offset;
       while (offset + 1 < inputLimit) {
-        int high = bytes[offset] - '0';
-        int low = bytes[offset + 1] - '0';
-        if ((high | low | (9 - high) | (9 - low)) < 0) {
+        int chunk = (bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8);
+        int digits = chunk - 0x3030;
+        if (((digits | (0x3939 - chunk)) & 0x8080) != 0) {
           break;
         }
-        int pair = high * 10 + low;
+        int pair = (digits & 0xff) * 10 + (digits >>> 8);
         if (!canAppendTwoDigits(unscaled, pair)) {
           return readFloatFallback(start);
         }

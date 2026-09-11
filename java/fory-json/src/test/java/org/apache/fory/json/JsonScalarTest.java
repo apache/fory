@@ -2807,6 +2807,38 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readFloatDigitPairs() {
+    ForyJson fory = ForyJson.builder().build();
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (String prefix : new String[] {"1", "-1", "1.", "-1."}) {
+      for (int pair = 0; pair < 100; pair++) {
+        String token = prefix + (char) ('0' + pair / 10) + (char) ('0' + pair % 10) + "7";
+        int expected = Float.floatToRawIntBits(Float.parseFloat(token));
+        for (int offset = 0; offset < 4; offset++) {
+          byte[] bytes = new byte[offset + token.length() + 3];
+          byte[] value = (token + ",17").getBytes(StandardCharsets.US_ASCII);
+          System.arraycopy(value, 0, bytes, offset, value.length);
+          reader.reset(bytes, offset, value.length);
+          assertEquals(Float.floatToRawIntBits(reader.readFloatTokenValue()), expected);
+          reader.expect(',');
+          assertEquals(reader.readInt(), 17);
+        }
+      }
+      for (int ch = 0; ch < 256; ch++) {
+        if ((ch >= '0' && ch <= '9') || ch == '.' || ch == 'e' || ch == 'E') {
+          continue;
+        }
+        for (int lane = 0; lane < 2; lane++) {
+          byte[] bytes = (prefix + "007").getBytes(StandardCharsets.US_ASCII);
+          bytes[prefix.length() + lane] = (byte) ch;
+          expectThrows(ForyJsonException.class, () -> fory.fromJson(bytes, Float.class));
+        }
+      }
+    }
+    assertEquals(fory.fromJson("-1.25e2", Float.class), -125.0f);
+  }
+
+  @Test
   public void readFloatCoefficientBounds() {
     long[] prefixes = {1L << 56, 1L << 59, Long.MAX_VALUE / 100, Long.MAX_VALUE / 10};
     for (long prefix : prefixes) {
