@@ -20,6 +20,8 @@
 package org.apache.fory.json.codec;
 
 import java.io.File;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.URI;
@@ -50,6 +52,8 @@ import java.time.chrono.MinguoDate;
 import java.time.chrono.ThaiBuddhistChronology;
 import java.time.chrono.ThaiBuddhistDate;
 import java.time.format.DateTimeFormatter;
+import java.time.zone.ZoneRules;
+import java.time.zone.ZoneRulesProvider;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Calendar;
@@ -86,6 +90,9 @@ import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.meta.TypeExtMeta;
+import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.StringSerializer;
@@ -2054,6 +2061,8 @@ public final class ScalarCodecs {
   public static final class ZoneIdCodec implements JsonValueCodec<ZoneId> {
     public static final ZoneIdCodec INSTANCE = new ZoneIdCodec();
     private static final boolean STRING_BYTES_BACKED = StringSerializer.isBytesBackedString();
+    private static final MethodHandle REGION_CONSTRUCTOR = regionConstructor();
+    private static final boolean[] REGION_CHARACTERS = regionCharacters();
 
     @Override
     public void writeString(StringJsonWriter writer, ZoneId value) {
@@ -2089,7 +2098,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return ZoneId.of(value);
+        return parseZoneId(value);
       } catch (RuntimeException e) {
         throw invalidString(ZoneId.class, value, e);
       }
@@ -2102,7 +2111,7 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return ZoneId.of(value);
+        return parseZoneId(value);
       } catch (RuntimeException e) {
         throw invalidString(ZoneId.class, value, e);
       }
@@ -2115,9 +2124,66 @@ public final class ScalarCodecs {
         return null;
       }
       try {
-        return ZoneId.of(value);
+        return parseZoneId(value);
       } catch (RuntimeException e) {
         throw invalidString(ZoneId.class, value, e);
+      }
+    }
+
+    private static ZoneId parseZoneId(String value) {
+      if (REGION_CONSTRUCTOR == null
+          || !STRING_BYTES_BACKED
+          || !StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(value))
+          || value.length() < 2
+          || value.startsWith("UT")
+          || value.startsWith("GMT")) {
+        return ZoneId.of(value);
+      }
+      byte[] bytes = StringSerializer.getStringBytes(value);
+      int first = bytes[0] | 0x20;
+      if (first < 'a' || first > 'z') {
+        return ZoneId.of(value);
+      }
+      for (int i = 1; i < bytes.length; i++) {
+        if (!REGION_CHARACTERS[bytes[i] & 0xff]) {
+          return ZoneId.of(value);
+        }
+      }
+      // Validate region syntax before using the constructor. Resolve rules on every read: custom
+      // providers may decline caching, and neither zone IDs nor input values belong in a codec
+      // cache.
+      ZoneRules rules = ZoneRulesProvider.getRules(value, true);
+      try {
+        return (ZoneId) REGION_CONSTRUCTOR.invokeExact(value, rules);
+      } catch (ThreadDeath | VirtualMachineError e) {
+        throw e;
+      } catch (Throwable e) {
+        throw new ForyJsonException("Cannot construct JSON zone ID", e);
+      }
+    }
+
+    private static boolean[] regionCharacters() {
+      boolean[] characters = new boolean[256];
+      String allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/~._+-";
+      for (int i = 0; i < allowed.length(); i++) {
+        characters[allowed.charAt(i)] = true;
+      }
+      return characters;
+    }
+
+    private static MethodHandle regionConstructor() {
+      if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+        return null;
+      }
+      try {
+        Class<?> region =
+            Class.forName("java.time.ZoneRegion", false, ZoneId.class.getClassLoader());
+        return _JDKAccess._trustedLookup(region)
+            .findConstructor(
+                region, MethodType.methodType(void.class, String.class, ZoneRules.class))
+            .asType(MethodType.methodType(ZoneId.class, String.class, ZoneRules.class));
+      } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException e) {
+        return null;
       }
     }
   }

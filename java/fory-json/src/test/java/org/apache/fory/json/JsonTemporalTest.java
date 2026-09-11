@@ -43,8 +43,15 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.zone.ZoneRules;
+import java.time.zone.ZoneRulesProvider;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.NavigableMap;
 import java.util.Random;
+import java.util.Set;
+import java.util.TreeMap;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -55,6 +62,79 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.testng.annotations.Test;
 
 public class JsonTemporalTest extends ForyJsonTestModels {
+  @Test
+  public void readZoneIds() {
+    ScalarCodecs.ZoneIdCodec codec = ScalarCodecs.ZoneIdCodec.INSTANCE;
+    for (String id : ZoneId.getAvailableZoneIds()) {
+      assertToken(codec, id, ZoneId.of(id));
+    }
+    for (String id :
+        new String[] {
+          "UT",
+          "UTC",
+          "GMT",
+          "Z",
+          "+18:00",
+          "-18:00",
+          "+07:13:29",
+          "UT+07:13:29",
+          "UTC-07:13:29",
+          "GMT+07:13:29",
+          "Europe/Paris"
+        }) {
+      ZoneId expected = ZoneId.of(id);
+      assertToken(codec, id, expected);
+      for (int i = 0; i < id.length(); i++) {
+        String escaped =
+            id.substring(0, i)
+                + String.format(Locale.ROOT, "\\u%04x", (int) id.charAt(i))
+                + id.substring(i + 1);
+        assertToken(codec, escaped, expected);
+      }
+    }
+    for (boolean codegen : new boolean[] {false, true}) {
+      ForyJson json = ForyJson.builder().withCodegen(codegen).build();
+      assertEquals(json.fromJson("  null", ZoneId.class), null);
+      for (String id :
+          new String[] {"", "A", "0Paris", "NoSuch/Zone", "Asia/\u4e0a\u6d77", "Europe:Paris"}) {
+        String token = json.toJson(id);
+        assertThrows(RuntimeException.class, () -> json.fromJson(token, ZoneId.class));
+        assertThrows(
+            RuntimeException.class,
+            () -> json.fromJson(token.getBytes(StandardCharsets.UTF_8), ZoneId.class));
+        assertEquals(json.fromJson("\"Europe/Paris\"", ZoneId.class), ZoneId.of("Europe/Paris"));
+      }
+    }
+  }
+
+  @Test
+  public void readZoneProviderRules() {
+    ZoneNameProvider provider = new ZoneNameProvider();
+    ZoneRulesProvider.registerProvider(provider);
+    ScalarCodecs.ZoneIdCodec codec = ScalarCodecs.ZoneIdCodec.INSTANCE;
+    for (String id : provider.ids) {
+      assertToken(codec, id, ZoneId.of(id));
+    }
+    String id = "ForyJson/Rules";
+    ForyJson json = ForyJson.builder().build();
+    String token = json.toJson(id);
+    int queries = provider.queries;
+    ZoneId first = json.fromJson(token, ZoneId.class);
+    assertEquals(provider.queries, queries + 1);
+    assertEquals(first.getRules(), provider.rules);
+    ZoneRules previous = provider.rules;
+    provider.rules = ZoneRules.of(ZoneOffset.ofHours(2));
+    ZoneId second = json.fromJson(token.getBytes(StandardCharsets.UTF_8), ZoneId.class);
+    assertEquals(provider.queries, queries + 2);
+    assertEquals(first.getRules(), previous);
+    assertEquals(second.getRules(), provider.rules);
+    ZoneId lazy = json.fromJson("\"ForyJson/Lazy\"", ZoneId.class);
+    assertEquals(provider.queries, queries + 3);
+    assertEquals(lazy.getRules(), provider.rules);
+    provider.rules = previous;
+    assertEquals(lazy.getRules(), previous);
+  }
+
   @Test
   public void readMonthDayComponents() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
@@ -1003,6 +1083,45 @@ public class JsonTemporalTest extends ForyJsonTestModels {
     assertThrows(RuntimeException.class, () -> codec.readUtf8(newUtf8Reader(bytes)));
     assertThrows(RuntimeException.class, () -> codec.readLatin1(newLatin1Reader(bytes)));
     assertThrows(RuntimeException.class, () -> codec.readUtf16(newUtf16Reader(token)));
+  }
+
+  private static final class ZoneNameProvider extends ZoneRulesProvider {
+    private final Set<String> ids =
+        new HashSet<>(
+            Arrays.asList(
+                "ForyJson/Rules", "ForyJson/Lazy", "UT_ForyJson", "UTC_ForyJson", "GMT_ForyJson"));
+    private ZoneRules rules = ZoneRules.of(ZoneOffset.ofHours(1));
+    private int queries;
+
+    private ZoneNameProvider() {
+      String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/~._+-";
+      for (int i = 0; i < characters.length(); i++) {
+        ids.add("ForyJson/Characters/" + characters.charAt(i));
+      }
+    }
+
+    @Override
+    protected Set<String> provideZoneIds() {
+      return ids;
+    }
+
+    @Override
+    protected ZoneRules provideRules(String zoneId, boolean forCaching) {
+      if (forCaching) {
+        queries++;
+        if (zoneId.equals("ForyJson/Lazy")) {
+          return null;
+        }
+      }
+      return rules;
+    }
+
+    @Override
+    protected NavigableMap<String, ZoneRules> provideVersions(String zoneId) {
+      NavigableMap<String, ZoneRules> versions = new TreeMap<>();
+      versions.put("test", rules);
+      return versions;
+    }
   }
 
   public static class TemporalFields {
