@@ -1788,6 +1788,25 @@ public final class Utf8JsonReader extends JsonReader {
     if (offset < inputLimit && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
+      // This coefficient bound makes any eight-digit suffix Long-safe. Preserve the actual
+      // scale so short fractions retain the small-coefficient conversion path.
+      if (unscaled < LONG_MAX_DIV_EIGHT_DIGITS && offset <= inputLimit - Long.BYTES) {
+        long text = LittleEndian.getInt64(bytes, offset);
+        long digits = text - ASCII_ZEROES;
+        long stop = (digits | (ASCII_NINES - text)) & ASCII_HIGH_BITS;
+        if (stop != 0) {
+          int count = Long.numberOfTrailingZeros(stop) >>> 3;
+          if (count == 0) {
+            return readFloatFallback(start);
+          }
+          digits = (digits & ((1L << (count << 3)) - 1)) << ((Long.BYTES - count) << 3);
+          unscaled = unscaled * LONG_POWERS_OF_TEN[count] + combineEightDigits(digits);
+          return finishFloatToken(bytes, offset + count, inputLimit, start, unscaled, count);
+        }
+        unscaled = unscaled * EIGHT_DIGITS + combineEightDigits(digits);
+        offset += Long.BYTES;
+        scale = Long.BYTES;
+      }
       while (offset + 1 < inputLimit) {
         int chunk = (bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8);
         int digits = chunk - 0x3030;
@@ -1870,6 +1889,25 @@ public final class Utf8JsonReader extends JsonReader {
     if (offset < inputLimit && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
+      // This coefficient bound makes any eight-digit suffix Long-safe. Preserve the actual
+      // scale so short fractions retain the small-coefficient conversion path.
+      if (unscaled < LONG_MAX_DIV_EIGHT_DIGITS && offset <= inputLimit - Long.BYTES) {
+        long text = LittleEndian.getInt64(bytes, offset);
+        long digits = text - ASCII_ZEROES;
+        long stop = (digits | (ASCII_NINES - text)) & ASCII_HIGH_BITS;
+        if (stop != 0) {
+          int count = Long.numberOfTrailingZeros(stop) >>> 3;
+          if (count == 0) {
+            return readFloatFallback(start);
+          }
+          digits = (digits & ((1L << (count << 3)) - 1)) << ((Long.BYTES - count) << 3);
+          unscaled = unscaled * LONG_POWERS_OF_TEN[count] + combineEightDigits(digits);
+          return finishSignedFloatToken(bytes, offset + count, inputLimit, start, unscaled, count);
+        }
+        unscaled = unscaled * EIGHT_DIGITS + combineEightDigits(digits);
+        offset += Long.BYTES;
+        scale = Long.BYTES;
+      }
       while (offset + 1 < inputLimit) {
         int chunk = (bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8);
         int digits = chunk - 0x3030;
