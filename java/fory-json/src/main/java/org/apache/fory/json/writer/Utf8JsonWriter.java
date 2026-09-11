@@ -1160,10 +1160,15 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeIntFieldName(int value) {
-    writeByteRaw((byte) '"');
-    writeInt(value);
-    writeByteRaw((byte) '"');
-    writeByteRaw((byte) ':');
+    // One reservation covers the sign, ten digits, both quotes, and the colon.
+    if (position + 14 > buffer.length) {
+      grow(14);
+    }
+    buffer[position++] = (byte) '"';
+    writeIntNoEnsure(value);
+    buffer[position] = (byte) '"';
+    buffer[position + 1] = (byte) ':';
+    position += 2;
   }
 
   @Override

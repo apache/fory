@@ -167,6 +167,49 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeIntFieldNames() {
+    List<Integer> values = new ArrayList<>();
+    values.add(Integer.MIN_VALUE);
+    values.add(Integer.MAX_VALUE);
+    for (long power = 1; power <= 1_000_000_000; power *= 10) {
+      for (int delta = -1; delta <= 1; delta++) {
+        values.add((int) power + delta);
+        values.add(-((int) power + delta));
+      }
+    }
+    for (int value : values) {
+      for (int capacity : new int[] {0, 1, 13, 14, 15, 16, 32}) {
+        for (int padding : new int[] {0, 1, 7, 13}) {
+          Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+          byte[] spaces = new byte[padding];
+          Arrays.fill(spaces, (byte) ' ');
+          writer.writeRawValue(spaces);
+          writer.writeObjectStart();
+          writer.writeIntFieldName(value);
+          writer.writeBoolean(true);
+          writer.writeComma(1);
+          writer.writeIntFieldName(0);
+          writer.writeBoolean(false);
+          writer.writeObjectEnd();
+          String expected =
+              new String(spaces, StandardCharsets.US_ASCII)
+                  + "{\""
+                  + value
+                  + "\":true,\"0\":false}";
+          assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+          writer.reset();
+          writer.writeObjectStart();
+          writer.writeIntFieldName(value);
+          writer.writeNull();
+          writer.writeObjectEnd();
+          assertEquals(
+              new String(writer.toJsonBytes(), StandardCharsets.UTF_8), "{\"" + value + "\":null}");
+        }
+      }
+    }
+  }
+
+  @Test
   public void writeZoneIds() {
     List<ZoneId> zones = new ArrayList<>();
     for (String id : ZoneId.getAvailableZoneIds()) {
