@@ -2910,17 +2910,18 @@ public final class Utf8JsonReader extends JsonReader {
     skipWhitespaceFast();
     int offset = position;
     byte[] bytes = input;
-    if (offset <= inputLimit - 9
-        && bytes[offset] == '"'
-        && bytes[offset + 1] == '-'
-        && bytes[offset + 2] == '-'
-        && bytes[offset + 5] == '-'
-        && bytes[offset + 8] == '"') {
-      int month = parse2(bytes, offset + 3);
-      int day = parse2(bytes, offset + 6);
-      if (month >= 0 && day >= 0) {
-        position = offset + 9;
-        return monthDay(month, day);
+    if (offset <= inputLimit - 9) {
+      long word = LittleEndian.getInt64(bytes, offset);
+      if ((word & 0x0000ff0000ffffffL) == 0x00002d00002d2d22L && bytes[offset + 8] == '"') {
+        // The nine-byte token proof covers the word and closing quote. Pack MM and DD together
+        // after checking their separators; validated digit pairs cannot carry across lanes.
+        int text = ((int) (word >>> 24) & 0xffff) | ((int) (word >>> 32) & 0xffff0000);
+        int digits = text - (int) ASCII_ZEROES;
+        if (((digits | ((int) ASCII_NINES - text)) & INT_BYTE_HIGH_BITS) == 0) {
+          int pairs = (digits & 0x00ff00ff) * 10 + ((digits >>> 8) & 0x00ff00ff);
+          position = offset + 9;
+          return monthDay(pairs & 0xffff, pairs >>> 16);
+        }
       }
     }
     return super.readMonthDay();

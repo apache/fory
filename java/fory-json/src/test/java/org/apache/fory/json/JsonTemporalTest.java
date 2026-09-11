@@ -158,6 +158,37 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readMonthDayWords() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    byte[] token = "\"--12-31\",17".getBytes(StandardCharsets.US_ASCII);
+    for (int offset = 0; offset < 8; offset++) {
+      byte[] bytes = new byte[offset + token.length + 8];
+      System.arraycopy(token, 0, bytes, offset, token.length);
+      reader.reset(bytes, offset, token.length);
+      assertEquals(reader.readMonthDay(), MonthDay.of(12, 31));
+      reader.expectNextToken(',');
+      assertEquals(reader.readInt(), 17);
+      reader.finish();
+      for (int length = 0; length < 9; length++) {
+        reader.reset(bytes, offset, length);
+        assertThrows(RuntimeException.class, reader::readMonthDay);
+      }
+      for (int lane : new int[] {3, 4, 6, 7}) {
+        byte saved = bytes[offset + lane];
+        for (int value = 0; value < 256; value++) {
+          if (value >= '0' && value <= '9') {
+            continue;
+          }
+          bytes[offset + lane] = (byte) value;
+          reader.reset(bytes, offset, token.length);
+          assertThrows(RuntimeException.class, reader::readMonthDay);
+        }
+        bytes[offset + lane] = saved;
+      }
+    }
+  }
+
+  @Test
   public void readYearMonthComponents() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
     for (int year = 0; year <= 9999; year++) {
