@@ -195,6 +195,25 @@ case class IntMapCodecSlots(
     labels: scala.collection.immutable.IntMap[String]
 )
 
+final class PrefixedLongKeyCodec extends MapKeyCodec {
+  override def toName(key: Object): String = "key:" + key
+
+  override def fromName(name: String): Object = {
+    if (!name.startsWith("key:")) throw new ForyJsonException("Expected prefixed long key")
+    java.lang.Long.valueOf(name.substring(4))
+  }
+}
+
+case class LongMapCodecSlots(
+    @org.apache.fory.json.annotation.JsonCodec(valueCodec = classOf[TaggedStringCodec])
+    values: scala.collection.mutable.LongMap[String],
+    @org.apache.fory.json.annotation.JsonCodec(
+      keyCodec = classOf[PrefixedLongKeyCodec],
+      valueCodec = classOf[TaggedStringCodec]
+    )
+    labels: scala.collection.mutable.LongMap[String]
+)
+
 case class CodecSlots(
     @org.apache.fory.json.annotation.JsonCodec(elementCodec = classOf[TaggedStringCodec])
     tags: List[String],
@@ -709,6 +728,69 @@ class ScalaJsonSuite extends AnyFunSuite {
       assert(text.contains("\"key:-1\":\"tag:minus\""))
       assert(json.fromJson(text, classOf[IntMapCodecSlots]) == value)
       assert(json.fromJson(text.getBytes(UTF_8), classOf[IntMapCodecSlots]) == value)
+    }
+  }
+
+  test("primitive long maps") {
+    val mapType = new TypeRef[scala.collection.mutable.LongMap[String]]() {}
+    val nestedType = new TypeRef[List[scala.collection.mutable.LongMap[String]]]() {}
+    val keys = Seq(Long.MinValue, -1000000000L, -1L, 0L, 1L, 0x100000001L, 0x200000002L, Long.MaxValue)
+    val expected = scala.collection.mutable.LongMap(keys.map(k => k -> k.toString): _*)
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      val input = keys.map(k => "\"" + k + "\":\"" + k + "\"").mkString("{", ",", "}")
+      assert(json.fromJson(input, mapType) == expected)
+      assert(json.fromJson(input.getBytes(UTF_8), mapType) == expected)
+      assert(json.fromJson("[" + input + "]", nestedType) == List(expected))
+      assert(json.fromJson(("[" + input + "]").getBytes(UTF_8), nestedType) == List(expected))
+      assert(json.fromJson("null", mapType) == null)
+      assert(json.fromJson("null".getBytes(UTF_8), mapType) == null)
+      for (text <- Seq("{}", "{\"1\":\"a\",\"1\":\"你\"}", "{\"\\u0031\":\"你\"}", "{\"1\":null}")) {
+        val value =
+          if (text == "{}") scala.collection.mutable.LongMap.empty[String]
+          else scala.collection.mutable.LongMap(1L -> (if (text.contains("null")) null else "你"))
+        assert(json.fromJson(text, mapType) == value)
+        assert(json.fromJson(text.getBytes(UTF_8), mapType) == value)
+      }
+      for (size <- Seq(1023, 1024, 1025)) {
+        val value = scala.collection.mutable.LongMap((0 until size).map(i => i.toLong -> i.toString): _*)
+        val text = json.toJson(value, mapType)
+        assert(json.fromJson(text, mapType) == value)
+        assert(json.fromJson(text.getBytes(UTF_8), mapType) == value)
+      }
+      for (text <- Seq("{\"9223372036854775808\":null}", "{\"1\":", "{\"1\":\"a\",}")) {
+        assertThrows[RuntimeException](json.fromJson(text, mapType))
+        assertThrows[RuntimeException](json.fromJson(text.getBytes(UTF_8), mapType))
+        assert(json.fromJson(input.getBytes(UTF_8), mapType) == expected)
+      }
+    }
+    val bounded = ForyJsonScala.builder().withCodegen(false).withMaxGraphMemoryBytes(48).build()
+    val input = (0 until 1025).map(i => "\"" + i + "\":null").mkString("{", ",", "}")
+    assertThrows[ForyJsonException](bounded.fromJson(input, mapType))
+    assertThrows[ForyJsonException](bounded.fromJson(input.getBytes(UTF_8), mapType))
+    assert(bounded.fromJson("{}".getBytes(UTF_8), mapType).isEmpty)
+    val shallow = ForyJsonScala.builder().withCodegen(false).maxDepth(1).build()
+    assertThrows[ForyJsonException](shallow.fromJson("[{\"1\":null}]", nestedType))
+    assertThrows[ForyJsonException](shallow.fromJson("[{\"1\":null}]".getBytes(UTF_8), nestedType))
+    assert(shallow.fromJson("{}".getBytes(UTF_8), mapType).isEmpty)
+  }
+
+  test("long map codec slots") {
+    val value = LongMapCodecSlots(
+      scala.collection.mutable.LongMap(1L -> "one"),
+      scala.collection.mutable.LongMap(-1L -> "minus")
+    )
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      val text = json.toJson(value)
+      assert(text.contains("\"1\":\"tag:one\""))
+      assert(text.contains("\"key:-1\":\"tag:minus\""))
+      assert(json.fromJson(text, classOf[LongMapCodecSlots]) == value)
+      assert(json.fromJson(text.getBytes(UTF_8), classOf[LongMapCodecSlots]) == value)
     }
   }
 

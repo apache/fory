@@ -601,6 +601,8 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     reader.reserveGraphMemory(ownerBytes)
     if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec])
       return readIntMap(reader)
+    if (kind == ScalaCollectionCodecs.MutableLongMapKind && keyCodec.isInstanceOf[MapCodec.LongKeyCodec])
+      return readLongMap(reader)
     val builder = newBuilder()
     val codec = valueInfo.latin1Reader()
     var size = 0
@@ -625,6 +627,8 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     reader.reserveGraphMemory(ownerBytes)
     if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec])
       return readIntMap(reader)
+    if (kind == ScalaCollectionCodecs.MutableLongMapKind && keyCodec.isInstanceOf[MapCodec.LongKeyCodec])
+      return readLongMap(reader)
     val builder = newBuilder()
     val codec = valueInfo.utf16Reader()
     var size = 0
@@ -649,6 +653,8 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     reader.reserveGraphMemory(ownerBytes)
     if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec])
       return readIntMap(reader)
+    if (kind == ScalaCollectionCodecs.MutableLongMapKind && keyCodec.isInstanceOf[MapCodec.LongKeyCodec])
+      return readLongMap(reader)
     val builder = newBuilder()
     val codec = valueInfo.utf8Reader()
     var size = 0
@@ -666,7 +672,7 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     finish(reader, builder, size)
   }
 
-  // IntMap owns primitive keys. Keep them primitive through insertion; custom key codecs still
+  // Specialized maps own primitive keys. Keep them primitive through insertion; custom key codecs still
   // use the general builder so occurrence-level key conversions retain their semantics.
   private def readIntMap(reader: Latin1JsonReader): scala.collection.Map[Any, Any] = {
     var result = scala.collection.immutable.IntMap.empty[Any]
@@ -719,6 +725,66 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
         val key = reader.readFieldNameInt()
         reader.expectNextToken(':')
         result = result.updated(key, codec.readUtf8(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
+  }
+
+  private def readLongMap(reader: Latin1JsonReader): scala.collection.Map[Any, Any] = {
+    val result = scala.collection.mutable.LongMap.empty[Any]
+    val codec = valueInfo.latin1Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameLong()
+        reader.expectNextToken(':')
+        result.update(key, codec.readLatin1(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
+  }
+
+  private def readLongMap(reader: Utf16JsonReader): scala.collection.Map[Any, Any] = {
+    val result = scala.collection.mutable.LongMap.empty[Any]
+    val codec = valueInfo.utf16Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameLong()
+        reader.expectNextToken(':')
+        result.update(key, codec.readUtf16(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
+  }
+
+  private def readLongMap(reader: Utf8JsonReader): scala.collection.Map[Any, Any] = {
+    val result = scala.collection.mutable.LongMap.empty[Any]
+    val codec = valueInfo.utf8Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameLong()
+        reader.expectNextToken(':')
+        result.update(key, codec.readUtf8(reader))
         size += 1
         more = reader.consumeNextCommaOrEndObject()
       }
