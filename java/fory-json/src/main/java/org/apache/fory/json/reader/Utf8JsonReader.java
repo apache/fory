@@ -3875,20 +3875,25 @@ public final class Utf8JsonReader extends JsonReader {
   private long readQuotedStringHashSlow() {
     byte[] bytes = input;
     int length = inputLimit;
-    if (position >= length || bytes[position++] != '"') {
+    int cursor = position;
+    if (cursor >= length || bytes[cursor++] != '"') {
       throw error("Expected string");
     }
     long hash = JsonFieldNameHash.MAGIC_HASH_CODE;
     long value = 0;
     int nameLength = 0;
     boolean latin1 = true;
-    while (position < length) {
-      int b = bytes[position++] & 0xFF;
+    while (cursor < length) {
+      int b = bytes[cursor++] & 0xFF;
       if (b == '"') {
+        position = cursor;
         return JsonFieldNameHash.finish(hash, value, nameLength, latin1);
       }
       if (b == '\\') {
+        // Escape and UTF-8 decoders own position; ordinary ASCII stays in the local cursor.
+        position = cursor;
         b = readEscapedFieldNameChar();
+        cursor = position;
         if (Character.isHighSurrogate((char) b)) {
           if (latin1) {
             hash = JsonFieldNameHash.hashPacked(value, nameLength);
@@ -3901,6 +3906,7 @@ public final class Utf8JsonReader extends JsonReader {
           }
           position += 2;
           char low = readUnicodeEscape();
+          cursor = position;
           if (!Character.isLowSurrogate(low)) {
             throw error("Unpaired high surrogate escape");
           }
@@ -3913,10 +3919,12 @@ public final class Utf8JsonReader extends JsonReader {
         }
       } else {
         if (b < 0x20) {
-          throw error("Control character in string");
+          throw errorAt("Control character in string", cursor);
         }
         if (b >= 0x80) {
+          position = cursor;
           b = readUtf8CodePoint(b);
+          cursor = position;
           if (b > 0xFFFF) {
             if (latin1) {
               hash = JsonFieldNameHash.hashPacked(value, nameLength);
@@ -3941,7 +3949,7 @@ public final class Utf8JsonReader extends JsonReader {
       hash = JsonFieldNameHash.update(hash, (char) b);
       nameLength++;
     }
-    throw error("Unterminated string");
+    throw errorAt("Unterminated string", cursor);
   }
 
   @Override
