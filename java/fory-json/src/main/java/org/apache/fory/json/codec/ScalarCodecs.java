@@ -3918,6 +3918,7 @@ public final class ScalarCodecs {
     private final int[] tokenSuffixes;
     private final byte[] tokenSuffixLengths;
     private final int[] tokenLengths;
+    private final int[] writeTokenIndexes;
     private final Enum<?>[] values;
     private final Enum<?>[] tokenValues;
     private final int tokenCount;
@@ -3931,6 +3932,7 @@ public final class ScalarCodecs {
       tokenSuffixes = new int[constants.length];
       tokenSuffixLengths = new byte[constants.length];
       tokenLengths = new int[constants.length];
+      writeTokenIndexes = new int[constants.length];
       values = new Enum<?>[constants.length];
       tokenValues = new Enum<?>[constants.length];
       int localTokenCount = 0;
@@ -3948,6 +3950,19 @@ public final class ScalarCodecs {
           tokenSuffixLengths[localTokenCount] = (byte) JsonAsciiToken.suffixLength(tokenLength);
           tokenLengths[localTokenCount] = tokenLength;
           tokenValues[localTokenCount] = constant;
+          boolean ascii = true;
+          for (int j = 0; j < name.length(); j++) {
+            char ch = name.charAt(j);
+            if (ch < 0x20 || ch >= 0x80 || ch == '"' || ch == '\\') {
+              ascii = false;
+              break;
+            }
+          }
+          // Reader tokens are compacted and may contain Latin1 names. Only JSON-safe ASCII
+          // tokens can also serve as raw UTF8 output; retain their index by enum ordinal.
+          if (ascii) {
+            writeTokenIndexes[i] = localTokenCount + 1;
+          }
           localTokenCount++;
         }
       }
@@ -3968,8 +3983,17 @@ public final class ScalarCodecs {
       if (value == null) {
         writer.writeNull();
       } else {
-        writer.writeString(value.name());
+        int index = writeTokenIndex(value);
+        if (index >= 0) {
+          writer.writeRawValue(tokenPrefixes[index], tokenSuffixes[index], tokenLengths[index]);
+        } else {
+          writer.writeString(value.name());
+        }
       }
+    }
+
+    private int writeTokenIndex(Enum<?> value) {
+      return value.getDeclaringClass() == type ? writeTokenIndexes[value.ordinal()] - 1 : -1;
     }
 
     @Override

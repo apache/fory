@@ -80,6 +80,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.data.BoxedScalars;
 import org.apache.fory.json.data.CoreScalarFields;
 import org.apache.fory.json.data.JsonTestData;
@@ -87,6 +88,7 @@ import org.apache.fory.json.data.NaturalObjectValue;
 import org.apache.fory.json.data.NaturalValues;
 import org.apache.fory.json.data.NumericBoundaries;
 import org.apache.fory.json.data.PublicFields;
+import org.apache.fory.json.data.UnicodeKind;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -307,6 +309,59 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(json.toJson(new NaturalValues()), expected);
     assertEquals(
         new String(json.toJsonBytes(new NaturalValues()), StandardCharsets.UTF_8), expected);
+  }
+
+  private enum EnumName {
+    A {
+      @Override
+      public String toString() {
+        return "custom";
+      }
+    },
+    LONG_NAME_FOR_FALLBACK,
+    Café,
+    BC,
+    ABCDEFG,
+    ABCDEFGH,
+    ABCDEFGHI
+  }
+
+  @Test
+  public void writeEnumNames() {
+    for (Class<?> enumType : new Class<?>[] {EnumName.class, UnicodeKind.class}) {
+      ScalarCodecs.EnumCodec codec = new ScalarCodecs.EnumCodec(enumType);
+      List<Enum<?>> values =
+          new ArrayList<>(Arrays.asList((Enum<?>[]) enumType.getEnumConstants()));
+      values.add(Thread.State.RUNNABLE);
+      values.add(null);
+      for (Enum<?> value : values) {
+        String expected = "[" + (value == null ? "null" : "\"" + value.name() + "\"") + ",0]";
+        for (int capacity : new int[] {1, 7, 8, 9, 10, 11, 16}) {
+          Utf8JsonWriter utf8 = newUtf8Writer(new byte[capacity]);
+          utf8.writeArrayStart();
+          codec.writeUtf8(utf8, value);
+          utf8.writeComma(1);
+          utf8.writeInt(0);
+          utf8.writeArrayEnd();
+          assertEquals(new String(utf8.toJsonBytes(), StandardCharsets.UTF_8), expected);
+          for (StringJsonWriter writer :
+              new StringJsonWriter[] {newStringWriter(new byte[capacity]), utf16StringWriter()}) {
+            writer.writeArrayStart();
+            codec.writeString(writer, value);
+            writer.writeComma(1);
+            writer.writeInt(0);
+            writer.writeArrayEnd();
+            assertEquals(writer.toJson(), expected);
+          }
+        }
+      }
+    }
+    ForyJson json = ForyJson.builder().build();
+    assertEquals(
+        json.fromJson(json.toJsonBytes(EnumName.values()), EnumName[].class), EnumName.values());
+    assertEquals(
+        json.fromJson(json.toJsonBytes(UnicodeKind.values()), UnicodeKind[].class),
+        UnicodeKind.values());
   }
 
   @Test(dataProvider = "enableCodegen")
