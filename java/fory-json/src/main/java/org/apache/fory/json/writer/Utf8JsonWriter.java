@@ -43,6 +43,7 @@ import java.time.OffsetTime;
 import java.time.Period;
 import java.time.Year;
 import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
@@ -747,7 +748,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     byte[] bytes = buffer;
     bytes[pos++] = '"';
     pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
-    pos = writeOffsetBytes(bytes, pos, value.getOffset().getTotalSeconds());
+    pos = writeOffsetBytes(bytes, pos, value.getOffset());
     bytes[pos++] = '"';
     position = pos;
   }
@@ -764,7 +765,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
             bytes, pos, value.getYear(), value.getMonthValue(), value.getDayOfMonth());
     bytes[pos++] = 'T';
     pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
-    pos = writeOffsetBytes(bytes, pos, value.getOffset().getTotalSeconds());
+    pos = writeOffsetBytes(bytes, pos, value.getOffset());
     bytes[pos++] = '"';
     position = pos;
   }
@@ -788,7 +789,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
     bytes[pos++] = 'T';
     pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
-    pos = writeOffsetBytes(bytes, pos, value.getOffset().getTotalSeconds());
+    pos = writeOffsetBytes(bytes, pos, value.getOffset());
     if (region) {
       bytes[pos++] = '[';
       // ZoneId's region syntax is ASCII and excludes JSON quoting and escape characters.
@@ -861,29 +862,27 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     return pos;
   }
 
-  private static int writeOffsetBytes(byte[] bytes, int pos, int totalSeconds) {
-    if (totalSeconds == 0) {
-      bytes[pos++] = 'Z';
-      return pos;
+  private static int writeOffsetBytes(byte[] bytes, int pos, ZoneOffset offset) {
+    // ZoneOffset stores its canonical ASCII ID at construction; do not format it again per write.
+    String id = offset.getId();
+    int length = id.length();
+    if (STRING_BYTES_BACKED) {
+      byte[] text = StringSerializer.getStringBytes(id);
+      if (text.length == length) {
+        if (length == 9) {
+          LittleEndian.putInt64(bytes, pos, LittleEndian.getInt64(text, 0));
+          bytes[pos + 8] = text[8];
+        } else if (length == 6) {
+          LittleEndian.putInt32(bytes, pos, LittleEndian.getInt32(text, 0));
+          LittleEndian.putInt32(bytes, pos + 2, LittleEndian.getInt32(text, 2));
+        } else {
+          bytes[pos] = 'Z';
+        }
+        return pos + length;
+      }
     }
-    int seconds = Math.abs(totalSeconds);
-    int hours = seconds / 3600;
-    int minutes = (seconds - hours * 3600) / 60;
-    seconds -= hours * 3600 + minutes * 60;
-    long hourDigits = DIGIT_QUADS[hours] >>> 16;
-    long minuteDigits = DIGIT_QUADS[minutes] >>> 16;
-    // Callers reserve the nine-byte offset form even when the seconds are absent.
-    LittleEndian.putInt64(
-        bytes,
-        pos,
-        (totalSeconds < 0 ? '-' : '+')
-            | (hourDigits << 8)
-            | ((long) ':' << 24)
-            | (minuteDigits << 32));
-    pos += 6;
-    if (seconds != 0) {
-      bytes[pos++] = ':';
-      pos = writeTwoDigits(bytes, pos, seconds);
+    for (int i = 0; i < length; i++) {
+      bytes[pos++] = (byte) id.charAt(i);
     }
     return pos;
   }

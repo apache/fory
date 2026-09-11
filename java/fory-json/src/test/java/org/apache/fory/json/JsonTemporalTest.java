@@ -42,6 +42,7 @@ import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Random;
 import org.apache.fory.json.codec.JsonValueCodec;
@@ -570,6 +571,28 @@ public class JsonTemporalTest extends ForyJsonTestModels {
           writer.writeDuration(value);
           assertEquals(
               new String(writer.toJsonBytes(), StandardCharsets.UTF_8), prefix + string.toJson());
+        }
+      }
+    }
+  }
+
+  @Test
+  public void writeOffsetTokens() {
+    LocalTime time = LocalTime.of(12, 34, 56, 123456789);
+    for (int seconds :
+        new int[] {
+          -64800, -3601, -3600, -3599, -61, -60, -1, 0, 1, 59, 60, 61, 3599, 3600, 64800
+        }) {
+      OffsetTime value = OffsetTime.of(time, ZoneOffset.ofTotalSeconds(seconds));
+      String expected = '"' + DateTimeFormatter.ISO_OFFSET_TIME.format(value) + '"';
+      for (String prefix : new String[] {"", "[0,"}) {
+        for (int capacity : new int[] {1, 28, 29, prefix.length() + expected.length()}) {
+          Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+          writer.writeRawValue(prefix);
+          writer.writeOffsetTime(value);
+          writer.writeArrayEnd();
+          assertEquals(
+              new String(writer.toJsonBytes(), StandardCharsets.UTF_8), prefix + expected + ']');
         }
       }
     }
