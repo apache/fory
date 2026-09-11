@@ -56,6 +56,34 @@ import org.testng.annotations.Test;
 
 public class JsonTemporalTest extends ForyJsonTestModels {
   @Test
+  public void readYearMonthComponents() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int year = 0; year <= 9999; year++) {
+      YearMonth expected = YearMonth.of(year, 1 + year % 12);
+      reader.reset(('"' + expected.toString() + "\" 17").getBytes(StandardCharsets.US_ASCII));
+      assertEquals(reader.readYearMonth(), expected);
+      assertEquals(reader.readInt(), 17);
+      reader.finish();
+    }
+    for (int year : new int[] {-999999999, -1, 0, 1, 9999, 10000, 999999999}) {
+      for (int month = 1; month <= 12; month++) {
+        YearMonth expected = YearMonth.of(year, month);
+        // YearMonth.parse requires a plus on extended positive years, but toString omits it.
+        String text = (year > 9999 ? "+" : "") + expected;
+        assertToken(ScalarCodecs.YearMonthCodec.INSTANCE, text, expected);
+      }
+    }
+    ForyJson json = ForyJson.builder().build();
+    for (String text : new String[] {"0000-00", "2024-13", "9999-99", "+1000000000-01"}) {
+      byte[] token = ('"' + text + '"').getBytes(StandardCharsets.US_ASCII);
+      assertThrows(RuntimeException.class, () -> json.fromJson(token, YearMonth.class));
+      assertEquals(
+          json.fromJson("\"2000-02\"".getBytes(StandardCharsets.US_ASCII), YearMonth.class),
+          YearMonth.of(2000, 2));
+    }
+  }
+
+  @Test
   public void readYearSlices() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
     for (int value : new int[] {0, 1, 999, 1000, 2024, 9999}) {

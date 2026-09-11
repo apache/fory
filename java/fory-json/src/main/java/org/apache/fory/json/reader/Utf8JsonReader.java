@@ -73,6 +73,7 @@ public final class Utf8JsonReader extends JsonReader {
   private static final MethodHandle INSTANT_FACTORY = instantFactory();
   private static final MethodHandle LOCAL_TIME_FACTORY = localTimeFactory();
   private static final MethodHandle LOCAL_DATE_FACTORY = localDateFactory();
+  private static final MethodHandle YEAR_MONTH_CONSTRUCTOR = yearMonthConstructor();
   private static final int[] NANO_SCALE = {
     1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000
   };
@@ -2869,10 +2870,40 @@ public final class Utf8JsonReader extends JsonReader {
       int month = parse2(bytes, offset + 6);
       if (year >= 0 && month >= 0) {
         position = offset + 9;
-        return YearMonth.of(year, month);
+        return yearMonth(year, month);
       }
     }
     return super.readYearMonth();
+  }
+
+  private static YearMonth yearMonth(int year, int month) {
+    // The UTF-8 token parser proves a four-digit year. Validate the month before passing these
+    // components to the constructor, which stores them without repeating the year range check.
+    if (YEAR_MONTH_CONSTRUCTOR == null || month < 1 || month > 12) {
+      return YearMonth.of(year, month);
+    }
+    try {
+      return (YearMonth) YEAR_MONTH_CONSTRUCTOR.invokeExact(year, month);
+    } catch (ThreadDeath e) {
+      throw e;
+    } catch (VirtualMachineError e) {
+      throw e;
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot construct JSON year-month", e);
+    }
+  }
+
+  private static MethodHandle yearMonthConstructor() {
+    if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return null;
+    }
+    try {
+      return _JDKAccess._trustedLookup(YearMonth.class)
+          .findConstructor(
+              YearMonth.class, MethodType.methodType(void.class, int.class, int.class));
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      return null;
+    }
   }
 
   @Override
