@@ -3330,8 +3330,17 @@ public final class Utf8JsonReader extends JsonReader {
     if ((sign != '+' && sign != '-') || start > limit - 6 || bytes[start + 3] != ':') {
       return null;
     }
-    int hours = parse2(bytes, start + 1);
-    int minutes = parse2(bytes, start + 4);
+    // The six-byte prefix bounds the word load. Pack HH:mm's four digit lanes together;
+    // the intervening colon was checked above and does not participate in digit arithmetic.
+    int text = LittleEndian.getInt32(bytes, start + 2);
+    int digitText = (text & 0xffff0000) | ((text & 0xff) << 8) | (bytes[start + 1] & 0xff);
+    int digits = digitText - (int) ASCII_ZEROES;
+    if (((digits | ((int) ASCII_NINES - digitText)) & INT_BYTE_HIGH_BITS) != 0) {
+      return null;
+    }
+    int pairs = (digits * 10 + (digits >>> 8)) & 0x00ff00ff;
+    int hours = pairs & 0xff;
+    int minutes = pairs >>> 16;
     int seconds = 0;
     int end = start + 6;
     if (end < limit && bytes[end] == ':') {
@@ -3341,7 +3350,7 @@ public final class Utf8JsonReader extends JsonReader {
       seconds = parse2(bytes, end + 1);
       end += 3;
     }
-    if (hours < 0 || minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) {
+    if (minutes > 59 || seconds < 0 || seconds > 59) {
       return null;
     }
     int total = hours * 3600 + minutes * 60 + seconds;
