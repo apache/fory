@@ -1047,8 +1047,10 @@ public final class Utf8JsonReader extends JsonReader {
   private static int scanNumberDigits(byte[] bytes, int offset, int limit) {
     while (offset <= limit - 8) {
       long chunk = LittleEndian.getInt64(bytes, offset);
-      if ((((chunk - ASCII_ZEROES) | (ASCII_NINES - chunk)) & ASCII_HIGH_BITS) != 0) {
-        break;
+      long nonDigits = ((chunk - ASCII_ZEROES) | (ASCII_NINES - chunk)) & ASCII_HIGH_BITS;
+      if (nonDigits != 0) {
+        // Borrow may mark later lanes, but the first non-digit lane remains exact.
+        return offset + (Long.numberOfTrailingZeros(nonDigits) >>> 3);
       }
       offset += 8;
     }

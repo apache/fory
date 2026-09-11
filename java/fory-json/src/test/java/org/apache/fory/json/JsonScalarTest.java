@@ -1479,6 +1479,42 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readNumberDigitStops() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int length = 1; length <= 24; length++) {
+      String digits = repeat('1', length);
+      for (String number :
+          new String[] {digits, digits + "." + digits, "1e" + digits, digits + ".1e-" + digits}) {
+        for (int offset = 0; offset < 8; offset++) {
+          byte[] token = (number + ",17").getBytes(StandardCharsets.US_ASCII);
+          byte[] bytes = new byte[offset + token.length];
+          System.arraycopy(token, 0, bytes, offset, token.length);
+          reader.reset(bytes, offset, token.length);
+          assertEquals(reader.readNumberAsString(), number);
+          reader.expect(',');
+          assertEquals(reader.readInt(), 17);
+        }
+      }
+    }
+    for (int lane = 0; lane < 8; lane++) {
+      for (int ch = 0; ch < 256; ch++) {
+        byte[] bytes = "1234567812345678,17".getBytes(StandardCharsets.US_ASCII);
+        bytes[8 + lane] = (byte) ch;
+        Latin1JsonReader reference = newLatin1Reader(bytes);
+        reader.reset(bytes);
+        String expected;
+        try {
+          expected = reference.readNumberAsString();
+        } catch (ForyJsonException e) {
+          assertThrows(ForyJsonException.class, () -> reader.readNumberAsString());
+          continue;
+        }
+        assertEquals(reader.readNumberAsString(), expected);
+      }
+    }
+  }
+
+  @Test
   public void readBigIntegerSlices() {
     Random random = new Random(937);
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
