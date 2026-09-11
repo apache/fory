@@ -68,6 +68,9 @@ public class JsonTemporalTest extends ForyJsonTestModels {
     ScalarCodecs.ZoneIdCodec codec = ScalarCodecs.ZoneIdCodec.INSTANCE;
     for (String id : ZoneId.getAvailableZoneIds()) {
       assertToken(codec, id, ZoneId.of(id));
+      ZoneId decoded =
+          codec.readUtf8(newUtf8Reader(('"' + id + '"').getBytes(StandardCharsets.US_ASCII)));
+      assertEquals(decoded.getId().hashCode(), new String(id.toCharArray()).hashCode());
     }
     for (String id :
         new String[] {

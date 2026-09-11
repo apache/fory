@@ -2062,6 +2062,7 @@ public final class ScalarCodecs {
     public static final ZoneIdCodec INSTANCE = new ZoneIdCodec();
     private static final boolean STRING_BYTES_BACKED = StringSerializer.isBytesBackedString();
     private static final MethodHandle REGION_CONSTRUCTOR = regionConstructor();
+    private static final MethodHandle STRING_HASH_SETTER = stringHashSetter();
     private static final boolean[] REGION_CHARACTERS = regionCharacters();
 
     @Override
@@ -2132,6 +2133,7 @@ public final class ScalarCodecs {
 
     private static ZoneId parseZoneId(String value) {
       if (REGION_CONSTRUCTOR == null
+          || STRING_HASH_SETTER == null
           || !STRING_BYTES_BACKED
           || !StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(value))
           || value.length() < 2) {
@@ -2145,10 +2147,22 @@ public final class ScalarCodecs {
       if (first < 'a' || first > 'z') {
         return ZoneId.of(value);
       }
+      int hash = bytes[0];
       for (int i = 1; i < bytes.length; i++) {
-        if (!REGION_CHARACTERS[bytes[i] & 0xff]) {
+        int ch = bytes[i] & 0xff;
+        if (!REGION_CHARACTERS[ch]) {
           return ZoneId.of(value);
         }
+        hash = 31 * hash + ch;
+      }
+      // The decoded String owns its storage. Compute its standard hash during validation so the
+      // provider lookup does not scan the same characters again; no input or zone is retained.
+      try {
+        STRING_HASH_SETTER.invokeExact(value, hash);
+      } catch (ThreadDeath | VirtualMachineError e) {
+        throw e;
+      } catch (Throwable e) {
+        throw new ForyJsonException("Cannot initialize JSON zone ID hash", e);
       }
       // Validate region syntax before using the constructor. Resolve rules on every read: custom
       // providers may decline caching, and neither zone IDs nor input values belong in a codec
@@ -2203,6 +2217,17 @@ public final class ScalarCodecs {
         characters[allowed.charAt(i)] = true;
       }
       return characters;
+    }
+
+    private static MethodHandle stringHashSetter() {
+      if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+        return null;
+      }
+      try {
+        return _JDKAccess._trustedLookup(String.class).findSetter(String.class, "hash", int.class);
+      } catch (NoSuchFieldException | IllegalAccessException e) {
+        return null;
+      }
     }
 
     private static MethodHandle regionConstructor() {
