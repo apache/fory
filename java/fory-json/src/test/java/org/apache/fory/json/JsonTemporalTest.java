@@ -189,6 +189,26 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeMonthDayWords() {
+    for (int capacity = 0; capacity <= 16; capacity++) {
+      Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+      LocalDate first = LocalDate.of(2000, 1, 1);
+      for (int day = 0; day < 366; day++) {
+        MonthDay value = MonthDay.from(first.plusDays(day));
+        writer.reset();
+        String prefix = "       ".substring(0, day & 7);
+        writer.writeRawValue(prefix);
+        writer.writeMonthDay(value);
+        writer.writeComma(1);
+        writer.writeInt(17);
+        assertEquals(
+            new String(writer.toJsonBytes(), StandardCharsets.US_ASCII),
+            prefix + '"' + value.toString() + "\",17");
+      }
+    }
+  }
+
+  @Test
   public void readYearMonthComponents() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
     for (int year = 0; year <= 9999; year++) {

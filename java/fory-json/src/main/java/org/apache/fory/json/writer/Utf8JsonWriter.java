@@ -834,10 +834,11 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       grow(9);
     }
     byte[] bytes = buffer;
-    int month = DIGIT_QUADS[value.getMonthValue()] >>> 16;
-    int day = DIGIT_QUADS[value.getDayOfMonth()] >>> 16;
+    int digits = DIGIT_QUADS[value.getMonthValue() * 100 + value.getDayOfMonth()];
     LittleEndian.putInt64(
-        bytes, pos, 0x2d2d22L | ((long) month << 24) | ((long) '-' << 40) | ((long) day << 48));
+        bytes,
+        pos,
+        0x00002d00002d2d22L | ((digits & 0xffffL) << 24) | ((digits & 0xffff0000L) << 32));
     pos += 8;
     bytes[pos++] = '"';
     position = pos;
