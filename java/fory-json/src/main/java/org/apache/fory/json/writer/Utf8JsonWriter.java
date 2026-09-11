@@ -777,7 +777,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       writeTemporal(value, DateTimeFormatter.ISO_ZONED_DATE_TIME);
       return;
     }
-    boolean region = !value.getZone().equals(value.getOffset());
+    // Named regions keep their bracketed ID even when their rules have a fixed offset.
+    boolean region = !(value.getZone() instanceof ZoneOffset);
     String zoneId = value.getZone().getId();
     int zoneIdLength = zoneId.length();
     int additional = 42 + zoneIdLength;
