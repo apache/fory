@@ -21,6 +21,7 @@ package org.apache.fory.json.reader;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -2489,6 +2490,98 @@ public final class Utf8JsonReader extends JsonReader {
     }
     position = mark;
     return super.readIsoInstant();
+  }
+
+  @Override
+  public Duration readDuration() {
+    skipWhitespaceFast();
+    int mark = position;
+    try {
+      Duration value = tryReadDuration();
+      if (value != null) {
+        return value;
+      }
+    } catch (ArithmeticException e) {
+      // The existing text path owns overflow reporting along with the remaining ISO forms.
+    }
+    position = mark;
+    return super.readDuration();
+  }
+
+  private Duration tryReadDuration() {
+    byte[] bytes = input;
+    int limit = inputLimit;
+    int offset = position;
+    if (offset > limit - 6
+        || bytes[offset] != '"'
+        || bytes[offset + 1] != 'P'
+        || bytes[offset + 2] != 'T') {
+      return null;
+    }
+    offset += 3;
+    int previousUnit = 0;
+    long seconds = 0;
+    int nanos = 0;
+    while (offset < limit && bytes[offset] != '"') {
+      boolean negative = bytes[offset] == '-';
+      if (negative) {
+        offset++;
+      }
+      int start = offset;
+      long component = 0;
+      while (offset < limit) {
+        int digit = bytes[offset] - '0';
+        if (digit < 0 || digit > 9) {
+          break;
+        }
+        component = Math.subtractExact(Math.multiplyExact(component, 10L), digit);
+        offset++;
+      }
+      if (offset == start || offset == limit) {
+        return null;
+      }
+      if (!negative) {
+        component = Math.negateExact(component);
+      }
+      int suffix = bytes[offset++];
+      if (suffix == '.') {
+        nanos = readFractionNanos(offset);
+        offset = position;
+        if (offset == limit || bytes[offset++] != 'S') {
+          return null;
+        }
+        // Keep the lexical sign even when the seconds component is negative zero.
+        if (negative) {
+          nanos = -nanos;
+        }
+        suffix = 'S';
+      }
+      int unit;
+      int factor;
+      if (suffix == 'H') {
+        unit = 1;
+        factor = 3600;
+      } else if (suffix == 'M') {
+        unit = 2;
+        factor = 60;
+      } else if (suffix == 'S') {
+        unit = 3;
+        factor = 1;
+      } else {
+        return null;
+      }
+      if (unit <= previousUnit) {
+        return null;
+      }
+      previousUnit = unit;
+      seconds = Math.addExact(seconds, Math.multiplyExact(component, (long) factor));
+    }
+    if (previousUnit == 0 || offset == limit) {
+      return null;
+    }
+    Duration value = Duration.ofSeconds(seconds, nanos);
+    position = offset + 1;
+    return value;
   }
 
   @Override

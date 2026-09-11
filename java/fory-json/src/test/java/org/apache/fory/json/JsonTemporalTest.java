@@ -241,6 +241,64 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readDurationSlices() {
+    long[] seconds = {Long.MIN_VALUE, -3601, -60, -1, 0, 1, 60, 3601, Long.MAX_VALUE};
+    int[] nanos = {0, 1, 100_000_000, 123_456_789, 999_999_999};
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (long second : seconds) {
+      for (int nano : nanos) {
+        Duration expected = Duration.ofSeconds(second, nano);
+        String text = expected.toString();
+        assertToken(ScalarCodecs.DurationCodec.INSTANCE, text, expected);
+        byte[] token = ('"' + text + '"').getBytes(StandardCharsets.US_ASCII);
+        for (int offset = 0; offset < 8; offset++) {
+          byte[] input = new byte[offset + token.length + 8];
+          System.arraycopy(token, 0, input, offset, token.length);
+          for (int length = 0; length < token.length; length++) {
+            reader.reset(input, offset, length);
+            assertThrows(ForyJsonException.class, reader::readDuration);
+          }
+          reader.reset(input, offset, token.length);
+          assertEquals(reader.readDuration(), expected);
+          reader.finish();
+        }
+        byte[] adjacent = ('"' + text + "\" 17").getBytes(StandardCharsets.US_ASCII);
+        reader.reset(adjacent);
+        assertEquals(reader.readDuration(), expected);
+        assertEquals(reader.readInt(), 17);
+      }
+    }
+    for (String text :
+        new String[] {"PT1H2M3.000000001S", "PT1H-2M-0.1S", "P2D", "-PT1H", "pt1h"}) {
+      Duration expected =
+          text.equals("PT1H-2M-0.1S")
+              ? Duration.ofSeconds(3479, 900_000_000)
+              : Duration.parse(text);
+      assertToken(ScalarCodecs.DurationCodec.INSTANCE, text, expected);
+    }
+    assertToken(
+        ScalarCodecs.DurationCodec.INSTANCE,
+        "\\u0050T1\\u00482M3.1S",
+        Duration.ofSeconds(3723, 100_000_000));
+    ForyJson json = ForyJson.builder().build();
+    for (String text :
+        new String[] {
+          "PT1S1H",
+          "PT9223372036854775808S",
+          "PT-9223372036854775808.1S",
+          "PT1.1234567890S",
+          "PT1.2H",
+          "PT1H\\x"
+        }) {
+      byte[] token = ('"' + text + '"').getBytes(StandardCharsets.UTF_8);
+      assertThrows(ForyJsonException.class, () -> json.fromJson(token, Duration.class));
+      assertEquals(
+          json.fromJson("\"PT1S\"".getBytes(StandardCharsets.UTF_8), Duration.class),
+          Duration.ofSeconds(1));
+    }
+  }
+
+  @Test
   public void readTemporalGrammar() {
     for (String text :
         new String[] {"00:00", "23:59:59", "12:30:45.", "12:30:45.1", "12:30:45.000000001"}) {
