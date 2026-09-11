@@ -1482,7 +1482,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public void readBigIntegerSlices() {
     Random random = new Random(937);
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
-    for (int bits = 65; bits <= 1024; bits += 17) {
+    for (int bits = 63; bits <= 1024; bits += bits < 65 ? 1 : 17) {
       BigInteger value = new BigInteger(bits, random).setBit(bits - 1);
       for (int sign : new int[] {1, -1}) {
         BigInteger expected = value.multiply(BigInteger.valueOf(sign));

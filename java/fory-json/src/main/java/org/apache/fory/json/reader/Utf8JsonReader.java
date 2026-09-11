@@ -1080,7 +1080,6 @@ public final class Utf8JsonReader extends JsonReader {
     int start = position;
     int offset = start;
     boolean negative = offset < limit && bytes[offset] == '-';
-    long valueLimit = negative ? Long.MIN_VALUE : -Long.MAX_VALUE;
     if (negative) {
       offset++;
     }
@@ -1097,19 +1096,19 @@ public final class Utf8JsonReader extends JsonReader {
     if (ch < '1' || ch > '9') {
       throw error("Expected digit");
     }
-    // Eighteen digits fit in a signed long, so the existing packed parser needs no overflow
-    // checks until the nineteenth digit. The subtraction also bounds each wide load near EOF.
-    int safeEnd = offset + Math.min(18, limit - offset);
+    // Every nineteen-digit coefficient fits in an unsigned long. Keep the prefix unsigned and
+    // let the existing magnitude converter handle values above signed MAX_VALUE without rescanning.
+    int safeEnd = offset + Math.min(19, limit - offset);
     long value = 0;
     if (safeEnd - offset >= 8) {
       int block = parseEightDigits(bytes, offset, safeEnd);
       if (block >= 0) {
-        value = -block;
+        value = block;
         offset += 8;
         if (safeEnd - offset >= 8) {
           block = parseEightDigits(bytes, offset, safeEnd);
           if (block >= 0) {
-            value = value * EIGHT_DIGITS - block;
+            value = value * EIGHT_DIGITS + block;
             offset += 8;
           }
         }
@@ -1120,27 +1119,18 @@ public final class Utf8JsonReader extends JsonReader {
       if (ch < '0' || ch > '9') {
         break;
       }
-      value = value * 10 - (ch - '0');
+      value = value * 10 + (ch - '0');
       offset++;
     }
-    if (offset < limit) {
-      ch = bytes[offset];
-      if (ch >= '0' && ch <= '9') {
-        int digit = ch - '0';
-        long product = value * 10;
-        if (value < LONG_MIN_DIV_10 || product < valueLimit + digit) {
-          return readBigIntegerTail(start, offset, -value);
-        }
-        value = product - digit;
-        offset++;
-        if (offset < limit && bytes[offset] >= '0' && bytes[offset] <= '9') {
-          return readBigIntegerTail(start, offset, -value);
-        }
-      }
+    if (offset < limit && bytes[offset] >= '0' && bytes[offset] <= '9') {
+      return readBigIntegerTail(start, offset, value);
     }
     position = offset;
     rejectFractionOrExponentFast();
-    return BigInteger.valueOf(negative ? value : -value);
+    if (value < 0 && (!negative || value != Long.MIN_VALUE)) {
+      return parseBigInteger(bytes, start, offset, value, offset);
+    }
+    return BigInteger.valueOf(negative ? -value : value);
   }
 
   private BigInteger readBigIntegerTail(int start, int offset, long prefix) {
