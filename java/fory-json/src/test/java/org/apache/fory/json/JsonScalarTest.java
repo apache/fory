@@ -629,6 +629,62 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readUtf8NegativeInts() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    List<String> values =
+        new ArrayList<>(
+            Arrays.asList(
+                "-0",
+                "-1",
+                "-9",
+                "-10",
+                "-99",
+                "-100",
+                "-123456789",
+                "-999999999",
+                "-1000000000",
+                "-2147483647",
+                "-2147483648"));
+    Random random = new Random(9023);
+    for (int i = 0; i < 256; i++) {
+      values.add(Integer.toString(random.nextInt() | Integer.MIN_VALUE));
+    }
+    for (String value : values) {
+      int expected = Integer.parseInt(value);
+      for (String token : new String[] {value, "\"" + value + "\""}) {
+        byte[] bytes = token.getBytes(StandardCharsets.US_ASCII);
+        for (int offset = 0; offset < 8; offset++) {
+          byte[] input = new byte[offset + bytes.length + 8];
+          Arrays.fill(input, (byte) '9');
+          System.arraycopy(bytes, 0, input, offset, bytes.length);
+          reader.reset(input, offset, bytes.length);
+          assertEquals(reader.readIntTokenValue(), expected);
+          reader.finish();
+        }
+        reader.reset((token + ",17").getBytes(StandardCharsets.US_ASCII));
+        assertEquals(reader.readIntTokenValue(), expected);
+        reader.expectNextToken(',');
+        assertEquals(reader.readIntTokenValue(), 17);
+        reader.finish();
+      }
+    }
+    ForyJson json = newJson();
+    for (String value :
+        new String[] {
+          "-", "--1", "-01", "-1.0", "-1e0", "-2147483649", "-21474836480", "-9999999999"
+        }) {
+      for (String token : new String[] {value, "\"" + value + "\""}) {
+        assertThrows(
+            ForyJsonException.class,
+            () -> json.fromJson(token.getBytes(StandardCharsets.US_ASCII), int.class));
+        assertEquals(
+            json.fromJson("-2147483648".getBytes(StandardCharsets.US_ASCII), int.class),
+            Integer.valueOf(Integer.MIN_VALUE));
+      }
+    }
+  }
+
+  @Test
   public void readUtf8DoubleTokens() {
     assertEquals(
         newUtf8Reader("12.375".getBytes(StandardCharsets.UTF_8)).readDoubleTokenValue(), 12.375d);

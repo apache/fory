@@ -894,15 +894,15 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private int readNegativeIntToken(int start) {
-    position = start + 1;
-    int result = 0;
-    int limit = Integer.MIN_VALUE;
-    if (position >= inputLimit) {
+    byte[] bytes = input;
+    int offset = start + 1;
+    int inputLimit = this.inputLimit;
+    if (offset >= inputLimit) {
       throw error("Expected digit");
     }
-    int ch = input[position];
+    int ch = bytes[offset];
     if (ch == '0') {
-      position++;
+      position = offset + 1;
       rejectLeadingDigitFast();
       rejectFractionOrExponentFast();
       return 0;
@@ -910,23 +910,46 @@ public final class Utf8JsonReader extends JsonReader {
     if (ch < '1' || ch > '9') {
       throw error("Expected digit");
     }
-    int multmin = limit / 10;
-    while (position < inputLimit) {
-      ch = input[position];
+    int result = '0' - ch;
+    offset++;
+    // Nine negative digits always fit. Only the tenth digit needs the asymmetric MIN_VALUE bound.
+    int safeEnd = Math.min(offset + 8, inputLimit);
+    while (offset < safeEnd) {
+      ch = bytes[offset];
       if (ch < '0' || ch > '9') {
         break;
       }
-      int digit = ch - '0';
-      if (result < multmin) {
-        throw error("Integer overflow");
-      }
-      result *= 10;
-      if (result < Integer.MIN_VALUE + digit) {
-        throw error("Integer overflow");
-      }
-      result -= digit;
-      position++;
+      result = result * 10 - (ch - '0');
+      offset++;
     }
+    if (offset < inputLimit) {
+      ch = bytes[offset];
+      if (ch >= '0' && ch <= '9') {
+        return readNegativeIntTail(bytes, offset, inputLimit, result);
+      }
+    }
+    position = offset;
+    rejectFractionOrExponentFast();
+    return result;
+  }
+
+  private int readNegativeIntTail(byte[] bytes, int offset, int inputLimit, int result) {
+    int digit = bytes[offset] - '0';
+    if (result < Integer.MIN_VALUE / 10
+        || (result == Integer.MIN_VALUE / 10 && digit > -(Integer.MIN_VALUE % 10))) {
+      position = offset;
+      throw error("Integer overflow");
+    }
+    result = result * 10 - digit;
+    offset++;
+    if (offset < inputLimit) {
+      int ch = bytes[offset];
+      if (ch >= '0' && ch <= '9') {
+        position = offset;
+        throw error("Integer overflow");
+      }
+    }
+    position = offset;
     rejectFractionOrExponentFast();
     return result;
   }
