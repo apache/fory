@@ -142,6 +142,37 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readTokenLookahead() {
+    for (String whitespace : new String[] {"", " ", "\t\r\n", "  \n  "}) {
+      for (String token : new String[] {"0", "-1", "true", "false", "null", "{}", "[]", "\"x\""}) {
+        String input = whitespace + token;
+        byte[] bytes = input.getBytes(StandardCharsets.US_ASCII);
+        for (JsonReader reader :
+            new JsonReader[] {newUtf8Reader(bytes), newLatin1Reader(bytes), utf16Reader(input)}) {
+          assertEquals(reader.peekToken(), token.charAt(0));
+          assertEquals(reader.position(), whitespace.length());
+          assertEquals(reader.peekToken(), token.charAt(0));
+          reader.skipValue();
+          reader.finish();
+          assertThrows(RuntimeException.class, reader::peekToken);
+        }
+        for (int offset = 0; offset < 8; offset++) {
+          byte[] sliced = new byte[offset + bytes.length + 8];
+          System.arraycopy(bytes, 0, sliced, offset, bytes.length);
+          Utf8JsonReader reader = newUtf8Reader(sliced);
+          reader.reset(sliced, offset, whitespace.length());
+          assertThrows(RuntimeException.class, reader::peekToken);
+          reader.reset(sliced, offset, bytes.length);
+          assertEquals(reader.peekToken(), token.charAt(0));
+          assertEquals(reader.position(), offset + whitespace.length());
+          reader.skipValue();
+          reader.finish();
+        }
+      }
+    }
+  }
+
+  @Test
   public void readBooleanTokens() {
     for (boolean expected : new boolean[] {false, true}) {
       String value = Boolean.toString(expected);

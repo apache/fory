@@ -590,7 +590,7 @@ public abstract class JsonReader {
     return startsWith("null");
   }
 
-  public final char peekToken() {
+  public char peekToken() {
     skipWhitespace();
     if (position >= length()) {
       throw error("Expected token");
@@ -2760,11 +2760,7 @@ public abstract class JsonReader {
   }
 
   public final void skipValue() {
-    skipWhitespace();
-    if (position >= length()) {
-      throw error("Expected value");
-    }
-    char ch = charAt(position);
+    char ch = peekToken();
     if (ch == '"') {
       // Skipped text still needs escape and Unicode validation, but no decoded storage or hash.
       position = scanStringEnd(position);

@@ -511,6 +511,15 @@ public final class Utf8JsonReader extends JsonReader {
     }
   }
 
+  @Override
+  public char peekToken() {
+    skipWhitespaceFast();
+    if (position >= inputLimit) {
+      throw error("Expected token");
+    }
+    return (char) (input[position] & 0xff);
+  }
+
   public boolean consumeToken(char expected) {
     skipWhitespaceFast();
     if (position < inputLimit && input[position] == expected) {

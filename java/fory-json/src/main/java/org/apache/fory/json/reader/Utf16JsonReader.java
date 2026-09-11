@@ -413,6 +413,15 @@ public final class Utf16JsonReader extends JsonReader {
     }
   }
 
+  @Override
+  public char peekToken() {
+    skipWhitespaceFast();
+    if (position >= length) {
+      throw error("Expected token");
+    }
+    return charAtFast(position);
+  }
+
   public boolean consumeToken(char expected) {
     skipWhitespaceFast();
     if (position < length && asciiAtFast(position) == expected) {
