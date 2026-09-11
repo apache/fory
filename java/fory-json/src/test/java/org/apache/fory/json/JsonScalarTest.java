@@ -1344,6 +1344,22 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readBigIntegerCarries() {
+    for (String suffix : new String[] {"0", "9", "00000000", "9999999999999999999"}) {
+      String value = Long.MIN_VALUE + suffix;
+      assertBigIntegerReaders(value);
+      assertBigIntegerReaders(value.substring(1));
+      assertQuotedBigIntegerReaders(value);
+      assertQuotedBigIntegerReaders(value.substring(1));
+    }
+    for (int digits = 18; digits <= 75; digits++) {
+      for (int delta = -1; delta <= 1; delta++) {
+        BigInteger value = BigInteger.TEN.pow(digits).add(BigInteger.valueOf(delta));
+        assertBigIntegerReaders(value.toString());
+        assertBigIntegerReaders(value.negate().toString());
+        assertQuotedBigIntegerReaders(value.toString());
+        assertQuotedBigIntegerReaders(value.negate().toString());
+      }
+    }
     for (int delta = -1; delta <= 1; delta++) {
       BigInteger value = BigInteger.ONE.shiftLeft(63).add(BigInteger.valueOf(delta));
       assertBigIntegerReaders(value.toString());

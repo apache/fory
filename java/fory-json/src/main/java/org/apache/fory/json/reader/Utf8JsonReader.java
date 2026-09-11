@@ -1126,12 +1126,12 @@ public final class Utf8JsonReader extends JsonReader {
         int digit = ch - '0';
         long product = value * 10;
         if (value < LONG_MIN_DIV_10 || product < valueLimit + digit) {
-          return readBigIntegerTail(start, offset);
+          return readBigIntegerTail(start, offset, -value);
         }
         value = product - digit;
         offset++;
         if (offset < limit && bytes[offset] >= '0' && bytes[offset] <= '9') {
-          return readBigIntegerTail(start, offset);
+          return readBigIntegerTail(start, offset, -value);
         }
       }
     }
@@ -1140,11 +1140,11 @@ public final class Utf8JsonReader extends JsonReader {
     return BigInteger.valueOf(negative ? value : -value);
   }
 
-  private BigInteger readBigIntegerTail(int start, int offset) {
-    offset = scanNumberDigits(input, offset, inputLimit);
-    position = offset;
+  private BigInteger readBigIntegerTail(int start, int offset, long prefix) {
+    int end = scanNumberDigits(input, offset, inputLimit);
+    position = end;
     rejectFractionOrExponentFast();
-    return parseBigInteger(input, start, offset);
+    return parseBigInteger(input, start, end, prefix, offset);
   }
 
   public BigDecimal readBigDecimal() {
@@ -1486,12 +1486,12 @@ public final class Utf8JsonReader extends JsonReader {
     // The scanner proved this borrowed ASCII span. Only removing the point needs a new array.
     BigInteger unscaled;
     if (point < 0) {
-      unscaled = parseBigInteger(bytes, start, coefficientEnd);
+      unscaled = parseBigInteger(bytes, start, coefficientEnd, 0, start);
     } else {
       byte[] coefficient = new byte[coefficientEnd - start - 1];
       System.arraycopy(bytes, start, coefficient, 0, point - start);
       System.arraycopy(bytes, point + 1, coefficient, point - start, coefficientEnd - point - 1);
-      unscaled = parseBigInteger(coefficient, 0, coefficient.length);
+      unscaled = parseBigInteger(coefficient, 0, coefficient.length, 0, 0);
     }
     return new BigDecimal(unscaled, (int) scale);
   }

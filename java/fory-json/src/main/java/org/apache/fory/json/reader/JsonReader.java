@@ -1057,12 +1057,12 @@ public abstract class JsonReader {
     byte[] bytes = bigNumberBytes(number);
     BigInteger unscaled;
     if (point < 0) {
-      unscaled = parseBigInteger(bytes, 0, coefficientEnd);
+      unscaled = parseBigInteger(bytes, 0, coefficientEnd, 0, 0);
     } else {
       byte[] coefficient = new byte[coefficientEnd - 1];
       System.arraycopy(bytes, 0, coefficient, 0, point);
       System.arraycopy(bytes, point + 1, coefficient, point, coefficientEnd - point - 1);
-      unscaled = parseBigInteger(coefficient, 0, coefficient.length);
+      unscaled = parseBigInteger(coefficient, 0, coefficient.length, 0, 0);
     }
     return new BigDecimal(unscaled, (int) scale);
   }
@@ -1794,7 +1794,7 @@ public abstract class JsonReader {
 
   final BigInteger parseBigInteger(String number) {
     byte[] bytes = bigNumberBytes(number);
-    return parseBigInteger(bytes, 0, bytes.length);
+    return parseBigInteger(bytes, 0, bytes.length, 0, 0);
   }
 
   private byte[] bigNumberBytes(String number) {
@@ -1808,7 +1808,7 @@ public abstract class JsonReader {
     return number.getBytes(StandardCharsets.ISO_8859_1);
   }
 
-  final BigInteger parseBigInteger(byte[] bytes, int start, int end) {
+  final BigInteger parseBigInteger(byte[] bytes, int start, int end, long prefix, int prefixEnd) {
     // UTF8 callers lend a span already validated within the input limit. The converter does not
     // retain it; the resulting BigInteger owns its magnitude storage.
     if (end - start > MAX_BIG_NUMBER_LENGTH) {
@@ -1826,9 +1826,30 @@ public abstract class JsonReader {
       words = new long[capacity];
       numericWorkspace.bigIntegerBuffer = words;
     }
-    int firstEnd = offset + (digits - 1) % 18 + 1;
-    words[0] = parseDecimalChunk(bytes, offset, firstEnd);
+    int firstEnd;
     int wordCount = 1;
+    if (prefixEnd > offset) {
+      // The UTF-8 integer reader already parsed this unsigned prefix, including abs(MIN_VALUE).
+      // Append the short suffix group first so the remaining loop keeps its fixed 18-digit stride.
+      words[0] = prefix;
+      firstEnd = prefixEnd;
+      int count = (end - firstEnd) % 18;
+      if (count != 0) {
+        long multiplier = LONG_POWERS_OF_TEN[count];
+        long product = prefix * multiplier;
+        long high = DecimalMath.unsignedMultiplyHigh(prefix, multiplier);
+        long sum = product + parseDecimalChunk(bytes, firstEnd, firstEnd + count);
+        words[0] = sum;
+        high += Long.compareUnsigned(sum, product) < 0 ? 1 : 0;
+        if (high != 0) {
+          words[wordCount++] = high;
+        }
+        firstEnd += count;
+      }
+    } else {
+      firstEnd = offset + (digits - 1) % 18 + 1;
+      words[0] = parseDecimalChunk(bytes, offset, firstEnd);
+    }
     for (offset = firstEnd; offset < end; offset += 18) {
       long carry = parseDecimalChunk(bytes, offset, offset + 18);
       for (int i = 0; i < wordCount; i++) {
