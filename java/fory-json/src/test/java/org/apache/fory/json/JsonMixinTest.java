@@ -71,6 +71,102 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void naturalScalarMixins() {
+    ForyJson json =
+        newJsonBuilder()
+            .registerMixin(BooleanMixin.class)
+            .registerMixin(IntegerMixin.class)
+            .build();
+    for (Object value : new Object[] {true, false, Integer.MIN_VALUE, 0, Integer.MAX_VALUE}) {
+      String expected = "\"scalar:" + value + "\"";
+      assertEquals(json.toJson(value), expected);
+      assertEquals(json.toJson(value, Object.class), expected);
+      assertEquals(
+          new String(json.toJsonBytes(value, Object.class), StandardCharsets.UTF_8), expected);
+      NaturalScalarTarget target = new NaturalScalarTarget();
+      target.value = value;
+      assertEquals(json.toJson(target), "{\"value\":" + expected + "}");
+      assertEquals(
+          new String(json.toJsonBytes(target), StandardCharsets.UTF_8),
+          "{\"value\":" + expected + "}");
+      Map<String, Object> map = new LinkedHashMap<>();
+      map.put("value", value);
+      assertEquals(
+          json.toJson(map, new TypeRef<Map<String, Object>>() {}), "{\"value\":" + expected + "}");
+      assertEquals(
+          new String(
+              json.toJsonBytes(map, new TypeRef<Map<String, Object>>() {}), StandardCharsets.UTF_8),
+          "{\"value\":" + expected + "}");
+      List<Object> list = Arrays.asList("\u0100", value, null);
+      expected = "[\"\u0100\"," + expected + ",null]";
+      assertEquals(json.toJson(list, new TypeRef<List<Object>>() {}), expected);
+      assertEquals(
+          new String(
+              json.toJsonBytes(list, new TypeRef<List<Object>>() {}), StandardCharsets.UTF_8),
+          expected);
+    }
+    ForyJson denied =
+        newJsonBuilder()
+            .registerMixin(BooleanMixin.class)
+            .registerMixin(IntegerMixin.class)
+            .withTypeChecker(
+                (name, context) ->
+                    !name.equals(Boolean.class.getName()) && !name.equals(Integer.class.getName()))
+            .build();
+    for (Object value : new Object[] {true, 1}) {
+      assertThrows(RuntimeException.class, () -> denied.toJson(value, Object.class));
+      assertThrows(RuntimeException.class, () -> denied.toJsonBytes(value, Object.class));
+    }
+  }
+
+  public static final class NaturalScalarTarget {
+    public Object value;
+  }
+
+  @JsonMixin(target = Boolean.class)
+  @JsonCodec(ScalarMixinCodec.class)
+  public interface BooleanMixin {}
+
+  @JsonMixin(target = Integer.class)
+  @JsonCodec(ScalarMixinCodec.class)
+  public interface IntegerMixin {}
+
+  public static final class ScalarMixinCodec implements JsonValueCodec<Object> {
+    @Override
+    public void writeString(StringJsonWriter writer, Object value) {
+      writer.writeString("scalar:" + value);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, Object value) {
+      writer.writeString("scalar:" + value);
+    }
+
+    @Override
+    public Object readLatin1(Latin1JsonReader reader) {
+      return read(reader.readString());
+    }
+
+    @Override
+    public Object readUtf16(Utf16JsonReader reader) {
+      return read(reader.readString());
+    }
+
+    @Override
+    public Object readUtf8(Utf8JsonReader reader) {
+      return read(reader.readString());
+    }
+
+    private Object read(String value) {
+      String scalar = value.substring("scalar:".length());
+      if (scalar.equals("true") || scalar.equals("false")) {
+        return Boolean.valueOf(scalar);
+      }
+      return Integer.valueOf(scalar);
+    }
+  }
+
+  @Test
   public void propertyAnnotations() {
     ForyJson json = newJsonBuilder().registerMixin(BasicMixin.class).build();
     BasicTarget value = basic("alpha");

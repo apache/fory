@@ -272,7 +272,7 @@ public final class JsonSharedRegistry {
         codegenEnabled && GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && !hostedCodegen;
     asyncCompilationEnabled = createCompiler && !hostedCodegen && config.asyncCompilationEnabled();
     this.compilationService = compilationService;
-    registerExactCodecs();
+    registerExactCodecs(config);
   }
 
   /** Creates the transient synchronous compiler registry owned by Native Image hosted analysis. */
@@ -2146,8 +2146,12 @@ public final class JsonSharedRegistry {
         String.format("Class %s is forbidden for Fory JSON serialization.", className));
   }
 
-  private void registerExactCodecs() {
-    exactCodecs.put(Object.class, ScalarCodecs.NaturalCodec.INSTANCE);
+  private void registerExactCodecs(JsonConfig config) {
+    exactCodecs.put(
+        Object.class,
+        config.mixins().isEmpty()
+            ? ScalarCodecs.NaturalCodec.INSTANCE
+            : new ScalarCodecs.NaturalCodec(config));
     exactCodecs.put(void.class, ScalarCodecs.VoidCodec.INSTANCE);
     exactCodecs.put(Void.class, ScalarCodecs.VoidCodec.INSTANCE);
     exactCodecs.put(Number.class, ScalarCodecs.NumberCodec.INSTANCE);

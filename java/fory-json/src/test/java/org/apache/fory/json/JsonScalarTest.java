@@ -310,6 +310,33 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test(dataProvider = "enableCodegen")
+  public void writeNaturalIntegers(boolean codegen) {
+    ForyJson json =
+        ForyJson.builder()
+            .withCodegen(codegen)
+            .withAsyncCompilation(false)
+            .withTypeChecker((className, context) -> !className.equals(Integer.class.getName()))
+            .build();
+    TypeRef<List<Object>> listType = new TypeRef<List<Object>>() {};
+    TypeRef<Map<String, Object>> mapType = new TypeRef<Map<String, Object>>() {};
+    for (int value :
+        new int[] {Integer.MIN_VALUE, -1_000_000_000, -1, 0, 1, 1_000_000_000, Integer.MAX_VALUE}) {
+      List<Object> list = Arrays.asList("\u0100", true, value, null);
+      String expected = "[\"\u0100\",true," + value + ",null]";
+      assertEquals(json.toJson(list, listType), expected);
+      assertEquals(new String(json.toJsonBytes(list, listType), StandardCharsets.UTF_8), expected);
+      Map<String, Object> map = Collections.singletonMap("value", value);
+      expected = "{\"value\":" + value + "}";
+      assertEquals(json.toJson(map, mapType), expected);
+      assertEquals(new String(json.toJsonBytes(map, mapType), StandardCharsets.UTF_8), expected);
+      NaturalObjectValue holder = new NaturalObjectValue();
+      holder.value = value;
+      assertEquals(json.toJson(holder), expected);
+      assertEquals(new String(json.toJsonBytes(holder), StandardCharsets.UTF_8), expected);
+    }
+  }
+
+  @Test(dataProvider = "enableCodegen")
   public void writeNaturalEmptyObject(boolean codegen) {
     ForyJson json = newJson(codegen);
     String expected = "{\"value\":{}}";

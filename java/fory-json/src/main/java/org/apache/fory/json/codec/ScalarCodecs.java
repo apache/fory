@@ -73,6 +73,7 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.regex.Pattern;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.reader.JsonReader;
@@ -97,8 +98,8 @@ import org.apache.fory.type.Float16;
  * built-in instances also identify direct array, collection, map, field, and generated-code paths;
  * replacing one with a custom codec intentionally disables those built-in shortcuts. The dynamic
  * {@code Object} codec maps arrays and objects to {@link org.apache.fory.json.JsonArray} and {@link
- * org.apache.fory.json.JsonObject}, and dispatches non-Boolean writes through the active writer's
- * resolver.
+ * org.apache.fory.json.JsonObject}, and writes Boolean and Integer directly when no scalar Mixin is
+ * configured. Other runtime values use the active writer's resolver.
  *
  * <p>Arbitrary-precision resource guards remain owned by reader construction of {@link BigInteger}
  * and {@link BigDecimal}. Primitive numeric readers retain their direct overflow and IEEE-754
@@ -122,7 +123,18 @@ public final class ScalarCodecs {
   public static final class NaturalCodec implements JsonValueCodec<Object> {
     public static final NaturalCodec INSTANCE = new NaturalCodec();
 
-    private NaturalCodec() {}
+    private final boolean scalarMixins;
+
+    private NaturalCodec() {
+      scalarMixins = false;
+    }
+
+    /** Creates the dynamic codec for an instance with configured Mixin annotations. */
+    @Internal
+    public NaturalCodec(JsonConfig config) {
+      scalarMixins =
+          config.mixins().containsKey(Boolean.class) || config.mixins().containsKey(Integer.class);
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, Object value) {
@@ -130,10 +142,14 @@ public final class ScalarCodecs {
         writer.writeNull();
         return;
       }
-      // Boolean is a fixed built-in, exempt from type checks and not replaceable by registration.
-      // Occurrence-specific annotations select their codec before reaching this natural dispatcher.
-      if (value instanceof Boolean) {
+      // Registration cannot replace these built-ins, but a Mixin can attach a custom codec.
+      // Keep Mixin resolution and its type checks on the ordinary runtime dispatch path.
+      if (value instanceof Boolean && !scalarMixins) {
         writer.writeBoolean((Boolean) value);
+        return;
+      }
+      if (value instanceof Integer && !scalarMixins) {
+        writer.writeInt((Integer) value);
         return;
       }
       JsonTypeInfo typeInfo = writer.typeResolver().getRuntimeTypeInfo(value.getClass());
@@ -146,10 +162,14 @@ public final class ScalarCodecs {
         writer.writeNull();
         return;
       }
-      // Boolean is a fixed built-in, exempt from type checks and not replaceable by registration.
-      // Occurrence-specific annotations select their codec before reaching this natural dispatcher.
-      if (value instanceof Boolean) {
+      // Registration cannot replace these built-ins, but a Mixin can attach a custom codec.
+      // Keep Mixin resolution and its type checks on the ordinary runtime dispatch path.
+      if (value instanceof Boolean && !scalarMixins) {
         writer.writeBoolean((Boolean) value);
+        return;
+      }
+      if (value instanceof Integer && !scalarMixins) {
+        writer.writeInt((Integer) value);
         return;
       }
       JsonTypeInfo typeInfo = writer.typeResolver().getRuntimeTypeInfo(value.getClass());
