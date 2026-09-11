@@ -25,6 +25,7 @@ import org.apache.fory.json.codec.{
   ArrayCodec,
   CompositeJsonCodec,
   JsonValueCodec,
+  MapCodec,
   MapKeyCodec,
   ScalarCodecs,
   Utf8WriterCodec
@@ -598,6 +599,8 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     reader.enterDepth()
     reader.expectNextToken('{')
     reader.reserveGraphMemory(ownerBytes)
+    if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec])
+      return readIntMap(reader)
     val builder = newBuilder()
     val codec = valueInfo.latin1Reader()
     var size = 0
@@ -620,6 +623,8 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     reader.enterDepth()
     reader.expectNextToken('{')
     reader.reserveGraphMemory(ownerBytes)
+    if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec])
+      return readIntMap(reader)
     val builder = newBuilder()
     val codec = valueInfo.utf16Reader()
     var size = 0
@@ -642,6 +647,8 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     reader.enterDepth()
     reader.expectNextToken('{')
     reader.reserveGraphMemory(ownerBytes)
+    if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec])
+      return readIntMap(reader)
     val builder = newBuilder()
     val codec = valueInfo.utf8Reader()
     var size = 0
@@ -657,6 +664,68 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       }
     }
     finish(reader, builder, size)
+  }
+
+  // IntMap owns primitive keys. Keep them primitive through insertion; custom key codecs still
+  // use the general builder so occurrence-level key conversions retain their semantics.
+  private def readIntMap(reader: Latin1JsonReader): scala.collection.Map[Any, Any] = {
+    var result = scala.collection.immutable.IntMap.empty[Any]
+    val codec = valueInfo.latin1Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameInt()
+        reader.expectNextToken(':')
+        result = result.updated(key, codec.readLatin1(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
+  }
+
+  private def readIntMap(reader: Utf16JsonReader): scala.collection.Map[Any, Any] = {
+    var result = scala.collection.immutable.IntMap.empty[Any]
+    val codec = valueInfo.utf16Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameInt()
+        reader.expectNextToken(':')
+        result = result.updated(key, codec.readUtf16(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
+  }
+
+  private def readIntMap(reader: Utf8JsonReader): scala.collection.Map[Any, Any] = {
+    var result = scala.collection.immutable.IntMap.empty[Any]
+    val codec = valueInfo.utf8Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameInt()
+        reader.expectNextToken(':')
+        result = result.updated(key, codec.readUtf8(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
   }
 
   private def newBuilder(): scala.collection.mutable.Builder[(Any, Any), _] = kind match {
