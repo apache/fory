@@ -79,6 +79,7 @@ import org.apache.fory.json.data.MapKeyFields;
 import org.apache.fory.json.data.Nested;
 import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.json.reader.JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
@@ -90,6 +91,56 @@ public class JsonContainerTest extends ForyJsonTestModels {
   @Factory(dataProvider = "enableCodegen")
   public JsonContainerTest(boolean codegen) {
     super(codegen);
+  }
+
+  @Test
+  public void readIntMapKeys() {
+    ForyJson json = newJson();
+    TypeRef<Map<Integer, Boolean>> type = new TypeRef<Map<Integer, Boolean>>() {};
+    List<Integer> values = new ArrayList<>();
+    values.add(Integer.MIN_VALUE);
+    values.add(Integer.MAX_VALUE);
+    values.add(0);
+    for (long magnitude = 1; magnitude <= 1_000_000_000; magnitude *= 10) {
+      for (int delta = -1; delta <= 1; delta++) {
+        values.add((int) magnitude + delta);
+        values.add(-(int) magnitude + delta);
+      }
+    }
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int value : values) {
+      String key = Integer.toString(value);
+      for (int escape = -1; escape < key.length(); escape++) {
+        String text = key;
+        if (escape >= 0) {
+          text =
+              key.substring(0, escape)
+                  + String.format(java.util.Locale.ROOT, "\\u%04x", (int) key.charAt(escape))
+                  + key.substring(escape + 1);
+        }
+        byte[] input = ("{\"" + text + "\":true}").getBytes(StandardCharsets.US_ASCII);
+        assertEquals(json.fromJson(input, type), Collections.singletonMap(value, true));
+      }
+      byte[] token = ('"' + key + '"').getBytes(StandardCharsets.US_ASCII);
+      for (int offset = 0; offset < 8; offset++) {
+        byte[] input = new byte[offset + token.length + 8];
+        Arrays.fill(input, (byte) '9');
+        System.arraycopy(token, 0, input, offset, token.length);
+        reader.reset(input, offset, token.length);
+        assertEquals(reader.readFieldNameInt(), value);
+        reader.finish();
+      }
+    }
+    for (String key :
+        new String[] {
+          "", "-", "01", "-01", "2147483648", "-2147483649", "1e0", "1.0", "12345678901"
+        }) {
+      byte[] input = ("{\"" + key + "\":true}").getBytes(StandardCharsets.US_ASCII);
+      assertThrows(RuntimeException.class, () -> json.fromJson(input, type));
+      assertEquals(
+          json.fromJson("{\"1\":true}".getBytes(StandardCharsets.US_ASCII), type),
+          Collections.singletonMap(1, true));
+    }
   }
 
   @Test
