@@ -127,6 +127,7 @@ public class JsonDepthTest extends ForyJsonTestModels {
     String[] values = {
       "{}",
       "[]",
+      "{ \t\r\n\"\u4e2d\u6587\":1, \t\r\n\"\\uD83D\\uDE03\":null}",
       "{ \"number\" : -1.25e+30, \"flag\" : false, \"text\" : null }",
       "[1, {\"text\":\"\\uD83D\\uDE03\",\"values\":null}, true]",
       "{\"empty\":[],\"values\":[0,1.5e-2,null]}",
@@ -146,6 +147,8 @@ public class JsonDepthTest extends ForyJsonTestModels {
           "{\"a\":1,}",
           "[1,]",
           "{\"a\" 1}",
+          "{unquoted:1}",
+          "{\"\\uD800\":1}",
           "{\"a\":1 \"b\":2}",
           "[1 2]",
           "[tru]",

@@ -2999,8 +2999,8 @@ public abstract class JsonReader {
       return;
     }
     do {
-      skipWhitespace();
-      position = scanStringEnd(position);
+      expectNextToken('"');
+      position = scanStringEnd(position - 1);
       expectNextToken(':');
       skipValue();
     } while (consumeNextCommaOrEndObject());
