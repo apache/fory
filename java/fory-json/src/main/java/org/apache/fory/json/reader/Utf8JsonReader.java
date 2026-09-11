@@ -4094,6 +4094,31 @@ public final class Utf8JsonReader extends JsonReader {
         this.position = position;
         return finishDecodedString(bytes, out, true);
       } else if (b == '\\') {
+        if (position <= inputLimit - 11
+            && input[position] == 'u'
+            && input[position + 5] == '\\'
+            && input[position + 6] == 'u') {
+          int first = hexValue4(input, position + 1);
+          int second = hexValue4(input, position + 7);
+          if ((first | second) >= 0
+              && !Character.isSurrogate((char) first)
+              && !Character.isSurrogate((char) second)) {
+            // Two complete non-surrogate escapes produce exactly four native UTF-16 bytes.
+            // Surrogate pairs and malformed escapes retain the scalar validation path below.
+            if (out + 4 > capacity) {
+              bytes = growStringDecodeBuffer(bytes, out + 4);
+              capacity = bytes.length;
+            }
+            int chars =
+                LITTLE_ENDIAN
+                    ? first | (second << 16)
+                    : Integer.reverseBytes((first << 16) | second);
+            LittleEndian.putInt32(bytes, out, chars);
+            out += 4;
+            position += 11;
+            continue;
+          }
+        }
         this.position = position;
         char ch = readEscapedStringChar();
         position = this.position;
