@@ -866,8 +866,12 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     if (nano != 0) {
       bytes[pos++] = '.';
       pos = writePadded9(bytes, pos, nano);
-      while (bytes[pos - 1] == '0') {
-        pos--;
+      // A nonzero final digit needs no trimming. Use the coefficient to avoid reading back
+      // the common final byte immediately after its wide store.
+      if (nano % 10 == 0) {
+        do {
+          pos--;
+        } while (bytes[pos - 1] == '0');
       }
     }
     return pos;
