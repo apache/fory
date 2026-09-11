@@ -531,6 +531,21 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeInstantFractions() {
+    Utf8JsonWriter writer = newUtf8Writer(new byte[0]);
+    for (int digits = 0; digits < 1000; digits++) {
+      int[] nanos = {digits * 1_000_000, digits * 1000, digits * 1_001_000};
+      for (int nano : nanos) {
+        Instant value = Instant.ofEpochSecond(digits * 61L, nano);
+        writer.reset();
+        writer.writeIsoInstant(value.getEpochSecond(), value.getNano());
+        assertEquals(
+            new String(writer.toJsonBytes(), StandardCharsets.UTF_8), '"' + value.toString() + '"');
+      }
+    }
+  }
+
+  @Test
   public void writeInstantBoundaries() {
     long[] seconds = {
       Instant.MIN.getEpochSecond(),

@@ -2815,20 +2815,18 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private static int writePadded3(byte[] bytes, int pos, int value) {
-    int high = value / 100;
-    int rem = value - high * 100;
-    int middle = rem / 10;
-    bytes[pos++] = (byte) ('0' + high);
-    bytes[pos++] = (byte) ('0' + middle);
-    bytes[pos++] = (byte) ('0' + (rem - middle * 10));
-    return pos;
+    int digits = DIGIT_QUADS[value] >>> 8;
+    bytes[pos] = (byte) digits;
+    bytes[pos + 1] = (byte) (digits >>> 8);
+    bytes[pos + 2] = (byte) (digits >>> 16);
+    return pos + 3;
   }
 
   private static int writeTwoDigits(byte[] bytes, int pos, int value) {
-    int high = value / 10;
-    bytes[pos++] = (byte) ('0' + high);
-    bytes[pos++] = (byte) ('0' + (value - high * 10));
-    return pos;
+    int digits = DIGIT_QUADS[value] >>> 16;
+    bytes[pos] = (byte) digits;
+    bytes[pos + 1] = (byte) (digits >>> 8);
+    return pos + 2;
   }
 
   private static int divide10000(int value) {
