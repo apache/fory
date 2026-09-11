@@ -622,6 +622,14 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   @Test
   public void readInstantCalendar() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int second = 0; second < 86400; second++) {
+      Instant expected = Instant.ofEpochSecond(second, second * 1001);
+      reader.reset(('"' + expected.toString() + "\",17").getBytes(StandardCharsets.US_ASCII));
+      assertEquals(reader.readIsoInstant(), expected);
+      reader.expectNextToken(',');
+      assertEquals(reader.readInt(), 17);
+      reader.finish();
+    }
     int[] nanos = {0, 123000000, 123456000, 123456789};
     int[] extraYears = {400, 1600, 1900, 1970, 2000, 2100, 2400, 9999};
     for (int index = 0; index < 400 + extraYears.length; index++) {

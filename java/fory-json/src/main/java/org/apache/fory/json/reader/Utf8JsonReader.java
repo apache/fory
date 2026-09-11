@@ -2503,9 +2503,13 @@ public final class Utf8JsonReader extends JsonReader {
     if (((timeDigits | (ASCII_NINES - timeText)) & ASCII_HIGH_BITS) != 0) {
       return null;
     }
-    int hour = (int) (timeDigits & 0xff) * 10 + (int) ((timeDigits >>> 8) & 0xff);
-    int minute = (int) ((timeDigits >>> 24) & 0xff) * 10 + (int) ((timeDigits >>> 32) & 0xff);
-    int second = (int) ((timeDigits >>> 48) & 0xff) * 10 + (int) (timeDigits >>> 56);
+    // HH:mm:ss starts its digit pairs in byte lanes 0, 3, and 6. Each validated pair is at most
+    // 99, so multiplying the three tens lanes together cannot carry into another result.
+    long timePairs =
+        (timeDigits & 0x00ff0000ff0000ffL) * 10 + ((timeDigits >>> 8) & 0x00ff0000ff0000ffL);
+    int hour = (int) timePairs & 0xff;
+    int minute = (int) (timePairs >>> 24) & 0xff;
+    int second = (int) (timePairs >>> 48) & 0xff;
     // Validate the UTC components once, without constructing local date/time carriers whose
     // factories repeat range checks. ISO_INSTANT's leap seconds and 24:00 stay with its parser.
     if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) {
