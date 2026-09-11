@@ -1,0 +1,32 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Development dependencies for building the standalone foryc binary.
+# NOT part of the published fory-compiler package on PyPI.
+# This file intentionally kept separate from pyproject.toml.
+#
+# Usage (from repo root):
+#   pip install -r compiler/requirements-dev.txt
+#   pip install ./compiler
+#   cd compiler && pyinstaller foryc.spec
+#
+# UPX must be installed separately as a system binary:
+#   Linux:   sudo apt-get install upx-ucl
+#   macOS:   brew install upx
+#   Windows: choco install upx
+
+pyinstaller>=6.0,<7.0
