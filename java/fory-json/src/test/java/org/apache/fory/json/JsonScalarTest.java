@@ -1313,6 +1313,46 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeIntegralFloats() {
+    float[] boundaries = {
+      0.0f,
+      -0.0f,
+      1.0f,
+      -1.0f,
+      10.0f,
+      1000.0f,
+      9999999.0f,
+      10000000.0f,
+      16777216.0f,
+      -9999999.0f,
+      -10000000.0f,
+      -16777216.0f,
+      Float.MIN_VALUE,
+      Float.MAX_VALUE
+    };
+    Random random = new Random(17039);
+    for (int i = 0; i < boundaries.length + 256; i++) {
+      float center =
+          i < boundaries.length ? boundaries[i] : random.nextInt(20_000_000) - 10_000_000;
+      for (float value : new float[] {Math.nextDown(center), center, Math.nextUp(center)}) {
+        if (!Float.isFinite(value)) {
+          continue;
+        }
+        String expected = "17," + Float.toString(value) + ",1.0";
+        for (int capacity = 1; capacity <= 16; capacity++) {
+          Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+          writer.writeInt(17);
+          writer.writeComma(1);
+          writer.writeFloat(value);
+          writer.writeComma(2);
+          writer.writeFloat(1.0f);
+          assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+        }
+      }
+    }
+  }
+
+  @Test
   public void writeRandomIeeeValues() {
     Random random = new Random(881_726_454_633_252L);
     Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[32]);

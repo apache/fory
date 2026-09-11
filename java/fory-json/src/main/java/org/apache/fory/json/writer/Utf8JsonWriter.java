@@ -250,6 +250,21 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeFloat(float value) {
+    int integral = (int) value;
+    // Float uses plain notation below 10^7. Integral values in this range need no decimal
+    // rounding; negative zero must retain its sign through the existing formatter.
+    if (integral > -10_000_000
+        && integral < 10_000_000
+        && value == integral
+        && Float.floatToRawIntBits(value) != Integer.MIN_VALUE) {
+      if (position + 10 > buffer.length) {
+        grow(10);
+      }
+      writeIntNoEnsure(integral);
+      buffer[position++] = '.';
+      buffer[position++] = '0';
+      return;
+    }
     if (!Float.isFinite(value)) {
       writeNonFiniteFloat(value);
       return;
