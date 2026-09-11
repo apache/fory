@@ -2094,7 +2094,7 @@ public final class ScalarCodecs {
 
     @Override
     public ZoneId readLatin1(Latin1JsonReader reader) {
-      String value = reader.readNullableString();
+      String value = reader.readNextNullableString();
       if (value == null) {
         return null;
       }
@@ -2107,7 +2107,7 @@ public final class ScalarCodecs {
 
     @Override
     public ZoneId readUtf16(Utf16JsonReader reader) {
-      String value = reader.readNullableString();
+      String value = reader.readNextNullableString();
       if (value == null) {
         return null;
       }
@@ -2120,7 +2120,7 @@ public final class ScalarCodecs {
 
     @Override
     public ZoneId readUtf8(Utf8JsonReader reader) {
-      String value = reader.readNullableString();
+      String value = reader.readNextNullableString();
       if (value == null) {
         return null;
       }

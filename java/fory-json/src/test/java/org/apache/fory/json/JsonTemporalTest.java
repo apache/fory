@@ -362,6 +362,13 @@ public class JsonTemporalTest extends ForyJsonTestModels {
     assertNullableTemporal(ScalarCodecs.InstantCodec.INSTANCE, Instant.ofEpochSecond(-123456, 789));
   }
 
+  @Test
+  public void readNullableZoneId() {
+    for (String id : new String[] {"Z", "+03:00", "UTC-05:30", "Europe/Paris"}) {
+      assertNullableTemporal(ScalarCodecs.ZoneIdCodec.INSTANCE, ZoneId.of(id));
+    }
+  }
+
   private static <T> void assertNullableTemporal(JsonValueCodec<T> codec, T value) {
     for (String prefix : new String[] {"", " ", "\t\r\n"}) {
       for (boolean isNull : new boolean[] {true, false}) {
