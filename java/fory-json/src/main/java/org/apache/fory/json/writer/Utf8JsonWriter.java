@@ -87,14 +87,20 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private static final byte[] NEGATIVE_INFINITY_BYTES =
       "\"-Infinity\"".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final long EIGHT_DIGITS = 100_000_000L;
-  private static final byte[] HEX_DIGITS =
-      "0123456789abcdef".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+  private static final int[] HEX_PAIRS = new int[256];
   private static final long UTF16_ASCII_MASK = 0xFF80FF80FF80FF80L;
   private static final int[] DIGIT_TRIPLES = new int[1000];
   private static final int[] DIGIT_QUADS = new int[10000];
   private static final boolean STRING_BYTES_BACKED = StringSerializer.isBytesBackedString();
 
   static {
+    for (int i = 0; i < HEX_PAIRS.length; i++) {
+      int high = i >>> 4;
+      int low = i & 15;
+      int first = high < 10 ? '0' + high : 'a' + high - 10;
+      int second = low < 10 ? '0' + low : 'a' + low - 10;
+      HEX_PAIRS[i] = first | (second << 8);
+    }
     for (int i = 0; i < 1000; i++) {
       int c0 = '0' + i / 100;
       int c1 = '0' + (i / 10) % 10;
@@ -2771,9 +2777,14 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private static int writeHex(byte[] bytes, int pos, long value, int shift, int count) {
-    for (int i = 0; i < count; i++) {
-      bytes[pos++] = HEX_DIGITS[(int) ((value >>> shift) & 0xF)];
-      shift -= 4;
+    // UUID groups contain a multiple of four digits. Exact four-byte stores stay inside each
+    // group and the caller's complete quoted-UUID capacity reservation.
+    for (int i = 0; i < count; i += 4) {
+      int high = HEX_PAIRS[(int) (value >>> (shift - 4)) & 255];
+      int low = HEX_PAIRS[(int) (value >>> (shift - 12)) & 255];
+      LittleEndian.putInt32(bytes, pos, high | (low << 16));
+      pos += 4;
+      shift -= 16;
     }
     return pos;
   }

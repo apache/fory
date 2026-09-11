@@ -1615,6 +1615,30 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeUuidHexDigits() {
+    Random random = new Random(17041);
+    for (int i = 0; i < 1024; i++) {
+      long high = i < 256 ? 0x0101010101010101L * i : random.nextLong();
+      long low = i < 256 ? ~high : random.nextLong();
+      UUID value = new UUID(high, low);
+      String expected = "17,\"" + value + "\",42";
+      for (int capacity : new int[] {1, 4, 37, 38, 39, 40, 41, 42, 43, 64}) {
+        Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+        writer.writeUuid(high, low);
+        assertEquals(
+            new String(writer.toJsonBytes(), StandardCharsets.UTF_8), '"' + value.toString() + '"');
+        writer.reset();
+        writer.writeInt(17);
+        writer.writeComma(1);
+        writer.writeUuid(high, low);
+        writer.writeComma(2);
+        writer.writeInt(42);
+        assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+      }
+    }
+  }
+
+  @Test
   public void readUuidHexDigits() {
     Random random = new Random(765_318L);
     for (int i = 0; i < 128; i++) {
