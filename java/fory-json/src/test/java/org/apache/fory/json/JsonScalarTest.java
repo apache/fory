@@ -142,6 +142,24 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readBooleanTokens() {
+    for (boolean expected : new boolean[] {false, true}) {
+      String value = Boolean.toString(expected);
+      for (String token : new String[] {value, "\"" + value + "\""}) {
+        String input = " \n" + token + ",17";
+        byte[] bytes = input.getBytes(StandardCharsets.UTF_8);
+        for (JsonReader reader :
+            new JsonReader[] {newUtf8Reader(bytes), newLatin1Reader(bytes), utf16Reader(input)}) {
+          assertEquals(reader.readBoolean(), expected);
+          reader.expect(',');
+          assertEquals(reader.readInt(), 17);
+          reader.finish();
+        }
+      }
+    }
+  }
+
+  @Test
   public void writeBooleanBufferBoundaries() {
     for (int capacity = 0; capacity <= 24; capacity++) {
       Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);

@@ -568,7 +568,8 @@ public final class Utf16JsonReader extends JsonReader {
     return value;
   }
 
-  private boolean readBooleanToken() {
+  @Override
+  protected boolean readBooleanToken() {
     if (position < length && charAtFast(position) == '"') {
       return readQuotedBooleanValue();
     }

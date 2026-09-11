@@ -626,29 +626,11 @@ public abstract class JsonReader {
 
   public final boolean readBoolean() {
     skipWhitespace();
-    if (position < length() && charAt(position) == '"') {
-      return readQuotedBoolean();
-    }
     return readBooleanToken();
   }
 
-  private boolean readBooleanToken() {
-    if (startsWith("true")) {
-      position += 4;
-      return true;
-    } else if (startsWith("false")) {
-      position += 5;
-      return false;
-    }
-    throw error("Expected boolean");
-  }
-
-  private boolean readQuotedBoolean() {
-    beginQuotedScalar();
-    boolean value = readBooleanToken();
-    finishQuotedScalar();
-    return value;
-  }
+  // Concrete readers own both native and quoted boolean token parsing.
+  protected abstract boolean readBooleanToken();
 
   public final String readNumberAsString() {
     skipWhitespace();
@@ -2790,13 +2772,9 @@ public abstract class JsonReader {
       skipObject();
     } else if (ch == '[') {
       skipArray();
-    } else if (startsWith("true")) {
-      position += 4;
-    } else if (startsWith("false")) {
-      position += 5;
-    } else if (startsWith("null")) {
-      position += 4;
-    } else {
+    } else if (ch == 't' || ch == 'f') {
+      readBooleanToken();
+    } else if (ch != 'n' || !tryReadNullToken()) {
       skipNumberToken();
     }
   }

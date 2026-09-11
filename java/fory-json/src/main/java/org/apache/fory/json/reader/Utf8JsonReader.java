@@ -786,7 +786,8 @@ public final class Utf8JsonReader extends JsonReader {
     return value;
   }
 
-  private boolean readBooleanToken() {
+  @Override
+  protected boolean readBooleanToken() {
     byte[] bytes = input;
     int offset = position;
     int limit = inputLimit;

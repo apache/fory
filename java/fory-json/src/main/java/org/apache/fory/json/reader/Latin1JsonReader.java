@@ -519,7 +519,8 @@ public final class Latin1JsonReader extends JsonReader {
     return value;
   }
 
-  private boolean readBooleanToken() {
+  @Override
+  protected boolean readBooleanToken() {
     if (position < input.length && input[position] == '"') {
       return readQuotedBooleanValue();
     }
