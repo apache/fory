@@ -81,6 +81,9 @@ Deliver measurable performance improvements in Apache Fory without protocol drif
 - Run language-local build/test/lint for the touched implementation.
 - Run cross-language checks when runtime/type/protocol behavior can affect xlang.
 - Confirm serialized sizes and compatibility expectations where applicable.
+- For Java performance work, defer local GraalVM image builds and executions to the final
+  verification of the whole optimization task. Do not repeat them in individual rounds unless
+  the user explicitly requests an earlier run.
 
 7. Benchmark and compare.
 

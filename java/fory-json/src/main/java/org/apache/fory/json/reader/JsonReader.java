@@ -19,6 +19,8 @@
 
 package org.apache.fory.json.reader;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -50,6 +52,9 @@ import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
+import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.serializer.StringSerializer;
 
 /**
@@ -78,6 +83,7 @@ import org.apache.fory.serializer.StringSerializer;
  */
 public abstract class JsonReader {
   static final int MAX_BIG_NUMBER_LENGTH = 10_000;
+  private static final MethodHandle BIG_INTEGER_CONSTRUCTOR = bigIntegerConstructor();
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final byte[] HEX_VALUES = hexValues();
   static final int MAX_BIG_DECIMAL_SCALE = 10_000;
@@ -1841,6 +1847,23 @@ public abstract class JsonReader {
     if (wordCount == 1 && highWord >= 0) {
       return BigInteger.valueOf(negative ? -highWord : highWord);
     }
+    if (BIG_INTEGER_CONSTRUCTOR != null) {
+      int leadingInts = Long.numberOfLeadingZeros(highWord) >>> 5;
+      // The constructor retains this canonical big-endian magnitude. Never lend the reusable
+      // numeric workspace: later reads must not mutate a previously returned BigInteger.
+      int[] magnitude = new int[wordCount * 2 - leadingInts];
+      if (leadingInts == 0) {
+        magnitude[0] = (int) (highWord >>> 32);
+      }
+      magnitude[1 - leadingInts] = (int) highWord;
+      for (int i = 0; i < wordCount - 1; i++) {
+        long word = words[i];
+        int index = magnitude.length - (i + 1) * 2;
+        magnitude[index] = (int) (word >>> 32);
+        magnitude[index + 1] = (int) word;
+      }
+      return bigInteger(magnitude, negative ? -1 : 1);
+    }
     int leadingBytes = Long.numberOfLeadingZeros(highWord) >>> 3;
     byte[] magnitude = new byte[wordCount * Long.BYTES - leadingBytes];
     // A non-compact magnitude has at least eight bytes. Emit its partial high word first; the
@@ -1851,6 +1874,31 @@ public abstract class JsonReader {
           magnitude, magnitude.length - (i + 1) * Long.BYTES, Long.reverseBytes(words[i]));
     }
     return new BigInteger(negative ? -1 : 1, magnitude);
+  }
+
+  private static BigInteger bigInteger(int[] magnitude, int signum) {
+    try {
+      return (BigInteger) BIG_INTEGER_CONSTRUCTOR.invokeExact(magnitude, signum);
+    } catch (ThreadDeath e) {
+      throw e;
+    } catch (VirtualMachineError e) {
+      throw e;
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot construct JSON integer magnitude", e);
+    }
+  }
+
+  private static MethodHandle bigIntegerConstructor() {
+    if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return null;
+    }
+    try {
+      return _JDKAccess._trustedLookup(BigInteger.class)
+          .findConstructor(
+              BigInteger.class, MethodType.methodType(void.class, int[].class, int.class));
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      return null;
+    }
   }
 
   private static long parseDecimalChunk(byte[] bytes, int start, int end) {

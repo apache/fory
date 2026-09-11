@@ -1185,6 +1185,37 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readBigIntegerOwnership() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    List<BigInteger> expected = new ArrayList<>();
+    List<BigInteger> actual = new ArrayList<>();
+    for (int bits = 64; bits <= 2048; bits += 31) {
+      BigInteger boundary = BigInteger.ONE.shiftLeft(bits);
+      for (int delta : new int[] {-1, 0, 1}) {
+        for (int sign : new int[] {-1, 1}) {
+          BigInteger value =
+              boundary.add(BigInteger.valueOf(delta)).multiply(BigInteger.valueOf(sign));
+          byte[] input = value.toString().getBytes(StandardCharsets.US_ASCII);
+          reader.reset(input, 0, input.length);
+          expected.add(value);
+          actual.add(reader.readBigInteger());
+          BigDecimal decimal = new BigDecimal(value, 7);
+          input = decimal.toPlainString().getBytes(StandardCharsets.US_ASCII);
+          reader.reset(input, 0, input.length);
+          expected.add(value);
+          actual.add(reader.readBigDecimal().unscaledValue());
+        }
+      }
+    }
+    // Compare after subsequent parses have repeatedly overwritten the numeric workspace.
+    assertEquals(actual, expected);
+    for (int i = 0; i < actual.size(); i++) {
+      assertEquals(actual.get(i).bitLength(), expected.get(i).bitLength());
+      assertEquals(actual.get(i).toString(), expected.get(i).toString());
+    }
+  }
+
+  @Test
   public void readNumberSpans() {
     String[] numbers = {
       "0",

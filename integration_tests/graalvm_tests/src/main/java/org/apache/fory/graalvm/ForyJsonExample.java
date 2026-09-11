@@ -109,7 +109,7 @@ public final class ForyJsonExample {
     testMixinValueRecord();
     testMixinEnumValue();
     testMixinCodec();
-    testBigDecimal();
+    testBigNumbers();
     testSqlTypes();
     testFormatTimezone();
     testClosedPackage();
@@ -694,7 +694,7 @@ public final class ForyJsonExample {
     }
   }
 
-  private static void testBigDecimal() {
+  private static void testBigNumbers() {
     ForyJson json = ForyJson.builder().build();
     BigDecimalHolder value = new BigDecimalHolder();
     value.value = new BigDecimalSubtype("12345678901234567890.125");
@@ -702,6 +702,24 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(json.toJson(value).equals(expected));
     Preconditions.checkArgument(
         new String(json.toJsonBytes(value), StandardCharsets.UTF_8).equals(expected));
+    for (int bits : new int[] {64, 95, 127, 128, 256, 4096}) {
+      for (int sign : new int[] {-1, 1}) {
+        BigInteger integer =
+            BigInteger.ONE
+                .shiftLeft(bits)
+                .subtract(BigInteger.ONE)
+                .multiply(BigInteger.valueOf(sign));
+        String text = integer.toString();
+        Preconditions.checkArgument(json.fromJson(text, BigInteger.class).equals(integer));
+        Preconditions.checkArgument(
+            json.fromJson(text.getBytes(StandardCharsets.UTF_8), BigInteger.class).equals(integer));
+        BigDecimal decimal = new BigDecimal(integer, 7);
+        text = decimal.toPlainString();
+        Preconditions.checkArgument(json.fromJson(text, BigDecimal.class).equals(decimal));
+        Preconditions.checkArgument(
+            json.fromJson(text.getBytes(StandardCharsets.UTF_8), BigDecimal.class).equals(decimal));
+      }
+    }
   }
 
   private static void testSqlTypes() {
