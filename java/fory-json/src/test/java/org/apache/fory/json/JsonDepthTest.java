@@ -122,6 +122,47 @@ public class JsonDepthTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void skipUnknownContainers() {
+    ForyJson json = newJsonBuilder().maxDepth(3).build();
+    String[] values = {
+      "{}",
+      "[]",
+      "{ \"number\" : -1.25e+30, \"flag\" : false, \"text\" : null }",
+      "[1, {\"text\":\"\\uD83D\\uDE03\",\"values\":null}, true]",
+      "{\"empty\":[],\"values\":[0,1.5e-2,null]}",
+      "[" + repeat('9', 10001) + "]"
+    };
+    for (String value : values) {
+      for (String whitespace : new String[] {"", " ", "\t\r\n"}) {
+        String input = "{\"unknown\":" + whitespace + value + whitespace + ",\"value\":17}";
+        assertEquals(json.fromJson(input, DepthNode.class).value, 17);
+        assertEquals(
+            json.fromJson(input.getBytes(StandardCharsets.UTF_8), DepthNode.class).value, 17);
+      }
+    }
+    for (String value :
+        new String[] {
+          "{\"nested\":[{}]}",
+          "{\"a\":1,}",
+          "[1,]",
+          "{\"a\" 1}",
+          "{\"a\":1 \"b\":2}",
+          "[1 2]",
+          "{\"a\":[1e+]}",
+          "{\"a\":\"\\uD800\"}",
+          "[true,false",
+          "{\"a\":1"
+        }) {
+      String input = "{\"unknown\":" + value + ",\"value\":17}";
+      assertThrows(RuntimeException.class, () -> json.fromJson(input, DepthNode.class));
+      assertThrows(
+          RuntimeException.class,
+          () -> json.fromJson(input.getBytes(StandardCharsets.UTF_8), DepthNode.class));
+      assertEquals(json.fromJson("{\"value\":17}", DepthNode.class).value, 17);
+    }
+  }
+
+  @Test
   public void writeContainerMaxDepth() {
     ForyJson json = newJsonBuilder().maxDepth(2).build();
     JsonArray array = new JsonArray();

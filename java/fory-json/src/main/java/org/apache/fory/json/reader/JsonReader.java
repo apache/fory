@@ -3014,32 +3014,32 @@ public abstract class JsonReader {
 
   private void skipObject() {
     enterDepth();
-    expect('{');
-    if (consume('}')) {
+    // skipValue already checked the opening delimiter.
+    position++;
+    if (consumeNextToken('}')) {
       exitDepth();
       return;
     }
     do {
       skipWhitespace();
       position = scanStringEnd(position);
-      expect(':');
+      expectNextToken(':');
       skipValue();
-    } while (consume(','));
-    expect('}');
+    } while (consumeNextCommaOrEndObject());
     exitDepth();
   }
 
   private void skipArray() {
     enterDepth();
-    expect('[');
-    if (consume(']')) {
+    // skipValue already checked the opening delimiter.
+    position++;
+    if (consumeNextToken(']')) {
       exitDepth();
       return;
     }
     do {
       skipValue();
-    } while (consume(','));
-    expect(']');
+    } while (consumeNextCommaOrEndArray());
     exitDepth();
   }
 
