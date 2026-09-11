@@ -92,6 +92,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private static final int[] DIGIT_TRIPLES = new int[1000];
   private static final int[] DIGIT_QUADS = new int[10000];
   private static final boolean STRING_BYTES_BACKED = StringSerializer.isBytesBackedString();
+  private static final boolean COMPACT_STRINGS_ENABLED =
+      STRING_BYTES_BACKED && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder("Z"));
 
   static {
     String base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -869,24 +871,24 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private static int writeOffsetBytes(byte[] bytes, int pos, ZoneOffset offset) {
-    // ZoneOffset stores its canonical ASCII ID at construction; do not format it again per write.
+    // ZoneOffset constructs its canonical ID from ASCII literals and decimal digits. Its byte
+    // layout follows the fixed compact-string setting, unlike arbitrary caller-provided Strings.
     String id = offset.getId();
-    int length = id.length();
-    if (STRING_BYTES_BACKED) {
+    if (COMPACT_STRINGS_ENABLED) {
       byte[] text = StringSerializer.getStringBytes(id);
-      if (text.length == length) {
-        if (length == 9) {
-          LittleEndian.putInt64(bytes, pos, LittleEndian.getInt64(text, 0));
-          bytes[pos + 8] = text[8];
-        } else if (length == 6) {
-          LittleEndian.putInt32(bytes, pos, LittleEndian.getInt32(text, 0));
-          LittleEndian.putInt32(bytes, pos + 2, LittleEndian.getInt32(text, 2));
-        } else {
-          bytes[pos] = 'Z';
-        }
-        return pos + length;
+      int length = text.length;
+      if (length == 9) {
+        LittleEndian.putInt64(bytes, pos, LittleEndian.getInt64(text, 0));
+        bytes[pos + 8] = text[8];
+      } else if (length == 6) {
+        LittleEndian.putInt32(bytes, pos, LittleEndian.getInt32(text, 0));
+        LittleEndian.putInt32(bytes, pos + 2, LittleEndian.getInt32(text, 2));
+      } else {
+        bytes[pos] = 'Z';
       }
+      return pos + length;
     }
+    int length = id.length();
     for (int i = 0; i < length; i++) {
       bytes[pos++] = (byte) id.charAt(i);
     }

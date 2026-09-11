@@ -1217,6 +1217,21 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeOffsetLayouts() {
+    LocalTime time = LocalTime.of(12, 34, 56);
+    Utf8JsonWriter writer = newUtf8Writer(new byte[0]);
+    for (int seconds = -64800; seconds <= 64800; seconds++) {
+      OffsetTime value = OffsetTime.of(time, ZoneOffset.ofTotalSeconds(seconds));
+      writer.reset();
+      writer.writeOffsetTime(value);
+      writer.writeComma(1);
+      writer.writeInt(17);
+      String expected = '"' + DateTimeFormatter.ISO_OFFSET_TIME.format(value) + "\",17";
+      assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+    }
+  }
+
+  @Test
   public void writeOffsetTokens() {
     LocalTime time = LocalTime.of(12, 34, 56, 123456789);
     for (int seconds :
