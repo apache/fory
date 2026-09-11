@@ -88,6 +88,7 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.GraphMemoryEstimates;
+import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Float16;
 
@@ -2052,6 +2053,7 @@ public final class ScalarCodecs {
 
   public static final class ZoneIdCodec implements JsonValueCodec<ZoneId> {
     public static final ZoneIdCodec INSTANCE = new ZoneIdCodec();
+    private static final boolean STRING_BYTES_BACKED = StringSerializer.isBytesBackedString();
 
     @Override
     public void writeString(StringJsonWriter writer, ZoneId value) {
@@ -2066,8 +2068,17 @@ public final class ScalarCodecs {
     public void writeUtf8(Utf8JsonWriter writer, ZoneId value) {
       if (value == null) {
         writer.writeNull();
+        return;
+      }
+      String id = value.getId();
+      if (STRING_BYTES_BACKED
+          && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(id))) {
+        // Canonical ZoneId syntax is ASCII and excludes quotes, escapes, and control characters.
+        writer.writeRawValue('"', 0, 1);
+        writer.writeRawValue(StringSerializer.getStringBytes(id));
+        writer.writeRawValue('"', 0, 1);
       } else {
-        writer.writeString(value.getId());
+        writer.writeString(id);
       }
     }
 

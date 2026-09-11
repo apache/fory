@@ -167,6 +167,36 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeZoneIds() {
+    List<ZoneId> zones = new ArrayList<>();
+    for (String id : ZoneId.getAvailableZoneIds()) {
+      zones.add(ZoneId.of(id));
+    }
+    for (String id : new String[] {"Z", "+18:00", "-18:00", "+01:02:03", "UTC", "GMT-01:02:03"}) {
+      zones.add(ZoneId.of(id));
+    }
+    zones.add(null);
+    for (ZoneId zone : zones) {
+      String expected = zone == null ? "null" : "\"" + zone.getId() + "\"";
+      for (int capacity : new int[] {0, 1, 7, 8, expected.length() + 2}) {
+        Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+        writer.writeArrayStart();
+        ScalarCodecs.ZoneIdCodec.INSTANCE.writeUtf8(writer, zone);
+        writer.writeComma(1);
+        writer.writeInt(7);
+        writer.writeArrayEnd();
+        assertEquals(
+            new String(writer.toJsonBytes(), StandardCharsets.UTF_8), "[" + expected + ",7]");
+        writer.reset();
+        ScalarCodecs.ZoneIdCodec.INSTANCE.writeUtf8(writer, zone);
+        Utf8JsonReader reader = newUtf8Reader(writer.toJsonBytes());
+        assertEquals(ScalarCodecs.ZoneIdCodec.INSTANCE.readUtf8(reader), zone);
+        reader.finish();
+      }
+    }
+  }
+
+  @Test
   public void writeCharBufferBoundaries() {
     char[] values = new char[260];
     for (int i = 0; i < 256; i++) {
