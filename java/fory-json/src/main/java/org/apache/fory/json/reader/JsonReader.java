@@ -1792,11 +1792,6 @@ public abstract class JsonReader {
     }
   }
 
-  final BigInteger parseBigInteger(String number) {
-    byte[] bytes = bigNumberBytes(number);
-    return parseBigInteger(bytes, 0, bytes.length, 0, 0);
-  }
-
   private byte[] bigNumberBytes(String number) {
     if (StringSerializer.isBytesBackedString() && StringSerializer.getStringCoder(number) == 0) {
       return StringSerializer.getStringBytes(number);
@@ -1806,6 +1801,11 @@ public abstract class JsonReader {
       throwBigNumberLengthExceeded(position);
     }
     return number.getBytes(StandardCharsets.ISO_8859_1);
+  }
+
+  final BigInteger parseBigInteger(String number) {
+    byte[] bytes = bigNumberBytes(number);
+    return parseBigInteger(bytes, 0, bytes.length, 0, 0);
   }
 
   final BigInteger parseBigInteger(byte[] bytes, int start, int end, long prefix, int prefixEnd) {
