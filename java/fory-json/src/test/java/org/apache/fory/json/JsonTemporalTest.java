@@ -348,6 +348,73 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readInstantCalendar() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    int[] nanos = {0, 123000000, 123456000, 123456789};
+    int[] extraYears = {400, 1600, 1900, 1970, 2000, 2100, 2400, 9999};
+    for (int index = 0; index < 400 + extraYears.length; index++) {
+      int year = index < 400 ? index : extraYears[index - 400];
+      for (int month = 1; month <= 12; month++) {
+        LocalDate first = LocalDate.of(year, month, 1);
+        for (int day : new int[] {1, first.lengthOfMonth()}) {
+          Instant expected =
+              LocalDateTime.of(
+                      year,
+                      month,
+                      day,
+                      (year + month) % 24,
+                      (year + day) % 60,
+                      (month + day) % 60,
+                      nanos[(year + month + day) & 3])
+                  .toInstant(ZoneOffset.UTC);
+          reader.reset(('"' + expected.toString() + '"').getBytes(StandardCharsets.US_ASCII));
+          assertEquals(reader.readIsoInstant(), expected);
+          reader.finish();
+        }
+      }
+    }
+    for (String value :
+        new String[] {
+          "0000-02-29T23:59:59.000000001Z", "1970-01-01T00:00:00Z", "9999-12-31T23:59:59.999999999Z"
+        }) {
+      byte[] token = ('"' + value + '"').getBytes(StandardCharsets.US_ASCII);
+      for (int offset = 0; offset < 8; offset++) {
+        byte[] bytes = new byte[offset + token.length + 8];
+        System.arraycopy(token, 0, bytes, offset, token.length);
+        for (int length = 0; length < token.length; length++) {
+          reader.reset(bytes, offset, length);
+          assertThrows(ForyJsonException.class, reader::readIsoInstant);
+        }
+        reader.reset(bytes, offset, token.length);
+        assertEquals(reader.readIsoInstant(), Instant.parse(value));
+        reader.finish();
+      }
+    }
+    ForyJson json = newJson();
+    for (String value :
+        new String[] {
+          "1900-02-29T00:00:00Z",
+          "2000-02-30T00:00:00Z",
+          "2000-04-31T00:00:00Z",
+          "2000-00-01T00:00:00Z",
+          "2000-13-01T00:00:00Z",
+          "2000-01-00T00:00:00Z",
+          "2000-01-32T00:00:00Z",
+          "2000-01-01T25:00:00Z",
+          "2000-01-01T00:60:00Z",
+          "2000-01-01T00:00:61Z",
+          "2000-01-01T00:00:00.1234567890Z"
+        }) {
+      byte[] bytes = ('"' + value + '"').getBytes(StandardCharsets.US_ASCII);
+      assertThrows(ForyJsonException.class, () -> json.fromJson(bytes, Instant.class));
+      assertEquals(
+          json.fromJson(
+              "\"1970-01-01T00:00:00Z\"".getBytes(StandardCharsets.US_ASCII), Instant.class),
+          Instant.EPOCH);
+    }
+  }
+
+  @Test
   public void readTemporalGrammar() {
     for (String text :
         new String[] {"00:00", "23:59:59", "12:30:45.", "12:30:45.1", "12:30:45.000000001"}) {

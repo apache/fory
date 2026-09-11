@@ -19,6 +19,8 @@
 
 package org.apache.fory.json.reader;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
@@ -49,6 +51,9 @@ import org.apache.fory.json.resolver.JsonSharedRegistry.CachedFieldName;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
+import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.serializer.StringSerializer;
 
 /**
@@ -65,6 +70,7 @@ import org.apache.fory.serializer.StringSerializer;
  */
 public final class Utf8JsonReader extends JsonReader {
   private static final byte[] EMPTY_BYTES = new byte[0];
+  private static final MethodHandle INSTANT_FACTORY = instantFactory();
   private static final int[] NANO_SCALE = {
     1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000
   };
@@ -2502,19 +2508,125 @@ public final class Utf8JsonReader extends JsonReader {
   public Instant readIsoInstant() {
     skipWhitespaceFast();
     int mark = position;
-    // ISO_INSTANT requires seconds. Leap seconds and 24:00 remain with its JDK parser.
-    if (mark + 17 < inputLimit && input[mark + 17] == ':') {
-      LocalDateTime value = tryReadDateTime();
-      if (value != null
-          && position + 1 < inputLimit
-          && input[position] == 'Z'
-          && input[position + 1] == '"') {
-        position += 2;
-        return value.toInstant(ZoneOffset.UTC);
-      }
+    Instant value = tryReadInstant();
+    if (value != null) {
+      return value;
     }
     position = mark;
     return super.readIsoInstant();
+  }
+
+  private Instant tryReadInstant() {
+    byte[] bytes = input;
+    int limit = inputLimit;
+    int start = position + 1;
+    if (start > limit - 21
+        || bytes[start - 1] != '"'
+        || bytes[start + 4] != '-'
+        || bytes[start + 7] != '-'
+        || bytes[start + 10] != 'T'
+        || bytes[start + 13] != ':'
+        || bytes[start + 16] != ':') {
+      return null;
+    }
+    // Pack YYYY-MM-DD into eight digit lanes so date validation and pair conversion share loads.
+    long datePrefix = LittleEndian.getInt64(bytes, start);
+    int dateSuffix = LittleEndian.getInt32(bytes, start + 7);
+    long dateText =
+        (datePrefix & 0xffffffffL)
+            | ((datePrefix >>> 8) & 0xffff00000000L)
+            | ((long) ((dateSuffix >>> 8) & 0xffff) << 48);
+    long dateDigits = dateText - ASCII_ZEROES;
+    if (((dateDigits | (ASCII_NINES - dateText)) & ASCII_HIGH_BITS) != 0) {
+      return null;
+    }
+    long datePairs =
+        (dateDigits & 0x00ff00ff00ff00ffL) * 10 + ((dateDigits >>> 8) & 0x00ff00ff00ff00ffL);
+    int year = (int) (datePairs & 0xffff) * 100 + (int) ((datePairs >>> 16) & 0xffff);
+    int month = (int) ((datePairs >>> 32) & 0xffff);
+    int day = (int) (datePairs >>> 48);
+    long timeText =
+        (LittleEndian.getInt64(bytes, start + 11) & ~0x0000ff0000ff0000L) | 0x0000300000300000L;
+    long timeDigits = timeText - ASCII_ZEROES;
+    if (((timeDigits | (ASCII_NINES - timeText)) & ASCII_HIGH_BITS) != 0) {
+      return null;
+    }
+    int hour = (int) (timeDigits & 0xff) * 10 + (int) ((timeDigits >>> 8) & 0xff);
+    int minute = (int) ((timeDigits >>> 24) & 0xff) * 10 + (int) ((timeDigits >>> 32) & 0xff);
+    int second = (int) ((timeDigits >>> 48) & 0xff) * 10 + (int) (timeDigits >>> 56);
+    // Validate the UTC components once, without constructing local date/time carriers whose
+    // factories repeat range checks. ISO_INSTANT's leap seconds and 24:00 stay with its parser.
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) {
+      return null;
+    }
+    if (day > 28) {
+      int lastDay;
+      if (month == 2) {
+        lastDay = (year & 3) == 0 && (year % 100 != 0 || year % 400 == 0) ? 29 : 28;
+      } else {
+        lastDay = month == 4 || month == 6 || month == 9 || month == 11 ? 30 : 31;
+      }
+      if (day > lastDay) {
+        return null;
+      }
+    }
+    int end = start + 19;
+    int nano = 0;
+    position = end;
+    if (bytes[end] == '.') {
+      nano = readFractionNanos(end + 1);
+      end = position;
+    }
+    if (end > limit - 2 || bytes[end] != 'Z' || bytes[end + 1] != '"') {
+      return null;
+    }
+    // March-based years put each leap day at the end of its year. Four-digit years keep all
+    // day arithmetic in int range; January/February of year zero belong to the preceding era.
+    int marchYear = month <= 2 ? year - 1 : year;
+    int era = marchYear < 0 ? -1 : marchYear / 400;
+    int yearOfEra = marchYear - era * 400;
+    int marchMonth = month > 2 ? month - 3 : month + 9;
+    int epochDay =
+        era * 146097
+            + yearOfEra * 365
+            + yearOfEra / 4
+            - yearOfEra / 100
+            + (153 * marchMonth + 2) / 5
+            + day
+            - 1
+            - 719468;
+    position = end + 2;
+    return instant(epochDay * 86400L + hour * 3600 + minute * 60 + second, nano);
+  }
+
+  private static Instant instant(long seconds, int nano) {
+    // The UTF-8 component parser already proved 0 <= nano < 1_000_000_000. The JDK factory
+    // preserves its range and EPOCH handling without normalizing this fraction a second time.
+    if (INSTANT_FACTORY == null) {
+      return Instant.ofEpochSecond(seconds, nano);
+    }
+    try {
+      return (Instant) INSTANT_FACTORY.invokeExact(seconds, nano);
+    } catch (ThreadDeath e) {
+      throw e;
+    } catch (VirtualMachineError e) {
+      throw e;
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot construct JSON instant", e);
+    }
+  }
+
+  private static MethodHandle instantFactory() {
+    if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return null;
+    }
+    try {
+      return _JDKAccess._trustedLookup(Instant.class)
+          .findStatic(
+              Instant.class, "create", MethodType.methodType(Instant.class, long.class, int.class));
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      return null;
+    }
   }
 
   @Override
