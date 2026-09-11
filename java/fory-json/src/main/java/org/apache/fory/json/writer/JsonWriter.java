@@ -173,26 +173,23 @@ public abstract class JsonWriter {
         || epochSecond > MAX_ISO_INSTANT_SECOND) {
       throw invalidIsoInstant(epochSecond, nano);
     }
-    long zeroDay = Math.floorDiv(epochSecond, 86_400) + 719_528 - 60;
-    long adjust = 0;
-    if (zeroDay < 0) {
-      long adjustCycles = (zeroDay + 1) / 146_097 - 1;
-      adjust = adjustCycles * 400;
-      zeroDay += -adjustCycles * 146_097;
+    // Neri and Schneider, Proposition 6.3: https://arxiv.org/abs/2102.06959.
+    // Floor division extends the March-based century decomposition to negative years while
+    // keeping its remainder in [0, 146097). Valid Instant bounds keep all long products in range.
+    long quarterDay = 4 * (Math.floorDiv(epochSecond, 86_400) + 719_468) + 3;
+    int century = (int) Math.floorDiv(quarterDay, 146_097);
+    int remainder = (int) (quarterDay - century * 146_097L);
+    long yearProduct = 2_939_745L * (remainder | 3);
+    int year = century * 100 + (int) (yearProduct >>> 32);
+    int marchDay = (int) ((yearProduct & 0xffff_ffffL) / 2_939_745) >>> 2;
+    int monthDay = 2141 * marchDay + 197913;
+    int month = monthDay >>> 16;
+    int day = (monthDay & 0xffff) / 2141 + 1;
+    if (marchDay >= 306) {
+      year++;
+      month -= 12;
     }
-    long year = (400 * zeroDay + 591) / 146_097;
-    long dayOfYear = zeroDay - (365 * year + year / 4 - year / 100 + year / 400);
-    if (dayOfYear < 0) {
-      year--;
-      dayOfYear = zeroDay - (365 * year + year / 4 - year / 100 + year / 400);
-    }
-    year += adjust;
-    int marchDay = (int) dayOfYear;
-    int marchMonth = (marchDay * 5 + 2) / 153;
-    int month = (marchMonth + 2) % 12 + 1;
-    int day = marchDay - (marchMonth * 306 + 5) / 10 + 1;
-    year += marchMonth / 10;
-    return (year << 32) | ((long) month << 16) | day;
+    return ((long) year << 32) | ((long) month << 16) | day;
   }
 
   private static ForyJsonException invalidIsoInstant(long epochSecond, int nano) {

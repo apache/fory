@@ -894,6 +894,40 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeInstantCalendar() {
+    Utf8JsonWriter utf8 = newUtf8Writer(new byte[1]);
+    StringJsonWriter string = newStringWriter(new byte[1]);
+    long[] starts = {
+      Instant.MIN.getEpochSecond(),
+      LocalDate.of(-400, 3, 1).atStartOfDay().toEpochSecond(ZoneOffset.UTC),
+      LocalDate.of(1600, 3, 1).atStartOfDay().toEpochSecond(ZoneOffset.UTC),
+      Instant.MAX.getEpochSecond() - 146096L * 86400
+    };
+    for (long start : starts) {
+      for (int day = 0; day < 146097; day++) {
+        assertInstant(utf8, string, Instant.ofEpochSecond(start + day * 86400L, day));
+      }
+    }
+    Random random = new Random(481907L);
+    long minimum = Instant.MIN.getEpochSecond();
+    long range = Instant.MAX.getEpochSecond() - minimum + 1;
+    for (int i = 0; i < 10000; i++) {
+      long second = minimum + Math.floorMod(random.nextLong(), range);
+      assertInstant(utf8, string, Instant.ofEpochSecond(second, random.nextInt(1_000_000_000)));
+    }
+  }
+
+  private static void assertInstant(Utf8JsonWriter utf8, StringJsonWriter string, Instant value) {
+    utf8.reset();
+    string.reset();
+    utf8.writeIsoInstant(value.getEpochSecond(), value.getNano());
+    string.writeIsoInstant(value.getEpochSecond(), value.getNano());
+    String expected = '"' + value.toString() + '"';
+    assertEquals(new String(utf8.toJsonBytes(), StandardCharsets.UTF_8), expected);
+    assertEquals(string.toJson(), expected);
+  }
+
+  @Test
   public void writeZoneOffsetTokens() {
     Utf8JsonWriter writer = newUtf8Writer(new byte[0]);
     for (int seconds = -64800; seconds <= 64800; seconds++) {
