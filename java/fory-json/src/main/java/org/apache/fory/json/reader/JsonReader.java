@@ -88,7 +88,7 @@ public abstract class JsonReader {
   private static final byte[] HEX_VALUES = hexValues();
   static final int MAX_BIG_DECIMAL_SCALE = 10_000;
   private static final int COMPACT_DECIMAL_MAX_SCALE = 18;
-  private static final long[] LONG_POWERS_OF_TEN = {
+  static final long[] LONG_POWERS_OF_TEN = {
     1L,
     10L,
     100L,

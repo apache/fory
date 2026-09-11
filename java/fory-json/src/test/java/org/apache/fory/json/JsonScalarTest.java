@@ -1443,7 +1443,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
       assertQuotedBigIntegerReaders(value);
       assertQuotedBigIntegerReaders(value.substring(1));
     }
-    for (int digits = 18; digits <= 75; digits++) {
+    for (int digits = 1; digits <= 75; digits++) {
       for (int delta = -1; delta <= 1; delta++) {
         BigInteger value = BigInteger.TEN.pow(digits).add(BigInteger.valueOf(delta));
         assertBigIntegerReaders(value.toString());
@@ -1567,17 +1567,24 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public void readBigIntegerSlices() {
     Random random = new Random(937);
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
-    for (int bits = 63; bits <= 1024; bits += bits < 65 ? 1 : 17) {
+    for (int bits = 1; bits <= 1024; bits += bits < 128 ? 1 : 17) {
       BigInteger value = new BigInteger(bits, random).setBit(bits - 1);
       for (int sign : new int[] {1, -1}) {
         BigInteger expected = value.multiply(BigInteger.valueOf(sign));
         byte[] token = expected.toString().getBytes(StandardCharsets.US_ASCII);
         for (int offset = 0; offset < 8; offset++) {
-          byte[] input = new byte[offset + token.length + 8];
+          byte[] input = new byte[offset + token.length + 16];
           Arrays.fill(input, (byte) '9');
           System.arraycopy(token, 0, input, offset, token.length);
           reader.reset(input, offset, token.length);
           assertEquals(reader.readBigInteger(), expected);
+          byte[] suffix = ",17        ".getBytes(StandardCharsets.US_ASCII);
+          System.arraycopy(suffix, 0, input, offset + token.length, suffix.length);
+          reader.reset(input, offset, token.length + suffix.length);
+          assertEquals(reader.readBigInteger(), expected);
+          reader.expectNextToken(',');
+          assertEquals(reader.readInt(), 17);
+          reader.finish();
         }
       }
     }

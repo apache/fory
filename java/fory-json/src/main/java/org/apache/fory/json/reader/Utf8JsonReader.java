@@ -1112,18 +1112,21 @@ public final class Utf8JsonReader extends JsonReader {
     // let the existing magnitude converter handle values above signed MAX_VALUE without rescanning.
     int safeEnd = offset + Math.min(19, limit - offset);
     long value = 0;
-    if (safeEnd - offset >= 8) {
-      int block = parseEightDigits(bytes, offset, safeEnd);
-      if (block >= 0) {
-        value = block;
-        offset += 8;
-        if (safeEnd - offset >= 8) {
-          block = parseEightDigits(bytes, offset, safeEnd);
-          if (block >= 0) {
-            value = value * EIGHT_DIGITS + block;
-            offset += 8;
-          }
-        }
+    while (safeEnd - offset >= Long.BYTES) {
+      long text = LittleEndian.getInt64(bytes, offset);
+      long digits = text - ASCII_ZEROES;
+      long stop = (digits | (ASCII_NINES - text)) & ASCII_HIGH_BITS;
+      if (stop == 0) {
+        value = value * EIGHT_DIGITS + combineEightDigits(digits);
+        offset += Long.BYTES;
+      } else {
+        int count = Long.numberOfTrailingZeros(stop) >>> 3;
+        // The first stop proves the preceding digit lanes. Right-align them among eight
+        // decimal places to convert a short prefix without rereading its individual bytes.
+        digits = (digits & ((1L << (count << 3)) - 1)) << ((Long.BYTES - count) << 3);
+        value = value * LONG_POWERS_OF_TEN[count] + combineEightDigits(digits);
+        offset += count;
+        break;
       }
     }
     while (offset < safeEnd) {
