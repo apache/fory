@@ -669,6 +669,49 @@ class ScalaJsonSuite extends AnyFunSuite {
     }
   }
 
+  test("bit set representations") {
+    for (codegen <- Seq(false, true)) {
+      val json = ForyJsonScala.builder().withCodegen(codegen).build()
+      val cases = Seq(Seq.empty[Int], Seq(0), Seq(1, 63, 64, 130), Seq(130, 1, 64, 1), 0 until 1025)
+      for (indices <- cases) {
+        val immutable = scala.collection.immutable.BitSet(indices: _*)
+        val mutable = scala.collection.mutable.BitSet(indices: _*)
+        for (quoted <- Seq(false, true)) {
+          val input = indices
+            .map(i => if (quoted) "\"" + i + "\"" else i.toString)
+            .mkString("[ ", " , ", " ]")
+          assert(json.fromJson(input, classOf[scala.collection.immutable.BitSet]) == immutable)
+          assert(
+            json.fromJson(input.getBytes(UTF_8), classOf[scala.collection.immutable.BitSet]) == immutable
+          )
+          assert(json.fromJson(input, classOf[scala.collection.mutable.BitSet]) == mutable)
+          assert(
+            json.fromJson(input.getBytes(UTF_8), classOf[scala.collection.mutable.BitSet]) == mutable
+          )
+        }
+        val expected = immutable.mkString("[", ",", "]")
+        assert(json.toJson(immutable) == expected)
+        assert(new String(json.toJsonBytes(immutable), UTF_8) == expected)
+        assert(json.toJson(mutable) == expected)
+        assert(new String(json.toJsonBytes(mutable), UTF_8) == expected)
+      }
+      for (input <- Seq("[-1]", "[2147483648]", "[1.5]", "[1e2]", "[100000000]", "[1,")) {
+        assertThrows[ForyJsonException] {
+          json.fromJson(input, classOf[scala.collection.immutable.BitSet])
+        }
+        assertThrows[ForyJsonException] {
+          json.fromJson(input.getBytes(UTF_8), classOf[scala.collection.mutable.BitSet])
+        }
+        assert(
+          json.fromJson("[1]".getBytes(UTF_8), classOf[scala.collection.immutable.BitSet]) ==
+            scala.collection.immutable.BitSet(1)
+        )
+      }
+      assert(json.fromJson("null", classOf[scala.collection.immutable.BitSet]) == null)
+      assert(json.fromJson("null".getBytes(UTF_8), classOf[scala.collection.mutable.BitSet]) == null)
+    }
+  }
+
   test("tuples and owner-bound Scala Enumeration") {
     val json = ForyJsonScala.builder().withCodegen(false).build()
     val pairType = new TypeRef[(Int, String)]() {}
