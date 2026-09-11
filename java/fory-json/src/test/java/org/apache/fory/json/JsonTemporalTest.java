@@ -1256,7 +1256,10 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   @Test
   public void writeTemporalFormats() {
     int[] years = {-999999999, -1, 0, 1, 9999, 10000, 999999999};
-    int[] nanos = {0, 1, 10, 100, 1000, 1000010, 100000000, 123456789, 999999999};
+    int[] nanos = {
+      0, 1, 10, 100, 1000, 9999, 10000, 10001, 1000010, 99999999, 100000000, 100000001, 123456789,
+      999990000, 999999999
+    };
     ZoneOffset[] offsets = {
       ZoneOffset.UTC,
       ZoneOffset.ofHours(18),

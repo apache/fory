@@ -2779,16 +2779,13 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     return writePadded8(bytes, pos, middle, low);
   }
 
-  private static int writePadded8Digits(byte[] bytes, int pos, int value) {
-    int high = divide10000(value);
-    int low = value - high * 10000;
-    return writePadded8(bytes, pos, high, low);
-  }
-
   private static int writePadded9(byte[] bytes, int pos, int value) {
     int high = value / 100_000_000;
+    // Derive both quotients from the original value so the two four-digit groups do not
+    // depend on first subtracting the leading digit.
+    int groups = divide10000(value);
     bytes[pos++] = (byte) ('0' + high);
-    return writePadded8Digits(bytes, pos, value - high * 100_000_000);
+    return writePadded8(bytes, pos, groups - high * 10000, value - groups * 10000);
   }
 
   private static int writePaddedDigits(byte[] bytes, int pos, int value, int digits) {
