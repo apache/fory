@@ -2330,17 +2330,17 @@ public final class ScalarCodecs {
 
     @Override
     public OffsetTime readUtf8(Utf8JsonReader reader) {
-      return reader.tryReadNullToken() ? null : reader.readOffsetTime();
+      return reader.tryReadNextNullToken() ? null : reader.readOffsetTime();
     }
 
     @Override
     public OffsetTime readLatin1(Latin1JsonReader reader) {
-      return reader.tryReadNullToken() ? null : reader.readOffsetTime();
+      return reader.tryReadNextNullToken() ? null : reader.readOffsetTime();
     }
 
     @Override
     public OffsetTime readUtf16(Utf16JsonReader reader) {
-      return reader.tryReadNullToken() ? null : reader.readOffsetTime();
+      return reader.tryReadNextNullToken() ? null : reader.readOffsetTime();
     }
   }
 

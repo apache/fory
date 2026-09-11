@@ -136,6 +136,41 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readNullableOffsetTime() {
+    JsonValueCodec<OffsetTime> codec = ScalarCodecs.OffsetTimeCodec.INSTANCE;
+    OffsetTime value = OffsetTime.of(1, 2, 3, 4, ZoneOffset.ofHours(5));
+    for (String prefix : new String[] {"", " ", "\t\r\n"}) {
+      for (boolean isNull : new boolean[] {true, false}) {
+        String token = prefix + (isNull ? "null" : '"' + value.toString() + '"') + ",17";
+        byte[] bytes = token.getBytes(StandardCharsets.US_ASCII);
+        Utf8JsonReader utf8 = newUtf8Reader(bytes);
+        Latin1JsonReader latin1 = newLatin1Reader(bytes);
+        Utf16JsonReader utf16 = newUtf16Reader(token);
+        OffsetTime expected = isNull ? null : value;
+        assertEquals(codec.readUtf8(utf8), expected);
+        assertEquals(codec.readLatin1(latin1), expected);
+        assertEquals(codec.readUtf16(utf16), expected);
+        utf8.expectNextToken(',');
+        latin1.expectNextToken(',');
+        utf16.expectNextToken(',');
+        assertEquals(utf8.readInt(), 17);
+        assertEquals(latin1.readInt(), 17);
+        assertEquals(utf16.readInt(), 17);
+        utf8.finish();
+        latin1.finish();
+        utf16.finish();
+      }
+      for (String text : new String[] {"", "n", "nu", "nul", "nulp"}) {
+        String token = prefix + text;
+        byte[] bytes = token.getBytes(StandardCharsets.US_ASCII);
+        assertThrows(RuntimeException.class, () -> codec.readUtf8(newUtf8Reader(bytes)));
+        assertThrows(RuntimeException.class, () -> codec.readLatin1(newLatin1Reader(bytes)));
+        assertThrows(RuntimeException.class, () -> codec.readUtf16(newUtf16Reader(token)));
+      }
+    }
+  }
+
+  @Test
   public void readOffsetDigitLanes() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
     Latin1JsonReader latin1 = newLatin1Reader(new byte[0]);
