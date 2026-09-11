@@ -816,6 +816,39 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readZonedRegionBounds() {
+    String dateTime = "2024-01-01T12:34:56+01:00[";
+    ZonedDateTime expected = ZonedDateTime.parse(dateTime + "Europe/Paris]");
+    for (String id : new String[] {"Europe/Paris", "Europe\\/Paris", "Europe/Par\\u0069s"}) {
+      byte[] token = ('"' + dateTime + id + "]\"").getBytes(StandardCharsets.US_ASCII);
+      for (int offset = 0; offset < 8; offset++) {
+        byte[] bytes = new byte[offset + token.length + 3];
+        System.arraycopy(token, 0, bytes, offset, token.length);
+        bytes[offset + token.length] = ',';
+        bytes[offset + token.length + 1] = '1';
+        bytes[offset + token.length + 2] = '7';
+        Utf8JsonReader reader = newUtf8Reader(bytes);
+        reader.reset(bytes, offset, token.length + 3);
+        assertEquals(reader.readZonedDateTime(), expected);
+        reader.expect(',');
+        assertEquals(reader.readInt(), 17);
+        reader.reset(bytes, offset, token.length - 2);
+        assertThrows(RuntimeException.class, reader::readZonedDateTime);
+      }
+    }
+    ForyJson json = ForyJson.builder().build();
+    for (String id :
+        new String[] {
+          "Europe/Par\"is", "Europe/Par\nis", "Europe/Par\u0000is", "Europe/Paris\",17"
+        }) {
+      byte[] token = ('"' + dateTime + id + "]\"").getBytes(StandardCharsets.US_ASCII);
+      assertThrows(RuntimeException.class, () -> json.fromJson(token, ZonedDateTime.class));
+      assertEquals(
+          json.fromJson('"' + dateTime + "Europe/Paris]\"", ZonedDateTime.class), expected);
+    }
+  }
+
+  @Test
   public void readZonedTransitions() {
     for (String id :
         new String[] {

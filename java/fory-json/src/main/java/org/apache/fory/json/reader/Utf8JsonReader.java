@@ -2855,11 +2855,9 @@ public final class Utf8JsonReader extends JsonReader {
         if (input[position] == '[') {
           int start = position + 1;
           int end = start;
-          while (end < inputLimit
-              && input[end] >= 0x20
-              && input[end] != ']'
-              && input[end] != '"'
-              && input[end] != '\\') {
+          // ZoneId rejects quotes and control characters as part of its name validation.
+          // Only a JSON escape needs the text fallback before the bracketed ID is materialized.
+          while (end < inputLimit && input[end] != ']' && input[end] != '\\') {
             end++;
           }
           if (end + 1 < inputLimit && input[end] == ']' && input[end + 1] == '"') {
