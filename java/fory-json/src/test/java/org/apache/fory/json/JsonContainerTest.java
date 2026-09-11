@@ -144,6 +144,65 @@ public class JsonContainerTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readLongMapKeys() {
+    ForyJson json = newJson();
+    TypeRef<Map<Long, Boolean>> type = new TypeRef<Map<Long, Boolean>>() {};
+    List<Long> values = new ArrayList<>();
+    values.add(Long.MIN_VALUE);
+    values.add(Long.MAX_VALUE);
+    values.add(0L);
+    for (int digits = 0; digits <= 18; digits++) {
+      long magnitude = BigInteger.TEN.pow(digits).longValueExact();
+      for (int delta = -1; delta <= 1; delta++) {
+        values.add(magnitude + delta);
+        values.add(-magnitude + delta);
+      }
+    }
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (long value : values) {
+      String key = Long.toString(value);
+      for (int escape = -1; escape < key.length(); escape++) {
+        String text = key;
+        if (escape >= 0) {
+          text =
+              key.substring(0, escape)
+                  + String.format(java.util.Locale.ROOT, "\\u%04x", (int) key.charAt(escape))
+                  + key.substring(escape + 1);
+        }
+        byte[] input = ("{\"" + text + "\":true}").getBytes(StandardCharsets.US_ASCII);
+        assertEquals(json.fromJson(input, type), Collections.singletonMap(value, true));
+      }
+      byte[] token = ('"' + key + '"').getBytes(StandardCharsets.US_ASCII);
+      for (int offset = 0; offset < 8; offset++) {
+        byte[] input = new byte[offset + token.length + 8];
+        Arrays.fill(input, (byte) '9');
+        System.arraycopy(token, 0, input, offset, token.length);
+        reader.reset(input, offset, token.length);
+        assertEquals(reader.readFieldNameLong(), value);
+        reader.finish();
+      }
+    }
+    for (String key :
+        new String[] {
+          "",
+          "-",
+          "01",
+          "-01",
+          "9223372036854775808",
+          "-9223372036854775809",
+          "1e0",
+          "1.0",
+          "123456789012345678901"
+        }) {
+      byte[] input = ("{\"" + key + "\":true}").getBytes(StandardCharsets.US_ASCII);
+      assertThrows(RuntimeException.class, () -> json.fromJson(input, type));
+      assertEquals(
+          json.fromJson("{\"1\":true}".getBytes(StandardCharsets.US_ASCII), type),
+          Collections.singletonMap(1L, true));
+    }
+  }
+
+  @Test
   public void writeNestedCollections() {
     ForyJson json = newJson();
     assertEquals(

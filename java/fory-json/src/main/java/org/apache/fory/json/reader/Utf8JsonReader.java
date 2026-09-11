@@ -2219,46 +2219,28 @@ public final class Utf8JsonReader extends JsonReader {
     if (position >= inputLimit || input[position++] != '"') {
       throw error("Expected string");
     }
-    long result = 0;
-    long limit = -Long.MAX_VALUE;
-    boolean negative = false;
-    if (position < inputLimit && input[position] == '-') {
-      negative = true;
-      limit = Long.MIN_VALUE;
-      position++;
+    int digitStart = position;
+    if (digitStart < inputLimit && input[digitStart] == '-') {
+      digitStart++;
     }
-    if (position >= inputLimit) {
+    if (digitStart >= inputLimit) {
       throw error("Unterminated string");
     }
-    int ch = input[position];
+    int ch = input[digitStart];
     if (ch == '\\') {
       position = nameStart;
       return super.readFieldNameLong();
     }
-    if (ch == '0') {
-      position++;
-      return readZeroLongName(nameStart);
-    }
-    if (ch < '1' || ch > '9') {
+    if (ch < '0' || ch > '9') {
       throw error("Expected long field name");
     }
-    long multmin = limit / 10;
-    do {
-      int digit = ch - '0';
-      if (result < multmin) {
-        throw error("Long overflow");
-      }
-      result *= 10;
-      if (result < limit + digit) {
-        throw error("Long overflow");
-      }
-      result -= digit;
-      position++;
-      if (position >= inputLimit) {
-        throw error("Unterminated string");
-      }
-      ch = input[position];
-    } while (ch >= '0' && ch <= '9');
+    // Reuse the native token's bounded digit scan and overflow handling. Escaped member names
+    // still need the decoded-string path, and the closing quote belongs to this operation.
+    long result = readLongToken();
+    if (position >= inputLimit) {
+      throw error("Unterminated string");
+    }
+    ch = input[position];
     if (ch == '\\') {
       position = nameStart;
       return super.readFieldNameLong();
@@ -2267,7 +2249,7 @@ public final class Utf8JsonReader extends JsonReader {
       throw error("Expected long field name");
     }
     position++;
-    return negative ? result : -result;
+    return result;
   }
 
   @Override
@@ -4303,24 +4285,5 @@ public final class Utf8JsonReader extends JsonReader {
         throw error("Expected integer");
       }
     }
-  }
-
-  private long readZeroLongName(int nameStart) {
-    if (position >= inputLimit) {
-      throw error("Unterminated string");
-    }
-    int ch = input[position];
-    if (ch == '\\') {
-      position = nameStart;
-      return super.readFieldNameLong();
-    }
-    if (ch >= '0' && ch <= '9') {
-      throw error("Leading zero in number");
-    }
-    if (ch != '"') {
-      throw error("Expected long field name");
-    }
-    position++;
-    return 0L;
   }
 }
