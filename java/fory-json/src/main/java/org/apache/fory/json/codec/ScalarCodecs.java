@@ -2134,10 +2134,11 @@ public final class ScalarCodecs {
       if (REGION_CONSTRUCTOR == null
           || !STRING_BYTES_BACKED
           || !StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(value))
-          || value.length() < 2
-          || value.startsWith("UT")
-          || value.startsWith("GMT")) {
+          || value.length() < 2) {
         return ZoneId.of(value);
+      }
+      if (value.startsWith("UT") || value.startsWith("GMT")) {
+        return parsePrefixedZoneId(value);
       }
       byte[] bytes = StringSerializer.getStringBytes(value);
       int first = bytes[0] | 0x20;
@@ -2153,6 +2154,39 @@ public final class ScalarCodecs {
       // providers may decline caching, and neither zone IDs nor input values belong in a codec
       // cache.
       ZoneRules rules = ZoneRulesProvider.getRules(value, true);
+      return zoneRegion(value, rules);
+    }
+
+    private static ZoneId parsePrefixedZoneId(String value) {
+      int start = value.startsWith("UTC") || value.startsWith("GMT") ? 3 : 2;
+      if (value.length() != start + 6 || value.charAt(start + 3) != ':') {
+        return ZoneId.of(value);
+      }
+      int sign = value.charAt(start);
+      int h0 = value.charAt(start + 1) - '0';
+      int h1 = value.charAt(start + 2) - '0';
+      int m0 = value.charAt(start + 4) - '0';
+      int m1 = value.charAt(start + 5) - '0';
+      if ((sign != '+' && sign != '-')
+          || (h0 | h1 | m0 | m1 | (9 - h0) | (9 - h1) | (9 - m0) | (9 - m1)) < 0) {
+        return ZoneId.of(value);
+      }
+      int hours = h0 * 10 + h1;
+      int minutes = m0 * 10 + m1;
+      if (hours > 18 || minutes > 59 || (hours == 18 && minutes != 0)) {
+        return ZoneId.of(value);
+      }
+      int seconds = hours * 3600 + minutes * 60;
+      if (seconds == 0) {
+        return ZoneId.of(value);
+      }
+      // Nonzero signed HH:MM is already canonical. Retain this read's ID instead of splitting
+      // and concatenating it; zero offsets must keep the JDK's prefix-only normalization.
+      ZoneOffset offset = ZoneOffset.ofTotalSeconds(sign == '-' ? -seconds : seconds);
+      return zoneRegion(value, offset.getRules());
+    }
+
+    private static ZoneId zoneRegion(String value, ZoneRules rules) {
       try {
         return (ZoneId) REGION_CONSTRUCTOR.invokeExact(value, rules);
       } catch (ThreadDeath | VirtualMachineError e) {

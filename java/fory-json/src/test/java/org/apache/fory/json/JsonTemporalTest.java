@@ -109,6 +109,38 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readPrefixedZones() {
+    ScalarCodecs.ZoneIdCodec codec = ScalarCodecs.ZoneIdCodec.INSTANCE;
+    for (String prefix : new String[] {"UT", "UTC", "GMT"}) {
+      for (int minutes = -1080; minutes <= 1080; minutes++) {
+        ZoneOffset offset = ZoneOffset.ofTotalSeconds(minutes * 60);
+        String id = prefix + (minutes == 0 ? "+00:00" : offset.getId());
+        ZoneId expected = ZoneId.of(id);
+        assertToken(codec, id, expected);
+        ZoneId actual =
+            codec.readUtf8(newUtf8Reader(('"' + id + '"').getBytes(StandardCharsets.US_ASCII)));
+        assertEquals(actual.getId(), expected.getId());
+        assertEquals(actual.getRules(), expected.getRules());
+      }
+      for (String suffix :
+          new String[] {"", "0", "+1", "-01", "+0130", "-01:30:29", "+00:00", "-00:00"}) {
+        String id = prefix + suffix;
+        ZoneId expected;
+        try {
+          expected = ZoneId.of(id);
+        } catch (java.time.DateTimeException e) {
+          rejectToken(codec, id);
+          continue;
+        }
+        assertToken(codec, id, expected);
+      }
+      for (String suffix : new String[] {"+18:01", "-18:01", "+19:00", "+01:60", "+0a:00"}) {
+        rejectToken(codec, prefix + suffix);
+      }
+    }
+  }
+
+  @Test
   public void readZoneProviderRules() {
     ZoneNameProvider provider = new ZoneNameProvider();
     ZoneRulesProvider.registerProvider(provider);
