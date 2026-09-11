@@ -1254,6 +1254,24 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeClockComponents() {
+    LocalDate date = LocalDate.of(2024, 2, 29);
+    ZoneOffset offset = ZoneOffset.ofHoursMinutes(1, 30);
+    for (int component = 0; component < 60; component++) {
+      for (int nano : new int[] {0, 123456789}) {
+        LocalTime time = LocalTime.of(component % 24, component, 59 - component, nano);
+        LocalDateTime dateTime = LocalDateTime.of(date, time);
+        assertWriter(ScalarCodecs.LocalTimeCodec.INSTANCE, time);
+        assertWriter(ScalarCodecs.OffsetTimeCodec.INSTANCE, OffsetTime.of(time, offset));
+        assertWriter(ScalarCodecs.LocalDateTimeCodec.INSTANCE, dateTime);
+        assertWriter(
+            ScalarCodecs.OffsetDateTimeCodec.INSTANCE, OffsetDateTime.of(dateTime, offset));
+        assertWriter(ScalarCodecs.ZonedDateTimeCodec.INSTANCE, dateTime.atZone(offset));
+      }
+    }
+  }
+
+  @Test
   public void writeTemporalFormats() {
     int[] years = {-999999999, -1, 0, 1, 9999, 10000, 999999999};
     int[] nanos = {

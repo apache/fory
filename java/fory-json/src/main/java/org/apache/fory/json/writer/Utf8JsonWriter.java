@@ -848,9 +848,11 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private static int writeIsoTimeBytes(byte[] bytes, int pos, LocalTime value) {
-    int hour = DIGIT_QUADS[value.getHour()] >>> 16;
-    int minute = DIGIT_QUADS[value.getMinute()] >>> 16;
-    int second = DIGIT_QUADS[value.getSecond()] >>> 16;
+    // Clock components are nonnegative byte-backed values. Keep the unsigned bounds explicit
+    // so the JIT can prove that every lookup is inside the digit table.
+    int hour = DIGIT_QUADS[value.getHour() & 0xff] >>> 16;
+    int minute = DIGIT_QUADS[value.getMinute() & 0xff] >>> 16;
+    int second = DIGIT_QUADS[value.getSecond() & 0xff] >>> 16;
     LittleEndian.putInt64(
         bytes,
         pos,
