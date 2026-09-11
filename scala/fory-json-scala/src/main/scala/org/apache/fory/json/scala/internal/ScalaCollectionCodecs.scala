@@ -558,6 +558,10 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       return
     }
     ScalaCollectionCodecs.requireSupportedRuntime(value.getClass)
+    if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec]) {
+      writeIntMap(writer, value.asInstanceOf[scala.collection.immutable.IntMap[Any]])
+      return
+    }
     val codec = valueInfo.stringWriter()
     val iterator = value.iterator
     writer.writeObjectStart()
@@ -579,6 +583,10 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       return
     }
     ScalaCollectionCodecs.requireSupportedRuntime(value.getClass)
+    if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec]) {
+      writeIntMap(writer, value.asInstanceOf[scala.collection.immutable.IntMap[Any]])
+      return
+    }
     val codec = valueInfo.utf8Writer()
     val iterator = value.iterator
     writer.writeObjectStart()
@@ -589,6 +597,42 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       if (entry._1 == null) throw new ForyJsonException("JSON map key cannot be null")
       keyCodec.writeName(writer, entry._1)
       codec.writeUtf8(writer, entry._2)
+      index += 1
+    }
+    writer.writeObjectEnd()
+  }
+
+  private def writeIntMap(
+      writer: StringJsonWriter,
+      value: scala.collection.immutable.IntMap[Any]
+  ): Unit = {
+    val codec = valueInfo.stringWriter()
+    writer.writeObjectStart()
+    var index = 0
+    // foreachEntry preserves IntMap's traversal order without materializing iterator tuples.
+    // This route is selected only for natural integer keys; custom key codecs keep the generic loop.
+    value.foreachEntry { (key, entryValue) =>
+      writer.writeComma(index)
+      writer.writeIntFieldName(key)
+      codec.writeString(writer, entryValue)
+      index += 1
+    }
+    writer.writeObjectEnd()
+  }
+
+  private def writeIntMap(
+      writer: Utf8JsonWriter,
+      value: scala.collection.immutable.IntMap[Any]
+  ): Unit = {
+    val codec = valueInfo.utf8Writer()
+    writer.writeObjectStart()
+    var index = 0
+    // foreachEntry preserves IntMap's traversal order without materializing iterator tuples.
+    // This route is selected only for natural integer keys; custom key codecs keep the generic loop.
+    value.foreachEntry { (key, entryValue) =>
+      writer.writeComma(index)
+      writer.writeIntFieldName(key)
+      codec.writeUtf8(writer, entryValue)
       index += 1
     }
     writer.writeObjectEnd()

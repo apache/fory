@@ -714,6 +714,33 @@ class ScalaJsonSuite extends AnyFunSuite {
     assert(shallow.fromJson("{}".getBytes(UTF_8), mapType).isEmpty)
   }
 
+  test("int map entries") {
+    val mapType = new TypeRef[scala.collection.immutable.IntMap[String]]() {}
+    val nestedType = new TypeRef[List[scala.collection.immutable.IntMap[String]]]() {}
+    val keys = Seq(Int.MinValue, -1, 0, 1, Int.MaxValue) ++ (2 until 1002 by 7)
+    val populated = scala.collection.immutable.IntMap(
+      keys.zipWithIndex.map { case (key, index) =>
+        key -> (if (index % 3 == 0) null else "value:\"\u0100/" + index)
+      }: _*
+    )
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      ); value <- Seq(scala.collection.immutable.IntMap.empty[String],
+        scala.collection.immutable.IntMap(7 -> "seven"), populated)) {
+      val expected = value.iterator.map { case (key, entryValue) =>
+        "\"" + key + "\":" + json.toJson(entryValue)
+      }.mkString("{", ",", "}")
+      assert(json.toJson(value, mapType) == expected)
+      assert(new String(json.toJsonBytes(value, mapType), UTF_8) == expected)
+      assert(json.toJson(List(value), nestedType) == "[" + expected + "]")
+      assert(new String(json.toJsonBytes(List(value), nestedType), UTF_8) == "[" + expected + "]")
+      assert(json.fromJson(expected, mapType) == value)
+      assert(json.toJson(null, mapType) == "null")
+      assert(new String(json.toJsonBytes(null, mapType), UTF_8) == "null")
+    }
+  }
+
   test("int map codec slots") {
     val value = IntMapCodecSlots(
       scala.collection.immutable.IntMap(1 -> "one"),
@@ -726,6 +753,7 @@ class ScalaJsonSuite extends AnyFunSuite {
       val text = json.toJson(value)
       assert(text.contains("\"1\":\"tag:one\""))
       assert(text.contains("\"key:-1\":\"tag:minus\""))
+      assert(new String(json.toJsonBytes(value), UTF_8) == text)
       assert(json.fromJson(text, classOf[IntMapCodecSlots]) == value)
       assert(json.fromJson(text.getBytes(UTF_8), classOf[IntMapCodecSlots]) == value)
     }
