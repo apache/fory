@@ -1274,14 +1274,21 @@ public final class Utf8JsonReader extends JsonReader {
     if (safeEnd > inputLimit) {
       safeEnd = inputLimit;
     }
-    int block = parseEightDigits(bytes, offset, safeEnd);
-    if (block >= 0) {
-      result = result * EIGHT_DIGITS + block;
-      offset += 8;
-      block = parseEightDigits(bytes, offset, safeEnd);
-      if (block >= 0) {
-        result = result * EIGHT_DIGITS + block;
-        offset += 8;
+    while (safeEnd - offset >= Long.BYTES) {
+      long text = LittleEndian.getInt64(bytes, offset);
+      long digits = text - ASCII_ZEROES;
+      long stop = (digits | (ASCII_NINES - text)) & ASCII_HIGH_BITS;
+      if (stop == 0) {
+        result = result * EIGHT_DIGITS + combineEightDigits(digits);
+        offset += Long.BYTES;
+      } else {
+        // The first stop proves the short digit prefix; the eighteen-digit bound still makes
+        // its complete accumulation safe without a per-digit overflow check.
+        int count = Long.numberOfTrailingZeros(stop) >>> 3;
+        digits = (digits & ((1L << (count << 3)) - 1)) << ((Long.BYTES - count) << 3);
+        result = result * LONG_POWERS_OF_TEN[count] + combineEightDigits(digits);
+        offset += count;
+        break;
       }
     }
     while (offset < safeEnd) {
@@ -1345,14 +1352,21 @@ public final class Utf8JsonReader extends JsonReader {
     if (safeEnd > inputLimit) {
       safeEnd = inputLimit;
     }
-    int block = parseEightDigits(bytes, offset, safeEnd);
-    if (block >= 0) {
-      result = result * EIGHT_DIGITS - block;
-      offset += 8;
-      block = parseEightDigits(bytes, offset, safeEnd);
-      if (block >= 0) {
-        result = result * EIGHT_DIGITS - block;
-        offset += 8;
+    while (safeEnd - offset >= Long.BYTES) {
+      long text = LittleEndian.getInt64(bytes, offset);
+      long digits = text - ASCII_ZEROES;
+      long stop = (digits | (ASCII_NINES - text)) & ASCII_HIGH_BITS;
+      if (stop == 0) {
+        result = result * EIGHT_DIGITS - combineEightDigits(digits);
+        offset += Long.BYTES;
+      } else {
+        // The first stop proves the short digit prefix; the eighteen-digit bound still makes
+        // its complete accumulation safe without a per-digit overflow check.
+        int count = Long.numberOfTrailingZeros(stop) >>> 3;
+        digits = (digits & ((1L << (count << 3)) - 1)) << ((Long.BYTES - count) << 3);
+        result = result * LONG_POWERS_OF_TEN[count] - combineEightDigits(digits);
+        offset += count;
+        break;
       }
     }
     while (offset < safeEnd) {

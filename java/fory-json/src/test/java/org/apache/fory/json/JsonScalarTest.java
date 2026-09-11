@@ -823,6 +823,53 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readLongPartialWords() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    String digits = "1234567890123456789";
+    for (int length = 1; length <= digits.length(); length++) {
+      for (String sign : new String[] {"", "-"}) {
+        String number = sign + digits.substring(0, length);
+        long expected = Long.parseLong(number);
+        for (String quote : new String[] {"", "\""}) {
+          String token = quote + number + quote;
+          byte[] encoded = (token + ",17").getBytes(StandardCharsets.US_ASCII);
+          for (int offset = 0; offset < 8; offset++) {
+            byte[] bytes = new byte[offset + encoded.length + 8];
+            Arrays.fill(bytes, (byte) '9');
+            System.arraycopy(encoded, 0, bytes, offset, encoded.length);
+            reader.reset(bytes, offset, token.length());
+            assertEquals(reader.readLongValue(), expected);
+            reader.finish();
+            reader.reset(bytes, offset, encoded.length);
+            assertEquals(reader.readLongValue(), expected);
+            reader.expectNextToken(',');
+            assertEquals(reader.readInt(), 17);
+            reader.finish();
+          }
+        }
+      }
+    }
+    ForyJson json = newJson();
+    for (String token :
+        new String[] {
+          "9223372036854775808",
+          "-9223372036854775809",
+          "12345678901234567890",
+          "12345.6",
+          "12345e6",
+          "12345x6",
+          "-12345.6",
+          "-12345e6",
+          "-12345x6"
+        }) {
+      for (String quote : new String[] {"", "\""}) {
+        byte[] bytes = (quote + token + quote).getBytes(StandardCharsets.US_ASCII);
+        assertThrows(RuntimeException.class, () -> json.fromJson(bytes, Long.class));
+      }
+    }
+  }
+
+  @Test
   public void readLatin1LongBlocks() {
     assertEquals(
         newLatin1Reader(latin1Bytes("123456789012345678")).readLongTokenValue(),
