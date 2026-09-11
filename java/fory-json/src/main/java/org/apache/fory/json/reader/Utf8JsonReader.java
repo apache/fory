@@ -71,6 +71,7 @@ import org.apache.fory.serializer.StringSerializer;
 public final class Utf8JsonReader extends JsonReader {
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final MethodHandle INSTANT_FACTORY = instantFactory();
+  private static final MethodHandle LOCAL_TIME_FACTORY = localTimeFactory();
   private static final int[] NANO_SCALE = {
     1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000
   };
@@ -3204,7 +3205,39 @@ public final class Utf8JsonReader extends JsonReader {
     if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
       return null;
     }
-    return LocalTime.of(hour, minute, second, nano);
+    return localTime(hour, minute, second, nano);
+  }
+
+  private static LocalTime localTime(int hour, int minute, int second, int nano) {
+    // tryReadTime validates the clock components, and readFractionNanos consumes at most nine
+    // digits. The JDK factory retains whole-hour reuse without validating those ranges again.
+    if (LOCAL_TIME_FACTORY == null) {
+      return LocalTime.of(hour, minute, second, nano);
+    }
+    try {
+      return (LocalTime) LOCAL_TIME_FACTORY.invokeExact(hour, minute, second, nano);
+    } catch (ThreadDeath e) {
+      throw e;
+    } catch (VirtualMachineError e) {
+      throw e;
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot construct JSON local time", e);
+    }
+  }
+
+  private static MethodHandle localTimeFactory() {
+    if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return null;
+    }
+    try {
+      return _JDKAccess._trustedLookup(LocalTime.class)
+          .findStatic(
+              LocalTime.class,
+              "create",
+              MethodType.methodType(LocalTime.class, int.class, int.class, int.class, int.class));
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      return null;
+    }
   }
 
   private int readFractionNanos(int start) {
