@@ -161,6 +161,17 @@ case class BooleanArraySeqValue(
     values: scala.collection.immutable.ArraySeq[Boolean]
 )
 
+@org.apache.fory.json.annotation.JsonMixin(target = classOf[java.lang.Boolean])
+@org.apache.fory.json.annotation.JsonCodec(value = classOf[BooleanLabelCodec])
+trait BooleanLabelMixin
+
+case class BooleanCollectionsValue(
+    @org.apache.fory.json.annotation.JsonCodec(elementCodec = classOf[BooleanLabelCodec])
+    list: List[Boolean],
+    @org.apache.fory.json.annotation.JsonCodec(elementCodec = classOf[BooleanLabelCodec])
+    vector: Vector[Boolean]
+)
+
 case class Schedule(
     @org.apache.fory.json.annotation.JsonCodec(value = classOf[WeekdayCodec]) day: Weekday.Value
 )
@@ -468,7 +479,7 @@ class ScalaJsonSuite extends AnyFunSuite {
         ForyJsonScala.builder().withCodegen(false).build(),
         ForyJsonScala.builder().withAsyncCompilation(false).build()
       )) {
-      for (size <- Seq(0, 1, 2, 33, 1025)) {
+      for (size <- Seq(0, 1, 2, 3, 4, 33, 1025)) {
         val values = ArraySeq.tabulate(size)(i => i % 3 == 0)
         val expected = values.mkString("[", ",", "]")
         assert(json.toJson(values) == expected)
@@ -488,6 +499,73 @@ class ScalaJsonSuite extends AnyFunSuite {
       assert(json.fromJson("[true,null,false]", boxedType) == boxed)
       assert(json.fromJson("[true,null,false]".getBytes(UTF_8), boxedType) == boxed)
     }
+  }
+
+  test("Boolean collection writers preserve element codecs") {
+    val listType = ScalaTypeRef[List[Boolean]]
+    val vectorType = ScalaTypeRef[Vector[Boolean]]
+    val boxedListType = ScalaTypeRef[List[java.lang.Boolean]]
+    val boxedVectorType = ScalaTypeRef[Vector[java.lang.Boolean]]
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      for (size <- Seq(0, 1, 2, 33, 1025)) {
+        val vector = Vector.tabulate(size)(i => i % 3 == 0)
+        val list = vector.toList
+        val expected = vector.mkString("[", ",", "]")
+        assert(new String(json.toJsonBytes(list), UTF_8) == expected)
+        assert(new String(json.toJsonBytes(vector), UTF_8) == expected)
+        assert(new String(json.toJsonBytes(list, listType), UTF_8) == expected)
+        assert(new String(json.toJsonBytes(vector, vectorType), UTF_8) == expected)
+      }
+      for (first <- Seq(false, true); second <- Seq(false, true)) {
+        val vector = Vector(false, first, second)
+        val expected = vector.mkString("[", ",", "]")
+        assert(new String(json.toJsonBytes(vector), UTF_8) == expected)
+        assert(new String(json.toJsonBytes(vector.toList), UTF_8) == expected)
+      }
+      val iterableType = ScalaTypeRef[scala.collection.Iterable[Boolean]]
+      for (values <- Seq[scala.collection.Iterable[Boolean]](
+          Vector(true, false, true),
+          List(false, true, false),
+          Set(true, false)
+        )) {
+        assert(new String(json.toJsonBytes(values, iterableType), UTF_8) == values.mkString("[", ",", "]"))
+      }
+      val boxed = List[java.lang.Boolean](null, true, false, null, false)
+      assert(new String(json.toJsonBytes(boxed, boxedListType), UTF_8) == "[null,true,false,null,false]")
+      assert(
+        new String(json.toJsonBytes(boxed.toVector, boxedVectorType), UTF_8) ==
+          "[null,true,false,null,false]"
+      )
+      val mixed = List[Any](true, false, null, 7, "x", true)
+      assert(new String(json.toJsonBytes(mixed), UTF_8) == "[true,false,null,7,\"x\",true]")
+      assert(new String(json.toJsonBytes(mixed.toVector), UTF_8) == "[true,false,null,7,\"x\",true]")
+      val custom = BooleanCollectionsValue(List(true, false, true), Vector(false, true, false))
+      val expected = "{\"list\":[\"yes\",\"no\",\"yes\"],\"vector\":[\"no\",\"yes\",\"no\"]}"
+      assert(new String(json.toJsonBytes(custom), UTF_8) == expected)
+      assert(json.fromJson(expected.getBytes(UTF_8), classOf[BooleanCollectionsValue]) == custom)
+    }
+  }
+
+  test("Boolean collection writers respect scalar Mixins") {
+    val json = ForyJsonScala.builder().registerMixin(classOf[BooleanLabelMixin]).build()
+    val values = Vector(false, true, false, true)
+    val expected = "[\"no\",\"yes\",\"no\",\"yes\"]"
+    assert(new String(json.toJsonBytes(values), UTF_8) == expected)
+    assert(new String(json.toJsonBytes(values.toList), UTF_8) == expected)
+    val boxed = Vector[java.lang.Boolean](false, true, false, true)
+    assert(
+      new String(json.toJsonBytes(boxed, ScalaTypeRef[Vector[java.lang.Boolean]]), UTF_8) == expected
+    )
+    assert(
+      new String(json.toJsonBytes(boxed.toList, ScalaTypeRef[List[java.lang.Boolean]]), UTF_8) == expected
+    )
+    // An exact boxed Boolean Mixin does not overlay the primitive Boolean schema.
+    val native = values.mkString("[", ",", "]")
+    assert(new String(json.toJsonBytes(values, ScalaTypeRef[Vector[Boolean]]), UTF_8) == native)
+    assert(new String(json.toJsonBytes(values.toList, ScalaTypeRef[List[Boolean]]), UTF_8) == native)
   }
 
   test("Boolean ArraySeq reading") {

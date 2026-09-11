@@ -21,7 +21,14 @@ package org.apache.fory.json.scala.internal
 
 import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.annotation.JsonCodec
-import org.apache.fory.json.codec.{ArrayCodec, CompositeJsonCodec, JsonValueCodec, MapKeyCodec, ScalarCodecs}
+import org.apache.fory.json.codec.{
+  ArrayCodec,
+  CompositeJsonCodec,
+  JsonValueCodec,
+  MapKeyCodec,
+  ScalarCodecs,
+  Utf8WriterCodec
+}
 import org.apache.fory.json.reader.{JsonReader, Latin1JsonReader, Utf16JsonReader, Utf8JsonReader}
 import org.apache.fory.json.resolver.{JsonTypeInfo, JsonTypeResolver}
 import org.apache.fory.json.writer.{StringJsonWriter, Utf8JsonWriter}
@@ -93,15 +100,41 @@ private[scala] final class ScalaListCodec(
       return
     }
     val codec = elementInfo.utf8Writer()
+    val booleanElements = (codec eq ScalarCodecs.NaturalCodec.INSTANCE) ||
+      (codec eq ScalarCodecs.BooleanCodec.PRIMITIVE) || (codec eq ScalarCodecs.BooleanCodec.BOXED)
     writer.writeArrayStart()
     var current = value
-    var index = 0
+    if (current ne Nil) {
+      val first = current.asInstanceOf[scala.collection.immutable.::[Any]]
+      codec.writeUtf8(writer, first.head)
+      current = first.tail
+    }
     while (current ne Nil) {
       val node = current.asInstanceOf[scala.collection.immutable.::[Any]]
-      writer.writeComma(index)
-      codec.writeUtf8(writer, node.head)
-      current = node.tail
-      index += 1
+      val element = node.head
+      val tail = node.tail
+      if (booleanElements && element.isInstanceOf[java.lang.Boolean]) {
+        val first = element.asInstanceOf[java.lang.Boolean].booleanValue()
+        if ((tail ne Nil) && tail.head.isInstanceOf[java.lang.Boolean]) {
+          ScalaCollectionCodecs.writeBooleanPair(
+            writer,
+            first,
+            tail.head.asInstanceOf[java.lang.Boolean].booleanValue()
+          )
+          current = tail.tail
+        } else {
+          writer.writeRawValue(
+            if (first) 0x65_7572_742cL else 0x6573_6c61_662cL,
+            0L,
+            if (first) 5 else 6
+          )
+          current = tail
+        }
+      } else {
+        writer.writeComma(1)
+        codec.writeUtf8(writer, element)
+        current = tail
+      }
     }
     writer.writeArrayEnd()
   }
@@ -188,7 +221,12 @@ private[scala] final class ScalaListCodec(
   }
 }
 
-private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtimeType: Boolean)
+private[scala] final class ScalaIterableCodec(
+    kind: Int,
+    ownerBytes: Int,
+    runtimeType: Boolean,
+    sequence: Boolean
+)
     extends CompositeJsonCodec[scala.collection.Iterable[Any]] {
   private val resultOwnerBytes =
     if (kind == ScalaCollectionCodecs.ListKind) 0 else ownerBytes
@@ -280,6 +318,15 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
       case _ =>
     }
     val codec = elementInfo.utf8Writer()
+    // Sets have at most two Boolean values and keep their ordinary element loop.
+    if (
+      sequence &&
+      ((codec eq ScalarCodecs.NaturalCodec.INSTANCE) ||
+        (codec eq ScalarCodecs.BooleanCodec.PRIMITIVE) || (codec eq ScalarCodecs.BooleanCodec.BOXED))
+    ) {
+      writeSequence(writer, value.asInstanceOf[scala.collection.Seq[Object]], codec)
+      return
+    }
     val iterator = value.iterator
     writer.writeArrayStart()
     var index = 0
@@ -287,6 +334,51 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
       writer.writeComma(index)
       codec.writeUtf8(writer, iterator.next())
       index += 1
+    }
+    writer.writeArrayEnd()
+  }
+
+  private def writeSequence(
+      writer: Utf8JsonWriter,
+      value: scala.collection.Seq[Object],
+      codec: Utf8WriterCodec[Object]
+  ): Unit = {
+    val iterator = value.iterator
+    writer.writeArrayStart()
+    if (iterator.hasNext) codec.writeUtf8(writer, iterator.next())
+    while (iterator.hasNext) {
+      val element = iterator.next()
+      if (element.isInstanceOf[java.lang.Boolean]) {
+        val first = element.asInstanceOf[java.lang.Boolean].booleanValue()
+        // The resolved built-in Boolean writer has no callbacks before fetching the next element.
+        if (iterator.hasNext) {
+          val second = iterator.next()
+          if (second.isInstanceOf[java.lang.Boolean]) {
+            ScalaCollectionCodecs.writeBooleanPair(
+              writer,
+              first,
+              second.asInstanceOf[java.lang.Boolean].booleanValue()
+            )
+          } else {
+            writer.writeRawValue(
+              if (first) 0x65_7572_742cL else 0x6573_6c61_662cL,
+              0L,
+              if (first) 5 else 6
+            )
+            writer.writeComma(1)
+            codec.writeUtf8(writer, second)
+          }
+        } else {
+          writer.writeRawValue(
+            if (first) 0x65_7572_742cL else 0x6573_6c61_662cL,
+            0L,
+            if (first) 5 else 6
+          )
+        }
+      } else {
+        writer.writeComma(1)
+        codec.writeUtf8(writer, element)
+      }
     }
     writer.writeArrayEnd()
   }
@@ -625,6 +717,20 @@ private[scala] object ScalaCollectionCodecs {
   val MutableLinkedHashMapKind = 26
   val MutableAnyRefMapKind = 27
   val MutableLongMapKind = 28
+
+  def writeBooleanPair(writer: Utf8JsonWriter, first: Boolean, second: Boolean): Unit = {
+    val firstBytes = if (first) 0x65_7572_742cL else 0x6573_6c61_662cL
+    val secondBytes = if (second) 0x65_7572_742cL else 0x6573_6c61_662cL
+    val firstLength = if (first) 5 else 6
+    val secondLength = if (second) 5 else 6
+    val shift = firstLength << 3
+    // Include both commas and split at the eight-byte boundary to share one capacity check.
+    writer.writeRawValue(
+      firstBytes | (secondBytes << shift),
+      secondBytes >>> (64 - shift),
+      firstLength + secondLength
+    )
+  }
 
   def specializedMapKey(kind: Int): Class[_] = kind match {
     case ImmutableIntMapKind  => java.lang.Integer.TYPE
