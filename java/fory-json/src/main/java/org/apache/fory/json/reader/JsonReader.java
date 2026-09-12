@@ -2284,20 +2284,21 @@ public abstract class JsonReader {
   }
 
   final long readExponentScale(int offset, long scale) {
-    offset++;
-    boolean negativeExponent = false;
-    if (offset < length()) {
-      int ch = charAt(offset);
-      if (ch == '-' || ch == '+') {
-        negativeExponent = ch == '-';
-        offset++;
-      }
-    }
-    int exponentStart = offset;
-    long exponent = 0;
     int inputLength = length();
+    offset++;
+    int ch = offset < inputLength ? charAt(offset) : -1;
+    boolean negativeExponent = ch == '-';
+    if (negativeExponent || ch == '+') {
+      offset++;
+      ch = offset < inputLength ? charAt(offset) : -1;
+    }
+    if (ch < '0' || ch > '9') {
+      throw numberError(offset, "Expected exponent digit");
+    }
+    long exponent = ch - '0';
+    offset++;
     while (offset < inputLength) {
-      int ch = charAt(offset);
+      ch = charAt(offset);
       if (ch < '0' || ch > '9') {
         break;
       }
@@ -2308,9 +2309,6 @@ public abstract class JsonReader {
         }
       }
       offset++;
-    }
-    if (offset == exponentStart) {
-      throw numberError(offset, "Expected exponent digit");
     }
     position = offset;
     return negativeExponent ? scale + exponent : scale - exponent;
