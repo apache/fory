@@ -79,7 +79,7 @@ git switch -c "$release_branch" apache/main
 test -z "$(git status --porcelain)"
 ```
 
-Stop if the branch already exists or either cleanliness check fails. Do not remove or hide user files to make the check pass.
+For a new release branch, stop if the branch already exists or either cleanliness check fails. To resume an existing candidate, follow [Release retries](#release-retries) instead of recreating its branch or tag. Do not remove or hide user files to make the check pass.
 
 ### 2. Bump the version
 
@@ -104,7 +104,7 @@ Stage only the version changes produced by the release script.
 
 ### 4. Create and push the RC tag
 
-Confirm that neither the local nor remote tag already exists. An invalid RC gets a new RC number; never move or reuse an RC tag.
+Before creating a new RC tag, confirm that neither the local nor remote tag already exists. Never move, delete, or overwrite a published RC tag. Retrying a workflow for its existing tag does not create a new candidate; follow [Release retries](#release-retries).
 
 ```bash
 test -z "$(git tag --list "$rc_tag")"
@@ -116,9 +116,9 @@ test "$(git rev-parse "${rc_tag}^{commit}")" = "$release_commit"
 
 The tag starts the ecosystem package-release workflows. Do not wait for them
 here: start JVM publication immediately so the remote workflows and JVM staging
-run in parallel. Once the tag has been pushed, any JVM or later release failure
-invalidates this RC and requires a higher RC number; never move or reuse the
-tag.
+run in parallel. If a later step fails, diagnose it using
+[Release retries](#release-retries) before deciding whether the candidate
+needs to change.
 
 ### 5. Publish JVM artifacts
 
@@ -160,8 +160,12 @@ python3 .agents/skills/fory-release/scripts/check_tag_workflows.py \
   --watch
 ```
 
-The helper re-queries by tag after waiting to catch later-created runs. If the
-release manager explicitly waives workflow monitoring for a particular RC, run
+The helper re-queries by tag after waiting to catch later-created runs. A failed
+run requires diagnosis, not an automatic RC increment. For a transient failure,
+rerun only the failed jobs with `gh run rerun <run-id> --repo apache/fory --failed`,
+then run the helper again for the same tag and commit.
+
+If the release manager explicitly waives workflow monitoring for a particular RC, run
 the same command with `--allow-incomplete` instead of `--watch`, and record the
 snapshot IDs, states, and reason. Do not cancel the remote workflows or report
 incomplete runs as successful.
@@ -211,13 +215,35 @@ after sending, and do not send the email unless requested.
 
 Before sending, verify the tag and commit, all URLs, both closed Maven staging repositories, the remote Subversion files, PGP fingerprint, and UTC deadline against the actual release outputs.
 
+## Release retries
+
+An RC identifies the release content under review, not a CI attempt. Inspect the
+failed step and its logs before deciding how to recover. Network timeouts,
+dependency-download failures, runner failures, and interrupted status checks do
+not by themselves invalidate an unchanged candidate.
+
+Without a substantive release change, keep the same release commit and RC tag
+and resume only the failed or incomplete steps. Preserve verified Maven staging
+repositories and source artifacts; do not rebuild or republish successful
+artifacts merely because an unrelated CI job failed. Before retrying a push,
+upload, Nexus action, or SVN commit, inspect remote state because an interrupted
+request may already have succeeded. Use the Nexus reference's `--verify-only`
+path for repositories that are already closed.
+
+Create a higher RC only when a substantive fix changes the release content,
+such as source, dependencies, build inputs, or packaging. Commit the actual fix
+before tagging the replacement; do not create an empty commit or a second RC
+at the same unchanged release commit just to retry infrastructure. Keep the
+previous tag immutable and verify the replacement artifacts through the release
+workflow. An unresolved code or artifact defect still blocks the vote.
+
 ## Stop Conditions
 
-Before pushing the tag, stop if the Git tree is dirty, a command fails, the RC
-tag already exists, or the tag target would differ from the release commit.
-After pushing the immutable tag, any failed JVM publication, workflow,
-artifact verification, or Subversion publication invalidates that candidate;
-fix the issue and create a higher RC instead of moving or reusing the tag.
+Before creating a new tag, stop if the Git tree is dirty, the tag already
+exists, or its target would differ from the release commit. A failed JVM
+publication, workflow, artifact check, or SVN operation pauses the dependent
+step until it is diagnosed and recovered under [Release retries](#release-retries);
+failure alone does not require a higher RC.
 Before sending the vote, require both staging repositories to be closed and
 public, the Subversion commit to be remotely visible, and the tag workflows to
 be successful unless the release manager explicitly waived monitoring.
