@@ -637,7 +637,7 @@ public abstract class JsonReader {
     return readNumberToken();
   }
 
-  public final Number readNumber() {
+  public Number readNumber() {
     return materializeNumber(readNumberAsString());
   }
 

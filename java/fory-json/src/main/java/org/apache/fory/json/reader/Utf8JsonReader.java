@@ -1001,6 +1001,12 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   @Override
+  public Number readNumber() {
+    skipWhitespaceFast();
+    return readIntegerToken(false);
+  }
+
+  @Override
   long scanNumberToken() {
     byte[] bytes = input;
     int limit = inputLimit;
@@ -1075,17 +1081,19 @@ public final class Utf8JsonReader extends JsonReader {
     if (position < inputLimit && input[position] == '"') {
       return readQuotedBigIntegerValue();
     }
-    return readBigIntegerToken();
+    return (BigInteger) readIntegerToken(true);
   }
 
   private BigInteger readQuotedBigIntegerValue() {
     beginQuotedScalar();
-    BigInteger value = readBigIntegerToken();
+    BigInteger value = (BigInteger) readIntegerToken(true);
     finishQuotedScalar();
     return value;
   }
 
-  private BigInteger readBigIntegerToken() {
+  // BigInteger requires integer syntax; Number chooses compact Long storage and also accepts
+  // decimal suffixes. Share the validated prefix so representation selection does not rescan it.
+  private Number readIntegerToken(boolean integerOnly) {
     byte[] bytes = input;
     int limit = inputLimit;
     int start = position;
@@ -1101,8 +1109,14 @@ public final class Utf8JsonReader extends JsonReader {
     if (ch == '0') {
       position = offset + 1;
       rejectLeadingDigitFast();
+      if (!integerOnly && position < limit) {
+        int next = bytes[position];
+        if (next == '.' || next == 'e' || next == 'E') {
+          return readDecimalNumber(start);
+        }
+      }
       rejectFractionOrExponentFast();
-      return BigInteger.ZERO;
+      return integerOnly ? BigInteger.ZERO : Long.valueOf(0);
     }
     if (ch < '1' || ch > '9') {
       throw error("Expected digit");
@@ -1137,21 +1151,40 @@ public final class Utf8JsonReader extends JsonReader {
       offset++;
     }
     if (offset < limit && bytes[offset] >= '0' && bytes[offset] <= '9') {
-      return readBigIntegerTail(start, offset, value);
+      return readIntegerTail(integerOnly, start, offset, value);
     }
     position = offset;
+    if (!integerOnly && offset < limit) {
+      int next = bytes[offset];
+      if (next == '.' || next == 'e' || next == 'E') {
+        return readDecimalNumber(start);
+      }
+    }
     rejectFractionOrExponentFast();
     if (value < 0 && (!negative || value != Long.MIN_VALUE)) {
       return parseBigInteger(bytes, start, offset, value, offset);
     }
-    return BigInteger.valueOf(negative ? -value : value);
+    long signed = negative ? -value : value;
+    return integerOnly ? BigInteger.valueOf(signed) : Long.valueOf(signed);
   }
 
-  private BigInteger readBigIntegerTail(int start, int offset, long prefix) {
+  private Number readIntegerTail(boolean integerOnly, int start, int offset, long prefix) {
     int end = scanNumberDigits(input, offset, inputLimit);
     position = end;
+    if (!integerOnly && end < inputLimit) {
+      int next = input[end];
+      if (next == '.' || next == 'e' || next == 'E') {
+        return readDecimalNumber(start);
+      }
+    }
     rejectFractionOrExponentFast();
     return parseBigInteger(input, start, end, prefix, offset);
+  }
+
+  private Double readDecimalNumber(int start) {
+    // Preserve Number's Double representation and JDK conversion for points and exponents.
+    position = start;
+    return Double.valueOf(Double.parseDouble(readNumberAsString()));
   }
 
   public BigDecimal readBigDecimal() {

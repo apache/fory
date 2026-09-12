@@ -1612,6 +1612,107 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readNumberRepresentations() {
+    List<String> values =
+        new ArrayList<>(
+            Arrays.asList(
+                "0",
+                "-0",
+                "1",
+                "-1",
+                "0.0",
+                "-0.0",
+                "1e0",
+                "-0e10",
+                "1e309",
+                "1e-400",
+                "9223372036854775807",
+                "9223372036854775808",
+                "-9223372036854775808",
+                "-9223372036854775809",
+                "999999999999999999",
+                "1000000000000000000"));
+    for (int digits = 1; digits <= 80; digits++) {
+      BigInteger power = BigInteger.TEN.pow(digits);
+      for (int delta = -1; delta <= 1; delta++) {
+        String value = power.add(BigInteger.valueOf(delta)).toString();
+        values.add(value);
+        values.add("-" + value);
+      }
+    }
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (String value : values) {
+      Number expected = newLatin1Reader(value.getBytes(StandardCharsets.US_ASCII)).readNumber();
+      for (int offset = 0; offset < 8; offset++) {
+        byte[] token = (value + ",17").getBytes(StandardCharsets.US_ASCII);
+        byte[] bytes = new byte[offset + token.length + 8];
+        System.arraycopy(token, 0, bytes, offset, token.length);
+        reader.reset(bytes, offset, token.length);
+        Number actual = reader.readNumber();
+        assertEquals(actual.getClass(), expected.getClass());
+        assertEquals(actual, expected);
+        if (actual.getClass() == Double.class) {
+          assertEquals(
+              Double.doubleToRawLongBits(actual.doubleValue()),
+              Double.doubleToRawLongBits(expected.doubleValue()));
+        }
+        reader.expect(',');
+        assertEquals(reader.readInt(), 17);
+        reader.finish();
+      }
+    }
+    for (String value :
+        new String[] {"-9223372036854775808", "92233720368547758080", "1.25e-100", "-0.0"}) {
+      byte[] bytes = value.getBytes(StandardCharsets.US_ASCII);
+      for (int length = 0; length <= bytes.length; length++) {
+        reader.reset(bytes, 0, length);
+        Latin1JsonReader reference = newLatin1Reader(Arrays.copyOf(bytes, length));
+        Number expected;
+        try {
+          expected = reference.readNumber();
+          reference.finish();
+        } catch (RuntimeException e) {
+          assertThrows(
+              RuntimeException.class,
+              () -> {
+                reader.readNumber();
+                reader.finish();
+              });
+          continue;
+        }
+        Number actual = reader.readNumber();
+        reader.finish();
+        assertEquals(actual.getClass(), expected.getClass());
+        assertEquals(actual, expected);
+      }
+    }
+  }
+
+  @Test
+  public void readNumberStops() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int lane = 0; lane < 8; lane++) {
+      for (int ch = 0; ch < 256; ch++) {
+        byte[] bytes = "1234567812345678,17".getBytes(StandardCharsets.US_ASCII);
+        bytes[8 + lane] = (byte) ch;
+        Latin1JsonReader reference = newLatin1Reader(bytes);
+        reader.reset(bytes);
+        Number expected;
+        try {
+          expected = reference.readNumber();
+        } catch (RuntimeException e) {
+          assertThrows(RuntimeException.class, () -> reader.readNumber());
+          continue;
+        }
+        Number actual = reader.readNumber();
+        assertEquals(actual.getClass(), expected.getClass());
+        assertEquals(actual, expected);
+        assertEquals(reader.position(), reference.position());
+      }
+    }
+  }
+
+  @Test
   public void readBigIntegerSlices() {
     Random random = new Random(937);
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);

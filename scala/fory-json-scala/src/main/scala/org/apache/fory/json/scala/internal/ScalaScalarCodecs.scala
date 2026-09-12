@@ -23,22 +23,52 @@ import java.util.concurrent.TimeUnit
 
 import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.codec.AbstractJsonValueCodec
+import org.apache.fory.json.codec.JsonValueCodec
 import org.apache.fory.json.reader.JsonReader
+import org.apache.fory.json.reader.Latin1JsonReader
+import org.apache.fory.json.reader.Utf16JsonReader
+import org.apache.fory.json.reader.Utf8JsonReader
 import org.apache.fory.json.writer.JsonWriter
+import org.apache.fory.json.writer.StringJsonWriter
+import org.apache.fory.json.writer.Utf8JsonWriter
 import org.apache.fory.serializer.GraphMemoryEstimates
 
-private[scala] object ScalaBigIntCodec extends AbstractJsonValueCodec[BigInt] {
+private[scala] object ScalaBigIntCodec extends JsonValueCodec[BigInt] {
   private val OwnerBytes = GraphMemoryEstimates.shallowObjectBytes(classOf[BigInt])
 
-  override def write(writer: JsonWriter, value: BigInt): Unit = {
+  override def writeString(writer: StringJsonWriter, value: BigInt): Unit = {
     if (value == null) writer.writeNull() else writer.writeBigInteger(value.bigInteger)
   }
 
-  override def read(reader: JsonReader): BigInt = {
+  override def writeUtf8(writer: Utf8JsonWriter, value: BigInt): Unit = {
+    if (value == null) writer.writeNull() else writer.writeBigInteger(value.bigInteger)
+  }
+
+  override def readLatin1(reader: Latin1JsonReader): BigInt = {
     if (reader.tryReadNullToken()) return null
     val value = reader.readBigInteger()
     reader.reserveGraphMemory(OwnerBytes)
     BigInt(value)
+  }
+
+  override def readUtf16(reader: Utf16JsonReader): BigInt = {
+    if (reader.tryReadNullToken()) return null
+    val value = reader.readBigInteger()
+    reader.reserveGraphMemory(OwnerBytes)
+    BigInt(value)
+  }
+
+  override def readUtf8(reader: Utf8JsonReader): BigInt = {
+    if (reader.tryReadNullToken()) return null
+    val number = if (reader.peekToken() == '"') reader.readBigInteger() else reader.readNumber()
+    reader.reserveGraphMemory(OwnerBytes)
+    // The integer representation distinguishes native integer tokens from decimal/exponent tokens.
+    // A compact value can use Scala's primitive storage without retaining a Java magnitude.
+    number match {
+      case value: java.lang.Long => BigInt(value.longValue())
+      case value: java.math.BigInteger => BigInt(value)
+      case _ => throw new ForyJsonException("Expected JSON integer")
+    }
   }
 }
 
