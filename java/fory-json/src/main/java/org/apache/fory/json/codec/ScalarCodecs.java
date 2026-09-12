@@ -21,6 +21,7 @@ package org.apache.fory.json.codec;
 
 import java.io.File;
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -53,7 +54,6 @@ import java.time.chrono.ThaiBuddhistChronology;
 import java.time.chrono.ThaiBuddhistDate;
 import java.time.format.DateTimeFormatter;
 import java.time.zone.ZoneRules;
-import java.time.zone.ZoneRulesProvider;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Calendar;
@@ -2063,6 +2063,7 @@ public final class ScalarCodecs {
     public static final ZoneIdCodec INSTANCE = new ZoneIdCodec();
     private static final boolean STRING_BYTES_BACKED = StringSerializer.isBytesBackedString();
     private static final MethodHandle REGION_CONSTRUCTOR = regionConstructor();
+    private static final MethodHandle REGION_RULES = regionRules();
     private static final MethodHandle STRING_HASH_SETTER = stringHashSetter();
     private static final boolean[] REGION_CHARACTERS = regionCharacters();
     private static final short[] REGION_PAIRS = regionPairs();
@@ -2151,6 +2152,7 @@ public final class ScalarCodecs {
 
     private static ZoneId parseZoneId(String value) {
       if (REGION_CONSTRUCTOR == null
+          || REGION_RULES == null
           || STRING_HASH_SETTER == null
           || !STRING_BYTES_BACKED
           || !StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(value))
@@ -2202,16 +2204,16 @@ public final class ScalarCodecs {
       // provider lookup does not scan the same characters again; no input or zone is retained.
       try {
         STRING_HASH_SETTER.invokeExact(value, hash);
+        // Preserve the provider's caching decision, including a null result for dynamic rules.
+        ZoneRules rules = (ZoneRules) REGION_RULES.invokeExact(value, true);
+        return zoneRegion(value, rules);
+      } catch (RuntimeException e) {
+        throw e;
       } catch (ThreadDeath | VirtualMachineError e) {
         throw e;
       } catch (Throwable e) {
-        throw new ForyJsonException("Cannot initialize JSON zone ID hash", e);
+        throw new ForyJsonException("Cannot resolve JSON zone ID", e);
       }
-      // Validate region syntax before using the constructor. Resolve rules on every read: custom
-      // providers may decline caching, and neither zone IDs nor input values belong in a codec
-      // cache.
-      ZoneRules rules = ZoneRulesProvider.getRules(value, true);
-      return zoneRegion(value, rules);
     }
 
     private static ZoneId parsePrefixedZoneId(String value) {
@@ -2286,6 +2288,25 @@ public final class ScalarCodecs {
       try {
         return _JDKAccess._trustedLookup(String.class).findSetter(String.class, "hash", int.class);
       } catch (NoSuchFieldException | IllegalAccessException e) {
+        return null;
+      }
+    }
+
+    private static MethodHandle regionRules() {
+      if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+        return null;
+      }
+      try {
+        // Android does not expose ZoneRulesProvider. A direct class reference fails R8 even
+        // though Android uses ZoneId.of; resolve this JVM-only dependency during initialization.
+        Class<?> provider =
+            Class.forName("java.time.zone.ZoneRulesProvider", false, ZoneId.class.getClassLoader());
+        return MethodHandles.publicLookup()
+            .findStatic(
+                provider,
+                "getRules",
+                MethodType.methodType(ZoneRules.class, String.class, boolean.class));
+      } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException e) {
         return null;
       }
     }

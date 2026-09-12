@@ -61,6 +61,11 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
+  public void jsonZoneIds() {
+    AndroidJsonScenarios.zoneIds();
+  }
+
+  @Test
   public void generatedJsonValidator() {
     AndroidJsonScenarios.generatedValidator();
   }
