@@ -27,26 +27,29 @@ import org.testng.annotations.Test;
 public class ForyInputStreamTest {
 
   @Test
-  public void testFillBufferIndexOutOfBoundsException() throws IOException {
-    try (ForyInputStream in = new ForyInputStream(new ByteArrayInputStream(new byte[0]))) {
-      try {
-        in.fillBuffer(1);
-        Assert.fail("Expected IndexOutOfBoundsException to be thrown");
-      } catch (IndexOutOfBoundsException e) {
-        Assert.assertTrue(e.getMessage().contains("No enough data in the stream"));
+  public void testReadToEof() throws IOException {
+    for (int dstIndex : new int[] {0, 3}) {
+      EofInputStream stream = new EofInputStream();
+      byte[] dst = new byte[10];
+      int length = dst.length - dstIndex;
+      try (ForyInputStream in = new ForyInputStream(stream)) {
+        Assert.assertThrows(RuntimeException.class, () -> in.readTo(dst, dstIndex, length));
+        Assert.assertEquals(stream.readCalls, 1);
       }
     }
   }
 
-  @Test
-  public void testReadToIndexOutOfBoundsException() throws IOException {
-    try (ForyInputStream in = new ForyInputStream(new ByteArrayInputStream(new byte[0]))) {
-      try {
-        in.readTo(new byte[10], 0, 10);
-        Assert.fail("Expected IndexOutOfBoundsException to be thrown");
-      } catch (IndexOutOfBoundsException e) {
-        Assert.assertTrue(e.getMessage().contains("No enough data in the stream"));
-      }
+  private static class EofInputStream extends ByteArrayInputStream {
+    private int readCalls;
+
+    private EofInputStream() {
+      super(new byte[0]);
+    }
+
+    @Override
+    public synchronized int read(byte[] dst, int offset, int length) {
+      readCalls++;
+      return super.read(dst, offset, length);
     }
   }
 }

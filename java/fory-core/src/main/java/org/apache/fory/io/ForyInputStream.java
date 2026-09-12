@@ -127,6 +127,7 @@ public class ForyInputStream extends InputStream implements ForyStreamReader {
       len -= remaining;
       dstIndex += remaining;
       try {
+        // Check the first read for EOF too, before using its result to advance the offset.
         int read = 0;
         do {
           int newRead = stream.read(dst, dstIndex + read, len - read);
