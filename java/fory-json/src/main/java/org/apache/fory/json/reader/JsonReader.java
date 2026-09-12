@@ -2758,18 +2758,28 @@ public abstract class JsonReader {
   }
 
   public final void skipValue() {
-    char ch = peekToken();
-    if (ch == '"') {
-      // Skipped text still needs escape and Unicode validation, but no decoded storage or hash.
-      position = scanStringEnd(position);
-    } else if (ch == '{') {
-      skipObject();
-    } else if (ch == '[') {
-      skipArray();
-    } else if (ch == 't' || ch == 'f') {
-      readBooleanToken();
-    } else if (ch != 'n' || !tryReadNullToken()) {
-      skipNumberToken();
+    switch (peekToken()) {
+      case '"':
+        // Skipped text still needs escape and Unicode validation, but no decoded storage or hash.
+        position = scanStringEnd(position);
+        return;
+      case '{':
+        skipObject();
+        return;
+      case '[':
+        skipArray();
+        return;
+      case 't':
+      case 'f':
+        readBooleanToken();
+        return;
+      case 'n':
+        if (!tryReadNullToken()) {
+          skipNumberToken();
+        }
+        return;
+      default:
+        skipNumberToken();
     }
   }
 
