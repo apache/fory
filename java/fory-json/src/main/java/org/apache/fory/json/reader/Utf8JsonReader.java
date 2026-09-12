@@ -2962,15 +2962,10 @@ public final class Utf8JsonReader extends JsonReader {
     if (ZONED_DATE_TIME_CONSTRUCTOR == null) {
       return ZonedDateTime.ofInstant(dateTime, offset, zone);
     }
-    // The explicit offset determines the instant, including gaps and overlaps. An equal offset
-    // at that instant proves the parsed local date/time is already correct, so it can be reused.
-    long seconds =
-        epochDay(dateTime.getYear(), dateTime.getMonthValue(), dateTime.getDayOfMonth()) * 86400L
-            + dateTime.toLocalTime().toSecondOfDay()
-            - offset.getTotalSeconds();
-    Instant instant = Instant.ofEpochSecond(seconds, dateTime.getNano());
-    if (!zone.getRules().getOffset(instant).equals(offset)) {
-      return ZonedDateTime.ofInstant(instant, zone);
+    // A valid offset proves that the parsed local date/time already describes the explicit
+    // instant, including either side of an overlap. Gaps and mismatches still require conversion.
+    if (!zone.getRules().isValidOffset(dateTime, offset)) {
+      return ZonedDateTime.ofInstant(dateTime, offset, zone);
     }
     try {
       return (ZonedDateTime) ZONED_DATE_TIME_CONSTRUCTOR.invokeExact(dateTime, offset, zone);
