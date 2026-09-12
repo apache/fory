@@ -270,7 +270,8 @@ public class JsonScalarTest extends ForyJsonTestModels {
     zones.add(null);
     for (ZoneId zone : zones) {
       String expected = zone == null ? "null" : "\"" + zone.getId() + "\"";
-      for (int capacity : new int[] {0, 1, 7, 8, expected.length() + 2}) {
+      for (int capacity :
+          new int[] {0, 1, 7, 8, expected.length(), expected.length() + 1, expected.length() + 2}) {
         Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
         writer.writeArrayStart();
         ScalarCodecs.ZoneIdCodec.INSTANCE.writeUtf8(writer, zone);

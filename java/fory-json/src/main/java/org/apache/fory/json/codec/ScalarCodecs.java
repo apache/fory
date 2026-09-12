@@ -2083,13 +2083,20 @@ public final class ScalarCodecs {
       String id = value.getId();
       if (STRING_BYTES_BACKED
           && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(id))) {
-        // Canonical ZoneId syntax is ASCII and excludes quotes, escapes, and control characters.
-        writer.writeRawValue('"', 0, 1);
-        writer.writeRawValue(StringSerializer.getStringBytes(id));
-        writer.writeRawValue('"', 0, 1);
-      } else {
-        writer.writeString(id);
+        byte[] source = StringSerializer.getStringBytes(id);
+        byte[] target = writer.getBuffer();
+        int position = writer.getPosition();
+        // Canonical IDs need no escaping. Prove space for the entire quoted value before writing
+        // directly; the ordinary String owner handles growth and other String representations.
+        if (source.length <= target.length - position - 2) {
+          target[position] = '"';
+          System.arraycopy(source, 0, target, position + 1, source.length);
+          target[position + source.length + 1] = '"';
+          writer.setPosition(position + source.length + 2);
+          return;
+        }
       }
+      writer.writeString(id);
     }
 
     @Override
