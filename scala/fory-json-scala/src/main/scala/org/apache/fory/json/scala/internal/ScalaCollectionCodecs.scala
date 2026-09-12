@@ -608,14 +608,13 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
   ): Unit = {
     val codec = valueInfo.stringWriter()
     writer.writeObjectStart()
-    var index = 0
+    var first = true // Avoid a captured counter update on every entry.
     // foreachEntry preserves IntMap's traversal order without materializing iterator tuples.
     // This route is selected only for natural integer keys; custom key codecs keep the generic loop.
     value.foreachEntry { (key, entryValue) =>
-      writer.writeComma(index)
+      if (first) first = false else writer.writeComma(1)
       writer.writeIntFieldName(key)
       codec.writeString(writer, entryValue)
-      index += 1
     }
     writer.writeObjectEnd()
   }
@@ -626,14 +625,13 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
   ): Unit = {
     val codec = valueInfo.utf8Writer()
     writer.writeObjectStart()
-    var index = 0
+    var first = true // Avoid a captured counter update on every entry.
     // foreachEntry preserves IntMap's traversal order without materializing iterator tuples.
     // This route is selected only for natural integer keys; custom key codecs keep the generic loop.
     value.foreachEntry { (key, entryValue) =>
-      writer.writeComma(index)
+      if (first) first = false else writer.writeComma(1)
       writer.writeIntFieldName(key)
       codec.writeUtf8(writer, entryValue)
-      index += 1
     }
     writer.writeObjectEnd()
   }
