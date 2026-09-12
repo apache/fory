@@ -20,6 +20,7 @@
 package org.apache.fory.integration.kotlin.json.corpus
 
 import org.apache.fory.json.kotlin.ForyJsonKotlin
+import org.testng.Assert.assertEquals
 import org.testng.annotations.Test
 
 public class KotlinJsonCorpusTest {
@@ -31,5 +32,8 @@ public class KotlinJsonCorpusTest {
         .withAsyncCompilation(false)
         .build()
     PlatformCorpusChecks.verifyRoundTrip(json)
+    val empty = PlatformJavaProfile("")
+    assertEquals(json.toJson(empty), "{}")
+    assertEquals(json.toJsonBytes(empty).decodeToString(), "{}")
   }
 }

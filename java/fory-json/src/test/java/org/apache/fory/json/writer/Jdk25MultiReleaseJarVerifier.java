@@ -73,6 +73,7 @@ public final class Jdk25MultiReleaseJarVerifier {
     byte[] versionClass;
     byte[] decimalMathClass;
     byte[] arrayListClass;
+    byte[] floatingMathClass;
     try (JarFile jar = new JarFile(jarPath.toFile())) {
       Manifest manifest = jar.getManifest();
       require(manifest != null, "missing manifest");
@@ -84,6 +85,10 @@ public final class Jdk25MultiReleaseJarVerifier {
       decimalMathClass = read(jar, JDK9_PREFIX + DECIMAL_MATH_PATH);
       require(jar.getJarEntry(ARRAY_LIST_PATH) != null, "missing root ArrayListCodecSupport class");
       arrayListClass = read(jar, JDK9_PREFIX + ARRAY_LIST_PATH);
+      floatingMathClass =
+          read(jar, JDK9_PREFIX + "org/apache/fory/json/writer/FloatingDecimalMath.class");
+      require(
+          jar.getJarEntry("META-INF/licenses/LICENSE-zmij.txt") != null, "missing Zmij license");
     }
     try (JarFile sources = new JarFile(sourcesPath.toFile())) {
       require(
@@ -96,6 +101,20 @@ public final class Jdk25MultiReleaseJarVerifier {
           sources.getJarEntry(JDK9_PREFIX + ARRAY_LIST_SOURCE) != null,
           "missing JDK9 ArrayListCodecSupport source");
     }
+
+    try (JarFile sources = new JarFile(sourcesPath.toFile())) {
+      require(
+          sources.getJarEntry(JDK9_PREFIX + "org/apache/fory/json/writer/FloatingDecimalMath.java")
+              != null,
+          "missing JDK9 FloatingDecimalMath source");
+    }
+    Class<?> floatingMath = new VersionClassLoader().define(floatingMathClass);
+    Method floatingMultiply =
+        floatingMath.getDeclaredMethod("unsignedMultiplyHigh", long.class, long.class);
+    floatingMultiply.setAccessible(true);
+    require(
+        Long.valueOf(-2L).equals(floatingMultiply.invoke(null, -1L, -1L)),
+        "floating multiply-high result");
 
     Class<?> type = new VersionClassLoader().define(versionClass);
     require(CLASS_NAME.equals(type.getName()), "wrong JDK25 class name");

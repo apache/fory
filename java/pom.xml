@@ -40,6 +40,7 @@
     Apache Fory™ is a blazingly fast multi-language serialization framework powered by jit and zero-copy.
   </description>
   <url>https://fory.apache.org</url>
+  <inceptionYear>2023</inceptionYear>
 
   <licenses>
     <license>
@@ -73,6 +74,8 @@
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Remote resource NOTICE years use this timestamp, not the build date. -->
+    <project.build.outputTimestamp>2026-01-01T00:00:00Z</project.build.outputTimestamp>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <guava.version>32.1.2-jre</guava.version>
     <janino.version>3.1.12</janino.version>
@@ -273,6 +276,15 @@
       </plugins>
     </pluginManagement>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-remote-resources-plugin</artifactId>
+        <configuration>
+          <properties>
+            <projectName>Apache Fory™</projectName>
+          </properties>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>

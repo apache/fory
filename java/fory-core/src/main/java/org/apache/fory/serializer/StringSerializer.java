@@ -71,6 +71,8 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   private static final Byte UTF16_BOXED = UTF16;
   private static final byte UTF8 = 2;
   private static final int DEFAULT_BUFFER_SIZE = 1024;
+  private static final boolean COMPACT_STRINGS_ENABLED =
+      STRING_VALUE_FIELD_IS_BYTES && PlatformStringUtils.getStringCoder("") == LATIN1;
 
   private static final boolean STRING_HAS_COUNT_OFFSET =
       PlatformStringUtils.STRING_HAS_COUNT_OFFSET;
@@ -1004,7 +1006,11 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   // coder param first to make inline call args
   // `(buffer.readByte(), buffer.readBytesWithSizeEmbedded())` work.
   public static String newBytesStringZeroCopy(byte coder, byte[] data) {
-    if (!JDK_INTERNAL_FIELD_ACCESS || BYTES_STRING_ZERO_COPY_CTR == null) {
+    // A byte-backed String does not imply that its VM permits LATIN1 storage. With CompactStrings
+    // disabled, the JDK interprets every String as UTF16 even if its private coder field is zero.
+    if (!JDK_INTERNAL_FIELD_ACCESS
+        || BYTES_STRING_ZERO_COPY_CTR == null
+        || (!COMPACT_STRINGS_ENABLED && coder == LATIN1)) {
       return newBytesStringSlow(coder, data);
     }
     if (coder == LATIN1) {

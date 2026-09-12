@@ -49,9 +49,12 @@ public class MemoryBufferObjectInput extends InputStream implements ObjectInput 
     this.buffer = buffer;
   }
 
-  public void setReadContext(ReadContext readContext) {
+  /** Binds the read context and returns the previous context, or null if unbound. */
+  public ReadContext setReadContext(ReadContext readContext) {
+    ReadContext previous = this.readContext;
     this.readContext = readContext;
     this.buffer = readContext.getBuffer();
+    return previous;
   }
 
   public void clearReadContext() {

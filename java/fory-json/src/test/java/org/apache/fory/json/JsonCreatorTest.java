@@ -236,6 +236,61 @@ public class JsonCreatorTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void creatorHashCollisions() {
+    ForyJson json = newJson();
+    // Decoded names collide in two table slots. Escapes exercise generated hash fallback.
+    String input =
+        "{\"\\u0041\":3,\"\\u0051\":null,\"\\u0061q\":4,\"\\u0061Q\":5,\"\\u0061\":2,\"\\u0071\":1}";
+    HashCreator latin1 = json.fromJson(input, HashCreator.class);
+    HashCreator utf8 = json.fromJson(input.getBytes(StandardCharsets.UTF_8), HashCreator.class);
+    HashCreator utf16 = json.fromJson(input.replace("null", "\"值\""), HashCreator.class);
+    for (HashCreator value : new HashCreator[] {latin1, utf8, utf16}) {
+      assertEquals(value.q, 1);
+      assertEquals(value.a, 2);
+      assertEquals(value.upper, 3);
+      assertEquals(value.aq, 4);
+      assertEquals(value.aQ, 5);
+    }
+  }
+
+  @Test
+  public void creatorFieldWhitespace() {
+    ForyJson json = newJson();
+    for (String space : new String[] {"", " ", "\n  ", "\t", "\r\n"}) {
+      String input =
+          "{" + space + "\"id\"" + space + ": 7," + space + "\"name\"" + space + ":\"alice\"}";
+      User value = json.fromJson(input.getBytes(StandardCharsets.UTF_8), User.class);
+      assertEquals(value.id, 7L);
+      assertEquals(value.name, "alice");
+      PrefixCreator prefix =
+          json.fromJson(
+              ("{" + space + "\"abcOne\"" + space + ":3," + space + "\"abcTwo\"" + space + ":4}")
+                  .getBytes(StandardCharsets.UTF_8),
+              PrefixCreator.class);
+      assertEquals(prefix.abcOne, 3);
+      assertEquals(prefix.abcTwo, 4);
+    }
+    for (String input :
+        new String[] {
+          "{ \"id\" : 7, \"unknown\" : [1,{\"value\":2}], \"name\" : \"alice\"}",
+          "{ \"name\" : \"alice\", \"id\" : 7}",
+          "{ \"id\" : 1, \"name\" : \"alice\", \"id\" : 7}",
+          "{ \"i\\u0064\" : 7, \"name\" : \"alice\"}"
+        }) {
+      User value = json.fromJson(input.getBytes(StandardCharsets.UTF_8), User.class);
+      assertEquals(value.id, 7L);
+      assertEquals(value.name, "alice");
+    }
+    for (String input : new String[] {"{ \"id\" 7}", "{ \"id\" : null}", "{ \"id\" : 7, "}) {
+      assertThrows(
+          ForyJsonException.class,
+          () -> json.fromJson(input.getBytes(StandardCharsets.UTF_8), User.class));
+      assertEquals(
+          json.fromJson("{ \"id\" : 9}".getBytes(StandardCharsets.UTF_8), User.class).id, 9L);
+    }
+  }
+
+  @Test
   public void malformedFieldNames() {
     ForyJson json = newJson();
     assertThrows(
@@ -400,6 +455,26 @@ public class JsonCreatorTest extends ForyJsonTestModels {
     public PrefixCreator(int abcOne, int abcTwo) {
       this.abcOne = abcOne;
       this.abcTwo = abcTwo;
+    }
+  }
+
+  public static final class HashCreator {
+    public final int q;
+    public final int a;
+
+    @JsonProperty("A")
+    public final int upper;
+
+    public final int aq;
+    public final int aQ;
+
+    @JsonCreator({"q", "a", "upper", "aq", "aQ"})
+    public HashCreator(int q, int a, int upper, int aq, int aQ) {
+      this.q = q;
+      this.a = a;
+      this.upper = upper;
+      this.aq = aq;
+      this.aQ = aQ;
     }
   }
 

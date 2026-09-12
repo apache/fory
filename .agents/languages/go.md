@@ -7,6 +7,15 @@ Load this file when changing `go/fory/` or Go xlang behavior.
 - Run Go commands from within `go/fory/`.
 - Changes under `go/` must pass formatting and tests.
 - The Go implementation focuses on fast serializers.
+- Keep `threadsafe.Fory` backed by `sync.Pool`. Direct struct and enum registration
+  by ID or name must initialize every instance, including replacements after GC.
+  Follow Java `ThreadLocalFory`'s registration callback semantics without copying
+  its thread-local storage or replacing the Go pool with a bounded pool.
+  Configure the first actual instance before pooling it; registration cannot
+  accumulate on arbitrary `sync.Pool.Get` results. Freeze successful callbacks
+  before the first root, apply them only when creating additional instances, and
+  leave pool hits free of registration replay. Preserve direct registration
+  examples rather than forcing callers to factories.
 - Go `ReadContext` intentionally defers codec errors to existing `HasError` or `CheckError`
   boundaries. After an error, work may continue only while it remains panic- and bounds-safe and
   cannot cause disproportionate work or allocation, publish state that survives root cleanup, or

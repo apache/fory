@@ -103,6 +103,7 @@ import org.apache.fory.json.JsonTypeCheckContext;
 import org.apache.fory.json.JsonTypeChecker;
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.annotation.JsonType;
@@ -186,7 +187,7 @@ public final class JsonSharedRegistry {
   private final ExecutorService compilationService;
   private final boolean propertyDiscoveryEnabled;
   private final PropertyNamingStrategy propertyNamingStrategy;
-  private final boolean writeNullFields;
+  private final Include defaultPropertyInclusion;
   private final boolean writeLongAsString;
   private final ClassLoader classLoader;
   private final JsonMixinAnnotations mixinAnnotations;
@@ -243,7 +244,7 @@ public final class JsonSharedRegistry {
     typeCheckCacheLock = typeChecker == null ? null : new Object();
     this.propertyDiscoveryEnabled = config.propertyDiscoveryEnabled();
     propertyNamingStrategy = config.propertyNamingStrategy();
-    writeNullFields = config.writeNullFields();
+    defaultPropertyInclusion = config.defaultPropertyInclusion();
     writeLongAsString = config.writeLongAsString();
     classLoader = config.classLoader();
     mixinAnnotations = new JsonMixinAnnotations(config);
@@ -271,7 +272,7 @@ public final class JsonSharedRegistry {
         codegenEnabled && GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && !hostedCodegen;
     asyncCompilationEnabled = createCompiler && !hostedCodegen && config.asyncCompilationEnabled();
     this.compilationService = compilationService;
-    registerExactCodecs();
+    registerExactCodecs(config);
   }
 
   /** Creates the transient synchronous compiler registry owned by Native Image hosted analysis. */
@@ -1217,8 +1218,8 @@ public final class JsonSharedRegistry {
     return propertyNamingStrategy;
   }
 
-  boolean writeNullFields() {
-    return writeNullFields;
+  Include defaultPropertyInclusion() {
+    return defaultPropertyInclusion;
   }
 
   boolean writeLongAsString() {
@@ -2145,8 +2146,12 @@ public final class JsonSharedRegistry {
         String.format("Class %s is forbidden for Fory JSON serialization.", className));
   }
 
-  private void registerExactCodecs() {
-    exactCodecs.put(Object.class, ScalarCodecs.NaturalCodec.INSTANCE);
+  private void registerExactCodecs(JsonConfig config) {
+    exactCodecs.put(
+        Object.class,
+        config.mixins().isEmpty()
+            ? ScalarCodecs.NaturalCodec.INSTANCE
+            : new ScalarCodecs.NaturalCodec(config));
     exactCodecs.put(void.class, ScalarCodecs.VoidCodec.INSTANCE);
     exactCodecs.put(Void.class, ScalarCodecs.VoidCodec.INSTANCE);
     exactCodecs.put(Number.class, ScalarCodecs.NumberCodec.INSTANCE);

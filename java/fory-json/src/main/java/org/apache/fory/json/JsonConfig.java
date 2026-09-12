@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.resolver.CodecRegistry;
 
 /**
@@ -36,7 +37,7 @@ import org.apache.fory.json.resolver.CodecRegistry;
 public final class JsonConfig {
   private static final int MAX_CACHED_FIELD_NAMES = 1 << 29;
 
-  private final boolean writeNullFields;
+  private final Include defaultPropertyInclusion;
   private final boolean writeLongAsString;
   private final boolean codegenEnabled;
   private final boolean asyncCompilationEnabled;
@@ -56,7 +57,7 @@ public final class JsonConfig {
   private final JsonTypeCheckContext typeCheckContext;
 
   JsonConfig(
-      boolean writeNullFields,
+      Include defaultPropertyInclusion,
       boolean writeLongAsString,
       boolean codegenEnabled,
       boolean asyncCompilationEnabled,
@@ -73,7 +74,7 @@ public final class JsonConfig {
       JsonCodecFactory[] codecFactories,
       List<String> factoryIdentities,
       JsonTypeChecker typeChecker) {
-    this.writeNullFields = writeNullFields;
+    this.defaultPropertyInclusion = defaultPropertyInclusion;
     this.writeLongAsString = writeLongAsString;
     this.codegenEnabled = codegenEnabled;
     this.asyncCompilationEnabled = asyncCompilationEnabled;
@@ -96,8 +97,9 @@ public final class JsonConfig {
     typeCheckContext = new JsonTypeCheckContext();
   }
 
-  public boolean writeNullFields() {
-    return writeNullFields;
+  /** Returns the concrete default inclusion used for object properties. */
+  public Include defaultPropertyInclusion() {
+    return defaultPropertyInclusion;
   }
 
   /**

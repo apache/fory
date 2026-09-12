@@ -110,6 +110,11 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   published. Do not extend this exception to another cache or retained value.
 - Concrete serializers may opt into sharing only after auditing retained fields. Treat serializers retaining `TypeResolver`, `RefResolver`, mutable scratch buffers, runtime state, or classloader-sensitive state as non-shareable unless that state is externalized.
 - Resolver and serializer hot paths should keep the fast-path/null-slow-path shape obvious. Hoist repeated buffer or cache-state access into locals for multi-step operations and keep rebuild/restoration logic cold.
+- Java compatible metadata hash caches and depth hints retain the source `TypeInfo`, before
+  requested-target adaptation. Store target-specific results in the existing `transformedTypeInfo`
+  cache, keyed by target `Class` identity with source `Class` and primitive header-hash comparisons
+  in its entries; do not allocate tuple keys. Resolve local schemas only on metadata-cache or
+  target-conversion-cache misses. A hit must not repeat `matchingLocalTypeDef` or `getTypeDef`.
 - Remote metadata and class-token paths that materialize Java classes must keep
   `TypeResolver.loadClass` or an equivalent owner in the path so
   `TypeChecker.checkType` and `DisallowedList` run on the remote class name
@@ -185,6 +190,10 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   at least the requested capacity. Callers must reject invalid or overflowed requests before the
   call, but must not recheck the allocator postcondition afterward; fix a violating allocator at
   the allocator implementation.
+- Fory JSON floating-point parsing may materialize uncommon numeric tokens for JDK conversion
+  when that improves measured performance. Preserve direct compact-decimal paths and JSON grammar
+  validation; use `Float.parseFloat` for float fallbacks to avoid double rounding. Do not restore
+  expensive decimal-boundary construction merely to eliminate temporary allocations.
 - In JDK 25 Fory JSON C2-sensitive code, preserve measured, naturally large hot-method boundaries.
   A method that exceeds HotSpot's 325-byte hot-inline limit through real representation, scalar,
   array, collection, or generated-schema work is an independent subtree owner. Generated group

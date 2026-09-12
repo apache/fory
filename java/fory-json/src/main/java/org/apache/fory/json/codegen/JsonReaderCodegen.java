@@ -131,6 +131,10 @@ abstract class JsonReaderCodegen {
 
   abstract Expression tryReadNextFieldNameColon(String name);
 
+  Expression tryReadOrderedCreatorField(String name) {
+    return tryReadNextFieldNameColon(name);
+  }
+
   abstract Expression readEnumField(
       JsonGeneratedCodecBuilder builder,
       JsonFieldInfo property,
@@ -1077,7 +1081,7 @@ abstract class JsonReaderCodegen {
               arguments, field.argumentIndex(), readCreatorValue(builder, field, i));
       next =
           new Expression.If(
-              tryReadNextFieldNameColon(field.name()),
+              tryReadOrderedCreatorField(field.name()),
               new Expression.ListExpression(
                   read, new Expression.If(consumeOrderedCommaOrEndObjectExpr(), next)),
               creatorSlowReturn(type, creatorInfo, arguments));

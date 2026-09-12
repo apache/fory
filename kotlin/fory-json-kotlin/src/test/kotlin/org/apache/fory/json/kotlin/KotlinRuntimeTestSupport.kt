@@ -41,9 +41,12 @@ internal enum class KotlinJsonTestMode {
   ASYNCHRONOUS,
 }
 
-internal fun forEachJsonMode(action: (ForyJson) -> Unit) {
+internal fun forEachJsonMode(
+  configure: ForyJsonBuilder.() -> Unit = {},
+  action: (ForyJson) -> Unit,
+) {
   KotlinJsonTestMode.entries.forEach { mode ->
-    val json = newKotlinJson(mode)
+    val json = newKotlinJson(mode, configure)
     action(json)
     if (mode == KotlinJsonTestMode.ASYNCHRONOUS && awaitAsyncCodegen(json)) action(json)
   }

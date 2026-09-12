@@ -45,9 +45,12 @@ public class MemoryBufferObjectOutput extends OutputStream implements ObjectOutp
     }
   }
 
-  public void setWriteContext(WriteContext writeContext) {
+  /** Binds the write context and returns the previous context, or null if unbound. */
+  public WriteContext setWriteContext(WriteContext writeContext) {
+    WriteContext previous = this.writeContext;
     this.writeContext = writeContext;
     this.buffer = writeContext.getBuffer();
+    return previous;
   }
 
   public void clearWriteContext() {

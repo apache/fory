@@ -20,17 +20,21 @@
 package org.apache.fory.json.writer;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Stateless decimal digit arithmetic shared by concrete writer implementations.
  *
  * <p>Digit-count methods accept non-negative magnitudes and use a bit-length estimate followed by
- * one exact power-of-ten comparison. The helper owns no writer state, buffer, callback, or
- * arbitrary-precision output loop.
+ * one exact power-of-ten comparison. The helper retains no writer state, buffer, or callback.
+ * Bounded coefficient conversion uses local bytes; unbounded conversion remains with the JDK.
  */
 final class BigNumberDigits {
   // Packed 1-3 digit stores write one four-byte word; concrete writers reserve this tail once.
   static final int PACKED_WRITE_SLACK = 3;
+  // Repeated division is quadratic in magnitude size. Keep it bounded and leave larger values
+  // with the JDK's recursive conversion; this range also avoids intermediate quotient objects.
+  static final int MAX_ITERATIVE_BITS = 4096;
   static final long[] LONG_POWERS_OF_TEN = {
     1L,
     10L,
@@ -57,6 +61,137 @@ final class BigNumberDigits {
 
   static boolean fitsLong(BigInteger value) {
     return value.bitLength() <= 63;
+  }
+
+  /** Formats an exact JDK coefficient with bit length 64 through 127 and a decimal scale. */
+  static String formatInt128(BigInteger value, int scale) {
+    boolean negative = value.signum() < 0;
+    byte[] magnitude = value.abs().toByteArray();
+    int split = magnitude.length - 8;
+    long high = 0;
+    for (int i = 0; i < split; i++) {
+      high = (high << 8) | (magnitude[i] & 0xffL);
+    }
+    long low = 0;
+    for (int i = split; i < magnitude.length; i++) {
+      low = (low << 8) | (magnitude[i] & 0xffL);
+    }
+    // Five nine-digit groups fit before index 64. The remaining space accommodates the decimal
+    // point, sign and the exponent even when an extreme scale makes that exponent exceed int.
+    byte[] digits = new byte[80];
+    int start = 64;
+    do {
+      int remainder;
+      if (high == 0) {
+        long quotient = Long.divideUnsigned(low, 1_000_000_000L);
+        remainder = (int) (low - quotient * 1_000_000_000L);
+        low = quotient;
+      } else {
+        long quotientHigh = Long.divideUnsigned(high, 1_000_000_000L);
+        long rest = high - quotientHigh * 1_000_000_000L;
+        // rest is below 10^9, so extending it by one unsigned 32-bit limb fits a signed long.
+        long middle = (rest << 32) | (low >>> 32);
+        long quotientMiddle = middle / 1_000_000_000L;
+        rest = middle - quotientMiddle * 1_000_000_000L;
+        long last = (rest << 32) | (low & 0xffffffffL);
+        long quotientLow = last / 1_000_000_000L;
+        remainder = (int) (last - quotientLow * 1_000_000_000L);
+        high = quotientHigh;
+        low = (quotientMiddle << 32) | quotientLow;
+      }
+      for (int i = 0; i < 9; i++) {
+        int quotient = remainder / 10;
+        digits[--start] = (byte) ('0' + remainder - quotient * 10);
+        remainder = quotient;
+      }
+    } while ((high | low) != 0);
+    while (digits[start] == '0' && start < 63) {
+      start++;
+    }
+    return formatDigits(digits, start, 64, scale, negative);
+  }
+
+  /** Formats a bounded exact JDK coefficient above the signed 128-bit range. */
+  static String formatMagnitude(BigInteger value, int scale, int bitLength) {
+    byte[] magnitude = value.abs().toByteArray();
+    int wordCount = (magnitude.length + 3) >>> 2;
+    int[] words = new int[wordCount];
+    for (int i = 0; i < magnitude.length; i++) {
+      words[wordCount - 1 - (i >>> 2)] |=
+          (magnitude[magnitude.length - 1 - i] & 0xff) << ((i & 3) << 3);
+    }
+    // A group contains more than 29 bits. Negative powers of two have one extra magnitude bit.
+    // Eight leading bytes and sixteen trailing bytes cover either decimal layout and its sign.
+    int end = 8 + ((bitLength + 30) / 29) * 9;
+    byte[] digits = new byte[end + 16];
+    int start = end;
+    int first = 0;
+    while (first < wordCount) {
+      long remainder = 0;
+      for (int i = first; i < wordCount; i++) {
+        // The remainder is below 10^9; appending an unsigned limb still fits a positive long.
+        long dividend = (remainder << 32) | (words[i] & 0xffffffffL);
+        long quotient = dividend / 1_000_000_000L;
+        words[i] = (int) quotient;
+        remainder = dividend - quotient * 1_000_000_000L;
+      }
+      while (first < wordCount && words[first] == 0) {
+        first++;
+      }
+      int group = (int) remainder;
+      for (int i = 0; i < 9; i++) {
+        int quotient = group / 10;
+        digits[--start] = (byte) ('0' + group - quotient * 10);
+        group = quotient;
+      }
+    }
+    while (digits[start] == '0' && start < end - 1) {
+      start++;
+    }
+    return formatDigits(digits, start, end, scale, value.signum() < 0);
+  }
+
+  private static String formatDigits(
+      byte[] digits, int start, int end, int scale, boolean negative) {
+    int precision = end - start;
+    long exponent = (long) precision - scale - 1;
+    if (scale != 0) {
+      if (scale >= 0 && exponent >= -6) {
+        int point = precision - scale;
+        if (point > 0) {
+          System.arraycopy(digits, start, digits, start - 1, point);
+          digits[start + point - 1] = '.';
+          start--;
+        } else {
+          for (int i = 0; i < -point; i++) {
+            digits[--start] = '0';
+          }
+          digits[--start] = '.';
+          digits[--start] = '0';
+        }
+      } else {
+        if (precision > 1) {
+          digits[start - 1] = digits[start];
+          digits[start] = '.';
+          start--;
+        }
+        digits[end++] = 'E';
+        digits[end++] = exponent < 0 ? (byte) '-' : (byte) '+';
+        long absoluteExponent = exponent < 0 ? -exponent : exponent;
+        int exponentDigits = digitCount(absoluteExponent);
+        int cursor = end + exponentDigits;
+        while (cursor > end) {
+          long quotient = absoluteExponent / 10;
+          digits[--cursor] = (byte) ('0' + absoluteExponent - quotient * 10);
+          absoluteExponent = quotient;
+        }
+        end += exponentDigits;
+      }
+    }
+    if (negative) {
+      digits[--start] = '-';
+    }
+    return new String(digits, start, end - start, StandardCharsets.US_ASCII);
   }
 
   static int digitCount(int value) {

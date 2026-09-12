@@ -45,6 +45,17 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class StringSerializerTest extends ForyTestBase {
+  @Test
+  public void latin1StringConstruction() {
+    byte[] bytes = new byte[257];
+    for (int i = 0; i < bytes.length; i++) {
+      bytes[i] = (byte) i;
+    }
+    assertEquals(
+        StringSerializer.newLatin1StringZeroCopy(bytes),
+        new String(bytes, StandardCharsets.ISO_8859_1));
+  }
+
   @DataProvider(name = "stringCompress")
   public static Object[][] stringCompress() {
     return new Object[][] {{false}, {true}};

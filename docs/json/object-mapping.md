@@ -212,9 +212,24 @@ original key type. Null map keys are rejected.
 
 ## Builder configuration
 
+To omit empty object properties by default:
+
+```java
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonProperty.Include;
+
+ForyJson json = ForyJson.builder().defaultPropertyInclusion(Include.NON_EMPTY).build();
+```
+
+`defaultPropertyInclusion` and `writeNullFields` update the same setting; the last call wins.
+The builder accepts `ALWAYS`, `NON_NULL`, and `NON_EMPTY`; `DEFAULT` is only valid on a property.
+An explicit `JsonProperty.include` overrides the builder default. See
+[Property inclusion](annotations.md#jsonproperty) for the empty-value definitions and boundaries.
+
 | Builder method                         | Default                                   | User-visible effect                                        |
 | -------------------------------------- | ----------------------------------------- | ---------------------------------------------------------- |
-| `writeNullFields(boolean)`             | `false`                                   | Default inclusion of null object properties                |
+| `defaultPropertyInclusion(Include)`    | `NON_NULL`                                | Default inclusion of object properties                     |
+| `writeNullFields(boolean)`             | `false`                                   | Select `ALWAYS` when true or `NON_NULL` when false         |
 | `writeLongAsString(boolean)`           | `false`                                   | Write built-in 64-bit integer values as decimal strings    |
 | `withCodegen(boolean)`                 | `true`                                    | Enable generated object codecs                             |
 | `withAsyncCompilation(boolean)`        | `true`                                    | Compile generated codecs asynchronously                    |

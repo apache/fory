@@ -719,6 +719,40 @@ public class ClassResolverTest extends ForyTestBase {
     serDeCheck(fory, TestNeedToWriteReferenceClass.A);
   }
 
+  @Test(dataProvider = "enableCodegen")
+  public void testColdLocalTypeDef(boolean codegen) {
+    for (boolean named : new boolean[] {false, true}) {
+      for (boolean typed : new boolean[] {false, true}) {
+        ForyBuilder builder =
+            Fory.builder()
+                .withXlang(false)
+                .withCompatible(true)
+                .withScopedMetaShare(true)
+                .withMaxSchemaVersionsPerType(1)
+                .withCodegen(codegen)
+                .withAsyncCompilation(false);
+        Fory writer = builder.build();
+        Fory reader = builder.build();
+        if (named) {
+          writer.register(Foo.class, "test.Foo");
+          reader.register(Foo.class, "test.Foo");
+        } else {
+          writer.register(Foo.class, 101);
+          reader.register(Foo.class, 101);
+        }
+        TypeResolver resolver = reader.getTypeResolver();
+        assertNull(resolver.getTypeInfo(Foo.class, false).getSerializer());
+        Foo value = new Foo();
+        byte[] bytes = writer.serialize(value);
+        Foo copy = typed ? reader.deserialize(bytes, Foo.class) : (Foo) reader.deserialize(bytes);
+        assertEquals(copy, value);
+        TypeDef localTypeDef = writer.getTypeResolver().getTypeInfo(Foo.class).getTypeDef();
+        // An exact local schema must not consume the allowance for remote schema versions.
+        assertNull(resolver.getCheckedRemoteTypeDef(TypeDef.headerHash(localTypeDef.getId())));
+      }
+    }
+  }
+
   @Test
   public void testIdExtDoesNotUseTypeDefMetaLimits() {
     Fory fory =

@@ -88,6 +88,7 @@ class KotlinBuiltInCodecsTest {
 
   @Test
   fun products() {
+    val fory = ForyJsonKotlin.builder().writeNullFields(true).withAsyncCompilation(false).build()
     val pairType = jsonTypeRef<Pair<Int?, String>>()
     val pair = Pair(null, "right")
     assertEquals("{\"first\":null,\"second\":\"right\"}", fory.toJson(pair, pairType))
@@ -275,7 +276,7 @@ class KotlinBuiltInCodecsTest {
       "{\"ubyte\":255,\"ushort\":65535,\"uint\":4294967295," +
         "\"ulong\":18446744073709551615,\"nullable\":null,\"tag\":\"ascii\"}"
     val utf16Json = latin1Json.replace("ascii", "\u4e2d")
-    forEachJsonMode { json ->
+    forEachJsonMode({ writeNullFields(true) }) { json ->
       assertEquals(latin1Json, json.toJson(latin1, type))
       assertEquals(latin1, json.fromJson(latin1Json, type))
       assertEquals(utf16, json.fromJson(utf16Json, type))
@@ -469,7 +470,7 @@ class KotlinBuiltInCodecsTest {
       "{\"zero\":\"PT0S\",\"negative\":\"-PT0.000000001S\",\"nullable\":null,\"tag\":\"ascii\"}"
     val utf16Json =
       "{\"zero\":\"PT0S\",\"negative\":\"-PT0.000000001S\",\"nullable\":null,\"tag\":\"\u4e2d\"}"
-    forEachJsonMode { json ->
+    forEachJsonMode({ writeNullFields(true) }) { json ->
       assertEquals(latin1Json, json.toJson(latin1Holder, holderType))
       assertEquals(latin1Holder, json.fromJson(latin1Json, holderType))
       assertEquals(utf16Holder, json.fromJson(utf16Json, holderType))
@@ -545,6 +546,7 @@ class KotlinBuiltInCodecsTest {
 
   @Test
   fun timedValue() {
+    val fory = ForyJsonKotlin.builder().writeNullFields(true).withAsyncCompilation(false).build()
     val type = jsonTypeRef<TimedValue<String>>()
     val value = TimedValue("done", 2.seconds + 17.nanoseconds)
     assertEquals(value, fory.fromJson(fory.toJson(value, type), type))
@@ -570,6 +572,7 @@ class KotlinBuiltInCodecsTest {
 
   @Test
   fun nullOnly() {
+    val fory = ForyJsonKotlin.builder().writeNullFields(true).withAsyncCompilation(false).build()
     val value = NullOnly(null)
     assertEquals(
       value,

@@ -66,7 +66,7 @@ class KotlinGenericRuntimeTest {
   @Test
   fun exactRecursiveBinding() {
     val value = GenericNode("root", GenericNode("leaf", null))
-    forEachJsonMode { json ->
+    forEachJsonMode({ writeNullFields(true) }) { json ->
       val type = jsonTypeRef<GenericNode<String>>()
       assertEquals(value, json.fromJson(json.toJson(value, type), type))
       assertEquals(value, json.fromJson(json.toJsonBytes(value, type), type))
@@ -83,7 +83,7 @@ class KotlinGenericRuntimeTest {
   @Test
   fun exactMutualCycle() {
     val value = MutualLeft("left", MutualRight("right", MutualLeft("tail", null)))
-    forEachJsonMode { json ->
+    forEachJsonMode({ writeNullFields(true) }) { json ->
       val type = jsonTypeRef<MutualLeft<String>>()
       assertEquals(value, json.fromJson(json.toJson(value, type), type))
       assertEquals(value, json.fromJson(json.toJsonBytes(value, type), type))

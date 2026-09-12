@@ -341,6 +341,10 @@
                                   prefix="META-INF/versions/17">
                         <include name="**/*.java"/>
                       </zipfileset>
+                      <zipfileset dir="${project.basedir}/src/main/java18"
+                                  prefix="META-INF/versions/18">
+                        <include name="**/*.java"/>
+                      </zipfileset>
                       <zipfileset dir="${project.basedir}/src/main/java25"
                                   prefix="META-INF/versions/25">
                         <include name="**/*.java"/>
@@ -369,6 +373,83 @@
                       <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
                       <arg value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
                     </java>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>jdk18-multi-release</id>
+      <activation>
+        <jdk>[18,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>compile-jdk18-classes</id>
+                <phase>process-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <delete dir="${fory.json.mr.classes}/18"/>
+                    <mkdir dir="${fory.json.mr.classes}/18"/>
+                    <javac srcdir="${project.basedir}/src/main/java18"
+                           destdir="${fory.json.mr.classes}/18"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="org/**/*.java"/>
+                      <classpath>
+                        <path refid="maven.compile.classpath"/>
+                        <pathelement location="${project.build.outputDirectory}"/>
+                      </classpath>
+                      <compilerarg value="--release"/>
+                      <compilerarg value="18"/>
+                      <compilerarg value="-sourcepath"/>
+                      <compilerarg value=""/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>inject-jdk18-classes</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar"
+                         update="true">
+                      <zipfileset dir="${fory.json.mr.classes}/18"
+                                  prefix="META-INF/versions/18"
+                                  includes="**/*.class"/>
+                    </jar>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>prepare-jdk18-test-classes</id>
+                <phase>process-test-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <copy todir="${fory.json.java9.test.classes}" overwrite="true">
+                      <fileset dir="${fory.json.mr.classes}/18"/>
+                    </copy>
                   </target>
                 </configuration>
               </execution>
@@ -461,6 +542,9 @@
                     </copy>
                     <copy todir="${fory.json.jdk25.test.classes}" overwrite="true">
                       <fileset dir="${fory.json.mr.classes}/17" erroronmissingdir="false"/>
+                    </copy>
+                    <copy todir="${fory.json.jdk25.test.classes}" overwrite="true">
+                      <fileset dir="${fory.json.mr.classes}/18"/>
                     </copy>
                     <copy todir="${fory.json.jdk25.test.classes}" overwrite="true">
                       <fileset dir="${fory.json.mr.classes}/25">

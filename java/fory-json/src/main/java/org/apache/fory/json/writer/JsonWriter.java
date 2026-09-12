@@ -23,9 +23,15 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.MonthDay;
 import java.time.OffsetDateTime;
+import java.time.OffsetTime;
 import java.time.Period;
 import java.time.Year;
+import java.time.YearMonth;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
 import java.util.Objects;
@@ -138,8 +144,8 @@ public abstract class JsonWriter {
   }
 
   // Concrete writers own compact BigDecimal formatting and canonical arbitrary-precision text
-  // copying. BigInteger values outside long range use the JDK conversion, whose recursive large
-  // magnitude algorithm avoids the repeated quotient/remainder allocation of a local chunk loop.
+  // copying. Bounded coefficients may use primitive digit arithmetic; larger magnitudes retain
+  // the JDK's recursive conversion rather than a repeated allocating quotient/remainder loop.
   public abstract void writeBigInteger(BigInteger value);
 
   public abstract void writeBigDecimal(BigDecimal value);
@@ -167,26 +173,23 @@ public abstract class JsonWriter {
         || epochSecond > MAX_ISO_INSTANT_SECOND) {
       throw invalidIsoInstant(epochSecond, nano);
     }
-    long zeroDay = Math.floorDiv(epochSecond, 86_400) + 719_528 - 60;
-    long adjust = 0;
-    if (zeroDay < 0) {
-      long adjustCycles = (zeroDay + 1) / 146_097 - 1;
-      adjust = adjustCycles * 400;
-      zeroDay += -adjustCycles * 146_097;
+    // Neri and Schneider, Proposition 6.3: https://arxiv.org/abs/2102.06959.
+    // Floor division extends the March-based century decomposition to negative years while
+    // keeping its remainder in [0, 146097). Valid Instant bounds keep all long products in range.
+    long quarterDay = 4 * (Math.floorDiv(epochSecond, 86_400) + 719_468) + 3;
+    int century = (int) Math.floorDiv(quarterDay, 146_097);
+    int remainder = (int) (quarterDay - century * 146_097L);
+    long yearProduct = 2_939_745L * (remainder | 3);
+    int year = century * 100 + (int) (yearProduct >>> 32);
+    int marchDay = (int) ((yearProduct & 0xffff_ffffL) / 2_939_745) >>> 2;
+    int monthDay = 2141 * marchDay + 197913;
+    int month = monthDay >>> 16;
+    int day = (monthDay & 0xffff) / 2141 + 1;
+    if (marchDay >= 306) {
+      year++;
+      month -= 12;
     }
-    long year = (400 * zeroDay + 591) / 146_097;
-    long dayOfYear = zeroDay - (365 * year + year / 4 - year / 100 + year / 400);
-    if (dayOfYear < 0) {
-      year--;
-      dayOfYear = zeroDay - (365 * year + year / 4 - year / 100 + year / 400);
-    }
-    year += adjust;
-    int marchDay = (int) dayOfYear;
-    int marchMonth = (marchDay * 5 + 2) / 153;
-    int month = (marchMonth + 2) % 12 + 1;
-    int day = marchDay - (marchMonth * 306 + 5) / 10 + 1;
-    year += marchMonth / 10;
-    return (year << 32) | ((long) month << 16) | day;
+    return ((long) year << 32) | ((long) month << 16) | day;
   }
 
   private static ForyJsonException invalidIsoInstant(long epochSecond, int nano) {
@@ -200,6 +203,47 @@ public abstract class JsonWriter {
 
   public void writeOffsetDateTime(OffsetDateTime value) {
     writeString(value.toString());
+  }
+
+  /** Writes a quoted ISO local time, including seconds and the shortest exact fraction. */
+  @Internal
+  public void writeLocalTime(LocalTime value) {
+    writeTemporal(value, DateTimeFormatter.ISO_LOCAL_TIME);
+  }
+
+  /** Writes a quoted ISO local date-time. */
+  @Internal
+  public void writeLocalDateTime(LocalDateTime value) {
+    writeTemporal(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+  }
+
+  /** Writes a quoted ISO offset time. */
+  @Internal
+  public void writeOffsetTime(OffsetTime value) {
+    writeTemporal(value, DateTimeFormatter.ISO_OFFSET_TIME);
+  }
+
+  /** Writes a quoted ISO zoned date-time, retaining a region ID when present. */
+  @Internal
+  public void writeZonedDateTime(ZonedDateTime value) {
+    writeTemporal(value, DateTimeFormatter.ISO_ZONED_DATE_TIME);
+  }
+
+  /** Writes a quoted ISO year and month, with a sign for extended positive years. */
+  @Internal
+  public void writeYearMonth(YearMonth value) {
+    writeTemporal(value, TemporalFormats.YEAR_MONTH);
+  }
+
+  /** Writes a quoted ISO month and day. */
+  @Internal
+  public void writeMonthDay(MonthDay value) {
+    writeTemporal(value, TemporalFormats.MONTH_DAY);
+  }
+
+  private static final class TemporalFormats {
+    private static final DateTimeFormatter YEAR_MONTH = DateTimeFormatter.ofPattern("uuuu-MM");
+    private static final DateTimeFormatter MONTH_DAY = DateTimeFormatter.ofPattern("--MM-dd");
   }
 
   public void writeTemporal(TemporalAccessor value, DateTimeFormatter formatter) {

@@ -63,6 +63,7 @@ public final class ForyJsonGraalVMFeatureJarVerifier {
           + "org.apache.fory.json.JsonConfig,"
           + "org.apache.fory.json.JsonTypeCheckContext,"
           + "org.apache.fory.json.PropertyNamingStrategy,"
+          + "org.apache.fory.json.annotation.JsonProperty$Include,"
           + "org.apache.fory.util.function.ObjBooleanConsumer,"
           + "org.apache.fory.util.function.ObjByteConsumer,"
           + "org.apache.fory.util.function.ObjCharConsumer,"

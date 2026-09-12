@@ -26,6 +26,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Map;
+import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -42,7 +43,7 @@ import org.apache.fory.serializer.StringSerializer;
 final class JsonTestSupport {
   private static final JsonConfig CONFIG =
       new JsonConfig(
-          false,
+          Include.NON_NULL,
           false,
           false,
           false,

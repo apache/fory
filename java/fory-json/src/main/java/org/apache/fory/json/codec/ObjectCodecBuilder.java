@@ -48,6 +48,7 @@ import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonUnwrapped;
@@ -80,14 +81,14 @@ final class ObjectCodecBuilder {
       TypeRef<T> ownerType,
       boolean propertyDiscoveryEnabled,
       PropertyNamingStrategy propertyNamingStrategy,
-      boolean writeNullFields,
+      Include defaultPropertyInclusion,
       JsonSharedRegistry sharedRegistry,
       GeneratedJsonCodec<?> generatedCodec) {
     return build(
         ownerType,
         propertyDiscoveryEnabled,
         propertyNamingStrategy,
-        writeNullFields,
+        defaultPropertyInclusion,
         sharedRegistry,
         generatedCodec,
         null);
@@ -97,7 +98,7 @@ final class ObjectCodecBuilder {
       TypeRef<T> ownerType,
       boolean propertyDiscoveryEnabled,
       PropertyNamingStrategy propertyNamingStrategy,
-      boolean writeNullFields,
+      Include defaultPropertyInclusion,
       JsonSharedRegistry sharedRegistry,
       GeneratedJsonCodec<?> generatedCodec,
       JsonObjectModel objectModel) {
@@ -221,7 +222,11 @@ final class ObjectCodecBuilder {
         if (objectModel != null && builder.anyReadEnabled() && builder.creatorArgumentIndex < 0) {
           JsonFieldInfo field =
               builder.build(
-                  record, ownerType, propertyNamingStrategy, writeNullFields, generatedCodec);
+                  record,
+                  ownerType,
+                  propertyNamingStrategy,
+                  defaultPropertyInclusion,
+                  generatedCodec);
           anyConstructionIndex = creatorInfo.argumentCount() + deferredFields.size();
           deferredFields.add(field);
           deferredRequired.add(builder.requiredDeferred);
@@ -286,7 +291,11 @@ final class ObjectCodecBuilder {
         builder.validateUnwrapped(type, creatorInfo);
         JsonFieldInfo property =
             builder.build(
-                record, ownerType, propertyNamingStrategy, writeNullFields, generatedCodec);
+                record,
+                ownerType,
+                propertyNamingStrategy,
+                defaultPropertyInclusion,
+                generatedCodec);
         markRequiredWrite(property, builder, creatorInfo, objectModel);
         int unwrappedConstructionIndex = -1;
         if (creatorInfo != null && builder.creatorArgumentIndex >= 0) {
@@ -317,7 +326,8 @@ final class ObjectCodecBuilder {
         continue;
       }
       JsonFieldInfo field =
-          builder.build(record, ownerType, propertyNamingStrategy, writeNullFields, generatedCodec);
+          builder.build(
+              record, ownerType, propertyNamingStrategy, defaultPropertyInclusion, generatedCodec);
       markRequiredWrite(field, builder, creatorInfo, objectModel);
       if (!hasAny) {
         FieldBuilder priorProperty = canonicalNames.put(field.name(), builder);
@@ -453,20 +463,21 @@ final class ObjectCodecBuilder {
       JsonCreatorInfo creatorInfo,
       JsonObjectModel objectModel) {
     if (objectModel != null && field.requiresUnboxedBinding()) {
+      if (builder.explicitInclude == Include.NON_EMPTY && field.mayBeEmpty()) {
+        // A lowered carrier cannot prove the logical CharSequence/collection emptiness. Keep this
+        // unsupported shape separate from ordinary Kotlin property inclusion and default values.
+        throw new ForyJsonException(
+            "JSON property " + field.name() + " cannot check an unboxed logical empty value");
+      }
       // The logical codec is bound only after the recursive parent shell is published. Its exact
       // transparent-null action and physical carrier are normalized in JsonFieldInfo.resolveTypes.
       return;
     }
     if (objectModel != null && field.hasOccurrenceNullability()) {
-      if (field.occurrenceNullable()) {
-        if (builder.explicitInclude == JsonProperty.Include.NON_NULL) {
-          throw new ForyJsonException(
-              "Nullable reconstructible JSON property "
-                  + field.name()
-                  + " cannot omit an explicit null value");
-        }
-        field.includeNullWrite();
-      } else if (builder.hasWriteSource()
+      // Kotlin inclusion controls writing independently of constructor defaults. An omitted value
+      // may restore a different default or fail a required read; never override the chosen policy.
+      if (!field.occurrenceNullable()
+          && builder.hasWriteSource()
           && !field.occurrenceWrapsNull()
           && field.writeRawType() != null
           && !field.writeRawType().isPrimitive()) {
@@ -475,13 +486,19 @@ final class ObjectCodecBuilder {
       return;
     }
     int argumentIndex = builder.creatorArgumentIndex;
-    if (objectModel != null
-        && creatorInfo != null
-        && argumentIndex >= 0
-        && !creatorInfo.hasDefault(argumentIndex)
-        && builder.hasWriteSource()
-        && !field.writeNull()
-        && !field.writeRawType().isPrimitive()) {
+    boolean requiredArgument =
+        objectModel != null
+            && creatorInfo != null
+            && argumentIndex >= 0
+            && !creatorInfo.hasDefault(argumentIndex)
+            && builder.hasWriteSource();
+    if (requiredArgument && builder.explicitInclude == Include.NON_EMPTY && field.mayBeEmpty()) {
+      throw new ForyJsonException(
+          "Reconstructible JSON property " + field.name() + " cannot omit an empty value");
+    }
+    if (requiredArgument && !field.writeNull() && !field.writeRawType().isPrimitive()) {
+      // Language models without occurrence nullability still need every non-defaulted argument.
+      field.includeEmptyWrite();
       field.requireNonNullWrite();
     }
   }
@@ -3093,7 +3110,7 @@ final class ObjectCodecBuilder {
         boolean record,
         TypeRef<?> ownerType,
         PropertyNamingStrategy propertyNamingStrategy,
-        boolean defaultWriteNull,
+        Include defaultInclusion,
         GeneratedJsonCodec<?> generatedCodec) {
       validateTypes(ownerType);
       if (explicitInclude != JsonProperty.Include.DEFAULT && !hasWriteSource()) {
@@ -3105,11 +3122,10 @@ final class ObjectCodecBuilder {
         throw new ForyJsonException("JSON property name must not be empty for " + name);
       }
       Class<?> rawWriteType = hasWriteSource() ? writeRawType() : null;
-      boolean writeNull =
-          rawWriteType != null
-              && (rawWriteType.isPrimitive()
-                  || explicitInclude == JsonProperty.Include.ALWAYS
-                  || explicitInclude == JsonProperty.Include.DEFAULT && defaultWriteNull);
+      Include inclusion = explicitInclude == Include.DEFAULT ? defaultInclusion : explicitInclude;
+      if (rawWriteType != null && rawWriteType.isPrimitive()) {
+        inclusion = Include.ALWAYS;
+      }
       if (writeGetter != null) {
         writeAccessor = getterAccessor(generatedCodec, writeGetter);
       } else if (writeField != null) {
@@ -3133,7 +3149,7 @@ final class ObjectCodecBuilder {
       }
       return new JsonFieldInfo(
           jsonName,
-          writeNull,
+          inclusion,
           writeField,
           writeGetter,
           readField,

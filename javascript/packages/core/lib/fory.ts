@@ -27,7 +27,7 @@ import {
   TypeId,
   CustomSerializer,
 } from "./type";
-import { InputType, ResultType, TypeInfo } from "./typeInfo";
+import { containerDeclaresElementTypes, InputType, ResultType, TypeInfo } from "./typeInfo";
 import { Gen } from "./gen";
 import { PlatformBuffer } from "./platformBuffer";
 import { ReadContext, WriteContext } from "./context";
@@ -163,7 +163,12 @@ export default class Fory {
       serializer = new Gen(this.typeResolver, {
         customSerializer,
       }).generateSerializer(typeInfo);
-      this.typeResolver.registerSerializer(typeInfo, serializer);
+      if (!containerDeclaresElementTypes(typeInfo)) {
+        // A declared-element container serializer is bound to this
+        // registration only; publishing it under the bare container type id
+        // would replace the dynamic container serializer.
+        this.typeResolver.registerSerializer(typeInfo, serializer);
+      }
     }
     return {
       serializer,
@@ -223,9 +228,11 @@ export default class Fory {
     }
     const readContext = this.readContext;
     const reader = readContext.reader;
-    const rootSerializer = TypeId.polymorphicType(serializer.getTypeId())
-      ? serializer
-      : this.anySerializer;
+    const rootSerializer =
+      TypeId.polymorphicType(serializer.getTypeId()) ||
+      containerDeclaresElementTypes(serializer.getTypeInfo())
+        ? serializer
+        : this.anySerializer;
     const rootHeader = ConfigFlags.isCrossLanguageFlag;
     rootDeserializer = (bytes: Uint8Array) => {
       readContext.reset(bytes);

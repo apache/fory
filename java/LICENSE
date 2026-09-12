@@ -278,3 +278,13 @@ source code. See the project link for details.
 * java_util (https://github.com/yonik/java_util)
     Files:
       fory-core/src/main/java/org/apache/fory/util/MurmurHash3.java
+
+================================================================
+MIT licenses
+================================================================
+The full MIT license text is included in
+fory-json/src/main/resources/META-INF/licenses/LICENSE-zmij.txt.
+
+* zmij (https://github.com/vitaut/zmij)
+    Files:
+      fory-json/src/main/java/org/apache/fory/json/writer/FloatingDecimal.java

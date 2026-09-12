@@ -30,13 +30,10 @@ try:
 except ImportError:
     pytest = None
 from dataclasses import dataclass
-from pyfory.utils import lazy_import
 from typing import List, Dict, Any
 
 
 import numpy as np
-
-pa = lazy_import("pyarrow")
 
 
 def debug_print(*params):
@@ -213,6 +210,8 @@ def test_serialization_with_schema(schema_file_path, data_file_path):
 
 @cross_language_test
 def test_record_batch_basic(data_file_path):
+    import pyarrow as pa
+
     with open(data_file_path, "rb") as f:
         record_batch_bytes = f.read()
         buf = pa.py_buffer(record_batch_bytes)
@@ -225,6 +224,8 @@ def test_record_batch_basic(data_file_path):
 
 @cross_language_test
 def test_record_batch(data_file_path):
+    import pyarrow as pa
+
     with open(data_file_path, "rb") as f:
         record_batch_bytes = f.read()
         buf = pa.py_buffer(record_batch_bytes)
@@ -250,6 +251,8 @@ def test_record_batch(data_file_path):
 
 @cross_language_test
 def test_write_multi_record_batch(schema_file_path, data_file_path):
+    import pyarrow as pa
+
     with open(schema_file_path, "rb") as f:
         schema_bytes = f.read()
         schema = pa.ipc.read_schema(pa.py_buffer(schema_bytes))

@@ -19,16 +19,23 @@
 
 package org.apache.fory.json.meta;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonFormat;
+import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.DirectUnboxedValueCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
@@ -85,7 +92,8 @@ public final class JsonFieldInfo {
   private static final int KIND_LONG_AS_STRING = 19;
   private static final int WRITE_NULL_MASK = Integer.MIN_VALUE;
   private static final int REQUIRE_NON_NULL_MASK = 1 << 30;
-  private static final int READ_INDEX_MASK = REQUIRE_NON_NULL_MASK - 1;
+  private static final int OMIT_EMPTY_MASK = 1 << 29;
+  private static final int READ_INDEX_MASK = OMIT_EMPTY_MASK - 1;
   private static final byte[] TRUE_BYTES = "true".getBytes(StandardCharsets.ISO_8859_1);
   private static final byte[] FALSE_BYTES = "false".getBytes(StandardCharsets.ISO_8859_1);
 
@@ -155,7 +163,7 @@ public final class JsonFieldInfo {
 
   public JsonFieldInfo(
       String name,
-      boolean writeNull,
+      Include inclusion,
       Field writeField,
       Method writeGetter,
       Field readField,
@@ -169,9 +177,9 @@ public final class JsonFieldInfo {
       JsonFormat formatAnnotation,
       boolean rawValue) {
     this.name = name;
-    // Write-null, required-value, and read-index metadata become immutable with ObjectCodec.
-    // Packing both flags above the read index avoids enlarging every field-metadata object.
-    readIndexAndWriteNull = writeNull ? WRITE_NULL_MASK : 0;
+    // Inclusion, required-value, and read-index metadata become immutable with ObjectCodec.
+    // Packing the flags above the read index avoids enlarging every field-metadata object.
+    readIndexAndWriteNull = inclusion == Include.ALWAYS ? WRITE_NULL_MASK : 0;
     nameHash = JsonFieldNameHash.hash(name);
     this.writeField = writeField;
     this.writeGetter = writeGetter;
@@ -204,6 +212,11 @@ public final class JsonFieldInfo {
                 : resolvedObjectModelType;
     this.readRawType =
         readTypeRef == null ? null : readUnboxedRequired ? readFallback : readTypeRef.getRawType();
+    // A lowered value-class carrier is not the logical property value. An empty String carrier
+    // does not make its non-null application value class empty.
+    if (inclusion == Include.NON_EMPTY && !writeUnboxedRequired && mayBeEmpty()) {
+      readIndexAndWriteNull |= OMIT_EMPTY_MASK;
+    }
     this.codecAnnotation = codecAnnotation;
     this.valueCodecClass = valueCodecClass;
     this.formatAnnotation = formatAnnotation;
@@ -305,7 +318,7 @@ public final class JsonFieldInfo {
     JsonFieldInfo copy =
         new JsonFieldInfo(
             transformedName,
-            writeNull(),
+            omitEmpty() ? Include.NON_EMPTY : writeNull() ? Include.ALWAYS : Include.NON_NULL,
             writeField,
             writeGetter,
             readField,
@@ -319,6 +332,9 @@ public final class JsonFieldInfo {
             formatAnnotation,
             writesRawString());
     copy.setReadIndex(readIndex());
+    if (writeNull()) {
+      copy.includeNullWrite();
+    }
     if (requiresNonNullWrite()) {
       copy.requireNonNullWrite();
     }
@@ -334,9 +350,67 @@ public final class JsonFieldInfo {
     return readIndexAndWriteNull < 0;
   }
 
+  /** Returns whether non-null empty logical values are omitted before writing a field token. */
+  public boolean omitEmpty() {
+    return (readIndexAndWriteNull & OMIT_EMPTY_MASK) != 0;
+  }
+
+  /**
+   * Returns whether the logical write type can contain an empty value, independently of its
+   * carrier.
+   */
+  public boolean mayBeEmpty() {
+    Class<?> type = writeTypeRef == null ? null : writeTypeRef.getRawType();
+    return type != null
+        && (type.isArray()
+            || CharSequence.class.isAssignableFrom(type)
+            || Collection.class.isAssignableFrom(type)
+            || Map.class.isAssignableFrom(type)
+            || type == Optional.class
+            || type == OptionalInt.class
+            || type == OptionalLong.class
+            || type == OptionalDouble.class
+            || !Modifier.isFinal(type.getModifiers()) && !type.isEnum());
+  }
+
+  /**
+   * Tests a dynamically typed non-null property value, without inspecting its JSON representation.
+   * Null omission is handled separately by the containing field's nullability contract.
+   */
+  @Internal
+  public static boolean isEmpty(Object value) {
+    if (value instanceof CharSequence) {
+      return ((CharSequence) value).length() == 0;
+    }
+    if (value instanceof Collection) {
+      return ((Collection<?>) value).isEmpty();
+    }
+    if (value instanceof Map) {
+      return ((Map<?, ?>) value).isEmpty();
+    }
+    if (value instanceof Optional) {
+      return !((Optional<?>) value).isPresent();
+    }
+    if (value instanceof OptionalInt) {
+      return !((OptionalInt) value).isPresent();
+    }
+    if (value instanceof OptionalLong) {
+      return !((OptionalLong) value).isPresent();
+    }
+    if (value instanceof OptionalDouble) {
+      return !((OptionalDouble) value).isPresent();
+    }
+    return value != null && value.getClass().isArray() && Array.getLength(value) == 0;
+  }
+
   /** Makes a nullable language-model property explicit so output stays reconstructible. */
   public void includeNullWrite() {
     readIndexAndWriteNull |= WRITE_NULL_MASK;
+  }
+
+  /** Keeps empty language-model properties explicit so output stays reconstructible. */
+  public void includeEmptyWrite() {
+    readIndexAndWriteNull &= ~OMIT_EMPTY_MASK;
   }
 
   /** Returns whether this field carries explicit Kotlin-style occurrence nullability. */
@@ -992,8 +1066,7 @@ public final class JsonFieldInfo {
     if (readIndex < 0 || readIndex > READ_INDEX_MASK) {
       throw new IllegalArgumentException("Invalid JSON field read index " + readIndex);
     }
-    readIndexAndWriteNull =
-        (readIndexAndWriteNull & (WRITE_NULL_MASK | REQUIRE_NON_NULL_MASK)) | readIndex;
+    readIndexAndWriteNull = (readIndexAndWriteNull & ~READ_INDEX_MASK) | readIndex;
   }
 
   public JsonTypeInfo writeTypeInfo() {
@@ -1270,6 +1343,9 @@ public final class JsonFieldInfo {
     if (value == null && !writeNull()) {
       return omitNullValue();
     }
+    if (omitEmpty() && isEmpty(value)) {
+      return false;
+    }
     writer.writeFieldName(this, index);
     writeTypeInfo.stringWriter().writeString(writer, value);
     return true;
@@ -1395,6 +1471,9 @@ public final class JsonFieldInfo {
     if (value == null && !writeNull()) {
       return omitNullValue();
     }
+    if (omitEmpty() && value != null && value.isEmpty()) {
+      return false;
+    }
     if (value == null) {
       writer.writeFieldName(this, index);
       writer.writeNull();
@@ -1409,6 +1488,9 @@ public final class JsonFieldInfo {
     if (value == null && !writeNull()) {
       return omitNullValue();
     }
+    if (omitEmpty() && value != null && value.isEmpty()) {
+      return false;
+    }
     writer.writeFieldName(this, index);
     if (value == null) {
       writer.writeNull();
@@ -1422,6 +1504,9 @@ public final class JsonFieldInfo {
     Enum<?> value = (Enum<?>) writeAccessor.getObject(object);
     if (value == null && !writeNull()) {
       return omitNullValue();
+    }
+    if (omitEmpty() && isEmpty(value)) {
+      return false;
     }
     if (value == null) {
       writer.writeFieldName(this, index);
@@ -1438,6 +1523,9 @@ public final class JsonFieldInfo {
     if (value == null && !writeNull()) {
       return omitNullValue();
     }
+    if (omitEmpty() && value != null && Array.getLength(value) == 0) {
+      return false;
+    }
     // Field metadata owns omission only. Once present, the registered codec owns null semantics.
     writer.writeFieldName(this, index);
     writeTypeInfo.stringWriter().writeString(writer, value);
@@ -1449,6 +1537,9 @@ public final class JsonFieldInfo {
     if (value == null && !writeNull()) {
       return omitNullValue();
     }
+    if (omitEmpty() && value != null && value.isEmpty()) {
+      return false;
+    }
     writer.writeFieldName(this, index);
     writeTypeInfo.stringWriter().writeString(writer, value);
     return true;
@@ -1459,6 +1550,9 @@ public final class JsonFieldInfo {
     if (value == null && !writeNull()) {
       return omitNullValue();
     }
+    if (omitEmpty() && value != null && value.isEmpty()) {
+      return false;
+    }
     writer.writeFieldName(this, index);
     writeTypeInfo.stringWriter().writeString(writer, value);
     return true;
@@ -1468,6 +1562,9 @@ public final class JsonFieldInfo {
     Object value = writeAccessor.getObject(object);
     if (value == null && !writeNull()) {
       return omitNullValue();
+    }
+    if (omitEmpty() && isEmpty(value)) {
+      return false;
     }
     writer.writeFieldName(this, index);
     writeTypeInfo.stringWriter().writeString(writer, value);
@@ -1549,6 +1646,9 @@ public final class JsonFieldInfo {
     if (value == null && !writeNull()) {
       return omitNullValue();
     }
+    if (omitEmpty() && isEmpty(value)) {
+      return false;
+    }
     writer.writeFieldName(this, index);
     writeTypeInfo.utf8Writer().writeUtf8(writer, value);
     return true;
@@ -1568,6 +1668,9 @@ public final class JsonFieldInfo {
     String value = (String) writeAccessor.getObject(object);
     if (value == null && !writeNull()) {
       return omitNullValue();
+    }
+    if (omitEmpty() && value != null && value.isEmpty()) {
+      return false;
     }
     if (value == null) {
       writer.writeFieldName(this, index);
@@ -1596,6 +1699,9 @@ public final class JsonFieldInfo {
     if (value == null && !writeNull()) {
       return omitNullValue();
     }
+    if (omitEmpty() && value != null && value.isEmpty()) {
+      return false;
+    }
     writer.writeFieldName(this, index);
     if (value == null) {
       writer.writeNull();
@@ -1609,6 +1715,9 @@ public final class JsonFieldInfo {
     Enum<?> value = (Enum<?>) writeAccessor.getObject(object);
     if (value == null && !writeNull()) {
       return omitNullValue();
+    }
+    if (omitEmpty() && isEmpty(value)) {
+      return false;
     }
     if (value == null) {
       writer.writeFieldName(this, index);
@@ -1624,6 +1733,9 @@ public final class JsonFieldInfo {
     if (value == null && !writeNull()) {
       return omitNullValue();
     }
+    if (omitEmpty() && value != null && Array.getLength(value) == 0) {
+      return false;
+    }
     // Field metadata owns omission only. Once present, the registered codec owns null semantics.
     writer.writeFieldName(this, index);
     writeTypeInfo.utf8Writer().writeUtf8(writer, value);
@@ -1635,6 +1747,9 @@ public final class JsonFieldInfo {
     if (value == null && !writeNull()) {
       return omitNullValue();
     }
+    if (omitEmpty() && value != null && value.isEmpty()) {
+      return false;
+    }
     writer.writeFieldName(this, index);
     writeTypeInfo.utf8Writer().writeUtf8(writer, value);
     return true;
@@ -1645,6 +1760,9 @@ public final class JsonFieldInfo {
     if (value == null && !writeNull()) {
       return omitNullValue();
     }
+    if (omitEmpty() && value != null && value.isEmpty()) {
+      return false;
+    }
     writer.writeFieldName(this, index);
     writeTypeInfo.utf8Writer().writeUtf8(writer, value);
     return true;
@@ -1654,6 +1772,9 @@ public final class JsonFieldInfo {
     Object value = writeAccessor.getObject(object);
     if (value == null && !writeNull()) {
       return omitNullValue();
+    }
+    if (omitEmpty() && isEmpty(value)) {
+      return false;
     }
     writer.writeFieldName(this, index);
     writeTypeInfo.utf8Writer().writeUtf8(writer, value);

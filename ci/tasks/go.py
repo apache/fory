@@ -23,6 +23,5 @@ def run():
     """Run Go CI tasks."""
     logging.info("Executing fory go tests")
     common.cd_project_subdir("go/fory")
-    common.exec_cmd("go test -v")
-    common.exec_cmd("go test -v ./row/...")
+    common.exec_cmd("go test -race -v ./...")
     logging.info("Executing fory go tests succeeds")

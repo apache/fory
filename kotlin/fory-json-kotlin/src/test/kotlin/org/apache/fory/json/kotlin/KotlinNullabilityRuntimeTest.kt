@@ -73,9 +73,152 @@ class KotlinNullabilityRuntimeTest {
     override fun hashCode(): Int = 31 * id + (value?.hashCode() ?: 0)
   }
 
-  data class InvalidOmission(
+  data class NullOmission(
     @get:JsonProperty(include = JsonProperty.Include.NON_NULL) val value: String?,
   )
+
+  data class EmptyValues(
+    val required: List<String>,
+    val defaults: List<String> = listOf("default"),
+    val nullable: String? = "default",
+    val optional: Optional<String> = Optional.of("default"),
+  ) {
+    var deferred: String = "initializer"
+  }
+
+  data class EmptyOmission(
+    @get:JsonProperty(include = JsonProperty.Include.NON_EMPTY)
+    val value: List<String> = emptyList(),
+  )
+
+  class DeferredOmission {
+    @get:JsonProperty(include = JsonProperty.Include.NON_EMPTY) var value: String = "initializer"
+  }
+
+  @JvmInline value class EmptyText(val value: String)
+
+  data class ValueClassOmission(
+    @get:JsonProperty(include = JsonProperty.Include.NON_EMPTY) val value: EmptyText,
+  )
+
+  @JvmInline value class TextSequence(val value: String) : CharSequence by value
+
+  data class SequenceOmission(
+    @get:JsonProperty(include = JsonProperty.Include.NON_EMPTY) val value: TextSequence,
+  )
+
+  data class GenericOmission<T>(
+    @get:JsonProperty(include = JsonProperty.Include.NON_EMPTY) val value: T,
+  )
+
+  data class InclusionModel(
+    var id: Int? = null,
+    var name: String? = null,
+    var list: List<String>? = null,
+  )
+
+  data class PropertyInclusion(
+    val id: Int,
+    @get:JsonProperty(include = JsonProperty.Include.NON_NULL) val name: String? = null,
+    @JsonProperty(include = JsonProperty.Include.NON_EMPTY) val list: List<String>? = null,
+    @get:JsonProperty(include = JsonProperty.Include.ALWAYS) val retained: List<String>? = null,
+  )
+
+  @Test
+  fun propertyInclusion() {
+    for (mode in KotlinJsonTestMode.entries) {
+      for (inclusion in JsonProperty.Include.values()) {
+        val json =
+          newKotlinJson(mode) {
+            if (inclusion != JsonProperty.Include.DEFAULT) defaultPropertyInclusion(inclusion)
+          }
+        val value = InclusionModel(1, list = emptyList())
+        val expected =
+          when (inclusion) {
+            JsonProperty.Include.ALWAYS -> """{"id":1,"name":null,"list":[]}"""
+            JsonProperty.Include.NON_EMPTY -> """{"id":1}"""
+            else -> """{"id":1,"list":[]}"""
+          }
+        val annotated = PropertyInclusion(1, list = emptyList())
+        repeat(if (mode == KotlinJsonTestMode.ASYNCHRONOUS) 2 else 1) {
+          assertEquals(expected, json.toJson(value))
+          assertEquals(expected, json.toJsonBytes(value).decodeToString())
+          val type = jsonTypeRef<InclusionModel>()
+          val decoded = json.fromJson(expected, type)
+          assertEquals(decoded, json.fromJson(expected.toByteArray(), type))
+          assertEquals(
+            if (inclusion == JsonProperty.Include.NON_EMPTY) null else emptyList(),
+            decoded.list
+          )
+          assertEquals("""{"id":1,"retained":null}""", json.toJson(annotated))
+          assertEquals("""{"id":1,"retained":null}""", json.toJsonBytes(annotated).decodeToString())
+          val retained = annotated.copy(retained = emptyList())
+          assertEquals("""{"id":1,"retained":[]}""", json.toJson(retained))
+          assertEquals("""{"id":1,"retained":[]}""", json.toJsonBytes(retained).decodeToString())
+          val nonEmpty = annotated.copy(name = "kept", list = listOf("x"))
+          val nonEmptyText = """{"id":1,"name":"kept","list":["x"],"retained":null}"""
+          assertEquals(nonEmptyText, json.toJson(nonEmpty))
+          assertEquals(nonEmptyText, json.toJsonBytes(nonEmpty).decodeToString())
+          if (mode == KotlinJsonTestMode.ASYNCHRONOUS) awaitAsyncCodegen(json)
+        }
+      }
+    }
+  }
+
+  @Test
+  fun emptyInclusion() {
+    for (codegen in listOf(false, true)) {
+      val json =
+        ForyJsonKotlin.builder()
+          .withCodegen(codegen)
+          .withAsyncCompilation(false)
+          .defaultPropertyInclusion(JsonProperty.Include.NON_EMPTY)
+          .build()
+      val value = EmptyValues(emptyList(), emptyList(), null, Optional.empty())
+      value.deferred = ""
+      val type = jsonTypeRef<EmptyValues>()
+      assertEquals("{}", json.toJson(value, type))
+      assertEquals("{}", json.toJsonBytes(value, type).decodeToString())
+      assertFailsWith<ForyJsonException> { json.fromJson("{}", type) }
+      assertFailsWith<ForyJsonException> { json.fromJson("{}".toByteArray(), type) }
+      val present = """{"required":[]}"""
+      for (decoded in
+        listOf(json.fromJson(present, type), json.fromJson(present.toByteArray(), type))) {
+        assertEquals(emptyList(), decoded.required)
+        assertEquals(listOf("default"), decoded.defaults)
+        assertEquals("default", decoded.nullable)
+        assertEquals(Optional.of("default"), decoded.optional)
+        assertEquals("initializer", decoded.deferred)
+      }
+      val wrapped = ValueClassOmission(EmptyText(""))
+      val wrappedType = jsonTypeRef<ValueClassOmission>()
+      assertEquals("""{"value":""}""", json.toJson(wrapped, wrappedType))
+      assertEquals(wrapped, json.fromJson(json.toJsonBytes(wrapped, wrappedType), wrappedType))
+      val generic = GenericOmission(EmptyText(""))
+      val genericType = jsonTypeRef<GenericOmission<EmptyText>>()
+      assertEquals("""{"value":""}""", json.toJson(generic, genericType))
+      assertEquals(generic, json.fromJson(json.toJsonBytes(generic, genericType), genericType))
+      val empty = EmptyOmission()
+      val emptyType = jsonTypeRef<EmptyOmission>()
+      assertEquals("{}", json.toJson(empty, emptyType))
+      assertEquals("{}", json.toJsonBytes(empty, emptyType).decodeToString())
+      assertEquals(empty, json.fromJson("{}", emptyType))
+      val deferred = DeferredOmission().apply { this.value = "" }
+      assertEquals("{}", json.toJson(deferred))
+      assertEquals("{}", json.toJsonBytes(deferred).decodeToString())
+      assertEquals("initializer", json.fromJson("{}", jsonTypeRef<DeferredOmission>()).value)
+      assertFailsWith<ForyJsonException> { json.toJson(SequenceOmission(TextSequence(""))) }
+      assertEquals(
+        "{}",
+        json
+          .toJsonBytes(
+            GenericOmission(TextSequence("")),
+            jsonTypeRef<GenericOmission<TextSequence>>()
+          )
+          .decodeToString()
+      )
+    }
+  }
 
   @Test
   fun rootNullability() {
@@ -95,7 +238,7 @@ class KotlinNullabilityRuntimeTest {
 
   @Test
   fun constructorPresenceAndNull() {
-    forEachJsonMode { json ->
+    forEachJsonMode({ writeNullFields(true) }) { json ->
       val type = jsonTypeRef<ConstructorNulls>()
       val defaultsJson = """{"required":"漢","nullable":null,"count":1,"nullableCount":null}"""
       val defaults =
@@ -265,27 +408,35 @@ class KotlinNullabilityRuntimeTest {
   }
 
   @Test
-  fun reconstructibleNullOmission() {
+  fun nullInclusion() {
     KotlinJsonTestMode.entries.forEach { mode ->
-      val json = newNullOmittingJson(mode)
+      val json = newKotlinJson(mode) { writeNullFields(false) }
       val type = jsonTypeRef<OmissionModel>()
       val value = OmissionModel(id = 1, requiredNull = null)
       val text = json.toJson(value, type)
-      assertTrue(text.contains("\"defaultNull\":null"), text)
-      assertTrue(text.contains("\"requiredNull\":null"), text)
-      assertEquals(value, json.fromJson(text, type))
-      assertEquals(value, json.fromJson(json.toJsonBytes(value, type), type))
+      assertEquals("""{"id":1}""", text)
+      assertEquals(text, json.toJsonBytes(value, type).decodeToString())
+      assertFailsWith<ForyJsonException> { json.fromJson(text, type) }
+      assertFailsWith<ForyJsonException> { json.fromJson(text.toByteArray(), type) }
 
       val deferredType = jsonTypeRef<DeferredNullableModel>()
       val deferred = DeferredNullableModel(2).also { it.value = null }
       val deferredText = json.toJson(deferred, deferredType)
-      assertTrue(deferredText.contains("\"value\":null"), deferredText)
-      assertEquals(deferred, json.fromJson(deferredText, deferredType))
-    }
+      assertEquals("""{"id":2}""", deferredText)
+      assertEquals(deferredText, json.toJsonBytes(deferred, deferredType).decodeToString())
+      assertEquals("initializer", json.fromJson(deferredText, deferredType).value)
+      assertEquals("initializer", json.fromJson(deferredText.toByteArray(), deferredType).value)
 
-    val json = newKotlinJson(KotlinJsonTestMode.INTERPRETED)
-    assertFailsWith<ForyJsonException> {
-      json.toJson(InvalidOmission(null), jsonTypeRef<InvalidOmission>())
+      val always = newKotlinJson(mode) { writeNullFields(true) }
+      assertEquals(value, always.fromJson(always.toJson(value, type), type))
+      assertEquals(value, always.fromJson(always.toJsonBytes(value, type), type))
+      assertEquals(deferred, always.fromJson(always.toJson(deferred, deferredType), deferredType))
+      assertEquals(
+        deferred,
+        always.fromJson(always.toJsonBytes(deferred, deferredType), deferredType)
+      )
+      assertEquals("{}", always.toJson(NullOmission(null)))
+      assertEquals("{}", always.toJsonBytes(NullOmission(null)).decodeToString())
     }
   }
 
@@ -362,16 +513,5 @@ class KotlinNullabilityRuntimeTest {
   ) {
     assertEquals(expected.length(), actual.length())
     repeat(expected.length()) { assertEquals(expected.get(it), actual.get(it)) }
-  }
-
-  private fun newNullOmittingJson(mode: KotlinJsonTestMode): ForyJson {
-    val builder = ForyJsonKotlin.builder().writeNullFields(false)
-    return when (mode) {
-      KotlinJsonTestMode.INTERPRETED -> builder.withCodegen(false).build()
-      KotlinJsonTestMode.SYNCHRONOUS ->
-        builder.withCodegen(true).withAsyncCompilation(false).build()
-      KotlinJsonTestMode.ASYNCHRONOUS ->
-        builder.withCodegen(true).withAsyncCompilation(true).build()
-    }
   }
 }

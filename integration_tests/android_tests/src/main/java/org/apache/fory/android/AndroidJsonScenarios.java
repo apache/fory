@@ -19,7 +19,10 @@
 
 package org.apache.fory.android;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -123,6 +126,30 @@ public final class AndroidJsonScenarios {
     FormatTimezoneModel decoded = json.fromJson(encoded, FormatTimezoneModel.class);
     checkEquals(instant, decoded.instant);
     checkEquals(value.instants, decoded.instants);
+  }
+
+  public static void zoneIds() {
+    ForyJson json = ForyJson.builder().build();
+    for (String id :
+        new String[] {"Europe/Paris", "America/New_York", "UTC+05:30", "+05:30", "Z"}) {
+      ZoneId expected = ZoneId.of(id);
+      String token = "\"" + id + "\"";
+      checkEquals(expected, json.fromJson(token, ZoneId.class));
+      checkEquals(expected, json.fromJson(token.getBytes(StandardCharsets.UTF_8), ZoneId.class));
+      checkEquals(token, json.toJson(expected));
+      ZoneId[] decoded = json.fromJson("[" + token + ",null]", ZoneId[].class);
+      checkEquals(expected, decoded[0]);
+      checkEquals(null, decoded[1]);
+    }
+    String dateTime = "2024-03-31T02:30:00+01:00[Europe/Paris]";
+    ZonedDateTime expected =
+        ZonedDateTime.ofInstant(Instant.parse("2024-03-31T01:30:00Z"), ZoneId.of("Europe/Paris"));
+    checkEquals(expected, json.fromJson("\"" + dateTime + "\"", ZonedDateTime.class));
+    checkEquals(
+        expected,
+        json.fromJson(
+            ("\"" + dateTime + "\"").getBytes(StandardCharsets.UTF_8), ZonedDateTime.class));
+    checkEquals(ZoneId.of("Europe/Paris"), json.fromJson("\"Europe\\/Paris\"", ZoneId.class));
   }
 
   public static void generatedValidator() {

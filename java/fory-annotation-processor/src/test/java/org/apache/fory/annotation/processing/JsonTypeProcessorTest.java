@@ -507,6 +507,40 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void generatedInclusion() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.InclusionModel",
+            "package test;\n"
+                + "import java.util.List;\n"
+                + "import java.util.Collections;\n"
+                + "import org.apache.fory.json.annotation.JsonProperty;\n"
+                + "import org.apache.fory.json.annotation.JsonType;\n"
+                + "@JsonType public final class InclusionModel {\n"
+                + "  @JsonProperty(include = JsonProperty.Include.NON_EMPTY)\n"
+                + "  public List<String> items = Collections.emptyList();\n"
+                + "  public String name = \"\";\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.InclusionModel");
+    GeneratedJsonCodec<?> codec = generatedCodec(loader, "test.InclusionModel_ForyJsonCodec");
+    Object value = type.getConstructor().newInstance();
+    assertEquals(
+        fieldAccessor(codec.fieldAccessors(), "items").getObject(value), Collections.emptyList());
+    for (boolean codegen : new boolean[] {false, true}) {
+      ForyJson json =
+          ForyJson.builder()
+              .withClassLoader(loader)
+              .withCodegen(codegen)
+              .withAsyncCompilation(false)
+              .build();
+      assertEquals(json.toJson(value), "{\"name\":\"\"}");
+      assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"name\":\"\"}");
+    }
+  }
+
+  @Test
   public void generatedAccessors() throws Exception {
     CompilationResult result =
         compile(

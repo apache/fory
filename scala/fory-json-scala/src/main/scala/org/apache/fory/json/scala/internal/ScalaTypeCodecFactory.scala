@@ -104,10 +104,12 @@ private[scala] object ScalaTypeCodecFactory extends JsonCodecFactory {
       val selection = iterableKind(rawType, runtimeType)
       if (selection == null)
         throw ScalaTypeSupport.unsupported(typeRef, "collection family requires an exact codec")
+      // A declared Seq proves the writer cast; generic Iterable can also contain sets.
       return new ScalaIterableCodec(
         selection._1,
         GraphMemoryEstimates.shallowObjectBytes(selection._2),
-        runtimeType
+        runtimeType,
+        classOf[scala.collection.Seq[_]].isAssignableFrom(rawType)
       )
     }
 

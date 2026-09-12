@@ -39,6 +39,7 @@
         Apache Fory™ Kotlin provides optimized serializers for Kotlin types, built on top of Fory Java.
     </description>
     <url>https://fory.apache.org</url>
+    <inceptionYear>2023</inceptionYear>
 
     <scm child.scm.connection.inherit.append.path="false"
          child.scm.developerConnection.inherit.append.path="false"
@@ -60,6 +61,8 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Remote resource NOTICE years use this timestamp, not the build date. -->
+        <project.build.outputTimestamp>2026-01-01T00:00:00Z</project.build.outputTimestamp>
         <kotlin.compiler.jvmTarget>1.8</kotlin.compiler.jvmTarget>
         <kotlin.version>2.3.20</kotlin.version>
         <ksp.version>2.3.8</ksp.version>
@@ -259,6 +262,15 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-remote-resources-plugin</artifactId>
+                <configuration>
+                    <properties>
+                        <projectName>Apache Fory™</projectName>
+                    </properties>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>

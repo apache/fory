@@ -48,18 +48,19 @@ import org.apache.fory.serializer.StringSerializer;
  * Concrete writer that builds a Java compact-string byte representation directly.
  *
  * <p>The writer owns a mutable byte buffer, its current LATIN1 or UTF16 coder, and one alternate
- * buffer used for coder widening or formatter staging. Each number or string entry dispatches to a
- * coder-specific output loop once; digit loops do not repeatedly branch on coder. {@link #toJson()}
- * detaches an exact byte array, optionally compresses UTF16 ASCII/Latin1 output, and constructs the
- * result String without exposing pooled storage. The result coder seeds the next reset to avoid
- * repeated widening for stable workloads.
+ * buffer used for coder widening. Each number or string entry dispatches to a coder-specific output
+ * loop once; digit loops do not repeatedly branch on coder. {@link #toJson()} detaches an exact
+ * byte array, optionally compresses UTF16 ASCII/Latin1 output, and constructs the result String
+ * without exposing pooled storage. The result coder seeds the next reset to avoid repeated widening
+ * for stable workloads.
  *
- * <p>Finite float and double spelling comes from the JDK formatter, directly when available and
- * through a retained {@link StringBuilder} otherwise. Compact {@link BigDecimal} values are emitted
- * directly with JDK-compatible spelling; inflated values and out-of-long {@link BigInteger} values
- * use canonical JDK text on the cold arbitrary-precision path. Reset applies the configured
- * retained-buffer limit. The {@link Appendable} methods emit escaped string content without adding
- * surrounding quotes and are used by formatter-owned quoted values.
+ * <p>Finite float and double values use direct shortest-decimal conversion with Java spelling.
+ * Older runtimes retain their JDK spelling through a reusable {@link StringBuilder}. Compact {@link
+ * BigDecimal} values are emitted directly with JDK-compatible spelling; inflated values and
+ * out-of-long {@link BigInteger} values use canonical JDK text on the cold arbitrary-precision
+ * path. Reset applies the configured retained-buffer limit. The {@link Appendable} methods emit
+ * escaped string content without adding surrounding quotes and are used by formatter-owned quoted
+ * values.
  */
 public final class StringJsonWriter extends JsonWriter implements Appendable {
   private static final byte LATIN1 = 0;
@@ -115,8 +116,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   }
 
   private byte[] buffer;
-  // The alternate coder buffer also retains enough capacity for LATIN1 formatter staging on a
-  // runtime that does not expose the direct UTF16 formatter.
+  // Retain the alternate buffer for coder widening across root operations.
   private byte[] scratch;
   private final StringBuilder decimalBuilder;
   private final int bufferSizeLimitBytes;
@@ -274,35 +274,21 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       writeNonFiniteFloat(value);
       return;
     }
-    if (coder == LATIN1) {
-      int pos = position;
-      if (pos + JdkFloatFormatter.MAX_CHARS > buffer.length) {
-        grow(JdkFloatFormatter.MAX_CHARS);
-      }
-      int newPosition = JdkFloatFormatter.write(buffer, pos, value);
-      if (newPosition >= 0) {
-        position = newPosition;
-        return;
-      }
-    } else {
-      int additional = JdkFloatFormatter.MAX_CHARS << 1;
-      int pos = position;
-      if (pos + additional > buffer.length) {
-        grow(additional);
-      }
-      int newPosition = JdkFloatFormatter.writeUtf16(buffer, pos, value);
-      if (newPosition >= 0) {
-        position = newPosition;
-        return;
-      }
-      int end = JdkFloatFormatter.write(scratch, 0, value);
-      if (end >= 0) {
-        writeAsciiUtf16(scratch, end);
-        return;
-      }
+    int additional = FloatingDecimal.FLOAT_MAX_CHARS << coder;
+    int pos = position;
+    // The portable LATIN1 builder copy shares this capacity proof with the direct converter.
+    if (pos + additional > buffer.length) {
+      grow(additional);
+    }
+    if (FloatingDecimal.AVAILABLE) {
+      position =
+          coder == LATIN1
+              ? FloatingDecimal.write(buffer, pos, value)
+              : FloatingDecimal.writeUtf16(buffer, pos, value);
+      return;
     }
     StringBuilder builder = decimalBuilder;
-    JdkFloatFormatter.appendTo(value, builder);
+    FloatingDecimal.appendTo(value, builder);
     writeDecimalBuilder(builder);
   }
 
@@ -312,48 +298,32 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       writeNonFiniteDouble(value);
       return;
     }
-    if (coder == LATIN1) {
-      int pos = position;
-      if (pos + JdkDoubleFormatter.MAX_CHARS > buffer.length) {
-        grow(JdkDoubleFormatter.MAX_CHARS);
-      }
-      int newPosition = JdkDoubleFormatter.write(buffer, pos, value);
-      if (newPosition >= 0) {
-        position = newPosition;
-        return;
-      }
-    } else {
-      int additional = JdkDoubleFormatter.MAX_CHARS << 1;
-      int pos = position;
-      if (pos + additional > buffer.length) {
-        grow(additional);
-      }
-      int newPosition = JdkDoubleFormatter.writeUtf16(buffer, pos, value);
-      if (newPosition >= 0) {
-        position = newPosition;
-        return;
-      }
-      int end = JdkDoubleFormatter.write(scratch, 0, value);
-      if (end >= 0) {
-        writeAsciiUtf16(scratch, end);
-        return;
-      }
+    int additional = FloatingDecimal.DOUBLE_MAX_CHARS << coder;
+    int pos = position;
+    // The portable LATIN1 builder copy shares this capacity proof with the direct converter.
+    if (pos + additional > buffer.length) {
+      grow(additional);
+    }
+    if (FloatingDecimal.AVAILABLE) {
+      position =
+          coder == LATIN1
+              ? FloatingDecimal.write(buffer, pos, value)
+              : FloatingDecimal.writeUtf16(buffer, pos, value);
+      return;
     }
     StringBuilder builder = decimalBuilder;
-    JdkDoubleFormatter.appendTo(value, builder);
+    FloatingDecimal.appendTo(value, builder);
     writeDecimalBuilder(builder);
   }
 
   private static StringBuilder newDecimalBuilder() {
-    return JdkFloatFormatter.isAvailable() && JdkDoubleFormatter.isAvailable()
-        ? null
-        : new StringBuilder(JdkDoubleFormatter.MAX_CHARS);
+    return FloatingDecimal.AVAILABLE ? null : new StringBuilder(FloatingDecimal.DOUBLE_MAX_CHARS);
   }
 
   private static byte[] initialBuffer(byte[] buffer) {
-    return buffer.length >= JdkDoubleFormatter.MAX_CHARS
+    return buffer.length >= FloatingDecimal.DOUBLE_MAX_CHARS
         ? buffer
-        : new byte[JdkDoubleFormatter.MAX_CHARS];
+        : new byte[FloatingDecimal.DOUBLE_MAX_CHARS];
   }
 
   private void writeDecimalBuilder(StringBuilder builder) {
@@ -2161,14 +2131,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       grow(additional);
     }
     writeAsciiUtf16NoEnsure(value, length);
-  }
-
-  private void writeAsciiUtf16(byte[] source, int length) {
-    int additional = length << 1;
-    if (position + additional > buffer.length) {
-      grow(additional);
-    }
-    writeAsciiUtf16NoEnsure(source, length);
   }
 
   private void writeAsciiUtf16NoEnsure(String value, int length) {

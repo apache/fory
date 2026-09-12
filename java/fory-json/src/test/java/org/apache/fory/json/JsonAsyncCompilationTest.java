@@ -59,6 +59,7 @@ import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonValidator;
 import org.apache.fory.json.codec.ClosedSubtypeCodec;
@@ -1316,7 +1317,7 @@ public class JsonAsyncCompilationTest {
       throws Exception {
     JsonConfig config =
         new JsonConfig(
-            false,
+            Include.NON_NULL,
             false,
             true,
             true,

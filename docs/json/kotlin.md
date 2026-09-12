@@ -41,7 +41,7 @@ repositories {
 }
 
 dependencies {
-  implementation("org.apache.fory:fory-json-kotlin:1.7.1")
+  implementation("org.apache.fory:fory-json-kotlin:1.7.2")
 }
 ```
 
@@ -54,7 +54,7 @@ plugins {
 }
 
 dependencies {
-  ksp("org.apache.fory:fory-json-kotlin-ksp:1.7.1")
+  ksp("org.apache.fory:fory-json-kotlin-ksp:1.7.2")
 }
 ```
 
@@ -146,11 +146,37 @@ after construction, followed by validators; input member order does not choose a
 order. Kotlin class instances are always constructed normally, so primary-constructor initialization and
 validation are not bypassed.
 
-Fory must be able to read its own output under the same configuration. Consequently, nullable
-constructor parameters and nullable deferred properties are emitted explicitly when null, even
-when the builder's general Java default is to omit null fields. An explicit
-`JsonProperty.Include.NON_NULL` on such a property is rejected if omission could fail or invoke a
-different compiler default.
+Kotlin properties follow the configured [property inclusion](annotations.md#jsonproperty),
+including constructor parameters and body properties. The default `NON_NULL` omits null values;
+`NON_EMPTY` also omits empty strings, arrays, collections, and maps, and absent JDK Optional values.
+A property's `@JsonProperty(include = ...)` overrides the builder default. Use `ALWAYS` or
+`writeNullFields(true)` to retain null values.
+
+```kotlin
+import org.apache.fory.json.annotation.JsonProperty.Include
+import org.apache.fory.json.kotlin.ForyJsonKotlin
+
+data class Response(
+    val id: Int,
+    val name: String? = null,
+    val items: List<String>? = null,
+)
+
+val json = ForyJsonKotlin.builder().defaultPropertyInclusion(Include.NON_EMPTY).build()
+val text = json.toJson(Response(1, items = emptyList())) // {"id":1}
+```
+
+Inclusion affects writing only. Reading the example's output uses the declared `items` default
+of null, so the original empty list is not preserved. A missing constructor parameter uses its
+declared default, or fails if it has no default; a missing body property keeps its initializer.
+Explicit null remains distinct from a missing field and is rejected for a non-nullable property.
+Choose an inclusion rule that retains values when exact round trips are required.
+
+Fory does not compare values with Kotlin defaults or evaluate initializers during serialization.
+An empty list is omitted by `NON_EMPTY` regardless of whether its default is null, `emptyList()`, or
+a non-empty list. Empty underlying string or collection carriers do not make non-null value-class
+properties empty. An explicit `NON_EMPTY` is unsupported when an unboxed value class itself
+implements `CharSequence`, `Collection`, or `Map`; use a containing custom codec for that shape.
 
 ## Nullability
 

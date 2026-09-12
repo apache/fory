@@ -64,6 +64,7 @@ public final class JsonCreatorInfo {
   private final JsonCreatorFieldInfo[] fields;
   private final Object[] defaults;
   private final long[] hashes;
+  private final int[] indexes;
   private final MethodHandle invoker;
   private final GeneratedJsonCodec<?> generatedCodec;
   private final Method[] defaultMethods;
@@ -200,10 +201,16 @@ public final class JsonCreatorInfo {
         generatedCodec == null && invocationExecutable != null
             ? buildInvoker(invocationExecutable, defaults.length, defaults.length)
             : null;
-    hashes = new long[this.fields.length];
-    for (int i = 0; i < this.fields.length; i++) {
-      hashes[i] = this.fields[i].nameHash();
+    int tableSize = fields.length;
+    if (tableSize > 4) {
+      tableSize = 1;
+      while (tableSize < fields.length * 4) {
+        tableSize <<= 1;
+      }
     }
+    hashes = new long[tableSize];
+    indexes = fields.length <= 4 ? null : new int[tableSize];
+    indexFields();
   }
 
   private JsonCreatorInfo(
@@ -242,10 +249,16 @@ public final class JsonCreatorInfo {
             ? buildInvoker(
                 invocationExecutable, defaults.length, defaults.length + deferredFields.length)
             : null;
-    hashes = new long[fields.length];
-    for (int i = 0; i < fields.length; i++) {
-      hashes[i] = fields[i].nameHash();
+    int tableSize = fields.length;
+    if (tableSize > 4) {
+      tableSize = 1;
+      while (tableSize < fields.length * 4) {
+        tableSize <<= 1;
+      }
     }
+    hashes = new long[tableSize];
+    indexes = fields.length <= 4 ? null : new int[tableSize];
+    indexFields();
   }
 
   /** Extends construction with deferred properties and required-presence flags. */
@@ -343,13 +356,47 @@ public final class JsonCreatorInfo {
     return arguments;
   }
 
-  public int index(long hash) {
-    // Creator arity is deliberately finite and normally small. A linear exact-hash table avoids a
-    // second object graph and is allocation-free.
-    for (int i = 0; i < hashes.length; i++) {
-      if (hashes[i] == hash) {
-        return i;
+  private void indexFields() {
+    if (indexes == null) {
+      for (int i = 0; i < fields.length; i++) {
+        hashes[i] = fields[i].nameHash();
       }
+      return;
+    }
+    int mask = hashes.length - 1;
+    for (int i = 0; i < fields.length; i++) {
+      long hash = fields[i].nameHash();
+      int slot = (int) (hash ^ (hash >>> 32)) & mask;
+      while (indexes[slot] != 0 && hashes[slot] != hash) {
+        slot = (slot + 1) & mask;
+      }
+      // Store the ordered field index, not its potentially different construction-workspace slot.
+      // Preserve first-match lookup when metadata contains the same name more than once.
+      if (indexes[slot] == 0) {
+        hashes[slot] = hash;
+        indexes[slot] = i + 1;
+      }
+    }
+  }
+
+  public int index(long hash) {
+    // Tiny schemas need fewer comparisons than table probes, especially for unknown fields.
+    if (indexes == null) {
+      for (int i = 0; i < hashes.length; i++) {
+        if (hashes[i] == hash) {
+          return i;
+        }
+      }
+      return -1;
+    }
+    int mask = hashes.length - 1;
+    int slot = (int) (hash ^ (hash >>> 32)) & mask;
+    int index;
+    while ((index = indexes[slot]) != 0) {
+      if (hashes[slot] == hash) {
+        return index - 1;
+      }
+      slot = (slot + 1) & mask;
     }
     return -1;
   }

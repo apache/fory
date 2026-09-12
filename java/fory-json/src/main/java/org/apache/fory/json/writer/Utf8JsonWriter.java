@@ -35,14 +35,21 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.MonthDay;
 import java.time.OffsetDateTime;
+import java.time.OffsetTime;
 import java.time.Period;
 import java.time.Year;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
@@ -60,19 +67,17 @@ import org.apache.fory.serializer.StringSerializer;
  * detached copy, while {@link #writeTo(OutputStream)} writes the active range without closing or
  * flushing the destination. Reset applies the configured retained-buffer limit.
  *
- * <p>Finite float and double spelling comes from the JDK formatter, directly when available and
- * through a retained {@link StringBuilder} otherwise. Compact {@link BigDecimal} values are emitted
- * directly with JDK-compatible spelling; inflated values and out-of-long {@link BigInteger} values
- * use canonical JDK text on the cold arbitrary-precision path. The {@link Appendable} methods emit
- * escaped string content without adding surrounding quotes and are used by formatter-owned quoted
- * values.
+ * <p>Finite float and double values use direct shortest-decimal conversion with Java spelling.
+ * Older runtimes retain their JDK spelling through a reusable {@link StringBuilder}. Compact {@link
+ * BigDecimal} values are emitted directly with JDK-compatible spelling; inflated values and
+ * out-of-long {@link BigInteger} values use canonical JDK text on the cold arbitrary-precision
+ * path. The {@link Appendable} methods emit escaped string content without adding surrounding
+ * quotes and are used by formatter-owned quoted values.
  */
 public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private static final byte[] MIN_INT_BYTES =
       "-2147483648".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
-  private static final byte[] BASE64_DIGITS =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-          .getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+  private static final short[] BASE64_PAIRS = new short[4096];
   private static final byte[] MIN_LONG_BYTES =
       "-9223372036854775808".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final byte[] NAN_BYTES =
@@ -82,14 +87,26 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private static final byte[] NEGATIVE_INFINITY_BYTES =
       "\"-Infinity\"".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final long EIGHT_DIGITS = 100_000_000L;
-  private static final byte[] HEX_DIGITS =
-      "0123456789abcdef".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+  private static final int[] HEX_PAIRS = new int[256];
   private static final long UTF16_ASCII_MASK = 0xFF80FF80FF80FF80L;
   private static final int[] DIGIT_TRIPLES = new int[1000];
   private static final int[] DIGIT_QUADS = new int[10000];
   private static final boolean STRING_BYTES_BACKED = StringSerializer.isBytesBackedString();
+  private static final boolean COMPACT_STRINGS_ENABLED =
+      STRING_BYTES_BACKED && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder("Z"));
 
   static {
+    String base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (int i = 0; i < BASE64_PAIRS.length; i++) {
+      BASE64_PAIRS[i] = (short) (base64Digits.charAt(i >>> 6) | (base64Digits.charAt(i & 63) << 8));
+    }
+    for (int i = 0; i < HEX_PAIRS.length; i++) {
+      int high = i >>> 4;
+      int low = i & 15;
+      int first = high < 10 ? '0' + high : 'a' + high - 10;
+      int second = low < 10 ? '0' + low : 'a' + low - 10;
+      HEX_PAIRS[i] = first | (second << 8);
+    }
     for (int i = 0; i < 1000; i++) {
       int c0 = '0' + i / 100;
       int c1 = '0' + (i / 10) % 10;
@@ -164,12 +181,28 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeNull() {
-    writeAscii("null");
+    if (position + 4 > buffer.length) {
+      grow(4);
+    }
+    LittleEndian.putInt32(buffer, position, 0x6c6c756e);
+    position += 4;
   }
 
   @Override
   public void writeBoolean(boolean value) {
-    writeAscii(value ? "true" : "false");
+    if (position + 5 > buffer.length) {
+      grow(5);
+    }
+    writeBooleanNoEnsure(value);
+  }
+
+  private void writeBooleanNoEnsure(boolean value) {
+    int offset = position;
+    LittleEndian.putInt32(buffer, offset, value ? 0x65757274 : 0x736c6166);
+    if (!value) {
+      buffer[offset + 4] = 'e';
+    }
+    position = offset + (value ? 4 : 5);
   }
 
   @Override
@@ -229,21 +262,36 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeFloat(float value) {
+    int integral = (int) value;
+    // Float uses plain notation below 10^7. Integral values in this range need no decimal
+    // rounding; negative zero must retain its sign through the existing formatter.
+    if (integral > -10_000_000
+        && integral < 10_000_000
+        && value == integral
+        && Float.floatToRawIntBits(value) != Integer.MIN_VALUE) {
+      if (position + 10 > buffer.length) {
+        grow(10);
+      }
+      writeIntNoEnsure(integral);
+      buffer[position++] = '.';
+      buffer[position++] = '0';
+      return;
+    }
     if (!Float.isFinite(value)) {
       writeNonFiniteFloat(value);
       return;
     }
     int pos = position;
-    if (pos + JdkFloatFormatter.MAX_CHARS > buffer.length) {
-      grow(JdkFloatFormatter.MAX_CHARS);
+    // Both the direct converter and the portable builder copy consume this reservation.
+    if (pos + FloatingDecimal.FLOAT_MAX_CHARS > buffer.length) {
+      grow(FloatingDecimal.FLOAT_MAX_CHARS);
     }
-    int newPosition = JdkFloatFormatter.write(buffer, pos, value);
-    if (newPosition >= 0) {
-      position = newPosition;
+    if (FloatingDecimal.AVAILABLE) {
+      position = FloatingDecimal.write(buffer, pos, value);
       return;
     }
     StringBuilder builder = decimalBuilder;
-    JdkFloatFormatter.appendTo(value, builder);
+    FloatingDecimal.appendTo(value, builder);
     writeDecimalBuilder(builder);
   }
 
@@ -254,23 +302,21 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       return;
     }
     int pos = position;
-    if (pos + JdkDoubleFormatter.MAX_CHARS > buffer.length) {
-      grow(JdkDoubleFormatter.MAX_CHARS);
+    // Both the direct converter and the portable builder copy consume this reservation.
+    if (pos + FloatingDecimal.DOUBLE_MAX_CHARS > buffer.length) {
+      grow(FloatingDecimal.DOUBLE_MAX_CHARS);
     }
-    int newPosition = JdkDoubleFormatter.write(buffer, pos, value);
-    if (newPosition >= 0) {
-      position = newPosition;
+    if (FloatingDecimal.AVAILABLE) {
+      position = FloatingDecimal.write(buffer, pos, value);
       return;
     }
     StringBuilder builder = decimalBuilder;
-    JdkDoubleFormatter.appendTo(value, builder);
+    FloatingDecimal.appendTo(value, builder);
     writeDecimalBuilder(builder);
   }
 
   private static StringBuilder newDecimalBuilder() {
-    return JdkFloatFormatter.isAvailable() && JdkDoubleFormatter.isAvailable()
-        ? null
-        : new StringBuilder(JdkDoubleFormatter.MAX_CHARS);
+    return FloatingDecimal.AVAILABLE ? null : new StringBuilder(FloatingDecimal.DOUBLE_MAX_CHARS);
   }
 
   private void writeDecimalBuilder(StringBuilder builder) {
@@ -293,8 +339,17 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     if (value.getClass() != BigInteger.class) {
       throwUnsupportedBigNumber(value.getClass());
     }
-    if (BigNumberDigits.fitsLong(value)) {
+    int bitLength = value.bitLength();
+    if (bitLength <= 63) {
       writeLong(value.longValue());
+      return;
+    }
+    if (bitLength <= 127) {
+      writeBigNumberText(BigNumberDigits.formatInt128(value, 0));
+      return;
+    }
+    if (bitLength <= BigNumberDigits.MAX_ITERATIVE_BITS) {
+      writeBigNumberText(BigNumberDigits.formatMagnitude(value, 0, bitLength));
       return;
     }
     writeBigNumberText(value.toString());
@@ -312,6 +367,16 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeChar(char value) {
+    if (isJsonAscii(value)) {
+      int offset = position;
+      if (offset + 4 > buffer.length) {
+        grow(4);
+      }
+      // Reserve the full store; the fourth byte lies beyond this value's logical end.
+      LittleEndian.putInt32(buffer, offset, '"' | (value << 8) | ('"' << 16));
+      position = offset + 3;
+      return;
+    }
     if (Character.isSurrogate(value)) {
       throw new ForyJsonException("JSON char cannot be a surrogate: " + Integer.toHexString(value));
     }
@@ -495,24 +560,31 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     int hour = secondOfDay / 3600;
     int minute = (secondOfDay - hour * 3600) / 60;
     int second = secondOfDay - hour * 3600 - minute * 60;
-    writeByteRaw((byte) '"');
-    writeIsoYear((int) (date >> 32));
-    writeByteRaw((byte) '-');
-    writeTwoDigitsValue((int) ((date >>> 16) & 0xffff));
-    writeByteRaw((byte) '-');
-    writeTwoDigitsValue((int) date & 0xffff);
-    writeByteRaw((byte) 'T');
-    writeTwoDigitsValue(hour);
-    writeByteRaw((byte) ':');
-    writeTwoDigitsValue(minute);
-    writeByteRaw((byte) ':');
-    writeTwoDigitsValue(second);
-    if (nano != 0) {
-      writeByteRaw((byte) '.');
-      writeNano(nano);
+    int pos = position;
+    // A signed ten-digit year and a nine-digit fraction need at most 39 bytes, including quotes.
+    if (pos > buffer.length - 39) {
+      grow(39);
     }
-    writeByteRaw((byte) 'Z');
-    writeByteRaw((byte) '"');
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writeIsoYear(bytes, pos, (int) (date >> 32));
+    bytes[pos++] = '-';
+    pos = writeTwoDigits(bytes, pos, (int) ((date >>> 16) & 0xffff));
+    bytes[pos++] = '-';
+    pos = writeTwoDigits(bytes, pos, (int) date & 0xffff);
+    bytes[pos++] = 'T';
+    pos = writeTwoDigits(bytes, pos, hour);
+    bytes[pos++] = ':';
+    pos = writeTwoDigits(bytes, pos, minute);
+    bytes[pos++] = ':';
+    pos = writeTwoDigits(bytes, pos, second);
+    if (nano != 0) {
+      bytes[pos++] = '.';
+      pos = writeNano(bytes, pos, nano);
+    }
+    bytes[pos++] = 'Z';
+    bytes[pos++] = '"';
+    position = pos;
   }
 
   @Override
@@ -528,7 +600,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     }
     byte[] bytes = buffer;
     bytes[pos++] = (byte) '"';
-    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
+    // Valid month/day components fit in one byte, bounding the shared helper's table indices.
+    pos =
+        writeLocalDateBytes(
+            bytes, pos, year, value.getMonthValue() & 0xff, value.getDayOfMonth() & 0xff);
     bytes[pos++] = (byte) '"';
     position = pos;
   }
@@ -537,8 +612,12 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   public void writeOffsetDateTime(OffsetDateTime value) {
     LocalDate date = value.toLocalDate();
     int year = date.getYear();
-    if (year < 0 || year > 9999 || value.getOffset().getTotalSeconds() != 0) {
+    if (year < 0 || year > 9999) {
       writeTemporal(value, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+      return;
+    }
+    if (value.getOffset().getTotalSeconds() != 0) {
+      writeOffsetDateTimeValue(value);
       return;
     }
     int pos = position;
@@ -631,6 +710,222 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   @Override
+  public void writeLocalTime(LocalTime value) {
+    int pos = position;
+    if (pos + 20 > buffer.length) {
+      grow(20);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writeIsoTimeBytes(bytes, pos, value);
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeLocalDateTime(LocalDateTime value) {
+    int year = value.getYear();
+    if (year < 0 || year > 9999) {
+      writeTemporal(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+      return;
+    }
+    int pos = position;
+    if (pos + 31 > buffer.length) {
+      grow(31);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
+    bytes[pos++] = 'T';
+    pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeOffsetTime(OffsetTime value) {
+    int pos = position;
+    if (pos + 29 > buffer.length) {
+      grow(29);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
+    pos = writeOffsetBytes(bytes, pos, value.getOffset());
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  private void writeOffsetDateTimeValue(OffsetDateTime value) {
+    int pos = position;
+    if (pos + 40 > buffer.length) {
+      grow(40);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos =
+        writeLocalDateBytes(
+            bytes, pos, value.getYear(), value.getMonthValue(), value.getDayOfMonth());
+    bytes[pos++] = 'T';
+    pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
+    pos = writeOffsetBytes(bytes, pos, value.getOffset());
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeZonedDateTime(ZonedDateTime value) {
+    int year = value.getYear();
+    if (year < 0 || year > 9999) {
+      writeTemporal(value, DateTimeFormatter.ISO_ZONED_DATE_TIME);
+      return;
+    }
+    // Named regions keep their bracketed ID even when their rules have a fixed offset.
+    boolean region = !(value.getZone() instanceof ZoneOffset);
+    String zoneId = value.getZone().getId();
+    int zoneIdLength = zoneId.length();
+    int additional = 42 + zoneIdLength;
+    int pos = position;
+    if (pos + additional > buffer.length) {
+      grow(additional);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
+    bytes[pos++] = 'T';
+    pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
+    pos = writeOffsetBytes(bytes, pos, value.getOffset());
+    if (region) {
+      bytes[pos++] = '[';
+      // ZoneId's canonical region syntax is ASCII. The enclosing reservation includes the full ID.
+      byte[] zoneBytes = STRING_BYTES_BACKED ? StringSerializer.getStringBytes(zoneId) : null;
+      if (zoneBytes != null && zoneBytes.length == zoneIdLength) {
+        System.arraycopy(zoneBytes, 0, bytes, pos, zoneIdLength);
+        pos += zoneIdLength;
+      } else {
+        for (int i = 0; i < zoneIdLength; i++) {
+          bytes[pos++] = (byte) zoneId.charAt(i);
+        }
+      }
+      bytes[pos++] = ']';
+    }
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeYearMonth(YearMonth value) {
+    int year = value.getYear();
+    if (year < 0 || year > 9999) {
+      super.writeYearMonth(value);
+      return;
+    }
+    int pos = position;
+    if (pos + 9 > buffer.length) {
+      grow(9);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    pos = writePadded4(bytes, pos, year);
+    bytes[pos++] = '-';
+    pos = writeTwoDigits(bytes, pos, value.getMonthValue());
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeMonthDay(MonthDay value) {
+    int pos = position;
+    if (pos + 9 > buffer.length) {
+      grow(9);
+    }
+    byte[] bytes = buffer;
+    int digits = DIGIT_QUADS[value.getMonthValue() * 100 + value.getDayOfMonth()];
+    LittleEndian.putInt64(
+        bytes,
+        pos,
+        0x00002d00002d2d22L | ((digits & 0xffffL) << 24) | ((digits & 0xffff0000L) << 32));
+    pos += 8;
+    bytes[pos++] = '"';
+    position = pos;
+  }
+
+  private static int writeIsoTimeBytes(byte[] bytes, int pos, LocalTime value) {
+    // Clock components are nonnegative byte-backed values. Keep the unsigned bounds explicit
+    // so the JIT can prove that every lookup is inside the digit table.
+    int hour = DIGIT_QUADS[value.getHour() & 0xff] >>> 16;
+    int minute = DIGIT_QUADS[value.getMinute() & 0xff] >>> 16;
+    int second = DIGIT_QUADS[value.getSecond() & 0xff] >>> 16;
+    LittleEndian.putInt64(
+        bytes,
+        pos,
+        (hour & 0xffffL)
+            | ((long) ':' << 16)
+            | ((long) minute << 24)
+            | ((long) ':' << 40)
+            | ((long) second << 48));
+    pos += 8;
+    int nano = value.getNano();
+    if (nano != 0) {
+      int millis = nano / 1_000_000;
+      int micros = nano / 1000;
+      int middle = micros - millis * 1000;
+      int low = nano - micros * 1000;
+      LittleEndian.putInt32(bytes, pos, (DIGIT_TRIPLES[millis] & 0xffffff00) | '.');
+      pos += 4;
+      int lastGroup;
+      // Decimal groups determine both their digits and the significant fraction width. Callers
+      // reserve a closing quote after the maximum fraction, covering the last store's spare byte.
+      if (low != 0) {
+        LittleEndian.putInt32(bytes, pos, DIGIT_TRIPLES[middle] >>> 8);
+        LittleEndian.putInt32(bytes, pos + 3, DIGIT_TRIPLES[low] >>> 8);
+        pos += 6;
+        lastGroup = low;
+      } else if (middle != 0) {
+        LittleEndian.putInt32(bytes, pos, DIGIT_TRIPLES[middle] >>> 8);
+        pos += 3;
+        lastGroup = middle;
+      } else {
+        lastGroup = millis;
+      }
+      // In [1, 999], multiplication by the inverse of five maps its multiples to [1, 199],
+      // and other values above 858993458. Only even quotients fit entirely in bits 1 through 7,
+      // so this mask recognizes multiples of ten without division or a dependent digit load.
+      if (((lastGroup * 0xcccccccd) & 0xffffff01) == 0) {
+        do {
+          pos--;
+        } while (bytes[pos - 1] == '0');
+      }
+    }
+    return pos;
+  }
+
+  private static int writeOffsetBytes(byte[] bytes, int pos, ZoneOffset offset) {
+    // ZoneOffset constructs its canonical ID from ASCII literals and decimal digits. Its byte
+    // layout follows the fixed compact-string setting, unlike arbitrary caller-provided Strings.
+    String id = offset.getId();
+    if (COMPACT_STRINGS_ENABLED) {
+      byte[] text = StringSerializer.getStringBytes(id);
+      int length = text.length;
+      if (length == 6) {
+        LittleEndian.putInt32(bytes, pos, LittleEndian.getInt32(text, 0));
+        LittleEndian.putInt32(bytes, pos + 2, LittleEndian.getInt32(text, 2));
+      } else if (length == 9) {
+        LittleEndian.putInt64(bytes, pos, LittleEndian.getInt64(text, 0));
+        bytes[pos + 8] = text[8];
+      } else {
+        bytes[pos] = 'Z';
+      }
+      return pos + length;
+    }
+    int length = id.length();
+    for (int i = 0; i < length; i++) {
+      bytes[pos++] = (byte) id.charAt(i);
+    }
+    return pos;
+  }
+
+  @Override
   public void writeTemporal(TemporalAccessor value, DateTimeFormatter formatter) {
     writeByteRaw((byte) '"');
     formatter.formatTo(value, this);
@@ -639,20 +934,62 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeDuration(Duration value) {
-    long totalSeconds = value.getSeconds();
-    int nanos = value.getNano();
-    if (totalSeconds >= 0) {
-      long hours = totalSeconds / 3600;
-      int minutes = (int) (totalSeconds % 3600 / 60);
-      int seconds = (int) (totalSeconds % 60);
-      if (matchesIsoDurationShape(hours, minutes, seconds, nanos)) {
-        writeIsoDuration(false, false, hours, minutes, seconds, nanos);
-        return;
-      }
+    long seconds = value.getSeconds();
+    int nano = value.getNano();
+    long hours = seconds / 3600;
+    int minutes = (int) ((seconds % 3600) / 60);
+    int secs = (int) (seconds % 60);
+    int pos = position;
+    // Signed hours need at most 17 bytes; all components, fraction and quotes fit in 40 bytes.
+    if (pos > buffer.length - 40) {
+      grow(40);
     }
-    writeByteRaw((byte) '"');
-    writeDurationBody(value);
-    writeByteRaw((byte) '"');
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    bytes[pos++] = 'P';
+    bytes[pos++] = 'T';
+    if (hours != 0) {
+      long magnitude = hours;
+      if (magnitude < 0) {
+        bytes[pos++] = '-';
+        // Dividing seconds by 3600 makes this magnitude safe even for Long.MIN_VALUE.
+        magnitude = -magnitude;
+      }
+      pos =
+          magnitude <= Integer.MAX_VALUE
+              ? writePositiveInt(bytes, pos, (int) magnitude)
+              : writePositiveLong(bytes, pos, magnitude);
+      bytes[pos++] = 'H';
+    }
+    if (minutes != 0) {
+      int magnitude = minutes;
+      if (magnitude < 0) {
+        bytes[pos++] = '-';
+        magnitude = -magnitude;
+      }
+      pos = writePositiveInt(bytes, pos, magnitude);
+      bytes[pos++] = 'M';
+    }
+    if (secs != 0 || nano != 0 || hours == 0 && minutes == 0) {
+      int magnitude = secs;
+      if (secs < 0) {
+        bytes[pos++] = '-';
+        // A positive nano adjustment reduces the magnitude of the negative seconds component.
+        magnitude = nano == 0 ? -secs : -secs - 1;
+      }
+      pos = writePositiveInt(bytes, pos, magnitude);
+      if (nano != 0) {
+        int fraction = secs < 0 ? 1_000_000_000 - nano : nano;
+        bytes[pos++] = '.';
+        pos = writePadded9(bytes, pos, fraction);
+        while (bytes[pos - 1] == '0') {
+          pos--;
+        }
+      }
+      bytes[pos++] = 'S';
+    }
+    bytes[pos++] = '"';
+    position = pos;
   }
 
   @Override
@@ -680,7 +1017,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       writeInt(seconds);
       if (nanos != 0) {
         writeByteRaw((byte) '.');
-        writeNano(nanos);
+        if (position > buffer.length - 9) {
+          grow(9);
+        }
+        position = writeNano(buffer, position, nanos);
       }
       writeByteRaw((byte) 'S');
     }
@@ -715,9 +1055,21 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeYear(Year value) {
-    writeByteRaw((byte) '"');
-    writeInt(value.getValue());
-    writeByteRaw((byte) '"');
+    int year = value.getValue();
+    int pos = position;
+    // Year is limited to +/-999,999,999: its signed magnitude and quotes fit in twelve bytes.
+    if (pos > buffer.length - 12) {
+      grow(12);
+    }
+    byte[] bytes = buffer;
+    bytes[pos++] = '"';
+    if (year < 0) {
+      bytes[pos++] = '-';
+      year = -year;
+    }
+    pos = writePositiveInt(bytes, pos, year);
+    bytes[pos++] = '"';
+    position = pos;
   }
 
   @Override
@@ -848,10 +1200,15 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeIntFieldName(int value) {
-    writeByteRaw((byte) '"');
-    writeInt(value);
-    writeByteRaw((byte) '"');
-    writeByteRaw((byte) ':');
+    // One reservation covers the sign, ten digits, both quotes, and the colon.
+    if (position + 14 > buffer.length) {
+      grow(14);
+    }
+    buffer[position++] = (byte) '"';
+    writeIntNoEnsure(value);
+    buffer[position] = (byte) '"';
+    buffer[position + 1] = (byte) ':';
+    position += 2;
   }
 
   @Override
@@ -878,7 +1235,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       grow(additional);
     }
     writeRawNoEnsure(prefix);
-    writeAsciiNoEnsure(value ? "true" : "false");
+    writeBooleanNoEnsure(value);
   }
 
   public void writeIntField(byte[] namePrefix, byte[] commaNamePrefix, int index, int value) {
@@ -1488,6 +1845,15 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     }
     byte[] target = buffer;
     target[pos++] = '"';
+    // Small values cannot amortize the temporary array used by the JDK bulk encoder.
+    if (value.length >= 32) {
+      byte[] encoded = Base64.getEncoder().encode(value);
+      System.arraycopy(encoded, 0, target, pos, encodedLength);
+      pos += encodedLength;
+      target[pos++] = '"';
+      position = pos;
+      return;
+    }
     int index = 0;
     int end = value.length - 2;
     while (index < end) {
@@ -1495,10 +1861,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
           ((value[index++] & 0xff) << 16)
               | ((value[index++] & 0xff) << 8)
               | (value[index++] & 0xff);
-      target[pos++] = BASE64_DIGITS[bits >>> 18];
-      target[pos++] = BASE64_DIGITS[(bits >>> 12) & 0x3f];
-      target[pos++] = BASE64_DIGITS[(bits >>> 6) & 0x3f];
-      target[pos++] = BASE64_DIGITS[bits & 0x3f];
+      LittleEndian.putInt32(
+          target, pos, BASE64_PAIRS[bits >>> 12] | (BASE64_PAIRS[bits & 0xfff] << 16));
+      pos += 4;
     }
     int remaining = value.length - index;
     if (remaining != 0) {
@@ -1506,10 +1871,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       if (remaining == 2) {
         bits |= (value[index + 1] & 0xff) << 8;
       }
-      target[pos++] = BASE64_DIGITS[bits >>> 18];
-      target[pos++] = BASE64_DIGITS[(bits >>> 12) & 0x3f];
-      target[pos++] = remaining == 2 ? BASE64_DIGITS[(bits >>> 6) & 0x3f] : (byte) '=';
-      target[pos++] = '=';
+      int third = remaining == 2 ? BASE64_PAIRS[bits & 0xfff] & 0xff : '=';
+      LittleEndian.putInt32(target, pos, BASE64_PAIRS[bits >>> 12] | (third << 16) | ('=' << 24));
+      pos += 4;
     }
     target[pos++] = '"';
     position = pos;
@@ -1903,116 +2267,29 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeByteRaw((byte) '"');
   }
 
-  private void writeIsoYear(int year) {
+  private static int writeIsoYear(byte[] bytes, int pos, int year) {
     if (year >= 0 && year <= 9999) {
-      writePadded4Value(year);
-    } else if (year > 9999) {
-      writeByteRaw((byte) '+');
-      writeInt(year);
-    } else if (year >= -9999) {
-      writeByteRaw((byte) '-');
-      writePadded4Value(-year);
-    } else {
-      writeInt(year);
+      return writePadded4(bytes, pos, year);
     }
+    bytes[pos++] = year < 0 ? (byte) '-' : (byte) '+';
+    // isoDate has limited the year to +/- 1,000,000,000, so negation fits an int.
+    int magnitude = year < 0 ? -year : year;
+    return magnitude <= 9999
+        ? writePadded4(bytes, pos, magnitude)
+        : writePositiveInt(bytes, pos, magnitude);
   }
 
-  private void writePadded4Value(int value) {
-    if (position + 4 > buffer.length) {
-      grow(4);
-    }
-    position = writePadded4(buffer, position, value);
-  }
-
-  private void writeTwoDigitsValue(int value) {
-    int high = value / 10;
-    writeByteRaw((byte) ('0' + high));
-    writeByteRaw((byte) ('0' + value - high * 10));
-  }
-
-  private void writeNano(int nano) {
+  private static int writeNano(byte[] bytes, int pos, int nano) {
     if (nano % 1_000_000 == 0) {
-      writePadded3Value(nano / 1_000_000);
-      return;
+      return writePadded3(bytes, pos, nano / 1_000_000);
     }
     if (nano % 1000 == 0) {
       int micros = nano / 1000;
       int high = micros / 1000;
-      writePadded3Value(high);
-      writePadded3Value(micros - high * 1000);
-      return;
+      pos = writePadded3(bytes, pos, high);
+      return writePadded3(bytes, pos, micros - high * 1000);
     }
-    int first = nano / 100_000_000;
-    int remainder = nano - first * 100_000_000;
-    int middle = remainder / 10_000;
-    writeByteRaw((byte) ('0' + first));
-    writePadded4Value(middle);
-    writePadded4Value(remainder - middle * 10_000);
-  }
-
-  private void writePadded3Value(int value) {
-    if (position + 3 > buffer.length) {
-      grow(3);
-    }
-    position = writePadded3(buffer, position, value);
-  }
-
-  private void writeDurationBody(Duration value) {
-    long seconds = value.getSeconds();
-    int nano = value.getNano();
-    if (seconds == 0 && nano == 0) {
-      writeAscii("PT0S");
-      return;
-    }
-    writeAscii("PT");
-    long hours = seconds / 3600;
-    int minutes = (int) ((seconds % 3600) / 60);
-    int secs = (int) (seconds % 60);
-    if (hours != 0) {
-      writeLong(hours);
-      writeByteRaw((byte) 'H');
-    }
-    if (minutes != 0) {
-      writeInt(minutes);
-      writeByteRaw((byte) 'M');
-    }
-    if (secs == 0 && nano == 0 && (hours != 0 || minutes != 0)) {
-      return;
-    }
-    if (secs < 0 && nano > 0) {
-      if (secs == -1) {
-        writeAscii("-0");
-      } else {
-        writeInt(secs + 1);
-      }
-    } else {
-      writeInt(secs);
-    }
-    if (nano > 0) {
-      int fraction = secs < 0 ? 2_000_000_000 - nano : 1_000_000_000 + nano;
-      writeDurationFraction(fraction);
-    }
-    writeByteRaw((byte) 'S');
-  }
-
-  private void writeDurationFraction(int value) {
-    int fraction = value % 1_000_000_000;
-    int digits = 9;
-    while (fraction % 10 == 0) {
-      fraction /= 10;
-      digits--;
-    }
-    writeByteRaw((byte) '.');
-    int divisor = 1;
-    for (int i = 1; i < digits; i++) {
-      divisor *= 10;
-    }
-    for (int i = 0; i < digits; i++) {
-      int digit = fraction / divisor;
-      writeByteRaw((byte) ('0' + digit));
-      fraction -= digit * divisor;
-      divisor /= 10;
-    }
+    return writePadded9(bytes, pos, nano);
   }
 
   private void writeCodePoint(int codePoint) {
@@ -2080,6 +2357,19 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   private void writeInflatedBigDecimal(BigDecimal value) {
     if (value.getClass() == BigDecimal.class) {
+      BigInteger coefficient = value.unscaledValue();
+      if (coefficient.getClass() == BigInteger.class) {
+        int bitLength = coefficient.bitLength();
+        if (bitLength > 63 && bitLength <= 127) {
+          writeBigNumberText(BigNumberDigits.formatInt128(coefficient, value.scale()));
+          return;
+        }
+        if (bitLength > 127 && bitLength <= BigNumberDigits.MAX_ITERATIVE_BITS) {
+          writeBigNumberText(
+              BigNumberDigits.formatMagnitude(coefficient, value.scale(), bitLength));
+          return;
+        }
+      }
       writeBigNumberText(value.toString());
       return;
     }
@@ -2422,6 +2712,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   // The full-width formatter is one real-work owner shared by the deliberately separate scalar,
   // field, and array entries above. Passing the byte array and cursor and returning the new cursor
   // lets each caller keep buffer/position state live across the call and publish position once.
+  // Callers handle int-sized magnitudes first; this path always emits a leading group and eight
+  // digits.
   // Do not replace this with a writer callback, carrier object, or mutable-writer lookup. Whether
   // this leaf inlines is measured independently; the guaranteed greater-than-325-BCI boundary for
   // long[] is writeLongArray, so do not copy this formatter into generated callers merely to make
@@ -2516,16 +2808,13 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     return writePadded8(bytes, pos, middle, low);
   }
 
-  private static int writePadded8Digits(byte[] bytes, int pos, int value) {
-    int high = divide10000(value);
-    int low = value - high * 10000;
-    return writePadded8(bytes, pos, high, low);
-  }
-
   private static int writePadded9(byte[] bytes, int pos, int value) {
     int high = value / 100_000_000;
+    // Derive both quotients from the original value so the two four-digit groups do not
+    // depend on first subtracting the leading digit.
+    int groups = divide10000(value);
     bytes[pos++] = (byte) ('0' + high);
-    return writePadded8Digits(bytes, pos, value - high * 100_000_000);
+    return writePadded8(bytes, pos, groups - high * 10000, value - groups * 10000);
   }
 
   private static int writePaddedDigits(byte[] bytes, int pos, int value, int digits) {
@@ -2537,36 +2826,47 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private static int writeHex(byte[] bytes, int pos, long value, int shift, int count) {
-    for (int i = 0; i < count; i++) {
-      bytes[pos++] = HEX_DIGITS[(int) ((value >>> shift) & 0xF)];
-      shift -= 4;
+    // UUID groups contain a multiple of four digits. Exact four-byte stores stay inside each
+    // group and the caller's complete quoted-UUID capacity reservation.
+    for (int i = 0; i < count; i += 4) {
+      int high = HEX_PAIRS[(int) (value >>> (shift - 4)) & 255];
+      int low = HEX_PAIRS[(int) (value >>> (shift - 12)) & 255];
+      LittleEndian.putInt32(bytes, pos, high | (low << 16));
+      pos += 4;
+      shift -= 16;
     }
     return pos;
   }
 
+  // Callers select a four-digit year and reserve the complete ten-byte date.
   private static int writeLocalDateBytes(byte[] bytes, int pos, int year, int month, int day) {
-    pos = writePadded4(bytes, pos, year);
-    bytes[pos++] = (byte) '-';
-    pos = writeTwoDigits(bytes, pos, month);
-    bytes[pos++] = (byte) '-';
-    return writeTwoDigits(bytes, pos, day);
+    int monthDigits = DIGIT_QUADS[month] >>> 16;
+    int dayDigits = DIGIT_QUADS[day] >>> 16;
+    LittleEndian.putInt64(
+        bytes,
+        pos,
+        (DIGIT_QUADS[year] & 0xffffffffL)
+            | ((long) '-' << 32)
+            | ((long) monthDigits << 40)
+            | ((long) '-' << 56));
+    bytes[pos + 8] = (byte) dayDigits;
+    bytes[pos + 9] = (byte) (dayDigits >>> 8);
+    return pos + 10;
   }
 
   private static int writePadded3(byte[] bytes, int pos, int value) {
-    int high = value / 100;
-    int rem = value - high * 100;
-    int middle = rem / 10;
-    bytes[pos++] = (byte) ('0' + high);
-    bytes[pos++] = (byte) ('0' + middle);
-    bytes[pos++] = (byte) ('0' + (rem - middle * 10));
-    return pos;
+    int digits = DIGIT_QUADS[value] >>> 8;
+    bytes[pos] = (byte) digits;
+    bytes[pos + 1] = (byte) (digits >>> 8);
+    bytes[pos + 2] = (byte) (digits >>> 16);
+    return pos + 3;
   }
 
   private static int writeTwoDigits(byte[] bytes, int pos, int value) {
-    int high = value / 10;
-    bytes[pos++] = (byte) ('0' + high);
-    bytes[pos++] = (byte) ('0' + (value - high * 10));
-    return pos;
+    int digits = DIGIT_QUADS[value] >>> 16;
+    bytes[pos] = (byte) digits;
+    bytes[pos + 1] = (byte) (digits >>> 8);
+    return pos + 2;
   }
 
   private static int divide10000(int value) {

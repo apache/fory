@@ -34,8 +34,10 @@ import org.apache.fory.ForyModule;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class SerializerFactoryTest {
@@ -180,5 +182,173 @@ public class SerializerFactoryTest {
 
     Object a2 = fory.deserialize(fory.serialize(a));
     Assert.assertEquals(a, a2);
+  }
+
+  public interface Restriction {}
+
+  public static class RestrictionValue implements Restriction {
+    public String code;
+  }
+
+  public static class RestrictionHolder {
+    public Restriction restriction;
+  }
+
+  public static class FactoryBean {
+    public int value;
+    public FactoryBean next;
+  }
+
+  public enum FactoryEnum {
+    VALUE
+  }
+
+  private static class RestrictionSerializer extends Serializer<RestrictionValue> {
+    RestrictionSerializer(TypeResolver resolver) {
+      super(resolver.getConfig(), RestrictionValue.class);
+    }
+
+    @Override
+    public void write(WriteContext ctx, RestrictionValue value) {
+      ctx.writeRef(value.code);
+    }
+
+    @Override
+    public RestrictionValue read(ReadContext ctx) {
+      RestrictionValue value = new RestrictionValue();
+      ctx.reference(value);
+      value.code = (String) ctx.readRef();
+      return value;
+    }
+  }
+
+  @DataProvider
+  public Object[][] factoryModes() {
+    return new Object[][] {{false}, {true}};
+  }
+
+  @DataProvider
+  public Object[][] metaFactoryModes() {
+    List<Object[]> modes = new ArrayList<>();
+    for (boolean codegen : new boolean[] {false, true}) {
+      for (boolean registered : new boolean[] {false, true}) {
+        for (boolean metadataFirst : new boolean[] {false, true}) {
+          modes.add(new Object[] {codegen, registered, metadataFirst});
+        }
+      }
+    }
+    return modes.toArray(new Object[0][]);
+  }
+
+  private static Fory metaShareFory(boolean codegen, SerializerFactory factory) {
+    return Fory.builder()
+        .withXlang(false)
+        .withCompatible(true)
+        .withScopedMetaShare(true)
+        .withRefTracking(true)
+        .requireClassRegistration(false)
+        .withCodegen(codegen)
+        .withAsyncCompilation(false)
+        .withSerializerFactory(factory)
+        .build();
+  }
+
+  private static SerializerFactory restrictionFactory(AtomicInteger creations) {
+    return (resolver, cls) -> {
+      if (cls == RestrictionValue.class) {
+        creations.incrementAndGet();
+        return new RestrictionSerializer(resolver);
+      }
+      return null;
+    };
+  }
+
+  @Test(dataProvider = "metaFactoryModes")
+  public void testMetaShareFactory(boolean codegen, boolean registered, boolean metadataFirst) {
+    AtomicInteger writerCreations = new AtomicInteger();
+    AtomicInteger readerCreations = new AtomicInteger();
+    Fory writer = metaShareFory(codegen, restrictionFactory(writerCreations));
+    Fory reader = metaShareFory(codegen, restrictionFactory(readerCreations));
+    if (registered) {
+      writer.register(RestrictionValue.class);
+      reader.register(RestrictionValue.class);
+    }
+    if (metadataFirst) {
+      ClassResolver resolver = (ClassResolver) reader.getTypeResolver();
+      resolver.getTypeIdForTypeDef(RestrictionValue.class);
+      Assert.assertNull(resolver.getSerializer(RestrictionValue.class, false));
+    }
+    RestrictionValue value = new RestrictionValue();
+    value.code = "A";
+    if (metadataFirst) {
+      RestrictionValue copy = reader.deserialize(writer.serialize(value), RestrictionValue.class);
+      Assert.assertEquals(copy.code, value.code);
+    }
+    RestrictionHolder holder = new RestrictionHolder();
+    holder.restriction = value;
+    for (int i = 0; i < 2; i++) {
+      RestrictionHolder copy =
+          reader.deserialize(writer.serialize(holder), RestrictionHolder.class);
+      Assert.assertEquals(((RestrictionValue) copy.restriction).code, "A");
+    }
+    RestrictionHolder restored =
+        writer.deserialize(reader.serialize(holder), RestrictionHolder.class);
+    Assert.assertEquals(((RestrictionValue) restored.restriction).code, "A");
+    Assert.assertEquals(writerCreations.get(), 1);
+    Assert.assertEquals(readerCreations.get(), 1);
+  }
+
+  @Test(dataProvider = "factoryModes")
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  public void testMetaShareEnumFactory(boolean codegen) {
+    SerializerFactory factory =
+        (resolver, cls) ->
+            cls == FactoryEnum.class ? new EnumSerializer(resolver.getConfig(), (Class) cls) : null;
+    Fory writer = metaShareFory(codegen, factory);
+    Fory reader = metaShareFory(codegen, factory);
+    Assert.assertSame(reader.deserialize(writer.serialize(FactoryEnum.VALUE)), FactoryEnum.VALUE);
+  }
+
+  @Test(dataProvider = "factoryModes")
+  public void testMetaShareStructFactory(boolean codegen) {
+    SerializerFactory factory =
+        (resolver, cls) -> cls == FactoryBean.class ? new ObjectSerializer<>(resolver, cls) : null;
+    Fory writer = metaShareFory(codegen, factory);
+    Fory reader = metaShareFory(codegen, factory);
+    FactoryBean value = new FactoryBean();
+    value.value = 42;
+    value.next = value;
+    FactoryBean copy = (FactoryBean) reader.deserialize(writer.serialize(value));
+    Assert.assertEquals(copy.value, value.value);
+    Assert.assertSame(copy.next, copy);
+    // Reading metadata must not leave a partially constructed serializer for a later write.
+    FactoryBean restored = (FactoryBean) writer.deserialize(reader.serialize(copy));
+    Assert.assertEquals(restored.value, value.value);
+    Assert.assertSame(restored.next, restored);
+  }
+
+  @Test(dataProvider = "factoryModes")
+  public void testMetaShareFactoryFailure(boolean codegen) {
+    Fory writer = metaShareFory(codegen, restrictionFactory(new AtomicInteger()));
+    AtomicInteger attempts = new AtomicInteger();
+    Fory reader =
+        metaShareFory(
+            codegen,
+            (resolver, cls) -> {
+              if (cls != RestrictionValue.class) {
+                return null;
+              }
+              if (attempts.incrementAndGet() == 1) {
+                throw new IllegalStateException("Serializer construction failed");
+              }
+              return new RestrictionSerializer(resolver);
+            });
+    RestrictionValue value = new RestrictionValue();
+    value.code = "A";
+    byte[] bytes = writer.serialize(value);
+    Assert.expectThrows(RuntimeException.class, () -> reader.deserialize(bytes));
+    RestrictionValue copy = (RestrictionValue) reader.deserialize(bytes);
+    Assert.assertEquals(copy.code, value.code);
+    Assert.assertEquals(attempts.get(), 2);
   }
 }

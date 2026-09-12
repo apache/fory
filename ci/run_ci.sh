@@ -422,7 +422,7 @@ case $1 in
     go)
       echo "Executing fory go tests for go"
       cd "$ROOT/go/fory"
-      go test -v ./...
+      go test -race -v ./...
       echo "Executing fory go tests succeeds"
     ;;
     format)

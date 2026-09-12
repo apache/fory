@@ -24,5 +24,6 @@ import org.apache.fory.json.annotation.JsonProperty
 
 @JsonMixin(target = PlatformJavaProfile::class)
 public abstract class PlatformJavaProfileMixin {
-  @get:JsonProperty("display_label") public abstract val label: String
+  @get:JsonProperty(value = "display_label", include = JsonProperty.Include.NON_EMPTY)
+  public abstract val label: String
 }

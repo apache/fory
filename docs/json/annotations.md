@@ -154,9 +154,34 @@ public final class User {
 
 The supported inclusion values are:
 
-- `DEFAULT`: use `ForyJsonBuilder.writeNullFields`.
+- `DEFAULT`: use `ForyJsonBuilder.defaultPropertyInclusion` (initially `NON_NULL`).
 - `ALWAYS`: write the property even when its selected value is null.
 - `NON_NULL`: omit a null value.
+- `NON_EMPTY`: omit null, zero-length `CharSequence` values (including strings) and Java arrays,
+  empty `java.util.Collection` and `java.util.Map` values, and absent
+  JDK `Optional`, `OptionalInt`, `OptionalLong`, and `OptionalDouble` values.
+
+```java
+public final class Response {
+  @JsonProperty(include = JsonProperty.Include.NON_EMPTY)
+  public java.util.List<String> items;
+}
+```
+
+With an empty `items` list, this object writes `{}`. Explicit property inclusion overrides the
+builder default. Empty checks apply to the property's logical value before its selected codec is
+called. A custom codec that writes an ordinary object as `""` or `{}` does not make that object
+empty. An empty `byte[]` is empty with either Base64 or numeric-array representation.
+
+Filtering is shallow: `0`, `false`, a list containing null, a list containing an empty list, and a
+present Optional containing an empty list remain included. Root values, collection elements, Map
+entries, and Any entries are not filtered by property inclusion. Raw JSON String properties are
+checked as strings without parsing their text.
+
+Kotlin properties follow the configured inclusion even when omission changes the value restored by
+a default or causes a missing-property read failure; see
+[Kotlin inclusion](kotlin.md#immutable-classes-and-compiler-defaults). Scala retains its
+[required-constructor-property rules](scala.md#case-classes-and-annotations).
 
 Inclusion affects writing only. A non-default inclusion is invalid for a creator-only property with
 no write source. Repeating the same declaration is allowed; conflicting explicit names, indexes, or
@@ -168,7 +193,7 @@ order before unindexed properties. Indexes must be non-negative, may contain gap
 unique among writable properties. `-1` means unspecified; lower values are invalid. An index on a
 setter-only, creator-only, or write-ignored property is invalid.
 
-`NON_EMPTY`, aliases, formatting, and independent read/write names are not supported.
+Aliases and independent read/write names are not supported.
 `JsonProperty` cannot be combined with an Any logical property or declared on a `JsonAnySetter`.
 
 ## `JsonPropertyOrder`

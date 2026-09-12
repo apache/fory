@@ -113,8 +113,10 @@ during a dynamic write. Declared roots and composite child types receive `false`
 that needs this distinction after construction must retain the flag for its later `resolveTypes`
 call; it must not infer the value from resolver state.
 
-The containing property still controls its name, ignore direction, and null-inclusion policy. If a
-null property is omitted, the value codec is not called. If the property is emitted, or the value
+The containing property still controls its name, ignore direction, and inclusion policy. If a
+property is omitted by `NON_NULL` or `NON_EMPTY`, the value codec is not called. `NON_EMPTY` checks
+the logical property value, so an empty List remains empty even with a custom List codec. An
+ordinary application object is not considered empty based on the JSON its codec writes. If the property is emitted, or the value
 is an array element, collection element, map value, Optional value, or atomic-reference value, the
 codec receives and owns null. The registered instance is shared across concurrent operations and
 must be thread-safe.

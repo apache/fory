@@ -50,6 +50,7 @@ import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
@@ -357,6 +358,25 @@ public class JsonGeneratedCapabilityKeyTest {
   public void writeNullVersionsWriters() {
     ForyJson first = ForyJson.builder().withAsyncCompilation(false).build();
     ForyJson second = ForyJson.builder().writeNullFields(true).withAsyncCompilation(false).build();
+    JsonTypeInfo firstType =
+        JsonTestSupport.currentTypeResolver(first).getTypeInfo(Model.class, Model.class);
+    JsonTypeInfo secondType =
+        JsonTestSupport.currentTypeResolver(second).getTypeInfo(Model.class, Model.class);
+    assertNotSame(firstType.stringWriter().getClass(), secondType.stringWriter().getClass());
+    assertNotSame(firstType.utf8Writer().getClass(), secondType.utf8Writer().getClass());
+    assertSame(firstType.latin1Reader().getClass(), secondType.latin1Reader().getClass());
+    assertSame(firstType.utf16Reader().getClass(), secondType.utf16Reader().getClass());
+    assertSame(firstType.utf8Reader().getClass(), secondType.utf8Reader().getClass());
+  }
+
+  @Test
+  public void nonEmptyVersionsWriters() {
+    ForyJson first = ForyJson.builder().withAsyncCompilation(false).build();
+    ForyJson second =
+        ForyJson.builder()
+            .defaultPropertyInclusion(Include.NON_EMPTY)
+            .withAsyncCompilation(false)
+            .build();
     JsonTypeInfo firstType =
         JsonTestSupport.currentTypeResolver(first).getTypeInfo(Model.class, Model.class);
     JsonTypeInfo secondType =

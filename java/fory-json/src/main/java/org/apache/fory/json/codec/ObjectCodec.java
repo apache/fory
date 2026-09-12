@@ -33,6 +33,7 @@ import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.codec.JsonUnwrappedInfo.Declaration;
 import org.apache.fory.json.codec.JsonUnwrappedInfo.Group;
 import org.apache.fory.json.codec.JsonUnwrappedInfo.ReadRoute;
@@ -121,7 +122,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
       TypeRef<T> ownerType,
       boolean propertyDiscoveryEnabled,
       PropertyNamingStrategy propertyNamingStrategy,
-      boolean writeNullFields,
+      Include defaultPropertyInclusion,
       JsonSharedRegistry sharedRegistry,
       GeneratedJsonCodec<?> generatedCodec) {
     try {
@@ -129,7 +130,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           ownerType,
           propertyDiscoveryEnabled,
           propertyNamingStrategy,
-          writeNullFields,
+          defaultPropertyInclusion,
           sharedRegistry,
           generatedCodec);
     } catch (ForyJsonException e) {
@@ -143,7 +144,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
       TypeRef<T> ownerType,
       boolean propertyDiscoveryEnabled,
       PropertyNamingStrategy propertyNamingStrategy,
-      boolean writeNullFields,
+      Include defaultPropertyInclusion,
       JsonSharedRegistry sharedRegistry,
       GeneratedJsonCodec<?> generatedCodec,
       JsonObjectModel objectModel) {
@@ -152,7 +153,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           ownerType,
           propertyDiscoveryEnabled,
           propertyNamingStrategy,
-          writeNullFields,
+          defaultPropertyInclusion,
           sharedRegistry,
           generatedCodec,
           objectModel);

@@ -66,32 +66,11 @@ go func() {
 }()
 ```
 
-### How It Works
-
-The thread-safe wrapper uses `sync.Pool`:
-
-1. **Acquire**: Gets a Fory instance from the pool
-2. **Use**: Performs serialization/deserialization
-3. **Copy**: Copies result data (buffer will be reused)
-4. **Release**: Returns instance to pool
-
-```go
-// Simplified implementation
-func (f *Fory) Serialize(v any) ([]byte, error) {
-    fory := f.pool.Get().(*fory.Fory)
-    defer f.pool.Put(fory)
-
-    data, err := fory.Serialize(v)
-    if err != nil {
-        return nil, err
-    }
-
-    // Copy because underlying buffer will be reused
-    result := make([]byte, len(data))
-    copy(result, data)
-    return result, nil
-}
-```
+The wrapper creates instances as needed and reuses them across goroutines.
+Each operation exclusively borrows one instance and returns it afterward.
+Registered types remain available when garbage collection reclaims cached
+instances. Serialized output is copied before returning, so callers can retain
+it safely.
 
 ### API
 
@@ -114,32 +93,48 @@ err = threadsafe.Unmarshal(data, &target)
 
 ## Type Registration
 
-Type registration should be done before concurrent use:
+Register all types before the first serialization or deserialization operation. The
+first operation permanently freezes the wrapper's registrations, even if that
+operation fails. A later registration attempt returns an error.
 
 ```go
 f := threadsafe.New()
 
-// Register types BEFORE concurrent access
-f.RegisterStruct(User{}, 1)
-f.RegisterStruct(Order{}, 2)
+if err := f.RegisterStruct(User{}, 1); err != nil {
+    panic(err)
+}
+if err := f.RegisterStruct(Order{}, 2); err != nil {
+    panic(err)
+}
 
-// Now safe to use concurrently
+// All concurrent operations use the registered types.
 go func() {
-    f.Serialize(&User{ID: 1})
+    data, err := f.Serialize(&User{ID: 1})
+    // Use data and handle err.
+    _, _ = data, err
 }()
 ```
 
-### Thread-Safe Registration
+`RegisterStructByName`, `RegisterEnum`, and `RegisterEnumByName` are also
+available directly on the wrapper. Every registered type is available to all
+concurrent operations and remains registered across garbage collections.
 
-The thread-safe wrapper handles registration safely:
+For custom per-instance initialization, use `NewWithFactory`:
 
 ```go
-// Safe: Registration is synchronized
-f := threadsafe.New()
-f.RegisterStruct(User{}, 1)  // Thread-safe
+f := threadsafe.NewWithFactory(func() *fory.Fory {
+    inner := fory.New()
+    if err := inner.RegisterExtension(CustomType{}, 100, newCustomSerializer()); err != nil {
+        panic(err)
+    }
+    return inner
+})
 ```
 
-However, for best performance, register all types at startup before concurrent use.
+The factory may be called concurrently as additional instances are needed. It
+must return a fresh, identically configured instance on every call, with
+registrations completed before returning. Create stateful custom serializers
+separately for each instance.
 
 ## Zero-Copy Considerations
 
@@ -331,11 +326,11 @@ go func() {
 }()
 ```
 
-**Fix**: Register all types before concurrent use.
+**Fix**: Register all types before the first serialization or deserialization.
 
 ## Best Practices
 
-1. **Register types at startup**: Before any concurrent operations
+1. **Register types at startup**: Before the first serialization or deserialization
 2. **Clone data if keeping references**: With non-thread-safe instance
 3. **Use per-worker instances for hot paths**: Eliminates pool contention
 4. **Profile before optimizing**: Thread-safe overhead may be negligible

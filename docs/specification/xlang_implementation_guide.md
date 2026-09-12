@@ -1205,6 +1205,12 @@ Do not retain or compare metadata bytes or fields, thread extra expected-type
 parameters through callers for revalidation, or add parallel accepted-header
 state. Cache hits never repeat miss-time work.
 
+In Java, the header hash identifies the wire schema, while a requested target class can require a
+different `TypeInfo` for that same schema. Hash-only metadata caches and depth hints retain the
+source `TypeInfo`. The existing target-conversion cache retains the result for each target class,
+source class, and header hash. Local-schema selection occurs only on a metadata or target-conversion
+cache miss; subsequent hits reuse the selected result without querying local TypeDef metadata.
+
 When a statically declared compatible named enum, ext, or union field reads
 shared metadata, the decoded metadata must match the declared type id,
 namespace, and type name before the metadata owner publishes it to the

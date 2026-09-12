@@ -21,6 +21,9 @@ Deliver measurable performance improvements in Apache Fory without protocol drif
   process short and alternate sides instead of lengthening one run or batching all baseline runs.
 - Keep only measured wins or explicitly requested architecture cleanups.
 - Revert speculative changes that do not pay off.
+- During each optimization round, benchmark only cases directly affected by the change. Defer
+  unrelated controls, full-suite sanity benchmarks, and full comparison matrices to final
+  verification of the whole optimization task unless the user explicitly requests them earlier.
 - Align with reference runtimes (usually C++ first, then Rust/Java) when behavior and ownership models differ.
 
 ## Enforce Hard Constraints
@@ -81,6 +84,9 @@ Deliver measurable performance improvements in Apache Fory without protocol drif
 - Run language-local build/test/lint for the touched implementation.
 - Run cross-language checks when runtime/type/protocol behavior can affect xlang.
 - Confirm serialized sizes and compatibility expectations where applicable.
+- For Java performance work, defer local GraalVM image builds and executions to the final
+  verification of the whole optimization task. Do not repeat them in individual rounds unless
+  the user explicitly requests an earlier run.
 
 7. Benchmark and compare.
 
@@ -96,7 +102,9 @@ Deliver measurable performance improvements in Apache Fory without protocol drif
 - Compare paired deltas using their median and dispersion. Do not optimize from a single pair,
   non-adjacent samples, or a contaminated result. If the retained pairs do not establish a stable
   signal, stop and wait for a cleaner window instead of changing code against the apparent result.
-- Run one short full-suite sanity benchmark to catch collateral regressions.
+- At final verification of the whole optimization task, run the deferred full-suite sanity
+  benchmark and matched comparison matrix to check collateral regressions. Do not repeat these
+  benchmarks in individual optimization rounds.
 
 8. Decide keep or revert.
 

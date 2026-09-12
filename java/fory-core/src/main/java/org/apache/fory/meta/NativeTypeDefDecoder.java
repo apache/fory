@@ -230,6 +230,12 @@ class NativeTypeDefDecoder {
     // Native TypeDef can carry class-layer fields even when the root wire type is an enum,
     // map, or other non-struct wrapper. Validate the resolved root class kind instead.
     if (rootClass != null) {
+      if (!hasFieldMetadata && Types.isExtType(rootTypeId)) {
+        // Extension roots need their actual serializer: a metadata-only TypeInfo may still have
+        // a provisional struct kind. Resolve and retain it through the normal owner here, not
+        // while building field metadata, which can recurse into serializer construction.
+        resolver.getTypeInfo(rootClass);
+      }
       int expectedRootTypeId = resolver.getTypeDefRootTypeId(rootClass, hasFieldMetadata);
       if (!isCompatibleRootKind(expectedRootTypeId, rootTypeId, !rootClassLayerRegistered)) {
         throw new DeserializationException(

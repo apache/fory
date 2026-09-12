@@ -131,7 +131,7 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
           fields.comma[i] = true;
         }
       }
-      if (property.writeNull()) {
+      if (property.writeNull() && !property.omitEmpty()) {
         commaKnown = true;
       }
     }

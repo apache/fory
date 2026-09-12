@@ -1981,18 +1981,18 @@ public class ClassResolver extends TypeResolver {
     TypeDef typeDef;
     Preconditions.checkArgument(
         serializerClass != UnknownClassSerializers.UnknownStructSerializer.class);
-    if (needToWriteTypeDef(serializerClass) || needsCollectionFieldTypeDef(serializerClass)) {
+    // Meta sharing needs the struct field schema even when compatible mode is disabled.
+    if (isStructSerializerClass(serializerClass) || needsCollectionFieldTypeDef(serializerClass)) {
       // Default collection/map serializers remain non-struct roots, but their wrapper fields still
       // need TypeDef metadata so remote compatible readers can evolve those fields.
       typeDef = typeDefMap.computeIfAbsent(typeInfo.type, cls -> TypeDef.buildTypeDef(this, cls));
     } else {
-      // Some type will use other serializers such MapSerializer and so on.
+      // Field schemas may already exist for class layers or metadata probes. An empty serializer
+      // root has a different shape and belongs to TypeInfo, not the class's field-schema map.
       typeDef =
-          typeDefMap.computeIfAbsent(
-              typeInfo.type,
-              cls ->
-                  NativeTypeDefEncoder.buildTypeDefWithFieldInfos(
-                      this, cls, Collections.emptyList()));
+          cacheTypeDef(
+              NativeTypeDefEncoder.buildTypeDefWithFieldInfos(
+                  this, typeInfo.type, Collections.emptyList()));
     }
     typeInfo.typeDef = typeDef;
     return typeDef;

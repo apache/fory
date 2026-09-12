@@ -19,12 +19,14 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.annotations.Test;
 
@@ -74,6 +76,39 @@ public class ForyJsonByteRangeTest {
     assertThrows(
         IndexOutOfBoundsException.class,
         () -> json.fromJson(bytes, Integer.MAX_VALUE, 1, Object.class));
+  }
+
+  @Test
+  public void tokenWhitespaceRanges() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    byte[] whitespace = {' ', '\n', '\r', '\t'};
+    // consumeToken exercises the UTF8 scanner; the inherited skipWhitespace has its own loop.
+    for (int length : new int[] {0, 1, 2, 7, 8, 31, 32, 1024}) {
+      for (int offset = 0; offset < 4; offset++) {
+        byte[] bytes = new byte[offset + length + 2];
+        for (int i = 0; i < length; i++) {
+          bytes[offset + i] = whitespace[i & 3];
+        }
+        bytes[offset + length] = '{';
+        bytes[offset + length + 1] = '}';
+        reader.reset(bytes, offset, length + 2);
+        assertEquals(reader.consumeToken('{'), true);
+        assertEquals(reader.position(), offset + length + 1);
+        reader.expectNextToken('}');
+        reader.finish();
+
+        reader.reset(bytes, offset, length);
+        assertEquals(reader.consumeToken('{'), false);
+        assertEquals(reader.position(), offset + length);
+      }
+    }
+    for (int value = 0; value < 256; value++) {
+      byte[] bytes = {' ', (byte) value, '{'};
+      reader.reset(bytes);
+      boolean space = value == ' ' || value == '\n' || value == '\r' || value == '\t';
+      assertEquals(reader.consumeToken('{'), space || value == '{');
+      assertEquals(reader.position(), space ? 3 : value == '{' ? 2 : 1);
+    }
   }
 
   private static String repeat(char value, int count) {

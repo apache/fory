@@ -25,6 +25,7 @@ import org.apache.fory.codegen.ExpressionUtils;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
@@ -234,6 +235,25 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
   @Override
   Expression tryReadNextFieldNameColon(String name) {
     return tryReadAsciiFieldNameColon(name);
+  }
+
+  @Override
+  Expression tryReadOrderedCreatorField(String name) {
+    int length = name.length();
+    if (length == 0 || length > Long.BYTES) {
+      return tryReadAsciiFieldNameColon(name);
+    }
+    // Ordered creator fields can contain whitespace around their colon. Use the bounded name
+    // probe directly here; keep raw token probes in the unordered loop to avoid extra work on
+    // every unknown field. A mismatched name remains unread for that loop.
+    return new Expression.Invoke(
+            readerRef(),
+            "tryReadNextFieldNameColon",
+            TypeRef.of(boolean.class),
+            Expression.Literal.ofLong(JsonFieldNameHash.hash(name)),
+            Expression.Literal.ofLong(packedNameMask(length)),
+            Expression.Literal.ofInt(length))
+        .inline();
   }
 
   @Override

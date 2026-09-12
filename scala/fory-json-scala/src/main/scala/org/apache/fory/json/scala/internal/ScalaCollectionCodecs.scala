@@ -21,7 +21,15 @@ package org.apache.fory.json.scala.internal
 
 import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.annotation.JsonCodec
-import org.apache.fory.json.codec.{CompositeJsonCodec, MapKeyCodec}
+import org.apache.fory.json.codec.{
+  ArrayCodec,
+  CompositeJsonCodec,
+  JsonValueCodec,
+  MapCodec,
+  MapKeyCodec,
+  ScalarCodecs,
+  Utf8WriterCodec
+}
 import org.apache.fory.json.reader.{JsonReader, Latin1JsonReader, Utf16JsonReader, Utf8JsonReader}
 import org.apache.fory.json.resolver.{JsonTypeInfo, JsonTypeResolver}
 import org.apache.fory.json.writer.{StringJsonWriter, Utf8JsonWriter}
@@ -93,15 +101,41 @@ private[scala] final class ScalaListCodec(
       return
     }
     val codec = elementInfo.utf8Writer()
+    val booleanElements = (codec eq ScalarCodecs.NaturalCodec.INSTANCE) ||
+      (codec eq ScalarCodecs.BooleanCodec.PRIMITIVE) || (codec eq ScalarCodecs.BooleanCodec.BOXED)
     writer.writeArrayStart()
     var current = value
-    var index = 0
+    if (current ne Nil) {
+      val first = current.asInstanceOf[scala.collection.immutable.::[Any]]
+      codec.writeUtf8(writer, first.head)
+      current = first.tail
+    }
     while (current ne Nil) {
       val node = current.asInstanceOf[scala.collection.immutable.::[Any]]
-      writer.writeComma(index)
-      codec.writeUtf8(writer, node.head)
-      current = node.tail
-      index += 1
+      val element = node.head
+      val tail = node.tail
+      if (booleanElements && element.isInstanceOf[java.lang.Boolean]) {
+        val first = element.asInstanceOf[java.lang.Boolean].booleanValue()
+        if ((tail ne Nil) && tail.head.isInstanceOf[java.lang.Boolean]) {
+          ScalaCollectionCodecs.writeBooleanPair(
+            writer,
+            first,
+            tail.head.asInstanceOf[java.lang.Boolean].booleanValue()
+          )
+          current = tail.tail
+        } else {
+          writer.writeRawValue(
+            if (first) 0x65_7572_742cL else 0x6573_6c61_662cL,
+            0L,
+            if (first) 5 else 6
+          )
+          current = tail
+        }
+      } else {
+        writer.writeComma(1)
+        codec.writeUtf8(writer, element)
+        current = tail
+      }
     }
     writer.writeArrayEnd()
   }
@@ -188,7 +222,12 @@ private[scala] final class ScalaListCodec(
   }
 }
 
-private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtimeType: Boolean)
+private[scala] final class ScalaIterableCodec(
+    kind: Int,
+    ownerBytes: Int,
+    runtimeType: Boolean,
+    sequence: Boolean
+)
     extends CompositeJsonCodec[scala.collection.Iterable[Any]] {
   private val resultOwnerBytes =
     if (kind == ScalaCollectionCodecs.ListKind) 0 else ownerBytes
@@ -197,6 +236,7 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
     else ScalaCollectionCodecs.ReferenceBytes
   private var elementInfo: JsonTypeInfo = _
   private var elementClassTag: ClassTag[Any] = _
+  private var booleanArrayCodec: JsonValueCodec[Array[Boolean]] = _
 
   override def resolveTypes(typeRef: TypeRef[_], resolver: JsonTypeResolver): Unit = {
     val arguments = ScalaTypeSupport.runtimeArguments(
@@ -210,6 +250,17 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
       kind == ScalaCollectionCodecs.ImmutableArraySeqKind ||
       kind == ScalaCollectionCodecs.MutableArraySeqKind
     ) elementClassTag = ScalaTypeSupport.classTag(ScalaTypeSupport.rawType(arguments(0)))
+    if (kind == ScalaCollectionCodecs.ImmutableArraySeqKind) {
+      val codec = elementInfo.stringWriter()
+      if (
+        codec == ScalarCodecs.NaturalCodec.INSTANCE ||
+        codec == ScalarCodecs.BooleanCodec.PRIMITIVE || codec == ScalarCodecs.BooleanCodec.BOXED
+      ) booleanArrayCodec = ArrayCodec.create(
+        classOf[Array[Boolean]],
+        TypeRef.of(classOf[Array[Boolean]]),
+        resolver
+      )
+    }
   }
 
   override def resolveTypes(
@@ -233,6 +284,14 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
       return
     }
     ScalaCollectionCodecs.requireSupportedRuntime(value.getClass)
+    // Only a primitive backing array and a built-in element codec share the array representation.
+    // Annotated elements and reference-backed ArraySeq values retain their resolved element writer.
+    if (booleanArrayCodec != null) value match {
+      case array: scala.collection.immutable.ArraySeq.ofBoolean =>
+        booleanArrayCodec.writeString(writer, array.unsafeArray)
+        return
+      case _ =>
+    }
     val codec = elementInfo.stringWriter()
     val iterator = value.iterator
     writer.writeArrayStart()
@@ -251,7 +310,24 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
       return
     }
     ScalaCollectionCodecs.requireSupportedRuntime(value.getClass)
+    // Only a primitive backing array and a built-in element codec share the array representation.
+    // Annotated elements and reference-backed ArraySeq values retain their resolved element writer.
+    if (booleanArrayCodec != null) value match {
+      case array: scala.collection.immutable.ArraySeq.ofBoolean =>
+        booleanArrayCodec.writeUtf8(writer, array.unsafeArray)
+        return
+      case _ =>
+    }
     val codec = elementInfo.utf8Writer()
+    // Sets have at most two Boolean values and keep their ordinary element loop.
+    if (
+      sequence &&
+      ((codec eq ScalarCodecs.NaturalCodec.INSTANCE) ||
+        (codec eq ScalarCodecs.BooleanCodec.PRIMITIVE) || (codec eq ScalarCodecs.BooleanCodec.BOXED))
+    ) {
+      writeSequence(writer, value.asInstanceOf[scala.collection.Seq[Object]], codec)
+      return
+    }
     val iterator = value.iterator
     writer.writeArrayStart()
     var index = 0
@@ -263,7 +339,60 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
     writer.writeArrayEnd()
   }
 
+  private def writeSequence(
+      writer: Utf8JsonWriter,
+      value: scala.collection.Seq[Object],
+      codec: Utf8WriterCodec[Object]
+  ): Unit = {
+    val iterator = value.iterator
+    writer.writeArrayStart()
+    if (iterator.hasNext) codec.writeUtf8(writer, iterator.next())
+    while (iterator.hasNext) {
+      val element = iterator.next()
+      if (element.isInstanceOf[java.lang.Boolean]) {
+        val first = element.asInstanceOf[java.lang.Boolean].booleanValue()
+        // The resolved built-in Boolean writer has no callbacks before fetching the next element.
+        if (iterator.hasNext) {
+          val second = iterator.next()
+          if (second.isInstanceOf[java.lang.Boolean]) {
+            ScalaCollectionCodecs.writeBooleanPair(
+              writer,
+              first,
+              second.asInstanceOf[java.lang.Boolean].booleanValue()
+            )
+          } else {
+            writer.writeRawValue(
+              if (first) 0x65_7572_742cL else 0x6573_6c61_662cL,
+              0L,
+              if (first) 5 else 6
+            )
+            writer.writeComma(1)
+            codec.writeUtf8(writer, second)
+          }
+        } else {
+          writer.writeRawValue(
+            if (first) 0x65_7572_742cL else 0x6573_6c61_662cL,
+            0L,
+            if (first) 5 else 6
+          )
+        }
+      } else {
+        writer.writeComma(1)
+        codec.writeUtf8(writer, element)
+      }
+    }
+    writer.writeArrayEnd()
+  }
+
+  // A primitive schema can use the array decoder; boxed and custom elements retain their codec.
+  // The array decoder owns depth and backing storage; this owner reserves only the wrapper.
   override def readLatin1(reader: Latin1JsonReader): scala.collection.Iterable[Any] = {
+    if (booleanArrayCodec != null && elementClassTag.runtimeClass == java.lang.Boolean.TYPE) {
+      val values = booleanArrayCodec.readLatin1(reader)
+      if (values == null) return null
+      reader.reserveGraphMemory(ScalaCollectionCodecs.BooleanArraySeqBytes)
+      return new scala.collection.immutable.ArraySeq.ofBoolean(values)
+    }
     if (reader.tryReadNullToken()) return null
     reader.enterDepth()
     reader.expectNextToken('[')
@@ -287,6 +416,12 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
   }
 
   override def readUtf16(reader: Utf16JsonReader): scala.collection.Iterable[Any] = {
+    if (booleanArrayCodec != null && elementClassTag.runtimeClass == java.lang.Boolean.TYPE) {
+      val values = booleanArrayCodec.readUtf16(reader)
+      if (values == null) return null
+      reader.reserveGraphMemory(ScalaCollectionCodecs.BooleanArraySeqBytes)
+      return new scala.collection.immutable.ArraySeq.ofBoolean(values)
+    }
     if (reader.tryReadNullToken()) return null
     reader.enterDepth()
     reader.expectNextToken('[')
@@ -310,6 +445,12 @@ private[scala] final class ScalaIterableCodec(kind: Int, ownerBytes: Int, runtim
   }
 
   override def readUtf8(reader: Utf8JsonReader): scala.collection.Iterable[Any] = {
+    if (booleanArrayCodec != null && elementClassTag.runtimeClass == java.lang.Boolean.TYPE) {
+      val values = booleanArrayCodec.readUtf8(reader)
+      if (values == null) return null
+      reader.reserveGraphMemory(ScalaCollectionCodecs.BooleanArraySeqBytes)
+      return new scala.collection.immutable.ArraySeq.ofBoolean(values)
+    }
     if (reader.tryReadNullToken()) return null
     reader.enterDepth()
     reader.expectNextToken('[')
@@ -417,6 +558,10 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       return
     }
     ScalaCollectionCodecs.requireSupportedRuntime(value.getClass)
+    if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec]) {
+      writeIntMap(writer, value.asInstanceOf[scala.collection.immutable.IntMap[Any]])
+      return
+    }
     val codec = valueInfo.stringWriter()
     val iterator = value.iterator
     writer.writeObjectStart()
@@ -438,6 +583,10 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       return
     }
     ScalaCollectionCodecs.requireSupportedRuntime(value.getClass)
+    if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec]) {
+      writeIntMap(writer, value.asInstanceOf[scala.collection.immutable.IntMap[Any]])
+      return
+    }
     val codec = valueInfo.utf8Writer()
     val iterator = value.iterator
     writer.writeObjectStart()
@@ -453,11 +602,49 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     writer.writeObjectEnd()
   }
 
+  private def writeIntMap(
+      writer: StringJsonWriter,
+      value: scala.collection.immutable.IntMap[Any]
+  ): Unit = {
+    val codec = valueInfo.stringWriter()
+    writer.writeObjectStart()
+    var first = true // Avoid a captured counter update on every entry.
+    // foreachEntry preserves IntMap's traversal order without materializing iterator tuples.
+    // This route is selected only for natural integer keys; custom key codecs keep the generic loop.
+    value.foreachEntry { (key, entryValue) =>
+      if (first) first = false else writer.writeComma(1)
+      writer.writeIntFieldName(key)
+      codec.writeString(writer, entryValue)
+    }
+    writer.writeObjectEnd()
+  }
+
+  private def writeIntMap(
+      writer: Utf8JsonWriter,
+      value: scala.collection.immutable.IntMap[Any]
+  ): Unit = {
+    val codec = valueInfo.utf8Writer()
+    writer.writeObjectStart()
+    var first = true // Avoid a captured counter update on every entry.
+    // foreachEntry preserves IntMap's traversal order without materializing iterator tuples.
+    // This route is selected only for natural integer keys; custom key codecs keep the generic loop.
+    value.foreachEntry { (key, entryValue) =>
+      if (first) first = false else writer.writeComma(1)
+      writer.writeIntFieldName(key)
+      codec.writeUtf8(writer, entryValue)
+    }
+    writer.writeObjectEnd()
+  }
+
   override def readLatin1(reader: Latin1JsonReader): scala.collection.Map[Any, Any] = {
     if (reader.tryReadNullToken()) return null
     reader.enterDepth()
     reader.expectNextToken('{')
     reader.reserveGraphMemory(ownerBytes)
+    if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec])
+      return readIntMap(reader)
+    if (kind == ScalaCollectionCodecs.MutableLongMapKind && keyCodec.isInstanceOf[MapCodec.LongKeyCodec])
+      return readLongMap(reader)
     val builder = newBuilder()
     val codec = valueInfo.latin1Reader()
     var size = 0
@@ -480,6 +667,10 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     reader.enterDepth()
     reader.expectNextToken('{')
     reader.reserveGraphMemory(ownerBytes)
+    if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec])
+      return readIntMap(reader)
+    if (kind == ScalaCollectionCodecs.MutableLongMapKind && keyCodec.isInstanceOf[MapCodec.LongKeyCodec])
+      return readLongMap(reader)
     val builder = newBuilder()
     val codec = valueInfo.utf16Reader()
     var size = 0
@@ -502,6 +693,10 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     reader.enterDepth()
     reader.expectNextToken('{')
     reader.reserveGraphMemory(ownerBytes)
+    if (kind == ScalaCollectionCodecs.ImmutableIntMapKind && keyCodec.isInstanceOf[MapCodec.IntKeyCodec])
+      return readIntMap(reader)
+    if (kind == ScalaCollectionCodecs.MutableLongMapKind && keyCodec.isInstanceOf[MapCodec.LongKeyCodec])
+      return readLongMap(reader)
     val builder = newBuilder()
     val codec = valueInfo.utf8Reader()
     var size = 0
@@ -519,6 +714,128 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     finish(reader, builder, size)
   }
 
+  // Specialized maps own primitive keys. Keep them primitive through insertion; custom key codecs still
+  // use the general builder so occurrence-level key conversions retain their semantics.
+  private def readIntMap(reader: Latin1JsonReader): scala.collection.Map[Any, Any] = {
+    var result = scala.collection.immutable.IntMap.empty[Any]
+    val codec = valueInfo.latin1Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameInt()
+        reader.expectNextToken(':')
+        result = result.updated(key, codec.readLatin1(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
+  }
+
+  private def readIntMap(reader: Utf16JsonReader): scala.collection.Map[Any, Any] = {
+    var result = scala.collection.immutable.IntMap.empty[Any]
+    val codec = valueInfo.utf16Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameInt()
+        reader.expectNextToken(':')
+        result = result.updated(key, codec.readUtf16(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
+  }
+
+  private def readIntMap(reader: Utf8JsonReader): scala.collection.Map[Any, Any] = {
+    var result = scala.collection.immutable.IntMap.empty[Any]
+    val codec = valueInfo.utf8Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameInt()
+        reader.expectNextToken(':')
+        result = result.updated(key, codec.readUtf8(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
+  }
+
+  private def readLongMap(reader: Latin1JsonReader): scala.collection.Map[Any, Any] = {
+    val result = scala.collection.mutable.LongMap.empty[Any]
+    val codec = valueInfo.latin1Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameLong()
+        reader.expectNextToken(':')
+        result.update(key, codec.readLatin1(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
+  }
+
+  private def readLongMap(reader: Utf16JsonReader): scala.collection.Map[Any, Any] = {
+    val result = scala.collection.mutable.LongMap.empty[Any]
+    val codec = valueInfo.utf16Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameLong()
+        reader.expectNextToken(':')
+        result.update(key, codec.readUtf16(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
+  }
+
+  private def readLongMap(reader: Utf8JsonReader): scala.collection.Map[Any, Any] = {
+    val result = scala.collection.mutable.LongMap.empty[Any]
+    val codec = valueInfo.utf8Reader()
+    var size = 0
+    if (!reader.consumeNextToken('}')) {
+      var more = true
+      while (more) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val key = reader.readFieldNameLong()
+        reader.expectNextToken(':')
+        result.update(key, codec.readUtf8(reader))
+        size += 1
+        more = reader.consumeNextCommaOrEndObject()
+      }
+    }
+    ScalaCollectionCodecs.reserveMapTail(reader, size)
+    reader.exitDepth()
+    result.asInstanceOf[scala.collection.Map[Any, Any]]
+  }
+
   private def newBuilder(): scala.collection.mutable.Builder[(Any, Any), _] = kind match {
     case ScalaCollectionCodecs.ImmutableVectorMapKind =>
       scala.collection.immutable.VectorMap.newBuilder[Any, Any]
@@ -529,7 +846,8 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     case ScalaCollectionCodecs.ImmutableLongMapKind =>
       scala.collection.immutable.LongMap.newBuilder[Any].asInstanceOf[scala.collection.mutable.Builder[(Any, Any), _]]
     case ScalaCollectionCodecs.MutableHashMapKind =>
-      scala.collection.mutable.HashMap.newBuilder[Any, Any]
+      // Keep the small initial table while reducing bucket allocation during incremental decoding.
+      scala.collection.mutable.HashMap.newBuilder[Any, Any](16, 1.0)
     case ScalaCollectionCodecs.MutableLinkedHashMapKind =>
       scala.collection.mutable.LinkedHashMap.newBuilder[Any, Any]
     case ScalaCollectionCodecs.MutableAnyRefMapKind =>
@@ -578,6 +896,20 @@ private[scala] object ScalaCollectionCodecs {
   val MutableAnyRefMapKind = 27
   val MutableLongMapKind = 28
 
+  def writeBooleanPair(writer: Utf8JsonWriter, first: Boolean, second: Boolean): Unit = {
+    val firstBytes = if (first) 0x65_7572_742cL else 0x6573_6c61_662cL
+    val secondBytes = if (second) 0x65_7572_742cL else 0x6573_6c61_662cL
+    val firstLength = if (first) 5 else 6
+    val secondLength = if (second) 5 else 6
+    val shift = firstLength << 3
+    // Include both commas and split at the eight-byte boundary to share one capacity check.
+    writer.writeRawValue(
+      firstBytes | (secondBytes << shift),
+      secondBytes >>> (64 - shift),
+      firstLength + secondLength
+    )
+  }
+
   def specializedMapKey(kind: Int): Class[_] = kind match {
     case ImmutableIntMapKind  => java.lang.Integer.TYPE
     case ImmutableLongMapKind => java.lang.Long.TYPE
@@ -590,6 +922,8 @@ private[scala] object ScalaCollectionCodecs {
   val ReferenceBytes = GraphMemoryEstimates.REFERENCE_BYTES
   val ListNodeBytes = GraphMemoryEstimates.shallowObjectBytes(classOf[scala.collection.immutable.::[_]])
   val ListBatchBytes = BatchSize * ListNodeBytes
+  val BooleanArraySeqBytes =
+    GraphMemoryEstimates.shallowObjectBytes(classOf[scala.collection.immutable.ArraySeq.ofBoolean])
   private val MapEntryBytes = 2 * ReferenceBytes
   private val MapBatchBytes = BatchSize * MapEntryBytes
 

@@ -19,7 +19,6 @@
 
 package org.apache.fory.json.verify;
 
-import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -35,8 +34,6 @@ public final class Jdk25ModulePathProbe {
     requireHandle(fieldsType, "INT_COMPACT");
     requireHandle(fieldsType, "INT_VAL");
     requireHandle(fieldsType, "SCALE");
-    requireFormatterHandles(Class.forName("org.apache.fory.json.writer.JdkFloatFormatter"));
-    requireFormatterHandles(Class.forName("org.apache.fory.json.writer.JdkDoubleFormatter"));
 
     Class<?> foryJsonType = Class.forName("org.apache.fory.json.ForyJson");
     Object builder = foryJsonType.getMethod("builder").invoke(null);
@@ -59,6 +56,9 @@ public final class Jdk25ModulePathProbe {
         "{\"aPrefix\":\"\u0100\",\"doubleValue\":-2.5,\"floatValue\":1.25}",
         toJson.invoke(foryJson, new FloatingHolder()),
         "UTF16 float/double");
+
+    requireEquals("4.9E-324", toJson.invoke(foryJson, Double.MIN_VALUE), "tiny double");
+    requireEquals("1.4E-45", toJson.invoke(foryJson, Float.MIN_VALUE), "tiny float");
 
     Object output = toJson.invoke(foryJson, new BigDecimal("123.45"));
     if (!"123.45".equals(output)) {
@@ -84,19 +84,6 @@ public final class Jdk25ModulePathProbe {
     field.setAccessible(true);
     if (field.get(null) == null) {
       throw new AssertionError(name + " is unavailable on the module path");
-    }
-  }
-
-  private static void requireFormatterHandles(Class<?> type) throws Exception {
-    requireMethodHandle(type, "PUT_DECIMAL_LATIN1");
-    requireMethodHandle(type, "PUT_DECIMAL_UTF16");
-  }
-
-  private static void requireMethodHandle(Class<?> type, String name) throws Exception {
-    Field field = type.getDeclaredField(name);
-    field.setAccessible(true);
-    if (!(field.get(null) instanceof MethodHandle)) {
-      throw new AssertionError(type.getName() + "." + name + " is unavailable");
     }
   }
 

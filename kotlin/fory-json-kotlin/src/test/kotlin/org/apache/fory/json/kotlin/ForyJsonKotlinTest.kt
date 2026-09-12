@@ -92,8 +92,9 @@ class ForyJsonKotlinTest {
       Account(9, "explicit", null),
       fory.fromJson("{\"id\":9,\"name\":\"explicit\",\"label\":null}", jsonTypeRef<Account>())
     )
-    assertTrue(
-      fory.toJson(Account(9, "default"), jsonTypeRef<Account>()).contains("\"label\":null")
+    assertEquals(
+      """{"id":9,"name":"default"}""",
+      fory.toJson(Account(9, "default"), jsonTypeRef<Account>())
     )
   }
 

@@ -46,9 +46,7 @@ from pyfory.serializer import (
     Numpy1DArraySerializer,
 )
 from pyfory.types import TypeId
-from pyfory.utils import lazy_import
-
-pa = lazy_import("pyarrow")
+from pyfory.tests.core import pa
 
 
 def test_compatible_mode_overrides():

@@ -211,7 +211,7 @@ class KotlinValueClassCodecTest {
   fun selfRecursiveOccurrence() {
     val type = jsonTypeRef<SelfValueHolder>()
     val value = SelfValueHolder(RecursiveValueId(1), SelfValueHolder(RecursiveValueId(2), null))
-    forEachJsonMode { json ->
+    forEachJsonMode({ writeNullFields(true) }) { json ->
       assertEquals(value, json.fromJson(json.toJson(value, type), type))
       assertEquals(value, json.fromJson(json.toJsonBytes(value, type), type))
     }
@@ -228,7 +228,7 @@ class KotlinValueClassCodecTest {
           MutualValueLeftHolder(RecursiveValueId(3), null),
         ),
       )
-    forEachJsonMode { json ->
+    forEachJsonMode({ writeNullFields(true) }) { json ->
       assertEquals(value, json.fromJson(json.toJson(value, type), type))
       assertEquals(value, json.fromJson(json.toJsonBytes(value, type), type))
     }

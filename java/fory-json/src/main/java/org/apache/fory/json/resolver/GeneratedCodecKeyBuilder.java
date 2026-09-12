@@ -71,7 +71,7 @@ final class GeneratedCodecKeyBuilder {
     keyParts = new ArrayList<>();
     JsonSharedRegistry registry = resolver.sharedRegistry();
     if (!JsonTypeResolver.readerKind(kind)) {
-      keyParts.add(registry.writeNullFields());
+      keyParts.add(registry.defaultPropertyInclusion());
       keyParts.add(registry.writeLongAsString());
     }
     keyParts.add(registry.propertyDiscoveryEnabled());

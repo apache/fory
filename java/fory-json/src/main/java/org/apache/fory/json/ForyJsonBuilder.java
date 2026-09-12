@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.resolver.CodecRegistry;
@@ -49,7 +50,7 @@ import org.apache.fory.platform.GraalvmSupport;
  * discovery but continues to discover eligible instance fields across the class hierarchy.
  */
 public final class ForyJsonBuilder {
-  private boolean writeNullFields;
+  private Include defaultPropertyInclusion = Include.NON_NULL;
   private boolean writeLongAsString;
   private boolean codegenEnabled = true;
   private boolean asyncCompilationEnabled = true;
@@ -70,14 +71,36 @@ public final class ForyJsonBuilder {
   ForyJsonBuilder() {}
 
   /**
-   * Sets the default null-inclusion policy for object properties.
+   * Sets the default property inclusion to {@code ALWAYS} when true or {@code NON_NULL} when false.
    *
-   * <p>This setting applies only when a logical property's merged {@code JsonProperty.include}
-   * value is {@code DEFAULT}. {@code ALWAYS} and {@code NON_NULL} override it. Exact custom codecs
-   * own their complete representation and do not observe this property-selection setting.
+   * <p>This method and {@link #defaultPropertyInclusion(Include)} update the same setting; the last
+   * call wins. Explicit property inclusion overrides the default.
    */
   public ForyJsonBuilder writeNullFields(boolean writeNullFields) {
-    this.writeNullFields = writeNullFields;
+    defaultPropertyInclusion = writeNullFields ? Include.ALWAYS : Include.NON_NULL;
+    return this;
+  }
+
+  /**
+   * Sets inclusion for properties whose {@code JsonProperty.include} is {@code DEFAULT}.
+   *
+   * <p>The default is {@code NON_NULL}. {@code NON_EMPTY} additionally omits empty CharSequence
+   * values, arrays, collections, maps, and absent JDK Optional values. Root values and container
+   * entries are not filtered. Inclusion examines the logical property value before a custom value
+   * codec runs. Kotlin properties follow this policy even when omission changes the value restored
+   * by a constructor default or causes a missing-property read failure. Other language models may
+   * retain properties needed for reconstruction.
+   *
+   * @throws IllegalArgumentException if inclusion is {@code DEFAULT}, which requires a parent
+   *     default
+   * @throws NullPointerException if inclusion is null
+   */
+  public ForyJsonBuilder defaultPropertyInclusion(Include inclusion) {
+    Objects.requireNonNull(inclusion, "inclusion");
+    if (inclusion == Include.DEFAULT) {
+      throw new IllegalArgumentException("Default property inclusion must be concrete");
+    }
+    defaultPropertyInclusion = inclusion;
     return this;
   }
 
@@ -312,7 +335,7 @@ public final class ForyJsonBuilder {
     ModuleInstaller.InstalledModules installed =
         ModuleInstaller.install(new ArrayList<>(modules), codecRegistry, mixins);
     return new JsonConfig(
-        writeNullFields,
+        defaultPropertyInclusion,
         writeLongAsString,
         effectiveCodegen,
         effectiveAsyncCompilation,

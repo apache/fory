@@ -17,8 +17,7 @@
 
 import pyfory as fory
 
-from pyfory.tests.core import require_pyarrow
-from pyfory.utils import lazy_import
+from pyfory.tests.core import pa, require_pyarrow
 from pyfory.format import (
     schema,
     field,
@@ -30,8 +29,6 @@ from pyfory.format import (
     map_,
     to_arrow_schema,
 )
-
-pa = lazy_import("pyarrow")
 
 
 @require_pyarrow

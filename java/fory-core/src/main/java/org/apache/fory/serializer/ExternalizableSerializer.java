@@ -45,13 +45,18 @@ public class ExternalizableSerializer<T extends Externalizable>
     if (config.isXlang()) {
       throw new UnsupportedOperationException("Externalizable can only be used in java");
     }
-    objectOutput.setWriteContext(writeContext);
+    WriteContext previous = objectOutput.setWriteContext(writeContext);
     try {
       value.writeExternal(objectOutput);
     } catch (IOException e) {
       ExceptionUtils.throwException(e);
     } finally {
-      objectOutput.clearWriteContext();
+      // Nested callbacks reuse this adapter; only the outermost call may clear it.
+      if (previous == null) {
+        objectOutput.clearWriteContext();
+      } else {
+        objectOutput.setWriteContext(previous);
+      }
     }
   }
 
@@ -59,13 +64,18 @@ public class ExternalizableSerializer<T extends Externalizable>
   public T read(ReadContext readContext) {
     T t = objectInstantiator.newInstance();
     readContext.reference(t);
-    objectInput.setReadContext(readContext);
+    ReadContext previous = objectInput.setReadContext(readContext);
     try {
       t.readExternal(objectInput);
     } catch (IOException | ClassNotFoundException e) {
       ExceptionUtils.throwException(e);
     } finally {
-      objectInput.clearReadContext();
+      // Restore the enclosing readExternal callback before it resumes reading.
+      if (previous == null) {
+        objectInput.clearReadContext();
+      } else {
+        objectInput.setReadContext(previous);
+      }
     }
     return t;
   }

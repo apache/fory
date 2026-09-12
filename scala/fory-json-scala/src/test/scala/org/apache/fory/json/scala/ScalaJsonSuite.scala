@@ -24,14 +24,17 @@ import java.util.concurrent.atomic.AtomicLong
 
 import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.annotation.{JsonIgnore, JsonProperty, JsonUnwrapped}
-import org.apache.fory.json.codec.AbstractJsonValueCodec
+import org.apache.fory.json.codec.{AbstractJsonValueCodec, MapKeyCodec}
 import org.apache.fory.json.reader.JsonReader
 import org.apache.fory.json.resolver.UnsupportedJsonTypeException
 import org.apache.fory.json.writer.JsonWriter
 import org.apache.fory.reflect.TypeRef
+import org.apache.fory.serializer.GraphMemoryEstimates
 import org.scalatest.funsuite.AnyFunSuite
 
 case class Node(value: Int, next: Option[Node])
+
+case class BigIntFields(value: BigInt, values: Vector[BigInt])
 
 case class Media(
     @JsonProperty("media_uri") uri: String,
@@ -95,6 +98,16 @@ object MethodLocalHolder {
 
 case class NullableRequired(value: String)
 
+case class EmptyRequired(value: String, items: java.util.List[String], numbers: Array[Int])
+
+case class ExplicitEmptyRequired(
+    @JsonProperty(include = JsonProperty.Include.NON_EMPTY) value: String
+)
+
+case class EmptyDefault(
+    @JsonProperty(include = JsonProperty.Include.NON_EMPTY) value: String = ""
+)
+
 case class UserId(value: Int) extends AnyVal
 
 case class LongId(value: Long) extends AnyVal
@@ -138,8 +151,69 @@ final class TaggedStringCodec extends AbstractJsonValueCodec[String] {
   }
 }
 
+final class BooleanLabelCodec extends AbstractJsonValueCodec[Boolean] {
+  override def write(writer: JsonWriter, value: Boolean): Unit =
+    writer.writeString(if (value) "yes" else "no")
+
+  override def read(reader: JsonReader): Boolean = reader.readString() == "yes"
+}
+
+case class BooleanArraySeqValue(
+    @org.apache.fory.json.annotation.JsonCodec(elementCodec = classOf[BooleanLabelCodec])
+    values: scala.collection.immutable.ArraySeq[Boolean]
+)
+
+@org.apache.fory.json.annotation.JsonMixin(target = classOf[java.lang.Boolean])
+@org.apache.fory.json.annotation.JsonCodec(value = classOf[BooleanLabelCodec])
+trait BooleanLabelMixin
+
+case class BooleanCollectionsValue(
+    @org.apache.fory.json.annotation.JsonCodec(elementCodec = classOf[BooleanLabelCodec])
+    list: List[Boolean],
+    @org.apache.fory.json.annotation.JsonCodec(elementCodec = classOf[BooleanLabelCodec])
+    vector: Vector[Boolean]
+)
+
 case class Schedule(
     @org.apache.fory.json.annotation.JsonCodec(value = classOf[WeekdayCodec]) day: Weekday.Value
+)
+
+final class PrefixedIntKeyCodec extends MapKeyCodec {
+  override def toName(key: Object): String = "key:" + key
+
+  override def fromName(name: String): Object = {
+    if (!name.startsWith("key:")) throw new ForyJsonException("Expected prefixed integer key")
+    java.lang.Integer.valueOf(name.substring(4))
+  }
+}
+
+case class IntMapCodecSlots(
+    @org.apache.fory.json.annotation.JsonCodec(valueCodec = classOf[TaggedStringCodec])
+    values: scala.collection.immutable.IntMap[String],
+    @org.apache.fory.json.annotation.JsonCodec(
+      keyCodec = classOf[PrefixedIntKeyCodec],
+      valueCodec = classOf[TaggedStringCodec]
+    )
+    labels: scala.collection.immutable.IntMap[String]
+)
+
+final class PrefixedLongKeyCodec extends MapKeyCodec {
+  override def toName(key: Object): String = "key:" + key
+
+  override def fromName(name: String): Object = {
+    if (!name.startsWith("key:")) throw new ForyJsonException("Expected prefixed long key")
+    java.lang.Long.valueOf(name.substring(4))
+  }
+}
+
+case class LongMapCodecSlots(
+    @org.apache.fory.json.annotation.JsonCodec(valueCodec = classOf[TaggedStringCodec])
+    values: scala.collection.mutable.LongMap[String],
+    @org.apache.fory.json.annotation.JsonCodec(
+      keyCodec = classOf[PrefixedLongKeyCodec],
+      valueCodec = classOf[TaggedStringCodec]
+    )
+    labels: scala.collection.mutable.LongMap[String]
 )
 
 case class CodecSlots(
@@ -337,6 +411,27 @@ class ScalaJsonSuite extends AnyFunSuite {
     }
   }
 
+  test("required constructor values retain empty properties") {
+    for (codegen <- Seq(false, true)) {
+      val json = ForyJsonScala.builder()
+        .withCodegen(codegen)
+        .withAsyncCompilation(false)
+        .defaultPropertyInclusion(JsonProperty.Include.NON_EMPTY)
+        .build()
+      val value = EmptyRequired("", new java.util.ArrayList[String](), Array.emptyIntArray)
+      val text = json.toJson(value)
+      assert(text == "{\"value\":\"\",\"items\":[],\"numbers\":[]}")
+      assert(new String(json.toJsonBytes(value), UTF_8) == text)
+      val decoded = json.fromJson(text, classOf[EmptyRequired])
+      assert(decoded.value == "")
+      assert(decoded.items.isEmpty)
+      assert(decoded.numbers.isEmpty)
+      assertThrows[ForyJsonException](json.toJson(ExplicitEmptyRequired("")))
+      assert(json.toJson(EmptyDefault()) == "{}")
+      assert(json.fromJson("{}", classOf[EmptyDefault]) == EmptyDefault())
+    }
+  }
+
   test("declared Scala collection and algebraic types") {
     val json = ForyJsonScala.builder().withCodegen(false).build()
     val listType = new TypeRef[List[Int]]() {}
@@ -416,6 +511,350 @@ class ScalaJsonSuite extends AnyFunSuite {
     assert(json.fromJson(json.toJson(exclusive, exclusiveType), exclusiveType) == exclusive)
   }
 
+  test("Boolean ArraySeq writers preserve element codecs") {
+    import scala.collection.immutable.ArraySeq
+    val booleanType = ScalaTypeRef[ArraySeq[Boolean]]
+    val boxedType = ScalaTypeRef[ArraySeq[java.lang.Boolean]]
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      for (size <- Seq(0, 1, 2, 3, 4, 33, 1025)) {
+        val values = ArraySeq.tabulate(size)(i => i % 3 == 0)
+        val expected = values.mkString("[", ",", "]")
+        assert(json.toJson(values) == expected)
+        assert(new String(json.toJsonBytes(values), UTF_8) == expected)
+        assert(json.toJson(values, booleanType) == expected)
+        assert(new String(json.toJsonBytes(values, booleanType), UTF_8) == expected)
+      }
+      val boxed = ArraySeq[java.lang.Boolean](true, null, false)
+      assert(json.toJson(boxed, boxedType) == "[true,null,false]")
+      assert(new String(json.toJsonBytes(boxed, boxedType), UTF_8) == "[true,null,false]")
+      val custom = BooleanArraySeqValue(ArraySeq(true, false, true))
+      val expected = "{\"values\":[\"yes\",\"no\",\"yes\"]}"
+      assert(json.toJson(custom) == expected)
+      assert(new String(json.toJsonBytes(custom), UTF_8) == expected)
+      assert(json.fromJson(expected, classOf[BooleanArraySeqValue]) == custom)
+      assert(json.fromJson(expected.getBytes(UTF_8), classOf[BooleanArraySeqValue]) == custom)
+      assert(json.fromJson("[true,null,false]", boxedType) == boxed)
+      assert(json.fromJson("[true,null,false]".getBytes(UTF_8), boxedType) == boxed)
+    }
+  }
+
+  test("Boolean collection writers preserve element codecs") {
+    val listType = ScalaTypeRef[List[Boolean]]
+    val vectorType = ScalaTypeRef[Vector[Boolean]]
+    val boxedListType = ScalaTypeRef[List[java.lang.Boolean]]
+    val boxedVectorType = ScalaTypeRef[Vector[java.lang.Boolean]]
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      for (size <- Seq(0, 1, 2, 33, 1025)) {
+        val vector = Vector.tabulate(size)(i => i % 3 == 0)
+        val list = vector.toList
+        val expected = vector.mkString("[", ",", "]")
+        assert(new String(json.toJsonBytes(list), UTF_8) == expected)
+        assert(new String(json.toJsonBytes(vector), UTF_8) == expected)
+        assert(new String(json.toJsonBytes(list, listType), UTF_8) == expected)
+        assert(new String(json.toJsonBytes(vector, vectorType), UTF_8) == expected)
+      }
+      for (first <- Seq(false, true); second <- Seq(false, true)) {
+        val vector = Vector(false, first, second)
+        val expected = vector.mkString("[", ",", "]")
+        assert(new String(json.toJsonBytes(vector), UTF_8) == expected)
+        assert(new String(json.toJsonBytes(vector.toList), UTF_8) == expected)
+      }
+      val iterableType = ScalaTypeRef[scala.collection.Iterable[Boolean]]
+      for (values <- Seq[scala.collection.Iterable[Boolean]](
+          Vector(true, false, true),
+          List(false, true, false),
+          Set(true, false)
+        )) {
+        assert(new String(json.toJsonBytes(values, iterableType), UTF_8) == values.mkString("[", ",", "]"))
+      }
+      val boxed = List[java.lang.Boolean](null, true, false, null, false)
+      assert(new String(json.toJsonBytes(boxed, boxedListType), UTF_8) == "[null,true,false,null,false]")
+      assert(
+        new String(json.toJsonBytes(boxed.toVector, boxedVectorType), UTF_8) ==
+          "[null,true,false,null,false]"
+      )
+      val mixed = List[Any](true, false, null, 7, "x", true)
+      assert(new String(json.toJsonBytes(mixed), UTF_8) == "[true,false,null,7,\"x\",true]")
+      assert(new String(json.toJsonBytes(mixed.toVector), UTF_8) == "[true,false,null,7,\"x\",true]")
+      val custom = BooleanCollectionsValue(List(true, false, true), Vector(false, true, false))
+      val expected = "{\"list\":[\"yes\",\"no\",\"yes\"],\"vector\":[\"no\",\"yes\",\"no\"]}"
+      assert(new String(json.toJsonBytes(custom), UTF_8) == expected)
+      assert(json.fromJson(expected.getBytes(UTF_8), classOf[BooleanCollectionsValue]) == custom)
+    }
+  }
+
+  test("Boolean collection writers respect scalar Mixins") {
+    val json = ForyJsonScala.builder().registerMixin(classOf[BooleanLabelMixin]).build()
+    val values = Vector(false, true, false, true)
+    val expected = "[\"no\",\"yes\",\"no\",\"yes\"]"
+    assert(new String(json.toJsonBytes(values), UTF_8) == expected)
+    assert(new String(json.toJsonBytes(values.toList), UTF_8) == expected)
+    val boxed = Vector[java.lang.Boolean](false, true, false, true)
+    assert(
+      new String(json.toJsonBytes(boxed, ScalaTypeRef[Vector[java.lang.Boolean]]), UTF_8) == expected
+    )
+    assert(
+      new String(json.toJsonBytes(boxed.toList, ScalaTypeRef[List[java.lang.Boolean]]), UTF_8) == expected
+    )
+    // An exact boxed Boolean Mixin does not overlay the primitive Boolean schema.
+    val native = values.mkString("[", ",", "]")
+    assert(new String(json.toJsonBytes(values, ScalaTypeRef[Vector[Boolean]]), UTF_8) == native)
+    assert(new String(json.toJsonBytes(values.toList, ScalaTypeRef[List[Boolean]]), UTF_8) == native)
+  }
+
+  test("Boolean ArraySeq reading") {
+    import scala.collection.immutable.ArraySeq
+    val booleanType = ScalaTypeRef[ArraySeq[Boolean]]
+    val anyType = ScalaTypeRef[ArraySeq[Any]]
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      for (size <- Seq(0, 1, 8, 9, 1024, 1025, 17)) {
+        val expected = ArraySeq.tabulate(size)(i => i % 3 == 0)
+        val input = expected.mkString("[", ",", "]")
+        val first = json.fromJson(input.getBytes(UTF_8), booleanType)
+        assert(first == expected)
+        assert(json.fromJson(input, booleanType) == expected)
+        assert(json.fromJson("[\"true\",false]", booleanType) == ArraySeq(true, false))
+        assert(json.fromJson("[\"true\",false]".getBytes(UTF_8), booleanType) == ArraySeq(true, false))
+        assert(first == expected)
+      }
+      assert(json.fromJson("null", booleanType) == null)
+      assert(json.fromJson("null".getBytes(UTF_8), booleanType) == null)
+      assert(
+        json.fromJson("[true,\"false\",null]".getBytes(UTF_8), anyType) ==
+          ArraySeq[Any](true, "false", null)
+      )
+      for (invalid <- Seq("[true,", "[null]", "[[true]]", "[\"bad\"]")) {
+        assertThrows[ForyJsonException](json.fromJson(invalid, booleanType))
+        assertThrows[ForyJsonException](json.fromJson(invalid.getBytes(UTF_8), booleanType))
+        assert(json.fromJson("[true]", booleanType) == ArraySeq(true))
+        assert(json.fromJson("[false]".getBytes(UTF_8), booleanType) == ArraySeq(false))
+      }
+    }
+  }
+
+  test("Boolean ArraySeq memory and depth") {
+    import scala.collection.immutable.ArraySeq
+    val booleanType = ScalaTypeRef[ArraySeq[Boolean]]
+    val nestedType = ScalaTypeRef[Vector[ArraySeq[Boolean]]]
+    val wrapperBytes = GraphMemoryEstimates.shallowObjectBytes(classOf[ArraySeq.ofBoolean])
+    val headerBytes = GraphMemoryEstimates.objectArrayBytes()
+    for (size <- Seq(0, 17, 1024, 1025)) {
+      val budget = wrapperBytes + headerBytes + size
+      val json = ForyJsonScala.builder().withCodegen(false).withMaxGraphMemoryBytes(budget).build()
+      val expected = ArraySeq.fill(size)(true)
+      val input = expected.mkString("[", ",", "]")
+      assert(json.fromJson(input, booleanType) == expected)
+      assert(json.fromJson(input.getBytes(UTF_8), booleanType) == expected)
+      val tooMany = ArraySeq.fill(size + 1)(true).mkString("[", ",", "]")
+      assertThrows[ForyJsonException](json.fromJson(tooMany, booleanType))
+      assertThrows[ForyJsonException](json.fromJson(tooMany.getBytes(UTF_8), booleanType))
+      assert(json.fromJson(input.getBytes(UTF_8), booleanType) == expected)
+    }
+    val depthOne = ForyJsonScala.builder().withCodegen(false).maxDepth(1).build()
+    for (input <- Seq("[[true]]", "[[\"true\"]]")) {
+      assertThrows[ForyJsonException](depthOne.fromJson(input, nestedType))
+      assertThrows[ForyJsonException](depthOne.fromJson(input.getBytes(UTF_8), nestedType))
+      assert(depthOne.fromJson("[true]", booleanType) == ArraySeq(true))
+    }
+    val depthTwo = ForyJsonScala.builder().withCodegen(false).maxDepth(2).build()
+    assert(depthTwo.fromJson("[[true]]", nestedType) == Vector(ArraySeq(true)))
+    assert(depthTwo.fromJson("[[true]]".getBytes(UTF_8), nestedType) == Vector(ArraySeq(true)))
+  }
+
+  test("primitive int maps") {
+    val mapType = new TypeRef[scala.collection.immutable.IntMap[String]]() {}
+    val nestedType = new TypeRef[List[scala.collection.immutable.IntMap[String]]]() {}
+    val keys = Seq(Int.MinValue, -1000000000, -1, 0, 1, 1000000000, Int.MaxValue)
+    val expected = scala.collection.immutable.IntMap(keys.map(k => k -> k.toString): _*)
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      val input = keys.map(k => "\"" + k + "\":\"" + k + "\"").mkString("{", ",", "}")
+      assert(json.fromJson(input, mapType) == expected)
+      assert(json.fromJson(input.getBytes(UTF_8), mapType) == expected)
+      assert(json.fromJson("[" + input + "]", nestedType) == List(expected))
+      assert(json.fromJson(("[" + input + "]").getBytes(UTF_8), nestedType) == List(expected))
+      assert(json.fromJson("null", mapType) == null)
+      assert(json.fromJson("null".getBytes(UTF_8), mapType) == null)
+      for (text <- Seq("{}", "{\"1\":\"a\",\"1\":\"你\"}", "{\"\\u0031\":\"你\"}", "{\"1\":null}")) {
+        val value =
+          if (text == "{}") scala.collection.immutable.IntMap.empty[String]
+          else scala.collection.immutable.IntMap(1 -> (if (text.contains("null")) null else "你"))
+        assert(json.fromJson(text, mapType) == value)
+        assert(json.fromJson(text.getBytes(UTF_8), mapType) == value)
+      }
+      for (size <- Seq(1023, 1024, 1025)) {
+        val value = scala.collection.immutable.IntMap((0 until size).map(i => i -> i.toString): _*)
+        val text = json.toJson(value, mapType)
+        assert(json.fromJson(text, mapType) == value)
+        assert(json.fromJson(text.getBytes(UTF_8), mapType) == value)
+      }
+      for (text <- Seq("{\"2147483648\":null}", "{\"1\":", "{\"1\":\"a\",}")) {
+        assertThrows[RuntimeException](json.fromJson(text, mapType))
+        assertThrows[RuntimeException](json.fromJson(text.getBytes(UTF_8), mapType))
+        assert(json.fromJson(input.getBytes(UTF_8), mapType) == expected)
+      }
+    }
+    val bounded = ForyJsonScala.builder().withCodegen(false).withMaxGraphMemoryBytes(48).build()
+    val input = (0 until 1025).map(i => "\"" + i + "\":null").mkString("{", ",", "}")
+    assertThrows[ForyJsonException](bounded.fromJson(input, mapType))
+    assertThrows[ForyJsonException](bounded.fromJson(input.getBytes(UTF_8), mapType))
+    assert(bounded.fromJson("{}".getBytes(UTF_8), mapType).isEmpty)
+    val shallow = ForyJsonScala.builder().withCodegen(false).maxDepth(1).build()
+    assertThrows[ForyJsonException](shallow.fromJson("[{\"1\":null}]", nestedType))
+    assertThrows[ForyJsonException](shallow.fromJson("[{\"1\":null}]".getBytes(UTF_8), nestedType))
+    assert(shallow.fromJson("{}".getBytes(UTF_8), mapType).isEmpty)
+  }
+
+  test("int map entries") {
+    val mapType = new TypeRef[scala.collection.immutable.IntMap[String]]() {}
+    val nestedType = new TypeRef[List[scala.collection.immutable.IntMap[String]]]() {}
+    val keys = Seq(Int.MinValue, -1, 0, 1, Int.MaxValue) ++ (2 until 1002 by 7)
+    val populated = scala.collection.immutable.IntMap(
+      keys.zipWithIndex.map { case (key, index) =>
+        key -> (if (index % 3 == 0) null else "value:\"\u0100/" + index)
+      }: _*
+    )
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      ); value <- Seq(scala.collection.immutable.IntMap.empty[String],
+        scala.collection.immutable.IntMap(7 -> "seven"), populated)) {
+      val expected = value.iterator.map { case (key, entryValue) =>
+        "\"" + key + "\":" + json.toJson(entryValue)
+      }.mkString("{", ",", "}")
+      assert(json.toJson(value, mapType) == expected)
+      assert(new String(json.toJsonBytes(value, mapType), UTF_8) == expected)
+      assert(json.toJson(List(value), nestedType) == "[" + expected + "]")
+      assert(new String(json.toJsonBytes(List(value), nestedType), UTF_8) == "[" + expected + "]")
+      assert(json.fromJson(expected, mapType) == value)
+      assert(json.toJson(null, mapType) == "null")
+      assert(new String(json.toJsonBytes(null, mapType), UTF_8) == "null")
+    }
+  }
+
+  test("int map codec slots") {
+    val value = IntMapCodecSlots(
+      scala.collection.immutable.IntMap(1 -> "one"),
+      scala.collection.immutable.IntMap(-1 -> "minus")
+    )
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      val text = json.toJson(value)
+      assert(text.contains("\"1\":\"tag:one\""))
+      assert(text.contains("\"key:-1\":\"tag:minus\""))
+      assert(new String(json.toJsonBytes(value), UTF_8) == text)
+      assert(json.fromJson(text, classOf[IntMapCodecSlots]) == value)
+      assert(json.fromJson(text.getBytes(UTF_8), classOf[IntMapCodecSlots]) == value)
+    }
+  }
+
+  test("primitive long maps") {
+    val mapType = new TypeRef[scala.collection.mutable.LongMap[String]]() {}
+    val nestedType = new TypeRef[List[scala.collection.mutable.LongMap[String]]]() {}
+    val keys = Seq(Long.MinValue, -1000000000L, -1L, 0L, 1L, 0x100000001L, 0x200000002L, Long.MaxValue)
+    val expected = scala.collection.mutable.LongMap(keys.map(k => k -> k.toString): _*)
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      val input = keys.map(k => "\"" + k + "\":\"" + k + "\"").mkString("{", ",", "}")
+      assert(json.fromJson(input, mapType) == expected)
+      assert(json.fromJson(input.getBytes(UTF_8), mapType) == expected)
+      assert(json.fromJson("[" + input + "]", nestedType) == List(expected))
+      assert(json.fromJson(("[" + input + "]").getBytes(UTF_8), nestedType) == List(expected))
+      assert(json.fromJson("null", mapType) == null)
+      assert(json.fromJson("null".getBytes(UTF_8), mapType) == null)
+      for (text <- Seq("{}", "{\"1\":\"a\",\"1\":\"你\"}", "{\"\\u0031\":\"你\"}", "{\"1\":null}")) {
+        val value =
+          if (text == "{}") scala.collection.mutable.LongMap.empty[String]
+          else scala.collection.mutable.LongMap(1L -> (if (text.contains("null")) null else "你"))
+        assert(json.fromJson(text, mapType) == value)
+        assert(json.fromJson(text.getBytes(UTF_8), mapType) == value)
+      }
+      for (size <- Seq(1023, 1024, 1025)) {
+        val value = scala.collection.mutable.LongMap((0 until size).map(i => i.toLong -> i.toString): _*)
+        val text = json.toJson(value, mapType)
+        assert(json.fromJson(text, mapType) == value)
+        assert(json.fromJson(text.getBytes(UTF_8), mapType) == value)
+      }
+      for (text <- Seq("{\"9223372036854775808\":null}", "{\"1\":", "{\"1\":\"a\",}")) {
+        assertThrows[RuntimeException](json.fromJson(text, mapType))
+        assertThrows[RuntimeException](json.fromJson(text.getBytes(UTF_8), mapType))
+        assert(json.fromJson(input.getBytes(UTF_8), mapType) == expected)
+      }
+    }
+    val bounded = ForyJsonScala.builder().withCodegen(false).withMaxGraphMemoryBytes(48).build()
+    val input = (0 until 1025).map(i => "\"" + i + "\":null").mkString("{", ",", "}")
+    assertThrows[ForyJsonException](bounded.fromJson(input, mapType))
+    assertThrows[ForyJsonException](bounded.fromJson(input.getBytes(UTF_8), mapType))
+    assert(bounded.fromJson("{}".getBytes(UTF_8), mapType).isEmpty)
+    val shallow = ForyJsonScala.builder().withCodegen(false).maxDepth(1).build()
+    assertThrows[ForyJsonException](shallow.fromJson("[{\"1\":null}]", nestedType))
+    assertThrows[ForyJsonException](shallow.fromJson("[{\"1\":null}]".getBytes(UTF_8), nestedType))
+    assert(shallow.fromJson("{}".getBytes(UTF_8), mapType).isEmpty)
+  }
+
+  test("long map codec slots") {
+    val value = LongMapCodecSlots(
+      scala.collection.mutable.LongMap(1L -> "one"),
+      scala.collection.mutable.LongMap(-1L -> "minus")
+    )
+    for (json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).build()
+      )) {
+      val text = json.toJson(value)
+      assert(text.contains("\"1\":\"tag:one\""))
+      assert(text.contains("\"key:-1\":\"tag:minus\""))
+      assert(json.fromJson(text, classOf[LongMapCodecSlots]) == value)
+      assert(json.fromJson(text.getBytes(UTF_8), classOf[LongMapCodecSlots]) == value)
+    }
+  }
+
+  test("mutable hash map growth") {
+    val mapType = new TypeRef[scala.collection.mutable.Map[String, String]]() {}
+    for (codegen <- Seq(false, true)) {
+      val json = ForyJsonScala.builder().withCodegen(codegen).withAsyncCompilation(false).build()
+      for (size <- Seq(0, 1, 10, 20, 100, 1024, 1025)) {
+        val expected = scala.collection.mutable.HashMap(
+          (0 until size).map(i => i.toString -> (if (i % 3 == 0) null else "值" + i)): _*
+        )
+        val text = json.toJson(expected, mapType)
+        val first = json.fromJson(text.getBytes(UTF_8), mapType)
+        assert(first == expected)
+        assert(json.fromJson(text, mapType) == expected)
+        first.update("added", "after reading")
+        assert(first.remove("added").contains("after reading"))
+        assert(first == expected)
+      }
+      val keys = (0 until 128).map { i =>
+        (0 until 7).map(bit => if ((i & (1 << bit)) == 0) "Aa" else "BB").mkString
+      }
+      assert(keys.map(_.hashCode).distinct.size == 1)
+      val expected = scala.collection.mutable.HashMap(keys.map(k => k -> k): _*)
+      val text = json.toJson(expected, mapType)
+      assert(json.fromJson(text, mapType) == expected)
+      assert(json.fromJson(text.getBytes(UTF_8), mapType) == expected)
+      val duplicate = text.dropRight(1) + ",\"" + keys.head + "\":null}"
+      expected.update(keys.head, null)
+      assert(json.fromJson(duplicate, mapType) == expected)
+      assert(json.fromJson(duplicate.getBytes(UTF_8), mapType) == expected)
+    }
+  }
+
   test("strict collections maps and bit sets") {
     val json = ForyJsonScala.builder().withCodegen(false).build()
 
@@ -452,6 +891,93 @@ class ScalaJsonSuite extends AnyFunSuite {
     }
     assertThrows[org.apache.fory.json.ForyJsonException] {
       bounded.fromJson("[\"a\",\"b\",\"c\",\"d\"]", new TypeRef[Iterable[String]]() {})
+    }
+  }
+
+  test("big integer representations") {
+    val values = Seq(BigInt(0), BigInt(-1), BigInt(Long.MinValue), BigInt(Long.MaxValue),
+      BigInt(Long.MinValue) - 1, BigInt(Long.MaxValue) + 1, BigInt(1) << 127, -(BigInt(1) << 256))
+    for (codegen <- Seq(false, true)) {
+      val json = ForyJsonScala.builder().withCodegen(codegen).build()
+      for (value <- values; prefix <- Seq("", " \t\r\n"); quoted <- Seq(false, true)) {
+        val number = value.toString
+        val token = prefix + (if (quoted) "\"" + number + "\"" else number)
+        assert(json.fromJson(token, classOf[BigInt]) == value)
+        val fromBytes = json.fromJson(token.getBytes(UTF_8), classOf[BigInt])
+        assert(fromBytes == value)
+        assert(json.toJson(fromBytes) == number)
+        assert(new String(json.toJsonBytes(fromBytes), UTF_8) == number)
+        assert(json.toJson(value) == number)
+        assert(new String(json.toJsonBytes(value), UTF_8) == number)
+      }
+      val fields = BigIntFields(values.last, values.toVector :+ null)
+      val input = "{\"value\":" + fields.value + ",\"values\":" +
+        values.mkString("[", ",", ",null]") + ",\"ignored\":\"\u0100\"}"
+      // The non-Latin1 field forces the String input through the UTF16 reader.
+      assert(json.fromJson(input, classOf[BigIntFields]) == fields)
+      assert(json.fromJson(input.getBytes(UTF_8), classOf[BigIntFields]) == fields)
+      assert(json.fromJson(json.toJson(fields), classOf[BigIntFields]) == fields)
+      assert(json.fromJson(json.toJsonBytes(fields), classOf[BigIntFields]) == fields)
+      val array = values.mkString("[", ",", "]")
+      assert(json.fromJson(array, classOf[Array[BigInt]]).toSeq == values)
+      assert(json.fromJson(array.getBytes(UTF_8), classOf[Array[BigInt]]).toSeq == values)
+      assert(json.fromJson("  null", classOf[BigInt]) == null)
+      assert(json.fromJson("  null".getBytes(UTF_8), classOf[BigInt]) == null)
+      for (invalid <- Seq("1.0", "1e2", "\"1.0\"", "\"1e2\"", "-", "n")) {
+        assertThrows[ForyJsonException](json.fromJson(invalid, classOf[BigInt]))
+        assertThrows[ForyJsonException](json.fromJson(invalid.getBytes(UTF_8), classOf[BigInt]))
+        assert(json.fromJson("1".getBytes(UTF_8), classOf[BigInt]) == BigInt(1))
+      }
+    }
+    val ownerBytes = GraphMemoryEstimates.shallowObjectBytes(classOf[BigInt])
+    val bounded = ForyJsonScala.builder().withMaxGraphMemoryBytes(ownerBytes - 1).build()
+    assertThrows[ForyJsonException](bounded.fromJson("1", classOf[BigInt]))
+    assertThrows[ForyJsonException](bounded.fromJson("1".getBytes(UTF_8), classOf[BigInt]))
+    assert(bounded.fromJson("null", classOf[BigInt]) == null)
+    val exact = ForyJsonScala.builder().withMaxGraphMemoryBytes(ownerBytes).build()
+    assert(exact.fromJson("1", classOf[BigInt]) == BigInt(1))
+  }
+
+  test("bit set representations") {
+    for (codegen <- Seq(false, true)) {
+      val json = ForyJsonScala.builder().withCodegen(codegen).build()
+      val cases = Seq(Seq.empty[Int], Seq(0), Seq(1, 63, 64, 130), Seq(130, 1, 64, 1), 0 until 1025)
+      for (indices <- cases) {
+        val immutable = scala.collection.immutable.BitSet(indices: _*)
+        val mutable = scala.collection.mutable.BitSet(indices: _*)
+        for (quoted <- Seq(false, true)) {
+          val input = indices
+            .map(i => if (quoted) "\"" + i + "\"" else i.toString)
+            .mkString("[ ", " , ", " ]")
+          assert(json.fromJson(input, classOf[scala.collection.immutable.BitSet]) == immutable)
+          assert(
+            json.fromJson(input.getBytes(UTF_8), classOf[scala.collection.immutable.BitSet]) == immutable
+          )
+          assert(json.fromJson(input, classOf[scala.collection.mutable.BitSet]) == mutable)
+          assert(
+            json.fromJson(input.getBytes(UTF_8), classOf[scala.collection.mutable.BitSet]) == mutable
+          )
+        }
+        val expected = immutable.mkString("[", ",", "]")
+        assert(json.toJson(immutable) == expected)
+        assert(new String(json.toJsonBytes(immutable), UTF_8) == expected)
+        assert(json.toJson(mutable) == expected)
+        assert(new String(json.toJsonBytes(mutable), UTF_8) == expected)
+      }
+      for (input <- Seq("[-1]", "[2147483648]", "[1.5]", "[1e2]", "[100000000]", "[1,")) {
+        assertThrows[ForyJsonException] {
+          json.fromJson(input, classOf[scala.collection.immutable.BitSet])
+        }
+        assertThrows[ForyJsonException] {
+          json.fromJson(input.getBytes(UTF_8), classOf[scala.collection.mutable.BitSet])
+        }
+        assert(
+          json.fromJson("[1]".getBytes(UTF_8), classOf[scala.collection.immutable.BitSet]) ==
+            scala.collection.immutable.BitSet(1)
+        )
+      }
+      assert(json.fromJson("null", classOf[scala.collection.immutable.BitSet]) == null)
+      assert(json.fromJson("null".getBytes(UTF_8), classOf[scala.collection.mutable.BitSet]) == null)
     }
   }
 

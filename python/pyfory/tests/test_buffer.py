@@ -21,11 +21,9 @@ import pytest
 
 import pyfory
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION, Buffer
-from pyfory.tests.core import require_pyarrow
+from pyfory.tests.core import pa, require_pyarrow
 from pyfory.tests.test_stream import OneByteStream
-from pyfory.utils import clear_bit, get_bit, lazy_import, set_bit, set_bit_to
-
-pa = lazy_import("pyarrow")
+from pyfory.utils import clear_bit, get_bit, set_bit, set_bit_to
 
 
 class RecvIntoOnlyStream:

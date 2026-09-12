@@ -241,7 +241,7 @@ go func() {
 
 The thread-safe wrapper:
 
-- Uses `sync.Pool` internally for efficient instance reuse
+- Creates instances as needed and reuses them across goroutines
 - Automatically copies serialized data before returning
 - Accepts the same configuration options as `fory.New()`
 

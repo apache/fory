@@ -1126,7 +1126,7 @@ public final class JsonTypeResolver {
         ownerType,
         sharedRegistry.propertyDiscoveryEnabled(),
         sharedRegistry.propertyNamingStrategy(),
-        sharedRegistry.writeNullFields(),
+        sharedRegistry.defaultPropertyInclusion(),
         sharedRegistry,
         generatedCodec,
         objectModel);
@@ -2615,7 +2615,7 @@ public final class JsonTypeResolver {
         ownerType,
         sharedRegistry.propertyDiscoveryEnabled(),
         sharedRegistry.propertyNamingStrategy(),
-        sharedRegistry.writeNullFields(),
+        sharedRegistry.defaultPropertyInclusion(),
         sharedRegistry,
         generatedCodec);
   }

@@ -23,6 +23,7 @@ import static org.apache.fory.json.JsonTestSupport.generatedUtf8WriterClass;
 import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
+import static org.apache.fory.json.JsonTestSupport.newUtf8Writer;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNull;
@@ -78,7 +79,9 @@ import org.apache.fory.json.data.MapKeyFields;
 import org.apache.fory.json.data.Nested;
 import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.json.reader.JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Types;
 import org.testng.annotations.Factory;
@@ -88,6 +91,115 @@ public class JsonContainerTest extends ForyJsonTestModels {
   @Factory(dataProvider = "enableCodegen")
   public JsonContainerTest(boolean codegen) {
     super(codegen);
+  }
+
+  @Test
+  public void readIntMapKeys() {
+    ForyJson json = newJson();
+    TypeRef<Map<Integer, Boolean>> type = new TypeRef<Map<Integer, Boolean>>() {};
+    List<Integer> values = new ArrayList<>();
+    values.add(Integer.MIN_VALUE);
+    values.add(Integer.MAX_VALUE);
+    values.add(0);
+    for (long magnitude = 1; magnitude <= 1_000_000_000; magnitude *= 10) {
+      for (int delta = -1; delta <= 1; delta++) {
+        values.add((int) magnitude + delta);
+        values.add(-(int) magnitude + delta);
+      }
+    }
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int value : values) {
+      String key = Integer.toString(value);
+      for (int escape = -1; escape < key.length(); escape++) {
+        String text = key;
+        if (escape >= 0) {
+          text =
+              key.substring(0, escape)
+                  + String.format(java.util.Locale.ROOT, "\\u%04x", (int) key.charAt(escape))
+                  + key.substring(escape + 1);
+        }
+        byte[] input = ("{\"" + text + "\":true}").getBytes(StandardCharsets.US_ASCII);
+        assertEquals(json.fromJson(input, type), Collections.singletonMap(value, true));
+      }
+      byte[] token = ('"' + key + '"').getBytes(StandardCharsets.US_ASCII);
+      for (int offset = 0; offset < 8; offset++) {
+        byte[] input = new byte[offset + token.length + 8];
+        Arrays.fill(input, (byte) '9');
+        System.arraycopy(token, 0, input, offset, token.length);
+        reader.reset(input, offset, token.length);
+        assertEquals(reader.readFieldNameInt(), value);
+        reader.finish();
+      }
+    }
+    for (String key :
+        new String[] {
+          "", "-", "01", "-01", "2147483648", "-2147483649", "1e0", "1.0", "12345678901"
+        }) {
+      byte[] input = ("{\"" + key + "\":true}").getBytes(StandardCharsets.US_ASCII);
+      assertThrows(RuntimeException.class, () -> json.fromJson(input, type));
+      assertEquals(
+          json.fromJson("{\"1\":true}".getBytes(StandardCharsets.US_ASCII), type),
+          Collections.singletonMap(1, true));
+    }
+  }
+
+  @Test
+  public void readLongMapKeys() {
+    ForyJson json = newJson();
+    TypeRef<Map<Long, Boolean>> type = new TypeRef<Map<Long, Boolean>>() {};
+    List<Long> values = new ArrayList<>();
+    values.add(Long.MIN_VALUE);
+    values.add(Long.MAX_VALUE);
+    values.add(0L);
+    for (int digits = 0; digits <= 18; digits++) {
+      long magnitude = BigInteger.TEN.pow(digits).longValueExact();
+      for (int delta = -1; delta <= 1; delta++) {
+        values.add(magnitude + delta);
+        values.add(-magnitude + delta);
+      }
+    }
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (long value : values) {
+      String key = Long.toString(value);
+      for (int escape = -1; escape < key.length(); escape++) {
+        String text = key;
+        if (escape >= 0) {
+          text =
+              key.substring(0, escape)
+                  + String.format(java.util.Locale.ROOT, "\\u%04x", (int) key.charAt(escape))
+                  + key.substring(escape + 1);
+        }
+        byte[] input = ("{\"" + text + "\":true}").getBytes(StandardCharsets.US_ASCII);
+        assertEquals(json.fromJson(input, type), Collections.singletonMap(value, true));
+      }
+      byte[] token = ('"' + key + '"').getBytes(StandardCharsets.US_ASCII);
+      for (int offset = 0; offset < 8; offset++) {
+        byte[] input = new byte[offset + token.length + 8];
+        Arrays.fill(input, (byte) '9');
+        System.arraycopy(token, 0, input, offset, token.length);
+        reader.reset(input, offset, token.length);
+        assertEquals(reader.readFieldNameLong(), value);
+        reader.finish();
+      }
+    }
+    for (String key :
+        new String[] {
+          "",
+          "-",
+          "01",
+          "-01",
+          "9223372036854775808",
+          "-9223372036854775809",
+          "1e0",
+          "1.0",
+          "123456789012345678901"
+        }) {
+      byte[] input = ("{\"" + key + "\":true}").getBytes(StandardCharsets.US_ASCII);
+      assertThrows(RuntimeException.class, () -> json.fromJson(input, type));
+      assertEquals(
+          json.fromJson("{\"1\":true}".getBytes(StandardCharsets.US_ASCII), type),
+          Collections.singletonMap(1L, true));
+    }
   }
 
   @Test
@@ -322,6 +434,33 @@ public class JsonContainerTest extends ForyJsonTestModels {
     Map<Integer, Integer> value =
         json.fromJson("{\"7\":70,\"8\":80}", new TypeRef<Map<Integer, Integer>>() {});
     assertEquals(json.toJson(new LinkedHashMap<>(value)), "{\"7\":70,\"8\":80}");
+  }
+
+  @Test
+  public void writeMixedMapKeys() {
+    Map<Object, Boolean> value = new LinkedHashMap<>();
+    value.put(Integer.MIN_VALUE, true);
+    value.put(Integer.MAX_VALUE, false);
+    value.put(Long.MIN_VALUE, true);
+    value.put(Long.MAX_VALUE, false);
+    value.put(0, true);
+    value.put(-1L, false);
+    value.put(new BigDecimal("1.20"), true);
+    value.put(2.5, false);
+    value.put((short) 3, true);
+    value.put(true, false);
+    value.put('"', true);
+    value.put("\\", false);
+    value.put(Kind.FAST, true);
+    String expected =
+        "{\"-2147483648\":true,\"2147483647\":false,\"-9223372036854775808\":true,"
+            + "\"9223372036854775807\":false,\"0\":true,\"-1\":false,\"1.20\":true,"
+            + "\"2.5\":false,\"3\":true,\"true\":false,\"\\\"\":true,\"\\\\\":false,\"FAST\":true}";
+    for (boolean quotedLongs : new boolean[] {false, true}) {
+      ForyJson json = newJsonBuilder().writeLongAsString(quotedLongs).build();
+      assertEquals(json.toJson(value), expected);
+      assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+    }
   }
 
   @Test
@@ -667,6 +806,56 @@ public class JsonContainerTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void rejectNullPrimitiveElements() {
+    ForyJson json = newJson();
+    for (Class<?> type :
+        new Class<?>[] {
+          boolean[].class,
+          int[].class,
+          long[].class,
+          short[].class,
+          char[].class,
+          float[].class,
+          double[].class
+        }) {
+      String element = type == boolean[].class ? "true" : type == char[].class ? "\"a\"" : "1";
+      for (String text :
+          new String[] {
+            "[null]",
+            "[" + element + ", null]",
+            "[" + String.join(",", Collections.nCopies(9, element)) + ", null]"
+          }) {
+        assertThrows(ForyJsonException.class, () -> json.fromJson(text, type));
+        assertThrows(
+            ForyJsonException.class,
+            () -> json.fromJson(text.getBytes(StandardCharsets.UTF_8), type));
+      }
+    }
+  }
+
+  @Test
+  public void readCharArrayBoundaries() {
+    ForyJson json = newJson();
+    for (int size : new int[] {0, 1, 7, 8, 9, 15, 16, 17, 1024, 1025}) {
+      char[] values = new char[size];
+      char[] characters = {'a', '\u0000', '\t', '\\', '"', '\u00e9', '\u4f60'};
+      for (int i = 0; i < size; i++) {
+        values[i] = characters[i % characters.length];
+      }
+      String text = json.toJson(values);
+      assertEquals(json.fromJson(text, char[].class), values);
+      assertEquals(json.fromJson(text.getBytes(StandardCharsets.UTF_8), char[].class), values);
+    }
+    assertEquals(json.fromJson("[\"\\u0061\",\"b\"]", char[].class), new char[] {'a', 'b'});
+    for (String text : new String[] {"[\"\"]", "[\"ab\"]", "[\"a\",null]"}) {
+      assertThrows(ForyJsonException.class, () -> json.fromJson(text, char[].class));
+      assertThrows(
+          ForyJsonException.class,
+          () -> json.fromJson(text.getBytes(StandardCharsets.UTF_8), char[].class));
+    }
+  }
+
+  @Test
   public void writeLongArrays() {
     ForyJson json = newJson();
     LongArrayUtf16Root root = new LongArrayUtf16Root();
@@ -734,6 +923,47 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
     assertThrows(ForyJsonException.class, () -> json.fromJson("[128]", Byte[].class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("[\"ab\"]", Character[].class));
+  }
+
+  @Test
+  public void writeBooleanArrayBoundaries() {
+    boolean[][] arrays = {
+      {},
+      {true},
+      {false},
+      {true, false, true, true, false, false},
+      {false, true, false, false, true, true}
+    };
+    ForyJson json = newJson();
+    for (boolean[] values : arrays) {
+      String expected = json.toJson(values);
+      for (int capacity = 0; capacity <= 32; capacity++) {
+        Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+        JsonValueCodec<boolean[]> codec =
+            ArrayCodec.create(boolean[].class, TypeRef.of(boolean[].class), writer.typeResolver());
+        codec.writeUtf8(writer, values);
+        assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+      }
+    }
+  }
+
+  @Test
+  public void writeCharArrayBoundaries() {
+    char[][] arrays = {
+      {}, {'x'}, {' ', 'a', '\\', '"', '\u0001', '\u4e2d', '\u007f', '\u07ff', '\ufffd', '9'}
+    };
+    ForyJson json = newJson();
+    for (char[] values : arrays) {
+      String expected = json.toJson(values);
+      for (int capacity = 0; capacity <= 32; capacity++) {
+        Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+        JsonValueCodec<char[]> codec =
+            ArrayCodec.create(char[].class, TypeRef.of(char[].class), writer.typeResolver());
+        codec.writeUtf8(writer, values);
+        assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+      }
+    }
+    assertThrows(ForyJsonException.class, () -> json.toJsonBytes(new char[] {'a', '\ud800'}));
   }
 
   @Test

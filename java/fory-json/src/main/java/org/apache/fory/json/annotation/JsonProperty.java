@@ -74,7 +74,7 @@ public @interface JsonProperty {
   int index() default INDEX_UNKNOWN;
 
   /**
-   * Returns the null-inclusion policy for this property.
+   * Returns the inclusion policy for this property.
    *
    * <p>The policy affects writing only. A non-default policy is invalid when the logical property
    * has no write source, including creator-only input properties. Primitive properties are always
@@ -83,13 +83,19 @@ public @interface JsonProperty {
    */
   Include include() default Include.DEFAULT;
 
-  /** Null-inclusion policies supported by Fory JSON. */
+  /** Property inclusion policies supported by Fory JSON. */
   enum Include {
-    /** Inherit the runtime's {@code writeNullFields} setting. */
+    /** Inherit the runtime's default property inclusion. */
     DEFAULT,
     /** Always write the property, including when its value is JSON {@code null}. */
     ALWAYS,
     /** Omit the property when its value is Java {@code null}. */
-    NON_NULL
+    NON_NULL,
+    /**
+     * Omit null, empty CharSequence values, arrays, collections, maps, and absent JDK Optional
+     * values. Emptiness describes the logical property value before its codec runs, not its JSON
+     * output. Container elements and present Optional contents are not inspected recursively.
+     */
+    NON_EMPTY
   }
 }

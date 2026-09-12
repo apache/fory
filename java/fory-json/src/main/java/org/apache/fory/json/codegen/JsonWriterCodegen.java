@@ -20,17 +20,24 @@
 package org.apache.fory.json.codegen;
 
 import static org.apache.fory.codegen.ExpressionUtils.add;
+import static org.apache.fory.codegen.ExpressionUtils.and;
 import static org.apache.fory.codegen.ExpressionUtils.cast;
 import static org.apache.fory.codegen.ExpressionUtils.eq;
 import static org.apache.fory.codegen.ExpressionUtils.inline;
+import static org.apache.fory.codegen.ExpressionUtils.not;
 
 import java.lang.reflect.Method;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import org.apache.fory.codegen.Code;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
@@ -943,7 +950,7 @@ abstract class JsonWriterCodegen {
         }
         expressions.add(
             new Expression.If(
-                ne(value, new Expression.Null(TypeRef.of(String.class), false)),
+                presentValue(first, value),
                 present,
                 new Expression.Invoke(writer, "writeObjectStart")));
         firstProperty = 1;
@@ -987,7 +994,7 @@ abstract class JsonWriterCodegen {
       } else {
         expressions.add(member);
       }
-      if (properties[i].writeNull()) {
+      if (properties[i].writeNull() && !properties[i].omitEmpty()) {
         commaKnown = true;
       }
     }
@@ -1036,7 +1043,7 @@ abstract class JsonWriterCodegen {
         expressions.add(written);
         expressions.add(
             new Expression.If(
-                ne(value, new Expression.Null(TypeRef.of(String.class), false)),
+                presentValue(first, value),
                 new Expression.ListExpression(
                     fusedStart, new Expression.Assign(written, Expression.Literal.ofInt(1))),
                 new Expression.Invoke(writer, "writeObjectStart")));
@@ -1079,7 +1086,7 @@ abstract class JsonWriterCodegen {
         flushAnyMemberGroup(builder, expressions, memberGroup, object, writer);
         expressions.add(member);
       }
-      if (properties[i].writeNull()) {
+      if (properties[i].writeNull() && !properties[i].omitEmpty()) {
         commaKnown = true;
       }
     }
@@ -1246,7 +1253,7 @@ abstract class JsonWriterCodegen {
       return 0;
     }
     for (int i = 0; i < properties.length; i++) {
-      if (properties[i].writeNull()) {
+      if (properties[i].writeNull() && !properties[i].omitEmpty()) {
         return i + 1;
       }
     }
@@ -1300,6 +1307,34 @@ abstract class JsonWriterCodegen {
         new Expression.Variable(
             "v" + id, cast(inline(builder.fieldValue(property, object)), TypeRef.of(rawType)));
     Expression nullValue = new Expression.Null(TypeRef.of(rawType), false);
+    if (property.omitEmpty()) {
+      Expression write =
+          isPrefixValue(property.writeKind())
+              ? writeValue(property, id, value, commaKnown, index, writer)
+              : new Expression.ListExpression(
+                  writeFieldName(property, id, commaKnown, index, writer),
+                  writeValue(property, id, value, true, index, writer));
+      Expression present = new Expression.If(nonEmptyValue(property, value), write);
+      if (property.writeNull()) {
+        return new Expression.ListExpression(
+            value,
+            new Expression.If(
+                eq(value, nullValue),
+                writeNullField(property, id, commaKnown, index, writer),
+                present));
+      }
+      if (property.requiresNonNullWrite()) {
+        return new Expression.ListExpression(
+            value,
+            new Expression.If(
+                eq(value, nullValue),
+                new Expression.Invoke(fieldRef("wp" + id, JsonFieldInfo.class), "rejectNullWrite"),
+                present));
+      }
+      return new Expression.ListExpression(
+          value, new Expression.If(presentValue(property, value), write));
+    }
+
     if (property.writeNull()) {
       JsonFieldKind kind = property.writeKind();
       boolean onlyCodec =
@@ -1356,6 +1391,38 @@ abstract class JsonWriterCodegen {
               write));
     }
     return new Expression.ListExpression(value, new Expression.If(ne(value, nullValue), write));
+  }
+
+  private static Expression presentValue(JsonFieldInfo property, Expression value) {
+    Expression present = ne(value, new Expression.Null(value.type(), false));
+    return property.omitEmpty() ? and(present, nonEmptyValue(property, value)) : present;
+  }
+
+  private static Expression nonEmptyValue(JsonFieldInfo property, Expression value) {
+    Class<?> type = property.writeRawType();
+    if (CharSequence.class.isAssignableFrom(type)) {
+      return ne(
+          new Expression.Invoke(value, "length", TypeRef.of(int.class)).inline(),
+          Expression.Literal.ofInt(0));
+    }
+    if (type.isArray()) {
+      return ne(
+          new Expression.FieldValue(value, "length", TypeRef.of(int.class), false, true),
+          Expression.Literal.ofInt(0));
+    }
+    if (Collection.class.isAssignableFrom(type) || Map.class.isAssignableFrom(type)) {
+      return not(new Expression.Invoke(value, "isEmpty", TypeRef.of(boolean.class)).inline());
+    }
+    if (type == Optional.class
+        || type == OptionalInt.class
+        || type == OptionalLong.class
+        || type == OptionalDouble.class) {
+      return new Expression.Invoke(value, "isPresent", TypeRef.of(boolean.class)).inline();
+    }
+    return not(
+        new Expression.StaticInvoke(
+                JsonFieldInfo.class, "isEmpty", TypeRef.of(boolean.class), value)
+            .inline());
   }
 
   private Expression writeUnboxed(

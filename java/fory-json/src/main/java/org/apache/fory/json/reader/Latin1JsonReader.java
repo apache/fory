@@ -366,6 +366,15 @@ public final class Latin1JsonReader extends JsonReader {
     }
   }
 
+  @Override
+  public char peekToken() {
+    skipWhitespaceFast();
+    if (position >= input.length) {
+      throw error("Expected token");
+    }
+    return (char) (input[position] & 0xff);
+  }
+
   public boolean consumeToken(char expected) {
     skipWhitespaceFast();
     if (position < input.length && input[position] == expected) {
@@ -488,7 +497,8 @@ public final class Latin1JsonReader extends JsonReader {
     return tryReadNullToken();
   }
 
-  private boolean tryReadNullLiteral() {
+  @Override
+  protected boolean tryReadNullLiteral() {
     if (startsWithAscii("null")) {
       position += 4;
       return true;
@@ -519,7 +529,8 @@ public final class Latin1JsonReader extends JsonReader {
     return value;
   }
 
-  private boolean readBooleanToken() {
+  @Override
+  protected boolean readBooleanToken() {
     if (position < input.length && input[position] == '"') {
       return readQuotedBooleanValue();
     }
@@ -1098,32 +1109,9 @@ public final class Latin1JsonReader extends JsonReader {
         || bytes[start + 36] != '"') {
       throw new IllegalArgumentException();
     }
-    long msb = parseHex(bytes, start, 8);
-    msb = (msb << 16) | parseHex(bytes, start + 9, 4);
-    msb = (msb << 16) | parseHex(bytes, start + 14, 4);
-    long lsb = parseHex(bytes, start + 19, 4);
-    lsb = (lsb << 48) | parseHex(bytes, start + 24, 12);
+    UUID value = parseUuidBytes(bytes, start);
     position = start + 37;
-    return new UUID(msb, lsb);
-  }
-
-  private static long parseHex(byte[] bytes, int offset, int length) {
-    long value = 0;
-    for (int i = 0; i < length; i++) {
-      value = (value << 4) | hexValue(bytes[offset + i]);
-    }
     return value;
-  }
-
-  private static int hexValue(int ch) {
-    if (ch >= '0' && ch <= '9') {
-      return ch - '0';
-    }
-    int lower = ch | 0x20;
-    if (lower >= 'a' && lower <= 'f') {
-      return lower - 'a' + 10;
-    }
-    throw new IllegalArgumentException();
   }
 
   private double readDoubleToken() {
@@ -2036,6 +2024,9 @@ public final class Latin1JsonReader extends JsonReader {
     int year = parse4(bytes, dateStart);
     int month = parse2(bytes, dateStart + 5);
     int day = parse2(bytes, dateStart + 8);
+    if (year < 0 || month < 0 || day < 0) {
+      return null;
+    }
     int end = dateStart + 10;
     int ch = bytes[end];
     if (ch == '"') {
@@ -2073,6 +2064,9 @@ public final class Latin1JsonReader extends JsonReader {
     int day = parse2(bytes, start + 8);
     int hour = parse2(bytes, start + 11);
     int minute = parse2(bytes, start + 14);
+    if (year < 0 || month < 0 || day < 0 || hour < 0 || minute < 0) {
+      return null;
+    }
     return tryReadIsoOffsetDateTimeTail(bytes, start + 16, length, year, month, day, hour, minute);
   }
 
@@ -2082,6 +2076,9 @@ public final class Latin1JsonReader extends JsonReader {
     int nano = 0;
     if (index < length && bytes[index] == ':') {
       second = parse2(bytes, index + 1);
+      if (second < 0) {
+        return null;
+      }
       index += 3;
       if (index < length && bytes[index] == '.') {
         int fractionStart = index + 1;
@@ -2090,7 +2087,7 @@ public final class Latin1JsonReader extends JsonReader {
           fractionEnd++;
         }
         if (fractionEnd == fractionStart) {
-          throw new IllegalArgumentException();
+          return null;
         }
         if (fractionEnd - fractionStart > 9) {
           throw error("OffsetDateTime fractional seconds exceed nanosecond precision");
@@ -2182,6 +2179,9 @@ public final class Latin1JsonReader extends JsonReader {
     if (bytes[end] != '"') {
       return Long.MIN_VALUE;
     }
+    if (hour < 0 || minute < 0 || second < 0) {
+      return Long.MIN_VALUE;
+    }
     int total = hour * 3600 + minute * 60 + second;
     if (offset == '-') {
       total = -total;
@@ -2201,14 +2201,17 @@ public final class Latin1JsonReader extends JsonReader {
   }
 
   private static int parse4(byte[] bytes, int index) {
-    return parse2(bytes, index) * 100 + parse2(bytes, index + 2);
+    int high = parse2(bytes, index);
+    int low = parse2(bytes, index + 2);
+    return high < 0 || low < 0 ? -1 : high * 100 + low;
   }
 
   private static int parse2(byte[] bytes, int index) {
     int high = bytes[index] - '0';
     int low = bytes[index + 1] - '0';
     if (high < 0 || high > 9 || low < 0 || low > 9) {
-      throw new IllegalArgumentException();
+      // A JSON escape can occur inside a digit pair; let the decoded-text parser handle it.
+      return -1;
     }
     return high * 10 + low;
   }

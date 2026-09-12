@@ -77,6 +77,56 @@ describe("array", () => {
     expect(deserialize(serialize({ c: [o, o] }))).toEqual({ c: [o, o] });
   });
 
+  test("should root list use declared element type", () => {
+    // A root Type.list(...) registration previously fell back to the internal
+    // any-typed list serializer, silently discarding declared element types:
+    // declared float32 must narrow, while dynamic dispatch keeps float64.
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.list(Type.float32()));
+    expect(deserialize(serialize([0.1]))).toEqual([Math.fround(0.1)]);
+
+    // The dynamic list serializer must stay untouched by the registration.
+    expect(fory.deserialize(fory.serialize([0.1, "a"]))).toEqual([0.1, "a"]);
+  });
+
+  test("should root set use declared element type", () => {
+    const fory = new Fory({ compatible: false });
+    const { serialize, deserialize } = fory.register(Type.set(Type.float32()));
+    expect(deserialize(serialize(new Set([0.1])))).toEqual(new Set([Math.fround(0.1)]));
+    expect(fory.deserialize(fory.serialize(new Set([0.1, "a"])))).toEqual(new Set([0.1, "a"]));
+  });
+
+  test("should root container registered before its ext codec work", () => {
+    // Registration order is free before the first root operation: the
+    // container's forward ext placeholder must be filled when the extension
+    // codec registers later, so the generated serializer binds to the
+    // completed codec instead of capturing undefined.
+    class ListedExtension {
+      constructor(public id = 0) {}
+    }
+    Type.ext(921)(ListedExtension);
+    const extCodec = {
+      write(context: any, value: ListedExtension) {
+        context.writeUint8(value.id);
+      },
+      read(context: any, result: ListedExtension) {
+        result.id = context.readUint8();
+      },
+    };
+
+    const listFory = new Fory({ compatible: false });
+    const list = listFory.register(Type.list(Type.ext(921)));
+    listFory.register(ListedExtension, extCodec);
+    const listResult = list.deserialize(list.serialize([new ListedExtension(7)]));
+    expect(listResult).toEqual([new ListedExtension(7)]);
+
+    const setFory = new Fory({ compatible: false });
+    const set = setFory.register(Type.set(Type.ext(921)));
+    setFory.register(ListedExtension, extCodec);
+    const setResult = set.deserialize(set.serialize(new Set([new ListedExtension(9)])));
+    expect(setResult).toEqual(new Set([new ListedExtension(9)]));
+  });
+
   test("preserves a self-reference in a dynamic list", () => {
     const fory = new Fory({ compatible: false, ref: true });
     const value: any[] = [];
