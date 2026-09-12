@@ -89,6 +89,7 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
@@ -2090,7 +2091,16 @@ public final class ScalarCodecs {
         // directly; the ordinary String owner handles growth and other String representations.
         if (source.length <= target.length - position - 2) {
           target[position] = '"';
-          System.arraycopy(source, 0, target, position + 1, source.length);
+          if (source.length >= Long.BYTES && source.length <= Long.BYTES * 2) {
+            // Both words stay inside the ID; overlap covers lengths between one and two words.
+            LittleEndian.putInt64(target, position + 1, LittleEndian.getInt64(source, 0));
+            LittleEndian.putInt64(
+                target,
+                position + 1 + source.length - Long.BYTES,
+                LittleEndian.getInt64(source, source.length - Long.BYTES));
+          } else {
+            System.arraycopy(source, 0, target, position + 1, source.length);
+          }
           target[position + source.length + 1] = '"';
           writer.setPosition(position + source.length + 2);
           return;
