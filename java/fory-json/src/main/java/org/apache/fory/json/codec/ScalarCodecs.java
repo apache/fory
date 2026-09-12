@@ -2167,6 +2167,18 @@ public final class ScalarCodecs {
       }
       int hash = bytes[0];
       int i = 1;
+      for (; i <= bytes.length - Integer.BYTES; i += Integer.BYTES) {
+        int text = LittleEndian.getInt32(bytes, i);
+        if ((text & 0x80808080) != 0) {
+          return ZoneId.of(value);
+        }
+        int firstPair = REGION_PAIRS[((text & 0x7f) << 7) | ((text >>> 8) & 0x7f)];
+        int secondPair = REGION_PAIRS[(((text >>> 16) & 0x7f) << 7) | (text >>> 24)];
+        if ((firstPair | secondPair) < 0) {
+          return ZoneId.of(value);
+        }
+        hash = 31 * 31 * 31 * 31 * hash + 31 * 31 * firstPair + secondPair;
+      }
       for (; i < bytes.length - 1; i += 2) {
         int firstChar = bytes[i];
         int secondChar = bytes[i + 1];

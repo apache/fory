@@ -1420,8 +1420,9 @@ public class JsonTemporalTest extends ForyJsonTestModels {
       for (int i = 0; i < pairCharacters.length(); i++) {
         for (int j = 0; j < pairCharacters.length(); j++) {
           String pair = "ForyJson/" + pairCharacters.charAt(i) + pairCharacters.charAt(j);
-          ids.add(pair);
-          ids.add(pair + "A");
+          for (String tail : new String[] {"", "A", "AA", "AAA"}) {
+            ids.add(pair + tail);
+          }
         }
       }
     }
