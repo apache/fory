@@ -888,8 +888,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       } else {
         lastGroup = millis;
       }
-      // A nonzero final digit needs no trimming; zero groups were already omitted above.
-      if (lastGroup % 10 == 0) {
+      // In [1, 999], multiplication by the inverse of five maps its multiples to [1, 199],
+      // and other values above 858993458. Only even quotients fit entirely in bits 1 through 7,
+      // so this mask recognizes multiples of ten without division or a dependent digit load.
+      if (((lastGroup * 0xcccccccd) & 0xffffff01) == 0) {
         do {
           pos--;
         } while (bytes[pos - 1] == '0');
