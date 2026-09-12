@@ -190,7 +190,10 @@ binary type is available only to hand-built schemas through `RowWriter.WriteByte
 
 Strings must be valid UTF-8. Timestamps must fit in an int64 number of microseconds. Map keys must
 be scalars, strings, or value structs whose exported, non-ignored fields consist of such types, so
-that the encoded key determines Go equality; `time.Time` and pointers are not valid keys.
+that the encoded key determines Go equality. `time.Time`, `time.Duration`, and pointers are not
+valid keys, including inside struct keys. Duration encoding truncates to microseconds, so distinct
+nanosecond keys could otherwise collapse into one entry. Use an explicit `int64` key in the unit
+your application requires.
 
 Unsupported: unsigned integers, fixed-size arrays, nested pointers, pointers to slices or maps,
 interfaces, channels, functions, recursive types, `float16`, and `decimal`.

@@ -396,16 +396,19 @@ var errInvalidUTF8 = fmt.Errorf("row: string is not valid UTF-8")
 // overflow checking; time.Time.UnixMicro is undefined outside the
 // int64 microsecond range.
 func timestampMicros(t time.Time) (int64, error) {
+	const microsPerSecond = 1_000_000
 	sec := t.Unix()
-	if sec > math.MaxInt64/1_000_000 || sec < math.MinInt64/1_000_000 {
-		return 0, fmt.Errorf("row: timestamp %v is outside the int64 microsecond range", t)
-	}
-	micros := sec * 1_000_000
 	subMicros := int64(t.Nanosecond()) / 1000
-	if micros > math.MaxInt64-subMicros {
+	// Unix seconds round down, while integer division truncates toward zero.
+	// The minimum microsecond value falls in the second before that quotient.
+	const minSec = math.MinInt64/microsPerSecond - 1
+	const maxSec = math.MaxInt64 / microsPerSecond
+	if sec < minSec || sec > maxSec ||
+		(sec == minSec && subMicros < microsPerSecond+math.MinInt64%microsPerSecond) ||
+		(sec == maxSec && subMicros > math.MaxInt64%microsPerSecond) {
 		return 0, fmt.Errorf("row: timestamp %v is outside the int64 microsecond range", t)
 	}
-	return micros + subMicros, nil
+	return t.UnixMicro(), nil
 }
 
 func appendStringRegion(buf *fory.ByteBuffer, s string) int {

@@ -507,6 +507,10 @@ func newMapCodec(goType reflect.Type, mapType *MapType, buf *fory.ByteBuffer) (v
 				values = reflect.MakeSlice(reflect.SliceOf(valueType), n, n)
 			}
 			values = values.Slice(0, n)
+			// These scratch owners outlive the operation. Clear the full
+			// snapshot even on failure, before a later call can shrink it.
+			defer values.Clear()
+			defer keyScratch.SetZero()
 			j := 0
 			for iter := v.MapRange(); iter.Next(); j++ {
 				if j >= n {
@@ -530,7 +534,6 @@ func newMapCodec(goType reflect.Type, mapType *MapType, buf *fory.ByteBuffer) (v
 					return err
 				}
 			}
-			values.Clear() // drop references to the caller's values
 			return w.SetOffsetAndSize(i, start, buf.WriterIndex()-start)
 		},
 		read: func(g valueReader, i int, v reflect.Value) error {
@@ -551,6 +554,10 @@ func newMapCodec(goType reflect.Type, mapType *MapType, buf *fory.ByteBuffer) (v
 				return fmt.Errorf("row: map has %d keys but %d values", n, vals.NumElements())
 			}
 			m := reflect.MakeMapWithSize(goType, n)
+			// SetMapIndex copies each entry; the codec must not retain the
+			// last decoded owners after either a successful or failed read.
+			defer readKey.SetZero()
+			defer readValue.SetZero()
 			for j := 0; j < n; j++ {
 				if err := keyCodec.read(keys, j, readKey); err != nil {
 					return err

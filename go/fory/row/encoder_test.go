@@ -19,8 +19,12 @@ package row
 
 import (
 	"encoding/binary"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
+	"unsafe"
+	"weak"
 
 	fory "github.com/apache/fory/go/fory"
 	"github.com/stretchr/testify/require"
@@ -296,4 +300,70 @@ func TestEncoderStructMapKeys(t *testing.T) {
 	decoded, err := enc.FromRow(rowBytes)
 	require.NoError(t, err)
 	require.Equal(t, original, decoded)
+}
+
+type mapEntry struct {
+	Bad  string
+	Data []byte
+}
+
+type referenceMap struct {
+	Entries map[string]*mapEntry
+}
+
+func TestMapReleasesReferences(t *testing.T) {
+	for _, mode := range []string{"encode", "encode_error", "encode_error_then_empty", "decode"} {
+		t.Run(mode, func(t *testing.T) {
+			enc, err := NewEncoder[referenceMap]()
+			require.NoError(t, err)
+			keys, values := mapReferences(t, enc, mode)
+			runtime.GC()
+			for _, key := range keys {
+				if key.Value() != nil {
+					t.Error("encoder retained a map key")
+				}
+			}
+			for _, value := range values {
+				if value.Value() != nil {
+					t.Error("encoder retained a map value")
+				}
+			}
+			runtime.KeepAlive(enc)
+		})
+	}
+}
+
+// Return only weak references so the codec is the only possible owner of
+// the keys and values after this call. Strings exceed the tiny allocator size.
+func mapReferences(t *testing.T, enc *Encoder[referenceMap], mode string) ([]weak.Pointer[byte], []weak.Pointer[mapEntry]) {
+	t.Helper()
+	input := referenceMap{Entries: make(map[string]*mapEntry)}
+	for _, prefix := range []string{"a", "b", "c"} {
+		value := &mapEntry{Data: make([]byte, 64)}
+		if strings.HasPrefix(mode, "encode_error") {
+			value.Bad = "\xff"
+		}
+		input.Entries[strings.Repeat(prefix, 128)] = value
+	}
+	data, err := enc.Encode(&input)
+	if strings.HasPrefix(mode, "encode_error") {
+		require.Error(t, err)
+	} else {
+		require.NoError(t, err)
+	}
+	if mode == "decode" {
+		input, err = enc.Decode(data)
+		require.NoError(t, err)
+	}
+	var keys []weak.Pointer[byte]
+	var values []weak.Pointer[mapEntry]
+	for key, value := range input.Entries {
+		keys = append(keys, weak.Make(unsafe.StringData(key)))
+		values = append(values, weak.Make(value))
+	}
+	if mode == "encode_error_then_empty" {
+		_, err = enc.Encode(&referenceMap{Entries: map[string]*mapEntry{}})
+		require.NoError(t, err)
+	}
+	return keys, values
 }

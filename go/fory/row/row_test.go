@@ -289,6 +289,28 @@ func TestTemporalRangeChecks(t *testing.T) {
 	require.Panics(t, func() { r.Duration(1) })
 }
 
+func TestTimestampBounds(t *testing.T) {
+	schema := NewSchema([]Field{NewField("ts", TimestampType{}, true)})
+	w := NewRowWriter(schema)
+	w.Reset()
+	aw := NewArrayWriter(schema.Field(0), fory.NewByteBuffer(nil))
+	require.NoError(t, aw.Reset(1))
+	for _, micros := range []int64{math.MinInt64, math.MinInt64 + 1, -1, 0, math.MaxInt64 - 1, math.MaxInt64} {
+		value := time.UnixMicro(micros)
+		require.NoError(t, w.WriteTimestamp(0, value))
+		require.Equal(t, micros, NewRow(schema, w.ToBytes()).Timestamp(0).UnixMicro())
+		require.NoError(t, aw.WriteTimestamp(0, value))
+		require.Equal(t, micros, NewArrayData(schema.Field(0), aw.ToBytes()).Timestamp(0).UnixMicro())
+	}
+	for _, value := range []time.Time{
+		time.UnixMicro(math.MinInt64).Add(-time.Nanosecond),
+		time.UnixMicro(math.MaxInt64).Add(time.Microsecond),
+	} {
+		require.Error(t, w.WriteTimestamp(0, value))
+		require.Error(t, aw.WriteTimestamp(0, value))
+	}
+}
+
 func TestConcurrentReads(t *testing.T) {
 	w := NewRowWriter(int64StringSchema())
 	w.Reset()

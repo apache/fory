@@ -62,7 +62,7 @@ var (
 // Unsupported: unsigned integers, fixed-size arrays, nested pointers,
 // pointers to slices or maps (two nil states, one null bit), map keys
 // whose encoded fields do not determine Go equality (pointers,
-// time.Time, structs with unexported or ignored fields), and recursive
+// time.Time, time.Duration, structs with unexported or ignored fields), and recursive
 // types.
 func InferSchema(t reflect.Type) (*Schema, error) {
 	if t == nil {
@@ -240,8 +240,12 @@ func inferField(name string, t reflect.Type, path []reflect.Type) (Field, error)
 // determine Go equality, so distinct keys never encode identically and
 // decoding never collapses entries: scalars, strings, and structs made
 // only of such fields with nothing unexported or ignored. time.Time is
-// rejected because its Location is not encoded.
+// rejected because its Location is not encoded; time.Duration is rejected
+// because microsecond truncation can make distinct keys equal.
 func validateMapKeyType(t reflect.Type) error {
+	if t == goDurationType {
+		return fmt.Errorf("row: map key type %v is unsupported: nanosecond precision is not encoded", t)
+	}
 	switch t.Kind() {
 	case reflect.Bool, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int,
 		reflect.Float32, reflect.Float64, reflect.String:

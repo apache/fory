@@ -178,6 +178,9 @@ func TestInferRejectsUnsupportedTypes(t *testing.T) {
 		A int32
 		b int32
 	}
+	type durationKey struct {
+		Delay time.Duration
+	}
 	cases := []any{
 		struct{ U uint32 }{},
 		struct{ C chan int }{},
@@ -189,6 +192,8 @@ func TestInferRejectsUnsupportedTypes(t *testing.T) {
 		struct{ M map[*string]int32 }{},
 		struct{ M map[keyWithHidden]int32 }{},
 		struct{ M map[time.Time]int32 }{},
+		struct{ M map[time.Duration]string }{},
+		struct{ M map[durationKey]string }{},
 		struct{ M map[[2]int32]int32 }{},
 		node{},
 		struct{ L recursiveList }{},
@@ -213,7 +218,7 @@ func TestInferAcceptsEqualityPreservingMapKeys(t *testing.T) {
 	type keyed struct {
 		ByDate  map[fory.Date]string
 		ByPoint map[point]string
-		ByDur   map[time.Duration]string
+		ByInt   map[int64]string
 	}
 	_, err := InferSchema(reflect.TypeOf(keyed{}))
 	require.NoError(t, err)
