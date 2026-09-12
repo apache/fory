@@ -22,6 +22,10 @@ package org.apache.fory.format.encoder;
 import static org.apache.fory.type.TypeUtils.OBJECT_TYPE;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.Constructor;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -35,6 +39,7 @@ import org.apache.fory.collection.Tuple2;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.CustomTypeRegistration;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -98,7 +103,7 @@ public class Encoders {
    *   <li>java.math.BigDecimal, java.math.BigInteger
    *   <li>time related: java.sql.Date, java.sql.Timestamp, java.time.LocalDate, java.time.Instant
    *   <li>Optional and friends: OptionalInt, OptionalLong, OptionalDouble
-   *   <li>collection types: only array and java.util.List currently, map support is in progress
+   *   <li>collection types: array, java.util.List, and java.util.Map
    *   <li>record types
    *   <li>nested java bean
    * </ul>
@@ -230,8 +235,7 @@ public class Encoders {
    * <p>supported types for java bean field: - primitive types: boolean, int, double, etc. - boxed
    * types: Boolean, Integer, Double, etc. - String - java.math.BigDecimal, java.math.BigInteger -
    * time related: java.sql.Date, java.sql.Timestamp, java.time.LocalDate, java.time.Instant -
-   * collection types: only array and java.util.List currently, map support is in progress - nested
-   * java bean.
+   * collection types: array, java.util.List, and java.util.Map - nested java bean.
    */
   public static <T extends Map<K, V>, K, V> MapEncoder<T> mapEncoder(
       TypeRef<T> mapToken, TypeRef<K> keyToken, TypeRef<V> valToken, Fory fory) {
@@ -331,7 +335,35 @@ public class Encoders {
                       codecBuilder::genCode);
                 })
             .toArray(CompileUnit[]::new);
-    return loadCls(compileUnits);
+    return loadCls(Thread.currentThread().getContextClassLoader(), compileUnits);
+  }
+
+  /**
+   * Compile and load a projection codec class for one historical version of {@code beanClass}. The
+   * current-version codec class is loaded separately by {@link #loadOrGenRowCodecClass}; this is
+   * used by schema-evolution code paths to materialize a decoder for each older version. The {@code
+   * nestedSuffixes} map directs codegen to the projection codec class to embed for each nested
+   * versioned bean type. {@code classLoader} is the loader captured when the evolution encoder was
+   * built, so a first-decode compile resolves classes exactly as the build-time compile did
+   * regardless of the decoding thread's context classloader.
+   */
+  static Class<?> loadOrGenProjectionRowCodecClass(
+      Class<?> beanClass,
+      Encoding codecFactory,
+      Schema historicalSchema,
+      Set<String> liveNames,
+      String classSuffix,
+      Map<Class<?>, String> nestedSuffixes,
+      ClassLoader classLoader) {
+    final RowEncoderBuilder codecBuilder =
+        codecFactory.newProjectionRowEncoder(
+            TypeRef.of(beanClass), historicalSchema, liveNames, classSuffix, nestedSuffixes);
+    CompileUnit compileUnit =
+        new CompileUnit(
+            CodeGenerator.getPackage(beanClass),
+            codecBuilder.codecClassName(beanClass) + classSuffix,
+            codecBuilder::genCode);
+    return loadCls(classLoader, compileUnit);
   }
 
   static <B> Class<?> loadOrGenArrayCodecClass(
@@ -348,7 +380,26 @@ public class Encoders {
             codecBuilder.codecClassName(cls, prefix),
             codecBuilder::genCode);
 
-    return loadCls(compileUnit);
+    return loadCls(Thread.currentThread().getContextClassLoader(), compileUnit);
+  }
+
+  static <B> Class<?> loadOrGenProjectionArrayCodecClass(
+      TypeRef<? extends Collection<?>> arrayCls,
+      TypeRef<B> elementType,
+      Encoding codecFactory,
+      String classSuffix,
+      Map<Class<?>, String> nestedSuffixes,
+      ClassLoader classLoader) {
+    Class<?> cls = getRawType(elementType);
+    String prefix = TypeInference.inferTypeName(arrayCls);
+    ArrayEncoderBuilder codecBuilder =
+        codecFactory.newProjectionArrayEncoder(arrayCls, elementType, classSuffix, nestedSuffixes);
+    CompileUnit compileUnit =
+        new CompileUnit(
+            CodeGenerator.getPackage(cls),
+            codecBuilder.codecClassName(cls, prefix) + classSuffix,
+            codecBuilder::genCode);
+    return loadCls(classLoader, compileUnit);
   }
 
   static <K, V> Class<?> loadOrGenMapCodecClass(
@@ -381,18 +432,61 @@ public class Encoders {
             codecBuilder.codecClassName(cls, prefix),
             codecBuilder::genCode);
 
-    return loadCls(compileUnit);
+    return loadCls(Thread.currentThread().getContextClassLoader(), compileUnit);
   }
 
-  private static Class<?> loadCls(CompileUnit... compileUnit) {
-    CodeGenerator codeGenerator =
-        CodeGenerator.getSharedCodeGenerator(Thread.currentThread().getContextClassLoader());
+  static Class<?> loadOrGenProjectionMapCodecClass(
+      TypeRef<? extends Map<?, ?>> mapCls,
+      TypeRef<?> beanToken,
+      Encoding codecFactory,
+      String valCodecSuffix,
+      String keyCodecSuffix,
+      Map<Class<?>, String> valNestedSuffixes,
+      Map<Class<?>, String> keyNestedSuffixes,
+      ClassLoader classLoader) {
+    Class<?> cls = getRawType(beanToken);
+    String prefix = TypeInference.inferTypeName(mapCls);
+    MapEncoderBuilder codecBuilder =
+        codecFactory.newProjectionMapEncoder(
+            mapCls,
+            beanToken,
+            valCodecSuffix,
+            keyCodecSuffix,
+            valNestedSuffixes,
+            keyNestedSuffixes);
+    CompileUnit compileUnit =
+        new CompileUnit(
+            CodeGenerator.getPackage(cls),
+            codecBuilder.codecClassName(cls, prefix) + codecBuilder.mapClassSuffix(),
+            codecBuilder::genCode);
+    return loadCls(classLoader, compileUnit);
+  }
+
+  private static Class<?> loadCls(ClassLoader classLoaderHint, CompileUnit... compileUnit) {
+    CodeGenerator codeGenerator = CodeGenerator.getSharedCodeGenerator(classLoaderHint);
     ClassLoader classLoader = codeGenerator.compile(compileUnit);
     String className = compileUnit[0].getQualifiedClassName();
     try {
       return classLoader.loadClass(className);
     } catch (final ClassNotFoundException e) {
       throw new IllegalStateException("Impossible because we just compiled class", e);
+    }
+  }
+
+  /**
+   * Build a {@link MethodHandle} bound to {@code generatedClass}'s {@code (Object[])} constructor,
+   * adapted so it returns {@code generatedType}. All generated row/array/map codec classes share
+   * this constructor shape; this helper centralises the reflection and exception wrapping.
+   */
+  static MethodHandle constructorHandleFor(Class<?> generatedClass, Class<?> generatedType) {
+    try {
+      Constructor<?> constructor =
+          generatedClass.asSubclass(generatedType).getConstructor(Object[].class);
+      return MethodHandles.lookup()
+          .unreflectConstructor(constructor)
+          .asType(MethodType.methodType(generatedType, Object[].class));
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      throw new EncoderException("Failed to resolve constructor for " + generatedClass, e);
     }
   }
 }
