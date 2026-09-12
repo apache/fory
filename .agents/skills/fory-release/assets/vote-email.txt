@@ -14,7 +14,7 @@ The change list since Apache Fory ${previous_version}:
 https://github.com/apache/fory/compare/v${previous_version}...${rc_tag}
 
 The release candidate artifacts:
-https://dist.apache.org/repos/dist/dev/fory/${dist_version}/
+${release_candidate_url}
 
 The Maven staging repositories:
 Java and Kotlin:
