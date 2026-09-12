@@ -758,7 +758,8 @@ public final class Utf8JsonReader extends JsonReader {
     return tryReadNullToken();
   }
 
-  private boolean tryReadNullLiteral() {
+  @Override
+  protected boolean tryReadNullLiteral() {
     byte[] bytes = input;
     int offset = position;
     if (offset + 3 < inputLimit && LittleEndian.getInt32(bytes, offset) == NULL_LITERAL) {

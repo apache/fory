@@ -624,6 +624,9 @@ public abstract class JsonReader {
     return tryReadNull();
   }
 
+  // Positioned token readers and skipValue reuse the concrete literal check without whitespace.
+  protected abstract boolean tryReadNullLiteral();
+
   public final boolean readBoolean() {
     skipWhitespace();
     return readBooleanToken();
@@ -2775,7 +2778,7 @@ public abstract class JsonReader {
         readBooleanToken();
         return;
       case 'n':
-        if (!tryReadNullToken()) {
+        if (!tryReadNullLiteral()) {
           skipNumberToken();
         }
         return;

@@ -546,7 +546,8 @@ public final class Utf16JsonReader extends JsonReader {
     return tryReadNullToken();
   }
 
-  private boolean tryReadNullLiteral() {
+  @Override
+  protected boolean tryReadNullLiteral() {
     if (startsWithAscii("null")) {
       position += 4;
       return true;
