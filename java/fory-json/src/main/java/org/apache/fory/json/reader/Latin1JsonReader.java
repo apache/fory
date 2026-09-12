@@ -101,6 +101,32 @@ public final class Latin1JsonReader extends JsonReader {
   }
 
   @Override
+  boolean matchesZoneId(int start, int end, byte[] expected) {
+    int length = expected.length;
+    if (length != end - start) {
+      return false;
+    }
+    byte[] bytes = input;
+    if (length >= Long.BYTES) {
+      int last = length - Long.BYTES;
+      for (int i = 0; i < last; i += Long.BYTES) {
+        if (LittleEndian.getInt64(bytes, start + i) != LittleEndian.getInt64(expected, i)) {
+          return false;
+        }
+      }
+      // Both ranges were proved by the scanned token and equal length. The overlapping last
+      // word compares every tail byte without reading beyond either range.
+      return LittleEndian.getInt64(bytes, start + last) == LittleEndian.getInt64(expected, last);
+    }
+    for (int i = 0; i < length; i++) {
+      if (bytes[start + i] != expected[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @Override
   protected int scanStringEnd(int start) {
     int inputLength = input.length;
     if (start >= inputLength || input[start] != '"') {

@@ -20,13 +20,16 @@
 package org.apache.fory.json.reader;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertTrue;
 
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
@@ -48,12 +51,39 @@ public class ZoneIdCacheTest {
     // Supply equal hashes to exercise comparison after both local and global candidate hits.
     long hash = Long.MIN_VALUE;
     ZoneId paris = read(cache, "Europe/Paris", hash);
-    assertEquals(read(cache, "Europe/Rome", hash), ZoneId.of("Europe/Rome"));
+    assertEquals(read(cache, "Europe/Vaduz", hash), ZoneId.of("Europe/Vaduz"));
     assertSame(read(cache, "Europe/Paris", hash), paris);
     ZoneIdCache other = new ZoneIdCache();
-    assertEquals(read(other, "Europe/Rome", hash), ZoneId.of("Europe/Rome"));
+    assertEquals(read(other, "Europe/Vaduz", hash), ZoneId.of("Europe/Vaduz"));
     assertSame(read(other, "Europe/Paris", hash), paris);
-    assertNotSame(read(other, "Europe/Rome", hash), read(other, "Europe/Rome", hash));
+    assertNotSame(read(other, "Europe/Vaduz", hash), read(other, "Europe/Vaduz", hash));
+  }
+
+  @Test
+  public void textRanges() {
+    for (int length = 1; length <= 128; length++) {
+      byte[] expected = new byte[length];
+      for (int i = 0; i < length; i++) {
+        expected[i] = (byte) ('a' + i % 26);
+      }
+      for (int start = 0; start < 8; start++) {
+        byte[] bytes = new byte[start + length];
+        Arrays.fill(bytes, (byte) '!');
+        System.arraycopy(expected, 0, bytes, start, length);
+        Utf8JsonReader utf8 = new Utf8JsonReader(CONFIG, new JsonTypeResolver(REGISTRY), bytes);
+        Latin1JsonReader latin1 =
+            new Latin1JsonReader(CONFIG, new JsonTypeResolver(REGISTRY), bytes);
+        for (JsonReader reader : new JsonReader[] {utf8, latin1}) {
+          assertTrue(reader.matchesZoneId(start, bytes.length, expected));
+          assertFalse(reader.matchesZoneId(start, bytes.length - 1, expected));
+          for (int i = 0; i < length; i++) {
+            bytes[start + i] ^= 1;
+            assertFalse(reader.matchesZoneId(start, bytes.length, expected));
+            bytes[start + i] ^= 1;
+          }
+        }
+      }
+    }
   }
 
   @Test

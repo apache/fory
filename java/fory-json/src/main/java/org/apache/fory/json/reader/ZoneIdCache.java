@@ -22,6 +22,7 @@ package org.apache.fory.json.reader;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.zone.ZoneRules;
@@ -58,7 +59,7 @@ final class ZoneIdCache {
 
   ZoneId get(JsonReader reader, int start, int end, long hash) {
     Entry entry = find(hash);
-    if (entry != null && matches(entry.id, reader, start, end)) {
+    if (entry != null && reader.matchesZoneId(start, end, entry.text)) {
       return entry.zone;
     }
     return parse(reader.slice(start, end), hash);
@@ -176,18 +177,6 @@ final class ZoneIdCache {
     }
   }
 
-  private static boolean matches(String id, JsonReader reader, int start, int end) {
-    if (id.length() != end - start) {
-      return false;
-    }
-    for (int i = 0; i < id.length(); i++) {
-      if (id.charAt(i) != reader.charAt(start + i)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   private static boolean matches(String id, CharSequence text, int start, int end) {
     if (id.length() != end - start) {
       return false;
@@ -203,10 +192,16 @@ final class ZoneIdCache {
   private static final class Entry {
     final String id;
     final ZoneId zone;
+    final byte[] text;
 
     Entry(String id, ZoneId zone) {
       this.id = id;
       this.zone = zone;
+      // Valid zone IDs contain only ASCII; share the String's immutable storage when available.
+      text =
+          STRING_BYTES_BACKED && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(id))
+              ? StringSerializer.getStringBytes(id)
+              : id.getBytes(StandardCharsets.US_ASCII);
     }
   }
 

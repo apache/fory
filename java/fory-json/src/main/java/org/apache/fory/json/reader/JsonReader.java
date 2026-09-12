@@ -991,6 +991,18 @@ public abstract class JsonReader {
 
   abstract ZoneIdCache zoneIds();
 
+  boolean matchesZoneId(int start, int end, byte[] expected) {
+    if (expected.length != end - start) {
+      return false;
+    }
+    for (int i = 0; i < expected.length; i++) {
+      if (expected[i] != charAt(start + i)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /** Reads a nullable zone ID, sharing cacheable zone objects across reader instances. */
   public final ZoneId readZoneId() {
     if (tryReadNullToken()) {
