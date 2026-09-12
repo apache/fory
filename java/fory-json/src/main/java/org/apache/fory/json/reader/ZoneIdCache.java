@@ -42,7 +42,7 @@ import org.apache.fory.serializer.StringSerializer;
 /** Reader-local references to bounded, immutable, process-wide zone entries. */
 final class ZoneIdCache {
   static final long HASH_SEED = 0xcbf29ce484222325L;
-  static final long HASH_MULTIPLIER = 0x100000001b3L;
+  static final long HASH_MULTIPLIER = 33L; // Shifted add; hits still compare the full ID.
   private static final int MAX_SHARED_ENTRIES = 2048;
   private static final int MAX_LOCAL_ENTRIES = 1024;
   private static final int MAX_ID_LENGTH = 128;
