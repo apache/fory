@@ -2978,6 +2978,52 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readDoubleFractionWords() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    String digits = "12345678901234567890";
+    for (String integer :
+        new String[] {"0", "1", "23", "92233720367", "92233720368", "92233720369"}) {
+      for (int length : new int[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 16, 17, 18, 19, 20}) {
+        for (String sign : new String[] {"", "-"}) {
+          for (String exponent : new String[] {"", "e-324", "E+308"}) {
+            String value = sign + integer + '.' + digits.substring(0, length) + exponent;
+            long expected = Double.doubleToRawLongBits(Double.parseDouble(value));
+            for (boolean quoted : new boolean[] {false, true}) {
+              String token = quoted ? '"' + value + '"' : value;
+              for (int offset = 0; offset < 8; offset++) {
+                byte[] input = (token + ",17        ").getBytes(StandardCharsets.US_ASCII);
+                byte[] bytes = new byte[offset + input.length];
+                System.arraycopy(input, 0, bytes, offset, input.length);
+                reader.reset(bytes, offset, input.length);
+                assertEquals(
+                    Double.doubleToRawLongBits(reader.readDoubleTokenValue()), expected, token);
+                reader.expectNextToken(',');
+                assertEquals(reader.readInt(), 17);
+                Arrays.fill(bytes, offset + token.length(), bytes.length, (byte) '9');
+                reader.reset(bytes, offset, token.length());
+                assertEquals(
+                    Double.doubleToRawLongBits(reader.readDoubleTokenValue()), expected, token);
+                reader.finish();
+              }
+            }
+          }
+        }
+      }
+    }
+    ForyJson json = ForyJson.builder().build();
+    for (int ch = 0; ch < 256; ch++) {
+      if ((ch >= '0' && ch <= '9') || ch == 'e' || ch == 'E') {
+        continue;
+      }
+      for (int lane = 0; lane < 8; lane++) {
+        byte[] bytes = "1.123456789".getBytes(StandardCharsets.US_ASCII);
+        bytes[2 + lane] = (byte) ch;
+        assertThrows(ForyJsonException.class, () -> json.fromJson(bytes, Double.class));
+      }
+    }
+  }
+
+  @Test
   public void readFloatFractionWords() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
     String digits = "12345678901234567890";

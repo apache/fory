@@ -104,7 +104,6 @@ public final class Utf8JsonReader extends JsonReader {
   private static final int LONG_MIN_LAST_DIGIT = (int) -(Long.MIN_VALUE % 10);
   private static final long EIGHT_DIGITS = 100_000_000L;
   private static final long LONG_MAX_DIV_EIGHT_DIGITS = Long.MAX_VALUE / EIGHT_DIGITS;
-  private static final int LONG_MAX_MOD_EIGHT_DIGITS = (int) (Long.MAX_VALUE % EIGHT_DIGITS);
   private static final long ASCII_ZEROES = 0x3030_3030_3030_3030L;
   private static final long ASCII_NINES = 0x3939_3939_3939_3939L;
   private static final long ASCII_HIGH_BITS = 0x8080_8080_8080_8080L;
@@ -1440,14 +1439,6 @@ public final class Utf8JsonReader extends JsonReader {
     return (pairs & 0xFFFF) * 100 + (pairs >>> 16);
   }
 
-  private static long appendEightDigits(byte[] bytes, int offset, int safeEnd, long unscaled) {
-    int block = parseEightDigits(bytes, offset, safeEnd);
-    if (block < 0 || !canAppendEightDigits(unscaled, block)) {
-      return -1;
-    }
-    return unscaled * EIGHT_DIGITS + block;
-  }
-
   private static long appendFourDigits(byte[] bytes, int offset, int safeEnd, long unscaled) {
     int block = parseFourDigits(bytes, offset, safeEnd);
     if (block < 0) {
@@ -1476,14 +1467,6 @@ public final class Utf8JsonReader extends JsonReader {
     }
     long adjusted = unscaled + ((pair + (127 - LONG_MAX_MOD_100)) >>> 7);
     return Long.compareUnsigned(adjusted, LONG_MAX_DIV_100) <= 0;
-  }
-
-  private static boolean canAppendEightDigits(long unscaled, int block) {
-    if ((unscaled >>> 36) == 0) {
-      return true;
-    }
-    long adjusted = unscaled + (block > LONG_MAX_MOD_EIGHT_DIGITS ? 1 : 0);
-    return Long.compareUnsigned(adjusted, LONG_MAX_DIV_EIGHT_DIGITS) <= 0;
   }
 
   @Override
@@ -2043,15 +2026,31 @@ public final class Utf8JsonReader extends JsonReader {
     if (offset < inputLimit && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
-      long appended = appendEightDigits(bytes, offset, inputLimit, unscaled);
-      while (appended >= 0) {
-        unscaled = appended;
-        scale += 8;
-        offset += 8;
-        appended = appendEightDigits(bytes, offset, inputLimit, unscaled);
+      while (unscaled < LONG_MAX_DIV_EIGHT_DIGITS && offset <= inputLimit - Long.BYTES) {
+        long text = LittleEndian.getInt64(bytes, offset);
+        long digits = text - ASCII_ZEROES;
+        long stop = (digits | (ASCII_NINES - text)) & ASCII_HIGH_BITS;
+        if (stop != 0) {
+          int count = Long.numberOfTrailingZeros(stop) >>> 3;
+          if (count == 0) {
+            if (scale == 0) {
+              return readDoubleFallback(start);
+            }
+          } else {
+            // The coefficient bound makes every eight-digit suffix safe. Consume only the
+            // validated short prefix and preserve its actual scale before the delimiter.
+            digits = (digits & ((1L << (count << 3)) - 1)) << ((Long.BYTES - count) << 3);
+            unscaled = unscaled * LONG_POWERS_OF_TEN[count] + combineEightDigits(digits);
+          }
+          return finishDoubleToken(
+              bytes, offset + count, inputLimit, start, unscaled, scale + count);
+        }
+        unscaled = unscaled * EIGHT_DIGITS + combineEightDigits(digits);
+        scale += Long.BYTES;
+        offset += Long.BYTES;
       }
       if (scale != 0 && unscaled < LONG_MAX_DIV_FOUR_DIGITS) {
-        appended = appendFourDigits(bytes, offset, inputLimit, unscaled);
+        long appended = appendFourDigits(bytes, offset, inputLimit, unscaled);
         if (appended >= 0) {
           unscaled = appended;
           scale += 4;
@@ -2140,15 +2139,31 @@ public final class Utf8JsonReader extends JsonReader {
     if (offset < inputLimit && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
-      long appended = appendEightDigits(bytes, offset, inputLimit, unscaled);
-      while (appended >= 0) {
-        unscaled = appended;
-        scale += 8;
-        offset += 8;
-        appended = appendEightDigits(bytes, offset, inputLimit, unscaled);
+      while (unscaled < LONG_MAX_DIV_EIGHT_DIGITS && offset <= inputLimit - Long.BYTES) {
+        long text = LittleEndian.getInt64(bytes, offset);
+        long digits = text - ASCII_ZEROES;
+        long stop = (digits | (ASCII_NINES - text)) & ASCII_HIGH_BITS;
+        if (stop != 0) {
+          int count = Long.numberOfTrailingZeros(stop) >>> 3;
+          if (count == 0) {
+            if (scale == 0) {
+              return readDoubleFallback(start);
+            }
+          } else {
+            // The coefficient bound makes every eight-digit suffix safe. Consume only the
+            // validated short prefix and preserve its actual scale before the delimiter.
+            digits = (digits & ((1L << (count << 3)) - 1)) << ((Long.BYTES - count) << 3);
+            unscaled = unscaled * LONG_POWERS_OF_TEN[count] + combineEightDigits(digits);
+          }
+          return finishSignedDoubleToken(
+              bytes, offset + count, inputLimit, start, unscaled, scale + count);
+        }
+        unscaled = unscaled * EIGHT_DIGITS + combineEightDigits(digits);
+        scale += Long.BYTES;
+        offset += Long.BYTES;
       }
       if (scale != 0 && unscaled < LONG_MAX_DIV_FOUR_DIGITS) {
-        appended = appendFourDigits(bytes, offset, inputLimit, unscaled);
+        long appended = appendFourDigits(bytes, offset, inputLimit, unscaled);
         if (appended >= 0) {
           unscaled = appended;
           scale += 4;
