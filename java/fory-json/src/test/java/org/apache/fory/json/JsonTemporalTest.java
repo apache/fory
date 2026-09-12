@@ -25,6 +25,8 @@ import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Writer;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 
 import java.nio.charset.StandardCharsets;
@@ -169,6 +171,56 @@ public class JsonTemporalTest extends ForyJsonTestModels {
     assertEquals(lazy.getRules(), provider.rules);
     provider.rules = previous;
     assertEquals(lazy.getRules(), previous);
+  }
+
+  @Test
+  public void readSharedZoneIds() {
+    for (String id : new String[] {"Europe/Paris", "America/New_York", "UTC+05:30", "UT-04:00"}) {
+      String token = '"' + id + '"';
+      ForyJson first = ForyJson.builder().build();
+      ZoneId zone = first.fromJson(token, ZoneId.class);
+      for (boolean codegen : new boolean[] {false, true}) {
+        ForyJson json = ForyJson.builder().withCodegen(codegen).build();
+        assertSame(json.fromJson(token, ZoneId.class), zone);
+        assertSame(json.fromJson(token.getBytes(StandardCharsets.UTF_8), ZoneId.class), zone);
+        assertSame(ScalarCodecs.ZoneIdCodec.INSTANCE.readUtf16(newUtf16Reader(token)), zone);
+        String escaped =
+            "\"\\u"
+                + String.format(Locale.ROOT, "%04x", (int) id.charAt(0))
+                + id.substring(1)
+                + '"';
+        assertSame(json.fromJson(escaped, ZoneId.class), zone);
+        ZoneId[] array = json.fromJson('[' + token + ",null," + token + ']', ZoneId[].class);
+        assertSame(array[0], zone);
+        assertSame(array[2], zone);
+        String dateTime = "\"2024-03-31T02:30:00+01:00[" + id + "]\"";
+        ZonedDateTime decoded = json.fromJson(dateTime, ZonedDateTime.class);
+        assertSame(decoded.getZone(), zone);
+        assertEquals(decoded.toInstant(), Instant.parse("2024-03-31T01:30:00Z"));
+        assertSame(
+            json.fromJson(dateTime.getBytes(StandardCharsets.UTF_8), ZonedDateTime.class).getZone(),
+            zone);
+      }
+    }
+  }
+
+  @Test
+  public void readUncachedZoneIds() {
+    ForyJson json = ForyJson.builder().build();
+    ZoneId common = json.fromJson("\"Europe/Paris\"", ZoneId.class);
+    for (int seconds = 1; seconds <= 2048; seconds++) {
+      if (seconds % 900 == 0) {
+        continue;
+      }
+      String id = "UTC" + ZoneOffset.ofTotalSeconds(seconds).getId();
+      String token = '"' + id + '"';
+      ZoneId first = json.fromJson(token, ZoneId.class);
+      ZoneId second = json.fromJson(token.getBytes(StandardCharsets.UTF_8), ZoneId.class);
+      assertEquals(first, ZoneId.of(id));
+      assertEquals(second, first);
+      assertNotSame(second, first);
+    }
+    assertSame(json.fromJson("\"Europe/Paris\"", ZoneId.class), common);
   }
 
   @Test

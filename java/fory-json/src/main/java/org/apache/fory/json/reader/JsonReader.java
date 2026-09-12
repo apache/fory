@@ -989,6 +989,46 @@ public abstract class JsonReader {
     return offset;
   }
 
+  abstract ZoneIdCache zoneIds();
+
+  /** Reads a nullable zone ID, sharing cacheable zone objects across reader instances. */
+  public final ZoneId readZoneId() {
+    if (tryReadNullToken()) {
+      return null;
+    }
+    int mark = position;
+    if (position >= length() || charAt(position++) != '"') {
+      throw error("Expected string");
+    }
+    int start = position;
+    long hash = ZoneIdCache.HASH_SEED;
+    while (position < length()) {
+      char ch = charAt(position++);
+      if (ch == '"') {
+        try {
+          return zoneIds().get(this, start, position - 1, hash);
+        } catch (RuntimeException e) {
+          throw invalidStringValue("java.time.ZoneId", e);
+        }
+      }
+      if (ch == '\\' || ch < 0x20 || ch >= 0x80) {
+        position = mark;
+        return readZoneIdText();
+      }
+      hash = hash * ZoneIdCache.HASH_MULTIPLIER ^ ch;
+    }
+    throw error("Unterminated string");
+  }
+
+  private ZoneId readZoneIdText() {
+    CharSequence value = readQuotedTextValue();
+    try {
+      return zoneIds().get(value, 0, value.length());
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.ZoneId", e);
+    }
+  }
+
   public ZonedDateTime readZonedDateTime() {
     return parseZonedDateTimeValue(readQuotedTextValue());
   }
@@ -1413,10 +1453,7 @@ public abstract class JsonReader {
         ZoneOffset offset = parseIsoOffset(value, offsetStart, offsetEnd);
         LocalDateTime dateTime = parseIsoDateTime(value, offsetStart);
         if (offset != null && dateTime != null) {
-          ZoneId zone =
-              zoneStart < 0
-                  ? offset
-                  : ZoneId.of(value.subSequence(zoneStart + 1, end - 1).toString());
+          ZoneId zone = zoneStart < 0 ? offset : zoneIds().get(value, zoneStart + 1, end - 1);
           // ISO parsing resolves an explicit offset to an instant before applying the region's
           // rules, including when the supplied local time falls in a gap or uses another offset.
           // JDK 8's generic parser can discard that explicit offset; preserve the encoded instant.

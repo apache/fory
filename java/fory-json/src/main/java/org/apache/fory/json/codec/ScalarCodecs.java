@@ -20,9 +20,6 @@
 package org.apache.fory.json.codec;
 
 import java.io.File;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.URI;
@@ -53,7 +50,6 @@ import java.time.chrono.MinguoDate;
 import java.time.chrono.ThaiBuddhistChronology;
 import java.time.chrono.ThaiBuddhistDate;
 import java.time.format.DateTimeFormatter;
-import java.time.zone.ZoneRules;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Calendar;
@@ -91,9 +87,6 @@ import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.meta.TypeExtMeta;
-import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.GraalvmSupport;
-import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.StringSerializer;
@@ -2062,11 +2055,6 @@ public final class ScalarCodecs {
   public static final class ZoneIdCodec implements JsonValueCodec<ZoneId> {
     public static final ZoneIdCodec INSTANCE = new ZoneIdCodec();
     private static final boolean STRING_BYTES_BACKED = StringSerializer.isBytesBackedString();
-    private static final MethodHandle REGION_CONSTRUCTOR = regionConstructor();
-    private static final MethodHandle REGION_RULES = regionRules();
-    private static final MethodHandle STRING_HASH_SETTER = stringHashSetter();
-    private static final boolean[] REGION_CHARACTERS = regionCharacters();
-    private static final short[] REGION_PAIRS = regionPairs();
 
     @Override
     public void writeString(StringJsonWriter writer, ZoneId value) {
@@ -2113,218 +2101,17 @@ public final class ScalarCodecs {
 
     @Override
     public ZoneId readLatin1(Latin1JsonReader reader) {
-      String value = reader.readNextNullableString();
-      if (value == null) {
-        return null;
-      }
-      try {
-        return parseZoneId(value);
-      } catch (RuntimeException e) {
-        throw invalidString(ZoneId.class, value, e);
-      }
+      return reader.readZoneId();
     }
 
     @Override
     public ZoneId readUtf16(Utf16JsonReader reader) {
-      String value = reader.readNextNullableString();
-      if (value == null) {
-        return null;
-      }
-      try {
-        return parseZoneId(value);
-      } catch (RuntimeException e) {
-        throw invalidString(ZoneId.class, value, e);
-      }
+      return reader.readZoneId();
     }
 
     @Override
     public ZoneId readUtf8(Utf8JsonReader reader) {
-      String value = reader.readNextNullableString();
-      if (value == null) {
-        return null;
-      }
-      try {
-        return parseZoneId(value);
-      } catch (RuntimeException e) {
-        throw invalidString(ZoneId.class, value, e);
-      }
-    }
-
-    private static ZoneId parseZoneId(String value) {
-      if (REGION_CONSTRUCTOR == null
-          || REGION_RULES == null
-          || STRING_HASH_SETTER == null
-          || !STRING_BYTES_BACKED
-          || !StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(value))
-          || value.length() < 2) {
-        return ZoneId.of(value);
-      }
-      if (value.startsWith("UT") || value.startsWith("GMT")) {
-        return parsePrefixedZoneId(value);
-      }
-      byte[] bytes = StringSerializer.getStringBytes(value);
-      int first = bytes[0] | 0x20;
-      if (first < 'a' || first > 'z') {
-        return ZoneId.of(value);
-      }
-      int hash = bytes[0];
-      int i = 1;
-      for (; i <= bytes.length - Integer.BYTES; i += Integer.BYTES) {
-        int text = LittleEndian.getInt32(bytes, i);
-        if ((text & 0x80808080) != 0) {
-          return ZoneId.of(value);
-        }
-        int firstPair = REGION_PAIRS[((text & 0x7f) << 7) | ((text >>> 8) & 0x7f)];
-        int secondPair = REGION_PAIRS[(((text >>> 16) & 0x7f) << 7) | (text >>> 24)];
-        if ((firstPair | secondPair) < 0) {
-          return ZoneId.of(value);
-        }
-        hash = 31 * 31 * 31 * 31 * hash + 31 * 31 * firstPair + secondPair;
-      }
-      for (; i < bytes.length - 1; i += 2) {
-        int firstChar = bytes[i];
-        int secondChar = bytes[i + 1];
-        if ((firstChar | secondChar) < 0) {
-          return ZoneId.of(value);
-        }
-        int contribution = REGION_PAIRS[(firstChar << 7) | secondChar];
-        if (contribution < 0) {
-          return ZoneId.of(value);
-        }
-        hash = 961 * hash + contribution;
-      }
-      if (i < bytes.length) {
-        int ch = bytes[i] & 0xff;
-        if (!REGION_CHARACTERS[ch]) {
-          return ZoneId.of(value);
-        }
-        hash = 31 * hash + ch;
-      }
-      // The decoded String owns its storage. Compute its standard hash during validation so the
-      // provider lookup does not scan the same characters again; no input or zone is retained.
-      try {
-        STRING_HASH_SETTER.invokeExact(value, hash);
-        // Preserve the provider's caching decision, including a null result for dynamic rules.
-        ZoneRules rules = (ZoneRules) REGION_RULES.invokeExact(value, true);
-        return zoneRegion(value, rules);
-      } catch (RuntimeException e) {
-        throw e;
-      } catch (ThreadDeath | VirtualMachineError e) {
-        throw e;
-      } catch (Throwable e) {
-        throw new ForyJsonException("Cannot resolve JSON zone ID", e);
-      }
-    }
-
-    private static ZoneId parsePrefixedZoneId(String value) {
-      int start = value.startsWith("UTC") || value.startsWith("GMT") ? 3 : 2;
-      if (value.length() != start + 6 || value.charAt(start + 3) != ':') {
-        return ZoneId.of(value);
-      }
-      int sign = value.charAt(start);
-      int h0 = value.charAt(start + 1) - '0';
-      int h1 = value.charAt(start + 2) - '0';
-      int m0 = value.charAt(start + 4) - '0';
-      int m1 = value.charAt(start + 5) - '0';
-      if ((sign != '+' && sign != '-')
-          || (h0 | h1 | m0 | m1 | (9 - h0) | (9 - h1) | (9 - m0) | (9 - m1)) < 0) {
-        return ZoneId.of(value);
-      }
-      int hours = h0 * 10 + h1;
-      int minutes = m0 * 10 + m1;
-      if (hours > 18 || minutes > 59 || (hours == 18 && minutes != 0)) {
-        return ZoneId.of(value);
-      }
-      int seconds = hours * 3600 + minutes * 60;
-      if (seconds == 0) {
-        return ZoneId.of(value);
-      }
-      // Nonzero signed HH:MM is already canonical. Retain this read's ID instead of splitting
-      // and concatenating it; zero offsets must keep the JDK's prefix-only normalization.
-      ZoneOffset offset = ZoneOffset.ofTotalSeconds(sign == '-' ? -seconds : seconds);
-      return zoneRegion(value, offset.getRules());
-    }
-
-    private static ZoneId zoneRegion(String value, ZoneRules rules) {
-      try {
-        return (ZoneId) REGION_CONSTRUCTOR.invokeExact(value, rules);
-      } catch (ThreadDeath | VirtualMachineError e) {
-        throw e;
-      } catch (Throwable e) {
-        throw new ForyJsonException("Cannot construct JSON zone ID", e);
-      }
-    }
-
-    private static boolean[] regionCharacters() {
-      boolean[] characters = new boolean[256];
-      String allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/~._+-";
-      for (int i = 0; i < allowed.length(); i++) {
-        characters[allowed.charAt(i)] = true;
-      }
-      return characters;
-    }
-
-    private static short[] regionPairs() {
-      // ASCII pairs fit fourteen index bits. A valid pair contributes 31 * first + second to
-      // the String hash; -1 marks every pair containing a disallowed region character.
-      short[] pairs = new short[1 << 14];
-      Arrays.fill(pairs, (short) -1);
-      for (int first = 0; first < 128; first++) {
-        if (REGION_CHARACTERS[first]) {
-          for (int second = 0; second < 128; second++) {
-            if (REGION_CHARACTERS[second]) {
-              pairs[(first << 7) | second] = (short) (31 * first + second);
-            }
-          }
-        }
-      }
-      return pairs;
-    }
-
-    private static MethodHandle stringHashSetter() {
-      if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
-        return null;
-      }
-      try {
-        return _JDKAccess._trustedLookup(String.class).findSetter(String.class, "hash", int.class);
-      } catch (NoSuchFieldException | IllegalAccessException e) {
-        return null;
-      }
-    }
-
-    private static MethodHandle regionRules() {
-      if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
-        return null;
-      }
-      try {
-        // Android does not expose ZoneRulesProvider. A direct class reference fails R8 even
-        // though Android uses ZoneId.of; resolve this JVM-only dependency during initialization.
-        Class<?> provider =
-            Class.forName("java.time.zone.ZoneRulesProvider", false, ZoneId.class.getClassLoader());
-        return MethodHandles.publicLookup()
-            .findStatic(
-                provider,
-                "getRules",
-                MethodType.methodType(ZoneRules.class, String.class, boolean.class));
-      } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException e) {
-        return null;
-      }
-    }
-
-    private static MethodHandle regionConstructor() {
-      if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
-        return null;
-      }
-      try {
-        Class<?> region =
-            Class.forName("java.time.ZoneRegion", false, ZoneId.class.getClassLoader());
-        return _JDKAccess._trustedLookup(region)
-            .findConstructor(
-                region, MethodType.methodType(void.class, String.class, ZoneRules.class))
-            .asType(MethodType.methodType(ZoneId.class, String.class, ZoneRules.class));
-      } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException e) {
-        return null;
-      }
+      return reader.readZoneId();
     }
   }
 
