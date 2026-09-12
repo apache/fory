@@ -867,11 +867,29 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     pos += 8;
     int nano = value.getNano();
     if (nano != 0) {
-      bytes[pos++] = '.';
-      pos = writePadded9(bytes, pos, nano);
-      // A nonzero final digit needs no trimming. Use the coefficient to avoid reading back
-      // the common final byte immediately after its wide store.
-      if (nano % 10 == 0) {
+      int millis = nano / 1_000_000;
+      int micros = nano / 1000;
+      int middle = micros - millis * 1000;
+      int low = nano - micros * 1000;
+      LittleEndian.putInt32(bytes, pos, (DIGIT_TRIPLES[millis] & 0xffffff00) | '.');
+      pos += 4;
+      int lastGroup;
+      // Decimal groups determine both their digits and the significant fraction width. Callers
+      // reserve a closing quote after the maximum fraction, covering the last store's spare byte.
+      if (low != 0) {
+        LittleEndian.putInt32(bytes, pos, DIGIT_TRIPLES[middle] >>> 8);
+        LittleEndian.putInt32(bytes, pos + 3, DIGIT_TRIPLES[low] >>> 8);
+        pos += 6;
+        lastGroup = low;
+      } else if (middle != 0) {
+        LittleEndian.putInt32(bytes, pos, DIGIT_TRIPLES[middle] >>> 8);
+        pos += 3;
+        lastGroup = middle;
+      } else {
+        lastGroup = millis;
+      }
+      // A nonzero final digit needs no trimming; zero groups were already omitted above.
+      if (lastGroup % 10 == 0) {
         do {
           pos--;
         } while (bytes[pos - 1] == '0');

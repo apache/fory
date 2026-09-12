@@ -1315,6 +1315,59 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeTimeFractions() {
+    for (int digits = 0; digits < 1000; digits++) {
+      int[] nanos = {
+        digits,
+        digits * 1000,
+        digits * 1_000_000,
+        digits * 1_001_000,
+        digits * 1_000_000 + 999,
+        999_000_000 + digits * 1000
+      };
+      for (int nano : nanos) {
+        assertWriter(ScalarCodecs.LocalTimeCodec.INSTANCE, LocalTime.of(12, 34, 56, nano));
+      }
+    }
+    int[] nanos = {
+      0, 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 100010000, 123456789,
+      999999990, 999999999
+    };
+    ZoneOffset offset = ZoneOffset.ofHoursMinutesSeconds(-7, -13, -29);
+    for (int nano : nanos) {
+      LocalTime time = LocalTime.of(12, 34, 56, nano);
+      LocalDateTime dateTime = LocalDateTime.of(LocalDate.of(2024, 2, 29), time);
+      assertTemporalCapacity(ScalarCodecs.LocalTimeCodec.INSTANCE, time);
+      assertTemporalCapacity(ScalarCodecs.LocalDateTimeCodec.INSTANCE, dateTime);
+      assertTemporalCapacity(ScalarCodecs.OffsetTimeCodec.INSTANCE, OffsetTime.of(time, offset));
+      assertTemporalCapacity(
+          ScalarCodecs.OffsetDateTimeCodec.INSTANCE, OffsetDateTime.of(dateTime, offset));
+      assertTemporalCapacity(
+          ScalarCodecs.ZonedDateTimeCodec.INSTANCE, dateTime.atZone(ZoneId.of("Europe/Paris")));
+    }
+  }
+
+  private static <T> void assertTemporalCapacity(JsonValueCodec<T> codec, T value) {
+    StringJsonWriter string = newStringWriter(new byte[1]);
+    codec.writeString(string, value);
+    for (int capacity = 0; capacity <= 40; capacity++) {
+      for (int padding = 0; padding < 8; padding++) {
+        Utf8JsonWriter writer = newUtf8Writer(new byte[capacity]);
+        String prefix = "       ".substring(0, padding);
+        writer.writeRawValue(prefix);
+        codec.writeUtf8(writer, value);
+        writer.writeRawValue(",17");
+        assertEquals(
+            new String(writer.toJsonBytes(), StandardCharsets.UTF_8),
+            prefix + string.toJson() + ",17");
+        writer.reset();
+        codec.writeUtf8(writer, value);
+        assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), string.toJson());
+      }
+    }
+  }
+
+  @Test
   public void writeTemporalFormats() {
     int[] years = {-999999999, -1, 0, 1, 9999, 10000, 999999999};
     int[] nanos = {
