@@ -824,6 +824,37 @@ class ScalaJsonSuite extends AnyFunSuite {
     }
   }
 
+  test("mutable hash map growth") {
+    val mapType = new TypeRef[scala.collection.mutable.Map[String, String]]() {}
+    for (codegen <- Seq(false, true)) {
+      val json = ForyJsonScala.builder().withCodegen(codegen).withAsyncCompilation(false).build()
+      for (size <- Seq(0, 1, 10, 20, 100, 1024, 1025)) {
+        val expected = scala.collection.mutable.HashMap(
+          (0 until size).map(i => i.toString -> (if (i % 3 == 0) null else "值" + i)): _*
+        )
+        val text = json.toJson(expected, mapType)
+        val first = json.fromJson(text.getBytes(UTF_8), mapType)
+        assert(first == expected)
+        assert(json.fromJson(text, mapType) == expected)
+        first.update("added", "after reading")
+        assert(first.remove("added").contains("after reading"))
+        assert(first == expected)
+      }
+      val keys = (0 until 128).map { i =>
+        (0 until 7).map(bit => if ((i & (1 << bit)) == 0) "Aa" else "BB").mkString
+      }
+      assert(keys.map(_.hashCode).distinct.size == 1)
+      val expected = scala.collection.mutable.HashMap(keys.map(k => k -> k): _*)
+      val text = json.toJson(expected, mapType)
+      assert(json.fromJson(text, mapType) == expected)
+      assert(json.fromJson(text.getBytes(UTF_8), mapType) == expected)
+      val duplicate = text.dropRight(1) + ",\"" + keys.head + "\":null}"
+      expected.update(keys.head, null)
+      assert(json.fromJson(duplicate, mapType) == expected)
+      assert(json.fromJson(duplicate.getBytes(UTF_8), mapType) == expected)
+    }
+  }
+
   test("strict collections maps and bit sets") {
     val json = ForyJsonScala.builder().withCodegen(false).build()
 

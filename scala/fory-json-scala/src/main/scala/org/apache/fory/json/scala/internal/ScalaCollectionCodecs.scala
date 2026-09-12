@@ -848,7 +848,8 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     case ScalaCollectionCodecs.ImmutableLongMapKind =>
       scala.collection.immutable.LongMap.newBuilder[Any].asInstanceOf[scala.collection.mutable.Builder[(Any, Any), _]]
     case ScalaCollectionCodecs.MutableHashMapKind =>
-      scala.collection.mutable.HashMap.newBuilder[Any, Any]
+      // Keep the small initial table while reducing bucket allocation during incremental decoding.
+      scala.collection.mutable.HashMap.newBuilder[Any, Any](16, 1.0)
     case ScalaCollectionCodecs.MutableLinkedHashMapKind =>
       scala.collection.mutable.LinkedHashMap.newBuilder[Any, Any]
     case ScalaCollectionCodecs.MutableAnyRefMapKind =>
