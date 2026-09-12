@@ -2065,6 +2065,7 @@ public final class ScalarCodecs {
     private static final MethodHandle REGION_CONSTRUCTOR = regionConstructor();
     private static final MethodHandle STRING_HASH_SETTER = stringHashSetter();
     private static final boolean[] REGION_CHARACTERS = regionCharacters();
+    private static final short[] REGION_PAIRS = regionPairs();
 
     @Override
     public void writeString(StringJsonWriter writer, ZoneId value) {
@@ -2165,7 +2166,20 @@ public final class ScalarCodecs {
         return ZoneId.of(value);
       }
       int hash = bytes[0];
-      for (int i = 1; i < bytes.length; i++) {
+      int i = 1;
+      for (; i < bytes.length - 1; i += 2) {
+        int firstChar = bytes[i];
+        int secondChar = bytes[i + 1];
+        if ((firstChar | secondChar) < 0) {
+          return ZoneId.of(value);
+        }
+        int contribution = REGION_PAIRS[(firstChar << 7) | secondChar];
+        if (contribution < 0) {
+          return ZoneId.of(value);
+        }
+        hash = 961 * hash + contribution;
+      }
+      if (i < bytes.length) {
         int ch = bytes[i] & 0xff;
         if (!REGION_CHARACTERS[ch]) {
           return ZoneId.of(value);
@@ -2234,6 +2248,23 @@ public final class ScalarCodecs {
         characters[allowed.charAt(i)] = true;
       }
       return characters;
+    }
+
+    private static short[] regionPairs() {
+      // ASCII pairs fit fourteen index bits. A valid pair contributes 31 * first + second to
+      // the String hash; -1 marks every pair containing a disallowed region character.
+      short[] pairs = new short[1 << 14];
+      Arrays.fill(pairs, (short) -1);
+      for (int first = 0; first < 128; first++) {
+        if (REGION_CHARACTERS[first]) {
+          for (int second = 0; second < 128; second++) {
+            if (REGION_CHARACTERS[second]) {
+              pairs[(first << 7) | second] = (short) (31 * first + second);
+            }
+          }
+        }
+      }
+      return pairs;
     }
 
     private static MethodHandle stringHashSetter() {
