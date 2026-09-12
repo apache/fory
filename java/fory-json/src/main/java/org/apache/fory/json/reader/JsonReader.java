@@ -1909,10 +1909,10 @@ public abstract class JsonReader {
     while (end - start >= 8) {
       // The complete token has already passed ASCII digit validation.
       long digits = LittleEndian.getInt64(bytes, start) - 0x3030_3030_3030_3030L;
-      // Each decimal pair is below 100, so the packed product has no byte carries.
+      // Each decimal group fits its selected lanes, so the packed products have no lane carries.
       long pairs = ((digits * (10 * 256 + 1)) >>> 8) & 0x00ff_00ff_00ff_00ffL;
-      long groups = (pairs * 100 + (pairs >>> 16)) & 0x0000_ffff_0000_ffffL;
-      long block = (groups & 0xffff) * 10_000 + (groups >>> 32);
+      long groups = ((pairs * (100 * 65536 + 1)) >>> 16) & 0x0000_ffff_0000_ffffL;
+      long block = (groups * (10_000L * (1L << 32) + 1)) >>> 32;
       value = value * 100_000_000 + block;
       start += 8;
     }
