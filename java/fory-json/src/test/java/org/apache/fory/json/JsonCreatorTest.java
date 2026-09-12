@@ -236,6 +236,24 @@ public class JsonCreatorTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void creatorHashCollisions() {
+    ForyJson json = newJson();
+    // Decoded names collide in two table slots. Escapes exercise generated hash fallback.
+    String input =
+        "{\"\\u0041\":3,\"\\u0051\":null,\"\\u0061q\":4,\"\\u0061Q\":5,\"\\u0061\":2,\"\\u0071\":1}";
+    HashCreator latin1 = json.fromJson(input, HashCreator.class);
+    HashCreator utf8 = json.fromJson(input.getBytes(StandardCharsets.UTF_8), HashCreator.class);
+    HashCreator utf16 = json.fromJson(input.replace("null", "\"值\""), HashCreator.class);
+    for (HashCreator value : new HashCreator[] {latin1, utf8, utf16}) {
+      assertEquals(value.q, 1);
+      assertEquals(value.a, 2);
+      assertEquals(value.upper, 3);
+      assertEquals(value.aq, 4);
+      assertEquals(value.aQ, 5);
+    }
+  }
+
+  @Test
   public void creatorFieldWhitespace() {
     ForyJson json = newJson();
     for (String space : new String[] {"", " ", "\n  ", "\t", "\r\n"}) {
@@ -437,6 +455,26 @@ public class JsonCreatorTest extends ForyJsonTestModels {
     public PrefixCreator(int abcOne, int abcTwo) {
       this.abcOne = abcOne;
       this.abcTwo = abcTwo;
+    }
+  }
+
+  public static final class HashCreator {
+    public final int q;
+    public final int a;
+
+    @JsonProperty("A")
+    public final int upper;
+
+    public final int aq;
+    public final int aQ;
+
+    @JsonCreator({"q", "a", "upper", "aq", "aQ"})
+    public HashCreator(int q, int a, int upper, int aq, int aQ) {
+      this.q = q;
+      this.a = a;
+      this.upper = upper;
+      this.aq = aq;
+      this.aQ = aQ;
     }
   }
 
