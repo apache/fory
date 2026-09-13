@@ -59,8 +59,9 @@ private[scala] object ScalaBigIntCodec extends JsonValueCodec[BigInt] {
   }
 
   override def readUtf8(reader: Utf8JsonReader): BigInt = {
-    if (reader.tryReadNullToken()) return null
-    val number = if (reader.peekToken() == '"') reader.readBigInteger() else reader.readNumber()
+    val token = reader.peekToken()
+    if (token == 'n' && reader.tryReadNullToken()) return null
+    val number = if (token == '"') reader.readBigInteger() else reader.readNumber()
     reader.reserveGraphMemory(OwnerBytes)
     // The integer representation distinguishes native integer tokens from decimal/exponent tokens.
     // A compact value can use Scala's primitive storage without retaining a Java magnitude.

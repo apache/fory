@@ -31,6 +31,7 @@ import static org.testng.Assert.assertTrue;
 
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import org.apache.fory.json.data.CharValue;
 import org.apache.fory.json.data.Kind;
 import org.apache.fory.json.data.Nested;
@@ -51,6 +52,76 @@ import org.apache.fory.serializer.StringSerializer;
 import org.testng.annotations.Test;
 
 public class JsonStringTest extends ForyJsonTestModels {
+  @Test
+  public void readFieldHashBytes() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (String prefix : new String[] {"", "abcdefghi"}) {
+      byte[] token = ("\"" + prefix + "x\":17").getBytes(StandardCharsets.US_ASCII);
+      for (int raw = 0; raw < 256; raw++) {
+        token[prefix.length() + 1] = (byte) raw;
+        for (int offset = 0; offset < 8; offset++) {
+          byte[] input = new byte[offset + token.length + 8];
+          System.arraycopy(token, 0, input, offset, token.length);
+          reader.reset(input, offset, token.length);
+          if (raw >= 0x20 && raw < 0x80 && raw != '"' && raw != '\\') {
+            assertEquals(reader.readFieldNameHash(), JsonFieldNameHash.hash(prefix + (char) raw));
+            reader.expectNextToken(':');
+            assertEquals(reader.readInt(), 17);
+            reader.finish();
+          } else {
+            assertThrows(
+                ForyJsonException.class,
+                () -> {
+                  reader.readFieldNameHash();
+                  reader.expectNextToken(':');
+                });
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  public void readPackedFieldEscapes() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    for (int length = 1; length <= 9; length++) {
+      for (char escaped : new char[] {'"', '\\', '/'}) {
+        for (int mask = 1; mask < (1 << length); mask++) {
+          StringBuilder token = new StringBuilder("\"");
+          StringBuilder name = new StringBuilder();
+          for (int i = 0; i < length; i++) {
+            if ((mask & (1 << i)) != 0) {
+              token.append('\\').append(escaped);
+              name.append(escaped);
+            } else {
+              token.append('a');
+              name.append('a');
+            }
+          }
+          token.append('"');
+          int nameEnd = token.length();
+          token.append(":17");
+          byte[] encoded = token.toString().getBytes(StandardCharsets.US_ASCII);
+          for (int offset = 0; offset < 8; offset++) {
+            byte[] bytes = new byte[offset + encoded.length + 8];
+            System.arraycopy(encoded, 0, bytes, offset, encoded.length);
+            reader.reset(bytes, offset, encoded.length);
+            assertEquals(reader.readFieldNameHash(), JsonFieldNameHash.hash(name.toString()));
+            reader.expectNextToken(':');
+            assertEquals(reader.readInt(), 17);
+            reader.finish();
+            if (mask == (1 << length) - 1) {
+              for (int end = 0; end < nameEnd; end++) {
+                reader.reset(bytes, offset, end);
+                assertThrows(ForyJsonException.class, reader::readFieldNameHash);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   @Test
   public void readMixedFieldHash() {
     String[][] fragments = {
@@ -75,6 +146,42 @@ public class JsonStringTest extends ForyJsonTestModels {
             assertEquals(reader.readNextIntValue(), 17);
             reader.finish();
           }
+        }
+      }
+    }
+  }
+
+  @Test
+  public void readHexDigitPairs() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    byte[] token = "\"\\u0000\",17".getBytes(StandardCharsets.US_ASCII);
+    String digits = "0123456789aBcDeF";
+    for (int value = 0; value <= 0xffff; value++) {
+      if (Character.isSurrogate((char) value)) {
+        continue;
+      }
+      for (int lane = 0; lane < 4; lane++) {
+        token[3 + lane] = (byte) digits.charAt((value >>> (12 - lane * 4)) & 15);
+      }
+      reader.reset(token);
+      assertEquals(reader.readString(), String.valueOf((char) value));
+      reader.expectNextToken(',');
+      assertEquals(reader.readInt(), 17);
+      reader.finish();
+    }
+    for (int lane = 0; lane < 4; lane++) {
+      for (int value = 0; value < 256; value++) {
+        Arrays.fill(token, 3, 7, (byte) '0');
+        token[3 + lane] = (byte) value;
+        reader.reset(token);
+        int digit = value < 128 ? Character.digit((char) value, 16) : -1;
+        if (digit < 0) {
+          assertThrows(ForyJsonException.class, reader::readString);
+        } else {
+          assertEquals(reader.readString(), String.valueOf((char) (digit << (12 - lane * 4))));
+          reader.expectNextToken(',');
+          assertEquals(reader.readInt(), 17);
+          reader.finish();
         }
       }
     }

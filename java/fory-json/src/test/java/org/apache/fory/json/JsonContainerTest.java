@@ -996,6 +996,42 @@ public class JsonContainerTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readReferenceArrayGrowth() {
+    ForyJson json = newJson();
+    Note[] retained = null;
+    for (int size : new int[] {8, 9, 513, 1025, 0, 17}) {
+      Note[] expected = new Note[size];
+      for (int i = 0; i < size; i++) {
+        if (i % 3 != 0) {
+          expected[i] = new Note();
+          expected[i].title = "\u0100-" + i;
+        }
+      }
+      String text = json.toJson(expected);
+      for (Note[] actual :
+          new Note[][] {
+            json.fromJson(text, Note[].class),
+            json.fromJson(text.getBytes(StandardCharsets.UTF_8), Note[].class)
+          }) {
+        assertEquals(actual.getClass(), Note[].class);
+        assertEquals(actual.length, size);
+        for (int i = 0; i < size; i++) {
+          if (expected[i] == null) {
+            assertEquals(actual[i], null);
+          } else {
+            assertEquals(actual[i].title, expected[i].title);
+          }
+        }
+        if (retained == null) {
+          retained = actual;
+        }
+      }
+    }
+    assertEquals(retained.length, 8);
+    assertEquals(retained[1].title, "\u0100-1");
+  }
+
+  @Test
   public void readReentrantObjectArray() {
     ForyJson json = newJson();
     ArrayNode[] roots =

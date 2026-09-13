@@ -2135,14 +2135,9 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   private static class ObjectArrayCodec<T> extends ArrayCodec<T> {
-    private static final int VALUES_CACHE_DEPTH = 8;
     private static final int INITIAL_VALUES_SIZE = 8;
-    private static final int MAX_CACHED_VALUES_SIZE = 1024;
 
     private final JsonTypeInfo elementTypeInfo;
-    // Recursive object-array reads borrow one scratch slot per active depth.
-    private final Object[][] valuesCache = new Object[VALUES_CACHE_DEPTH][];
-    private int valuesDepth;
 
     private ObjectArrayCodec(Class<?> componentType, JsonTypeInfo elementTypeInfo) {
       super(componentType);
@@ -2181,146 +2176,84 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       writer.writeArrayEnd();
     }
 
+    // Each invocation owns a component-typed array, so growth preserves its type and the result
+    // can keep its storage. Root failure cleanup restores decoder depth after failed child reads.
     @Override
+    @SuppressWarnings("unchecked")
     public T readLatin1(Latin1JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
       reader.enterDepth();
-      int depth = valuesDepth;
-      boolean useCache = depth < VALUES_CACHE_DEPTH;
-      Object[] values = null;
-      if (useCache) {
-        values = valuesCache[depth];
-        valuesCache[depth] = null;
-      }
-      if (values == null) {
-        values = new Object[INITIAL_VALUES_SIZE];
-      }
+      Object[] values = (Object[]) newArray(INITIAL_VALUES_SIZE);
       int size = 0;
-      boolean success = false;
-      valuesDepth = depth + 1;
       Latin1ReaderCodec<Object> codec = elementTypeInfo.latin1Reader();
-      try {
-        reader.expectNextToken('[');
-        if (!reader.consumeNextToken(']')) {
-          do {
-            reserveReferenceBatch(reader, size);
-            if (size == values.length) {
-              values = Arrays.copyOf(values, values.length << 1);
-            }
-            values[size++] = readElement(reader, codec);
-          } while (reader.consumeNextCommaOrEndArray());
-        }
-        reader.reserveGraphMemory(ARRAY_HEADER_BYTES + (size & ARRAY_BATCH_MASK) * REFERENCE_BYTES);
-        T array = newArray(size);
-        System.arraycopy(values, 0, array, 0, size);
-        success = true;
-        return array;
-      } finally {
-        releaseValues(values, size, depth, useCache, success);
-        reader.exitDepth();
+      reader.expectNextToken('[');
+      if (!reader.consumeNextToken(']')) {
+        do {
+          reserveReferenceBatch(reader, size);
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] = readElement(reader, codec);
+        } while (reader.consumeNextCommaOrEndArray());
       }
+      reader.reserveGraphMemory(ARRAY_HEADER_BYTES + (size & ARRAY_BATCH_MASK) * REFERENCE_BYTES);
+      T array = (T) (size == values.length ? values : Arrays.copyOf(values, size));
+      reader.exitDepth();
+      return array;
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public T readUtf16(Utf16JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
       reader.enterDepth();
-      int depth = valuesDepth;
-      boolean useCache = depth < VALUES_CACHE_DEPTH;
-      Object[] values = null;
-      if (useCache) {
-        values = valuesCache[depth];
-        valuesCache[depth] = null;
-      }
-      if (values == null) {
-        values = new Object[INITIAL_VALUES_SIZE];
-      }
+      Object[] values = (Object[]) newArray(INITIAL_VALUES_SIZE);
       int size = 0;
-      boolean success = false;
-      valuesDepth = depth + 1;
       Utf16ReaderCodec<Object> codec = elementTypeInfo.utf16Reader();
-      try {
-        reader.expectNextToken('[');
-        if (!reader.consumeNextToken(']')) {
-          do {
-            reserveReferenceBatch(reader, size);
-            if (size == values.length) {
-              values = Arrays.copyOf(values, values.length << 1);
-            }
-            values[size++] = readElement(reader, codec);
-          } while (reader.consumeNextCommaOrEndArray());
-        }
-        reader.reserveGraphMemory(ARRAY_HEADER_BYTES + (size & ARRAY_BATCH_MASK) * REFERENCE_BYTES);
-        T array = newArray(size);
-        System.arraycopy(values, 0, array, 0, size);
-        success = true;
-        return array;
-      } finally {
-        releaseValues(values, size, depth, useCache, success);
-        reader.exitDepth();
+      reader.expectNextToken('[');
+      if (!reader.consumeNextToken(']')) {
+        do {
+          reserveReferenceBatch(reader, size);
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] = readElement(reader, codec);
+        } while (reader.consumeNextCommaOrEndArray());
       }
+      reader.reserveGraphMemory(ARRAY_HEADER_BYTES + (size & ARRAY_BATCH_MASK) * REFERENCE_BYTES);
+      T array = (T) (size == values.length ? values : Arrays.copyOf(values, size));
+      reader.exitDepth();
+      return array;
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public T readUtf8(Utf8JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
       reader.enterDepth();
-      int depth = valuesDepth;
-      boolean useCache = depth < VALUES_CACHE_DEPTH;
-      Object[] values = null;
-      if (useCache) {
-        values = valuesCache[depth];
-        valuesCache[depth] = null;
-      }
-      if (values == null) {
-        values = new Object[INITIAL_VALUES_SIZE];
-      }
+      Object[] values = (Object[]) newArray(INITIAL_VALUES_SIZE);
       int size = 0;
-      boolean success = false;
-      valuesDepth = depth + 1;
       Utf8ReaderCodec<Object> codec = elementTypeInfo.utf8Reader();
-      try {
-        reader.expectNextToken('[');
-        if (!reader.consumeNextToken(']')) {
-          do {
-            reserveReferenceBatch(reader, size);
-            if (size == values.length) {
-              values = Arrays.copyOf(values, values.length << 1);
-            }
-            values[size++] = readElement(reader, codec);
-          } while (reader.consumeNextCommaOrEndArray());
-        }
-        reader.reserveGraphMemory(ARRAY_HEADER_BYTES + (size & ARRAY_BATCH_MASK) * REFERENCE_BYTES);
-        T array = newArray(size);
-        System.arraycopy(values, 0, array, 0, size);
-        success = true;
-        return array;
-      } finally {
-        releaseValues(values, size, depth, useCache, success);
-        reader.exitDepth();
+      reader.expectNextToken('[');
+      if (!reader.consumeNextToken(']')) {
+        do {
+          reserveReferenceBatch(reader, size);
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] = readElement(reader, codec);
+        } while (reader.consumeNextCommaOrEndArray());
       }
-    }
-
-    private void releaseValues(
-        Object[] values, int size, int depth, boolean useCache, boolean success) {
-      // Failed reads drop the scratch array, because it may contain partially parsed user values.
-      if (success && useCache) {
-        if (values.length <= MAX_CACHED_VALUES_SIZE) {
-          Arrays.fill(values, 0, size, null);
-          valuesCache[depth] = values;
-        } else {
-          // Keep the depth slot usable without retaining a grown array from one large value.
-          valuesCache[depth] = new Object[INITIAL_VALUES_SIZE];
-        }
-      }
-      // Restore the codec recursion depth after the matching cache slot has been handled.
-      valuesDepth = depth;
+      reader.reserveGraphMemory(ARRAY_HEADER_BYTES + (size & ARRAY_BATCH_MASK) * REFERENCE_BYTES);
+      T array = (T) (size == values.length ? values : Arrays.copyOf(values, size));
+      reader.exitDepth();
+      return array;
     }
 
     void writeElement(StringJsonWriter writer, StringWriterCodec<Object> codec, Object element) {

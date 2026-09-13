@@ -89,13 +89,27 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private static final long EIGHT_DIGITS = 100_000_000L;
   private static final int[] HEX_PAIRS = new int[256];
   private static final long UTF16_ASCII_MASK = 0xFF80FF80FF80FF80L;
-  private static final int[] DIGIT_TRIPLES = new int[1000];
+  private static final char[] DIGIT_PAIRS = new char[256];
+  private static final int[] DIGIT_TRIPLES = new int[2048];
   private static final int[] DIGIT_QUADS = new int[10000];
+  private static final long[] OFFSET_TEXT = new long[256];
   private static final boolean STRING_BYTES_BACKED = StringSerializer.isBytesBackedString();
   private static final boolean COMPACT_STRINGS_ENABLED =
       STRING_BYTES_BACKED && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder("Z"));
 
   static {
+    // Quarter-hour offsets have distinct low eight bits after division by four: 900 / 4 is odd.
+    // Pack the signed half-seconds above the six ASCII bytes to verify hits with one table load.
+    // This finite table is initialized once; caller values never insert or replace entries.
+    for (int quarter = -72; quarter <= 72; quarter++) {
+      int seconds = quarter * 900;
+      String id = ZoneOffset.ofTotalSeconds(seconds).getId();
+      long text = (long) (seconds / 2) << 48;
+      for (int i = 0; i < id.length(); i++) {
+        text |= (long) id.charAt(i) << (i * 8);
+      }
+      OFFSET_TEXT[(seconds >>> 2) & 255] = text;
+    }
     String base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     for (int i = 0; i < BASE64_PAIRS.length; i++) {
       BASE64_PAIRS[i] = (short) (base64Digits.charAt(i >>> 6) | (base64Digits.charAt(i & 63) << 8));
@@ -106,6 +120,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       int first = high < 10 ? '0' + high : 'a' + high - 10;
       int second = low < 10 ? '0' + low : 'a' + low - 10;
       HEX_PAIRS[i] = first | (second << 8);
+    }
+    for (int i = 0; i < 100; i++) {
+      DIGIT_PAIRS[i] = (char) (('0' + i / 10) | (('0' + i % 10) << 8));
     }
     for (int i = 0; i < 1000; i++) {
       int c0 = '0' + i / 100;
@@ -595,16 +612,12 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       return;
     }
     int pos = position;
-    if (pos + 12 > buffer.length) {
-      grow(12);
+    if (pos + 13 > buffer.length) {
+      grow(13);
     }
     byte[] bytes = buffer;
     bytes[pos++] = (byte) '"';
-    // Valid month/day components fit in one byte, bounding the shared helper's table indices.
-    pos =
-        writeLocalDateBytes(
-            bytes, pos, year, value.getMonthValue() & 0xff, value.getDayOfMonth() & 0xff);
-    bytes[pos++] = (byte) '"';
+    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth(), '"');
     position = pos;
   }
 
@@ -735,8 +748,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     }
     byte[] bytes = buffer;
     bytes[pos++] = '"';
-    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
-    bytes[pos++] = 'T';
+    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth(), 'T');
     pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
     bytes[pos++] = '"';
     position = pos;
@@ -751,8 +763,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     byte[] bytes = buffer;
     bytes[pos++] = '"';
     pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
-    pos = writeOffsetBytes(bytes, pos, value.getOffset());
-    bytes[pos++] = '"';
+    pos = writeOffsetBytes(bytes, pos, value.getOffset(), '"');
     position = pos;
   }
 
@@ -765,11 +776,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     bytes[pos++] = '"';
     pos =
         writeLocalDateBytes(
-            bytes, pos, value.getYear(), value.getMonthValue(), value.getDayOfMonth());
-    bytes[pos++] = 'T';
+            bytes, pos, value.getYear(), value.getMonthValue(), value.getDayOfMonth(), 'T');
     pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
-    pos = writeOffsetBytes(bytes, pos, value.getOffset());
-    bytes[pos++] = '"';
+    pos = writeOffsetBytes(bytes, pos, value.getOffset(), '"');
     position = pos;
   }
 
@@ -791,12 +800,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     }
     byte[] bytes = buffer;
     bytes[pos++] = '"';
-    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
-    bytes[pos++] = 'T';
+    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth(), 'T');
     pos = writeIsoTimeBytes(bytes, pos, value.toLocalTime());
-    pos = writeOffsetBytes(bytes, pos, value.getOffset());
+    pos = writeOffsetBytes(bytes, pos, value.getOffset(), region ? '[' : '"');
     if (region) {
-      bytes[pos++] = '[';
       // ZoneId's canonical region syntax is ASCII. The enclosing reservation includes the full ID.
       byte[] zoneBytes = STRING_BYTES_BACKED ? StringSerializer.getStringBytes(zoneId) : null;
       if (zoneBytes != null && zoneBytes.length == zoneIdLength) {
@@ -808,8 +815,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
         }
       }
       bytes[pos++] = ']';
+      bytes[pos++] = '"';
     }
-    bytes[pos++] = '"';
     position = pos;
   }
 
@@ -853,24 +860,26 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private static int writeIsoTimeBytes(byte[] bytes, int pos, LocalTime value) {
     // Clock components are nonnegative byte-backed values. Keep the unsigned bounds explicit
     // so the JIT can prove that every lookup is inside the digit table.
-    int hour = DIGIT_QUADS[value.getHour() & 0xff] >>> 16;
-    int minute = DIGIT_QUADS[value.getMinute() & 0xff] >>> 16;
-    int second = DIGIT_QUADS[value.getSecond() & 0xff] >>> 16;
+    int hour = DIGIT_PAIRS[value.getHour() & 0xff];
+    int minute = DIGIT_PAIRS[value.getMinute() & 0xff];
+    int second = DIGIT_PAIRS[value.getSecond() & 0xff];
     LittleEndian.putInt64(
         bytes,
         pos,
-        (hour & 0xffffL)
+        (long) hour
             | ((long) ':' << 16)
             | ((long) minute << 24)
             | ((long) ':' << 40)
             | ((long) second << 48));
     pos += 8;
-    int nano = value.getNano();
+    // LocalTime nanos fit thirty bits. Exposing that range bounds the millisecond quotient to 1073,
+    // which fits the enlarged triplet table without masks on each lookup address.
+    int nano = value.getNano() & 0x3fffffff;
     if (nano != 0) {
-      int millis = nano / 1_000_000;
       int micros = nano / 1000;
+      int millis = nano / 1_000_000;
       int middle = micros - millis * 1000;
-      int low = nano - micros * 1000;
+      int low = nano % 1000;
       LittleEndian.putInt32(bytes, pos, (DIGIT_TRIPLES[millis] & 0xffffff00) | '.');
       pos += 4;
       int lastGroup;
@@ -900,28 +909,44 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     return pos;
   }
 
-  private static int writeOffsetBytes(byte[] bytes, int pos, ZoneOffset offset) {
+  private static int writeOffsetBytes(byte[] bytes, int pos, ZoneOffset offset, int terminator) {
+    int seconds = offset.getTotalSeconds();
+    long text = OFFSET_TEXT[(seconds >>> 2) & 255];
+    if (((int) (text >> 48) << 1) == seconds) {
+      if (seconds == 0) {
+        LittleEndian.putInt32(bytes, pos, 'Z' | (terminator << 8));
+        return pos + 2;
+      }
+      LittleEndian.putInt64(bytes, pos, (text & 0x0000ffffffffffffL) | ((long) terminator << 48));
+      return pos + 7;
+    }
     // ZoneOffset constructs its canonical ID from ASCII literals and decimal digits. Its byte
     // layout follows the fixed compact-string setting, unlike arbitrary caller-provided Strings.
     String id = offset.getId();
     if (COMPACT_STRINGS_ENABLED) {
-      byte[] text = StringSerializer.getStringBytes(id);
-      int length = text.length;
+      byte[] idBytes = StringSerializer.getStringBytes(id);
+      int length = idBytes.length;
       if (length == 6) {
-        LittleEndian.putInt32(bytes, pos, LittleEndian.getInt32(text, 0));
-        LittleEndian.putInt32(bytes, pos + 2, LittleEndian.getInt32(text, 2));
+        // Callers reserve the nine-byte offset plus its delimiter. Fuse the delimiter into
+        // the short form's word instead of issuing a dependent byte store in each caller.
+        long digits =
+            (LittleEndian.getInt32(idBytes, 0) & 0xffffL)
+                | ((long) LittleEndian.getInt32(idBytes, 2) << 16);
+        LittleEndian.putInt64(bytes, pos, digits | ((long) terminator << 48));
       } else if (length == 9) {
-        LittleEndian.putInt64(bytes, pos, LittleEndian.getInt64(text, 0));
-        bytes[pos + 8] = text[8];
+        LittleEndian.putInt64(bytes, pos, LittleEndian.getInt64(idBytes, 0));
+        bytes[pos + 8] = idBytes[8];
+        bytes[pos + 9] = (byte) terminator;
       } else {
-        bytes[pos] = 'Z';
+        LittleEndian.putInt32(bytes, pos, 'Z' | (terminator << 8));
       }
-      return pos + length;
+      return pos + length + 1;
     }
     int length = id.length();
     for (int i = 0; i < length; i++) {
       bytes[pos++] = (byte) id.charAt(i);
     }
+    bytes[pos++] = (byte) terminator;
     return pos;
   }
 
@@ -2838,10 +2863,12 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     return pos;
   }
 
-  // Callers select a four-digit year and reserve the complete ten-byte date.
-  private static int writeLocalDateBytes(byte[] bytes, int pos, int year, int month, int day) {
-    int monthDigits = DIGIT_QUADS[month] >>> 16;
-    int dayDigits = DIGIT_QUADS[day] >>> 16;
+  // Callers select a four-digit year and reserve the date, its delimiter, and one spare byte.
+  private static int writeLocalDateBytes(
+      byte[] bytes, int pos, int year, int month, int day, int delimiter) {
+    // Calendar components fit a byte; retain that lookup bound after JDK field getters inline.
+    int monthDigits = DIGIT_PAIRS[month & 0xff];
+    int dayDigits = DIGIT_PAIRS[day & 0xff];
     LittleEndian.putInt64(
         bytes,
         pos,
@@ -2849,9 +2876,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
             | ((long) '-' << 32)
             | ((long) monthDigits << 40)
             | ((long) '-' << 56));
-    bytes[pos + 8] = (byte) dayDigits;
-    bytes[pos + 9] = (byte) (dayDigits >>> 8);
-    return pos + 10;
+    // Fuse the known date delimiter into the last word; the final byte is outside logical output.
+    LittleEndian.putInt32(bytes, pos + 8, dayDigits | (delimiter << 16));
+    return pos + 11;
   }
 
   private static int writePadded3(byte[] bytes, int pos, int value) {

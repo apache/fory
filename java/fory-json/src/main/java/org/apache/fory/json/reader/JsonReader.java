@@ -85,7 +85,7 @@ public abstract class JsonReader {
   static final int MAX_BIG_NUMBER_LENGTH = 10_000;
   private static final MethodHandle BIG_INTEGER_CONSTRUCTOR = bigIntegerConstructor();
   private static final byte[] EMPTY_BYTES = new byte[0];
-  private static final byte[] HEX_VALUES = hexValues();
+  private static final short[] HEX_PAIRS = hexPairs();
   static final int MAX_BIG_DECIMAL_SCALE = 10_000;
   private static final int COMPACT_DECIMAL_MAX_SCALE = 18;
   static final long[] LONG_POWERS_OF_TEN = {
@@ -1183,21 +1183,22 @@ public abstract class JsonReader {
   }
 
   static int hexValue4(byte[] bytes, int offset) {
-    byte[] values = HEX_VALUES;
-    return (values[bytes[offset] & 0xff] << 12)
-        | (values[bytes[offset + 1] & 0xff] << 8)
-        | (values[bytes[offset + 2] & 0xff] << 4)
-        | values[bytes[offset + 3] & 0xff];
+    // Callers prove four readable bytes. Signed invalid pairs remain negative after packing.
+    int text = LittleEndian.getInt32(bytes, offset);
+    short[] pairs = HEX_PAIRS;
+    return (pairs[text & 0xffff] << 8) | pairs[text >>> 16];
   }
 
-  private static byte[] hexValues() {
-    byte[] values = new byte[256];
-    Arrays.fill(values, (byte) -1);
-    for (int i = 0; i < 10; i++) {
-      values['0' + i] = (byte) i;
-    }
-    for (int i = 0; i < 6; i++) {
-      values['a' + i] = values['A' + i] = (byte) (10 + i);
+  private static short[] hexPairs() {
+    short[] values = new short[1 << 16];
+    Arrays.fill(values, (short) -1);
+    String digits = "0123456789abcdefABCDEF";
+    for (int first = 0; first < digits.length(); first++) {
+      int high = Character.digit(digits.charAt(first), 16) << 4;
+      for (int second = 0; second < digits.length(); second++) {
+        int index = digits.charAt(first) | (digits.charAt(second) << 8);
+        values[index] = (short) (high | Character.digit(digits.charAt(second), 16));
+      }
     }
     return values;
   }

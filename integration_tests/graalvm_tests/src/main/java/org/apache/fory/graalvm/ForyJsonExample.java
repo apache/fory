@@ -26,6 +26,12 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.OffsetTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -36,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.locks.Lock;
@@ -110,6 +117,7 @@ public final class ForyJsonExample {
     testMixinEnumValue();
     testMixinCodec();
     testBigNumbers();
+    testScalarTokens();
     testSqlTypes();
     testFormatTimezone();
     testClosedPackage();
@@ -720,6 +728,68 @@ public final class ForyJsonExample {
             json.fromJson(text.getBytes(StandardCharsets.UTF_8), BigDecimal.class).equals(decimal));
       }
     }
+  }
+
+  private static void testScalarTokens() {
+    ZoneOffset[] offsets = {
+      ZoneOffset.UTC, ZoneOffset.of("+05:45"), ZoneOffset.of("-07:13:29"), null
+    };
+    byte[] bytes = DEFAULT_JSON.toJsonBytes(offsets);
+    Preconditions.checkArgument(
+        new String(bytes, StandardCharsets.UTF_8).equals("[\"Z\",\"+05:45\",\"-07:13:29\",null]"));
+    Preconditions.checkArgument(
+        Arrays.equals(DEFAULT_JSON.fromJson(bytes, ZoneOffset[].class), offsets));
+
+    OffsetTime[] times = {
+      OffsetTime.of(12, 34, 56, 0, offsets[0]),
+      OffsetTime.of(12, 34, 56, 123456789, offsets[1]),
+      OffsetTime.of(1, 2, 3, 120000000, offsets[2]),
+      null
+    };
+    bytes = DEFAULT_JSON.toJsonBytes(times);
+    Preconditions.checkArgument(
+        new String(bytes, StandardCharsets.UTF_8)
+            .equals("[\"12:34:56Z\",\"12:34:56.123456789+05:45\",\"01:02:03.12-07:13:29\",null]"));
+    Preconditions.checkArgument(
+        Arrays.equals(DEFAULT_JSON.fromJson(bytes, OffsetTime[].class), times));
+
+    Instant instant = Instant.parse("9999-12-31T23:59:59.123456789Z");
+    bytes = DEFAULT_JSON.toJsonBytes(instant);
+    Preconditions.checkArgument(
+        new String(bytes, StandardCharsets.UTF_8).equals("\"9999-12-31T23:59:59.123456789Z\""));
+    Preconditions.checkArgument(DEFAULT_JSON.fromJson(bytes, Instant.class).equals(instant));
+
+    LocalDate date = LocalDate.of(2000, 2, 29);
+    bytes = DEFAULT_JSON.toJsonBytes(date);
+    Preconditions.checkArgument(new String(bytes, StandardCharsets.UTF_8).equals("\"2000-02-29\""));
+    Preconditions.checkArgument(DEFAULT_JSON.fromJson(bytes, LocalDate.class).equals(date));
+
+    OffsetDateTime dateTime = OffsetDateTime.of(2000, 2, 29, 12, 34, 56, 123456789, offsets[1]);
+    bytes = DEFAULT_JSON.toJsonBytes(dateTime);
+    Preconditions.checkArgument(
+        new String(bytes, StandardCharsets.UTF_8)
+            .equals("\"2000-02-29T12:34:56.123456789+05:45\""));
+    Preconditions.checkArgument(
+        DEFAULT_JSON.fromJson(bytes, OffsetDateTime.class).equals(dateTime));
+
+    ZonedDateTime zoned = dateTime.toLocalDateTime().atZone(ZoneId.of("Europe/Paris"));
+    bytes = DEFAULT_JSON.toJsonBytes(zoned);
+    Preconditions.checkArgument(
+        new String(bytes, StandardCharsets.UTF_8)
+            .equals("\"2000-02-29T12:34:56.123456789+01:00[Europe/Paris]\""));
+    Preconditions.checkArgument(DEFAULT_JSON.fromJson(bytes, ZonedDateTime.class).equals(zoned));
+
+    // Following tokens keep both partial fraction words inside the readable input.
+    bytes = "[1.123456789012345,-1.234567890123456E-18,0.0]".getBytes(StandardCharsets.UTF_8);
+    Preconditions.checkArgument(
+        Arrays.equals(
+            DEFAULT_JSON.fromJson(bytes, double[].class),
+            new double[] {1.123456789012345, -1.234567890123456E-18, 0.0}));
+    UUID uuid = UUID.fromString("01234567-89ab-cdef-fedc-ba9876543210");
+    bytes = ("\"" + uuid + "\"").getBytes(StandardCharsets.UTF_8);
+    Preconditions.checkArgument(DEFAULT_JSON.fromJson(bytes, UUID.class).equals(uuid));
+    bytes = "\"\\u00e9\\u4e2d\\ud83d\\ude00\"".getBytes(StandardCharsets.UTF_8);
+    Preconditions.checkArgument(DEFAULT_JSON.fromJson(bytes, String.class).equals("é中😀"));
   }
 
   private static void testSqlTypes() {

@@ -1691,9 +1691,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
   @Test
   public void readNumberStops() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
-    for (int lane = 0; lane < 8; lane++) {
+    // Cover the second packed word and the final three digits of the unsigned prefix.
+    for (int lane = 0; lane < 11; lane++) {
       for (int ch = 0; ch < 256; ch++) {
-        byte[] bytes = "1234567812345678,17".getBytes(StandardCharsets.US_ASCII);
+        byte[] bytes = "1234567812345678123,17".getBytes(StandardCharsets.US_ASCII);
         bytes[8 + lane] = (byte) ch;
         Latin1JsonReader reference = newLatin1Reader(bytes);
         reader.reset(bytes);

@@ -171,6 +171,18 @@ public class JsonTemporalTest extends ForyJsonTestModels {
     assertEquals(lazy.getRules(), provider.rules);
     provider.rules = previous;
     assertEquals(lazy.getRules(), previous);
+    ZoneOffset offset = ZoneOffset.ofHoursMinutesSeconds(1, 2, 3);
+    provider.rules = ZoneRules.of(offset);
+    try {
+      byte[] dateTime =
+          "\"2024-01-01T12:00:00.123456789+01:02:03[ForyJson/Rules]\""
+              .getBytes(StandardCharsets.US_ASCII);
+      ZonedDateTime decoded = json.fromJson(dateTime, ZonedDateTime.class);
+      assertEquals(decoded.toInstant(), Instant.parse("2024-01-01T10:57:57.123456789Z"));
+      assertSame(decoded.getOffset(), offset);
+    } finally {
+      provider.rules = previous;
+    }
   }
 
   @Test
@@ -370,6 +382,11 @@ public class JsonTemporalTest extends ForyJsonTestModels {
       ZoneOffset expected = ZoneOffset.of(text);
       assertToken(ScalarCodecs.ZoneOffsetCodec.INSTANCE, text, expected);
       byte[] token = ('"' + text + '"').getBytes(StandardCharsets.UTF_8);
+      reader.reset((" \t\r\n\"" + text + "\",17").getBytes(StandardCharsets.US_ASCII));
+      assertEquals(reader.readZoneOffset(), expected);
+      reader.expectNextToken(',');
+      assertEquals(reader.readInt(), 17);
+      reader.finish();
       for (int offset = 0; offset < 8; offset++) {
         byte[] bytes = new byte[offset + token.length + 8];
         System.arraycopy(token, 0, bytes, offset, token.length);
@@ -404,6 +421,81 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readNullableLocalTime() {
+    assertNullableTemporal(ScalarCodecs.LocalTimeCodec.INSTANCE, LocalTime.of(1, 2, 3, 4));
+  }
+
+  @Test
+  public void readOffsetTimeSuffixes() {
+    for (String clock : new String[] {"01:02", "23:59:59.999999999"}) {
+      for (String suffix :
+          new String[] {
+            "Z",
+            "+00:00",
+            "-00:00",
+            "+05:45",
+            "-03:30",
+            "+18:00",
+            "-18:00",
+            "+01:02:03",
+            "-01:02:03",
+            "+01",
+            "+0102",
+            "+010203",
+            "+19:00",
+            "-18:00:01",
+            "+00:60",
+            "+00:00:60"
+          }) {
+        String text = '"' + clock + suffix + '"';
+        byte[] token = text.getBytes(StandardCharsets.US_ASCII);
+        Latin1JsonReader reference = newLatin1Reader(token);
+        OffsetTime expected;
+        try {
+          expected = reference.readOffsetTime();
+          reference.finish();
+        } catch (RuntimeException e) {
+          Utf8JsonReader reader = newUtf8Reader(token);
+          assertThrows(
+              RuntimeException.class,
+              () -> {
+                reader.readOffsetTime();
+                reader.finish();
+              });
+          continue;
+        }
+        for (int offset = 0; offset < 8; offset++) {
+          byte[] bytes = new byte[offset + token.length + 8];
+          System.arraycopy(token, 0, bytes, offset, token.length);
+          Utf8JsonReader reader = newUtf8Reader(bytes);
+          reader.reset(bytes, offset, token.length);
+          assertEquals(reader.readOffsetTime(), expected);
+          reader.finish();
+          for (int length = 0; length < token.length; length++) {
+            reader.reset(bytes, offset, length);
+            assertThrows(RuntimeException.class, reader::readOffsetTime);
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  public void readOffsetTimeOffsets() {
+    Utf8JsonReader reader = newUtf8Reader(new byte[0]);
+    LocalTime time = LocalTime.of(12, 34, 56, 123456789);
+    for (int seconds = -64800; seconds <= 64800; seconds++) {
+      OffsetTime expected = OffsetTime.of(time, ZoneOffset.ofTotalSeconds(seconds));
+      byte[] token = ('"' + expected.toString() + "\",17").getBytes(StandardCharsets.US_ASCII);
+      reader.reset(token);
+      assertEquals(reader.readOffsetTime(), expected);
+      reader.expectNextToken(',');
+      assertEquals(reader.readInt(), 17);
+      reader.finish();
+    }
+  }
+
+  @Test
   public void readNullableOffsetTime() {
     assertNullableTemporal(
         ScalarCodecs.OffsetTimeCodec.INSTANCE, OffsetTime.of(1, 2, 3, 4, ZoneOffset.ofHours(5)));
@@ -412,6 +504,11 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   @Test
   public void readNullableInstant() {
     assertNullableTemporal(ScalarCodecs.InstantCodec.INSTANCE, Instant.ofEpochSecond(-123456, 789));
+  }
+
+  @Test
+  public void readNullableZoneOffset() {
+    assertNullableTemporal(ScalarCodecs.ZoneOffsetCodec.INSTANCE, ZoneOffset.ofTotalSeconds(12345));
   }
 
   @Test
@@ -454,37 +551,40 @@ public class JsonTemporalTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void readOffsetDigitLanes() {
+  public void readOffsetPrefixes() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
     Latin1JsonReader latin1 = newLatin1Reader(new byte[0]);
-    byte[] token = "\"+07:20:13\"".getBytes(StandardCharsets.US_ASCII);
-    for (int index : new int[] {2, 3, 5, 6}) {
-      byte saved = token[index];
-      for (int digit = 0; digit < 256; digit++) {
-        token[index] = (byte) digit;
-        reader.reset(token);
-        // Preserve the unchanged text parser's grammar, including noncanonical offsets.
-        ZoneOffset expected = null;
-        try {
-          latin1.reset(token);
-          expected = latin1.readZoneOffset();
-          latin1.finish();
-        } catch (RuntimeException e) {
-          expected = null;
+    for (String text :
+        new String[] {"\"+07:20:13\"", "\"-07:20\"", "\"+07:15\"", "\"-07:30\"", "\"Z\""}) {
+      byte[] token = text.getBytes(StandardCharsets.US_ASCII);
+      for (int index = 0; index < token.length; index++) {
+        byte saved = token[index];
+        for (int digit = 0; digit < 256; digit++) {
+          token[index] = (byte) digit;
+          reader.reset(token);
+          // Preserve the unchanged text parser's grammar, including noncanonical offsets.
+          ZoneOffset expected = null;
+          try {
+            latin1.reset(token);
+            expected = latin1.readZoneOffset();
+            latin1.finish();
+          } catch (RuntimeException e) {
+            expected = null;
+          }
+          if (expected == null) {
+            assertThrows(
+                RuntimeException.class,
+                () -> {
+                  reader.readZoneOffset();
+                  reader.finish();
+                });
+          } else {
+            assertEquals(reader.readZoneOffset(), expected);
+            reader.finish();
+          }
         }
-        if (expected == null) {
-          assertThrows(
-              RuntimeException.class,
-              () -> {
-                reader.readZoneOffset();
-                reader.finish();
-              });
-        } else {
-          assertEquals(reader.readZoneOffset(), expected);
-          reader.finish();
-        }
+        token[index] = saved;
       }
-      token[index] = saved;
     }
   }
 
@@ -599,6 +699,104 @@ public class JsonTemporalTest extends ForyJsonTestModels {
       assertEquals(
           json.fromJson("\"2000-02-29\"".getBytes(StandardCharsets.US_ASCII), LocalDate.class),
           LocalDate.of(2000, 2, 29));
+    }
+  }
+
+  @Test
+  public void readDateDigits() {
+    for (boolean withTime : new boolean[] {false, true}) {
+      String text = "2024-02-29" + (withTime ? "T23:59:59.123456789" : "");
+      byte[] token = ('"' + text + '"').getBytes(StandardCharsets.US_ASCII);
+      Object expected = withTime ? LocalDateTime.parse(text) : LocalDate.of(2024, 2, 29);
+      for (int start = 0; start < 8; start++) {
+        byte[] bytes = new byte[start + token.length];
+        System.arraycopy(token, 0, bytes, start, token.length);
+        Utf8JsonReader reader = newUtf8Reader(bytes);
+        reader.reset(bytes, start, token.length);
+        assertEquals(
+            withTime ? reader.readIsoLocalDateTime() : reader.readIsoLocalDate(), expected);
+        reader.finish();
+        for (int length = 0; length < token.length; length++) {
+          reader.reset(bytes, start, length);
+          assertThrows(
+              RuntimeException.class,
+              () -> {
+                if (withTime) {
+                  reader.readIsoLocalDateTime();
+                } else {
+                  reader.readIsoLocalDate();
+                }
+                reader.finish();
+              });
+        }
+      }
+      for (int lane : new int[] {1, 2, 3, 4, 6, 7, 9, 10}) {
+        byte original = token[lane];
+        for (int value = 0; value < 256; value++) {
+          token[lane] = (byte) value;
+          Latin1JsonReader reference = newLatin1Reader(token);
+          Utf8JsonReader reader = newUtf8Reader(token);
+          Object parsed;
+          try {
+            // The unchanged text reader owns alternate-sign grammar as well as invalid digits.
+            parsed = withTime ? reference.readIsoLocalDateTime() : reference.readIsoLocalDate();
+            reference.finish();
+          } catch (RuntimeException e) {
+            assertThrows(
+                RuntimeException.class,
+                () -> {
+                  if (withTime) {
+                    reader.readIsoLocalDateTime();
+                  } else {
+                    reader.readIsoLocalDate();
+                  }
+                  reader.finish();
+                });
+            continue;
+          }
+          assertEquals(
+              withTime ? reader.readIsoLocalDateTime() : reader.readIsoLocalDate(), parsed);
+          reader.finish();
+        }
+        token[lane] = original;
+      }
+    }
+  }
+
+  @Test
+  public void readTimePrefixes() {
+    for (String clock : new String[] {"01:02", "01:02:03.123456789"}) {
+      byte[] token = ('"' + clock + "\",17").getBytes(StandardCharsets.US_ASCII);
+      for (int lane = 1; lane < Math.min(9, clock.length() + 2); lane++) {
+        byte saved = token[lane];
+        for (int value = 0; value < 256; value++) {
+          token[lane] = (byte) value;
+          Latin1JsonReader reference = newLatin1Reader(token);
+          Utf8JsonReader reader = newUtf8Reader(token);
+          LocalTime expected;
+          try {
+            expected = reference.readIsoLocalTime();
+            reference.expectNextToken(',');
+            assertEquals(reference.readInt(), 17);
+            reference.finish();
+          } catch (RuntimeException e) {
+            assertThrows(
+                RuntimeException.class,
+                () -> {
+                  reader.readIsoLocalTime();
+                  reader.expectNextToken(',');
+                  reader.readInt();
+                  reader.finish();
+                });
+            continue;
+          }
+          assertEquals(reader.readIsoLocalTime(), expected);
+          reader.expectNextToken(',');
+          assertEquals(reader.readInt(), 17);
+          reader.finish();
+        }
+        token[lane] = saved;
+      }
     }
   }
 
@@ -754,7 +952,15 @@ public class JsonTemporalTest extends ForyJsonTestModels {
     }
     for (String text :
         new String[] {
-          "P+1Y+2M+3D", "P01Y002M0003D", "P-00Y-01M-002D", "P2W", "-P1Y2M", "p1y", "P0Y0M0D"
+          "P+1Y+2M+3D",
+          "P01Y002M0003D",
+          "P-00Y-01M-002D",
+          "P1Y000000000002M3D",
+          "P000000000002147483647Y-00000000002147483648M+000000000000D",
+          "P2W",
+          "-P1Y2M",
+          "p1y",
+          "P0Y0M0D"
         }) {
       assertToken(ScalarCodecs.PeriodCodec.INSTANCE, text, Period.parse(text));
     }
@@ -762,7 +968,16 @@ public class JsonTemporalTest extends ForyJsonTestModels {
     ForyJson json = ForyJson.builder().build();
     for (String text :
         new String[] {
-          "P", "P1D1Y", "P1Y1Y", "P2147483648D", "P-2147483649M", "P1.0Y", "P1e0D", "P1Y\\x"
+          "P",
+          "P1D1Y",
+          "P1Y1Y",
+          "P2147483648D",
+          "P-2147483649M",
+          "P1Y00000000002147483648M",
+          "P1Y+",
+          "P1.0Y",
+          "P1e0D",
+          "P1Y\\x"
         }) {
       byte[] token = ('"' + text + '"').getBytes(StandardCharsets.UTF_8);
       assertThrows(ForyJsonException.class, () -> json.fromJson(token, Period.class));
@@ -829,6 +1044,9 @@ public class JsonTemporalTest extends ForyJsonTestModels {
           "1900-02-29T00:00:00Z",
           "2000-02-30T00:00:00Z",
           "2000-04-31T00:00:00Z",
+          "2000-06-31T00:00:00Z",
+          "2000-09-31T00:00:00Z",
+          "2000-11-31T00:00:00Z",
           "2000-00-01T00:00:00Z",
           "2000-13-01T00:00:00Z",
           "2000-01-00T00:00:00Z",
@@ -844,6 +1062,41 @@ public class JsonTemporalTest extends ForyJsonTestModels {
           json.fromJson(
               "\"1970-01-01T00:00:00Z\"".getBytes(StandardCharsets.US_ASCII), Instant.class),
           Instant.EPOCH);
+    }
+  }
+
+  @Test
+  public void readInstantClockRanges() {
+    for (String clock : new String[] {"00:00:00", "23:59:59"}) {
+      byte[] token = ('"' + "2024-02-29T" + clock + "Z\"").getBytes(StandardCharsets.US_ASCII);
+      for (int lane : new int[] {12, 15, 18}) {
+        byte tens = token[lane];
+        byte ones = token[lane + 1];
+        for (int value = 0; value < 100; value++) {
+          token[lane] = (byte) ('0' + value / 10);
+          token[lane + 1] = (byte) ('0' + value % 10);
+          Latin1JsonReader reference = newLatin1Reader(token);
+          Utf8JsonReader reader = newUtf8Reader(token);
+          Instant expected;
+          try {
+            // ISO_INSTANT accepts 24:00:00 and leap seconds through the existing text fallback.
+            expected = reference.readIsoInstant();
+            reference.finish();
+          } catch (RuntimeException e) {
+            assertThrows(
+                RuntimeException.class,
+                () -> {
+                  reader.readIsoInstant();
+                  reader.finish();
+                });
+            continue;
+          }
+          assertEquals(reader.readIsoInstant(), expected);
+          reader.finish();
+        }
+        token[lane] = tens;
+        token[lane + 1] = ones;
+      }
     }
   }
 

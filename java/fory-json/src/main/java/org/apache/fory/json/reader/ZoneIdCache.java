@@ -128,6 +128,45 @@ final class ZoneIdCache {
     return entry.zone;
   }
 
+  static final class Offsets {
+    // Only canonical quarter-hour offsets are retained. The table is immutable after class
+    // initialization: untrusted input cannot add entries, and hits compare all eight token bytes.
+    private static final long[] TEXT = new long[1024];
+    private static final ZoneOffset[] VALUES = values();
+
+    static ZoneOffset get(long text) {
+      int index = index(text);
+      return TEXT[index] == text ? VALUES[index] : null;
+    }
+
+    private static int index(long text) {
+      // The sign, two hour digits, and minute tens distinguish the finite quarter-hour set.
+      // Other bytes can collide with these bits, so this index alone never proves a match.
+      return (int)
+          (((text >>> 24) & 0xf)
+              | ((text >>> 12) & 0x30)
+              | ((text >>> 34) & 0x1c0)
+              | ((text >>> 1) & 0x200));
+    }
+
+    private static ZoneOffset[] values() {
+      ZoneOffset[] values = new ZoneOffset[TEXT.length];
+      for (int sign : new int[] {-1, 1}) {
+        for (int quarter = 0; quarter <= 72; quarter++) {
+          ZoneOffset value = ZoneOffset.ofTotalSeconds(sign * quarter * 900);
+          String id = quarter == 0 ? (sign < 0 ? "-00:00" : "+00:00") : value.getId();
+          byte[] bytes = ('"' + id + '"').getBytes(StandardCharsets.US_ASCII);
+          long text = LittleEndian.getInt64(bytes, 0);
+          int index = index(text);
+          assert values[index] == null;
+          TEXT[index] = text;
+          values[index] = value;
+        }
+      }
+      return values;
+    }
+  }
+
   private static boolean canCache(ZoneId zone) {
     if (zone instanceof ZoneOffset) {
       return true;

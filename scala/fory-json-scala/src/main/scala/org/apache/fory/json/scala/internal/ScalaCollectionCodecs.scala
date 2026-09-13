@@ -492,7 +492,8 @@ private[scala] final class ScalaIterableCodec(
     case ScalaCollectionCodecs.ImmutableListSetKind =>
       scala.collection.immutable.ListSet.newBuilder[Any]
     case ScalaCollectionCodecs.MutableHashSetKind =>
-      scala.collection.mutable.HashSet.newBuilder[Any]
+      // One entry per bucket reduces table growth during incremental decoding.
+      scala.collection.mutable.HashSet.newBuilder[Any](16, 1.0)
     case ScalaCollectionCodecs.MutableLinkedHashSetKind =>
       scala.collection.mutable.LinkedHashSet.newBuilder[Any]
     case _ => List.newBuilder[Any]

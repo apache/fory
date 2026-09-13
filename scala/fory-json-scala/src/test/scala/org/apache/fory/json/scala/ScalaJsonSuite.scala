@@ -824,6 +824,34 @@ class ScalaJsonSuite extends AnyFunSuite {
     }
   }
 
+  test("mutable hash set growth") {
+    val setType = new TypeRef[scala.collection.mutable.Set[String]]() {}
+    for (codegen <- Seq(false, true)) {
+      val json = ForyJsonScala.builder().withCodegen(codegen).withAsyncCompilation(false).build()
+      for (size <- Seq(0, 1, 10, 20, 100, 1024, 1025)) {
+        val expected = scala.collection.mutable.HashSet(
+          (0 until size).map(i => if (i == 0) null else "值" + i): _*
+        )
+        val text = json.toJson(expected, setType)
+        val first = json.fromJson(text.getBytes(UTF_8), setType)
+        assert(first == expected)
+        assert(json.fromJson(text, setType) == expected)
+        assert(first.add("added"))
+        assert(first.remove("added"))
+        assert(first == expected)
+      }
+      val keys = (0 until 128).map { i =>
+        (0 until 7).map(bit => if ((i & (1 << bit)) == 0) "Aa" else "BB").mkString
+      }
+      assert(keys.map(_.hashCode).distinct.size == 1)
+      val expected = scala.collection.mutable.HashSet(keys: _*)
+      val text = json.toJson(expected, setType)
+      val duplicate = text.dropRight(1) + ",\"" + keys.head + "\"]"
+      assert(json.fromJson(duplicate, setType) == expected)
+      assert(json.fromJson(duplicate.getBytes(UTF_8), setType) == expected)
+    }
+  }
+
   test("mutable hash map growth") {
     val mapType = new TypeRef[scala.collection.mutable.Map[String, String]]() {}
     for (codegen <- Seq(false, true)) {
