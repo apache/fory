@@ -838,6 +838,13 @@ public class FieldTypes {
         cls = UnknownClass.getUnknowClass(isEnum, 0, resolver.isShareMeta());
         return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
       }
+      if (declared != null) {
+        TypeInfo declaredInfo = resolver.getTypeInfo(declared.getRawType(), false);
+        if (declaredInfo != null && declaredInfo.getTypeId() == typeId) {
+          return TypeRef.of(
+              declared.getRawType(), typeExtMeta(typeId, nullable, trackingRef, declared));
+        }
+      }
       if (resolver instanceof XtypeResolver) {
         TypeInfo xtypeInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
         Preconditions.checkNotNull(xtypeInfo);
