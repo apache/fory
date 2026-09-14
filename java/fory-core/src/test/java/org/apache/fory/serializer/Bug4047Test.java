@@ -1,5 +1,7 @@
 package org.apache.fory.serializer;
 
+import static org.testng.Assert.assertEquals;
+
 import java.util.Date;
 import org.apache.fory.Fory;
 import org.apache.fory.config.CompatibleMode;
@@ -34,7 +36,12 @@ public class Bug4047Test {
     fory.register(SmartTorrent2.class, id);
 
     SmartTorrent2 smartTorrent = new SmartTorrent2();
-    smartTorrent.setCreatedDate(new Date());
-    fory.serialize(smartTorrent);
+    Date createdDate = new Date(123456789L);
+    smartTorrent.setCreatedDate(createdDate);
+
+    byte[] bytes = fory.serialize(smartTorrent);
+    SmartTorrent2 result = (SmartTorrent2) fory.deserialize(bytes);
+
+    assertEquals(result.getCreatedDate(), createdDate);
   }
 }
