@@ -291,13 +291,18 @@ Not all Java types have equivalents in other languages. When using xlang mode:
 
 #### Timestamps
 
-`java.util.Date` and `java.sql.Date` use the xlang `timestamp` type, like `java.time.Instant`.
-A declared `Date` field retains its Java type. A timestamp read without a declared field type,
-such as a dynamic root value, is returned as `Instant`.
+In xlang mode (`withXlang(true)`), `java.util.Date` and `java.sql.Date` use the `timestamp` type,
+like `java.time.Instant`: 8 bytes for seconds followed by 4 bytes for nanoseconds. A declared
+`Date` field retains its Java type. A timestamp read without a declared field type, such as a
+dynamic root value, is returned as `Instant`.
 
 `Date` values retain millisecond precision. Reading a timestamp into a `Date` discards
 sub-millisecond precision by rounding down to the preceding millisecond. Timestamps outside
 the signed 64-bit millisecond range cannot be represented as `Date` values.
+
+In Java native mode (`withXlang(false)`), `java.util.Date` and `java.sql.Date` encode the time
+value as an 8-byte signed millisecond count since the Unix epoch. Deserialization preserves
+the original Java type, including for root values.
 
 #### Lists and Dense Arrays
 
