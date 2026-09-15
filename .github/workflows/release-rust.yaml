@@ -19,11 +19,17 @@
 # https://github.com/apache/infrastructure-actions/blob/main/actions.yml
 
 name: Publish Rust
-run-name: "Rust Release: ${{ github.ref_name }}"
+run-name: "Rust Release: ${{ inputs.tag || github.ref_name }}"
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish (for example, v1.7.3)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -33,8 +39,19 @@ jobs:
   publish-rust:
     runs-on: ubuntu-latest
     if: github.repository == 'apache/fory' && !startsWith(github.ref_name, 'go/fory')
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
+      # Retry old releases with current approved actions while preserving their source tag.
+      - name: Validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]
+
       - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
@@ -42,7 +59,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="${{ github.ref_name }}"
+          VERSION="$RELEASE_TAG"
           VERSION="${VERSION#v}"
           python ci/release.py bump_version -l rust -version "$VERSION"
 
