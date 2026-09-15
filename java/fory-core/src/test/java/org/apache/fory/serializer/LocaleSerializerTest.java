@@ -19,6 +19,7 @@
 
 package org.apache.fory.serializer;
 
+import static org.testng.AssertJUnit.assertEquals;
 import java.util.Locale;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
@@ -52,5 +53,19 @@ public class LocaleSerializerTest extends ForyTestBase {
     copyCheckWithoutSame(fory, Locale.CHINA);
     copyCheckWithoutSame(fory, Locale.TAIWAN);
     copyCheckWithoutSame(fory, Locale.getDefault());
+  }
+
+  @Test
+  public void testScriptAndExtensions() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+
+    Locale locale = Locale.forLanguageTag("en-Latn-US-u-ca-japanese");
+    Locale deserialized = (Locale) fory.deserialize(fory.serialize(locale));
+    assertEquals(locale, deserialized);
   }
 }
