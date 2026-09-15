@@ -42,7 +42,7 @@ Add the released package and depend on its `Fory` library in the generated `Pack
 
 ```swift title="Package.swift"
 dependencies: [
-    .package(url: "https://github.com/apache/fory.git", exact: "1.7.2")
+    .package(url: "https://github.com/apache/fory.git", exact: "1.7.3")
 ],
 targets: [
     .executableTarget(

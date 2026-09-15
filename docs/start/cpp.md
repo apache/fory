@@ -45,7 +45,7 @@ include(FetchContent)
 FetchContent_Declare(
   fory
   GIT_REPOSITORY https://github.com/apache/fory.git
-  GIT_TAG v1.7.2
+  GIT_TAG v1.7.3
   SOURCE_SUBDIR cpp
 )
 FetchContent_MakeAvailable(fory)
