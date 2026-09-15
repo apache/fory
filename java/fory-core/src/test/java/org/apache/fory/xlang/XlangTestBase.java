@@ -576,7 +576,8 @@ public abstract class XlangTestBase extends ForyTestBase {
     LocalDate day = LocalDate.of(2021, 11, 23);
     fory.serialize(buffer, day);
     Instant instant = Instant.ofEpochSecond(100);
-    fory.serialize(buffer, instant);
+    // A Date must use the same timestamp body that peers and dynamic Java reads map to Instant.
+    fory.serialize(buffer, Date.from(instant));
     fory.serialize(buffer, new boolean[] {true, false});
     fory.serialize(buffer, new byte[] {1, Byte.MAX_VALUE});
     fory.serialize(buffer, new short[] {1, Short.MAX_VALUE});

@@ -289,6 +289,16 @@ Not all Java types have equivalents in other languages. When using xlang mode:
 - See [Type Mapping Guide](../../specification/xlang_type_mapping.md) for the complete
   compatibility matrix.
 
+#### Timestamps
+
+`java.util.Date` and `java.sql.Date` use the xlang `timestamp` type, like `java.time.Instant`.
+A declared `Date` field retains its Java type. A timestamp read without a declared field type,
+such as a dynamic root value, is returned as `Instant`.
+
+`Date` values retain millisecond precision. Reading a timestamp into a `Date` discards
+sub-millisecond precision by rounding down to the preceding millisecond. Timestamps outside
+the signed 64-bit millisecond range cannot be represented as `Date` values.
+
 #### Lists and Dense Arrays
 
 Java primitive arrays are dense `array<T>` carriers, except plain `byte[]`,

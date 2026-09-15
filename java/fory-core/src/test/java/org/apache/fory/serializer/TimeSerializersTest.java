@@ -41,6 +41,7 @@ import java.util.GregorianCalendar;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.util.DateTimeUtils;
@@ -48,6 +49,134 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class TimeSerializersTest extends ForyTestBase {
+
+  @Test(dataProvider = "xlang")
+  public void testDateEncoding(boolean xlang) {
+    Fory fory = Fory.builder().withXlang(xlang).build();
+    Serializer<Date> serializer = fory.getTypeResolver().getSerializer(Date.class);
+    long[] values = {0, 1, -1, 999, -999, 1000, -1000, 123456789L, Long.MIN_VALUE, Long.MAX_VALUE};
+    for (long millis : values) {
+      MemoryBuffer buffer = MemoryUtils.buffer(16);
+      fory.getWriteContext().prepare(buffer, null);
+      serializer.write(fory.getWriteContext(), new Date(millis));
+      Assert.assertEquals(buffer.writerIndex(), xlang ? 12 : 8);
+      if (xlang) {
+        Instant instant = Instant.ofEpochMilli(millis);
+        Assert.assertEquals(buffer.readInt64(), instant.getEpochSecond());
+        Assert.assertEquals(buffer.readInt32(), instant.getNano());
+      } else {
+        Assert.assertEquals(buffer.readInt64(), millis);
+      }
+      buffer.readerIndex(0);
+      fory.getReadContext().prepare(buffer, null, false);
+      Assert.assertEquals(serializer.read(fory.getReadContext()).getTime(), millis);
+      Assert.assertEquals(buffer.readerIndex(), buffer.writerIndex());
+      if (xlang) {
+        Instant instant = Instant.ofEpochMilli(millis);
+        Assert.assertEquals(fory.deserialize(fory.serialize(new Date(millis))), instant);
+        Assert.assertEquals(fory.deserialize(fory.serialize(new java.sql.Date(millis))), instant);
+      }
+    }
+  }
+
+  @Test
+  public void testDateTimestampPrecision() {
+    Fory fory = Fory.builder().withXlang(true).build();
+    Serializer<Date> serializer = fory.getTypeResolver().getSerializer(Date.class);
+    Instant[] values = {
+      Instant.ofEpochSecond(0, 999999),
+      Instant.ofEpochSecond(-1, 999999999),
+      Instant.ofEpochSecond(1, 123456789),
+      Instant.ofEpochSecond(-2, 123456789)
+    };
+    for (Instant value : values) {
+      MemoryBuffer buffer = MemoryUtils.buffer(12);
+      buffer.writeInt64(value.getEpochSecond());
+      buffer.writeInt32(value.getNano());
+      fory.getReadContext().prepare(buffer, null, false);
+      Assert.assertEquals(serializer.read(fory.getReadContext()).getTime(), value.toEpochMilli());
+      Assert.assertEquals(buffer.readerIndex(), 12);
+    }
+    Instant[] outOfRange = {
+      Instant.ofEpochMilli(Long.MIN_VALUE).minusMillis(1),
+      Instant.ofEpochMilli(Long.MAX_VALUE).plusMillis(1)
+    };
+    for (Instant value : outOfRange) {
+      MemoryBuffer buffer = MemoryUtils.buffer(12);
+      buffer.writeInt64(value.getEpochSecond());
+      buffer.writeInt32(value.getNano());
+      fory.getReadContext().prepare(buffer, null, false);
+      Assert.expectThrows(RuntimeException.class, () -> serializer.read(fory.getReadContext()));
+    }
+  }
+
+  @Data
+  public static class DateEvent {
+    @ForyField(id = 0)
+    private Date time;
+
+    @ForyField(id = 1)
+    private String description;
+  }
+
+  @Data
+  public static class InstantEvent {
+    @ForyField(id = 0)
+    private Instant time;
+
+    @ForyField(id = 1)
+    private String description;
+  }
+
+  @Data
+  public static class EventDescription {
+    @ForyField(id = 1)
+    private String description;
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testCompatibleDateField(boolean codegen) {
+    Fory dates =
+        Fory.builder()
+            .withXlang(true)
+            .withCompatible(true)
+            .withRefTracking(true)
+            .withCodegen(codegen)
+            .build();
+    dates.register(DateEvent.class, 100);
+    Fory instants =
+        Fory.builder()
+            .withXlang(true)
+            .withCompatible(true)
+            .withRefTracking(true)
+            .withCodegen(codegen)
+            .build();
+    instants.register(InstantEvent.class, 100);
+    DateEvent event = new DateEvent();
+    event.setDescription("after timestamp");
+    for (long millis : new long[] {123456789L, -1L}) {
+      event.setTime(new Date(millis));
+      byte[] bytes = dates.serialize(event);
+      Assert.assertEquals(dates.deserialize(bytes), event);
+      InstantEvent decoded = (InstantEvent) instants.deserialize(bytes);
+      Assert.assertEquals(decoded.getTime(), event.getTime().toInstant());
+      Assert.assertEquals(decoded.getDescription(), event.getDescription());
+      Assert.assertEquals(dates.deserialize(instants.serialize(decoded)), event);
+    }
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testRemovedDateField(boolean codegen) {
+    Fory writer = Fory.builder().withXlang(true).withCompatible(true).withCodegen(codegen).build();
+    writer.register(DateEvent.class, 100);
+    Fory reader = Fory.builder().withXlang(true).withCompatible(true).withCodegen(codegen).build();
+    reader.register(EventDescription.class, 100);
+    DateEvent event = new DateEvent();
+    event.setTime(new Date(-1));
+    event.setDescription("after timestamp");
+    EventDescription decoded = (EventDescription) reader.deserialize(writer.serialize(event));
+    Assert.assertEquals(decoded.getDescription(), event.getDescription());
+  }
 
   @Test
   public void testBasicTime() {

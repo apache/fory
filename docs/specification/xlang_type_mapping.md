@@ -121,6 +121,9 @@ Notes:
 - Python `pyfory.Float16` and `pyfory.BFloat16` are reserved annotation markers; scalar values deserialize as native Python `float`.
 - Python `BoolArray`, `Int8Array`, `Int16Array`, `Int32Array`, `Int64Array`, `UInt8Array`, `UInt16Array`, `UInt32Array`, `UInt64Array`, `Float16Array`, `BFloat16Array`, `Float32Array`, and `Float64Array` are public dense-array wrappers with list-like sequence behavior.
 - JavaScript `BoolArray`, fallback `Float16Array`, and `BFloat16Array` are public dense-array wrappers backed by `Uint8Array` or `Uint16Array`. Scalar `float16` and `bfloat16` values use `number`. A JavaScript environment with native `Float16Array` may return that native carrier for `array<float16>`.
+- Java `java.util.Date` and `java.sql.Date` also map to `timestamp` using seconds and nanoseconds.
+  Declared fields retain their Java carrier type; dynamic timestamp values use `Instant`.
+  Date carriers retain millisecond precision and round timestamp reads down to milliseconds.
 - Java plain `byte[]` maps to `binary`. Numeric byte arrays use type-use annotations:
   `@Int8Type byte[]` for `array<int8>` and `@UInt8Type byte[]` for `array<uint8>`.
 - Dart uses `double` plus `Float16Type` or `Bfloat16Type` metadata for scalar

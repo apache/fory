@@ -18,6 +18,8 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   tests solely because of that formatting pass. Verify formatting with `spotless:check` and inspect
   the diff/status instead.
 - Fory Java requires JDK `17+`.
+- Place regressions in the existing test class that owns the behavior and use semantic fixture and
+  test names. Do not create standalone test classes named after issue numbers.
 - Run Java `spotless` with JDK `21+`. If the current runtime is lower than 21, export `JAVA_HOME` to a JDK 21 installation before running `mvn spotless:check` or `mvn spotless:apply`.
 - `fory-core` targets Java 8 bytecode and `fory-format` targets Java 11 bytecode. Do not use newer APIs in those modules.
 - `fory-json` must not depend on or reference `jdk.incubator.vector`, including production and

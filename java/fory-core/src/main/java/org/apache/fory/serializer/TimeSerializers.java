@@ -95,12 +95,32 @@ public class TimeSerializers {
 
     @Override
     public void write(WriteContext writeContext, T value) {
-      writeContext.getBuffer().writeInt64(value.getTime());
+      MemoryBuffer buffer = writeContext.getBuffer();
+      long millis = value.getTime();
+      if (config.isXlang()) {
+        // Date carriers use TIMESTAMP, including when peers skip a removed field as Instant.
+        // Floor division keeps the nanosecond adjustment nonnegative before the epoch.
+        buffer.writeInt64(Math.floorDiv(millis, 1000L));
+        buffer.writeInt32((int) Math.floorMod(millis, 1000L) * 1_000_000);
+      } else {
+        buffer.writeInt64(millis);
+      }
     }
 
     @Override
     public T read(ReadContext readContext) {
-      return newInstance(readContext.getBuffer().readInt64());
+      MemoryBuffer buffer = readContext.getBuffer();
+      long time = buffer.readInt64();
+      if (config.isXlang()) {
+        int millis = buffer.readInt32() / 1_000_000;
+        if (time < 0) {
+          // Avoid overflowing the intermediate product for Date(Long.MIN_VALUE).
+          time++;
+          millis -= 1000;
+        }
+        time = Math.addExact(Math.multiplyExact(time, 1000L), millis);
+      }
+      return newInstance(time);
     }
 
     protected abstract T newInstance(long time);
