@@ -24,6 +24,7 @@ module org.apache.fory.format {
   requires static transitive org.apache.arrow.memory.core;
   requires static transitive org.apache.arrow.vector;
 
+  exports org.apache.fory.format.annotation;
   exports org.apache.fory.format.encoder;
   exports org.apache.fory.format.row;
   exports org.apache.fory.format.row.binary;
