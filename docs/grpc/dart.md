@@ -38,7 +38,7 @@ application that compiles or runs generated service companions:
 
 ```yaml
 dependencies:
-  fory: ^1.7.3
+  fory: ^1.7.4
   grpc: ^4.0.0
 
 dev_dependencies:

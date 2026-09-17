@@ -35,7 +35,7 @@ python -m pip --version
 Install the released package:
 
 ```bash
-python -m pip install pyfory==1.7.3
+python -m pip install pyfory==1.7.4
 ```
 
 Run an xlang round trip:

@@ -25,7 +25,7 @@ module works on the ordinary JVM and GraalVM Native Image. Android is not suppor
 ## Setup
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-json-scala" % "1.7.3"
+libraryDependencies += "org.apache.fory" %% "fory-json-scala" % "1.7.4"
 ```
 
 `ForyJsonScala.builder()` installs the Scala module and returns the standard Fory JSON builder:

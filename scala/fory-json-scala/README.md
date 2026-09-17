@@ -7,7 +7,7 @@ Native Image.
 Add the Scala artifact that matches the application Scala version:
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-json-scala" % "1.7.3"
+libraryDependencies += "org.apache.fory" %% "fory-json-scala" % "1.7.4"
 ```
 
 Create and reuse one Scala-aware Fory JSON instance:
