@@ -573,24 +573,129 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertThrows(ForyJsonException.class, () -> json.fromJson("\"\\uD83D\"", String.class));
   }
 
+  /**
+   * A buffer the recent documents needed is kept, so a stream of large strings stops re-growing it,
+   * and it is released once a later document no longer needs it.
+   */
   @Test
-  public void readerDecodeBufferShrinks() throws Exception {
+  public void readerDecodeBufferIsKeptWhileNeeded() throws Exception {
     String latin1Input = "\"" + repeat('a', 9000) + "\\n\"";
+    String smallInput = "\"" + repeat('a', 8) + "\\n\"";
     if (StringSerializer.isBytesBackedString()
         && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(latin1Input))) {
       Latin1JsonReader latin1Reader = newLatin1Reader(latin1Input);
       assertEquals(latin1Reader.readString(), repeat('a', 9000) + "\n");
-      assertTrue(readerBufferLength(latin1Reader) > 8192);
+      int grown = readerBufferLength(latin1Reader);
+      assertTrue(grown > 8192);
+      latin1Reader.clear();
+      assertEquals(readerBufferLength(latin1Reader), grown);
+      latin1Reader.reset(latin1Input);
+      assertEquals(latin1Reader.readString(), repeat('a', 9000) + "\n");
+      assertEquals(readerBufferLength(latin1Reader), grown);
+      latin1Reader.clear();
+      latin1Reader.reset(smallInput);
+      assertEquals(latin1Reader.readString(), repeat('a', 8) + "\n");
       latin1Reader.clear();
       assertEquals(readerBufferLength(latin1Reader), 8192);
     }
 
-    String utf16Input = "\"中文" + repeat('b', 9000) + "\\n\"";
+    // A buffer no document should pin: it is released whatever the shrink threshold says.
+    String hugeInput = "\"\\n" + repeat('a', 200000) + "\"";
+    Latin1JsonReader hugeReader = newLatin1Reader(hugeInput.getBytes(StandardCharsets.ISO_8859_1));
+    assertEquals(hugeReader.readString(), "\n" + repeat('a', 200000));
+    int hugeGrown = readerBufferLength(hugeReader);
+    assertTrue(hugeGrown > 131072 && hugeGrown < 262144);
+    hugeReader.clear();
+    assertTrue(readerBufferLength(hugeReader) <= 131072);
+
+    // The quoted text view shares the same buffer, so growing it there has to count the same way.
+    Utf8JsonReader quotedReader = newUtf8Reader(latin1Input.getBytes(StandardCharsets.UTF_8));
+    assertEquals(quotedReader.readQuotedText().toString(), repeat('a', 9000) + "\n");
+    int quotedGrown = readerBufferLength(quotedReader);
+    assertTrue(quotedGrown > 8192);
+    quotedReader.clear();
+    assertEquals(readerBufferLength(quotedReader), quotedGrown);
+
+    Utf8JsonReader utf8Reader = newUtf8Reader(latin1Input.getBytes(StandardCharsets.UTF_8));
+    assertEquals(utf8Reader.readString(), repeat('a', 9000) + "\n");
+    int utf8Grown = readerBufferLength(utf8Reader);
+    assertTrue(utf8Grown > 8192);
+    utf8Reader.clear();
+    assertEquals(readerBufferLength(utf8Reader), utf8Grown);
+    utf8Reader.reset(smallInput.getBytes(StandardCharsets.UTF_8));
+    assertEquals(utf8Reader.readString(), repeat('a', 8) + "\n");
+    utf8Reader.clear();
+    assertEquals(readerBufferLength(utf8Reader), 8192);
+
+    String utf16Input = "\"\u4e2d\u6587" + repeat('b', 9000) + "\\n\"";
     Utf16JsonReader utf16Reader = newUtf16Reader(utf16Input);
-    assertEquals(utf16Reader.readString(), "中文" + repeat('b', 9000) + "\n");
-    assertTrue(readerBufferLength(utf16Reader) > 8192);
+    assertEquals(utf16Reader.readString(), "\u4e2d\u6587" + repeat('b', 9000) + "\n");
+    int grown = readerBufferLength(utf16Reader);
+    assertTrue(grown > 8192);
+    utf16Reader.clear();
+    assertEquals(readerBufferLength(utf16Reader), grown);
+    String smallUtf16 = "\"\u4e2d" + repeat('b', 8) + "\\n\"";
+    byte[] smallUtf16Bytes = new byte[smallUtf16.length() << 1];
+    StringSerializer.copyStringCharsToBytes(smallUtf16, smallUtf16Bytes);
+    utf16Reader.reset(smallUtf16, smallUtf16Bytes);
+    assertEquals(utf16Reader.readString(), "\u4e2d" + repeat('b', 8) + "\n");
     utf16Reader.clear();
     assertEquals(readerBufferLength(utf16Reader), 8192);
+  }
+
+  /**
+   * The run scan sits between the escape handling and these checks, so both must still fire after
+   * one.
+   */
+  @Test
+  public void rejectMalformedInputAfterAnEscape() {
+    ForyJson json = newJson(true);
+    String plain = repeat('a', 24);
+    // The bad character is followed by more plain text so it falls inside a scanned word rather
+    // than
+    // the scalar remainder the scan leaves at the end of the buffer.
+    for (String document :
+        new String[] {
+          "\"x\\n" + plain,
+          "\"x\\n" + plain + "\u0001" + plain + "\"",
+          "\"x\\n" + plain + "\\x" + plain + "\"",
+          "\"x\\n" + plain + "\\uD83D" + plain + "\"",
+          "\"x\\n" + plain + "\u0001\"",
+          "\"x\\n" + plain + "\\x\""
+        }) {
+      assertThrows(ForyJsonException.class, () -> json.fromJson(document, String.class));
+      assertThrows(ForyJsonException.class, () -> readUtf8String(json, document));
+    }
+  }
+
+  /**
+   * Plain text after an escape is copied in bulk, and that copy has to stop wherever the
+   * character-at-a-time path would have handled the character itself - a latin1 byte above 0x7F,
+   * text outside latin1, and a surrogate pair.
+   */
+  @Test
+  public void readEscapeFollowedByNonAsciiText() {
+    ForyJson json = newJson(true);
+    String[] tails = {
+      "a",
+      "\u00e9",
+      "\u00ff",
+      "\u4e2d\u6587",
+      "\uD83D\uDE00",
+      "a\u00e9\u4e2d\u6587b",
+      "\u00e9" + repeat('c', 40)
+    };
+    for (String tail : tails) {
+      for (int lead = 0; lead <= 20; lead++) {
+        for (int gap = 0; gap <= 8; gap++) {
+          String value = repeat('a', lead) + "\n" + repeat('c', gap) + tail + repeat('b', 7);
+          String document =
+              "\"" + repeat('a', lead) + "\\n" + repeat('c', gap) + tail + repeat('b', 7) + "\"";
+          assertEquals(json.fromJson(document, String.class), value);
+          assertEquals(readUtf8String(json, document), value);
+        }
+      }
+    }
   }
 
   @Test(dataProvider = "enableCodegen")
