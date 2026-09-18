@@ -50,7 +50,13 @@ import org.apache.fory.serializer.StringSerializer;
  */
 public final class Utf16JsonReader extends JsonReader {
   private static final int INITIAL_STRING_DECODE_BUFFER_SIZE = 1024;
+
+  /** The floor the decode buffer is shrunk back to; it is kept until it is twice what is needed. */
   private static final int RETAINED_STRING_DECODE_BUFFER_SIZE = 8192;
+
+  /** The ceiling on what a single document can keep alive in a pooled reader between parses. */
+  private static final int MAX_RETAINED_STRING_DECODE_BUFFER_SIZE = 1 << 17;
+
   private static final boolean LITTLE_ENDIAN = NativeByteOrder.IS_LITTLE_ENDIAN;
   private static final long BYTE_ONES = 0x0101010101010101L;
   private static final long BYTE_HIGH_BITS = 0x8080808080808080L;
@@ -76,6 +82,13 @@ public final class Utf16JsonReader extends JsonReader {
   private byte[] bytes;
   private int length;
   private byte[] stringDecodeBuffer = new byte[INITIAL_STRING_DECODE_BUFFER_SIZE];
+
+  /**
+   * Bytes of the longest string decoded since the last {@link #clear()}, so a steady workload keeps
+   * them.
+   */
+  private int stringDecodeHighWater;
+
   // Keep the cache after hot representation fields; an inherited reference shifts their offsets.
   private final FieldNameCache fieldNameCache;
   private ZoneIdCache zoneIdCache;
@@ -271,6 +284,7 @@ public final class Utf16JsonReader extends JsonReader {
       outBytes = ensureStringDecodeCapacity(outBytes, out + 2);
       out = putUtf16Char(outBytes, out, ch);
     }
+    recordStringDecodeUse(out);
     return decodedQuotedText(outBytes, out, true);
   }
 
@@ -417,8 +431,26 @@ public final class Utf16JsonReader extends JsonReader {
     bytes = null;
     length = 0;
     position = 0;
-    if (stringDecodeBuffer.length > RETAINED_STRING_DECODE_BUFFER_SIZE) {
-      stringDecodeBuffer = new byte[RETAINED_STRING_DECODE_BUFFER_SIZE];
+    // Keep what the last document needed, so consecutive large documents stop re-growing the
+    // buffer, but never pin more than the ceiling in a pooled reader.
+    int keep =
+        Math.max(
+            RETAINED_STRING_DECODE_BUFFER_SIZE,
+            Math.min(stringDecodeHighWater, MAX_RETAINED_STRING_DECODE_BUFFER_SIZE));
+    if (stringDecodeBuffer.length > MAX_RETAINED_STRING_DECODE_BUFFER_SIZE
+        || stringDecodeBuffer.length - keep >= keep) {
+      stringDecodeBuffer = new byte[keep];
+    }
+    stringDecodeHighWater = 0;
+  }
+
+  /**
+   * Both decode paths end here, so a buffer grown for quoted text is kept the same way a String's
+   * is.
+   */
+  private void recordStringDecodeUse(int length) {
+    if (length > stringDecodeHighWater) {
+      stringDecodeHighWater = length;
     }
   }
 
@@ -2111,6 +2143,31 @@ public final class Utf16JsonReader extends JsonReader {
         out = putUtf16Char(outBytes, out, (char) ch);
         return readStringUtf16Tail(outBytes, out, nextStringChar());
       }
+      // Copy the plain characters up to the next stop character in one pass. Without this the whole
+      // remainder of a string is decoded one character at a time once the first escape is seen.
+      if (LITTLE_ENDIAN && bytes != null) {
+        int runStart = position;
+        int wordEnd = length - 4;
+        while (position <= wordEnd) {
+          long word = LittleEndian.getInt64(bytes, position << 1);
+          long nonLatin = word & UTF16_NON_LATIN_BYTES;
+          long stopMask = utf16StringStopMask(word, nonLatin) | nonLatin;
+          if (stopMask != 0) {
+            position += Long.numberOfTrailingZeros(stopMask) >>> 4;
+            break;
+          }
+          position += 4;
+        }
+        int run = position - runStart;
+        if (run > 0) {
+          outBytes = ensureStringDecodeCapacity(outBytes, out + run);
+          byte[] localBytes = bytes;
+          for (int i = 0, offset = runStart << 1; i < run; i++, offset += 2) {
+            outBytes[out + i] = localBytes[offset];
+          }
+          out += run;
+        }
+      }
       ch = nextStringChar();
     }
   }
@@ -2208,6 +2265,7 @@ public final class Utf16JsonReader extends JsonReader {
   }
 
   private String finishDecodedString(byte[] outBytes, int length, boolean utf16) {
+    recordStringDecodeUse(length);
     // The decode buffer is reader-owned reusable storage; returned Strings must own exact bytes.
     byte[] result = new byte[length];
     System.arraycopy(outBytes, 0, result, 0, length);

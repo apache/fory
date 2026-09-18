@@ -53,7 +53,13 @@ import org.apache.fory.serializer.StringSerializer;
 public final class Latin1JsonReader extends JsonReader {
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final int INITIAL_STRING_DECODE_BUFFER_SIZE = 1024;
+
+  /** The floor the decode buffer is shrunk back to; it is kept until it is twice what is needed. */
   private static final int RETAINED_STRING_DECODE_BUFFER_SIZE = 8192;
+
+  /** The ceiling on what a single document can keep alive in a pooled reader between parses. */
+  private static final int MAX_RETAINED_STRING_DECODE_BUFFER_SIZE = 1 << 17;
+
   private static final boolean LITTLE_ENDIAN = NativeByteOrder.IS_LITTLE_ENDIAN;
   private static final long BYTE_ONES = 0x0101010101010101L;
   private static final int INT_BYTE_ONES = 0x01010101;
@@ -80,6 +86,13 @@ public final class Latin1JsonReader extends JsonReader {
   // Latin1 string content and field-name hashing must keep unsigned byte conversion.
   private byte[] input;
   private byte[] stringDecodeBuffer = new byte[INITIAL_STRING_DECODE_BUFFER_SIZE];
+
+  /**
+   * Bytes of the longest string decoded since the last {@link #clear()}, so a steady workload keeps
+   * them.
+   */
+  private int stringDecodeHighWater;
+
   // Keep the cache after hot representation fields; an inherited reference shifts their offsets.
   private final FieldNameCache fieldNameCache;
   private ZoneIdCache zoneIdCache;
@@ -275,6 +288,7 @@ public final class Latin1JsonReader extends JsonReader {
       outBytes = ensureStringDecodeCapacity(outBytes, out + 2);
       out = putUtf16Char(outBytes, out, ch);
     }
+    recordStringDecodeUse(out);
     return decodedQuotedText(outBytes, out, true);
   }
 
@@ -396,8 +410,26 @@ public final class Latin1JsonReader extends JsonReader {
     reset();
     input = EMPTY_BYTES;
     position = 0;
-    if (stringDecodeBuffer.length > RETAINED_STRING_DECODE_BUFFER_SIZE) {
-      stringDecodeBuffer = new byte[RETAINED_STRING_DECODE_BUFFER_SIZE];
+    // Keep what the last document needed, so consecutive large documents stop re-growing the
+    // buffer, but never pin more than the ceiling in a pooled reader.
+    int keep =
+        Math.max(
+            RETAINED_STRING_DECODE_BUFFER_SIZE,
+            Math.min(stringDecodeHighWater, MAX_RETAINED_STRING_DECODE_BUFFER_SIZE));
+    if (stringDecodeBuffer.length > MAX_RETAINED_STRING_DECODE_BUFFER_SIZE
+        || stringDecodeBuffer.length - keep >= keep) {
+      stringDecodeBuffer = new byte[keep];
+    }
+    stringDecodeHighWater = 0;
+  }
+
+  /**
+   * Both decode paths end here, so a buffer grown for quoted text is kept the same way a String's
+   * is.
+   */
+  private void recordStringDecodeUse(int length) {
+    if (length > stringDecodeHighWater) {
+      stringDecodeHighWater = length;
     }
   }
 
@@ -2759,6 +2791,24 @@ public final class Latin1JsonReader extends JsonReader {
         bytes = ensureStringDecodeCapacity(bytes, out + 1);
         bytes[out++] = (byte) ch;
       }
+      // Copy the plain characters up to the next stop character in one pass. Without this the whole
+      // remainder of a string is decoded one character at a time once the first escape is seen.
+      int runStart = position;
+      int wordEnd = input.length - Long.BYTES;
+      while (position <= wordEnd) {
+        long stopMask = stringStopMask(LittleEndian.getInt64(input, position));
+        if (stopMask != 0) {
+          position += Long.numberOfTrailingZeros(stopMask) >>> 3;
+          break;
+        }
+        position += Long.BYTES;
+      }
+      int run = position - runStart;
+      if (run > 0) {
+        bytes = ensureStringDecodeCapacity(bytes, out + run);
+        System.arraycopy(input, runStart, bytes, out, run);
+        out += run;
+      }
       if (position >= input.length) {
         throw error("Unterminated string");
       }
@@ -2835,6 +2885,7 @@ public final class Latin1JsonReader extends JsonReader {
   }
 
   private String finishDecodedString(byte[] bytes, int length, boolean utf16) {
+    recordStringDecodeUse(length);
     // The decode buffer is reader-owned reusable storage; returned Strings must own exact bytes.
     byte[] result = new byte[length];
     System.arraycopy(bytes, 0, result, 0, length);
