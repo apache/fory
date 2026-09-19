@@ -201,14 +201,16 @@ public abstract class JsonFieldAccessor {
 
   private static JsonFieldAccessor newGetterAccessor(Member member) {
     Method getter = (Method) member;
-    return USE_JDK25_NATIVE_ACCESS
+    return GraalvmSupport.isGraalBuildTime() && USE_JDK25_NATIVE_ACCESS
         ? LambdaGetterJsonAccessor.create(getter)
         : new GetterJsonAccessor(getter);
   }
 
   private static JsonFieldAccessor newSetterAccessor(Member member) {
     Method setter = (Method) member;
-    return USE_JDK25_NATIVE_ACCESS && setter.getParameterCount() == 1
+    return GraalvmSupport.isGraalBuildTime()
+            && USE_JDK25_NATIVE_ACCESS
+            && setter.getParameterCount() == 1
         ? LambdaSetterJsonAccessor.create(setter)
         : new SetterJsonAccessor(setter);
   }
