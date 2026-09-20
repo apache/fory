@@ -83,6 +83,23 @@ public class JsonPropertyTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void voidGetter() throws Exception {
+    VoidProperty value = new VoidProperty();
+    JsonFieldAccessor getter =
+        JsonFieldAccessor.forGetter(VoidProperty.class.getMethod("getValue"));
+    assertEquals(getter.getObject(value), null);
+    assertEquals(value.calls, 1);
+  }
+
+  public static final class VoidProperty {
+    int calls;
+
+    public void getValue() {
+      calls++;
+    }
+  }
+
+  @Test
   public void writePrivateGetters() {
     ForyJson json = newJson();
     assertEquals(json.toJson(new GetterBean()), "{\"id\":17,\"name\":\"getter-field\"}");

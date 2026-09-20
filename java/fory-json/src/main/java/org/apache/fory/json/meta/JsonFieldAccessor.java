@@ -205,7 +205,9 @@ public abstract class JsonFieldAccessor {
 
   private static JsonFieldAccessor newGetterAccessor(Member member) {
     Method getter = (Method) member;
-    return canUseMethodLambda(getter)
+    // Scala Unit getters return void. MethodHandle invocation adapts their result to null, whereas
+    // LambdaMetafactory cannot adapt a void method to a value-returning function interface.
+    return getter.getReturnType() != void.class && canUseMethodLambda(getter)
         ? LambdaGetterJsonAccessor.create(getter)
         : new GetterJsonAccessor(getter);
   }
