@@ -20,10 +20,11 @@
 package org.apache.fory.json.scala
 
 import java.nio.charset.StandardCharsets.UTF_8
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
-import org.apache.fory.json.ForyJsonException
-import org.apache.fory.json.annotation.{JsonIgnore, JsonProperty, JsonUnwrapped}
+import org.apache.fory.json.{ForyJson, ForyJsonException}
+import org.apache.fory.json.annotation.{JsonIgnore, JsonProperty, JsonSubTypes, JsonUnwrapped}
 import org.apache.fory.json.codec.{AbstractJsonValueCodec, MapKeyCodec}
 import org.apache.fory.json.reader.JsonReader
 import org.apache.fory.json.resolver.UnsupportedJsonTypeException
@@ -31,6 +32,10 @@ import org.apache.fory.json.writer.JsonWriter
 import org.apache.fory.reflect.TypeRef
 import org.apache.fory.serializer.GraphMemoryEstimates
 import org.scalatest.funsuite.AnyFunSuite
+
+import scala.annotation.nowarn
+import scala.collection.immutable.NumericRange
+import scala.concurrent.duration.{Duration, FiniteDuration}
 
 case class Node(value: Int, next: Option[Node])
 
@@ -239,6 +244,70 @@ case class CodecSlots(
     )
     labels: Map[Weekday.Value, String]
 )
+
+case class Label(value: String) extends AnyVal
+
+case class Box[T](value: T)
+
+case class Boxes(ints: Box[Int], strings: Box[String])
+
+case class VarParams(var a: Int, var b: String = "b")
+
+case class Optionals(
+    a: Option[Int],
+    b: Option[String] = None,
+    c: Option[Option[Int]] = None
+)
+
+case class ScalarFields(
+    decimal: BigDecimal,
+    builder: scala.collection.mutable.StringBuilder,
+    duration: Duration,
+    finite: FiniteDuration,
+    range: Range,
+    pair: (Int, String),
+    name: Label,
+    names: List[Label],
+    buffer: scala.collection.mutable.ArrayBuffer[String],
+    listMap: scala.collection.immutable.ListMap[String, Int],
+    linkedSet: scala.collection.mutable.LinkedHashSet[Int]
+)
+
+case class Wide(
+    f1: Int, f2: Int, f3: Int, f4: Int, f5: Int, f6: Int, f7: Int, f8: Int, f9: Int, f10: Int,
+    f11: Int, f12: Int, f13: Int, f14: Int, f15: Int, f16: Int, f17: Int, f18: Int, f19: Int,
+    f20: Int, f21: Int, f22: Int, f23: Int, f24: Int = 24
+)
+
+case class LazyItems(items: LazyList[Int])
+case class TriedValue(value: scala.util.Try[Int])
+case class Transform(f: Int => Int)
+
+case object Marker
+
+object Outer {
+  object Inner
+}
+
+@JsonSubTypes(
+  value = Array(
+    new JsonSubTypes.Type(value = classOf[Circle], name = "circle"),
+    new JsonSubTypes.Type(value = classOf[Dot.type], name = "dot")
+  ),
+  property = "kind"
+)
+sealed trait Shape
+case class Circle(radius: Double) extends Shape
+case object Dot extends Shape
+
+case class Shapes(shapes: List[Shape])
+
+object Hue extends Enumeration {
+  val Red = Value(1, "red")
+  val Green = Value(2, "green")
+}
+
+final class HueCodec extends ScalaEnumerationCodec(Hue)
 
 class ScalaJsonSuite extends AnyFunSuite {
   test("long as string") {
@@ -1204,6 +1273,565 @@ class ScalaJsonSuite extends AnyFunSuite {
       assert(encoded.contains("\"tag:note\""))
       assert(encoded.contains("\"Monday\":\"tag:first\""))
       assert(json.fromJson(encoded, classOf[CodecSlots]) == value)
+    }
+  }
+
+  private def runtimes: Seq[ForyJson] = Seq(
+    ForyJsonScala.builder().withCodegen(false).build(),
+    ForyJsonScala.builder().withAsyncCompilation(false).build()
+  )
+
+  private def quoted(text: String): String = '"'.toString + text + '"'
+
+  private val durationType = classOf[Duration]
+  private val finiteType = classOf[FiniteDuration]
+
+  // AnyRefMap and Stream are deprecated in the standard library but still have module codecs.
+  // Plain TypeRef subclasses keep the deprecation inside the annotated member on Scala 3.
+  @nowarn("cat=deprecation")
+  private val anyRefMapCase = (
+    new TypeRef[scala.collection.mutable.AnyRefMap[String, Int]]() {},
+    classOf[scala.collection.mutable.AnyRefMap[_, _]]
+  )
+  @nowarn("cat=deprecation")
+  private def anyRefMap = scala.collection.mutable.AnyRefMap("a" -> 1)
+  @nowarn("cat=deprecation")
+  private val streamType = new TypeRef[Stream[Int]]() {}
+
+  private def roundTrip[T](json: ForyJson, value: T, typeRef: TypeRef[T]): T = {
+    val text = json.toJson(value, typeRef)
+    val bytes = json.toJsonBytes(value, typeRef)
+    assert(new String(bytes, UTF_8) == text)
+    val fromText = json.fromJson(text, typeRef)
+    val fromBytes = json.fromJson(bytes, typeRef)
+    assert(fromText == fromBytes, text)
+    fromText
+  }
+
+
+  test("BigDecimal") {
+    val values = Seq(
+      BigDecimal(0),
+      BigDecimal("-1.5"),
+      BigDecimal("1E-30"),
+      BigDecimal("123456789012345678901234567890.123456789"),
+      BigDecimal("1E+20")
+    )
+    for (json <- runtimes; value <- values) {
+      val text = json.toJson(value)
+      assert(json.fromJson(text, classOf[BigDecimal]) == value, text)
+      assert(json.fromJson(text.getBytes(UTF_8), classOf[BigDecimal]) == value, text)
+      assert(json.fromJson(quoted(text), classOf[BigDecimal]) == value, text)
+      assert(json.fromJson(" \n" + text, classOf[BigDecimal]) == value, text)
+    }
+    val json = runtimes.head
+    assert(json.fromJson("null", classOf[BigDecimal]) == null)
+    assert(json.toJson(null.asInstanceOf[BigDecimal]) == "null")
+    for (invalid <- Seq("-", "n", quoted("x"), "[1]", "1.2.3")) {
+      assertThrows[ForyJsonException](json.fromJson(invalid, classOf[BigDecimal]))
+      assertThrows[ForyJsonException](json.fromJson(invalid.getBytes(UTF_8), classOf[BigDecimal]))
+    }
+    val ownerBytes = GraphMemoryEstimates.shallowObjectBytes(classOf[BigDecimal])
+    val bounded = ForyJsonScala.builder().withMaxGraphMemoryBytes(ownerBytes - 1).build()
+    assertThrows[ForyJsonException](bounded.fromJson("1.5", classOf[BigDecimal]))
+    assert(bounded.fromJson("null", classOf[BigDecimal]) == null)
+  }
+
+  test("StringBuilder") {
+    val builderType = classOf[scala.collection.mutable.StringBuilder]
+    for (json <- runtimes; text <- Seq("", "abc", """中文 "quoted" """ + "\n")) {
+      val value = new scala.collection.mutable.StringBuilder(text)
+      val encoded = json.toJson(value)
+      assert(new String(json.toJsonBytes(value), UTF_8) == encoded)
+      assert(json.fromJson(encoded, builderType).toString == text)
+      assert(json.fromJson(encoded.getBytes(UTF_8), builderType).toString == text)
+    }
+    val json = runtimes.head
+    assert(json.fromJson("null", builderType) == null)
+    assertThrows[ForyJsonException](json.fromJson("1", builderType))
+    val ownerBytes =
+      GraphMemoryEstimates.shallowObjectBytes(builderType) +
+        GraphMemoryEstimates.shallowObjectBytes(classOf[java.lang.StringBuilder]) +
+        GraphMemoryEstimates.objectArrayBytes() + (3 + 16) * Character.BYTES
+    val bounded = ForyJsonScala.builder().withMaxGraphMemoryBytes(ownerBytes - 1).build()
+    assertThrows[ForyJsonException](bounded.fromJson(quoted("abc"), builderType))
+    val exact = ForyJsonScala.builder().withMaxGraphMemoryBytes(ownerBytes).build()
+    assert(exact.fromJson(quoted("abc"), builderType).toString == "abc")
+  }
+
+
+  test("Duration specials and invalid objects") {
+    for (json <- runtimes) {
+      assert(json.toJson(Duration.Inf, durationType) == """{"special":"INF"}""")
+      assert(json.toJson(Duration.MinusInf, durationType) == """{"special":"MINUS_INF"}""")
+      assert(json.fromJson("""{"special":"INF"}""", durationType) eq Duration.Inf)
+      assert(json.fromJson("""{"special":"MINUS_INF"}""".getBytes(UTF_8), durationType) eq Duration.MinusInf)
+      assert(json.fromJson("""{"special":"UNDEFINED"}""", durationType) eq Duration.Undefined)
+      assertThrows[ForyJsonException](json.fromJson("""{"special":"INF"}""", finiteType))
+      assertThrows[ForyJsonException](json.fromJson("""{"special":"NAN"}""", durationType))
+
+      for (unit <- TimeUnit.values()) {
+        val value = FiniteDuration(3, unit)
+        val text = json.toJson(value, finiteType)
+        assert(text == s"""{"length":3,"unit":"${unit.name}"}""", text)
+        assert(json.fromJson(text, finiteType) == value)
+        assert(json.fromJson(text, durationType) == value)
+      }
+      val extreme = FiniteDuration(Long.MaxValue, TimeUnit.NANOSECONDS)
+      assert(json.fromJson(json.toJson(extreme, finiteType), finiteType) == extreme)
+      assert(json.fromJson("null", finiteType) == null)
+      assert(json.toJson(null.asInstanceOf[Duration], durationType) == "null")
+
+      for (
+        invalid <- Seq(
+          "{}",
+          """{"length":1}""",
+          """{"unit":"SECONDS"}""",
+          """{"length":1,"unit":"FORTNIGHTS"}""",
+          """{"length":1,"length":2,"unit":"SECONDS"}""",
+          """{"length":1,"unit":"SECONDS","special":"INF"}""",
+          """{"length":1,"unit":"SECONDS","extra":0}""",
+          """{"length":"x","unit":"SECONDS"}""",
+          """{"length":1,"unit":1}""",
+          """[1,"SECONDS"]"""
+        )
+      ) {
+        assertThrows[ForyJsonException](json.fromJson(invalid, durationType))
+        assertThrows[ForyJsonException](json.fromJson(invalid.getBytes(UTF_8), finiteType))
+      }
+    }
+  }
+
+  test("Range shapes") {
+    val inclusiveType = classOf[Range.Inclusive]
+    val exclusiveType = classOf[Range.Exclusive]
+    for (json <- runtimes) {
+      assert(json.toJson(Range.inclusive(1, 0)) == "[]")
+      assert(json.fromJson("[]", classOf[Range]).isEmpty)
+      assert(json.fromJson("[]", inclusiveType).isEmpty)
+      assert(json.fromJson("[]", exclusiveType).isEmpty)
+      assert(json.fromJson("[5]", inclusiveType).toList == List(5))
+      assert(json.fromJson("[5]", exclusiveType).toList == List(5))
+      assert(json.fromJson("[9,7,5]", inclusiveType).toList == List(9, 7, 5))
+      assert(json.fromJson("[9,7,5]".getBytes(UTF_8), exclusiveType).toList == List(9, 7, 5))
+      assert(json.fromJson("[-3,-1,1]", classOf[Range]).toList == List(-3, -1, 1))
+      val negative = Range(10, 0, -3)
+      assert(json.fromJson(json.toJson(negative), classOf[Range]).toList == negative.toList)
+      assert(json.fromJson("null", classOf[Range]) == null)
+      assert(json.toJson(null.asInstanceOf[Range]) == "null")
+      for (
+        invalid <- Seq(
+          "[1,2,4]",
+          "[1,1]",
+          "[1,2,3,3]",
+          "[2147483647]",
+          "[2147483646,2147483647]",
+          "[-2147483648,2147483647]",
+          "[1,",
+          "[1.5]",
+          "{}"
+        )
+      ) {
+        assertThrows[ForyJsonException](json.fromJson(invalid, exclusiveType))
+      }
+      assert(json.fromJson("[2147483647]", inclusiveType).toList == List(Int.MaxValue))
+      assertThrows[ForyJsonException](json.fromJson("[1,2,4]", inclusiveType))
+      assertThrows[ForyJsonException](json.fromJson("[1,1]", inclusiveType))
+      assertThrows[ForyJsonException](json.fromJson("[-2147483648,2147483647]", inclusiveType))
+    }
+  }
+
+  test("NumericRange element types") {
+    val json = runtimes.head
+    val byteType = ScalaTypeRef[NumericRange[Byte]]
+    val shortType = ScalaTypeRef[NumericRange[Short]]
+    val charType = ScalaTypeRef[NumericRange[Char]]
+    val bigType = ScalaTypeRef[NumericRange[BigInt]]
+    val longType = ScalaTypeRef[NumericRange[Long]]
+    val doubleType = ScalaTypeRef[NumericRange[Double]]
+
+    val bytes = NumericRange.inclusive[Byte](1, 5, 2)
+    assert(json.toJson(bytes, byteType) == "[1,3,5]")
+    assert(json.fromJson("[1,3,5]", byteType) == bytes)
+    val shorts = NumericRange[Short](10, 0, -5)
+    assert(json.fromJson(json.toJson(shorts, shortType), shortType) == shorts)
+    val chars: NumericRange[Char] = NumericRange.inclusive('a', 'e', 2)
+    val charText = json.toJson(chars, charType)
+    assert(json.fromJson(charText, charType) == chars, charText)
+    val bigs = NumericRange.inclusive(BigInt(1) << 70, (BigInt(1) << 70) + 4, BigInt(2))
+    assert(json.fromJson(json.toJson(bigs, bigType), bigType) == bigs)
+    assert(json.fromJson("[]", longType).isEmpty)
+    assert(json.fromJson("[7]", longType) == NumericRange.inclusive(7L, 7L, 1L))
+
+    assertThrows[ForyJsonException](json.fromJson("[127,128]", byteType))
+    assertThrows[ForyJsonException](json.fromJson("[-128,127]", byteType))
+    assertThrows[ForyJsonException](json.fromJson("[1,2,4]", longType))
+    assertThrows[ForyJsonException](json.fromJson("[1,1]", longType))
+    assertThrows[ForyJsonException](json.fromJson("[9223372036854775806,9223372036854775807]", ScalaTypeRef[NumericRange.Exclusive[Long]]))
+    assertThrows[UnsupportedJsonTypeException](json.fromJson("[1.0]", doubleType))
+    assertThrows[ForyJsonException](json.fromJson("[1,2]", classOf[NumericRange[_]]))
+    assert(json.toJson(NumericRange.inclusive(1L, 3L, 1L)) == "[1,2,3]")
+  }
+
+
+  test("declared collection kinds") {
+    import scala.collection.{immutable => im, mutable => mu}
+    val cases: Seq[(TypeRef[_ <: scala.collection.Iterable[Int]], Class[_])] = Seq(
+      (ScalaTypeRef[mu.ArrayBuffer[Int]], classOf[mu.ArrayBuffer[_]]),
+      (ScalaTypeRef[mu.ListBuffer[Int]], classOf[mu.ListBuffer[_]]),
+      (ScalaTypeRef[mu.ArrayDeque[Int]], classOf[mu.ArrayDeque[_]]),
+      (ScalaTypeRef[mu.Queue[Int]], classOf[mu.Queue[_]]),
+      (ScalaTypeRef[mu.LinkedHashSet[Int]], classOf[mu.LinkedHashSet[_]]),
+      (ScalaTypeRef[im.IndexedSeq[Int]], classOf[Vector[_]]),
+      (ScalaTypeRef[scala.collection.IndexedSeq[Int]], classOf[Vector[_]]),
+      (ScalaTypeRef[scala.collection.LinearSeq[Int]], classOf[im.::[_]]),
+      (ScalaTypeRef[im.LinearSeq[Int]], classOf[im.::[_]]),
+      (ScalaTypeRef[mu.Buffer[Int]], classOf[mu.ArrayBuffer[_]]),
+      (ScalaTypeRef[mu.Seq[Int]], classOf[mu.ArrayBuffer[_]]),
+      (ScalaTypeRef[mu.IndexedSeq[Int]], classOf[mu.ArrayBuffer[_]]),
+      (ScalaTypeRef[mu.Iterable[Int]], classOf[mu.ArrayBuffer[_]]),
+      (ScalaTypeRef[scala.collection.Set[Int]], classOf[im.HashSet[_]])
+    )
+    for (json <- runtimes; (typeRef, runtimeClass) <- cases) {
+      val anyRef = typeRef.asInstanceOf[TypeRef[scala.collection.Iterable[Int]]]
+      val decoded = json.fromJson("[3,1,2]", anyRef)
+      assert(runtimeClass.isInstance(decoded), s"$typeRef -> ${decoded.getClass}")
+      assert(decoded.toSet == Set(1, 2, 3), s"$typeRef")
+      if (!decoded.isInstanceOf[scala.collection.Set[_]]) assert(decoded.toList == List(3, 1, 2))
+      assert(json.fromJson("[]", anyRef).isEmpty)
+      val encoded = json.toJson(decoded, anyRef)
+      assert(json.fromJson(encoded.getBytes(UTF_8), anyRef) == decoded, s"$typeRef")
+      assert(json.fromJson("null", anyRef) == null)
+    }
+    val json = runtimes.head
+    val linked = json.fromJson("[3,1,2,1]", ScalaTypeRef[mu.LinkedHashSet[Int]])
+    assert(linked.toList == List(3, 1, 2))
+    assert(json.toJson(linked) == "[3,1,2]")
+    val nilType = ScalaTypeRef[Nil.type]
+    assert(json.fromJson("[]", nilType) eq Nil)
+    assert(json.toJson(Nil) == "[]")
+    assertThrows[ForyJsonException](json.fromJson("[1]", nilType))
+    val consType = ScalaTypeRef[im.::[Int]]
+    assert(json.fromJson("[1,2]", consType) == List(1, 2))
+    assertThrows[ForyJsonException](json.fromJson("[]", consType))
+  }
+
+  test("declared map kinds") {
+    import scala.collection.{immutable => im, mutable => mu}
+    val cases: Seq[(TypeRef[_ <: scala.collection.Map[String, Int]], Class[_])] = Seq(
+      (ScalaTypeRef[im.VectorMap[String, Int]], classOf[im.VectorMap[_, _]]),
+      (ScalaTypeRef[im.ListMap[String, Int]], classOf[im.ListMap[_, _]]),
+      (ScalaTypeRef[im.SeqMap[String, Int]], classOf[im.VectorMap[_, _]]),
+      (ScalaTypeRef[mu.SeqMap[String, Int]], classOf[mu.LinkedHashMap[_, _]]),
+      anyRefMapCase,
+      (ScalaTypeRef[mu.HashMap[String, Int]], classOf[mu.HashMap[_, _]]),
+      (ScalaTypeRef[im.HashMap[String, Int]], classOf[im.HashMap[_, _]])
+    )
+    for (json <- runtimes; (typeRef, runtimeClass) <- cases) {
+      val anyRef = typeRef.asInstanceOf[TypeRef[scala.collection.Map[String, Int]]]
+      val decoded = json.fromJson("""{"c":3,"a":1,"b":2}""", anyRef)
+      assert(runtimeClass.isInstance(decoded), s"$typeRef -> ${decoded.getClass}")
+      assert(decoded == Map("a" -> 1, "b" -> 2, "c" -> 3), s"$typeRef")
+      if (decoded.isInstanceOf[scala.collection.SeqMap[_, _]]) {
+        assert(decoded.keys.toList == List("c", "a", "b"), s"$typeRef")
+        assert(json.toJson(decoded, anyRef) == """{"c":3,"a":1,"b":2}""")
+      }
+      assert(json.fromJson("{}", anyRef).isEmpty)
+      val encoded = json.toJson(decoded, anyRef)
+      assert(json.fromJson(encoded.getBytes(UTF_8), anyRef) == decoded, s"$typeRef")
+      assert(json.fromJson("null", anyRef) == null)
+      assertThrows[ForyJsonException](json.fromJson("[1]", anyRef))
+    }
+    val json = runtimes.head
+    val intKeyType = ScalaTypeRef[Map[Int, String]]
+    assert(json.toJson(Map(1 -> "a", 2 -> "b"), intKeyType) == """{"1":"a","2":"b"}""")
+    assert(json.fromJson("""{"1":"a","2":"b"}""", intKeyType) == Map(1 -> "a", 2 -> "b"))
+    assertThrows[ForyJsonException](json.fromJson("""{"x":"a"}""", intKeyType))
+    val nestedType = ScalaTypeRef[Map[String, List[Option[Int]]]]
+    val nested = Map("a" -> List(Some(1), None), "b" -> Nil)
+    assert(roundTrip(json, nested, nestedType) == nested)
+    val listListType = ScalaTypeRef[List[List[Int]]]
+    assert(roundTrip(json, List(List(1), Nil, List(2, 3)), listListType) == List(List(1), Nil, List(2, 3)))
+    val nullableList = ScalaTypeRef[List[String]]
+    assert(roundTrip(json, List("a", null, "b"), nullableList) == List("a", null, "b"))
+  }
+
+  test("runtime collection writes and unsupported families") {
+    import scala.collection.{immutable => im, mutable => mu}
+    val json = runtimes.head
+    assert(json.toJson(mu.ArrayBuffer(1, 2)) == "[1,2]")
+    assert(json.toJson(mu.ListBuffer(1, 2)) == "[1,2]")
+    assert(json.toJson(mu.ArrayDeque(1, 2)) == "[1,2]")
+    assert(json.toJson(mu.Queue(1, 2)) == "[1,2]")
+    assert(json.toJson(mu.LinkedHashSet(2, 1)) == "[2,1]")
+    assert(json.toJson(im.VectorMap("b" -> 1, "a" -> 2)) == """{"b":1,"a":2}""")
+    assert(json.toJson(im.ListMap("b" -> 1, "a" -> 2)) == """{"b":1,"a":2}""")
+    assert(json.toJson(anyRefMap) == """{"a":1}""")
+    assert(json.toJson(mu.LinkedHashMap("b" -> 1, "a" -> 2)) == """{"b":1,"a":2}""")
+    // Five entries select the HashMap runtime class rather than Map1..Map4.
+    val hashed = im.Map("a" -> 1, "b" -> 2, "c" -> 3, "d" -> 4, "e" -> 5)
+    assert(json.fromJson(json.toJson(hashed), ScalaTypeRef[Map[String, Int]]) == hashed)
+
+    assertThrows[ForyJsonException](json.toJson(im.TreeSet(1, 2)))
+    assertThrows[ForyJsonException](json.toJson(im.TreeMap("a" -> 1)))
+    assertThrows[ForyJsonException](json.toJson(mu.TreeSet(1, 2)))
+    assertThrows[ForyJsonException](json.fromJson("[1]", ScalaTypeRef[im.TreeSet[Int]]))
+    assertThrows[ForyJsonException](json.fromJson("""{"a":1}""", ScalaTypeRef[im.SortedMap[String, Int]]))
+    assertThrows[ForyJsonException](json.fromJson("[1]", ScalaTypeRef[im.SortedSet[Int]]))
+  }
+
+  test("large List and Vector batches") {
+    for (json <- runtimes; size <- Seq(1023, 1024, 1025, 2049)) {
+      val list = (0 until size).toList
+      val listType = ScalaTypeRef[List[Int]]
+      assert(roundTrip(json, list, listType) == list)
+      val vector = list.toVector
+      val vectorType = ScalaTypeRef[Vector[Int]]
+      assert(roundTrip(json, vector, vectorType) == vector)
+      val strings = list.map(i => "v" + i)
+      val stringListType = ScalaTypeRef[List[String]]
+      assert(roundTrip(json, strings, stringListType) == strings)
+    }
+    val bounded = ForyJsonScala.builder().withMaxGraphMemoryBytes(4096).build()
+    val big = (0 until 4096).mkString("[", ",", "]")
+    assertThrows[ForyJsonException](bounded.fromJson(big, ScalaTypeRef[List[Int]]))
+  }
+
+
+  test("rejected runtime-state families") {
+    val json = runtimes.head
+    val roots: Seq[TypeRef[_]] = Seq(
+      streamType,
+      ScalaTypeRef[Iterator[Int]],
+      ScalaTypeRef[scala.collection.View[Int]],
+      ScalaTypeRef[scala.util.Try[Int]],
+      ScalaTypeRef[scala.util.Success[Int]],
+      ScalaTypeRef[scala.util.Failure[Int]],
+      ScalaTypeRef[scala.concurrent.Future[Int]],
+      ScalaTypeRef[scala.concurrent.Promise[Int]],
+      new TypeRef[scala.concurrent.duration.Deadline]() {},
+      new TypeRef[scala.util.matching.Regex]() {},
+      new TypeRef[Symbol]() {},
+      ScalaTypeRef[Int => Int],
+      ScalaTypeRef[PartialFunction[Int, Int]],
+      ScalaTypeRef[Ordering[Int]]
+    )
+    for (typeRef <- roots) {
+      val error = intercept[UnsupportedJsonTypeException] {
+        json.fromJson("null", typeRef.asInstanceOf[TypeRef[AnyRef]])
+      }
+      assert(error.getMessage.contains("runtime-state or lazy type"), s"$typeRef: ${error.getMessage}")
+    }
+    assertThrows[UnsupportedJsonTypeException](json.toJson(scala.util.Success(1)))
+    assertThrows[UnsupportedJsonTypeException](json.toJson(Symbol("x")))
+    assertThrows[UnsupportedJsonTypeException](json.toJson("a.*".r))
+    assertThrows[UnsupportedJsonTypeException](json.toJson(LazyItems(LazyList(1))))
+    assertThrows[UnsupportedJsonTypeException](json.toJson(TriedValue(scala.util.Success(1))))
+    assertThrows[UnsupportedJsonTypeException](json.toJson(Transform(identity)))
+    assertThrows[UnsupportedJsonTypeException](json.fromJson("""{"items":[1]}""", classOf[LazyItems]))
+  }
+
+
+  test("Option shapes") {
+    for (json <- runtimes) {
+      assert(json.toJson(Optionals(Some(1))) == """{"a":1,"b":null,"c":null}""")
+      assert(json.fromJson("""{"a":1}""", classOf[Optionals]) == Optionals(Some(1)))
+      assert(json.fromJson("""{"a":null}""", classOf[Optionals]) == Optionals(None))
+      assertThrows[ForyJsonException](json.fromJson("{}", classOf[Optionals]))
+      assert(
+        json.fromJson("""{"a":1,"b":"x","c":2}""", classOf[Optionals]) ==
+          Optionals(Some(1), Some("x"), Some(Some(2)))
+      )
+      // Some(None) is written as null and therefore decodes as None; this pins that shape.
+      assert(json.toJson(Optionals(None, None, Some(None))) == """{"a":null,"b":null,"c":null}""")
+      val nestedType = ScalaTypeRef[Option[Option[Int]]]
+      assert(json.toJson(Some(None): Option[Option[Int]], nestedType) == "null")
+      assert(json.fromJson("null", nestedType) == None)
+      assert(json.fromJson("3", nestedType) == Some(Some(3)))
+      val stringOption = ScalaTypeRef[Option[String]]
+      assert(json.toJson(Some(null): Option[String], stringOption) == "null")
+      assert(json.fromJson(quoted("中").getBytes(UTF_8), stringOption) == Some("中"))
+    }
+  }
+
+  test("tuple shapes") {
+    for (json <- runtimes) {
+      val tuple1Type = ScalaTypeRef[Tuple1[String]]
+      assert(json.toJson(Tuple1("a"), tuple1Type) == """["a"]""")
+      assert(json.fromJson("""["a"]""", tuple1Type) == Tuple1("a"))
+      assert(json.fromJson("""["中"]""".getBytes(UTF_8), tuple1Type) == Tuple1("中"))
+      assert(json.fromJson("""["中"]""", tuple1Type) == Tuple1("中"))
+      assertThrows[ForyJsonException](json.fromJson("[]", tuple1Type))
+      assertThrows[ForyJsonException](json.fromJson("""["a","b"]""", tuple1Type))
+
+      val pairType = ScalaTypeRef[(Int, String)]
+      assertThrows[ForyJsonException](json.fromJson("""[1,"a",2]""", pairType))
+      assertThrows[ForyJsonException](json.fromJson("""["a",1]""", pairType))
+      assertThrows[ForyJsonException](json.fromJson("""{"_1":1}""", pairType))
+      assert(json.fromJson("null", pairType) == null)
+      assert(json.toJson(null.asInstanceOf[(Int, String)], pairType) == "null")
+      assert(json.fromJson("[1,null]", pairType) == ((1, null)))
+      assert(json.toJson((1, null): (Int, String), pairType) == "[1,null]")
+      assert(json.fromJson("""[1,"中"]""".getBytes(UTF_8), pairType) == ((1, "中")))
+      assert(json.fromJson("""[1,"中"]""", pairType) == ((1, "中")))
+
+      val nestedType = ScalaTypeRef[((Int, String), List[(String, Option[Int])])]
+      val nested = ((1, "z"), List(("a", Some(1)), ("b", None)))
+      assert(roundTrip(json, nested, nestedType) == nested)
+
+      val tuple3Type = ScalaTypeRef[(Int, String, Boolean)]
+      val value = (1, "a", true)
+      assert(roundTrip(json, value, tuple3Type) == value)
+    }
+  }
+
+  test("value class shapes") {
+    for (json <- runtimes) {
+      assert(json.toJson(Label("x")) == quoted("x"))
+      assert(json.fromJson(quoted("x"), classOf[Label]) == Label("x"))
+      assert(json.fromJson(quoted("中").getBytes(UTF_8), classOf[Label]) == Label("中"))
+      assert(json.fromJson("null", classOf[Label].asInstanceOf[Class[AnyRef]]) == null)
+      assertThrows[ForyJsonException](json.fromJson("1", classOf[Label]))
+      val listType = ScalaTypeRef[List[Label]]
+      assert(roundTrip(json, List(Label("a"), Label("b")), listType) == List(Label("a"), Label("b")))
+      val mapType = ScalaTypeRef[Map[String, Label]]
+      assert(roundTrip(json, Map("k" -> Label("v")), mapType) == Map("k" -> Label("v")))
+      val optionType = ScalaTypeRef[Option[Label]]
+      assert(roundTrip(json, Some(Label("v")): Option[Label], optionType) == Some(Label("v")))
+    }
+  }
+
+  test("Unit and singletons") {
+    for (json <- runtimes) {
+      val unitType = classOf[scala.runtime.BoxedUnit]
+      assert(json.toJson(scala.runtime.BoxedUnit.UNIT, unitType) == "null")
+      assert(json.fromJson("null", unitType) != null)
+      assertThrows[ForyJsonException](json.fromJson("1", unitType))
+      assertThrows[ForyJsonException](json.fromJson("""{"value":1}""", classOf[UnitValue]))
+
+      assert(json.toJson(Marker) == "{}")
+      assert(json.fromJson("{}", Marker.getClass) eq Marker)
+      assert(json.fromJson("{}".getBytes(UTF_8), Marker.getClass) eq Marker)
+      assertThrows[ForyJsonException](json.fromJson("""{"x":1}""", Marker.getClass))
+      assertThrows[ForyJsonException](json.fromJson("[]", Marker.getClass))
+      assert(json.toJson(Outer.Inner) == "{}")
+      assert(json.fromJson("{}", Outer.Inner.getClass) eq Outer.Inner)
+      assert(json.fromJson("null", Marker.getClass) == null)
+    }
+  }
+
+
+  test("generic and wide case classes") {
+    for (json <- runtimes) {
+      val erasedIntBox = new TypeRef[Box[Int]]() {}
+      assert(json.toJson(Box(1), erasedIntBox) == """{"value":1}""")
+      assert(json.fromJson("""{"value":1}""", erasedIntBox) == Box(1))
+      val holder = Boxes(Box(2), Box("s"))
+      assert(json.toJson(holder) == """{"ints":{"value":2},"strings":{"value":"s"}}""")
+      assert(json.fromJson(json.toJson(holder), classOf[Boxes]) == holder)
+      val listBox = ScalaTypeRef[Box[List[String]]]
+      assert(roundTrip(json, Box(List("a", "中")), listBox) == Box(List("a", "中")))
+
+      val vars = VarParams(1)
+      vars.b = "changed"
+      assert(json.toJson(vars) == """{"a":1,"b":"changed"}""")
+      assert(json.fromJson("""{"a":2}""", classOf[VarParams]) == VarParams(2))
+      assert(json.fromJson("""{"a":2,"b":"z"}""", classOf[VarParams]) == VarParams(2, "z"))
+
+      val wide = Wide(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23)
+      val text = json.toJson(wide)
+      assert(text.contains(quoted("f24") + ":24"), text)
+      assert(json.fromJson(text, classOf[Wide]) == wide)
+      assert(json.fromJson(text.getBytes(UTF_8), classOf[Wide]) == wide)
+      val withoutDefault = text.replace(""","f24":24""", "")
+      assert(json.fromJson(withoutDefault, classOf[Wide]) == wide)
+      val missing = intercept[ForyJsonException](json.fromJson("""{"f1":1}""", classOf[Wide]))
+      assert(missing.getMessage != null)
+
+      // Unknown properties are skipped for case classes like other object codecs.
+      assert(json.fromJson("""{"a":2,"zzz":{"deep":[1,2]}}""", classOf[VarParams]) == VarParams(2))
+    }
+    val shallow = ForyJsonScala.builder().withCodegen(false).maxDepth(2).build()
+    assertThrows[ForyJsonException](shallow.fromJson("""{"value":1,"next":{"value":2,"next":{"value":3,"next":null}}}""", classOf[Node]))
+    assert(shallow.fromJson("""{"value":1,"next":null}""", classOf[Node]) == Node(1, None))
+  }
+
+  test("explicit sealed hierarchy subtypes") {
+    for (json <- runtimes) {
+      val shapes = Shapes(List(Circle(1.5), Dot))
+      val text = json.toJson(shapes)
+      assert(text == """{"shapes":[{"kind":"circle","radius":1.5},{"kind":"dot"}]}""", text)
+      val decoded = json.fromJson(text, classOf[Shapes])
+      assert(decoded == shapes)
+      assert(decoded.shapes(1).asInstanceOf[AnyRef] eq Dot)
+      assert(json.fromJson(text.getBytes(UTF_8), classOf[Shapes]) == shapes)
+      val single = json.toJson(Circle(2.0): Shape, classOf[Shape])
+      assert(single == """{"kind":"circle","radius":2.0}""", single)
+      assert(json.fromJson(single, classOf[Shape]) == Circle(2.0))
+      assertThrows[ForyJsonException](json.fromJson("""{"kind":"square"}""", classOf[Shape]))
+      assertThrows[ForyJsonException](json.fromJson("""{"radius":1.0}""", classOf[Shape]))
+    }
+  }
+
+
+  test("Enumeration codec registered directly") {
+    val codec = new HueCodec
+    for (
+      json <- Seq(
+        ForyJsonScala.builder().withCodegen(false).registerCodec(classOf[Hue.Value].asInstanceOf[Class[Enumeration#Value]], codec).build(),
+        ForyJsonScala.builder().withAsyncCompilation(false).registerCodec(classOf[Hue.Value].asInstanceOf[Class[Enumeration#Value]], codec).build()
+      )
+    ) {
+      assert(json.toJson(Hue.Red, classOf[Hue.Value]) == quoted("red"))
+      assert(json.fromJson(quoted("green"), classOf[Hue.Value]) eq Hue.Green)
+      assert(json.fromJson(quoted("green").getBytes(UTF_8), classOf[Hue.Value]) eq Hue.Green)
+      assertThrows[ForyJsonException](json.fromJson(quoted("Green"), classOf[Hue.Value]))
+      assertThrows[ForyJsonException](json.fromJson(quoted("blue"), classOf[Hue.Value]))
+      assertThrows[ForyJsonException](json.fromJson("1", classOf[Hue.Value]))
+      assert(json.fromJson("null", classOf[Hue.Value]) == null)
+      val listType = ScalaTypeRef[List[Hue.Value]]
+      assert(json.fromJson("""["red","green"]""", listType) == List(Hue.Red, Hue.Green))
+    }
+    assertThrows[IllegalArgumentException] {
+      object Duplicate extends Enumeration {
+        val A = Value("same")
+        val B = Value("same")
+      }
+      new ScalaEnumerationCodec(Duplicate) {}
+    }
+  }
+
+
+  test("scalar families as case-class fields with codegen") {
+    val value = ScalarFields(
+      BigDecimal("1.25"),
+      new scala.collection.mutable.StringBuilder("sb"),
+      Duration.Inf,
+      FiniteDuration(2, TimeUnit.SECONDS),
+      Range.inclusive(1, 5, 2),
+      (1, "中"),
+      Label("n"),
+      List(Label("a"), Label("b")),
+      scala.collection.mutable.ArrayBuffer("x", "y"),
+      scala.collection.immutable.ListMap("z" -> 1, "y" -> 2),
+      scala.collection.mutable.LinkedHashSet(3, 1, 2)
+    )
+    for (json <- runtimes) {
+      val text = json.toJson(value)
+      assert(new String(json.toJsonBytes(value), UTF_8) == text)
+      for (decoded <- Seq(json.fromJson(text, classOf[ScalarFields]), json.fromJson(text.getBytes(UTF_8), classOf[ScalarFields]))) {
+        assert(decoded.decimal == value.decimal)
+        assert(decoded.builder.toString == "sb")
+        assert(decoded.duration eq Duration.Inf)
+        assert(decoded.finite == value.finite)
+        assert(decoded.range.toList == value.range.toList)
+        assert(decoded.pair == value.pair)
+        assert(decoded.name == value.name)
+        assert(decoded.names == value.names)
+        assert(decoded.buffer == value.buffer)
+        assert(decoded.listMap.toList == value.listMap.toList)
+        assert(decoded.linkedSet.toList == value.linkedSet.toList)
+      }
     }
   }
 }
