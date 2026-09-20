@@ -58,13 +58,17 @@ import org.apache.fory.util.function.ToShortFunction;
  *
  * <p>Field members use typed access so primitive paths do not box. Ordinary JVM fields delegate to
  * Fory core's {@link FieldAccessor}; JDK 25 Native Image fields use typed reflection when module
- * access permits it. Method members cache a trusted {@code MethodHandle} on the JVM, use reflection
- * on Android, and use lambdas prepared by the Fory JSON Native Image Feature. Generated codecs
+ * access permits it. Method members use typed lambdas on the JVM, reflection on Android, and
+ * lambdas prepared by the Fory JSON Native Image Feature on JDK 25+. Native runtime cache misses
+ * use {@code MethodHandle}s because new lambda classes cannot be defined there. Generated codecs
  * consume the original field or method metadata and emit direct expressions.
  */
 public abstract class JsonFieldAccessor {
   private static final boolean USE_JDK25_NATIVE_ACCESS =
       GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && JdkVersion.MAJOR_VERSION >= 25;
+  private static final boolean USE_METHOD_LAMBDAS =
+      !AndroidSupport.IS_ANDROID
+          && (!GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE || USE_JDK25_NATIVE_ACCESS);
   // The Feature calls the ordinary factories during analysis, so Native Image retains the same
   // accessor instances later returned while runtime configurations build interpreted codecs.
   private static final ClassValueCache<ConcurrentMap<Member, JsonFieldAccessor>> NATIVE_ACCESSORS =
@@ -201,18 +205,34 @@ public abstract class JsonFieldAccessor {
 
   private static JsonFieldAccessor newGetterAccessor(Member member) {
     Method getter = (Method) member;
-    return GraalvmSupport.isGraalBuildTime() && USE_JDK25_NATIVE_ACCESS
+    return canUseMethodLambda(getter)
         ? LambdaGetterJsonAccessor.create(getter)
         : new GetterJsonAccessor(getter);
   }
 
   private static JsonFieldAccessor newSetterAccessor(Member member) {
     Method setter = (Method) member;
-    return GraalvmSupport.isGraalBuildTime()
-            && USE_JDK25_NATIVE_ACCESS
-            && setter.getParameterCount() == 1
+    return setter.getParameterCount() == 1 && canUseMethodLambda(setter)
         ? LambdaSetterJsonAccessor.create(setter)
         : new SetterJsonAccessor(setter);
+  }
+
+  private static boolean canUseMethodLambda(Method method) {
+    if (!USE_METHOD_LAMBDAS || GraalvmSupport.isGraalRuntime()) {
+      return false;
+    }
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return true;
+    }
+    // Lambda classes are defined in the declaring loader. Bootstrap and isolated model loaders
+    // cannot implement Fory's primitive function interfaces, so retain MethodHandle access there.
+    ClassLoader loader = method.getDeclaringClass().getClassLoader();
+    try {
+      return Class.forName(JsonFieldAccessor.class.getName(), false, loader)
+          == JsonFieldAccessor.class;
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
   }
 
   private static final class FieldJsonAccessor extends JsonFieldAccessor {

@@ -73,6 +73,7 @@ import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.codec.ObjectCodec;
+import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -98,6 +99,7 @@ public final class ForyJsonExample {
       testHostedCodegenConfigurations();
     }
     testModels();
+    testMethodAccessors();
     testConfigurations();
     testInclusion();
     testCodecs();
@@ -225,6 +227,53 @@ public final class ForyJsonExample {
     ValidatedValue validated = json.fromJson("{\"value\":22}", ValidatedValue.class);
     Preconditions.checkArgument(validated.value == 22);
     Preconditions.checkArgument(validated.validatorInvoked());
+  }
+
+  private static void testMethodAccessors() {
+    try {
+      // This bean deliberately has no JsonType annotation or hosted codec. Its accessors must be
+      // created after image startup, rather than reused from the Feature's build-time cache.
+      AccessorBean bean = new AccessorBean();
+      JsonFieldAccessor intGetter =
+          JsonFieldAccessor.forGetter(AccessorBean.class.getMethod("getValue"));
+      JsonFieldAccessor intSetter =
+          JsonFieldAccessor.forSetter(AccessorBean.class.getMethod("setValue", int.class));
+      JsonFieldAccessor objectGetter =
+          JsonFieldAccessor.forGetter(AccessorBean.class.getMethod("getName"));
+      JsonFieldAccessor objectSetter =
+          JsonFieldAccessor.forSetter(AccessorBean.class.getMethod("setName", String.class));
+      intSetter.putInt(bean, 123456);
+      objectSetter.putObject(bean, "runtime");
+      Preconditions.checkArgument(intGetter.getInt(bean) == 123456);
+      Preconditions.checkArgument(objectGetter.getObject(bean).equals("runtime"));
+      intSetter.putObject(bean, 654321);
+      objectSetter.putObject(bean, null);
+      Preconditions.checkArgument(intGetter.getObject(bean).equals(654321));
+      Preconditions.checkArgument(objectGetter.getObject(bean) == null);
+    } catch (NoSuchMethodException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  public static final class AccessorBean {
+    private int value;
+    private String name;
+
+    public int getValue() {
+      return value;
+    }
+
+    public void setValue(int value) {
+      this.value = value;
+    }
+
+    public String getName() {
+      return name;
+    }
+
+    public void setName(String name) {
+      this.name = name;
+    }
   }
 
   private static void testPrimitiveProperties(ForyJson json) {

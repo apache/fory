@@ -22,6 +22,7 @@ package org.apache.fory.json;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 
+import java.text.DecimalFormat;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.data.BeanProperties.BooleanBean;
 import org.apache.fory.json.data.BeanProperties.ConflictingTypesBean;
@@ -36,6 +37,7 @@ import org.apache.fory.json.data.BeanProperties.MixedBean;
 import org.apache.fory.json.data.BeanProperties.OverloadedSetterBean;
 import org.apache.fory.json.data.BeanProperties.SetterBean;
 import org.apache.fory.json.data.BeanProperties.SetterOnlyBean;
+import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
@@ -43,6 +45,41 @@ public class JsonPropertyTest extends ForyJsonTestModels {
   @Factory(dataProvider = "enableCodegen")
   public JsonPropertyTest(boolean codegen) {
     super(codegen);
+  }
+
+  @Test
+  public void typedMethodAccessors() throws Exception {
+    JsonFieldAccessor getter = JsonFieldAccessor.forGetter(GetterBean.class.getMethod("getId"));
+    JsonFieldAccessor setter =
+        JsonFieldAccessor.forSetter(SetterBean.class.getMethod("setId", int.class));
+    // The typed operations must be implemented directly, without the base Object boxing path.
+    assertEquals(
+        getter.getClass().getMethod("getInt", Object.class).getDeclaringClass(), getter.getClass());
+    assertEquals(
+        setter.getClass().getMethod("putInt", Object.class, int.class).getDeclaringClass(),
+        setter.getClass());
+    assertEquals(getter.getInt(new GetterBean()), 17);
+    assertEquals(getter.getObject(new GetterBean()), 17);
+    SetterBean value = new SetterBean();
+    setter.putInt(value, 123456);
+    assertEquals(SetterBean.id(value), 123457);
+    setter.putObject(value, 654321);
+    assertEquals(SetterBean.id(value), 654322);
+    assertEquals(SetterBean.setterCalls(value), 2);
+  }
+
+  @Test
+  public void bootstrapMethodAccessors() throws Exception {
+    JsonFieldAccessor getter = JsonFieldAccessor.forGetter(Character.class.getMethod("charValue"));
+    assertEquals(getter.getChar('x'), 'x');
+    JsonFieldAccessor setter =
+        JsonFieldAccessor.forSetter(
+            DecimalFormat.class.getMethod("setGroupingUsed", boolean.class));
+    DecimalFormat format = new DecimalFormat();
+    setter.putBoolean(format, false);
+    assertEquals(format.isGroupingUsed(), false);
+    setter.putBoolean(format, true);
+    assertEquals(format.isGroupingUsed(), true);
   }
 
   @Test
