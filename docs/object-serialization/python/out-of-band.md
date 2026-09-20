@@ -58,6 +58,10 @@ assert np.array_equal(array, deserialized_array)
 
 ## Out-of-Band with Pandas DataFrames
 
+Native mode supports DataFrames with datetime columns and a `DatetimeIndex`, preserving their
+datetime units and index metadata. NumPy `datetime64` and `timedelta64` arrays also support this
+buffer flow. Their C-contiguous storage is shared without copying; non-contiguous arrays are copied.
+
 ```python
 import pyfory
 import pandas as pd
@@ -65,12 +69,13 @@ import numpy as np
 
 fory = pyfory.Fory(xlang=False, ref=False, strict=False)
 
-# Create a DataFrame with numeric columns
+# Create a DataFrame with a datetime index and column
+index = pd.date_range("2026-01-01", periods=1000, freq="D", name="date")
 df = pd.DataFrame({
     'a': np.arange(1000, dtype=np.float64),
     'b': np.arange(1000, dtype=np.int64),
-    'c': ['text'] * 1000
-})
+    'created_at': index
+}, index=index)
 
 # Serialize with out-of-band buffers
 buffer_objects = []
@@ -80,7 +85,7 @@ buffers = [obj.getbuffer() for obj in buffer_objects]
 # Deserialize
 deserialized_df = fory.deserialize(serialized_data, buffers=buffers)
 
-assert df.equals(deserialized_df)
+pd.testing.assert_frame_equal(df, deserialized_df)
 ```
 
 ## Selective Out-of-Band Serialization

@@ -1184,8 +1184,38 @@ class NDArrayBufferObject(BufferObject):
 
     def getbuffer(self) -> memoryview:
         if self.array.flags.c_contiguous:
+            if self.dtype.kind in ("M", "m"):
+                # NumPy cannot export temporal dtypes through the buffer protocol.
+                # Their dtype and shape are already encoded separately; expose the
+                # same storage as bytes, including for zero-dimensional arrays.
+                return memoryview(self.array.reshape(-1).view(np.uint8))
             return memoryview(self.array.data)
         return memoryview(self.array.tobytes())
+
+
+class NamedTupleSerializer(Serializer):
+    """Serialize Python named tuples in field order and reconstruct their concrete type."""
+
+    def __init__(self, type_resolver, cls):
+        super().__init__(type_resolver, cls)
+        self._field_count = len(cls._fields)
+        self._graph_memory_bytes = _TUPLE_OWNER_BYTES + self._field_count * _REFERENCE_BYTES
+        self.read_data_always_advances = self._field_count > 0
+
+    def write(self, write_context, value):
+        # Named tuple fields live in tuple storage, not their empty __slots__.
+        for item in value:
+            write_context.write_ref(item)
+
+    def read(self, read_context):
+        if read_context.policy is not DEFAULT_POLICY:
+            read_context.policy.authorize_instantiation(self.type_)
+        read_context.reserve_graph_memory(self._graph_memory_bytes)
+        read_context.check_readable_bytes(self._field_count)
+        # Immutable fields must be supplied to __new__, rather than assigned
+        # after creating an empty instance as for ordinary Python objects.
+        fields = [read_context.read_ref() for _ in range(self._field_count)]
+        return self.type_(*fields)
 
 
 class StatefulSerializer(Serializer):
@@ -2062,6 +2092,7 @@ __all__ = [
     "CollectionSerializer",
     "ListSerializer",
     "TupleSerializer",
+    "NamedTupleSerializer",
     "StringArraySerializer",
     "SetSerializer",
     "MapSerializer",

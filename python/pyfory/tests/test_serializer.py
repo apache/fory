@@ -23,9 +23,10 @@ import io
 import os
 import pickle
 import weakref
+from collections import namedtuple
 from collections.abc import MutableSequence
 from enum import Enum, IntEnum
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict, NamedTuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -79,6 +80,70 @@ def test_tuple():
     fory = Fory(xlang=False, ref=True, compatible=False)
     print(len(fory.serialize((-1.0, 2))))
     assert ser_de(fory, (-1.0, 2)) == (-1.0, 2)
+
+
+class NamedRecord(NamedTuple):
+    name: str
+    values: tuple
+    count: int
+
+
+class DefaultNamedRecord(NamedTuple):
+    name: str = "default"
+    values: tuple = ()
+    count: int = 0
+
+
+NamedPoint = namedtuple("NamedPoint", ["x", "y"])
+EmptyNamedTuple = namedtuple("EmptyNamedTuple", [])
+
+
+@pytest.mark.parametrize("track_ref", [False, True])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("compatible", [False, True])
+@pytest.mark.parametrize(
+    "value",
+    [
+        NamedRecord("sample", (1.0, 2.0, 3.0), 42),
+        DefaultNamedRecord("sample", (1.0,), 42),
+        NamedPoint(1, None),
+        EmptyNamedTuple(),
+    ],
+)
+def test_namedtuple(value, track_ref, strict, compatible):
+    writer = Fory(xlang=False, ref=track_ref, strict=strict, compatible=compatible)
+    reader = writer
+    if strict:
+        reader = Fory(xlang=False, ref=track_ref, strict=True, compatible=compatible)
+        writer.register(type(value))
+        reader.register(type(value))
+    restored = reader.loads(writer.dumps([value, value]))
+    assert restored == [value, value]
+    assert type(restored[0]) is type(value)
+    if track_ref:
+        assert restored[0] is restored[1]
+
+
+def test_namedtuple_field_refs():
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
+    shared = [1, 2]
+    value = NamedRecord("shared", (shared, shared), 2)
+    restored = fory.loads(fory.dumps(value))
+    assert restored == value
+    assert restored.values[0] is restored.values[1]
+
+
+def test_namedtuple_policy():
+    class NamedTuplePolicy(pyfory.DeserializationPolicy):
+        def authorize_instantiation(self, cls, **kwargs):
+            if cls is NamedRecord:
+                raise ValueError("named tuple blocked")
+
+    fory = Fory(xlang=False, ref=False, strict=True, compatible=False, policy=NamedTuplePolicy())
+    fory.register(NamedRecord)
+    data = fory.dumps(NamedRecord("sample", (), 42))
+    with pytest.raises(ValueError, match="named tuple blocked"):
+        fory.loads(data)
 
 
 def test_string():
@@ -913,6 +978,54 @@ def test_pandas_dataframe():
     df = pd.DataFrame({"a": list(range(10))})
     df2 = fory.deserialize(fory.serialize(df))
     assert df2.equals(df)
+
+
+@pytest.mark.parametrize("out_of_band", [False, True])
+@pytest.mark.parametrize("as_column", [False, True])
+def test_pandas_datetime(out_of_band, as_column):
+    fory = Fory(xlang=False, ref=False, strict=False, compatible=False)
+    rng = np.random.default_rng(0)
+    index = pd.date_range("2026-01-01", periods=10, freq="D", name="date")
+    df = pd.DataFrame({key: rng.random(10, dtype=np.float64) for key in "abc"}, index=index)
+    if as_column:
+        df = df.reset_index()
+    buffers = []
+    data = fory.dumps(df, buffer_callback=buffers.append if out_of_band else None)
+    views = [obj.getbuffer() for obj in buffers]
+    restored = fory.loads(data, buffers=views if out_of_band else None)
+    pd.testing.assert_frame_equal(restored, df)
+
+
+@pytest.mark.parametrize("dtype", ["datetime64[ns]", "datetime64[us]", "timedelta64[ns]"])
+@pytest.mark.parametrize("shape", [(), (0,), (6,), (2, 3)])
+def test_temporal_array_buffers(dtype, shape):
+    fory = Fory(xlang=False, ref=False, strict=True, compatible=False)
+    value = np.arange(int(np.prod(shape))).astype(dtype).reshape(shape)
+    if value.size:
+        value.flat[0] = "NaT"
+    value.setflags(write=False)
+    buffers = []
+    data = fory.dumps(value, buffer_callback=buffers.append)
+    assert len(buffers) == 1
+    view = buffers[0].getbuffer()
+    assert view.nbytes == value.nbytes
+    restored = fory.loads(data, buffers=[view])
+    assert restored.shape == value.shape
+    assert restored.dtype == value.dtype
+    np.testing.assert_array_equal(restored, value)
+    if value.size:
+        assert np.shares_memory(restored, value)
+
+
+@pytest.mark.parametrize("layout", ["strided", "fortran"])
+def test_temporal_array_layout(layout):
+    fory = Fory(xlang=False, ref=False, strict=True, compatible=False)
+    value = np.arange(12).astype("datetime64[ns]").reshape(3, 4)
+    value = value[:, ::2] if layout == "strided" else np.asfortranarray(value)
+    buffers = []
+    data = fory.dumps(value, buffer_callback=buffers.append)
+    restored = fory.loads(data, buffers=[obj.getbuffer() for obj in buffers])
+    np.testing.assert_array_equal(restored, value)
 
 
 def test_unsupported_callback():

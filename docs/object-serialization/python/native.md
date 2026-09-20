@@ -79,6 +79,31 @@ print(fory.loads(data))  # Person(name='Bob', age=25)
 Use `dumps`/`loads` for pickle-style APIs, or `serialize`/`deserialize` when matching the xlang
 API shape in code that switches modes explicitly.
 
+## Named Tuples
+
+Native mode supports both `typing.NamedTuple` and `collections.namedtuple`, preserving the
+concrete class and field values. Register the named tuple type on each peer when using strict mode:
+
+```python
+from typing import NamedTuple
+import pyfory
+
+class Record(NamedTuple):
+    name: str
+    values: tuple
+    count: int
+
+fory = pyfory.Fory(xlang=False, strict=True)
+fory.register(Record)
+
+record = Record("sample", (1.0, 2.0, 3.0), 42)
+restored = fory.loads(fory.dumps(record))
+assert type(restored) is Record
+assert restored == record
+```
+
+Writers and readers must use the same named tuple definition, including field order.
+
 ## Security And Dynamic Types
 
 Native mode can reconstruct Python objects that execute import and construction logic during

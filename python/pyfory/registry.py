@@ -67,6 +67,7 @@ from pyfory.serializer import (
     BytesSerializer,
     ListSerializer,
     TupleSerializer,
+    NamedTupleSerializer,
     MapSerializer,
     SetSerializer,
     NonExistEnum,
@@ -659,6 +660,8 @@ class TypeResolver:
             and user_type_id in {None, NO_USER_TYPE_ID}
         ):
             return self._types_info[cls]
+        if serializer is None and not self.xlang and issubclass(cls, tuple) and hasattr(cls, "_fields"):
+            serializer = self._create_serializer(cls)
         n_params = len({typename, type_id, None}) - 1
         if n_params == 0 and typename is None:
             type_id = self._next_type_id()
@@ -865,7 +868,7 @@ class TypeResolver:
         if not self.xlang:
             if isinstance(serializer, EnumSerializer):
                 type_id = TypeId.NAMED_ENUM
-            elif isinstance(serializer, (ObjectSerializer, StatefulSerializer)):
+            elif isinstance(serializer, (ObjectSerializer, StatefulSerializer, NamedTupleSerializer)):
                 type_id = TypeId.NAMED_EXT
             elif self._internal_py_serializer_map.get(type(serializer)) is not None:
                 type_id = self._internal_py_serializer_map.get(type(serializer))[1]
@@ -985,6 +988,8 @@ class TypeResolver:
                 # Use StatefulSerializer for objects that support __getstate__ and __setstate__
                 serializer_cls = _DefaultPolicyStatefulSerializer if use_default_policy else StatefulSerializer
                 serializer = serializer_cls(serializer_type_resolver, cls)
+            elif not self.xlang and issubclass(cls, tuple) and hasattr(cls, "_fields"):
+                serializer = NamedTupleSerializer(serializer_type_resolver, cls)
             elif hasattr(cls, "__dict__") or hasattr(cls, "__slots__"):
                 serializer_cls = _DefaultPolicyObjectSerializer if use_default_policy else ObjectSerializer
                 serializer = serializer_cls(serializer_type_resolver, cls)
