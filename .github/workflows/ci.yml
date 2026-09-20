@@ -976,7 +976,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Cache Cargo dependencies
-        uses: swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2
         with:
           workspaces: integration_tests/grpc_tests/rust
           cache-bin: "false"
@@ -1273,7 +1273,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Cache Cargo dependencies
-        uses: swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
           cache-bin: "false"
@@ -1302,7 +1302,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Cache Cargo dependencies
-        uses: swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
           cache-bin: "false"
