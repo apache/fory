@@ -32,6 +32,7 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.type.TypeUtils;
@@ -153,6 +154,13 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
     }
     if (componentType.isPrimitive()) {
       return new CustomPrimitiveArrayCodec<>(componentType, componentTypeInfo);
+    }
+    if (!componentTypeInfo.rejectsNull()
+        && componentTypeInfo.utf8Writer() instanceof StringEnumCodec) {
+      StringEnumCodec<?> enumCodec = (StringEnumCodec<?>) componentTypeInfo.utf8Writer();
+      if (enumCodec.maxUtf8Length != 0) {
+        return new EnumArrayCodec<>(componentType, componentTypeInfo, enumCodec);
+      }
     }
     return componentTypeInfo.rejectsNull()
         ? new NonNullObjectArrayCodec<>(componentType, componentTypeInfo)
@@ -2169,9 +2177,23 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Object[] array = (Object[]) value;
       Utf8WriterCodec<Object> codec = elementTypeInfo.utf8Writer();
       writer.writeArrayStart();
-      for (int i = 0; i < array.length; i++) {
-        writer.writeComma(i);
-        writeElement(writer, codec, array[i]);
+      if (array.length != 0) {
+        writeElement(writer, codec, array[0]);
+        int i = 1;
+        // The first element owns the separator-free case; the paired loop keeps each
+        // element's codec invocation and null policy in their original order.
+        // Use an invariant upper bound instead of adding to the induction variable in the test.
+        int pairedEnd = array.length - 1;
+        for (; i < pairedEnd; i += 2) {
+          writer.writeComma(1);
+          writeElement(writer, codec, array[i]);
+          writer.writeComma(1);
+          writeElement(writer, codec, array[i + 1]);
+        }
+        if (i < array.length) {
+          writer.writeComma(1);
+          writeElement(writer, codec, array[i]);
+        }
       }
       writer.writeArrayEnd();
     }
@@ -2280,6 +2302,58 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
     private T newArray(int size) {
       // The factory constructs this codec only for reference-array components.
       return (T) Array.newInstance(componentType, size);
+    }
+  }
+
+  private static final class EnumArrayCodec<T> extends ObjectArrayCodec<T> {
+    private final StringEnumCodec<Object> enumCodec;
+
+    @SuppressWarnings("unchecked")
+    private EnumArrayCodec(
+        Class<?> componentType, JsonTypeInfo elementTypeInfo, StringEnumCodec<?> enumCodec) {
+      super(componentType, elementTypeInfo);
+      this.enumCodec = (StringEnumCodec<Object>) enumCodec;
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, T value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      Object[] array = (Object[]) value;
+      StringEnumCodec<Object> codec = enumCodec;
+      long[] tokens = codec.utf8Tokens;
+      writer.writeArrayStart();
+      byte[] bytes = writer.getBuffer();
+      int pos = writer.getPosition();
+      int i = 0;
+      while (i < array.length) {
+        int end = i + Math.min(64, array.length - i);
+        // Bound spare capacity independently of the document size. The final wide store may
+        // extend seven bytes beyond its logical token, which includes the array separator.
+        int additional = (end - i) * codec.maxUtf8Length + Long.BYTES - 1;
+        if (additional > bytes.length - pos) {
+          writer.setPosition(pos);
+          writer.grow(additional);
+          bytes = writer.getBuffer();
+        }
+        for (; i < end; i++) {
+          Object element = array[i];
+          int index = element == null ? 0 : (codec.valueIndex(element) + 1) * 2;
+          long suffix = tokens[index + 1];
+          int length = (int) (suffix >>> 56);
+          LittleEndian.putInt64(bytes, pos, tokens[index]);
+          if (length > Long.BYTES) {
+            LittleEndian.putInt64(
+                bytes, pos + Long.BYTES, (suffix & 0x00ffffffffffffffL) | 0x2c00000000000000L);
+          }
+          pos += length;
+        }
+      }
+      // The closing bracket replaces the last token's separator; empty arrays have no separator.
+      writer.setPosition(array.length == 0 ? pos : pos - 1);
+      writer.writeArrayEnd();
     }
   }
 

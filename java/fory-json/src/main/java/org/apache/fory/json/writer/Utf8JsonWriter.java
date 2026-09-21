@@ -236,6 +236,17 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   @Override
+  public void writeBooleanAsString(boolean value) {
+    int offset = position;
+    // Reserve the full word, including bytes beyond the six- or seven-byte logical token.
+    if (offset + Long.BYTES > buffer.length) {
+      grow(Long.BYTES);
+    }
+    LittleEndian.putInt64(buffer, offset, value ? 0x0000226575727422L : 0x002265736c616622L);
+    position = offset + (value ? 6 : 7);
+  }
+
+  @Override
   public void writeInt(int value) {
     if (position + 11 > buffer.length) {
       grow(11);
@@ -493,54 +504,29 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
         } else {
           byte[] bytes = buffer;
           int pos = start;
-          bytes[pos++] = (byte) '"';
-          latin1:
-          {
-            long word = LittleEndian.getInt64(stringBytes, 0);
-            if (!isJsonAsciiWord(word)) {
-              break latin1;
+          // For 8..16 bytes, overlapping first and last words cover the complete string without
+          // reading or writing outside it. The overlap removes the scalar tail dispatch.
+          long word = LittleEndian.getInt64(stringBytes, 0);
+          int tailOffset = length - Long.BYTES;
+          if (tailOffset == 0) {
+            // A complete word needs neither a duplicate load/store nor a two-word predicate.
+            if (isJsonAsciiWord(word)) {
+              bytes[pos++] = (byte) '"';
+              LittleEndian.putInt64(bytes, pos, word);
+              bytes[pos + length] = (byte) '"';
+              position = pos + length + 1;
+              return;
             }
-            LittleEndian.putInt64(bytes, pos, word);
-            pos += Long.BYTES;
-            int index = Long.BYTES;
-            if (index + Long.BYTES <= length) {
-              long tail = LittleEndian.getInt64(stringBytes, index);
-              if (!isJsonAsciiWord(tail)) {
-                break latin1;
-              }
-              LittleEndian.putInt64(bytes, pos, tail);
-              pos += Long.BYTES;
-              index += Long.BYTES;
+          } else {
+            long tail = LittleEndian.getInt64(stringBytes, tailOffset);
+            if (JsonAsciiWordPredicates.isJsonAsciiWords(word, tail)) {
+              bytes[pos++] = (byte) '"';
+              LittleEndian.putInt64(bytes, pos, word);
+              LittleEndian.putInt64(bytes, pos + tailOffset, tail);
+              bytes[pos + length] = (byte) '"';
+              position = pos + length + 1;
+              return;
             }
-            if (index + Integer.BYTES <= length) {
-              int tail = LittleEndian.getInt32(stringBytes, index);
-              if (!isJsonAsciiInt(tail)) {
-                break latin1;
-              }
-              LittleEndian.putInt32(bytes, pos, tail);
-              pos += Integer.BYTES;
-              index += Integer.BYTES;
-            }
-            if (index + Short.BYTES <= length) {
-              int tail = (stringBytes[index] & 0xFF) | ((stringBytes[index + 1] & 0xFF) << 8);
-              if (!isJsonAsciiShort(tail)) {
-                break latin1;
-              }
-              bytes[pos] = (byte) tail;
-              bytes[pos + 1] = (byte) (tail >>> 8);
-              pos += Short.BYTES;
-              index += Short.BYTES;
-            }
-            if (index < length) {
-              byte tail = stringBytes[index];
-              if (!isJsonAsciiByte(tail)) {
-                break latin1;
-              }
-              bytes[pos++] = tail;
-            }
-            bytes[pos++] = (byte) '"';
-            position = pos;
-            return;
           }
         }
         position = start;
@@ -1861,11 +1847,22 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeRawValue(long prefix0, long prefix1, int prefixLength) {
-    int additional = packedPrefixSize(prefixLength);
-    if (position + additional > buffer.length) {
-      grow(additional);
+    int pos = position;
+    // Keep the reservation and stores in the same width branch so variable-length tokens do
+    // not classify their width twice and each branch has a constant-sized capacity proof.
+    if (prefixLength <= Long.BYTES) {
+      if (pos + Long.BYTES > buffer.length) {
+        grow(Long.BYTES);
+      }
+      LittleEndian.putInt64(buffer, pos, prefix0);
+    } else {
+      if (pos + Long.BYTES * 2 > buffer.length) {
+        grow(Long.BYTES * 2);
+      }
+      LittleEndian.putInt64(buffer, pos, prefix0);
+      LittleEndian.putInt64(buffer, pos + Long.BYTES, prefix1);
     }
-    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+    position = pos + prefixLength;
   }
 
   public void writeRawValue(

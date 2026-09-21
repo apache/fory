@@ -28,7 +28,13 @@ trait ScalaJsonCodec[T] extends JsonCodecFactory
 
 object ScalaJsonCodec {
   inline def derived[T]: ScalaJsonCodec[T] =
-    ${ org.apache.fory.json.scala.internal.ScalaJsonCodecMacros.derive[T] }
+    ${ org.apache.fory.json.scala.internal.ScalaJsonCodecMacros.derive[T](false) }
+
+  /** Derives a string representation for a closed hierarchy containing only singleton cases.
+    * Case names and instances come from the compiler; no member mapping is required.
+    */
+  inline def stringEnum[T]: ScalaJsonCodec[T] =
+    ${ org.apache.fory.json.scala.internal.ScalaJsonCodecMacros.derive[T](true) }
 }
 
 extension (builder: ForyJsonBuilder)

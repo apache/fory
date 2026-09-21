@@ -1484,6 +1484,7 @@ final class ObjectCodecBuilder {
           throw new ForyJsonException("Unknown @JsonCreator Java property " + javaName);
         }
         bindCreatorType(ownerType, creator, i, parameterTypes[i], builder);
+        builder.mergeFormat(parameters[i]);
         builder.mergeCodec(parameters[i]);
         builder.mergeUnwrapped(parameters[i]);
         if (builder.isAny() && !builder.anyReadEnabled()) {
@@ -1563,7 +1564,14 @@ final class ObjectCodecBuilder {
                 : builder.codecAnnotation();
         Class<? extends JsonValueCodec<?>> valueCodecClass =
             builder == null ? null : builder.valueCodecClass();
-        JsonFormat formatAnnotation = builder == null ? null : builder.formatAnnotation();
+        JsonFormat formatAnnotation =
+            builder == null
+                ? annotations.get(parameters[i], JsonFormat.class)
+                : builder.formatAnnotation();
+        if (formatAnnotation != null && codecAnnotation != null) {
+          throw new ForyJsonException(
+              "@JsonFormat cannot coexist with @JsonCodec for creator property " + jsonName);
+        }
         JsonUnwrapped unwrapped =
             builder == null
                 ? annotations.get(parameters[i], JsonUnwrapped.class)
@@ -2939,7 +2947,6 @@ final class ObjectCodecBuilder {
       if (readSink && !ignoreRead) {
         readField = field;
       }
-      mergeFormat(field);
       mergeAnnotation(type, field);
       if (annotations.has(field, JsonAnyProperty.class)) {
         if (!writeSource && !readSink) {
@@ -2982,6 +2989,7 @@ final class ObjectCodecBuilder {
       mergeAnnotation(type, setter);
       Parameter parameter = setter.getParameters()[0];
       mergeIgnore(parameter);
+      mergeFormat(parameter);
       mergeCodec(parameter);
       mergeUnwrapped(parameter);
       if (ignoreRead || field != null && !fieldReadAllowed) {
@@ -3244,6 +3252,9 @@ final class ObjectCodecBuilder {
     }
 
     private void mergeAnnotation(Class<?> type, AnnotatedElement source) {
+      // Scala constructor properties can carry format annotations on the parameter rather than
+      // the backing field. Merge every declaration into the same logical property.
+      mergeFormat(source);
       mergeCodec(source);
       if (annotations.has(source, JsonRawValue.class)) {
         if (formatAnnotation != null) {
@@ -3326,6 +3337,7 @@ final class ObjectCodecBuilder {
 
     private void mergeCreatorParameter(Class<?> type, Parameter parameter) {
       mergeIgnore(parameter);
+      mergeFormat(parameter);
       mergeCodec(parameter);
       mergeUnwrapped(parameter);
       JsonProperty property = annotations.get(parameter, JsonProperty.class);

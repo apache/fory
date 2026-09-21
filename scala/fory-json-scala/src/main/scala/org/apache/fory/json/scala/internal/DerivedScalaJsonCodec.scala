@@ -22,6 +22,7 @@ package org.apache.fory.json.scala.internal
 import java.lang.reflect.Modifier
 import java.util.{ArrayList, Collections, HashSet, List => JList}
 
+import org.apache.fory.annotation.Internal
 import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion
 import org.apache.fory.json.codec.{ClosedSubtypeCodec, JsonSubTypesInfo, JsonValueCodec}
@@ -29,11 +30,14 @@ import org.apache.fory.json.resolver.JsonTypeResolver
 import org.apache.fory.json.scala.ScalaJsonCodec
 import org.apache.fory.reflect.TypeRef
 
-private[scala] final class DerivedScalaJsonCodec[T](
+/** Factory instantiated by Scala macro expansions in application packages. */
+@Internal
+class DerivedScalaJsonCodec[T](
     rootType: Class[T],
     caseClasses: Array[Class[_]],
     caseNames: Array[String],
-    singletonCases: Array[AnyRef]
+    singletonCases: Array[AnyRef],
+    stringEnum: Boolean
 ) extends ScalaJsonCodec[T] {
   if (
     caseClasses.length == 0 || caseClasses.length != caseNames.length ||
@@ -76,6 +80,8 @@ private[scala] final class DerivedScalaJsonCodec[T](
       if (name == null || name.isEmpty || !nameSet.add(name))
         throw new IllegalArgumentException(s"Invalid derived Scala case name $name")
       val singleton = singletons(index)
+      if (stringEnum && singleton == null)
+        throw new IllegalArgumentException("String enum representation requires only singleton cases")
       if (singleton != null && singleton.getClass != caseClass)
         throw new IllegalArgumentException(s"Invalid derived Scala singleton $name")
       if (classSet.add(caseClass)) result.add(caseClass)
@@ -94,6 +100,7 @@ private[scala] final class DerivedScalaJsonCodec[T](
   private val key = {
     val builder = new StringBuilder(rootType.getName.length + classes.length * 48)
     append(builder, rootType.getName)
+    append(builder, if (stringEnum) "string" else "wrapper")
     var index = 0
     while (index < classes.length) {
       append(builder, names(index))
@@ -113,6 +120,16 @@ private[scala] final class DerivedScalaJsonCodec[T](
       runtimeType: Boolean
   ): JsonValueCodec[_] = {
     val rawType = typeRef.getRawType
+    if (stringEnum) {
+      if (rawType == rootType) {
+        classes.foreach(resolver.checkSecure)
+        return stringEnumCodec(rootType, singletons, names)
+      }
+      val indexes = classes.indices.filter(classes(_) == rawType)
+      if (indexes.isEmpty)
+        throw new ForyJsonException(s"Derived Scala codec expected ${rootType.getName}")
+      return new ScalaEnumCodec(rawType, indexes.map(singletons).toArray, indexes.map(names).toArray)
+    }
     if (rawType == rootType) {
       if (resolver.isInferredSubtype(rootType)) {
         return resolver.createInferredSubtypeCodec(
@@ -138,6 +155,10 @@ private[scala] final class DerivedScalaJsonCodec[T](
     if (singleton == null) ScalaObjectModels.caseClassCodec(typeRef, resolver)
     else ScalaObjectModels.fixedCodec(typeRef, resolver, singleton)
   }
+
+  protected def stringEnumCodec(
+      typeClass: Class[_], values: Array[Object], labels: Array[String]
+  ): JsonValueCodec[_] = new ScalaEnumCodec(typeClass, values, labels)
 
   private def append(builder: StringBuilder, value: String): Unit =
     builder.append(value.length).append(':').append(value)

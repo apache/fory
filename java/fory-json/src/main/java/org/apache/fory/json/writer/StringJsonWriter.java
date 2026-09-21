@@ -200,6 +200,28 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   }
 
   @Override
+  public void writeBooleanAsString(boolean value) {
+    int offset = position;
+    // Wide stores include padding outside the logical token, so reserve the complete words.
+    if (coder == LATIN1) {
+      if (offset + Long.BYTES > buffer.length) {
+        grow(Long.BYTES);
+      }
+      LittleEndian.putInt64(buffer, offset, value ? 0x0000226575727422L : 0x002265736c616622L);
+      position = offset + (value ? 6 : 7);
+      return;
+    }
+    if (offset + Long.BYTES * 2 > buffer.length) {
+      grow(Long.BYTES * 2);
+    }
+    long first = value ? 0x0075007200740022L : 0x006c006100660022L;
+    long last = value ? 0x0000000000220065L : 0x0000002200650073L;
+    LittleEndian.putInt64(buffer, offset, LITTLE_ENDIAN ? first : first << 8);
+    LittleEndian.putInt64(buffer, offset + Long.BYTES, LITTLE_ENDIAN ? last : last << 8);
+    position = offset + (value ? 12 : 14);
+  }
+
+  @Override
   public void writeInt(int value) {
     if (coder == LATIN1) {
       if (position + 11 > buffer.length) {
@@ -436,6 +458,21 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         }
         byte[] bytes = buffer;
         int pos = position;
+        if (length >= Long.BYTES && length <= Long.BYTES * 2) {
+          // Both words stay within the string even when they overlap. Validate before storing so
+          // escaping and non-ASCII handling can resume at the unchanged writer position.
+          long word = LittleEndian.getInt64(stringBytes, 0);
+          int tailOffset = length - Long.BYTES;
+          long tail = LittleEndian.getInt64(stringBytes, tailOffset);
+          if (isJsonAsciiWords(word, tail)) {
+            bytes[pos++] = (byte) '"';
+            LittleEndian.putInt64(bytes, pos, word);
+            LittleEndian.putInt64(bytes, pos + tailOffset, tail);
+            bytes[pos + length] = (byte) '"';
+            position = pos + length + 1;
+            return;
+          }
+        }
         bytes[pos++] = (byte) '"';
         int i = 0;
         int upperBound = length & ~15;

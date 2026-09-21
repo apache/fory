@@ -220,6 +220,44 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeBooleanStrings() {
+    for (int capacity = 0; capacity <= 32; capacity++) {
+      for (boolean value : new boolean[] {true, false}) {
+        for (int prefix = 0; prefix < 8; prefix++) {
+          String padding = repeat(' ', prefix);
+          String expected = padding + "[\"" + value + "\",\"" + !value + "\",null]";
+          Utf8JsonWriter utf8 = newUtf8Writer(new byte[capacity]);
+          utf8.writeRawValue(padding);
+          utf8.writeArrayStart();
+          utf8.writeBooleanAsString(value);
+          utf8.writeComma(1);
+          utf8.writeBooleanAsString(!value);
+          utf8.writeComma(2);
+          utf8.writeNull();
+          utf8.writeArrayEnd();
+          assertEquals(new String(utf8.toJsonBytes(), StandardCharsets.UTF_8), expected);
+          for (boolean unicode : new boolean[] {false, true}) {
+            StringJsonWriter writer = newStringWriter(new byte[capacity]);
+            String leading = unicode ? "\"中文\"" : "";
+            writer.writeRawValue(leading + padding);
+            writer.writeArrayStart();
+            writer.writeBooleanAsString(value);
+            writer.writeComma(1);
+            writer.writeBooleanAsString(!value);
+            writer.writeComma(2);
+            writer.writeNull();
+            writer.writeArrayEnd();
+            assertEquals(writer.toJson(), leading + expected);
+            writer.reset();
+            writer.writeBooleanAsString(value);
+            assertEquals(writer.toJson(), "\"" + value + "\"");
+          }
+        }
+      }
+    }
+  }
+
+  @Test
   public void writeIntFieldNames() {
     List<Integer> values = new ArrayList<>();
     values.add(Integer.MIN_VALUE);

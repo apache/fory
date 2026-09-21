@@ -3944,7 +3944,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class EnumCodec implements JsonValueCodec<Enum<?>> {
+  public static final class EnumCodec extends StringEnumCodec<Enum<?>> {
     private final Class<?> type;
     private final long[] nameHashes;
     private final long[] tokenPrefixes;
@@ -3952,21 +3952,23 @@ public final class ScalarCodecs {
     private final int[] tokenSuffixes;
     private final byte[] tokenSuffixLengths;
     private final int[] tokenLengths;
-    private final int[] writeTokenIndexes;
     private final Enum<?>[] values;
     private final Enum<?>[] tokenValues;
     private final int tokenCount;
 
     public EnumCodec(Class<?> type) {
+      this(type, (Enum<?>[]) type.getEnumConstants());
+    }
+
+    private EnumCodec(Class<?> type, Enum<?>[] constants) {
+      super(enumNames(constants));
       this.type = type;
-      Enum<?>[] constants = (Enum<?>[]) type.getEnumConstants();
       nameHashes = new long[constants.length];
       tokenPrefixes = new long[constants.length];
       tokenMasks = new long[constants.length];
       tokenSuffixes = new int[constants.length];
       tokenSuffixLengths = new byte[constants.length];
       tokenLengths = new int[constants.length];
-      writeTokenIndexes = new int[constants.length];
       values = new Enum<?>[constants.length];
       tokenValues = new Enum<?>[constants.length];
       int localTokenCount = 0;
@@ -3984,23 +3986,23 @@ public final class ScalarCodecs {
           tokenSuffixLengths[localTokenCount] = (byte) JsonAsciiToken.suffixLength(tokenLength);
           tokenLengths[localTokenCount] = tokenLength;
           tokenValues[localTokenCount] = constant;
-          boolean ascii = true;
-          for (int j = 0; j < name.length(); j++) {
-            char ch = name.charAt(j);
-            if (ch < 0x20 || ch >= 0x80 || ch == '"' || ch == '\\') {
-              ascii = false;
-              break;
-            }
-          }
-          // Reader tokens are compacted and may contain Latin1 names. Only JSON-safe ASCII
-          // tokens can also serve as raw UTF8 output; retain their index by enum ordinal.
-          if (ascii) {
-            writeTokenIndexes[i] = localTokenCount + 1;
-          }
           localTokenCount++;
         }
       }
       tokenCount = localTokenCount;
+    }
+
+    private static String[] enumNames(Enum<?>[] constants) {
+      String[] names = new String[constants.length];
+      for (int i = 0; i < names.length; i++) {
+        names[i] = constants[i].name();
+      }
+      return names;
+    }
+
+    @Override
+    protected int valueIndex(Enum<?> value) {
+      return value.ordinal();
     }
 
     @Override
@@ -4014,20 +4016,11 @@ public final class ScalarCodecs {
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Enum<?> value) {
-      if (value == null) {
-        writer.writeNull();
+      if (value != null && value.getDeclaringClass() != type) {
+        writer.writeString(value.name());
       } else {
-        int index = writeTokenIndex(value);
-        if (index >= 0) {
-          writer.writeRawValue(tokenPrefixes[index], tokenSuffixes[index], tokenLengths[index]);
-        } else {
-          writer.writeString(value.name());
-        }
+        super.writeUtf8(writer, value);
       }
-    }
-
-    private int writeTokenIndex(Enum<?> value) {
-      return value.getDeclaringClass() == type ? writeTokenIndexes[value.ordinal()] - 1 : -1;
     }
 
     @Override

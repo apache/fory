@@ -154,6 +154,65 @@ public class JsonContainerTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void referenceArrayWrites() {
+    ForyJson json = newJson();
+    for (int size = 0; size < 18; size++) {
+      BigInteger[] values = new BigInteger[size];
+      for (int nullIndex = -1; nullIndex < size; nullIndex++) {
+        StringBuilder expected = new StringBuilder("[");
+        for (int i = 0; i < size; i++) {
+          values[i] = i == nullIndex ? null : BigInteger.valueOf(i - 9);
+          if (i != 0) {
+            expected.append(',');
+          }
+          expected.append(values[i]);
+        }
+        expected.append(']');
+        assertEquals(
+            new String(json.toJsonBytes(values), StandardCharsets.UTF_8), expected.toString());
+        assertEquals(json.fromJson(json.toJsonBytes(values), BigInteger[].class), values);
+      }
+    }
+  }
+
+  public enum TokenKind {
+    A {},
+    MEDIUM,
+    ABCDEFGHIJKLM
+  }
+
+  @Test
+  public void enumArrayWrites() {
+    TokenKind[] members = TokenKind.values();
+    for (int capacity : new int[] {1, 8, 31}) {
+      ForyJson json = newJsonBuilder().withBufferSizeLimitBytes(capacity).build();
+      for (int size : new int[] {0, 1, 2, 7, 63, 64, 65, 127, 128, 129}) {
+        TokenKind[] values = new TokenKind[size];
+        Random random = new Random(73291);
+        StringBuilder expected = new StringBuilder("[");
+        for (int i = 0; i < size; i++) {
+          if (i != 0) {
+            expected.append(',');
+          }
+          if (random.nextInt(4) != 0) {
+            values[i] = members[random.nextInt(members.length)];
+            expected.append('"').append(values[i].name()).append('"');
+          } else {
+            expected.append("null");
+          }
+        }
+        expected.append(']');
+        for (int repeat = 0; repeat < 2; repeat++) {
+          byte[] bytes = json.toJsonBytes(values);
+          assertEquals(new String(bytes, StandardCharsets.UTF_8), expected.toString());
+          assertEquals(json.fromJson(bytes, TokenKind[].class), values);
+          assertEquals(json.toJson(values), expected.toString());
+        }
+      }
+    }
+  }
+
+  @Test
   public void readLongMapKeys() {
     ForyJson json = newJson();
     TypeRef<Map<Long, Boolean>> type = new TypeRef<Map<Long, Boolean>>() {};

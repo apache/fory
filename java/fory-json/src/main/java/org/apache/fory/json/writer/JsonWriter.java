@@ -111,6 +111,9 @@ public abstract class JsonWriter {
 
   public abstract void writeBoolean(boolean value);
 
+  /** Writes a boolean as the JSON string {@code "true"} or {@code "false"}. */
+  public abstract void writeBooleanAsString(boolean value);
+
   public abstract void writeInt(int value);
 
   public abstract void writeLong(long value);

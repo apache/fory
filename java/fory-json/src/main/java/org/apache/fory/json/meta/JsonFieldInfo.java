@@ -90,6 +90,7 @@ public final class JsonFieldInfo {
   private static final int KIND_NULL = 17;
   private static final int KIND_UNBOXED = 18;
   private static final int KIND_LONG_AS_STRING = 19;
+  private static final int KIND_BOOLEAN_AS_STRING = 20;
   private static final int WRITE_NULL_MASK = Integer.MIN_VALUE;
   private static final int REQUIRE_NON_NULL_MASK = 1 << 30;
   private static final int OMIT_EMPTY_MASK = 1 << 29;
@@ -544,6 +545,11 @@ public final class JsonFieldInfo {
     return writeKind == JsonFieldKind.LONG && isLongAsString(writeTypeInfo);
   }
 
+  /** Returns whether this field writes a boolean token enclosed in quotes. */
+  public boolean writesBooleanAsString() {
+    return writeKindId == KIND_BOOLEAN_AS_STRING;
+  }
+
   public JsonFieldAccessor writeAccessor() {
     return writeAccessor;
   }
@@ -662,6 +668,14 @@ public final class JsonFieldInfo {
         writeKind = writeTypeInfo.kind();
         if (writeUnboxedValueCodec != null) {
           writeKindId = KIND_UNBOXED;
+        } else if (formatAnnotation != null
+            && formatAnnotation.shape() == JsonFormat.Shape.STRING
+            && (writeRawType == boolean.class || writeRawType == Boolean.class)) {
+          // Specialize only this field's write operation after format validation. The occurrence
+          // codec still owns quoted reads and container elements; changing its kind would let
+          // container fast paths bypass the selected representation.
+          writeKind = JsonFieldKind.BOOLEAN;
+          writeKindId = KIND_BOOLEAN_AS_STRING;
         } else if (writeKind == JsonFieldKind.LONG && isLongAsString(writeTypeInfo)) {
           writeKindId = KIND_LONG_AS_STRING;
         } else {
@@ -1159,6 +1173,13 @@ public final class JsonFieldInfo {
 
   public boolean writeString(StringJsonWriter writer, Object object, int index) {
     switch (writeKindId) {
+      case KIND_BOOLEAN_AS_STRING:
+        if (!writeRawType.isPrimitive()) {
+          return writeStringBooleanAsString(writer, object, index);
+        }
+        writer.writeFieldName(this, index);
+        writer.writeBooleanAsString(writeAccessor.getBoolean(object));
+        return true;
       case KIND_NULL:
         writer.writeFieldName(this, index);
         writer.writeNull();
@@ -1251,6 +1272,13 @@ public final class JsonFieldInfo {
 
   public boolean writeUtf8(Utf8JsonWriter writer, Object object, int index) {
     switch (writeKindId) {
+      case KIND_BOOLEAN_AS_STRING:
+        if (!writeRawType.isPrimitive()) {
+          return writeUtf8BooleanAsString(writer, object, index);
+        }
+        writer.writeFieldName(this, index);
+        writer.writeBooleanAsString(writeAccessor.getBoolean(object));
+        return true;
       case KIND_NULL:
         writer.writeFieldName(this, index);
         writer.writeNull();
@@ -1416,6 +1444,20 @@ public final class JsonFieldInfo {
     return true;
   }
 
+  private boolean writeStringBooleanAsString(StringJsonWriter writer, Object object, int index) {
+    Boolean value = (Boolean) writeAccessor.getObject(object);
+    if (value == null && !writeNull()) {
+      return omitNullValue();
+    }
+    writer.writeFieldName(this, index);
+    if (value == null) {
+      writer.writeNull();
+    } else {
+      writer.writeBooleanAsString(value.booleanValue());
+    }
+    return true;
+  }
+
   private boolean writeUtf8Scalar(Utf8JsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
     if (value == null && !writeNull()) {
@@ -1462,6 +1504,20 @@ public final class JsonFieldInfo {
       writer.writeNull();
     } else {
       writer.writeLongAsStringField(utf8NamePrefix, utf8CommaNamePrefix, index, value.longValue());
+    }
+    return true;
+  }
+
+  private boolean writeUtf8BooleanAsString(Utf8JsonWriter writer, Object object, int index) {
+    Boolean value = (Boolean) writeAccessor.getObject(object);
+    if (value == null && !writeNull()) {
+      return omitNullValue();
+    }
+    writer.writeFieldName(this, index);
+    if (value == null) {
+      writer.writeNull();
+    } else {
+      writer.writeBooleanAsString(value.booleanValue());
     }
     return true;
   }

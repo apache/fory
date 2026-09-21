@@ -23,8 +23,8 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
-import org.apache.fory.json.{ForyJson, ForyJsonException}
-import org.apache.fory.json.annotation.{JsonIgnore, JsonProperty, JsonSubTypes, JsonUnwrapped}
+import org.apache.fory.json.{ForyJson, ForyJsonException, JsonCodecFactory}
+import org.apache.fory.json.annotation.{JsonFormat, JsonIgnore, JsonMixin, JsonProperty, JsonSubTypes, JsonUnwrapped}
 import org.apache.fory.json.codec.{AbstractJsonValueCodec, MapKeyCodec}
 import org.apache.fory.json.reader.JsonReader
 import org.apache.fory.json.resolver.UnsupportedJsonTypeException
@@ -40,6 +40,21 @@ import scala.concurrent.duration.{Duration, FiniteDuration}
 case class Node(value: Int, next: Option[Node])
 
 case class BigIntFields(value: BigInt, values: Vector[BigInt])
+
+case class StringScalarFields(
+    @JsonFormat(shape = JsonFormat.Shape.STRING) active: Boolean,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) count: Int,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) total: BigInt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) fraction: BigDecimal,
+    label: String
+)
+
+case class ArtifactState(expired: Boolean, label: String)
+
+@JsonMixin(target = classOf[ArtifactState])
+abstract class ArtifactStateMixin {
+  @JsonFormat(shape = JsonFormat.Shape.STRING) var expired: Boolean = false
+}
 
 case class Media(
     @JsonProperty("media_uri") uri: String,
@@ -310,6 +325,36 @@ object Hue extends Enumeration {
 final class HueCodec extends ScalaEnumerationCodec(Hue)
 
 class ScalaJsonSuite extends AnyFunSuite {
+  test("scalar string fields and Mixins") {
+    for (codegen <- Seq(false, true)) {
+      val json = ForyJsonScala.builder().registerMixin(classOf[ArtifactStateMixin])
+        .withCodegen(codegen).withAsyncCompilation(false).build()
+      for (label <- Seq("ascii", "中文")) {
+        val value = StringScalarFields(false, 7, BigInt("123456789012345678901"), BigDecimal("1.25"), label)
+        val text = json.toJson(value)
+        assert(text.contains("\"active\":\"false\""))
+        assert(text.contains("\"count\":\"7\""))
+        assert(text.contains("\"total\":\"123456789012345678901\""))
+        assert(text.contains("\"fraction\":\"1.25\""))
+        assert(new String(json.toJsonBytes(value), UTF_8) == text)
+        assert(json.fromJson(text, classOf[StringScalarFields]) == value)
+        assert(json.fromJson(text.getBytes(UTF_8), classOf[StringScalarFields]) == value)
+        val state = ArtifactState(false, label)
+        val encoded = "{\"expired\":\"false\",\"label\":\"" + label + "\"}"
+        assert(json.toJson(state) == encoded)
+        assert(new String(json.toJsonBytes(state), UTF_8) == encoded)
+        assert(json.fromJson(encoded, classOf[ArtifactState]) == state)
+        assert(json.fromJson(encoded.getBytes(UTF_8), classOf[ArtifactState]) == state)
+        assert(json.fromJson(encoded.replace("\"false\"", "false"), classOf[ArtifactState]) == state)
+      }
+    }
+    val factory: JsonCodecFactory = (_, _, _) => internal.ScalaBigIntCodec
+    val customJson = ForyJsonScala.builder().registerCodec(classOf[BigInt], factory).build()
+    assertThrows[ForyJsonException] {
+      customJson.toJson(StringScalarFields(false, 7, BigInt(1), BigDecimal(2), "custom"))
+    }
+  }
+
   test("long as string") {
     val value =
       LongStringValues(
@@ -530,6 +575,15 @@ class ScalaJsonSuite extends AnyFunSuite {
     val optionType = new TypeRef[Option[Int]]() {}
     assert(json.fromJson("null", optionType) == None)
     assert(json.fromJson(json.toJson(None), classOf[None.type]) == None)
+
+    val optionsType = new TypeRef[List[Option[String]]]() {}
+    for (text <- Seq("ascii", "中文")) {
+      val input = "[null, \t\r\n\"" + text + "\", \nnull, \"null\"]"
+      val expected = List(None, Some(text), None, Some("null"))
+      assert(json.fromJson(input, optionsType) == expected)
+      assert(json.fromJson(input.getBytes(UTF_8), optionsType) == expected)
+    }
+    assertThrows[ForyJsonException](json.fromJson(" \t\r\nnull".getBytes(UTF_8), someType))
   }
 
   test("Either uses compact branch names and reads legacy names") {

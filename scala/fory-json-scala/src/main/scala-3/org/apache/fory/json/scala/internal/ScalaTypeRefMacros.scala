@@ -25,6 +25,12 @@ private[scala] object ScalaTypeRefMacros {
   def create[T: Type](using Quotes): Expr[org.apache.fory.reflect.TypeRef[T]] = {
     import quotes.reflect.*
 
+    def enumerationOwner(prefix: TypeRepr): Symbol = {
+      if (prefix.termSymbol.flags.is(Flags.Module)) prefix.termSymbol
+      else if (prefix.typeSymbol.flags.is(Flags.Module)) prefix.typeSymbol.companionModule
+      else Symbol.noSymbol
+    }
+
     def typeRefExpr(tpe: TypeRepr): Expr[org.apache.fory.reflect.TypeRef[?]] = {
       val normalized = tpe.dealias
       val raw = normalized.classSymbol.getOrElse {
@@ -32,6 +38,26 @@ private[scala] object ScalaTypeRefMacros {
       }
       val rawClass = Literal(ClassOfConstant(normalized)).asExprOf[Class[?]]
       normalized match {
+        case reference: TypeRef if normalized <:< TypeRepr.of[Enumeration#Value] &&
+            enumerationOwner(reference.qualifier) != Symbol.noSymbol =>
+          val owner = Ref(enumerationOwner(reference.qualifier)).asExpr
+          '{
+            org.apache.fory.reflect.TypeRef.ofDeclaredTypeArguments(
+              classOf[Enumeration#Value],
+              null,
+              java.util.Collections.emptyList[org.apache.fory.reflect.TypeRef[_]](),
+              null,
+              org.apache.fory.reflect.TypeRef.of($owner.asInstanceOf[AnyRef].getClass)
+            )
+          }
+        case AppliedType(_, List(component)) if raw == defn.ArrayClass =>
+          val child = typeRefExpr(component)
+          '{
+            val component = $child
+            org.apache.fory.reflect.TypeRef.of(
+              org.apache.fory.reflect.TypeRef.newArrayType(component.getType), null, null, component
+            )
+          }
         case AppliedType(_, arguments) if arguments.nonEmpty =>
           val childRefs = arguments.map(typeRefExpr)
           '{

@@ -24,6 +24,7 @@ import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
 import static org.apache.fory.json.JsonTestSupport.newStringWriter;
 import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
+import static org.apache.fory.json.JsonTestSupport.newUtf8Writer;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
@@ -47,6 +48,7 @@ import org.apache.fory.json.data.UnicodeFieldNames;
 import org.apache.fory.json.data.UnicodeKind;
 import org.apache.fory.json.data.UnicodeMatrix;
 import org.apache.fory.json.data.UnicodeValues;
+import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -61,6 +63,25 @@ import org.apache.fory.serializer.StringSerializer;
 import org.testng.annotations.Test;
 
 public class JsonStringTest extends ForyJsonTestModels {
+  @Test
+  public void packedTokenWrites() {
+    for (int length = 1; length <= 16; length++) {
+      String token = "abcdefghijklmnop".substring(0, length);
+      for (int offset = 0; offset < 16; offset++) {
+        String padding = repeat(' ', offset);
+        for (int remaining : new int[] {0, length, 7, 8, 15, 16}) {
+          Utf8JsonWriter writer = newUtf8Writer(new byte[offset + remaining]);
+          writer.writeRawValue(padding);
+          writer.writeRawValue(
+              JsonAsciiToken.prefix(token), JsonAsciiToken.suffixLong(token), length);
+          writer.writeRawValue("!");
+          assertEquals(
+              writer.toJsonBytes(), (padding + token + "!").getBytes(StandardCharsets.US_ASCII));
+        }
+      }
+    }
+  }
+
   @Test
   public void readFieldHashBytes() {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
@@ -936,7 +957,8 @@ public class JsonStringTest extends ForyJsonTestModels {
     ForyJson json = newJson();
     for (int length :
         new int[] {
-          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 16, 17, 20, 23, 24, 25, 30, 31, 32, 33, 63, 64, 65
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 20, 23, 24, 25, 30, 31, 32,
+          33, 63, 64, 65
         }) {
       String value = repeat('a', length);
       String expected = "\"" + value + "\"";
@@ -975,6 +997,36 @@ public class JsonStringTest extends ForyJsonTestModels {
             + "\\n\"";
     assertEquals(json.toJson(escaped30), expected30);
     assertEquals(new String(json.toJsonBytes(escaped30), StandardCharsets.UTF_8), expected30);
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void overlappingStringWords(boolean codegen) {
+    ForyJson json =
+        ForyJson.builder()
+            .withCodegen(codegen)
+            .withAsyncCompilation(false)
+            .withBufferSizeLimitBytes(1)
+            .build();
+    char[] chars = {'a', ' ', '"', '\\', '\n', '\u0000', '\u00e9', '\u4e2d'};
+    String[] encoded = {"a", " ", "\\\"", "\\\\", "\\n", "\\u0000", "\u00e9", "\u4e2d"};
+    PublicFields fields = new PublicFields();
+    for (int length = 8; length <= 16; length++) {
+      for (int position = 0; position < length; position++) {
+        for (int kind = 0; kind < chars.length; kind++) {
+          String before = repeat('b', position);
+          String after = repeat('c', length - position - 1);
+          String value = before + chars[kind] + after;
+          String expected = '"' + before + encoded[kind] + after + '"';
+          assertEquals(json.toJson(value), expected);
+          assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+          fields.name = value;
+          String objectExpected = "{\"active\":true,\"id\":7,\"name\":" + expected + "}";
+          assertEquals(json.toJson(fields), objectExpected);
+          assertEquals(
+              new String(json.toJsonBytes(fields), StandardCharsets.UTF_8), objectExpected);
+        }
+      }
+    }
   }
 
   @Test

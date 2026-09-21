@@ -39,6 +39,12 @@ private[scala] object ScalaTypeCodecFactory extends JsonCodecFactory {
     val name = rawType.getName
     val enumerationCodec = ScalaEnumerationTypes.createCodec(typeRef)
     if (enumerationCodec != null) return enumerationCodec
+    if (classOf[Enumeration#Value].isAssignableFrom(rawType)) {
+      throw ScalaTypeSupport.unsupported(
+        typeRef,
+        "Enumeration owner is erased; use ScalaTypeRef[Owner.Value] or @JsonEnumeration"
+      )
+    }
 
     if (isRejected(rawType)) throw ScalaTypeSupport.unsupported(typeRef, "runtime-state or lazy type")
     if (classOf[Range].isAssignableFrom(rawType)) {

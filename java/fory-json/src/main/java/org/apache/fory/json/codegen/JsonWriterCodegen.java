@@ -863,13 +863,14 @@ abstract class JsonWriterCodegen {
 
   final boolean usesPrefix(JsonFieldInfo property) {
     JsonFieldKind kind = property.writeKind();
-    return kind != JsonFieldKind.BOOLEAN && kind != JsonFieldKind.ENUM
+    return property.writesBooleanAsString()
+        || kind != JsonFieldKind.BOOLEAN && kind != JsonFieldKind.ENUM
         || property.writeNull() && !property.writeRawType().isPrimitive();
   }
 
   private static boolean usesWriteInfo(JsonFieldInfo property) {
     JsonFieldKind kind = property.writeKind();
-    return kind == JsonFieldKind.BOOLEAN
+    return kind == JsonFieldKind.BOOLEAN && !property.writesBooleanAsString()
         || kind == JsonFieldKind.ENUM
         || property.requiresNonNullWrite();
   }
@@ -1502,6 +1503,11 @@ abstract class JsonWriterCodegen {
       boolean commaKnown,
       Expression index,
       Expression writer) {
+    if (property.writesBooleanAsString()) {
+      return new Expression.ListExpression(
+          writeFieldName(property, id, commaKnown, index, writer),
+          new Expression.Invoke(writer, "writeBooleanAsString", value));
+    }
     switch (property.writeKind()) {
       case BOOLEAN:
         return writeRawFieldValue(
@@ -1542,6 +1548,15 @@ abstract class JsonWriterCodegen {
     }
     switch (kind) {
       case BOOLEAN:
+        if (property.writesBooleanAsString()) {
+          return new Expression.ListExpression(
+              writeFieldName(property, id, commaKnown, index, writer),
+              new Expression.Invoke(
+                  writer,
+                  "writeBooleanAsString",
+                  new Expression.Invoke(value, "booleanValue", TypeRef.of(boolean.class))
+                      .inline()));
+        }
         return writeRawFieldValue(
             commaKnown,
             index,

@@ -1776,7 +1776,13 @@ public class TypeRef<T> {
     }
   }
 
-  static Type newArrayType(Type componentType) {
+  /**
+   * Builds an array type while retaining a parameterized component's owner and arguments. Generated
+   * tokens must retain these in the underlying Type, not only in the supplemental componentType
+   * field: tokens without type-use metadata use the underlying Type as their identity.
+   */
+  @Internal
+  public static Type newArrayType(Type componentType) {
     if (componentType instanceof WildcardType) {
       WildcardType wildcard = (WildcardType) componentType;
       Type[] lowerBounds = wildcard.getLowerBounds();

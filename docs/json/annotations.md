@@ -414,6 +414,32 @@ array storage against that budget; see [Security](security.md#depth-and-graph-me
 
 ## `JsonFormat`
 
+Use `@JsonFormat(shape = JsonFormat.Shape.STRING)` on a Boolean or numeric field to write its JSON
+token text inside quotes, for example `false` as `"false"` or `7` as `"7"`. It also applies to a
+matching creator or setter parameter, including Scala constructor properties, and can be supplied through
+a Mixin without changing the model:
+
+```java
+import org.apache.fory.json.annotation.JsonFormat;
+
+public class Metrics {
+  @JsonFormat(shape = JsonFormat.Shape.STRING)
+  public boolean active;
+
+  @JsonFormat(shape = JsonFormat.Shape.STRING)
+  public long count;
+}
+```
+
+Readers accept both quoted and native tokens using the declared scalar type's normal range and
+null rules. Null references remain JSON `null`, subject to the property's inclusion policy.
+Supported types are Boolean and the primitive/boxed numeric types, `BigInteger`, `BigDecimal`,
+and Scala `BigInt`/`BigDecimal` with the Scala module. Non-finite floating-point values retain
+their existing string representation (`"NaN"`, `"Infinity"`, or `"-Infinity"`).
+Combining string shape with a pattern, timezone, or a custom value representation is rejected.
+The existing direct-wrapper rules below also apply to scalar string shape; this does not
+recursively stringify arbitrary objects or change map keys.
+
 Use `JsonFormat` on a date/time field to select its JSON text pattern in both directions. Patterns
 use `DateTimeFormatter` syntax and the root locale:
 
@@ -466,8 +492,8 @@ a daylight saving time overlap. Omitting `timezone` preserves the default behavi
 above. Invalid zone identifiers and a non-empty `timezone` on other supported date/time types are
 rejected.
 
-`JsonFormat` is a field annotation, not a type-use annotation. A record component works through its
-generated field. Nested wrappers, Map keys, raw or wildcard direct children, JSON Any values, and
+`JsonFormat` configures a logical property through its field, creator parameter, or setter parameter; it is not a
+type-use annotation. Record components are supported. Nested wrappers, Map keys, raw or wildcard direct children, JSON Any values, and
 unwrapped values are intentionally rejected. Types with ambiguous formatting semantics, including
 legacy and SQL date types, `Duration`, `Period`, `TimeZone`, `ZoneId`, and `ZoneOffset`, are not
 supported. A wrapper with a complete registered, annotation-selected, polymorphic, or `JsonValue`

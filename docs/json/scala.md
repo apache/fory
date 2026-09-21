@@ -148,8 +148,28 @@ value decodes to `Some(value)`; JSON `null` is rejected for `Some[Int]` but deco
 
 ## Scala 2 Enumeration
 
-Scala 2 erases the owning `Enumeration` from `Enumeration#Value`. Use `JsonEnumeration` to retain
-the owner on a direct value, collection or array element, `Option` content, or map key/value:
+Use `ScalaTypeRef` on Scala 2.13 or Scala 3 to preserve a statically known enumeration owner,
+including inside arrays, collections, options, and maps:
+
+```scala
+import org.apache.fory.json.scala.{ForyJsonScala, ScalaTypeRef}
+
+object Suit extends Enumeration {
+  val Hearts, Clubs = Value
+}
+
+val json = ForyJsonScala.builder().build()
+val suits = ScalaTypeRef[Array[Suit.Value]]
+val values = json.fromJson("""["Hearts","Clubs"]""", suits)
+val text = json.toJson(values, suits)
+```
+
+The owner is selected for each type occurrence. Different enumerations can coexist in one runtime;
+no registration for the shared `Enumeration.Value` class is needed. Type aliases that retain the
+owner also work. An erased `Enumeration#Value`, `Class`, or ordinary JVM `TypeRef` cannot recover
+the owner. In particular, case-class properties discovered through JVM reflection need
+`JsonEnumeration` when their signature has erased the owner. Use this annotation on a direct value,
+collection or array element, `Option` content, or map key/value:
 
 ```scala
 import org.apache.fory.json.scala.JsonEnumeration
@@ -180,6 +200,60 @@ type shape. Invalid or conflicting declarations fail when the case-class metadat
 For a custom wire representation, extend `ScalaEnumerationCodec` and select the codec through
 `@JsonCodec`. The codec also implements the map-key contract, so its class can be used in
 `keyCodec`.
+
+## Singleton sealed ADTs
+
+On Scala 2.13 and Scala 3, explicitly select `ScalaJsonCodec.stringEnum[T]` to encode a closed
+sealed hierarchy of singleton cases as JSON strings:
+
+```scala
+import org.apache.fory.json.scala.{ForyJsonScala, ScalaJsonCodec, ScalaTypeRef}
+
+sealed trait Color
+case object Red extends Color
+case object Blue extends Color
+
+val json = ForyJsonScala.builder()
+  .registerCodec(classOf[Color], ScalaJsonCodec.stringEnum[Color])
+  .build()
+val colors = ScalaTypeRef[Array[Color]]
+val text = json.toJson(Array[Color](Red, Blue), colors) // ["Red","Blue"]
+val values = json.fromJson(text, colors)
+```
+
+The compiler discovers the cases and their names, including cases beneath sealed intermediate
+branches. No handwritten name-to-member mapping is required. An open abstract branch or a case
+with constructor parameters is rejected at compilation. Unknown input names are rejected; names
+never identify classes to load. Case names do not depend on an overridden `toString`.
+
+This representation is opt-in. `ScalaJsonCodec.derived[T]` retains the wrapper-object representation
+and is also available for explicitly registered Scala 2 sealed hierarchies. Scala 3 `derives` and
+parameterless Scala 3 enum defaults are unchanged. `null` remains JSON `null`.
+
+## Scalar strings
+
+Use `JsonFormat(shape = JsonFormat.Shape.STRING)` on a Boolean or numeric property to write its
+scalar token as a JSON string. Reading accepts both strings and native scalar tokens:
+
+```scala
+import org.apache.fory.json.annotation.{JsonFormat, JsonMixin}
+import org.apache.fory.json.scala.ForyJsonScala
+
+case class Artifact(expired: Boolean, size: Long)
+
+@JsonMixin(target = classOf[Artifact])
+abstract class ArtifactMixin {
+  @JsonFormat(shape = JsonFormat.Shape.STRING) var expired: Boolean = false
+}
+
+val json = ForyJsonScala.builder().registerMixin(classOf[ArtifactMixin]).build()
+val text = json.toJson(Artifact(false, 7L)) // {"expired":"false","size":7}
+```
+
+The annotation may instead be placed directly on a constructor property. A Mixin keeps the model
+unchanged and uses only Fory annotations. Scala `BigInt` and `BigDecimal` are supported along with
+primitive and boxed Boolean/numeric types. See [Annotations](annotations.md#jsonformat) for null,
+non-finite number, and supported direct-wrapper behavior.
 
 ## Scala 3 closed enums and sealed hierarchies
 

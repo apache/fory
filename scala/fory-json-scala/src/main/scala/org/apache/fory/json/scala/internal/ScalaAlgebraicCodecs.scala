@@ -70,17 +70,17 @@ private[scala] final class ScalaOptionCodec(someOnly: Boolean, runtimeType: Bool
   }
 
   override def readLatin1(reader: Latin1JsonReader): Option[Any] = {
-    if (reader.tryReadNullToken()) readNull()
+    if (reader.tryReadNextNullToken()) readNull()
     else newSome(reader, elementInfo.latin1Reader().readLatin1(reader))
   }
 
   override def readUtf16(reader: Utf16JsonReader): Option[Any] = {
-    if (reader.tryReadNullToken()) readNull()
+    if (reader.tryReadNextNullToken()) readNull()
     else newSome(reader, elementInfo.utf16Reader().readUtf16(reader))
   }
 
   override def readUtf8(reader: Utf8JsonReader): Option[Any] = {
-    if (reader.tryReadNullToken()) readNull()
+    if (reader.tryReadNextNullToken()) readNull()
     else newSome(reader, elementInfo.utf8Reader().readUtf8(reader))
   }
 

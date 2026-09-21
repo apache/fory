@@ -63,6 +63,7 @@ import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
 import org.apache.fory.json.codec.ScalarCodecs;
+import org.apache.fory.json.codec.ScalarStringCodec;
 import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.codec.UnboxedValueCodec;
 import org.apache.fory.json.codec.Utf16ReaderCodec;
@@ -611,10 +612,17 @@ public final class JsonTypeResolver {
   private JsonTypeInfo resolveTypeInfo(TypeRef<?> declaredType, JsonFormat annotation) {
     validateCovariant(declaredType);
     Class<?> rawType = declaredType.getRawType();
-    if (ScalarCodecs.supportsDateTimeFormat(rawType)) {
+    if (annotation.shape() == JsonFormat.Shape.STRING) {
+      if (!annotation.pattern().isEmpty() || !annotation.timezone().isEmpty()) {
+        throw invalidFormatConfig(rawType, "string shape cannot use a pattern or timezone");
+      }
+      if (ScalarStringCodec.supports(rawType)) {
+        return formatTypeInfo(declaredType, annotation);
+      }
+    } else if (ScalarCodecs.supportsDateTimeFormat(rawType)) {
       return formatTypeInfo(declaredType, annotation);
     }
-    if (sharedRegistry.customCodec(rawType) != null
+    if (sharedRegistry.hasRegisteredCodec(rawType)
         || sharedRegistry.codecDeclaration(rawType) != null
         || sharedRegistry.valueDeclaration(rawType) != null
         || sharedRegistry.hasSubTypes(rawType)) {
@@ -659,13 +667,24 @@ public final class JsonTypeResolver {
               : ScalarCodecs.AtomicReferenceCodec.create(declaredType, contentInfo);
       return newTypeInfo(declaredType, codec);
     }
-    throw invalidFormatConfig(rawType, "requires a date/time value or supported direct wrapper");
+    throw invalidFormatConfig(rawType, "requires a supported scalar value or direct wrapper");
   }
 
   private JsonTypeInfo formatTypeInfo(TypeRef<?> type, JsonFormat annotation) {
     validateCovariant(type);
     Class<?> rawType = type.getRawType();
     sharedRegistry.checkSecure(rawType);
+    if (annotation.shape() == JsonFormat.Shape.STRING) {
+      if (!ScalarStringCodec.supports(rawType)
+          || sharedRegistry.hasRegisteredCodec(rawType)
+          || sharedRegistry.codecDeclaration(rawType) != null
+          || sharedRegistry.valueDeclaration(rawType) != null) {
+        throw invalidFormatConfig(
+            rawType, "string shape requires a default boolean or numeric codec");
+      }
+      return newTypeInfo(
+          type, JsonFieldKind.OBJECT, ScalarStringCodec.create(getTypeInfo(type)), true);
+    }
     JsonValueCodec<?> codec =
         ScalarCodecs.dateTimeFormatCodec(rawType, annotation.pattern(), annotation.timezone());
     return newTypeInfo(type, JsonFieldKind.OBJECT, codec, true);

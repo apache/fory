@@ -26,8 +26,14 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Selects a custom textual format for one directly declared date/time field or direct wrapper
- * child.
+ * Selects a textual format for a logical property or its direct wrapper child. Declare it on the
+ * field, creator parameter, or setter parameter; matching declarations configure the same property.
+ *
+ * <p>{@code shape = Shape.STRING} writes boolean and numeric scalar values as JSON strings and
+ * accepts both quoted and native scalar tokens when reading. Null references remain JSON {@code
+ * null}. Supported numbers are the primitive and boxed numeric types, {@link java.math.BigInteger},
+ * {@link java.math.BigDecimal}, and Scala BigInt and BigDecimal when the Scala module is installed.
+ * String shape cannot be combined with a pattern or timezone.
  *
  * <p>The pattern uses {@link java.time.format.DateTimeFormatter} syntax with {@link
  * java.util.Locale#ROOT}. Supported values are {@link java.time.LocalDate}, {@link
@@ -48,10 +54,21 @@ import java.lang.annotation.Target;
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.FIELD)
+@Target({ElementType.FIELD, ElementType.PARAMETER})
 public @interface JsonFormat {
-  /** Returns the required date/time pattern. */
-  String pattern();
+  /** Returns the date/time pattern, required when {@link #shape()} is {@link Shape#DEFAULT}. */
+  String pattern() default "";
+
+  /** Returns the scalar representation; the default retains date/time pattern formatting. */
+  Shape shape() default Shape.DEFAULT;
+
+  /** Representations selectable for one field or its supported direct child. */
+  enum Shape {
+    /** Use a date/time pattern. */
+    DEFAULT,
+    /** Write a boolean or number as its JSON token text enclosed in quotes. */
+    STRING
+  }
 
   /**
    * Returns the optional {@link java.time.ZoneId} identifier used for formatting and parsing {@link

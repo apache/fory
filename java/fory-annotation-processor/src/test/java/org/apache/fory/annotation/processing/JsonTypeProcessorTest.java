@@ -1018,6 +1018,45 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void scalarFormatPipeline() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.ScalarTarget",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public final class ScalarTarget { public boolean expired; public long count = 7; }\n"
+                + "@JsonMixin(target = ScalarTarget.class) abstract class ScalarMixin {\n"
+                + "  @JsonFormat(shape = JsonFormat.Shape.STRING) boolean expired;\n"
+                + "  @JsonFormat(shape = JsonFormat.Shape.STRING) long count;\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertTrue(
+        result.hasGeneratedSource(
+            "test/ScalarMixin_ForyJsonMixin_test_x2e_ScalarTarget_ForyJsonCodec.java"));
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.ScalarTarget");
+    Class<?> mixin = loader.loadClass("test.ScalarMixin");
+    Object value = type.getConstructor().newInstance();
+    for (boolean codegen : new boolean[] {false, true}) {
+      ForyJson json =
+          ForyJson.builder()
+              .withClassLoader(loader)
+              .withCodegen(codegen)
+              .withAsyncCompilation(false)
+              .registerMixin(mixin)
+              .build();
+      String expected = "{\"expired\":\"false\",\"count\":\"7\"}";
+      assertEquals(json.toJson(value), expected);
+      assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+      assertEquals(type.getField("count").get(json.fromJson(expected, type)), 7L);
+      assertEquals(
+          type.getField("count")
+              .get(json.fromJson(expected.getBytes(StandardCharsets.UTF_8), type)),
+          7L);
+    }
+  }
+
+  @Test
   public void missingCompanionFails() throws Exception {
     CompilationResult result =
         compile(
