@@ -1577,6 +1577,76 @@ def test_cpp_temporal_map_keys_use_fory_owned_wrappers():
     assert "std::map<" not in cpp_output
 
 
+def test_cpp_validation_options():
+    fdl = dedent(
+        """
+        package test;
+
+        message Address {
+            string street = 1 [min_len = 1, max_len = 100];
+            int32 zipcode = 2 [gte = 10000, lte = 99999];
+        }
+
+        message Account {
+            int64 account_id = 1 [gte = 1000, lte = 2000];
+            string username = 2 [min_len = 4, max_len = 16, pattern = "^[a-zA-Z0-9]+$"];
+            string email = 3 [email = true];
+            string uuid = 4 [uuid = true];
+            list<string> tags = 5 [min_items = 1, max_items = 5];
+            int32 status = 6 [eql = 1, neq = 3];
+            Address address = 7;
+        }
+
+        union Shape {
+            string name = 1 [max_len = 32];
+            int32 sides = 2 [gte = 3, lte = 100];
+        }
+        """
+    )
+    schema = parse_fdl(fdl)
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+
+    assert "namespace Validator {" in cpp_output
+    assert "namespace Account {" in cpp_output
+    assert "namespace Address {" in cpp_output
+    assert "namespace Shape {" in cpp_output
+
+    assert "bool validate(const ::test::Account& obj)" in cpp_output
+    assert "bool validate(const ::test::Address& obj)" in cpp_output
+    assert "bool validate(const ::test::Shape& obj)" in cpp_output
+
+    assert "ok &= (obj.account_id() >= 1000);" in cpp_output
+    assert "ok &= (obj.account_id() <= 2000);" in cpp_output
+    assert "ok &= (obj.status() == 1);" in cpp_output
+    assert "ok &= (obj.status() != 3);" in cpp_output
+
+    assert "ok &= (obj.username().size() >= 4);" in cpp_output
+    assert "ok &= (obj.username().size() <= 16);" in cpp_output
+
+    assert 'static const std::regex re_username(R"(^[a-zA-Z0-9]+$)");' in cpp_output
+    assert "std::regex_match(obj.username(), re_username)" in cpp_output
+    assert (
+        r'static const std::regex re_email(R"((^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$))");'
+        in cpp_output
+    )
+
+    assert "std::regex_match(obj.email(), re_email)" in cpp_output
+    assert "ok &= (obj.uuid().size() == 36);" in cpp_output
+    assert "for (size_t i = 0; i < 36; i++)" in cpp_output
+    assert "ok &= (obj.tags().size() >= 1);" in cpp_output
+    assert "ok &= (obj.tags().size() <= 5);" in cpp_output
+    assert (
+        "if (obj.has_address()) { ok &= ::test::Validator::Address::validate(obj.address()); }"
+        in cpp_output
+    )
+
+    assert "if (obj.is_name()) {" in cpp_output
+    assert "ok &= (obj.name().size() <= 32);" in cpp_output
+    assert "if (obj.is_sides()) {" in cpp_output
+    assert "ok &= (obj.sides() >= 3);" in cpp_output
+    assert "ok &= (obj.sides() <= 100);" in cpp_output
+
+
 def test_java_enum_generation_uses_fory_enum_ids():
     schema = parse_fdl(
         dedent(
