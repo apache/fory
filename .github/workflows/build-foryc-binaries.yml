@@ -1,0 +1,701 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Build foryc Binaries
+
+on:
+  workflow_dispatch:
+
+  workflow_call:
+    outputs:
+      artifacts_ready:
+        description: "True if all 5 foryc binaries built and validated."
+        value: ${{ jobs.build-complete.outputs.ready }}
+
+  push:
+    tags: ["foryc-v*"]
+
+  pull_request:
+    paths:
+      - "compiler/**"
+      - ".github/workflows/build-foryc-binaries.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ACTION SHA PINS — verified live against GitHub commit graph 2026-02-24
+#
+#   actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd        # v6.0.2
+#   actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405    # v6.2.0
+#   actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+#   actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+#
+# Node.js 24 runner requirement:
+#   setup-python v6, upload-artifact v6, and download-artifact v7 all run on
+#   Node.js 24 (runs.using: node24) and require Actions runner >= v2.327.1.
+#   GitHub-hosted runners (ubuntu-22.04, macos-15, windows-latest) are
+#   auto-updated and satisfy this requirement automatically.
+#   Self-hosted runners MUST be upgraded to >= v2.327.1 before using this
+#   workflow, otherwise setup-python, upload-artifact, and download-artifact
+#   will refuse to execute.
+#
+# Re-verify SHAs at each Fory release:
+#   https://github.com/actions/checkout/releases
+#   https://github.com/actions/setup-python/releases
+#   https://github.com/actions/upload-artifact/releases
+#   https://github.com/actions/download-artifact/releases
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SPEC-CHECK JOB  (pull_request only — lightweight, no binary build)
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  spec-check:
+    name: spec / import-check (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: |
+            compiler/requirements-dev.txt
+            compiler/pyproject.toml
+
+      - name: Install fory_compiler (no pyinstaller needed for spec-check)
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./compiler
+
+      - name: Verify all fory_compiler modules are importable
+        working-directory: compiler
+        run: |
+          python -c "
+          import importlib, pkgutil, fory_compiler
+
+          walk_errors = []
+          def onerror(name):
+              walk_errors.append(name)
+
+          mods = ['fory_compiler'] + [
+              m.name for m in pkgutil.walk_packages(
+                  path=fory_compiler.__path__,
+                  prefix=fory_compiler.__name__ + '.',
+                  onerror=onerror,
+              )
+          ]
+          if walk_errors:
+              raise ImportError(
+                  'walk_packages failed to recurse into: ' + str(walk_errors) +
+                  '\nFix import errors in these packages before building.'
+              )
+          import_errors = []
+          for m in mods:
+              try:
+                  importlib.import_module(m)
+                  print(f'OK: {m}')
+              except Exception as e:
+                  import_errors.append(f'{m}: {e}')
+          if import_errors:
+              raise ImportError('Failed to import:\n' + '\n'.join(import_errors))
+          print(f'All {len(mods)} module(s) verified.')
+          "
+
+      - name: Syntax-check foryc.spec (AST parse)
+        run: |
+          python -c "
+          import ast
+          with open('compiler/foryc.spec', encoding='utf-8') as f:
+              src = f.read()
+          tree = ast.parse(src, filename='foryc.spec')
+          print(f'foryc.spec: syntax OK ({len(list(ast.walk(tree)))} AST nodes)')
+          "
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # BUILD JOB
+  #
+  # Phase 2 --onedir contract:
+  #   The artifact directory IS the foryc package — not a single executable.
+  #   foryc_path in foryc-build Config MUST resolve to the extracted directory
+  #   (e.g. OUT_DIR/foryc/{version}/{os}-{arch}/) not to the exe stub inside it.
+  #   Phase 2 MUST use download-on-first-install, NOT include_bytes! — the
+  #   directory is 20-40 MB which exceeds crates.io's 10 MB per-crate limit.
+  # ─────────────────────────────────────────────────────────────────────────────
+  build:
+    name: build / ${{ matrix.target }}
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            os: ubuntu-22.04
+            artifact_name: foryc-linux-x86_64
+            binary_path: compiler/dist/foryc/foryc
+            binary_name: foryc
+            use_upx: true
+            codesign: false
+
+          - target: linux-aarch64
+            os: ubuntu-24.04-arm
+            artifact_name: foryc-linux-aarch64
+            binary_path: compiler/dist/foryc/foryc
+            binary_name: foryc
+            use_upx: true
+            codesign: false
+
+          - target: macos-x86_64
+            os: macos-15-intel
+            artifact_name: foryc-macos-x86_64
+            binary_path: compiler/dist/foryc/foryc
+            binary_name: foryc
+            use_upx: false
+            codesign: false
+
+          - target: macos-aarch64
+            os: macos-15
+            artifact_name: foryc-macos-aarch64
+            binary_path: compiler/dist/foryc/foryc
+            binary_name: foryc
+            use_upx: false
+            codesign: true
+
+          - target: windows-x86_64
+            os: windows-latest
+            artifact_name: foryc-windows-x86_64
+            binary_path: compiler/dist/foryc/foryc.exe
+            binary_name: foryc.exe
+            use_upx: false
+            codesign: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: |
+            compiler/requirements-dev.txt
+            compiler/pyproject.toml
+
+      # ── Install UPX ─────────────────────────────────────────────────────────
+      - name: Install UPX (Linux)
+        if: runner.os == 'Linux' && matrix.use_upx
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y upx-ucl
+          upx --version
+
+      - name: Install UPX (Windows)
+        if: runner.os == 'Windows' && matrix.use_upx
+        shell: pwsh
+        run: |
+          choco install upx --yes --no-progress
+          upx --version
+
+      # ── UPX version guard ────────────────────────────────────────────────────
+      # aarch64 ELF compression requires UPX >= 3.96.
+      # ubuntu-24.04-arm ships 4.2.2 so this guard should always pass —
+      # but it catches an unexpected downgrade before it silently corrupts output.
+      - name: Verify UPX version supports target architecture
+        if: matrix.use_upx
+        shell: bash
+        run: |
+          UPX_VER=$(upx --version | awk 'NR==1{print $2}')
+          MAJOR=$(echo "${UPX_VER}" | cut -d. -f1)
+          MINOR=$(echo "${UPX_VER}" | cut -d. -f2)
+          echo "UPX version: ${UPX_VER}"
+          if [ "${MAJOR}" -lt 3 ] || \
+             ([ "${MAJOR}" -eq 3 ] && [ "${MINOR}" -lt 96 ]); then
+            echo "FAIL: UPX ${UPX_VER} does not support aarch64 ELF (requires >= 3.96)"
+            exit 1
+          fi
+          echo "PASS: UPX ${UPX_VER} supports target architecture"
+
+      # ── macOS: pin deployment target ─────────────────────────────────────────
+      # Without MACOSX_DEPLOYMENT_TARGET, binaries built on macOS 15 embed
+      # LC_BUILD_VERSION minos=15.0 and fail on macOS ≤14.
+      # 13.0 = oldest macOS release still receiving security patches as of 2026.
+      - name: Set macOS deployment target
+        if: runner.os == 'macOS'
+        run: echo "MACOSX_DEPLOYMENT_TARGET=13.0" >> "$GITHUB_ENV"
+
+      - name: Install PyInstaller and fory_compiler
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r compiler/requirements-dev.txt
+          pip install ./compiler
+
+      - name: Verify all fory_compiler modules are importable
+        working-directory: compiler
+        run: |
+          python -c "
+          import importlib, pkgutil, fory_compiler
+
+          walk_errors = []
+          def onerror(name):
+              walk_errors.append(name)
+
+          mods = ['fory_compiler'] + [
+              m.name for m in pkgutil.walk_packages(
+                  path=fory_compiler.__path__,
+                  prefix=fory_compiler.__name__ + '.',
+                  onerror=onerror,
+              )
+          ]
+          if walk_errors:
+              raise ImportError(
+                  'walk_packages failed to recurse into: ' + str(walk_errors) +
+                  '\nFix import errors in these packages before building.'
+              )
+          import_errors = []
+          for m in mods:
+              try:
+                  importlib.import_module(m)
+                  print(f'OK: {m}')
+              except Exception as e:
+                  import_errors.append(f'{m}: {e}')
+          if import_errors:
+              raise ImportError('Failed to import:\n' + '\n'.join(import_errors))
+          print(f'All {len(mods)} module(s) verified.')
+          "
+
+      # ── Build ───────────────────────────────────────────────────────────────
+      # SOURCE_DATE_EPOCH pins the build timestamp to the last git commit.
+      # Without it, PyInstaller embeds the current wall-clock time in .pyc
+      # metadata, making SHA256SUMS.txt different on every run of the same
+      # commit — breaking Phase 2's binary integrity verification model.
+      - name: Build standalone binary with PyInstaller
+        working-directory: compiler
+        run: |
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          export SOURCE_DATE_EPOCH
+          echo "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}"
+          pyinstaller foryc.spec
+
+      # ── Verify macOS deployment target — ALL binaries ─────────────────────────
+      # Checks exe stub AND every .dylib/.so in the --onedir package.
+      # A single dylib with minos=15.0 causes dyld: incompatible library version
+      # at runtime on macOS 13/14 even if the exe stub is correctly minos=13.0.
+      - name: Verify macOS deployment target (minos ≤ 13.x — all binaries)
+        if: runner.os == 'macOS'
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+        run: |
+          DIST_DIR="$(dirname "${BINARY_PATH}")"
+          FAILURES=0
+
+          check_minos() {
+            local target="$1" MINOS MAJOR
+            MINOS=$(otool -l "${target}" \
+              | grep -A4 LC_BUILD_VERSION \
+              | awk '/minos/{print $2}' \
+              | head -1)
+            if [ -z "${MINOS}" ]; then
+              MINOS=$(otool -l "${target}" \
+                | grep -A3 LC_VERSION_MIN_MACOSX \
+                | awk '/version/{print $2}' \
+                | head -1)
+            fi
+            if [ -z "${MINOS}" ]; then
+              # No deployment target load command — static lib or non-Mach-O
+              echo "SKIP (no minos): ${target}"
+              return 0
+            fi
+            MAJOR=$(echo "${MINOS}" | cut -d. -f1)
+            if [ "${MAJOR}" -gt 13 ]; then
+              echo "FAIL minos=${MINOS}: ${target}"
+              return 1
+            fi
+            echo "PASS minos=${MINOS}: ${target}"
+          }
+
+          check_minos "${BINARY_PATH}" || FAILURES=$((FAILURES + 1))
+
+          while IFS= read -r -d '' lib; do
+            check_minos "${lib}" || FAILURES=$((FAILURES + 1))
+          done < <(find "${DIST_DIR}" \( -name "*.dylib" -o -name "*.so" \) -print0)
+
+          if [ "${FAILURES}" -gt 0 ]; then
+            echo "FAIL: ${FAILURES} target(s) embed minos > 13.x."
+            echo "      Check MACOSX_DEPLOYMENT_TARGET=13.0 was honoured by the Python framework."
+            exit 1
+          fi
+          echo "PASS: all binaries/dylibs have minos ≤ 13.x"
+
+      # ── Pre-compression smoke test ──────────────────────────────────────────
+      - name: Smoke test (pre-UPX)
+        shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+        run: |
+          python -c "
+          import os
+          p = os.environ['BINARY_PATH']
+          s = os.path.getsize(p)
+          print(f'Pre-UPX size: {s:,} bytes ({s/1024/1024:.2f} MB)')
+          "
+          "${BINARY_PATH}" --help
+
+      # ── UPX compression ─────────────────────────────────────────────────────
+      - name: Compress with UPX
+        if: matrix.use_upx
+        shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+        run: |
+          upx --best --lzma "${BINARY_PATH}"
+          python -c "
+          import os
+          p = os.environ['BINARY_PATH']
+          s = os.path.getsize(p)
+          print(f'Post-UPX size: {s:,} bytes ({s/1024/1024:.2f} MB)')
+          "
+
+      # ── macOS aarch64: ad-hoc codesign ───────────────────────────────────────
+      # codesign --deep does NOT traverse flat directories (only .app bundles).
+      # We sign every dylib/so explicitly, then verify each one.
+      # codesign --verify exit codes are POSIX-defined: 0=valid, non-zero=failure.
+      # Ad-hoc signatures exit 0 — the if! correctly catches real failures only.
+      - name: Ad-hoc codesign (macOS aarch64 — Apple Silicon requirement)
+        if: matrix.codesign
+        shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+        run: |
+          DIST_DIR="$(dirname "${BINARY_PATH}")"
+
+          find "${DIST_DIR}" \( -name "*.dylib" -o -name "*.so" \) \
+            -exec codesign --force --sign - {} \;
+          codesign --force --sign - "${BINARY_PATH}"
+
+          VERIFY_FAILURES=0
+          while IFS= read -r -d '' lib; do
+            if ! codesign --verify --verbose "${lib}" 2>&1; then
+              echo "FAIL: signature verification failed for ${lib}"
+              VERIFY_FAILURES=$((VERIFY_FAILURES + 1))
+            fi
+          done < <(find "${DIST_DIR}" \( -name "*.dylib" -o -name "*.so" \) -print0)
+
+          codesign --verify --verbose "${BINARY_PATH}"
+
+          if [ "${VERIFY_FAILURES}" -gt 0 ]; then
+            echo "FAIL: ${VERIFY_FAILURES} library signature verification(s) failed."
+            exit 1
+          fi
+          echo "PASS: all signatures verified."
+
+      # ── Final smoke test ─────────────────────────────────────────────────────
+      - name: Smoke test (final)
+        shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+        run: |
+          "${BINARY_PATH}" --help
+
+      # ── Onedir package size report ───────────────────────────────────────────
+      - name: Report onedir package size
+        shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+        run: |
+          python -c "
+          import os, sys, pathlib
+          binary = pathlib.Path(os.environ['BINARY_PATH'])
+          dist_dir = binary.parent
+          total = sum(f.stat().st_size for f in dist_dir.rglob('*') if f.is_file())
+          exe_size = binary.stat().st_size
+          print(f'Executable: {exe_size:,} bytes ({exe_size/1024/1024:.2f} MB)')
+          print(f'Total dir:  {total:,} bytes ({total/1024/1024:.2f} MB)')
+          if total > 50 * 1024 * 1024:
+              print('FAIL: onedir package exceeds 50 MB sanity limit.')
+              sys.exit(1)
+          print('PASS')
+          "
+
+      # ── Write VERSION file ───────────────────────────────────────────────────
+      # Embeds the git ref (tag name on releases, short SHA otherwise) so
+      # Phase 2 foryc-build can resolve the path:
+      #   OUT_DIR/foryc/{version}/{os}-{arch}/
+      # This must run BEFORE SHA256SUMS generation so VERSION is checksummed.
+      - name: Write VERSION file to artifact directory
+        shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+        run: |
+          # Tagged release  → GITHUB_REF_NAME = "foryc-v0.10.0"
+          # workflow_dispatch / workflow_call → short commit SHA
+          VERSION="${GITHUB_REF_NAME:-$(git rev-parse --short HEAD)}"
+          echo "${VERSION}" > "$(dirname "${BINARY_PATH}")/VERSION"
+          echo "Artifact version: ${VERSION}"
+
+      # ── SHA-256 checksums ────────────────────────────────────────────────────
+      # Runs AFTER VERSION file is written — VERSION is included in checksums.
+      # Python used for cross-platform consistency (sha256sum/shasum/certutil
+      # are all platform-specific; hashlib is not).
+      # chr(92) == backslash — normalises Windows paths in the checksum file.
+      - name: Generate SHA-256 checksums
+        shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+        run: |
+          python -c "
+          import hashlib, os, pathlib
+          binary = pathlib.Path(os.environ['BINARY_PATH'])
+          dist_dir = binary.parent
+          lines = []
+          for f in sorted(dist_dir.rglob('*')):
+              if f.is_file() and f.name != 'SHA256SUMS.txt':
+                  digest = hashlib.sha256(f.read_bytes()).hexdigest()
+                  rel = str(f.relative_to(dist_dir)).replace(chr(92), '/')
+                  lines.append(f'{digest}  {rel}')
+                  print(f'{digest}  {rel}')
+          (dist_dir / 'SHA256SUMS.txt').write_text(
+              '\n'.join(lines) + '\n', encoding='utf-8'
+          )
+          print(f'Wrote {len(lines)} checksums to SHA256SUMS.txt')
+          "
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: compiler/dist/foryc/
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 90 || 30 }}
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # VALIDATE JOB
+  # ─────────────────────────────────────────────────────────────────────────────
+  validate:
+    name: validate / ${{ matrix.target }}
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            os: ubuntu-22.04
+            artifact_name: foryc-linux-x86_64
+            binary_name: foryc
+
+          - target: linux-aarch64
+            os: ubuntu-24.04-arm
+            artifact_name: foryc-linux-aarch64
+            binary_name: foryc
+
+          - target: macos-x86_64
+            os: macos-15-intel
+            artifact_name: foryc-macos-x86_64
+            binary_name: foryc
+
+          - target: macos-aarch64
+            os: macos-15
+            artifact_name: foryc-macos-aarch64
+            binary_name: foryc
+
+          - target: windows-x86_64
+            os: windows-latest
+            artifact_name: foryc-windows-x86_64
+            binary_name: foryc.exe
+
+    steps:
+      - name: Checkout (sparse — compiler/examples only)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          sparse-checkout: compiler/examples
+          sparse-checkout-cone-mode: true
+
+      - name: Download artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ./artifact
+
+      - name: Make executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x ./artifact/${{ matrix.binary_name }}
+
+      - name: Assert compiler/examples/demo.fdl exists
+        shell: bash
+        run: |
+          if [ ! -f compiler/examples/demo.fdl ]; then
+            echo "ERROR: compiler/examples/demo.fdl not found."
+            exit 1
+          fi
+          echo "PASS: compiler/examples/demo.fdl found."
+
+      - name: Validate --help output
+        shell: bash
+        run: |
+          OUTPUT=$(./artifact/${{ matrix.binary_name }} --help 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -qiE "^usage:.*foryc" || {
+            echo "ERROR: --help output missing expected 'usage: ... foryc' line."
+            exit 1
+          }
+
+      - name: End-to-end compile demo.fdl → Rust
+        shell: bash
+        run: |
+          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-rust"
+          mkdir -p "${OUT_DIR}"
+          ./artifact/${{ matrix.binary_name }} --rust_out "${OUT_DIR}" compiler/examples/demo.fdl
+          RS_COUNT=$(find "${OUT_DIR}" -name "*.rs" -size +0c | wc -l)
+          [ "${RS_COUNT}" -gt 0 ] || { echo "ERROR: no .rs files generated"; exit 1; }
+          echo "PASS: ${RS_COUNT} .rs file(s) generated"
+
+      - name: End-to-end compile demo.fdl → Java
+        shell: bash
+        run: |
+          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-java"
+          mkdir -p "${OUT_DIR}"
+          ./artifact/${{ matrix.binary_name }} --java_out "${OUT_DIR}" compiler/examples/demo.fdl
+          JAVA_COUNT=$(find "${OUT_DIR}" -name "*.java" -size +0c | wc -l)
+          [ "${JAVA_COUNT}" -gt 0 ] || { echo "ERROR: no .java files generated"; exit 1; }
+          echo "PASS: ${JAVA_COUNT} .java file(s) generated"
+
+      - name: End-to-end compile demo.fdl → Python
+        shell: bash
+        run: |
+          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-python"
+          mkdir -p "${OUT_DIR}"
+          ./artifact/${{ matrix.binary_name }} --python_out "${OUT_DIR}" compiler/examples/demo.fdl
+          PY_COUNT=$(find "${OUT_DIR}" -name "*.py" -size +0c | wc -l)
+          [ "${PY_COUNT}" -gt 0 ] || { echo "ERROR: no .py files generated"; exit 1; }
+          echo "PASS: ${PY_COUNT} .py file(s) generated"
+
+      - name: End-to-end compile demo.fdl → C++
+        shell: bash
+        run: |
+          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-cpp"
+          mkdir -p "${OUT_DIR}"
+          ./artifact/${{ matrix.binary_name }} --cpp_out "${OUT_DIR}" compiler/examples/demo.fdl
+          CPP_COUNT=$(find "${OUT_DIR}" \
+            \( -name "*.h" -o -name "*.cc" -o -name "*.cpp" \) -size +0c | wc -l)
+          [ "${CPP_COUNT}" -gt 0 ] || { echo "ERROR: no C++ files generated"; exit 1; }
+          echo "PASS: ${CPP_COUNT} C++ file(s) generated"
+
+      - name: End-to-end compile demo.fdl → Go
+        shell: bash
+        run: |
+          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-go"
+          mkdir -p "${OUT_DIR}"
+          ./artifact/${{ matrix.binary_name }} --go_out "${OUT_DIR}" compiler/examples/demo.fdl
+          find "${OUT_DIR}" -type f | sort
+          GO_COUNT=$(find "${OUT_DIR}" -name "*.go" -size +0c | wc -l)
+          [ "${GO_COUNT}" -gt 0 ] || { echo "ERROR: no .go files generated"; exit 1; }
+          echo "PASS: ${GO_COUNT} .go file(s) generated"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # SUMMARY JOB
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-complete:
+    name: foryc / all binaries ready
+    needs: [spec-check, build, validate]
+    runs-on: ubuntu-latest
+    if: always()
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - name: Evaluate results
+        id: check
+        run: |
+          SPEC_CHECK="${{ needs.spec-check.result }}"
+          BUILD="${{ needs.build.result }}"
+          VALIDATE="${{ needs.validate.result }}"
+          echo "spec-check: ${SPEC_CHECK}"
+          echo "build:      ${BUILD}"
+          echo "validate:   ${VALIDATE}"
+
+          if [[ "${BUILD}" == "success" && "${VALIDATE}" == "success" ]]; then
+            echo "ready=true" >> "${GITHUB_OUTPUT}"
+            echo "PASS: full binary build and validation succeeded."
+            exit 0
+          fi
+
+          if [[ "${BUILD}" == "skipped" && "${VALIDATE}" == "skipped" \
+                && "${SPEC_CHECK}" == "success" ]]; then
+            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            echo "PASS: PR spec-check succeeded. Full build skipped by design."
+            exit 0
+          fi
+
+          echo "ready=false" >> "${GITHUB_OUTPUT}"
+          echo "FAIL: spec-check=${SPEC_CHECK} build=${BUILD} validate=${VALIDATE}"
+          exit 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FALLBACK: If ubuntu-24.04-arm runner is unavailable in your fork,
+# replace the linux-aarch64 matrix entry with:
+#
+#   - target: linux-aarch64
+#     os: ubuntu-22.04
+#     artifact_name: foryc-linux-aarch64
+#     binary_path: compiler/dist/foryc/foryc
+#     binary_name: foryc
+#     use_upx: true
+#     codesign: false
+#
+# Add `if: matrix.target != 'linux-aarch64'` to these three steps:
+#   "Install PyInstaller and fory_compiler"
+#   "Verify all fory_compiler modules are importable"
+#   "Build standalone binary with PyInstaller"
+#
+# Then add these two steps BEFORE "Install PyInstaller and fory_compiler":
+#
+#   - name: Set up QEMU (linux-aarch64 fallback only)
+#     if: matrix.target == 'linux-aarch64'
+#     uses: docker/setup-qemu-action@v3
+#     # Pin to full SHA: https://github.com/docker/setup-qemu-action/releases
+#     with:
+#       platforms: arm64
+#
+#   - name: Build via Docker (linux-aarch64 QEMU fallback)
+#     if: matrix.target == 'linux-aarch64'
+#     uses: addnab/docker-run-action@v3
+#     # Pin to full SHA: https://github.com/addnab/docker-run-action/releases
+#     with:
+#       image: python:3.11-slim-bookworm
+#       options: --platform linux/arm64 -v ${{ github.workspace }}:/ws
+#       run: |
+#         apt-get update -qq && apt-get install -y upx-ucl binutils
+#         pip install -r /ws/compiler/requirements-dev.txt
+#         pip install /ws/compiler
+#         cd /ws/compiler && pyinstaller foryc.spec
+#
+# QEMU builds are 10-20x slower than native. Expect 20-30 min per run.
+# ─────────────────────────────────────────────────────────────────────────────
