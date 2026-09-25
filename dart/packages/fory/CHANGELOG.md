@@ -1,6 +1,10 @@
 ## 1.8.0-dev
 
-- Continue development after the 1.7.3 release.
+- Continue development after the 1.7.5 release.
+
+## 1.7.5
+
+- Release Apache Fory Dart 1.7.5.
 
 ## 1.7.3
 

@@ -36,7 +36,7 @@ Add Fory and the generator to `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  fory: 1.7.4
+  fory: 1.7.5
 
 dev_dependencies:
   build_runner: ^2.4.0
