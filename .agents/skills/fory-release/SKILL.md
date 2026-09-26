@@ -1,11 +1,15 @@
 ---
 name: fory-release
-description: Prepare an Apache Fory release candidate from a clean release branch, including the version bump, RC tag, JVM staging, ASF source artifacts, SVN upload, and vote email. Use when creating or rerunning a Fory release candidate.
+description: Stage or verify an Apache Fory release candidate. Use GitHub Actions by default for ATR source staging and Nexus JVM staging; use the retained local manual workflow only when the user explicitly requests manual publishing.
 ---
 
 # Apache Fory Release
 
-Use the repository release script for the release work. Do not manually reproduce its version-bump, JVM-publication, or source-build logic, and do not add unrelated test runs.
+Use `.github/workflows/stage-release-candidate.yml` for source and JVM staging
+unless the user explicitly asks for a manual release. The workflow uses
+`ci/release.py`; do not reproduce its source-build, JVM-publication, Nexus
+closure, or artifact-verification logic in shell commands. Do not add unrelated
+test runs.
 
 ## Required Inputs
 
@@ -17,33 +21,13 @@ Collect these values before starting:
 - Release discussion URL, if already known. If it is not supplied, find the
   exact release thread in the Fory development-list archive as described below.
 
-Load release-manager details from `.local/fory-release.env`. If it does not exist, ask for the following values once, create the ignored local file, and continue. Never commit this file.
+Derive the release values:
 
 ```bash
-FORY_RELEASE_MANAGER_NAME="..."
-FORY_RELEASE_APACHE_EMAIL="..."
-FORY_RELEASE_GPG_FINGERPRINT="..."
-FORY_DIST_DEV_WC="..."
-```
-
-Load the cached values and derive the release values:
-
-```bash
-repo_root="$(git rev-parse --show-toplevel)"
-release_config="$repo_root/.local/fory-release.env"
-test -f "$release_config"
-. "$release_config"
-
 release_branch="releases-${release_version}"
 rc_tag="v${release_version}-${rc}"
-dist_version="${release_version}"
-release_manager_name="${FORY_RELEASE_MANAGER_NAME:?missing release manager name}"
-apache_email="${FORY_RELEASE_APACHE_EMAIL:?missing Apache email}"
-gpg_fingerprint="${FORY_RELEASE_GPG_FINGERPRINT:?missing GPG fingerprint}"
-svn_wc="${FORY_DIST_DEV_WC:?missing ASF Subversion working-copy path}"
+release_candidate_url="https://release-test.apache.org/vote/fory/${release_version}"
 ```
-
-Use the same `dist_version` in Subversion and the vote email.
 
 ### Find the release discussion
 
@@ -65,7 +49,7 @@ the archive UI to search the same exact version and `[DISCUSS]`; ask the release
 manager only if the result remains absent or ambiguous. When a URL is supplied,
 open and verify it instead of assuming it matches this release.
 
-## Release Workflow
+## Default CI Workflow
 
 ### 1. Create a clean release branch
 
@@ -114,21 +98,30 @@ git tag "$rc_tag" && git push apache "$rc_tag"
 test "$(git rev-parse "${rc_tag}^{commit}")" = "$release_commit"
 ```
 
-The tag starts the ecosystem package-release workflows. Do not wait for them
-here: start JVM publication immediately so the remote workflows and JVM staging
-run in parallel. If a later step fails, diagnose it using
-[Release retries](#release-retries) before deciding whether the candidate
-needs to change.
+The tag starts the ecosystem package-release workflows. A later infrastructure
+failure does not by itself change the candidate; diagnose it using
+[Release retries](#release-retries).
 
-### 5. Publish JVM artifacts
+### 5. Stage source and JVM artifacts in CI
+
+Dispatch the staging workflow on the immutable RC tag:
 
 ```bash
-python3 ci/release.py publish_jvm
+gh workflow run stage-release-candidate.yml \
+  --repo apache/fory \
+  --ref "$rc_tag" \
+  -f source=true \
+  -f jvm=true
 ```
 
-The command publishes from a temporary worktree at the committed `HEAD` and
-removes that worktree afterward. Record the distinct Java/Kotlin and Scala
-Nexus staging repository IDs from the output:
+Record the exact workflow run ID and URL and wait for it with
+`gh run watch --exit-status`. Do not select a run only by commit SHA because a
+main-branch run can share the same commit. The workflow stages the signed source
+archive to Apache Trusted Release through OIDC, publishes the JVM artifacts,
+and closes the Java/Kotlin and Scala Nexus repositories. It does not use SVN.
+
+From the successful run summary, record and open both distinct Nexus staging
+repository IDs and the ATR candidate URL:
 
 ```bash
 java_kotlin_staging_id="orgapachefory-..."
@@ -138,19 +131,14 @@ test -n "$scala_staging_id"
 test "$java_kotlin_staging_id" != "$scala_staging_id"
 ```
 
-After recording both IDs, read and follow
-[Nexus staging closure](references/nexus-staging.md). It contains the
-credential rules, authenticated state checks, `/bulk/close` request, HTTP 201
-gate, close polling, failure inspection, and anonymous artifact checks. Do not
-close any repository ID that was not recorded from this publication. Keep both
-repositories closed during the vote; do not promote them until the vote passes.
+Keep both repositories closed during the vote. Do not promote them until the
+vote passes.
 
 ### 6. Check the tag-triggered workflows
 
-After JVM publication and Nexus closure, inspect the workflows that have been
-running since the tag was pushed. Filter by the tag rather than only by commit
-SHA so main-branch runs at the same commit are not mixed into the result. By
-default, wait for every tag-triggered run and require successful conclusions:
+Inspect every workflow triggered by the tag. Filter by the tag rather than only
+by commit SHA so main-branch runs at the same commit are not mixed into the
+result. By default, wait for every run and require successful conclusions:
 
 ```bash
 python3 .agents/skills/fory-release/scripts/check_tag_workflows.py \
@@ -170,50 +158,60 @@ the same command with `--allow-incomplete` instead of `--watch`, and record the
 snapshot IDs, states, and reason. Do not cancel the remote workflows or report
 incomplete runs as successful.
 
-### 7. Build the ASF source release
+### 7. Verify all CI artifacts on trusted hardware
 
-Start from the clean release branch. The build temporarily commits release-archive changes and resets them, so verify that it restores the original commit and clean tree.
-
-```bash
-test -z "$(git status --porcelain)"
-before_build="$(git rev-parse HEAD)"
-python3 ci/release.py build -v "$release_version"
-test "$(git rev-parse HEAD)" = "$before_build"
-test -z "$(git status --porcelain)"
-test -f "dist/apache-fory-${release_version}-src.tar.gz"
-test -f "dist/apache-fory-${release_version}-src.tar.gz.asc"
-test -f "dist/apache-fory-${release_version}-src.tar.gz.sha512"
-```
-
-The build command verifies the generated PGP signature and SHA-512 checksum.
-
-### 8. Commit the source release to ASF Subversion
-
-Use a clean, updated working copy of the ASF development distribution repository.
+Do not run this comparison in GitHub Actions. Obtain the public fingerprint of
+the Infra-managed CI signing key, then run the repository verifier on a machine
+controlled by the release manager:
 
 ```bash
-test -d "$svn_wc/.svn" || svn checkout https://dist.apache.org/repos/dist/dev/fory "$svn_wc"
-svn update "$svn_wc"
-mkdir -p "$svn_wc/$dist_version"
-cp dist/* "$svn_wc/$dist_version/"
-svn add --force "$svn_wc/$dist_version"
-svn status "$svn_wc/$dist_version"
-svn commit "$svn_wc/$dist_version" -m "Prepare Apache Fory ${rc_tag}"
-test -z "$(svn status "$svn_wc/$dist_version")"
-svn log -l 1 "$svn_wc/$dist_version"
-svn ls "https://dist.apache.org/repos/dist/dev/fory/${dist_version}/"
+: "${gpg_fingerprint:?missing CI signing-key fingerprint}"
+python3 ci/release.py verify_ci_artifacts \
+  -v "$release_version" \
+  --rc-tag "$rc_tag" \
+  --java-kotlin-id "$java_kotlin_staging_id" \
+  --scala-id "$scala_staging_id" \
+  --gpg-fingerprint "$gpg_fingerprint" \
+  --source-url "$release_candidate_url"
 ```
 
-Inspect `svn status` before committing. The upload is complete only after `svn commit` returns a revision and the remote `svn ls` shows the three release files; local `A` status alone is not an upload.
+The command checks out the exact RC commit in a temporary clone, rebuilds the
+source archive and the complete JVM publication without signing or upload
+credentials, verifies the staged signatures with the public key, and compares
+every source, JAR, POM, source JAR, documentation JAR, and distribution file
+byte-for-byte. Each JVM ecosystem is built once and may reuse the machine's
+normal dependency caches; only source and build outputs are clean. It writes a
+Markdown report under `dist/`. Any mismatch or missing artifact blocks the vote.
 
-### 9. Draft the vote email
+### 8. Draft the vote email
+
+Load only the release-manager identity from `.local/fory-release.env` when
+drafting the email. Never commit this ignored file or store release secrets in
+it.
+
+```bash
+release_config="$(git rev-parse --show-toplevel)/.local/fory-release.env"
+test -f "$release_config"
+. "$release_config"
+release_manager_name="${FORY_RELEASE_MANAGER_NAME:?missing release manager name}"
+```
 
 Read [the vote email template](assets/vote-email.txt) and produce a complete,
-copyable email. Replace every placeholder from verified output, confirm that no
-`${...}` placeholder remains, use an explicit UTC deadline at least 72 hours
-after sending, and do not send the email unless requested.
+copyable email. Fill every placeholder from verified output, link the
+trusted-hardware report, use an explicit UTC deadline at least 72 hours after
+sending, and do not send the email unless requested.
 
-Before sending, verify the tag and commit, all URLs, both closed Maven staging repositories, the remote Subversion files, PGP fingerprint, and UTC deadline against the actual release outputs.
+## Explicit Manual Workflow
+
+Only when the user explicitly requests manual publishing, read and follow
+[the manual release workflow](references/manual-release.md). Do not fall back
+to it automatically after a CI failure.
+
+## Verification-Only Requests
+
+For an existing CI-staged candidate, do not create another tag or staging
+repository. Confirm the exact tag, commit, workflow run, ATR URL, both Nexus
+repository IDs, and CI signing-key fingerprint, then run steps 6 and 7.
 
 ## Release retries
 
@@ -240,16 +238,17 @@ workflow. An unresolved code or artifact defect still blocks the vote.
 ## Stop Conditions
 
 Before creating a new tag, stop if the Git tree is dirty, the tag already
-exists, or its target would differ from the release commit. A failed JVM
-publication, workflow, artifact check, or SVN operation pauses the dependent
-step until it is diagnosed and recovered under [Release retries](#release-retries);
-failure alone does not require a higher RC.
-Before sending the vote, require both staging repositories to be closed and
-public, the Subversion commit to be remotely visible, and the tag workflows to
-be successful unless the release manager explicitly waived monitoring.
+exists, or its target would differ from the release commit. A failed workflow,
+staging operation, or artifact check pauses the dependent step until it is
+diagnosed and recovered under [Release retries](#release-retries); failure alone
+does not require a higher RC. Before sending the vote, require the ATR candidate
+and both closed Nexus repositories to be public, the trusted-hardware report to
+show a complete byte-for-byte match, and tag workflows to be successful unless
+the release manager explicitly waived monitoring.
 
 ## References
 
 - [Apache Fory release guide](https://fory.apache.org/docs/community/how_to_release)
 - [Fory development-list archive](https://lists.apache.org/list.html?dev@fory.apache.org)
+- [Apache Pekko CI release workflow](https://github.com/apache/pekko/blob/main/.github/workflows/stage-release-candidate.yml)
 - [Sonatype Nexus 2 staging REST example](https://support.sonatype.com/hc/en-us/articles/213465448-Automatically-dropping-old-staging-repositories)

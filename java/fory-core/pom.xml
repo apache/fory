@@ -203,7 +203,8 @@
                 </goals>
                 <configuration>
                   <target>
-                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
+                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true"
+                         modificationtime="${project.build.outputTimestamp}">
                       <zipfileset dir="${fory.mr.classes}"
                                   prefix="META-INF/versions"
                                   includes="**/*.class"/>
@@ -310,7 +311,7 @@
                 <id>attach-sources</id>
                 <phase>package</phase>
                 <goals>
-                  <goal>jar</goal>
+                  <goal>jar-no-fork</goal>
                 </goals>
               </execution>
             </executions>
@@ -367,7 +368,8 @@
                     <fail
                         unless="multi.release.sources.jar.present"
                         message="Multi-release source patching requires ${multi.release.sources.jar}; run with source-jar generation enabled."/>
-                    <jar destfile="${multi.release.sources.jar}" update="true">
+                    <jar destfile="${multi.release.sources.jar}" update="true"
+                         modificationtime="${project.build.outputTimestamp}">
                       <zipfileset dir="${project.basedir}/src/main/java9" prefix="META-INF/versions/9">
                         <include name="**/*.java"/>
                       </zipfileset>
@@ -671,6 +673,7 @@
                       <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
                       <arg value="--module-version"/>
                       <arg value="${project.version}"/>
+                      <arg line="${fory.jar.date.option}"/>
                       <arg value="-C"/>
                       <arg value="${project.build.outputDirectory}"/>
                       <arg value="org/apache/fory/Fory.class"/>
