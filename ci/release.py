@@ -1075,7 +1075,9 @@ def _new_fory_staging_repositories(repositories_before, repositories):
 def _matching_staging_repositories(candidates, artifact_paths, authorization):
     matches = []
     for staging_id in sorted(candidates):
-        base_url = f"{NEXUS_BASE_URL}/content/repositories/{staging_id}/"
+        # Open staging repositories are readable through the authenticated API;
+        # the public content URL remains unavailable until the repository closes.
+        base_url = f"{NEXUS_BASE_URL}/service/local/repositories/{staging_id}/content/"
         if all(
             _nexus_download_status(base_url + path, authorization) == 200
             for path in artifact_paths
