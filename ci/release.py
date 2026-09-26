@@ -19,19 +19,24 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import logging
 import os
+import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -140,6 +145,8 @@ NEXUS_BASE_URL = "https://repository.apache.org"
 NEXUS_TIMEOUT_SECONDS = 30
 NEXUS_CLOSE_ATTEMPTS = 30
 NEXUS_CLOSE_INTERVAL_SECONDS = 10
+FORY_KEYS_URL = "https://downloads.apache.org/fory/KEYS"
+JVM_CHECKSUM_SUFFIXES = (".md5", ".sha1", ".sha256", ".sha512")
 
 
 def prepare(v: str):
@@ -159,48 +166,46 @@ def prepare(v: str):
         raise
 
 
-def build(v: str):
-    """version format: 0.5.1"""
+def build(v: str, skip_sign: bool = False):
+    """Build source artifacts from the checked-out commit without changing Git state."""
     logger.info("Start to prepare release artifacts for version %s", v)
     _check_release_version(v)
     os.chdir(PROJECT_ROOT_DIR)
+    _check_all_committed()
+    release_commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD^{commit}"], text=True
+    ).strip()
+    license_text = subprocess.check_output(
+        ["git", "show", f"{release_commit}:LICENSE"], text=True, encoding="utf-8"
+    )
     if os.path.exists("dist"):
         shutil.rmtree("dist")
     os.mkdir("dist")
-    branch = f"releases-{v}"
-    # Check if branch exists, if not create it
-    result = subprocess.run(
-        f"git show-ref --verify --quiet refs/heads/{branch}",
-        shell=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode == 0:
-        # Branch exists, checkout
-        subprocess.check_call(f"git checkout {branch}", shell=True)
-    else:
-        # Branch doesn't exist, create it
-        subprocess.check_call(f"git checkout -b {branch}", shell=True)
     src_tar = f"apache-fory-{v}-src.tar.gz"
-    _check_all_committed()
-    _strip_unnecessary_license()
+    prefix = f"apache-fory-{v}-src/"
+    # Keep the RC commit ID and timestamp in the archive. Prune benchmark-only
+    # licenses in the archive entry, never through a commit or worktree edit.
     subprocess.check_call(
-        "git add LICENSE && git commit -m 'remove benchmark from license'", shell=True
+        [
+            "git",
+            "archive",
+            "--format=tar.gz",
+            f"--output=dist/{src_tar}",
+            f"--prefix={prefix}",
+            f"--add-virtual-file={prefix}LICENSE:{_strip_unnecessary_license(license_text)}",
+            release_commit,
+            ".",
+            ":(exclude)LICENSE",
+        ]
     )
-    subprocess.check_call(
-        f"git archive --format=tar.gz "
-        f"--output=dist/{src_tar} "
-        f"--prefix=apache-fory-{v}-src/ {branch}",
-        shell=True,
-    )
-    subprocess.check_call("git reset --hard HEAD~", shell=True)
     os.chdir("dist")
-    logger.info("Start to generate signature")
-    subprocess.check_call(
-        f"gpg --armor --output {src_tar}.asc --detach-sig {src_tar}", shell=True
-    )
+    if not skip_sign:
+        logger.info("Start to generate signature")
+        subprocess.check_call(
+            f"gpg --armor --output {src_tar}.asc --detach-sig {src_tar}", shell=True
+        )
     subprocess.check_call(f"sha512sum {src_tar} >{src_tar}.sha512", shell=True)
-    verify(v)
+    verify(v, signature=not skip_sign)
 
 
 def _check_release_version(v: str):
@@ -213,7 +218,7 @@ def _check_release_version(v: str):
 
 def _check_all_committed():
     proc = subprocess.run(
-        "git diff --quiet", capture_output=True, shell=True, check=False
+        ["git", "diff", "--quiet", "HEAD"], capture_output=True, check=False
     )
     result = proc.returncode
     if result != 0:
@@ -222,9 +227,8 @@ def _check_all_committed():
         )
 
 
-def _strip_unnecessary_license():
-    with open("LICENSE", "r") as f:
-        lines = f.readlines()
+def _strip_unnecessary_license(license_text):
+    lines = license_text.splitlines(keepends=True)
     new_lines = []
     line_number = 0
     while line_number < len(lines):
@@ -236,16 +240,14 @@ def _strip_unnecessary_license():
         else:
             new_lines.append(line)
             line_number += 1
-    text = "".join(new_lines)
-    if lines != new_lines:
-        with open("LICENSE", "w") as f:
-            f.write(text)
+    return "".join(new_lines)
 
 
-def verify(v):
+def verify(v, signature=True):
     src_tar = f"apache-fory-{v}-src.tar.gz"
-    subprocess.check_call(f"gpg --verify {src_tar}.asc {src_tar}", shell=True)
-    logger.info("Verified signature")
+    if signature:
+        subprocess.check_call(f"gpg --verify {src_tar}.asc {src_tar}", shell=True)
+        logger.info("Verified signature")
     subprocess.check_call(f"sha512sum --check {src_tar}.sha512", shell=True)
     logger.info("Verified checksum successfully")
 
@@ -280,6 +282,607 @@ def publish_jvm(languages="all", mode="release"):
             raise NotImplementedError(f"Unsupported JVM release language: {lang}")
 
 
+def stage_jvm(v, rc_tag, output=None):
+    """Publish, discover, close, and verify the JVM staging repositories."""
+    _validate_release_candidate(v, rc_tag)
+    _require_jvm_release_version(v)
+    authorization = _nexus_authorization()
+    repositories_before = set(_nexus_repositories(authorization))
+
+    try:
+        publish_jvm()
+        repositories = _nexus_repositories(authorization)
+        java_kotlin_id, scala_id = _discover_jvm_staging_repositories(
+            v,
+            repositories_before,
+            repositories,
+            authorization,
+        )
+    except Exception:
+        _record_failed_jvm_staging(repositories_before, authorization, output)
+        raise
+
+    staging = {
+        "java_kotlin_staging_id": java_kotlin_id,
+        "new_staging_ids": sorted(
+            _new_fory_staging_repositories(repositories_before, repositories)
+        ),
+        "scala_staging_id": scala_id,
+    }
+    logger.info(
+        "Created Nexus staging repositories: Java/Kotlin=%s, Scala=%s",
+        java_kotlin_id,
+        scala_id,
+    )
+    if output:
+        _write_staging_metadata(output, staging)
+
+    close_jvm_staging(v, rc_tag, java_kotlin_id, scala_id)
+
+
+def build_jvm_artifacts(v, output):
+    """Build the unsigned JVM release repository without publishing it."""
+    _check_release_version(v)
+    _require_jvm_release_version(v)
+    _ensure_openjdk25()
+    output = os.path.abspath(output)
+    if os.path.exists(output):
+        raise FileExistsError(f"JVM artifact output already exists: {output}")
+    os.makedirs(output)
+    repository_url = Path(output).as_uri()
+    # Reproducibility requires clean build outputs, not an empty dependency cache.
+    _run_release_args(
+        _local_maven_command(JAVA_RELEASE_DEPLOY_CMD, repository_url),
+        "java",
+    )
+    verify_java_artifacts()
+
+    _run_release_args(
+        _local_maven_command(KOTLIN_RELEASE_DEPLOY_CMD, repository_url),
+        "kotlin",
+    )
+    verify_kotlin_artifacts()
+
+    _run_release_args(
+        [
+            "sbt",
+            f"-Dfory.maven.repo={repository_url}",
+            "clean",
+            "project fory-scala",
+            "+publish",
+            "project fory-json-scala",
+            "+publish",
+        ],
+        "scala",
+    )
+    scala_repository = os.path.join(
+        PROJECT_ROOT_DIR,
+        "scala",
+        "target",
+        "sonatype-staging",
+        v,
+        "org",
+        "apache",
+        "fory",
+    )
+    if not os.path.isdir(scala_repository):
+        raise RuntimeError(
+            f"Scala publication repository not found: {scala_repository}"
+        )
+    shutil.copytree(
+        scala_repository,
+        os.path.join(output, "org", "apache", "fory"),
+        dirs_exist_ok=True,
+    )
+    logger.info("Built unsigned JVM release repository: %s", output)
+
+
+def rebuild_for_verification(v, checkout, output):
+    """Run the current unsigned builders against an isolated RC checkout."""
+    global PROJECT_ROOT_DIR
+    PROJECT_ROOT_DIR = os.path.abspath(checkout)
+    build(v, skip_sign=True)
+    build_jvm_artifacts(v, output)
+
+
+def verify_ci_artifacts(
+    v,
+    rc_tag,
+    java_kotlin_staging_id,
+    scala_staging_id,
+    gpg_fingerprint,
+    source_url=None,
+    keys_url=FORY_KEYS_URL,
+    output=None,
+):
+    """Rebuild an RC locally and compare every signed CI artifact byte-for-byte."""
+    _validate_release_candidate(v, rc_tag)
+    staging_ids = (java_kotlin_staging_id, scala_staging_id)
+    if len(set(staging_ids)) != 2:
+        raise ValueError("Java/Kotlin and Scala staging repository IDs must differ")
+    for staging_id in staging_ids:
+        if not re.fullmatch(r"orgapachefory-\d+", staging_id):
+            raise ValueError(f"Invalid Apache Fory staging repository ID: {staging_id}")
+    expected_fingerprint = _normalize_gpg_fingerprint(gpg_fingerprint)
+    source_url = (
+        source_url or f"https://release-test.apache.org/vote/fory/{v}"
+    ).rstrip("/")
+    output = output or os.path.join(
+        PROJECT_ROOT_DIR,
+        "dist",
+        f"{rc_tag}-reproducibility-report.md",
+    )
+    output = os.path.abspath(output)
+    release_commit = subprocess.check_output(
+        ["git", "rev-parse", f"{rc_tag}^{{commit}}"],
+        cwd=PROJECT_ROOT_DIR,
+        text=True,
+    ).strip()
+    _ensure_openjdk25()
+
+    with (
+        tempfile.TemporaryDirectory(prefix="fory-ci-artifact-verification-") as root,
+        tempfile.TemporaryDirectory(prefix="fg-", dir="/tmp") as gnupg_home,
+    ):
+        checkout = os.path.join(root, "checkout")
+        local_repository = os.path.join(root, "local-maven-repository")
+        staged = os.path.join(root, "staged")
+        os.makedirs(staged)
+        keys_path = os.path.join(root, "KEYS")
+        _download_file(keys_url, keys_path)
+        gpg_env = os.environ.copy()
+        gpg_env["GNUPGHOME"] = gnupg_home
+        subprocess.check_call(
+            ["gpg", "--batch", "--import", keys_path],
+            env=gpg_env,
+            stdout=subprocess.DEVNULL,
+        )
+        subprocess.check_call(
+            [
+                "git",
+                "clone",
+                "--quiet",
+                "--no-checkout",
+                "--no-hardlinks",
+                os.path.abspath(PROJECT_ROOT_DIR),
+                checkout,
+            ]
+        )
+        subprocess.check_call(
+            ["git", "checkout", "--quiet", "--detach", release_commit], cwd=checkout
+        )
+        release_script = os.path.abspath(__file__)
+        subprocess.check_call(
+            [
+                sys.executable,
+                release_script,
+                "rebuild_for_verification",
+                "-v",
+                v,
+                "--checkout",
+                checkout,
+                "--output",
+                local_repository,
+            ],
+            cwd=checkout,
+        )
+
+        rows = []
+        source_archive = f"apache-fory-{v}-src.tar.gz"
+        staged_source = os.path.join(staged, source_archive)
+        staged_source_signature = staged_source + ".asc"
+        staged_source_checksum = staged_source + ".sha512"
+        for suffix, path in (
+            ("", staged_source),
+            (".asc", staged_source_signature),
+            (".sha512", staged_source_checksum),
+        ):
+            _download_file(f"{source_url}/{source_archive}{suffix}", path)
+        _verify_sha512_file(staged_source, staged_source_checksum)
+        _verify_gpg_signature(
+            staged_source,
+            staged_source_signature,
+            expected_fingerprint,
+            gpg_env,
+        )
+        local_source = os.path.join(checkout, "dist", source_archive)
+        rows.append(
+            _compare_release_file("Source", source_archive, staged_source, local_source)
+        )
+
+        staged_payloads = {}
+        for staging_id in staging_ids:
+            repository_files = _nexus_repository_files(staging_id)
+            payloads = sorted(
+                path for path in repository_files if _is_jvm_release_payload(path, v)
+            )
+            if not payloads:
+                raise RuntimeError(
+                    f"Nexus staging repository has no Fory {v} artifacts: {staging_id}"
+                )
+            for path in payloads:
+                if f"{path}.asc" not in repository_files:
+                    raise RuntimeError(
+                        f"Nexus artifact has no detached signature: {staging_id}/{path}"
+                    )
+                if path in staged_payloads:
+                    raise RuntimeError(
+                        f"Duplicate JVM artifact in staging repositories: {path}"
+                    )
+                staged_payloads[path] = staging_id
+
+        local_payloads = set(_local_jvm_release_payloads(local_repository, v))
+        staged_paths = set(staged_payloads)
+        for relative_path in sorted(local_payloads.difference(staged_paths)):
+            rows.append(
+                {
+                    "artifact": relative_path,
+                    "repository": "Local only",
+                    "staged_sha512": "-",
+                    "local_sha512": _sha512(
+                        os.path.join(local_repository, relative_path)
+                    ),
+                    "result": "Missing from staging",
+                }
+            )
+
+        for relative_path in sorted(staged_payloads):
+            staging_id = staged_payloads[relative_path]
+            base_url = f"{NEXUS_BASE_URL}/content/repositories/{staging_id}"
+            staged_file = os.path.join(staged, staging_id, relative_path)
+            staged_signature = staged_file + ".asc"
+            _download_file(f"{base_url}/{relative_path}", staged_file)
+            _download_file(f"{base_url}/{relative_path}.asc", staged_signature)
+            _verify_gpg_signature(
+                staged_file,
+                staged_signature,
+                expected_fingerprint,
+                gpg_env,
+            )
+            local_file = os.path.join(local_repository, relative_path)
+            rows.append(
+                _compare_release_file(
+                    staging_id,
+                    relative_path,
+                    staged_file,
+                    local_file,
+                )
+            )
+
+        toolchain = {
+            "java": _tool_version([_java_tool("java"), "-version"]),
+            "maven": _tool_version(["mvn", "--version"]),
+            "python": sys.version.replace("\n", " "),
+            "sbt": _tool_version(["sbt", "--numeric-version"]),
+            "system": platform.platform(),
+        }
+        _write_ci_verification_report(
+            output,
+            v,
+            rc_tag,
+            release_commit,
+            source_url,
+            java_kotlin_staging_id,
+            scala_staging_id,
+            expected_fingerprint,
+            toolchain,
+            rows,
+        )
+    failures = [row for row in rows if row["result"] != "Match"]
+    if failures:
+        raise RuntimeError(
+            f"{len(failures)} of {len(rows)} artifacts did not match; report: {output}"
+        )
+    logger.info("Verified %d artifacts byte-for-byte; report: %s", len(rows), output)
+
+
+def _local_maven_command(command, repository_url):
+    args = shlex.split(command)
+    args.insert(args.index("deploy"), "clean")
+    args.extend(
+        [
+            "-Dgpg.skip=true",
+            "-DretryFailedDeploymentCount=3",
+            f"-DaltDeploymentRepository=fory-verification::default::{repository_url}",
+        ]
+    )
+    return args
+
+
+def _run_release_args(command, path):
+    cwd = os.path.join(PROJECT_ROOT_DIR, path)
+    logger.info("Run release command in %s: %s", cwd, shlex.join(command))
+    subprocess.check_call(command, cwd=cwd)
+
+
+def _normalize_gpg_fingerprint(fingerprint):
+    fingerprint = re.sub(r"\s+", "", fingerprint).upper()
+    if not re.fullmatch(r"[0-9A-F]{40,64}", fingerprint):
+        raise ValueError(f"Invalid GPG fingerprint: {fingerprint}")
+    return fingerprint
+
+
+def _download_file(url, path):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "apache-fory-release-verifier/1"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=NEXUS_TIMEOUT_SECONDS) as response:
+            if response.status != 200:
+                raise RuntimeError(f"Download returned HTTP {response.status}: {url}")
+            with open(path, "wb") as output:
+                shutil.copyfileobj(response, output)
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Download returned HTTP {exc.code}: {url}") from None
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Download failed for {url}: {exc.reason}") from None
+
+
+def _sha512(path):
+    digest = hashlib.sha512()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _verify_sha512_file(artifact, checksum_path):
+    with open(checksum_path, "r", encoding="utf-8") as f:
+        fields = f.read().strip().split()
+    if not fields or not re.fullmatch(r"[0-9a-fA-F]{128}", fields[0]):
+        raise RuntimeError(f"Invalid SHA-512 file: {checksum_path}")
+    actual = _sha512(artifact)
+    if actual.lower() != fields[0].lower():
+        raise RuntimeError(
+            f"SHA-512 mismatch for {artifact}: expected {fields[0]}, got {actual}"
+        )
+
+
+def _verify_gpg_signature(artifact, signature, expected_fingerprint, env):
+    result = subprocess.run(
+        [
+            "gpg",
+            "--batch",
+            "--status-fd",
+            "1",
+            "--verify",
+            signature,
+            artifact,
+        ],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"PGP signature verification failed for {artifact}: {result.stderr.strip()}"
+        )
+    valid_signatures = []
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) >= 3 and fields[0] == "[GNUPG:]" and fields[1] == "VALIDSIG":
+            valid_signatures.append(fields)
+    if len(valid_signatures) != 1:
+        raise RuntimeError(
+            f"Expected one valid PGP signature for {artifact}; found {len(valid_signatures)}"
+        )
+    fields = valid_signatures[0]
+    signer = fields[2].upper()
+    primary = fields[11].upper() if len(fields) >= 12 else signer
+    if expected_fingerprint not in (signer, primary):
+        raise RuntimeError(
+            f"Unexpected PGP signer for {artifact}: signer={signer}, primary={primary}"
+        )
+
+
+def _nexus_repository_files(staging_id):
+    pending = ["org/apache/fory/"]
+    visited = set()
+    files = set()
+    while pending:
+        relative_path = pending.pop()
+        if relative_path in visited:
+            continue
+        visited.add(relative_path)
+        encoded = urllib.parse.quote(relative_path, safe="/")
+        url = (
+            f"{NEXUS_BASE_URL}/service/local/repositories/{staging_id}/content/"
+            f"{encoded}"
+        )
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "apache-fory-release-verifier/1",
+            },
+        )
+        try:
+            with urllib.request.urlopen(
+                request, timeout=NEXUS_TIMEOUT_SECONDS
+            ) as response:
+                payload = json.load(response)
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(
+                f"Nexus content listing returned HTTP {exc.code}: {url}"
+            ) from None
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"Nexus content listing failed for {url}: {exc.reason}"
+            ) from None
+        entries = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(entries, list):
+            raise RuntimeError(f"Nexus content listing has no data list: {url}")
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            path = str(entry.get("relativePath", "")).lstrip("/")
+            if not path.startswith("org/apache/fory/"):
+                raise RuntimeError(f"Unexpected Nexus content path: {path}")
+            if entry.get("leaf"):
+                files.add(path)
+            else:
+                pending.append(path.rstrip("/") + "/")
+    return files
+
+
+def _is_jvm_release_payload(path, v):
+    if f"/{v}/" not in f"/{path}":
+        return False
+    name = os.path.basename(path)
+    if name.startswith("maven-metadata") or name.startswith("_remote.repositories"):
+        return False
+    if name.endswith(".asc") or name.endswith(JVM_CHECKSUM_SUFFIXES):
+        return False
+    return True
+
+
+def _local_jvm_release_payloads(repository, v):
+    group_root = os.path.join(repository, "org", "apache", "fory")
+    if not os.path.isdir(group_root):
+        raise RuntimeError(f"Local JVM repository has no Fory artifacts: {repository}")
+    payloads = []
+    for directory, _, filenames in os.walk(group_root):
+        for filename in filenames:
+            path = os.path.join(directory, filename)
+            relative_path = os.path.relpath(path, repository).replace(os.sep, "/")
+            if _is_jvm_release_payload(relative_path, v):
+                payloads.append(relative_path)
+    return payloads
+
+
+def _compare_release_file(repository, relative_path, staged_file, local_file):
+    staged_sha512 = _sha512(staged_file)
+    local_sha512 = _sha512(local_file) if os.path.isfile(local_file) else "-"
+    if local_sha512 == "-":
+        result = "Missing locally"
+    elif staged_sha512 != local_sha512 or not _files_equal(staged_file, local_file):
+        result = "Mismatch"
+    else:
+        result = "Match"
+    return {
+        "artifact": relative_path,
+        "repository": repository,
+        "staged_sha512": staged_sha512,
+        "local_sha512": local_sha512,
+        "result": result,
+    }
+
+
+def _files_equal(first, second):
+    if os.path.getsize(first) != os.path.getsize(second):
+        return False
+    with open(first, "rb") as left, open(second, "rb") as right:
+        while True:
+            left_block = left.read(1024 * 1024)
+            right_block = right.read(1024 * 1024)
+            if left_block != right_block:
+                return False
+            if not left_block:
+                return True
+
+
+def _tool_version(command):
+    result = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+def _write_ci_verification_report(
+    output,
+    v,
+    rc_tag,
+    release_commit,
+    source_url,
+    java_kotlin_staging_id,
+    scala_staging_id,
+    gpg_fingerprint,
+    toolchain,
+    rows,
+):
+    lines = [
+        f"# Apache Fory {rc_tag} reproducibility report",
+        "",
+        f"- Release version: `{v}`",
+        f"- RC tag: `{rc_tag}`",
+        f"- Commit: `{release_commit}`",
+        f"- Source candidate: {source_url}",
+        f"- Java/Kotlin staging: `{java_kotlin_staging_id}`",
+        f"- Scala staging: `{scala_staging_id}`",
+        f"- Signing key: `{gpg_fingerprint}`",
+        "",
+        "## Local rebuild",
+        "",
+        "The current release builders rebuilt artifacts unsigned from the exact RC commit on trusted hardware.",
+        "The staged detached signatures were verified separately with the public key.",
+        "",
+        "## Toolchain",
+        "",
+        "```text",
+    ]
+    for name, value in sorted(toolchain.items()):
+        lines.append(f"{name}: {value}")
+    lines.extend(
+        [
+            "```",
+            "",
+            "## Byte-for-byte comparison",
+            "",
+            "| Repository | Artifact | Staged SHA-512 | Local SHA-512 | Result |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    for row in rows:
+        lines.append(
+            f"| `{row['repository']}` | `{row['artifact']}` | "
+            f"`{row['staged_sha512']}` | `{row['local_sha512']}` | "
+            f"{row['result']} |"
+        )
+    failures = sum(row["result"] != "Match" for row in rows)
+    summary = (
+        f"All {len(rows)} artifacts matched."
+        if failures == 0
+        else f"FAILED: {failures} of {len(rows)} artifacts did not match."
+    )
+    lines.extend(["", summary, ""])
+    output_directory = os.path.dirname(output)
+    if output_directory:
+        os.makedirs(output_directory, exist_ok=True)
+    with open(output, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+def _record_failed_jvm_staging(repositories_before, authorization, output):
+    try:
+        repositories = _nexus_repositories(authorization)
+        staging_ids = sorted(
+            _new_fory_staging_repositories(repositories_before, repositories)
+        )
+        if staging_ids:
+            logger.error(
+                "JVM publication failed after creating open repositories: %s",
+                staging_ids,
+            )
+        if output:
+            _write_staging_metadata(output, {"new_staging_ids": staging_ids})
+    except Exception as exc:
+        logger.error("Unable to inspect Nexus repositories after failure: %s", exc)
+
+
+def _write_staging_metadata(output, staging):
+    with open(output, "w", encoding="utf-8") as f:
+        json.dump(staging, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+
 def close_jvm_staging(
     v,
     rc_tag,
@@ -288,11 +891,7 @@ def close_jvm_staging(
     verify_only=False,
 ):
     """Close and verify the two Nexus repositories created by publish_jvm."""
-    _check_release_version(v)
-    if not re.fullmatch(r"\d+\.\d+\.\d+", v):
-        raise ValueError(f"Invalid final release version: {v}")
-    if not re.fullmatch(rf"v{re.escape(v)}-rc\d+", rc_tag):
-        raise ValueError(f"RC tag {rc_tag} does not match release version {v}")
+    _validate_release_candidate(v, rc_tag)
     staging_ids = [java_kotlin_staging_id, scala_staging_id]
     for staging_id in staging_ids:
         if not re.fullmatch(r"orgapachefory-\d+", staging_id):
@@ -323,6 +922,29 @@ def close_jvm_staging(
         _wait_for_nexus_close(staging_ids, authorization)
 
     _verify_nexus_downloads(v, java_kotlin_staging_id, scala_staging_id)
+
+
+def _validate_release_candidate(v, rc_tag):
+    _check_release_version(v)
+    if not re.fullmatch(r"\d+\.\d+\.\d+", v):
+        raise ValueError(f"Invalid final release version: {v}")
+    if not re.fullmatch(rf"v{re.escape(v)}-rc\d+", rc_tag):
+        raise ValueError(f"RC tag {rc_tag} does not match release version {v}")
+
+
+def _require_jvm_release_version(v):
+    versions = {
+        "Java": _read_java_version(),
+        "Kotlin": _read_kotlin_version(),
+        "Scala": _read_scala_version(),
+    }
+    mismatches = {
+        language: version for language, version in versions.items() if version != v
+    }
+    if mismatches:
+        raise RuntimeError(
+            f"JVM project versions must match release version {v}: {mismatches}"
+        )
 
 
 def _nexus_authorization():
@@ -364,7 +986,7 @@ def _nexus_request(path, authorization, method="GET", payload=None):
         raise RuntimeError(f"Nexus {method} {path} failed: {exc.reason}") from None
 
 
-def _nexus_states(staging_ids, authorization):
+def _nexus_repositories(authorization):
     status, body = _nexus_request(
         "/service/local/staging/profile_repositories", authorization
     )
@@ -379,9 +1001,11 @@ def _nexus_states(staging_ids, authorization):
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, list):
         raise RuntimeError("Nexus repository-list response has no data list")
-    repositories = {
-        item.get("repositoryId"): item for item in data if isinstance(item, dict)
-    }
+    return {item.get("repositoryId"): item for item in data if isinstance(item, dict)}
+
+
+def _nexus_states(staging_ids, authorization):
+    repositories = _nexus_repositories(authorization)
     missing = [
         staging_id for staging_id in staging_ids if staging_id not in repositories
     ]
@@ -393,6 +1017,71 @@ def _nexus_states(staging_ids, authorization):
     for staging_id, state in states.items():
         logger.info("Nexus staging repository %s: %s", staging_id, state)
     return states
+
+
+def _discover_jvm_staging_repositories(
+    v,
+    repositories_before,
+    repositories,
+    authorization,
+):
+    candidates = _new_fory_staging_repositories(
+        repositories_before,
+        repositories,
+    )
+    java_kotlin_ids = _matching_staging_repositories(
+        candidates,
+        (
+            f"org/apache/fory/fory-core/{v}/fory-core-{v}.jar",
+            f"org/apache/fory/fory-kotlin/{v}/fory-kotlin-{v}.jar",
+        ),
+        authorization,
+    )
+    scala_ids = _matching_staging_repositories(
+        candidates,
+        (
+            f"org/apache/fory/fory-scala_2.13/{v}/fory-scala_2.13-{v}.jar",
+            f"org/apache/fory/fory-json-scala_3/{v}/fory-json-scala_3-{v}.jar",
+        ),
+        authorization,
+    )
+    if len(java_kotlin_ids) != 1 or len(scala_ids) != 1:
+        raise RuntimeError(
+            "Expected one new Java/Kotlin and one new Scala staging repository; "
+            f"found Java/Kotlin={java_kotlin_ids}, Scala={scala_ids}, "
+            f"new repositories={sorted(candidates)}"
+        )
+    java_kotlin_id = java_kotlin_ids[0]
+    scala_id = scala_ids[0]
+    if java_kotlin_id == scala_id:
+        raise RuntimeError("Java/Kotlin and Scala staging repositories must differ")
+    states = {
+        staging_id: candidates[staging_id].get("type")
+        for staging_id in (java_kotlin_id, scala_id)
+    }
+    _require_nexus_state(states, "open")
+    return java_kotlin_id, scala_id
+
+
+def _new_fory_staging_repositories(repositories_before, repositories):
+    return {
+        staging_id: repository
+        for staging_id, repository in repositories.items()
+        if staging_id not in repositories_before
+        and re.fullmatch(r"orgapachefory-\d+", staging_id or "")
+    }
+
+
+def _matching_staging_repositories(candidates, artifact_paths, authorization):
+    matches = []
+    for staging_id in sorted(candidates):
+        base_url = f"{NEXUS_BASE_URL}/content/repositories/{staging_id}/"
+        if all(
+            _nexus_download_status(base_url + path, authorization) == 200
+            for path in artifact_paths
+        ):
+            matches.append(staging_id)
+    return matches
 
 
 def _require_nexus_state(states, expected_state):
@@ -451,25 +1140,27 @@ def _verify_nexus_downloads(v, java_kotlin_staging_id, scala_staging_id):
         f"{scala_url}org/apache/fory/fory-json-scala_3/{v}/fory-json-scala_3-{v}.jar",
     ]
     for url in artifact_urls:
-        request = urllib.request.Request(
-            url, headers={"User-Agent": "apache-fory-release-helper/1"}
-        )
-        try:
-            with urllib.request.urlopen(
-                request, timeout=NEXUS_TIMEOUT_SECONDS
-            ) as response:
-                status = response.status
-        except urllib.error.HTTPError as exc:
-            status = exc.code
-        except urllib.error.URLError as exc:
-            raise RuntimeError(
-                f"Anonymous Nexus download failed for {url}: {exc.reason}"
-            )
+        status = _nexus_download_status(url)
         logger.info("Anonymous Nexus download HTTP %s: %s", status, url)
         if status != 200:
             raise RuntimeError(
                 f"Anonymous Nexus download returned HTTP {status}: {url}"
             )
+
+
+def _nexus_download_status(url, authorization=None):
+    headers = {"User-Agent": "apache-fory-release-helper/1"}
+    if authorization:
+        headers["Authorization"] = authorization
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=NEXUS_TIMEOUT_SECONDS) as response:
+            return response.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except urllib.error.URLError as exc:
+        access = "Authenticated" if authorization else "Anonymous"
+        raise RuntimeError(f"{access} Nexus download failed for {url}: {exc.reason}")
 
 
 def _jvm_release_langs(languages):
@@ -1027,6 +1718,15 @@ def _read_kotlin_version():
     if artifact != "fory-kotlin-parent" or packaging != "pom" or not version:
         raise ValueError("Cannot find kotlin/fory-kotlin-parent version")
     return version
+
+
+def _read_scala_version():
+    build = os.path.join(PROJECT_ROOT_DIR, "scala", "build.sbt")
+    with open(build, "r", encoding="utf-8") as f:
+        matches = re.findall(r'^val foryVersion = "([^"]+)"$', f.read(), re.MULTILINE)
+    if len(matches) != 1:
+        raise ValueError("Cannot find the unique Scala Fory version")
+    return matches[0]
 
 
 def bump_version(**kwargs):
@@ -1991,6 +2691,11 @@ def _parse_args():
         description="Build release artifacts",
     )
     release_parser.add_argument("-v", type=str, help="new version")
+    release_parser.add_argument(
+        "--skip-sign",
+        action="store_true",
+        help="build and checksum the source archive without invoking GPG",
+    )
     release_parser.set_defaults(func=build)
 
     verify_parser = subparsers.add_parser(
@@ -2018,6 +2723,53 @@ def _parse_args():
         help="release stages signed artifacts; snapshot publishes unsigned snapshots",
     )
     publish_jvm_parser.set_defaults(func=publish_jvm)
+
+    build_jvm_parser = subparsers.add_parser(
+        "build_jvm_artifacts",
+        description="Build unsigned JVM release artifacts into a local Maven repository",
+    )
+    build_jvm_parser.add_argument(
+        "-v",
+        dest="v",
+        required=True,
+        help="final release version without a v prefix or RC suffix",
+    )
+    build_jvm_parser.add_argument(
+        "--output",
+        required=True,
+        help="new directory for the locally rebuilt Maven repository",
+    )
+    build_jvm_parser.set_defaults(func=build_jvm_artifacts)
+
+    rebuild_parser = subparsers.add_parser(
+        "rebuild_for_verification",
+        description="Rebuild source and JVM artifacts in an isolated RC checkout",
+    )
+    rebuild_parser.add_argument("-v", required=True)
+    rebuild_parser.add_argument("--checkout", required=True)
+    rebuild_parser.add_argument("--output", required=True)
+    rebuild_parser.set_defaults(func=rebuild_for_verification)
+
+    stage_jvm_parser = subparsers.add_parser(
+        "stage_jvm",
+        description="Publish, discover, close, and verify JVM staging repositories",
+    )
+    stage_jvm_parser.add_argument(
+        "-v",
+        dest="v",
+        required=True,
+        help="final release version without a v prefix or RC suffix",
+    )
+    stage_jvm_parser.add_argument(
+        "--rc-tag",
+        required=True,
+        help="immutable release-candidate tag",
+    )
+    stage_jvm_parser.add_argument(
+        "--output",
+        help="optional JSON path for the discovered staging repository IDs",
+    )
+    stage_jvm_parser.set_defaults(func=stage_jvm)
 
     close_jvm_parser = subparsers.add_parser(
         "close_jvm_staging",
@@ -2052,6 +2804,53 @@ def _parse_args():
         help="require closed state and verify downloads without submitting a close",
     )
     close_jvm_parser.set_defaults(func=close_jvm_staging)
+
+    verify_ci_parser = subparsers.add_parser(
+        "verify_ci_artifacts",
+        description="Rebuild and compare all CI-staged source and JVM artifacts",
+    )
+    verify_ci_parser.add_argument(
+        "-v",
+        dest="v",
+        required=True,
+        help="final release version without a v prefix or RC suffix",
+    )
+    verify_ci_parser.add_argument(
+        "--rc-tag",
+        required=True,
+        help="immutable release-candidate tag to rebuild",
+    )
+    verify_ci_parser.add_argument(
+        "--java-kotlin-id",
+        dest="java_kotlin_staging_id",
+        required=True,
+        help="closed Java/Kotlin Nexus staging repository ID",
+    )
+    verify_ci_parser.add_argument(
+        "--scala-id",
+        dest="scala_staging_id",
+        required=True,
+        help="closed Scala Nexus staging repository ID",
+    )
+    verify_ci_parser.add_argument(
+        "--gpg-fingerprint",
+        required=True,
+        help="expected primary fingerprint of the CI signing key",
+    )
+    verify_ci_parser.add_argument(
+        "--source-url",
+        help="ATR candidate directory; defaults to the Fory ATR version directory",
+    )
+    verify_ci_parser.add_argument(
+        "--keys-url",
+        default=FORY_KEYS_URL,
+        help="public KEYS file used to verify staged signatures",
+    )
+    verify_ci_parser.add_argument(
+        "--output",
+        help="Markdown verification report path under the local trusted machine",
+    )
+    verify_ci_parser.set_defaults(func=verify_ci_artifacts)
 
     verify_java_parser = subparsers.add_parser(
         "verify_java_artifacts",

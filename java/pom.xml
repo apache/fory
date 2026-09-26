@@ -74,8 +74,10 @@
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <!-- Remote resource NOTICE years use this timestamp, not the build date. -->
+    <!-- Use one timestamp for NOTICE years and every release archive writer. -->
     <project.build.outputTimestamp>2026-01-01T00:00:00Z</project.build.outputTimestamp>
+    <!-- JDK 11 jar lacks the date option; the JDK 25+ release profile supplies it. -->
+    <fory.jar.date.option></fory.jar.date.option>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <guava.version>32.1.2-jre</guava.version>
     <janino.version>3.1.12</janino.version>
@@ -104,6 +106,9 @@
     </profile>
     <profile>
       <id>apache-release</id>
+      <properties>
+        <fory.jar.date.option>--date=${project.build.outputTimestamp}</fory.jar.date.option>
+      </properties>
       <build>
         <plugins>
           <plugin>
@@ -243,12 +248,12 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-source-plugin</artifactId>
-          <version>3.0.1</version>
+          <version>3.3.1</version>
           <executions>
             <execution>
               <id>attach-sources</id>
               <goals>
-                <goal>jar</goal>
+                <goal>jar-no-fork</goal>
               </goals>
             </execution>
           </executions>
