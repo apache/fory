@@ -40,9 +40,9 @@ jobs:
     env:
       NUGET_SOURCE: https://api.nuget.org/v3/index.json
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -56,7 +56,7 @@ jobs:
           python ci/release.py bump_version -l csharp -version "$VERSION"
 
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
           cache: true

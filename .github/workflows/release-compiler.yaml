@@ -34,9 +34,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'apache/fory' && !startsWith(github.ref_name, 'go/fory')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -58,7 +58,7 @@ jobs:
           python -m build --sdist --wheel
 
       - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # v1.14.0
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.0
         if: ${{ contains(github.ref_name, '-') }}
         with:
           repository-url: https://test.pypi.org/legacy/
@@ -68,7 +68,7 @@ jobs:
           packages-dir: compiler/dist
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # v1.14.0
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.0
         if: ${{ !contains(github.ref_name, '-') }}
         with:
           skip-existing: true

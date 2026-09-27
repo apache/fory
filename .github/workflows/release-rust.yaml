@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'apache/fory' && !startsWith(github.ref_name, 'go/fory')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
