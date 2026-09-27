@@ -119,7 +119,8 @@ jobs:
             echo "cpp_code=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^(java/|integration_tests/android_tests/)' <<< "$changed_files"; then
+          # Exercise Java toolchain setup changes before merging workflow updates.
+          if grep -Eq '^(\.github/workflows/ci\.yml$|java/|integration_tests/android_tests/)' <<< "$changed_files"; then
             echo "java_code=true" >> "$GITHUB_OUTPUT"
           else
             echo "java_code=false" >> "$GITHUB_OUTPUT"
@@ -270,7 +271,7 @@ jobs:
         uses: actions/setup-java@v6
         with:
           java-version: ${{ matrix.java-version }}
-          distribution: "adopt-openj9"
+          distribution: "semeru"
       - name: Cache Maven local repository
         uses: actions/cache@v6
         with:
