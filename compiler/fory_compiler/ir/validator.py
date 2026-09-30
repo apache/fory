@@ -19,6 +19,8 @@
 
 from dataclasses import dataclass
 from typing import List, Optional, Union as TypingUnion
+from enum import Enum as PyEnum
+import re
 
 from fory_compiler.ir.ast import (
     Schema,
@@ -51,6 +53,22 @@ OPTIONAL_ANY_MESSAGE = "optional or nullable any is not supported; use any inste
 MAX_FIELD_TAG_ID = (1 << 29) - 1
 
 
+class ValidationRule(PyEnum):
+    GTE = "gte"
+    LTE = "lte"
+    GT = "gt"
+    LT = "lt"
+    EQL = "eql"
+    NEQ = "neq"
+    MIN_LEN = "min_len"
+    MAX_LEN = "max_len"
+    PATTERN = "pattern"
+    UUID = "uuid"
+    EMAIL = "email"
+    MIN_ITEMS = "min_items"
+    MAX_ITEMS = "max_items"
+
+
 @dataclass
 class ValidationIssue:
     """Validation issue with optional source location."""
@@ -67,6 +85,21 @@ class ValidationIssue:
 
 class SchemaValidator:
     """Validates a Fory IR schema."""
+
+    NUMERIC_PRIMITIVES = {
+        PrimitiveKind.INT8,
+        PrimitiveKind.INT16,
+        PrimitiveKind.INT32,
+        PrimitiveKind.INT64,
+        PrimitiveKind.UINT8,
+        PrimitiveKind.UINT16,
+        PrimitiveKind.UINT32,
+        PrimitiveKind.UINT64,
+        PrimitiveKind.FLOAT16,
+        PrimitiveKind.BFLOAT16,
+        PrimitiveKind.FLOAT32,
+        PrimitiveKind.FLOAT64,
+    }
 
     def __init__(self, schema: Schema, allow_nested_collections: bool = False):
         self.schema = schema
@@ -88,6 +121,7 @@ class SchemaValidator:
             self._check_collection_nesting()
         self._check_ref_rules()
         self._check_weak_refs()
+        self._check_validation_options()
         return not self.errors
 
     def _error(self, message: str, location: Optional[SourceLocation]) -> None:
@@ -308,6 +342,152 @@ class SchemaValidator:
 
         for message in self.schema.messages:
             validate_message(message)
+
+    def _check_validation_options(self) -> None:
+        def walk_nested_messages(message: Message, parent_name: str) -> None:
+            for nested in message.nested_messages:
+                full = f"{parent_name}.{nested.name}"
+                for field in nested.fields:
+                    self._check_field_options(field, full)
+                walk_nested_messages(nested, full)
+
+            for nested in message.nested_unions:
+                full = f"{parent_name}.{nested.name}"
+                for field in nested.fields:
+                    self._check_field_options(field, full)
+
+        for message in self.schema.messages:
+            for field in message.fields:
+                self._check_field_options(field, message.name)
+            walk_nested_messages(message, message.name)
+
+        for union in self.schema.unions:
+            for field in union.fields:
+                self._check_field_options(field, union.name)
+
+    def _check_field_options(self, field: Field, full_name: str) -> None:
+        """Validate that the option is appropriate for the field's type."""
+        ft = field.field_type
+        re_rules_present = []
+        for key in field.options:
+            try:
+                r = ValidationRule(key)
+            except ValueError:
+                continue
+            if r in (ValidationRule.PATTERN, ValidationRule.EMAIL, ValidationRule.UUID):
+                re_rules_present.append(r.value)
+
+        if len(re_rules_present) > 1:
+            self._error(
+                f"Field '{full_name}.{field.name}' cannot combine "
+                f"{', '.join(re_rules_present)}. Pick one of pattern, email, uuid",
+                field.location,
+            )
+
+        for key, val in field.options.items():
+            try:
+                rule = ValidationRule(key)
+            except ValueError:
+                continue
+
+            if rule in (
+                ValidationRule.GTE,
+                ValidationRule.LTE,
+                ValidationRule.GT,
+                ValidationRule.LT,
+                ValidationRule.EQL,
+                ValidationRule.NEQ,
+            ):
+                if (
+                    not isinstance(ft, PrimitiveType)
+                    or ft.kind not in self.NUMERIC_PRIMITIVES
+                ):
+                    self._error(
+                        f"Field '{full_name}.{field.name}' option '{key}' requires a numeric primitive type, "
+                        f"but got {type(ft).__name__}",
+                        field.location,
+                    )
+
+            elif rule in (
+                ValidationRule.MIN_LEN,
+                ValidationRule.MAX_LEN,
+                ValidationRule.PATTERN,
+                ValidationRule.UUID,
+                ValidationRule.EMAIL,
+            ):
+                if not isinstance(ft, PrimitiveType) or ft.kind != PrimitiveKind.STRING:
+                    self._error(
+                        f"Field '{full_name}.{field.name}' option '{key}' requires a string type, "
+                        f"but got {type(ft).__name__}",
+                        field.location,
+                    )
+
+            elif rule in (ValidationRule.MIN_ITEMS, ValidationRule.MAX_ITEMS):
+                if not isinstance(ft, (ListType, ArrayType, MapType)):
+                    self._error(
+                        f"Field '{full_name}.{field.name}' option '{key}' requires a collection type (list/array/map), "
+                        f"but got {type(ft).__name__}",
+                        field.location,
+                    )
+
+            if rule in (
+                ValidationRule.GTE,
+                ValidationRule.LTE,
+                ValidationRule.GT,
+                ValidationRule.LT,
+                ValidationRule.EQL,
+                ValidationRule.NEQ,
+            ):
+                if not isinstance(val, (int, float)) or isinstance(val, bool):
+                    self._error(
+                        f"Field '{full_name}.{field.name}' option '{key}' requires a numeric primitive value, "
+                        f"but got {val}",
+                        field.location,
+                    )
+
+            elif rule in (
+                ValidationRule.MIN_LEN,
+                ValidationRule.MAX_LEN,
+                ValidationRule.MIN_ITEMS,
+                ValidationRule.MAX_ITEMS,
+            ):
+                if not isinstance(val, int) or isinstance(val, bool):
+                    self._error(
+                        f"Field '{full_name}.{field.name}' option '{key}' requires a numeric primitive value, "
+                        f"but got {val}",
+                        field.location,
+                    )
+
+                elif val < 0:
+                    self._error(
+                        f"Field '{full_name}.{field.name}' option '{key}' requires a positive numeric primitive value, "
+                        f"but got {val}",
+                        field.location,
+                    )
+
+            elif rule in (ValidationRule.EMAIL, ValidationRule.UUID):
+                if not isinstance(val, bool):
+                    self._error(
+                        f"Field '{full_name}.{field.name}' option '{key}' requires a boolean value, "
+                        f"but got {val}",
+                        field.location,
+                    )
+
+            elif rule == ValidationRule.PATTERN:
+                if not isinstance(val, str):
+                    self._error(
+                        f"Field '{full_name}.{field.name}' option '{key}' requires a string value, "
+                        f"but got {val}",
+                        field.location,
+                    )
+                else:
+                    try:
+                        re.compile(val)
+                    except re.error as e:
+                        self._error(
+                            f"Field '{full_name}.{field.name}' option 'pattern' has invalid regex: {e}",
+                            field.location,
+                        )
 
     def _apply_field_defaults(self) -> None:
         def apply_message_fields(
