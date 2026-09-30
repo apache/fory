@@ -534,3 +534,20 @@ def test_csharp_namespace_option_is_known():
 
     assert schema.get_option("csharp_namespace") == "MyCorp.MyApp"
     assert not caught
+
+
+def test_union_unknown_case_renamed():
+    source = """
+    package demo;
+
+    union Payload {
+      string unknown = 1;
+      int32 count = 2;
+    }
+    """
+
+    code = generate(source).content
+
+    assert code.count("record Unknown(UnknownCase Value)") == 1
+    assert "public sealed partial record UnknownValue(string Value) : Payload;" in code
+    assert "record Unknown(string Value)" not in code

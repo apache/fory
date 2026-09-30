@@ -677,7 +677,13 @@ class CSharpGenerator(CSharpServiceMixin, BaseGenerator):
         raise ValueError(f"Unknown field type: {field_type}")
 
     def _union_case_type_name(self, field: Field) -> str:
-        return self.safe_identifier(self.to_pascal_case(field.name))
+        name = self.safe_identifier(self.to_pascal_case(field.name))
+        # Every union declares a generated Unknown(UnknownCase) member; a case
+        # named "unknown" would duplicate it (CS0102). Case identity is the
+        # ForyCase number, so renaming the record is wire-safe.
+        if name == "Unknown":
+            return "UnknownValue"
+        return name
 
     def _default_initializer(
         self, field: Field, parent_stack: List[Message]
