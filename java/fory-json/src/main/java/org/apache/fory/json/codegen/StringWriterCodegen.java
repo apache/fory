@@ -126,10 +126,10 @@ final class StringWriterCodegen extends JsonWriterCodegen {
     ctx.addField(byte[].class, "s" + id);
     ctx.addField(byte[].class, "sc" + id);
     if (fields.name[id]) {
-      ctx.addField(byte[].class, "s16" + id);
+      ctx.addField(byte[].class, "s16_" + id);
     }
     if (fields.comma[id]) {
-      ctx.addField(byte[].class, "sc16" + id);
+      ctx.addField(byte[].class, "sc16_" + id);
     }
   }
 
@@ -348,7 +348,7 @@ final class StringWriterCodegen extends JsonWriterCodegen {
   }
 
   private static Reference utf16PrefixRef(boolean comma, int id) {
-    return fieldRef((comma ? "sc16" : "s16") + id, byte[].class);
+    return fieldRef((comma ? "sc16_" : "s16_") + id, byte[].class);
   }
 
   private static Expression[] stringPackedPrefixArgs(

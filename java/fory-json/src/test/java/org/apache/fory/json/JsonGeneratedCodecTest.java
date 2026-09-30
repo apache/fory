@@ -441,6 +441,46 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     }
   }
 
+  @Test
+  public void writeGeneratedFieldsPastPrefixIndexCollision() throws Exception {
+    // Prefix fields are named from the property index, so property 160 meets property 0's
+    // UTF-16 prefix names unless the two are kept apart.
+    int count = 161;
+    StringBuilder source =
+        new StringBuilder("package org.apache.fory.json.dynamic; public class ManyStringFields {");
+    for (int i = 0; i < count; i++) {
+      source.append("public String f").append(i).append(";");
+    }
+    source.append('}');
+    ClassLoader parent = getClass().getClassLoader();
+    Map<String, byte[]> classes =
+        JaninoUtils.toBytecode(
+            parent,
+            "",
+            new CompileUnit("org.apache.fory.json.dynamic", "ManyStringFields", source.toString()));
+    ClassLoader loader = new ByteArrayClassLoader(classes, parent);
+    Class<?> type = Class.forName("org.apache.fory.json.dynamic.ManyStringFields", true, loader);
+    Object value = type.getConstructor().newInstance();
+    StringBuilder expected = new StringBuilder("{");
+    for (int i = 0; i < count; i++) {
+      // A character above 0xFF makes the string writer emit the UTF-16 prefixes.
+      String text = i == 0 ? "v\u0100" : "v" + i;
+      type.getField("f" + i).set(value, text);
+      expected.append(i == 0 ? "\"" : ",\"").append('f').append(i).append("\":\"");
+      expected.append(text).append('"');
+    }
+    expected.append('}');
+
+    ForyJson json = newJsonBuilder(true).withClassLoader(loader).build();
+    assertEquals(json.toJson(value), expected.toString());
+    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected.toString());
+    Object read = json.fromJson(expected.toString(), type);
+    for (int i = 0; i < count; i++) {
+      assertEquals(type.getField("f" + i).get(read), type.getField("f" + i).get(value));
+    }
+    assertGeneratedWhenSupported(json, type, true);
+  }
+
   @DataProvider
   public Object[][] bytecodeSchemas() {
     return new Object[][] {{WideWriterFields.class}, {WideMapFields.class}};
