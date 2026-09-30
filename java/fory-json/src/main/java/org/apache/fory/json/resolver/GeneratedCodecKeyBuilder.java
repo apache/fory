@@ -209,6 +209,8 @@ final class GeneratedCodecKeyBuilder {
     }
   }
 
+  // Generated writers decide NON_EMPTY checks from the property codec class (see
+  // JsonWriterCodegen.neverEmpty), so a registered or factory-created codec must stay a key part.
   private void addRegistration(JsonTypeInfo typeInfo) {
     // Self calls and stored child capabilities have different generated constructor shapes.
     // Subtype occurrences can have distinct owners even when their raw classes are identical.

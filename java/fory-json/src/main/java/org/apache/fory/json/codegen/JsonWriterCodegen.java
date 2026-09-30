@@ -49,12 +49,14 @@ import org.apache.fory.json.codec.DirectUnboxedValueCodec;
 import org.apache.fory.json.codec.JsonUnwrappedInfo;
 import org.apache.fory.json.codec.JsonUnwrappedInfo.Group;
 import org.apache.fory.json.codec.JsonUnwrappedInfo.WriteEntry;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 
 /**
@@ -1440,7 +1442,7 @@ abstract class JsonWriterCodegen {
           size += 16;
       }
     }
-    if (property.omitEmpty() || property.omitDefault()) {
+    if ((property.omitEmpty() && !neverEmpty(property)) || property.omitDefault()) {
       size += 12;
     }
     return size;
@@ -1511,7 +1513,10 @@ abstract class JsonWriterCodegen {
               : new Expression.ListExpression(
                   writeFieldName(property, id, commaKnown, index, writer),
                   writeValue(property, id, value, true, index, writer));
-      Expression present = new Expression.If(nonEmptyValue(property, id, value, writer), write);
+      Expression present =
+          neverEmpty(property)
+              ? write
+              : new Expression.If(nonEmptyValue(property, id, value, writer), write);
       if (property.writeNull()) {
         return new Expression.ListExpression(
             value,
@@ -1697,7 +1702,7 @@ abstract class JsonWriterCodegen {
   private static Expression presentValue(
       JsonFieldInfo property, int id, Expression value, Expression writer) {
     Expression present = ne(value, new Expression.Null(value.type(), false));
-    return property.omitEmpty()
+    return property.omitEmpty() && !neverEmpty(property)
         ? and(present, nonEmptyValue(property, id, value, writer))
         : present;
   }
@@ -1738,6 +1743,45 @@ abstract class JsonWriterCodegen {
                     .inline(),
                 writer)
             .inline());
+  }
+
+  /**
+   * Decides the runtime {@link JsonFieldInfo#isEmpty} answer while generating. When {@link
+   * JsonFieldInfo#mayBeEmpty} rules out every built-in empty type, the answer comes only from the
+   * property's write codec; when that codec keeps the default {@link JsonValueCodec#isEmpty}, the
+   * value is never empty and the null check is enough. Generated classes are shared across
+   * instances, so the codec must be fixed by the generated class key: a registered codec's class, a
+   * codec factory key and a Mixin are key parts, and an annotation-selected codec is fixed by the
+   * owner class. Only code generation calls this: native images resolve types at run time without
+   * reflection metadata for codec methods.
+   */
+  private static boolean neverEmpty(JsonFieldInfo property) {
+    return !property.mayBeEmpty()
+        && !declaresIsEmpty(property.writeTypeInfo().valueCodec().getClass());
+  }
+
+  // Walks classes and interfaces explicitly: Class.getMethod may pick either of two equally
+  // specific interface declarations, and an override inherited from an interface must count.
+  private static boolean declaresIsEmpty(Class<?> type) {
+    if (type == null || type == JsonValueCodec.class) {
+      return false;
+    }
+    for (Method method : type.getDeclaredMethods()) {
+      if (method.getName().equals("isEmpty")
+          && method.getParameterCount() == 2
+          && method.getParameterTypes()[0] == JsonWriter.class) {
+        return true;
+      }
+    }
+    if (declaresIsEmpty(type.getSuperclass())) {
+      return true;
+    }
+    for (Class<?> superInterface : type.getInterfaces()) {
+      if (declaresIsEmpty(superInterface)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private Expression writeUnboxed(

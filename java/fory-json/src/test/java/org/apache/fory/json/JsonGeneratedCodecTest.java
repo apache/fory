@@ -31,32 +31,47 @@ import static org.testng.Assert.assertTrue;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
+import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonProperty.Include;
+import org.apache.fory.json.codec.AbstractJsonValueCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.codegen.JsonCodegen;
 import org.apache.fory.json.data.GeneratedCollectionFields;
+import org.apache.fory.json.data.Kind;
 import org.apache.fory.json.data.PublicFields;
 import org.apache.fory.json.data.RecursiveChild;
 import org.apache.fory.json.data.RecursiveParent;
 import org.apache.fory.json.data.TokenGroup;
 import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.json.meta.JsonAsciiToken;
+import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
+import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.util.ClassLoaderUtils.ByteArrayClassLoader;
 import org.testng.annotations.DataProvider;
@@ -532,6 +547,174 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     }
   }
 
+  @Test
+  public void nonEmptyFinalValues() throws Exception {
+    ForyJson json = newJsonBuilder(true).defaultPropertyInclusion(Include.NON_EMPTY).build();
+    for (String role : new String[] {"StringWriter", "Utf8Writer"}) {
+      String finalValues = writerSource(json, FinalNonEmptyValues.class, role);
+      for (String field :
+          new String[] {".count;", ".total;", ".kind;", ".operation;", ".nested;"}) {
+        assertTrue(finalValues.contains(field), field + " in " + finalValues);
+      }
+      assertFalse(finalValues.contains("JsonFieldInfo.isEmpty("), finalValues);
+      // The wide bean is split into member helpers, so this covers the grouped writer shape.
+      String wideValues = writerSource(json, WideNonEmptyValues.class, role);
+      assertTrue(wideValues.contains("Members("), wideValues);
+      assertFalse(wideValues.contains("JsonFieldInfo.isEmpty("), wideValues);
+      for (Class<?> type :
+          new Class<?>[] {
+            CustomNonEmptyValue.class, DecimalNonEmptyValue.class, DynamicNonEmptyValue.class
+          }) {
+        String source = writerSource(json, type, role);
+        assertTrue(source.contains("JsonFieldInfo.isEmpty("), source);
+      }
+    }
+
+    FinalNonEmptyValues value = new FinalNonEmptyValues();
+    String expected =
+        "{\"count\":0,\"kind\":\"SMALL\",\"operation\":\"ADD\",\"nested\":{\"empty\":false}}";
+    assertJson(json, value, expected);
+    assertJson(json, new CustomNonEmptyValue(), "{}");
+    assertJson(json, new DecimalNonEmptyValue(), "{\"price\":1}");
+    assertJson(json, new DynamicNonEmptyValue(), "{}");
+    assertGeneratedWhenSupported(json, FinalNonEmptyValues.class, true);
+    assertGeneratedWhenSupported(json, CustomNonEmptyValue.class, true);
+    assertGeneratedWhenSupported(json, DecimalNonEmptyValue.class, true);
+    assertGeneratedWhenSupported(json, DynamicNonEmptyValue.class, true);
+
+    ForyJson interpreted =
+        newJsonBuilder(false).defaultPropertyInclusion(Include.NON_EMPTY).build();
+    for (Object fixture :
+        new Object[] {
+          value,
+          new CustomNonEmptyValue(),
+          new DecimalNonEmptyValue(),
+          new DynamicNonEmptyValue(),
+          new WideNonEmptyValues()
+        }) {
+      assertJson(json, fixture, interpreted.toJson(fixture));
+      assertGeneratedWhenSupported(json, fixture.getClass(), true);
+    }
+  }
+
+  @Test
+  public void builtInEmptyTypes() {
+    // Generated writers drop the emptiness check when mayBeEmpty is false, so every type that
+    // JsonFieldInfo.isEmpty tests itself must keep mayBeEmpty true.
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(newJson(false));
+    for (JsonFieldInfo field : resolver.getObjectCodec(BuiltInEmptyValues.class).writeFields()) {
+      assertTrue(field.mayBeEmpty(), field.name());
+    }
+    for (JsonFieldInfo field : resolver.getObjectCodec(FinalNonEmptyValues.class).writeFields()) {
+      assertFalse(field.mayBeEmpty(), field.name());
+    }
+  }
+
+  @Test
+  public void nonEmptyRegisteredCodec() throws Exception {
+    // Generated writer classes are shared across instances, so an instance whose registered codec
+    // overrides isEmpty must keep the runtime check after an instance whose codec keeps the default
+    // has generated the writer. Only this order can observe a shared class.
+    assertRegisteredEmptiness(new RegisteredValue(), Registration.CODEC);
+    assertRegisteredEmptiness(new FactoryValue(), Registration.FACTORY);
+    assertRegisteredEmptiness(new MixinValue(), Registration.MIXIN);
+    assertRegisteredEmptiness(new InheritedValue(), Registration.INHERITED);
+    assertRegisteredEmptiness(new BaseClassValue(), Registration.BASE_CLASS);
+  }
+
+  private enum Registration {
+    CODEC,
+    FACTORY,
+    MIXIN,
+    INHERITED,
+    BASE_CLASS
+  }
+
+  private void assertRegisteredEmptiness(Object value, Registration registration) throws Exception {
+    ForyJsonBuilder plainBuilder = newJsonBuilder(true).defaultPropertyInclusion(Include.NON_EMPTY);
+    ForyJsonBuilder registeredBuilder =
+        newJsonBuilder(true).defaultPropertyInclusion(Include.NON_EMPTY);
+    if (registration == Registration.MIXIN) {
+      plainBuilder.registerMixin(PlainEmptyObjectMixin.class);
+      registeredBuilder.registerMixin(EmptyObjectMixin.class);
+    } else if (registration == Registration.FACTORY) {
+      plainBuilder.registerCodec(
+          JsonInclusionTest.EmptyObject.class,
+          (JsonCodecFactory) (type, resolver, runtimeType) -> new PlainEmptyObjectCodec());
+      registeredBuilder.registerCodec(
+          JsonInclusionTest.EmptyObject.class,
+          (JsonCodecFactory)
+              (type, resolver, runtimeType) -> new JsonInclusionTest.EmptyObjectCodec());
+    } else {
+      plainBuilder.registerCodec(JsonInclusionTest.EmptyObject.class, new PlainEmptyObjectCodec());
+      registeredBuilder.registerCodec(
+          JsonInclusionTest.EmptyObject.class,
+          registration == Registration.INHERITED
+              ? new InheritedEmptinessCodec()
+              : registration == Registration.BASE_CLASS
+                  ? new BaseClassEmptinessCodec()
+                  : new JsonInclusionTest.EmptyObjectCodec());
+    }
+    ForyJson plain = plainBuilder.build();
+    ForyJson registered = registeredBuilder.build();
+    assertJson(plain, value, "{\"value\":\"plain\"}");
+    assertJson(registered, value, "{}");
+    ForyJson interpreted =
+        newJsonBuilder(false)
+            .defaultPropertyInclusion(Include.NON_EMPTY)
+            .registerCodec(
+                JsonInclusionTest.EmptyObject.class, new JsonInclusionTest.EmptyObjectCodec())
+            .build();
+    assertEquals(interpreted.toJson(value), "{}");
+    // Both instances must run generated writers, or the outputs above would not involve the
+    // decision.
+    assertNotSame(
+        JsonTestSupport.generatedUtf8WriterClass(plain, value.getClass()),
+        JsonTestSupport.generatedUtf8WriterClass(registered, value.getClass()));
+    assertFalse(
+        writerSource(plain, value.getClass(), "Utf8Writer").contains("JsonFieldInfo.isEmpty("));
+    assertTrue(
+        writerSource(registered, value.getClass(), "Utf8Writer")
+            .contains("JsonFieldInfo.isEmpty("));
+  }
+
+  private static void assertJson(ForyJson json, Object value, String expected) {
+    assertEquals(json.toJson(value), expected);
+    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+  }
+
+  private String writerSource(ForyJson json, Class<?> type, String role) throws Exception {
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
+    ClassLoader loader = getClass().getClassLoader();
+    List<String> sources = new ArrayList<>();
+    CodeGenerator compiler =
+        new CodeGenerator(loader) {
+          @Override
+          public ClassLoader compileDirect(
+              CompileUnit unit, JaninoUtils.DirectInvocation... invocations) {
+            sources.add(unit.getCode());
+            return new ByteArrayClassLoader(JaninoUtils.toBytecode(loader, "", unit), loader);
+          }
+        };
+    Constructor<JsonCodegen> constructor =
+        JsonCodegen.class.getDeclaredConstructor(
+            CodeGenerator.class, ClassLoader.class, boolean.class, Class.class, String.class);
+    constructor.setAccessible(true);
+    JsonCodegen codegen = constructor.newInstance(compiler, loader, false, null, "NonEmpty");
+    Method build =
+        JsonCodegen.class.getDeclaredMethod(
+            "build" + role, ObjectCodec.class, JsonTypeResolver.class);
+    build.setAccessible(true);
+    resolver.lockJIT();
+    try {
+      build.invoke(codegen, resolver.getObjectCodec(type), resolver);
+    } finally {
+      resolver.unlockJIT();
+    }
+    assertEquals(sources.size(), 1);
+    return sources.get(0);
+  }
+
   private static void assertWideFields(WideFields value) {
     assertEquals(value.f0, 0);
     assertEquals(value.f1, "one");
@@ -667,6 +850,190 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
   public static final class RecursiveCollection {
     public List<RecursiveCollection> children;
     public int id;
+  }
+
+  public static final class FinalNonEmptyValues {
+    public Integer count = 0;
+    public Long total;
+    public Kind kind = Kind.SMALL;
+    public Operation operation = Operation.ADD;
+    public JsonInclusionTest.EmptyObject nested = new JsonInclusionTest.EmptyObject();
+  }
+
+  // The constant bodies make Operation non-final, so it covers the enum clause of mayBeEmpty.
+  public enum Operation {
+    ADD {
+      @Override
+      int apply(int left, int right) {
+        return left + right;
+      }
+    },
+    SUBTRACT {
+      @Override
+      int apply(int left, int right) {
+        return left - right;
+      }
+    };
+
+    abstract int apply(int left, int right);
+  }
+
+  public static final class DecimalNonEmptyValue {
+    public BigDecimal price = BigDecimal.ONE;
+  }
+
+  public static final class CustomNonEmptyValue {
+    @JsonCodec(JsonInclusionTest.EmptyObjectCodec.class)
+    public JsonInclusionTest.EmptyObject value = emptyObject();
+
+    private static JsonInclusionTest.EmptyObject emptyObject() {
+      JsonInclusionTest.EmptyObject value = new JsonInclusionTest.EmptyObject();
+      value.empty = true;
+      return value;
+    }
+  }
+
+  public static final class PlainEmptyObjectCodec
+      extends AbstractJsonValueCodec<JsonInclusionTest.EmptyObject> {
+    @Override
+    public void write(JsonWriter writer, JsonInclusionTest.EmptyObject value) {
+      writer.writeString("plain");
+    }
+
+    @Override
+    public JsonInclusionTest.EmptyObject read(JsonReader reader) {
+      reader.readString();
+      return new JsonInclusionTest.EmptyObject();
+    }
+  }
+
+  // Generated classes are cached per owner class, so each registration kind needs its own owner.
+  public static final class RegisteredValue {
+    public JsonInclusionTest.EmptyObject value = CustomNonEmptyValue.emptyObject();
+  }
+
+  public static final class FactoryValue {
+    public JsonInclusionTest.EmptyObject value = CustomNonEmptyValue.emptyObject();
+  }
+
+  public interface EmptyObjectEmptiness extends JsonValueCodec<JsonInclusionTest.EmptyObject> {
+    @Override
+    default boolean isEmpty(JsonWriter writer, JsonInclusionTest.EmptyObject value) {
+      return value.empty;
+    }
+  }
+
+  // Inherits isEmpty from an interface instead of declaring it.
+  public static final class InheritedEmptinessCodec
+      extends AbstractJsonValueCodec<JsonInclusionTest.EmptyObject>
+      implements EmptyObjectEmptiness {
+    @Override
+    public void write(JsonWriter writer, JsonInclusionTest.EmptyObject value) {
+      writer.writeString("");
+    }
+
+    @Override
+    public JsonInclusionTest.EmptyObject read(JsonReader reader) {
+      reader.readString();
+      return new JsonInclusionTest.EmptyObject();
+    }
+  }
+
+  public static final class InheritedValue {
+    public JsonInclusionTest.EmptyObject value = CustomNonEmptyValue.emptyObject();
+  }
+
+  public abstract static class EmptinessAwareCodec<T> extends AbstractJsonValueCodec<T> {
+    @Override
+    public boolean isEmpty(JsonWriter writer, T value) {
+      return ((JsonInclusionTest.EmptyObject) value).empty;
+    }
+  }
+
+  // Inherits isEmpty from an abstract base class instead of declaring it.
+  public static final class BaseClassEmptinessCodec
+      extends EmptinessAwareCodec<JsonInclusionTest.EmptyObject> {
+    @Override
+    public void write(JsonWriter writer, JsonInclusionTest.EmptyObject value) {
+      writer.writeString("");
+    }
+
+    @Override
+    public JsonInclusionTest.EmptyObject read(JsonReader reader) {
+      reader.readString();
+      return new JsonInclusionTest.EmptyObject();
+    }
+  }
+
+  public static final class BaseClassValue {
+    public JsonInclusionTest.EmptyObject value = CustomNonEmptyValue.emptyObject();
+  }
+
+  public static final class MixinValue {
+    public JsonInclusionTest.EmptyObject value = CustomNonEmptyValue.emptyObject();
+  }
+
+  @JsonMixin(target = JsonInclusionTest.EmptyObject.class)
+  @JsonCodec(PlainEmptyObjectCodec.class)
+  public interface PlainEmptyObjectMixin {}
+
+  @JsonMixin(target = JsonInclusionTest.EmptyObject.class)
+  @JsonCodec(JsonInclusionTest.EmptyObjectCodec.class)
+  public interface EmptyObjectMixin {}
+
+  public static final class WideNonEmptyValues {
+    public int id = 1;
+    public Integer v0 = 0;
+    public Long v1 = 1L;
+    public Kind v2 = Kind.FAST;
+    public Integer v3 = 3;
+    public Long v4 = 4L;
+    public Kind v5 = Kind.FAST;
+    public Integer v6 = 6;
+    public Long v7 = 7L;
+    public Kind v8 = Kind.FAST;
+    public Integer v9 = 9;
+    public Long v10 = 10L;
+    public Kind v11 = Kind.FAST;
+    public Integer v12 = 12;
+    public Long v13 = 13L;
+    public Kind v14 = Kind.FAST;
+    public Integer v15 = 15;
+    public Long v16 = 16L;
+    public Kind v17 = Kind.FAST;
+    public Integer v18 = 18;
+    public Long v19 = 19L;
+    public Kind v20 = Kind.FAST;
+    public Integer v21 = 21;
+    public Long v22 = 22L;
+    public Kind v23 = Kind.FAST;
+    public Integer v24 = 24;
+    public Long v25 = 25L;
+    public Kind v26 = Kind.FAST;
+    public Integer v27 = 27;
+    public Long v28 = 28L;
+    public Kind v29 = Kind.FAST;
+  }
+
+  public static final class BuiltInEmptyValues {
+    public String string = "";
+    public StringBuilder text = new StringBuilder();
+    public FinalList list = new FinalList();
+    public FinalMap map = new FinalMap();
+    public int[] array = new int[0];
+    public Optional<String> optional = Optional.empty();
+    public OptionalInt optionalInt = OptionalInt.empty();
+    public OptionalLong optionalLong = OptionalLong.empty();
+    public OptionalDouble optionalDouble = OptionalDouble.empty();
+    public JsonInclusionTest.TextEnum textEnum = JsonInclusionTest.TextEnum.EMPTY;
+  }
+
+  public static final class FinalList extends ArrayList<String> {}
+
+  public static final class FinalMap extends HashMap<String, String> {}
+
+  public static final class DynamicNonEmptyValue {
+    public Object value = "";
   }
 
   private static String objectCollectionsJson(String name) {
