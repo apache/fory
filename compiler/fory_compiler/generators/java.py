@@ -818,7 +818,7 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
         lines.append("")
 
         for field in union.fields:
-            case_name = self.to_pascal_case(field.name)
+            case_name = self.java_accessor_suffix(field.name)
             case_enum_name = self.to_upper_snake_case(field.name)
             case_type = self.get_union_case_type(field, parent_stack)
             lines.append(
@@ -849,7 +849,7 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
         lines.append("")
 
         for field in union.fields:
-            case_name = self.to_pascal_case(field.name)
+            case_name = self.java_accessor_suffix(field.name)
             case_enum_name = self.to_upper_snake_case(field.name)
             case_type = self.get_union_case_type(field, parent_stack)
             cast_type = self.get_union_case_cast_type(field, parent_stack)
@@ -996,6 +996,8 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
                 PrimitiveKind.BYTES: "Types.BINARY",
                 PrimitiveKind.DATE: "Types.DATE",
                 PrimitiveKind.TIMESTAMP: "Types.TIMESTAMP",
+                PrimitiveKind.DURATION: "Types.DURATION",
+                PrimitiveKind.DECIMAL: "Types.DECIMAL",
                 PrimitiveKind.ANY: "Types.UNKNOWN",
             }
             return primitive_type_ids.get(kind, "Types.UNKNOWN")
@@ -1114,6 +1116,38 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
     def java_string_literal(self, value: str) -> str:
         escaped = value.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
+
+    # Simple names imported or declared inside the generated module file;
+    # top-level schema types with these names are shadowed there and must be
+    # referenced by their fully qualified name.
+    MODULE_SHADOWED_TYPE_NAMES = {"Fory", "ThreadSafeFory", "ForyInstanceHolder"}
+
+    def module_type_ref(self, type_name: str) -> str:
+        """Return a module-scope class reference for a top-level type."""
+        if type_name not in self.MODULE_SHADOWED_TYPE_NAMES:
+            return type_name
+        java_package = self.get_java_package()
+        if java_package:
+            return f"{java_package}.{type_name}"
+        raise ValueError(
+            f"Java type name {type_name} conflicts with a name used inside the "
+            "generated Fory module; declare a package or rename the type"
+        )
+
+    def java_field_identifier(self, field: Field) -> str:
+        """Return the Java field identifier, escaping reserved words."""
+        return self.safe_java_identifier(self.to_camel_case(field.name))
+
+    def java_accessor_suffix(self, name: str) -> str:
+        """Return the accessor name suffix for a schema field or union case.
+
+        "Class" is escaped because getClass() would clash with the final
+        Object.getClass().
+        """
+        pascal = self.to_pascal_case(name)
+        if pascal == "Class":
+            return "Class_"
+        return pascal
 
     def generate_nested_message(
         self,
@@ -1245,7 +1279,7 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
         if field.ref:
             java_type = self.apply_top_level_type_use_annotation(java_type, "@Ref")
 
-        lines.append(f"private {java_type} {self.to_camel_case(field.name)};")
+        lines.append(f"private {java_type} {self.java_field_identifier(field)};")
         lines.append("")
 
         return lines
@@ -1268,8 +1302,8 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
             field,
             parent_stack=parent_stack,
         )
-        field_name = self.to_camel_case(field.name)
-        pascal_name = self.to_pascal_case(field.name)
+        field_name = self.java_field_identifier(field)
+        pascal_name = self.java_accessor_suffix(field.name)
 
         # Getter
         lines.append(f"public {java_type} get{pascal_name}() {{")
@@ -1358,6 +1392,8 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
             if self.is_ref_target_type(field_type.element_type, parent_stack):
                 ref_annotation = "@Ref" if child_ref else "@Ref(enable=false)"
                 element_type = f"{ref_annotation} {element_type}"
+            if child_optional:
+                element_type = f"@Nullable {element_type}"
             return f"List<{element_type}>"
 
         elif isinstance(field_type, ArrayType):
@@ -1389,6 +1425,8 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
                     "@Ref" if field_type.value_ref else "@Ref(enable=false)"
                 )
                 value_type = f"{ref_annotation} {value_type}"
+            if field_type.value_optional:
+                value_type = f"@Nullable {value_type}"
             return f"Map<{key_type}, {value_type}>"
 
         return "Object"
@@ -1446,6 +1484,8 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
                             )
                         return
             imports.add("java.util.List")
+            if child_optional:
+                imports.add("org.apache.fory.annotation.Nullable")
             if self.is_ref_target_type(field_type.element_type, parent_stack):
                 imports.add("org.apache.fory.annotation.Ref")
             self.collect_type_imports(
@@ -1474,6 +1514,8 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
 
         elif isinstance(field_type, MapType):
             imports.add("java.util.Map")
+            if field_type.value_optional:
+                imports.add("org.apache.fory.annotation.Nullable")
             if self.is_ref_target_type(field_type.value_type, parent_stack):
                 imports.add("org.apache.fory.annotation.Ref")
             self.collect_type_imports(
@@ -1883,10 +1925,11 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
         lines.append("    StringBuilder sb = new StringBuilder();")
         lines.append(f'    sb.append("{message.name}(");')
         for i, field in enumerate(message.fields):
-            field_name = self.to_camel_case(field.name)
+            label = self.to_camel_case(field.name)
+            field_name = self.java_field_identifier(field)
             if i > 0:
                 lines.append('    sb.append(", ");')
-            lines.append(f'    sb.append("{field_name}=");')
+            lines.append(f'    sb.append("{label}=");')
             if self.field_needs_safe_repr(field):
                 placeholder = f"{self.format_idl_type(field.field_type)}(...)"
                 placeholder_literal = self.java_string_literal(placeholder)
@@ -2038,7 +2081,7 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
         else:
             comparisons = []
             for field in message.fields:
-                field_name = self.to_camel_case(field.name)
+                field_name = self.java_field_identifier(field)
                 if self.is_primitive_array_field(field):
                     comparisons.append(
                         f"Arrays.equals({field_name}, that.{field_name})"
@@ -2104,7 +2147,7 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
             hash_args = []
             array_fields = []
             for field in message.fields:
-                field_name = self.to_camel_case(field.name)
+                field_name = self.java_field_identifier(field)
                 if self.is_primitive_array_field(field):
                     array_fields.append(field_name)
                 elif self.field_type_contains_array(field.field_type):
@@ -2176,7 +2219,7 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
         lines.append("    }")
         lines.append("")
         lines.append("    static ThreadSafeFory getFory() {")
-        lines.append("        return Holder.FORY;")
+        lines.append("        return ForyInstanceHolder.FORY;")
         lines.append("    }")
         lines.append("")
         lines.append("    private static ThreadSafeFory createFory() {")
@@ -2185,7 +2228,7 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
         )
         lines.append("    }")
         lines.append("")
-        lines.append("    private static class Holder {")
+        lines.append("    private static class ForyInstanceHolder {")
         lines.append("        private static final ThreadSafeFory FORY = createFory();")
         lines.append("    }")
         lines.append("")
@@ -2248,7 +2291,9 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
         """Generate registration code for an enum."""
         # In Java, nested class references use OuterClass.InnerClass
         class_ref = (
-            f"{class_parent_path}.{enum.name}" if class_parent_path else enum.name
+            f"{class_parent_path}.{enum.name}"
+            if class_parent_path
+            else self.module_type_ref(enum.name)
         )
         type_name = enum.name
 
@@ -2275,7 +2320,9 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
         """Generate registration code for a message and its nested types."""
         # In Java, nested class references use OuterClass.InnerClass
         class_ref = (
-            f"{class_parent_path}.{message.name}" if class_parent_path else message.name
+            f"{class_parent_path}.{message.name}"
+            if class_parent_path
+            else self.module_type_ref(message.name)
         )
         type_name = message.name
 
@@ -2325,7 +2372,9 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
     ):
         """Generate registration code for a union."""
         class_ref = (
-            f"{class_parent_path}.{union.name}" if class_parent_path else union.name
+            f"{class_parent_path}.{union.name}"
+            if class_parent_path
+            else self.module_type_ref(union.name)
         )
         type_name = union.name
         serializer_ref = f"new org.apache.fory.serializer.UnionSerializer(resolver, {class_ref}.class)"
