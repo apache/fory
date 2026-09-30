@@ -72,7 +72,7 @@
         <maven-spotless-plugin.version>2.43.0</maven-spotless-plugin.version>
         <google-java-format.version>1.24.0</google-java-format.version>
         <dokka.skip>false</dokka.skip>
-        <!-- Dokka owns the standard javadoc classifier for mixed Kotlin/Java modules. -->
+        <!-- Dokka generates mixed Kotlin/Java docs; the JAR plugin packages them reproducibly. -->
         <maven.javadoc.skip>true</maven.javadoc.skip>
     </properties>
 
@@ -185,7 +185,7 @@
                                 <goal>copy-resources</goal>
                             </goals>
                             <configuration>
-                                <!-- Dokka preserves and archives files already present in its output directory. -->
+                                <!-- Preserve the legal resources alongside the generated documentation. -->
                                 <skip>${dokka.skip}</skip>
                                 <outputDirectory>${project.build.directory}/dokkaJavadocJar/META-INF</outputDirectory>
                                 <resources>
@@ -205,7 +205,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-source-plugin</artifactId>
-                    <version>3.0.1</version>
+                    <version>3.3.1</version>
                     <executions>
                         <execution>
                             <id>attach-sources</id>
@@ -306,13 +306,33 @@
                 <artifactId>dokka-maven-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>attach-dokka-javadocs</id>
-                        <phase>package</phase>
+                        <id>generate-dokka-javadocs</id>
+                        <phase>prepare-package</phase>
                         <goals>
-                            <goal>javadocJar</goal>
+                            <goal>javadoc</goal>
                         </goals>
                         <configuration>
                             <skip>${dokka.skip}</skip>
+                            <outputDir>${project.build.directory}/dokkaJavadocJar</outputDir>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-dokka-javadocs</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <!-- Dokka's javadocJar does not honor project.build.outputTimestamp. -->
+                            <classifier>javadoc</classifier>
+                            <classesDirectory>${project.build.directory}/dokkaJavadocJar</classesDirectory>
+                            <skipIfEmpty>true</skipIfEmpty>
                         </configuration>
                     </execution>
                 </executions>

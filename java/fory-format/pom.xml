@@ -182,7 +182,8 @@
                 </goals>
                 <configuration>
                   <target>
-                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
+                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true"
+                         modificationtime="${project.build.outputTimestamp}">
                       <zipfileset dir="${project.build.directory}/jpms-classes/java11"
                                   prefix="META-INF/versions/11"
                                   includes="module-info.class"/>

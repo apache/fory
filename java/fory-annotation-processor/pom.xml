@@ -100,7 +100,7 @@
               <execution>
                 <id>attach-sources</id>
                 <phase>package</phase>
-                <goals><goal>jar</goal></goals>
+                <goals><goal>jar-no-fork</goal></goals>
               </execution>
             </executions>
           </plugin>
@@ -152,7 +152,8 @@
                 <goals><goal>run</goal></goals>
                 <configuration>
                   <target>
-                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
+                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true"
+                         modificationtime="${project.build.outputTimestamp}">
                       <zipfileset dir="${fory.processor.mr.classes}/17"
                                   prefix="META-INF/versions/17" includes="**/*.class"/>
                     </jar>
@@ -175,7 +176,8 @@
                     <fail
                         unless="multi.release.sources.jar.present"
                         message="Multi-release source patching requires ${multi.release.sources.jar}."/>
-                    <jar destfile="${multi.release.sources.jar}" update="true">
+                    <jar destfile="${multi.release.sources.jar}" update="true"
+                         modificationtime="${project.build.outputTimestamp}">
                       <zipfileset dir="${project.basedir}/src/main/java17"
                                   prefix="META-INF/versions/17">
                         <include name="**/*.java"/>
