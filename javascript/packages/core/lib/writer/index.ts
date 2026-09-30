@@ -296,6 +296,8 @@ export class BinaryWriter {
   }
 
   stringWithHeaderFast(v: string) {
+    // Worst case: 5-byte varint header plus UTF-16 body.
+    this.reserve(5 + v.length * 2);
     const { serializeString } = this.config.hps!;
     this.cursor = serializeString(v, this.platformBuffer, this.cursor);
   }

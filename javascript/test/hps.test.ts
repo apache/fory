@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { BinaryReader } from "../packages/core/index";
+import Fory, { BinaryReader } from "../packages/core/index";
 import hps from "../packages/hps/index";
 import { describe, expect, test } from "@jest/globals";
 
@@ -37,6 +37,30 @@ skipableDescribe("hps", () => {
       var reader = new BinaryReader({});
       reader.reset(bf);
       expect(reader.stringWithHeader()).toBe("😁");
+    }
+  });
+
+  test("should reject strings exceeding buffer capacity", () => {
+    const { serializeString } = hps!;
+    const bf = Buffer.alloc(32);
+    expect(() => serializeString("A".repeat(10000), bf, 0)).toThrow(RangeError);
+  });
+
+  test("should write into a view with non-zero byteOffset", () => {
+    const { serializeString } = hps!;
+    const backing = Buffer.alloc(200);
+    const view = backing.subarray(100);
+    serializeString("hello", view, 0);
+    expect(backing.subarray(0, 100).every((b) => b === 0)).toBe(true);
+    const reader = new BinaryReader({});
+    reader.reset(view);
+    expect(reader.stringWithHeader()).toBe("hello");
+  });
+
+  test("should grow writer buffer for large strings", () => {
+    const fory = new Fory({ hps });
+    for (const value of ["A".repeat(200000), "\u4f60".repeat(200000)]) {
+      expect(fory.deserialize(fory.serialize(value))).toBe(value);
     }
   });
 });
