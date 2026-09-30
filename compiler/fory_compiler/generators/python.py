@@ -136,11 +136,27 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
         (PrimitiveKind.UINT64, "tagged"): "pyfory.TaggedUInt64",
     }
 
+    # Names referenced by generated field default expressions inside a
+    # dataclass body (`field(...)`, `pyfory.field(...)`, `decimal.Decimal(...)`,
+    # `default_factory=list/dict`). A dataclass attribute bound to one of these
+    # names would shadow the helper for later fields in the same class body, so
+    # such field names get the same trailing-underscore escape as keywords;
+    # pyfory strips the trailing underscore for the wire field name.
+    FIELD_DEFAULT_HELPER_NAMES = frozenset(
+        {"field", "pyfory", "decimal", "list", "dict"}
+    )
+
     def safe_name(self, name: str) -> str:
         """Return a Python-safe identifier."""
         if keyword.iskeyword(name):
             return f"{name}_"
         return name
+
+    def safe_field_name(self, name: str) -> str:
+        """Return a dataclass-field-safe identifier."""
+        if name in self.FIELD_DEFAULT_HELPER_NAMES:
+            return f"{name}_"
+        return self.safe_name(name)
 
     def is_imported_type(self, type_def: object) -> bool:
         """Return True if a type definition comes from an imported IDL file."""
@@ -601,7 +617,7 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
             field.element_ref,
             parent_stack,
         )
-        field_name = self.safe_name(self.to_snake_case(field.name))
+        field_name = self.safe_field_name(self.to_snake_case(field.name))
         default_factory = self.get_default_factory(field)
         default = self.get_default_value(field.field_type, field.optional)
         default_expr = default
@@ -675,7 +691,7 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
             return lines
         lines.append(f"{ind}        parts = []")
         for field in message.fields:
-            field_name = self.safe_name(self.to_snake_case(field.name))
+            field_name = self.safe_field_name(self.to_snake_case(field.name))
             if self.field_needs_safe_repr(field):
                 type_label = self.format_idl_type(field.field_type)
                 placeholder = f"{type_label}(...)"
