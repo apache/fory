@@ -67,7 +67,7 @@ jobs:
       kotlin: ${{ steps.filter.outputs.kotlin }}
       scala: ${{ steps.filter.outputs.scala }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Detect changed paths
         id: filter
         shell: bash
@@ -119,7 +119,8 @@ jobs:
             echo "cpp_code=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^(java/|integration_tests/android_tests/)' <<< "$changed_files"; then
+          # Exercise Java toolchain setup changes before merging workflow updates.
+          if grep -Eq '^(\.github/workflows/ci\.yml$|java/|integration_tests/android_tests/)' <<< "$changed_files"; then
             echo "java_code=true" >> "$GITHUB_OUTPUT"
           else
             echo "java_code=false" >> "$GITHUB_OUTPUT"
@@ -183,9 +184,9 @@ jobs:
     name: Compiler CI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.11"
           cache: "pip"
@@ -203,9 +204,9 @@ jobs:
       matrix:
         python-version: ["3.8", "3.9"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
@@ -224,28 +225,28 @@ jobs:
       matrix:
         java-version: ${{ fromJSON(needs.changes.outputs.java_code == 'true' && '["8","11","17","21","25","26"]' || '["8"]') }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK ${{ matrix.java-version }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Set up Python3.8
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.8
           cache: "pip"
       - name: Run CI with Maven
         run: python ./ci/run_ci.py java --version ${{ matrix.java-version }}
       - name: Upload Test Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: test-reports-${{ matrix.java-version }}
@@ -265,21 +266,21 @@ jobs:
         # String in openj9 1.8 share byte array by offset, fory doesn't allow it.
         java-version: ["21"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK ${{ matrix.java-version }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: ${{ matrix.java-version }}
-          distribution: "adopt-openj9"
+          distribution: "semeru"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Set up Python3.8
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.8
           cache: "pip"
@@ -297,21 +298,21 @@ jobs:
       matrix:
         java-version: ["21"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK ${{ matrix.java-version }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
       - name: Run CI with Maven
@@ -328,25 +329,25 @@ jobs:
       matrix:
         api-level: [26, 36]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 17
           distribution: "temurin"
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           gradle-version: "8.13"
       - name: Install Fory Java and Kotlin JSON artifacts
@@ -369,7 +370,7 @@ jobs:
             if [ "${{ matrix.api-level }}" = "26" ]; then gradle --no-daemon --stacktrace -PforyTestBuildType=debug verifyKotlinJsonRules connectedCheck; fi
             gradle --no-daemon --stacktrace -PforyTestBuildType=release connectedCheck
       - name: Upload Android Test Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: android-test-reports-api-${{ matrix.api-level }}
@@ -381,9 +382,9 @@ jobs:
     name: C# CI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
           cache: true
@@ -413,13 +414,13 @@ jobs:
     name: C# Xlang Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
           cache: true
@@ -427,12 +428,12 @@ jobs:
             csharp/**/*.csproj
             csharp/Fory.sln
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -461,7 +462,7 @@ jobs:
     if: needs.changes.outputs.swift == 'true'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Run Swift unit tests
         run: |
           cd swift
@@ -487,7 +488,7 @@ jobs:
     if: needs.changes.outputs.swift == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Run Swift unit tests
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
@@ -515,7 +516,7 @@ jobs:
             sdk: xros
             triple: arm64-apple-xros1.0
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Build Swift package
         run: |
           sdk_path="$(xcrun --sdk "${{ matrix.sdk }}" --show-sdk-path)"
@@ -529,14 +530,14 @@ jobs:
     name: Swift Xlang Test
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -553,7 +554,7 @@ jobs:
           echo "toolchain=$(shasum -a 256 "$RUNNER_TEMP/swift-toolchain.txt" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - name: Cache Swift package dependencies and build artifacts
         id: swift-build-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.swiftpm
@@ -586,18 +587,18 @@ jobs:
     name: Swift IDL Tests
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -616,7 +617,7 @@ jobs:
           echo "toolchain=$(shasum -a 256 "$RUNNER_TEMP/swift-toolchain.txt" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - name: Cache Swift IDL package build artifacts
         id: swift-idl-build-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             integration_tests/idl_tests/swift/idl_package/.build
@@ -659,15 +660,15 @@ jobs:
       matrix:
         java-version: ["17", "25"]
     steps:
-      - uses: actions/checkout@v5
-      - uses: graalvm/setup-graalvm@6f3fa030c4b8f77c1f554a860f593a654538fa38 # 1.5.6
+      - uses: actions/checkout@v7.0.1
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-job-reports: "true"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -686,15 +687,15 @@ jobs:
       matrix:
         java-version: ["17", "25"]
     steps:
-      - uses: actions/checkout@v5
-      - uses: graalvm/setup-graalvm@6f3fa030c4b8f77c1f554a860f593a654538fa38 # 1.5.6
+      - uses: actions/checkout@v7.0.1
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-job-reports: "true"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -710,15 +711,15 @@ jobs:
     if: needs.changes.outputs.graalvm_kotlin == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: graalvm/setup-graalvm@6f3fa030c4b8f77c1f554a860f593a654538fa38 # 1.5.6
+      - uses: actions/checkout@v7.0.1
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: "25"
           distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-job-reports: "true"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -750,21 +751,21 @@ jobs:
             kotlin_args: --kotlin-version 2.4.10
             label: Kotlin 2.4.10 / JDK 26
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK ${{ matrix.java-version }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
       - name: Run Kotlin CI
@@ -776,13 +777,13 @@ jobs:
     if: needs.changes.outputs.scala == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK11
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 11
           distribution: "temurin"
-      - uses: sbt/setup-sbt@8feba82adc7f01ddcf8165b86f778bdb5b82cebc # v1.5.7
+      - uses: sbt/setup-sbt@ce95da69b39609ea153bad087708da5f37366897 # v1.5.10
         with:
           disk-cache: false
       - name: Install fory java
@@ -799,17 +800,17 @@ jobs:
     name: Scala Xlang Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@8feba82adc7f01ddcf8165b86f778bdb5b82cebc # v1.5.7
+      - uses: sbt/setup-sbt@ce95da69b39609ea153bad087708da5f37366897 # v1.5.10
         with:
           disk-cache: false
       - name: Run Scala Xlang Test
@@ -827,17 +828,17 @@ jobs:
     name: Scala IDL Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@8feba82adc7f01ddcf8165b86f778bdb5b82cebc # v1.5.7
+      - uses: sbt/setup-sbt@ce95da69b39609ea153bad087708da5f37366897 # v1.5.10
         with:
           disk-cache: false
       - name: Install Fory Java
@@ -853,21 +854,21 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK11
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 11
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Set up Python 3.8
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.8
       - name: Run CI
@@ -879,19 +880,19 @@ jobs:
     if: needs.changes.outputs.grpc_tests == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -918,19 +919,19 @@ jobs:
     if: needs.changes.outputs.grpc_tests == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -957,19 +958,19 @@ jobs:
     if: needs.changes.outputs.grpc_tests == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1001,14 +1002,14 @@ jobs:
       needs.changes.outputs.cpp_code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
@@ -1017,7 +1018,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes libgrpc++-dev protobuf-compiler-grpc
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1044,19 +1045,19 @@ jobs:
     if: needs.changes.outputs.grpc_tests == 'true' || needs.changes.outputs.kotlin == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1087,23 +1088,23 @@ jobs:
     if: needs.changes.outputs.grpc_tests == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
       - name: Set up Dart
-        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
+        uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with:
           sdk: stable
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1136,19 +1137,19 @@ jobs:
     if: needs.changes.outputs.grpc_tests == 'true' || needs.changes.outputs.swift == 'true'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1179,9 +1180,9 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
           cache-dependency-path: javascript/package-lock.json
@@ -1195,7 +1196,7 @@ jobs:
       # is used here to avoid this problem. On Windows, use 3.11 to avoid
       # the slower 3.8 download on hosted runners.
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: ${{ runner.os == 'Windows' && '3.11' || '3.8' }}
       - name: Run CI with NodeJS
@@ -1205,25 +1206,25 @@ jobs:
     name: JavaScript Xlang Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Use Node.js 20.x
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20.x
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Cache npm local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('javascript/package-lock.json') }}
@@ -1255,18 +1256,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
       - name: Set up Java 11
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 11
           distribution: temurin
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1284,18 +1285,18 @@ jobs:
     name: Rust Xlang Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1325,9 +1326,9 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
@@ -1357,7 +1358,7 @@ jobs:
           } > bazel-cpp-toolchain-key.txt
           echo "key=$(shasum -a 256 bazel-cpp-toolchain-key.txt | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Cache Bazel repository cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # setup-bazel uses ~/.bazel on GitHub-hosted runners.
           # local_config_cc records absolute host compiler and SDK include roots.
@@ -1372,7 +1373,7 @@ jobs:
           restore-keys: |
             bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-${{ steps.bazel-cpp-toolchain.outputs.key }}-
       - name: Cache Bazel build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # setup-bazel uses ~/.bazel on GitHub-hosted runners.
           # Keep host toolchain identity in the key so depfiles generated with
@@ -1387,7 +1388,7 @@ jobs:
       - name: Run C++ CI with Bazel
         run: python ./ci/run_ci.py cpp
       - name: Upload Bazel Test Logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: bazel-test-logs-${{ matrix.os }}
@@ -1402,9 +1403,9 @@ jobs:
     if: needs.changes.outputs.cpp == 'true'
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
@@ -1414,7 +1415,7 @@ jobs:
           bazelisk-cache: true
           bazelisk-version: "1.x"
       - name: Cache Bazel repository cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # setup-bazel uses ~/.bazel on GitHub-hosted runners.
           path: |
@@ -1424,7 +1425,7 @@ jobs:
           restore-keys: |
             bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-
       - name: Cache Bazel build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # setup-bazel uses ~/.bazel on GitHub-hosted runners.
           path: |
@@ -1434,7 +1435,7 @@ jobs:
       - name: Run C++ CI with Bazel
         run: python ./ci/run_ci.py cpp
       - name: Upload Bazel Test Logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: bazel-test-logs-windows-2022
@@ -1452,9 +1453,9 @@ jobs:
       matrix:
         sanitizer: [asan, ubsan]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
@@ -1464,7 +1465,7 @@ jobs:
           bazelisk-cache: true
           bazelisk-version: "1.x"
       - name: Cache Bazel repository cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # setup-bazel uses ~/.bazel on GitHub-hosted runners.
           path: |
@@ -1474,7 +1475,7 @@ jobs:
           restore-keys: |
             bazel-repo-sanitizer-${{ runner.os }}-${{ runner.arch }}-py311-
       - name: Cache Bazel build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # setup-bazel uses ~/.bazel on GitHub-hosted runners.
           path: |
@@ -1507,7 +1508,7 @@ jobs:
           )
           bazel test --cache_test_results=no ${BAZEL_CONFIGS} "${TEST_TARGETS[@]}"
       - name: Upload Bazel Test Logs (${{ matrix.sanitizer }})
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: bazel-test-logs-${{ matrix.sanitizer }}
@@ -1520,19 +1521,19 @@ jobs:
     name: CPP Xlang Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1557,19 +1558,19 @@ jobs:
     name: C++ IDL Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1577,7 +1578,7 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Cache C++ IDL CMake build
         id: cpp-idl-cmake-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: integration_tests/idl_tests/cpp/build
           key: cpp-idl-cmake-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('integration_tests/idl_tests/cpp/**', 'integration_tests/idl_tests/*.fdl', 'integration_tests/idl_tests/generate_idl.py', 'compiler/**', 'cpp/**') }}
@@ -1597,9 +1598,9 @@ jobs:
     name: C++ Examples
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.11"
       - name: Set up Bazel
@@ -1634,9 +1635,9 @@ jobs:
         python-version: ["3.8", "3.12", "3.14"]
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
@@ -1675,9 +1676,9 @@ jobs:
         # matrix compact while covering the latest Python version.
         python-version: ["3.11", "3.12", "3.14"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
@@ -1708,19 +1709,19 @@ jobs:
     name: Python Xlang Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
           cache: "pip"
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1747,15 +1748,15 @@ jobs:
     name: Golang CI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - name: Setup Go 1.23
-        uses: actions/setup-go@v4
+      - uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
-          go-version: "1.23"
+          go-version-file: go/fory/go.mod
       - name: Display Go version
         run: go version
       - name: Set up Python3.8
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.8
           cache: "pip"
@@ -1775,22 +1776,22 @@ jobs:
     name: Go Xlang Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
-          go-version: "1.21"
+          go-version-file: go/fory/go.mod
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1814,14 +1815,14 @@ jobs:
     name: Kotlin Xlang Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1841,22 +1842,22 @@ jobs:
     name: Android Go Xlang Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
-          go-version: "1.21"
+          go-version-file: go/fory/go.mod
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1886,14 +1887,14 @@ jobs:
     name: Android Serializer JVM Round Trip Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1913,14 +1914,14 @@ jobs:
     name: Dart Xlang Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "temurin"
       - name: Cache Maven local repository
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -1966,7 +1967,7 @@ jobs:
     name: Dart CI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Install Dart SDK
         run: |
           # Download and install Dart SDK
@@ -2033,7 +2034,7 @@ jobs:
     name: Dart Flutter CI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set Flutter smoke dir
         run: echo "FLUTTER_SMOKE_DIR=$RUNNER_TEMP/fory_flutter_smoke" >> "$GITHUB_ENV"
       - name: Set up Flutter
@@ -2154,24 +2155,24 @@ jobs:
     name: Code Style Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up JDK ${{ matrix.java-version }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: "oracle"
       - name: Check License Header
-        uses: korandoru/hawkeye@v3
+        uses: korandoru/hawkeye@v6
       - name: Set up Python 3.8
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.8
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
       - name: Use Node.js 20.x
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20.x
       - name: Register Checkstyle problem matcher
@@ -2185,19 +2186,19 @@ jobs:
     if: github.repository == 'apache/fory' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     steps:
       - name: Checkout fory
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7.0.1
         with:
           path: fory
 
       - name: Checkout fory-site
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7.0.1
         with:
           repository: apache/fory-site
           ref: main
           path: fory-site
 
       - name: Set up Node.js 24.x
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24.x
           cache: npm
@@ -2208,7 +2209,7 @@ jobs:
         run: npm ci --prefer-offline --fund=false
 
       - name: Restore Docusaurus cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: fory-site/node_modules/.cache
           key: ${{ runner.os }}-node24-docusaurus-${{ hashFiles('fory-site/package-lock.json') }}

@@ -15,21 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-module github.com/apache/fory/integration_tests/grpc_tests/go
+// Package grpc_fdl contains types generated from the gRPC test schema.
+// This handwritten file keeps the package resolvable by dependency updaters
+// before code generation. Builds still require the generated sources.
+package grpc_fdl
 
-go 1.25.0
-
-require (
-	github.com/apache/fory/go/fory v0.0.0
-	google.golang.org/grpc v1.83.2
-)
-
-require (
-	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
-)
-
-replace github.com/apache/fory/go/fory => ../../../go/fory
+// Keep the generated code's runtime dependency visible to go mod tidy.
+import _ "github.com/apache/fory/go/fory"

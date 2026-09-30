@@ -38,6 +38,11 @@ bazel-*/
 bazel-fory/
 bazel-fory/**
 **/generated
+!integration_tests/grpc_tests/go/generated/
+integration_tests/grpc_tests/go/generated/*
+!integration_tests/grpc_tests/go/generated/grpc_fdl/
+integration_tests/grpc_tests/go/generated/grpc_fdl/*
+!integration_tests/grpc_tests/go/generated/grpc_fdl/doc.go
 !integration_tests/grpc_tests/rust/generated/
 integration_tests/grpc_tests/rust/generated/*
 !integration_tests/grpc_tests/rust/generated/Cargo.toml

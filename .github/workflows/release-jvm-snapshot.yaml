@@ -34,9 +34,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'apache/fory'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Set up Apache snapshot repository
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: "25"
           distribution: "temurin"
@@ -45,7 +45,7 @@ jobs:
           server-id: apache.snapshots.https
           server-username: NEXUS_USERNAME
           server-password: NEXUS_PASSWORD
-      - uses: sbt/setup-sbt@8feba82adc7f01ddcf8165b86f778bdb5b82cebc # v1.5.7
+      - uses: sbt/setup-sbt@ce95da69b39609ea153bad087708da5f37366897 # v1.5.10
         with:
           disk-cache: false
       - name: Publish Java and Kotlin snapshots

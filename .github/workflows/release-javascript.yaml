@@ -38,9 +38,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'apache/fory' && !startsWith(github.ref_name, 'go/fory')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'

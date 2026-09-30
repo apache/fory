@@ -4827,7 +4827,8 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
               ctx.set_error(std::move(remote_type_info_res).error());
               return T{};
             }
-            return read_compatible(ctx, remote_type_info_res.value());
+            return read_compatible(ctx, remote_type_info_res.value(),
+                                   local_type_info_res.value());
           }
           return read_data(ctx);
         } else {
@@ -4937,21 +4938,14 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     }
   }
 
-  static T read_compatible(ReadContext &ctx, const TypeInfo *remote_type_info) {
+  static T read_compatible(ReadContext &ctx, const TypeInfo *remote_type_info,
+                           const TypeInfo *local_type_info) {
     // Read and verify struct version if enabled (matches write_data behavior)
-    const TypeInfo *local_type_info = nullptr;
     if (ctx.check_struct_version()) {
       int32_t read_version = ctx.buffer().read_int32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return T{};
       }
-      auto local_type_info_res =
-          ctx.type_resolver().template get_type_info<T>();
-      if (!local_type_info_res.ok()) {
-        ctx.set_error(std::move(local_type_info_res).error());
-        return T{};
-      }
-      local_type_info = local_type_info_res.value();
       if (!local_type_info->type_meta) {
         ctx.set_error(Error::type_error(
             "Type metadata not initialized for requested struct"));
@@ -4966,13 +4960,6 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
         return T{};
       }
     } else {
-      auto local_type_info_res =
-          ctx.type_resolver().template get_type_info<T>();
-      if (!local_type_info_res.ok()) {
-        ctx.set_error(std::move(local_type_info_res).error());
-        return T{};
-      }
-      local_type_info = local_type_info_res.value();
       if (!local_type_info->type_meta) {
         ctx.set_error(Error::type_error(
             "Type metadata not initialized for requested struct"));
@@ -4992,8 +4979,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     }
 
     // Fast path: same schema hash, read fields in local sorted order.
-    if (local_type_info &&
-        remote_type_info->type_meta->hash == local_type_info->type_meta->hash) {
+    if (remote_type_info->type_meta->hash == local_type_info->type_meta->hash) {
       if constexpr (detail::CompileTimeFieldHelpers<
                         T>::strict_compatible_safe) {
         // Safe to use schema-consistent fast path (no per-field type info).
@@ -5026,6 +5012,15 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
 
     ctx.buffer().shrink_input_buffer();
     return obj;
+  }
+
+  static T read_compatible(ReadContext &ctx, const TypeInfo *remote_type_info) {
+    auto local_type_info_res = ctx.type_resolver().template get_type_info<T>();
+    if (!local_type_info_res.ok()) {
+      ctx.set_error(std::move(local_type_info_res).error());
+      return T{};
+    }
+    return read_compatible(ctx, remote_type_info, local_type_info_res.value());
   }
 
   static T read_data(ReadContext &ctx) {
