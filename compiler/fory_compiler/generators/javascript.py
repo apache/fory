@@ -544,7 +544,7 @@ class JavaScriptGenerator(JavaScriptServiceGeneratorMixin, BaseGenerator):
             )
             value_type = self.generate_type(
                 field_type.value_type,
-                nullable=False,
+                nullable=field_type.value_optional,
                 parent_stack=parent_stack,
             )
             type_str = f"Map<{key_type}, {value_type}>"

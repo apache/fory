@@ -670,3 +670,23 @@ def test_javascript_union_registration():
     # Struct registrations for the variant types must also be present
     assert "__foryRuntime$Type.struct(101" in output
     assert "__foryRuntime$Type.struct(102" in output
+
+
+def test_javascript_optional_map_value_type():
+    """Optional map values must be nullable in the TS type and the runtime schema."""
+    source = dedent(
+        """
+        package example;
+
+        message Catalog [id=100] {
+            map<string, optional string> attrs = 1;
+        }
+        """
+    )
+    output = generate_javascript(source)
+
+    assert "attrs: Map<string, string | null>;" in output
+    assert (
+        "__foryRuntime$Type.map(__foryRuntime$Type.string(), "
+        "__foryRuntime$Type.string().setNullable(true))" in output
+    )
