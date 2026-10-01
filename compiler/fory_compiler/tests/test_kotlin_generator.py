@@ -553,8 +553,13 @@ def test_module_qualifies_types_shadowed_by_module_imports():
     registration = files["app/AppForyModule.kt"]
     # Fory and ForyModule are imported inside the module file, so unqualified
     # references would register the imported classes instead.
-    assert "KotlinSerializers.registerType(fory, app.Fory::class.java, 1L)" in registration
-    assert "KotlinSerializers.registerSerializer(fory, app.Fory::class.java)" in registration
+    assert (
+        "KotlinSerializers.registerType(fory, app.Fory::class.java, 1L)" in registration
+    )
+    assert (
+        "KotlinSerializers.registerSerializer(fory, app.Fory::class.java)"
+        in registration
+    )
     assert (
         "KotlinSerializers.registerType(fory, app.ForyModule::class.java, 2L)"
         in registration
