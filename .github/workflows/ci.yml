@@ -783,7 +783,7 @@ jobs:
         with:
           java-version: 11
           distribution: "temurin"
-      - uses: sbt/setup-sbt@ce95da69b39609ea153bad087708da5f37366897 # v1.5.10
+      - uses: sbt/setup-sbt@6158cb0903b8ceeae04f830055f3155e1b6a5ad7 # v1.5.11
         with:
           disk-cache: false
       - name: Install fory java
@@ -810,7 +810,7 @@ jobs:
         uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@ce95da69b39609ea153bad087708da5f37366897 # v1.5.10
+      - uses: sbt/setup-sbt@6158cb0903b8ceeae04f830055f3155e1b6a5ad7 # v1.5.11
         with:
           disk-cache: false
       - name: Run Scala Xlang Test
@@ -838,7 +838,7 @@ jobs:
         uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@ce95da69b39609ea153bad087708da5f37366897 # v1.5.10
+      - uses: sbt/setup-sbt@6158cb0903b8ceeae04f830055f3155e1b6a5ad7 # v1.5.11
         with:
           disk-cache: false
       - name: Install Fory Java
