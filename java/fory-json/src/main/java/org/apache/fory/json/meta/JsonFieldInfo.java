@@ -628,7 +628,11 @@ public final class JsonFieldInfo {
 
   /**
    * Returns whether the logical write type can contain an empty value, independently of its
-   * carrier.
+   * carrier. This covers only the built-in empty types that {@link #isEmpty} tests before it
+   * delegates to the codec, so a false answer does not mean the value is never empty: a codec that
+   * overrides {@link JsonValueCodec#isEmpty} still decides. Generated writers combine both, so this
+   * must list every built-in empty type {@link #isEmpty} tests; object codec validation of required
+   * NON_EMPTY properties uses this type check alone.
    */
   public boolean mayBeEmpty() {
     Class<?> type = writeTypeRef == null ? null : writeTypeRef.getRawType();
@@ -641,12 +645,15 @@ public final class JsonFieldInfo {
             || type == OptionalInt.class
             || type == OptionalLong.class
             || type == OptionalDouble.class
+            // An enum constant body cannot add interfaces, so an enum value is never one of the
+            // built-in empty types above unless its declared enum is.
             || !Modifier.isFinal(type.getModifiers()) && !type.isEnum());
   }
 
   /**
    * Tests built-in empty values directly, then delegates to the selected codec. Null omission is
-   * handled separately by the containing field's nullability contract.
+   * handled separately by the containing field's nullability contract. A new built-in empty type
+   * here must also be added to {@link #mayBeEmpty}.
    */
   @Internal
   public static boolean isEmpty(Object value, JsonTypeInfo typeInfo, JsonWriter writer) {
