@@ -24,13 +24,18 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.google.common.collect.ImmutableList;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.text.DecimalFormat;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.data.BeanProperties;
 import org.apache.fory.json.data.BeanProperties.BooleanBean;
 import org.apache.fory.json.data.BeanProperties.ConflictingTypesBean;
@@ -74,6 +79,54 @@ public class JsonPropertyTest extends ForyJsonTestModels {
     setter.putObject(value, 654321);
     assertEquals(SetterBean.id(value), 654322);
     assertEquals(SetterBean.setterCalls(value), 2);
+  }
+
+  @Test
+  public void nullReadDefaults() {
+    ForyJson json = newJsonBuilder().onNullRead(NullHandling.SKIP).build();
+    String input = "{\"items\":null,\"optional\":null,\"number\":null,\"name\":null}";
+    for (String text : new String[] {input, "{\"unicode\":\"汉\"," + input.substring(1)}) {
+      for (boolean bytes : new boolean[] {false, true}) {
+        NullDefaults value =
+            bytes
+                ? json.fromJson(text.getBytes(StandardCharsets.UTF_8), NullDefaults.class)
+                : json.fromJson(text, NullDefaults.class);
+        assertEquals(value.items, ImmutableList.of("default"));
+        assertEquals(value.optional, Optional.of("default"));
+        assertEquals(value.number, 42);
+        assertEquals(value.name, null);
+      }
+    }
+    assertEquals(
+        json.fromJson("{\"items\":[\"new\"],\"items\":null}", NullDefaults.class).items,
+        ImmutableList.of("new"));
+  }
+
+  @Test
+  public void nullReadOverrides() {
+    ForyJson json = newJsonBuilder().onNullRead(NullHandling.FAIL).build();
+    assertEquals(
+        json.fromJson("{\"items\":null,\"name\":null}", NullDefaults.class).items,
+        ImmutableList.of("default"));
+    assertThrows(
+        ForyJsonException.class, () -> json.fromJson("{\"number\":null}", NullDefaults.class));
+    assertEquals(json.fromJson("{\"number\":7}", NullDefaults.class).number, 7);
+    assertThrows(
+        IllegalArgumentException.class, () -> ForyJson.builder().onNullRead(NullHandling.DEFAULT));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> ForyJson.builder().onContentNullRead(NullHandling.DEFAULT));
+  }
+
+  public static class NullDefaults {
+    @JsonProperty(onNullRead = NullHandling.SKIP)
+    public List<String> items = ImmutableList.of("default");
+
+    public Optional<String> optional = Optional.of("default");
+    public int number = 42;
+
+    @JsonProperty(onNullRead = NullHandling.SET)
+    public String name = "default";
   }
 
   @Test

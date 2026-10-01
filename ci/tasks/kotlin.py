@@ -39,6 +39,7 @@ CORPUS_RULE_MODELS = (
     "PlatformDirectOverride",
     "PlatformId",
     "PlatformMarker",
+    "PlatformNullHandling",
     "PlatformOpen",
     "PlatformRoot",
     "PlatformShape",

@@ -155,6 +155,10 @@ abstract class JsonWriterCodegen {
             new Expression.Invoke(
                 writer,
                 "writeFieldName",
+                "",
+                TypeRef.of(void.class),
+                false,
+                false,
                 fieldRef("wp" + id, JsonFieldInfo.class),
                 commaKnown ? Expression.Literal.ofInt(1) : index));
     if (!commaKnown) {
@@ -1407,6 +1411,39 @@ abstract class JsonWriterCodegen {
       }
     }
     return properties.length;
+  }
+
+  final int[] groupEnds(JsonFieldInfo[] properties) {
+    int first = firstGroupMember(properties);
+    int[] sizes = new int[properties.length];
+    for (int i = first; i < properties.length; i++) {
+      sizes[i] = fieldWriteSize(properties[i]);
+    }
+    return JsonCodegen.groupEnds(sizes, first);
+  }
+
+  static int fieldWriteSize(JsonFieldInfo property) {
+    // Receiver/value loads, prefix and value calls; references also need a cached local and
+    // null branch. Inclusion checks and a retained-null arm add local work. Independently
+    // compiled scalar, object and container codecs contribute only their invocation.
+    int size = property.writeRawType().isPrimitive() ? 12 : 24;
+    if (!property.writeRawType().isPrimitive() && property.writeNull()) {
+      // Containers and custom object codecs may consume null themselves, so only count the
+      // local null arm for scalar families that always emit it in writeProp.
+      switch (property.writeKind()) {
+        case ARRAY:
+        case COLLECTION:
+        case MAP:
+        case OBJECT:
+          break;
+        default:
+          size += 16;
+      }
+    }
+    if (property.omitEmpty() || property.omitDefault()) {
+      size += 12;
+    }
+    return size;
   }
 
   private static boolean canFuseObjectStart(JsonFieldInfo[] properties) {

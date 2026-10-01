@@ -76,6 +76,26 @@ case class BodyState(id: Int) {
   var count: Int = 7
 }
 
+case class NullContents(
+    @JsonProperty(onContentNullRead = JsonProperty.NullHandling.SKIP)
+    values: List[List[String]]
+)
+
+case class NullNode(
+    value: Int,
+    @JsonProperty(onContentNullRead = JsonProperty.NullHandling.SKIP) children: List[NullNode]
+)
+
+case class OpaqueNullContents(
+    @JsonProperty(onContentNullRead = JsonProperty.NullHandling.SET)
+    @JsonCodec(classOf[NullListCodec]) values: List[String]
+)
+
+final class NullListCodec extends AbstractJsonValueCodec[List[String]] {
+  override def write(writer: JsonWriter, value: List[String]): Unit = writer.writeString("list")
+  override def read(reader: JsonReader): List[String] = List(reader.readString())
+}
+
 @JsonInclude(JsonProperty.Include.NON_DEFAULT)
 case class CurriedDefault(a: Int)(
     @JsonProperty(include = JsonProperty.Include.NON_DEFAULT) val b: Int = a + 1
@@ -538,6 +558,50 @@ object Hue extends Enumeration {
 final class HueCodec extends ScalaEnumerationCodec(Hue)
 
 class ScalaJsonSuite extends AnyFunSuite {
+  test("null read handling") {
+    for (codegen <- Seq(false, true)) {
+      val json = ForyJsonScala.builder().withCodegen(codegen).withAsyncCompilation(false)
+        .onNullRead(JsonProperty.NullHandling.SKIP)
+        .onContentNullRead(JsonProperty.NullHandling.SKIP).build()
+      val defaults = "{\"media_uri\":\"u\",\"tags\":null,\"title\":null}"
+      assert(json.fromJson(defaults, classOf[Media]) == Media("u"))
+      val body = json.fromJson("{\"id\":1,\"label\":null,\"count\":null}", classOf[BodyState])
+      assert(body.label == "initial" && body.count == 7)
+      assert(json.fromJson("{\"id\":1,\"label\":\"new\",\"label\":null}", classOf[BodyState]).label == "new")
+      val listType = ScalaTypeRef[List[String]]
+      val vectorType = ScalaTypeRef[Vector[String]]
+      val mapType = ScalaTypeRef[Map[String, String]]
+      val values = "[null,\"中\",null]"
+      assert(json.fromJson(values, listType) == List("中"))
+      assert(json.fromJson(values.getBytes(UTF_8), listType) == List("中"))
+      assert(json.fromJson(values, vectorType) == Vector("中"))
+      assert(json.fromJson("[null,null]", vectorType).isEmpty)
+      assert(json.fromJson("{\"a\":\"中\",\"a\":null,\"b\":null}", mapType) == Map("a" -> "中"))
+      assert(json.fromJson("[null,1,null,2]", ScalaTypeRef[scala.collection.immutable.HashSet[Int]]) == Set(1, 2))
+      assert(json.fromJson("[null,true,null,false]", ScalaTypeRef[scala.collection.immutable.ArraySeq[Boolean]]) == Seq(true, false))
+      assert(json.fromJson("[null,1,null,2]", ScalaTypeRef[scala.collection.immutable.BitSet]) == scala.collection.immutable.BitSet(1, 2))
+      val intMapType = ScalaTypeRef[scala.collection.immutable.IntMap[String]]
+      val longMapType = ScalaTypeRef[scala.collection.mutable.LongMap[String]]
+      for (size <- Seq(0, 1, 16, 17, 1025)) {
+        val fields = (0 until size).map(i => s"\"$i\":\"中\",\"$i\":null")
+        val input = (fields :+ "\"9999\":null").mkString("{", ",", "}")
+        val expected = (0 until size).map(_ -> "中").toMap
+        assert(json.fromJson(input, intMapType).toMap == expected)
+        assert(json.fromJson(input.getBytes(UTF_8), intMapType).toMap == expected)
+        assert(json.fromJson(input, longMapType).iterator.toMap == expected.map { case (k, v) => k.toLong -> v })
+      }
+      val annotationJson = ForyJsonScala.builder().withCodegen(codegen).withAsyncCompilation(false).build()
+      val shallow = annotationJson.fromJson(
+        "{\"values\":[null,[null,\"中\"]]}", classOf[NullContents])
+      assert(shallow.values == List(List(null, "中")))
+      val nodes = annotationJson.fromJson(
+        "[{\"value\":1,\"children\":[null,{\"value\":2,\"children\":[]}]}]",
+        ScalaTypeRef[List[NullNode]])
+      assert(nodes == List(NullNode(1, List(NullNode(2, Nil)))))
+      assert(json.fromJson("{\"values\":\"a\"}", classOf[OpaqueNullContents]).values == List("a"))
+    }
+  }
+
   private def assertWriterGeneration(json: ForyJson, model: Class[_], enabled: Boolean): Unit = {
     val slots = ReflectionUtils.getObjectFieldValue(json, "slots").asInstanceOf[Array[AnyRef]]
     val state = ReflectionUtils.getObjectFieldValue(slots(0), "state")

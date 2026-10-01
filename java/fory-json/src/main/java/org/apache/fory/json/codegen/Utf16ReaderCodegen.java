@@ -32,10 +32,6 @@ final class Utf16ReaderCodegen extends JsonReaderCodegen {
     super(codegen, resolver);
   }
 
-  Utf16ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, int[] fastReadGroupEnds) {
-    super(codegen, resolver, fastReadGroupEnds);
-  }
-
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
     return codegen.utf16ReaderFieldType(property.readTypeInfo(), resolver);

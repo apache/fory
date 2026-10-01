@@ -41,7 +41,7 @@ repositories {
 }
 
 dependencies {
-  implementation("org.apache.fory:fory-json-kotlin:1.7.5")
+  implementation("org.apache.fory:fory-json-kotlin:1.7.6")
 }
 ```
 
@@ -54,7 +54,7 @@ plugins {
 }
 
 dependencies {
-  ksp("org.apache.fory:fory-json-kotlin-ksp:1.7.5")
+  ksp("org.apache.fory:fory-json-kotlin-ksp:1.7.6")
 }
 ```
 
@@ -155,12 +155,20 @@ creator candidates, and a selected static factory cannot have compiler-default p
 Private/protected, vararg, executable-generic, context-parameter, local,
 anonymous, `inner`, or synthetic construction requires an exact application codec.
 
-For this model:
+With the default `onNullRead(SET)`, this model behaves as follows:
 
 - `{"id":1}` invokes both compiler defaults.
 - `{"id":1,"label":null}` passes an explicit null and does not invoke the `label` default.
 - a missing `id` uses `0`.
-- `{"id":1,"retries":null}` fails; null never asks Kotlin to use a default.
+- `{"id":1,"retries":null}` fails.
+
+Use `ForyJsonKotlin.builder().onNullRead(JsonProperty.NullHandling.SKIP)` to treat a null occurrence
+as absent, preserving constructor defaults and body-property initializers. A non-null reference
+without a default remains required. Override one property with
+`@get:JsonProperty(onNullRead = JsonProperty.NullHandling.SET)` to retain ordinary null decoding.
+`onContentNullRead` handles immediate collection/array elements and map values, including unsigned
+arrays. Property overrides are shallow and skipped nulls are handled before element nullability
+checks. See [Read-side null handling](annotations.md#read-side-null-handling).
 
 Enable `ForyJsonKotlin.builder().failOnMissingRequiredProperties(true).build()` to require ordinary
 constructor properties without declared defaults, including nullable properties and numeric or

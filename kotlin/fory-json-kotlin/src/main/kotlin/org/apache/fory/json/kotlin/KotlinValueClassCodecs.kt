@@ -64,6 +64,7 @@ internal object KotlinValueClassCodecs {
     val keyCodec = mapKeyCodec(keyType, resolver)
     val valueInfo = resolver.getTypeInfo(arguments[1])
     return MapCodec.createUncheckedKeyCodec(type.rawType, keyType.rawType, valueInfo, keyCodec)
+      .withContentNullRead(resolver.sharedRegistry().onContentNullRead())
   }
 
   fun mapKeyCodec(type: TypeRef<*>, resolver: JsonTypeResolver): MapKeyCodec {

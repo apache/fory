@@ -92,6 +92,8 @@ final class ForyJsonGraalVMFeature implements Feature {
   private static final String SCALA_JSON_CODEC_CLASS = "org.apache.fory.json.scala.ScalaJsonCodec";
   private static final String SCALA_JSON_CODEC_FACTORY =
       "org.apache.fory.json.scala.internal.ScalaTypeCodecFactory$";
+  private static final String KOTLIN_JSON_CODEC_FACTORY =
+      "org.apache.fory.json.kotlin.KotlinJsonCodecFactory";
   private static final String SCALA_ENUMERATION_ANNOTATION =
       "org.apache.fory.json.scala.JsonEnumeration";
   private static final String[] SCALA_ENUMERATION_SLOTS = {
@@ -390,6 +392,13 @@ final class ForyJsonGraalVMFeature implements Feature {
       models.sort(Comparator.comparing(Class::getName));
       boolean generated = false;
       for (Class<?> model : models) {
+        // Kotlin annotations describe constructor properties, not a JavaBean view of the class.
+        // Only a Kotlin-enabled configuration or an explicit factory root owns that model.
+        if (!configuration.kotlinJsonCodecs
+            && !configuration.factoryModels.contains(model)
+            && hasKotlinMetadata(model)) {
+          continue;
+        }
         // A raw generic Class is not a schema. Hosted capabilities are generated only when a
         // concrete TypeRef occurrence is reached from a selected non-generic root; eagerly
         // resolving the raw class would also make unreached bindings available in the image.
@@ -1237,6 +1246,7 @@ final class ForyJsonGraalVMFeature implements Feature {
     private final JsonTypeResolver resolver;
     private final Map<Class<?>, Class<?>> mixins;
     private final boolean scalaJsonCodecs;
+    private final boolean kotlinJsonCodecs;
     private final Set<Class<?>> processedModels = new LinkedHashSet<>();
     private final Set<Class<?>> factoryModels = new LinkedHashSet<>();
 
@@ -1245,14 +1255,27 @@ final class ForyJsonGraalVMFeature implements Feature {
       resolver = new JsonTypeResolver(registry);
       mixins = config.mixins();
       boolean hasScalaJsonCodecs = false;
+      boolean hasKotlinJsonCodecs = false;
       for (JsonCodecFactory factory : config.codecFactories()) {
         if (factory.getClass().getName().equals(SCALA_JSON_CODEC_FACTORY)) {
           hasScalaJsonCodecs = true;
-          break;
+        }
+        if (factory.getClass().getName().equals(KOTLIN_JSON_CODEC_FACTORY)) {
+          hasKotlinJsonCodecs = true;
         }
       }
       scalaJsonCodecs = hasScalaJsonCodecs;
+      kotlinJsonCodecs = hasKotlinJsonCodecs;
     }
+  }
+
+  private static boolean hasKotlinMetadata(Class<?> type) {
+    for (Annotation annotation : type.getDeclaredAnnotations()) {
+      if (annotation.annotationType().getName().equals("kotlin.Metadata")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static final class MethodSignature {

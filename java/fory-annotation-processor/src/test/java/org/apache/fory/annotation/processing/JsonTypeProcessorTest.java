@@ -558,6 +558,43 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void generatedNullHandling() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.NullModel",
+            "package test;\n"
+                + "import java.util.*;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public class NullModel {\n"
+                + " @JsonProperty(onNullRead=JsonProperty.NullHandling.SKIP, "
+                + "onContentNullRead=JsonProperty.NullHandling.SKIP)\n"
+                + " public List<String> items = Collections.singletonList(\"initial\");\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.NullModel");
+    GeneratedJsonCodec<?> codec = generatedCodec(loader, "test.NullModel_ForyJsonCodec");
+    for (boolean codegen : new boolean[] {false, true}) {
+      ForyJson json =
+          ForyJson.builder()
+              .withClassLoader(loader)
+              .withCodegen(codegen)
+              .withAsyncCompilation(false)
+              .build();
+      assertEquals(
+          fieldAccessor(codec.fieldAccessors(), "items")
+              .getObject(json.fromJson("{\"items\":null}", type)),
+          Collections.singletonList("initial"));
+      assertEquals(
+          fieldAccessor(codec.fieldAccessors(), "items")
+              .getObject(
+                  json.fromJson(
+                      "{\"items\":[null,\"kept\",null]}".getBytes(StandardCharsets.UTF_8), type)),
+          Collections.singletonList("kept"));
+    }
+  }
+
+  @Test
   public void defaultInclusion() throws Exception {
     for (boolean mixin : new boolean[] {false, true}) {
       String authorization = "@JsonInclude(JsonProperty.Include.NON_DEFAULT) ";

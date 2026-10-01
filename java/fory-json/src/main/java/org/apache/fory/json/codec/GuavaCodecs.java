@@ -32,6 +32,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -283,10 +284,21 @@ public final class GuavaCodecs {
     }
   }
 
-  private static final class ImmutableIntArrayCodec implements JsonValueCodec<ImmutableIntArray> {
-    private static final ImmutableIntArrayCodec INSTANCE = new ImmutableIntArrayCodec();
+  private static final class ImmutableIntArrayCodec
+      implements ContainerJsonCodec<ImmutableIntArray> {
+    private static final ImmutableIntArrayCodec INSTANCE =
+        new ImmutableIntArrayCodec(NullHandling.SET);
 
-    private ImmutableIntArrayCodec() {}
+    private final NullHandling onContentNullRead;
+
+    private ImmutableIntArrayCodec(NullHandling onContentNullRead) {
+      this.onContentNullRead = onContentNullRead;
+    }
+
+    @Override
+    public ContainerJsonCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new ImmutableIntArrayCodec(handling);
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, ImmutableIntArray value) {
@@ -343,7 +355,7 @@ public final class GuavaCodecs {
       }
     }
 
-    private static int[] readInts(Latin1JsonReader reader) {
+    private int[] readInts(Latin1JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -354,6 +366,9 @@ public final class GuavaCodecs {
       int size = 0;
       do {
         if (reader.tryReadNull()) {
+          if (onContentNullRead == NullHandling.SKIP) {
+            continue;
+          }
           throw new ForyJsonException("Cannot read null into ImmutableIntArray element");
         }
         if (size == values.length) {
@@ -366,7 +381,7 @@ public final class GuavaCodecs {
       return Arrays.copyOf(values, size);
     }
 
-    private static int[] readInts(Utf16JsonReader reader) {
+    private int[] readInts(Utf16JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -377,6 +392,9 @@ public final class GuavaCodecs {
       int size = 0;
       do {
         if (reader.tryReadNull()) {
+          if (onContentNullRead == NullHandling.SKIP) {
+            continue;
+          }
           throw new ForyJsonException("Cannot read null into ImmutableIntArray element");
         }
         if (size == values.length) {
@@ -389,7 +407,7 @@ public final class GuavaCodecs {
       return Arrays.copyOf(values, size);
     }
 
-    private static int[] readInts(Utf8JsonReader reader) {
+    private int[] readInts(Utf8JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -400,6 +418,9 @@ public final class GuavaCodecs {
       int size = 0;
       do {
         if (reader.tryReadNull()) {
+          if (onContentNullRead == NullHandling.SKIP) {
+            continue;
+          }
           throw new ForyJsonException("Cannot read null into ImmutableIntArray element");
         }
         if (size == values.length) {

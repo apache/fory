@@ -96,8 +96,10 @@ static void serializeString(const v8::FunctionCallbackInfo<v8::Value> &args) {
   uint32_t offset = args[2].As<v8::Number>()->Uint32Value(context).ToChecked();
 
   bool is_one_byte = str->IsOneByte();
+  // A Uint8Array may be a view into a larger (e.g. pooled) ArrayBuffer.
   uint8_t *dst_data =
-      reinterpret_cast<uint8_t *>(dst->Buffer()->GetBackingStore()->Data());
+      reinterpret_cast<uint8_t *>(dst->Buffer()->GetBackingStore()->Data()) +
+      dst->ByteOffset();
 
   if (is_one_byte && str->IsExternalOneByte()) {
     offset += writeVarUint32(dst_data, offset,

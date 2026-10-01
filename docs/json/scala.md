@@ -25,7 +25,7 @@ module works on the ordinary JVM and GraalVM Native Image. Android is not suppor
 ## Setup
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-json-scala" % "1.7.5"
+libraryDependencies += "org.apache.fory" %% "fory-json-scala" % "1.7.6"
 ```
 
 `ForyJsonScala.builder()` installs the Scala module and returns the standard Fory JSON builder:
@@ -101,8 +101,14 @@ rejects `{}`, while `case class Request(id: Int = 7)` still reads it as `Request
 collection, map, and array properties retain their existing missing-value defaults. The option is
 disabled by default and does not change writing or explicit null handling.
 
-Explicit constructor defaults take precedence for omitted properties. An explicit JSON `null`
+Explicit constructor defaults take precedence for omitted properties. With the default `onNullRead(SET)`, JSON `null`
 decodes as `None` for `Option[A]`, even when its constructor default is `Some(...)`.
+
+Use `ForyJsonScala.builder().onNullRead(JsonProperty.NullHandling.SKIP)` to skip null property
+occurrences and retain constructor defaults or body-property initializers. `onContentNullRead`
+applies to immediate elements and map values of supported strict Scala collections, including
+primitive collections. Per-property `JsonProperty` settings override the matching global default
+and do not propagate into nested containers. See [Read-side null handling](annotations.md#read-side-null-handling).
 
 A case class may be declared at the top level, or inside an `object` at any nesting depth, as long
 as every enclosing scope is itself an `object`. A case class enclosed by a `class`, a trait, or a
@@ -130,7 +136,7 @@ or values. All other Fory JSON annotations retain the behavior described in
 
 Property inclusion controls which values are written. Omitted properties use constructor or type
 defaults when read, so omitting an empty string can restore `null`. Use `ALWAYS` when those values
-must remain distinct. An explicit JSON `null` keeps the declared type's normal null behavior; it
+must remain distinct. Under `onNullRead(SET)`, JSON `null` keeps the declared type's normal null behavior; it
 does not request a constructor default.
 
 `NON_EMPTY` recognizes `None` and supported empty strict Scala sequences, sets, and maps, including

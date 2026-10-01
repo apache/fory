@@ -24,6 +24,7 @@ import java.util.Arrays;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonByteArray;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -48,17 +49,23 @@ import org.apache.fory.type.Types;
  * operation rather than resolving a codec per element. Each concrete reader owns array allocation
  * and growth because JSON carries no trusted element count.
  */
-public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
+public abstract class ArrayCodec<T> implements ContainerJsonCodec<T> {
   private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
   private static final int ARRAY_HEADER_BYTES = GraphMemoryEstimates.objectArrayBytes();
   private static final int ARRAY_BATCH_SIZE = 1024;
   private static final int ARRAY_BATCH_MASK = ARRAY_BATCH_SIZE - 1;
   private static final int REFERENCE_BATCH_BYTES = ARRAY_BATCH_SIZE * REFERENCE_BYTES;
   final Class<?> componentType;
+  final NullHandling onContentNullRead;
 
-  ArrayCodec(Class<?> componentType) {
+  ArrayCodec(Class<?> componentType, NullHandling onContentNullRead) {
     this.componentType = componentType;
+    this.onContentNullRead = onContentNullRead;
   }
+
+  /** Copies this array occurrence without changing its component codecs or wire representation. */
+  @Internal
+  public abstract ArrayCodec<?> withContentNullRead(NullHandling handling);
 
   public static <T> JsonValueCodec<T> create(
       Class<T> arrayType, TypeRef<?> arrayTypeRef, JsonTypeResolver resolver) {
@@ -68,7 +75,13 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
     Class<?> componentType = arrayType.getComponentType();
     TypeRef<?> componentTypeRef = arrayTypeRef.getComponentType();
     JsonTypeInfo componentTypeInfo = resolver.getTypeInfo(componentTypeRef);
-    return create(arrayType, componentTypeInfo, resolver.sharedRegistry().byteArrayFormat());
+    JsonValueCodec<T> codec =
+        create(arrayType, componentTypeInfo, resolver.sharedRegistry().byteArrayFormat());
+    return codec instanceof ArrayCodec
+        ? bind(
+            ((ArrayCodec<?>) codec)
+                .withContentNullRead(resolver.sharedRegistry().onContentNullRead()))
+        : codec;
   }
 
   @Internal
@@ -162,18 +175,18 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
           componentTypeInfo.rejectsNull() ? StringArrayCodec.NON_NULL : StringArrayCodec.INSTANCE);
     }
     if (componentType.isPrimitive()) {
-      return new CustomPrimitiveArrayCodec<>(componentType, componentTypeInfo);
+      return new CustomPrimitiveArrayCodec<>(componentType, componentTypeInfo, NullHandling.SET);
     }
     if (!componentTypeInfo.rejectsNull()
         && componentTypeInfo.utf8Writer() instanceof StringEnumCodec) {
       StringEnumCodec<?> enumCodec = (StringEnumCodec<?>) componentTypeInfo.utf8Writer();
       if (enumCodec.maxUtf8Length != 0) {
-        return new EnumArrayCodec<>(componentType, componentTypeInfo, enumCodec);
+        return new EnumArrayCodec<>(componentType, componentTypeInfo, enumCodec, NullHandling.SET);
       }
     }
     return componentTypeInfo.rejectsNull()
-        ? new NonNullObjectArrayCodec<>(componentType, componentTypeInfo)
-        : new ObjectArrayCodec<>(componentType, componentTypeInfo);
+        ? new NonNullObjectArrayCodec<>(componentType, componentTypeInfo, NullHandling.SET)
+        : new ObjectArrayCodec<>(componentType, componentTypeInfo, NullHandling.SET);
   }
 
   /** Returns the exact unsigned primitive-array specialization for one semantic array id. */
@@ -230,11 +243,11 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   // Their representation-specific reader call sites remain within the measured performance gate;
   // duplicate complete loops only when a concrete C2 regression proves that ownership necessary.
   public abstract static class IntArrayCodec extends ArrayCodec<int[]> {
-    private static final IntArrayCodec INSTANCE = new SignedIntArrayCodec();
-    private static final IntArrayCodec UNSIGNED = new UnsignedIntArrayCodec();
+    private static final IntArrayCodec INSTANCE = new SignedIntArrayCodec(NullHandling.SET);
+    private static final IntArrayCodec UNSIGNED = new UnsignedIntArrayCodec(NullHandling.SET);
 
-    private IntArrayCodec() {
-      super(int.class);
+    private IntArrayCodec(NullHandling onContentNullRead) {
+      super(int.class, onContentNullRead);
     }
 
     abstract void writeElement(StringJsonWriter writer, int value);
@@ -291,6 +304,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       int[] values = new int[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Integer.BYTES);
         }
@@ -318,6 +337,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       int[] values = new int[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Integer.BYTES);
         }
@@ -345,6 +370,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       int[] values = new int[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Integer.BYTES);
         }
@@ -360,6 +391,15 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   private static final class SignedIntArrayCodec extends IntArrayCodec {
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new SignedIntArrayCodec(handling);
+    }
+
+    private SignedIntArrayCodec(NullHandling onContentNullRead) {
+      super(onContentNullRead);
+    }
+
     @Override
     void writeElement(StringJsonWriter writer, int value) {
       writer.writeInt(value);
@@ -387,6 +427,15 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   private static final class UnsignedIntArrayCodec extends IntArrayCodec {
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new UnsignedIntArrayCodec(handling);
+    }
+
+    private UnsignedIntArrayCodec(NullHandling onContentNullRead) {
+      super(onContentNullRead);
+    }
+
     @Override
     void writeElement(StringJsonWriter writer, int value) {
       writer.writeUnsignedInt(value);
@@ -417,10 +466,15 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   // semantic element hook makes C2 inline the root and array loop into one unstable graph; the
   // unsigned codec below owns separate primitive operations so neither warmed path branches.
   public static class LongArrayCodec extends ArrayCodec<long[]> {
-    private static final LongArrayCodec INSTANCE = new LongArrayCodec();
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new LongArrayCodec(handling);
+    }
 
-    protected LongArrayCodec() {
-      super(long.class);
+    private static final LongArrayCodec INSTANCE = new LongArrayCodec(NullHandling.SET);
+
+    protected LongArrayCodec(NullHandling onContentNullRead) {
+      super(long.class, onContentNullRead);
     }
 
     private static void finishArray(JsonReader reader, int size) {
@@ -467,6 +521,9 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       if (reader.consumeNextToken(']')) {
         finishArray(reader, 0);
         return new long[0];
+      }
+      if (onContentNullRead != NullHandling.SET) {
+        return readContents(reader);
       }
       long v0 = reader.readLongValue();
       if (!reader.consumeNextCommaOrEndArray()) {
@@ -559,6 +616,9 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         finishArray(reader, 0);
         return new long[0];
       }
+      if (onContentNullRead != NullHandling.SET) {
+        return readContents(reader);
+      }
       long v0 = reader.readLongValue();
       if (!reader.consumeNextCommaOrEndArray()) {
         finishArray(reader, 1);
@@ -650,6 +710,9 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         finishArray(reader, 0);
         return new long[0];
       }
+      if (onContentNullRead != NullHandling.SET) {
+        return readContents(reader);
+      }
       long v0 = reader.readLongValue();
       if (!reader.consumeNextCommaOrEndArray()) {
         finishArray(reader, 1);
@@ -731,13 +794,87 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       finishArray(reader, size);
       return size == values.length ? values : Arrays.copyOf(values, size);
     }
+
+    private long[] readContents(Latin1JsonReader reader) {
+      long[] values = new long[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
+        if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
+          reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Long.BYTES);
+        }
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readLongValue();
+      } while (reader.consumeNextCommaOrEndArray());
+      finishArray(reader, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
+    }
+
+    private long[] readContents(Utf16JsonReader reader) {
+      long[] values = new long[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
+        if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
+          reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Long.BYTES);
+        }
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readLongValue();
+      } while (reader.consumeNextCommaOrEndArray());
+      finishArray(reader, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
+    }
+
+    private long[] readContents(Utf8JsonReader reader) {
+      long[] values = new long[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
+        if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
+          reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Long.BYTES);
+        }
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readLongValue();
+      } while (reader.consumeNextCommaOrEndArray());
+      finishArray(reader, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
+    }
   }
 
   /** Exact signed long-array specialization which writes each element as a JSON string. */
   public static final class LongAsStringArrayCodec extends LongArrayCodec {
-    private static final LongAsStringArrayCodec INSTANCE = new LongAsStringArrayCodec();
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new LongAsStringArrayCodec(handling);
+    }
 
-    private LongAsStringArrayCodec() {}
+    private static final LongAsStringArrayCodec INSTANCE =
+        new LongAsStringArrayCodec(NullHandling.SET);
+
+    private LongAsStringArrayCodec(NullHandling onContentNullRead) {
+      super(onContentNullRead);
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, long[] value) {
@@ -769,10 +906,16 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   private static class UnsignedLongArrayCodec extends ArrayCodec<long[]> {
-    private static final UnsignedLongArrayCodec INSTANCE = new UnsignedLongArrayCodec();
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new UnsignedLongArrayCodec(handling);
+    }
 
-    private UnsignedLongArrayCodec() {
-      super(long.class);
+    private static final UnsignedLongArrayCodec INSTANCE =
+        new UnsignedLongArrayCodec(NullHandling.SET);
+
+    private UnsignedLongArrayCodec(NullHandling onContentNullRead) {
+      super(long.class, onContentNullRead);
     }
 
     @Override
@@ -829,6 +972,9 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       if (reader.consumeNextToken(']')) {
         finishPrimitiveArray(reader, 0, Long.BYTES);
         return new long[0];
+      }
+      if (onContentNullRead != NullHandling.SET) {
+        return readContents(reader);
       }
       long v0 = reader.readUnsignedLong();
       if (!reader.consumeNextCommaOrEndArray()) {
@@ -892,13 +1038,42 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       finishPrimitiveArray(reader, size, Long.BYTES);
       return size == values.length ? values : Arrays.copyOf(values, size);
     }
+
+    private long[] readContents(JsonReader reader) {
+      long[] values = new long[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
+        if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
+          reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Long.BYTES);
+        }
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readUnsignedLong();
+      } while (reader.consumeNextCommaOrEndArray());
+      finishPrimitiveArray(reader, size, Long.BYTES);
+      return size == values.length ? values : Arrays.copyOf(values, size);
+    }
   }
 
   private static final class UnsignedLongAsStringArrayCodec extends UnsignedLongArrayCodec {
-    private static final UnsignedLongAsStringArrayCodec INSTANCE =
-        new UnsignedLongAsStringArrayCodec();
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new UnsignedLongAsStringArrayCodec(handling);
+    }
 
-    private UnsignedLongAsStringArrayCodec() {}
+    private static final UnsignedLongAsStringArrayCodec INSTANCE =
+        new UnsignedLongAsStringArrayCodec(NullHandling.SET);
+
+    private UnsignedLongAsStringArrayCodec(NullHandling onContentNullRead) {
+      super(onContentNullRead);
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, long[] value) {
@@ -930,11 +1105,16 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class BooleanArrayCodec extends ArrayCodec<boolean[]> {
-    private static final BooleanArrayCodec INSTANCE = new BooleanArrayCodec();
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new BooleanArrayCodec(handling);
+    }
+
+    private static final BooleanArrayCodec INSTANCE = new BooleanArrayCodec(NullHandling.SET);
     private static final int ELEMENT_BYTES = 1;
 
-    private BooleanArrayCodec() {
-      super(boolean.class);
+    private BooleanArrayCodec(NullHandling onContentNullRead) {
+      super(boolean.class, onContentNullRead);
     }
 
     @Override
@@ -993,6 +1173,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       boolean[] values = new boolean[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * ELEMENT_BYTES);
         }
@@ -1020,6 +1206,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       boolean[] values = new boolean[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * ELEMENT_BYTES);
         }
@@ -1047,6 +1239,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       boolean[] values = new boolean[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * ELEMENT_BYTES);
         }
@@ -1062,11 +1260,11 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public abstract static class ShortArrayCodec extends ArrayCodec<short[]> {
-    private static final ShortArrayCodec INSTANCE = new SignedShortArrayCodec();
-    private static final ShortArrayCodec UNSIGNED = new UnsignedShortArrayCodec();
+    private static final ShortArrayCodec INSTANCE = new SignedShortArrayCodec(NullHandling.SET);
+    private static final ShortArrayCodec UNSIGNED = new UnsignedShortArrayCodec(NullHandling.SET);
 
-    private ShortArrayCodec() {
-      super(short.class);
+    private ShortArrayCodec(NullHandling onContentNullRead) {
+      super(short.class, onContentNullRead);
     }
 
     abstract void writeElement(StringJsonWriter writer, short value);
@@ -1123,6 +1321,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       short[] values = new short[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Short.BYTES);
         }
@@ -1150,6 +1354,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       short[] values = new short[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Short.BYTES);
         }
@@ -1177,6 +1387,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       short[] values = new short[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Short.BYTES);
         }
@@ -1192,6 +1408,15 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   private static final class SignedShortArrayCodec extends ShortArrayCodec {
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new SignedShortArrayCodec(handling);
+    }
+
+    private SignedShortArrayCodec(NullHandling onContentNullRead) {
+      super(onContentNullRead);
+    }
+
     @Override
     void writeElement(StringJsonWriter writer, short value) {
       writer.writeInt(value);
@@ -1219,6 +1444,15 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   private static final class UnsignedShortArrayCodec extends ShortArrayCodec {
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new UnsignedShortArrayCodec(handling);
+    }
+
+    private UnsignedShortArrayCodec(NullHandling onContentNullRead) {
+      super(onContentNullRead);
+    }
+
     @Override
     void writeElement(StringJsonWriter writer, short value) {
       writer.writeInt(Short.toUnsignedInt(value));
@@ -1250,12 +1484,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
     // borrow the string decode buffer, so arrays may use it until the detached result is copied.
     private static final long[] SIGNED_TOKENS = decimalTokens(false);
     private static final long[] UNSIGNED_TOKENS = decimalTokens(true);
-    private static final ByteArrayCodec SIGNED = new SignedByteArrayCodec();
-    private static final ByteArrayCodec UNSIGNED = new UnsignedByteArrayCodec();
+    private static final ByteArrayCodec SIGNED = new SignedByteArrayCodec(NullHandling.SET);
+    private static final ByteArrayCodec UNSIGNED = new UnsignedByteArrayCodec(NullHandling.SET);
     private final long[] tokens;
 
-    private ByteArrayCodec(long[] tokens) {
-      super(byte.class);
+    private ByteArrayCodec(long[] tokens, NullHandling onContentNullRead) {
+      super(byte.class, onContentNullRead);
       this.tokens = tokens;
     }
 
@@ -1350,6 +1584,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       byte[] values = reader.getStringDecodeBuffer();
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Byte.BYTES);
         }
@@ -1377,6 +1617,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       byte[] values = reader.getStringDecodeBuffer();
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Byte.BYTES);
         }
@@ -1404,6 +1650,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       byte[] values = reader.getStringDecodeBuffer();
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Byte.BYTES);
         }
@@ -1420,8 +1672,17 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
 
   /** A complete {@code byte[]} codec using a JSON array of signed byte values. */
   public static final class SignedByteArrayCodec extends ByteArrayCodec {
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new SignedByteArrayCodec(handling);
+    }
+
     public SignedByteArrayCodec() {
-      super(ByteArrayCodec.SIGNED_TOKENS);
+      this(NullHandling.SET);
+    }
+
+    private SignedByteArrayCodec(NullHandling onContentNullRead) {
+      super(ByteArrayCodec.SIGNED_TOKENS, onContentNullRead);
     }
 
     @Override
@@ -1451,8 +1712,13 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   private static final class UnsignedByteArrayCodec extends ByteArrayCodec {
-    private UnsignedByteArrayCodec() {
-      super(ByteArrayCodec.UNSIGNED_TOKENS);
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new UnsignedByteArrayCodec(handling);
+    }
+
+    private UnsignedByteArrayCodec(NullHandling onContentNullRead) {
+      super(ByteArrayCodec.UNSIGNED_TOKENS, onContentNullRead);
     }
 
     @Override
@@ -1482,10 +1748,15 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class CharArrayCodec extends ArrayCodec<char[]> {
-    private static final CharArrayCodec INSTANCE = new CharArrayCodec();
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new CharArrayCodec(handling);
+    }
 
-    private CharArrayCodec() {
-      super(char.class);
+    private static final CharArrayCodec INSTANCE = new CharArrayCodec(NullHandling.SET);
+
+    private CharArrayCodec(NullHandling onContentNullRead) {
+      super(char.class, onContentNullRead);
     }
 
     @Override
@@ -1550,6 +1821,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       char[] values = new char[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Character.BYTES);
         }
@@ -1577,6 +1854,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       char[] values = new char[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Character.BYTES);
         }
@@ -1604,6 +1887,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       char[] values = new char[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Character.BYTES);
         }
@@ -1619,10 +1908,15 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class FloatArrayCodec extends ArrayCodec<float[]> {
-    private static final FloatArrayCodec INSTANCE = new FloatArrayCodec();
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new FloatArrayCodec(handling);
+    }
 
-    private FloatArrayCodec() {
-      super(float.class);
+    private static final FloatArrayCodec INSTANCE = new FloatArrayCodec(NullHandling.SET);
+
+    private FloatArrayCodec(NullHandling onContentNullRead) {
+      super(float.class, onContentNullRead);
     }
 
     @Override
@@ -1670,6 +1964,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       float[] values = new float[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Float.BYTES);
         }
@@ -1696,6 +1996,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       float[] values = new float[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Float.BYTES);
         }
@@ -1722,6 +2028,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       float[] values = new float[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Float.BYTES);
         }
@@ -1736,10 +2048,15 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class DoubleArrayCodec extends ArrayCodec<double[]> {
-    private static final DoubleArrayCodec INSTANCE = new DoubleArrayCodec();
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new DoubleArrayCodec(handling);
+    }
 
-    private DoubleArrayCodec() {
-      super(double.class);
+    private static final DoubleArrayCodec INSTANCE = new DoubleArrayCodec(NullHandling.SET);
+
+    private DoubleArrayCodec(NullHandling onContentNullRead) {
+      super(double.class, onContentNullRead);
     }
 
     @Override
@@ -1786,6 +2103,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       double[] values = new double[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Double.BYTES);
         }
@@ -1812,6 +2135,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       double[] values = new double[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Double.BYTES);
         }
@@ -1838,6 +2167,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       double[] values = new double[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * Double.BYTES);
         }
@@ -1852,12 +2187,17 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class StringArrayCodec extends ArrayCodec<String[]> {
-    private static final StringArrayCodec INSTANCE = new StringArrayCodec(false);
-    private static final StringArrayCodec NON_NULL = new StringArrayCodec(true);
-    private final boolean rejectsNull;
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new StringArrayCodec(rejectsNull, handling);
+    }
 
-    private StringArrayCodec(boolean rejectsNull) {
-      super(String.class);
+    private static final StringArrayCodec INSTANCE = new StringArrayCodec(false, NullHandling.SET);
+    private static final StringArrayCodec NON_NULL = new StringArrayCodec(true, NullHandling.SET);
+    final boolean rejectsNull;
+
+    private StringArrayCodec(boolean rejectsNull, NullHandling onContentNullRead) {
+      super(String.class, onContentNullRead);
       this.rejectsNull = rejectsNull;
     }
 
@@ -1930,6 +2270,9 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       if (reader.consumeNextToken(']')) {
         finishReferenceArray(reader, 0);
         return new String[0];
+      }
+      if (onContentNullRead != NullHandling.SET) {
+        return readContents(reader);
       }
       String v0 = readElement(reader);
       if (!reader.consumeNextCommaOrEndArray()) {
@@ -2028,6 +2371,9 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         finishReferenceArray(reader, 0);
         return new String[0];
       }
+      if (onContentNullRead != NullHandling.SET) {
+        return readContents(reader);
+      }
       String v0 = readElement(reader);
       if (!reader.consumeNextCommaOrEndArray()) {
         finishReferenceArray(reader, 1);
@@ -2125,6 +2471,9 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
         finishReferenceArray(reader, 0);
         return new String[0];
       }
+      if (onContentNullRead != NullHandling.SET) {
+        return readContents(reader);
+      }
       String v0 = readElement(reader);
       if (!reader.consumeNextCommaOrEndArray()) {
         finishReferenceArray(reader, 1);
@@ -2212,15 +2561,83 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       finishReferenceArray(reader, size);
       return Arrays.copyOf(values, size);
     }
+
+    private String[] readContents(Latin1JsonReader reader) {
+      String[] values = new String[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
+        reserveReferenceBatch(reader, size);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = readElement(reader);
+      } while (reader.consumeNextCommaOrEndArray());
+      finishReferenceArray(reader, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
+    }
+
+    private String[] readContents(Utf16JsonReader reader) {
+      String[] values = new String[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
+        reserveReferenceBatch(reader, size);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = readElement(reader);
+      } while (reader.consumeNextCommaOrEndArray());
+      finishReferenceArray(reader, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
+    }
+
+    private String[] readContents(Utf8JsonReader reader) {
+      String[] values = new String[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
+        reserveReferenceBatch(reader, size);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = readElement(reader);
+      } while (reader.consumeNextCommaOrEndArray());
+      finishReferenceArray(reader, size);
+      return size == values.length ? values : Arrays.copyOf(values, size);
+    }
   }
 
   private static class ObjectArrayCodec<T> extends ArrayCodec<T> {
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead
+          ? this
+          : new ObjectArrayCodec<>(componentType, elementTypeInfo, handling);
+    }
+
     private static final int INITIAL_VALUES_SIZE = 8;
 
-    private final JsonTypeInfo elementTypeInfo;
+    final JsonTypeInfo elementTypeInfo;
 
-    private ObjectArrayCodec(Class<?> componentType, JsonTypeInfo elementTypeInfo) {
-      super(componentType);
+    private ObjectArrayCodec(
+        Class<?> componentType, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(componentType, onContentNullRead);
       this.elementTypeInfo = elementTypeInfo;
     }
 
@@ -2285,6 +2702,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       reader.expectNextToken('[');
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullElement();
+            }
+            continue;
+          }
           reserveReferenceBatch(reader, size);
           if (size == values.length) {
             values = Arrays.copyOf(values, values.length << 1);
@@ -2311,6 +2734,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       reader.expectNextToken('[');
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullElement();
+            }
+            continue;
+          }
           reserveReferenceBatch(reader, size);
           if (size == values.length) {
             values = Arrays.copyOf(values, values.length << 1);
@@ -2337,6 +2766,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       reader.expectNextToken('[');
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullElement();
+            }
+            continue;
+          }
           reserveReferenceBatch(reader, size);
           if (size == values.length) {
             values = Arrays.copyOf(values, values.length << 1);
@@ -2378,12 +2813,22 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   private static final class EnumArrayCodec<T> extends ObjectArrayCodec<T> {
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead
+          ? this
+          : new EnumArrayCodec<>(componentType, elementTypeInfo, enumCodec, handling);
+    }
+
     private final StringEnumCodec<Object> enumCodec;
 
     @SuppressWarnings("unchecked")
     private EnumArrayCodec(
-        Class<?> componentType, JsonTypeInfo elementTypeInfo, StringEnumCodec<?> enumCodec) {
-      super(componentType, elementTypeInfo);
+        Class<?> componentType,
+        JsonTypeInfo elementTypeInfo,
+        StringEnumCodec<?> enumCodec,
+        NullHandling onContentNullRead) {
+      super(componentType, elementTypeInfo, onContentNullRead);
       this.enumCodec = (StringEnumCodec<Object>) enumCodec;
     }
 
@@ -2434,8 +2879,16 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   private static final class NonNullObjectArrayCodec<T> extends ObjectArrayCodec<T> {
-    private NonNullObjectArrayCodec(Class<?> componentType, JsonTypeInfo elementTypeInfo) {
-      super(componentType, elementTypeInfo);
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead
+          ? this
+          : new NonNullObjectArrayCodec<>(componentType, elementTypeInfo, handling);
+    }
+
+    private NonNullObjectArrayCodec(
+        Class<?> componentType, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(componentType, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -2484,13 +2937,21 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   private static final class CustomPrimitiveArrayCodec<T> extends ArrayCodec<T> {
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead
+          ? this
+          : new CustomPrimitiveArrayCodec<>(componentType, elementTypeInfo, handling);
+    }
+
     private static final int INITIAL_SIZE = 8;
 
-    private final JsonTypeInfo elementTypeInfo;
+    final JsonTypeInfo elementTypeInfo;
     private final int elementBytes;
 
-    private CustomPrimitiveArrayCodec(Class<?> componentType, JsonTypeInfo elementTypeInfo) {
-      super(componentType);
+    private CustomPrimitiveArrayCodec(
+        Class<?> componentType, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(componentType, onContentNullRead);
       this.elementTypeInfo = elementTypeInfo;
       elementBytes = TypeUtils.getSizeOfPrimitiveType(componentType);
     }
@@ -2545,6 +3006,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       int size = 0;
       Latin1ReaderCodec<Object> codec = elementTypeInfo.latin1Reader();
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * elementBytes);
         }
@@ -2576,6 +3043,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       int size = 0;
       Utf16ReaderCodec<Object> codec = elementTypeInfo.utf16Reader();
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * elementBytes);
         }
@@ -2607,6 +3080,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       int size = 0;
       Utf8ReaderCodec<Object> codec = elementTypeInfo.utf8Reader();
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         if ((size & ARRAY_BATCH_MASK) == ARRAY_BATCH_MASK) {
           reader.reserveGraphMemory(ARRAY_BATCH_SIZE * elementBytes);
         }
@@ -2658,12 +3137,19 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class BoxedIntArrayCodec extends ArrayCodec<Integer[]> {
-    private static final BoxedIntArrayCodec INSTANCE = new BoxedIntArrayCodec(false);
-    private static final BoxedIntArrayCodec NON_NULL = new BoxedIntArrayCodec(true);
-    private final boolean rejectsNull;
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new BoxedIntArrayCodec(rejectsNull, handling);
+    }
 
-    private BoxedIntArrayCodec(boolean rejectsNull) {
-      super(Integer.class);
+    private static final BoxedIntArrayCodec INSTANCE =
+        new BoxedIntArrayCodec(false, NullHandling.SET);
+    private static final BoxedIntArrayCodec NON_NULL =
+        new BoxedIntArrayCodec(true, NullHandling.SET);
+    final boolean rejectsNull;
+
+    private BoxedIntArrayCodec(boolean rejectsNull, NullHandling onContentNullRead) {
+      super(Integer.class, onContentNullRead);
       this.rejectsNull = rejectsNull;
     }
 
@@ -2721,6 +3207,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Integer[] values = new Integer[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -2749,6 +3241,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Integer[] values = new Integer[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -2777,6 +3275,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Integer[] values = new Integer[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -2793,12 +3297,19 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static class BoxedLongArrayCodec extends ArrayCodec<Long[]> {
-    private static final BoxedLongArrayCodec INSTANCE = new BoxedLongArrayCodec(false);
-    private static final BoxedLongArrayCodec NON_NULL = new BoxedLongArrayCodec(true);
-    private final boolean rejectsNull;
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new BoxedLongArrayCodec(rejectsNull, handling);
+    }
 
-    protected BoxedLongArrayCodec(boolean rejectsNull) {
-      super(Long.class);
+    private static final BoxedLongArrayCodec INSTANCE =
+        new BoxedLongArrayCodec(false, NullHandling.SET);
+    private static final BoxedLongArrayCodec NON_NULL =
+        new BoxedLongArrayCodec(true, NullHandling.SET);
+    final boolean rejectsNull;
+
+    protected BoxedLongArrayCodec(boolean rejectsNull, NullHandling onContentNullRead) {
+      super(Long.class, onContentNullRead);
       this.rejectsNull = rejectsNull;
     }
 
@@ -2856,6 +3367,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Long[] values = new Long[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -2884,6 +3401,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Long[] values = new Long[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -2912,6 +3435,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Long[] values = new Long[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -2928,15 +3457,22 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   private static final class BoxedLongAsStringArrayCodec extends BoxedLongArrayCodec {
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead
+          ? this
+          : new BoxedLongAsStringArrayCodec(rejectsNull, handling);
+    }
+
     private static final BoxedLongAsStringArrayCodec INSTANCE =
-        new BoxedLongAsStringArrayCodec(false);
+        new BoxedLongAsStringArrayCodec(false, NullHandling.SET);
     private static final BoxedLongAsStringArrayCodec NON_NULL =
-        new BoxedLongAsStringArrayCodec(true);
+        new BoxedLongAsStringArrayCodec(true, NullHandling.SET);
 
-    private final boolean rejectsNull;
+    final boolean rejectsNull;
 
-    private BoxedLongAsStringArrayCodec(boolean rejectsNull) {
-      super(rejectsNull);
+    private BoxedLongAsStringArrayCodec(boolean rejectsNull, NullHandling onContentNullRead) {
+      super(rejectsNull, onContentNullRead);
       this.rejectsNull = rejectsNull;
     }
 
@@ -2980,12 +3516,21 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class BoxedBooleanArrayCodec extends ArrayCodec<Boolean[]> {
-    private static final BoxedBooleanArrayCodec INSTANCE = new BoxedBooleanArrayCodec(false);
-    private static final BoxedBooleanArrayCodec NON_NULL = new BoxedBooleanArrayCodec(true);
-    private final boolean rejectsNull;
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead
+          ? this
+          : new BoxedBooleanArrayCodec(rejectsNull, handling);
+    }
 
-    private BoxedBooleanArrayCodec(boolean rejectsNull) {
-      super(Boolean.class);
+    private static final BoxedBooleanArrayCodec INSTANCE =
+        new BoxedBooleanArrayCodec(false, NullHandling.SET);
+    private static final BoxedBooleanArrayCodec NON_NULL =
+        new BoxedBooleanArrayCodec(true, NullHandling.SET);
+    final boolean rejectsNull;
+
+    private BoxedBooleanArrayCodec(boolean rejectsNull, NullHandling onContentNullRead) {
+      super(Boolean.class, onContentNullRead);
       this.rejectsNull = rejectsNull;
     }
 
@@ -3043,6 +3588,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Boolean[] values = new Boolean[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3071,6 +3622,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Boolean[] values = new Boolean[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3099,6 +3656,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Boolean[] values = new Boolean[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3115,12 +3678,19 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class BoxedShortArrayCodec extends ArrayCodec<Short[]> {
-    private static final BoxedShortArrayCodec INSTANCE = new BoxedShortArrayCodec(false);
-    private static final BoxedShortArrayCodec NON_NULL = new BoxedShortArrayCodec(true);
-    private final boolean rejectsNull;
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new BoxedShortArrayCodec(rejectsNull, handling);
+    }
 
-    private BoxedShortArrayCodec(boolean rejectsNull) {
-      super(Short.class);
+    private static final BoxedShortArrayCodec INSTANCE =
+        new BoxedShortArrayCodec(false, NullHandling.SET);
+    private static final BoxedShortArrayCodec NON_NULL =
+        new BoxedShortArrayCodec(true, NullHandling.SET);
+    final boolean rejectsNull;
+
+    private BoxedShortArrayCodec(boolean rejectsNull, NullHandling onContentNullRead) {
+      super(Short.class, onContentNullRead);
       this.rejectsNull = rejectsNull;
     }
 
@@ -3178,6 +3748,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Short[] values = new Short[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3206,6 +3782,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Short[] values = new Short[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3234,6 +3816,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Short[] values = new Short[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3250,12 +3838,19 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class BoxedByteArrayCodec extends ArrayCodec<Byte[]> {
-    private static final BoxedByteArrayCodec INSTANCE = new BoxedByteArrayCodec(false);
-    private static final BoxedByteArrayCodec NON_NULL = new BoxedByteArrayCodec(true);
-    private final boolean rejectsNull;
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new BoxedByteArrayCodec(rejectsNull, handling);
+    }
 
-    private BoxedByteArrayCodec(boolean rejectsNull) {
-      super(Byte.class);
+    private static final BoxedByteArrayCodec INSTANCE =
+        new BoxedByteArrayCodec(false, NullHandling.SET);
+    private static final BoxedByteArrayCodec NON_NULL =
+        new BoxedByteArrayCodec(true, NullHandling.SET);
+    final boolean rejectsNull;
+
+    private BoxedByteArrayCodec(boolean rejectsNull, NullHandling onContentNullRead) {
+      super(Byte.class, onContentNullRead);
       this.rejectsNull = rejectsNull;
     }
 
@@ -3313,6 +3908,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Byte[] values = new Byte[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3341,6 +3942,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Byte[] values = new Byte[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3369,6 +3976,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Byte[] values = new Byte[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3385,12 +3998,19 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class BoxedCharArrayCodec extends ArrayCodec<Character[]> {
-    private static final BoxedCharArrayCodec INSTANCE = new BoxedCharArrayCodec(false);
-    private static final BoxedCharArrayCodec NON_NULL = new BoxedCharArrayCodec(true);
-    private final boolean rejectsNull;
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new BoxedCharArrayCodec(rejectsNull, handling);
+    }
 
-    private BoxedCharArrayCodec(boolean rejectsNull) {
-      super(Character.class);
+    private static final BoxedCharArrayCodec INSTANCE =
+        new BoxedCharArrayCodec(false, NullHandling.SET);
+    private static final BoxedCharArrayCodec NON_NULL =
+        new BoxedCharArrayCodec(true, NullHandling.SET);
+    final boolean rejectsNull;
+
+    private BoxedCharArrayCodec(boolean rejectsNull, NullHandling onContentNullRead) {
+      super(Character.class, onContentNullRead);
       this.rejectsNull = rejectsNull;
     }
 
@@ -3448,6 +4068,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Character[] values = new Character[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3475,6 +4101,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Character[] values = new Character[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3502,6 +4134,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Character[] values = new Character[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3517,12 +4155,19 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class BoxedFloatArrayCodec extends ArrayCodec<Float[]> {
-    private static final BoxedFloatArrayCodec INSTANCE = new BoxedFloatArrayCodec(false);
-    private static final BoxedFloatArrayCodec NON_NULL = new BoxedFloatArrayCodec(true);
-    private final boolean rejectsNull;
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new BoxedFloatArrayCodec(rejectsNull, handling);
+    }
 
-    private BoxedFloatArrayCodec(boolean rejectsNull) {
-      super(Float.class);
+    private static final BoxedFloatArrayCodec INSTANCE =
+        new BoxedFloatArrayCodec(false, NullHandling.SET);
+    private static final BoxedFloatArrayCodec NON_NULL =
+        new BoxedFloatArrayCodec(true, NullHandling.SET);
+    final boolean rejectsNull;
+
+    private BoxedFloatArrayCodec(boolean rejectsNull, NullHandling onContentNullRead) {
+      super(Float.class, onContentNullRead);
       this.rejectsNull = rejectsNull;
     }
 
@@ -3580,6 +4225,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Float[] values = new Float[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3607,6 +4258,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Float[] values = new Float[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3634,6 +4291,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Float[] values = new Float[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3649,12 +4312,21 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   }
 
   public static final class BoxedDoubleArrayCodec extends ArrayCodec<Double[]> {
-    private static final BoxedDoubleArrayCodec INSTANCE = new BoxedDoubleArrayCodec(false);
-    private static final BoxedDoubleArrayCodec NON_NULL = new BoxedDoubleArrayCodec(true);
-    private final boolean rejectsNull;
+    @Override
+    public ArrayCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead
+          ? this
+          : new BoxedDoubleArrayCodec(rejectsNull, handling);
+    }
 
-    private BoxedDoubleArrayCodec(boolean rejectsNull) {
-      super(Double.class);
+    private static final BoxedDoubleArrayCodec INSTANCE =
+        new BoxedDoubleArrayCodec(false, NullHandling.SET);
+    private static final BoxedDoubleArrayCodec NON_NULL =
+        new BoxedDoubleArrayCodec(true, NullHandling.SET);
+    final boolean rejectsNull;
+
+    private BoxedDoubleArrayCodec(boolean rejectsNull, NullHandling onContentNullRead) {
+      super(Double.class, onContentNullRead);
       this.rejectsNull = rejectsNull;
     }
 
@@ -3712,6 +4384,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Double[] values = new Double[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3739,6 +4417,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Double[] values = new Double[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3766,6 +4450,12 @@ public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
       Double[] values = new Double[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);

@@ -28,6 +28,7 @@ import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -36,8 +37,14 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import org.apache.fory.codegen.CodeGenerator;
+import org.apache.fory.codegen.CompileUnit;
+import org.apache.fory.codegen.JaninoUtils;
+import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.Utf8WriterCodec;
+import org.apache.fory.json.codegen.JsonCodegen;
 import org.apache.fory.json.data.GeneratedCollectionFields;
 import org.apache.fory.json.data.PublicFields;
 import org.apache.fory.json.data.RecursiveChild;
@@ -49,7 +56,10 @@ import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.util.ClassLoaderUtils.ByteArrayClassLoader;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class JsonGeneratedCodecTest extends ForyJsonTestModels {
@@ -431,6 +441,97 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     }
   }
 
+  @Test
+  public void writeGeneratedFieldsPastPrefixIndexCollision() throws Exception {
+    // Prefix fields are named from the property index, so property 160 meets property 0's
+    // UTF-16 prefix names unless the two are kept apart.
+    int count = 161;
+    StringBuilder source =
+        new StringBuilder("package org.apache.fory.json.dynamic; public class ManyStringFields {");
+    for (int i = 0; i < count; i++) {
+      source.append("public String f").append(i).append(";");
+    }
+    source.append('}');
+    ClassLoader parent = getClass().getClassLoader();
+    Map<String, byte[]> classes =
+        JaninoUtils.toBytecode(
+            parent,
+            "",
+            new CompileUnit("org.apache.fory.json.dynamic", "ManyStringFields", source.toString()));
+    ClassLoader loader = new ByteArrayClassLoader(classes, parent);
+    Class<?> type = Class.forName("org.apache.fory.json.dynamic.ManyStringFields", true, loader);
+    Object value = type.getConstructor().newInstance();
+    StringBuilder expected = new StringBuilder("{");
+    for (int i = 0; i < count; i++) {
+      // A character above 0xFF makes the string writer emit the UTF-16 prefixes.
+      String text = i == 0 ? "v\u0100" : "v" + i;
+      type.getField("f" + i).set(value, text);
+      expected.append(i == 0 ? "\"" : ",\"").append('f').append(i).append("\":\"");
+      expected.append(text).append('"');
+    }
+    expected.append('}');
+
+    ForyJson json = newJsonBuilder(true).withClassLoader(loader).build();
+    assertEquals(json.toJson(value), expected.toString());
+    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected.toString());
+    Object read = json.fromJson(expected.toString(), type);
+    for (int i = 0; i < count; i++) {
+      assertEquals(type.getField("f" + i).get(read), type.getField("f" + i).get(value));
+    }
+    assertGeneratedWhenSupported(json, type, true);
+  }
+
+  @DataProvider
+  public Object[][] bytecodeSchemas() {
+    return new Object[][] {{WideWriterFields.class}, {WideMapFields.class}};
+  }
+
+  @Test(dataProvider = "bytecodeSchemas")
+  public void groupBytecode(Class<?> type) throws Exception {
+    ForyJson json = newJsonBuilder(false).writeNullFields(true).build();
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
+    ObjectCodec<?> codec = resolver.getObjectCodec(type);
+    ClassLoader loader = getClass().getClassLoader();
+    Constructor<JsonCodegen> constructor =
+        JsonCodegen.class.getDeclaredConstructor(
+            CodeGenerator.class, ClassLoader.class, boolean.class, Class.class, String.class);
+    constructor.setAccessible(true);
+    for (String role :
+        new String[] {"StringWriter", "Utf8Writer", "Latin1Reader", "Utf16Reader", "Utf8Reader"}) {
+      List<JaninoUtils.CodeStats> compiled = new ArrayList<>();
+      CodeGenerator compiler =
+          new CodeGenerator(loader) {
+            @Override
+            public ClassLoader compileDirect(
+                CompileUnit unit, JaninoUtils.DirectInvocation... invocations) {
+              Map<String, byte[]> classes = JaninoUtils.toBytecode(loader, "", unit);
+              byte[] bytes = classes.get(unit.getQualifiedClassName().replace('.', '/') + ".class");
+              compiled.add(JaninoUtils.getClassStats(bytes));
+              return new ByteArrayClassLoader(classes, loader);
+            }
+          };
+      JsonCodegen codegen = constructor.newInstance(compiler, loader, false, null, "GroupSizes");
+      Method build =
+          JsonCodegen.class.getDeclaredMethod(
+              "build" + role, ObjectCodec.class, JsonTypeResolver.class);
+      build.setAccessible(true);
+      build.invoke(codegen, codec, resolver);
+      int groups = 0;
+      for (Map.Entry<String, Integer> entry : compiled.get(0).methodsSize.entrySet()) {
+        String name = entry.getKey();
+        if (name.contains("Group") || name.startsWith("writeStringMembers")) {
+          assertTrue(entry.getValue() > 325, role + " " + entry);
+          groups++;
+        }
+      }
+      assertTrue(groups > 0, role);
+      if (!role.equals("StringWriter")) {
+        String root = role.endsWith("Reader") ? "read" + role.replace("Reader", "") : "writeUtf8";
+        assertTrue(compiled.get(0).methodsSize.get(root) > 325, role);
+      }
+    }
+  }
+
   private static void assertWideFields(WideFields value) {
     assertEquals(value.f0, 0);
     assertEquals(value.f1, "one");
@@ -470,6 +571,42 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     public double longitude;
     public String favoriteFruit;
     public String shortName;
+  }
+
+  public static class WideMapFields {
+    public int first;
+    public Map<String, String> f01;
+    public Map<String, String> f02;
+    public Map<String, String> f03;
+    public Map<String, String> f04;
+    public Map<String, String> f05;
+    public Map<String, String> f06;
+    public Map<String, String> f07;
+    public Map<String, String> f08;
+    public Map<String, String> f09;
+    public Map<String, String> f10;
+    public Map<String, String> f11;
+    public Map<String, String> f12;
+    public Map<String, String> f13;
+    public Map<String, String> f14;
+    public Map<String, String> f15;
+    public Map<String, String> f16;
+    public Map<String, String> f17;
+    public Map<String, String> f18;
+    public Map<String, String> f19;
+    public Map<String, String> f20;
+    public Map<String, String> f21;
+    public Map<String, String> f22;
+    public Map<String, String> f23;
+    public Map<String, String> f24;
+    public Map<String, String> f25;
+    public Map<String, String> f26;
+    public Map<String, String> f27;
+    public Map<String, String> f28;
+    public Map<String, String> f29;
+    public Map<String, String> f30;
+    public Map<String, String> f31;
+    public Map<String, String> f32;
   }
 
   public static class PrefixFields {

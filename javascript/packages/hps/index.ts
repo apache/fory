@@ -31,7 +31,17 @@ const build = () => {
         if (typeof v !== "string") {
           throw new Error(`isLatin1 requires string but got ${typeof v}`);
         }
-        // todo boundary check
+        // The native callback converts offsets to uint32_t before unchecked writes.
+        if (offset !== offset >>> 0) {
+          throw new RangeError("serializeString offset must be an unsigned 32-bit integer");
+        }
+        // The native writer copies without bounds checks: a 5-byte varint header
+        // plus at most 2 bytes per UTF-16 code unit must fit in `dist`.
+        if (offset + 5 + v.length * 2 > dist.byteLength) {
+          throw new RangeError(
+            `serializeString needs up to ${5 + v.length * 2} bytes at offset ${offset} but buffer length is ${dist.byteLength}`,
+          );
+        }
         return _serializeString(dist, v, offset, 0);
       },
     };

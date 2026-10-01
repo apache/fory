@@ -21,9 +21,11 @@ package org.apache.fory.json.scala.internal
 
 import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.annotation.JsonCodec
+import org.apache.fory.json.annotation.JsonProperty.NullHandling
 import org.apache.fory.json.codec.{
   ArrayCodec,
   CompositeJsonCodec,
+  ContainerJsonCodec,
   JsonValueCodec,
   MapCodec,
   MapKeyCodec,
@@ -43,15 +45,33 @@ import scala.reflect.ClassTag
 private[scala] final class ScalaListCodec(
     nonEmptyOnly: Boolean,
     nilOnly: Boolean,
-    runtimeType: Boolean
+    runtimeType: Boolean,
+    onContentNullRead: NullHandling
 )
-    extends CompositeJsonCodec[List[Any]] {
+    extends CompositeJsonCodec[List[Any]] with ContainerJsonCodec[List[Any]] {
+  override def withContentNullRead(handling: NullHandling): ContainerJsonCodec[_] = {
+    if (handling == onContentNullRead) return this
+    val copy = new ScalaListCodec(nonEmptyOnly, nilOnly, runtimeType, handling)
+    copy.elementInfo = elementInfo
+    copy.booleanElements = booleanElements
+    copy
+  }
+
+  private def skipNullRead(reader: JsonReader): Boolean = {
+    if (onContentNullRead == NullHandling.SET || !reader.tryReadNullToken()) return false
+    if (onContentNullRead == NullHandling.FAIL)
+      throw new ForyJsonException("Cannot read null container content")
+    true
+  }
+
   override def isEmpty(writer: JsonWriter, value: List[Any]): Boolean = value.isEmpty
 
   private var elementInfo: JsonTypeInfo = _
   private var booleanElements = false
 
   override def resolveTypes(typeRef: TypeRef[_], resolver: JsonTypeResolver): Unit = {
+    // Configured copies keep selected children; recursive copies can still require phase two.
+    if (elementInfo != null) return
     if (nilOnly) {
       elementInfo = resolver.getTypeInfo(classOf[Object], classOf[Object])
     } else {
@@ -154,9 +174,11 @@ private[scala] final class ScalaListCodec(
     if (!reader.consumeNextToken(']')) {
       var more = true
       while (more) {
-        reserveBatch(reader, size)
-        builder += codec.readLatin1(reader)
-        size += 1
+        if (!skipNullRead(reader)) {
+          reserveBatch(reader, size)
+          builder += codec.readLatin1(reader)
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndArray()
       }
     }
@@ -175,9 +197,11 @@ private[scala] final class ScalaListCodec(
     if (!reader.consumeNextToken(']')) {
       var more = true
       while (more) {
-        reserveBatch(reader, size)
-        builder += codec.readUtf16(reader)
-        size += 1
+        if (!skipNullRead(reader)) {
+          reserveBatch(reader, size)
+          builder += codec.readUtf16(reader)
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndArray()
       }
     }
@@ -196,9 +220,11 @@ private[scala] final class ScalaListCodec(
     if (!reader.consumeNextToken(']')) {
       var more = true
       while (more) {
-        reserveBatch(reader, size)
-        builder += codec.readUtf8(reader)
-        size += 1
+        if (!skipNullRead(reader)) {
+          reserveBatch(reader, size)
+          builder += codec.readUtf8(reader)
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndArray()
       }
     }
@@ -230,9 +256,33 @@ private[scala] final class ScalaIterableCodec(
     kind: Int,
     ownerBytes: Int,
     runtimeType: Boolean,
-    sequence: Boolean
+    sequence: Boolean,
+    onContentNullRead: NullHandling
 )
-    extends CompositeJsonCodec[scala.collection.Iterable[Any]] {
+    extends CompositeJsonCodec[scala.collection.Iterable[Any]]
+    with ContainerJsonCodec[scala.collection.Iterable[Any]] {
+  override def withContentNullRead(handling: NullHandling): ContainerJsonCodec[_] = {
+    if (handling == onContentNullRead) return this
+    val copy = new ScalaIterableCodec(kind, ownerBytes, runtimeType, sequence, handling)
+    copy.elementInfo = elementInfo
+    copy.elementClassTag = elementClassTag
+    copy.booleanElements = booleanElements
+    if (booleanArrayCodec != null)
+      copy.booleanArrayCodec = booleanArrayCodec.asInstanceOf[ContainerJsonCodec[Array[Boolean]]]
+        .withContentNullRead(handling).asInstanceOf[JsonValueCodec[Array[Boolean]]]
+    if (intArrayCodec != null)
+      copy.intArrayCodec = intArrayCodec.asInstanceOf[ContainerJsonCodec[Array[Int]]]
+        .withContentNullRead(handling).asInstanceOf[JsonValueCodec[Array[Int]]]
+    copy
+  }
+
+  private def skipNullRead(reader: JsonReader): Boolean = {
+    if (onContentNullRead == NullHandling.SET || !reader.tryReadNullToken()) return false
+    if (onContentNullRead == NullHandling.FAIL)
+      throw new ForyJsonException("Cannot read null container content")
+    true
+  }
+
   override def isEmpty(writer: JsonWriter, value: scala.collection.Iterable[Any]): Boolean = value.isEmpty
 
   private val resultOwnerBytes =
@@ -247,6 +297,7 @@ private[scala] final class ScalaIterableCodec(
   private var booleanElements = false
 
   override def resolveTypes(typeRef: TypeRef[_], resolver: JsonTypeResolver): Unit = {
+    if (elementInfo != null) return
     val arguments = ScalaTypeSupport.runtimeArguments(
       typeRef,
       1,
@@ -266,13 +317,15 @@ private[scala] final class ScalaIterableCodec(
       classOf[Array[Int]],
       TypeRef.of(classOf[Array[Int]]),
       resolver
-    )
+    ).asInstanceOf[ContainerJsonCodec[Array[Int]]]
+      .withContentNullRead(onContentNullRead).asInstanceOf[JsonValueCodec[Array[Int]]]
     if (kind == ScalaCollectionCodecs.ImmutableArraySeqKind) {
       if (booleanElements) booleanArrayCodec = ArrayCodec.create(
         classOf[Array[Boolean]],
         TypeRef.of(classOf[Array[Boolean]]),
         resolver
-      )
+      ).asInstanceOf[ContainerJsonCodec[Array[Boolean]]]
+        .withContentNullRead(onContentNullRead).asInstanceOf[JsonValueCodec[Array[Boolean]]]
     }
   }
 
@@ -416,9 +469,11 @@ private[scala] final class ScalaIterableCodec(
     if (!reader.consumeNextToken(']')) {
       var more = true
       while (more) {
-        ScalaCollectionCodecs.reserveElements(reader, size, retainedElementBytes)
-        builder += codec.readLatin1(reader)
-        size += 1
+        if (!skipNullRead(reader)) {
+          ScalaCollectionCodecs.reserveElements(reader, size, retainedElementBytes)
+          builder += codec.readLatin1(reader)
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndArray()
       }
     }
@@ -446,9 +501,11 @@ private[scala] final class ScalaIterableCodec(
     if (!reader.consumeNextToken(']')) {
       var more = true
       while (more) {
-        ScalaCollectionCodecs.reserveElements(reader, size, retainedElementBytes)
-        builder += codec.readUtf16(reader)
-        size += 1
+        if (!skipNullRead(reader)) {
+          ScalaCollectionCodecs.reserveElements(reader, size, retainedElementBytes)
+          builder += codec.readUtf16(reader)
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndArray()
       }
     }
@@ -476,9 +533,11 @@ private[scala] final class ScalaIterableCodec(
     if (!reader.consumeNextToken(']')) {
       var more = true
       while (more) {
-        ScalaCollectionCodecs.reserveElements(reader, size, retainedElementBytes)
-        builder += codec.readUtf8(reader)
-        size += 1
+        if (!skipNullRead(reader)) {
+          ScalaCollectionCodecs.reserveElements(reader, size, retainedElementBytes)
+          builder += codec.readUtf8(reader)
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndArray()
       }
     }
@@ -529,14 +588,32 @@ private[scala] final class ScalaIterableCodec(
   }
 }
 
-private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType: Boolean)
-    extends CompositeJsonCodec[scala.collection.Map[Any, Any]] {
+private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType: Boolean,
+    onContentNullRead: NullHandling)
+    extends CompositeJsonCodec[scala.collection.Map[Any, Any]]
+    with ContainerJsonCodec[scala.collection.Map[Any, Any]] {
+  override def withContentNullRead(handling: NullHandling): ContainerJsonCodec[_] = {
+    if (handling == onContentNullRead) return this
+    val copy = new ScalaMapCodec(kind, ownerBytes, runtimeType, handling)
+    copy.keyCodec = keyCodec
+    copy.valueInfo = valueInfo
+    copy
+  }
+
+  private def skipNullRead(reader: JsonReader): Boolean = {
+    if (onContentNullRead == NullHandling.SET || !reader.tryReadNullToken()) return false
+    if (onContentNullRead == NullHandling.FAIL)
+      throw new ForyJsonException("Cannot read null container content")
+    true
+  }
+
   override def isEmpty(writer: JsonWriter, value: scala.collection.Map[Any, Any]): Boolean = value.isEmpty
 
   private var keyCodec: MapKeyCodec = _
   private var valueInfo: JsonTypeInfo = _
 
   override def resolveTypes(typeRef: TypeRef[_], resolver: JsonTypeResolver): Unit = {
+    if (valueInfo != null) return
     val specializedKey = ScalaCollectionCodecs.specializedMapKey(kind)
     val arguments = ScalaTypeSupport.runtimeArguments(
       typeRef,
@@ -545,7 +622,7 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       runtimeType
     )
     val keyType = if (specializedKey == null) arguments(0) else specializedKey
-    keyCodec = defaultKeyCodec(keyType, resolver)
+    if (keyCodec == null) keyCodec = defaultKeyCodec(keyType, resolver)
     val valueType = arguments(if (specializedKey == null) 1 else 0)
     valueInfo = resolver.getTypeInfo(valueType, ScalaTypeSupport.rawType(valueType))
   }
@@ -727,11 +804,13 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     if (!reader.consumeNextToken('}')) {
       var more = true
       while (more) {
-        ScalaCollectionCodecs.reserveMapEntries(reader, size)
         val key = keyCodec.readName(reader)
         reader.expectNextToken(':')
-        builder += ((key, codec.readLatin1(reader)))
-        size += 1
+        if (!skipNullRead(reader)) {
+          ScalaCollectionCodecs.reserveMapEntries(reader, size)
+          builder += ((key, codec.readLatin1(reader)))
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndObject()
       }
     }
@@ -753,11 +832,13 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     if (!reader.consumeNextToken('}')) {
       var more = true
       while (more) {
-        ScalaCollectionCodecs.reserveMapEntries(reader, size)
         val key = keyCodec.readName(reader)
         reader.expectNextToken(':')
-        builder += ((key, codec.readUtf16(reader)))
-        size += 1
+        if (!skipNullRead(reader)) {
+          ScalaCollectionCodecs.reserveMapEntries(reader, size)
+          builder += ((key, codec.readUtf16(reader)))
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndObject()
       }
     }
@@ -779,11 +860,13 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     if (!reader.consumeNextToken('}')) {
       var more = true
       while (more) {
-        ScalaCollectionCodecs.reserveMapEntries(reader, size)
         val key = keyCodec.readName(reader)
         reader.expectNextToken(':')
-        builder += ((key, codec.readUtf8(reader)))
-        size += 1
+        if (!skipNullRead(reader)) {
+          ScalaCollectionCodecs.reserveMapEntries(reader, size)
+          builder += ((key, codec.readUtf8(reader)))
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndObject()
       }
     }
@@ -803,8 +886,10 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       while (more) {
         val key = reader.readFieldNameInt()
         reader.expectNextToken(':')
-        result = result.updated(key, codec.readLatin1(reader))
-        size += 1
+        if (!skipNullRead(reader)) {
+          result = result.updated(key, codec.readLatin1(reader))
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndObject()
         if (size == 16 && more) return readIntMapEntries(reader, result, size)
       }
@@ -825,8 +910,10 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       while (more) {
         val key = reader.readFieldNameInt()
         reader.expectNextToken(':')
-        result = result.updated(key, codec.readUtf16(reader))
-        size += 1
+        if (!skipNullRead(reader)) {
+          result = result.updated(key, codec.readUtf16(reader))
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndObject()
         if (size == 16 && more) return readIntMapEntries(reader, result, size)
       }
@@ -847,8 +934,10 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       while (more) {
         val key = reader.readFieldNameInt()
         reader.expectNextToken(':')
-        result = result.updated(key, codec.readUtf8(reader))
-        size += 1
+        if (!skipNullRead(reader)) {
+          result = result.updated(key, codec.readUtf8(reader))
+          size += 1
+        }
         more = reader.consumeNextCommaOrEndObject()
         if (size == 16 && more) return readIntMapEntries(reader, result, size)
       }
@@ -864,9 +953,18 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       readCount: Int
   ): scala.collection.Map[Any, Any] = {
     val codec = valueInfo.latin1Reader()
-    ScalaCollectionCodecs.reserveMapEntries(reader, readCount)
-    val firstKey = reader.readFieldNameInt()
+    var firstKey = reader.readFieldNameInt()
     reader.expectNextToken(':')
+    while (skipNullRead(reader)) {
+      if (!reader.consumeNextCommaOrEndObject()) {
+        ScalaCollectionCodecs.reserveMapTail(reader, readCount)
+        reader.exitDepth()
+        return first.asInstanceOf[scala.collection.Map[Any, Any]]
+      }
+      firstKey = reader.readFieldNameInt()
+      reader.expectNextToken(':')
+    }
+    ScalaCollectionCodecs.reserveMapEntries(reader, readCount)
     val firstValue = codec.readLatin1(reader)
     if (!reader.consumeNextCommaOrEndObject()) {
       // A single remaining entry needs no temporary arrays or subtree construction.
@@ -883,18 +981,20 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     var count = readCount + 1
     var more = true
     while (more) {
-      ScalaCollectionCodecs.reserveMapEntries(reader, count)
       val key = reader.readFieldNameInt()
       reader.expectNextToken(':')
-      val value = codec.readLatin1(reader)
-      if (size == keys.length) {
-        keys = java.util.Arrays.copyOf(keys, size << 1)
-        values = java.util.Arrays.copyOf(values, size << 1)
+      if (!skipNullRead(reader)) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, count)
+        val value = codec.readLatin1(reader)
+        if (size == keys.length) {
+          keys = java.util.Arrays.copyOf(keys, size << 1)
+          values = java.util.Arrays.copyOf(values, size << 1)
+        }
+        keys(size) = (key.toLong << 32) | size.toLong
+        values(size) = value.asInstanceOf[AnyRef]
+        size += 1
+        count += 1
       }
-      keys(size) = (key.toLong << 32) | size.toLong
-      values(size) = value.asInstanceOf[AnyRef]
-      size += 1
-      count += 1
       more = reader.consumeNextCommaOrEndObject()
     }
     ScalaCollectionCodecs.reserveMapTail(reader, count)
@@ -911,9 +1011,18 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       readCount: Int
   ): scala.collection.Map[Any, Any] = {
     val codec = valueInfo.utf16Reader()
-    ScalaCollectionCodecs.reserveMapEntries(reader, readCount)
-    val firstKey = reader.readFieldNameInt()
+    var firstKey = reader.readFieldNameInt()
     reader.expectNextToken(':')
+    while (skipNullRead(reader)) {
+      if (!reader.consumeNextCommaOrEndObject()) {
+        ScalaCollectionCodecs.reserveMapTail(reader, readCount)
+        reader.exitDepth()
+        return first.asInstanceOf[scala.collection.Map[Any, Any]]
+      }
+      firstKey = reader.readFieldNameInt()
+      reader.expectNextToken(':')
+    }
+    ScalaCollectionCodecs.reserveMapEntries(reader, readCount)
     val firstValue = codec.readUtf16(reader)
     if (!reader.consumeNextCommaOrEndObject()) {
       // A single remaining entry needs no temporary arrays or subtree construction.
@@ -930,18 +1039,20 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     var count = readCount + 1
     var more = true
     while (more) {
-      ScalaCollectionCodecs.reserveMapEntries(reader, count)
       val key = reader.readFieldNameInt()
       reader.expectNextToken(':')
-      val value = codec.readUtf16(reader)
-      if (size == keys.length) {
-        keys = java.util.Arrays.copyOf(keys, size << 1)
-        values = java.util.Arrays.copyOf(values, size << 1)
+      if (!skipNullRead(reader)) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, count)
+        val value = codec.readUtf16(reader)
+        if (size == keys.length) {
+          keys = java.util.Arrays.copyOf(keys, size << 1)
+          values = java.util.Arrays.copyOf(values, size << 1)
+        }
+        keys(size) = (key.toLong << 32) | size.toLong
+        values(size) = value.asInstanceOf[AnyRef]
+        size += 1
+        count += 1
       }
-      keys(size) = (key.toLong << 32) | size.toLong
-      values(size) = value.asInstanceOf[AnyRef]
-      size += 1
-      count += 1
       more = reader.consumeNextCommaOrEndObject()
     }
     ScalaCollectionCodecs.reserveMapTail(reader, count)
@@ -958,9 +1069,18 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
       readCount: Int
   ): scala.collection.Map[Any, Any] = {
     val codec = valueInfo.utf8Reader()
-    ScalaCollectionCodecs.reserveMapEntries(reader, readCount)
-    val firstKey = reader.readFieldNameInt()
+    var firstKey = reader.readFieldNameInt()
     reader.expectNextToken(':')
+    while (skipNullRead(reader)) {
+      if (!reader.consumeNextCommaOrEndObject()) {
+        ScalaCollectionCodecs.reserveMapTail(reader, readCount)
+        reader.exitDepth()
+        return first.asInstanceOf[scala.collection.Map[Any, Any]]
+      }
+      firstKey = reader.readFieldNameInt()
+      reader.expectNextToken(':')
+    }
+    ScalaCollectionCodecs.reserveMapEntries(reader, readCount)
     val firstValue = codec.readUtf8(reader)
     if (!reader.consumeNextCommaOrEndObject()) {
       // A single remaining entry needs no temporary arrays or subtree construction.
@@ -977,18 +1097,20 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     var count = readCount + 1
     var more = true
     while (more) {
-      ScalaCollectionCodecs.reserveMapEntries(reader, count)
       val key = reader.readFieldNameInt()
       reader.expectNextToken(':')
-      val value = codec.readUtf8(reader)
-      if (size == keys.length) {
-        keys = java.util.Arrays.copyOf(keys, size << 1)
-        values = java.util.Arrays.copyOf(values, size << 1)
+      if (!skipNullRead(reader)) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, count)
+        val value = codec.readUtf8(reader)
+        if (size == keys.length) {
+          keys = java.util.Arrays.copyOf(keys, size << 1)
+          values = java.util.Arrays.copyOf(values, size << 1)
+        }
+        keys(size) = (key.toLong << 32) | size.toLong
+        values(size) = value.asInstanceOf[AnyRef]
+        size += 1
+        count += 1
       }
-      keys(size) = (key.toLong << 32) | size.toLong
-      values(size) = value.asInstanceOf[AnyRef]
-      size += 1
-      count += 1
       more = reader.consumeNextCommaOrEndObject()
     }
     ScalaCollectionCodecs.reserveMapTail(reader, count)
@@ -1089,17 +1211,19 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     var size = 0
     var more = true
     while (more) {
-      ScalaCollectionCodecs.reserveMapEntries(reader, size)
       val key = reader.readFieldNameLong()
       reader.expectNextToken(':')
-      val value = codec.readLatin1(reader)
-      if (size == keys.length) {
-        keys = java.util.Arrays.copyOf(keys, size << 1)
-        values = java.util.Arrays.copyOf(values, size << 1)
+      if (!skipNullRead(reader)) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val value = codec.readLatin1(reader)
+        if (size == keys.length) {
+          keys = java.util.Arrays.copyOf(keys, size << 1)
+          values = java.util.Arrays.copyOf(values, size << 1)
+        }
+        keys(size) = key
+        values(size) = value.asInstanceOf[AnyRef]
+        size += 1
       }
-      keys(size) = key
-      values(size) = value.asInstanceOf[AnyRef]
-      size += 1
       more = reader.consumeNextCommaOrEndObject()
     }
     ScalaCollectionCodecs.reserveMapTail(reader, size)
@@ -1119,17 +1243,19 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     var size = 0
     var more = true
     while (more) {
-      ScalaCollectionCodecs.reserveMapEntries(reader, size)
       val key = reader.readFieldNameLong()
       reader.expectNextToken(':')
-      val value = codec.readUtf16(reader)
-      if (size == keys.length) {
-        keys = java.util.Arrays.copyOf(keys, size << 1)
-        values = java.util.Arrays.copyOf(values, size << 1)
+      if (!skipNullRead(reader)) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val value = codec.readUtf16(reader)
+        if (size == keys.length) {
+          keys = java.util.Arrays.copyOf(keys, size << 1)
+          values = java.util.Arrays.copyOf(values, size << 1)
+        }
+        keys(size) = key
+        values(size) = value.asInstanceOf[AnyRef]
+        size += 1
       }
-      keys(size) = key
-      values(size) = value.asInstanceOf[AnyRef]
-      size += 1
       more = reader.consumeNextCommaOrEndObject()
     }
     ScalaCollectionCodecs.reserveMapTail(reader, size)
@@ -1149,17 +1275,19 @@ private[scala] final class ScalaMapCodec(kind: Int, ownerBytes: Int, runtimeType
     var size = 0
     var more = true
     while (more) {
-      ScalaCollectionCodecs.reserveMapEntries(reader, size)
       val key = reader.readFieldNameLong()
       reader.expectNextToken(':')
-      val value = codec.readUtf8(reader)
-      if (size == keys.length) {
-        keys = java.util.Arrays.copyOf(keys, size << 1)
-        values = java.util.Arrays.copyOf(values, size << 1)
+      if (!skipNullRead(reader)) {
+        ScalaCollectionCodecs.reserveMapEntries(reader, size)
+        val value = codec.readUtf8(reader)
+        if (size == keys.length) {
+          keys = java.util.Arrays.copyOf(keys, size << 1)
+          values = java.util.Arrays.copyOf(values, size << 1)
+        }
+        keys(size) = key
+        values(size) = value.asInstanceOf[AnyRef]
+        size += 1
       }
-      keys(size) = key
-      values(size) = value.asInstanceOf[AnyRef]
-      size += 1
       more = reader.consumeNextCommaOrEndObject()
     }
     ScalaCollectionCodecs.reserveMapTail(reader, size)

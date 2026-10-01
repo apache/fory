@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.platform.JdkVersion;
 import org.testng.SkipException;
 import org.testng.annotations.Factory;
@@ -92,6 +93,37 @@ public class JsonRecordTest extends ForyJsonTestModels {
         ForyJsonException.class,
         () -> json.fromJson("{\"value\":null}".getBytes(StandardCharsets.UTF_8), type));
     assertGeneratedWhenSupported(json, type);
+  }
+
+  @Test
+  public void skippedNullPresence() throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 17) {
+      throw new SkipException("Java record test requires JDK 17+");
+    }
+    Class<?> type =
+        compileRecordClass(
+            "NullRecord",
+            "package org.apache.fory.json.records;\n"
+                + "import org.apache.fory.json.annotation.JsonProperty;\n"
+                + "public record NullRecord("
+                + "@JsonProperty(onNullRead=JsonProperty.NullHandling.SKIP) String value) {}\n");
+    ForyJson json = newJsonBuilder().onNullRead(NullHandling.FAIL).build();
+    ForyJson strict = newJsonBuilder().failOnMissingRequiredProperties(true).build();
+    for (String prefix : new String[] {"{", "{\"ignored\":\"中\","}) {
+      String missing = prefix + "\"value\":null}";
+      assertEquals(type.getMethod("value").invoke(json.fromJson(missing, type)), null);
+      assertThrows(ForyJsonException.class, () -> strict.fromJson(missing, type));
+      assertThrows(
+          ForyJsonException.class,
+          () -> strict.fromJson(missing.getBytes(StandardCharsets.UTF_8), type));
+      String duplicate = prefix + "\"value\":\"kept\",\"value\":null}";
+      assertEquals(type.getMethod("value").invoke(strict.fromJson(duplicate, type)), "kept");
+      assertEquals(
+          type.getMethod("value")
+              .invoke(strict.fromJson(duplicate.getBytes(StandardCharsets.UTF_8), type)),
+          "kept");
+    }
+    assertGeneratedWhenSupported(strict, type);
   }
 
   @Test

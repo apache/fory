@@ -105,6 +105,7 @@ import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonProperty.Include;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.annotation.JsonType;
@@ -112,6 +113,7 @@ import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.ClosedSubtypeCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
+import org.apache.fory.json.codec.ContainerJsonCodec;
 import org.apache.fory.json.codec.GeneratedJsonCodec;
 import org.apache.fory.json.codec.GeneratedJsonSubtypeTable;
 import org.apache.fory.json.codec.GuavaCodecs;
@@ -189,6 +191,8 @@ public final class JsonSharedRegistry {
   private final boolean propertyDiscoveryEnabled;
   private final PropertyNamingStrategy propertyNamingStrategy;
   private final Include defaultPropertyInclusion;
+  private final NullHandling onNullRead;
+  private final NullHandling onContentNullRead;
   private final boolean writeLongAsString;
   private final boolean escapeNonAscii;
   private final boolean failOnMissingRequiredProperties;
@@ -249,6 +253,8 @@ public final class JsonSharedRegistry {
     this.propertyDiscoveryEnabled = config.propertyDiscoveryEnabled();
     propertyNamingStrategy = config.propertyNamingStrategy();
     defaultPropertyInclusion = config.defaultPropertyInclusion();
+    onNullRead = config.onNullRead();
+    onContentNullRead = config.onContentNullRead();
     writeLongAsString = config.writeLongAsString();
     escapeNonAscii = config.escapeNonAscii();
     failOnMissingRequiredProperties = config.failOnMissingRequiredProperties();
@@ -1020,7 +1026,8 @@ public final class JsonSharedRegistry {
     }
     if (rawType == AtomicReferenceArray.class) {
       JsonTypeInfo elementInfo = localResolver.getTypeInfo(CodecUtils.elementTypeRef(typeRef));
-      return new ResolvedCodec(ScalarCodecs.AtomicReferenceArrayCodec.create(elementInfo), null);
+      return new ResolvedCodec(
+          ScalarCodecs.AtomicReferenceArrayCodec.create(elementInfo, onContentNullRead), null);
     }
     if (Calendar.class.isAssignableFrom(rawType)) {
       return new ResolvedCodec(ScalarCodecs.CalendarCodec.INSTANCE, null);
@@ -1091,6 +1098,23 @@ public final class JsonSharedRegistry {
     }
     checkSecure(binding.target);
     return binding.target;
+  }
+
+  boolean isContainerType(TypeRef<?> typeRef) {
+    Class<?> rawType = typeRef.getRawType();
+    if (rawType.isArray()
+        || Collection.class.isAssignableFrom(rawType)
+        || Map.class.isAssignableFrom(rawType)
+        || rawType == AtomicReferenceArray.class
+        || exactCodecs.get(rawType) instanceof ContainerJsonCodec) {
+      return true;
+    }
+    for (JsonCodecFactory factory : codecFactories) {
+      if (factory.isContainerType(typeRef)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private ResolvedCodec createModuleCodec(
@@ -1228,6 +1252,14 @@ public final class JsonSharedRegistry {
 
   Include defaultPropertyInclusion() {
     return defaultPropertyInclusion;
+  }
+
+  public NullHandling onNullRead() {
+    return onNullRead;
+  }
+
+  public NullHandling onContentNullRead() {
+    return onContentNullRead;
   }
 
   boolean writeLongAsString() {
@@ -2215,7 +2247,9 @@ public final class JsonSharedRegistry {
     exactCodecs.put(StringBuffer.class, ScalarCodecs.StringBufferCodec.INSTANCE);
     exactCodecs.put(AtomicBoolean.class, ScalarCodecs.AtomicBooleanCodec.INSTANCE);
     exactCodecs.put(AtomicInteger.class, ScalarCodecs.AtomicIntegerCodec.INSTANCE);
-    exactCodecs.put(AtomicIntegerArray.class, ScalarCodecs.AtomicIntegerArrayCodec.INSTANCE);
+    exactCodecs.put(
+        AtomicIntegerArray.class,
+        ScalarCodecs.AtomicIntegerArrayCodec.INSTANCE.withContentNullRead(onContentNullRead));
     exactCodecs.put(
         AtomicLong.class,
         writeLongAsString
@@ -2224,8 +2258,9 @@ public final class JsonSharedRegistry {
     exactCodecs.put(
         AtomicLongArray.class,
         writeLongAsString
-            ? ScalarCodecs.AtomicLongArrayAsStringCodec.INSTANCE
-            : ScalarCodecs.AtomicLongArrayCodec.INSTANCE);
+            ? ScalarCodecs.AtomicLongArrayAsStringCodec.INSTANCE.withContentNullRead(
+                onContentNullRead)
+            : ScalarCodecs.AtomicLongArrayCodec.INSTANCE.withContentNullRead(onContentNullRead));
     exactCodecs.put(Currency.class, ScalarCodecs.CurrencyCodec.INSTANCE);
     exactCodecs.put(File.class, ScalarCodecs.FileCodec.INSTANCE);
     exactCodecs.put(URI.class, ScalarCodecs.UriCodec.INSTANCE);

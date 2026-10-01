@@ -27,6 +27,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
@@ -61,6 +62,7 @@ import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonProperty.Include;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonValidator;
 import org.apache.fory.json.codec.ClosedSubtypeCodec;
@@ -361,6 +363,42 @@ public class JsonAsyncCompilationTest {
     controlled.executor.runNext();
     assertNotSame(info.utf8Reader(), owner);
     assertEquals(controlled.executor.submittedTasks(), 5);
+  }
+
+  @Test
+  public void nullHandlingIsolation() throws Exception {
+    ControlledJson defaults = controlledJson();
+    ControlledJson skip =
+        controlledJson(new CodecRegistry(), 1, false, NullHandling.SKIP, NullHandling.SKIP);
+    ControlledJson fail =
+        controlledJson(new CodecRegistry(), 1, false, NullHandling.FAIL, NullHandling.FAIL);
+    byte[] input = "{\"name\":null}".getBytes(StandardCharsets.UTF_8);
+    byte[] contents = "[null,\"a\",null]".getBytes(StandardCharsets.UTF_8);
+    TypeRef<List<String>> listType = new TypeRef<List<String>>() {};
+    for (int phase = 0; phase < 2; phase++) {
+      assertNull(defaults.json.fromJson(input, NullValues.class).name);
+      assertEquals(skip.json.fromJson(input, NullValues.class).name, "initial");
+      assertThrows(ForyJsonException.class, () -> fail.json.fromJson(input, NullValues.class));
+      assertEquals(defaults.json.fromJson(contents, listType), Arrays.asList(null, "a", null));
+      assertEquals(skip.json.fromJson(contents, listType), Collections.singletonList("a"));
+      assertThrows(ForyJsonException.class, () -> fail.json.fromJson(contents, listType));
+      defaults.executor.runAll();
+      skip.executor.runAll();
+      fail.executor.runAll();
+    }
+    assertNotSame(
+        currentTypeResolver(defaults.json)
+            .getTypeInfo(NullValues.class, NullValues.class)
+            .utf8Reader()
+            .getClass(),
+        currentTypeResolver(skip.json)
+            .getTypeInfo(NullValues.class, NullValues.class)
+            .utf8Reader()
+            .getClass());
+  }
+
+  public static class NullValues {
+    public String name = "initial";
   }
 
   @Test
@@ -1392,9 +1430,26 @@ public class JsonAsyncCompilationTest {
   private static ControlledJson controlledJson(
       CodecRegistry codecs, int concurrencyLevel, boolean failOnMissingRequiredProperties)
       throws Exception {
+    return controlledJson(
+        codecs,
+        concurrencyLevel,
+        failOnMissingRequiredProperties,
+        NullHandling.SET,
+        NullHandling.SET);
+  }
+
+  private static ControlledJson controlledJson(
+      CodecRegistry codecs,
+      int concurrencyLevel,
+      boolean failOnMissingRequiredProperties,
+      NullHandling onNullRead,
+      NullHandling onContentNullRead)
+      throws Exception {
     JsonConfig config =
         new JsonConfig(
             Include.NON_NULL,
+            onNullRead,
+            onContentNullRead,
             false,
             false,
             failOnMissingRequiredProperties,

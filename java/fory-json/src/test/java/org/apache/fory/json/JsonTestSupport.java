@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.Map;
 import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonProperty.Include;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -45,6 +46,8 @@ final class JsonTestSupport {
   private static final JsonConfig CONFIG =
       new JsonConfig(
           Include.NON_NULL,
+          NullHandling.SET,
+          NullHandling.SET,
           false,
           false,
           false,

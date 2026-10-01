@@ -55,6 +55,26 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
     this.inlineSchemaWrites = inlineSchemaWrites;
   }
 
+  static boolean inlineSchemaWrites(JsonFieldInfo[] properties) {
+    int size = 32;
+    int expanded = 48;
+    int first = firstGroupMember(properties);
+    for (int i = 0; i < properties.length; i++) {
+      JsonFieldInfo property = properties[i];
+      size += fieldWriteSize(property) + (i < first ? 12 : 0);
+      JsonFieldKind kind = property.writeKind();
+      if (i >= Math.max(1, first)
+          && canPackPrefix(property, true)
+          && kind != JsonFieldKind.BOOLEAN
+          && kind != JsonFieldKind.ENUM) {
+        // Buffer/cursor loads, growth branch, one or two wide prefix stores and cursor update.
+        // The value codec remains a call. Expanded object-end framing contributes the initial 48.
+        expanded += 48;
+      }
+    }
+    return size <= JsonCodegen.HOT_INLINE_LIMIT && size + expanded > JsonCodegen.HOT_INLINE_LIMIT;
+  }
+
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
     return codegen.utf8WriterFieldType(property.writeTypeInfo(), resolver);
@@ -160,14 +180,16 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
       expressions.add(
           new Expression.Assign(
               utf8PrefixRef(false, id),
-              new Expression.Invoke(property, "utf8NamePrefix", TypeRef.of(byte[].class))
+              new Expression.Invoke(
+                      property, "utf8NamePrefix", "", TypeRef.of(byte[].class), false, false)
                   .inline()));
     }
     if (fields.comma[id]) {
       expressions.add(
           new Expression.Assign(
               utf8PrefixRef(true, id),
-              new Expression.Invoke(property, "utf8CommaNamePrefix", TypeRef.of(byte[].class))
+              new Expression.Invoke(
+                      property, "utf8CommaNamePrefix", "", TypeRef.of(byte[].class), false, false)
                   .inline()));
     }
   }
@@ -212,7 +234,8 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
     return new Expression.ListExpression(
         new Expression.Invoke(
             writer, "writeObjectStartWithRawValue", packedObjectStartPrefixArgs(property)),
-        new Expression.Invoke(writer, "writeString", value));
+        new Expression.Invoke(
+            writer, "writeString", "", TypeRef.of(void.class), false, false, value));
   }
 
   private static boolean canPackObjectStartString(JsonFieldInfo property) {
@@ -283,7 +306,8 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
       Expression writer) {
     return new Expression.ListExpression(
         writeFieldName(property, id, commaKnown, index, writer),
-        new Expression.Invoke(writer, "writeString", value));
+        new Expression.Invoke(
+            writer, "writeString", "", TypeRef.of(void.class), false, false, value));
   }
 
   @Override
@@ -299,10 +323,20 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
         Expression.ListExpression expressions =
             new Expression.ListExpression(
                 new Expression.Invoke(
-                    writer, "writeComma", commaKnown ? Expression.Literal.ofInt(1) : index),
+                    writer,
+                    "writeComma",
+                    "",
+                    TypeRef.of(void.class),
+                    false,
+                    false,
+                    commaKnown ? Expression.Literal.ofInt(1) : index),
                 new Expression.Invoke(
                     writer,
                     "writeRawValue",
+                    "",
+                    TypeRef.of(void.class),
+                    false,
+                    false,
                     Expression.Literal.ofLong(packedPrefixWord(prefix, 0)),
                     Expression.Literal.ofLong(packedPrefixWord(prefix, Long.BYTES)),
                     Expression.Literal.ofInt(prefix.length)));
@@ -317,11 +351,25 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
       if (inlineSchemaWrites) {
         return directPackedPrefix(property, id);
       }
-      return new Expression.Invoke(writer, "writeRawValue", packedPrefixArgs(property, true));
+      return new Expression.Invoke(
+          writer,
+          "writeRawValue",
+          "",
+          TypeRef.of(void.class),
+          false,
+          false,
+          packedPrefixArgs(property, true));
     }
     if (!commaKnown && canPackPrefix(property, false) && canPackPrefix(property, true)) {
       return new Expression.ListExpression(
-          new Expression.Invoke(writer, "writeRawValue", packedDynamicPrefixArgs(property, index)),
+          new Expression.Invoke(
+              writer,
+              "writeRawValue",
+              "",
+              TypeRef.of(void.class),
+              false,
+              false,
+              packedDynamicPrefixArgs(property, index)),
           increment(index));
     }
     Expression prefix =
@@ -334,7 +382,9 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
                 true,
                 TypeRef.of(byte[].class));
     Expression.ListExpression expressions =
-        new Expression.ListExpression(new Expression.Invoke(writer, "writeRawValue", prefix));
+        new Expression.ListExpression(
+            new Expression.Invoke(
+                writer, "writeRawValue", "", TypeRef.of(void.class), false, false, prefix));
     if (!commaKnown) {
       expressions.add(increment(index));
     }

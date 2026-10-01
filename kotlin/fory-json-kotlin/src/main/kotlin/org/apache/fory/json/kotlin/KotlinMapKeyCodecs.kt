@@ -44,6 +44,7 @@ internal object KotlinMapKeyCodecs {
     resolver.checkMapKeySecure(keyType.rawType)
     val valueTypeInfo = resolver.getTypeInfo(arguments[1])
     return MapCodec.createUncheckedKeyCodec(type.rawType, keyClass(typeId), valueTypeInfo, keyCodec)
+      .withContentNullRead(resolver.sharedRegistry().onContentNullRead())
   }
 
   /** Returns the terminal member-name codec for an exact boxed U* or primitive physical carrier. */

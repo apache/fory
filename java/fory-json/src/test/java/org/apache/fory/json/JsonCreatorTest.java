@@ -30,6 +30,7 @@ import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.codec.AbstractJsonValueCodec;
 import org.apache.fory.json.codec.JsonObjectModel;
@@ -128,7 +129,16 @@ public class JsonCreatorTest extends ForyJsonTestModels {
     JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
     JsonCreatorFieldInfo deferred =
         new JsonCreatorFieldInfo(
-            "deferred", 1, TypeRef.of(NullCarrier.class), String.class, null, null, null, true);
+            "deferred",
+            1,
+            TypeRef.of(NullCarrier.class),
+            String.class,
+            null,
+            null,
+            null,
+            true,
+            NullHandling.SET,
+            NullHandling.DEFAULT);
     JsonCreatorInfo creator =
         new JsonCreatorInfo(
             DeferredCarrierOwner.class,

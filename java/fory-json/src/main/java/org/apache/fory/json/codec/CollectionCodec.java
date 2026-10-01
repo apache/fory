@@ -51,6 +51,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonArray;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -80,7 +81,7 @@ import org.apache.fory.serializer.GraphMemoryEstimates;
  * count. Dynamic {@code Object} arrays are materialized as {@link JsonArray}, while typed targets
  * use their selected factory.
  */
-public abstract class CollectionCodec<T extends Collection<?>> implements JsonValueCodec<T> {
+public abstract class CollectionCodec<T extends Collection<?>> implements ContainerJsonCodec<T> {
   private static final Class<?> UNTYPED_COLLECTION = ArrayList.class;
   private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
   // Reserve before each batch's final child read. This leaves at most 1023 reference slots
@@ -97,9 +98,14 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
 
   private final CollectionFactory factory;
   private final boolean createsArrayList;
+  final NullHandling onContentNullRead;
+  final JsonTypeInfo elementTypeInfo;
 
-  CollectionCodec(CollectionFactory factory) {
+  CollectionCodec(
+      CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
     this.factory = factory;
+    this.elementTypeInfo = elementTypeInfo;
+    this.onContentNullRead = onContentNullRead;
     this.createsArrayList = factory.createsArrayList();
   }
 
@@ -123,7 +129,11 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     Class<?> elementRawType = CodecUtils.rawType(elementType, Object.class);
     CollectionFactory factory = collectionFactory(rawType, elementRawType);
     JsonTypeInfo elementTypeInfo = resolver.getTypeInfo(elementTypeRef);
-    return create(factory, elementTypeInfo, resolver.canonicalObjectCodec(elementTypeInfo) != null);
+    return create(
+        factory,
+        elementTypeInfo,
+        resolver.canonicalObjectCodec(elementTypeInfo) != null,
+        resolver.sharedRegistry().onContentNullRead());
   }
 
   @Internal
@@ -135,52 +145,57 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     return create(
         collectionFactory(rawType, elementRawType),
         elementTypeInfo,
-        resolver.canonicalObjectCodec(elementTypeInfo) != null);
+        resolver.canonicalObjectCodec(elementTypeInfo) != null,
+        resolver.sharedRegistry().onContentNullRead());
   }
 
   private static CollectionCodec<?> create(
-      CollectionFactory factory, JsonTypeInfo elementTypeInfo, boolean objectElement) {
+      CollectionFactory factory,
+      JsonTypeInfo elementTypeInfo,
+      boolean objectElement,
+      NullHandling onContentNullRead) {
     Object elementCodec = elementTypeInfo.stringWriter();
     if (elementCodec == ScalarCodecs.StringCodec.INSTANCE) {
-      return new StringCollectionCodec(factory, elementTypeInfo);
+      return new StringCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
     if (elementCodec == ScalarCodecs.BooleanCodec.BOXED) {
-      return new BooleanCollectionCodec(factory, elementTypeInfo);
+      return new BooleanCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
     if (elementCodec == ScalarCodecs.IntCodec.BOXED) {
-      return new IntCollectionCodec(factory, elementTypeInfo);
+      return new IntCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
     if (elementCodec == ScalarCodecs.LongCodec.BOXED) {
-      return new LongCollectionCodec(factory, elementTypeInfo);
+      return new LongCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
     if (elementCodec == ScalarCodecs.LongAsStringCodec.BOXED) {
-      return new LongAsStringCollectionCodec(factory, elementTypeInfo);
+      return new LongAsStringCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
     if (elementCodec == ScalarCodecs.ShortCodec.BOXED) {
-      return new ShortCollectionCodec(factory, elementTypeInfo);
+      return new ShortCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
     if (elementCodec == ScalarCodecs.ByteCodec.BOXED) {
-      return new ByteCollectionCodec(factory, elementTypeInfo);
+      return new ByteCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
     if (elementCodec == ScalarCodecs.FloatCodec.BOXED) {
-      return new FloatCollectionCodec(factory, elementTypeInfo);
+      return new FloatCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
     if (elementCodec == ScalarCodecs.DoubleCodec.BOXED) {
-      return new DoubleCollectionCodec(factory, elementTypeInfo);
+      return new DoubleCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
     if (elementCodec == ScalarCodecs.BigIntegerCodec.INSTANCE) {
-      return new BigIntegerCollectionCodec(factory, elementTypeInfo);
+      return new BigIntegerCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
     if (elementCodec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
-      return new BigDecimalCollectionCodec(factory, elementTypeInfo);
+      return new BigDecimalCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
     if (objectElement) {
-      return new ObjectCollectionCodec(factory, elementTypeInfo);
+      return new ObjectCollectionCodec(factory, elementTypeInfo, onContentNullRead);
     }
-    return new GenericCollectionCodec(factory, elementTypeInfo);
+    return new GenericCollectionCodec(factory, elementTypeInfo, onContentNullRead);
   }
 
   static Collection<Object> readUntyped(Latin1JsonReader reader) {
+    NullHandling onContentNullRead = reader.typeResolver().sharedRegistry().onContentNullRead();
     JsonTypeInfo elementInfo = reader.typeResolver().getTypeInfo(Object.class, Object.class);
     reader.reserveGraphMemory(JSON_ARRAY_OWNER_BYTES);
     Collection<Object> collection = new JsonArray();
@@ -190,6 +205,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     int size = 0;
     if (!reader.consumeNextToken(']')) {
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullContent();
+          }
+          continue;
+        }
         if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
           reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
         }
@@ -206,6 +227,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   static Collection<Object> readUntyped(Utf16JsonReader reader) {
+    NullHandling onContentNullRead = reader.typeResolver().sharedRegistry().onContentNullRead();
     JsonTypeInfo elementInfo = reader.typeResolver().getTypeInfo(Object.class, Object.class);
     reader.reserveGraphMemory(JSON_ARRAY_OWNER_BYTES);
     Collection<Object> collection = new JsonArray();
@@ -215,6 +237,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     int size = 0;
     if (!reader.consumeNextToken(']')) {
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullContent();
+          }
+          continue;
+        }
         if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
           reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
         }
@@ -231,6 +259,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   static Collection<Object> readUntyped(Utf8JsonReader reader) {
+    NullHandling onContentNullRead = reader.typeResolver().sharedRegistry().onContentNullRead();
     JsonTypeInfo elementInfo = reader.typeResolver().getTypeInfo(Object.class, Object.class);
     reader.reserveGraphMemory(JSON_ARRAY_OWNER_BYTES);
     Collection<Object> collection = new JsonArray();
@@ -240,6 +269,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     int size = 0;
     if (!reader.consumeNextToken(']')) {
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullContent();
+          }
+          continue;
+        }
         if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
           reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
         }
@@ -270,6 +305,26 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   @Internal
   public final boolean createsArrayList() {
     return createsArrayList;
+  }
+
+  /** Returns this container's effective immediate-element null handling. */
+  @Internal
+  public final NullHandling onContentNullRead() {
+    return onContentNullRead;
+  }
+
+  /** Copies only this container occurrence; child codecs retain their own settings. */
+  @Internal
+  public final CollectionCodec<?> withContentNullRead(NullHandling handling) {
+    return handling == onContentNullRead
+        ? this
+        : create(factory, elementTypeInfo, this instanceof ObjectCollectionCodec, handling);
+  }
+
+  /** Throws the failure shared by interpreted and generated element readers. */
+  @Internal
+  public static void rejectNullContent() {
+    throw new ForyJsonException("Cannot read null collection element");
   }
 
   public abstract T readLatin1(Latin1JsonReader reader);
@@ -509,11 +564,10 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public abstract static class DirectCollectionCodec extends CollectionCodec<Collection<?>> {
-    private final JsonTypeInfo elementTypeInfo;
 
-    DirectCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory);
-      this.elementTypeInfo = elementTypeInfo;
+    DirectCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     final Object requireElement(Object element) {
@@ -529,7 +583,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       if (reader.tryReadNullToken()) {
         return null;
       }
-      if (createsArrayList()) {
+      if (createsArrayList() && onContentNullRead == NullHandling.SET) {
         return finishCollection(reader, readLatin1ArrayList(reader));
       }
       reader.enterDepth();
@@ -538,6 +592,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       int size = 0;
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullContent();
+            }
+            continue;
+          }
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
@@ -558,7 +618,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       if (reader.tryReadNullToken()) {
         return null;
       }
-      if (createsArrayList()) {
+      if (createsArrayList() && onContentNullRead == NullHandling.SET) {
         return finishCollection(reader, readUtf16ArrayList(reader));
       }
       reader.enterDepth();
@@ -567,6 +627,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       int size = 0;
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullContent();
+            }
+            continue;
+          }
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
@@ -587,7 +653,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       if (reader.tryReadNullToken()) {
         return null;
       }
-      if (createsArrayList()) {
+      if (createsArrayList() && onContentNullRead == NullHandling.SET) {
         return finishCollection(reader, readUtf8ArrayList(reader));
       }
       reader.enterDepth();
@@ -596,6 +662,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       int size = 0;
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullContent();
+            }
+            continue;
+          }
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
@@ -1029,11 +1101,10 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class GenericCollectionCodec extends CollectionCodec<Collection<?>> {
-    private final JsonTypeInfo elementTypeInfo;
 
-    private GenericCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory);
-      this.elementTypeInfo = elementTypeInfo;
+    private GenericCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -1082,6 +1153,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       int size = 0;
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullContent();
+            }
+            continue;
+          }
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
@@ -1109,6 +1186,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       int size = 0;
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullContent();
+            }
+            continue;
+          }
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
@@ -1136,6 +1219,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       int size = 0;
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullContent();
+            }
+            continue;
+          }
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
@@ -1153,11 +1242,10 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class ObjectCollectionCodec extends CollectionCodec<Collection<?>> {
-    private final JsonTypeInfo elementTypeInfo;
 
-    private ObjectCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory);
-      this.elementTypeInfo = elementTypeInfo;
+    private ObjectCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -1220,7 +1308,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         return null;
       }
       Latin1ReaderCodec<Object> codec = elementTypeInfo.latin1Reader();
-      if (createsArrayList()) {
+      if (createsArrayList() && onContentNullRead == NullHandling.SET) {
         return finishCollection(reader, readLatin1ArrayList(reader, codec));
       }
       reader.enterDepth();
@@ -1229,6 +1317,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       int size = 0;
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullContent();
+            }
+            continue;
+          }
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
@@ -1250,7 +1344,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         return null;
       }
       Utf16ReaderCodec<Object> codec = elementTypeInfo.utf16Reader();
-      if (createsArrayList()) {
+      if (createsArrayList() && onContentNullRead == NullHandling.SET) {
         return finishCollection(reader, readUtf16ArrayList(reader, codec));
       }
       reader.enterDepth();
@@ -1259,6 +1353,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       int size = 0;
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullContent();
+            }
+            continue;
+          }
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
@@ -1280,7 +1380,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         return null;
       }
       Utf8ReaderCodec<Object> codec = elementTypeInfo.utf8Reader();
-      if (createsArrayList()) {
+      if (createsArrayList() && onContentNullRead == NullHandling.SET) {
         return finishCollection(reader, readUtf8ArrayList(reader, codec));
       }
       reader.enterDepth();
@@ -1289,6 +1389,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
       int size = 0;
       if (!reader.consumeNextToken(']')) {
         do {
+          if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+            if (onContentNullRead == NullHandling.FAIL) {
+              rejectNullContent();
+            }
+            continue;
+          }
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
@@ -1760,8 +1866,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class StringCollectionCodec extends DirectCollectionCodec {
-    private StringCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    private StringCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -1811,8 +1918,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class BooleanCollectionCodec extends DirectCollectionCodec {
-    private BooleanCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    private BooleanCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -1872,8 +1980,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public abstract static class NumberCollectionCodec extends DirectCollectionCodec {
-    NumberCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    NumberCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -1920,8 +2029,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class IntCollectionCodec extends NumberCollectionCodec {
-    private IntCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    private IntCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -1946,8 +2056,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static class LongCollectionCodec extends NumberCollectionCodec {
-    protected LongCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    protected LongCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -1972,8 +2083,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   private static final class LongAsStringCollectionCodec extends LongCollectionCodec {
-    private LongAsStringCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    private LongAsStringCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -1983,8 +2095,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class ShortCollectionCodec extends NumberCollectionCodec {
-    private ShortCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    private ShortCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -2009,8 +2122,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class ByteCollectionCodec extends NumberCollectionCodec {
-    private ByteCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    private ByteCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -2035,8 +2149,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class FloatCollectionCodec extends NumberCollectionCodec {
-    private FloatCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    private FloatCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -2061,8 +2176,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class DoubleCollectionCodec extends NumberCollectionCodec {
-    private DoubleCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    private DoubleCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -2087,8 +2203,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class BigIntegerCollectionCodec extends NumberCollectionCodec {
-    private BigIntegerCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    private BigIntegerCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -2113,8 +2230,9 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   public static final class BigDecimalCollectionCodec extends NumberCollectionCodec {
-    private BigDecimalCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(factory, elementTypeInfo);
+    private BigDecimalCollectionCodec(
+        CollectionFactory factory, JsonTypeInfo elementTypeInfo, NullHandling onContentNullRead) {
+      super(factory, elementTypeInfo, onContentNullRead);
     }
 
     @Override

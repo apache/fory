@@ -24,10 +24,12 @@ import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonFormat;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.codec.DirectUnboxedValueCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.TransparentUnboxedValueCodec;
 import org.apache.fory.json.codec.UnboxedValueCodec;
+import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -48,6 +50,8 @@ public final class JsonCreatorFieldInfo {
   private final JsonFormat formatAnnotation;
   private final boolean unboxedRequired;
   private final boolean selectedCodec;
+  private final NullHandling onNullRead;
+  private final NullHandling onContentNullRead;
   private JsonTypeInfo typeInfo;
   private JsonTypeInfo occurrenceTypeInfo;
   private UnboxedValueCodec unboxedValueCodec;
@@ -60,7 +64,11 @@ public final class JsonCreatorFieldInfo {
       JsonCodec codecAnnotation,
       Class<? extends JsonValueCodec<?>> valueCodecClass,
       JsonFormat formatAnnotation,
-      boolean unboxedRequired) {
+      boolean unboxedRequired,
+      NullHandling onNullRead,
+      NullHandling onContentNullRead) {
+    this.onNullRead = onNullRead;
+    this.onContentNullRead = onContentNullRead;
     this.name = name;
     nameHash = JsonFieldNameHash.hash(name);
     this.argumentIndex = argumentIndex;
@@ -77,6 +85,25 @@ public final class JsonCreatorFieldInfo {
     return name;
   }
 
+  public NullHandling onNullRead() {
+    return onNullRead;
+  }
+
+  public NullHandling onContentNullRead() {
+    return onContentNullRead;
+  }
+
+  /** Leaves argument and presence state untouched for a skipped input occurrence. */
+  public boolean skipNullRead(JsonReader reader) {
+    if (onNullRead == NullHandling.SET || !reader.tryReadNull()) {
+      return false;
+    }
+    if (onNullRead == NullHandling.FAIL) {
+      rejectNullRead();
+    }
+    return true;
+  }
+
   /** Returns parent-local metadata with a transformed JSON name and the same creator argument. */
   public JsonCreatorFieldInfo withName(String transformedName) {
     return new JsonCreatorFieldInfo(
@@ -87,7 +114,9 @@ public final class JsonCreatorFieldInfo {
         codecAnnotation,
         valueCodecClass,
         formatAnnotation,
-        unboxedRequired);
+        unboxedRequired,
+        onNullRead,
+        onContentNullRead);
   }
 
   public long nameHash() {
@@ -116,7 +145,10 @@ public final class JsonCreatorFieldInfo {
 
   public void resolveType(JsonTypeResolver resolver) {
     if (!unboxedRequired) {
-      typeInfo = selectedCodec ? selectedTypeInfo(resolver) : resolver.getTypeInfo(typeRef);
+      typeInfo =
+          resolver.withContentNullRead(
+              selectedCodec ? selectedTypeInfo(resolver) : resolver.getTypeInfo(typeRef),
+              onContentNullRead);
       occurrenceTypeInfo = typeInfo;
       return;
     }
@@ -127,7 +159,8 @@ public final class JsonCreatorFieldInfo {
               + " cannot select a codec or format for the unboxed logical type "
               + typeRef);
     }
-    JsonTypeInfo canonical = resolver.getTypeInfo(typeRef);
+    JsonTypeInfo canonical =
+        resolver.withContentNullRead(resolver.getTypeInfo(typeRef), onContentNullRead);
     UnboxedValueCodec operation = canonical.unboxedValueCodec();
     if (operation == null || operation.carrierType() != rawType) {
       throw new ForyJsonException(

@@ -19,9 +19,13 @@
 
 package org.apache.fory.graalvm.kotlin;
 
+import java.util.Arrays;
+import org.apache.fory.integration.kotlin.json.corpus.PlatformAccount;
 import org.apache.fory.integration.kotlin.json.corpus.PlatformCorpusChecks;
+import org.apache.fory.integration.kotlin.json.corpus.PlatformDefaults;
 import org.apache.fory.integration.kotlin.json.corpus.PlatformJavaProfileMixin;
 import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.ForyJsonProvider;
 import org.apache.fory.json.kotlin.ForyJsonKotlin;
 
@@ -40,6 +44,36 @@ public final class Main {
             .withAsyncCompilation(false)
             .build();
     PlatformCorpusChecks.verifyRoundTrip(json);
+    String account = "{\"id\":1,\"name\":\"test\",\"label\":null}";
+    check(json.fromJson(account, PlatformAccount.class).getLabel() == null, "SET property");
+    ForyJson skip = new KotlinJsonProvider().skippingConfiguration();
+    check(
+        "corpus-default".equals(skip.fromJson(account, PlatformAccount.class).getLabel()),
+        "SKIP property");
+    check(
+        skip.fromJson("{\"values\":[null,1,null,2]}", PlatformDefaults.class)
+            .getValues()
+            .equals(Arrays.asList(1, 2)),
+        "SKIP content");
+    ForyJson fail = new KotlinJsonProvider().failingConfiguration();
+    try {
+      fail.fromJson(account, PlatformAccount.class);
+      throw new AssertionError("FAIL property");
+    } catch (ForyJsonException expected) {
+      check(
+          fail.fromJson("{\"id\":1,\"name\":\"test\"}", PlatformAccount.class).getId() == 1,
+          "Failed root cleanup");
+    }
+    try {
+      fail.fromJson("{\"values\":[null]}", PlatformDefaults.class);
+      throw new AssertionError("FAIL content");
+    } catch (ForyJsonException expected) {
+      check(
+          fail.fromJson("{\"values\":[1]}", PlatformDefaults.class)
+              .getValues()
+              .equals(Arrays.asList(1)),
+          "Failed container cleanup");
+    }
     System.out.println("Fory Kotlin JSON Native Image succeed");
   }
 
