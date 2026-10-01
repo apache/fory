@@ -1067,7 +1067,7 @@ def test_java_nested_integer_annotations_in_generic_containers():
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert (
         "private Map<@UInt32Type(encoding = Int32Encoding.FIXED) Long, "
-        "List<@UInt64Type(encoding = Int64Encoding.TAGGED) Long>> values;"
+        "List<@Nullable @UInt64Type(encoding = Int64Encoding.TAGGED) Long>> values;"
         in java_output
     )
     go_output = render_files(generate_files(schema, GoGenerator))

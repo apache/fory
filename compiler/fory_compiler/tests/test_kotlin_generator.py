@@ -522,3 +522,45 @@ def test_nested_int8_array_uses_type_annotation():
     assert "import org.apache.fory.annotation.ArrayType" in holder
     assert "public val chunks: List<@ArrayType ByteArray>" in holder
     assert "public val chunksByName: Map<String, @ArrayType ByteArray>" in holder
+
+
+def test_empty_message_uses_plain_class():
+    files = generate_kotlin(
+        """
+        package demo;
+
+        message Empty [id=100] {}
+        """
+    )
+
+    empty = files["demo/Empty.kt"]
+    # A data class needs at least one primary-constructor parameter.
+    assert "public class Empty()" in empty
+    assert "data class" not in empty
+    assert "public fun fromBytes(bytes: ByteArray): Empty" in empty
+
+
+def test_module_qualifies_types_shadowed_by_module_imports():
+    files = generate_kotlin(
+        """
+        package app;
+
+        message Fory [id=1] { string name = 1; }
+        message ForyModule [id=2] { string name = 1; }
+        """
+    )
+
+    registration = files["app/AppForyModule.kt"]
+    # Fory and ForyModule are imported inside the module file, so unqualified
+    # references would register the imported classes instead.
+    assert (
+        "KotlinSerializers.registerType(fory, app.Fory::class.java, 1L)" in registration
+    )
+    assert (
+        "KotlinSerializers.registerSerializer(fory, app.Fory::class.java)"
+        in registration
+    )
+    assert (
+        "KotlinSerializers.registerType(fory, app.ForyModule::class.java, 2L)"
+        in registration
+    )

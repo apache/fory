@@ -604,3 +604,24 @@ def test_scala_rejects_mixed_default_and_named_imports(tmp_path):
         ScalaGenerator(
             resolve_imports(named_main), GeneratorOptions(output_dir=tmp_path)
         )
+
+
+def test_module_qualifies_types_shadowed_by_module_imports():
+    files = generate_scala(
+        """
+        package app;
+
+        message Fory [id=1] { string name = 1; }
+        message ForySerializer [id=2] { string name = 1; }
+        """
+    )
+
+    registration = files["app/AppForyModule.scala"]
+    # Fory and ForySerializer are imported inside the module file, so
+    # unqualified references would register the imported classes instead.
+    assert "ForySerializer.registerType(fory, classOf[app.Fory], 1L)" in registration
+    assert "ForySerializer.registerSerializer(fory, classOf[app.Fory])" in registration
+    assert (
+        "ForySerializer.registerType(fory, classOf[app.ForySerializer], 2L)"
+        in registration
+    )

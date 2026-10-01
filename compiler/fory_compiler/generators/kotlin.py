@@ -389,7 +389,9 @@ class KotlinGenerator(KotlinServiceGeneratorMixin, BaseGenerator):
         shape = self._construction_shapes.get(
             self.construction_key(parent_stack, message)
         )
-        if shape is not None and shape.cycle_owned:
+        # A Kotlin data class requires at least one primary-constructor
+        # parameter, so field-less messages use the plain class form.
+        if not message.fields or (shape is not None and shape.cycle_owned):
             return self.generate_normal_class(message, parent_stack)
         return self.generate_data_class(message, parent_stack)
 
@@ -626,6 +628,29 @@ class KotlinGenerator(KotlinServiceGeneratorMixin, BaseGenerator):
         lines.append("}")
         return self.source_file(class_name, lines)
 
+    # Simple names imported inside the generated module file; generated types
+    # with these names are shadowed there and must be referenced by their
+    # fully qualified name.
+    MODULE_SHADOWED_TYPE_NAMES = {
+        "Fory",
+        "ForyModule",
+        "ThreadSafeFory",
+        "ForyKotlin",
+        "KotlinSerializers",
+    }
+
+    def module_type_ref(self, class_ref: str) -> str:
+        """Return a module-scope class reference for a generated type."""
+        if class_ref not in self.MODULE_SHADOWED_TYPE_NAMES:
+            return class_ref
+        package = self.kotlin_package
+        if package:
+            return f"{package}.{class_ref}"
+        raise ValueError(
+            f"Kotlin type name {class_ref} conflicts with a name used inside "
+            "the generated Fory module; declare a package or rename the type"
+        )
+
     def generate_type_registration(
         self,
         lines: List[str],
@@ -633,7 +658,9 @@ class KotlinGenerator(KotlinServiceGeneratorMixin, BaseGenerator):
         owner_path: Optional[str] = None,
         type_only: bool = False,
     ) -> None:
-        class_ref = self.type_name(type_def, self.owner_path_stack(owner_path))
+        class_ref = self.module_type_ref(
+            self.type_name(type_def, self.owner_path_stack(owner_path))
+        )
         namespace = self.schema.package or "default"
         if owner_path:
             namespace = f"{namespace}.{owner_path}"
@@ -654,7 +681,9 @@ class KotlinGenerator(KotlinServiceGeneratorMixin, BaseGenerator):
     def serializer_registration(
         self, lines: List[str], type_def, owner_path: Optional[str] = None
     ) -> None:
-        class_ref = self.type_name(type_def, self.owner_path_stack(owner_path))
+        class_ref = self.module_type_ref(
+            self.type_name(type_def, self.owner_path_stack(owner_path))
+        )
         lines.append(
             f"        KotlinSerializers.registerSerializer(fory, {class_ref}::class.java)"
         )

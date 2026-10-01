@@ -1035,6 +1035,29 @@ class ScalaGenerator(ScalaServiceGeneratorMixin, BaseGenerator):
                 return nested
         return self.schema.get_type(name)
 
+    # Simple names imported inside the generated module file; generated types
+    # rooted at these names are shadowed there and must be referenced by their
+    # fully qualified name.
+    MODULE_SHADOWED_TYPE_NAMES = {
+        "Fory",
+        "ThreadSafeFory",
+        "ForyScala",
+        "ForySerializer",
+        "ScalaSerializers",
+    }
+
+    def module_type_ref(self, class_ref: str) -> str:
+        """Return a module-scope class reference for a generated type."""
+        if class_ref.split(".", 1)[0] not in self.MODULE_SHADOWED_TYPE_NAMES:
+            return class_ref
+        package = self.get_scala_package()
+        if package:
+            return f"{package}.{class_ref}"
+        raise ValueError(
+            f"Scala type name {class_ref} conflicts with a name used inside "
+            "the generated Fory module; declare a package or rename the type"
+        )
+
     def generate_type_registration(
         self,
         lines: List[str],
@@ -1042,7 +1065,9 @@ class ScalaGenerator(ScalaServiceGeneratorMixin, BaseGenerator):
         owner_path: Optional[str] = None,
         type_only: bool = False,
     ) -> None:
-        class_ref = f"{owner_path}.{type_def.name}" if owner_path else type_def.name
+        class_ref = self.module_type_ref(
+            f"{owner_path}.{type_def.name}" if owner_path else type_def.name
+        )
         namespace = self.schema.package or "default"
         type_name = type_def.name
         if owner_path:
@@ -1070,7 +1095,9 @@ class ScalaGenerator(ScalaServiceGeneratorMixin, BaseGenerator):
     def serializer_registration(
         self, lines: List[str], type_def, owner_path: Optional[str] = None
     ) -> None:
-        class_ref = f"{owner_path}.{type_def.name}" if owner_path else type_def.name
+        class_ref = self.module_type_ref(
+            f"{owner_path}.{type_def.name}" if owner_path else type_def.name
+        )
         lines.append(
             f"        ForySerializer.registerSerializer(fory, classOf[{class_ref}])"
         )
