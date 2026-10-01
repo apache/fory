@@ -710,6 +710,37 @@ TEST(CollectionSerializerTest, ForwardListIntRoundTrip) {
   EXPECT_EQ(result[4], 500);
 }
 
+TEST(CollectionSerializerTest, ForwardListWireMatchesVector) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+
+  std::forward_list<std::string> linked_strings{"first", "second"};
+  std::vector<std::string> vector_strings{"first", "second"};
+  auto linked_strings_bytes = fory.serialize(linked_strings);
+  auto vector_strings_bytes = fory.serialize(vector_strings);
+  ASSERT_TRUE(linked_strings_bytes.ok());
+  ASSERT_TRUE(vector_strings_bytes.ok());
+  EXPECT_EQ(linked_strings_bytes.value(), vector_strings_bytes.value());
+
+  std::forward_list<std::optional<int32_t>> linked_optional{1, std::nullopt, 3};
+  std::vector<std::optional<int32_t>> vector_optional{1, std::nullopt, 3};
+  auto linked_optional_bytes = fory.serialize(linked_optional);
+  auto vector_optional_bytes = fory.serialize(vector_optional);
+  ASSERT_TRUE(linked_optional_bytes.ok());
+  ASSERT_TRUE(vector_optional_bytes.ok());
+  EXPECT_EQ(linked_optional_bytes.value(), vector_optional_bytes.value());
+
+  auto first = std::make_shared<std::string>("first");
+  auto second = std::make_shared<std::string>("second");
+  std::forward_list<std::shared_ptr<std::string>> linked_shared{first, second};
+  std::vector<std::shared_ptr<std::string>> vector_shared{first, second};
+  auto linked_shared_bytes = fory.serialize(linked_shared);
+  auto vector_shared_bytes = fory.serialize(vector_shared);
+  ASSERT_TRUE(linked_shared_bytes.ok());
+  ASSERT_TRUE(vector_shared_bytes.ok());
+  EXPECT_EQ(linked_shared_bytes.value(), vector_shared_bytes.value());
+}
+
 TEST(CollectionSerializerTest, ForwardListEmptyRoundTrip) {
   auto fory = Fory::builder().xlang(true).compatible(false).build();
   fory.register_struct<ForwardListStringHolder>(502);
