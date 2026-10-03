@@ -26,7 +26,6 @@
 #include <cstring>
 #include <deque>
 #include <forward_list>
-#include <functional>
 #include <limits>
 #include <list>
 #include <set>
@@ -148,16 +147,16 @@ read_collection_element_type_info(ReadContext &ctx) {
 /// write collection data for non-polymorphic, non-shared-ref elements.
 template <typename T, typename Container>
 inline void write_collection_data_fast(const Container &coll, WriteContext &ctx,
-                                       bool has_generics) {
+                                       bool has_generics, uint32_t length) {
   static_assert(!is_polymorphic_v<T>,
                 "Fast path is for non-polymorphic types only");
   static_assert(!is_shared_ref_v<T>,
                 "Fast path is for non-shared-ref types only");
 
   // write length
-  ctx.write_var_uint32(static_cast<uint32_t>(coll.size()));
+  ctx.write_var_uint32(length);
 
-  if (coll.empty()) {
+  if (length == 0) {
     return;
   }
 
@@ -236,24 +235,26 @@ inline void write_collection_data_fast(const Container &coll, WriteContext &ctx,
   }
 }
 
-template <typename T, typename Elem>
-FORY_ALWAYS_INLINE const T &collection_value(const Elem &elem) {
-  if constexpr (std::is_same_v<std::decay_t<Elem>,
-                               std::reference_wrapper<const T>>) {
-    return elem.get();
-  } else {
-    return elem;
+template <typename T, typename Container>
+inline void write_collection_data_fast(const Container &coll, WriteContext &ctx,
+                                       bool has_generics) {
+  const uint64_t size = coll.size();
+  if (FORY_PREDICT_FALSE(size > std::numeric_limits<uint32_t>::max())) {
+    ctx.set_error(Error::invalid("Collection size exceeds uint32_t range"));
+    return;
   }
+  write_collection_data_fast<T>(coll, ctx, has_generics,
+                                static_cast<uint32_t>(size));
 }
 
 /// write collection data for polymorphic or shared-ref elements.
 template <typename T, typename Container>
 inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
-                                       bool has_generics) {
+                                       bool has_generics, uint32_t length) {
   // write length
-  ctx.write_var_uint32(static_cast<uint32_t>(coll.size()));
+  ctx.write_var_uint32(length);
 
-  if (coll.empty()) {
+  if (length == 0) {
     return;
   }
 
@@ -273,7 +274,7 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
   bool first_type_set = false;
 
   for (const auto &raw_elem : coll) {
-    const T &elem = collection_value<T>(raw_elem);
+    const T &elem = raw_elem;
     // Check for nulls
     if constexpr (is_nullable_v<T>) {
       if (is_null_value(elem)) {
@@ -359,7 +360,7 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
     if (tracking_refs) {
       // Track refs - write ref flag per element per xlang spec
       for (const auto &raw_elem : coll) {
-        const T &elem = collection_value<T>(raw_elem);
+        const T &elem = raw_elem;
         if constexpr (elem_is_polymorphic && elem_is_smart_ptr) {
           Serializer<T>::write_with_data(elem, ctx, RefMode::Tracking,
                                          elem_writer, has_generics);
@@ -371,7 +372,7 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
     } else if (!has_null) {
       // No nulls, no ref tracking - write data directly without null flag
       for (const auto &raw_elem : coll) {
-        const T &elem = collection_value<T>(raw_elem);
+        const T &elem = raw_elem;
         if constexpr (elem_is_polymorphic && elem_is_smart_ptr) {
           Serializer<T>::write_with_data(elem, ctx, RefMode::None, elem_writer,
                                          has_generics);
@@ -392,7 +393,7 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
     } else {
       // Has null elements - write with null flag
       for (const auto &raw_elem : coll) {
-        const T &elem = collection_value<T>(raw_elem);
+        const T &elem = raw_elem;
         if constexpr (elem_is_polymorphic && elem_is_smart_ptr) {
           Serializer<T>::write_with_data(elem, ctx, RefMode::NullOnly,
                                          elem_writer, has_generics);
@@ -407,23 +408,35 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
     if (tracking_refs) {
       // Track refs - write ref flag + type info per element
       for (const auto &raw_elem : coll) {
-        const T &elem = collection_value<T>(raw_elem);
+        const T &elem = raw_elem;
         Serializer<T>::write(elem, ctx, RefMode::Tracking, true, has_generics);
       }
     } else if (!has_null) {
       // No nulls - write without null flag (RefMode::None)
       for (const auto &raw_elem : coll) {
-        const T &elem = collection_value<T>(raw_elem);
+        const T &elem = raw_elem;
         Serializer<T>::write(elem, ctx, RefMode::None, true, has_generics);
       }
     } else {
       // Has null elements - write with null flag (RefMode::NullOnly)
       for (const auto &raw_elem : coll) {
-        const T &elem = collection_value<T>(raw_elem);
+        const T &elem = raw_elem;
         Serializer<T>::write(elem, ctx, RefMode::NullOnly, true, has_generics);
       }
     }
   }
+}
+
+template <typename T, typename Container>
+inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
+                                       bool has_generics) {
+  const uint64_t size = coll.size();
+  if (FORY_PREDICT_FALSE(size > std::numeric_limits<uint32_t>::max())) {
+    ctx.set_error(Error::invalid("Collection size exceeds uint32_t range"));
+    return;
+  }
+  write_collection_data_slow<T>(coll, ctx, has_generics,
+                                static_cast<uint32_t>(size));
 }
 
 // Helper trait to detect if container has push_back
@@ -2122,104 +2135,25 @@ struct Serializer<std::forward_list<T, Alloc>> {
 
   static inline void write_data_generic(const std::forward_list<T, Alloc> &lst,
                                         WriteContext &ctx, bool has_generics) {
-    // Convert to vector first for efficient writing (forward_list has no size)
-    std::vector<std::reference_wrapper<const T>> temp;
+    // forward_list has no size(), so count elements before writing the header.
+    uint64_t size = 0;
     for (const auto &elem : lst) {
-      temp.push_back(std::cref(elem));
+      (void)elem;
+      ++size;
     }
+    if (FORY_PREDICT_FALSE(size > std::numeric_limits<uint32_t>::max())) {
+      ctx.set_error(Error::invalid("forward_list size exceeds uint32_t range"));
+      return;
+    }
+    const uint32_t length = static_cast<uint32_t>(size);
 
     // Dispatch to fast or slow path based on element type characteristics
     constexpr bool is_fast_path = !is_polymorphic_v<T> && !is_shared_ref_v<T>;
 
-    if constexpr (!is_fast_path) {
-      write_collection_data_slow<T>(temp, ctx, has_generics);
-      return;
-    }
-
-    // write length
-    ctx.write_var_uint32(static_cast<uint32_t>(temp.size()));
-
-    if (temp.empty()) {
-      return;
-    }
-
     if constexpr (is_fast_path) {
-      // Check for null elements
-      bool has_null = false;
-      if constexpr (is_nullable_v<T>) {
-        for (const auto &elem_ref : temp) {
-          if (is_null_value(elem_ref.get())) {
-            has_null = true;
-            break;
-          }
-        }
-      }
-
-      // Build header bitmap
-      uint8_t bitmap = COLL_IS_SAME_TYPE;
-      if (has_null) {
-        bitmap |= COLL_HAS_NULL;
-      }
-
-      // Determine if element type is declared
-      using ElemType = nullable_element_t<T>;
-      bool is_elem_declared =
-          has_generics && !need_type_for_collection_elem<ElemType>();
-      if (is_elem_declared) {
-        bitmap |= COLL_DECL_ELEMENT_TYPE;
-      }
-
-      // write header
-      ctx.write_uint8(bitmap);
-
-      // write element type info if not declared
-      if (!is_elem_declared) {
-        Serializer<ElemType>::write_type_info(ctx);
-      }
-
-      // write elements
-      if constexpr (is_nullable_v<T>) {
-        using Inner = nullable_element_t<T>;
-        if (has_null) {
-          for (const auto &elem_ref : temp) {
-            const auto &elem = elem_ref.get();
-            if (is_null_value(elem)) {
-              ctx.write_int8(NULL_FLAG);
-            } else {
-              ctx.write_int8(NOT_NULL_VALUE_FLAG);
-              if (is_elem_declared) {
-                Serializer<Inner>::write_data(deref_nullable(elem), ctx);
-              } else {
-                Serializer<Inner>::write(deref_nullable(elem), ctx,
-                                         RefMode::None, false);
-              }
-            }
-          }
-        } else {
-          for (const auto &elem_ref : temp) {
-            const auto &elem = elem_ref.get();
-            if (is_elem_declared) {
-              Serializer<Inner>::write_data(deref_nullable(elem), ctx);
-            } else {
-              Serializer<Inner>::write(deref_nullable(elem), ctx, RefMode::None,
-                                       false);
-            }
-          }
-        }
-      } else {
-        for (const auto &elem_ref : temp) {
-          const auto &elem = elem_ref.get();
-          if (is_elem_declared) {
-            if constexpr (is_generic_type_v<T>) {
-              Serializer<T>::write_data_generic(elem, ctx, true);
-            } else {
-              Serializer<T>::write_data(elem, ctx);
-            }
-          } else {
-            Serializer<T>::write(elem, ctx, RefMode::None, false);
-          }
-        }
-      }
+      write_collection_data_fast<T>(lst, ctx, has_generics, length);
+    } else {
+      write_collection_data_slow<T>(lst, ctx, has_generics, length);
     }
   }
 
