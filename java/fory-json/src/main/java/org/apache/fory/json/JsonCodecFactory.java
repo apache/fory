@@ -58,4 +58,14 @@ public interface JsonCodecFactory {
   default List<Class<?>> handledRuntimeClasses() {
     return Collections.emptyList();
   }
+
+  /**
+   * Identifies language collection, map, and array types during property validation, including when
+   * an application replaces their complete codec. This does not enable content filtering in that
+   * replacement codec.
+   */
+  @Internal
+  default boolean isContainerType(TypeRef<?> type) {
+    return false;
+  }
 }

@@ -37,6 +37,12 @@ public class KspRetentionResourceTest {
 
     val account = rules("PlatformAccount")
     val defaults = rules("PlatformDefaults")
+    val nullHandling = rules("PlatformNullHandling")
+    assertTrue(
+      nullHandling.contains("@interface org.apache.fory.json.annotation.JsonProperty"),
+      nullHandling
+    )
+    assertTrue(nullHandling.contains("java.util.List getValues();"), nullHandling)
     assertTrue(
       defaults.contains(
         "<init>(int,java.util.List,int,int,kotlin.jvm.internal.DefaultConstructorMarker);"
@@ -143,6 +149,7 @@ public class KspRetentionResourceTest {
         "META-INF/proguard/fory-json-$PACKAGE.PlatformBox.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformCircle.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformDefaults.pro",
+        "META-INF/proguard/fory-json-$PACKAGE.PlatformNullHandling.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformDirectOverride.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformId.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformMarker.pro",

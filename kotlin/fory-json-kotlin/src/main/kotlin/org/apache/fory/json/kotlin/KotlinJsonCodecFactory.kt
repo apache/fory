@@ -22,6 +22,7 @@ package org.apache.fory.json.kotlin
 import kotlin.time.TimedValue
 import org.apache.fory.json.JsonCodecFactory
 import org.apache.fory.json.codec.ArrayCodec
+import org.apache.fory.json.codec.ContainerJsonCodec
 import org.apache.fory.json.codec.JsonValueCodec
 import org.apache.fory.json.codec.ScalarCodecs
 import org.apache.fory.json.resolver.ExactTypeRequiredException
@@ -31,6 +32,9 @@ import org.apache.fory.reflect.TypeRef
 import org.apache.fory.type.Types
 
 internal object KotlinJsonCodecFactory : JsonCodecFactory {
+  override fun isContainerType(type: TypeRef<*>): Boolean =
+    (type.typeExtMeta?.typeId() ?: 0) in Types.UINT8_ARRAY..Types.UINT64_ARRAY
+
   override fun create(
     type: TypeRef<*>,
     resolver: JsonTypeResolver,
@@ -48,10 +52,14 @@ internal object KotlinJsonCodecFactory : JsonCodecFactory {
     }
     if (semanticId in Types.UINT8_ARRAY..Types.UINT64_ARRAY) {
       val writeLongAsString = resolver.writeLongAsString()
-      KotlinUnsignedArrayCodecs.create(rawType, semanticId, writeLongAsString)?.let {
-        return it
-      }
-      return ArrayCodec.createUnsignedPrimitive(rawType, semanticId, writeLongAsString)
+      val onContentNullRead = resolver.sharedRegistry().onContentNullRead()
+      KotlinUnsignedArrayCodecs.create(rawType, semanticId, writeLongAsString, onContentNullRead)
+        ?.let {
+          return it
+        }
+      return (ArrayCodec.createUnsignedPrimitive(rawType, semanticId, writeLongAsString)
+          as ContainerJsonCodec<*>)
+        .withContentNullRead(onContentNullRead)
     }
     if (rawType == Unit::class.java) {
       return if (type.typeExtMeta?.nullable() == true) {

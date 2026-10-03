@@ -27,6 +27,7 @@ import java.util.Objects;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonProperty.Include;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.resolver.CodecRegistry;
 
 /**
@@ -39,6 +40,8 @@ public final class JsonConfig {
   private static final int MAX_CACHED_FIELD_NAMES = 1 << 29;
 
   private final Include defaultPropertyInclusion;
+  private final NullHandling onNullRead;
+  private final NullHandling onContentNullRead;
   private final boolean writeLongAsString;
   private final boolean escapeNonAscii;
   private final boolean failOnMissingRequiredProperties;
@@ -62,6 +65,8 @@ public final class JsonConfig {
 
   JsonConfig(
       Include defaultPropertyInclusion,
+      NullHandling onNullRead,
+      NullHandling onContentNullRead,
       boolean writeLongAsString,
       boolean escapeNonAscii,
       boolean failOnMissingRequiredProperties,
@@ -82,6 +87,8 @@ public final class JsonConfig {
       List<String> factoryIdentities,
       JsonTypeChecker typeChecker) {
     this.defaultPropertyInclusion = defaultPropertyInclusion;
+    this.onNullRead = onNullRead;
+    this.onContentNullRead = onContentNullRead;
     this.writeLongAsString = writeLongAsString;
     this.escapeNonAscii = escapeNonAscii;
     this.failOnMissingRequiredProperties = failOnMissingRequiredProperties;
@@ -110,6 +117,16 @@ public final class JsonConfig {
   /** Returns the concrete default inclusion used for object properties. */
   public Include defaultPropertyInclusion() {
     return defaultPropertyInclusion;
+  }
+
+  /** Returns the default handling of explicit JSON null property values. */
+  public NullHandling onNullRead() {
+    return onNullRead;
+  }
+
+  /** Returns the default handling of explicit JSON null container elements and map values. */
+  public NullHandling onContentNullRead() {
+    return onContentNullRead;
   }
 
   /**

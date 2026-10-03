@@ -9,7 +9,8 @@ Load this file when changing `scala/`.
 - Missing Scala JSON case-class constructor parameters use their type defaults: zero for numbers,
   false for booleans, empty collections and arrays, None for Option, and null for other references.
   Explicit constructor defaults take precedence. Mutable defaults must be fresh for each object.
-  Explicit JSON null keeps its existing decoding semantics. Preserve these rules in interpreted
+  Under `onNullRead(SET)`, explicit JSON null keeps its existing decoding semantics; `SKIP` leaves
+  the occurrence absent, including its presence state. Preserve these rules in interpreted
   and generated readers. With `failOnMissingRequiredProperties(true)`, preserve declared defaults
   and Option/container defaults, but require ordinary constructor properties instead of applying
   scalar zero/false/null fallbacks. Explicit null and ignored properties keep their existing rules.

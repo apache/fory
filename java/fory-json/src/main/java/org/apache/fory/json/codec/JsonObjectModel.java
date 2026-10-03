@@ -597,9 +597,10 @@ public final class JsonObjectModel {
     if (member.equals(logical)) {
       return true;
     }
-    if (member instanceof WildcardType
-        && logicalType.getTypeExtMeta() != null
-        && logicalType.getTypeExtMeta().covariant()) {
+    if (member instanceof WildcardType && logicalType.getTypeExtMeta() != null) {
+      // Kotlin declaration-site variance can emit an upper-bounded JVM wildcard even when the
+      // occurrence has no explicit `out` projection. The language model supplies the exact type;
+      // accept only that same upper bound, not an arbitrary assignable subtype or raw wildcard.
       WildcardType wildcard = (WildcardType) member;
       Type[] upperBounds = wildcard.getUpperBounds();
       return wildcard.getLowerBounds().length == 0

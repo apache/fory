@@ -73,6 +73,7 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.regex.Pattern;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.reader.JsonReader;
@@ -3021,8 +3022,20 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicIntegerArrayCodec implements JsonValueCodec<AtomicIntegerArray> {
-    public static final AtomicIntegerArrayCodec INSTANCE = new AtomicIntegerArrayCodec();
+  public static final class AtomicIntegerArrayCodec
+      implements ContainerJsonCodec<AtomicIntegerArray> {
+    public static final AtomicIntegerArrayCodec INSTANCE =
+        new AtomicIntegerArrayCodec(NullHandling.SET);
+    final NullHandling onContentNullRead;
+
+    private AtomicIntegerArrayCodec(NullHandling onContentNullRead) {
+      this.onContentNullRead = onContentNullRead;
+    }
+
+    @Override
+    public ContainerJsonCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new AtomicIntegerArrayCodec(handling);
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, AtomicIntegerArray value) {
@@ -3069,7 +3082,7 @@ public final class ScalarCodecs {
       return reader.tryReadNullToken() ? null : readArray(reader);
     }
 
-    private static AtomicIntegerArray readArray(Latin1JsonReader reader) {
+    private AtomicIntegerArray readArray(Latin1JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -3080,6 +3093,9 @@ public final class ScalarCodecs {
       int size = 0;
       do {
         if (reader.tryReadNull()) {
+          if (onContentNullRead == NullHandling.SKIP) {
+            continue;
+          }
           throw new ForyJsonException("Cannot read null into AtomicIntegerArray element");
         }
         if (size == values.length) {
@@ -3092,7 +3108,7 @@ public final class ScalarCodecs {
       return new AtomicIntegerArray(Arrays.copyOf(values, size));
     }
 
-    private static AtomicIntegerArray readArray(Utf16JsonReader reader) {
+    private AtomicIntegerArray readArray(Utf16JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -3103,6 +3119,9 @@ public final class ScalarCodecs {
       int size = 0;
       do {
         if (reader.tryReadNull()) {
+          if (onContentNullRead == NullHandling.SKIP) {
+            continue;
+          }
           throw new ForyJsonException("Cannot read null into AtomicIntegerArray element");
         }
         if (size == values.length) {
@@ -3115,7 +3134,7 @@ public final class ScalarCodecs {
       return new AtomicIntegerArray(Arrays.copyOf(values, size));
     }
 
-    private static AtomicIntegerArray readArray(Utf8JsonReader reader) {
+    private AtomicIntegerArray readArray(Utf8JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -3126,6 +3145,9 @@ public final class ScalarCodecs {
       int size = 0;
       do {
         if (reader.tryReadNull()) {
+          if (onContentNullRead == NullHandling.SKIP) {
+            continue;
+          }
           throw new ForyJsonException("Cannot read null into AtomicIntegerArray element");
         }
         if (size == values.length) {
@@ -3139,10 +3161,18 @@ public final class ScalarCodecs {
     }
   }
 
-  public static class AtomicLongArrayCodec implements JsonValueCodec<AtomicLongArray> {
-    public static final AtomicLongArrayCodec INSTANCE = new AtomicLongArrayCodec();
+  public static class AtomicLongArrayCodec implements ContainerJsonCodec<AtomicLongArray> {
+    public static final AtomicLongArrayCodec INSTANCE = new AtomicLongArrayCodec(NullHandling.SET);
+    final NullHandling onContentNullRead;
 
-    protected AtomicLongArrayCodec() {}
+    private AtomicLongArrayCodec(NullHandling onContentNullRead) {
+      this.onContentNullRead = onContentNullRead;
+    }
+
+    @Override
+    public ContainerJsonCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new AtomicLongArrayCodec(handling);
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, AtomicLongArray value) {
@@ -3189,7 +3219,7 @@ public final class ScalarCodecs {
       return reader.tryReadNullToken() ? null : readArray(reader);
     }
 
-    private static AtomicLongArray readArray(Latin1JsonReader reader) {
+    private AtomicLongArray readArray(Latin1JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -3200,6 +3230,9 @@ public final class ScalarCodecs {
       int size = 0;
       do {
         if (reader.tryReadNull()) {
+          if (onContentNullRead == NullHandling.SKIP) {
+            continue;
+          }
           throw new ForyJsonException("Cannot read null into AtomicLongArray element");
         }
         if (size == values.length) {
@@ -3212,7 +3245,7 @@ public final class ScalarCodecs {
       return new AtomicLongArray(Arrays.copyOf(values, size));
     }
 
-    private static AtomicLongArray readArray(Utf16JsonReader reader) {
+    private AtomicLongArray readArray(Utf16JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -3223,6 +3256,9 @@ public final class ScalarCodecs {
       int size = 0;
       do {
         if (reader.tryReadNull()) {
+          if (onContentNullRead == NullHandling.SKIP) {
+            continue;
+          }
           throw new ForyJsonException("Cannot read null into AtomicLongArray element");
         }
         if (size == values.length) {
@@ -3235,7 +3271,7 @@ public final class ScalarCodecs {
       return new AtomicLongArray(Arrays.copyOf(values, size));
     }
 
-    private static AtomicLongArray readArray(Utf8JsonReader reader) {
+    private AtomicLongArray readArray(Utf8JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -3246,6 +3282,9 @@ public final class ScalarCodecs {
       int size = 0;
       do {
         if (reader.tryReadNull()) {
+          if (onContentNullRead == NullHandling.SKIP) {
+            continue;
+          }
           throw new ForyJsonException("Cannot read null into AtomicLongArray element");
         }
         if (size == values.length) {
@@ -3261,9 +3300,17 @@ public final class ScalarCodecs {
 
   /** Built-in AtomicLongArray binding which writes each Long value as a JSON string. */
   public static final class AtomicLongArrayAsStringCodec extends AtomicLongArrayCodec {
-    public static final AtomicLongArrayAsStringCodec INSTANCE = new AtomicLongArrayAsStringCodec();
+    public static final AtomicLongArrayAsStringCodec INSTANCE =
+        new AtomicLongArrayAsStringCodec(NullHandling.SET);
 
-    private AtomicLongArrayAsStringCodec() {}
+    private AtomicLongArrayAsStringCodec(NullHandling onContentNullRead) {
+      super(onContentNullRead);
+    }
+
+    @Override
+    public ContainerJsonCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : new AtomicLongArrayAsStringCodec(handling);
+    }
 
     @Override
     public void writeString(StringJsonWriter writer, AtomicLongArray value) {
@@ -3296,7 +3343,8 @@ public final class ScalarCodecs {
     }
   }
 
-  public static class AtomicReferenceArrayCodec implements JsonValueCodec<AtomicReferenceArray<?>> {
+  public static class AtomicReferenceArrayCodec
+      implements ContainerJsonCodec<AtomicReferenceArray<?>> {
     private static final int SHALLOW_BYTES =
         GraphMemoryEstimates.shallowObjectBytes(AtomicReferenceArray.class);
     private static final int ARRAY_BYTES = GraphMemoryEstimates.objectArrayBytes();
@@ -3306,27 +3354,37 @@ public final class ScalarCodecs {
     private static final int REFERENCE_BATCH_BYTES = REFERENCE_BATCH_SIZE * REFERENCE_BYTES;
 
     private final JsonTypeInfo valueTypeInfo;
+    private final NullHandling onContentNullRead;
 
     public AtomicReferenceArrayCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       this.valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+      this.onContentNullRead = resolver.sharedRegistry().onContentNullRead();
     }
 
     public AtomicReferenceArrayCodec(TypeRef<?> valueType, JsonTypeResolver resolver) {
       this.valueTypeInfo = resolver.getTypeInfo(valueType);
+      this.onContentNullRead = resolver.sharedRegistry().onContentNullRead();
     }
 
     @Internal
-    public AtomicReferenceArrayCodec(JsonTypeInfo valueTypeInfo) {
+    public AtomicReferenceArrayCodec(JsonTypeInfo valueTypeInfo, NullHandling onContentNullRead) {
       this.valueTypeInfo = valueTypeInfo;
+      this.onContentNullRead = onContentNullRead;
+    }
+
+    @Override
+    public final ContainerJsonCodec<?> withContentNullRead(NullHandling handling) {
+      return handling == onContentNullRead ? this : create(valueTypeInfo, handling);
     }
 
     /** Selects the exact element-null operation for one declared atomic reference array. */
     @Internal
-    public static AtomicReferenceArrayCodec create(JsonTypeInfo valueTypeInfo) {
+    public static AtomicReferenceArrayCodec create(
+        JsonTypeInfo valueTypeInfo, NullHandling onContentNullRead) {
       return valueTypeInfo.rejectsNull()
-          ? new NonNullAtomicReferenceArrayCodec(valueTypeInfo)
-          : new AtomicReferenceArrayCodec(valueTypeInfo);
+          ? new NonNullAtomicReferenceArrayCodec(valueTypeInfo, onContentNullRead)
+          : new AtomicReferenceArrayCodec(valueTypeInfo, onContentNullRead);
     }
 
     @Override
@@ -3383,6 +3441,12 @@ public final class ScalarCodecs {
       int size = 0;
       Utf16ReaderCodec<Object> codec = valueTypeInfo.utf16Reader();
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullAtomicArrayElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3408,6 +3472,12 @@ public final class ScalarCodecs {
       int size = 0;
       Utf8ReaderCodec<Object> codec = valueTypeInfo.utf8Reader();
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullAtomicArrayElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3429,6 +3499,12 @@ public final class ScalarCodecs {
       Object[] values = new Object[8];
       int size = 0;
       do {
+        if (onContentNullRead != NullHandling.SET && reader.tryReadNullToken()) {
+          if (onContentNullRead == NullHandling.FAIL) {
+            rejectNullAtomicArrayElement();
+          }
+          continue;
+        }
         reserveReferenceBatch(reader, size);
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
@@ -3474,8 +3550,9 @@ public final class ScalarCodecs {
   }
 
   private static final class NonNullAtomicReferenceArrayCodec extends AtomicReferenceArrayCodec {
-    private NonNullAtomicReferenceArrayCodec(JsonTypeInfo valueTypeInfo) {
-      super(valueTypeInfo);
+    private NonNullAtomicReferenceArrayCodec(
+        JsonTypeInfo valueTypeInfo, NullHandling onContentNullRead) {
+      super(valueTypeInfo, onContentNullRead);
     }
 
     @Override

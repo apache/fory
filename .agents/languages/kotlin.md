@@ -6,7 +6,8 @@ Load this file when changing `kotlin/` or compiler code that generates Kotlin so
 
 - Missing JSON constructor parameters use explicit Kotlin defaults first; otherwise non-null
   numeric and Boolean parameters use zero and false, and nullable parameters use null. Other
-  non-null reference parameters remain required. Explicit null never requests a default.
+  non-null reference parameters remain required. Under `onNullRead(SET)`, explicit null never
+  requests a default; `SKIP` leaves the occurrence absent, including its presence state.
   With `failOnMissingRequiredProperties(true)`, ordinary constructor parameters without declared
   defaults must appear, including nullable and scalar parameters. Preserve declared defaults and
   existing container recovery; do not invent defaults for non-null containers.

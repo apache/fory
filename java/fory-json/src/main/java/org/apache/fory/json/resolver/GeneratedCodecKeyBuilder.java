@@ -79,6 +79,8 @@ final class GeneratedCodecKeyBuilder {
       keyParts.add(registry.escapeNonAscii());
     } else {
       keyParts.add(registry.failOnMissingRequiredProperties());
+      keyParts.add(registry.onNullRead());
+      keyParts.add(registry.onContentNullRead());
     }
     // Both readers and writers store concrete byte-array codecs selected by this default.
     keyParts.add(registry.byteArrayFormat());
@@ -114,7 +116,8 @@ final class GeneratedCodecKeyBuilder {
             : kind == JsonTypeResolver.CapabilityKind.UTF8_WRITER
                 ? Role.UTF8_COLLECTION_WRITER
                 : Role.UTF8_COLLECTION_READER,
-        owner instanceof CollectionCodec.StringCollectionCodec);
+        owner instanceof CollectionCodec.StringCollectionCodec,
+        owner.onContentNullRead());
   }
 
   void addCycleSlots(boolean[] slots) {
@@ -177,16 +180,26 @@ final class GeneratedCodecKeyBuilder {
     JsonCreatorInfo creator = owner.creatorInfo();
     if (creator == null) {
       for (JsonFieldInfo field : owner.readFields()) {
+        keyParts.add(field.onNullRead());
+        keyParts.add(field.onContentNullRead());
         addRegistration(field.readTypeInfo());
       }
     } else {
       for (JsonCreatorFieldInfo field : creator.fields()) {
+        keyParts.add(field.onNullRead());
+        keyParts.add(field.onContentNullRead());
         addRegistration(field.typeInfo());
       }
     }
     JsonUnwrappedInfo unwrapped = owner.unwrappedInfo();
     if (unwrapped != null) {
       for (JsonUnwrappedInfo.ReadRoute route : unwrapped.readRoutes()) {
+        keyParts.add(
+            route.field() == null ? route.creatorField().onNullRead() : route.field().onNullRead());
+        keyParts.add(
+            route.field() == null
+                ? route.creatorField().onContentNullRead()
+                : route.field().onContentNullRead());
         addRegistration(
             route.field() == null ? route.creatorField().typeInfo() : route.field().readTypeInfo());
       }

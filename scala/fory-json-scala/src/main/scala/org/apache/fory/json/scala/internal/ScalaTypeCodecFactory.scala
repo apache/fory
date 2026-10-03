@@ -31,6 +31,9 @@ import org.apache.fory.serializer.GraphMemoryEstimates
 import scala.collection.immutable.NumericRange
 
 private[scala] object ScalaTypeCodecFactory extends JsonCodecFactory {
+  override def isContainerType(tpe: TypeRef[_]): Boolean =
+    classOf[scala.collection.Iterable[_]].isAssignableFrom(tpe.getRawType)
+
   override def create(
       typeRef: TypeRef[_],
       resolver: JsonTypeResolver,
@@ -74,10 +77,10 @@ private[scala] object ScalaTypeCodecFactory extends JsonCodecFactory {
       return new ScalaDurationCodec(false)
     }
     if (classOf[scala.collection.immutable.BitSet].isAssignableFrom(rawType)) {
-      return new ScalaBitSetCodec(false)
+      return new ScalaBitSetCodec(false, resolver.sharedRegistry().onContentNullRead())
     }
     if (classOf[scala.collection.mutable.BitSet].isAssignableFrom(rawType)) {
-      return new ScalaBitSetCodec(true)
+      return new ScalaBitSetCodec(true, resolver.sharedRegistry().onContentNullRead())
     }
     val tupleArity = ScalaTupleCodec.arity(rawType)
     if (tupleArity >= 1) return new ScalaTupleCodec(tupleArity, rawType, runtimeType)
@@ -100,12 +103,14 @@ private[scala] object ScalaTypeCodecFactory extends JsonCodecFactory {
       return new ScalaMapCodec(
         selection._1,
         GraphMemoryEstimates.shallowObjectBytes(selection._2),
-        runtimeType
+        runtimeType,
+        resolver.sharedRegistry().onContentNullRead()
       )
     }
     if (classOf[List[_]].isAssignableFrom(rawType) || name == "scala.collection.immutable.Nil$") {
       requireDeclaredClass(typeRef, runtimeType)
-      return new ScalaListCodec(name.endsWith("$colon$colon"), name.endsWith("Nil$"), runtimeType)
+      return new ScalaListCodec(name.endsWith("$colon$colon"), name.endsWith("Nil$"), runtimeType,
+        resolver.sharedRegistry().onContentNullRead())
     }
     if (classOf[scala.collection.Iterable[_]].isAssignableFrom(rawType)) {
       val selection = iterableKind(rawType, runtimeType)
@@ -116,7 +121,8 @@ private[scala] object ScalaTypeCodecFactory extends JsonCodecFactory {
         selection._1,
         GraphMemoryEstimates.shallowObjectBytes(selection._2),
         runtimeType,
-        classOf[scala.collection.Seq[_]].isAssignableFrom(rawType)
+        classOf[scala.collection.Seq[_]].isAssignableFrom(rawType),
+        resolver.sharedRegistry().onContentNullRead()
       )
     }
 

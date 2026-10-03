@@ -30,6 +30,7 @@ import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.Objects;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.reflect.TypeRef;
 
 /** Exact, source-independent identity of one generated JSON capability class. */
@@ -91,7 +92,8 @@ public final class GeneratedCodecKey {
       TypeRef<?> rootBinding,
       Class<?> elementClass,
       Role role,
-      boolean stringElements) {
+      boolean stringElements,
+      NullHandling onContentNullRead) {
     if (!collectionRole(role)) {
       throw new IllegalArgumentException("Object role requires an object key");
     }
@@ -99,7 +101,9 @@ public final class GeneratedCodecKey {
         collectionClass,
         role,
         Objects.requireNonNull(rootBinding),
-        new Object[] {Objects.requireNonNull(elementClass), stringElements});
+        role == Role.UTF8_COLLECTION_READER
+            ? new Object[] {Objects.requireNonNull(elementClass), stringElements, onContentNullRead}
+            : new Object[] {Objects.requireNonNull(elementClass), stringElements});
   }
 
   public Class<?> targetClass() {
@@ -120,6 +124,11 @@ public final class GeneratedCodecKey {
   public boolean stringCollectionElements() {
     requireCollectionRole();
     return (Boolean) keyParts[1];
+  }
+
+  /** Returns the immediate element handling selected by a generated collection reader. */
+  public NullHandling collectionNullRead() {
+    return (NullHandling) keyParts[2];
   }
 
   /** Returns the first application-owned class whose lifecycle may retain this key. */

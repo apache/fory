@@ -232,12 +232,17 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   declaration-order assumption, or replace complete token verification with prefix equality.
 - Generated UTF-8 object writers own their C2 boundaries in their actual emitted bytecode. A split
   writer keeps object framing and the final declaration-order field range in public `writeUtf8`;
-  every preceding range is a direct private final helper. Cold source generation compiles each
-  candidate and requires the root and every helper to be strictly larger than HotSpot's 325-byte
-  hot-inline limit. Independently compiled String, scalar, child-object, and container leaves count
-  only as calls. If the schema cannot form at least two naturally large units, keep one direct
-  method. Do not replace these type-owned calls with interface receivers, shared profiles,
-  trampolines, padding, duplicate field logic, dummy branches, or field-count estimates.
+  every preceding range is a direct private final helper. Estimate group sizes from the emitted
+  operations during source generation, and generate and compile each capability only once.
+  Validate the actual root/helper bytecode boundaries and throughput in tests and benchmarks;
+  never compile trial sources to measure group sizes during codec construction. Independently
+  compiled String, scalar, child-object, and container leaves count only as calls. If the schema
+  cannot form at least two naturally large units, keep one direct method. Do not replace these
+  type-owned calls with interface receivers, shared profiles, trampolines, padding, duplicate field
+  logic, or dummy branches.
+- Known JSON reader/writer operations with no declared exceptions should use the explicit Expression
+  invocation contract instead of rediscovering the reader's method hierarchy for every generated
+  field.
 - Intentional hot-path source duplication is required when helper extraction loses local
   buffer/cursor state or makes C2 layout depend on compilation order. In particular, Long read/write
   paths may repeat Int parsing or formatting logic, and unrolled array lanes may repeat complete

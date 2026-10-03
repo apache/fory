@@ -25,6 +25,18 @@ import org.apache.fory.json.ForyJson
 public object PlatformCorpusChecks {
   @JvmStatic
   public fun verifyRoundTrip(json: ForyJson) {
+    check(
+      json.fromJson("{\"text\":null,\"values\":null}", PlatformNullHandling::class.java) ==
+        PlatformNullHandling()
+    )
+    check(
+      json
+        .fromJson(
+          "{\"values\":[null,\"kept\",null]}".encodeToByteArray(),
+          PlatformNullHandling::class.java
+        )
+        .values == listOf("kept")
+    )
     val type = KotlinJsonCorpus.rootType()
     val decoded = json.fromJson(KotlinJsonCorpus.rootJson(), type)
     verifyRoot(decoded)

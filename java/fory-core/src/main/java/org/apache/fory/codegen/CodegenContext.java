@@ -204,11 +204,11 @@ public class CodegenContext {
         return name;
       }
     }
-    String newName = String.format("%s%s", name, id);
+    String newName = name + id;
     while (valNames.contains(newName)) {
       id++;
       newValNameIds.put(name, id);
-      newName = String.format("%s%s", name, id);
+      newName = name + id;
     }
     valNames.add(newName);
     return newName;
@@ -241,11 +241,11 @@ public class CodegenContext {
     } else {
       String[] newNames = new String[names.length];
       for (int i = 0; i < names.length; i++) {
-        newNames[i] = String.format("%s%s", names[i], id);
+        newNames[i] = names[i] + id;
         while (valNames.contains(newNames[i])) {
           id++;
           newValNameIds.put(newNames[i], id);
-          newNames[i] = String.format("%s%s", names[i], id);
+          newNames[i] = names[i] + id;
         }
       }
       valNames.addAll(Arrays.asList(newNames));
@@ -483,22 +483,17 @@ public class CodegenContext {
     String paramsStr =
         parameters.stream().map(t -> t.f0 + " " + t.f1).collect(Collectors.joining(", "));
     String method =
-        StringUtils.format(
-            ""
-                + "${modifier} ${returnType} ${methodName}(${paramsStr}) {\n"
-                + "    ${codeBody}\n"
-                + "}\n",
-            "modifier",
-            modifier,
-            "returnType",
-            type(returnType),
-            "methodName",
-            methodName,
-            "paramsStr",
-            paramsStr,
-            "codeBody",
-            alignIndent(codeBody));
-    String signature = String.format("%s(%s)", methodName, paramsStr);
+        modifier
+            + " "
+            + type(returnType)
+            + " "
+            + methodName
+            + "("
+            + paramsStr
+            + ") {\n    "
+            + alignIndent(codeBody)
+            + "\n}\n";
+    String signature = methodName + "(" + paramsStr + ")";
     if (methods.containsKey(signature)) {
       throw new IllegalStateException(String.format("Duplicated method signature: %s", signature));
     }

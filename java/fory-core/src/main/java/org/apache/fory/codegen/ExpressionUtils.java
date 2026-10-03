@@ -54,7 +54,6 @@ import org.apache.fory.codegen.Expression.Variable;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.util.Preconditions;
-import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.function.Functions;
 
 /** Expression utils to create expression and code in a more convenient way. */
@@ -344,62 +343,34 @@ public class ExpressionUtils {
       String args,
       boolean needTryCatch) {
     if (needTryCatch) {
-      return StringUtils.format(
-          "${type} ${value};\n"
-              + "try {\n"
-              + "   ${value} = ${target}.${functionName}(${args});\n"
-              + "} catch (Exception e) {\n"
-              + "   throw new RuntimeException(e);\n"
-              + "}",
-          "type",
-          type,
-          "value",
-          resultVal,
-          "target",
-          target,
-          "functionName",
-          functionName,
-          "args",
-          args);
+      return type
+          + " "
+          + resultVal
+          + ";\ntry {\n   "
+          + resultVal
+          + " = "
+          + target
+          + "."
+          + functionName
+          + "("
+          + args
+          + ");\n} catch (Exception e) {\n   throw new RuntimeException(e);\n}";
     } else {
-      return StringUtils.format(
-          "${type} ${value} = ${target}.${functionName}(${args});",
-          "type",
-          type,
-          "value",
-          resultVal,
-          "target",
-          target,
-          "functionName",
-          functionName,
-          "args",
-          args);
+      return type + " " + resultVal + " = " + target + "." + functionName + "(" + args + ");";
     }
   }
 
   static String callFunc(String target, String functionName, String args, boolean needTryCatch) {
     if (needTryCatch) {
-      return StringUtils.format(
-          "try {\n"
-              + "   ${target}.${functionName}(${args});\n"
-              + "} catch (Exception e) {\n"
-              + "   throw new RuntimeException(e);\n"
-              + "}",
-          "target",
-          target,
-          "functionName",
-          functionName,
-          "args",
-          args);
+      return "try {\n   "
+          + target
+          + "."
+          + functionName
+          + "("
+          + args
+          + ");\n} catch (Exception e) {\n   throw new RuntimeException(e);\n}";
     } else {
-      return StringUtils.format(
-          "${target}.${functionName}(${args});",
-          "target",
-          target,
-          "functionName",
-          functionName,
-          "args",
-          args);
+      return target + "." + functionName + "(" + args + ");";
     }
   }
 

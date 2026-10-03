@@ -45,6 +45,23 @@ import org.testng.annotations.Test;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class CodeGeneratorTest {
+  @Test
+  public void indentation() {
+    Assert.assertEquals(CodeGenerator.indent(null, 2), "");
+    Assert.assertEquals(CodeGenerator.alignIndent(null, 2), "");
+    Assert.assertEquals(CodeGenerator.indent("first", 2), "  first");
+    Assert.assertEquals(CodeGenerator.alignIndent("first", 2), "first");
+    Assert.assertEquals(CodeGenerator.indent("first\n", 2), "  first\n");
+    Assert.assertEquals(CodeGenerator.alignIndent("first\n\n", 2), "first\n\n");
+    Assert.assertEquals(CodeGenerator.indent("first\n\nlast\n\n", 2), "  first\n  \n  last\n");
+    Assert.assertEquals(CodeGenerator.alignIndent("first\n\nlast\n\n", 2), "first\n  \n  last\n");
+    Assert.assertEquals(CodeGenerator.indent("\nlast", 2), "  \n  last");
+    Assert.assertEquals(CodeGenerator.alignIndent("\nlast", 2), "\n  last");
+    Assert.assertEquals(CodeGenerator.indent("first\nlast", 0), "first\nlast");
+    Assert.assertEquals(CodeGenerator.alignIndent("first\nlast", 0), "first\nlast");
+    Assert.assertEquals(CodeGenerator.indent("first\r\nlast", 2), "  first\r\n  last");
+  }
+
   private static WeakHashMap<ClassLoader, DelayedRef<CodeGenerator>> sharedCodeGenerator;
   private static MultiKeyWeakMap<DelayedRef<CodeGenerator>> sharedCodeGenerator2;
 

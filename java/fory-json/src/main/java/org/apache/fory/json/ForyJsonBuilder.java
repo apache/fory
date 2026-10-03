@@ -27,6 +27,7 @@ import java.util.Objects;
 import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty.Include;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.resolver.CodecRegistry;
@@ -52,6 +53,8 @@ import org.apache.fory.platform.GraalvmSupport;
  */
 public final class ForyJsonBuilder {
   private Include defaultPropertyInclusion = Include.NON_NULL;
+  private NullHandling onNullRead = NullHandling.SET;
+  private NullHandling onContentNullRead = NullHandling.SET;
   private boolean writeLongAsString;
   private boolean escapeNonAscii;
   private boolean failOnMissingRequiredProperties;
@@ -115,6 +118,43 @@ public final class ForyJsonBuilder {
     }
     defaultPropertyInclusion = inclusion;
     return this;
+  }
+
+  /**
+   * Sets the default handling of explicit JSON null property values. Defaults to {@code SET}.
+   * Property {@link org.apache.fory.json.annotation.JsonProperty#onNullRead()} overrides it. {@code
+   * SKIP} preserves the current field value or existing missing-creator-argument behavior; it does
+   * not fabricate defaults. Root null values and writing are unaffected.
+   *
+   * @throws IllegalArgumentException if handling is {@code DEFAULT}
+   * @throws NullPointerException if handling is null
+   */
+  public ForyJsonBuilder onNullRead(NullHandling handling) {
+    requireConcreteNullHandling(handling);
+    onNullRead = handling;
+    return this;
+  }
+
+  /**
+   * Sets the default handling of explicit null elements and map values in Fory-owned containers,
+   * including root containers. Defaults to {@code SET}. Property {@link
+   * org.apache.fory.json.annotation.JsonProperty#onContentNullRead()} overrides the immediate
+   * container's setting. Complete custom codecs retain their representation. Writing is unaffected.
+   *
+   * @throws IllegalArgumentException if handling is {@code DEFAULT}
+   * @throws NullPointerException if handling is null
+   */
+  public ForyJsonBuilder onContentNullRead(NullHandling handling) {
+    requireConcreteNullHandling(handling);
+    onContentNullRead = handling;
+    return this;
+  }
+
+  private static void requireConcreteNullHandling(NullHandling handling) {
+    Objects.requireNonNull(handling, "handling");
+    if (handling == NullHandling.DEFAULT) {
+      throw new IllegalArgumentException("Builder null handling must be concrete");
+    }
   }
 
   /**
@@ -397,6 +437,8 @@ public final class ForyJsonBuilder {
         ModuleInstaller.install(new ArrayList<>(modules), codecRegistry, mixins);
     return new JsonConfig(
         defaultPropertyInclusion,
+        onNullRead,
+        onContentNullRead,
         writeLongAsString,
         escapeNonAscii,
         failOnMissingRequiredProperties,

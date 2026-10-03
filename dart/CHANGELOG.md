@@ -1,6 +1,10 @@
 ## 1.8.0-dev
 
-- Continue Dart workspace development after the 1.7.5 release.
+- Continue Dart workspace development after the 1.7.6 release.
+
+## 1.7.6
+
+- Align the Dart workspace version with the Apache Fory 1.7.6 release.
 
 ## 1.7.5
 

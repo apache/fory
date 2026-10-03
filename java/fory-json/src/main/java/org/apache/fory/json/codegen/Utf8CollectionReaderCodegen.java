@@ -22,6 +22,8 @@ package org.apache.fory.json.codegen;
 import java.util.ArrayList;
 import org.apache.fory.codegen.Code;
 import org.apache.fory.codegen.CodegenContext;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
+import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.serializer.GraphMemoryEstimates;
@@ -42,7 +44,11 @@ final class Utf8CollectionReaderCodegen {
   private static final int ARRAY_LIST_FIRST_GROWTH =
       ARRAY_LIST_PREFIX_SIZE + (ARRAY_LIST_PREFIX_SIZE >> 1);
 
-  String genCode(String generatedPackage, String className, boolean stringElements) {
+  String genCode(
+      String generatedPackage,
+      String className,
+      boolean stringElements,
+      NullHandling onContentNullRead) {
     CodegenContext ctx = new CodegenContext();
     ctx.setPackage(generatedPackage);
     ctx.setClassName(className);
@@ -52,13 +58,13 @@ final class Utf8CollectionReaderCodegen {
     ctx.addField(true, ctx.type(Utf8ReaderCodec.class), "elementReader", null);
     ctx.addConstructor(
         "this.elementReader = elementReader;", Utf8ReaderCodec.class, "elementReader");
-    if (stringElements) {
+    if (stringElements && onContentNullRead == NullHandling.SET) {
       addStringArrayListMethods(ctx);
     } else {
       ctx.addMethod(
           "@Override public final",
           "readUtf8",
-          readBody(),
+          readBody(stringElements, onContentNullRead),
           Object.class,
           Utf8JsonReader.class,
           "reader");
@@ -392,7 +398,7 @@ final class Utf8CollectionReaderCodegen {
         + ";\n";
   }
 
-  private static String readBody() {
+  private static String readBody(boolean stringElements, NullHandling onContentNullRead) {
     StringBuilder code = new StringBuilder();
     code.append("if (reader.tryReadNullToken()) {\n  return null;\n}\n");
     code.append("reader.enterDepth();\n");
@@ -407,6 +413,17 @@ final class Utf8CollectionReaderCodegen {
     }
     code.append("ArrayList list = null;\nint size = 0;\n");
     code.append("do {\n");
+    if (onContentNullRead != NullHandling.SET) {
+      code.append("  if (reader.tryReadNullToken()) {\n");
+      if (onContentNullRead == NullHandling.FAIL) {
+        code.append("    ")
+            .append(CollectionCodec.class.getName())
+            .append(".rejectNullContent();\n");
+      } else {
+        code.append("    continue;\n");
+      }
+      code.append("  }\n");
+    }
     code.append("  if (list == null) {\n");
     code.append("    Object element = elementReader.readUtf8(reader);\n");
     code.append("    switch (size) {\n");
@@ -450,6 +467,9 @@ final class Utf8CollectionReaderCodegen {
     code.append(reserveArrayList("size", ""));
     code.append("list = new ArrayList(size);\n");
     code.append("switch (size) {\n");
+    if (onContentNullRead != NullHandling.SET) {
+      code.append("  case 0: break;\n");
+    }
     for (int size = 1; size <= 8; size++) {
       code.append("  case ").append(size).append(":\n");
       for (int i = 0; i < size; i++) {
@@ -459,7 +479,10 @@ final class Utf8CollectionReaderCodegen {
     }
     code.append("  default: throw new IllegalStateException();\n}\n");
     code.append("return list;\n");
-    return code.toString();
+    // String elements retain a direct scalar read in the filtered loop.
+    return stringElements
+        ? code.toString().replace("elementReader.readUtf8(reader)", "reader.readString()")
+        : code.toString();
   }
 
   private static String reserveArrayList(String size, String indent) {

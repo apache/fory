@@ -126,10 +126,10 @@ final class StringWriterCodegen extends JsonWriterCodegen {
     ctx.addField(byte[].class, "s" + id);
     ctx.addField(byte[].class, "sc" + id);
     if (fields.name[id]) {
-      ctx.addField(byte[].class, "s16" + id);
+      ctx.addField(byte[].class, "s16_" + id);
     }
     if (fields.comma[id]) {
-      ctx.addField(byte[].class, "sc16" + id);
+      ctx.addField(byte[].class, "sc16_" + id);
     }
   }
 
@@ -143,18 +143,21 @@ final class StringWriterCodegen extends JsonWriterCodegen {
     expressions.add(
         new Expression.Assign(
             stringPrefixRef(false, id),
-            new Expression.Invoke(property, "stringNamePrefix", TypeRef.of(byte[].class))
+            new Expression.Invoke(
+                    property, "stringNamePrefix", "", TypeRef.of(byte[].class), false, false)
                 .inline()));
     expressions.add(
         new Expression.Assign(
             stringPrefixRef(true, id),
-            new Expression.Invoke(property, "stringCommaNamePrefix", TypeRef.of(byte[].class))
+            new Expression.Invoke(
+                    property, "stringCommaNamePrefix", "", TypeRef.of(byte[].class), false, false)
                 .inline()));
     if (fields.name[id]) {
       expressions.add(
           new Expression.Assign(
               utf16PrefixRef(false, id),
-              new Expression.Invoke(property, "stringUtf16NamePrefix", TypeRef.of(byte[].class))
+              new Expression.Invoke(
+                      property, "stringUtf16NamePrefix", "", TypeRef.of(byte[].class), false, false)
                   .inline()));
     }
     if (fields.comma[id]) {
@@ -162,7 +165,12 @@ final class StringWriterCodegen extends JsonWriterCodegen {
           new Expression.Assign(
               utf16PrefixRef(true, id),
               new Expression.Invoke(
-                      property, "stringUtf16CommaNamePrefix", TypeRef.of(byte[].class))
+                      property,
+                      "stringUtf16CommaNamePrefix",
+                      "",
+                      TypeRef.of(byte[].class),
+                      false,
+                      false)
                   .inline()));
     }
   }
@@ -262,7 +270,8 @@ final class StringWriterCodegen extends JsonWriterCodegen {
       Expression writer) {
     return new Expression.ListExpression(
         writeFieldName(property, id, commaKnown, index, writer),
-        new Expression.Invoke(writer, "writeString", value));
+        new Expression.Invoke(
+            writer, "writeString", "", TypeRef.of(void.class), false, false, value));
   }
 
   @Override
@@ -284,6 +293,10 @@ final class StringWriterCodegen extends JsonWriterCodegen {
             new Expression.Invoke(
                 writer,
                 "writeRawValue",
+                "",
+                TypeRef.of(void.class),
+                false,
+                false,
                 stringPrefixRef(false, id),
                 stringPrefixRef(true, id),
                 utf16PrefixRef(false, id),
@@ -335,7 +348,7 @@ final class StringWriterCodegen extends JsonWriterCodegen {
   }
 
   private static Reference utf16PrefixRef(boolean comma, int id) {
-    return fieldRef((comma ? "sc16" : "s16") + id, byte[].class);
+    return fieldRef((comma ? "sc16_" : "s16_") + id, byte[].class);
   }
 
   private static Expression[] stringPackedPrefixArgs(

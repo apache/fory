@@ -84,6 +84,36 @@ public @interface JsonProperty {
    */
   Include include() default Include.DEFAULT;
 
+  /**
+   * Returns how an explicit JSON null is read for this property. {@code DEFAULT} inherits the
+   * builder setting. {@code SKIP} consumes the null without assigning the field, invoking a setter,
+   * or marking a creator argument present; existing missing-property defaults and requirements
+   * still apply. This setting affects reading only.
+   */
+  NullHandling onNullRead() default NullHandling.DEFAULT;
+
+  /**
+   * Returns how explicit JSON nulls in this property's immediate array/collection elements or map
+   * values are read. {@code SKIP} omits an element or map insertion. Nested containers resolve
+   * their own settings. Explicit {@code SKIP} and {@code FAIL} require a container representation
+   * owned by Fory; explicit {@code SET} also accepts a complete custom container codec. Encoded
+   * binary strings and non-container targets reject explicit settings. This does not filter values
+   * returned by a custom codec for non-null JSON tokens.
+   */
+  NullHandling onContentNullRead() default NullHandling.DEFAULT;
+
+  /** Read-side handling of explicit JSON null values. */
+  enum NullHandling {
+    /** Inherit the corresponding builder default. Valid only on annotations. */
+    DEFAULT,
+    /** Use the normal type and codec read/assignment, including existing nullability checks. */
+    SET,
+    /** Consume the null without assigning the property or inserting the container item. */
+    SKIP,
+    /** Reject an explicit JSON null. Missing properties are unaffected. */
+    FAIL
+  }
+
   /** Property inclusion policies supported by Fory JSON. */
   enum Include {
     /** Inherit the class's JsonInclude policy, or the runtime default when absent. */

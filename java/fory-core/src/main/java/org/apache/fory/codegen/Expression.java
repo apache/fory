@@ -325,8 +325,7 @@ public interface Expression {
     public ExprCode doGenCode(CodegenContext ctx) {
       String name = ctx.newName(namePrefix);
       if (from == NULL_STUB) {
-        String decl =
-            StringUtils.format("${type} ${name};", "type", ctx.type(type()), "name", name);
+        String decl = ctx.type(type()) + " " + name + ";";
         return new ExprCode(decl, FalseLiteral, Code.variable(type().getRawType(), name));
       }
       StringBuilder codeBuilder = new StringBuilder();
@@ -334,16 +333,13 @@ public interface Expression {
       if (StringUtils.isNotBlank(targetExprCode.code())) {
         codeBuilder.append(targetExprCode.code()).append('\n');
       }
-      String decl =
-          StringUtils.format(
-              "${type} ${name} = ${from};",
-              "type",
-              ctx.type(type()),
-              "name",
-              name,
-              "from",
-              targetExprCode.value());
-      codeBuilder.append(decl);
+      codeBuilder
+          .append(ctx.type(type()))
+          .append(' ')
+          .append(name)
+          .append(" = ")
+          .append(targetExprCode.value())
+          .append(';');
       return new ExprCode(
           codeBuilder.toString(),
           targetExprCode.isNull(),
@@ -910,16 +906,13 @@ public interface Expression {
                 }
               });
       // don't check whether ${target} null, place it in if expression
-      String assign =
-          StringUtils.format(
-              "${target}.${fieldName} = ${fieldValue};",
-              "target",
-              targetExprCode.value(),
-              "fieldName",
-              fieldName,
-              "fieldValue",
-              fieldValueExprCode.value());
-      codeBuilder.append(assign);
+      codeBuilder
+          .append(targetExprCode.value())
+          .append('.')
+          .append(fieldName)
+          .append(" = ")
+          .append(fieldValueExprCode.value())
+          .append(';');
       return new ExprCode(codeBuilder.toString(), null, null);
     }
 
@@ -1965,15 +1958,9 @@ public interface Expression {
       if (condEval.isNull() != null && !"false".equals(condEval.isNull().code())) {
         // indicate condEval.isNull() is a variable. "false" is a java keyword, thus is not a
         // variable
-        cond =
-            StringUtils.format(
-                "!${condEvalIsNull} && ${condEvalValue}",
-                "condEvalIsNull",
-                condEval.isNull(),
-                "condEvalValue",
-                condEval.value());
+        cond = "!" + condEval.isNull() + " && " + condEval.value();
       } else {
-        cond = StringUtils.format("${condEvalValue}", "condEvalValue", condEval.value());
+        cond = condEval.value().toString();
       }
       TypeRef<?> type = this.type;
       if (!PRIMITIVE_VOID_TYPE.equals(type.unwrap())) {
@@ -1989,11 +1976,11 @@ public interface Expression {
         String[] freshNames = ctx.newNames(rawType, "isNull");
         String value = freshNames[0];
         String isNull = freshNames[1];
-        codeBuilder.append(String.format("%s %s;\n", ctx.type(type), value));
+        codeBuilder.append(ctx.type(type)).append(' ').append(value).append(";\n");
         String ifCode;
         if (nullable) {
           Preconditions.checkArgument(trueEval.isNull() != null || falseEval.isNull() != null);
-          codeBuilder.append(String.format("boolean %s = false;\n", isNull));
+          codeBuilder.append("boolean ").append(isNull).append(" = false;\n");
           String trueEvalIsNull;
           if (trueEval.isNull() == null) {
             trueEvalIsNull = "false";
@@ -2007,58 +1994,46 @@ public interface Expression {
             falseEvalIsNull = falseEval.isNull().code();
           }
           ifCode =
-              StringUtils.format(
-                  ""
-                      + "if (${cond}) {\n"
-                      + "    ${trueEvalCode}\n"
-                      + "    ${isNull} = ${trueEvalIsNull};\n"
-                      + "    ${value} = ${trueEvalValue};\n"
-                      + "} else {\n"
-                      + "    ${falseEvalCode}\n"
-                      + "    ${isNull} = ${falseEvalIsNull};\n"
-                      + "    ${value} = ${falseEvalValue};\n"
-                      + "}",
-                  "isNull",
-                  isNull,
-                  "value",
-                  value,
-                  "cond",
-                  cond,
-                  "trueEvalCode",
-                  alignIndent(trueEval.code()),
-                  "trueEvalIsNull",
-                  trueEvalIsNull,
-                  "trueEvalValue",
-                  trueEval.value(),
-                  "falseEvalCode",
-                  alignIndent(falseEval.code()),
-                  "falseEvalIsNull",
-                  falseEvalIsNull,
-                  "falseEvalValue",
-                  falseEval.value());
+              "if ("
+                  + cond
+                  + ") {\n    "
+                  + alignIndent(trueEval.code())
+                  + "\n    "
+                  + isNull
+                  + " = "
+                  + trueEvalIsNull
+                  + ";\n    "
+                  + value
+                  + " = "
+                  + trueEval.value()
+                  + ";\n} else {\n    "
+                  + alignIndent(falseEval.code())
+                  + "\n    "
+                  + isNull
+                  + " = "
+                  + falseEvalIsNull
+                  + ";\n    "
+                  + value
+                  + " = "
+                  + falseEval.value()
+                  + ";\n}";
         } else {
           ifCode =
-              StringUtils.format(
-                  ""
-                      + "if (${cond}) {\n"
-                      + "    ${trueEvalCode}\n"
-                      + "    ${value} = ${trueEvalValue};\n"
-                      + "} else {\n"
-                      + "    ${falseEvalCode}\n"
-                      + "    ${value} = ${falseEvalValue};\n"
-                      + "}",
-                  "cond",
-                  cond,
-                  "value",
-                  value,
-                  "trueEvalCode",
-                  alignIndent(trueEval.code()),
-                  "trueEvalValue",
-                  trueEval.value(),
-                  "falseEvalCode",
-                  alignIndent(falseEval.code()),
-                  "falseEvalValue",
-                  falseEval.value());
+              "if ("
+                  + cond
+                  + ") {\n    "
+                  + alignIndent(trueEval.code())
+                  + "\n    "
+                  + value
+                  + " = "
+                  + trueEval.value()
+                  + ";\n} else {\n    "
+                  + alignIndent(falseEval.code())
+                  + "\n    "
+                  + value
+                  + " = "
+                  + falseEval.value()
+                  + ";\n}";
         }
         codeBuilder.append(StringUtils.stripBlankLines(ifCode));
         if (nullable) {
@@ -2073,26 +2048,15 @@ public interface Expression {
         if (falseExpr != null) {
           ExprCode falseEval = falseExpr.doGenCode(ctx);
           ifCode =
-              StringUtils.format(
-                  "if (${cond}) {\n"
-                      + "    ${trueEvalCode}\n"
-                      + "} else {\n"
-                      + "    ${falseEvalCode}\n"
-                      + "}",
-                  "cond",
-                  cond,
-                  "trueEvalCode",
-                  alignIndent(trueEval.code()),
-                  "falseEvalCode",
-                  alignIndent(falseEval.code()));
+              "if ("
+                  + cond
+                  + ") {\n    "
+                  + alignIndent(trueEval.code())
+                  + "\n} else {\n    "
+                  + alignIndent(falseEval.code())
+                  + "\n}";
         } else {
-          ifCode =
-              StringUtils.format(
-                  "if (${cond}) {\n" + "    ${trueEvalCode}\n" + "}",
-                  "cond",
-                  cond,
-                  "trueEvalCode",
-                  alignIndent(trueEval.code()));
+          ifCode = "if (" + cond + ") {\n    " + alignIndent(trueEval.code()) + "\n}";
         }
         codeBuilder.append(ifCode);
         return new ExprCode(codeBuilder.toString());
@@ -2512,14 +2476,12 @@ public interface Expression {
         appendNewlineIfNeeded(codeBuilder);
       }
       ExprCode actionExprCode = action.genCode(ctx);
-      String whileCode =
-          StringUtils.format(
-              "while (${predicate}) {\n" + "${action}\n" + "}",
-              "predicate",
-              predicateExprCode.value(),
-              "action",
-              indent(actionExprCode.code()));
-      codeBuilder.append(whileCode);
+      codeBuilder
+          .append("while (")
+          .append(predicateExprCode.value())
+          .append(") {\n")
+          .append(indent(actionExprCode.code()))
+          .append("\n}");
       return new ExprCode(codeBuilder.toString(), FalseLiteral, null);
     }
 

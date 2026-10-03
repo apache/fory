@@ -20,7 +20,9 @@
 package org.apache.fory.json.kotlin
 
 import org.apache.fory.json.ForyJsonException
+import org.apache.fory.json.annotation.JsonProperty.NullHandling
 import org.apache.fory.json.codec.ArrayCodec
+import org.apache.fory.json.codec.ContainerJsonCodec
 import org.apache.fory.json.codec.JsonValueCodec
 import org.apache.fory.json.reader.Latin1JsonReader
 import org.apache.fory.json.reader.Utf16JsonReader
@@ -44,17 +46,28 @@ internal object KotlinUnsignedArrayCodecs {
     rawType: Class<*>,
     typeId: Int,
     writeLongAsString: Boolean,
+    onContentNullRead: NullHandling,
   ): JsonValueCodec<*>? =
     when (rawType) {
-      UByteArray::class.java -> requireType(rawType, typeId, Types.UINT8_ARRAY, UByteArrayCodec)
-      UShortArray::class.java -> requireType(rawType, typeId, Types.UINT16_ARRAY, UShortArrayCodec)
-      UIntArray::class.java -> requireType(rawType, typeId, Types.UINT32_ARRAY, UIntArrayCodec)
+      UByteArray::class.java ->
+        requireType(rawType, typeId, Types.UINT8_ARRAY, UByteArrayCodec.DEFAULT, onContentNullRead)
+      UShortArray::class.java ->
+        requireType(
+          rawType,
+          typeId,
+          Types.UINT16_ARRAY,
+          UShortArrayCodec.DEFAULT,
+          onContentNullRead
+        )
+      UIntArray::class.java ->
+        requireType(rawType, typeId, Types.UINT32_ARRAY, UIntArrayCodec.DEFAULT, onContentNullRead)
       ULongArray::class.java ->
         requireType(
           rawType,
           typeId,
           Types.UINT64_ARRAY,
           if (writeLongAsString) ULongArrayCodec.QUOTED else ULongArrayCodec.NUMERIC,
+          onContentNullRead,
         )
       else -> null
     }
@@ -63,19 +76,33 @@ internal object KotlinUnsignedArrayCodecs {
     rawType: Class<*>,
     actual: Int,
     expected: Int,
-    codec: JsonValueCodec<*>,
+    codec: ContainerJsonCodec<*>,
+    onContentNullRead: NullHandling,
   ): JsonValueCodec<*> {
     if (actual != expected) {
       throw ForyJsonException(
         "Kotlin unsigned-array carrier ${rawType.name} does not match semantic type id $actual",
       )
     }
-    return codec
+    return codec.withContentNullRead(onContentNullRead)
   }
 
-  private object UByteArrayCodec : JsonValueCodec<UByteArray> {
-    private val delegate =
-      ArrayCodec.createUnsignedPrimitive(ByteArray::class.java, Types.UINT8_ARRAY, false)
+  private class UByteArrayCodec(private val delegate: JsonValueCodec<ByteArray>) :
+    ContainerJsonCodec<UByteArray> {
+    companion object {
+      val DEFAULT =
+        UByteArrayCodec(
+          ArrayCodec.createUnsignedPrimitive(ByteArray::class.java, Types.UINT8_ARRAY, false)
+        )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun withContentNullRead(handling: NullHandling): ContainerJsonCodec<*> {
+      val configured = (delegate as ContainerJsonCodec<ByteArray>).withContentNullRead(handling)
+      return if (configured === delegate) this
+      else UByteArrayCodec(configured as JsonValueCodec<ByteArray>)
+    }
+
     private val wrapperBytes = GraphMemoryEstimates.shallowObjectBytes(UByteArray::class.java)
 
     override fun writeString(writer: StringJsonWriter, value: UByteArray?) =
@@ -103,9 +130,22 @@ internal object KotlinUnsignedArrayCodecs {
     }
   }
 
-  private object UShortArrayCodec : JsonValueCodec<UShortArray> {
-    private val delegate =
-      ArrayCodec.createUnsignedPrimitive(ShortArray::class.java, Types.UINT16_ARRAY, false)
+  private class UShortArrayCodec(private val delegate: JsonValueCodec<ShortArray>) :
+    ContainerJsonCodec<UShortArray> {
+    companion object {
+      val DEFAULT =
+        UShortArrayCodec(
+          ArrayCodec.createUnsignedPrimitive(ShortArray::class.java, Types.UINT16_ARRAY, false)
+        )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun withContentNullRead(handling: NullHandling): ContainerJsonCodec<*> {
+      val configured = (delegate as ContainerJsonCodec<ShortArray>).withContentNullRead(handling)
+      return if (configured === delegate) this
+      else UShortArrayCodec(configured as JsonValueCodec<ShortArray>)
+    }
+
     private val wrapperBytes = GraphMemoryEstimates.shallowObjectBytes(UShortArray::class.java)
 
     override fun writeString(writer: StringJsonWriter, value: UShortArray?) =
@@ -133,9 +173,22 @@ internal object KotlinUnsignedArrayCodecs {
     }
   }
 
-  private object UIntArrayCodec : JsonValueCodec<UIntArray> {
-    private val delegate =
-      ArrayCodec.createUnsignedPrimitive(IntArray::class.java, Types.UINT32_ARRAY, false)
+  private class UIntArrayCodec(private val delegate: JsonValueCodec<IntArray>) :
+    ContainerJsonCodec<UIntArray> {
+    companion object {
+      val DEFAULT =
+        UIntArrayCodec(
+          ArrayCodec.createUnsignedPrimitive(IntArray::class.java, Types.UINT32_ARRAY, false)
+        )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun withContentNullRead(handling: NullHandling): ContainerJsonCodec<*> {
+      val configured = (delegate as ContainerJsonCodec<IntArray>).withContentNullRead(handling)
+      return if (configured === delegate) this
+      else UIntArrayCodec(configured as JsonValueCodec<IntArray>)
+    }
+
     private val wrapperBytes = GraphMemoryEstimates.shallowObjectBytes(UIntArray::class.java)
 
     override fun writeString(writer: StringJsonWriter, value: UIntArray?) =
@@ -162,7 +215,14 @@ internal object KotlinUnsignedArrayCodecs {
 
   private class ULongArrayCodec(
     private val delegate: JsonValueCodec<LongArray>,
-  ) : JsonValueCodec<ULongArray> {
+  ) : ContainerJsonCodec<ULongArray> {
+    @Suppress("UNCHECKED_CAST")
+    override fun withContentNullRead(handling: NullHandling): ContainerJsonCodec<*> {
+      val configured = (delegate as ContainerJsonCodec<LongArray>).withContentNullRead(handling)
+      return if (configured === delegate) this
+      else ULongArrayCodec(configured as JsonValueCodec<LongArray>)
+    }
+
     companion object {
       val NUMERIC =
         ULongArrayCodec(

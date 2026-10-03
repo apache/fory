@@ -24,13 +24,12 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Function;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.Generated;
 import org.apache.fory.codegen.CodeGenerator;
@@ -40,6 +39,7 @@ import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.codegen.JaninoUtils.DirectInvocation;
 import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.DirectUnboxedValueCodec;
 import org.apache.fory.json.codec.JsonUnwrappedInfo;
@@ -79,13 +79,10 @@ import org.apache.fory.util.ClassLoaderUtils;
  * generated source and constructor boundary; handwritten runtime capability APIs remain generic.
  */
 public final class JsonCodegen {
-  // HotSpot JDK 25's measured hot-callsite bytecode ceiling. This is a local generated-method
-  // limit, not a transitive subtree estimate: once a concrete String/scalar/container callee owns
-  // a natural method larger than this limit, a generated group pays only the call bytecodes. Large
-  // generated groups cross the limit with real schema work and call one another directly. Never
-  // use padding, annotations, or compiler directives to manufacture the boundary, and never add
-  // the already-independent callee body back to this planner's budget.
-  private static final int HOT_INLINE_LIMIT = 325;
+  // Estimate only the operations emitted by this method, never a callee's transitive body.
+  // Generating and compiling candidates to measure this limit made codec construction quadratic.
+  // Each codec now generates and compiles once; tests check the resulting bytecode boundaries.
+  static final int HOT_INLINE_LIMIT = 325;
   private static final int GENERATED_NAME_PREFIX_CODE_POINTS = 32;
   private static final AtomicLong GENERATED_CLASS_SUFFIX = new AtomicLong();
   private static volatile ClassValueCache<PerClassGeneratedCodecCache> generatedClassCache =
@@ -200,13 +197,16 @@ public final class JsonCodegen {
         key,
         elementType,
         compiler ->
-            compiler.buildUtf8CollectionReader(generatedPackage, key.stringCollectionElements()));
+            compiler.buildUtf8CollectionReader(
+                generatedPackage, key.stringCollectionElements(), key.collectionNullRead()));
   }
 
-  private Class<?> buildUtf8CollectionReader(String generatedPackage, boolean stringElements) {
+  private Class<?> buildUtf8CollectionReader(
+      String generatedPackage, boolean stringElements, NullHandling onContentNullRead) {
     String className = className();
     String code =
-        new Utf8CollectionReaderCodegen().genCode(generatedPackage, className, stringElements);
+        new Utf8CollectionReaderCodegen()
+            .genCode(generatedPackage, className, stringElements, onContentNullRead);
     return compileCodecClass(generatedPackage, className, code);
   }
 
@@ -501,21 +501,11 @@ public final class JsonCodegen {
               .genAnyWriterCode(builder, type, properties, any);
       return compileCodecClass(generatedPackage, className, code, invocations);
     }
-    Function<int[], String> source =
-        groupEnds -> {
-          JsonGeneratedCodecBuilder builder =
-              new JsonGeneratedCodecBuilder(generatedPackage, className, type);
-          return new StringWriterCodegen(this, resolver, codec)
-              .genWriterCode(builder, type, properties, groupEnds);
-        };
-    return compileWriterClass(
-        generatedPackage,
-        className,
-        properties,
-        "writeString",
-        "writeStringMembers",
-        source,
-        invocations);
+    JsonGeneratedCodecBuilder builder =
+        new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    StringWriterCodegen writer = new StringWriterCodegen(this, resolver, codec);
+    String code = writer.genWriterCode(builder, type, properties, writer.groupEnds(properties));
+    return compileCodecClass(generatedPackage, className, code, invocations);
   }
 
   private Class<?> buildUtf8Writer(ObjectCodec<?> codec, JsonTypeResolver resolver) {
@@ -542,47 +532,16 @@ public final class JsonCodegen {
               .genAnyWriterCode(builder, type, properties, any);
       return compileCodecClass(generatedPackage, className, code, invocations);
     }
-    Function<int[], String> normalSource =
-        groupEnds -> {
-          JsonGeneratedCodecBuilder builder =
-              new JsonGeneratedCodecBuilder(generatedPackage, className, type);
-          return new Utf8WriterCodegen(this, resolver, codec, false)
-              .genWriterCode(builder, type, properties, groupEnds);
-        };
-    Function<int[], String> groupedSource =
-        groupEnds -> {
-          JsonGeneratedCodecBuilder builder =
-              new JsonGeneratedCodecBuilder(generatedPackage, className, type);
-          return new Utf8WriterCodegen(this, resolver, codec, false)
-              .genRootGroupedWriterCode(builder, type, properties, groupEnds);
-        };
-    String directSource = normalSource.apply(null);
-    int directSize = methodSize(codeStats(generatedPackage, className, directSource), "writeUtf8");
-    if (directSize <= HOT_INLINE_LIMIT) {
-      // A small generated object entry can be absorbed by an outer collection before its
-      // transitive field callees finish compiling. Probe the same entry with real schema-owned
-      // prefix, primitive-prefix, framing, and writer-state work emitted locally. Select that
-      // source only when it naturally crosses the JDK 25 hot-inline ceiling; the generated type,
-      // field names, and runtime values never participate in this decision.
-      JsonGeneratedCodecBuilder builder =
-          new JsonGeneratedCodecBuilder(generatedPackage, className, type);
-      String expandedSource =
-          new Utf8WriterCodegen(this, resolver, codec, true)
-              .genWriterCode(builder, type, properties, null);
-      int expandedSize =
-          methodSize(codeStats(generatedPackage, className, expandedSource), "writeUtf8");
-      if (expandedSize > HOT_INLINE_LIMIT) {
-        return compileCodecClass(generatedPackage, className, expandedSource, invocations);
-      }
-    }
-    return compileUtf8WriterClass(
-        generatedPackage,
-        className,
-        properties,
-        "writeUtf8",
-        directSource,
-        groupedSource,
-        invocations);
+    JsonGeneratedCodecBuilder builder =
+        new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    boolean inlineSchemaWrites = Utf8WriterCodegen.inlineSchemaWrites(properties);
+    Utf8WriterCodegen writer = new Utf8WriterCodegen(this, resolver, codec, inlineSchemaWrites);
+    int[] groupEnds = inlineSchemaWrites ? null : writer.groupEnds(properties);
+    String code =
+        groupEnds == null
+            ? writer.genWriterCode(builder, type, properties, null)
+            : writer.genRootGroupedWriterCode(builder, type, properties, groupEnds);
+    return compileCodecClass(generatedPackage, className, code, invocations);
   }
 
   private Class<?> buildLatin1Reader(ObjectCodec<?> codec, JsonTypeResolver resolver) {
@@ -601,23 +560,14 @@ public final class JsonCodegen {
     }
     AnyInfo any = codec.anyInfo();
     JsonFieldInfo[] properties = codec.readFields();
-    Function<int[], String> source =
-        groupEnds -> {
-          JsonGeneratedCodecBuilder builder =
-              new JsonGeneratedCodecBuilder(generatedPackage, className, type);
-          Latin1ReaderCodegen reader = new Latin1ReaderCodegen(this, resolver, groupEnds);
-          return any == null || any.readField() == null && any.readSetter() == null
-              ? reader.genReaderCode(builder, codec, properties, codec.creatorInfo())
-              : reader.genAnyReaderCode(builder, codec, properties, codec.creatorInfo(), any);
-        };
-    return compileReaderClass(
-        generatedPackage,
-        className,
-        properties.length,
-        "readLatin1",
-        codec.creatorInfo() == null,
-        source,
-        invocations);
+    JsonGeneratedCodecBuilder builder =
+        new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    Latin1ReaderCodegen reader = new Latin1ReaderCodegen(this, resolver);
+    String code =
+        any == null || any.readField() == null && any.readSetter() == null
+            ? reader.genReaderCode(builder, codec, properties, codec.creatorInfo())
+            : reader.genAnyReaderCode(builder, codec, properties, codec.creatorInfo(), any);
+    return compileCodecClass(generatedPackage, className, code, invocations);
   }
 
   private Class<?> buildUtf16Reader(ObjectCodec<?> codec, JsonTypeResolver resolver) {
@@ -636,23 +586,14 @@ public final class JsonCodegen {
     }
     AnyInfo any = codec.anyInfo();
     JsonFieldInfo[] properties = codec.readFields();
-    Function<int[], String> source =
-        groupEnds -> {
-          JsonGeneratedCodecBuilder builder =
-              new JsonGeneratedCodecBuilder(generatedPackage, className, type);
-          Utf16ReaderCodegen reader = new Utf16ReaderCodegen(this, resolver, groupEnds);
-          return any == null || any.readField() == null && any.readSetter() == null
-              ? reader.genReaderCode(builder, codec, properties, codec.creatorInfo())
-              : reader.genAnyReaderCode(builder, codec, properties, codec.creatorInfo(), any);
-        };
-    return compileReaderClass(
-        generatedPackage,
-        className,
-        properties.length,
-        "readUtf16",
-        codec.creatorInfo() == null,
-        source,
-        invocations);
+    JsonGeneratedCodecBuilder builder =
+        new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    Utf16ReaderCodegen reader = new Utf16ReaderCodegen(this, resolver);
+    String code =
+        any == null || any.readField() == null && any.readSetter() == null
+            ? reader.genReaderCode(builder, codec, properties, codec.creatorInfo())
+            : reader.genAnyReaderCode(builder, codec, properties, codec.creatorInfo(), any);
+    return compileCodecClass(generatedPackage, className, code, invocations);
   }
 
   private Class<?> buildUtf8Reader(ObjectCodec<?> codec, JsonTypeResolver resolver) {
@@ -671,270 +612,34 @@ public final class JsonCodegen {
     }
     AnyInfo any = codec.anyInfo();
     JsonFieldInfo[] properties = codec.readFields();
-    Function<int[], String> source =
-        groupEnds -> {
-          JsonGeneratedCodecBuilder builder =
-              new JsonGeneratedCodecBuilder(generatedPackage, className, type);
-          Utf8ReaderCodegen reader = new Utf8ReaderCodegen(this, resolver, groupEnds);
-          return any == null || any.readField() == null && any.readSetter() == null
-              ? reader.genReaderCode(builder, codec, properties, codec.creatorInfo())
-              : reader.genAnyReaderCode(builder, codec, properties, codec.creatorInfo(), any);
-        };
-    return compileReaderClass(
-        generatedPackage,
-        className,
-        properties.length,
-        "readUtf8",
-        codec.creatorInfo() == null,
-        source,
-        invocations);
+    JsonGeneratedCodecBuilder builder =
+        new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    Utf8ReaderCodegen reader = new Utf8ReaderCodegen(this, resolver);
+    String code =
+        any == null || any.readField() == null && any.readSetter() == null
+            ? reader.genReaderCode(builder, codec, properties, codec.creatorInfo())
+            : reader.genAnyReaderCode(builder, codec, properties, codec.creatorInfo(), any);
+    return compileCodecClass(generatedPackage, className, code, invocations);
   }
 
-  private Class<?> compileReaderClass(
-      String generatedPackage,
-      String className,
-      int propertyCount,
-      String readMethod,
-      boolean groupable,
-      Function<int[], String> source,
-      DirectInvocation[] invocations) {
-    int[] groupEnds =
-        groupable
-            ? readerGroupEnds(generatedPackage, className, propertyCount, readMethod, source)
-            : oneGroup(propertyCount);
-    return compileCodecClass(generatedPackage, className, source.apply(groupEnds), invocations);
-  }
-
-  private Class<?> compileWriterClass(
-      String generatedPackage,
-      String className,
-      JsonFieldInfo[] properties,
-      String writeMethod,
-      String memberMethod,
-      Function<int[], String> source,
-      DirectInvocation[] invocations) {
-    if (properties.length < 2) {
-      return compileCodecClass(generatedPackage, className, source.apply(null), invocations);
-    }
-    // Group only the bytecode emitted in this generated class. A callee with its own stable
-    // boundary contributes its invocation, not the body that C2 must keep in the callee.
-    int[] oneGroup = new int[] {properties.length};
-    JaninoUtils.CodeStats oneGroupStats =
-        codeStats(generatedPackage, className, source.apply(oneGroup));
-    if (privateMethodSize(oneGroupStats, writeMethod + "Object") <= HOT_INLINE_LIMIT) {
-      return compileCodecClass(generatedPackage, className, source.apply(null), invocations);
-    }
-    int[] groupEnds =
-        writerGroupEnds(
-            generatedPackage,
-            className,
-            properties.length,
-            JsonWriterCodegen.firstGroupMember(properties),
-            writeMethod,
-            memberMethod,
-            source);
-    return compileCodecClass(generatedPackage, className, source.apply(groupEnds), invocations);
-  }
-
-  private Class<?> compileUtf8WriterClass(
-      String generatedPackage,
-      String className,
-      JsonFieldInfo[] properties,
-      String writeMethod,
-      String directSource,
-      Function<int[], String> source,
-      DirectInvocation[] invocations) {
-    if (properties.length < 2
-        || methodSize(codeStats(generatedPackage, className, directSource), writeMethod)
-            <= HOT_INLINE_LIMIT) {
-      return compileCodecClass(generatedPackage, className, directSource, invocations);
-    }
-    int firstGroupMember = JsonWriterCodegen.firstGroupMember(properties);
-    if (properties.length - firstGroupMember < 2) {
-      return compileCodecClass(generatedPackage, className, directSource, invocations);
-    }
-    int[] groupEnds =
-        utf8WriterGroupEnds(
-            generatedPackage, className, properties.length, firstGroupMember, writeMethod, source);
-    if (groupEnds.length < 2) {
-      return compileCodecClass(generatedPackage, className, directSource, invocations);
-    }
-    return compileCodecClass(generatedPackage, className, source.apply(groupEnds), invocations);
-  }
-
-  private int[] utf8WriterGroupEnds(
-      String generatedPackage,
-      String className,
-      int propertyCount,
-      int firstGroupMember,
-      String writeMethod,
-      Function<int[], String> source) {
-    // Compile every candidate source and measure only the bytecode emitted in this generated class.
-    // Stable leaf owners contribute their call instructions, never transitive implementation cost.
-    // The final range stays in the public root; preceding ranges become direct private methods.
-    List<Integer> ends = new ArrayList<>(propertyCount - firstGroupMember);
-    for (int end = firstGroupMember + 1; end <= propertyCount; end++) {
-      ends.add(end);
-    }
-    while (ends.size() > 1) {
-      int[] candidate = toIntArray(ends);
-      JaninoUtils.CodeStats stats = codeStats(generatedPackage, className, source.apply(candidate));
-      int start = firstGroupMember;
-      boolean merged = false;
-      for (int group = 0; group < ends.size() - 1; group++) {
-        String method = JsonWriterCodegen.writerGroupMethod(writeMethod, start);
-        if (privateMethodSize(stats, method) <= HOT_INLINE_LIMIT) {
-          ends.remove(group);
-          merged = true;
-          break;
-        }
-        start = ends.get(group);
+  static int[] groupEnds(int[] sizes, int start) {
+    int[] ends = new int[sizes.length - start];
+    int groups = 0;
+    int size = 0;
+    for (int i = start; i < sizes.length; i++) {
+      size += sizes[i];
+      if (size > HOT_INLINE_LIMIT) {
+        ends[groups++] = i + 1;
+        size = 0;
       }
-      if (merged) {
-        continue;
-      }
-      if (methodSize(stats, writeMethod) <= HOT_INLINE_LIMIT) {
-        ends.remove(ends.size() - 2);
-        continue;
-      }
-      return candidate;
     }
-    return toIntArray(ends);
-  }
-
-  private int[] writerGroupEnds(
-      String generatedPackage,
-      String className,
-      int propertyCount,
-      int firstGroupMember,
-      String writeMethod,
-      String memberMethod,
-      Function<int[], String> source) {
-    List<Integer> ends = new ArrayList<>(propertyCount - firstGroupMember);
-    for (int end = firstGroupMember + 1; end <= propertyCount; end++) {
-      ends.add(end);
+    // The final range stays in the root. Fold a short tail into the preceding range so it does
+    // not become an inlineable root/helper solely because the schema ended at this position.
+    if (groups < 2) {
+      return null;
     }
-    if (ends.size() < 2) {
-      return oneGroup(propertyCount);
-    }
-    while (ends.size() > 1) {
-      int[] candidate = toIntArray(ends);
-      JaninoUtils.CodeStats stats = codeStats(generatedPackage, className, source.apply(candidate));
-      boolean merged = false;
-      for (int group = 0; group < ends.size() - 1; group++) {
-        String method = group == 0 ? memberMethod : memberMethod + group;
-        if (privateMethodSize(stats, method) <= HOT_INLINE_LIMIT) {
-          ends.remove(group);
-          merged = true;
-          break;
-        }
-      }
-      if (merged) {
-        continue;
-      }
-      return candidate;
-    }
-    return toIntArray(ends);
-  }
-
-  private int[] readerGroupEnds(
-      String generatedPackage,
-      String className,
-      int propertyCount,
-      String readMethod,
-      Function<int[], String> source) {
-    if (propertyCount < 2) {
-      return oneGroup(propertyCount);
-    }
-    // Child method bodies do not belong to their generated caller's bytecode budget. Compile the
-    // exact caller shape on this class-owned cold path, then merge declaration-order ranges until
-    // every emitted helper and the root that owns the final range naturally cross the hot-inline
-    // ceiling. Probe classes are never defined or dumped, so class publication and source shape
-    // remain independent of capability-slot timing.
-    List<Integer> ends = new ArrayList<>(propertyCount);
-    for (int end = 1; end <= propertyCount; end++) {
-      ends.add(end);
-    }
-    while (ends.size() > 1) {
-      int[] candidate = toIntArray(ends);
-      JaninoUtils.CodeStats stats = codeStats(generatedPackage, className, source.apply(candidate));
-      int start = 0;
-      boolean merged = false;
-      for (int group = 0; group < ends.size() - 1; group++) {
-        if (methodSize(stats, readMethod + "Group" + start) <= HOT_INLINE_LIMIT) {
-          ends.remove(group);
-          merged = true;
-          break;
-        }
-        start = ends.get(group);
-      }
-      if (merged) {
-        continue;
-      }
-      if (methodSize(stats, readMethod) <= HOT_INLINE_LIMIT) {
-        ends.remove(ends.size() - 2);
-        continue;
-      }
-      return candidate;
-    }
-    return toIntArray(ends);
-  }
-
-  private JaninoUtils.CodeStats codeStats(String generatedPackage, String className, String code) {
-    Map<String, JaninoUtils.CodeStats> stats = codeStatsByClass(generatedPackage, className, code);
-    return statsForMainClass(generatedPackage, className, stats);
-  }
-
-  private JaninoUtils.CodeStats statsForMainClass(
-      String generatedPackage, String className, Map<String, JaninoUtils.CodeStats> stats) {
-    String classFile =
-        (generatedPackage.isEmpty() ? "" : generatedPackage.replace('.', '/') + "/")
-            + className
-            + ".class";
-    JaninoUtils.CodeStats classStats = stats.get(classFile);
-    if (classStats == null) {
-      throw new ForyJsonException("Missing generated JSON bytecode " + classFile);
-    }
-    return classStats;
-  }
-
-  private Map<String, JaninoUtils.CodeStats> codeStatsByClass(
-      String generatedPackage, String className, String code) {
-    CompileUnit unit = new CompileUnit(generatedPackage, className, code);
-    Map<String, byte[]> classes = JaninoUtils.toBytecode(jsonLoader, "", unit);
-    Map<String, JaninoUtils.CodeStats> stats = new LinkedHashMap<>();
-    for (Map.Entry<String, byte[]> entry : classes.entrySet()) {
-      stats.put(entry.getKey(), JaninoUtils.getClassStats(entry.getValue()));
-    }
-    return stats;
-  }
-
-  private int methodSize(JaninoUtils.CodeStats stats, String method) {
-    Integer size = stats.methodsSize.get(method);
-    if (size == null) {
-      throw new ForyJsonException(
-          "Missing generated JSON method " + method + " in " + stats.methodsSize.keySet());
-    }
-    return size;
-  }
-
-  private int privateMethodSize(JaninoUtils.CodeStats stats, String sourceName) {
-    // Janino lowers a private generated instance method to a same-class static helper whose
-    // bytecode name has a trailing '$'. The planner must measure that real method, not the source
-    // spelling, or every direct group appears to be missing.
-    return methodSize(stats, sourceName + "$");
-  }
-
-  private int[] oneGroup(int propertyCount) {
-    return new int[] {propertyCount};
-  }
-
-  private int[] toIntArray(List<Integer> values) {
-    int[] result = new int[values.size()];
-    for (int i = 0; i < values.size(); i++) {
-      result[i] = values.get(i);
-    }
-    return result;
+    ends[groups - 1] = sizes.length;
+    return Arrays.copyOf(ends, groups);
   }
 
   private Class<?> compileCodecClass(

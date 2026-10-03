@@ -20,13 +20,24 @@
 package org.apache.fory.json.scala.internal
 
 import org.apache.fory.json.ForyJsonException
-import org.apache.fory.json.codec.JsonValueCodec
+import org.apache.fory.json.annotation.JsonProperty.NullHandling
+import org.apache.fory.json.codec.ContainerJsonCodec
 import org.apache.fory.json.reader.{JsonReader, Latin1JsonReader, Utf16JsonReader, Utf8JsonReader}
 import org.apache.fory.json.writer.{JsonWriter, StringJsonWriter, Utf8JsonWriter}
 import org.apache.fory.serializer.GraphMemoryEstimates
 
-private[scala] final class ScalaBitSetCodec(mutableResult: Boolean)
-    extends JsonValueCodec[scala.collection.BitSet] {
+private[scala] final class ScalaBitSetCodec(mutableResult: Boolean, onContentNullRead: NullHandling)
+    extends ContainerJsonCodec[scala.collection.BitSet] {
+  override def withContentNullRead(handling: NullHandling): ContainerJsonCodec[_] =
+    if (handling == onContentNullRead) this else new ScalaBitSetCodec(mutableResult, handling)
+
+  private def skipNullRead(reader: JsonReader): Boolean = {
+    if (onContentNullRead == NullHandling.SET || !reader.tryReadNullToken()) return false
+    if (onContentNullRead == NullHandling.FAIL)
+      throw new ForyJsonException("Cannot read null BitSet element")
+    true
+  }
+
   override def isEmpty(writer: JsonWriter, value: scala.collection.BitSet): Boolean = value.isEmpty
 
   private val OwnerBytes = GraphMemoryEstimates.shallowObjectBytes(
@@ -77,13 +88,15 @@ private[scala] final class ScalaBitSetCodec(mutableResult: Boolean)
     if (!reader.consumeNextToken(']')) {
       var more = true
       while (more) {
-        val bit = reader.readNextIntValue()
-        if (bit < 0) throw invalidBit(bit)
-        val requiredWords = (bit >>> 6) + 1
-        if (requiredWords > words.length) {
-          words = grow(reader, words, requiredWords, inputStart)
+        if (!skipNullRead(reader)) {
+          val bit = reader.readNextIntValue()
+          if (bit < 0) throw invalidBit(bit)
+          val requiredWords = (bit >>> 6) + 1
+          if (requiredWords > words.length) {
+            words = grow(reader, words, requiredWords, inputStart)
+          }
+          words(bit >>> 6) |= 1L << bit
         }
-        words(bit >>> 6) |= 1L << bit
         more = reader.consumeNextCommaOrEndArray()
       }
     }
@@ -105,13 +118,15 @@ private[scala] final class ScalaBitSetCodec(mutableResult: Boolean)
     if (!reader.consumeNextToken(']')) {
       var more = true
       while (more) {
-        val bit = reader.readNextIntValue()
-        if (bit < 0) throw invalidBit(bit)
-        val requiredWords = (bit >>> 6) + 1
-        if (requiredWords > words.length) {
-          words = grow(reader, words, requiredWords, inputStart)
+        if (!skipNullRead(reader)) {
+          val bit = reader.readNextIntValue()
+          if (bit < 0) throw invalidBit(bit)
+          val requiredWords = (bit >>> 6) + 1
+          if (requiredWords > words.length) {
+            words = grow(reader, words, requiredWords, inputStart)
+          }
+          words(bit >>> 6) |= 1L << bit
         }
-        words(bit >>> 6) |= 1L << bit
         more = reader.consumeNextCommaOrEndArray()
       }
     }
@@ -133,13 +148,15 @@ private[scala] final class ScalaBitSetCodec(mutableResult: Boolean)
     if (!reader.consumeNextToken(']')) {
       var more = true
       while (more) {
-        val bit = reader.readNextIntValue()
-        if (bit < 0) throw invalidBit(bit)
-        val requiredWords = (bit >>> 6) + 1
-        if (requiredWords > words.length) {
-          words = grow(reader, words, requiredWords, inputStart)
+        if (!skipNullRead(reader)) {
+          val bit = reader.readNextIntValue()
+          if (bit < 0) throw invalidBit(bit)
+          val requiredWords = (bit >>> 6) + 1
+          if (requiredWords > words.length) {
+            words = grow(reader, words, requiredWords, inputStart)
+          }
+          words(bit >>> 6) |= 1L << bit
         }
-        words(bit >>> 6) |= 1L << bit
         more = reader.consumeNextCommaOrEndArray()
       }
     }

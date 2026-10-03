@@ -40,10 +40,6 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
     super(codegen, resolver);
   }
 
-  Utf8ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, int[] fastReadGroupEnds) {
-    super(codegen, resolver, fastReadGroupEnds);
-  }
-
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
     return codegen.utf8ReaderFieldType(property.readTypeInfo(), resolver);
@@ -104,10 +100,17 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
   @Override
   Expression consumeCommaOrEndObjectExpr() {
     Expression comma =
-        new Expression.Invoke(readerRef(), "tryConsumeNextComma", TypeRef.of(boolean.class))
+        new Expression.Invoke(
+                readerRef(), "tryConsumeNextComma", "", TypeRef.of(boolean.class), false, false)
             .inline();
     Expression endOrSlow =
-        new Expression.Invoke(readerRef(), "consumeNextObjectEndOrSlow", TypeRef.of(boolean.class))
+        new Expression.Invoke(
+                readerRef(),
+                "consumeNextObjectEndOrSlow",
+                "",
+                TypeRef.of(boolean.class),
+                false,
+                false)
             .inline();
     return new Expression.LogicalOr(comma, endOrSlow);
   }
@@ -115,11 +118,22 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
   @Override
   Expression consumeOrderedCommaOrEndObjectExpr() {
     Expression comma =
-        new Expression.Invoke(readerRef(), "tryConsumeNextOrderedComma", TypeRef.of(boolean.class))
+        new Expression.Invoke(
+                readerRef(),
+                "tryConsumeNextOrderedComma",
+                "",
+                TypeRef.of(boolean.class),
+                false,
+                false)
             .inline();
     Expression endOrSlow =
         new Expression.Invoke(
-                readerRef(), "consumeNextOrderedObjectEndOrSlow", TypeRef.of(boolean.class))
+                readerRef(),
+                "consumeNextOrderedObjectEndOrSlow",
+                "",
+                TypeRef.of(boolean.class),
+                false,
+                false)
             .inline();
     return new Expression.LogicalOr(comma, endOrSlow);
   }

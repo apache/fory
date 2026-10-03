@@ -22,6 +22,7 @@ package org.apache.fory.graalvm.kotlin;
 import org.apache.fory.integration.kotlin.json.corpus.PlatformJavaProfileMixin;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.annotation.ForyJsonProvider;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.kotlin.ForyJsonKotlin;
 
 /** Selects the Kotlin-enabled generated configuration during Native Image analysis. */
@@ -32,6 +33,24 @@ public final class KotlinJsonProvider {
   public ForyJson generatedConfiguration() {
     return ForyJsonKotlin.builder()
         .registerMixin(PlatformJavaProfileMixin.class)
+        .withAsyncCompilation(false)
+        .build();
+  }
+
+  public ForyJson skippingConfiguration() {
+    return ForyJsonKotlin.builder()
+        .registerMixin(PlatformJavaProfileMixin.class)
+        .onNullRead(NullHandling.SKIP)
+        .onContentNullRead(NullHandling.SKIP)
+        .withAsyncCompilation(false)
+        .build();
+  }
+
+  public ForyJson failingConfiguration() {
+    return ForyJsonKotlin.builder()
+        .registerMixin(PlatformJavaProfileMixin.class)
+        .onNullRead(NullHandling.FAIL)
+        .onContentNullRead(NullHandling.FAIL)
         .withAsyncCompilation(false)
         .build();
   }

@@ -56,6 +56,7 @@ import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonInclude;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonProperty.Include;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonUnwrapped;
@@ -288,6 +289,10 @@ final class ObjectCodecBuilder {
       }
       boolean creatorDirection =
           creatorInfo != null && builder.creatorArgumentIndex >= 0 && builder.creatorReadAllowed();
+      if (builder.hasNullHandling() && !builder.hasReadSink() && !creatorDirection) {
+        throw new ForyJsonException(
+            "JSON null handling requires a read sink for property " + builder.name);
+      }
       if (!builder.hasWriteSource() && !builder.hasReadSink() && !creatorDirection) {
         if (objectModel != null
             && builder.creatorArgumentIndex >= 0
@@ -1546,7 +1551,9 @@ final class ObjectCodecBuilder {
               builder.codecAnnotation(),
               builder.valueCodecClass(),
               builder.formatAnnotation(),
-              builder.creatorUnboxedRequired));
+              builder.creatorUnboxedRequired,
+              builder.onNullRead(),
+              builder.explicitContentNullRead));
     }
     JsonCreatorFieldInfo[] fieldArray = fields.toArray(new JsonCreatorFieldInfo[0]);
     rejectCreatorHashCollisions(fieldArray);
@@ -1685,7 +1692,9 @@ final class ObjectCodecBuilder {
                   codecAnnotation,
                   valueCodecClass,
                   builder.formatAnnotation(),
-                  builder.creatorUnboxedRequired));
+                  builder.creatorUnboxedRequired,
+                  builder.onNullRead(),
+                  builder.explicitContentNullRead));
         }
       }
     } else {
@@ -1755,6 +1764,13 @@ final class ObjectCodecBuilder {
                 ? annotations.get(parameters[i], JsonUnwrapped.class)
                 : builder.unwrappedAnnotation;
         if (unwrapped != null) {
+          if (builder == null
+              && (property.onNullRead() != NullHandling.DEFAULT
+                  || property.onContentNullRead() != NullHandling.DEFAULT)) {
+            throw new ForyJsonException(
+                "@JsonUnwrapped creator property has no null value or content position: "
+                    + jsonName);
+          }
           if (codecAnnotation != null || valueCodecClass != null || formatAnnotation != null) {
             throw new ForyJsonException(
                 "Value codecs are not supported on @JsonUnwrapped creator property " + jsonName);
@@ -1784,7 +1800,14 @@ final class ObjectCodecBuilder {
                   codecAnnotation,
                   valueCodecClass,
                   formatAnnotation,
-                  false));
+                  false,
+                  builder == null
+                      ? effectiveNullHandling(
+                          property.onNullRead(), annotations.registry.onNullRead())
+                      : builder.onNullRead(),
+                  builder == null
+                      ? property.onContentNullRead()
+                      : builder.explicitContentNullRead));
         }
       }
     }
@@ -1923,7 +1946,9 @@ final class ObjectCodecBuilder {
                 builder.codecAnnotation(),
                 builder.valueCodecClass(),
                 builder.formatAnnotation(),
-                builder.creatorUnboxedRequired));
+                builder.creatorUnboxedRequired,
+                builder.onNullRead(),
+                builder.explicitContentNullRead));
       }
     }
     JsonCreatorFieldInfo[] fieldArray = fields.toArray(new JsonCreatorFieldInfo[0]);
@@ -3087,6 +3112,10 @@ final class ObjectCodecBuilder {
     }
   }
 
+  private static NullHandling effectiveNullHandling(NullHandling declared, NullHandling fallback) {
+    return declared == NullHandling.DEFAULT ? fallback : declared;
+  }
+
   private static final class FieldBuilder {
     private final String name;
     private final Annotations annotations;
@@ -3107,6 +3136,8 @@ final class ObjectCodecBuilder {
     private int explicitIndex = JsonProperty.INDEX_UNKNOWN;
     private AnnotatedElement explicitIndexSource;
     private JsonProperty.Include explicitInclude = JsonProperty.Include.DEFAULT;
+    private NullHandling explicitNullRead = NullHandling.DEFAULT;
+    private NullHandling explicitContentNullRead = NullHandling.DEFAULT;
     private AnnotatedElement explicitIncludeSource;
     private AnnotatedElement rawValueSource;
     private boolean hasJsonProperty;
@@ -3262,6 +3293,7 @@ final class ObjectCodecBuilder {
 
     private boolean hasConfiguration() {
       return explicitName != null
+          || hasNullHandling()
           || explicitIndex != JsonProperty.INDEX_UNKNOWN
           || explicitInclude != JsonProperty.Include.DEFAULT
           || codecAnnotation != null
@@ -3273,6 +3305,15 @@ final class ObjectCodecBuilder {
 
     private boolean hasIndex() {
       return explicitIndex != JsonProperty.INDEX_UNKNOWN;
+    }
+
+    private boolean hasNullHandling() {
+      return explicitNullRead != NullHandling.DEFAULT
+          || explicitContentNullRead != NullHandling.DEFAULT;
+    }
+
+    private NullHandling onNullRead() {
+      return effectiveNullHandling(explicitNullRead, annotations.registry.onNullRead());
     }
 
     private boolean hasLogicalMember() {
@@ -3374,10 +3415,16 @@ final class ObjectCodecBuilder {
           valueCodecClass,
           formatAnnotation,
           rawValue,
-          escapeNonAscii);
+          escapeNonAscii,
+          onNullRead(),
+          explicitContentNullRead);
     }
 
     private void validateUnwrapped(Class<?> type, JsonCreatorInfo creatorInfo) {
+      if (hasNullHandling()) {
+        throw new ForyJsonException(
+            "@JsonUnwrapped property has no null value or content position: " + name);
+      }
       if (isAny()) {
         throw new ForyJsonException(
             "@JsonUnwrapped cannot share a JSON Any logical property " + name);
@@ -3522,6 +3569,25 @@ final class ObjectCodecBuilder {
         }
       }
       mergeInclusion(property.include(), source);
+      mergeNullHandling(property, source);
+    }
+
+    private void mergeNullHandling(JsonProperty property, AnnotatedElement source) {
+      explicitNullRead = mergeNullHandling(explicitNullRead, property.onNullRead(), source);
+      explicitContentNullRead =
+          mergeNullHandling(explicitContentNullRead, property.onContentNullRead(), source);
+    }
+
+    private NullHandling mergeNullHandling(
+        NullHandling current, NullHandling declared, AnnotatedElement source) {
+      if (declared == NullHandling.DEFAULT) {
+        return current;
+      }
+      if (current != NullHandling.DEFAULT && current != declared) {
+        throw new ForyJsonException(
+            "Conflicting JSON null handling for property " + name + " at " + source);
+      }
+      return declared;
     }
 
     private void mergeInclusion(Include declaredInclude, AnnotatedElement source) {
@@ -3584,6 +3650,7 @@ final class ObjectCodecBuilder {
         }
       }
       mergeInclusion(property.include(), parameter);
+      mergeNullHandling(property, parameter);
     }
 
     private void mergeIgnore(AnnotatedElement source) {

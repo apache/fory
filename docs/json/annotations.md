@@ -125,7 +125,7 @@ above.
 
 ## `JsonProperty`
 
-`JsonProperty` configures the canonical name, serialization index, and value inclusion of one
+`JsonProperty` configures the canonical name, serialization index, write inclusion, and read-side null handling of one
 complete logical property. An annotation on a field, getter, or setter applies to the merged
 field/getter/setter group.
 
@@ -204,6 +204,57 @@ setter-only, creator-only, or write-ignored property is invalid.
 Aliases and independent read/write names are not supported.
 `JsonProperty` cannot be combined with an Any logical property or declared on a `JsonAnySetter`.
 
+### Read-side null handling
+
+`onNullRead` controls an explicit JSON null assigned to the property. `onContentNullRead` controls
+null elements of its array or collection, or null values of its map. Both use
+`JsonProperty.NullHandling`:
+
+| Value     | Behavior                                                                                             |
+| --------- | ---------------------------------------------------------------------------------------------------- |
+| `DEFAULT` | Inherit the corresponding builder setting. This is the annotation default.                           |
+| `SET`     | Use normal decoding and assignment, including the declared nullability rules.                        |
+| `SKIP`    | Consume the null and omit the assignment, element, or map insertion.                                 |
+| `FAIL`    | Reject an explicit null with `ForyJsonException`. Missing properties remain allowed by this setting. |
+
+Both builder defaults are `SET`. An explicit annotation value overrides only the matching default:
+
+```java
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
+
+public final class Response {
+  @JsonProperty(onNullRead = NullHandling.SKIP, onContentNullRead = NullHandling.SKIP)
+  public java.util.List<String> seats = java.util.List.of("default");
+}
+```
+
+Reading `{"seats":null}` keeps the initialized list. Reading `{"seats":[null,"a"]}` assigns a
+list containing `"a"`; `[null]` assigns an empty list. Skipping a property does not call its setter.
+Constructor parameters follow their existing missing-property defaults and required-property
+checks. A skipped duplicate does not erase an earlier value: `{"seats":["a"],"seats":null}`
+keeps `"a"`. Constructor-bypassed objects have no initializer to preserve.
+
+`SET` preserves codec behavior: null may become `Optional.empty()`, or fail for a primitive or
+non-null Kotlin value. `SKIP` and `FAIL` act before that decoding. Only the literal JSON null is
+affected; the string `"null"` and a custom codec returning Java null for another token are not
+filtered. These options do not affect writing or change the root value's null behavior.
+
+Content overrides are shallow. For `List<List<String>>`, a property override skips null inner
+lists; elements inside retained lists follow the global setting. Map keys are unaffected, and a
+skipped duplicate map value preserves the earlier entry. Numeric byte-array representations
+support content handling; Base64 and Base16 strings do not. An explicit content setting on a
+scalar, declared `Object`, transparent wrapper, or encoded binary string is invalid.
+
+The global content setting also applies to root containers, dynamic JSON arrays/objects, and Any
+entries. Explicit null settings on an unwrapped parent are invalid; its flattened child properties
+keep their own settings. A skipped child alone does not create or mark the group present.
+
+Matching field, getter, setter, and creator declarations merge independently for each setting.
+Conflicting explicit values are rejected, and a read-side setting requires a readable property or
+creator parameter. Mixin replacement and removal happen before this merge. Complete custom
+container codecs support explicit `SET`; explicit content `SKIP` or `FAIL` requires a Fory-owned
+container representation. See [Custom codecs](custom-codecs.md).
+
 ## `JsonInclude` and default omission
 
 Defaults may depend on constructor arguments, time, randomness, or external state. Being able to
@@ -268,7 +319,7 @@ object with `low=5` would restore `high=6`. Retain `high` with `ALWAYS` in that 
 Primitive comparisons use their values. Floating-point comparisons distinguish positive and
 negative zero and retain non-finite values for normal output. Arrays compare exact array types and
 contents, recursively for nested arrays; other references use `equals`. Cyclic deep comparison is
-unsupported. Reading is independent: explicit null is not missing, and mutable reference defaults
+unsupported. Reading is independent: under `onNullRead(SET)`, explicit null is not missing, and mutable reference defaults
 are never shared with decoded objects.
 
 Existing Mixins can authorize defaults without modifying a model:
@@ -637,7 +688,7 @@ configured naming strategy. Nested unwrapped properties compose their transforma
 inside out.
 
 A null child writes no members. On input, Fory creates and assigns the child only after seeing one
-of its flattened members. A completely missing group therefore preserves a mutable parent's
+of its flattened members whose value is not skipped. A completely missing group therefore preserves a mutable parent's
 initializer value and leaves a record or creator argument at its normal missing-property default.
 Partial input constructs the child with the ordinary defaults for its other properties.
 
@@ -692,7 +743,7 @@ public Map<String, Object> outputOnly;
 ```
 
 During reading, an existing Map is reused. A null non-final field is initialized when the first
-unknown member is encountered. A readable final field on an ordinary mutable object must already
+unknown member whose value is not skipped is encountered. A readable final field on an ordinary mutable object must already
 contain a mutable Map. Records and property-list `JsonCreator` types instead receive the accumulated
 Map through their construction argument. If no unknown member is present, Fory does not initialize
 a null field.
@@ -808,8 +859,8 @@ from both property-based forms and is inferred only because the target has `Json
 A creator must have at least one parameter and cannot be varargs or generic. A constructor must be
 public. A factory must be public and static, declare the target class as its exact return type, and
 return a non-null value whose runtime class is exactly the target. Missing reference parameters use
-null, missing primitives use Java zero values, duplicate members use the last value, and explicit
-null for a primitive parameter is rejected. Records cannot declare a property-based `JsonCreator`;
+null and missing primitives use Java zero values. Duplicate members use the last value that is not
+skipped. Under `onNullRead(SET)`, explicit null for a primitive parameter is rejected. Records cannot declare a property-based `JsonCreator`;
 a record with `JsonValue` may annotate its one-String canonical constructor for the value form.
 
 ## `JsonValidator`

@@ -33,10 +33,6 @@ final class Latin1ReaderCodegen extends JsonReaderCodegen {
     super(codegen, resolver);
   }
 
-  Latin1ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, int[] fastReadGroupEnds) {
-    super(codegen, resolver, fastReadGroupEnds);
-  }
-
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
     return codegen.latin1ReaderFieldType(property.readTypeInfo(), resolver);

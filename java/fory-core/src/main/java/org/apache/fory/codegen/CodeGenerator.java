@@ -445,26 +445,7 @@ public class CodeGenerator {
 
   /** align code to have {@code numSpaces} spaces indent. */
   public static String alignIndent(String code, int numSpaces) {
-    if (code == null) {
-      return "";
-    }
-    String[] split = code.split("\n");
-    if (split.length == 1) {
-      return code;
-    } else {
-      StringBuilder codeBuilder = new StringBuilder(split[0]).append('\n');
-      for (int i = 1; i < split.length; i++) {
-        for (int j = 0; j < numSpaces; j++) {
-          codeBuilder.append(' ');
-        }
-        codeBuilder.append(split[i]).append('\n');
-      }
-      if (code.charAt(code.length() - 1) == '\n') {
-        return codeBuilder.toString();
-      } else {
-        return codeBuilder.substring(0, codeBuilder.length() - 1);
-      }
-    }
+    return indent(code, numSpaces, false);
   }
 
   static String indent(String code) {
@@ -473,22 +454,50 @@ public class CodeGenerator {
 
   /** The implementation shouldn't add redundant newline separator. */
   static String indent(String code, int numSpaces) {
+    return indent(code, numSpaces, true);
+  }
+
+  private static String indent(String code, int numSpaces, boolean indentFirstLine) {
     if (code == null) {
       return "";
     }
-    String[] split = code.split("\n");
-    StringBuilder codeBuilder = new StringBuilder();
-    for (String line : split) {
-      for (int i = 0; i < numSpaces; i++) {
-        codeBuilder.append(' ');
+    int end = code.length();
+    while (end > 0 && code.charAt(end - 1) == '\n') {
+      end--;
+    }
+    int lines = 1;
+    for (int i = code.indexOf('\n'); i >= 0 && i < end; i = code.indexOf('\n', i + 1)) {
+      lines++;
+    }
+    if (!indentFirstLine && lines == 1) {
+      return code;
+    }
+    if (end == 0) {
+      return "";
+    }
+    int spaces = Math.max(0, numSpaces);
+    StringBuilder codeBuilder =
+        new StringBuilder(end + 1 + spaces * (indentFirstLine ? lines : lines - 1));
+    int start = 0;
+    while (start < end) {
+      if (indentFirstLine || start != 0) {
+        for (int i = 0; i < spaces; i++) {
+          codeBuilder.append(' ');
+        }
       }
-      codeBuilder.append(line).append('\n');
+      int newline = code.indexOf('\n', start);
+      if (newline < 0 || newline >= end) {
+        codeBuilder.append(code, start, end);
+        break;
+      }
+      codeBuilder.append(code, start, newline + 1);
+      start = newline + 1;
     }
-    if (code.charAt(code.length() - 1) == '\n') {
-      return codeBuilder.toString();
-    } else {
-      return codeBuilder.substring(0, codeBuilder.length() - 1);
+    // Preserve the generated layout without allocating a String for every source line.
+    if (end < code.length()) {
+      codeBuilder.append('\n');
     }
+    return codeBuilder.toString();
   }
 
   /**

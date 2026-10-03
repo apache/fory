@@ -47,11 +47,15 @@ import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonCodecFactory;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonFormat;
+import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.codec.ArrayCodec;
+import org.apache.fory.json.codec.Base16ByteArrayCodec;
+import org.apache.fory.json.codec.Base64ByteArrayCodec;
 import org.apache.fory.json.codec.ClosedSubtypeCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.CompositeJsonCodec;
+import org.apache.fory.json.codec.ContainerJsonCodec;
 import org.apache.fory.json.codec.GeneratedJsonCodec;
 import org.apache.fory.json.codec.JsonObjectModel;
 import org.apache.fory.json.codec.JsonSubTypesInfo;
@@ -464,6 +468,43 @@ public final class JsonTypeResolver {
     }
   }
 
+  /** Resolves a read occurrence without mutating the shared binding or its child codecs. */
+  @Internal
+  public JsonTypeInfo withContentNullRead(JsonTypeInfo typeInfo, NullHandling handling) {
+    if (handling == NullHandling.DEFAULT) {
+      return typeInfo;
+    }
+    JsonValueCodec<?> codec = typeInfo.valueCodec();
+    if (!(codec instanceof ContainerJsonCodec)) {
+      if (handling == NullHandling.SET
+          && sharedRegistry.isContainerType(typeInfo.typeRef())
+          && !(codec instanceof Base16ByteArrayCodec)
+          && !(codec instanceof Base64ByteArrayCodec)) {
+        return typeInfo;
+      }
+      throw new ForyJsonException(
+          "onContentNullRead requires a supported container representation: " + typeInfo.type());
+    }
+    ContainerJsonCodec<?> configured =
+        ((ContainerJsonCodec<?>) codec).withContentNullRead(handling);
+    if (configured == codec) {
+      return typeInfo;
+    }
+    JsonTypeInfo occurrence =
+        new JsonTypeInfo(
+            typeInfo.typeRef(),
+            typeInfo.kind(),
+            bindCodec(configured),
+            typeInfo.usesAnnotationCodec(),
+            typeInfo.factoryKey(),
+            typeInfo.exactCodecClass());
+    registerTypeInfoOwner(occurrence, configured);
+    // A recursive language container may still be a published shell. Complete the new occurrence
+    // through the same binding operation; already resolved copies preserve their selected children.
+    resolveCodecTypes(configured, typeInfo.typeRef());
+    return occurrence;
+  }
+
   /** Generates hosted capabilities and returns their language-neutral object metadata owners. */
   @Internal
   public List<ObjectCodec<?>> generateHostedCodecs(Class<?> type) {
@@ -565,7 +606,10 @@ public final class JsonTypeResolver {
       requireSlots(rawType, hasElement, !hasContent && !hasKey && !hasMapValue, "elementCodec");
       TypeRef<?> elementType = directElementType(typeRef, rawType, "elementCodec");
       JsonTypeInfo elementInfo = annotationTypeInfo(elementType, elementCodec);
-      return newTypeInfo(declaredType, ScalarCodecs.AtomicReferenceArrayCodec.create(elementInfo));
+      return newTypeInfo(
+          declaredType,
+          ScalarCodecs.AtomicReferenceArrayCodec.create(
+              elementInfo, sharedRegistry.onContentNullRead()));
     }
     if (Collection.class.isAssignableFrom(rawType)) {
       requireSlots(rawType, hasElement, !hasContent && !hasKey && !hasMapValue, "elementCodec");
@@ -650,7 +694,10 @@ public final class JsonTypeResolver {
     if (rawType == AtomicReferenceArray.class) {
       TypeRef<?> elementType = directElementType(typeRef, rawType, "element", "@JsonFormat");
       JsonTypeInfo elementInfo = formatTypeInfo(elementType, annotation);
-      return newTypeInfo(declaredType, ScalarCodecs.AtomicReferenceArrayCodec.create(elementInfo));
+      return newTypeInfo(
+          declaredType,
+          ScalarCodecs.AtomicReferenceArrayCodec.create(
+              elementInfo, sharedRegistry.onContentNullRead()));
     }
     if (Collection.class.isAssignableFrom(rawType)) {
       TypeRef<?> elementType = directElementType(typeRef, rawType, "element", "@JsonFormat");
@@ -2795,11 +2842,19 @@ public final class JsonTypeResolver {
   }
 
   private JsonTypeInfo newTypeInfo(TypeRef<?> typeRef, JsonValueCodec<?> codec) {
+    if (codec instanceof ContainerJsonCodec) {
+      codec =
+          ((ContainerJsonCodec<?>) codec).withContentNullRead(sharedRegistry.onContentNullRead());
+    }
     return new JsonTypeInfo(typeRef, sharedRegistry.kind(typeRef.getRawType()), bindCodec(codec));
   }
 
   private JsonTypeInfo newTypeInfo(
       TypeRef<?> typeRef, JsonFieldKind kind, JsonValueCodec<?> codec, boolean annotationCodec) {
+    if (codec instanceof ContainerJsonCodec) {
+      codec =
+          ((ContainerJsonCodec<?>) codec).withContentNullRead(sharedRegistry.onContentNullRead());
+    }
     return new JsonTypeInfo(typeRef, kind, bindCodec(codec), annotationCodec);
   }
 

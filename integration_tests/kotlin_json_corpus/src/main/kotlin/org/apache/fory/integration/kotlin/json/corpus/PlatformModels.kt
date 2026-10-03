@@ -52,6 +52,17 @@ public data class PlatformAccount(
   public val label: String? = "corpus-default",
 )
 
+@JsonType
+public data class PlatformNullHandling(
+  @get:JsonProperty(onNullRead = JsonProperty.NullHandling.SKIP)
+  public val text: String = "initial",
+  @get:JsonProperty(
+    onNullRead = JsonProperty.NullHandling.SKIP,
+    onContentNullRead = JsonProperty.NullHandling.SKIP,
+  )
+  public val values: List<String> = listOf("initial"),
+)
+
 @JsonType public data class PlatformBox<T>(public val value: T)
 
 @JsonType @JvmInline public value class PlatformId(public val value: Long)
