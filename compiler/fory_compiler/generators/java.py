@@ -1393,7 +1393,9 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
                 ref_annotation = "@Ref" if child_ref else "@Ref(enable=false)"
                 element_type = f"{ref_annotation} {element_type}"
             if child_optional:
-                element_type = f"@Nullable {element_type}"
+                element_type = self.apply_top_level_type_use_annotation(
+                    element_type, "@Nullable"
+                )
             return f"List<{element_type}>"
 
         elif isinstance(field_type, ArrayType):
@@ -1426,7 +1428,9 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
                 )
                 value_type = f"{ref_annotation} {value_type}"
             if field_type.value_optional:
-                value_type = f"@Nullable {value_type}"
+                value_type = self.apply_top_level_type_use_annotation(
+                    value_type, "@Nullable"
+                )
             return f"Map<{key_type}, {value_type}>"
 
         return "Object"

@@ -610,6 +610,10 @@ public class UnionSerializer extends Serializer<Union> {
         continue;
       }
       String suffix = toPascalCase(constant.name());
+      // The IDL generator escapes Class so inherited Object.getClass() is not a case accessor.
+      if (suffix.equals("Class")) {
+        suffix = "Class_";
+      }
       TypeRef<?> expected = findCaseValueType(unionClass, suffix);
       if (expected != null) {
         mapping.put(caseId, expected);

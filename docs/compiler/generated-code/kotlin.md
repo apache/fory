@@ -66,6 +66,8 @@ public data class Person(
 }
 ```
 
+Empty messages generate ordinary classes with no-argument constructors.
+
 Messages that participate in compiler-detected construction cycles generate
 normal mutable classes so the generated serializer can publish the instance
 before reading back-references:

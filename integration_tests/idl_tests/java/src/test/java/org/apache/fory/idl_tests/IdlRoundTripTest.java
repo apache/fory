@@ -83,6 +83,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import jvm_types.EmptyMessage;
+import jvm_types.JvmTypesForyModule;
+import jvm_types.NullableValues;
+import jvm_types.ReservedCase;
 import monster.Color;
 import monster.Monster;
 import monster.MonsterForyModule;
@@ -152,6 +156,54 @@ public class IdlRoundTripTest {
   @Test
   public void testEvolvingRoundTrip() {
     runEvolvingRoundTrip();
+  }
+
+  @Test
+  public void testJvmTypesRoundTripCompatible() throws Exception {
+    runJvmTypesRoundTrip(true);
+  }
+
+  @Test
+  public void testJvmTypesRoundTripSchemaConsistent() throws Exception {
+    runJvmTypesRoundTrip(false);
+  }
+
+  private void runJvmTypesRoundTrip(boolean compatible) throws Exception {
+    Fory fory = buildFory(compatible);
+    fory.register(JvmTypesForyModule.INSTANCE);
+    NullableValues values = new NullableValues();
+    values.setDates(Arrays.asList(LocalDate.of(2026, 1, 2), null));
+    values.setDurations(Arrays.asList(Duration.ofSeconds(1), null));
+    Map<String, Instant> instants = new HashMap<>();
+    instants.put("present", Instant.ofEpochSecond(2));
+    instants.put("absent", null);
+    values.setInstants(instants);
+    Map<String, BigDecimal> amounts = new HashMap<>();
+    amounts.put("present", new BigDecimal("12.34"));
+    amounts.put("absent", null);
+    values.setAmounts(amounts);
+    values.setEmpty(new EmptyMessage());
+
+    for (ReservedCase selected :
+        Arrays.asList(
+            ReservedCase.ofClass_(Duration.ofSeconds(3)),
+            ReservedCase.ofAmount(new BigDecimal("12.34")))) {
+      values.setSelected(selected);
+      byte[] bytes = fory.serialize(values);
+      Assert.assertEquals(fory.deserialize(bytes, NullableValues.class), values);
+      Assert.assertEquals(NullableValues.fromBytes(values.toBytes()), values);
+
+      for (String peer : resolvePeers("kotlin")) {
+        Path dataFile = Files.createTempFile("idl-jvm-" + peer + "-", ".bin");
+        dataFile.toFile().deleteOnExit();
+        Files.write(dataFile, bytes);
+        Map<String, String> env = new HashMap<>();
+        env.put("DATA_FILE_JVM_TYPES", dataFile.toAbsolutePath().toString());
+        runPeer(buildPeerCommand(peer, env, compatible), peer);
+        Assert.assertEquals(
+            fory.deserialize(Files.readAllBytes(dataFile), NullableValues.class), values);
+      }
+    }
   }
 
   private void runAddressBookRoundTrip(boolean compatible) throws Exception {
@@ -859,9 +911,7 @@ public class IdlRoundTripTest {
         break;
       case "kotlin":
         workDir = idlRoot.resolve("kotlin");
-        command =
-            Arrays.asList(
-                "java", "-jar", "target/fory-kotlin-idl-peer.jar");
+        command = Arrays.asList("java", "-jar", "target/fory-kotlin-idl-peer.jar");
         peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
         break;
       default:

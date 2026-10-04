@@ -121,6 +121,34 @@ def test_optional_elements_and_values_use_nullable_type_use():
     assert "private Map<String, @Nullable Long> counts;" in holder
 
 
+@pytest.mark.parametrize(
+    "schema_type,java_type",
+    [
+        ("date", "java.time.@Nullable LocalDate"),
+        ("timestamp", "java.time.@Nullable Instant"),
+        ("duration", "java.time.@Nullable Duration"),
+        ("decimal", "java.math.@Nullable BigDecimal"),
+        ("bytes", "byte @Nullable []"),
+        ("array<int32>", "int @Nullable []"),
+    ],
+)
+def test_optional_container_type_annotations(schema_type, java_type):
+    files = generate_java(
+        f"""
+        package demo;
+
+        message Values [id=100] {{
+            list<optional {schema_type}> items = 1;
+            map<string, optional {schema_type}> by_name = 2;
+        }}
+        """
+    )
+
+    values = files["demo/Values.java"]
+    assert f"private List<{java_type}> items;" in values
+    assert f"private Map<String, {java_type}> byName;" in values
+
+
 def test_module_qualifies_types_shadowed_by_module_imports():
     files = generate_java(
         """

@@ -230,14 +230,8 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
       return null
     }
     val parsed = parseStructFields(declaration, primaryConstructor) ?: return null
+    // Empty IDL messages still need a generated serializer for schema module registration.
     val fields = parsed.fields
-    if (fields.isEmpty()) {
-      logger.error(
-        "Kotlin KSP xlang serializers require at least one primary-constructor field or mutable @ForyField property",
-        declaration
-      )
-      return null
-    }
     val defaultFieldCount = fields.count { it.hasDefault }
     val defaultFieldLimitDiagnostic = fieldLimitError(defaultFieldCount)
     if (defaultFieldLimitDiagnostic != null) {

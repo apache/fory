@@ -31,6 +31,13 @@ import graph.Graph
 import graph.GraphForyModule
 import java.io.File
 import java.math.BigDecimal
+import java.time.Instant
+import java.time.LocalDate
+import jvm_types.EmptyMessage
+import jvm_types.JvmTypesForyModule
+import jvm_types.NullableValues
+import jvm_types.ReservedCase
+import kotlin.time.Duration.Companion.seconds
 import org.apache.fory.Fory
 import org.apache.fory.kotlin.ForyKotlin
 import org.apache.fory.kotlin.register
@@ -38,7 +45,6 @@ import org.apache.fory.type.BFloat16Array
 import org.apache.fory.type.Float16Array
 import tree.TreeForyModule
 import tree.TreeNode
-import kotlin.time.Duration.Companion.seconds
 
 public fun main() {
   val addressBookFile = System.getenv("DATA_FILE")
@@ -46,34 +52,45 @@ public fun main() {
   val exampleUnionFile = System.getenv("DATA_FILE_EXAMPLE_UNION")
   val treeFile = System.getenv("DATA_FILE_TREE")
   val graphFile = System.getenv("DATA_FILE_GRAPH")
+  val jvmTypesFile = System.getenv("DATA_FILE_JVM_TYPES")
   require(
     addressBookFile != null ||
       exampleFile != null ||
       exampleUnionFile != null ||
       treeFile != null ||
-      graphFile != null
+      graphFile != null ||
+      jvmTypesFile != null
   ) {
-    "DATA_FILE, DATA_FILE_EXAMPLE, DATA_FILE_EXAMPLE_UNION, DATA_FILE_TREE, or DATA_FILE_GRAPH is required"
+    "DATA_FILE, DATA_FILE_EXAMPLE, DATA_FILE_EXAMPLE_UNION, DATA_FILE_TREE, DATA_FILE_GRAPH, or DATA_FILE_JVM_TYPES is required"
   }
   val compatible = System.getenv("IDL_COMPATIBLE").toBoolean()
-  val fory =
-    ForyKotlin.builder()
-      .withXlang(true)
-      .withCompatible(compatible)
-      .build()
+  val fory = ForyKotlin.builder().withXlang(true).withCompatible(compatible).build()
   fory.register(AddressbookForyModule)
   fory.register(ExampleForyModule)
+  fory.register(JvmTypesForyModule)
 
   roundTripFile(fory, addressBookFile, AddressBook::class.java)
   roundTripFile(fory, exampleFile, ExampleMessage::class.java)
   roundTripFile(fory, exampleUnionFile, ExampleMessageUnion::class.java)
+  if (jvmTypesFile != null) {
+    val file = File(jvmTypesFile)
+    val value = fory.deserialize(file.readBytes(), NullableValues::class.java)
+    require(value.dates == listOf(LocalDate.of(2026, 1, 2), null))
+    require(value.durations == listOf(1.seconds, null))
+    require(value.instants == mapOf("present" to Instant.ofEpochSecond(2), "absent" to null))
+    require(value.amounts == mapOf("present" to BigDecimal("12.34"), "absent" to null))
+    require(value.empty != null)
+    require(
+      value.selected == ReservedCase.Class(3.seconds) ||
+        value.selected == ReservedCase.Amount(BigDecimal("12.34"))
+    )
+    val empty = EmptyMessage()
+    require(EmptyMessage.fromBytes(empty.toBytes()) !== empty)
+    file.writeBytes(fory.serialize(value))
+  }
   if (treeFile != null || graphFile != null) {
     val refFory =
-      ForyKotlin.builder()
-        .withXlang(true)
-        .withCompatible(compatible)
-        .withRefTracking(true)
-        .build()
+      ForyKotlin.builder().withXlang(true).withCompatible(compatible).withRefTracking(true).build()
     refFory.register(TreeForyModule)
     refFory.register(GraphForyModule)
     roundTripFile(refFory, treeFile, TreeNode::class.java)
@@ -92,11 +109,7 @@ private fun <T : Any> roundTripFile(fory: Fory, path: String?, type: Class<T>) {
 }
 
 private fun runGeneratedSurfaceChecks() {
-  val fory =
-    ForyKotlin.builder()
-      .withXlang(true)
-      .withCompatible(false)
-      .build()
+  val fory = ForyKotlin.builder().withXlang(true).withCompatible(false).build()
   fory.register(ExampleForyModule)
 
   assertRoundTrip(fory, ExampleMessageUnion.VarintU32Value(UInt.MAX_VALUE))

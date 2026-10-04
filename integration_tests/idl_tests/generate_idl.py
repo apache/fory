@@ -43,7 +43,8 @@ SCHEMAS = [
 ]
 
 LANG_EXTRA_SCHEMAS = {
-    "java": [IDL_DIR / "idl" / "nested_name.fdl"],
+    "java": [IDL_DIR / "idl" / "nested_name.fdl", IDL_DIR / "idl" / "jvm_types.fdl"],
+    "kotlin": [IDL_DIR / "idl" / "jvm_types.fdl"],
     "scala": [IDL_DIR / "idl" / "nested_name.fdl"],
 }
 
