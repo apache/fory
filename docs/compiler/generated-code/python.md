@@ -70,6 +70,15 @@ class Person:
     def from_bytes(cls, data: bytes) -> "Person": ...
 ```
 
+## Field Names
+
+Generated Python attributes use `snake_case`, with a trailing underscore for
+Python keywords. The names `field`, `pyfory`, `decimal`, `list`, and `dict` also
+receive a trailing underscore. Names consisting of one of these five names
+followed by underscores receive one additional underscore so fields remain
+distinct: `field`, `field_`, and `field__` become `field_`, `field__`, and
+`field___`. Field tag IDs remain unchanged.
+
 ## Registration
 
 Generated registration function:

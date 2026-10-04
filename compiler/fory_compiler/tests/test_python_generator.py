@@ -23,6 +23,8 @@ import types
 from pathlib import Path
 from textwrap import dedent
 
+import pytest
+
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
 from fory_compiler.generators.base import GeneratorOptions
@@ -51,7 +53,7 @@ def exec_generated_module(content: str) -> dict:
     """
 
     def stub_field(id=None, *, nullable=False, ref=False, **kwargs):
-        return dataclasses.field(**kwargs)
+        return dataclasses.field(metadata={"id": id}, **kwargs)
 
     def stub_dataclass(cls=None, **kwargs):
         if cls is None:
@@ -105,3 +107,26 @@ def test_field_names_shadowing_default_helpers_are_escaped():
     assert instance.field_ == ""
     assert instance.tags == []
     assert instance.attrs == {}
+
+
+@pytest.mark.parametrize("name", ["field", "pyfory", "decimal", "List", "dict"])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("field_type", ["string", "any"])
+def test_helper_name_suffixes(name, reverse, field_type):
+    fields = [f"{field_type} {name}{'_' * i} = {i + 1};" for i in range(3)]
+    if reverse:
+        fields.reverse()
+    output = generate_python("message Tricky [id=100] {" + "\n".join(fields) + "}")
+    namespace = exec_generated_module(output)
+    cls = namespace["Tricky"]
+    names = [name.lower() + "_" * (i + 1) for i in range(3)]
+
+    assert {f.name: f.metadata["id"] for f in dataclasses.fields(cls)} == {
+        field_name: i + 1 for i, field_name in enumerate(names)
+    }
+    values = {field_name: f"value-{i}" for i, field_name in enumerate(names)}
+    instance = cls(**values)
+    assert dataclasses.asdict(instance) == values
+    for field_name, value in values.items():
+        rendered = repr(value) if field_type == "string" else "any(...)"
+        assert f"{field_name}={rendered}" in repr(instance)

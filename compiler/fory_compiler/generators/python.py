@@ -154,7 +154,9 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
 
     def safe_field_name(self, name: str) -> str:
         """Return a dataclass-field-safe identifier."""
-        if name in self.FIELD_DEFAULT_HELPER_NAMES:
+        # Shift the whole suffix family so field, field_, and field__ stay
+        # distinct instead of overwriting a generated attribute and its tag.
+        if name.rstrip("_") in self.FIELD_DEFAULT_HELPER_NAMES:
             return f"{name}_"
         return self.safe_name(name)
 
