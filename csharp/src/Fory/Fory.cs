@@ -155,6 +155,7 @@ public sealed class Fory
     /// <returns>Serialized bytes.</returns>
     public byte[] Serialize<T>(in T value)
     {
+        _typeResolver.FinishRegistration();
         ByteWriter writer = _writeContext.Writer;
         writer.Reset();
         Serializer<T> serializer = _typeResolver.GetSerializer<T>();
@@ -258,6 +259,7 @@ public sealed class Fory
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal T DeserializeFromReader<T>(ByteReader reader)
     {
+        _typeResolver.FinishRegistration();
         ReadContext readContext = _readContext;
         readContext.ResetFor(reader);
         readContext._remainingGraphMemoryBytes = Config.MaxGraphMemoryBytes;

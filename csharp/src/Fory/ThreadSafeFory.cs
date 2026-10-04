@@ -28,6 +28,7 @@ public sealed class ThreadSafeFory : IDisposable
     private readonly object _registrationLock = new();
     private readonly List<Action<Fory>> _registrations = [];
     private readonly ThreadLocal<Fory> _threadLocalFory;
+    private bool _started;
     private bool _disposed;
 
     internal ThreadSafeFory(Config config)
@@ -133,6 +134,7 @@ public sealed class ThreadSafeFory : IDisposable
     /// <returns>Serialized bytes.</returns>
     public byte[] Serialize<T>(in T value)
     {
+        _started = true;
         return Current.Serialize(in value);
     }
 
@@ -144,6 +146,7 @@ public sealed class ThreadSafeFory : IDisposable
     /// <param name="value">Value to serialize.</param>
     public void Serialize<T>(IBufferWriter<byte> output, in T value)
     {
+        _started = true;
         Current.Serialize(output, in value);
     }
 
@@ -155,6 +158,7 @@ public sealed class ThreadSafeFory : IDisposable
     /// <returns>Deserialized value.</returns>
     public T Deserialize<T>(ReadOnlySpan<byte> payload)
     {
+        _started = true;
         return Current.Deserialize<T>(payload);
     }
 
@@ -209,6 +213,10 @@ public sealed class ThreadSafeFory : IDisposable
         lock (_registrationLock)
         {
             ThrowIfDisposed();
+            if (_started)
+            {
+                throw new InvalidOperationException("Cannot register types after first serialize/deserialize call");
+            }
             _registrations.Add(registration);
             foreach (Fory fory in _threadLocalFory.Values)
             {

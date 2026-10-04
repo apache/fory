@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -213,6 +214,19 @@ type Fory struct {
 	// Resolvers shared between contexts
 	typeResolver *TypeResolver
 	refResolver  *RefResolver
+
+	started atomic.Bool
+}
+
+func (f *Fory) checkRegistrationAllowed() error {
+	if f.started.Load() {
+		return fmt.Errorf("types must be registered before the first serialization or deserialization")
+	}
+	return nil
+}
+
+func (f *Fory) freezeRegistration() {
+	f.started.Store(true)
 }
 
 // New creates a new Fory instance with the given options
@@ -302,6 +316,9 @@ func validateUserTypeID(typeID uint32) error {
 //
 //go:noinline
 func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
+	if err := f.checkRegistrationAllowed(); err != nil {
+		return err
+	}
 	if err := validateUserTypeID(typeID); err != nil {
 		return err
 	}
@@ -335,6 +352,9 @@ func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
 //
 //go:noinline
 func (f *Fory) RegisterUnion(type_ any, typeID uint32, serializer Serializer) error {
+	if err := f.checkRegistrationAllowed(); err != nil {
+		return err
+	}
 	if serializer == nil {
 		return fmt.Errorf("RegisterUnion requires a non-nil serializer")
 	}
@@ -363,6 +383,9 @@ func (f *Fory) RegisterUnion(type_ any, typeID uint32, serializer Serializer) er
 //
 //go:noinline
 func (f *Fory) RegisterUnionByName(type_ any, name string, serializer Serializer) error {
+	if err := f.checkRegistrationAllowed(); err != nil {
+		return err
+	}
 	if serializer == nil {
 		return fmt.Errorf("RegisterUnionByName requires a non-nil serializer")
 	}
@@ -392,6 +415,9 @@ func (f *Fory) RegisterUnionByName(type_ any, name string, serializer Serializer
 //
 //go:noinline
 func (f *Fory) RegisterStructByName(type_ any, name string) error {
+	if err := f.checkRegistrationAllowed(); err != nil {
+		return err
+	}
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
 		t = rt
@@ -419,6 +445,9 @@ func (f *Fory) RegisterStructByName(type_ any, name string) error {
 //
 //go:noinline
 func (f *Fory) RegisterEnum(type_ any, typeID uint32) error {
+	if err := f.checkRegistrationAllowed(); err != nil {
+		return err
+	}
 	if err := validateUserTypeID(typeID); err != nil {
 		return err
 	}
@@ -451,6 +480,9 @@ func (f *Fory) RegisterEnum(type_ any, typeID uint32) error {
 //
 //go:noinline
 func (f *Fory) RegisterEnumByName(type_ any, name string) error {
+	if err := f.checkRegistrationAllowed(); err != nil {
+		return err
+	}
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
 		t = rt
@@ -483,6 +515,9 @@ func (f *Fory) RegisterEnumByName(type_ any, name string) error {
 //
 //go:noinline
 func (f *Fory) RegisterExtension(type_ any, typeID uint32, serializer ExtensionSerializer) error {
+	if err := f.checkRegistrationAllowed(); err != nil {
+		return err
+	}
 	if err := validateUserTypeID(typeID); err != nil {
 		return err
 	}
@@ -522,6 +557,9 @@ func (f *Fory) RegisterExtension(type_ any, typeID uint32, serializer ExtensionS
 //
 //go:noinline
 func (f *Fory) RegisterExtensionByName(type_ any, name string, serializer ExtensionSerializer) error {
+	if err := f.checkRegistrationAllowed(); err != nil {
+		return err
+	}
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
 		t = rt
@@ -563,6 +601,7 @@ func (f *Fory) Reset() {
 //
 // For thread-safe usage, use threadsafe.Fory which copies the data internally.
 func (f *Fory) Serialize(value any) ([]byte, error) {
+	f.freezeRegistration()
 	defer f.resetWriteState()
 	if !validateRootDecimal(f.writeCtx.Err(), value) {
 		return nil, f.writeCtx.TakeError()
@@ -598,6 +637,7 @@ func (f *Fory) rootRefMode() RefMode {
 // Deserialize deserializes data directly into the provided target value.
 // The target must be a pointer to the value to deserialize into.
 func (f *Fory) Deserialize(data []byte, v any) error {
+	f.freezeRegistration()
 	defer f.resetReadState()
 	f.readCtx.SetData(data)
 	target := reflect.ValueOf(v).Elem()
@@ -637,6 +677,7 @@ func (f *Fory) resetWriteState() {
 // This is useful when you need to write multiple serialized values to the same buffer.
 // Returns error if serialization fails.
 func (f *Fory) SerializeTo(buf *ByteBuffer, value any) error {
+	f.freezeRegistration()
 	defer f.resetWriteState()
 	if !validateRootDecimal(f.writeCtx.Err(), value) {
 		return f.writeCtx.TakeError()
@@ -690,6 +731,7 @@ func (f *Fory) SerializeTo(buf *ByteBuffer, value any) error {
 // The buffer's reader index is advanced as data is read.
 // This is useful when reading multiple serialized values from the same buffer.
 func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
+	f.freezeRegistration()
 	// Reset contexts for each independent serialized object
 	defer f.resetReadState()
 
@@ -743,6 +785,7 @@ func (f *Fory) Unmarshal(data []byte, v any) error {
 // If callback is provided, it will be called for each BufferObject during serialization.
 // Return true from callback to write in-band, false for out-of-band.
 func (f *Fory) SerializeWithCallback(buffer *ByteBuffer, v any, callback func(BufferObject) bool) error {
+	f.freezeRegistration()
 	buf := f.writeCtx.buffer
 	defer func() {
 		// Reset internal state but NOT the buffer - caller manages buffer state
@@ -786,6 +829,7 @@ func (f *Fory) SerializeWithCallback(buffer *ByteBuffer, v any, callback func(Bu
 // DeserializeWithCallbackBuffers deserializes from buffer into the provided value (for streaming/cross-language use).
 // The third parameter is optional external buffers for out-of-band data (can be nil).
 func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers []*ByteBuffer) error {
+	f.freezeRegistration()
 	// Use the caller buffer only for this root; later stream roots reuse the
 	// original internal buffer.
 	origBuffer := f.readCtx.buffer
@@ -919,6 +963,7 @@ func readHeaderSlow(ctx *ReadContext, bitmap byte) {
 //
 // For thread-safe usage, use threadsafe.Serialize which copies the data internally.
 func Serialize[T any](f *Fory, value T) ([]byte, error) {
+	f.freezeRegistration()
 	defer f.resetWriteState()
 	v := any(value)
 	if !validateRootDecimal(f.writeCtx.Err(), v) {
@@ -1075,6 +1120,7 @@ func Serialize[T any](f *Fory, value T) ([]byte, error) {
 // For structs, it reads directly into the struct fields.
 // Note: Fory instance is NOT thread-safe. Use ThreadSafeFory for concurrent use.
 func Deserialize[T any](f *Fory, data []byte, target *T) error {
+	f.freezeRegistration()
 	// Generic roots share the same reusable read and metadata owners as the
 	// method API, so both entry and every exit must start from a root-clean state.
 	f.resetReadState()

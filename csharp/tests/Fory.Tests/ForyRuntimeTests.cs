@@ -3567,4 +3567,29 @@ public sealed class ForyRuntimeTests
             .Register<RuntimeDepthUnion>(323)
             .Register<CollectionNode>(324);
     }
+
+    [Fact]
+    public void RegistrationFailsAfterFirstSerialize()
+    {
+        var fory = ForyRuntime.Builder().Build();
+        fory.Serialize(42);
+
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            fory.Register<Person>(1001);
+        });
+    }
+
+    [Fact]
+    public void ThreadSafeForyRegistrationFailsAfterFirstSerialize()
+    {
+        using var fory = ForyRuntime.Builder().BuildThreadSafe();
+        fory.Serialize(42);
+
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            fory.Register<Person>(1001);
+        });
+    }
 }
+

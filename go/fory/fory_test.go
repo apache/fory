@@ -910,3 +910,43 @@ func convertRecursively(newVal, tmplVal reflect.Value) (reflect.Value, error) {
 			fmt.Errorf("cannot convert %s to %s", newVal.Type(), tmplVal.Type())
 	}
 }
+
+func TestRegistrationFrozenAfterSerialization(t *testing.T) {
+	f := New()
+	type Item struct {
+		Count int32
+	}
+	type Late struct {
+		Name string
+	}
+
+	_, err := f.Serialize(int32(42))
+	require.NoError(t, err)
+
+	err = f.RegisterStruct(Late{}, 100)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "types must be registered before the first serialization or deserialization")
+}
+
+func TestRegistrationFrozenAfterDeserialization(t *testing.T) {
+	f := New()
+	type Item struct {
+		Count int32
+	}
+	type Late struct {
+		Name string
+	}
+
+	data, err := f.Serialize(int32(42))
+	require.NoError(t, err)
+
+	f2 := New()
+	var out int32
+	err = f2.Deserialize(data, &out)
+	require.NoError(t, err)
+
+	err = f2.RegisterStruct(Late{}, 101)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "types must be registered before the first serialization or deserialization")
+}
+

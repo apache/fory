@@ -1910,3 +1910,13 @@ def test_dynamic_with_inheritance_xlang():
     assert not isinstance(result.animal2, Dog)
     assert result.animal2.name == "Luna"
     assert not hasattr(result.animal2, "breed") or getattr(result.animal2, "breed", None) != "Poodle"
+
+
+def test_registration_frozen_after_first_serialize():
+    from pyfory.error import ForyNotAllowedError
+
+    fory = Fory(xlang=True, compatible=False)
+    fory.serialize(42)
+    with pytest.raises(ForyNotAllowedError, match="Type registration is not allowed"):
+        fory.register_type(Animal, name="example.Animal")
+

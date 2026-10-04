@@ -27,6 +27,7 @@ _ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv("ENABLE_TYPE_REGISTRATION_FORCIBL
 from pyfory.resolver import NOT_NULL_VALUE_FLAG
 from pyfory.types import TypeId
 from pyfory.policy import DeserializationPolicy, DEFAULT_POLICY
+from pyfory.error import ForyNotAllowedError
 
 DYNAMIC_TYPE_ID = -1
 # preserve 0 as flag for type id not set in TypeInfo`
@@ -128,6 +129,7 @@ class Fory:
         "max_unbacked_container_items",
         "field_nullable",
         "policy",
+        "_registration_frozen",
     )
 
     def __init__(
@@ -265,6 +267,13 @@ class Fory:
         self.write_context = WriteContext(self.config, self.type_resolver)
         self.read_context = ReadContext(self.config, self.type_resolver)
         self.buffer = Buffer.allocate(32)
+        self._registration_frozen = False
+
+    def check_registration_allowed(self):
+        if self._registration_frozen:
+            raise ForyNotAllowedError(
+                "Type registration is not allowed after the first serialize/deserialize call."
+            )
 
     def register(
         self,
@@ -352,6 +361,7 @@ class Fory:
             >>> fory = Fory(xlang=False)
             >>> fory.register_type(Person)
         """
+        self.check_registration_allowed()
         return self.type_resolver.register_type(
             cls,
             type_id=type_id,
@@ -370,6 +380,7 @@ class Fory:
         """
         Register a union type with a generated serializer.
         """
+        self.check_registration_allowed()
         return self.type_resolver.register_union(
             cls,
             type_id=type_id,
@@ -392,6 +403,7 @@ class Fory:
             >>> fory = Fory(xlang=False)
             >>> fory.register_serializer(MyClass, MyCustomSerializer())
         """
+        self.check_registration_allowed()
         self.type_resolver.register_serializer(cls, serializer)
 
     def dumps(
@@ -498,6 +510,7 @@ class Fory:
         buffer_callback=None,
         unsupported_callback=None,
     ) -> Buffer:
+        self._registration_frozen = True
         if buffer is None:
             self.buffer.set_writer_index(0)
             buffer = self.buffer
@@ -564,6 +577,7 @@ class Fory:
         buffers: Iterable = None,
         unsupported_objects: Iterable = None,
     ):
+        self._registration_frozen = True
         if isinstance(buffer, bytes):
             buffer = Buffer(buffer)
         read_context = self.read_context

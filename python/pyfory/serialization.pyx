@@ -47,6 +47,7 @@ from pyfory.meta.metastring import MetaStringDecoder
 from pyfory.policy import DEFAULT_POLICY
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
 from pyfory.type_util import normalize_fory_type
+from pyfory.error import ForyNotAllowedError
 from pyfory.includes.libserialization cimport (
     TypeId,
     TypeRegistrationKind,
@@ -1065,6 +1066,7 @@ cdef class Fory:
     cdef public WriteContext write_context
     cdef public ReadContext read_context
     cdef public Buffer buffer
+    cdef public bint registration_frozen
 
     def __init__(
         self,
@@ -1163,6 +1165,13 @@ cdef class Fory:
         self.write_context = WriteContext(self.config, self.type_resolver)
         self.read_context = ReadContext(self.config, self.type_resolver)
         self.buffer = Buffer.allocate(32)
+        self.registration_frozen = False
+
+    def check_registration_allowed(self):
+        if self.registration_frozen:
+            raise ForyNotAllowedError(
+                "Type registration is not allowed after the first serialize/deserialize call."
+            )
 
     def register(
         self,
@@ -1187,6 +1196,7 @@ cdef class Fory:
         name: str = None,
         serializer=None,
     ):
+        self.check_registration_allowed()
         return self.type_resolver.register_type(
             cls,
             type_id=type_id,
@@ -1202,6 +1212,7 @@ cdef class Fory:
         name: str = None,
         serializer=None,
     ):
+        self.check_registration_allowed()
         return self.type_resolver.register_union(
             cls,
             type_id=type_id,
@@ -1210,6 +1221,7 @@ cdef class Fory:
         )
 
     def register_serializer(self, cls, serializer):
+        self.check_registration_allowed()
         self.type_resolver.register_serializer(cls, serializer)
 
     def dumps(
@@ -1266,6 +1278,7 @@ cdef class Fory:
             self.reset_write()
 
     cdef Buffer _serialize(self, obj, Buffer buffer=None, buffer_callback=None, unsupported_callback=None):
+        self.registration_frozen = True
         cdef WriteContext write_context = self.write_context
         cdef int32_t mask_index
         cdef uint8_t bitmap
@@ -1299,6 +1312,7 @@ cdef class Fory:
             self.reset_read()
 
     cdef object _deserialize(self, buffer, buffers=None, unsupported_objects=None):
+        self.registration_frozen = True
         cdef ReadContext read_context = self.read_context
         cdef Buffer read_buffer
         cdef int32_t reader_index

@@ -455,6 +455,7 @@ public sealed class TypeResolver
 
     private TypeInfo GetOrCreateTypeInfo(Type type, TypeInfo? explicitTypeInfo)
     {
+        CheckRegistrationAllowed();
         ulong typeKey = TypeMapKey.Get(type);
         if (_typeInfos.TryGetValue(typeKey, out TypeInfo? existing))
         {
@@ -481,7 +482,6 @@ public sealed class TypeResolver
         }
 
         _typeInfos.Set(typeKey, typeInfo);
-        InvalidateFinalizedVersion();
         return typeInfo;
     }
 
@@ -500,10 +500,10 @@ public sealed class TypeResolver
 
     internal void Register(Type type, uint id, TypeInfo? explicitTypeInfo = null)
     {
+        CheckRegistrationAllowed();
         TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitTypeInfo).WithTypeIdRegistration(id);
         _typeInfos.Set(TypeMapKey.Get(type), typeInfo);
         _byUserTypeId[id] = typeInfo;
-        InvalidateFinalizedVersion();
     }
 
     internal static (string NamespaceName, string TypeName) SplitTypeName(string name)
@@ -542,6 +542,7 @@ public sealed class TypeResolver
 
     internal void Register(Type type, string namespaceName, string typeName, TypeInfo? explicitTypeInfo = null)
     {
+        CheckRegistrationAllowed();
         ValidateSplitTypeName(namespaceName, typeName);
         TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitTypeInfo);
         MetaString namespaceMeta = MetaStringEncoder.Namespace.Encode(namespaceName, TypeMetaEncodings.NamespaceMetaStringEncodings);
@@ -549,7 +550,6 @@ public sealed class TypeResolver
         typeInfo = typeInfo.WithTypeNameRegistration(namespaceMeta, typeNameMeta);
         _typeInfos.Set(TypeMapKey.Get(type), typeInfo);
         _byTypeName[(namespaceName, typeName)] = typeInfo;
-        InvalidateFinalizedVersion();
     }
 
     /// <summary>
@@ -563,10 +563,18 @@ public sealed class TypeResolver
         return _versionHash;
     }
 
-    private void InvalidateFinalizedVersion()
+    internal void CheckRegistrationAllowed()
     {
-        _finalized = false;
-        _versionHash = 0;
+        if (_finalized)
+        {
+            throw new InvalidOperationException(
+                "Cannot register class/serializer after registration has been frozen. Please register all classes before invoking top-level serialize/deserialize methods of Fory.");
+        }
+    }
+
+    internal void FinishRegistration()
+    {
+        EnsureFinalizedVersion();
     }
 
     private void EnsureFinalizedVersion()
