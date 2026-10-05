@@ -87,6 +87,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private static final byte[] NEGATIVE_INFINITY_BYTES =
       "\"-Infinity\"".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final long EIGHT_DIGITS = 100_000_000L;
+  // Most characters one plain-run copy in a string tail reserves for at a time.
+  private static final int RUN_CHUNK = 8192;
   private static final int[] HEX_PAIRS = new int[256];
   private static final long UTF16_ASCII_MASK = 0xFF80FF80FF80FF80L;
   private static final char[] DIGIT_PAIRS = new char[256];
@@ -1141,6 +1143,11 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private void writeStringChars(String value) {
+    if (STRING_BYTES_BACKED
+        && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(value))) {
+      writeLatin1StringEscaped(StringSerializer.getStringBytes(value));
+      return;
+    }
     int length = value.length();
     int pos = position;
     int additional = length + 2;
@@ -2492,14 +2499,71 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     }
   }
 
+  /**
+   * Writes a compact Latin1 string that the fast paths rejected because it needs escaping or holds
+   * a byte above 0x7F. Plain runs between those bytes are copied a word at a time, so the cost
+   * follows the number of stops rather than the distance from the first one to the end.
+   */
+  private void writeLatin1StringEscaped(byte[] value) {
+    writeByteRaw((byte) '"');
+    int length = value.length;
+    int i = 0;
+    while (i < length) {
+      // One reservation covers at most RUN_CHUNK bytes, so its arithmetic cannot overflow.
+      int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
+      int pos = position;
+      if (pos + (limit - i) > buffer.length) {
+        grow(limit - i);
+      }
+      byte[] bytes = buffer;
+      int wordEnd = limit - Long.BYTES;
+      while (i <= wordEnd) {
+        long word = LittleEndian.getInt64(value, i);
+        if (!isJsonAsciiWord(word)) {
+          break;
+        }
+        LittleEndian.putInt64(bytes, pos, word);
+        pos += Long.BYTES;
+        i += Long.BYTES;
+      }
+      while (i < limit && isJsonAsciiByte(value[i])) {
+        bytes[pos++] = value[i++];
+      }
+      position = pos;
+      if (i == limit) {
+        continue;
+      }
+      writeEscapedChar((char) (value[i++] & 0xff));
+    }
+    writeByteRaw((byte) '"');
+  }
+
   private void writeStringSlow(String value, int index, int length) {
-    for (int i = index; i < length; i++) {
-      char ch = value.charAt(i);
+    int i = index;
+    while (i < length) {
+      // Copy the plain ASCII run up to the next character that needs escaping or encoding. One
+      // reservation covers at most RUN_CHUNK characters, so its arithmetic cannot overflow.
+      int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
+      int pos = position;
+      if (pos + (limit - i) > buffer.length) {
+        grow(limit - i);
+      }
+      byte[] bytes = buffer;
+      char ch;
+      while (i < limit && isJsonAscii(ch = value.charAt(i))) {
+        bytes[pos++] = (byte) ch;
+        i++;
+      }
+      position = pos;
+      if (i == limit) {
+        continue;
+      }
+      ch = value.charAt(i++);
       if (Character.isHighSurrogate(ch)) {
-        if (i + 1 >= length) {
+        if (i >= length) {
           throw new ForyJsonException("Unpaired high surrogate in string");
         }
-        char low = value.charAt(++i);
+        char low = value.charAt(i++);
         if (!Character.isLowSurrogate(low)) {
           throw new ForyJsonException("Unpaired high surrogate in string");
         }
@@ -2519,13 +2583,31 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private void writeStringSlow(CharSequence value, int index, int length) {
-    for (int i = index; i < length; i++) {
-      char ch = value.charAt(i);
+    int i = index;
+    while (i < length) {
+      // Copy the plain ASCII run up to the next character that needs escaping or encoding. One
+      // reservation covers at most RUN_CHUNK characters, so its arithmetic cannot overflow.
+      int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
+      int pos = position;
+      if (pos + (limit - i) > buffer.length) {
+        grow(limit - i);
+      }
+      byte[] bytes = buffer;
+      char ch;
+      while (i < limit && isJsonAscii(ch = value.charAt(i))) {
+        bytes[pos++] = (byte) ch;
+        i++;
+      }
+      position = pos;
+      if (i == limit) {
+        continue;
+      }
+      ch = value.charAt(i++);
       if (Character.isHighSurrogate(ch)) {
-        if (i + 1 >= length) {
+        if (i >= length) {
           throw new ForyJsonException("Unpaired high surrogate in string");
         }
-        char low = value.charAt(++i);
+        char low = value.charAt(i++);
         if (!Character.isLowSurrogate(low)) {
           throw new ForyJsonException("Unpaired high surrogate in string");
         }
