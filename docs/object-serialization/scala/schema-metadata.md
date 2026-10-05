@@ -108,8 +108,8 @@ enum SearchTarget derives ForySerializer {
 ```
 
 Schema-defined union cases use non-negative IDs, and a typed union must declare
-at least one non-`Unknown` case. The unknown-case carrier is selected by
-`@ForyUnknownCase`, not by a schema case ID.
+at least one schema-defined case. The unknown-case carrier is selected by
+`@ForyUnknownCase`, independent of its name, and has no schema case ID.
 When a generated Scala union case name matches the payload type simple name,
 packaged output keeps the case name and qualifies the payload type. If a target
 output mode cannot express a legal qualifier for a conflict, the IDL compiler

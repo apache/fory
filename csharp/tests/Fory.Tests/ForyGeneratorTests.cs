@@ -201,7 +201,7 @@ public sealed class ForyGeneratorTests
             generatorDiagnostics.Concat(diagnostics),
             diagnostic =>
                 diagnostic.Id == "FORY006" &&
-                diagnostic.GetMessage().Contains("at least one non-Unknown case", StringComparison.Ordinal));
+            diagnostic.GetMessage().Contains("at least one schema-defined case", StringComparison.Ordinal));
         Assert.DoesNotContain(output.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Id != "FORY006");
     }
 

@@ -27,7 +27,7 @@ import collection.{
   NumericCollections,
   NumericCollectionsArray
 }
-import example.{ExampleForyModule, ExampleMessage, ExampleState}
+import example.{ExampleForyModule, ExampleMessage, ExampleState, UnknownChoice}
 import nested_name.NestedNameForyModule
 import org.apache.fory.annotation.ForyEnumId
 import org.apache.fory.meta.FieldTypes
@@ -36,6 +36,7 @@ import org.apache.fory.scala.ForySerializer
 import org.apache.fory.scala.register
 import org.apache.fory.serializer.StaticGeneratedStructSerializer
 import org.apache.fory.`type`.{ScalaTypes, TypeUtils, Types}
+import org.apache.fory.`type`.union.UnknownCase
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import tree.{TreeForyModule, TreeNode}
@@ -45,6 +46,21 @@ import scala.jdk.CollectionConverters._
 
 final class ScalaIdlRoundTripTest extends AnyWordSpec with Matchers {
   "generated Scala IDL models" should {
+    "preserve schema case names beside the unknown carrier" in {
+      for (compatible <- Seq(false, true)) {
+        val fory = ForyScala.builder().withXlang(true).withCompatible(compatible).build()
+        fory.register(ExampleForyModule)
+        for (value <- Seq(UnknownChoice.Unknown("known"), UnknownChoice.UnknownValue(42))) {
+          fory.deserialize(fory.serialize(value)) shouldEqual value
+        }
+        val bytes = fory.serialize(UnknownChoice.Unknown_(new UnknownCase(99, "future")))
+        val decoded = fory.deserialize(bytes).asInstanceOf[UnknownChoice.Unknown_]
+        decoded.value.getCaseId shouldBe 99
+        decoded.value.getValue shouldBe "future"
+        fory.serialize(decoded).toSeq shouldEqual bytes.toSeq
+      }
+    }
+
     "round trip case classes, Option fields, and ADT union cases" in {
       val fory = ForyScala.builder()
         .withXlang(true)

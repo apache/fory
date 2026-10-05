@@ -29,6 +29,15 @@ package or namespace, names such as `AddressbookForyModule` or
 `ComplexPbForyModule` let multiple IDL files target the same package or
 namespace without producing colliding `ForyModule` types.
 
+## Unknown Union Case Names
+
+C#, Kotlin, Scala, and Rust generate an `Unknown` case to preserve unknown union
+values; Swift uses `unknown`. Schema-defined case names keep their normal
+language-specific spelling. If the generated carrier name conflicts, the compiler
+uses `Unknown_` or Swift's `unknown_`. If that alternate name is also occupied,
+generation fails. The unknown-case annotation or attribute identifies the carrier;
+its name is not required to be `Unknown` or `unknown`.
+
 ## Reference Schemas
 
 The examples below use two real schemas:

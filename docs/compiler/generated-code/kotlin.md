@@ -93,7 +93,8 @@ sealed classes with `@ForyUnion`; the Fory-provided `Unknown(UnknownCase)`
 carrier is marked with `@ForyUnknownCase`. The marker only selects the carrier
 and does not add an entry to the schema case table. Schema-defined cases may use
 case IDs `0..N` and hold a single `value` property. A typed union must have at
-least one non-`Unknown` case.
+least one schema-defined case. On a name collision, the generated carrier is named
+`Unknown_`; a second collision is an error. Schema case names are preserved.
 
 ```kotlin
 package addressbook

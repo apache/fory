@@ -1062,12 +1062,10 @@ fn trait_bound_ident(bound: &syn::TypeParamBound) -> Option<String> {
 }
 
 // The typed-ADT forward-compatibility carrier is selected by a runtime marker,
-// not by a schema case id. Known schema cases may still use id 0.
+// not by its name or a schema case id. Generated names may avoid schema cases,
+// and known schema cases may still use id 0.
 pub(crate) fn is_runtime_unknown_variant(variant: &syn::Variant) -> bool {
     if !has_fory_unknown_attr(variant) {
-        return false;
-    }
-    if variant.ident != "Unknown" {
         return false;
     }
     let Fields::Unnamed(fields) = &variant.fields else {

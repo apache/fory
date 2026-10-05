@@ -1022,14 +1022,14 @@ public sealed partial class ForyModelGenerator
                         continue;
                     }
 
-                    if (!string.Equals(caseType.Name, "Unknown", StringComparison.Ordinal) ||
-                        !HasUnknownCaseValueProperty(caseType))
+                    // The marker owns carrier identity; its name may avoid a schema case.
+                    if (!HasUnknownCaseValueProperty(caseType))
                     {
                         diagnostics.Add(Diagnostic.Create(
                             InvalidUnionCase,
                             caseType.Locations.FirstOrDefault(),
                             unknownCaseTypeName,
-                            "unknown case must be named Unknown and expose Value:UnknownCase"));
+                            "unknown case must expose Value:UnknownCase"));
                         continue;
                     }
 
@@ -1107,7 +1107,7 @@ public sealed partial class ForyModelGenerator
                 InvalidUnionCase,
                 unionType.Locations.FirstOrDefault(),
                 unionType.ToDisplayString(FullNameFormat),
-                "union must declare exactly one [ForyUnknownCase] Unknown"));
+                "union must declare exactly one [ForyUnknownCase] carrier"));
         }
         else if (!cases.Any(c => c.IsUnknown))
         {
@@ -1115,7 +1115,7 @@ public sealed partial class ForyModelGenerator
                 InvalidUnionCase,
                 unionType.Locations.FirstOrDefault(),
                 unionType.ToDisplayString(FullNameFormat),
-                "union must declare [ForyUnknownCase] Unknown"));
+                "union must declare a [ForyUnknownCase] carrier"));
         }
         else if (!cases.Any(c => !c.IsUnknown))
         {
@@ -1123,7 +1123,7 @@ public sealed partial class ForyModelGenerator
                 InvalidUnionCase,
                 unionType.Locations.FirstOrDefault(),
                 unionType.ToDisplayString(FullNameFormat),
-                "union must declare at least one non-Unknown case; Unknown is a forward-compatibility carrier and cannot be the default"));
+                "union must declare at least one schema-defined case; the unknown carrier cannot be the default"));
         }
 
         return cases

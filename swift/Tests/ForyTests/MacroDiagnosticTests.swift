@@ -216,7 +216,33 @@ func unionRequiresUnknownCarrier() {
                 case dog(Dog)
             }
             """,
-        message: "@ForyUnion requires @ForyUnknownCase case unknown(UnknownCase)"
+        message: "@ForyUnion requires exactly one @ForyUnknownCase carrier"
+    )
+}
+
+@Test
+func unionRejectsDuplicateUnknownCarriers() {
+    assertForyDiagnostic(
+        """
+        @ForyUnion
+        enum BadUnion {
+            @ForyUnknownCase
+            case unknown(UnknownCase)
+            @ForyUnknownCase
+            case unknown_(UnknownCase)
+            @ForyCase(id: 1)
+            case text(String)
+        }
+        """,
+        expandedSource:
+            """
+            enum BadUnion {
+                case unknown(UnknownCase)
+                case unknown_(UnknownCase)
+                case text(String)
+            }
+            """,
+        message: "@ForyUnion requires exactly one @ForyUnknownCase carrier"
     )
 }
 
@@ -236,7 +262,7 @@ func unionRequiresRealCaseBeyondUnknown() {
                 case unknown(UnknownCase)
             }
             """,
-        message: "@ForyUnion requires at least one non-unknown case; unknown is a forward-compatibility carrier and cannot be the default"
+        message: "@ForyUnion requires at least one schema-defined case; the unknown carrier cannot be the default"
     )
 }
 
@@ -265,7 +291,7 @@ func unionRejectsUnknownCaseLookalike() {
                 case dog(Dog)
             }
             """,
-        message: "@ForyUnion unknown case must be @ForyUnknownCase case unknown(UnknownCase)"
+        message: "@ForyUnion unknown case must have @ForyUnknownCase and one UnknownCase value"
     )
 }
 
@@ -288,7 +314,7 @@ func unionRejectsUnknownMarkerWithWrongPayload() {
                 case dog(Dog)
             }
             """,
-        message: "@ForyUnion unknown case must be @ForyUnknownCase case unknown(UnknownCase)"
+        message: "@ForyUnion unknown case must have @ForyUnknownCase and one UnknownCase value"
     )
 }
 

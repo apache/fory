@@ -20,6 +20,8 @@
 import warnings
 from pathlib import Path
 
+import pytest
+
 from fory_compiler.cli import main as foryc_main, resolve_imports
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
@@ -536,18 +538,23 @@ def test_csharp_namespace_option_is_known():
     assert not caught
 
 
-def test_union_unknown_case_renamed():
+def test_union_unknown_carrier_renamed():
     source = """
     package demo;
 
     union Payload {
       string unknown = 1;
-      int32 count = 2;
+      int32 unknown_value = 2;
     }
     """
 
     code = generate(source).content
 
-    assert code.count("record Unknown(UnknownCase Value)") == 1
-    assert "public sealed partial record UnknownValue(string Value) : Payload;" in code
-    assert "record Unknown(string Value)" not in code
+    assert code.count("record Unknown_(UnknownCase Value)") == 1
+    assert "public sealed partial record Unknown(string Value) : Payload;" in code
+    assert "public sealed partial record UnknownValue(int Value) : Payload;" in code
+
+
+def test_union_unknown_carrier_collision():
+    with pytest.raises(ValueError, match="Unknown_"):
+        generate("union Unknown_ { string unknown = 1; }")

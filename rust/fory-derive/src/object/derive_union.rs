@@ -41,13 +41,25 @@ pub(crate) fn validate_input(input: &DeriveInput) -> syn::Result<()> {
     }) {
         return Err(syn::Error::new(
             variant.ident.span(),
-            "ForyUnion unknown case must be #[fory(unknown)] Unknown(UnknownCase) without an id",
+            "ForyUnion unknown case must have #[fory(unknown)] and one UnknownCase field without an id",
+        ));
+    }
+    if data_enum
+        .variants
+        .iter()
+        .filter(|variant| is_runtime_unknown_variant(variant))
+        .count()
+        > 1
+    {
+        return Err(syn::Error::new(
+            input.ident.span(),
+            "ForyUnion must declare exactly one #[fory(unknown)] carrier",
         ));
     }
     if is_typed_adt_union(data_enum) && !data_enum.variants.iter().any(is_runtime_unknown_variant) {
         return Err(syn::Error::new(
             input.ident.span(),
-            "ForyUnion typed ADT unions require #[fory(unknown)] Unknown(UnknownCase)",
+            "ForyUnion typed ADT unions require a #[fory(unknown)] carrier with one UnknownCase field",
         ));
     }
     let non_unknown_count = data_enum
@@ -58,7 +70,7 @@ pub(crate) fn validate_input(input: &DeriveInput) -> syn::Result<()> {
     if non_unknown_count == 0 {
         return Err(syn::Error::new(
             input.ident.span(),
-            "ForyUnion requires at least one non-Unknown case; Unknown is a forward-compatibility carrier and cannot be the default",
+            "ForyUnion requires at least one schema-defined case; the unknown carrier cannot be the default",
         ));
     }
     let default_count = data_enum
@@ -79,7 +91,7 @@ pub(crate) fn validate_input(input: &DeriveInput) -> syn::Result<()> {
     {
         return Err(syn::Error::new(
             input.ident.span(),
-            "ForyUnion Unknown case cannot be marked #[fory(default)]",
+            "ForyUnion unknown carrier cannot be marked #[fory(default)]",
         ));
     }
     validate_known_case_ids(data_enum)?;
@@ -214,7 +226,25 @@ mod tests {
         let error = validate_input(&input).unwrap_err();
         assert!(error
             .to_string()
-            .contains("unknown case must be #[fory(unknown)]"));
+            .contains("unknown case must have #[fory(unknown)]"));
+    }
+
+    #[test]
+    fn rejects_duplicate_unknown_carriers() {
+        let input: DeriveInput = parse_quote!(
+            enum BadUnion {
+                #[fory(unknown)]
+                Unknown(::fory::UnknownCase),
+                #[fory(unknown)]
+                Unknown_(::fory::UnknownCase),
+                #[fory(id = 1, default)]
+                Text(String),
+            }
+        );
+        let error = validate_input(&input).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("exactly one #[fory(unknown)] carrier"));
     }
 
     #[test]

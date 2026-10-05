@@ -800,6 +800,32 @@ fn test_evolving_roundtrip() {
     }
 }
 
+#[test]
+fn unknown_case_names() {
+    for compatible in [false, true] {
+        let mut fory = Fory::builder().xlang(true).compatible(compatible).build();
+        example::register_types(&mut fory).unwrap();
+        for value in [
+            example::UnknownChoice::Unknown("known".to_string()),
+            example::UnknownChoice::UnknownValue(42),
+        ] {
+            let bytes = fory.serialize(&value).unwrap();
+            let decoded: example::UnknownChoice = fory.deserialize(&bytes).unwrap();
+            assert_eq!(decoded, value);
+        }
+        let value =
+            example::UnknownChoice::Unknown_(fory::UnknownCase::new(99, "future".to_string()));
+        let bytes = fory.serialize(&value).unwrap();
+        let decoded: example::UnknownChoice = fory.deserialize(&bytes).unwrap();
+        let example::UnknownChoice::Unknown_(unknown) = &decoded else {
+            panic!("Expected the unknown carrier");
+        };
+        assert_eq!(unknown.case_id(), 99);
+        assert_eq!(unknown.value().downcast_ref::<String>().unwrap(), "future");
+        assert_eq!(fory.serialize(&decoded).unwrap(), bytes);
+    }
+}
+
 fn run_address_book_roundtrip(compatible: bool) {
     let mut fory = Fory::builder().xlang(true).compatible(compatible).build();
     complex_pb::register_types(&mut fory).expect("register complex pb types");

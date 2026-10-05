@@ -677,13 +677,7 @@ class CSharpGenerator(CSharpServiceMixin, BaseGenerator):
         raise ValueError(f"Unknown field type: {field_type}")
 
     def _union_case_type_name(self, field: Field) -> str:
-        name = self.safe_identifier(self.to_pascal_case(field.name))
-        # Every union declares a generated Unknown(UnknownCase) member; a case
-        # named "unknown" would duplicate it (CS0102). Case identity is the
-        # ForyCase number, so renaming the record is wire-safe.
-        if name == "Unknown":
-            return "UnknownValue"
-        return name
+        return self.safe_identifier(self.to_pascal_case(field.name))
 
     def _default_initializer(
         self, field: Field, parent_stack: List[Message]
@@ -837,6 +831,11 @@ class CSharpGenerator(CSharpServiceMixin, BaseGenerator):
         lines: List[str] = []
         ind = self.indent_str * indent
         type_name = self.safe_type_identifier(union.name)
+        # A nested record also cannot have the enclosing union's name.
+        case_names = {type_name} | {
+            self._union_case_type_name(field) for field in union.fields
+        }
+        unknown_name = self.unknown_case_name(union.name, case_names)
         module_class = self.get_module_class_name()
         full_type_ref = self._type_reference_for_local(union)
 
@@ -853,7 +852,7 @@ class CSharpGenerator(CSharpServiceMixin, BaseGenerator):
 
         lines.append(f"{ind}{self.indent_str}[ForyUnknownCase]")
         lines.append(
-            f"{ind}{self.indent_str}public sealed partial record Unknown(UnknownCase Value) : {type_name};"
+            f"{ind}{self.indent_str}public sealed partial record {unknown_name}(UnknownCase Value) : {type_name};"
         )
         lines.append("")
 

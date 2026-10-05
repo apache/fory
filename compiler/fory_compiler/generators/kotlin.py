@@ -356,14 +356,11 @@ class KotlinGenerator(KotlinServiceGeneratorMixin, BaseGenerator):
 
     def generate_union(self, union: Union, parent_stack: List[Message]) -> List[str]:
         union_name = self.type_name(union, parent_stack)
-        lines = ["@ForyUnion", f"public sealed class {union_name} {{"]
-        lines.append("    @ForyUnknownCase")
-        lines.append("    public data class Unknown(")
-        lines.append("        public val value: UnknownCase,")
-        lines.append(f"    ) : {union_name}()")
+        case_lines: List[str] = []
+        case_names: Set[str] = set()
         for field in union.fields:
-            lines.append("")
-            lines.append(f"    @ForyCase(id = {field.number})")
+            case_lines.append("")
+            case_lines.append(f"    @ForyCase(id = {field.number})")
             case_name = self.to_pascal_case(field.name)
             field_type = self.generate_type(
                 field.field_type,
@@ -374,12 +371,20 @@ class KotlinGenerator(KotlinServiceGeneratorMixin, BaseGenerator):
                 parent_stack=parent_stack,
             )
             case_name = self.union_case_name(field.field_type, field_type, case_name)
+            case_names.add(case_name)
             field_type = self.qualify_union_payload_type(
                 field.field_type, field_type, case_name, parent_stack
             )
-            lines.append(
+            case_lines.append(
                 f"    public data class {case_name}(public val value: {field_type}) : {union_name}()"
             )
+        unknown_name = self.unknown_case_name(union.name, case_names)
+        lines = ["@ForyUnion", f"public sealed class {union_name} {{"]
+        lines.append("    @ForyUnknownCase")
+        lines.append(f"    public data class {unknown_name}(")
+        lines.append("        public val value: UnknownCase,")
+        lines.append(f"    ) : {union_name}()")
+        lines.extend(case_lines)
         lines.append("}")
         return lines
 

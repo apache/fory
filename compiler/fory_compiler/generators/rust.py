@@ -789,8 +789,12 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
                 derives.append(trait)
         lines.append(f"#[derive({', '.join(derives)})]")
         lines.append(f"pub enum {union_name} {{")
+        case_names = {
+            self.get_union_case_identifier(union, field) for field in union.fields
+        }
+        unknown_name = self.unknown_case_name(union.name, case_names)
         lines.append("    #[fory(unknown)]")
-        lines.append("    Unknown(::fory::UnknownCase),")
+        lines.append(f"    {unknown_name}(::fory::UnknownCase),")
 
         for index, field in enumerate(union.fields):
             variant_name = self.get_union_case_identifier(union, field)

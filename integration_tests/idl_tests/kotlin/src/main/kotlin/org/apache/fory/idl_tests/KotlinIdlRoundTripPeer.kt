@@ -27,6 +27,7 @@ import basic.Money
 import example.ExampleForyModule
 import example.ExampleMessage
 import example.ExampleMessageUnion
+import example.UnknownChoice
 import graph.Graph
 import graph.GraphForyModule
 import java.io.File
@@ -43,6 +44,7 @@ import org.apache.fory.kotlin.ForyKotlin
 import org.apache.fory.kotlin.register
 import org.apache.fory.type.BFloat16Array
 import org.apache.fory.type.Float16Array
+import org.apache.fory.type.union.UnknownCase
 import tree.TreeForyModule
 import tree.TreeNode
 
@@ -97,6 +99,20 @@ public fun main() {
     roundTripFile(refFory, graphFile, Graph::class.java)
   }
   runGeneratedSurfaceChecks()
+  assertUnknownCaseNames(compatible)
+}
+
+private fun assertUnknownCaseNames(compatible: Boolean) {
+  val fory = ForyKotlin.builder().withXlang(true).withCompatible(compatible).build()
+  fory.register(ExampleForyModule)
+  for (value in listOf(UnknownChoice.Unknown("known"), UnknownChoice.UnknownValue(42))) {
+    require(fory.deserialize(fory.serialize(value), UnknownChoice::class.java) == value)
+  }
+  val bytes = fory.serialize(UnknownChoice.Unknown_(UnknownCase(99, "future")))
+  val decoded = fory.deserialize(bytes, UnknownChoice::class.java) as UnknownChoice.Unknown_
+  require(decoded.value.caseId == 99)
+  require(decoded.value.value == "future")
+  require(fory.serialize(decoded).contentEquals(bytes))
 }
 
 private fun <T : Any> roundTripFile(fory: Fory, path: String?, type: Class<T>) {
