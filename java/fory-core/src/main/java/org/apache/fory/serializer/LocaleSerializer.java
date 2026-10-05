@@ -22,19 +22,17 @@ package org.apache.fory.serializer;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import org.apache.fory.collection.Tuple3;
 import org.apache.fory.config.Config;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 
-/** Local serializer for {@link Locale}. */
+/** Serializer for {@link Locale}. */
 public final class LocaleSerializer extends ImmutableSerializer<Locale> implements Shareable {
   // Using `new HashMap<>` to ensure thread safety by java constructor semantics.
-  private static final Map<Tuple3<String, String, String>, Locale> LOCALE_CACHE =
-      new HashMap<>(createCacheMap());
+  private static final Map<String, Locale> LOCALE_CACHE = new HashMap<>(createCacheMap());
 
-  static Map<Tuple3<String, String, String>, Locale> createCacheMap() {
-    Map<Tuple3<String, String, String>, Locale> map = new HashMap<>();
+  static Map<String, Locale> createCacheMap() {
+    Map<String, Locale> map = new HashMap<>();
     populateMap(map, Locale.US);
     populateMap(map, Locale.SIMPLIFIED_CHINESE);
     populateMap(map, Locale.CHINESE);
@@ -62,45 +60,26 @@ public final class LocaleSerializer extends ImmutableSerializer<Locale> implemen
     return map;
   }
 
-  private static void populateMap(Map<Tuple3<String, String, String>, Locale> map, Locale locale) {
-    map.put(Tuple3.of(locale.getCountry(), locale.getLanguage(), locale.getVariant()), locale);
+  private static void populateMap(Map<String, Locale> map, Locale locale) {
+    map.put(locale.toLanguageTag(), locale);
   }
 
   public LocaleSerializer(Config config) {
     super(config, Locale.class);
   }
 
-  public void write(WriteContext writeContext, Locale l) {
-    writeContext.writeString(l.getLanguage());
-    writeContext.writeString(l.getCountry());
-    writeContext.writeString(l.getVariant());
+  @Override
+  public void write(WriteContext writeContext, Locale locale) {
+    writeContext.writeString(locale.toLanguageTag());
   }
 
+  @Override
   public Locale read(ReadContext readContext) {
-    String language = readContext.readString();
-    String country = readContext.readString();
-    String variant = readContext.readString();
-    // Fast path for Default/US/SIMPLIFIED_CHINESE
-    Locale defaultLocale = Locale.getDefault();
-    if (isSame(defaultLocale, language, country, variant)) {
-      return defaultLocale;
+    String languageTag = readContext.readString();
+    Locale locale = LOCALE_CACHE.get(languageTag);
+    if (locale != null) {
+      return locale;
     }
-    if (defaultLocale != Locale.US && isSame(Locale.US, language, country, variant)) {
-      return Locale.US;
-    }
-    if (isSame(Locale.SIMPLIFIED_CHINESE, language, country, variant)) {
-      return Locale.SIMPLIFIED_CHINESE;
-    }
-    Object o = LOCALE_CACHE.get(Tuple3.of(language, country, variant));
-    if (o != null) {
-      return (Locale) o;
-    }
-    return new Locale(language, country, variant);
-  }
-
-  static boolean isSame(Locale locale, String language, String country, String variant) {
-    return (locale.getLanguage().equals(language)
-        && locale.getCountry().equals(country)
-        && locale.getVariant().equals(variant));
+    return Locale.forLanguageTag(languageTag);
   }
 }
