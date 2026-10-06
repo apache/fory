@@ -287,5 +287,7 @@ The full MIT license text is included in
 fory-json/src/main/resources/META-INF/licenses/LICENSE-zmij.txt.
 
 * zmij (https://github.com/vitaut/zmij)
+    zmij is dual-licensed under the MIT License or the Boost Software License 1.0;
+    Fory uses it under the MIT License.
     Files:
       fory-json/src/main/java/org/apache/fory/json/writer/FloatingDecimal.java
