@@ -224,6 +224,7 @@ The text of each license is the standard Apache 2.0 license.
 * spark (https://github.com/apache/spark)
     Files:
       java/fory-core/src/main/java/org/apache/fory/codegen/Code.java
+      java/fory-core/src/main/java/org/apache/fory/util/ClassLoaderUtils.java
       java/fory-format/src/main/java/org/apache/fory/format/vectorized/ArrowWriter.java
 
 * commons-io (https://github.com/apache/commons-io)
@@ -314,12 +315,18 @@ The following components are provided under the MIT License. See project link fo
 The text of each license is also included in licenses/LICENSE-[project].txt
 
 * zmij (https://github.com/vitaut/zmij)
+    zmij is dual-licensed under the MIT License or the Boost Software License 1.0;
+    Fory uses it under the MIT License.
     Files:
       java/fory-json/src/main/java/org/apache/fory/json/writer/FloatingDecimal.java
 
 * murmurHash3.js (https://github.com/karanlyons/murmurHash3.js)
     Files:
       javascript/packages/core/lib/murmurHash3.ts
+
+* fluentpython (https://github.com/fluentpython/example-code)
+    Files:
+      python/pyfory/type_util.py (record_class_factory function)
 
 
 ================================================================
