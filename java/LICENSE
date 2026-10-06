@@ -221,6 +221,7 @@ details. The text of each license is the standard Apache 2.0 license included ab
 * spark (https://github.com/apache/spark)
     Files:
       fory-core/src/main/java/org/apache/fory/codegen/Code.java
+      fory-core/src/main/java/org/apache/fory/util/ClassLoaderUtils.java
       fory-format/src/main/java/org/apache/fory/format/vectorized/ArrowWriter.java
 
 * commons-io (https://github.com/apache/commons-io)
