@@ -790,6 +790,25 @@ public class MemoryBufferTest {
   }
 
   @Test
+  public void testReadBytesAndSizeLargePrefix() {
+    // Lengths that need 3-byte (>= 2^14) and 4-byte (>= 2^21) varint prefixes. The 3/4-byte
+    // prefix path must advance readerIndex past the prefix, otherwise readBytesAndSize() returns
+    // the prefix bytes shifted into the payload body.
+    Random random = new Random(42);
+    for (int len : new int[] {16_384, 16_385, 25_000, 2_097_152, 2_097_153}) {
+      MemoryBuffer buf = MemoryUtils.buffer(len + 64);
+      byte[] expected = new byte[len];
+      random.nextBytes(expected);
+      buf.writeBytesWithSize(expected);
+      // Trailing payload: verifies the reader index is aligned for subsequent reads.
+      buf.writeInt32(0x12345678);
+      byte[] actual = buf.readBytesAndSize();
+      assertEquals(expected, actual);
+      assertEquals(0x12345678, buf.readInt32());
+    }
+  }
+
+  @Test
   public void testReadCharsAndSizeAlignment() {
     MemoryBuffer buf = MemoryUtils.buffer(8);
     buf.writeVarUInt32(3);
