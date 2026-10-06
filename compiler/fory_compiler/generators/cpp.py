@@ -85,7 +85,7 @@ class CppGenerator(CppServiceGeneratorMixin, BaseGenerator):
         PrimitiveKind.FLOAT32,
         PrimitiveKind.FLOAT64,
     }
-    # Taken from kKeywordList defined in helpers.cc in protobuf C++ compiler.
+    # C++ keywords, alternative operator tokens, and the NULL and assert macros.
     CPP_KEYWORDS = {
         "NULL",
         "alignas",

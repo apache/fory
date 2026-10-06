@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -7,13 +7,14 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 
 val foryVersion = "1.8.0-SNAPSHOT"
@@ -38,7 +39,6 @@ ThisBuild / externalResolvers := Seq(
 )
 
 lazy val commonSettings = Seq(
-  apacheSonatypeNoticeFile := repositoryRoot.value / "NOTICE",
   description := "Apache Fory™ is a blazingly fast multi-language serialization framework powered by JIT and zero-copy.",
   homepage := Some(url("https://fory.apache.org/")),
   scmInfo := Some(
@@ -65,6 +65,7 @@ lazy val foryScala = Project(id = "fory-scala", base = file("fory-scala"))
   .settings(
     name := "fory-scala",
     apacheSonatypeLicenseFile := repositoryRoot.value / "scala" / "fory-scala" / "LICENSE",
+    apacheSonatypeNoticeFile := repositoryRoot.value / "scala" / "fory-scala" / "NOTICE",
     Compile / javacOptions ++= Seq("--release", "8"),
     libraryDependencies ++= Seq(
       "org.apache.fory" % "fory-core" % foryVersion,
@@ -78,6 +79,7 @@ lazy val foryJsonScala = Project(id = "fory-json-scala", base = file("fory-json-
   .settings(
     name := "fory-json-scala",
     apacheSonatypeLicenseFile := repositoryRoot.value / "scala" / "fory-json-scala" / "LICENSE",
+    apacheSonatypeNoticeFile := repositoryRoot.value / "scala" / "fory-json-scala" / "NOTICE",
     Compile / javacOptions ++= Seq("--release", "8"),
     libraryDependencies ++= {
       val reflect =
