@@ -21,9 +21,10 @@ excludes = [
     # Skipped
     "*.txt",
     "go.sum",
-    "go/fory/tests/structs_fory_gen.go",
 
     # Generated
+    "benchmarks/dart/lib/src/models.g.dart",
+    "benchmarks/swift/Sources/SwiftBenchmarkProto/bench.pb.swift",
     "benchmarks/java/src/main/java/org/apache/fory/benchmark/state/generated/**",
     "benchmarks/java/src/main/java/org/apache/fory/benchmark/xlang/generated/**",
     "integration_tests/idl_tests/**/auto_id.*",
@@ -32,6 +33,7 @@ excludes = [
     "integration_tests/idl_tests/run_dart_tests.sh",
 
     # Derived
+    "bazel/cython_library.bzl",
     "ci/format.sh",
     "benchmarks/java/src/main/java/org/apache/fory/benchmark/Identity2IdMap.java",
     "benchmarks/java/src/main/java/org/apache/fory/benchmark/data/Data.java",
@@ -64,5 +66,22 @@ excludes = [
 ]
 
 [mapping.DOUBLESLASH_STYLE]
-extensions = ['go', 'cs']
+extensions = ['go', 'cs', 'swift', 'fdl', 'idl', 'fbs']
 filenames = ['go.mod']
+
+[mapping.SLASHSTAR_STYLE]
+extensions = ['dart', 'sbt']
+
+[mapping.SCRIPT_STYLE]
+extensions = ['pyx', 'pxd', 'pxi', 'bzl', 'bazel', 'gyp']
+filenames = [
+    'BUILD',
+    'WORKSPACE',
+    '.bazelrc',
+    'ForyConfig.cmake.in',
+    'BUILD.standalone',
+    'MODULE.bazel.example',
+]
+
+[mapping.XML_STYLE]
+extensions = ['csproj', 'props']
