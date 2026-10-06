@@ -235,3 +235,13 @@ The text of each license is the standard Apache 2.0 license.
     WAST's JSON string escape predicate.
     Files:
       java/fory-json/src/main/java/org/apache/fory/json/writer/JsonAsciiWordPredicates.java
+
+================================================================
+MIT licenses
+================================================================
+The following components are provided under the MIT License. See project link for details.
+The text of each license is also included in licenses/LICENSE-[project].txt.
+
+* zmij (https://github.com/vitaut/zmij)
+    Files:
+      java/fory-json/src/main/java/org/apache/fory/json/writer/FloatingDecimal.java
