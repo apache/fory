@@ -78,7 +78,8 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   private static final byte[] NEGATIVE_INFINITY_BYTES =
       "\"-Infinity\"".getBytes(StandardCharsets.ISO_8859_1);
   private static final long DECIMAL_8 = 100_000_000L;
-  // Most characters one plain-run copy in a string tail reserves for at a time.
+  // Bound each run reservation. Capacity checks must subtract the cursor from buffer length;
+  // adding even this bounded increment can overflow near the maximum array size.
   private static final int RUN_CHUNK = 8192;
   private static final int[] DIGIT_TRIPLES = new int[1000];
   private static final int[] DIGIT_QUADS = new int[10000];
@@ -1915,14 +1916,14 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     int i = index;
     while (i < length) {
       // Copy the plain run up to the next character that needs escaping or a surrogate. One
-      // reservation covers at most RUN_CHUNK characters, so its arithmetic cannot overflow. A
+      // reservation covers at most RUN_CHUNK characters, keeping its byte count bounded. A
       // character above 0xFF upgrades the output to UTF16 in the middle of the string, so the copy
       // follows the current coder; in LATIN1 output it stops at such a character.
       int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
       int pos = position;
       char ch;
       if (coder == LATIN1) {
-        if (pos + (limit - i) > buffer.length) {
+        if (limit - i > buffer.length - pos) {
           grow(limit - i);
         }
         byte[] bytes = buffer;
@@ -1933,7 +1934,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         }
       } else {
         int additional = (limit - i) << 1;
-        if (pos + additional > buffer.length) {
+        if (additional > buffer.length - pos) {
           grow(additional);
         }
         byte[] bytes = buffer;
@@ -1981,14 +1982,14 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     int i = index;
     while (i < length) {
       // Copy the plain run up to the next character that needs escaping or a surrogate. One
-      // reservation covers at most RUN_CHUNK characters, so its arithmetic cannot overflow. A
+      // reservation covers at most RUN_CHUNK characters, keeping its byte count bounded. A
       // character above 0xFF upgrades the output to UTF16 in the middle of the string, so the copy
       // follows the current coder; in LATIN1 output it stops at such a character.
       int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
       int pos = position;
       char ch;
       if (coder == LATIN1) {
-        if (pos + (limit - i) > buffer.length) {
+        if (limit - i > buffer.length - pos) {
           grow(limit - i);
         }
         byte[] bytes = buffer;
@@ -1999,7 +2000,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         }
       } else {
         int additional = (limit - i) << 1;
-        if (pos + additional > buffer.length) {
+        if (additional > buffer.length - pos) {
           grow(additional);
         }
         byte[] bytes = buffer;
@@ -2048,8 +2049,8 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
    * escaping. Plain runs between such bytes are copied a word at a time, so the cost follows the
    * number of escapes rather than the distance from the first one to the end; a word the predicate
    * rejects for a byte above 0x7F is copied byte by byte up to its end, so the predicate runs at
-   * most once per eight bytes. One reservation covers at most RUN_CHUNK bytes, so its arithmetic
-   * cannot overflow. Only reached without non-ASCII escaping: bytes above 0x7F are copied as they
+   * most once per eight bytes. One reservation covers at most RUN_CHUNK bytes, keeping its byte
+   * count bounded. Only reached without non-ASCII escaping: bytes above 0x7F are copied as they
    * are.
    */
   private void writeLatin1StringSlow(byte[] value, int index, int length) {
@@ -2058,7 +2059,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
       int pos = position;
       int additional = limit - i;
-      if (pos + additional > buffer.length) {
+      if (additional > buffer.length - pos) {
         grow(additional);
       }
       byte[] bytes = buffer;
@@ -2351,8 +2352,8 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
    * escaping. Plain runs between such bytes are copied a word at a time, so the cost follows the
    * number of escapes rather than the distance from the first one to the end; a word the predicate
    * rejects for a byte above 0x7F is copied byte by byte up to its end, so the predicate runs at
-   * most once per eight bytes. One reservation covers at most RUN_CHUNK bytes, so its arithmetic
-   * cannot overflow. Only reached without non-ASCII escaping: bytes above 0x7F are copied as they
+   * most once per eight bytes. One reservation covers at most RUN_CHUNK bytes, keeping its byte
+   * count bounded. Only reached without non-ASCII escaping: bytes above 0x7F are copied as they
    * are.
    */
   private void writeLatin1StringUtf16Slow(byte[] value, int index, int length) {
@@ -2361,7 +2362,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
       int pos = position;
       int additional = (limit - i) << 1;
-      if (pos + additional > buffer.length) {
+      if (additional > buffer.length - pos) {
         grow(additional);
       }
       byte[] bytes = buffer;
@@ -2399,11 +2400,11 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     int i = index;
     while (i < length) {
       // Copy the plain run up to the next character that needs escaping or a surrogate. One
-      // reservation covers at most RUN_CHUNK characters, so its arithmetic cannot overflow.
+      // reservation covers at most RUN_CHUNK characters, keeping its byte count bounded.
       int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
       int pos = position;
       int additional = (limit - i) << 1;
-      if (pos + additional > buffer.length) {
+      if (additional > buffer.length - pos) {
         grow(additional);
       }
       byte[] bytes = buffer;
@@ -2450,11 +2451,11 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     int i = index;
     while (i < length) {
       // Copy the plain run up to the next character that needs escaping or a surrogate. One
-      // reservation covers at most RUN_CHUNK characters, so its arithmetic cannot overflow.
+      // reservation covers at most RUN_CHUNK characters, keeping its byte count bounded.
       int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
       int pos = position;
       int additional = (limit - i) << 1;
-      if (pos + additional > buffer.length) {
+      if (additional > buffer.length - pos) {
         grow(additional);
       }
       byte[] bytes = buffer;

@@ -87,7 +87,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private static final byte[] NEGATIVE_INFINITY_BYTES =
       "\"-Infinity\"".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final long EIGHT_DIGITS = 100_000_000L;
-  // Most characters one plain-run copy in a string tail reserves for at a time.
+  // Bound each run reservation. Capacity checks must subtract the cursor from buffer length;
+  // adding even this bounded increment can overflow near the maximum array size.
   private static final int RUN_CHUNK = 8192;
   private static final int[] HEX_PAIRS = new int[256];
   private static final long UTF16_ASCII_MASK = 0xFF80FF80FF80FF80L;
@@ -2509,10 +2510,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     int length = value.length;
     int i = 0;
     while (i < length) {
-      // One reservation covers at most RUN_CHUNK bytes, so its arithmetic cannot overflow.
+      // One reservation covers at most RUN_CHUNK bytes, keeping its byte count bounded.
       int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
       int pos = position;
-      if (pos + (limit - i) > buffer.length) {
+      if (limit - i > buffer.length - pos) {
         grow(limit - i);
       }
       byte[] bytes = buffer;
@@ -2542,10 +2543,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     int i = index;
     while (i < length) {
       // Copy the plain ASCII run up to the next character that needs escaping or encoding. One
-      // reservation covers at most RUN_CHUNK characters, so its arithmetic cannot overflow.
+      // reservation covers at most RUN_CHUNK characters, keeping its byte count bounded.
       int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
       int pos = position;
-      if (pos + (limit - i) > buffer.length) {
+      if (limit - i > buffer.length - pos) {
         grow(limit - i);
       }
       byte[] bytes = buffer;
@@ -2586,10 +2587,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     int i = index;
     while (i < length) {
       // Copy the plain ASCII run up to the next character that needs escaping or encoding. One
-      // reservation covers at most RUN_CHUNK characters, so its arithmetic cannot overflow.
+      // reservation covers at most RUN_CHUNK characters, keeping its byte count bounded.
       int limit = length - i > RUN_CHUNK ? i + RUN_CHUNK : length;
       int pos = position;
-      if (pos + (limit - i) > buffer.length) {
+      if (limit - i > buffer.length - pos) {
         grow(limit - i);
       }
       byte[] bytes = buffer;
