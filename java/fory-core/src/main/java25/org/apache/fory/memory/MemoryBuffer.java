@@ -3298,6 +3298,7 @@ public final class MemoryBuffer {
     if (diff < binarySize) {
       streamReader.fillBuffer(binarySize - diff);
     }
+    readerIndex = readIdx;
     return binarySize;
   }
 
