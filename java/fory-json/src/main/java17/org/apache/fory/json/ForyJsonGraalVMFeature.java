@@ -134,6 +134,10 @@ final class ForyJsonGraalVMFeature implements Feature {
   @Override
   public void beforeAnalysis(BeforeAnalysisAccess access) {
     // native-image.properties owns class initialization; this Feature owns reachability metadata.
+    // The registry snapshots CompanionEntry objects after analysis has completed. Tell Native
+    // Image about those image-heap instances before analysis so heap serialization does not see a
+    // reachable-but-uninstantiated type.
+    access.registerAsInHeap(JsonGeneratedClassRegistry.CompanionEntry.class);
     access.registerSubtypeReachabilityHandler(this::processReachableType, Object.class);
   }
 

@@ -151,7 +151,12 @@ public final class JsonGeneratedClassRegistry {
     }
   }
 
-  private static final class CompanionEntry {
+  /**
+   * Entries are materialized by {@link #snapshotCompanions()} after points-to analysis. Native
+   * Image features must therefore register this type as containing image-heap instances before
+   * analysis starts.
+   */
+  public static final class CompanionEntry {
     private final CompanionKey key;
     private final GeneratedJsonCodec<?> codec;
 
