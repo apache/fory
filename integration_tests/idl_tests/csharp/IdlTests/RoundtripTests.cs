@@ -26,6 +26,32 @@ public sealed class RoundtripTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
+    public void UnknownCaseNames(bool compatible)
+    {
+        ForyRuntime fory = BuildFory(compatible, false);
+        example.ExampleForyModule.Install(fory);
+        example.UnknownChoice[] knownCases =
+        [
+            new example.UnknownChoice.Unknown("known"),
+            new example.UnknownChoice.UnknownValue(42),
+        ];
+        foreach (example.UnknownChoice value in knownCases)
+        {
+            Assert.Equal(value, fory.Deserialize<example.UnknownChoice>(fory.Serialize(value)));
+        }
+
+        example.UnknownChoice unknown = new example.UnknownChoice.Unknown_(new UnknownCase(99, "future"));
+        byte[] bytes = fory.Serialize(unknown);
+        example.UnknownChoice.Unknown_ decoded =
+            Assert.IsType<example.UnknownChoice.Unknown_>(fory.Deserialize<example.UnknownChoice>(bytes));
+        Assert.Equal(99, decoded.Value.CaseId);
+        Assert.Equal("future", decoded.Value.Value);
+        Assert.Equal(bytes, fory.Serialize<example.UnknownChoice>(decoded));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
     public void AddressBookRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);

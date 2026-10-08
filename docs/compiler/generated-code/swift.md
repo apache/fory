@@ -28,10 +28,12 @@ Swift output is one `.swift` file per schema, for example:
 ## Type Generation
 
 The generator creates Swift models with split model macros and stable field/case IDs.
-A typed union must include `@ForyUnknownCase case unknown(UnknownCase)` and at
-least one non-`unknown` case; `unknown(UnknownCase)` is only the
+A typed union must include a case marked `@ForyUnknownCase` and at
+least one schema-defined case; `unknown(UnknownCase)` is the default name of the
 Fory-provided forward-compatibility carrier. The marker only selects the carrier
-and does not add an entry to the schema case table.
+and does not add an entry to the schema case table. On a name collision, the
+generated carrier is named `unknown_`; a second collision is an error. Schema
+case names are preserved.
 
 When package/namespace is non-empty, namespace shaping is controlled by `swift_namespace_style`:
 

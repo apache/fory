@@ -224,7 +224,8 @@ one constructor property named `value`. `Unknown(UnknownCase)` is marked with
 `@ForyUnknownCase` as the Fory-owned forward-compatibility carrier. It is
 omitted from the schema case table because the marker only selects the carrier
 and does not add a schema entry. A typed union must declare at least one
-non-`Unknown` case:
+schema-defined case. Exactly one case must carry `@ForyUnknownCase`; its name is
+unrestricted:
 
 ```kotlin
 package example

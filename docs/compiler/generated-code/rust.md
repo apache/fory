@@ -36,8 +36,10 @@ Unions map to Rust enums with `#[fory(id = ...)]` schema case attributes.
 `#[fory(unknown)] Unknown(::fory::UnknownCase)` marks the Fory-provided
 forward-compatibility carrier. The marker only selects the carrier and does not
 add an entry to the schema case table; schema cases still use the full `0..N`
-ID range. A generated typed union must have at least one non-`Unknown` case. The
-compiler marks the first declared non-`Unknown` case as `#[fory(default)]`.
+ID range. On a name collision, the generated carrier is named `Unknown_`; a second
+collision is an error. Schema case names are preserved. A generated typed union
+must have at least one schema-defined case. The compiler marks the first declared
+schema-defined case as `#[fory(default)]`.
 When that case's payload implements Rust's standard `Default` trait, the
 compiler also emits a standard `Default` implementation from that case:
 

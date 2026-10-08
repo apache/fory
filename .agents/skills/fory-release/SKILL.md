@@ -172,20 +172,28 @@ incomplete runs as successful.
 
 ### 7. Build the ASF source release
 
-Start from the clean release branch. The build temporarily commits release-archive changes and resets them, so verify that it restores the original commit and clean tree.
+Start from the clean release branch and build the exact RC tag. The build must
+archive that tag without changing tracked files, creating commits, or moving Git
+refs. Benchmark-specific attribution belongs in `benchmarks/LICENSE`, alongside
+the benchmark sources excluded from the archive; do not rewrite the root
+`LICENSE` during packaging.
 
 ```bash
 test -z "$(git status --porcelain)"
 before_build="$(git rev-parse HEAD)"
-python3 ci/release.py build -v "$release_version"
+test "$(git rev-parse "${rc_tag}^{commit}")" = "$release_commit"
+python3 ci/release.py build -v "$release_version" --rc-tag "$rc_tag"
 test "$(git rev-parse HEAD)" = "$before_build"
 test -z "$(git status --porcelain)"
 test -f "dist/apache-fory-${release_version}-src.tar.gz"
 test -f "dist/apache-fory-${release_version}-src.tar.gz.asc"
 test -f "dist/apache-fory-${release_version}-src.tar.gz.sha512"
+test "$(gzip -dc "dist/apache-fory-${release_version}-src.tar.gz" | git get-tar-commit-id)" = "$release_commit"
 ```
 
 The build command verifies the generated PGP signature and SHA-512 checksum.
+The archive must match a direct `git archive` of the RC tag, including its
+embedded commit ID and unmodified root `LICENSE`.
 
 ### 8. Commit the source release to ASF Subversion
 

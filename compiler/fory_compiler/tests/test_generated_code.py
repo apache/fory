@@ -37,8 +37,10 @@ from fory_compiler.generators.dart import DartGenerator
 from fory_compiler.generators.go import GoGenerator
 from fory_compiler.generators.java import JavaGenerator
 from fory_compiler.generators.javascript import JavaScriptGenerator
+from fory_compiler.generators.kotlin import KotlinGenerator
 from fory_compiler.generators.python import PythonGenerator
 from fory_compiler.generators.rust import RustGenerator
+from fory_compiler.generators.scala import ScalaGenerator
 from fory_compiler.generators.swift import SwiftGenerator
 from fory_compiler.ir.ast import Schema
 from fory_compiler.ir.validator import SchemaValidator
@@ -78,6 +80,55 @@ def generate_files(
 
 def render_files(files: dict[str, str]) -> str:
     return "\n".join(content for _, content in sorted(files.items()))
+
+
+@pytest.mark.parametrize(
+    "generator_cls, carrier, known, other",
+    [
+        (
+            CSharpGenerator,
+            "record Unknown_(UnknownCase",
+            "record Unknown(string",
+            "record UnknownValue(int",
+        ),
+        (
+            KotlinGenerator,
+            "class Unknown_(",
+            "class Unknown(public val value: String)",
+            "class UnknownValue(public val value: Int)",
+        ),
+        (
+            ScalaGenerator,
+            "case Unknown_(value: UnknownCase)",
+            "case Unknown(value: String)",
+            "case UnknownValue(value: Int)",
+        ),
+        (
+            RustGenerator,
+            "Unknown_(::fory::UnknownCase)",
+            "Unknown(::std::string::String)",
+            "UnknownValue(i32)",
+        ),
+        (
+            SwiftGenerator,
+            "case unknown_(UnknownCase)",
+            "case unknown(String)",
+            "case unknownValue(Int32)",
+        ),
+    ],
+)
+def test_union_unknown_carrier_names(generator_cls, carrier, known, other):
+    schema = parse_fdl("""
+        package demo;
+        union Choice {
+            string unknown = 0;
+            int32 unknown_value = 1;
+        }
+    """)
+    code = render_files(generate_files(schema, generator_cls))
+    assert carrier in code
+    assert known in code
+    assert other in code
 
 
 def assert_language_outputs_equal(

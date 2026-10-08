@@ -1217,8 +1217,10 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
         indirect = "indirect " if id(union) in self._indirect_unions else ""
         lines.append(f"{ind}public {indirect}enum {type_name}{conformances} {{")
         lineage = parent_stack or []
+        case_names = {self.safe_enum_case_name(field.name) for field in union.fields}
+        unknown_name = self.unknown_case_name(union.name, case_names, "unknown")
         lines.append(f"{ind}{self.indent_str}@ForyUnknownCase")
-        lines.append(f"{ind}{self.indent_str}case unknown(UnknownCase)")
+        lines.append(f"{ind}{self.indent_str}case {unknown_name}(UnknownCase)")
         lines.append("")
         for field in union.fields:
             field_type = self.generate_type(

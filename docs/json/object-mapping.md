@@ -58,8 +58,14 @@ Static, transient, synthetic, and `Class<?>` fields are excluded. `getClass()` a
 value type is `Class<?>` are also excluded. An annotation placed on an ineligible member is rejected
 instead of being silently ignored.
 
-An ordinary final field can be written but is not used as a mutable read sink. Use a record,
-`JsonCreator`, or a custom codec for immutable construction.
+Eligible instance fields, including ordinary `final` fields, are restored when reading JSON.
+When a subclass hides a superclass field with the same name, the subclass field is the JSON
+property in both directions. Ignoring that field does not expose the hidden superclass field.
+
+An ordinary object property uses its declared type when reading. When writing a subclass instance
+through a concrete declared base type, Fory writes the subclass's mapped properties. Reading the
+same JSON through the base type creates a base instance and ignores subclass-only properties.
+Use `@JsonSubTypes` or a custom codec when the reader must restore the subtype.
 
 ### Field mode
 

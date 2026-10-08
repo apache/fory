@@ -101,7 +101,8 @@ forward-compatibility carrier marked with `@ForyUnknownCase`. It is omitted
 from the schema case table because the marker only selects the carrier and does
 not add a schema entry. Schema-defined cases use non-negative `@ForyCase` IDs.
 A typed union must have at least one
-non-`Unknown` case.
+schema-defined case. On a name collision, the generated carrier is named
+`Unknown_`; a second collision is an error. Schema case names are preserved.
 
 ```scala
 package addressbook

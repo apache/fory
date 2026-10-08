@@ -122,9 +122,9 @@ Generated union cases use `[ForyCase]` for both the stable case ID and optional
 case payload schema type. Do not put `[ForyField]` on union case payload
 members. Known case record names use PascalCase FDL case names; payload types
 use qualified references when needed to avoid name conflicts. A typed union must
-declare at least one non-`Unknown` case; `Unknown(UnknownCase)` is only the
-Fory-owned forward-compatibility carrier. The marker only selects the carrier and
-does not add an entry to the schema case table.
+declare at least one schema-defined case and exactly one `[ForyUnknownCase]`
+case exposing `Value: UnknownCase`. The carrier name is unrestricted. The marker
+only selects the carrier and does not add an entry to the schema case table.
 
 ```csharp
 using Apache.Fory;

@@ -200,8 +200,9 @@ External payloads select a serializer with `.with(...)`:
 case user(ThirdParty.User)
 ```
 
-Every `@ForyUnion` must declare `@ForyUnknownCase case unknown(UnknownCase)` and
-at least one non-`unknown` case. The unknown case is only the Fory-owned
+Every `@ForyUnion` must declare exactly one `@ForyUnknownCase` case with one
+`UnknownCase` associated value and at least one schema-defined case. The marked
+case name is unrestricted. The unknown case is only the Fory-owned
 forward-compatibility carrier and cannot be the default value source. It is
 omitted from the schema case table because the marker only selects the carrier
 and does not add a schema entry. Schema cases use non-negative IDs.

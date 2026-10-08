@@ -142,6 +142,21 @@ class BaseGenerator(ABC):
             return pascal
         return pascal[0].lower() + pascal[1:]
 
+    def unknown_case_name(
+        self, union_name: str, used_names: Set[str], name: str = "Unknown"
+    ) -> str:
+        # Schema cases own their names. Rename only the generated carrier, with
+        # one fixed suffix so adding cases cannot silently renumber its API name.
+        if name not in used_names:
+            return name
+        alternate = f"{name}_"
+        if alternate not in used_names:
+            return alternate
+        raise ValueError(
+            f"{self.language_name} union {union_name}: generated unknown case names "
+            f"{name!r} and {alternate!r} are both already used"
+        )
+
     def to_snake_case(self, name: str) -> str:
         """Convert name to snake_case.
 

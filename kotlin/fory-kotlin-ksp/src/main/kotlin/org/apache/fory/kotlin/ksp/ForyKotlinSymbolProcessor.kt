@@ -535,7 +535,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
     }
     if (cases.isEmpty()) {
       logger.error(
-        "@ForyUnion ${declaration.qualifiedName!!.asString()} must declare at least one non-Unknown case; Unknown is a forward-compatibility carrier and cannot be the default",
+        "@ForyUnion ${declaration.qualifiedName!!.asString()} must declare at least one schema-defined case; the unknown carrier cannot be the default",
         declaration
       )
       return null
@@ -584,13 +584,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
     val propertiesByName = declaration.getAllProperties().associateBy { it.simpleName.asString() }
     val valueParameter =
       if (unknown) {
-        if (declaration.simpleName.asString() != "Unknown") {
-          logger.error(
-            "Unknown Kotlin union case must be named Unknown and use @ForyUnknownCase",
-            declaration
-          )
-          return null
-        }
+        // The marker owns carrier identity; its name may avoid a schema case.
         if (parameters.size != 1 || parameters[0].name?.asString() != "value") {
           logger.error(
             "Unknown Kotlin union case must have constructor parameter (value: UnknownCase)",

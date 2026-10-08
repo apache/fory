@@ -187,6 +187,8 @@ public final class FieldInfo implements Serializable {
         return remoteDescriptor;
       }
       if (FieldTypes.useFieldType(rawType, descriptor)) {
+        // Preserve the remote type for decoding; the retained local accessor still owns the
+        // narrower Java storage type and must validate materialized values before assignment.
         return remoteDescriptor;
       }
       // Local field exists - check if we need to update nullable/trackingRef

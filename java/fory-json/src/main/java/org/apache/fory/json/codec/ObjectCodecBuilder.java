@@ -137,7 +137,7 @@ final class ObjectCodecBuilder {
           validatorInfo);
     }
     LinkedHashMap<String, FieldBuilder> builders = new LinkedHashMap<>();
-    addFields(type, record, propertyDiscoveryEnabled, hasAnyField, builders, annotations, null);
+    addFields(type, propertyDiscoveryEnabled, hasAnyField, builders, annotations, null);
     if (record) {
       addRecordAccessors(type, builders, generatedCodec);
     } else if (objectModel != null) {
@@ -1105,7 +1105,6 @@ final class ObjectCodecBuilder {
 
   private static void addFields(
       Class<?> type,
-      boolean record,
       boolean propertyDiscoveryEnabled,
       boolean hasAnyField,
       LinkedHashMap<String, FieldBuilder> builders,
@@ -1129,7 +1128,6 @@ final class ObjectCodecBuilder {
         if (annotations.has(field, JsonUnwrapped.class) && !isEligibleField(field)) {
           throw new ForyJsonException("@JsonUnwrapped is not supported on JSON field: " + field);
         }
-        int modifiers = field.getModifiers();
         if (!isEligibleField(field)) {
           continue;
         }
@@ -1137,12 +1135,17 @@ final class ObjectCodecBuilder {
         boolean write = ignore == null || !ignore.ignoreWrite();
         boolean readAllowed = ignore == null || !ignore.ignoreRead();
         boolean any = annotations.has(field, JsonAnyProperty.class);
-        boolean read = (any || record || !Modifier.isFinal(modifiers)) && readAllowed;
+        boolean read = readAllowed;
         if (!retainIgnoredFields && !write && !read && !any) {
+          // An ignored subclass declaration still hides the superclass field of the same name.
+          builders.remove(field.getName());
           continue;
         }
         FieldBuilder builder = builders.get(field.getName());
-        if (builder == null) {
+        if (builder == null || builder.field != null) {
+          // A subclass field hides the superclass field. Keep the property's original order while
+          // replacing its member metadata so annotations and accessors belong to the selected
+          // field.
           builder = new FieldBuilder(field.getName(), annotations);
           builders.put(field.getName(), builder);
         }
@@ -1383,8 +1386,7 @@ final class ObjectCodecBuilder {
     // Effective field, getter, setter, and setter-parameter annotations are merged by the same
     // property owner used for ordinary objects. A singleton candidate is accepted only when that
     // merge removes every instance property in both directions.
-    addFields(
-        type, false, true, hasAnyField, builders, annotations, objectModel.nonPropertyFields());
+    addFields(type, true, hasAnyField, builders, annotations, objectModel.nonPropertyFields());
     addObjectModelAccessors(type, builders, annotations, objectModel);
     Method anySetter =
         addJsonMethods(type, true, false, builders, generatedCodec, annotations, objectModel);

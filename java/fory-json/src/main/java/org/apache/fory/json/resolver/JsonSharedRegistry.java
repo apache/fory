@@ -997,6 +997,10 @@ public final class JsonSharedRegistry {
       return new ResolvedCodec(codec, null);
     }
     if (rawType == Object.class) {
+      ResolvedCodec resolved = createModuleCodec(typeRef, localResolver, runtimeType);
+      if (resolved != null) {
+        return resolved;
+      }
       return new ResolvedCodec(localResolver.naturalCodec(), null);
     }
     if (rawType == Class.class) {

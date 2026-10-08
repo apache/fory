@@ -164,9 +164,9 @@ output mode cannot express a legal qualifier for a conflict, the IDL compiler
 appends `Case` to the generated case name.
 
 Schema-defined union cases use non-negative IDs, and a typed union must declare
-at least one non-`Unknown` case. The Scala unknown-case carrier is selected by
-`@ForyUnknownCase`, not by a schema case ID. Its payload stores the original case
-ID and the deserialized value. When a reader sees a newer case ID, it returns
+at least one schema-defined case. The Scala unknown-case carrier is selected by
+`@ForyUnknownCase`, independent of its name, and has no schema case ID. Its payload
+stores the original case ID and the deserialized value. When a reader sees a newer case ID, it returns
 `Unknown(UnknownCase)` instead of failing solely because the case ID is not known
 locally.
 

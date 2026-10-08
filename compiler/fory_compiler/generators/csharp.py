@@ -831,6 +831,11 @@ class CSharpGenerator(CSharpServiceMixin, BaseGenerator):
         lines: List[str] = []
         ind = self.indent_str * indent
         type_name = self.safe_type_identifier(union.name)
+        # A nested record also cannot have the enclosing union's name.
+        case_names = {type_name} | {
+            self._union_case_type_name(field) for field in union.fields
+        }
+        unknown_name = self.unknown_case_name(union.name, case_names)
         module_class = self.get_module_class_name()
         full_type_ref = self._type_reference_for_local(union)
 
@@ -847,7 +852,7 @@ class CSharpGenerator(CSharpServiceMixin, BaseGenerator):
 
         lines.append(f"{ind}{self.indent_str}[ForyUnknownCase]")
         lines.append(
-            f"{ind}{self.indent_str}public sealed partial record Unknown(UnknownCase Value) : {type_name};"
+            f"{ind}{self.indent_str}public sealed partial record {unknown_name}(UnknownCase Value) : {type_name};"
         )
         lines.append("")
 

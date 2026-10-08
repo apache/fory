@@ -246,9 +246,10 @@ String encoded = json.toJson(users, usersType);
 Declared writes require a fully bound type. Wildcards and type variables are rejected. A non-null
 value must be assignable to the declared raw type.
 
-The declared schema controls serialization. For example, a property declared as a concrete parent
-class uses the parent's mapped properties rather than automatically adding subclass-only fields. A
-declared `Object` value uses runtime dispatch when writing and natural JSON mapping when reading.
+The declared type selects the codec. An ordinary property declared as a concrete parent class
+writes subclass-only fields when its value is a subclass; reading that JSON as the parent creates a
+parent instance and ignores those fields. A declared `Object` value uses runtime dispatch when
+writing and natural JSON mapping when reading.
 
 ### Declared types and polymorphism
 

@@ -21,6 +21,26 @@ import Fory
 import XCTest
 
 final class IdlRoundTripTests: XCTestCase {
+    func testUnknownCaseNames() throws {
+        for compatible in [false, true] {
+            let fory = Fory(ref: false, compatible: compatible)
+            try Example.ForyModule.install(fory)
+            for value in [Example.UnknownChoice.unknown("known"), .unknownValue(42)] {
+                let decoded: Example.UnknownChoice = try roundTrip(fory, value: value)
+                XCTAssertEqual(decoded, value)
+            }
+            let value = Example.UnknownChoice.unknown_(UnknownCase(caseId: 99, value: "future"))
+            let bytes = try fory.serialize(value)
+            let decoded: Example.UnknownChoice = try fory.deserialize(bytes)
+            guard case .unknown_(let unknown) = decoded else {
+                return XCTFail("Expected the unknown carrier")
+            }
+            XCTAssertEqual(unknown.caseId, 99)
+            XCTAssertEqual(unknown.value as? String, "future")
+            XCTAssertEqual(try fory.serialize(decoded), bytes)
+        }
+    }
+
     func testAddressBookRoundTripCompatible() throws {
         try runIdlMatrixRoundTrip(compatible: true)
     }

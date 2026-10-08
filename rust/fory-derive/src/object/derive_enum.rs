@@ -1129,13 +1129,13 @@ pub fn gen_read_data(
 
     let unknown_xlang_branch = if is_union_compatible && has_data_variants {
         // ForyUnion validation guarantees xlang-compatible ADTs have the
-        // runtime Unknown carrier. A skip/default fallback here would drop
+        // runtime unknown carrier. A skip/default fallback here would drop
         // forward-compatible payload metadata instead of preserving it.
         let variant = data_enum
             .variants
             .iter()
             .find(|variant| is_runtime_unknown_variant(variant))
-            .expect("xlang-compatible ForyUnion requires Unknown(UnknownCase)");
+            .expect("xlang-compatible ForyUnion requires an unknown carrier");
         let ident = &variant.ident;
         quote! {
             _ => {

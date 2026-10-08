@@ -1536,9 +1536,7 @@ object ForySerializerMacros {
             report.errorAndAbort(
               s"${child.fullName} unknown case must use @ForyUnknownCase without @ForyCase")
           }
-          if child.name != "Unknown" then {
-            report.errorAndAbort(s"${child.fullName} unknown case must be named Unknown")
-          }
+          // The marker owns carrier identity; its name may avoid a schema case.
           None
         } else {
           Some(annotationIntArg[ForyCase](child, "id").getOrElse {
@@ -1576,7 +1574,7 @@ object ForySerializerMacros {
     }
     if knownCases.isEmpty then {
       report.errorAndAbort(
-        s"${owner.fullName} must define at least one non-Unknown case; Unknown is a forward-compatibility carrier and cannot be the default")
+        s"${owner.fullName} must define at least one schema-defined case; the unknown carrier cannot be the default")
     }
     val unknown =
       cases.find(_.unknown).getOrElse(

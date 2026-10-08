@@ -415,15 +415,10 @@ class ScalaGenerator(ScalaServiceGeneratorMixin, BaseGenerator):
         parent_stack: Optional[List[Message]] = None,
     ) -> List[str]:
         ind = self.indent_str * indent
-        lines = [
-            f"{ind}@ForyUnion",
-            f"{ind}enum {union.name} derives ForySerializer {{",
-        ]
-        lines.append(f"{ind}    @ForyUnknownCase")
-        lines.append(f"{ind}    case Unknown(value: UnknownCase)")
-        lines.append("")
+        case_lines: List[str] = []
+        case_names: Set[str] = set()
         for field in union.fields:
-            lines.append(f"{ind}    @ForyCase(id = {field.number})")
+            case_lines.append(f"{ind}    @ForyCase(id = {field.number})")
             case_name = self.to_pascal_case(field.name)
             field_type = self.generate_type(
                 field.field_type,
@@ -434,9 +429,19 @@ class ScalaGenerator(ScalaServiceGeneratorMixin, BaseGenerator):
                 parent_stack=parent_stack,
             )
             case_name = self.union_case_name(field.field_type, field_type, case_name)
+            case_names.add(case_name)
             field_type = self.qualify_union_payload_type(field_type, case_name)
-            lines.append(f"{ind}    case {case_name}(value: {field_type})")
-            lines.append("")
+            case_lines.append(f"{ind}    case {case_name}(value: {field_type})")
+            case_lines.append("")
+        unknown_name = self.unknown_case_name(union.name, case_names)
+        lines = [
+            f"{ind}@ForyUnion",
+            f"{ind}enum {union.name} derives ForySerializer {{",
+            f"{ind}    @ForyUnknownCase",
+            f"{ind}    case {unknown_name}(value: UnknownCase)",
+            "",
+        ]
+        lines.extend(case_lines)
         lines.append(f"{ind}}}")
         lines.append("")
         return lines

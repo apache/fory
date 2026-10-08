@@ -202,48 +202,39 @@
 
 ================================================================
 
-This product includes a number of Dependencies with separate copyright notices
-and license terms. Your use of these submodules is subject to the terms and
-conditions of the following licenses.
-
-================================================================
+This directory includes third-party source files with the following license terms.
+Paths below are relative to benchmarks/.
 
 ================================================================
 Apache-2.0 licenses
 ================================================================
-The following components are provided under the Apache-2.0 License. See project link for details.
-The text of each license is the standard Apache 2.0 license.
+The following component is provided under the Apache License, Version 2.0 above.
 
-* jackson-annotations (https://github.com/FasterXML/jackson-annotations)
-    Fory JSON implementations of the following annotation APIs are based on Jackson annotations.
+* fast-serialization (https://github.com/RuedigerMoeller/fast-serialization)
     Files:
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonAnyGetter.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonAnySetter.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonCreator.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonFormat.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonIgnore.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonInclude.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonProperty.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonPropertyOrder.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonRawValue.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonSubTypes.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonUnwrapped.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonValue.java
-
-* wast (https://github.com/wycst/wast)
-    Fory's probability-first printable-ASCII fast-path predicate is based in part on
-    WAST's JSON string escape predicate.
-    Files:
-      java/fory-json/src/main/java/org/apache/fory/json/writer/JsonAsciiWordPredicates.java
+      java/src/main/java/org/apache/fory/benchmark/Identity2IdMap.java
 
 ================================================================
-MIT licenses
+BSD-3-Clause licenses
 ================================================================
-The following components are provided under the MIT License. See project link for details.
-The text of each license is also included in licenses/LICENSE-[project].txt.
 
-* zmij (https://github.com/vitaut/zmij)
-    zmij is dual-licensed under the MIT License or the Boost Software License 1.0;
-    Fory uses it under the MIT License.
+* kryo (https://github.com/EsotericSoftware/kryo)
     Files:
-      java/fory-json/src/main/java/org/apache/fory/json/writer/FloatingDecimal.java
+      java/src/main/java/org/apache/fory/benchmark/data/Data.java
+      java/src/main/java/org/apache/fory/benchmark/data/Image.java
+      java/src/main/java/org/apache/fory/benchmark/data/Media.java
+      java/src/main/java/org/apache/fory/benchmark/data/MediaContent.java
+      java/src/main/java/org/apache/fory/benchmark/data/Sample.java
+      java/src/main/java/org/apache/fory/benchmark/state/BufferType.java
+      java/src/main/java/org/apache/fory/benchmark/state/KryoState.java
+
+Copyright (c) 2008-2023, Nathan Sweet
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+* Neither the name of Esoteric Software nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

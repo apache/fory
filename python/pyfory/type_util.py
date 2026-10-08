@@ -170,7 +170,10 @@ def normalize_fory_type(type_):
     return type_id
 
 
-# modified from `fluent python`
+# This function is derived from
+# https://github.com/fluentpython/example-code/blob/a7861802390010fc322f7fdbabf441ba36ed56f3/21-class-metaprog/factories.py.
+# Copyright (c) 2014 Luciano Ramalho.
+# Licensed under the MIT License; see licenses/LICENSE-fluentpython.txt.
 def record_class_factory(cls_name, field_names, *, publish=True):
     """
     record_factory: create simple classes just for holding data fields

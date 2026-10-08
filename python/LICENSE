@@ -200,13 +200,9 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
-================================================================
-
-This product includes a number of Dependencies with separate copyright notices
-and license terms. Your use of these submodules is subject to the terms and
-conditions of the following licenses.
-
-================================================================
+This product bundles code with separate copyright notices and license terms.
+Your use of that code is subject to the terms and conditions of the following
+licenses.
 
 ================================================================
 Apache-2.0 licenses
@@ -214,36 +210,57 @@ Apache-2.0 licenses
 The following components are provided under the Apache-2.0 License. See project link for details.
 The text of each license is the standard Apache 2.0 license.
 
-* jackson-annotations (https://github.com/FasterXML/jackson-annotations)
-    Fory JSON implementations of the following annotation APIs are based on Jackson annotations.
+* dataclasses (https://github.com/ericvsmith/dataclasses)
     Files:
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonAnyGetter.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonAnySetter.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonCreator.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonFormat.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonIgnore.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonInclude.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonProperty.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonPropertyOrder.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonRawValue.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonSubTypes.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonUnwrapped.java
-      java/fory-json/src/main/java/org/apache/fory/json/annotation/JsonValue.java
+      pyfory/type_util.py (dataslots function)
 
-* wast (https://github.com/wycst/wast)
-    Fory's probability-first printable-ASCII fast-path predicate is based in part on
-    WAST's JSON string escape predicate.
+* abseil-cpp (https://github.com/abseil/abseil-cpp)
+    Compiled into the pyfory serialization extension module.
     Files:
-      java/fory-json/src/main/java/org/apache/fory/json/writer/JsonAsciiWordPredicates.java
+      cpp/fory/thirdparty/flat_hash_map.h
 
 ================================================================
 MIT licenses
 ================================================================
 The following components are provided under the MIT License. See project link for details.
-The text of each license is also included in licenses/LICENSE-[project].txt.
+The text of each license is included below.
 
-* zmij (https://github.com/vitaut/zmij)
-    zmij is dual-licensed under the MIT License or the Boost Software License 1.0;
-    Fory uses it under the MIT License.
+* fluentpython (https://github.com/fluentpython/example-code)
     Files:
-      java/fory-json/src/main/java/org/apache/fory/json/writer/FloatingDecimal.java
+      pyfory/type_util.py (record_class_factory function)
+
+    The MIT License (MIT)
+
+    Copyright (c) 2014 Luciano Ramalho
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+
+================================================================
+Public Domain
+================================================================
+The following components are placed in the public domain.
+The author hereby disclaims copyright to this source code.
+See project link for details.
+
+* smhasher (https://github.com/aappleby/smhasher)
+    Compiled into the pyfory mmh3 and serialization extension modules.
+    Files:
+      cpp/fory/thirdparty/MurmurHash3.cc
+      cpp/fory/thirdparty/MurmurHash3.h

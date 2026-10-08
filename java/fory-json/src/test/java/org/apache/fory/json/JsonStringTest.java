@@ -64,6 +64,7 @@ import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.writer.JsonStringEscaper;
 import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
@@ -1068,6 +1069,137 @@ public class JsonStringTest extends ForyJsonTestModels {
           assertEquals(readUtf8String(json, document), value);
         }
       }
+    }
+  }
+
+  /**
+   * After a character that needs escaping, plain text is copied in runs, and each run has to stop
+   * wherever the character-at-a-time path would have handled the character itself - another escape,
+   * latin1 text above 0x7F, text outside latin1 and a surrogate pair - for a String and a
+   * CharSequence, for utf8 output and for LATIN1 and UTF16 string output, with and without escaping
+   * non-ASCII text. {@link JsonStringEscaper} is the character-at-a-time reference.
+   */
+  @Test
+  public void writeEscapeFollowedByOtherText() {
+    // Text outside latin1 as the first stop upgrades LATIN1 string output to UTF16 mid-string, so
+    // the escapes in the tail that follows go through the UTF16 run copy of the same string.
+    String[] stops = {"\"", "\\", "\n", "\u0001", "é", "中", "😀"};
+    String[] tails = {
+      "a",
+      "é",
+      "ÿ",
+      "\u007f\u0080",
+      "中文",
+      "😀",
+      "aé中文b",
+      "é" + repeat('c', 40),
+      "\"\\\t" + repeat('d', 9) + "\""
+    };
+    // An empty end makes the string finish right after its last stop character.
+    String[] ends = {"", repeat('b', 7)};
+    for (boolean escapeNonAscii : new boolean[] {false, true}) {
+      JsonConfig config = newJsonBuilder().escapeNonAscii(escapeNonAscii).build().config();
+      for (String stop : stops) {
+        for (String tail : tails) {
+          for (String end : ends) {
+            for (int lead = 0; lead <= 20; lead++) {
+              for (int gap = 0; gap <= 8; gap++) {
+                String value = repeat('a', lead) + stop + repeat('c', gap) + tail + end;
+                assertWrittenLikeEscaper(config, value);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * The run copy sits in front of the surrogate checks, so an unpaired surrogate after an escape
+   * must still be rejected, both inside a long plain run and at the end of the string.
+   */
+  @Test
+  public void writeRejectsUnpairedSurrogateAfterAnEscape() {
+    String plain = repeat('a', 24);
+    for (boolean escapeNonAscii : new boolean[] {false, true}) {
+      JsonConfig config = newJsonBuilder().escapeNonAscii(escapeNonAscii).build().config();
+      for (String value :
+          new String[] {
+            "x\n" + plain + "\uD83D" + plain,
+            "x\n" + plain + "\uDE00" + plain,
+            "x\n" + plain + "\uD83D",
+            "x\n中" + plain + "\uD83D" + plain
+          }) {
+        Utf8JsonWriter utf8 =
+            new Utf8JsonWriter(config, newUtf8Writer().typeResolver(), new byte[1]);
+        assertThrows(ForyJsonException.class, () -> utf8.writeString(value));
+        assertThrows(ForyJsonException.class, () -> utf8.writeString(new StringBuilder(value)));
+        StringJsonWriter string =
+            new StringJsonWriter(config, newStringWriter().typeResolver(), new byte[1]);
+        assertThrows(ForyJsonException.class, () -> string.writeString(value));
+        assertThrows(ForyJsonException.class, () -> string.writeString(new StringBuilder(value)));
+      }
+    }
+  }
+
+  /**
+   * A plain run longer than one reservation chunk is copied in several, so a stop character, latin1
+   * text above 0x7F, text outside latin1 or a surrogate pair right at a chunk boundary must come
+   * out the same as anywhere else.
+   */
+  @Test
+  public void writeRunsAcrossReservationChunks() {
+    int chunk = 8192;
+    String[] boundaryTexts = {"\"", "é", "中", "😀"};
+    for (boolean escapeNonAscii : new boolean[] {false, true}) {
+      JsonConfig config = newJsonBuilder().escapeNonAscii(escapeNonAscii).build().config();
+      for (String text : boundaryTexts) {
+        for (int offset = -9; offset <= 9; offset++) {
+          String value = "x\n" + repeat('a', chunk + offset) + text + repeat('b', chunk + 20);
+          assertWrittenLikeEscaper(config, value);
+        }
+      }
+    }
+  }
+
+  /**
+   * A writer reset after a UTF16 result starts the next document in UTF16 while still assuming its
+   * output fits latin1; the run copy after an escape must withdraw that assumption when it copies a
+   * character above 0xFF, or the result is narrowed and the character is lost.
+   */
+  @Test
+  public void writeEscapeThenWideTextAfterUtf16Reset() {
+    StringJsonWriter writer = newStringWriter(new byte[16]);
+    for (CharSequence value : new CharSequence[] {"a\"中", new StringBuilder("a\"中")}) {
+      writer.writeRawValue("中");
+      assertEquals(writer.toJson(), "中");
+      writer.reset();
+      writer.writeString(value);
+      assertEquals(writer.toJson(), "\"a\\\"中\"");
+      writer.reset();
+    }
+  }
+
+  private static void assertWrittenLikeEscaper(JsonConfig config, String value) {
+    String expected =
+        new String(
+            JsonStringEscaper.utf8Value(value, config.escapeNonAscii()), StandardCharsets.UTF_8);
+    // Each input type gets a fresh writer, so a String never leaves the output coder upgraded for
+    // the CharSequence that follows it.
+    for (CharSequence input : new CharSequence[] {value, new StringBuilder(value)}) {
+      Utf8JsonWriter utf8 = new Utf8JsonWriter(config, newUtf8Writer().typeResolver(), new byte[1]);
+      utf8.writeString(input);
+      assertEquals(new String(utf8.toJsonBytes(), StandardCharsets.UTF_8), expected, value);
+      StringJsonWriter latin1 =
+          new StringJsonWriter(config, newStringWriter().typeResolver(), new byte[1]);
+      latin1.writeString(input);
+      assertEquals(latin1.toJson(), expected, value);
+      // Raw text outside latin1 switches string output to UTF16 first, whatever the escape setting.
+      StringJsonWriter utf16 =
+          new StringJsonWriter(config, newStringWriter().typeResolver(), new byte[1]);
+      utf16.writeRawValue("中");
+      utf16.writeString(input);
+      assertEquals(utf16.toJson(), "中" + expected, value);
     }
   }
 

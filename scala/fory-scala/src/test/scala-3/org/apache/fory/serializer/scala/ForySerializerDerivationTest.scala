@@ -587,7 +587,7 @@ import org.apache.fory.scala.ForyScala
         }
       """)
 
-      errors.exists(_.message.contains("at least one non-Unknown case")) shouldBe true
+      errors.exists(_.message.contains("at least one schema-defined case")) shouldBe true
     }
 
     "validate field tag range" in {

@@ -54,7 +54,8 @@ table. Schema-defined cases use non-negative `[ForyCase]` IDs. If a case needs
 non-default schema encoding, the generated `[ForyCase]` carries `Type`. Known
 case record names are PascalCase FDL case names; payload types are emitted as
 qualified references when needed to avoid name conflicts. A typed union must
-have at least one non-`Unknown` case.
+have at least one schema-defined case. On a name collision, the generated carrier
+is named `Unknown_`; a second collision is an error. Schema case names are preserved.
 
 ```csharp
 [ForyUnion]

@@ -39,6 +39,11 @@ union ExampleLeafUnion [id=1503] {
     ExampleLeaf leaf = 3;
 }
 
+union UnknownChoice [id=1505] {
+    string unknown = 0;
+    int32 unknown_value = 1;
+}
+
 message ExampleMessage [id=1500, evolving=true] {
     bool bool_value = 1;
     int8 int8_value = 2;

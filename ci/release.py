@@ -159,41 +159,29 @@ def prepare(v: str):
         raise
 
 
-def build(v: str):
-    """version format: 0.5.1"""
-    logger.info("Start to prepare release artifacts for version %s", v)
+def build(v: str, rc_tag: str):
+    """Build signed source artifacts directly from a release-candidate tag."""
+    logger.info("Start to prepare release artifacts for version %s from %s", v, rc_tag)
     _check_release_version(v)
+    if not re.fullmatch(rf"v{re.escape(v)}-rc\d+", rc_tag):
+        raise ValueError(f"RC tag {rc_tag} does not match release version {v}")
     os.chdir(PROJECT_ROOT_DIR)
+    _check_all_committed()
     if os.path.exists("dist"):
         shutil.rmtree("dist")
     os.mkdir("dist")
-    branch = f"releases-{v}"
-    # Check if branch exists, if not create it
-    result = subprocess.run(
-        f"git show-ref --verify --quiet refs/heads/{branch}",
-        shell=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode == 0:
-        # Branch exists, checkout
-        subprocess.check_call(f"git checkout {branch}", shell=True)
-    else:
-        # Branch doesn't exist, create it
-        subprocess.check_call(f"git checkout -b {branch}", shell=True)
     src_tar = f"apache-fory-{v}-src.tar.gz"
-    _check_all_committed()
-    _strip_unnecessary_license()
+    # Preserve the tag's tree and commit ID so voters can reproduce the source archive.
     subprocess.check_call(
-        "git add LICENSE && git commit -m 'remove benchmark from license'", shell=True
+        [
+            "git",
+            "archive",
+            "--format=tar.gz",
+            f"--output=dist/{src_tar}",
+            f"--prefix=apache-fory-{v}-src/",
+            f"refs/tags/{rc_tag}",
+        ]
     )
-    subprocess.check_call(
-        f"git archive --format=tar.gz "
-        f"--output=dist/{src_tar} "
-        f"--prefix=apache-fory-{v}-src/ {branch}",
-        shell=True,
-    )
-    subprocess.check_call("git reset --hard HEAD~", shell=True)
     os.chdir("dist")
     logger.info("Start to generate signature")
     subprocess.check_call(
@@ -220,26 +208,6 @@ def _check_all_committed():
         raise RuntimeError(
             f"There are some uncommitted files: {proc.stdout}, please commit it."
         )
-
-
-def _strip_unnecessary_license():
-    with open("LICENSE", "r") as f:
-        lines = f.readlines()
-    new_lines = []
-    line_number = 0
-    while line_number < len(lines):
-        line = lines[line_number]
-        if "fast-serialization" in line:
-            line_number += 4
-        elif "benchmark" in line:  # strip license in benchmark
-            line_number += 1
-        else:
-            new_lines.append(line)
-            line_number += 1
-    text = "".join(new_lines)
-    if lines != new_lines:
-        with open("LICENSE", "w") as f:
-            f.write(text)
 
 
 def verify(v):
@@ -1990,7 +1958,10 @@ def _parse_args():
         "build",
         description="Build release artifacts",
     )
-    release_parser.add_argument("-v", type=str, help="new version")
+    release_parser.add_argument("-v", type=str, required=True, help="release version")
+    release_parser.add_argument(
+        "--rc-tag", required=True, help="immutable release-candidate tag to archive"
+    )
     release_parser.set_defaults(func=build)
 
     verify_parser = subparsers.add_parser(
