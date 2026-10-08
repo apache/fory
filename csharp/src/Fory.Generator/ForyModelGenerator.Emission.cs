@@ -84,14 +84,21 @@ public sealed partial class ForyModelGenerator
             return;
         }
 
-        sb.AppendLine("    private static readonly object __ForyTypeMetaCacheLock = new();");
-        sb.AppendLine("    private static ulong __ForyTypeMetaResolverVersion;");
-        sb.AppendLine("    private static ulong __ForyNoRefTypeMetaHash;");
-        sb.AppendLine("    private static ulong __ForyRefTypeMetaHash;");
-        sb.AppendLine("    private static global::Apache.Fory.TypeMeta? __ForyNoRefMeta;");
-        sb.AppendLine("    private static bool __ForyNoRefMetaMatches;");
-        sb.AppendLine("    private static global::Apache.Fory.TypeMeta? __ForyRefMeta;");
-        sb.AppendLine("    private static bool __ForyRefMetaMatches;");
+        sb.AppendLine("    private sealed class __ForyTypeMetaCacheEntry");
+        sb.AppendLine("    {");
+        sb.AppendLine("        internal readonly ulong ResolverVersion;");
+        sb.AppendLine("        internal readonly ulong NoRefHash;");
+        sb.AppendLine("        internal readonly ulong RefHash;");
+        sb.AppendLine();
+        sb.AppendLine("        internal __ForyTypeMetaCacheEntry(ulong resolverVersion, ulong noRefHash, ulong refHash)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            ResolverVersion = resolverVersion;");
+        sb.AppendLine("            NoRefHash = noRefHash;");
+        sb.AppendLine("            RefHash = refHash;");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    private static __ForyTypeMetaCacheEntry? __ForyTypeMetaCache;");
         sb.AppendLine(
             $"    private const bool __ForyAllFieldsBuiltIn = {BoolLiteral(model.SortedMembers.All(m => m.DynamicAnyKind == DynamicAnyKind.None && m.Classification.IsBuiltIn))};");
         if (model.Kind == DeclKind.Class)
@@ -160,67 +167,32 @@ public sealed partial class ForyModelGenerator
 
         sb.AppendLine("    }");
         sb.AppendLine();
+        sb.AppendLine("    [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]");
         sb.AppendLine(
-            "    private static void __ForyEnsureTypeMetaCache(global::Apache.Fory.TypeResolver typeResolver)");
+            "    private static __ForyTypeMetaCacheEntry __ForyCreateTypeMetaCache(global::Apache.Fory.TypeResolver typeResolver, ulong resolverVersion)");
         sb.AppendLine("    {");
-        sb.AppendLine("        ulong resolverVersion = typeResolver.VersionHash();");
-        sb.AppendLine("        if (__ForyTypeMetaResolverVersion == resolverVersion)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            return;");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-        sb.AppendLine("        lock (__ForyTypeMetaCacheLock)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            if (__ForyTypeMetaResolverVersion == resolverVersion)");
-        sb.AppendLine("            {");
-        sb.AppendLine("                return;");
-        sb.AppendLine("            }");
-        sb.AppendLine();
         sb.AppendLine(
-            $"            global::Apache.Fory.TypeInfo typeInfo = typeResolver.GetTypeInfo<{model.TargetTypeName}>();");
-        sb.AppendLine(
-            "            __ForyNoRefTypeMetaHash = typeInfo.GetTypeMetaHeaderHash(false);");
-        sb.AppendLine(
-            "            __ForyRefTypeMetaHash = typeInfo.GetTypeMetaHeaderHash(true);");
-        sb.AppendLine("            __ForyNoRefMeta = null;");
-        sb.AppendLine("            __ForyNoRefMetaMatches = false;");
-        sb.AppendLine("            __ForyRefMeta = null;");
-        sb.AppendLine("            __ForyRefMetaMatches = false;");
-        sb.AppendLine("            __ForyTypeMetaResolverVersion = resolverVersion;");
-        sb.AppendLine("        }");
+            $"        global::Apache.Fory.TypeInfo typeInfo = typeResolver.GetTypeInfo<{model.TargetTypeName}>();");
+        sb.AppendLine("        var cache = new __ForyTypeMetaCacheEntry(resolverVersion,");
+        sb.AppendLine("            typeInfo.GetTypeMetaHeaderHash(false), typeInfo.GetTypeMetaHeaderHash(true));");
+        sb.AppendLine("        global::System.Threading.Volatile.Write(ref __ForyTypeMetaCache, cache);");
+        sb.AppendLine("        return cache;");
         sb.AppendLine("    }");
         sb.AppendLine();
+        sb.AppendLine("    [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]");
         sb.AppendLine(
             "    private static bool __ForyMatchesTypeMetaHash(global::Apache.Fory.TypeMeta typeMeta, bool trackRef, global::Apache.Fory.TypeResolver typeResolver)");
         sb.AppendLine("    {");
-        sb.AppendLine("        if (trackRef)");
+        sb.AppendLine("        ulong resolverVersion = typeResolver.VersionHash();");
+        sb.AppendLine("        __ForyTypeMetaCacheEntry? cache = global::System.Threading.Volatile.Read(ref __ForyTypeMetaCache);");
+        sb.AppendLine("        if (cache is null || cache.ResolverVersion != resolverVersion)");
         sb.AppendLine("        {");
-        sb.AppendLine(
-            "            if (global::System.Object.ReferenceEquals(__ForyRefMeta, typeMeta))");
-        sb.AppendLine("            {");
-        sb.AppendLine("                return __ForyRefMetaMatches;");
-        sb.AppendLine("            }");
-        sb.AppendLine();
-        sb.AppendLine("            __ForyEnsureTypeMetaCache(typeResolver);");
-        sb.AppendLine();
-        sb.AppendLine("            bool matched = typeMeta.HeaderHash == __ForyRefTypeMetaHash;");
-        sb.AppendLine("            __ForyRefMeta = typeMeta;");
-        sb.AppendLine("            __ForyRefMetaMatches = matched;");
-        sb.AppendLine("            return matched;");
+        sb.AppendLine("            cache = __ForyCreateTypeMetaCache(typeResolver, resolverVersion);");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine(
-            "        if (global::System.Object.ReferenceEquals(__ForyNoRefMeta, typeMeta))");
-        sb.AppendLine("        {");
-        sb.AppendLine("            return __ForyNoRefMetaMatches;");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-        sb.AppendLine("        __ForyEnsureTypeMetaCache(typeResolver);");
-        sb.AppendLine();
-        sb.AppendLine("        bool noTrackMatched = typeMeta.HeaderHash == __ForyNoRefTypeMetaHash;");
-        sb.AppendLine("        __ForyNoRefMeta = typeMeta;");
-        sb.AppendLine("        __ForyNoRefMetaMatches = noTrackMatched;");
-        sb.AppendLine("        return noTrackMatched;");
+        sb.AppendLine("        // Keep this resolver's snapshot even if another codec replaces the shared cache.");
+        sb.AppendLine("        // Compare hashes directly instead of separately publishing metadata and a match flag.");
+        sb.AppendLine("        return typeMeta.HeaderHash == (trackRef ? cache.RefHash : cache.NoRefHash);");
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    private static uint? __ForyNoRefSchemaHash;");

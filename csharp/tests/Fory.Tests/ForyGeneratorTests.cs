@@ -90,7 +90,7 @@ public sealed class ForyGeneratorTests
 
         Assert.Contains("__ForyMatchesTypeMetaHash", generated, StringComparison.Ordinal);
         Assert.Contains(
-            "bool matched = typeMeta.HeaderHash == __ForyRefTypeMetaHash;",
+            "return typeMeta.HeaderHash == (trackRef ? cache.RefHash : cache.NoRefHash);",
             generated,
             StringComparison.Ordinal);
         Assert.DoesNotContain("__ForyMatchesCachedTypeMeta", generated, StringComparison.Ordinal);
@@ -803,7 +803,7 @@ public sealed class ForyGeneratorTests
             generated,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
-            "__ForyTypeMetaCacheLock",
+            "__ForyTypeMetaCacheEntry",
             generated,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
