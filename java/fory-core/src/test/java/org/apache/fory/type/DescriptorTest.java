@@ -21,15 +21,21 @@ package org.apache.fory.type;
 
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
+import java.net.URLClassLoader;
 import java.util.Arrays;
 import java.util.List;
 import java.util.SortedMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.apache.fory.codegen.CodeGenerator;
+import org.apache.fory.TestUtils;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.test.bean.BeanA;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class DescriptorTest {
@@ -88,11 +94,80 @@ public class DescriptorTest {
   public void testWarmField() throws Exception {
     Assert.assertEquals(int.class.getName(), "int");
     Assert.assertEquals(Integer.class.getName(), "java.lang.Integer");
-    Descriptor.warmField(
-        BeanA.class, BeanA.class.getDeclaredField("beanB"), CodeGenerator.getCompilationService());
+    Descriptor.warmField(BeanA.class, BeanA.class.getDeclaredField("beanB"));
     Descriptor.getAllDescriptorsMap(BeanA.class);
     Descriptor.clearDescriptorCache();
     Descriptor.getAllDescriptorsMap(BeanA.class);
+  }
+
+  public static class WarmOuter {
+    WarmInner inner;
+  }
+
+  public static class WarmInner {
+    WarmLeaf leaf;
+  }
+
+  public static class WarmLeaf {}
+
+  public static class WarmProbe implements Runnable {
+    @Override
+    public void run() {
+      Descriptor.getAllDescriptorsMap(WarmOuter.class);
+    }
+  }
+
+  /**
+   * Builds descriptors with Fory loaded in its own classloader. Only the background warm-up of
+   * {@code WarmInner} loads {@code WarmLeaf}, so the recorded loader is the TCCL of a warm-up
+   * thread.
+   */
+  @Test
+  public void testWarmContextClassLoader() throws Exception {
+    warmInIsolatedLoader();
+  }
+
+  /** Descriptor warm-up must not keep an isolated Fory classloader reachable after close. */
+  @Test
+  public void testWarmReleasesLoader() throws Exception {
+    if (_JDKAccess.IS_OPEN_J9) {
+      throw new SkipException("OpenJ9 unsupported");
+    }
+    WeakReference<ClassLoader> isolate = warmInIsolatedLoader();
+    // Idle compiler pool threads keep the loader reachable until their 5 second keep-alive ends.
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+    while (isolate.get() != null && System.nanoTime() < deadline) {
+      System.gc();
+      Thread.sleep(100);
+    }
+    Assert.assertNull(isolate.get(), "isolated Fory classloader is still reachable");
+  }
+
+  private static WeakReference<ClassLoader> warmInIsolatedLoader() throws Exception {
+    try (WarmLeafRecorder isolate = new WarmLeafRecorder()) {
+      Assert.assertNotSame(Thread.currentThread().getContextClassLoader(), isolate);
+      Class<?> probe = isolate.loadClass(WarmProbe.class.getName());
+      ((Runnable) probe.getDeclaredConstructor().newInstance()).run();
+      Assert.assertSame(isolate.leafContextClassLoader.get(30, TimeUnit.SECONDS), isolate);
+      return new WeakReference<>(isolate);
+    }
+  }
+
+  private static final class WarmLeafRecorder extends URLClassLoader {
+    private final CompletableFuture<ClassLoader> leafContextClassLoader = new CompletableFuture<>();
+
+    private WarmLeafRecorder() {
+      super(TestUtils.forkClassPathUrls(), ClassLoader.getSystemClassLoader().getParent());
+    }
+
+    @Override
+    protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+      Class<?> cls = super.loadClass(name, resolve);
+      if (name.equals(WarmLeaf.class.getName())) {
+        leafContextClassLoader.complete(Thread.currentThread().getContextClassLoader());
+      }
+      return cls;
+    }
   }
 
   @Test
