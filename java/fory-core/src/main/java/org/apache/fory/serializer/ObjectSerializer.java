@@ -139,6 +139,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     }
     FieldGroups fieldGroups = FieldGroups.buildFieldInfos(typeResolver, grouper);
     allFields = fieldGroups.allFields;
+    setFieldInfos(allFields);
   }
 
   @Override
