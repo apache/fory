@@ -41,6 +41,7 @@
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
     <fory.mr.classes>${project.build.directory}/multi-release-classes</fory.mr.classes>
     <fory.jdk25.test.classes>${project.build.directory}/jdk25-test-classes</fory.jdk25.test.classes>
+    <fory.jar.update.input>-C "${project.build.outputDirectory}" org/apache/fory/Fory.class</fory.jar.update.input>
     <maven.source.skip>false</maven.source.skip>
   </properties>
 
@@ -78,6 +79,8 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
+          <!-- Versioned sources are resources for the source JAR, not binary entries. -->
+          <excludes><exclude>META-INF/versions/**/*.java</exclude></excludes>
           <archive>
             <manifestEntries>
               <Automatic-Module-Name>org.apache.fory.core</Automatic-Module-Name>
@@ -196,18 +199,17 @@
                 </configuration>
               </execution>
               <execution>
-                <id>inject-multi-release-classes</id>
-                <phase>package</phase>
+                <id>prepare-multi-release-classes</id>
+                <phase>prepare-package</phase>
                 <goals>
                   <goal>run</goal>
                 </goals>
                 <configuration>
                   <target>
-                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
-                      <zipfileset dir="${fory.mr.classes}"
-                                  prefix="META-INF/versions"
-                                  includes="**/*.class"/>
-                    </jar>
+                    <!-- Assemble before Maven packages the JAR so outputTimestamp owns every entry. -->
+                    <copy todir="${project.build.outputDirectory}/META-INF/versions">
+                      <fileset dir="${fory.mr.classes}" includes="**/*.class"/>
+                    </copy>
                   </target>
                 </configuration>
               </execution>
@@ -255,8 +257,8 @@
                       <compilerarg value="16"/>
                       <compilerarg value="--add-modules"/>
                       <compilerarg value="jdk.incubator.vector"/>
-                      <compilerarg value="-sourcepath"/>
-                      <compilerarg value=""/>
+                      <!-- Keep the empty value in one argument: javac ignores blank lines in Ant argfiles. -->
+                      <compilerarg value="--source-path="/>
                     </javac>
                   </target>
                 </configuration>
@@ -301,6 +303,29 @@
         <jdk>[17,)</jdk>
       </activation>
       <build>
+        <resources>
+          <resource><directory>src/main/resources</directory></resource>
+          <resource>
+            <directory>src/main/java9</directory>
+            <targetPath>META-INF/versions/9</targetPath>
+            <includes><include>**/*.java</include></includes>
+          </resource>
+          <resource>
+            <directory>src/main/java16</directory>
+            <targetPath>META-INF/versions/16</targetPath>
+            <includes><include>**/*.java</include></includes>
+          </resource>
+          <resource>
+            <directory>src/main/java17</directory>
+            <targetPath>META-INF/versions/17</targetPath>
+            <includes><include>**/*.java</include></includes>
+          </resource>
+          <resource>
+            <directory>src/main/java25</directory>
+            <targetPath>META-INF/versions/25</targetPath>
+            <includes><include>**/*.java</include></includes>
+          </resource>
+        </resources>
         <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
@@ -310,7 +335,7 @@
                 <id>attach-sources</id>
                 <phase>package</phase>
                 <goals>
-                  <goal>jar</goal>
+                  <goal>jar-no-fork</goal>
                 </goals>
               </execution>
             </executions>
@@ -343,14 +368,13 @@
                       </classpath>
                       <compilerarg value="--release"/>
                       <compilerarg value="17"/>
-                      <compilerarg value="-sourcepath"/>
-                      <compilerarg value=""/>
+                      <compilerarg value="--source-path="/>
                     </javac>
                   </target>
                 </configuration>
               </execution>
               <execution>
-                <id>patch-multi-release-source-jar</id>
+                <id>verify-multi-release-source-jar</id>
                 <phase>package</phase>
                 <goals>
                   <goal>run</goal>
@@ -366,21 +390,7 @@
                         property="multi.release.sources.jar.present"/>
                     <fail
                         unless="multi.release.sources.jar.present"
-                        message="Multi-release source patching requires ${multi.release.sources.jar}; run with source-jar generation enabled."/>
-                    <jar destfile="${multi.release.sources.jar}" update="true">
-                      <zipfileset dir="${project.basedir}/src/main/java9" prefix="META-INF/versions/9">
-                        <include name="**/*.java"/>
-                      </zipfileset>
-                      <zipfileset dir="${project.basedir}/src/main/java16" prefix="META-INF/versions/16">
-                        <include name="**/*.java"/>
-                      </zipfileset>
-                      <zipfileset dir="${project.basedir}/src/main/java17" prefix="META-INF/versions/17">
-                        <include name="**/*.java"/>
-                      </zipfileset>
-                      <zipfileset dir="${project.basedir}/src/main/java25" prefix="META-INF/versions/25">
-                        <include name="**/*.java"/>
-                      </zipfileset>
-                    </jar>
+                        message="Multi-release source verification requires ${multi.release.sources.jar}; run with source-jar generation enabled."/>
                     <property
                         name="multi.release.sources.check.dir"
                         value="${project.build.directory}/multi-release-source-check"/>
@@ -455,6 +465,10 @@
       <activation>
         <jdk>[25,)</jdk>
       </activation>
+      <properties>
+        <!-- JDK25 accepts a module-only update and preserves the existing entry timestamps. -->
+        <fory.jar.update.input></fory.jar.update.input>
+      </properties>
       <build>
         <plugins>
           <plugin>
@@ -485,8 +499,7 @@
                       </classpath>
                       <compilerarg value="--release"/>
                       <compilerarg value="22"/>
-                      <compilerarg value="-sourcepath"/>
-                      <compilerarg value=""/>
+                      <compilerarg value="--source-path="/>
                     </javac>
                   </target>
                 </configuration>
@@ -659,8 +672,7 @@
                 </goals>
                 <configuration>
                   <target>
-                    <!-- Shading relocates Janino after module-info is compiled, and multi-release
-                         classes are injected after shade. Refresh the descriptor package table
+                    <!-- Shading relocates Janino after module-info is compiled. Refresh its package table
                          from the final jar so JPMS can load concealed shaded codegen packages from
                          org.apache.fory.core. JDK11 requires an update input file; re-adding an
                          unchanged base class avoids validating versioned classes while preserving
@@ -671,9 +683,7 @@
                       <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
                       <arg value="--module-version"/>
                       <arg value="${project.version}"/>
-                      <arg value="-C"/>
-                      <arg value="${project.build.outputDirectory}"/>
-                      <arg value="org/apache/fory/Fory.class"/>
+                      <arg line="${fory.jar.update.input}"/>
                     </exec>
                   </target>
                 </configuration>

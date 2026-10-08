@@ -192,6 +192,11 @@ public class FieldConverters {
     if (canConvert(from, to)) {
       return true;
     }
+    // A remote polymorphic field may contain a value accepted by a narrower local field. Read
+    // with the remote type and validate the materialized value at the local field assignment.
+    if (!isScalarField(from) && from.type.isAssignableFrom(to.type)) {
+      return true;
+    }
     if (isScalarField(from) || isScalarField(to)) {
       return false;
     }

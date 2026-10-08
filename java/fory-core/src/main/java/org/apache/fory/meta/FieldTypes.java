@@ -74,7 +74,7 @@ public class FieldTypes {
   private static final Logger LOG = LoggerFactory.getLogger(FieldTypes.class);
   private static final int MAX_ARRAY_DIMS = 255;
 
-  /** Returns true if can use current field type. */
+  /** Returns true if the remote field type can be used for decoding this local descriptor. */
   static boolean useFieldType(Class<?> parsedType, Descriptor descriptor) {
     if (parsedType.isEnum() || parsedType.isAssignableFrom(descriptor.getRawType())) {
       return true;

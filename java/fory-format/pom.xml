@@ -101,6 +101,14 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <configuration>
+          <!-- The descriptor is MR-only; document the ordinary Java sources on the classpath. -->
+          <legacyMode>true</legacyMode>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
           <archive>
@@ -175,18 +183,17 @@
                 </configuration>
               </execution>
               <execution>
-                <id>inject-java11-module-info</id>
-                <phase>package</phase>
+                <id>prepare-java11-module-info</id>
+                <phase>prepare-package</phase>
                 <goals>
                   <goal>run</goal>
                 </goals>
                 <configuration>
                   <target>
-                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
-                      <zipfileset dir="${project.build.directory}/jpms-classes/java11"
-                                  prefix="META-INF/versions/11"
-                                  includes="module-info.class"/>
-                    </jar>
+                    <copy todir="${project.build.outputDirectory}/META-INF/versions/11">
+                      <fileset dir="${project.build.directory}/jpms-classes/java11"
+                               includes="module-info.class"/>
+                    </copy>
                   </target>
                 </configuration>
               </execution>

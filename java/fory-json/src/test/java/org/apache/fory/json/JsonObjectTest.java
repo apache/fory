@@ -29,6 +29,7 @@ import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -43,6 +44,7 @@ import org.apache.fory.json.data.ParentValue;
 import org.apache.fory.json.data.PrivateFields;
 import org.apache.fory.json.data.PublicFields;
 import org.apache.fory.platform.JdkVersion;
+import org.apache.fory.reflect.TypeRef;
 import org.testng.SkipException;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
@@ -266,7 +268,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
   @Test
   public void writeDeclaredObjectFieldType() {
     ForyJson json = newJson();
-    String expected = "{\"value\":{\"parent\":1}}";
+    String expected = "{\"value\":{\"parent\":1,\"child\":2}}";
     assertEquals(json.toJson(new DeclaredParentField()), expected);
     assertEquals(
         new String(json.toJsonBytes(new DeclaredParentField()), StandardCharsets.UTF_8), expected);
@@ -274,6 +276,108 @@ public class JsonObjectTest extends ForyJsonTestModels {
         json.fromJson("{\"value\":{\"child\":9,\"parent\":3}}", DeclaredParentField.class);
     assertEquals(read.value.getClass(), ParentValue.class);
     assertEquals(read.value.parent, 3);
+  }
+
+  @Test
+  public void restoreFinalFields() {
+    for (boolean fieldMode : new boolean[] {false, true}) {
+      ForyJson json = newJsonBuilder().withFieldMode(fieldMode).build();
+      FinalFields original = new FinalFields("value", 7);
+      String text = json.toJson(original);
+      assertEquals(text, "{\"name\":\"value\",\"count\":7}");
+      FinalFields decoded = json.fromJson(text, FinalFields.class);
+      assertEquals(decoded.name, original.name);
+      assertEquals(decoded.count, original.count);
+      decoded = json.fromJson(json.toJsonBytes(original), FinalFields.class);
+      assertEquals(decoded.name, original.name);
+      assertEquals(decoded.count, original.count);
+    }
+  }
+
+  @Test
+  public void writeRuntimeSubtype() {
+    for (boolean fieldMode : new boolean[] {false, true}) {
+      ForyJson json = newJsonBuilder().withFieldMode(fieldMode).build();
+      String animalJson = "{\"name\":\"generic\"}";
+      String dogJson = "{\"name\":\"rex\",\"breed\":\"lab\"}";
+      String ownerJson = "{\"pet\":" + dogJson + "}";
+      assertEquals(json.toJson(new Animal()), animalJson);
+      assertEquals(json.toJson(new Dog(), Animal.class), dogJson);
+      assertEquals(
+          new String(json.toJsonBytes(new Dog(), Animal.class), StandardCharsets.UTF_8), dogJson);
+      assertEquals(json.toJson(new DogOwner()), ownerJson);
+      assertEquals(new String(json.toJsonBytes(new DogOwner()), StandardCharsets.UTF_8), ownerJson);
+      TypeRef<List<Animal>> animalsType = new TypeRef<List<Animal>>() {};
+      assertEquals(
+          json.toJson(Collections.<Animal>singletonList(new Dog()), animalsType),
+          "[" + dogJson + "]");
+
+      Animal decoded = json.fromJson(dogJson, Animal.class);
+      assertEquals(decoded.getClass(), Animal.class);
+      assertEquals(decoded.name, "rex");
+      DogOwner owner = json.fromJson(ownerJson, DogOwner.class);
+      assertEquals(owner.pet.getClass(), Animal.class);
+      assertEquals(owner.pet.name, "rex");
+      assertGeneratedWhenSupported(json, Animal.class);
+    }
+  }
+
+  @Test
+  public void hiddenFieldUsesSubclass() {
+    for (boolean fieldMode : new boolean[] {false, true}) {
+      ForyJson json = newJsonBuilder().withFieldMode(fieldMode).build();
+      assertEquals(json.toJson(new DerivedHidden()), "{\"shared\":\"derived\"}");
+      DerivedHidden decoded = json.fromJson("{\"shared\":\"json\"}", DerivedHidden.class);
+      assertEquals(decoded.shared, "json");
+      assertEquals(((BaseHidden) decoded).shared, "base");
+      assertEquals(json.toJson(new IgnoredHidden()), "{}");
+    }
+  }
+
+  public static final class FinalFields {
+    private final String name;
+    public final int count;
+
+    public FinalFields() {
+      this(null, 0);
+    }
+
+    public FinalFields(String name, int count) {
+      this.name = name;
+      this.count = count;
+    }
+
+    public String getName() {
+      return name;
+    }
+  }
+
+  public static class Animal {
+    public String name = "generic";
+  }
+
+  public static final class Dog extends Animal {
+    public String breed = "lab";
+
+    public Dog() {
+      name = "rex";
+    }
+  }
+
+  public static final class DogOwner {
+    public Animal pet = new Dog();
+  }
+
+  public static class BaseHidden {
+    private String shared = "base";
+  }
+
+  public static final class DerivedHidden extends BaseHidden {
+    private String shared = "derived";
+  }
+
+  public static final class IgnoredHidden extends BaseHidden {
+    @JsonIgnore private String shared = "derived";
   }
 
   @Test

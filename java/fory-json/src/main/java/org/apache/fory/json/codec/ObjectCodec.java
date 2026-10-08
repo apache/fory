@@ -1575,12 +1575,30 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
   }
 
   final void writeStringObject(StringJsonWriter writer, T value) {
+    if (value.getClass() != type) {
+      // A declared object codec owns exact instances; subclasses write their own complete fields.
+      // Reads still use the declared codec unless the declaration has subtype metadata.
+      writer
+          .typeResolver()
+          .getRuntimeTypeInfo(value.getClass())
+          .stringWriter()
+          .writeString(writer, value);
+      return;
+    }
     writer.writeObjectStart();
     writeMembers(writer, value, 0);
     writer.writeObjectEnd();
   }
 
   final void writeUtf8Object(Utf8JsonWriter writer, T value) {
+    if (value.getClass() != type) {
+      writer
+          .typeResolver()
+          .getRuntimeTypeInfo(value.getClass())
+          .utf8Writer()
+          .writeUtf8(writer, value);
+      return;
+    }
     writer.writeObjectStart();
     writeMembers(writer, value, 0);
     writer.writeObjectEnd();

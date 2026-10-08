@@ -198,7 +198,8 @@ public final class ForyJson {
   }
 
   /**
-   * Serializes {@code value} using {@code declaredType}'s codec rather than runtime-type dispatch.
+   * Serializes {@code value} using {@code declaredType}'s codec. Ordinary concrete object codecs
+   * write subclass values using the subclass's fields; reading still uses the declared schema.
    *
    * <p>This overload is required when the declared type owns a closed {@code JsonSubTypes} table. A
    * non-null value must be assignable to the declared type. Primitive declarations accept only
@@ -217,8 +218,9 @@ public final class ForyJson {
   /**
    * Serializes {@code value} using the generic codec captured by {@code declaredType}.
    *
-   * <p>An explicit declared type controls the complete root schema, including closed subtype
-   * metadata inside generic containers. A non-null value must be assignable to its raw type.
+   * <p>An explicit declared type selects the root codec and closed subtype metadata inside generic
+   * containers. Ordinary concrete object children write subclass fields; reading still uses their
+   * declared types. A non-null value must be assignable to its raw type.
    *
    * <p>This root API is not reentrant on the same instance. A custom codec invoked by this
    * operation must write nested content through the {@link StringJsonWriter} passed to its {@code

@@ -66,6 +66,7 @@ import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -80,8 +81,11 @@ import org.apache.fory.json.data.MapKeyFields;
 import org.apache.fory.json.data.Nested;
 import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.json.reader.JsonReader;
+import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Types;
@@ -92,6 +96,58 @@ public class JsonContainerTest extends ForyJsonTestModels {
   @Factory(dataProvider = "enableCodegen")
   public JsonContainerTest(boolean codegen) {
     super(codegen);
+  }
+
+  @Test
+  public void factoryOwnsObjectElements() {
+    AtomicInteger selected = new AtomicInteger();
+    JsonCodecFactory factory =
+        (type, resolver, runtimeType) -> {
+          if (type.getRawType() == Object.class) {
+            selected.incrementAndGet();
+            return new ObjectMarkerCodec();
+          }
+          return null;
+        };
+    ForyJson json =
+        newJsonBuilder().withModule(context -> context.registerCodecFactory(factory)).build();
+    TypeRef<List<Object>> listType = new TypeRef<List<Object>>() {};
+    TypeRef<Map<String, Object>> mapType = new TypeRef<Map<String, Object>>() {};
+    assertEquals(json.toJson(Collections.<Object>singletonList(7L), listType), "[\"W\"]");
+    assertEquals(
+        json.toJson(Collections.<String, Object>singletonMap("a", 7L), mapType), "{\"a\":\"W\"}");
+    assertEquals(json.fromJson("[\"x\"]", listType).get(0), "handled:x");
+    assertEquals(
+        json.fromJson("{\"a\":\"x\"}".getBytes(StandardCharsets.UTF_8), mapType).get("a"),
+        "handled:x");
+    assertTrue(selected.get() > 0);
+  }
+
+  private static final class ObjectMarkerCodec implements JsonValueCodec<Object> {
+    @Override
+    public void writeString(StringJsonWriter writer, Object value) {
+      writer.writeRawValue("\"W\"");
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, Object value) {
+      writer.writeRawValue("\"W\"");
+    }
+
+    @Override
+    public Object readLatin1(Latin1JsonReader reader) {
+      return "handled:" + reader.readString();
+    }
+
+    @Override
+    public Object readUtf16(Utf16JsonReader reader) {
+      return "handled:" + reader.readString();
+    }
+
+    @Override
+    public Object readUtf8(Utf8JsonReader reader) {
+      return "handled:" + reader.readString();
+    }
   }
 
   @Test

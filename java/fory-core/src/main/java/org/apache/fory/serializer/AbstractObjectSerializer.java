@@ -224,25 +224,30 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   // Reflective accessors can use Unsafe, which performs no checkcast. Keep this check at concrete
   // field-assignment owners because compatible skip may read a remote descriptor without storing
   // its value into that descriptor's synthetic type.
-  static void checkFieldValueType(SerializationFieldInfo fieldInfo, Object fieldValue) {
+  protected static void checkFieldValueType(SerializationFieldInfo fieldInfo, Object fieldValue) {
     // A fixed non-tracking serializer already guarantees its declared target. Only dynamic type
-    // dispatch or a tracked back-reference can produce a different runtime class.
-    if (fieldInfo.requiresFieldValueTypeCheck
-        && fieldValue != null
-        && !fieldInfo.type.isAssignableFrom(fieldValue.getClass())) {
-      throwIncompatibleFieldValue(fieldInfo, fieldValue);
+    // dispatch, a tracked back-reference, or a remote type wider than the local field can produce
+    // a value that cannot be stored by the local accessor.
+    if (fieldInfo.requiresFieldValueTypeCheck && fieldValue != null) {
+      Class<?> fieldType =
+          fieldInfo.fieldAccessor == null
+              ? fieldInfo.type
+              : fieldInfo.fieldAccessor.getField().getType();
+      if (!fieldType.isAssignableFrom(fieldValue.getClass())) {
+        throwIncompatibleFieldValue(fieldInfo, fieldValue, fieldType);
+      }
     }
   }
 
   private static void throwIncompatibleFieldValue(
-      SerializationFieldInfo fieldInfo, Object fieldValue) {
+      SerializationFieldInfo fieldInfo, Object fieldValue, Class<?> fieldType) {
     throw new DeserializationException(
         "Cannot store deserialized value of type "
             + fieldValue.getClass().getName()
             + " into field "
             + fieldInfo.qualifiedFieldName
             + " of type "
-            + fieldInfo.type.getName());
+            + fieldType.getName());
   }
 
   protected final void skipField(ReadContext readContext, SerializationFieldInfo remoteFieldInfo) {

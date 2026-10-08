@@ -269,6 +269,9 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
   protected final void setGeneratedFieldValue(
       Object targetObject, SerializationFieldInfo fieldInfo, Object fieldValue) {
     if (fieldInfo.fieldAccessor != null) {
+      if (!fieldInfo.isPrimitiveField) {
+        checkFieldValueType(fieldInfo, fieldValue);
+      }
       fieldInfo.fieldAccessor.putObject(targetObject, fieldValue);
       return;
     }
@@ -281,9 +284,6 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
 
   protected final void setReadFieldValue(
       Object targetObject, SerializationFieldInfo fieldInfo, Object fieldValue) {
-    if (!fieldInfo.isPrimitiveField) {
-      checkFieldValueType(fieldInfo, fieldValue);
-    }
     setGeneratedFieldValue(targetObject, fieldInfo, fieldValue);
   }
 
@@ -502,6 +502,10 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
           remoteField.serializationFieldInfo, localFieldInfo, fieldValue);
     }
     Object fieldValue = readRemoteField(readContext, remoteField);
+    if (remoteField.serializationFieldInfo.fieldAccessor != null
+        && !remoteField.serializationFieldInfo.isPrimitiveField) {
+      checkFieldValueType(remoteField.serializationFieldInfo, fieldValue);
+    }
     if (remoteField.compatibleCollectionArrayReadAction != null) {
       return fieldValue;
     }

@@ -313,7 +313,10 @@ public class FieldGroups {
           refMode == RefMode.TRACKING
               || (codecCategory == FieldCodecCategory.CONTAINER
                   ? !resolver.isCrossLanguage() && containerSerializerOverride == null
-                  : !useDeclaredTypeInfo);
+                  : !useDeclaredTypeInfo)
+              // A compatible read may decode the remote supertype while retaining a narrower
+              // local accessor. Even a fixed remote serializer does not prove that field's type.
+              || (field != null && !field.getType().isAssignableFrom(type));
     }
 
     private boolean needsClassInfoHolder(TypeResolver resolver, Class<?> cls) {
