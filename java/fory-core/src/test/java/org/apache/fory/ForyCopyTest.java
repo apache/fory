@@ -79,13 +79,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.apache.fory.collection.LazyMap;
+import org.apache.fory.config.Language;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
+import org.apache.fory.exception.SerializationException;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.EnumSerializerTest;
 import org.apache.fory.serializer.EnumSerializerTest.EnumFoo;
+import org.apache.fory.serializer.NonSerializableSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.collection.ChildContainerSerializersTest.ChildArrayDeque;
 import org.apache.fory.serializer.collection.SynchronizedSerializersTest;
@@ -452,6 +455,31 @@ public class ForyCopyTest extends ForyTestBase {
     {
       CollectionFields collectionFields = UnmodifiableSerializersTest.createCollectionFields();
       assertEquals(fory.copy(collectionFields).toCanEqual(), collectionFields.toCanEqual());
+    }
+  }
+
+  @Test
+  public void testCopyNonSerializableJdkClass() {
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Class<? extends Serializer> serializerClass =
+        fory.getTypeResolver().getSerializerClass(java.lang.Package.class);
+    Assert.assertSame(serializerClass, NonSerializableSerializer.class);
+  }
+
+  @Test
+  public void testSerializeNonSerializableJdkClassStillThrows() {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefCopy(true)
+            .requireClassRegistration(false)
+            .build();
+    try {
+      fory.serialize(String.class.getPackage());
+      Assert.fail("Expected serialization of java.lang.Package to fail");
+    } catch (SerializationException e) {
+      Assert.assertTrue(e.getCause() instanceof UnsupportedOperationException);
+      Assert.assertTrue(e.getMessage().contains("doesn't support serialization"));
     }
   }
 }
