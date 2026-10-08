@@ -239,7 +239,7 @@ def publish_jvm(languages="all", mode="release"):
     ):
         raise RuntimeError(f"Invalid {JVM_RELEASE_WORKTREE_ENV}: {release_worktree}")
     _require_publication_authority(mode)
-    _prepare_jvm_build()
+    _ensure_openjdk25()
     if "java" not in langs:
         if mode == "release":
             _run_release_cmd(JAVA_RELEASE_PACKAGE_CMD, "java")
@@ -307,7 +307,7 @@ def build_jvm_artifacts(v, output):
     """Build the unsigned JVM release repository without publishing it."""
     _check_release_version(v)
     _require_jvm_release_version(v)
-    _prepare_jvm_build()
+    _ensure_openjdk25()
     output = os.path.abspath(output)
     if os.path.exists(output):
         raise FileExistsError(f"JVM artifact output already exists: {output}")
@@ -402,7 +402,7 @@ def verify_ci_artifacts(
         cwd=PROJECT_ROOT_DIR,
         text=True,
     ).strip()
-    _prepare_jvm_build()
+    _ensure_openjdk25()
 
     os.makedirs(os.path.dirname(output), exist_ok=True)
     root = (
@@ -1315,10 +1315,7 @@ def _clean_release_path(path):
     subprocess.check_call(["git", "clean", "-ffdx", "."], cwd=cwd)
 
 
-def _prepare_jvm_build():
-    # Ant writes ZIP timestamps in the JVM's local timezone, even with a fixed
-    # outputTimestamp. Publication and independent rebuilds must both use UTC.
-    os.environ["TZ"] = "UTC"
+def _ensure_openjdk25():
     runtime = _read_java_runtime(_java_tool("java"))
     # The JDK25 multi-release Maven profile is JVM-activated; a lower release
     # JDK silently publishes a jar without the required JDK25 overlay.

@@ -48,6 +48,7 @@ import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonDuplicateProperties;
 import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonInclude;
@@ -73,6 +74,7 @@ final class JsonMixinAnnotations {
         JsonByteArray.class,
         JsonCodec.class,
         JsonCreator.class,
+        JsonDuplicateProperties.class,
         JsonFormat.class,
         JsonIgnore.class,
         JsonInclude.class,

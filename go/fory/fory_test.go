@@ -274,17 +274,17 @@ func TestSerializeStructSimple(t *testing.T) {
 		type A struct {
 			F1 []string
 		}
+		type SimpleB struct {
+			F1 []string
+			F2 map[string]int32
+		}
 		require.Nil(t, fory.RegisterStructByName(A{}, "example.A"))
+		require.Nil(t, fory.RegisterStructByName(SimpleB{}, "example.SimpleB"))
 		serde(t, fory, A{})
 		serde(t, fory, &A{})
 		serde(t, fory, A{F1: []string{"str1", "", "str2"}})
 		serde(t, fory, &A{F1: []string{"str1", "", "str2"}})
 
-		type SimpleB struct {
-			F1 []string
-			F2 map[string]int32
-		}
-		require.Nil(t, fory.RegisterStructByName(SimpleB{}, "example.SimpleB"))
 		serde(t, fory, SimpleB{})
 		serde(t, fory, SimpleB{
 			F1: []string{"str1", "", "str2"},
@@ -410,24 +410,24 @@ func newFoo() Foo {
 func TestSerializeStruct(t *testing.T) {
 	for _, referenceTracking := range []bool{false, true} {
 		fory := NewFory(WithXlang(true), WithCompatible(false), WithRefTracking(referenceTracking))
+		type A struct {
+			F1 Bar
+			F2 any
+		}
 		require.Nil(t, fory.RegisterStructByName(Bar{}, "example.Bar"))
+		require.Nil(t, fory.RegisterStructByName(A{}, "example.A"))
+		require.Nil(t, fory.RegisterStructByName(Foo{}, "example.Foo"))
 		serde(t, fory, &Bar{})
 		bar := Bar{F1: 1, F2: "str"}
 		serde(t, fory, bar)
 		serde(t, fory, &bar)
 
-		type A struct {
-			F1 Bar
-			F2 any
-		}
-		require.Nil(t, fory.RegisterStructByName(A{}, "example.A"))
 		serde(t, fory, A{})
 		serde(t, fory, &A{})
 		// Use int64 for any fields since xlang deserializes integers to int64
 		serde(t, fory, A{F1: Bar{F1: 1, F2: "str"}, F2: int64(-1)})
 		serde(t, fory, &A{F1: Bar{F1: 1, F2: "str"}, F2: int64(-1)})
 
-		require.Nil(t, fory.RegisterStructByName(Foo{}, "example.Foo"))
 		foo := newFoo()
 		serde(t, fory, foo)
 		serde(t, fory, &foo)
@@ -436,11 +436,17 @@ func TestSerializeStruct(t *testing.T) {
 
 func TestSerializeCircularReference(t *testing.T) {
 	fory := NewFory(WithXlang(true), WithCompatible(false), WithRefTracking(true))
+	type A struct {
+		A1 *A
+	}
+	type CircularRefB struct {
+		F1 string
+		F2 *CircularRefB
+		F3 *CircularRefB
+	}
+	require.Nil(t, fory.RegisterStructByName(A{}, "example.A"))
+	require.Nil(t, fory.RegisterStructByName(CircularRefB{}, "example.CircularRefB"))
 	{
-		type A struct {
-			A1 *A
-		}
-		require.Nil(t, fory.RegisterStructByName(A{}, "example.A"))
 		// If use `A{}` instead of `&A{}` and pass `a` instead of `&a`, there will be serialization data duplication
 		// and can't be deserialized by other languages too.
 		// TODO(chaokunyang) If pass by value(have a copy) and there are some inner value reference, return a readable
@@ -455,12 +461,6 @@ func TestSerializeCircularReference(t *testing.T) {
 		require.Same(t, a1, a1.A1)
 	}
 	{
-		type CircularRefB struct {
-			F1 string
-			F2 *CircularRefB
-			F3 *CircularRefB
-		}
-		require.Nil(t, fory.RegisterStructByName(CircularRefB{}, "example.CircularRefB"))
 		b := &CircularRefB{F1: "str"}
 		b.F2 = b
 		b.F3 = b
@@ -909,4 +909,232 @@ func convertRecursively(newVal, tmplVal reflect.Value) (reflect.Value, error) {
 		return reflect.Zero(tmplVal.Type()),
 			fmt.Errorf("cannot convert %s to %s", newVal.Type(), tmplVal.Type())
 	}
+}
+
+type freezeDummyExtSerializer struct{}
+
+func (freezeDummyExtSerializer) WriteData(ctx *WriteContext, value reflect.Value) {}
+func (freezeDummyExtSerializer) ReadData(ctx *ReadContext, value reflect.Value)   {}
+
+type freezeDummyUnionSerializer struct{}
+
+func (freezeDummyUnionSerializer) GetType() reflect.Type                            { return reflect.TypeOf(struct{}{}) }
+func (freezeDummyUnionSerializer) WriteData(ctx *WriteContext, value reflect.Value) {}
+func (freezeDummyUnionSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+}
+func (freezeDummyUnionSerializer) ReadData(ctx *ReadContext, value reflect.Value) {}
+func (freezeDummyUnionSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+}
+func (freezeDummyUnionSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+}
+
+func assertAllRegistrationsFrozen(t *testing.T, f *Fory) {
+	t.Helper()
+	require.True(t, f.IsFrozen(), "Fory should be frozen")
+	require.True(t, f.GetTypeResolver().IsFrozen(), "TypeResolver should be frozen")
+
+	type lateType struct{ Val int32 }
+	type lateEnum int32
+
+	err := f.RegisterStruct(lateType{}, 9901)
+	require.ErrorIs(t, err, ErrRegistrationFrozen)
+
+	err = f.RegisterStructByName(lateType{}, "test.LateStruct")
+	require.ErrorIs(t, err, ErrRegistrationFrozen)
+
+	err = f.RegisterEnum(lateEnum(1), 9902)
+	require.ErrorIs(t, err, ErrRegistrationFrozen)
+
+	err = f.RegisterEnumByName(lateEnum(1), "test.LateEnum")
+	require.ErrorIs(t, err, ErrRegistrationFrozen)
+
+	err = f.RegisterUnion(lateType{}, 9903, freezeDummyUnionSerializer{})
+	require.ErrorIs(t, err, ErrRegistrationFrozen)
+
+	err = f.RegisterUnionByName(lateType{}, "test.LateUnion", freezeDummyUnionSerializer{})
+	require.ErrorIs(t, err, ErrRegistrationFrozen)
+
+	err = f.RegisterExtension(lateType{}, 9904, freezeDummyExtSerializer{})
+	require.ErrorIs(t, err, ErrRegistrationFrozen)
+
+	err = f.RegisterExtensionByName(lateType{}, "test.LateExt", freezeDummyExtSerializer{})
+	require.ErrorIs(t, err, ErrRegistrationFrozen)
+
+	tr := f.GetTypeResolver()
+	require.ErrorIs(t, tr.RegisterStruct(reflect.TypeOf(lateType{}), STRUCT, 9905), ErrRegistrationFrozen)
+	require.ErrorIs(t, tr.RegisterEnum(reflect.TypeOf(lateEnum(1)), 9906), ErrRegistrationFrozen)
+	require.ErrorIs(t, tr.RegisterUnion(reflect.TypeOf(lateType{}), 9907, freezeDummyUnionSerializer{}), ErrRegistrationFrozen)
+	require.ErrorIs(t, tr.RegisterExtension(reflect.TypeOf(lateType{}), 9908, freezeDummyExtSerializer{}), ErrRegistrationFrozen)
+}
+
+func TestRegistrationFreeze(t *testing.T) {
+	type PreStruct struct{ Value int32 }
+	type LateStruct struct{ Name string }
+
+	t.Run("PreOperationRegistrationAllowed", func(t *testing.T) {
+		f := New()
+		require.False(t, f.IsFrozen())
+		require.False(t, f.GetTypeResolver().IsFrozen())
+		type OtherStruct struct{ Name string }
+		require.NoError(t, f.RegisterStruct(PreStruct{}, 100))
+		require.NoError(t, f.RegisterStructByName(OtherStruct{}, "test.OtherStruct"))
+	})
+
+	t.Run("FreezeAfterSerialize", func(t *testing.T) {
+		f := New()
+		require.NoError(t, f.RegisterStruct(PreStruct{}, 100))
+		_, err := f.Serialize(&PreStruct{Value: 42})
+		require.NoError(t, err)
+		assertAllRegistrationsFrozen(t, f)
+	})
+
+	t.Run("FreezeAfterFailedSerialize", func(t *testing.T) {
+		f := New()
+		require.NoError(t, f.RegisterStruct(PreStruct{}, 100))
+		// Passing struct value directly is disallowed and returns an error
+		_, err := f.Serialize(PreStruct{Value: 42})
+		require.Error(t, err)
+		assertAllRegistrationsFrozen(t, f)
+	})
+
+	t.Run("FreezeAfterDeserialize", func(t *testing.T) {
+		f := New()
+		require.NoError(t, f.RegisterStruct(PreStruct{}, 100))
+		bytes, err := f.Serialize(&PreStruct{Value: 42})
+		require.NoError(t, err)
+
+		reader := New()
+		require.NoError(t, reader.RegisterStruct(PreStruct{}, 100))
+		var target PreStruct
+		require.NoError(t, reader.Deserialize(bytes, &target))
+		assertAllRegistrationsFrozen(t, reader)
+	})
+
+	t.Run("FreezeAfterFailedDeserialize", func(t *testing.T) {
+		reader := New()
+		var target PreStruct
+		// Corrupt data fails deserialization
+		err := reader.Deserialize([]byte{0xff, 0xff}, &target)
+		require.Error(t, err)
+		assertAllRegistrationsFrozen(t, reader)
+	})
+
+	t.Run("FreezeAfterGenericSerializeAndDeserialize", func(t *testing.T) {
+		writer := New()
+		val := int32(123)
+		bytes, err := Serialize(writer, val)
+		require.NoError(t, err)
+		assertAllRegistrationsFrozen(t, writer)
+
+		reader := New()
+		var result int32
+		require.NoError(t, Deserialize(reader, bytes, &result))
+		assertAllRegistrationsFrozen(t, reader)
+	})
+
+	t.Run("FreezeAfterSerializeToAndDeserializeFrom", func(t *testing.T) {
+		writer := New()
+		buf := NewByteBuffer(nil)
+		val := int32(456)
+		require.NoError(t, writer.SerializeTo(buf, val))
+		assertAllRegistrationsFrozen(t, writer)
+
+		reader := New()
+		var target int32
+		require.NoError(t, reader.DeserializeFrom(buf, &target))
+		assertAllRegistrationsFrozen(t, reader)
+	})
+
+	t.Run("FreezeAfterStreamDeserialize", func(t *testing.T) {
+		data, err := New().Serialize(int32(789))
+		require.NoError(t, err)
+
+		f1 := New()
+		is := NewInputStream(bytes.NewReader(data))
+		var val1 int32
+		require.NoError(t, f1.DeserializeFromStream(is, &val1))
+		assertAllRegistrationsFrozen(t, f1)
+
+		f2 := New()
+		var val2 int32
+		require.NoError(t, f2.DeserializeFromReader(bytes.NewReader(data), &val2))
+		assertAllRegistrationsFrozen(t, f2)
+	})
+
+	t.Run("ExplicitFreezeAndResetDoesNotUnfreeze", func(t *testing.T) {
+		f := New()
+		require.False(t, f.IsFrozen())
+		f.Freeze()
+		require.True(t, f.IsFrozen())
+		assertAllRegistrationsFrozen(t, f)
+
+		// Reset should clear serialization state but keep registration permanently frozen
+		f.Reset()
+		require.True(t, f.IsFrozen())
+		assertAllRegistrationsFrozen(t, f)
+	})
+
+	t.Run("ResolverStateImmutabilityOnRejectedRegistration", func(t *testing.T) {
+		f := New()
+		_, err := f.Serialize(int32(1))
+		require.NoError(t, err)
+
+		tr := f.GetTypeResolver()
+		lateID := uint32(9999)
+		err = f.RegisterStruct(LateStruct{}, lateID)
+		require.ErrorIs(t, err, ErrRegistrationFrozen)
+
+		// Confirm internal maps and caches did not receive late registrations
+		_, hasID := tr.userTypeIdToTypeInfo[lateID]
+		require.False(t, hasID, "rejected userTypeId must not be present in userTypeIdToTypeInfo")
+
+		_, hasType := tr.typesInfo[reflect.TypeOf(LateStruct{})]
+		require.False(t, hasType, "rejected type must not be present in typesInfo")
+
+		_, hasPtrType := tr.typesInfo[reflect.TypeOf(&LateStruct{})]
+		require.False(t, hasPtrType, "rejected ptr type must not be present in typesInfo")
+	})
+}
+
+func TestIssue4118Reproducer(t *testing.T) {
+	type Item struct {
+		Count int32
+	}
+	type Late struct {
+		Name string
+	}
+
+	f := New()
+
+	require.NoError(t, f.RegisterStruct(Item{}, 100))
+
+	// First root operation.
+	item := Item{Count: 1}
+	_, err := f.Serialize(&item)
+	require.NoError(t, err)
+
+	// Registration after the first root operation must fail.
+	err = f.RegisterStruct(Late{}, 101)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrRegistrationFrozen)
+}
+
+func TestIssue4118FailedRootOperationFreezes(t *testing.T) {
+	type Item struct {
+		Count int32
+	}
+	type Late struct {
+		Name string
+	}
+
+	f := New()
+
+	// Direct struct serialization without pointer fails.
+	_, err := f.Serialize(Item{Count: 1})
+	require.Error(t, err)
+
+	// Registration after the failed root operation must still fail.
+	err = f.RegisterStruct(Late{}, 101)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrRegistrationFrozen)
 }

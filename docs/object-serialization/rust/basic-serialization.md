@@ -117,6 +117,41 @@ assert_eq!(person, decoded);
 | `RefCell<T>` | Interior mutability (runtime borrow checking)        |
 | `Mutex<T>`   | Thread-safe interior mutability                      |
 
+`Box`, `Rc`, `Arc`, `RcWeak`, and `ArcWeak` also support `str` and `[T]` as
+their target. For example, `Arc<str>` stores a shared string and `Box<[T]>`
+stores an owned slice. These types work at roots, in derived fields, and inside
+collections in both native and xlang modes.
+
+```rust
+use fory::{Fory, ForyStruct};
+use std::sync::Arc;
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct Message {
+    text: Arc<str>,
+    values: Arc<[i32]>,
+    #[fory(bytes)]
+    attachment: Box<[u8]>,
+}
+
+let mut fory = Fory::builder().build();
+fory.register::<Message>(100)?;
+let value = Message {
+    text: Arc::from("hello"),
+    values: vec![1, 2, 3].into(),
+    attachment: vec![0, 255].into(),
+};
+let bytes = fory.serialize(&value)?;
+let decoded: Message = fory.deserialize(&bytes)?;
+assert_eq!(value, decoded);
+```
+
+String pointers use the same string format as `String`. Slice pointers use the
+same format as `Vec<T>`: roots select the element's list, dense-array, or binary
+format, while derived fields default to LIST. Use `#[fory(array)]` for a dense
+primitive slice field, `#[fory(bytes)]` for binary, or `#[fory(list(...))]` to
+configure list elements.
+
 ### Date and Time
 
 | Rust Type   | Description                                             |
@@ -147,7 +182,7 @@ let later = timestamp.checked_add_duration(duration)?;
 
 ```toml
 [dependencies]
-fory = { version = "1.7.6", features = ["chrono"] }
+fory = { version = "1.7.7", features = ["chrono"] }
 ```
 
 ### Custom Types

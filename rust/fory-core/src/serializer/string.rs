@@ -15,8 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use super::codec::SerializerCodec;
+use super::pointee::{PointeeCodec, PointeeSerializer};
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
+use crate::resolver::RefMode;
 use crate::serializer::util::read_basic_type_info;
 use crate::serializer::Serializer;
 use crate::type_id::TypeId;
@@ -53,10 +56,7 @@ impl Serializer for String {
 
     #[inline(always)]
     fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
-        let header = (value.len() as i32 as u64) << 2 | StrEncoding::Utf8 as u64;
-        context.writer.write_var_u36_small(header);
-        context.writer.write_utf8_string(value);
-        Ok(())
+        <Self as PointeeSerializer<str>>::write_pointee_data(value, context)
     }
 
     #[inline(always)]
@@ -108,6 +108,44 @@ impl Serializer for String {
     #[inline(always)]
     fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         read_basic_type_info::<Self>(context)
+    }
+}
+
+impl PointeeSerializer<str> for String {
+    const POINTEE_SIZE: usize = 0;
+
+    #[inline(always)]
+    fn write_pointee_data(value: &str, context: &mut WriteContext) -> Result<(), Error> {
+        let header = (value.len() as i32 as u64) << 2 | StrEncoding::Utf8 as u64;
+        context.writer.write_var_u36_small(header);
+        context.writer.write_utf8_string(value);
+        Ok(())
+    }
+}
+
+impl<const NULLABLE: bool, const TRACK_REF: bool> PointeeSerializer<str>
+    for SerializerCodec<String, NULLABLE, TRACK_REF>
+{
+    const POINTEE_SIZE: usize = 0;
+
+    #[inline(always)]
+    fn write_pointee_data(value: &str, context: &mut WriteContext) -> Result<(), Error> {
+        String::write_pointee_data(value, context)
+    }
+}
+
+impl<const NULLABLE: bool, const TRACK_REF: bool> PointeeCodec<str, String>
+    for SerializerCodec<String, NULLABLE, TRACK_REF>
+{
+    #[inline(always)]
+    fn write_pointee_with_mode(
+        value: &str,
+        context: &mut WriteContext,
+        ref_mode: RefMode,
+        write_type_info: bool,
+        _has_generics: bool,
+    ) -> Result<(), Error> {
+        Self::write_pointee(value, context, ref_mode, write_type_info)
     }
 }
 

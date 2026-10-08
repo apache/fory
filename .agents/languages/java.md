@@ -49,6 +49,19 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   values; use qualified names only when a real name conflict requires it.
 - If you run temporary tests with `java -cp`, run `mvn -T16 install -DskipTests` first so local Fory jars are current.
 - `WriteContext`, `ReadContext`, and `CopyContext` must stay explicit. Do not reintroduce `ThreadLocal` or ambient runtime-context patterns.
+- Do not register JVM shutdown hooks from Fory runtime code. A registered hook stays reachable
+  until JVM exit and keeps Fory's classloader loaded. Compiler pool threads are daemons that exit
+  when idle, so the pool needs no hook.
+- Submit Fory background work, such as async JIT compilation and descriptor warm-up, to
+  `CodeGenerator.getCompilationService()`, not to a JVM-global executor such as
+  `ForkJoinPool.commonPool()` or the default `CompletableFuture` async executor. A global pool's
+  threads serve the whole JVM, so their context classloader may not be the loader that loaded Fory.
+  `ForyJitCompilerThreadFactory` pins each compiler thread's context classloader to
+  Fory's defining loader. Native-image build time is the only exception: `CodeGenerator` is
+  initialized at build time, so using its compiler service there would store a direct executor in
+  the image, and descriptor warm-up keeps the common pool.
+- Generated source must qualify `java.lang` type names. A compiler thread's context classloader
+  may not see same-package application classes, so do not use it to detect type-name conflicts.
 - Java root deserialization graph memory budgeting belongs to `ReadContext`
   and is initialized by `Fory` root APIs. Public config is `maxGraphMemoryBytes`
   with fixed `128 MiB` default. Positive explicit values override the default;
@@ -261,6 +274,7 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   Copy the payload through the typed payload API, then swap destination values locally so the path
   stays stream-safe and avoids Android-dispatch helper drift.
 - Keep GraalVM feature code as a thin metadata/registration layer. Build time should publish metadata needed for runtime reconstruction, not retain concrete generated or user serializer instances in the image heap.
+- Fory JSON Native Image must ignore annotation-processor codec companions and subtype tables during both hosted analysis and runtime. The Native Image Feature owns model discovery, access preparation, subtype closure and code generation, regardless of processor artifacts on the application classpath. Keep processor artifact loading confined to ordinary JVM/Android paths.
 - If changes touch GraalVM bootstrap, serializer retention, native-image metadata, or `ObjectStreamSerializer` GraalVM behavior, verify the native-image build and run the produced binary; a plain Java compile is insufficient.
 - Put latest-JDK or virtual-thread tests in the latest-JDK test modules with the matching compiler/profile floor, and centralize runtime-version probing in existing compatibility utilities.
 - For JDK25+ zero-Unsafe work, preserve serializer-family selection by type and configuration. Do not switch a type from `ObjectStreamSerializer` or another Fory serializer family to `JavaSerializer`, a JDK stream fallback, or any broad `java.* Serializable` fallback by JDK version or no-arg-constructor shape.

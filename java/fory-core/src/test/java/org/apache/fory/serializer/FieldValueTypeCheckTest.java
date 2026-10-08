@@ -234,6 +234,90 @@ public class FieldValueTypeCheckTest {
   }
 
   @Test
+  public void testCompatibleNarrowField() throws Exception {
+    Class<?>[] writerTypes = compileNarrowFieldHolder(true, false);
+    Class<?>[] readerTypes = compileNarrowFieldHolder(false, false);
+    Fory writer = newNarrowFieldFory(writerTypes[0].getClassLoader(), false);
+    writer.register(writerTypes[0], HOLDER_ID);
+    writer.register(writerTypes[1], FIRST_VALUE_ID);
+    Fory reader = newNarrowFieldFory(readerTypes[0].getClassLoader(), false);
+    reader.register(readerTypes[0], HOLDER_ID);
+    reader.register(readerTypes[1], FIRST_VALUE_ID);
+    TypeDef remoteTypeDef = TypeDef.buildTypeDef(writer.getTypeResolver(), writerTypes[0]);
+    Descriptor readDescriptor =
+        reader
+            .getTypeResolver()
+            .createDescriptorGrouper(remoteTypeDef, readerTypes[0])
+            .getSortedDescriptors()
+            .stream()
+            .filter(descriptor -> descriptor.getName().equals("s"))
+            .findFirst()
+            .get();
+    Assert.assertSame(readDescriptor.getRawType(), Object.class);
+    Assert.assertSame(readDescriptor.getField().getType(), String.class);
+
+    Object valid = writerTypes[0].newInstance();
+    writerTypes[0].getField("s").set(valid, "string value");
+    writerTypes[0].getField("remoteOnly").set(valid, writerTypes[1].newInstance());
+    byte[] validBytes = writer.serialize(valid);
+    Object result = reader.deserialize(validBytes);
+    Assert.assertEquals(readerTypes[0].getField("s").get(result), "string value");
+
+    Object wrong = writerTypes[0].newInstance();
+    writerTypes[0].getField("s").set(wrong, writerTypes[1].newInstance());
+    DeserializationException error = assertTypeFailure(reader, writer.serialize(wrong));
+    Assert.assertTrue(hasMessage(error, "java.lang.String"), error.toString());
+
+    Object referenced = writerTypes[0].newInstance();
+    Object sharedValue = writerTypes[1].newInstance();
+    writerTypes[0].getField("aValue").set(referenced, sharedValue);
+    writerTypes[0].getField("s").set(referenced, sharedValue);
+    error = assertTypeFailure(reader, writer.serialize(referenced));
+    Assert.assertTrue(hasMessage(error, "java.lang.String"), error.toString());
+
+    Object unknown = writerTypes[0].newInstance();
+    writerTypes[0].getField("s").set(unknown, writerTypes[2].newInstance());
+    error = assertTypeFailure(reader, writer.serialize(unknown));
+    Assert.assertTrue(hasMessage(error, "java.lang.String"), error.toString());
+    Assert.assertTrue(hasMessage(error, "UnknownStruct"), error.toString());
+
+    result = reader.deserialize(validBytes);
+    Assert.assertEquals(readerTypes[0].getField("s").get(result), "string value");
+  }
+
+  @Test
+  public void testGeneratedCompatibleNarrowField() throws Exception {
+    Class<?>[] writerTypes = compileNarrowFieldHolder(true, true);
+    Class<?>[] readerTypes = compileNarrowFieldHolder(false, true);
+    Fory writer = newNarrowFieldFory(writerTypes[0].getClassLoader(), true);
+    writer.register(writerTypes[0], HOLDER_ID);
+    writer.register(writerTypes[1], FIRST_VALUE_ID);
+    writer.register(writerTypes[3], SECOND_VALUE_ID);
+    Fory reader = newNarrowFieldFory(readerTypes[0].getClassLoader(), true);
+    reader.register(readerTypes[0], HOLDER_ID);
+    reader.register(readerTypes[1], FIRST_VALUE_ID);
+    reader.register(readerTypes[3], SECOND_VALUE_ID);
+
+    Object valid = writerTypes[0].newInstance();
+    writerTypes[0].getField("s").set(valid, writerTypes[3].newInstance());
+    Object result = reader.deserialize(writer.serialize(valid));
+    Assert.assertSame(readerTypes[0].getField("s").get(result).getClass(), readerTypes[3]);
+
+    Object wrong = writerTypes[0].newInstance();
+    writerTypes[0].getField("s").set(wrong, writerTypes[1].newInstance());
+    DeserializationException error = assertTypeFailure(reader, writer.serialize(wrong));
+    Assert.assertTrue(hasMessage(error, readerTypes[3].getName()), error.toString());
+    Assert.assertTrue(hasGeneratedCompatibleFrame(error), error.toString());
+
+    Object referenced = writerTypes[0].newInstance();
+    Object sharedValue = writerTypes[1].newInstance();
+    writerTypes[0].getField("aValue").set(referenced, sharedValue);
+    writerTypes[0].getField("s").set(referenced, sharedValue);
+    error = assertTypeFailure(reader, writer.serialize(referenced));
+    Assert.assertTrue(hasMessage(error, readerTypes[3].getName()), error.toString());
+  }
+
+  @Test
   public void testObjectStreamLayer() {
     Fory writer = newFory(false, true);
     registerTypes(writer, StreamHolder.class, false);
@@ -284,6 +368,18 @@ public class FieldValueTypeCheckTest {
         .build();
   }
 
+  private static Fory newNarrowFieldFory(ClassLoader classLoader, boolean codegen) {
+    return Fory.builder()
+        .withXlang(false)
+        .withCodegen(codegen)
+        .withAsyncCompilation(false)
+        .withCompatible(true)
+        .withRefTracking(true)
+        .requireClassRegistration(false)
+        .withClassLoader(classLoader)
+        .build();
+  }
+
   private static Fory newTimeRefFory() {
     return Fory.builder()
         .withXlang(false)
@@ -316,6 +412,35 @@ public class FieldValueTypeCheckTest {
     };
   }
 
+  private static Class<?>[] compileNarrowFieldHolder(boolean writer, boolean concreteLocal)
+      throws Exception {
+    String simpleName = concreteLocal ? "GeneratedNarrowFieldHolder" : "NarrowFieldHolder";
+    String className = "org.apache.fory.serializer.dynamic." + simpleName;
+    String source =
+        "package org.apache.fory.serializer.dynamic;"
+            + " public class "
+            + simpleName
+            + " {"
+            + " public Object aValue;"
+            + (writer
+                ? " public Object s; public Object remoteOnly;"
+                : concreteLocal ? " public Target s;" : " public String s;")
+            + " public static class Payload {}"
+            + " public static class Target {}"
+            + (writer ? " public static class UnknownValue {}" : "")
+            + " }";
+    SimpleCompiler compiler = new SimpleCompiler();
+    compiler.setParentClassLoader(FieldValueTypeCheckTest.class.getClassLoader().getParent());
+    compiler.cook(source);
+    ClassLoader classLoader = compiler.getClassLoader();
+    return new Class<?>[] {
+      classLoader.loadClass(className),
+      classLoader.loadClass(className + "$Payload"),
+      writer ? classLoader.loadClass(className + "$UnknownValue") : null,
+      classLoader.loadClass(className + "$Target")
+    };
+  }
+
   private static void registerTypes(Fory fory, Class<?> holderType, boolean swapValues) {
     fory.register(holderType, HOLDER_ID);
     fory.register(swapValues ? Gadget.class : Widget.class, FIRST_VALUE_ID);
@@ -336,6 +461,17 @@ public class FieldValueTypeCheckTest {
     for (Throwable current = error; current != null; current = current.getCause()) {
       for (StackTraceElement frame : current.getStackTrace()) {
         if (frame.getClassName().equals(owner.getName())) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static boolean hasGeneratedCompatibleFrame(Throwable error) {
+    for (Throwable current = error; current != null; current = current.getCause()) {
+      for (StackTraceElement frame : current.getStackTrace()) {
+        if (frame.getClassName().contains("GeneratedNarrowFieldHolderForyRefCodecCompatible")) {
           return true;
         }
       }

@@ -405,6 +405,21 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
       // Add an ignored call here to make expression type to void.
       return new StaticInvoke(ExceptionUtils.class, "ignore", value);
     }
+    if (!descriptor.getRawType().isPrimitive()
+        && (descriptor.isTrackingRef()
+            || !typeResolver.isMonomorphic(descriptor)
+            || !descriptor.getField().getType().isAssignableFrom(descriptor.getRawType()))) {
+      // The descriptor reads the remote type, but Unsafe may write directly to the narrower
+      // local field. Keep statically typed, non-tracking reads free of this runtime check.
+      value =
+          new Expression.Invoke(
+              new Expression.Reference("this", TypeRef.of(GeneratedCompatibleSerializer.class)),
+              "checkedFieldValue",
+              TypeRef.of(Object.class),
+              remoteFieldInfo(descriptor),
+              value);
+      value = tryInlineCast(value, TypeRef.of(descriptor.getField().getType()));
+    }
     return super.setFieldValue(bean, descriptor, value);
   }
 

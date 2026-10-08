@@ -249,6 +249,23 @@ deserialization constructs the holder directly without an additional heap
 owner. Compatible schema evolution remains active for an external structural
 serializer nested behind any of these wrappers.
 
+For slices of external targets, use `Box<[UserSerializer]>`,
+`Rc<[UserSerializer]>`, or `Arc<[UserSerializer]>` as the serializer for the
+corresponding pointer to `[third_party::User]`. Fory's `RcWeak` and `ArcWeak`
+support the same syntax. Select it at roots with `serialize_with` and
+`deserialize_with`, or in a derived field:
+
+```rust
+#[derive(ForyStruct)]
+struct SharedUsers {
+    #[fory(with = std::sync::Arc<[UserSerializer]>)]
+    users: std::sync::Arc<[third_party::User]>,
+}
+```
+
+`#[fory(list(element(with = UserSerializer)))]` is also supported on these
+slice fields. Register `UserSerializer` before the first root operation.
+
 In a non-skipped derived field, keep every carrier constructor's canonical name
 visible, optionally with its module path. This applies both to the field's Rust
 type and to a `with` serializer tree. For example, write

@@ -32,6 +32,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Check ASF GitHub Actions allowlist
-        uses: apache/infrastructure-actions/allowlist-check@bddab88ea4e4874c2c159c18f3017b51ec278d03
+        uses: apache/infrastructure-actions/allowlist-check@b41ca1cbe4d8a214dea50788a0e037184a69ad3f
         with:
           scan-glob: ".github/**/*.y*ml"

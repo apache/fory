@@ -97,6 +97,7 @@ public final class ForyJsonExample {
         ClosedJsonConfigs.class.isAnnotationPresent(ForyJsonProvider.class));
     if (GraalvmSupport.isGraalRuntime()) {
       testHostedCodegenConfigurations();
+      JsonProcessorExample.verify();
     }
     testModels();
     testMethodAccessors();

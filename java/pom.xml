@@ -74,12 +74,10 @@
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <!-- Use one timestamp for NOTICE years and every release archive writer. -->
+    <!-- Remote resource NOTICE years use this timestamp, not the build date. -->
     <project.build.outputTimestamp>2026-01-01T00:00:00Z</project.build.outputTimestamp>
-    <!-- JDK 11 jar lacks the date option; the JDK 25+ release profile supplies it. -->
-    <fory.jar.date.option></fory.jar.date.option>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-    <guava.version>32.1.2-jre</guava.version>
+    <guava.version>33.8.0-jre</guava.version>
     <janino.version>3.1.12</janino.version>
     <jsr305.version>3.0.2</jsr305.version>
     <slf4j.version>2.0.12</slf4j.version>
@@ -106,9 +104,6 @@
     </profile>
     <profile>
       <id>apache-release</id>
-      <properties>
-        <fory.jar.date.option>--date=${project.build.outputTimestamp}</fory.jar.date.option>
-      </properties>
       <build>
         <plugins>
           <plugin>
@@ -181,6 +176,11 @@
         <groupId>com.google.guava</groupId>
         <artifactId>guava</artifactId>
         <version>${guava.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.code.findbugs</groupId>
+        <artifactId>jsr305</artifactId>
+        <version>${jsr305.version}</version>
       </dependency>
       <dependency>
         <groupId>org.codehaus.janino</groupId>

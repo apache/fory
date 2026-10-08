@@ -1241,6 +1241,19 @@ public final class JsonFieldInfo {
     throw new ForyJsonException("JSON property " + name + " is not nullable");
   }
 
+  /** Returns word {@code word} of the bits that mark the first {@code count} known members. */
+  @Internal
+  public static long readPrefixBits(int count, int word) {
+    int bits = count - (word << 6);
+    return bits >= Long.SIZE ? -1L : bits <= 0 ? 0L : (1L << bits) - 1;
+  }
+
+  /** Rejects a known JSON property that already appeared in the object being read. */
+  @Internal
+  public static void rejectDuplicateProperty(String name, String owner) {
+    throw new ForyJsonException("Duplicate JSON property " + name + " on " + owner);
+  }
+
   /** Returns constructor-workspace metadata for this deferred mutable property. */
   public JsonCreatorFieldInfo asCreatorField(int argumentIndex) {
     return new JsonCreatorFieldInfo(

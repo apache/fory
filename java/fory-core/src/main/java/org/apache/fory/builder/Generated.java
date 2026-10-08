@@ -32,6 +32,7 @@ import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.AbstractObjectSerializer;
 import org.apache.fory.serializer.CompatibleLayerSerializerBase;
+import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.StaticGeneratedStructSerializer;
 import org.apache.fory.type.Descriptor;
@@ -114,6 +115,11 @@ public interface Generated {
 
     public GeneratedCompatibleSerializer(TypeResolver typeResolver, Class<?> cls) {
       super(typeResolver, cls);
+    }
+
+    protected final Object checkedFieldValue(SerializationFieldInfo fieldInfo, Object fieldValue) {
+      checkFieldValueType(fieldInfo, fieldValue);
+      return fieldValue;
     }
 
     @Override

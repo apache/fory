@@ -342,14 +342,16 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
               "_f_remoteField.serializationFieldInfo",
               "localFieldInfo(" + localId + ")");
       if (scalarRead != null) {
-        code.append(debugRemoteReadCode("before read", "_f_remoteField", 4))
-            .append("    ")
+        // The same generated class can read remote Object or scalar fields for this local target.
+        // Only scalar-to-scalar schemas may use the direct scalar conversion reader.
+        code.append("    if (_f_remoteField.compatibleScalarRead) {\n")
+            .append(debugRemoteReadCode("before read", "_f_remoteField", 6))
+            .append("      ")
             .append(genSetFieldCode(descriptor, valueTypeRef, scalarRead))
             .append('\n')
-            .append(debugRemoteReadCode("after read", "_f_remoteField", 4))
-            .append("    return;\n")
-            .append("  }\n");
-        continue;
+            .append(debugRemoteReadCode("after read", "_f_remoteField", 6))
+            .append("      return;\n")
+            .append("    }\n");
       }
       code.append(debugRemoteReadCode("before read", "_f_remoteField", 4))
           .append("    if (_f_remoteField.serializationFieldInfo.fieldConverter != null) {\n")
@@ -410,16 +412,17 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
               "_f_remoteField.serializationFieldInfo",
               "localFieldInfo(" + localId + ")");
       if (scalarRead != null) {
-        code.append(debugRemoteReadCode("before read", "_f_remoteField", 4))
-            .append("    _f_recordValue")
+        // Record components obey the same remote-schema decision as mutable fields.
+        code.append("    if (_f_remoteField.compatibleScalarRead) {\n")
+            .append(debugRemoteReadCode("before read", "_f_remoteField", 6))
+            .append("      _f_recordValue")
             .append(componentIndex)
             .append(" = ")
             .append(scalarRead)
             .append(";\n")
-            .append(debugRemoteReadCode("after read", "_f_remoteField", 4))
-            .append("    break;\n")
-            .append("  }\n");
-        continue;
+            .append(debugRemoteReadCode("after read", "_f_remoteField", 6))
+            .append("      break;\n")
+            .append("    }\n");
       }
       code.append(debugRemoteReadCode("before read", "_f_remoteField", 4))
           .append("    SerializationFieldInfo _f_localField = localFieldInfo(")

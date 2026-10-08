@@ -48,6 +48,50 @@ struct UserSerializer {
 }
 
 #[derive(ForyStruct)]
+struct UnsizedUsers(
+    #[fory(with = Box<[UserSerializer]>)] Box<[User]>,
+    #[fory(with = RcWeak<[UserSerializer]>)] RcWeak<[User]>,
+    #[fory(with = Rc<[UserSerializer]>)] Rc<[User]>,
+    #[fory(list(element(with = UserSerializer)))] ArcWeak<[User]>,
+    #[fory(list(element(with = UserSerializer)))] Arc<[User]>,
+);
+
+#[test]
+fn unsized_carriers() {
+    for xlang in [false, true] {
+        for compatible in [false, true] {
+            let mut fory = Fory::builder()
+                .xlang(xlang)
+                .compatible(compatible)
+                .track_ref(true)
+                .build();
+            fory.register::<UserSerializer>(100).unwrap();
+            fory.register::<UnsizedUsers>(101).unwrap();
+            let users = vec![user("Ada", 37), user("Grace", 28)];
+            roundtrip::<Box<[UserSerializer]>>(&fory, &users.clone().into());
+            roundtrip::<Rc<[UserSerializer]>>(&fory, &users.clone().into());
+            roundtrip::<Arc<[UserSerializer]>>(&fory, &users.clone().into());
+            let rc: Rc<[User]> = users.clone().into();
+            let arc: Arc<[User]> = users.clone().into();
+            let value = UnsizedUsers(
+                users.clone().into(),
+                RcWeak::from(&rc),
+                rc,
+                ArcWeak::from(&arc),
+                arc,
+            );
+            let bytes = fory.serialize(&value).unwrap();
+            let decoded: UnsizedUsers = fory.deserialize(&bytes).unwrap();
+            assert_eq!(&*decoded.0, users);
+            assert_eq!(&*decoded.2, users);
+            assert_eq!(&*decoded.4, users);
+            assert!(Rc::ptr_eq(&decoded.1.upgrade().unwrap(), &decoded.2));
+            assert!(Arc::ptr_eq(&decoded.3.upgrade().unwrap(), &decoded.4));
+        }
+    }
+}
+
+#[derive(ForyStruct)]
 #[fory(target = Key)]
 struct KeySerializer {
     namespace: String,

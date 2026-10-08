@@ -211,7 +211,7 @@ Add the Fory dependency to `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  fory: ^1.7.6
+  fory: ^1.7.7
 
 dev_dependencies:
   build_runner: ^2.4.0

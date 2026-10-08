@@ -403,7 +403,8 @@ fn codec_selection_for(
         if is_transparent_carrier(&name) {
             let inner = single_type_arg(args, ty, &name)?;
             let child_meta = transparent_child_meta(meta);
-            let child_ty = codec_for_child(inner, &child_meta)?.ty;
+            let owned = pointee_owned_type(&name, inner);
+            let child_ty = codec_for_child(owned.as_ref().unwrap_or(inner), &child_meta)?.ty;
             let codec_ident = format_ident!("{name}Codec");
             return Ok(CodecSelection::plain(quote! {
                 fory_core::serializer::codec::#codec_ident<
@@ -678,7 +679,21 @@ fn selected_one_child_codec(
     }
     let target_children = exact_type_args(target_args, target, carrier, 1)?;
     let child_target = target_children[0];
-    let child = selected_child_codec(child_target, child_provider)?;
+    let owned_target = pointee_owned_type(carrier, child_target);
+    let owned_provider = pointee_owned_type(carrier, child_provider);
+    if owned_target.is_some() {
+        let provider_name = type_name_and_args(provider).map(|(name, _)| name);
+        if provider_name.as_deref() != Some(carrier) || owned_provider.is_none() {
+            return Err(syn::Error::new_spanned(
+                provider,
+                "unsized pointer serializers use Box<str>, Rc<str>, Arc<str>, or the corresponding pointer over [S] for an element serializer S",
+            ));
+        }
+    }
+    let child = selected_child_codec(
+        owned_target.as_ref().unwrap_or(child_target),
+        owned_provider.as_ref().unwrap_or(child_provider),
+    )?;
     let child_ty = child.ty;
 
     if carrier == "Option" {
@@ -1202,6 +1217,27 @@ fn is_transparent_carrier(name: &str) -> bool {
         name,
         "Box" | "Rc" | "Arc" | "RcWeak" | "ArcWeak" | "RefCell" | "Mutex"
     )
+}
+
+fn pointee_owned_type(carrier: &str, ty: &Type) -> Option<Type> {
+    if !matches!(carrier, "Box" | "Rc" | "Arc" | "RcWeak" | "ArcWeak") {
+        return None;
+    }
+    match ty {
+        Type::Slice(slice) => {
+            let elem = &slice.elem;
+            Some(syn::parse_quote! { ::std::vec::Vec<#elem> })
+        }
+        Type::Path(path)
+            if path.qself.is_none()
+                && path.path.segments.last().is_some_and(|segment| {
+                    segment.ident == "str" && matches!(segment.arguments, PathArguments::None)
+                }) =>
+        {
+            Some(syn::parse_quote! { ::std::string::String })
+        }
+        _ => None,
+    }
 }
 
 fn is_one_child_collection(name: &str) -> bool {

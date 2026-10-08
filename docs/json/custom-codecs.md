@@ -109,6 +109,10 @@ ForyJson json =
         .build();
 ```
 
+Factories are also consulted for `Object` elements and values of declared arrays, collections,
+and maps. A factory that claims `Object` replaces the default natural JSON value mapping for those
+occurrences.
+
 A configurable factory must override `factoryKey()` with a deterministic value covering every
 option that can change the created codec class, object model, or generated operations. The default
 factory class name is sufficient only for a configuration-free factory.

@@ -20,6 +20,7 @@
 package org.apache.fory.builder;
 
 import static org.apache.fory.codegen.CodeGenerator.sourcePkgLevelAccessible;
+import static org.apache.fory.codegen.CodeGenerator.sourcePublicAccessible;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -118,13 +119,19 @@ public class AccessorHelper {
       }
       if (accessible) {
         String methodName = descriptor.getName();
+        Class<?> rawType = descriptor.getRawType();
+        // Codecs in another class loader pass a non-public field type as its public super type, so
+        // the cast happens here, in the bean's runtime package.
+        boolean publicType = sourcePublicAccessible(rawType);
         String codeBody =
             StringUtils.format(
-                "${obj}.${fieldName} = ${fieldValue};",
+                "${obj}.${fieldName} = ${cast}${fieldValue};",
                 "obj",
                 OBJ_NAME,
                 "fieldName",
                 descriptor.getName(),
+                "cast",
+                publicType ? "" : "(" + ctx.type(rawType) + ") ",
                 "fieldValue",
                 FIELD_VALUE);
         ctx.addStaticMethod(
@@ -133,7 +140,7 @@ public class AccessorHelper {
             void.class,
             beanClass,
             OBJ_NAME,
-            descriptor.getRawType(),
+            publicType ? rawType : Object.class,
             FIELD_VALUE);
       }
       // getter/setter may lose some inner state of an object, so we set them to null to avoid

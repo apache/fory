@@ -131,7 +131,6 @@ import org.apache.fory.json.meta.JsonAnySetterAccessor;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.resolver.CodecRegistry.FactoryBinding;
-import org.apache.fory.json.resolver.JsonGeneratedClassRegistry.CompanionKey;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -196,6 +195,7 @@ public final class JsonSharedRegistry {
   private final boolean writeLongAsString;
   private final boolean escapeNonAscii;
   private final boolean failOnMissingRequiredProperties;
+  private final boolean failOnDuplicateProperties;
   private final JsonByteArray.Format byteArrayFormat;
   private final ClassLoader classLoader;
   private final JsonMixinAnnotations mixinAnnotations;
@@ -209,7 +209,6 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<Class<? extends MapKeyCodec>, MapKeyCodec> mapKeyCodecs;
   private final ConcurrentHashMap<Class<?>, GeneratedJsonCodec<?>> generatedCodecs;
   private final Set<Class<?>> typesWithoutGeneratedCodec;
-  private final ConcurrentHashMap<CompanionKey, GeneratedJsonCodec<?>> generatedCodecCapabilities;
   private final ConcurrentHashMap<GeneratedCodecKey, CompletableFuture<Class<?>>>
       generatedClassFutures;
   // Only ForyJson's fixed-pool reader-local caches publish production entries here, and each reader
@@ -258,6 +257,7 @@ public final class JsonSharedRegistry {
     writeLongAsString = config.writeLongAsString();
     escapeNonAscii = config.escapeNonAscii();
     failOnMissingRequiredProperties = config.failOnMissingRequiredProperties();
+    failOnDuplicateProperties = config.failOnDuplicateProperties();
     byteArrayFormat = config.byteArrayFormat();
     classLoader = config.classLoader();
     mixinAnnotations = new JsonMixinAnnotations(config);
@@ -273,7 +273,6 @@ public final class JsonSharedRegistry {
     mapKeyCodecs = new ConcurrentHashMap<>();
     generatedCodecs = new ConcurrentHashMap<>();
     typesWithoutGeneratedCodec = ConcurrentHashMap.newKeySet();
-    generatedCodecCapabilities = new ConcurrentHashMap<>();
     generatedClassFutures = new ConcurrentHashMap<>();
     cachedFieldNames = new ConcurrentHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
@@ -301,16 +300,11 @@ public final class JsonSharedRegistry {
   }
 
   /** Returns a complete immutable snapshot of every synchronously generated class. */
-  GeneratedClasses generatedClasses() {
+  Map<GeneratedCodecKey, Class<?>> generatedClasses() {
     if (codegen == null || asyncCompilationEnabled) {
       throw new IllegalStateException("Generated class snapshots require synchronous codegen");
     }
-    Map<GeneratedCodecKey, Class<?>> classes = completedClasses(generatedClassFutures);
-    Map<CompanionKey, GeneratedJsonCodec<?>> sourceCodecs =
-        generatedCodecCapabilities.isEmpty()
-            ? Collections.emptyMap()
-            : Collections.unmodifiableMap(new HashMap<>(generatedCodecCapabilities));
-    return new GeneratedClasses(classes, sourceCodecs);
+    return completedClasses(generatedClassFutures);
   }
 
   private static Map<GeneratedCodecKey, Class<?>> completedClasses(
@@ -329,26 +323,6 @@ public final class JsonSharedRegistry {
       classes.put(entry.getKey(), generatedClass);
     }
     return Collections.unmodifiableMap(classes);
-  }
-
-  static final class GeneratedClasses {
-    private final Map<GeneratedCodecKey, Class<?>> classes;
-    private final Map<CompanionKey, GeneratedJsonCodec<?>> sourceCodecs;
-
-    private GeneratedClasses(
-        Map<GeneratedCodecKey, Class<?>> classes,
-        Map<CompanionKey, GeneratedJsonCodec<?>> sourceCodecs) {
-      this.classes = classes;
-      this.sourceCodecs = sourceCodecs;
-    }
-
-    Map<GeneratedCodecKey, Class<?>> classes() {
-      return classes;
-    }
-
-    Map<CompanionKey, GeneratedJsonCodec<?>> sourceCodecs() {
-      return sourceCodecs;
-    }
   }
 
   CompletableFuture<Class<?>> stringWriterClass(
@@ -475,29 +449,15 @@ public final class JsonSharedRegistry {
   }
 
   GeneratedJsonCodec<?> generatedCodec(TypeRef<?> type) {
-    return generatedCodec(type, true);
-  }
-
-  private GeneratedJsonCodec<?> generatedCodec(TypeRef<?> type, boolean requireCompanion) {
-    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && !hostedCodegen) {
-      // Native hosted analysis owns reflection reachability and generated capabilities. A Java
-      // annotation-processor companion is an optional faster operation source, not a prerequisite.
-      return JsonGeneratedClassRegistry.sourceCodec(
-          new CompanionKey(type, mixinType(type.getRawType())));
-    }
-    GeneratedJsonCodec<?> codec =
-        generatedCodec(type.getRawType(), requireCompanion && !hostedCodegen);
-    if (codec != null && hostedCodegen) {
-      CompanionKey key = new CompanionKey(type, mixinType(type.getRawType()));
-      GeneratedJsonCodec<?> previous = generatedCodecCapabilities.putIfAbsent(key, codec);
-      if (previous != null && previous != codec) {
-        throw new IllegalStateException("Conflicting generated JSON companions for " + type);
-      }
-    }
-    return codec;
+    return generatedCodec(type.getRawType(), true);
   }
 
   private GeneratedJsonCodec<?> generatedCodec(Class<?> type, boolean requireCompanion) {
+    // Native Image's hosted Feature owns model discovery and code generation. Ignore processor
+    // artifacts at both image build time and runtime so the classpath cannot change that model.
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE || hostedCodegen) {
+      return null;
+    }
     Class<?> mixinType = mixinType(type);
     boolean directType = type.getDeclaredAnnotation(JsonType.class) != null;
     if (!directType && mixinType == null) {
@@ -515,7 +475,7 @@ public final class JsonSharedRegistry {
   }
 
   GeneratedJsonCodec<?> generatedCodecIfPresent(TypeRef<?> type) {
-    return generatedCodec(type, false);
+    return generatedCodec(type.getRawType(), false);
   }
 
   private GeneratedJsonCodec<?> generatedCodecIfPresent(Class<?> type, Class<?> mixinType) {
@@ -997,6 +957,10 @@ public final class JsonSharedRegistry {
       return new ResolvedCodec(codec, null);
     }
     if (rawType == Object.class) {
+      ResolvedCodec resolved = createModuleCodec(typeRef, localResolver, runtimeType);
+      if (resolved != null) {
+        return resolved;
+      }
       return new ResolvedCodec(localResolver.naturalCodec(), null);
     }
     if (rawType == Class.class) {
@@ -1070,6 +1034,10 @@ public final class JsonSharedRegistry {
   JsonValueCodec<?> createRuntimeCodec(Class<?> rawType, JsonTypeResolver localResolver) {
     ResolvedCodec resolved = resolveCodec(rawType, TypeRef.of(rawType), localResolver, null, true);
     return resolved == null ? null : resolved.codec;
+  }
+
+  boolean hasCodecFactories() {
+    return codecFactories.length != 0;
   }
 
   private JsonValueCodec<?> createExactCodec(
@@ -1277,6 +1245,11 @@ public final class JsonSharedRegistry {
     return failOnMissingRequiredProperties;
   }
 
+  /** Returns whether a repeated known property fails the read unless its class overrides it. */
+  public boolean failOnDuplicateProperties() {
+    return failOnDuplicateProperties;
+  }
+
   /** Returns the default representation used when selecting ordinary byte-array codecs. */
   @Internal
   public JsonByteArray.Format byteArrayFormat() {
@@ -1400,6 +1373,7 @@ public final class JsonSharedRegistry {
         Class<?> mixinType = mixinType(targetType);
         boolean loadGeneratedCodec =
             !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE
+                && !hostedCodegen
                 && (targetType.getDeclaredAnnotation(JsonType.class) != null || mixinType != null);
         GeneratedJsonCodec<?> generatedCodec =
             loadGeneratedCodec ? generatedCodecIfPresent(targetType, mixinType) : null;
@@ -1944,11 +1918,13 @@ public final class JsonSharedRegistry {
       throw new ForyJsonException(
           "Missing embedded inferred subtype table for " + baseType.getName());
     }
-    // A generated table owns source-level discriminator names after class-file obfuscation. Prefer
-    // it on every JVM; sealed reflection remains the unprocessed Java 17 fallback.
-    GeneratedJsonSubtypeTable table = loadGeneratedSubtypeTable(baseType);
-    if (table != null) {
-      return generatedSubtypes(baseType, table);
+    // JVM/Android processor tables preserve source names after obfuscation. Native Image instead
+    // derives and embeds its sealed closure during hosted analysis, ignoring processor artifacts.
+    if (!GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && !hostedCodegen) {
+      GeneratedJsonSubtypeTable table = loadGeneratedSubtypeTable(baseType);
+      if (table != null) {
+        return generatedSubtypes(baseType, table);
+      }
     }
     if (AndroidSupport.IS_ANDROID) {
       throw missingGeneratedSubtypeTable(baseType, mixinType(baseType));

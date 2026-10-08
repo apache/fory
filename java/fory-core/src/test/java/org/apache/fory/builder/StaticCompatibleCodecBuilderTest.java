@@ -43,6 +43,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.builder.Generated.GeneratedStaticCompatibleSerializer;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.TypeRef;
@@ -146,6 +147,60 @@ public class StaticCompatibleCodecBuilderTest {
       Assert.assertEquals(getField(readerType, result, "id"), 42);
       Assert.assertEquals(getField(readerType, result, "added"), "default");
       Assert.assertEquals(getField(readerType, result, "name"), xlang ? "xlang" : "native");
+    }
+  }
+
+  @Test
+  public void testStaticCompatibleNarrowField() throws Exception {
+    String className = "test.StaticNarrowFieldHolder";
+    CompilationResult writerResult =
+        compile(
+            className,
+            "package test; public class StaticNarrowFieldHolder {"
+                + " public Object s; public static class Payload {} }");
+    CompilationResult readerResult =
+        compile(
+            className,
+            "package test; public class StaticNarrowFieldHolder {"
+                + " public String s; public static class Payload {} }");
+    Assert.assertTrue(writerResult.success, writerResult.diagnostics());
+    Assert.assertTrue(readerResult.success, readerResult.diagnostics());
+    try (URLClassLoader writerLoader = writerResult.classLoader();
+        URLClassLoader readerLoader = readerResult.classLoader()) {
+      Class<?> writerType = writerLoader.loadClass(className);
+      Class<?> readerType = readerLoader.loadClass(className);
+      Fory writer = compatibleFory(writerLoader, writerType, false, "narrow-writer", false);
+      Fory reader = compatibleFory(readerLoader, readerType, false, "narrow-reader", false);
+      TypeDef remoteTypeDef = TypeDef.buildTypeDef(writer.getTypeResolver(), writerType);
+      Class<? extends Serializer> serializerClass =
+          CodecUtils.loadOrGenStaticCompatibleCodecClass(
+              reader.getTypeResolver(), cast(readerType), remoteTypeDef);
+      Serializer<?> staticSerializer =
+          serializerClass
+              .getConstructor(TypeResolver.class, Class.class, TypeDef.class)
+              .newInstance(reader.getTypeResolver(), readerType, remoteTypeDef);
+      reader.registerSerializer(readerType, staticSerializer);
+
+      Object valid = writerType.getConstructor().newInstance();
+      setField(writerType, valid, "s", "string value");
+      writer.setMetaWriteContext(new MetaWriteContext());
+      reader.setMetaReadContext(new MetaReadContext());
+      Object result = reader.deserialize(writer.serialize(valid));
+      Assert.assertEquals(getField(readerType, result, "s"), "string value");
+
+      Object wrong = writerType.getConstructor().newInstance();
+      setField(
+          writerType,
+          wrong,
+          "s",
+          writerLoader.loadClass(className + "$Payload").getConstructor().newInstance());
+      writer.setMetaWriteContext(new MetaWriteContext());
+      reader.setMetaReadContext(new MetaReadContext());
+      DeserializationException error =
+          Assert.expectThrows(
+              DeserializationException.class, () -> reader.deserialize(writer.serialize(wrong)));
+      Assert.assertTrue(hasStaticCompatibleFrame(error), error.toString());
+      Assert.assertTrue(hasMessage(error, "java.lang.String"), error.toString());
     }
   }
 
@@ -700,6 +755,26 @@ public class StaticCompatibleCodecBuilderTest {
           remoteField.descriptor.getName(), remoteField.serializationFieldInfo.codecCategory);
     }
     return categories;
+  }
+
+  private static boolean hasStaticCompatibleFrame(Throwable error) {
+    for (Throwable current = error; current != null; current = current.getCause()) {
+      for (StackTraceElement frame : current.getStackTrace()) {
+        if (frame.getClassName().contains("StaticNarrowFieldHolderForyCodecStaticCompatible")) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static boolean hasMessage(Throwable error, String text) {
+    for (Throwable current = error; current != null; current = current.getCause()) {
+      if (current.getMessage() != null && current.getMessage().contains(text)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @SuppressWarnings("unchecked")

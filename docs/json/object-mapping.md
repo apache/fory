@@ -58,8 +58,14 @@ Static, transient, synthetic, and `Class<?>` fields are excluded. `getClass()` a
 value type is `Class<?>` are also excluded. An annotation placed on an ineligible member is rejected
 instead of being silently ignored.
 
-An ordinary final field can be written but is not used as a mutable read sink. Use a record,
-`JsonCreator`, or a custom codec for immutable construction.
+Eligible instance fields, including ordinary `final` fields, are restored when reading JSON.
+When a subclass hides a superclass field with the same name, the subclass field is the JSON
+property in both directions. Ignoring that field does not expose the hidden superclass field.
+
+An ordinary object property uses its declared type when reading. When writing a subclass instance
+through a concrete declared base type, Fory writes the subclass's mapped properties. Reading the
+same JSON through the base type creates a base instance and ignores subclass-only properties.
+Use `@JsonSubTypes` or a custom codec when the reader must restore the subtype.
 
 ### Field mode
 
@@ -126,6 +132,26 @@ keep their existing behavior. Complete custom object codecs own their own missin
 This option does not change writing. If an inclusion policy omits a required property, the resulting
 JSON can be rejected by a strict reader. Preserve that property in the output or use a reader with
 the option disabled.
+
+## Duplicate properties
+
+By default, when a JSON object repeats a known property, the last occurrence wins. Enable
+`failOnDuplicateProperties(true)` to reject such an object instead:
+
+```java
+ForyJson json = ForyJson.builder()
+    .failOnDuplicateProperties(true)
+    .build();
+```
+
+The option defaults to `false` and applies to every Fory-owned object codec, including nested
+objects. Known properties are read-enabled fields, setters, creator parameters, and names flattened in
+by `JsonUnwrapped`. An explicit JSON null counts as an occurrence, also when `onNullRead(SKIP)` omits
+it. Unknown and ignored names are not checked, and repeated Any members keep their existing behavior.
+The read fails with a `ForyJsonException` that names the repeated property.
+
+To enable or disable the check for one class, annotate it with `JsonDuplicateProperties`; see
+[Annotations](annotations.md#jsonduplicateproperties). This option does not change writing.
 
 ## Kotlin object mapping
 

@@ -119,6 +119,10 @@ Notes:
   still uses the C# mapping shown above; declaration ownership is not a wire
   distinction.
 - Python `pyfory.Float16` and `pyfory.BFloat16` are reserved annotation markers; scalar values deserialize as native Python `float`.
+- Rust `Box<str>`, `Rc<str>`, and `Arc<str>` map to `string`. The corresponding
+  pointers to `[T]` retain the `Vec<T>` mapping, including its field annotations
+  for LIST, dense arrays, and binary. `RcWeak` and `ArcWeak` use the same target
+  mapping with nullable reference semantics; these carriers add no wire type IDs.
 - Python `BoolArray`, `Int8Array`, `Int16Array`, `Int32Array`, `Int64Array`, `UInt8Array`, `UInt16Array`, `UInt32Array`, `UInt64Array`, `Float16Array`, `BFloat16Array`, `Float32Array`, and `Float64Array` are public dense-array wrappers with list-like sequence behavior.
 - Python implementations and declared interfaces of `collections.abc.Sequence`,
   `Set`, and `Mapping`, including their mutable variants, map to `list`, `set`,

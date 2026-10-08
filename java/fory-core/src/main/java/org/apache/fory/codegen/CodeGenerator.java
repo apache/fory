@@ -81,7 +81,9 @@ public class CodeGenerator {
   // use this package when bean class name starts with java.
   private static final String FALLBACK_PACKAGE = Generated.class.getPackage().getName();
   public static final boolean ENABLE_FORY_GENERATED_CLASS_UNIQUE_ID;
-  private static int maxPoolSize = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
+  // Zero selects a default from the CPU count when the pool is created. This class is initialized
+  // at native-image build time, so a static initializer would size the pool for the build machine.
+  private static int maxPoolSize;
   private static ExecutorService compilationExecutorService;
 
   static {
@@ -256,7 +258,28 @@ public class CodeGenerator {
     }
   }
 
-  public static void seMaxCompilationThreadPoolSize(int maxCompilationThreadPoolSize) {
+  /**
+   * Sets the thread count of the compiler pool that runs async compilation and descriptor warm-up.
+   * The default is half the available processors, at least 1. A call after the pool exists resizes
+   * it: extra threads exit when they finish their current task.
+   *
+   * @param maxCompilationThreadPoolSize thread count, at least 1
+   */
+  public static synchronized void seMaxCompilationThreadPoolSize(int maxCompilationThreadPoolSize) {
+    Preconditions.checkArgument(
+        maxCompilationThreadPoolSize >= 1,
+        "Compilation thread pool size must be at least 1: " + maxCompilationThreadPoolSize);
+    if (compilationExecutorService instanceof ThreadPoolExecutor) {
+      ThreadPoolExecutor executor = (ThreadPoolExecutor) compilationExecutorService;
+      // ThreadPoolExecutor requires core <= max after each setter call.
+      if (maxCompilationThreadPoolSize > executor.getMaximumPoolSize()) {
+        executor.setMaximumPoolSize(maxCompilationThreadPoolSize);
+        executor.setCorePoolSize(maxCompilationThreadPoolSize);
+      } else {
+        executor.setCorePoolSize(maxCompilationThreadPoolSize);
+        executor.setMaximumPoolSize(maxCompilationThreadPoolSize);
+      }
+    }
     maxPoolSize = maxCompilationThreadPoolSize;
   }
 
@@ -266,10 +289,14 @@ public class CodeGenerator {
         // GraalVM build time can't reachable thread.
         return compilationExecutorService = new DirectExecutorService();
       }
+      int poolSize =
+          maxPoolSize > 0
+              ? maxPoolSize
+              : Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
       ThreadPoolExecutor executor =
           new ThreadPoolExecutor(
-              maxPoolSize,
-              maxPoolSize,
+              poolSize,
+              poolSize,
               5L,
               TimeUnit.SECONDS,
               new LinkedBlockingQueue<>(),
@@ -278,23 +305,10 @@ public class CodeGenerator {
       // Normally task won't be rejected by executor, since we used an unbound queue.
       // But when we shut down executor for debug, it'll be rejected by executor,
       // in such cases we just ignore the reject exception by log it.
+      // Idle threads time out and all threads are daemons, so the pool needs no shutdown hook. A
+      // hook would keep Fory's classloader reachable until JVM exit.
       executor.allowCoreThreadTimeOut(true);
       compilationExecutorService = executor;
-      Runtime.getRuntime()
-          .addShutdownHook(
-              new Thread(
-                  () -> {
-                    executor.shutdown();
-                    try {
-                      if (!executor.awaitTermination(1, TimeUnit.SECONDS)) {
-                        executor.shutdownNow();
-                      }
-                    } catch (InterruptedException e) {
-                      executor.shutdownNow();
-                      Thread.currentThread().interrupt();
-                    }
-                  },
-                  "fory-jit-compiler-shutdown"));
     }
     return compilationExecutorService;
   }

@@ -49,6 +49,7 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonDuplicateProperties;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.codec.AbstractJsonValueCodec;
@@ -551,21 +552,21 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
   public void nonEmptyFinalValues() throws Exception {
     ForyJson json = newJsonBuilder(true).defaultPropertyInclusion(Include.NON_EMPTY).build();
     for (String role : new String[] {"StringWriter", "Utf8Writer"}) {
-      String finalValues = writerSource(json, FinalNonEmptyValues.class, role);
+      String finalValues = generatedSource(json, FinalNonEmptyValues.class, role);
       for (String field :
           new String[] {".count;", ".total;", ".kind;", ".operation;", ".nested;"}) {
         assertTrue(finalValues.contains(field), field + " in " + finalValues);
       }
       assertFalse(finalValues.contains("JsonFieldInfo.isEmpty("), finalValues);
       // The wide bean is split into member helpers, so this covers the grouped writer shape.
-      String wideValues = writerSource(json, WideNonEmptyValues.class, role);
+      String wideValues = generatedSource(json, WideNonEmptyValues.class, role);
       assertTrue(wideValues.contains("Members("), wideValues);
       assertFalse(wideValues.contains("JsonFieldInfo.isEmpty("), wideValues);
       for (Class<?> type :
           new Class<?>[] {
             CustomNonEmptyValue.class, DecimalNonEmptyValue.class, DynamicNonEmptyValue.class
           }) {
-        String source = writerSource(json, type, role);
+        String source = generatedSource(json, type, role);
         assertTrue(source.contains("JsonFieldInfo.isEmpty("), source);
       }
     }
@@ -672,10 +673,34 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
         JsonTestSupport.generatedUtf8WriterClass(plain, value.getClass()),
         JsonTestSupport.generatedUtf8WriterClass(registered, value.getClass()));
     assertFalse(
-        writerSource(plain, value.getClass(), "Utf8Writer").contains("JsonFieldInfo.isEmpty("));
+        generatedSource(plain, value.getClass(), "Utf8Writer").contains("JsonFieldInfo.isEmpty("));
     assertTrue(
-        writerSource(registered, value.getClass(), "Utf8Writer")
+        generatedSource(registered, value.getClass(), "Utf8Writer")
             .contains("JsonFieldInfo.isEmpty("));
+  }
+
+  @Test
+  public void duplicateTrackingSource() throws Exception {
+    ForyJson json = newJsonBuilder(true).build();
+    for (String role : new String[] {"Latin1Reader", "Utf16Reader", "Utf8Reader"}) {
+      String lenient = generatedSource(json, DuplicateLenient.class, role);
+      assertFalse(lenient.contains("rejectDuplicate"), lenient);
+      assertFalse(lenient.contains("seen0"), lenient);
+      String strict = generatedSource(json, DuplicateStrict.class, role);
+      assertTrue(strict.contains("rejectDuplicate"), strict);
+      assertTrue(strict.contains("seen0"), strict);
+    }
+  }
+
+  public static class DuplicateLenient {
+    public int a;
+    public String b;
+  }
+
+  @JsonDuplicateProperties(fail = true)
+  public static class DuplicateStrict {
+    public int a;
+    public String b;
   }
 
   private static void assertJson(ForyJson json, Object value, String expected) {
@@ -683,7 +708,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
   }
 
-  private String writerSource(ForyJson json, Class<?> type, String role) throws Exception {
+  private String generatedSource(ForyJson json, Class<?> type, String role) throws Exception {
     JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
     ClassLoader loader = getClass().getClassLoader();
     List<String> sources = new ArrayList<>();

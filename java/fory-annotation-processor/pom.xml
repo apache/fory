@@ -77,6 +77,7 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
+          <excludes><exclude>META-INF/versions/**/*.java</exclude></excludes>
           <archive>
             <manifestEntries>
               <Multi-Release>true</Multi-Release>
@@ -92,6 +93,14 @@
       <id>sealed-types-java17</id>
       <activation><jdk>[17,)</jdk></activation>
       <build>
+        <resources>
+          <resource><directory>src/main/resources</directory></resource>
+          <resource>
+            <directory>src/main/java17</directory>
+            <targetPath>META-INF/versions/17</targetPath>
+            <includes><include>**/*.java</include></includes>
+          </resource>
+        </resources>
         <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
@@ -124,7 +133,8 @@
                       <include name="org/**/*.java"/>
                       <classpath><pathelement location="${project.build.outputDirectory}"/></classpath>
                       <compilerarg value="--release"/><compilerarg value="17"/>
-                      <compilerarg value="-sourcepath"/><compilerarg value=""/>
+                      <!-- Keep the empty value in one argument: javac ignores blank lines in Ant argfiles. -->
+                      <compilerarg value="--source-path="/>
                     </javac>
                   </target>
                 </configuration>
@@ -147,42 +157,14 @@
                 </configuration>
               </execution>
               <execution>
-                <id>inject-java17-sealed-types</id>
-                <phase>package</phase>
+                <id>prepare-java17-sealed-types</id>
+                <phase>prepare-package</phase>
                 <goals><goal>run</goal></goals>
                 <configuration>
                   <target>
-                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true"
-                         modificationtime="${project.build.outputTimestamp}">
-                      <zipfileset dir="${fory.processor.mr.classes}/17"
-                                  prefix="META-INF/versions/17" includes="**/*.class"/>
-                    </jar>
-                  </target>
-                </configuration>
-              </execution>
-              <execution>
-                <id>patch-multi-release-source-jar</id>
-                <phase>package</phase>
-                <goals><goal>run</goal></goals>
-                <configuration>
-                  <skip>${maven.source.skip}</skip>
-                  <target>
-                    <property
-                        name="multi.release.sources.jar"
-                        value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
-                    <available
-                        file="${multi.release.sources.jar}"
-                        property="multi.release.sources.jar.present"/>
-                    <fail
-                        unless="multi.release.sources.jar.present"
-                        message="Multi-release source patching requires ${multi.release.sources.jar}."/>
-                    <jar destfile="${multi.release.sources.jar}" update="true"
-                         modificationtime="${project.build.outputTimestamp}">
-                      <zipfileset dir="${project.basedir}/src/main/java17"
-                                  prefix="META-INF/versions/17">
-                        <include name="**/*.java"/>
-                      </zipfileset>
-                    </jar>
+                    <copy todir="${project.build.outputDirectory}/META-INF/versions/17">
+                      <fileset dir="${fory.processor.mr.classes}/17" includes="**/*.class"/>
+                    </copy>
                   </target>
                 </configuration>
               </execution>

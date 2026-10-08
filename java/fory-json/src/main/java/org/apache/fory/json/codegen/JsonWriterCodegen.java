@@ -317,6 +317,7 @@ abstract class JsonWriterCodegen {
             + "  writer.writeNull();\n"
             + "  return;\n"
             + "}\n"
+            + runtimeSubtypeWrite(ctx, type)
             + prettyEntry
             + bodyCode,
         void.class,
@@ -406,6 +407,7 @@ abstract class JsonWriterCodegen {
             + "  writer.writeNull();\n"
             + "  return;\n"
             + "}\n"
+            + runtimeSubtypeWrite(ctx, type)
             + prettyEntry
             + bodyCode,
         void.class,
@@ -526,6 +528,7 @@ abstract class JsonWriterCodegen {
             + "  writer.writeNull();\n"
             + "  return;\n"
             + "}\n"
+            + runtimeSubtypeWrite(ctx, type)
             + prettyEntry
             + code,
         void.class,
@@ -534,6 +537,20 @@ abstract class JsonWriterCodegen {
         Object.class,
         "value");
     return ctx.genCode();
+  }
+
+  private String runtimeSubtypeWrite(CodegenContext ctx, Class<?> type) {
+    String name = ctx.type(type);
+    return "if (value.getClass() != "
+        + name
+        + ".class) {\n"
+        + "  writer.typeResolver().getRuntimeTypeInfo(value.getClass())."
+        + writerSlotMethod()
+        + "()."
+        + writeMethod()
+        + "(writer, value);\n"
+        + "  return;\n"
+        + "}\n";
   }
 
   private String addPrettyWriter(

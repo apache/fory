@@ -313,6 +313,44 @@ public class Float16Test {
     assertEquals((short) 0x0001, Float16.MIN_VALUE.toBits());
   }
 
+  private static int encoded(float value) {
+    return Float16.toBits(value) & 0xFFFF;
+  }
+
+  @Test
+  public void testRoundsUpToMinValueJustAboveTheSubnormalMidpoint() {
+    // The midpoint between zero and the smallest subnormal is 2^-25. The tie goes to the even
+    // encoding, which is zero, so 2^-25 must encode as a zero of the matching sign.
+    assertEquals(encoded(Float.intBitsToFloat(0x33000000)), 0x0000);
+    assertEquals(encoded(Float.intBitsToFloat(0xb3000000)), 0x8000);
+    // The largest float strictly below the midpoint is nearer to zero than to 2^-24.
+    assertEquals(encoded(Float.intBitsToFloat(0x32ffffff)), 0x0000);
+
+    assertEquals(encoded(Float.intBitsToFloat(0x33000001)), 0x0001);
+    assertEquals(encoded(3.0e-8f), 0x0001);
+    assertEquals(encoded(4.4702e-8f), 0x0001);
+    assertEquals(encoded(Float.intBitsToFloat(0x337fffff)), 0x0001);
+    assertEquals(encoded(-3.0e-8f), 0x8001);
+    assertEquals(encoded((float) Math.pow(2, -24)), 0x0001);
+    assertEquals(Float16.parse("3e-8").toBits(), (short) 0x0001);
+  }
+
+  @Test
+  public void testNothingBetweenTheSubnormalMidpointAndMinValueIsFlushedToZero() {
+    // Every one of the 2 * (2^23 - 1) floats strictly between 2^-25 and 2^-24 is closer to 2^-24
+    // than to zero, so none of them may encode as a zero of either sign.
+    int flushed = 0;
+    for (int bits = 0x33000001; bits < 0x33800000; bits++) {
+      if (encoded(Float.intBitsToFloat(bits)) != 0x0001) {
+        flushed++;
+      }
+      if (encoded(Float.intBitsToFloat(bits | 0x80000000)) != 0x8001) {
+        flushed++;
+      }
+    }
+    assertEquals(flushed, 0, "floats in (2^-25, 2^-24) must round to MIN_VALUE");
+  }
+
   @Test
   public void testSizeConstants() {
     assertEquals(16, Float16.SIZE_BITS);

@@ -153,7 +153,9 @@ public final class SqlTimeSerializers {
 
     @Override
     public Timestamp copy(CopyContext copyContext, Timestamp value) {
-      return new Timestamp(value.getTime());
+      Timestamp copy = new Timestamp(value.getTime());
+      copy.setNanos(value.getNanos());
+      return copy;
     }
   }
 }

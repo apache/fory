@@ -77,6 +77,30 @@ assert!(Arc::ptr_eq(&decoded[0], &decoded[1]));
 
 ## Circular References with Weak Pointers
 
+Shared strings and slices also preserve identity with reference tracking enabled:
+
+```rust
+use fory::{ArcWeak, Fory};
+use std::sync::Arc;
+
+let fory = Fory::builder().track_ref(true).build();
+let text: Arc<str> = Arc::from("shared");
+let value = (ArcWeak::from(&text), text.clone(), text);
+let bytes = fory.serialize(&value)?;
+let decoded: (ArcWeak<str>, Arc<str>, Arc<str>) = fory.deserialize(&bytes)?;
+assert!(Arc::ptr_eq(&decoded.1, &decoded.2));
+assert!(Arc::ptr_eq(&decoded.0.upgrade().unwrap(), &decoded.1));
+```
+
+The same pattern works with `Rc<str>`, `Rc<[T]>`, and `Arc<[T]>` and their
+Fory weak wrappers. `RcWeak::<str>::new()` and `ArcWeak::<[T]>::new()` create
+empty weak values; expired weak values deserialize as empty. Use Fory's
+`RcWeak` and `ArcWeak` wrappers for serialization of standard-library weak pointers.
+
+Aliases of one allocation must use the same pointee type within a serialized
+graph. For example, share `Arc<[i32]>` consistently; mixing an `Arc<[i32; 2]>`
+with its coerced `Arc<[i32]>` view is unsupported when reference tracking is enabled.
+
 To serialize circular references like parent-child relationships or doubly-linked structures, use `RcWeak<T>` or `ArcWeak<T>` to break the cycle.
 
 **How it works:**

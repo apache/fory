@@ -210,7 +210,7 @@ void ArrayWriter::reset(uint32_t num_elements) {
   FORY_CHECK(data_size < std::numeric_limits<int>::max());
   int fixed_part_bytes =
       util::round_number_of_bytes_to_nearest_word(static_cast<int>(data_size));
-  assert((fixed_part_bytes >= data_size) && "too much elements");
+  assert((static_cast<uint64_t>(fixed_part_bytes) >= data_size) && "too much elements");
   buffer_->grow(header_in_bytes_ + fixed_part_bytes);
 
   // write num_elements and clear out null bits to header
