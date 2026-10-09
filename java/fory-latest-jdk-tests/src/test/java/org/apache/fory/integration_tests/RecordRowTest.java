@@ -21,6 +21,8 @@ package org.apache.fory.integration_tests;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import org.apache.fory.format.annotation.ForySchema;
+import org.apache.fory.format.annotation.ForyVersion;
 import org.apache.fory.format.encoder.Encoders;
 import org.apache.fory.format.encoder.RowEncoder;
 import org.apache.fory.format.row.binary.BinaryRow;
@@ -85,5 +87,108 @@ public class RecordRowTest {
     row.pointTo(buffer, 0, buffer.size());
     final TestRecordNestedInterface deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean.f1().f1(), bean.f1().f1());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Records with schema evolution. @ForyVersion on a record component propagates
+  // to the backing field and the accessor (its FIELD/METHOD targets), where the
+  // codec reads it, so a newer reader record can pick up older payloads and
+  // default components added later. The history interface still works because the
+  // bean is a record: live component names match the wire field names (record
+  // short-style naming).
+  // ---------------------------------------------------------------------------
+
+  public record PersonV1(String name, int age) {}
+
+  @ForySchema(removedFields = PersonV2.History.class)
+  public record PersonV2(String name, @ForyVersion(since = 2) String email) {
+    interface History {
+      @ForyVersion(until = 2)
+      int age();
+    }
+  }
+
+  @Test
+  public void recordSchemaEvolution_readsOlderPayloads() {
+    RowEncoder<PersonV1> writer =
+        Encoders.buildBeanCodec(PersonV1.class).withSchemaEvolution().build().get();
+    RowEncoder<PersonV2> reader =
+        Encoders.buildBeanCodec(PersonV2.class).withSchemaEvolution().build().get();
+    PersonV2 out = reader.decode(writer.encode(new PersonV1("Luna", 7)));
+    Assert.assertEquals(out.name(), "Luna");
+    Assert.assertNull(out.email());
+  }
+
+  @Test
+  public void recordSchemaEvolution_currentRoundTrip() {
+    RowEncoder<PersonV2> codec =
+        Encoders.buildBeanCodec(PersonV2.class).withSchemaEvolution().build().get();
+    PersonV2 in = new PersonV2("Mars", "mars@example.com");
+    Assert.assertEquals(codec.decode(codec.encode(in)), in);
+  }
+
+  /** Record with a primitive added at v2: an older payload must produce the primitive default. */
+  public record CounterV1(String name) {}
+
+  public record CounterV2(String name, @ForyVersion(since = 2) int count) {}
+
+  @Test
+  public void recordSchemaEvolution_primitiveDefault() {
+    RowEncoder<CounterV1> writer =
+        Encoders.buildBeanCodec(CounterV1.class).withSchemaEvolution().build().get();
+    RowEncoder<CounterV2> reader =
+        Encoders.buildBeanCodec(CounterV2.class).withSchemaEvolution().build().get();
+    CounterV2 out = reader.decode(writer.encode(new CounterV1("Luna")));
+    Assert.assertEquals(out.name(), "Luna");
+    Assert.assertEquals(out.count(), 0);
+  }
+
+  // A record component whose own type is a versioned record. The inner struct is
+  // inline in the outer's bytes with no per-inner hash, so the reader must pick an
+  // inner schema consistent with the outer's strict hash. This drives the nested
+  // cross-product enumeration with record-component field naming.
+  public record InnerV1(String name) {}
+
+  public record InnerV2(String name, @ForyVersion(since = 2) String tag) {}
+
+  public record OuterInnerV1(long id, InnerV1 inner) {}
+
+  public record OuterInnerV2(long id, InnerV2 inner) {}
+
+  @Test
+  public void recordSchemaEvolution_nestedRecordInnerNewerThanWriter() {
+    RowEncoder<OuterInnerV1> writer =
+        Encoders.buildBeanCodec(OuterInnerV1.class).withSchemaEvolution().build().get();
+    RowEncoder<OuterInnerV2> reader =
+        Encoders.buildBeanCodec(OuterInnerV2.class).withSchemaEvolution().build().get();
+    OuterInnerV2 out = reader.decode(writer.encode(new OuterInnerV1(42, new InnerV1("hello"))));
+    Assert.assertEquals(out.id(), 42);
+    Assert.assertEquals(out.inner().name(), "hello");
+    Assert.assertNull(out.inner().tag());
+  }
+
+  // A reference component added at v2 is absent from a v1 payload, so decode supplies null
+  // for it and the record's canonical constructor runs with that null. A constructor that
+  // rejects null for the added component would throw during decode; the supported pattern is
+  // to tolerate the missing value, e.g. by normalizing null to a default in the constructor.
+  public record DefaultedV1(String name) {}
+
+  public record DefaultedV2(String name, @ForyVersion(since = 2) String email) {
+    public DefaultedV2 {
+      if (email == null) {
+        email = "unknown";
+      }
+    }
+  }
+
+  @Test
+  public void recordSchemaEvolution_constructorDefaultsAddedComponent() {
+    RowEncoder<DefaultedV1> writer =
+        Encoders.buildBeanCodec(DefaultedV1.class).withSchemaEvolution().build().get();
+    RowEncoder<DefaultedV2> reader =
+        Encoders.buildBeanCodec(DefaultedV2.class).withSchemaEvolution().build().get();
+    DefaultedV2 out = reader.decode(writer.encode(new DefaultedV1("Luna")));
+    Assert.assertEquals(out.name(), "Luna");
+    Assert.assertEquals(out.email(), "unknown");
   }
 }
