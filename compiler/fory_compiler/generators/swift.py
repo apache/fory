@@ -137,6 +137,8 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
         self._qualified_type_names: dict[int, str] = {}
         self._schema_cache: dict[Path, Schema] = {}
         self._equatable_cache: dict[int, bool] = {}
+        # In-progress types whose provisional True a traversal depended on.
+        self._equatable_pending: set[int] = set()
         self._messages_requiring_class: set[int] = set()
         self._indirect_unions: set[int] = set()
         self._build_qualified_type_name_index()
@@ -1128,8 +1130,10 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
     ) -> bool:
         if visiting is None:
             visiting = set()
+            self._equatable_pending = set()
         key = id(union)
         if key in visiting:
+            self._equatable_pending.add(key)
             return True
         visiting.add(key)
         lineage = parent_stack or []
@@ -1138,8 +1142,10 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
                 field.field_type, parent_stack=lineage, visiting=visiting
             ):
                 visiting.remove(key)
+                self._equatable_pending.discard(key)
                 return False
         visiting.remove(key)
+        self._equatable_pending.discard(key)
         return True
 
     def message_supports_equatable(
@@ -1155,13 +1161,12 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
             return self._equatable_cache[key]
         if visiting is None:
             visiting = set()
+            self._equatable_pending = set()
         if key in visiting:
+            # Provisional back-edge answer: results built on it must not be
+            # cached until this in-progress node completes.
+            self._equatable_pending.add(key)
             return True
-        # A True computed while other types are still being visited may rely on
-        # a provisional cycle back-edge that a later case of the cycle root
-        # overturns, so only a cycle-root call may cache True. False is final
-        # either way: it never derives from a provisional True.
-        is_cycle_root = not visiting
         visiting.add(key)
 
         lineage = self._lineage_for_message(message)
@@ -1169,13 +1174,19 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
             if not self.type_supports_equatable(
                 field.field_type, parent_stack=lineage, visiting=visiting
             ):
+                # False never derives from a provisional True, so it is final.
                 self._equatable_cache[key] = False
                 visiting.remove(key)
+                self._equatable_pending.discard(key)
                 return False
 
-        if is_cycle_root:
-            self._equatable_cache[key] = True
         visiting.remove(key)
+        self._equatable_pending.discard(key)
+        # A True that still depends on an unresolved in-progress type may be
+        # overturned by a later case of that cycle, so cache it only once no
+        # provisional dependency remains; acyclic results always memoize.
+        if not self._equatable_pending:
+            self._equatable_cache[key] = True
         return True
 
     def _lineage_for_message(self, message: Message) -> list[Message]:

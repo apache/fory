@@ -509,3 +509,22 @@ def test_keyword_package_flatten_prefix_escapes_whole_identifier():
     namespaced = generate_swift(source, swift_namespace_style="enum")
     assert "public enum `Any` {" in namespaced
     assert "`Any`.ForyModule" in namespaced
+
+
+def test_acyclic_equatable_results_are_memoized():
+    depth = 12
+    parts = []
+    for i in range(depth):
+        parts.append(
+            f"message A{i} {{ list<A{i + 1}> left = 1; list<A{i + 1}> right = 2; }}"
+        )
+    parts.append(f"message A{depth} {{ int32 value = 1; }}")
+    schema = parse_schema("\n".join(parts))
+    generator = SwiftGenerator(schema, GeneratorOptions(output_dir=Path("/tmp")))
+
+    assert generator.message_supports_equatable(schema.messages[0])
+    # Without memoization of fully resolved acyclic dependencies, the two list
+    # fields per level re-traverse the whole chain (O(2^n) visits) and only the
+    # root result is cached.
+    for message in schema.messages:
+        assert id(message) in generator._equatable_cache

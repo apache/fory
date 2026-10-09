@@ -4414,3 +4414,20 @@ def test_swift_grpc_prefix_escapes_composed_symbol():
     content = next(iter(generate_service_files(schema, SwiftGenerator).values()))
     assert "Any_GreeterProvider" in content
     assert "`Any`" not in content
+
+
+def test_swift_grpc_keyword_service_name_without_package():
+    schema = parse_fdl(
+        dedent(
+            """
+            message Request { string name = 1; }
+            service Any {
+                rpc Echo (Request) returns (Request);
+            }
+            """
+        )
+    )
+    content = next(iter(generate_service_files(schema, SwiftGenerator).values()))
+    assert "AnyProvider" in content
+    assert "AnyMetadata" in content
+    assert "`Any`" not in content

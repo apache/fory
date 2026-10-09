@@ -51,9 +51,13 @@ class SwiftServiceMixin:
         return "_".join(self._raw_package_components_for_schema(self.schema))
 
     def _service_symbol(self, service: Service) -> str:
+        # Raw base: every emitted symbol appends a PascalCase suffix such as
+        # Provider or Metadata, and only the complete composed name is a Swift
+        # identifier, so escaping here would embed backticks mid-identifier
+        # (e.g. a service named Any must emit AnyProvider, not `Any`Provider).
         name = self.to_pascal_case(service.name)
         prefix = self._grpc_prefix()
-        return self.safe_type_identifier(f"{prefix}_{name}" if prefix else name)
+        return f"{prefix}_{name}" if prefix else name
 
     def swift_grpc_output_path(self, service: Service) -> str:
         package = self.schema.package
