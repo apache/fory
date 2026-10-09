@@ -157,6 +157,7 @@ type TypeResolver struct {
 	isXlang             bool
 	metaStringResolver  *MetaStringResolver
 	requireRegistration bool
+	frozen              bool
 
 	// String mappings
 	metaStrToStr     map[string]string
@@ -274,6 +275,16 @@ func (r *TypeResolver) Compatible() bool {
 // IsXlang returns whether xlang (cross-language) mode is enabled
 func (r *TypeResolver) IsXlang() bool {
 	return r.isXlang
+}
+
+// Freeze permanently freezes registration on this TypeResolver.
+func (r *TypeResolver) Freeze() {
+	r.frozen = true
+}
+
+// IsFrozen reports whether registration on this TypeResolver is frozen.
+func (r *TypeResolver) IsFrozen() bool {
+	return r.frozen
 }
 
 func (r *TypeResolver) getTypeInfoByType(type_ reflect.Type) *TypeInfo {
@@ -444,6 +455,9 @@ func (r *TypeResolver) initialize() {
 }
 
 func (r *TypeResolver) registerSerializer(type_ reflect.Type, typeId TypeId, s Serializer) error {
+	if r.frozen {
+		return ErrRegistrationFrozen
+	}
 	if prev, ok := r.typeToSerializers[type_]; ok {
 		return fmt.Errorf("type %s already has a serializer %s registered", type_, prev)
 	}
@@ -496,6 +510,9 @@ func validateOptionalFields(type_ reflect.Type) error {
 
 // RegisterStruct registers a type with a numeric user type ID for cross-language serialization.
 func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTypeID uint32) error {
+	if r.frozen {
+		return ErrRegistrationFrozen
+	}
 	// Check if already registered
 	if info, ok := r.userTypeIdToTypeInfo[userTypeID]; ok {
 		if info.Type == type_ {
@@ -556,6 +573,9 @@ func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTyp
 
 // RegisterUnion registers a union type with a numeric user type ID for cross-language serialization.
 func (r *TypeResolver) RegisterUnion(type_ reflect.Type, userTypeID uint32, serializer Serializer) error {
+	if r.frozen {
+		return ErrRegistrationFrozen
+	}
 	if serializer == nil {
 		return fmt.Errorf("RegisterUnion requires a non-nil serializer")
 	}
@@ -591,6 +611,9 @@ func (r *TypeResolver) RegisterUnion(type_ reflect.Type, userTypeID uint32, seri
 
 // RegisterEnum registers an enum type (numeric type in Go) with a user type ID.
 func (r *TypeResolver) RegisterEnum(type_ reflect.Type, userTypeID uint32) error {
+	if r.frozen {
+		return ErrRegistrationFrozen
+	}
 	// Check if already registered
 	if info, ok := r.userTypeIdToTypeInfo[userTypeID]; ok {
 		return fmt.Errorf("type %s with id %d has been registered", info.Type, userTypeID)
@@ -630,6 +653,9 @@ func (r *TypeResolver) RegisterEnum(type_ reflect.Type, userTypeID uint32) error
 }
 
 func (r *TypeResolver) registerEnumByName(type_ reflect.Type, namespace, typeName string) error {
+	if r.frozen {
+		return ErrRegistrationFrozen
+	}
 	// Check if already registered
 	if prev, ok := r.typeToSerializers[type_]; ok {
 		return fmt.Errorf("type %s already has a serializer %s registered", type_, prev)
@@ -668,6 +694,9 @@ func (r *TypeResolver) registerEnumByName(type_ reflect.Type, namespace, typeNam
 }
 
 func (r *TypeResolver) registerStructByName(type_ reflect.Type, namespace, typeName string) error {
+	if r.frozen {
+		return ErrRegistrationFrozen
+	}
 	if prev, ok := r.typeToSerializers[type_]; ok {
 		return fmt.Errorf("type %s already has a serializer %s registered", type_, prev)
 	}
@@ -710,6 +739,9 @@ func (r *TypeResolver) registerUnionByName(
 	typeName string,
 	serializer Serializer,
 ) error {
+	if r.frozen {
+		return ErrRegistrationFrozen
+	}
 	if serializer == nil {
 		return fmt.Errorf("RegisterUnionByName requires a non-nil serializer")
 	}
@@ -749,6 +781,9 @@ func (r *TypeResolver) registerExtensionByName(
 	typeName string,
 	userSerializer ExtensionSerializer,
 ) error {
+	if r.frozen {
+		return ErrRegistrationFrozen
+	}
 	if userSerializer == nil {
 		return fmt.Errorf("serializer cannot be nil for extension type %s", type_)
 	}
@@ -791,6 +826,9 @@ func (r *TypeResolver) RegisterExtension(
 	userTypeID uint32,
 	userSerializer ExtensionSerializer,
 ) error {
+	if r.frozen {
+		return ErrRegistrationFrozen
+	}
 	if userTypeID > maxUserTypeID {
 		return fmt.Errorf("typeID must be in range [0, 0xfffffffe], got %d", userTypeID)
 	}
