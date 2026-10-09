@@ -47,12 +47,13 @@ class SwiftServiceMixin:
         return [self._generate_swift_service(service) for service in services]
 
     def _grpc_prefix(self) -> str:
-        return "_".join(self._package_components_for_schema(self.schema))
+        # Raw components: the composed symbol is escaped once as a whole.
+        return "_".join(self._raw_package_components_for_schema(self.schema))
 
     def _service_symbol(self, service: Service) -> str:
         name = self.to_pascal_case(service.name)
         prefix = self._grpc_prefix()
-        return f"{prefix}_{name}" if prefix else name
+        return self.safe_type_identifier(f"{prefix}_{name}" if prefix else name)
 
     def swift_grpc_output_path(self, service: Service) -> str:
         package = self.schema.package

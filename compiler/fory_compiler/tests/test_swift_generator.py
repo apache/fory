@@ -451,3 +451,61 @@ def test_swift_generator_cli_option_overrides_schema_namespace_style():
     content = generate_swift(source, swift_namespace_style="flatten")
     assert "public enum Demo {" not in content
     assert "public struct Demo_Foo_User" in content
+
+
+def test_union_cycle_does_not_poison_message_equatable_cache():
+    content = generate_swift(
+        """
+        package demo;
+
+        union Wrapper {
+            string note = 1;
+            Node node = 2;
+            any extra = 3;
+        }
+
+        message Node {
+            Wrapper wrapper = 1;
+        }
+        """
+    )
+    assert "enum Wrapper: Equatable" not in content
+    assert "struct Node: Equatable" not in content
+    assert "public struct Node {" in content
+
+
+def test_nested_ref_target_resolves_through_parent_lineage():
+    content = generate_swift(
+        """
+        package demo;
+
+        message Outer {
+            message Holder {
+                ref Target t = 1;
+            }
+            message Target {
+                int32 x = 1;
+            }
+        }
+        """
+    )
+    assert "public final class Target" in content
+    assert "struct Target" not in content
+
+
+def test_keyword_package_flatten_prefix_escapes_whole_identifier():
+    source = """
+    package any;
+
+    message User {
+        int32 id = 1;
+    }
+    """
+    flattened = generate_swift(source, swift_namespace_style="flatten")
+    assert "public struct Any_User" in flattened
+    assert "Any_ForyModule" in flattened
+    assert "`Any`" not in flattened
+
+    namespaced = generate_swift(source, swift_namespace_style="enum")
+    assert "public enum `Any` {" in namespaced
+    assert "`Any`.ForyModule" in namespaced
