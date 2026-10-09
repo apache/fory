@@ -20,6 +20,7 @@
 module org.apache.fory.graalvm.tests {
   requires org.apache.fory.core;
   requires org.apache.fory.json;
+  requires static org.graalvm.nativeimage;
   requires java.sql;
 
   // Binary serialization acceptance retains its existing exported and opened model packages.

@@ -58,6 +58,12 @@
 
   <dependencies>
     <dependency>
+      <groupId>org.graalvm.sdk</groupId>
+      <artifactId>nativeimage</artifactId>
+      <version>23.1.0</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>org.apache.fory</groupId>
       <artifactId>fory-core</artifactId>
       <version>${project.version}</version>
@@ -97,6 +103,31 @@
           <target>${maven.compiler.source}</target>
           <proc>none</proc>
         </configuration>
+        <executions>
+          <execution>
+            <id>generate-json-companions</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+            <configuration>
+              <proc>only</proc>
+              <!-- The compiler excludes its own generated-sources directory from inputs. -->
+              <generatedSourcesDirectory>${project.build.directory}/generated-sources/json</generatedSourcesDirectory>
+              <includes>
+                <include>module-info.java</include>
+                <include>org/apache/fory/graalvm/JsonProcessorExample.java</include>
+              </includes>
+              <annotationProcessorPaths combine.self="override">
+                <path>
+                  <groupId>org.apache.fory</groupId>
+                  <artifactId>fory-annotation-processor</artifactId>
+                  <version>${project.version}</version>
+                </path>
+              </annotationProcessorPaths>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
 
       <plugin>

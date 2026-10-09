@@ -25,18 +25,13 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import org.apache.fory.annotation.Internal;
-import org.apache.fory.json.codec.GeneratedJsonCodec;
 import org.apache.fory.json.codegen.GeneratedCodecKey;
-import org.apache.fory.json.resolver.JsonSharedRegistry.GeneratedClasses;
-import org.apache.fory.reflect.TypeRef;
 
 /** Frozen exact-key registry of generated JSON classes retained in a Native Image. */
 @Internal
 public final class JsonGeneratedClassRegistry {
   private static Map<GeneratedCodecKey, Class<?>> pendingClasses = new HashMap<>();
-  private static Map<CompanionKey, GeneratedJsonCodec<?>> pendingCompanions = new HashMap<>();
   private static Map<GeneratedCodecKey, Class<?>> generatedClasses = Collections.emptyMap();
-  private static CompanionEntry[] companionEntries = new CompanionEntry[0];
 
   private JsonGeneratedClassRegistry() {}
 
@@ -45,47 +40,9 @@ public final class JsonGeneratedClassRegistry {
     if (pendingClasses == null) {
       throw new IllegalStateException("Fory JSON generated class registry is frozen");
     }
-    GeneratedClasses generated = hostedRegistry.generatedClasses();
     LinkedHashSet<Class<?>> added = new LinkedHashSet<>();
-    mergeClasses(generated.classes(), added);
-    mergeSourceCodecs(generated.sourceCodecs(), pendingCompanions, added);
-    return added;
-  }
-
-  /** Finalizes Native runtime lookup and releases hosted mutable state. */
-  public static synchronized void freeze() {
-    if (pendingClasses == null) {
-      return;
-    }
-    generatedClasses = pendingClasses;
-    snapshotCompanions();
-    pendingClasses = null;
-    pendingCompanions = null;
-  }
-
-  static Class<?> generatedClass(GeneratedCodecKey key) {
-    Map<GeneratedCodecKey, Class<?>> pending = pendingClasses;
-    if (pending != null) {
-      return pending.get(key);
-    }
-    return generatedClasses.get(key);
-  }
-
-  static GeneratedJsonCodec<?> sourceCodec(CompanionKey key) {
-    Map<CompanionKey, GeneratedJsonCodec<?>> pending = pendingCompanions;
-    if (pending != null) {
-      return pending.get(key);
-    }
-    for (CompanionEntry entry : companionEntries) {
-      if (entry.key.equals(key)) {
-        return entry.codec;
-      }
-    }
-    return null;
-  }
-
-  private static void mergeClasses(Map<GeneratedCodecKey, Class<?>> source, Set<Class<?>> added) {
-    for (Map.Entry<GeneratedCodecKey, Class<?>> entry : source.entrySet()) {
+    for (Map.Entry<GeneratedCodecKey, Class<?>> entry :
+        hostedRegistry.generatedClasses().entrySet()) {
       GeneratedCodecKey key = entry.getKey();
       Class<?> generatedClass = entry.getValue();
       Class<?> previous = pendingClasses.putIfAbsent(key, generatedClass);
@@ -96,73 +53,23 @@ public final class JsonGeneratedClassRegistry {
             "Conflicting generated Fory JSON classes for " + key.targetClass().getName());
       }
     }
+    return added;
   }
 
-  static void mergeSourceCodecs(
-      Map<CompanionKey, ? extends GeneratedJsonCodec<?>> source,
-      Map<CompanionKey, GeneratedJsonCodec<?>> target,
-      Set<Class<?>> added) {
-    for (Map.Entry<CompanionKey, ? extends GeneratedJsonCodec<?>> entry : source.entrySet()) {
-      GeneratedJsonCodec<?> codec = entry.getValue();
-      GeneratedJsonCodec<?> previous = target.putIfAbsent(entry.getKey(), codec);
-      if (previous == null) {
-        added.add(codec.getClass());
-      } else if (previous.getClass() != codec.getClass()) {
-        throw new IllegalStateException(
-            "Conflicting source-generated Fory JSON companions for " + entry.getKey().type);
-      }
+  /** Finalizes Native runtime lookup and releases hosted mutable state. */
+  public static synchronized void freeze() {
+    if (pendingClasses == null) {
+      return;
     }
+    generatedClasses = pendingClasses;
+    pendingClasses = null;
   }
 
-  private static void snapshotCompanions() {
-    // Companion keys retain TypeRef and Mixin identity hashes. Freeze them as entries so Native
-    // runtime lookup uses equality instead of a hosted HashMap bucket computed before image start.
-    companionEntries = new CompanionEntry[pendingCompanions.size()];
-    int index = 0;
-    for (Map.Entry<CompanionKey, GeneratedJsonCodec<?>> entry : pendingCompanions.entrySet()) {
-      companionEntries[index++] = new CompanionEntry(entry.getKey(), entry.getValue());
+  static Class<?> generatedClass(GeneratedCodecKey key) {
+    Map<GeneratedCodecKey, Class<?>> pending = pendingClasses;
+    if (pending != null) {
+      return pending.get(key);
     }
-  }
-
-  static final class CompanionKey {
-    private final TypeRef<?> type;
-    private final Class<?> mixinType;
-
-    CompanionKey(TypeRef<?> type, Class<?> mixinType) {
-      this.type = type;
-      this.mixinType = mixinType;
-    }
-
-    @Override
-    public boolean equals(Object other) {
-      if (this == other) {
-        return true;
-      }
-      if (!(other instanceof CompanionKey)) {
-        return false;
-      }
-      CompanionKey that = (CompanionKey) other;
-      return type.equals(that.type) && mixinType == that.mixinType;
-    }
-
-    @Override
-    public int hashCode() {
-      return type.hashCode() * 31 + System.identityHashCode(mixinType);
-    }
-  }
-
-  /**
-   * Entries are materialized by {@link #snapshotCompanions()} after points-to analysis. Native
-   * Image features must therefore register this type as containing image-heap instances before
-   * analysis starts.
-   */
-  public static final class CompanionEntry {
-    private final CompanionKey key;
-    private final GeneratedJsonCodec<?> codec;
-
-    private CompanionEntry(CompanionKey key, GeneratedJsonCodec<?> codec) {
-      this.key = key;
-      this.codec = codec;
-    }
+    return generatedClasses.get(key);
   }
 }
