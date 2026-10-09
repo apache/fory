@@ -20,6 +20,8 @@
 module org.apache.fory.graalvm.tests {
   requires org.apache.fory.core;
   requires org.apache.fory.json;
+  // Native Image's hosted API belongs to sdk on GraalVM 17 and nativeimage on newer releases.
+  requires static org.graalvm.sdk;
   requires static org.graalvm.nativeimage;
   requires java.sql;
 
