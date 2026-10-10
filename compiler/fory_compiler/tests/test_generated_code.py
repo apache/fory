@@ -1924,3 +1924,21 @@ def test_rust_rejects_same_output_path_collisions(
 
     assert exit_code == 1
     assert "Rust output path collision" in captured.err
+
+
+def test_cpp_list_element_modifiers_keep_field_spec():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo;
+
+            message Batch {
+                list<optional tagged uint64> xs = 1;
+            }
+            """
+        )
+    )
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert "::fory::F(1).list(" in cpp_output
+    assert ".tagged()" in cpp_output
+    assert "(xs_, ::fory::F(1));" not in cpp_output

@@ -4336,3 +4336,98 @@ def test_cpp_grpc_recursive_output_paths(tmp_path: Path):
         "demo_service.h",
         "demo_service_grpc.h",
     }
+
+
+def test_go_grpc_flattens_nested_payload_types():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo;
+
+            message Local {
+                message Deep { int32 x = 1; }
+            }
+            message Outer {
+                message Inner { int32 y = 1; }
+            }
+            service Echoer {
+                rpc DeepEcho (Local.Deep) returns (Outer.Inner);
+            }
+            """
+        )
+    )
+    content = next(iter(generate_service_files(schema, GoGenerator).values()))
+    assert "*Local_Deep" in content
+    assert "*Outer_Inner" in content
+    assert "*Local.Deep" not in content
+    assert "*Outer.Inner" not in content
+
+
+def test_go_grpc_imported_nested_payload_uses_imported_schema_style(tmp_path):
+    shared = tmp_path / "shared.fdl"
+    shared.write_text(
+        dedent(
+            """
+            package shared;
+            option go_nested_type_style = "camelcase";
+
+            message Outer {
+                message Inner { int32 y = 1; }
+            }
+            """
+        )
+    )
+    main = tmp_path / "main.fdl"
+    main.write_text(
+        dedent(
+            """
+            package demo;
+            import "shared.fdl";
+
+            service Echoer {
+                rpc Echo (Outer.Inner) returns (Outer.Inner);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(main)
+    content = next(iter(generate_service_files(schema, GoGenerator).values()))
+    assert "*shared.OuterInner" in content
+    assert "Outer.Inner" not in content
+
+
+def test_swift_grpc_prefix_escapes_composed_symbol():
+    schema = parse_fdl(
+        dedent(
+            """
+            package any;
+            option swift_namespace_style = "flatten";
+
+            message HelloRequest { string name = 1; }
+            message HelloReply { string text = 1; }
+            service Greeter {
+                rpc SayHello (HelloRequest) returns (HelloReply);
+            }
+            """
+        )
+    )
+    content = next(iter(generate_service_files(schema, SwiftGenerator).values()))
+    assert "Any_GreeterProvider" in content
+    assert "`Any`" not in content
+
+
+def test_swift_grpc_keyword_service_name_without_package():
+    schema = parse_fdl(
+        dedent(
+            """
+            message Request { string name = 1; }
+            service Any {
+                rpc Echo (Request) returns (Request);
+            }
+            """
+        )
+    )
+    content = next(iter(generate_service_files(schema, SwiftGenerator).values()))
+    assert "AnyProvider" in content
+    assert "AnyMetadata" in content
+    assert "`Any`" not in content

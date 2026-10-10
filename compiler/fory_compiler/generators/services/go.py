@@ -122,8 +122,21 @@ class GoServiceGeneratorMixin:
             if info:
                 alias, import_path, _ = info
                 tracker.add(alias, import_path)
-                return f"*{alias}.{type_ref}"
-        return f"*{type_ref}"
+                # Nested payload names must use the imported schema's Go
+                # nested-type style; a dot-qualified name is not a Go type.
+                location = getattr(type_def, "location", None)
+                imported_schema = (
+                    self._load_schema(location.file)
+                    if location is not None and location.file
+                    else None
+                )
+                type_name = (
+                    self._format_imported_type_name(type_ref, imported_schema)
+                    if imported_schema is not None
+                    else type_ref
+                )
+                return f"*{alias}.{type_name}"
+        return f"*{self.resolve_nested_type_name(type_ref)}"
 
     def _generate_client_interface(
         self, service: Service, tracker: ImportTracker
