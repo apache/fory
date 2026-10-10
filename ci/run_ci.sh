@@ -49,7 +49,7 @@ install_python() {
 install_pyfory() {
   echo "$(python -V), path $(which python)"
   "$ROOT"/ci/deploy.sh install_pyarrow
-  pip install Cython wheel pytest
+  pip install Cython wheel pytest 'PyYAML>=6.0'
   pushd "$ROOT/python"
   pip list
   echo "Install pyfory"
