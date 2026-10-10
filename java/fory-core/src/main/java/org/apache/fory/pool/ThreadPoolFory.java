@@ -35,6 +35,7 @@ import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.serializer.BufferCallback;
 
@@ -269,6 +270,46 @@ public class ThreadPoolFory extends AbstractThreadSafeFory {
     PooledEntry entry = acquire();
     try {
       return entry.fory.deserialize(channel, type);
+    } finally {
+      release(entry);
+    }
+  }
+
+  @Override
+  public <T> T deserialize(byte[] bytes, TypeRef<T> typeRef) {
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(bytes, typeRef);
+    } finally {
+      release(entry);
+    }
+  }
+
+  @Override
+  public <T> T deserialize(MemoryBuffer buffer, TypeRef<T> typeRef) {
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(buffer, typeRef);
+    } finally {
+      release(entry);
+    }
+  }
+
+  @Override
+  public <T> T deserialize(ForyInputStream inputStream, TypeRef<T> typeRef) {
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(inputStream, typeRef);
+    } finally {
+      release(entry);
+    }
+  }
+
+  @Override
+  public <T> T deserialize(ForyReadableChannel channel, TypeRef<T> typeRef) {
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(channel, typeRef);
     } finally {
       release(entry);
     }

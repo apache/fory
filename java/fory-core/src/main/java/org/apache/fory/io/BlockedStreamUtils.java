@@ -29,6 +29,7 @@ import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.util.ExceptionUtils;
 
@@ -80,6 +81,16 @@ public class BlockedStreamUtils {
 
   public static <T> T deserialize(Fory fory, ReadableByteChannel channel, Class<T> type) {
     return type.cast(readFromChannel(fory, channel, b -> fory.deserialize(b, type)));
+  }
+
+  @SuppressWarnings("unchecked")
+  public static <T> T deserialize(Fory fory, InputStream inputStream, TypeRef<T> typeRef) {
+    return (T) deserializeFromStream(fory, inputStream, buf -> fory.deserialize(buf, typeRef));
+  }
+
+  @SuppressWarnings("unchecked")
+  public static <T> T deserialize(Fory fory, ReadableByteChannel channel, TypeRef<T> typeRef) {
+    return (T) readFromChannel(fory, channel, b -> fory.deserialize(b, typeRef));
   }
 
   private static Object readFromChannel(

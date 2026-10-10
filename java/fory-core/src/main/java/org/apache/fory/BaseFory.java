@@ -25,6 +25,7 @@ import java.util.function.Function;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.serializer.Serializer;
@@ -233,6 +234,14 @@ public interface BaseFory {
   <T> T deserialize(ForyInputStream inputStream, Class<T> type);
 
   <T> T deserialize(ForyReadableChannel channel, Class<T> type);
+
+  <T> T deserialize(byte[] bytes, TypeRef<T> typeRef);
+
+  <T> T deserialize(MemoryBuffer buffer, TypeRef<T> typeRef);
+
+  <T> T deserialize(ForyInputStream inputStream, TypeRef<T> typeRef);
+
+  <T> T deserialize(ForyReadableChannel channel, TypeRef<T> typeRef);
 
   Object deserialize(byte[] bytes, Iterable<MemoryBuffer> outOfBandBuffers);
 

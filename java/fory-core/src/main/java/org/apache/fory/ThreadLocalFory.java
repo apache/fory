@@ -33,6 +33,7 @@ import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.serializer.BufferCallback;
 
@@ -144,6 +145,26 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
   @Override
   public <T> T deserialize(ForyReadableChannel channel, Class<T> type) {
     return currentFory().deserialize(channel, type);
+  }
+
+  @Override
+  public <T> T deserialize(byte[] bytes, TypeRef<T> typeRef) {
+    return currentFory().deserialize(bytes, typeRef);
+  }
+
+  @Override
+  public <T> T deserialize(MemoryBuffer buffer, TypeRef<T> typeRef) {
+    return currentFory().deserialize(buffer, typeRef);
+  }
+
+  @Override
+  public <T> T deserialize(ForyInputStream inputStream, TypeRef<T> typeRef) {
+    return currentFory().deserialize(inputStream, typeRef);
+  }
+
+  @Override
+  public <T> T deserialize(ForyReadableChannel channel, TypeRef<T> typeRef) {
+    return currentFory().deserialize(channel, typeRef);
   }
 
   @Override
