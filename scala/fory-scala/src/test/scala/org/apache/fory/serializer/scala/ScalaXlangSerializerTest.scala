@@ -39,6 +39,13 @@ class ScalaXlangSerializerTest extends AnyWordSpec with Matchers {
     runtime
   }
 
+  def registeredFory: Fory =
+    ForyScala.builder()
+      .withXlang(true)
+      .withRefTracking(true)
+      .requireClassRegistration(true)
+      .build()
+
   "fory scala xlang support" should {
     "serialize collections with canonical xlang serializers" in {
       val runtime = fory
@@ -122,6 +129,51 @@ class ScalaXlangSerializerTest extends AnyWordSpec with Matchers {
       copiedCyclic(0) shouldBe theSameInstanceAs(copiedCyclic)
     }
 
+    "rebuild declared Scala collection fields" in {
+      val runtime = registeredFory
+      runtime.register(classOf[XlangCollectionFields])
+      val value = XlangCollectionFields(
+        List("a", "b"),
+        Vector(1, 2),
+        Seq(3L, 4L),
+        Set("x", "y"),
+        Map("k" -> 1),
+        scala.collection.mutable.ArrayBuffer("m"),
+        scala.collection.mutable.HashSet(5),
+        scala.collection.mutable.HashMap("h" -> 2L),
+        Nil,
+        Map.empty)
+      val decoded = runtime.deserialize(runtime.serialize(value)).asInstanceOf[XlangCollectionFields]
+      decoded shouldEqual value
+      decoded.vector shouldBe a[Vector[_]]
+      decoded.buffer shouldBe a[scala.collection.mutable.ArrayBuffer[_]]
+      decoded.mutableSet shouldBe a[scala.collection.mutable.HashSet[_]]
+      decoded.mutableMap shouldBe a[scala.collection.mutable.HashMap[_, _]]
+    }
+
+    "round trip nested registered case classes" in {
+      val runtime = registeredFory
+      runtime.register(classOf[XlangLeaf])
+      runtime.register(classOf[XlangBranch])
+      val value = XlangBranch(
+        "root",
+        List(XlangLeaf(1, "a"), XlangLeaf(2, "b")),
+        Map("first" -> XlangLeaf(3, "c")))
+      runtime.deserialize(runtime.serialize(value)) shouldEqual value
+    }
+
+    "reject declared collection types that cannot be rebuilt" in {
+      val runtime = registeredFory
+      runtime.register(classOf[XlangUnsupportedField])
+      val bytes = runtime.serialize(XlangUnsupportedField(scala.collection.immutable.Queue("a")))
+      val error = intercept[RuntimeException] {
+        runtime.deserialize(bytes)
+      }
+      Iterator.iterate[Throwable](error)(_.getCause)
+        .takeWhile(_ != null)
+        .exists(e => String.valueOf(e.getMessage).contains("cannot rebuild declared type")) shouldBe true
+    }
+
     "enforce graph memory budget" in {
       val writer = fory
       val reader = ForyScala.builder()
@@ -142,3 +194,24 @@ class ScalaXlangSerializerTest extends AnyWordSpec with Matchers {
     }
   }
 }
+
+case class XlangCollectionFields(
+    list: List[String],
+    vector: Vector[Int],
+    seq: Seq[Long],
+    set: Set[String],
+    map: Map[String, Int],
+    buffer: scala.collection.mutable.ArrayBuffer[String],
+    mutableSet: scala.collection.mutable.HashSet[Int],
+    mutableMap: scala.collection.mutable.HashMap[String, Long],
+    emptyList: List[String],
+    emptyMap: Map[String, String])
+
+case class XlangLeaf(id: Int, name: String)
+
+case class XlangBranch(
+    name: String,
+    leaves: List[XlangLeaf],
+    byName: Map[String, XlangLeaf])
+
+case class XlangUnsupportedField(queue: scala.collection.immutable.Queue[String])
