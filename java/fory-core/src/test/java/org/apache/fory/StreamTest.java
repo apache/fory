@@ -44,6 +44,7 @@ import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.io.ForyStreamReader;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.test.bean.BeanA;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -272,6 +273,9 @@ public class StreamTest extends ForyTestBase {
     assertEquals(newObj, beanA);
     newObj = fory.deserialize(buf, BeanA.class);
     assertEquals(newObj, beanA);
+    buf.readerIndex(0);
+    newObj = fory.deserialize(buf, new TypeRef<BeanA>() {});
+    assertEquals(newObj, beanA);
   }
 
   @Test
@@ -306,6 +310,20 @@ public class StreamTest extends ForyTestBase {
 
       try (ForyReadableChannel channel = of(Files.newByteChannel(tempFile))) {
         Object newObj = fory.deserialize(channel, BeanA.class);
+        assertEquals(newObj, beanA);
+      } finally {
+        Files.delete(tempFile);
+      }
+    }
+    {
+      ByteArrayOutputStream bas = new ByteArrayOutputStream();
+      fory.serialize(bas, beanA);
+
+      Path tempFile = Files.createTempFile("readable_channel_test", "data_3");
+      Files.write(tempFile, bas.toByteArray());
+
+      try (ForyReadableChannel channel = of(Files.newByteChannel(tempFile))) {
+        Object newObj = fory.deserialize(channel, new TypeRef<BeanA>() {});
         assertEquals(newObj, beanA);
       } finally {
         Files.delete(tempFile);

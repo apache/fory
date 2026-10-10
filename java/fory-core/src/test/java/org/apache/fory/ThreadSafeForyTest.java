@@ -25,7 +25,11 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
+import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -38,8 +42,11 @@ import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
+import org.apache.fory.io.ForyInputStream;
+import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.pool.ThreadPoolFory;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
@@ -422,6 +429,39 @@ public class ThreadSafeForyTest extends ForyTestBase {
       MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
       fory.serialize(buffer, "abc");
       Assert.assertEquals(fory.deserialize(buffer, String.class), "abc");
+    }
+  }
+
+  @Test
+  public void testSerializeDeserializeWithTypeRef() throws Exception {
+    for (ThreadSafeFory fory :
+        new ThreadSafeFory[] {
+          Fory.builder()
+              .withXlang(false)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .buildThreadSafeFory(),
+          Fory.builder()
+              .withXlang(false)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .buildThreadSafeForyPool(2)
+        }) {
+      List<String> list = Arrays.asList("a", "b", "c");
+      byte[] bytes = fory.serialize(list);
+      TypeRef<List<String>> typeRef = new TypeRef<List<String>>() {};
+      Assert.assertEquals(fory.deserialize(bytes, typeRef), list);
+      MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+      fory.serialize(buffer, list);
+      Assert.assertEquals(fory.deserialize(buffer, typeRef), list);
+
+      try (ForyInputStream stream = new ForyInputStream(new ByteArrayInputStream(bytes))) {
+        Assert.assertEquals(fory.deserialize(stream, typeRef), list);
+      }
+      try (ForyReadableChannel channel =
+          new ForyReadableChannel(Channels.newChannel(new ByteArrayInputStream(bytes)))) {
+        Assert.assertEquals(fory.deserialize(channel, typeRef), list);
+      }
     }
   }
 
