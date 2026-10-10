@@ -209,7 +209,6 @@ type Fory struct {
 	config        Config
 	metaContext   *MetaContext
 	compatibleSet bool
-	frozen        bool
 
 	// Reusable contexts - avoid allocation on each SerializeWithCallback/DeserializeWithCallbackBuffers call
 	writeCtx *WriteContext
@@ -279,22 +278,12 @@ func (f *Fory) MetaContext() *MetaContext {
 // Freeze permanently freezes registration on this Fory instance.
 // Root serialization and deserialization operations freeze registration automatically.
 func (f *Fory) Freeze() {
-	f.frozen = true
-	if f.typeResolver != nil {
-		f.typeResolver.Freeze()
-	}
+	f.typeResolver.Freeze()
 }
 
 // IsFrozen reports whether registration on this Fory instance is frozen.
 func (f *Fory) IsFrozen() bool {
-	return f.frozen || (f.typeResolver != nil && f.typeResolver.IsFrozen())
-}
-
-func (f *Fory) checkRegisterAllowed() error {
-	if f.IsFrozen() {
-		return ErrRegistrationFrozen
-	}
-	return nil
+	return f.typeResolver.IsFrozen()
 }
 
 // GetTypeResolver returns the type resolver for this Fory instance
@@ -328,8 +317,8 @@ func validateUserTypeID(typeID uint32) error {
 //
 //go:noinline
 func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
-	if err := f.checkRegisterAllowed(); err != nil {
-		return err
+	if f.IsFrozen() {
+		return ErrRegistrationFrozen
 	}
 	if err := validateUserTypeID(typeID); err != nil {
 		return err
@@ -364,8 +353,8 @@ func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
 //
 //go:noinline
 func (f *Fory) RegisterUnion(type_ any, typeID uint32, serializer Serializer) error {
-	if err := f.checkRegisterAllowed(); err != nil {
-		return err
+	if f.IsFrozen() {
+		return ErrRegistrationFrozen
 	}
 	if serializer == nil {
 		return fmt.Errorf("RegisterUnion requires a non-nil serializer")
@@ -395,8 +384,8 @@ func (f *Fory) RegisterUnion(type_ any, typeID uint32, serializer Serializer) er
 //
 //go:noinline
 func (f *Fory) RegisterUnionByName(type_ any, name string, serializer Serializer) error {
-	if err := f.checkRegisterAllowed(); err != nil {
-		return err
+	if f.IsFrozen() {
+		return ErrRegistrationFrozen
 	}
 	if serializer == nil {
 		return fmt.Errorf("RegisterUnionByName requires a non-nil serializer")
@@ -427,8 +416,8 @@ func (f *Fory) RegisterUnionByName(type_ any, name string, serializer Serializer
 //
 //go:noinline
 func (f *Fory) RegisterStructByName(type_ any, name string) error {
-	if err := f.checkRegisterAllowed(); err != nil {
-		return err
+	if f.IsFrozen() {
+		return ErrRegistrationFrozen
 	}
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
@@ -457,8 +446,8 @@ func (f *Fory) RegisterStructByName(type_ any, name string) error {
 //
 //go:noinline
 func (f *Fory) RegisterEnum(type_ any, typeID uint32) error {
-	if err := f.checkRegisterAllowed(); err != nil {
-		return err
+	if f.IsFrozen() {
+		return ErrRegistrationFrozen
 	}
 	if err := validateUserTypeID(typeID); err != nil {
 		return err
@@ -492,8 +481,8 @@ func (f *Fory) RegisterEnum(type_ any, typeID uint32) error {
 //
 //go:noinline
 func (f *Fory) RegisterEnumByName(type_ any, name string) error {
-	if err := f.checkRegisterAllowed(); err != nil {
-		return err
+	if f.IsFrozen() {
+		return ErrRegistrationFrozen
 	}
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
@@ -527,8 +516,8 @@ func (f *Fory) RegisterEnumByName(type_ any, name string) error {
 //
 //go:noinline
 func (f *Fory) RegisterExtension(type_ any, typeID uint32, serializer ExtensionSerializer) error {
-	if err := f.checkRegisterAllowed(); err != nil {
-		return err
+	if f.IsFrozen() {
+		return ErrRegistrationFrozen
 	}
 	if err := validateUserTypeID(typeID); err != nil {
 		return err
@@ -569,8 +558,8 @@ func (f *Fory) RegisterExtension(type_ any, typeID uint32, serializer ExtensionS
 //
 //go:noinline
 func (f *Fory) RegisterExtensionByName(type_ any, name string, serializer ExtensionSerializer) error {
-	if err := f.checkRegisterAllowed(); err != nil {
-		return err
+	if f.IsFrozen() {
+		return ErrRegistrationFrozen
 	}
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {

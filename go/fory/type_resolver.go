@@ -157,7 +157,9 @@ type TypeResolver struct {
 	isXlang             bool
 	metaStringResolver  *MetaStringResolver
 	requireRegistration bool
-	frozen              bool
+	// Keep the permanent freeze here so Fory and direct resolver registration
+	// share one state, independent of root-operation resets.
+	frozen bool
 
 	// String mappings
 	metaStrToStr     map[string]string
