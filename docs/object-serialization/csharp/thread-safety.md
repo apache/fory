@@ -53,9 +53,11 @@ Parallel.For(0, 64, i =>
 
 ## Registration Behavior
 
-- `ThreadSafeFory.Register(...)` stores registrations centrally.
-- Existing per-thread Fory instances are updated.
-- New threads receive all previous registrations automatically.
+- Complete all type and custom serializer registrations before the first serialization or
+  deserialization on any thread.
+- First use permanently freezes registration for the whole wrapper, even if that operation fails.
+  Later `Register(...)` calls throw `InvalidOperationException`.
+- All threads use the registrations completed before first use, including newly created threads.
 
 ## Disposal
 

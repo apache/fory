@@ -8,6 +8,10 @@ Load this file when changing `csharp/` or C# xlang behavior.
 - Changes under `csharp/` must pass formatting and tests.
 - C# code must build without compiler or analyzer warnings. Treat warnings as blockers in project, test, and generated code.
 - Fory C# requires .NET SDK `8.0+` and C# `12+`.
+- Freeze explicit registration before the first root operation, including failed roots.
+  `ThreadSafeFory` freezes the whole wrapper before creating its first per-thread instance;
+  new threads replay only registrations accepted before that transition. Metadata replacement
+  tests must use preconfigured independent instances, never register between completed roots.
 - Use `dotnet format` to keep C# code style consistent.
 - Generated C# gRPC service companions are compiler-owned files that depend on application-provided gRPC packages, not `csharp/src/Fory`. Keep gRPC package references out of the Fory runtime package.
 - C# generated schema modules are source-file owners. Service companions must use that module's `ThreadSafeFory` and must not introduce namespace-owned aliases or duplicate serializer registration paths.

@@ -770,8 +770,8 @@ public sealed class RuntimeEdgeCaseTests
     public void ThreadSafeDottedSerializerNameRoundTrip()
     {
         using ThreadSafeFory fory = ForyRuntime.Builder().BuildThreadSafe();
-        _ = fory.Serialize(1);
         fory.Register<CustomPayload, CustomPayloadSerializer>("test.custom_payload");
+        _ = fory.Serialize(1);
 
         CustomPayload decoded = fory.Deserialize<CustomPayload>(
             fory.Serialize(new CustomPayload { Id = 7, Marker = "ignored" }));
