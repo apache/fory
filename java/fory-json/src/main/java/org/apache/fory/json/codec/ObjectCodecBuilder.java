@@ -51,6 +51,7 @@ import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonDuplicateProperties;
 import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonInclude;
@@ -134,6 +135,7 @@ final class ObjectCodecBuilder {
           null,
           null,
           null,
+          false,
           validatorInfo);
     }
     LinkedHashMap<String, FieldBuilder> builders = new LinkedHashMap<>();
@@ -501,7 +503,15 @@ final class ObjectCodecBuilder {
         skipped,
         unwrappedInfo,
         instantiator,
+        failOnDuplicateProperties(type, annotations),
         validatorInfo);
+  }
+
+  private static boolean failOnDuplicateProperties(Class<?> type, Annotations annotations) {
+    JsonDuplicateProperties duplicates = annotations.get(type, JsonDuplicateProperties.class);
+    return duplicates == null
+        ? annotations.registry.failOnDuplicateProperties()
+        : duplicates.fail();
   }
 
   private static void configureInclusion(

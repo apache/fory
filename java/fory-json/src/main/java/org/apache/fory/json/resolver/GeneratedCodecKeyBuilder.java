@@ -79,6 +79,7 @@ final class GeneratedCodecKeyBuilder {
       keyParts.add(registry.escapeNonAscii());
     } else {
       keyParts.add(registry.failOnMissingRequiredProperties());
+      keyParts.add(owner.failOnDuplicateProperties());
       keyParts.add(registry.onNullRead());
       keyParts.add(registry.onContentNullRead());
     }
