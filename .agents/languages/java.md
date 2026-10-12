@@ -49,6 +49,17 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   values; use qualified names only when a real name conflict requires it.
 - If you run temporary tests with `java -cp`, run `mvn -T16 install -DskipTests` first so local Fory jars are current.
 - `WriteContext`, `ReadContext`, and `CopyContext` must stay explicit. Do not reintroduce `ThreadLocal` or ambient runtime-context patterns.
+- Do not register JVM shutdown hooks from Fory runtime code. A registered hook stays reachable
+  until JVM exit and keeps Fory's classloader loaded. Compiler pool threads are daemons that exit
+  when idle, so the pool needs no hook.
+- Submit Fory background work, such as async JIT compilation and descriptor warm-up, to
+  `CodeGenerator.getCompilationService()`, not to a JVM-global executor such as
+  `ForkJoinPool.commonPool()` or the default `CompletableFuture` async executor. A global pool's
+  threads serve the whole JVM, so their context classloader may not be the loader that loaded Fory.
+  `ForyJitCompilerThreadFactory` pins each compiler thread's context classloader to
+  Fory's defining loader. Native-image build time is the only exception: `CodeGenerator` is
+  initialized at build time, so using its compiler service there would store a direct executor in
+  the image, and descriptor warm-up keeps the common pool.
 - Java root deserialization graph memory budgeting belongs to `ReadContext`
   and is initialized by `Fory` root APIs. Public config is `maxGraphMemoryBytes`
   with fixed `128 MiB` default. Positive explicit values override the default;
