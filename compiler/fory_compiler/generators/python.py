@@ -158,6 +158,8 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
         # distinct instead of overwriting a generated attribute and its tag.
         if name.rstrip("_") in self.FIELD_DEFAULT_HELPER_NAMES:
             return f"{name}_"
+        # Keep already-suffixed keywords stable. Message generation rejects actual
+        # collisions instead of renaming attributes in non-conflicting schemas.
         return self.safe_name(name)
 
     def is_imported_type(self, type_def: object) -> bool:
@@ -420,7 +422,24 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
             lines.append("")
 
         # Generate fields
+        field_names: Dict[str, Field] = {}
         for field in message.fields:
+            field_name = self.safe_field_name(self.to_snake_case(field.name))
+            if field_name in field_names:
+                previous = field_names[field_name]
+                message_name = ".".join(msg.name for msg in lineage)
+                location = field.location
+                source = (
+                    f"{location.file}:{location.line}:{location.column}: "
+                    if location and location.file
+                    else ""
+                )
+                raise ValueError(
+                    f"{source}Python field name collision in {message_name}: "
+                    f"{previous.name!r} and {field.name!r} both generate "
+                    f"{field_name!r}; rename one of the fields"
+                )
+            field_names[field_name] = field
             field_lines = self.generate_field(field, lineage)
             for line in field_lines:
                 lines.append(f"{ind}    {line}")

@@ -31,8 +31,8 @@
   <modelVersion>4.0.0</modelVersion>
   <artifactId>graalvm_tests</artifactId>
   <properties>
-    <maven.compiler.source>17</maven.compiler.source>
-    <maven.compiler.target>17</maven.compiler.target>
+    <!-- Use Java SE APIs so GraalVM's bundled SDK cannot conflict with the compile dependency. -->
+    <maven.compiler.release>17</maven.compiler.release>
     <maven.javadoc.skip>true</maven.javadoc.skip>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <native.maven.plugin.version>0.9.28</native.maven.plugin.version>
@@ -57,6 +57,18 @@
   </repositories>
 
   <dependencies>
+    <dependency>
+      <groupId>org.graalvm.sdk</groupId>
+      <artifactId>graal-sdk</artifactId>
+      <version>23.1.0</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.graalvm.sdk</groupId>
+      <artifactId>nativeimage</artifactId>
+      <version>23.1.0</version>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>org.apache.fory</groupId>
       <artifactId>fory-core</artifactId>
@@ -93,10 +105,33 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.8.1</version>
         <configuration>
-          <source>${maven.compiler.source}</source>
-          <target>${maven.compiler.source}</target>
           <proc>none</proc>
         </configuration>
+        <executions>
+          <execution>
+            <id>generate-json-companions</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+            <configuration>
+              <proc>only</proc>
+              <!-- The compiler excludes its own generated-sources directory from inputs. -->
+              <generatedSourcesDirectory>${project.build.directory}/generated-sources/json</generatedSourcesDirectory>
+              <includes>
+                <include>module-info.java</include>
+                <include>org/apache/fory/graalvm/JsonProcessorExample.java</include>
+              </includes>
+              <annotationProcessorPaths combine.self="override">
+                <path>
+                  <groupId>org.apache.fory</groupId>
+                  <artifactId>fory-annotation-processor</artifactId>
+                  <version>${project.version}</version>
+                </path>
+              </annotationProcessorPaths>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
 
       <plugin>

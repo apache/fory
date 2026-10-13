@@ -43,15 +43,14 @@ impl<T: ?Sized> std::fmt::Debug for RcWeak<T> {
     }
 }
 
-impl<T> RcWeak<T> {
-    pub fn new() -> Self {
-        RcWeak {
-            inner: Rc::new(UnsafeCell::new(std::rc::Weak::new())),
-        }
-    }
-}
-
 impl<T: ?Sized> RcWeak<T> {
+    /// Create an empty weak reference, including for strings and slices.
+    pub fn new() -> Self
+    where
+        Self: Default,
+    {
+        Self::default()
+    }
     pub fn upgrade(&self) -> Option<Rc<T>> {
         unsafe { (*self.inner.get()).upgrade() }
     }
@@ -91,7 +90,25 @@ impl<T: ?Sized> Eq for RcWeak<T> {}
 
 impl<T> Default for RcWeak<T> {
     fn default() -> Self {
-        Self::new()
+        Self::from_std(std::rc::Weak::new())
+    }
+}
+
+impl<T> Default for RcWeak<[T]> {
+    fn default() -> Self {
+        let weak: std::rc::Weak<[T]> = std::rc::Weak::<[T; 0]>::new();
+        Self::from_std(weak)
+    }
+}
+
+impl Default for RcWeak<str> {
+    fn default() -> Self {
+        let weak: std::rc::Weak<[u8]> = std::rc::Weak::<[u8; 0]>::new();
+        let ptr = std::rc::Weak::into_raw(weak) as *const str;
+        // SAFETY: The empty weak owns no allocation. A zero-length byte slice
+        // and str have identical layout and metadata, and the empty bytes are
+        // valid UTF-8. Rebuild the same empty handle without a temporary owner.
+        Self::from_std(unsafe { std::rc::Weak::from_raw(ptr) })
     }
 }
 
@@ -130,15 +147,14 @@ impl<T: ?Sized> std::fmt::Debug for ArcWeak<T> {
     }
 }
 
-impl<T> ArcWeak<T> {
-    pub fn new() -> Self {
-        ArcWeak {
-            inner: Arc::new(UnsafeCell::new(std::sync::Weak::new())),
-        }
-    }
-}
-
 impl<T: ?Sized> ArcWeak<T> {
+    /// Create an empty weak reference, including for strings and slices.
+    pub fn new() -> Self
+    where
+        Self: Default,
+    {
+        Self::default()
+    }
     pub fn upgrade(&self) -> Option<Arc<T>> {
         unsafe { (*self.inner.get()).upgrade() }
     }
@@ -178,7 +194,25 @@ impl<T: ?Sized> Eq for ArcWeak<T> {}
 
 impl<T> Default for ArcWeak<T> {
     fn default() -> Self {
-        Self::new()
+        Self::from_std(std::sync::Weak::new())
+    }
+}
+
+impl<T> Default for ArcWeak<[T]> {
+    fn default() -> Self {
+        let weak: std::sync::Weak<[T]> = std::sync::Weak::<[T; 0]>::new();
+        Self::from_std(weak)
+    }
+}
+
+impl Default for ArcWeak<str> {
+    fn default() -> Self {
+        let weak: std::sync::Weak<[u8]> = std::sync::Weak::<[u8; 0]>::new();
+        let ptr = std::sync::Weak::into_raw(weak) as *const str;
+        // SAFETY: The empty weak owns no allocation. A zero-length byte slice
+        // and str have identical layout and metadata, and the empty bytes are
+        // valid UTF-8. Rebuild the same empty handle without a temporary owner.
+        Self::from_std(unsafe { std::sync::Weak::from_raw(ptr) })
     }
 }
 

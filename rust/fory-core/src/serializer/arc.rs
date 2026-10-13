@@ -19,6 +19,7 @@ use super::codec::{
     codec_read_type_info, codec_read_type_info_static, codec_ref_mode, codec_write_type_info,
     field_ref_mode, Codec,
 };
+use super::pointee::{PointeeCodec, PointeeSerializer};
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::meta::FieldType;
@@ -29,7 +30,9 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
-pub struct ArcCodec<T, C, const NULLABLE: bool, const TRACK_REF: bool>(PhantomData<(T, C)>);
+pub struct ArcCodec<T: ?Sized, C, const NULLABLE: bool, const TRACK_REF: bool>(
+    PhantomData<(*const T, C)>,
+);
 
 #[cold]
 #[inline(never)]
@@ -44,7 +47,7 @@ fn missing_arc_ref(ref_id: u32) -> Error {
 }
 
 #[inline(always)]
-fn check_child<T: 'static, C: Serializer<Target = T>>() -> Result<(), Error> {
+fn check_child<T: ?Sized + 'static, C: PointeeSerializer<T>>() -> Result<(), Error> {
     // Nested shared owners would compete for reference framing and identity
     // while both wrappers remain transparent on the wire.
     if C::IS_SHARED_REF {
@@ -55,8 +58,8 @@ fn check_child<T: 'static, C: Serializer<Target = T>>() -> Result<(), Error> {
 }
 
 #[inline(always)]
-fn reserve_arc<T>(context: &mut ReadContext) -> Result<(), Error> {
-    let bytes = std::mem::size_of::<T>();
+fn reserve_arc<T: ?Sized, C: PointeeSerializer<T>>(context: &mut ReadContext) -> Result<(), Error> {
+    let bytes = C::POINTEE_SIZE;
     if bytes != 0 {
         context.reserve_graph_memory(bytes)?;
     }
@@ -64,49 +67,49 @@ fn reserve_arc<T>(context: &mut ReadContext) -> Result<(), Error> {
 }
 
 #[inline(always)]
-fn write_inner<T: 'static, C: Serializer<Target = T>>(
+fn write_inner<T: ?Sized + 'static, C: PointeeSerializer<T>>(
     value: &T,
     context: &mut WriteContext,
     write_type_info: bool,
 ) -> Result<(), Error> {
     check_child::<T, C>()?;
-    C::write(value, context, RefMode::None, write_type_info)
+    C::write_pointee(value, context, RefMode::None, write_type_info)
 }
 
 #[inline(always)]
-fn write_inner_with_type_info<T: 'static, C: Serializer<Target = T>>(
+fn write_inner_with_type_info<T: ?Sized + 'static, C: PointeeSerializer<T>>(
     value: &T,
     context: &mut WriteContext,
     type_info: &Rc<TypeInfo>,
 ) -> Result<(), Error> {
     check_child::<T, C>()?;
-    C::write_with_type_info(value, context, RefMode::None, type_info)
+    C::write_pointee_with_type_info(value, context, RefMode::None, type_info)
 }
 
 #[inline(always)]
-fn write_inner_field<T: 'static, C: Codec<T>>(
+fn write_inner_field<T: ?Sized + 'static, V: 'static, C: PointeeCodec<T, V>>(
     value: &T,
     context: &mut WriteContext,
     write_type_info: bool,
     has_generics: bool,
 ) -> Result<(), Error> {
     check_child::<T, C>()?;
-    C::write_with_mode(value, context, RefMode::None, write_type_info, has_generics)
+    C::write_pointee_with_mode(value, context, RefMode::None, write_type_info, has_generics)
 }
 
 #[inline(always)]
-fn write_inner_field_with_type_info<T: 'static, C: Codec<T>>(
+fn write_inner_field_with_type_info<T: ?Sized + 'static, V: 'static, C: PointeeCodec<T, V>>(
     value: &T,
     context: &mut WriteContext,
     type_info: &Rc<TypeInfo>,
     has_generics: bool,
 ) -> Result<(), Error> {
     check_child::<T, C>()?;
-    <C as Codec<T>>::write_with_type_info(value, context, RefMode::None, type_info, has_generics)
+    C::write_pointee_field_with_type_info(value, context, RefMode::None, type_info, has_generics)
 }
 
 #[inline(always)]
-fn write_ref<T>(value: &Arc<T>, context: &mut WriteContext, ref_mode: RefMode) -> bool {
+fn write_ref<T: ?Sized>(value: &Arc<T>, context: &mut WriteContext, ref_mode: RefMode) -> bool {
     match ref_mode {
         RefMode::None => true,
         RefMode::NullOnly => {
@@ -120,13 +123,13 @@ fn write_ref<T>(value: &Arc<T>, context: &mut WriteContext, ref_mode: RefMode) -
 }
 
 #[inline(always)]
-fn read_inner<T: 'static, C: Serializer<Target = T>>(
+fn read_inner<T: ?Sized + 'static, C: PointeeSerializer<T>>(
     context: &mut ReadContext,
     read_type_info: bool,
     type_info: Option<&Rc<TypeInfo>>,
-) -> Result<T, Error> {
+) -> Result<C::Target, Error> {
     check_child::<T, C>()?;
-    reserve_arc::<T>(context)?;
+    reserve_arc::<T, C>(context)?;
     if let Some(type_info) = type_info {
         return C::read_with_type_info(context, RefMode::None, type_info);
     }
@@ -137,16 +140,16 @@ fn read_inner<T: 'static, C: Serializer<Target = T>>(
 }
 
 #[inline(always)]
-fn read_inner_with_type<T: 'static, C: Codec<T>>(
+fn read_inner_with_type<T: ?Sized + 'static, V: 'static, C: PointeeCodec<T, V>>(
     context: &mut ReadContext,
     remote_field_type: &FieldType,
-) -> Result<T, Error> {
+) -> Result<C::Target, Error> {
     check_child::<T, C>()?;
-    reserve_arc::<T>(context)?;
+    reserve_arc::<T, C>(context)?;
     // The Arc envelope owns only reference framing. A compatible
     // metadata-bearing child still owns its inline TypeInfo before its body,
     // while declared carrier children consume the remote schema directly.
-    if codec_read_type_info::<T, C>(context, remote_field_type) {
+    if codec_read_type_info::<C::Target, C>(context, remote_field_type) {
         return C::read(context, RefMode::None, true);
     }
     C::read_data_with_type(context, remote_field_type)
@@ -155,8 +158,9 @@ fn read_inner_with_type<T: 'static, C: Codec<T>>(
 impl<T, C, const NULLABLE: bool, const TRACK_REF: bool> Serializer
     for ArcCodec<T, C, NULLABLE, TRACK_REF>
 where
-    T: Send + Sync + 'static,
-    C: Serializer<Target = T>,
+    T: ?Sized + Send + Sync + 'static,
+    C: PointeeSerializer<T>,
+    Arc<T>: From<C::Target>,
 {
     type Target = Arc<T>;
 
@@ -172,7 +176,7 @@ where
 
     #[inline(always)]
     fn read_data(context: &mut ReadContext) -> Result<Arc<T>, Error> {
-        Ok(Arc::new(read_inner::<T, C>(context, false, None)?))
+        Ok(Arc::from(read_inner::<T, C>(context, false, None)?))
     }
 
     #[inline(always)]
@@ -230,8 +234,8 @@ where
     #[inline(always)]
     fn default_value(context: &mut ReadContext) -> Result<Arc<T>, Error> {
         check_child::<T, C>()?;
-        reserve_arc::<T>(context)?;
-        Ok(Arc::new(C::default_value(context)?))
+        reserve_arc::<T, C>(context)?;
+        Ok(Arc::from(C::default_value(context)?))
     }
 
     #[inline(always)]
@@ -264,15 +268,17 @@ where
 
     #[inline(always)]
     fn dynamic_type_id(value: &Arc<T>) -> Result<Option<std::any::TypeId>, Error> {
-        C::dynamic_type_id(value)
+        C::pointee_dynamic_type_id(value)
     }
 }
 
-impl<T, C, const NULLABLE: bool, const TRACK_REF: bool> Codec<Arc<T>>
+impl<T, V, C, const NULLABLE: bool, const TRACK_REF: bool> Codec<Arc<T>>
     for ArcCodec<T, C, NULLABLE, TRACK_REF>
 where
-    T: Send + Sync + 'static,
-    C: Codec<T>,
+    T: ?Sized + Send + Sync + 'static,
+    V: 'static,
+    C: Serializer<Target = V> + PointeeCodec<T, V>,
+    Arc<T>: From<C::Target>,
 {
     #[inline(always)]
     fn field_type(type_resolver: &TypeResolver) -> Result<FieldType, Error> {
@@ -287,8 +293,8 @@ where
         Self::write_with_mode(
             value,
             context,
-            codec_ref_mode::<T, C, NULLABLE, TRACK_REF>(),
-            codec_write_type_info::<T, C>(context),
+            codec_ref_mode::<C::Target, C, NULLABLE, TRACK_REF>(),
+            codec_write_type_info::<C::Target, C>(context),
             true,
         )
     }
@@ -297,8 +303,8 @@ where
     fn read_field(context: &mut ReadContext) -> Result<Arc<T>, Error> {
         <Self as Serializer>::read(
             context,
-            codec_ref_mode::<T, C, NULLABLE, TRACK_REF>(),
-            codec_read_type_info_static::<T, C>(context),
+            codec_ref_mode::<C::Target, C, NULLABLE, TRACK_REF>(),
+            codec_read_type_info_static::<C::Target, C>(context),
         )
     }
 
@@ -308,8 +314,11 @@ where
         remote_data_type: &FieldType,
     ) -> Result<Arc<T>, Error> {
         check_child::<T, C>()?;
-        reserve_arc::<T>(context)?;
-        Ok(Arc::new(C::read_data_with_type(context, remote_data_type)?))
+        reserve_arc::<T, C>(context)?;
+        Ok(Arc::from(C::read_data_with_type(
+            context,
+            remote_data_type,
+        )?))
     }
 
     #[inline(always)]
@@ -317,7 +326,7 @@ where
         context: &mut ReadContext,
         remote_field_type: &FieldType,
     ) -> Result<Arc<T>, Error> {
-        read_arc_with_type::<T, C>(
+        read_arc_with_type::<T, V, C>(
             context,
             field_ref_mode(remote_field_type),
             remote_field_type,
@@ -335,7 +344,7 @@ where
         if !write_ref(value, context, ref_mode) {
             return Ok(());
         }
-        write_inner_field::<T, C>(value, context, write_type_info, has_generics)
+        write_inner_field::<T, V, C>(value, context, write_type_info, has_generics)
     }
 
     #[inline(always)]
@@ -349,7 +358,7 @@ where
         if !write_ref(value, context, ref_mode) {
             return Ok(());
         }
-        write_inner_field_with_type_info::<T, C>(value, context, type_info, has_generics)
+        write_inner_field_with_type_info::<T, V, C>(value, context, type_info, has_generics)
     }
 
     #[inline(always)]
@@ -363,12 +372,12 @@ where
 macro_rules! read_arc_owner {
     ($context:ident, $ref_mode:expr, $read_inner:expr, $default:expr) => {
         match $ref_mode {
-            RefMode::None => Ok(Arc::new($read_inner?)),
+            RefMode::None => Ok(Arc::from($read_inner?)),
             RefMode::NullOnly => {
                 if $context.reader.read_i8()? == RefFlag::Null as i8 {
                     return $default;
                 }
-                Ok(Arc::new($read_inner?))
+                Ok(Arc::from($read_inner?))
             }
             RefMode::Tracking => match $context.ref_reader.read_ref_flag(&mut $context.reader)? {
                 RefFlag::Null => $default,
@@ -379,10 +388,10 @@ macro_rules! read_arc_owner {
                         .get_arc_ref::<T>(ref_id)
                         .ok_or_else(|| missing_arc_ref(ref_id))
                 }
-                RefFlag::NotNullValue => Ok(Arc::new($read_inner?)),
+                RefFlag::NotNullValue => Ok(Arc::from($read_inner?)),
                 RefFlag::RefValue => {
                     let ref_id = $context.ref_reader.reserve_ref_id();
-                    let value = Arc::new($read_inner?);
+                    let value = Arc::from($read_inner?);
                     $context.ref_reader.store_arc_ref_at(ref_id, value.clone());
                     Ok(value)
                 }
@@ -392,12 +401,15 @@ macro_rules! read_arc_owner {
 }
 
 #[inline(always)]
-fn read_arc<T: Send + Sync + 'static, C: Serializer<Target = T>>(
+fn read_arc<T: ?Sized + Send + Sync + 'static, C: PointeeSerializer<T>>(
     context: &mut ReadContext,
     ref_mode: RefMode,
     read_type_info: bool,
     type_info: Option<&Rc<TypeInfo>>,
-) -> Result<Arc<T>, Error> {
+) -> Result<Arc<T>, Error>
+where
+    Arc<T>: From<C::Target>,
+{
     read_arc_owner!(
         context,
         ref_mode,
@@ -407,18 +419,23 @@ fn read_arc<T: Send + Sync + 'static, C: Serializer<Target = T>>(
 }
 
 #[inline(always)]
-fn read_arc_with_type<T: Send + Sync + 'static, C: Codec<T>>(
+fn read_arc_with_type<T: ?Sized + Send + Sync + 'static, V: 'static, C: PointeeCodec<T, V>>(
     context: &mut ReadContext,
     ref_mode: RefMode,
     remote_field_type: &FieldType,
-) -> Result<Arc<T>, Error> {
+) -> Result<Arc<T>, Error>
+where
+    Arc<T>: From<C::Target>,
+{
     read_arc_owner!(
         context,
         ref_mode,
-        read_inner_with_type::<T, C>(context, remote_field_type),
+        read_inner_with_type::<T, V, C>(context, remote_field_type),
         <ArcCodec<T, C, false, false> as Serializer>::default_value(context)
     )
 }
+
+impl_unsized_carrier_serializer!(Arc, ArcCodec, bounds = [Send + Sync]);
 
 impl_single_carrier_serializer!(
     ArcSerializer,

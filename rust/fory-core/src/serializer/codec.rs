@@ -24,6 +24,7 @@
 use super::collection::{
     compatible_list_array_field, read_primitive_array_vec_mismatch, read_vec_compatible_mismatch,
 };
+use super::pointee::{PointeeCodec, PointeeSerializer};
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::meta::{FieldInfo, FieldType};
@@ -1560,7 +1561,7 @@ where
 
 #[inline(always)]
 fn write_vec_value_data<T, S, const STRUCTURAL_LIST: bool, const DENSE_ARRAY: bool>(
-    value: &Vec<T>,
+    value: &[T],
     context: &mut WriteContext,
 ) -> Result<(), Error>
 where
@@ -1589,7 +1590,7 @@ where
 
 #[inline(always)]
 fn write_vec_data<T, C, const STRUCTURAL_LIST: bool, const DENSE_ARRAY: bool>(
-    value: &Vec<T>,
+    value: &[T],
     context: &mut WriteContext,
     has_generics: bool,
 ) -> Result<(), Error>
@@ -1834,6 +1835,57 @@ where
     #[inline(always)]
     fn write_with_mode(
         value: &Vec<T>,
+        context: &mut WriteContext,
+        ref_mode: RefMode,
+        write_type_info: bool,
+        has_generics: bool,
+    ) -> Result<(), Error> {
+        if ref_mode != RefMode::None {
+            context.writer.write_i8(RefFlag::NotNullValue as i8);
+        }
+        if write_type_info {
+            Self::write_type_info(context)?;
+        }
+        write_vec_data::<T, C, STRUCTURAL_LIST, DENSE_ARRAY>(value, context, has_generics)
+    }
+}
+
+impl<
+        T,
+        S,
+        const STRUCTURAL_LIST: bool,
+        const DENSE_ARRAY: bool,
+        const NULLABLE: bool,
+        const TRACK_REF: bool,
+    > PointeeSerializer<[T]> for VecCodec<T, S, STRUCTURAL_LIST, DENSE_ARRAY, NULLABLE, TRACK_REF>
+where
+    T: 'static,
+    S: Serializer<Target = T>,
+{
+    const POINTEE_SIZE: usize = 0;
+
+    #[inline(always)]
+    fn write_pointee_data(value: &[T], context: &mut WriteContext) -> Result<(), Error> {
+        write_vec_value_data::<T, S, STRUCTURAL_LIST, DENSE_ARRAY>(value, context)
+    }
+}
+
+impl<
+        T,
+        C,
+        const STRUCTURAL_LIST: bool,
+        const DENSE_ARRAY: bool,
+        const NULLABLE: bool,
+        const TRACK_REF: bool,
+    > PointeeCodec<[T], Vec<T>>
+    for VecCodec<T, C, STRUCTURAL_LIST, DENSE_ARRAY, NULLABLE, TRACK_REF>
+where
+    T: 'static,
+    C: Codec<T>,
+{
+    #[inline(always)]
+    fn write_pointee_with_mode(
+        value: &[T],
         context: &mut WriteContext,
         ref_mode: RefMode,
         write_type_info: bool,

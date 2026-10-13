@@ -106,6 +106,7 @@ Native serialization owns the Rust-specific object surface:
 - Enums and union-like models supported by Fory derive macros.
 - `Vec`, maps, sets, tuples, arrays, and optional values.
 - `Box<T>`, `Rc<T>`, `Arc<T>`, `RcWeak<T>`, and `ArcWeak<T>`.
+- The same smart pointers to `str` and `[T]`, including shared and weak references.
 - `RefCell<T>` and `Mutex<T>`.
 - Trait objects such as `Box<dyn Trait>`, `Rc<dyn Trait>`, and `Arc<dyn Trait>`.
 - Dynamic type dispatch with `Box<dyn Any>`, `Rc<dyn Any>`, and
