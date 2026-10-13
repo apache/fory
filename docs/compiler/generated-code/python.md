@@ -73,13 +73,19 @@ class Person:
 ## Field Names
 
 Generated Python attributes use `snake_case`, with a trailing underscore for
-Python keywords. The names `field`, `pyfory`, `decimal`, `list`, and `dict` also
-receive a trailing underscore. Names consisting of a Python keyword or one of
-these five names followed by underscores receive one additional underscore so
-fields remain distinct: `class`, `class_`, and `class__` become `class_`, `class__`,
-and `class___`; `field`, `field_`, and `field__` become `field_`, `field__`, and
-`field___`. This rule applies even when the unsuffixed name is absent. Field tag
-IDs remain unchanged.
+Python keywords: `class` becomes `class_`. Already-suffixed keyword names stay
+unchanged: `class_` remains `class_`, and `class__` remains `class__`.
+
+If two fields in the same message produce the same Python attribute name after
+conversion and escaping, compilation fails. For example, `class` and `class_`
+both produce `class_`, while `userName` and `user_name` both produce `user_name`.
+Rename one of the fields in the schema to resolve the conflict.
+
+The names `field`, `pyfory`, `decimal`, `list`, and `dict` also receive a trailing
+underscore. Names consisting of one of these five names followed by underscores
+receive one additional underscore so fields remain distinct: `field`, `field_`,
+and `field__` become `field_`, `field__`, and `field___`. Field tag IDs remain
+unchanged.
 
 ## Registration
 

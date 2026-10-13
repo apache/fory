@@ -109,24 +109,10 @@ def test_field_names_shadowing_default_helpers_are_escaped():
     assert instance.attrs == {}
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        "field",
-        "pyfory",
-        "decimal",
-        "List",
-        "dict",
-        "class",
-        "Class",
-        "from",
-        "async",
-        "lambda",
-    ],
-)
+@pytest.mark.parametrize("name", ["field", "pyfory", "decimal", "List", "dict"])
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("field_type", ["string", "any"])
-def test_escaped_name_suffixes(name, reverse, field_type):
+def test_helper_name_suffixes(name, reverse, field_type):
     fields = [f"{field_type} {name}{'_' * i} = {i + 1};" for i in range(3)]
     if reverse:
         fields.reverse()
@@ -144,3 +130,56 @@ def test_escaped_name_suffixes(name, reverse, field_type):
     for field_name, value in values.items():
         rendered = repr(value) if field_type == "string" else "any(...)"
         assert f"{field_name}={rendered}" in repr(instance)
+
+
+@pytest.mark.parametrize("name", ["class", "Class", "from", "async", "lambda"])
+@pytest.mark.parametrize("bare", [False, True])
+@pytest.mark.parametrize("field_type", ["string", "any"])
+def test_keyword_field_names(name, bare, field_type):
+    first = name if bare else name + "_"
+    output = generate_python(
+        f"message Tricky [id=100] {{ {field_type} {first} = 1; "
+        f"{field_type} {name}__ = 2; }}"
+    )
+    cls = exec_generated_module(output)["Tricky"]
+    names = [name.lower() + "_", name.lower() + "__"]
+    assert {f.name: f.metadata["id"] for f in dataclasses.fields(cls)} == {
+        names[0]: 1,
+        names[1]: 2,
+    }
+    values = {names[0]: "first", names[1]: "second"}
+    instance = cls(**values)
+    assert dataclasses.asdict(instance) == values
+    for field_name, value in values.items():
+        rendered = repr(value) if field_type == "string" else "any(...)"
+        assert f"{field_name}={rendered}" in repr(instance)
+
+
+@pytest.mark.parametrize(
+    "names, generated_name",
+    [
+        (("class", "class_"), "class_"),
+        (("Class", "class_"), "class_"),
+        (("from", "from_"), "from_"),
+        (("async", "async_"), "async_"),
+        (("lambda", "lambda_"), "lambda_"),
+        (("userName", "user_name"), "user_name"),
+    ],
+)
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("nested", [False, True])
+def test_field_name_collision(names, generated_name, reverse, nested):
+    fields = [f"string {name} = {i + 1};" for i, name in enumerate(names)]
+    if reverse:
+        fields.reverse()
+    source = "message Tricky [id=100] {" + "\n".join(fields) + "}"
+    if nested:
+        source = "message Outer [id=101] {" + source + "}"
+    with pytest.raises(ValueError) as exc:
+        generate_python(source)
+    message = str(exc.value)
+    assert "Python field name collision" in message
+    assert ("Outer.Tricky" if nested else "Tricky") in message
+    assert all(repr(name) in message for name in names)
+    assert f"both generate {generated_name!r}" in message
+    assert "rename" in message
