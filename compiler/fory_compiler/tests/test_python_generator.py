@@ -109,10 +109,24 @@ def test_field_names_shadowing_default_helpers_are_escaped():
     assert instance.attrs == {}
 
 
-@pytest.mark.parametrize("name", ["field", "pyfory", "decimal", "List", "dict"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "field",
+        "pyfory",
+        "decimal",
+        "List",
+        "dict",
+        "class",
+        "Class",
+        "from",
+        "async",
+        "lambda",
+    ],
+)
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("field_type", ["string", "any"])
-def test_helper_name_suffixes(name, reverse, field_type):
+def test_escaped_name_suffixes(name, reverse, field_type):
     fields = [f"{field_type} {name}{'_' * i} = {i + 1};" for i in range(3)]
     if reverse:
         fields.reverse()

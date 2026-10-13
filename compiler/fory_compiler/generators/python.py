@@ -154,11 +154,12 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
 
     def safe_field_name(self, name: str) -> str:
         """Return a dataclass-field-safe identifier."""
-        # Shift the whole suffix family so field, field_, and field__ stay
+        # Shift the whole suffix family so class, class_, and class__ stay
         # distinct instead of overwriting a generated attribute and its tag.
-        if name.rstrip("_") in self.FIELD_DEFAULT_HELPER_NAMES:
+        base_name = name.rstrip("_")
+        if base_name in self.FIELD_DEFAULT_HELPER_NAMES or keyword.iskeyword(base_name):
             return f"{name}_"
-        return self.safe_name(name)
+        return name
 
     def is_imported_type(self, type_def: object) -> bool:
         """Return True if a type definition comes from an imported IDL file."""
