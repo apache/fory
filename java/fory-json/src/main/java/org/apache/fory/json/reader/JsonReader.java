@@ -719,6 +719,19 @@ public abstract class JsonReader {
     return materializeNumber(readNumberAsString());
   }
 
+  /** Reads a natural JSON number without reducing decimal values to binary floating point. */
+  @Internal
+  public Number readNaturalNumber() {
+    skipWhitespace();
+    int start = position;
+    String number = readNumberAsString();
+    if (hasDecimalSeparator(number)) {
+      position = start;
+      return readBigDecimal();
+    }
+    return materializeNumber(number);
+  }
+
   private String readNumberToken() {
     int start = position;
     scanNumberToken();
@@ -1903,6 +1916,17 @@ public abstract class JsonReader {
     } catch (NumberFormatException e) {
       return parseBigInteger(number);
     }
+  }
+
+  private static boolean hasDecimalSeparator(String number) {
+    int length = number.length();
+    for (int i = 0; i < length; i++) {
+      char ch = number.charAt(i);
+      if (ch == '.' || ch == 'e' || ch == 'E') {
+        return true;
+      }
+    }
+    return false;
   }
 
   private byte[] bigNumberBytes(String number) {
