@@ -334,12 +334,34 @@ fn test_string_serializer() {
                 .unwrap()
         );
     }
+    fory_string_pointers(&fory, &bytes, &test_strings);
+    fory_string_pointers(&fory_compress, &bytes, &test_strings);
     let fory = Fory::builder().compatible(true).xlang(true).build();
     let mut buf = Vec::new();
     for s in &test_strings {
-        fory.serialize_to(&mut buf, s).unwrap();
+        fory.serialize_to(&mut buf, &std::sync::Arc::<str>::from(s.as_str()))
+            .unwrap();
     }
     fs::write(&data_file_path, buf).unwrap();
+}
+
+fn fory_string_pointers(fory: &Fory, bytes: &[u8], expected: &[String]) {
+    let mut boxed = Reader::new(bytes);
+    let mut rc = Reader::new(bytes);
+    let mut arc = Reader::new(bytes);
+    for text in expected {
+        assert_eq!(
+            &*fory.deserialize_from::<Box<str>>(&mut boxed).unwrap(),
+            text
+        );
+        assert_eq!(&*fory.deserialize_from::<Rc<str>>(&mut rc).unwrap(), text);
+        assert_eq!(
+            &*fory
+                .deserialize_from::<std::sync::Arc<str>>(&mut arc)
+                .unwrap(),
+            text
+        );
+    }
 }
 
 macro_rules! assert_de {
@@ -626,11 +648,21 @@ fn test_list() {
     let remote_item_list2: Vec<Option<Item>> = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(remote_item_list2, item_list2);
 
+    let mut pointer_reader = Reader::new(bytes.as_slice());
+    let boxed: Box<[Option<String>]> = fory.deserialize_from(&mut pointer_reader).unwrap();
+    let rc: Rc<[Option<String>]> = fory.deserialize_from(&mut pointer_reader).unwrap();
+    let arc: std::sync::Arc<[Option<Item>]> = fory.deserialize_from(&mut pointer_reader).unwrap();
+    let boxed_items: Box<[Option<Item>]> = fory.deserialize_from(&mut pointer_reader).unwrap();
+    assert_eq!(&*boxed, str_list);
+    assert_eq!(&*rc, str_list2);
+    assert_eq!(&*arc, item_list);
+    assert_eq!(&*boxed_items, item_list2);
+
     let mut buf = Vec::new();
-    fory.serialize_to(&mut buf, &remote_str_list).unwrap();
-    fory.serialize_to(&mut buf, &remote_str_list2).unwrap();
-    fory.serialize_to(&mut buf, &remote_item_list).unwrap();
-    fory.serialize_to(&mut buf, &remote_item_list2).unwrap();
+    fory.serialize_to(&mut buf, &boxed).unwrap();
+    fory.serialize_to(&mut buf, &rc).unwrap();
+    fory.serialize_to(&mut buf, &arc).unwrap();
+    fory.serialize_to(&mut buf, &boxed_items).unwrap();
 
     fs::write(&data_file_path, buf).unwrap();
 }

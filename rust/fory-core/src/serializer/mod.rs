@@ -15,6 +15,139 @@
 // specific language governing permissions and limitations
 // under the License.
 
+macro_rules! forward_carrier_serializer {
+    ($provider:ty) => {
+        type Target = <$provider as $crate::serializer::Serializer>::Target;
+
+        #[inline(always)]
+        fn write_data(
+            value: &Self::Target,
+            context: &mut $crate::WriteContext,
+        ) -> Result<(), $crate::Error> {
+            <$provider as $crate::serializer::Serializer>::write_data(value, context)
+        }
+
+        #[inline(always)]
+        fn read_data(context: &mut $crate::ReadContext) -> Result<Self::Target, $crate::Error> {
+            <$provider as $crate::serializer::Serializer>::read_data(context)
+        }
+
+        #[inline(always)]
+        fn default_value(context: &mut $crate::ReadContext) -> Result<Self::Target, $crate::Error> {
+            <$provider as $crate::serializer::Serializer>::default_value(context)
+        }
+
+        #[inline(always)]
+        fn write(
+            value: &Self::Target,
+            context: &mut $crate::WriteContext,
+            ref_mode: $crate::RefMode,
+            write_type_info: bool,
+        ) -> Result<(), $crate::Error> {
+            <$provider as $crate::serializer::Serializer>::write(
+                value,
+                context,
+                ref_mode,
+                write_type_info,
+            )
+        }
+
+        #[inline(always)]
+        fn write_type_info_value(
+            context: &mut $crate::WriteContext,
+            target_type_id: std::any::TypeId,
+        ) -> Result<std::rc::Rc<$crate::TypeInfo>, $crate::Error> {
+            <$provider as $crate::serializer::Serializer>::write_type_info_value(
+                context,
+                target_type_id,
+            )
+        }
+
+        #[inline(always)]
+        fn write_with_type_info(
+            value: &Self::Target,
+            context: &mut $crate::WriteContext,
+            ref_mode: $crate::RefMode,
+            type_info: &std::rc::Rc<$crate::TypeInfo>,
+        ) -> Result<(), $crate::Error> {
+            <$provider as $crate::serializer::Serializer>::write_with_type_info(
+                value, context, ref_mode, type_info,
+            )
+        }
+
+        #[inline(always)]
+        fn read(
+            context: &mut $crate::ReadContext,
+            ref_mode: $crate::RefMode,
+            read_type_info: bool,
+        ) -> Result<Self::Target, $crate::Error> {
+            <$provider as $crate::serializer::Serializer>::read(context, ref_mode, read_type_info)
+        }
+
+        #[inline(always)]
+        fn read_with_type_info(
+            context: &mut $crate::ReadContext,
+            ref_mode: $crate::RefMode,
+            type_info: &std::rc::Rc<$crate::TypeInfo>,
+        ) -> Result<Self::Target, $crate::Error> {
+            <$provider as $crate::serializer::Serializer>::read_with_type_info(
+                context, ref_mode, type_info,
+            )
+        }
+
+        #[inline(always)]
+        fn write_type_info(context: &mut $crate::WriteContext) -> Result<(), $crate::Error> {
+            <$provider as $crate::serializer::Serializer>::write_type_info(context)
+        }
+
+        #[inline(always)]
+        fn read_type_info(context: &mut $crate::ReadContext) -> Result<(), $crate::Error> {
+            <$provider as $crate::serializer::Serializer>::read_type_info(context)
+        }
+
+        #[inline(always)]
+        fn static_type_id() -> $crate::TypeId {
+            <$provider as $crate::serializer::Serializer>::static_type_id()
+        }
+
+        #[inline(always)]
+        fn reserved_space() -> usize {
+            <$provider as $crate::serializer::Serializer>::reserved_space()
+        }
+
+        const IS_OPTIONAL: bool = <$provider as $crate::serializer::Serializer>::IS_OPTIONAL;
+
+        #[inline(always)]
+        fn is_none(value: &Self::Target) -> bool {
+            <$provider as $crate::serializer::Serializer>::is_none(value)
+        }
+
+        const IS_POLYMORPHIC: bool = <$provider as $crate::serializer::Serializer>::IS_POLYMORPHIC;
+
+        const IS_SHARED_REF: bool = <$provider as $crate::serializer::Serializer>::IS_SHARED_REF;
+
+        const IS_WRAPPER: bool = <$provider as $crate::serializer::Serializer>::IS_WRAPPER;
+
+        const REQUIRES_SCOPED_ACCESS: bool =
+            <$provider as $crate::serializer::Serializer>::REQUIRES_SCOPED_ACCESS;
+
+        #[inline(always)]
+        fn metadata_target_type_id() -> std::any::TypeId {
+            <$provider as $crate::serializer::Serializer>::metadata_target_type_id()
+        }
+
+        const READ_DATA_ALWAYS_ADVANCES: bool =
+            <$provider as $crate::serializer::Serializer>::READ_DATA_ALWAYS_ADVANCES;
+
+        #[inline(always)]
+        fn dynamic_type_id(
+            value: &Self::Target,
+        ) -> Result<Option<std::any::TypeId>, $crate::Error> {
+            <$provider as $crate::serializer::Serializer>::dynamic_type_id(value)
+        }
+    };
+}
+
 macro_rules! impl_single_carrier_serializer {
     (
         $provider:ident,
@@ -295,153 +428,27 @@ macro_rules! impl_single_carrier_serializer {
             T: $crate::serializer::Serializer<Target = T>,
             $(T: $($bounds)+,)?
         {
-            type Target = Self;
+            forward_carrier_serializer!($provider<T>);
+        }
+    };
+}
 
-            #[inline(always)]
-            fn write_data(
-                value: &Self,
-                context: &mut $crate::WriteContext,
-            ) -> Result<(), $crate::Error> {
-                <$provider<T> as $crate::serializer::Serializer>::write_data(value, context)
-            }
+macro_rules! impl_unsized_carrier_serializer {
+    ($target:ident, $codec:ident $(, bounds = [$($bounds:tt)+])?) => {
+        impl $crate::serializer::Serializer for $target<str> {
+            forward_carrier_serializer!($codec<str, String, false, false>);
+        }
 
-            #[inline(always)]
-            fn read_data(
-                context: &mut $crate::ReadContext,
-            ) -> Result<Self, $crate::Error> {
-                <$provider<T> as $crate::serializer::Serializer>::read_data(context)
-            }
-
-            #[inline(always)]
-            fn default_value(
-                context: &mut $crate::ReadContext,
-            ) -> Result<Self, $crate::Error> {
-                <$provider<T> as $crate::serializer::Serializer>::default_value(context)
-            }
-
-            #[inline(always)]
-            fn write(
-                value: &Self,
-                context: &mut $crate::WriteContext,
-                ref_mode: $crate::RefMode,
-                write_type_info: bool,
-            ) -> Result<(), $crate::Error> {
-                <$provider<T> as $crate::serializer::Serializer>::write(
-                    value,
-                    context,
-                    ref_mode,
-                    write_type_info,
-                )
-            }
-
-            #[inline(always)]
-            fn write_type_info_value(
-                context: &mut $crate::WriteContext,
-                target_type_id: std::any::TypeId,
-            ) -> Result<std::rc::Rc<$crate::TypeInfo>, $crate::Error> {
-                <$provider<T> as $crate::serializer::Serializer>::write_type_info_value(
-                    context,
-                    target_type_id,
-                )
-            }
-
-            #[inline(always)]
-            fn write_with_type_info(
-                value: &Self,
-                context: &mut $crate::WriteContext,
-                ref_mode: $crate::RefMode,
-                type_info: &std::rc::Rc<$crate::TypeInfo>,
-            ) -> Result<(), $crate::Error> {
-                <$provider<T> as $crate::serializer::Serializer>::write_with_type_info(
-                    value,
-                    context,
-                    ref_mode,
-                    type_info,
-                )
-            }
-
-            #[inline(always)]
-            fn read(
-                context: &mut $crate::ReadContext,
-                ref_mode: $crate::RefMode,
-                read_type_info: bool,
-            ) -> Result<Self, $crate::Error> {
-                <$provider<T> as $crate::serializer::Serializer>::read(
-                    context,
-                    ref_mode,
-                    read_type_info,
-                )
-            }
-
-            #[inline(always)]
-            fn read_with_type_info(
-                context: &mut $crate::ReadContext,
-                ref_mode: $crate::RefMode,
-                type_info: &std::rc::Rc<$crate::TypeInfo>,
-            ) -> Result<Self, $crate::Error> {
-                <$provider<T> as $crate::serializer::Serializer>::read_with_type_info(
-                    context, ref_mode, type_info,
-                )
-            }
-
-            #[inline(always)]
-            fn write_type_info(
-                context: &mut $crate::WriteContext,
-            ) -> Result<(), $crate::Error> {
-                <$provider<T> as $crate::serializer::Serializer>::write_type_info(context)
-            }
-
-            #[inline(always)]
-            fn read_type_info(
-                context: &mut $crate::ReadContext,
-            ) -> Result<(), $crate::Error> {
-                <$provider<T> as $crate::serializer::Serializer>::read_type_info(context)
-            }
-
-            #[inline(always)]
-            fn static_type_id() -> $crate::TypeId {
-                <$provider<T> as $crate::serializer::Serializer>::static_type_id()
-            }
-
-            #[inline(always)]
-            fn reserved_space() -> usize {
-                <$provider<T> as $crate::serializer::Serializer>::reserved_space()
-            }
-
-            const IS_OPTIONAL: bool =
-                <$provider<T> as $crate::serializer::Serializer>::IS_OPTIONAL;
-
-            #[inline(always)]
-            fn is_none(value: &Self) -> bool {
-                <$provider<T> as $crate::serializer::Serializer>::is_none(value)
-            }
-
-            const IS_POLYMORPHIC: bool =
-                <$provider<T> as $crate::serializer::Serializer>::IS_POLYMORPHIC;
-
-            const IS_SHARED_REF: bool =
-                <$provider<T> as $crate::serializer::Serializer>::IS_SHARED_REF;
-
-            const IS_WRAPPER: bool = $wrapper;
-
-            const REQUIRES_SCOPED_ACCESS: bool =
-                <$provider<T> as $crate::serializer::Serializer>::REQUIRES_SCOPED_ACCESS;
-
-            #[inline(always)]
-            fn metadata_target_type_id() -> std::any::TypeId {
-                <$provider<T> as $crate::serializer::Serializer>::metadata_target_type_id()
-            }
-
-            const READ_DATA_ALWAYS_ADVANCES: bool =
-                <$provider<T> as $crate::serializer::Serializer>::READ_DATA_ALWAYS_ADVANCES;
-
-            #[inline(always)]
-            fn dynamic_type_id(
-                value: &Self,
-            ) -> Result<Option<std::any::TypeId>, $crate::Error> {
-                <$provider<T> as $crate::serializer::Serializer>::dynamic_type_id(value)
-            }
-
+        impl<S: $crate::serializer::Serializer> $crate::serializer::Serializer for $target<[S]>
+        where
+            $(S::Target: $($bounds)+,)?
+        {
+            forward_carrier_serializer!($codec<
+                [S::Target],
+                $crate::serializer::codec::VecCodec<S::Target, S, false, false, false, false>,
+                false,
+                false
+            >);
         }
     };
 }
@@ -703,6 +710,7 @@ mod marker;
 mod mutex;
 mod number;
 mod option;
+mod pointee;
 mod primitive_list;
 mod rc;
 mod refcell;

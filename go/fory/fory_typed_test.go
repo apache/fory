@@ -173,9 +173,8 @@ func TestDeserializeByteSliceAcceptsUint8ArrayRootType(t *testing.T) {
 // TestSerializeGenericComplex tests Serialize[T]/DeserializeWithCallbackBuffers[T] with complex types.
 // Struct wrappers must be registered explicitly before fast serializer use.
 func TestSerializeGenericComplex(t *testing.T) {
-	f := NewFory(WithXlang(false), WithRefTracking(true), WithCompatible(false))
-
 	t.Run("Struct", func(t *testing.T) {
+		f := NewFory(WithXlang(false), WithRefTracking(true), WithCompatible(false))
 		type TestStruct struct {
 			Name  string
 			Value int32
@@ -195,6 +194,7 @@ func TestSerializeGenericComplex(t *testing.T) {
 	})
 
 	t.Run("Slice", func(t *testing.T) {
+		f := NewFory(WithXlang(false), WithRefTracking(true), WithCompatible(false))
 		// Note: *[]T is not supported, use wrapper struct instead
 		type SliceWrapper struct {
 			Items []int32
@@ -211,6 +211,7 @@ func TestSerializeGenericComplex(t *testing.T) {
 	})
 
 	t.Run("Map", func(t *testing.T) {
+		f := NewFory(WithXlang(false), WithRefTracking(true), WithCompatible(false))
 		// Note: *map[K]V is not supported, use wrapper struct instead
 		type MapWrapper struct {
 			Items map[string]int32
@@ -229,10 +230,9 @@ func TestSerializeGenericComplex(t *testing.T) {
 
 // TestSerializeDeserializeRoundTrip tests that serialized data can be correctly deserialized.
 func TestSerializeDeserializeRoundTrip(t *testing.T) {
-	f := NewFory(WithXlang(false), WithRefTracking(true), WithCompatible(false))
-
 	// Test that SerializeWithCallback[T] uses pointer-based fast path when available
 	t.Run("TypedSerializerPath", func(t *testing.T) {
+		f := NewFory(WithXlang(false), WithRefTracking(true), WithCompatible(false))
 		// Int32 has a registered fast path
 		original := int32(999)
 		data, err := Serialize(f, &original)
@@ -246,12 +246,13 @@ func TestSerializeDeserializeRoundTrip(t *testing.T) {
 	})
 
 	t.Run("FastSerializerFallbackPath", func(t *testing.T) {
+		f := NewFory(WithXlang(false), WithRefTracking(true), WithCompatible(false))
 		// Custom struct uses the fast serializer fallback path.
 		type CustomStruct struct {
 			ID   int64
 			Name string
 		}
-		f.RegisterStructByName(CustomStruct{}, "test.CustomStruct")
+		require.NoError(t, f.RegisterStructByName(CustomStruct{}, "test.CustomStruct"))
 
 		original := CustomStruct{ID: 123, Name: "test"}
 		data, err := Serialize(f, &original)

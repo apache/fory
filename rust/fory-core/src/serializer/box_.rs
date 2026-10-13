@@ -16,6 +16,7 @@
 // under the License.
 
 use super::codec::{codec_read_type_info_static, codec_ref_mode, codec_write_type_info, Codec};
+use super::pointee::{PointeeCodec, PointeeSerializer};
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::meta::FieldType;
@@ -25,11 +26,13 @@ use crate::type_id::TypeId;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-pub struct BoxCodec<T, C, const NULLABLE: bool, const TRACK_REF: bool>(PhantomData<(T, C)>);
+pub struct BoxCodec<T: ?Sized, C, const NULLABLE: bool, const TRACK_REF: bool>(
+    PhantomData<(*const T, C)>,
+);
 
 #[inline(always)]
-fn reserve_box<T>(context: &mut ReadContext) -> Result<(), Error> {
-    let bytes = std::mem::size_of::<T>();
+fn reserve_box<T: ?Sized, C: PointeeSerializer<T>>(context: &mut ReadContext) -> Result<(), Error> {
+    let bytes = C::POINTEE_SIZE;
     if bytes != 0 {
         context.reserve_graph_memory(bytes)?;
     }
@@ -39,8 +42,9 @@ fn reserve_box<T>(context: &mut ReadContext) -> Result<(), Error> {
 impl<T, C, const NULLABLE: bool, const TRACK_REF: bool> Serializer
     for BoxCodec<T, C, NULLABLE, TRACK_REF>
 where
-    T: 'static,
-    C: Serializer<Target = T>,
+    T: ?Sized + 'static,
+    C: PointeeSerializer<T>,
+    Box<T>: From<C::Target>,
 {
     type Target = Box<T>;
 
@@ -51,13 +55,13 @@ where
 
     #[inline(always)]
     fn write_data(value: &Box<T>, context: &mut WriteContext) -> Result<(), Error> {
-        C::write_data(value, context)
+        C::write_pointee_data(value, context)
     }
 
     #[inline(always)]
     fn read_data(context: &mut ReadContext) -> Result<Box<T>, Error> {
-        reserve_box::<T>(context)?;
-        Ok(Box::new(C::read_data(context)?))
+        reserve_box::<T, C>(context)?;
+        Ok(Box::from(C::read_data(context)?))
     }
 
     #[inline(always)]
@@ -67,7 +71,7 @@ where
         ref_mode: RefMode,
         write_type_info: bool,
     ) -> Result<(), Error> {
-        C::write(value, context, ref_mode, write_type_info)
+        C::write_pointee(value, context, ref_mode, write_type_info)
     }
 
     #[inline(always)]
@@ -85,7 +89,7 @@ where
         ref_mode: RefMode,
         type_info: &Rc<TypeInfo>,
     ) -> Result<(), Error> {
-        C::write_with_type_info(value, context, ref_mode, type_info)
+        C::write_pointee_with_type_info(value, context, ref_mode, type_info)
     }
 
     #[inline(always)]
@@ -94,8 +98,8 @@ where
         ref_mode: RefMode,
         read_type_info: bool,
     ) -> Result<Box<T>, Error> {
-        reserve_box::<T>(context)?;
-        Ok(Box::new(C::read(context, ref_mode, read_type_info)?))
+        reserve_box::<T, C>(context)?;
+        Ok(Box::from(C::read(context, ref_mode, read_type_info)?))
     }
 
     #[inline(always)]
@@ -104,16 +108,16 @@ where
         ref_mode: RefMode,
         type_info: &Rc<TypeInfo>,
     ) -> Result<Box<T>, Error> {
-        reserve_box::<T>(context)?;
-        Ok(Box::new(C::read_with_type_info(
+        reserve_box::<T, C>(context)?;
+        Ok(Box::from(C::read_with_type_info(
             context, ref_mode, type_info,
         )?))
     }
 
     #[inline(always)]
     fn default_value(context: &mut ReadContext) -> Result<Box<T>, Error> {
-        reserve_box::<T>(context)?;
-        Ok(Box::new(C::default_value(context)?))
+        reserve_box::<T, C>(context)?;
+        Ok(Box::from(C::default_value(context)?))
     }
 
     #[inline(always)]
@@ -148,20 +152,22 @@ where
 
     #[inline(always)]
     fn is_none(value: &Box<T>) -> bool {
-        C::is_none(value)
+        C::pointee_is_none(value)
     }
 
     #[inline(always)]
     fn dynamic_type_id(value: &Box<T>) -> Result<Option<std::any::TypeId>, Error> {
-        C::dynamic_type_id(value)
+        C::pointee_dynamic_type_id(value)
     }
 }
 
-impl<T, C, const NULLABLE: bool, const TRACK_REF: bool> Codec<Box<T>>
+impl<T, V, C, const NULLABLE: bool, const TRACK_REF: bool> Codec<Box<T>>
     for BoxCodec<T, C, NULLABLE, TRACK_REF>
 where
-    T: 'static,
-    C: Codec<T>,
+    T: ?Sized + 'static,
+    V: 'static,
+    C: Serializer<Target = V> + PointeeCodec<T, V>,
+    Box<T>: From<C::Target>,
 {
     #[inline(always)]
     fn field_type(type_resolver: &TypeResolver) -> Result<FieldType, Error> {
@@ -181,8 +187,8 @@ where
         Self::write_with_mode(
             value,
             context,
-            codec_ref_mode::<T, C, NULLABLE, TRACK_REF>(),
-            codec_write_type_info::<T, C>(context),
+            codec_ref_mode::<C::Target, C, NULLABLE, TRACK_REF>(),
+            codec_write_type_info::<C::Target, C>(context),
             true,
         )
     }
@@ -191,8 +197,8 @@ where
     fn read_field(context: &mut ReadContext) -> Result<Box<T>, Error> {
         <Self as Serializer>::read(
             context,
-            codec_ref_mode::<T, C, NULLABLE, TRACK_REF>(),
-            codec_read_type_info_static::<T, C>(context),
+            codec_ref_mode::<C::Target, C, NULLABLE, TRACK_REF>(),
+            codec_read_type_info_static::<C::Target, C>(context),
         )
     }
 
@@ -201,8 +207,11 @@ where
         context: &mut ReadContext,
         remote_data_type: &FieldType,
     ) -> Result<Box<T>, Error> {
-        reserve_box::<T>(context)?;
-        Ok(Box::new(C::read_data_with_type(context, remote_data_type)?))
+        reserve_box::<T, C>(context)?;
+        Ok(Box::from(C::read_data_with_type(
+            context,
+            remote_data_type,
+        )?))
     }
 
     #[inline(always)]
@@ -210,8 +219,8 @@ where
         context: &mut ReadContext,
         remote_field_type: &FieldType,
     ) -> Result<Box<T>, Error> {
-        reserve_box::<T>(context)?;
-        Ok(Box::new(C::read_field_with_type(
+        reserve_box::<T, C>(context)?;
+        Ok(Box::from(C::read_field_with_type(
             context,
             remote_field_type,
         )?))
@@ -225,7 +234,7 @@ where
         write_type_info: bool,
         has_generics: bool,
     ) -> Result<(), Error> {
-        C::write_with_mode(value, context, ref_mode, write_type_info, has_generics)
+        C::write_pointee_with_mode(value, context, ref_mode, write_type_info, has_generics)
     }
 
     #[inline(always)]
@@ -236,7 +245,7 @@ where
         type_info: &Rc<TypeInfo>,
         has_generics: bool,
     ) -> Result<(), Error> {
-        <C as Codec<T>>::write_with_type_info(value, context, ref_mode, type_info, has_generics)
+        C::write_pointee_field_with_type_info(value, context, ref_mode, type_info, has_generics)
     }
 
     #[inline(always)]
@@ -246,5 +255,7 @@ where
         C::read_type_info_value(context)
     }
 }
+
+impl_unsized_carrier_serializer!(Box, BoxCodec);
 
 impl_single_carrier_serializer!(BoxSerializer, Box, BoxCodec, wrapper = true);
