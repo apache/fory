@@ -226,7 +226,7 @@ For example, the `fory-core` module is built with Java 8, and the `fory-format` 
 
 To use Jetbrains IDEA IDE for Java Development, you need to configure the project SDK and module SDK to using JDK 11+.
 
-And due to the usage of `sun.misc.Unsafe` API, which is not visible in Java 11+, you need to configure java compiler with `--releaese` option disabled.
+And due to the usage of `sun.misc.Unsafe` API, which is not visible in Java 11+, you need to configure java compiler with `--release` option disabled.
 
 <div align="center">
   <img width="65%" alt="" src="docs/images/idea-jdk11.png"><br>
@@ -240,7 +240,7 @@ The capability-first [docs](docs) tree is the canonical source for the website d
 including Introduction, Getting Started, Benchmarks, user guides, Development, and the separate
 Specification surface.
 
-If you want write a blog, or update other contents about the website, please submit PR to the site repo.
+If you want to write a blog, or update other contents about the website, please submit PR to the site repo.
 
 ## Development
 
