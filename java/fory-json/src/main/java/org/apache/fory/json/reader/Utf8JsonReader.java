@@ -1205,7 +1205,7 @@ public final class Utf8JsonReader extends JsonReader {
   private Number readDecimalNumber(int start, boolean exact) {
     position = start;
     if (exact) {
-      return readBigDecimal();
+      return materializeNaturalDecimal(readBigDecimal());
     }
     // Preserve Number's Double representation and JDK conversion for points and exponents.
     return Double.valueOf(Double.parseDouble(readNumberAsString()));

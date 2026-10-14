@@ -727,7 +727,7 @@ public abstract class JsonReader {
     String number = readNumberAsString();
     if (hasDecimalSeparator(number)) {
       position = start;
-      return readBigDecimal();
+      return materializeNaturalDecimal(readBigDecimal());
     }
     return materializeNumber(number);
   }
@@ -1927,6 +1927,15 @@ public abstract class JsonReader {
       }
     }
     return false;
+  }
+
+  protected static Number materializeNaturalDecimal(BigDecimal value) {
+    double asDouble = value.doubleValue();
+    // Keep the compact representation when it preserves the decimal value exactly.
+    if (Double.isFinite(asDouble) && BigDecimal.valueOf(asDouble).compareTo(value) == 0) {
+      return Double.valueOf(asDouble);
+    }
+    return value;
   }
 
   private byte[] bigNumberBytes(String number) {
