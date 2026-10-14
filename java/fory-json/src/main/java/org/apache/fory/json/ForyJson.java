@@ -801,9 +801,13 @@ public final class ForyJson {
    * {@code operation}, then rejects trailing non-whitespace content.
    *
    * <p>This is the entry point for callers that read JSON tokens directly, for example frameworks
-   * with their own deserializers. The reader shares this instance's limits, field-name caches and
-   * resolver; it must not escape the operation. Like the other root APIs, this method is not
-   * reentrant on the same instance: the operation must not invoke a {@code ForyJson} root API.
+   * with their own deserializers. The reader shares this instance's field-name caches, buffers and
+   * resolver and must not escape the operation. Token methods do not track nesting or allocation on
+   * their own: callers reading untrusted input should use {@link Utf8JsonReader#enterDepth()},
+   * {@link Utf8JsonReader#exitDepth()} and {@link Utf8JsonReader#reserveGraphMemory(long)} as
+   * custom codecs do, so this instance's depth and graph-memory limits apply. Like the other root
+   * APIs, this method is not reentrant on the same instance: the operation must not invoke a {@code
+   * ForyJson} root API.
    */
   public <R, E extends Throwable> R readUtf8(
       byte[] bytes, int offset, int length, Utf8ReadOperation<R, E> operation) throws E {
