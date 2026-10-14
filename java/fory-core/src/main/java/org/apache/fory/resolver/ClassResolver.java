@@ -124,6 +124,7 @@ import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.JdkProxySerializer;
 import org.apache.fory.serializer.LambdaSerializer;
 import org.apache.fory.serializer.LocaleSerializer;
+import org.apache.fory.serializer.NonSerializableSerializer;
 import org.apache.fory.serializer.NoneSerializer;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.OptionalSerializers;
@@ -1502,8 +1503,7 @@ public class ClassResolver extends TypeResolver {
       }
       if (config.checkJdkClassSerializable()) {
         if (cls.getName().startsWith("java") && !(Serializable.class.isAssignableFrom(cls))) {
-          throw new UnsupportedOperationException(
-              String.format("Class %s doesn't support serialization.", cls));
+          return NonSerializableSerializer.class;
         }
       }
       if (ScalaTypes.SCALA_AVAILABLE && ReflectionUtils.isScalaSingletonObject(cls)) {
