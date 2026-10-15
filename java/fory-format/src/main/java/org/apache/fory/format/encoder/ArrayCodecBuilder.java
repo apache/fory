@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.fory.Fory;
+import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.type.DataTypes;
@@ -64,6 +65,7 @@ public class ArrayCodecBuilder<C extends Collection<?>>
   }
 
   Function<BinaryArrayWriter, ArrayEncoder<C>> buildWithWriter() {
+    final CodeGenerator codeGenerator = Encoders.pinCodeGenerator();
     loadArrayInnerCodecs();
     final TypeRef<?> elementType = TypeUtils.getElementType(collectionType);
     final Class<?> elementClass = schemaEvolution ? evolutionBean(elementType) : null;
@@ -78,7 +80,7 @@ public class ArrayCodecBuilder<C extends Collection<?>>
         }
       };
     }
-    return buildVersionedWithWriter(elementType, elementClass);
+    return buildVersionedWithWriter(elementType, elementClass, codeGenerator);
   }
 
   /**
@@ -94,7 +96,9 @@ public class ArrayCodecBuilder<C extends Collection<?>>
   }
 
   private Function<BinaryArrayWriter, ArrayEncoder<C>> buildVersionedWithWriter(
-      final TypeRef<?> elementType, final Class<?> elementClass) {
+      final TypeRef<?> elementType,
+      final Class<?> elementClass,
+      final CodeGenerator codeGenerator) {
     // Enumerate the element field over every versioned bean reachable through its wrappers, so an
     // element like Map<KBean, VBean> evolves both the key bean and the value bean. The element
     // schema's strict hash identifies the whole combination, and each combination's chosen versions
@@ -117,7 +121,8 @@ public class ArrayCodecBuilder<C extends Collection<?>>
       if (vs == current) {
         continue;
       }
-      projectionSources.put(vs.strictHash(), new ProjectionSource(elementClass, elementName, vs));
+      projectionSources.put(
+          vs.strictHash(), new ProjectionSource(elementClass, elementName, vs, codeGenerator));
     }
     final Function<BinaryArrayWriter, GeneratedArrayEncoder> currentFactory =
         generatedEncoderFactory();
@@ -145,12 +150,17 @@ public class ArrayCodecBuilder<C extends Collection<?>>
     private final Class<?> elementClass;
     private final String elementName;
     private final SchemaHistory.VersionedSchema version;
+    private final CodeGenerator codeGenerator;
 
     ProjectionSource(
-        Class<?> elementClass, String elementName, SchemaHistory.VersionedSchema version) {
+        Class<?> elementClass,
+        String elementName,
+        SchemaHistory.VersionedSchema version,
+        CodeGenerator codeGenerator) {
       this.elementClass = elementClass;
       this.elementName = elementName;
       this.version = version;
+      this.codeGenerator = codeGenerator;
     }
 
     @Override
@@ -159,10 +169,15 @@ public class ArrayCodecBuilder<C extends Collection<?>>
       // Generates the projection row codec for every nested versioned bean class in this
       // combination, both map key and value, so the array codec's references all resolve.
       Map<Class<?>, String> nestedSuffixes =
-          ProjectionRouting.nestedSuffixesFor(version, codecFormat);
+          ProjectionRouting.nestedSuffixesFor(version, codecFormat, codeGenerator);
       Class<?> arrayClass =
           Encoders.loadOrGenProjectionArrayCodecClass(
-              collectionType, TypeRef.of(elementClass), codecFormat, suffix, nestedSuffixes);
+              collectionType,
+              TypeRef.of(elementClass),
+              codecFormat,
+              suffix,
+              nestedSuffixes,
+              codeGenerator);
       MethodHandle ctor = Encoders.constructorHandleFor(arrayClass, GeneratedArrayEncoder.class);
       // forElement substitutes each chosen historical struct into its leaf, so the element field at
       // this combination is simply the single field of vs.schema(); wrap it back in the list field.
