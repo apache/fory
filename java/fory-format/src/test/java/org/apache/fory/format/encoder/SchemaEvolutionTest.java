@@ -33,8 +33,11 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.annotation.ForySchema;
 import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
+import org.apache.fory.format.row.binary.writer.BinaryWriter;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.Assert;
@@ -1465,6 +1468,22 @@ public class SchemaEvolutionTest {
     in.setEmail("alice@example.com");
 
     oldReader.decode(newWriter.encode(in));
+  }
+
+  @Test
+  public void projectedDecodeAddsNoWritersToEncoderWriter() throws Exception {
+    byte[] bytes = evolvingCodec(OuterV1.class).encode(sampleV1());
+    BinaryRowWriter rowWriter = new BinaryRowWriter(TypeInference.inferSchema(OuterV2.class));
+    RowEncoder<OuterV2> reader =
+        Encoders.buildBeanCodec(OuterV2.class)
+            .withSchemaEvolution()
+            .buildForWriter()
+            .apply(rowWriter);
+    java.lang.reflect.Field children = BinaryWriter.class.getDeclaredField("children");
+    children.setAccessible(true);
+    int before = ((List<?>) children.get(rowWriter)).size();
+    assertProjectedToV2(reader.decode(bytes));
+    Assert.assertEquals(((List<?>) children.get(rowWriter)).size(), before);
   }
 
   private static <T> RowEncoder<T> evolvingCodec(Class<T> beanClass) {
