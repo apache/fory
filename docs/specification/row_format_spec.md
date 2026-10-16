@@ -366,8 +366,10 @@ and limitations.
   interface); the protocol object is the entry tuple.
 - A layout is materialized at every version where the active field set changes; layouts that come
   out identical collapse into one entry.
-- Reading a payload that predates a field yields null for a nullable field and the type's zero
-  value (`0`, `0.0`, `false`, empty for languages without null) otherwise. Fields removed in the
+- Reading a payload that predates a field yields the reader type's absent value: an empty
+  optional for an optional type, null for another nullable field, and the type's zero value (`0`,
+  `0.0`, `false`, empty for languages without null) otherwise. A default that the reader's type
+  declares for the field (a field initializer, for example) does not apply. Fields removed in the
   reader's schema are discarded.
 - When a struct contains other versioned structs (directly, or through list elements, map keys, or
   map values, to any depth), each distinct nested struct class is one version dimension and the
@@ -381,7 +383,8 @@ and limitations.
 - The fields of a versioned layout are ordered ascending by wire name, compared by Unicode code
   point (equivalently, byte-wise over the UTF-8 encodings). Duplicate wire names within one
   version are invalid. The compact format then applies its alignment sort, which is stable, over
-  that order.
+  that order. It sorts every struct this way at every depth, including structs in list elements
+  and in map keys and values.
 - A custom codec's encoded shape (its struct children, their names, and their order) is fixed by
   the codec's own definition, not by name sorting, and must be reproduced identically in every
   runtime that registers an equivalent codec.
@@ -393,9 +396,12 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
 
 - State: an unsigned 64-bit accumulator `h`, seeded with the FNV-1a offset basis
   `0xcbf29ce484222325`. Each input value `v` (one unsigned 64-bit integer) mixes as
-  `h = (h XOR v) * 0x100000001b3 mod 2^64` (the FNV-1a prime).
-- The hash of a layout folds its fields in layout order (standard format: canonical wire-name
-  order; compact format: the alignment-sorted order), each as a named field.
+  `h = (h XOR v) * 0x100000001b3 mod 2^64` (the FNV-1a prime). A negative input (a negative
+  decimal scale) mixes as its 64-bit two's-complement value.
+- The hash covers fields in the order they are on the wire, at every depth: canonical wire-name
+  order for the standard format, and the alignment-sorted order for the compact format, including
+  for structs in list elements and map entries. The hash of a layout folds its top-level fields in
+  that order, each as a named field.
 - A named field mixes: each byte of the wire name's UTF-8 encoding, then one `0` terminator,
   then the field's shape.
 - A field's shape mixes, in order:
@@ -413,17 +419,39 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
   `binary` 41.
 - The hash is 64 bits, so an implementation must reject, when the codec is built, two distinct
   layouts in one history that hash to the same value.
+- Known-answer vectors for the strict hash (`n` is nullable, `nn` is not nullable):
+
+  | Layout                                                   | Strict hash          |
+  | -------------------------------------------------------- | -------------------- |
+  | `id: int32 nn`                                           | `0x52d9543baa314ae4` |
+  | `name: string n`                                         | `0x45812bbf5f4c920c` |
+  | `größe: int64 nn`                                        | `0xe2e70ce928534aa8` |
+  | `amount: decimal(10, 2) nn`                              | `0xf0751e7a96d89543` |
+  | `amount: decimal(38, -3) nn`                             | `0x926657849144c230` |
+  | `blob: binary n, digest: binary(4) nn`                   | `0x0c01130d4045d1b9` |
+  | `tags: list<string n> n`                                 | `0x7cd563d52d484c3f` |
+  | `counts: map<string nn, int32 n> n`                      | `0xdaae30bf1bd9077a` |
+  | `point: struct<x: int32 nn, y: int32 nn> n, z: int64 nn` | `0x0ce5f71e89c02b76` |
+  | `combine(0x52d9543baa314ae4, 0x45812bbf5f4c920c)`        | `0x812fec70da48114d` |
 
 ### Framing and dispatch
 
 - A row payload's existing leading 8-byte hash word (little-endian) holds the strict hash of the
   writer's current layout when evolution is enabled, and the default schema hash otherwise.
-- Array and map payloads carry no hash word without evolution; with evolution they gain an 8-byte
-  strict-hash prefix. A map's prefix is one combined value,
+- Array and map payloads carry no hash word without evolution. With evolution, an array whose
+  element reaches a struct, and a map whose key or value reaches a struct, gain an 8-byte
+  strict-hash prefix (little-endian). The struct does not need to be versioned. An array or map
+  that reaches no struct has no prefix.
+- An array's prefix is the strict hash of a layout with one field: the empty name `""`, the element
+  type with each reachable struct at the payload's version, and the element's nullability.
+- A map's prefix is one combined value,
   `combine(keyHash, valueHash) = mix(mix(basis, keyHash), valueHash)` with the same basis and mix
-  step as above; the combination is order-sensitive, so a map key and value evolve independently
-  while the payload carries one hash. Nested versioned structs need no prefix of their own: their
-  layouts substitute into the enclosing payload's hash.
+  step as above. `keyHash` and `valueHash` are each the strict hash of a one-field layout built as
+  for an array element: the key with nullability `0`, and the value with nullability `1`. A
+  position that reaches no struct still hashes its type. The combination is order-sensitive, so a
+  map key and value evolve independently while the payload carries one hash. Nested versioned
+  structs need no prefix of their own: their layouts substitute into the enclosing payload's
+  hash.
 - The reader dispatches on the hash: the current layout's hash selects the current codec, a known
   historical hash selects that layout's projection, and an unknown hash is an error.
 - Whether evolution is enabled is agreed out of band. Payloads written without evolution carry no

@@ -299,9 +299,10 @@ public class Person {
 ```
 
 A v1 payload (with `name` and `age` only) decodes to a `Person` whose `email` is `null`.
-Primitive fields added later default to `0`, `0.0`, or `false`. Unannotated fields are treated
-as present from the first version, so a class can adopt versioning by annotating only the fields
-added after v1.
+Primitive fields added later default to `0`, `0.0`, or `false`, and `Optional` fields to
+`Optional.empty()`. A field initializer does not apply to a field that the payload lacks.
+Unannotated fields are treated as present from the first version, so a class can adopt versioning
+by annotating only the fields added after v1.
 
 For a record, the absent component's default is passed to the canonical constructor, so a
 constructor that rejects `null` for a reference component added in a later version throws when
@@ -359,8 +360,8 @@ wire-compatible otherwise. Row payloads always carry an 8-byte hash slot; under 
 value is the strict hash (which includes field name and nullability), so a flag-mismatched
 peer fails loudly with `ClassNotCompatibleException`. Arrays and maps of bean elements prepend
 an 8-byte strict-hash prefix under evolution and no prefix otherwise; an evolution-on consumer
-reading evolution-off bytes also fails with `ClassNotCompatibleException`, but the reverse
-direction (evolution-off consumer, evolution-on bytes) is undefined.
+reading evolution-off bytes also fails, but the reverse direction (evolution-off consumer,
+evolution-on bytes) is undefined.
 
 To adopt the flag on an existing deployment, enable `withSchemaEvolution()` on both sides in a
 release that changes no schema, then start evolving schemas only once every peer is on the
