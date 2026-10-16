@@ -279,16 +279,22 @@ public class MapSerializersTest extends ForyTestBase {
         (LinkedHashMap<Integer, Integer>) fory.deserialize(bytes);
 
     original.get(2);
+    deserialized.get(2);
+
+    assertEquals(new ArrayList<>(original.keySet()), new ArrayList<>(deserialized.keySet()));
+    assertEquals(
+        new ArrayList<>(java.util.Arrays.asList(1, 3, 4, 2)),
+        new ArrayList<>(deserialized.keySet()));
+
     original.get(4);
     original.get(1);
     original.get(3);
 
-    deserialized.get(2);
     deserialized.get(4);
     deserialized.get(1);
     deserialized.get(3);
 
-    assertEquals(new ArrayList<>(deserialized.keySet()), new ArrayList<>(original.keySet()));
+    assertEquals(new ArrayList<>(original.keySet()), new ArrayList<>(deserialized.keySet()));
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
