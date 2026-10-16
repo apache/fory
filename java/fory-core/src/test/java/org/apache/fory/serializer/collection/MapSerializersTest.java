@@ -264,32 +264,32 @@ public class MapSerializersTest extends ForyTestBase {
     serDeCheck(fory, obj1);
   }
 
-    @Test
-    public void testLinkedHashMapAccessOrder() {
-        Fory fory = getJavaFory();
+  @Test
+  public void testLinkedHashMapAccessOrder() {
+    Fory fory = getJavaFory();
 
-        LinkedHashMap<Integer, Integer> original = new LinkedHashMap<>(16, 0.75f, true);
-        original.put(1, 1);
-        original.put(2, 2);
-        original.put(3, 3);
-        original.put(4, 4);
+    LinkedHashMap<Integer, Integer> original = new LinkedHashMap<>(16, 0.75f, true);
+    original.put(1, 1);
+    original.put(2, 2);
+    original.put(3, 3);
+    original.put(4, 4);
 
-        byte[] bytes = fory.serialize(original);
-        LinkedHashMap<Integer, Integer> deserialized =
-                (LinkedHashMap<Integer, Integer>) fory.deserialize(bytes);
+    byte[] bytes = fory.serialize(original);
+    LinkedHashMap<Integer, Integer> deserialized =
+        (LinkedHashMap<Integer, Integer>) fory.deserialize(bytes);
 
-        original.get(2);
-        original.get(4);
-        original.get(1);
-        original.get(3);
+    original.get(2);
+    original.get(4);
+    original.get(1);
+    original.get(3);
 
-        deserialized.get(2);
-        deserialized.get(4);
-        deserialized.get(1);
-        deserialized.get(3);
+    deserialized.get(2);
+    deserialized.get(4);
+    deserialized.get(1);
+    deserialized.get(3);
 
-        assertEquals(new ArrayList<>(deserialized.keySet()), new ArrayList<>(original.keySet()));
-    }
+    assertEquals(new ArrayList<>(deserialized.keySet()), new ArrayList<>(original.keySet()));
+  }
 
   @Test(dataProvider = "referenceTrackingConfig")
   public void testBasicMap(boolean referenceTrackingConfig) {

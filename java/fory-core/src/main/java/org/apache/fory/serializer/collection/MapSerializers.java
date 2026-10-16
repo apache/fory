@@ -50,8 +50,8 @@ import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.TypeDef;
-import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.FieldAccessor;
+import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
@@ -63,7 +63,6 @@ import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
 import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.Preconditions;
-
 
 /**
  * Serializers for classes implements {@link Collection}. All map serializers must extends {@link
@@ -108,45 +107,44 @@ public class MapSerializers {
     }
   }
 
-    public static final class LinkedHashMapSerializer extends MapSerializer<LinkedHashMap> {
-        private static final class AccessOrderAccessor {
-            private static final FieldAccessor INSTANCE =
-                    FieldAccessor.createAccessor(
-                            ReflectionUtils.getDeclaredField(LinkedHashMap.class, "accessOrder"));
-        }
-
-        public LinkedHashMapSerializer(TypeResolver typeResolver) {
-            super(typeResolver, LinkedHashMap.class, true);
-        }
-
-        @Override
-        public Map onMapWrite(WriteContext writeContext, LinkedHashMap value) {
-            Map map = super.onMapWrite(writeContext, value);
-            if (!config.isXlang()) {
-                writeContext.getBuffer().writeBoolean(AccessOrderAccessor.INSTANCE.getBoolean(value));
-            }
-            return map;
-        }
-
-        @Override
-        public LinkedHashMap newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
-            MemoryBuffer buffer = readContext.getBuffer();
-            int numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
-            setNumElements(numElements);
-
-            boolean accessOrder = !config.isXlang() && buffer.readBoolean();
-            LinkedHashMap hashMap = new LinkedHashMap(numElements, 0.75f, accessOrder);
-            readContext.reference(hashMap);
-            return hashMap;
-        }
-
-        @Override
-        public Map newMap(Map map) {
-            boolean accessOrder =
-                    !config.isXlang() && AccessOrderAccessor.INSTANCE.getBoolean(map);
-            return new LinkedHashMap(map.size(), 0.75f, accessOrder);
-        }
+  public static final class LinkedHashMapSerializer extends MapSerializer<LinkedHashMap> {
+    private static final class AccessOrderAccessor {
+      private static final FieldAccessor INSTANCE =
+          FieldAccessor.createAccessor(
+              ReflectionUtils.getDeclaredField(LinkedHashMap.class, "accessOrder"));
     }
+
+    public LinkedHashMapSerializer(TypeResolver typeResolver) {
+      super(typeResolver, LinkedHashMap.class, true);
+    }
+
+    @Override
+    public Map onMapWrite(WriteContext writeContext, LinkedHashMap value) {
+      Map map = super.onMapWrite(writeContext, value);
+      if (!config.isXlang()) {
+        writeContext.getBuffer().writeBoolean(AccessOrderAccessor.INSTANCE.getBoolean(value));
+      }
+      return map;
+    }
+
+    @Override
+    public LinkedHashMap newMap(ReadContext readContext, boolean entryReadAlwaysAdvances) {
+      MemoryBuffer buffer = readContext.getBuffer();
+      int numElements = readMapSize(readContext, buffer, entryReadAlwaysAdvances);
+      setNumElements(numElements);
+
+      boolean accessOrder = !config.isXlang() && buffer.readBoolean();
+      LinkedHashMap hashMap = new LinkedHashMap(numElements, 0.75f, accessOrder);
+      readContext.reference(hashMap);
+      return hashMap;
+    }
+
+    @Override
+    public Map newMap(Map map) {
+      boolean accessOrder = !config.isXlang() && AccessOrderAccessor.INSTANCE.getBoolean(map);
+      return new LinkedHashMap(map.size(), 0.75f, accessOrder);
+    }
+  }
 
   public static final class IdentityHashMapSerializer
       extends JDKCompatibleMapSerializer<IdentityHashMap> {
