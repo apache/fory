@@ -345,7 +345,11 @@ public class Person {
 The history method name matches the original live descriptor name. For field-backed beans
 (Lombok `@Data`, records, or plain classes with a backing field) that is the field name
 (`age`, `tags`). For interface beans, where the live member is a getter with no backing field,
-it is the method name (`getAge`).
+it is the method name (`getAge`). The codec cannot detect a history method with the wrong name: a
+field-backed bean that declares `getTags()` instead of `tags()` gets the wire name `get_tags`, so
+every historical layout that holds that field hashes differently from the payloads that the old
+version wrote, and those payloads fail to decode with `ClassNotCompatibleException`. Test that an
+old payload still decodes before you retire a live field.
 
 A field handled by a custom codec evolves as its encoded representation. A codec that encodes
 to another type descends that type, so a versioned bean reachable only through the codec is
@@ -380,6 +384,12 @@ next to a case boundary makes the two orders diverge (`aB` sorts before `a_a` as
 but its wire name `a_b` sorts after `a_a`); such a bean is rejected when the codec is built, with
 a message naming the members to rename.
 
+The `snake_case` conversion inserts an underscore before each ASCII capital letter and lowercases
+it, and changes no other character. Other Fory runtimes do not all convert acronyms, a leading
+capital letter, or non-ASCII capital letters the same way, so give versioned beans ordinary
+lowerCamelCase member names (`createdAt`, not `fooURL` or `URLValue`) if another runtime will read
+the payloads.
+
 Because field names are wire identity, a rename is a removal plus an addition, not an in-place
 mapping: declare the old name on the history interface with `until = N` and annotate the renamed
 member with `since = N`. Older payloads then decode with the renamed field at its default, not
@@ -413,9 +423,10 @@ compiles a combination's codec the first time it decodes a payload at that combi
 generation tracks the historical versions you actually receive. Building the codec still computes
 the layout and hash of every combination, so that a hash collision fails at build time; that cost
 grows with the product of the version counts of the distinct versioned bean classes. A map whose
-key and value both evolve combines their versions the same way. Retiring an entry from a bean's `History` interface
-once you no longer read payloads from that range stops the reader from accepting those payloads; it
-is purely a read-side decision, and the writer always uses the current schema.
+key and value both evolve combines their versions the same way. Retiring an entry from a bean's
+`History` interface once you no longer read payloads from that range stops the reader from
+accepting those payloads; it is purely a read-side decision, and the writer always uses the current
+schema.
 
 ## Related Topics
 
