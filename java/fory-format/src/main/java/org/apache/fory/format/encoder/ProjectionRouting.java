@@ -38,7 +38,8 @@ final class ProjectionRouting {
   /**
    * Build a class-name suffix that uniquely identifies {@code vs} across the whole cross-product,
    * at any nesting depth. The suffix encodes the outer version and, for each nested bean, that
-   * inner's simple name, version, and its strict hash.
+   * inner's simple name, version, and its strict hash as 16 hex digits, so each token has a fixed
+   * end.
    *
    * <p>The cross-product for one outer schema enumerates a fixed set of nested classes, so every
    * combination carries the same classes in the same sorted-by-name positions; two combinations
@@ -60,7 +61,7 @@ final class ProjectionRouting {
             .append(e.getKey().getSimpleName())
             .append(inner.version())
             .append("h")
-            .append(Long.toHexString(inner.strictHash()));
+            .append(String.format("%016x", inner.strictHash()));
       }
     }
     return sb.toString();
