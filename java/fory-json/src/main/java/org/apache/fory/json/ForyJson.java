@@ -796,6 +796,76 @@ public final class ForyJson {
     }
   }
 
+  /**
+   * Lends a pooled {@link Utf8JsonReader} positioned at {@code bytes[offset, offset + length)} to
+   * {@code operation}, then rejects trailing non-whitespace content.
+   *
+   * <p>This is the entry point for callers that read JSON tokens directly, for example frameworks
+   * with their own deserializers. The reader shares this instance's field-name caches, buffers and
+   * resolver and must not escape the operation. Token methods do not track nesting or allocation on
+   * their own: callers reading untrusted input should use {@link Utf8JsonReader#enterDepth()},
+   * {@link Utf8JsonReader#exitDepth()} and {@link Utf8JsonReader#reserveGraphMemory(long)} as
+   * custom codecs do, so this instance's depth and graph-memory limits apply. Like the other root
+   * APIs, this method is not reentrant on the same instance: the operation must not invoke a {@code
+   * ForyJson} root API.
+   */
+  public <R, E extends Throwable> R readUtf8(
+      byte[] bytes, int offset, int length, Utf8ReadOperation<R, E> operation) throws E {
+    checkByteRange(bytes, offset, length);
+    Objects.requireNonNull(operation, "operation");
+    PooledState entry = acquire();
+    JsonState state = entry.state;
+    try {
+      state.typeResolver.lockJIT();
+      try {
+        Utf8JsonReader reader = state.utf8Reader(bytes, offset, length);
+        R value = operation.read(reader);
+        reader.finish();
+        return value;
+      } finally {
+        state.typeResolver.unlockJIT();
+      }
+    } finally {
+      try {
+        state.clearUtf8Reader();
+      } finally {
+        release(entry);
+      }
+    }
+  }
+
+  /**
+   * Lends a pooled {@link Utf8JsonWriter} to {@code operation} and returns the written UTF-8 JSON
+   * as a detached byte array.
+   *
+   * <p>This is the entry point for callers that write JSON tokens directly, for example frameworks
+   * with their own serializers. The writer shares this instance's options and resolver; it must not
+   * escape the operation. Like the other root APIs, this method is not reentrant on the same
+   * instance: the operation must not invoke a {@code ForyJson} root API.
+   */
+  public <E extends Throwable> byte[] writeUtf8(Utf8WriteOperation<E> operation) throws E {
+    Objects.requireNonNull(operation, "operation");
+    PooledState entry = acquire();
+    JsonState state = entry.state;
+    Utf8JsonWriter writer = state.utf8Writer();
+    try {
+      state.typeResolver.lockJIT();
+      try {
+        operation.write(writer);
+      } finally {
+        state.typeResolver.unlockJIT();
+      }
+      return writer.toJsonBytes();
+    } finally {
+      try {
+        state.buffer = writer.getBuffer();
+        writer.clear();
+      } finally {
+        release(entry);
+      }
+    }
+  }
+
   private static byte[] readAllBytes(InputStream input) {
     Objects.requireNonNull(input, "input");
     try {
