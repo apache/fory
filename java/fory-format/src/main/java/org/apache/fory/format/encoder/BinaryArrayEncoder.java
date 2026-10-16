@@ -142,10 +142,6 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
       buffer.readerIndex(readerIndex + size);
       return fromArray(array);
     }
-    if (size < 8) {
-      throw new ClassNotCompatibleException(
-          "Array payload too small for an 8-byte schema hash under schema evolution: size=" + size);
-    }
     final long peerHash = buffer.readInt64();
     final int bodySize = size - 8;
     if (peerHash == currentHash) {

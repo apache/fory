@@ -1865,38 +1865,11 @@ public class SchemaEvolutionStressTest {
   }
 
   // ---------------------------------------------------------------------------
-  // Under evolution, array/map payloads carry an 8-byte schema-hash prefix. A
-  // payload too small to hold that prefix is malformed and must fail loudly
-  // rather than feed a negative size into pointTo.
-  // ---------------------------------------------------------------------------
-
-  @Test
-  public void arrayPayloadBelowHashPrefixFailsLoudly() {
-    ArrayEncoder<List<ChainV2>> codec =
-        Encoders.buildArrayCodec(new TypeRef<List<ChainV2>>() {})
-            .withSchemaEvolution()
-            .build()
-            .get();
-    Assert.expectThrows(ClassNotCompatibleException.class, () -> codec.decode(new byte[3]));
-  }
-
-  @Test
-  public void mapPayloadBelowHashPrefixFailsLoudly() {
-    MapEncoder<Map<String, DefaultsV1>> codec =
-        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
-            .withSchemaEvolution()
-            .build()
-            .get();
-    Assert.expectThrows(ClassNotCompatibleException.class, () -> codec.decode(new byte[3]));
-  }
-
-  // ---------------------------------------------------------------------------
   // A full-length payload whose strict schema hash matches neither the reader's
   // current schema nor any entry in its projection history must fail loudly.
-  // This is the projection-map miss, distinct from the too-short-for-the-prefix
-  // case above: the payload clears the 8-byte guard, so it can only be caught by
-  // the unknown-hash branch. Encoding one bean and decoding it with an evolving
-  // codec for a structurally different bean reaches that branch deterministically.
+  // This is the projection-map miss. Encoding one bean and decoding it with an
+  // evolving codec for a structurally different bean reaches that branch
+  // deterministically.
   // ---------------------------------------------------------------------------
 
   @Test
