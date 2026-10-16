@@ -141,30 +141,33 @@ pub fn derive_serializer(
                 read_data_always_advances,
             )
         }
-        Data::Enum(data) => (
-            derive_enum::gen_actual_type_id(data),
-            quote! { &[] },
-            derive_enum::gen_field_fields_info(data),
-            derive_enum::gen_variants_fields_info(name, &ast.generics, data),
-            quote! {
-                let _ = (context, type_info);
-                Err(fory_core::Error::not_allowed(
-                    "read_compatible is valid only for struct targets",
-                ))
-            },
-            derive_enum::gen_variant_meta_types(name, &ast.generics, data),
-            derive_enum::gen_write(data),
-            derive_enum::gen_write_data(data, &ast.generics, &target_path),
-            derive_enum::gen_write_type_info(data),
-            derive_enum::gen_read(data),
-            derive_enum::gen_read_with_type_info(data),
-            derive_enum::gen_read_data(data, &ast.generics, &target_path),
-            derive_enum::gen_read_type_info(data),
-            derive_enum::gen_default_value(data, &target_path),
-            derive_enum::gen_reserved_space(),
-            derive_enum::gen_static_type_id(data),
-            quote! { true },
-        ),
+        Data::Enum(data) => {
+            let xlang_union = !attrs.native && derive_enum::is_union_compatible_enum(data);
+            (
+                derive_enum::gen_actual_type_id(data, xlang_union),
+                quote! { &[] },
+                derive_enum::gen_field_fields_info(data),
+                derive_enum::gen_variants_fields_info(name, &ast.generics, data),
+                quote! {
+                    let _ = (context, type_info);
+                    Err(fory_core::Error::not_allowed(
+                        "read_compatible is valid only for struct targets",
+                    ))
+                },
+                derive_enum::gen_variant_meta_types(name, &ast.generics, data),
+                derive_enum::gen_write(data),
+                derive_enum::gen_write_data(data, xlang_union, &ast.generics, &target_path),
+                derive_enum::gen_write_type_info(xlang_union),
+                derive_enum::gen_read(data),
+                derive_enum::gen_read_with_type_info(data),
+                derive_enum::gen_read_data(data, xlang_union, &ast.generics, &target_path),
+                derive_enum::gen_read_type_info(data),
+                derive_enum::gen_default_value(data, &target_path),
+                derive_enum::gen_reserved_space(),
+                derive_enum::gen_static_type_id(xlang_union),
+                quote! { true },
+            )
+        }
         Data::Union(_) => {
             clear_struct_context();
             return syn::Error::new_spanned(name, "Rust unions are not supported")
