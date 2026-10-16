@@ -147,7 +147,7 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
     throw new ClassNotCompatibleException(
         String.format(
             "Schema is not consistent, encoder schema is %s. "
-                + "self/peer schema hash are %x/%x. "
+                + "self/peer schema hash are %s/%s. "
                 + "Please check writer schema.",
             schema, schemaHash, peerSchemaHash));
   }
