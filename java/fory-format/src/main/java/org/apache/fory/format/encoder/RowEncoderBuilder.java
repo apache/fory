@@ -337,6 +337,19 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
         for (int i = 0; i < liveDescriptors.size(); i++) {
           expressions.add(setFieldValue(bean, liveDescriptors.get(i), liveValues.get(i)));
         }
+        if (projectionLiveNames != null) {
+          // A field the older payload lacks gets the default a record component gets, not
+          // whatever the constructor or a field initializer left there.
+          Set<String> assigned = new HashSet<>();
+          for (Descriptor d : liveDescriptors) {
+            assigned.add(d.getName());
+          }
+          for (Descriptor d : descriptorsMap.values()) {
+            if (!assigned.contains(d.getName())) {
+              expressions.add(setFieldValue(bean, d, nullValue(d.getTypeRef())));
+            }
+          }
+        }
       }
     }
 

@@ -26,6 +26,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
@@ -252,6 +253,34 @@ public class SchemaEvolutionStressTest {
       @ForyVersion(since = 2, until = 4)
       int oldField();
     }
+  }
+
+  @Data
+  public static class InitializedV1 {
+    private String name;
+  }
+
+  @Data
+  public static class InitializedV2 {
+    private String name;
+
+    @ForyVersion(since = 2)
+    private Optional<String> nick;
+
+    @ForyVersion(since = 2)
+    private String label = "unset";
+  }
+
+  @Test
+  public void absentFieldsGetDefaultsOnPlainBeans() {
+    RowEncoder<InitializedV1> writer = evolvingCodec(InitializedV1.class);
+    RowEncoder<InitializedV2> reader = evolvingCodec(InitializedV2.class);
+    InitializedV1 in = new InitializedV1();
+    in.setName("a");
+    InitializedV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getName(), "a");
+    Assert.assertEquals(out.getNick(), Optional.empty());
+    Assert.assertNull(out.getLabel());
   }
 
   @Test
