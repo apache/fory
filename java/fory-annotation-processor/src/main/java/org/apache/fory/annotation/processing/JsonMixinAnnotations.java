@@ -56,6 +56,8 @@ final class JsonMixinAnnotations {
   private static final String JSON_BYTE_ARRAY = JSON_PACKAGE + ".annotation.JsonByteArray";
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
   private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
+  private static final String JSON_DUPLICATE_PROPERTIES =
+      JSON_PACKAGE + ".annotation.JsonDuplicateProperties";
   private static final String JSON_FORMAT = JSON_PACKAGE + ".annotation.JsonFormat";
   private static final String JSON_IGNORE = JSON_PACKAGE + ".annotation.JsonIgnore";
   private static final String JSON_INCLUDE = JSON_PACKAGE + ".annotation.JsonInclude";
@@ -77,6 +79,7 @@ final class JsonMixinAnnotations {
                   JSON_BYTE_ARRAY,
                   JSON_CODEC,
                   JSON_CREATOR,
+                  JSON_DUPLICATE_PROPERTIES,
                   JSON_FORMAT,
                   JSON_IGNORE,
                   JSON_INCLUDE,

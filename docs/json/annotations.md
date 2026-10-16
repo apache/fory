@@ -21,8 +21,8 @@ license: |
 
 Fory JSON provides these mapping and validation annotations in
 `org.apache.fory.json.annotation`:
-`JsonAnyGetter`, `JsonAnyProperty`, `JsonAnySetter`, `JsonByteArray`, `JsonCodec`, `JsonCreator`, `JsonFormat`,
-`JsonIgnore`, `JsonInclude`, `JsonProperty`, `JsonPropertyOrder`, `JsonRawValue`, `JsonSubTypes`, `JsonUnwrapped`,
+`JsonAnyGetter`, `JsonAnyProperty`, `JsonAnySetter`, `JsonByteArray`, `JsonCodec`, `JsonCreator`,
+`JsonDuplicateProperties`, `JsonFormat`, `JsonIgnore`, `JsonInclude`, `JsonProperty`, `JsonPropertyOrder`, `JsonRawValue`, `JsonSubTypes`, `JsonUnwrapped`,
 `JsonValidator`, and `JsonValue`. `JsonType` is a separate build-time model marker. They are
 Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
@@ -349,6 +349,30 @@ json.toJson(new RetryPolicy()); // {"timestamp":0}
 For Android or Native Image, continue using the existing `@JsonType` or Mixin build setup.
 Kotlin applications using R8/ProGuard must run JSON KSP. Default evaluation takes place at runtime,
 not during annotation processing. See [Kotlin](kotlin.md).
+
+## `JsonDuplicateProperties`
+
+`JsonDuplicateProperties` decides for one class whether a known property repeated in one JSON object
+fails the read. It overrides the builder's `failOnDuplicateProperties` setting, which is described in
+[Object mapping](object-mapping.md#duplicate-properties):
+
+```java
+import org.apache.fory.json.annotation.JsonDuplicateProperties;
+
+@JsonDuplicateProperties(fail = true)
+public final class BidRequest {
+  public String id;
+  public long tmax;
+  public Source source;
+}
+```
+
+`{"id":"r1","tmax":100,"tmax":200}` fails with a `ForyJsonException` naming `tmax`, while a repeated
+property inside `source` follows the setting of the `Source` class. `fail = false` keeps the
+last-occurrence behavior for a class when the builder enables the check. The annotation is not
+inherited by subclasses, and an exact-target Mixin can supply or replace it. It applies only where the
+class is read as a JSON object: a class read through `JsonValue`, `JsonCodec`, a registered codec, or as
+an enum is unaffected. Writing is unaffected.
 
 ## `JsonPropertyOrder`
 
