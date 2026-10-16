@@ -125,13 +125,14 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     // guards below still run eagerly over the full cross-product, so a hash clash fails fast at
     // build rather than surfacing on an unlucky decode.
     //
-    // The full cross-product is required even when key and value are the same bean family: a writer
-    // can pin them to different versions via distinct type arguments (Map<DefaultsV1, DefaultsV2>),
-    // so off-diagonal pairs are reachable. See evolveMapSameBeanKeyAndValueCrossCombos.
+    // A writer has one definition of each bean class, so a pair that puts a class reached from
+    // both the key and the value at two versions cannot occur on the wire; skip it, as the row
+    // enumeration does.
     LongMap<BinaryMapEncoder.ProjectionSource> projectionSources = new LongMap<>();
     for (SchemaHistory.VersionedSchema valVs : valHistory.versions()) {
       for (SchemaHistory.VersionedSchema keyVs : keyHistory.versions()) {
-        if (valVs == valCurrent && keyVs == keyCurrent) {
+        if (valVs == valCurrent && keyVs == keyCurrent
+            || !SchemaHistory.sameClassVersions(keyVs, valVs)) {
           continue;
         }
         // The map header carries a single hash, so combine the key and value strict hashes into
