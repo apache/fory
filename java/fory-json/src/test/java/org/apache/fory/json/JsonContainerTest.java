@@ -683,6 +683,29 @@ public class JsonContainerTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void rejectNullStringMapKeys() {
+    ForyJson json = newJson();
+    LinkedHashMap<String, String> stringValues = new LinkedHashMap<>();
+    stringValues.put(null, "value");
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.toJson(stringValues, new TypeRef<LinkedHashMap<String, String>>() {}));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.toJsonBytes(stringValues, new TypeRef<LinkedHashMap<String, String>>() {}));
+    LinkedHashMap<String, Boolean> booleanValues = new LinkedHashMap<>();
+    booleanValues.put(null, true);
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.toJson(booleanValues, new TypeRef<LinkedHashMap<String, Boolean>>() {}));
+    LinkedHashMap<String, Long> numberValues = new LinkedHashMap<>();
+    numberValues.put(null, 7L);
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.toJson(numberValues, new TypeRef<LinkedHashMap<String, Long>>() {}));
+  }
+
+  @Test
   public void readTypeRefOptional() {
     ForyJson json = newJson();
     Optional<TokenValues> value =

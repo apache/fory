@@ -49,7 +49,7 @@ See [Java Features](../java/index.md#features) for complete feature list.
 Add the dependency with sbt:
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.7.6"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.7.7"
 ```
 
 ### JDK25+

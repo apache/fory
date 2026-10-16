@@ -100,10 +100,6 @@ class TypeUnregisteredError(ForyError):
     pass
 
 
-class CompileError(ForyError):
-    pass
-
-
 _ERROR_CODE_TO_EXCEPTION = {
     1: ForyOutOfMemoryError,
     2: ForyOutOfBoundError,

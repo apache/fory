@@ -948,6 +948,7 @@ pub(crate) fn all_type_params_send_sync(generics: &syn::Generics) -> bool {
 pub(crate) fn type_is_send_sync(ty: &Type, send_sync_params: &HashSet<String>) -> bool {
     match ty {
         Type::Array(array) => type_is_send_sync(array.elem.as_ref(), send_sync_params),
+        Type::Slice(slice) => type_is_send_sync(slice.elem.as_ref(), send_sync_params),
         Type::Tuple(tuple) => tuple
             .elems
             .iter()

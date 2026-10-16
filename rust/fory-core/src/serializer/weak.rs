@@ -18,6 +18,7 @@
 //! Serialization support for [`RcWeak`] and [`ArcWeak`].
 
 use super::codec::{codec_read_type_info, codec_read_type_info_static, Codec};
+use super::pointee::{PointeeCodec, PointeeSerializer};
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::meta::FieldType;
@@ -29,9 +30,13 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
-pub struct RcWeakCodec<T, C, const NULLABLE: bool, const TRACK_REF: bool>(PhantomData<(T, C)>);
+pub struct RcWeakCodec<T: ?Sized, C, const NULLABLE: bool, const TRACK_REF: bool>(
+    PhantomData<(*const T, C)>,
+);
 
-pub struct ArcWeakCodec<T, C, const NULLABLE: bool, const TRACK_REF: bool>(PhantomData<(T, C)>);
+pub struct ArcWeakCodec<T: ?Sized, C, const NULLABLE: bool, const TRACK_REF: bool>(
+    PhantomData<(*const T, C)>,
+);
 
 #[inline(always)]
 fn reserve_weak_cell<W>(context: &mut ReadContext) -> Result<(), Error> {
@@ -43,8 +48,10 @@ fn reserve_weak_cell<W>(context: &mut ReadContext) -> Result<(), Error> {
 }
 
 #[inline(always)]
-fn reserve_strong<T>(context: &mut ReadContext) -> Result<(), Error> {
-    let bytes = std::mem::size_of::<T>();
+fn reserve_strong<T: ?Sized, C: PointeeSerializer<T>>(
+    context: &mut ReadContext,
+) -> Result<(), Error> {
+    let bytes = C::POINTEE_SIZE;
     if bytes != 0 {
         context.reserve_graph_memory(bytes)?;
     }
@@ -92,7 +99,7 @@ fn weak_untracked_value(owner: &str) -> Error {
 }
 
 #[inline(always)]
-fn rc_weak_body<T: 'static>(
+fn rc_weak_body<T: ?Sized + 'static>(
     value: &RcWeak<T>,
     context: &mut WriteContext,
     ref_mode: RefMode,
@@ -117,7 +124,7 @@ fn rc_weak_body<T: 'static>(
 }
 
 #[inline(always)]
-fn write_rc_weak<T: 'static, C: Serializer<Target = T>>(
+fn write_rc_weak<T: ?Sized + 'static, C: PointeeSerializer<T>>(
     value: &RcWeak<T>,
     context: &mut WriteContext,
     ref_mode: RefMode,
@@ -126,11 +133,11 @@ fn write_rc_weak<T: 'static, C: Serializer<Target = T>>(
     let Some(value) = rc_weak_body(value, context, ref_mode)? else {
         return Ok(());
     };
-    C::write(&value, context, RefMode::None, write_type_info)
+    C::write_pointee(&value, context, RefMode::None, write_type_info)
 }
 
 #[inline(always)]
-fn write_rc_weak_field<T: 'static, C: Codec<T>>(
+fn write_rc_weak_field<T: ?Sized + 'static, V: 'static, C: PointeeCodec<T, V>>(
     value: &RcWeak<T>,
     context: &mut WriteContext,
     ref_mode: RefMode,
@@ -140,7 +147,7 @@ fn write_rc_weak_field<T: 'static, C: Codec<T>>(
     let Some(value) = rc_weak_body(value, context, ref_mode)? else {
         return Ok(());
     };
-    C::write_with_mode(
+    C::write_pointee_with_mode(
         &value,
         context,
         RefMode::None,
@@ -150,7 +157,7 @@ fn write_rc_weak_field<T: 'static, C: Codec<T>>(
 }
 
 #[inline(always)]
-fn write_rc_weak_with_type_info<T: 'static, C: Serializer<Target = T>>(
+fn write_rc_weak_with_type_info<T: ?Sized + 'static, C: PointeeSerializer<T>>(
     value: &RcWeak<T>,
     context: &mut WriteContext,
     ref_mode: RefMode,
@@ -159,11 +166,11 @@ fn write_rc_weak_with_type_info<T: 'static, C: Serializer<Target = T>>(
     let Some(value) = rc_weak_body(value, context, ref_mode)? else {
         return Ok(());
     };
-    C::write_with_type_info(&value, context, RefMode::None, type_info)
+    C::write_pointee_with_type_info(&value, context, RefMode::None, type_info)
 }
 
 #[inline(always)]
-fn write_rc_weak_field_with_type_info<T: 'static, C: Codec<T>>(
+fn write_rc_weak_field_with_type_info<T: ?Sized + 'static, V: 'static, C: PointeeCodec<T, V>>(
     value: &RcWeak<T>,
     context: &mut WriteContext,
     ref_mode: RefMode,
@@ -173,16 +180,16 @@ fn write_rc_weak_field_with_type_info<T: 'static, C: Codec<T>>(
     let Some(value) = rc_weak_body(value, context, ref_mode)? else {
         return Ok(());
     };
-    <C as Codec<T>>::write_with_type_info(&value, context, RefMode::None, type_info, has_generics)
+    C::write_pointee_field_with_type_info(&value, context, RefMode::None, type_info, has_generics)
 }
 
 #[inline(always)]
-fn read_rc_inner<T: 'static, C: Serializer<Target = T>>(
+fn read_rc_inner<T: ?Sized + 'static, C: PointeeSerializer<T>>(
     context: &mut ReadContext,
     read_type_info: bool,
     type_info: Option<&Rc<TypeInfo>>,
-) -> Result<T, Error> {
-    reserve_strong::<T>(context)?;
+) -> Result<C::Target, Error> {
+    reserve_strong::<T, C>(context)?;
     if let Some(type_info) = type_info {
         return C::read_with_type_info(context, RefMode::None, type_info);
     }
@@ -192,15 +199,15 @@ fn read_rc_inner<T: 'static, C: Serializer<Target = T>>(
 }
 
 #[inline(always)]
-fn read_rc_inner_with_type<T: 'static, C: Codec<T>>(
+fn read_rc_inner_with_type<T: ?Sized + 'static, V: 'static, C: PointeeCodec<T, V>>(
     context: &mut ReadContext,
     remote_field_type: &FieldType,
-) -> Result<T, Error> {
-    reserve_strong::<T>(context)?;
+) -> Result<C::Target, Error> {
+    reserve_strong::<T, C>(context)?;
     // The weak envelope owns only reference framing. A compatible
     // metadata-bearing child still owns its inline TypeInfo before its body,
     // while declared carrier children consume the remote schema directly.
-    if codec_read_type_info::<T, C>(context, remote_field_type) {
+    if codec_read_type_info::<C::Target, C>(context, remote_field_type) {
         return C::read(context, RefMode::None, true);
     }
     C::read_data_with_type(context, remote_field_type)
@@ -224,7 +231,7 @@ macro_rules! read_rc_weak_owner {
                 $context.inc_depth()?;
                 let value = $read_inner?;
                 $context.dec_depth();
-                let strong = Rc::new(value);
+                let strong = Rc::from(value);
                 reserve_weak_cell::<std::rc::Weak<T>>($context)?;
                 $context.ref_reader.store_rc_ref_at(ref_id, strong.clone());
                 Ok(RcWeak::from(&strong))
@@ -250,12 +257,16 @@ macro_rules! read_rc_weak_owner {
 }
 
 #[inline(always)]
-fn read_rc_weak<T: 'static, C: Serializer<Target = T>>(
+fn read_rc_weak<T: ?Sized + 'static, C: PointeeSerializer<T>>(
     context: &mut ReadContext,
     ref_mode: RefMode,
     read_type_info: bool,
     type_info: Option<&Rc<TypeInfo>>,
-) -> Result<RcWeak<T>, Error> {
+) -> Result<RcWeak<T>, Error>
+where
+    Rc<T>: From<C::Target>,
+    RcWeak<T>: Default,
+{
     read_rc_weak_owner!(
         context,
         ref_mode,
@@ -264,23 +275,29 @@ fn read_rc_weak<T: 'static, C: Serializer<Target = T>>(
 }
 
 #[inline(always)]
-fn read_rc_weak_with_type<T: 'static, C: Codec<T>>(
+fn read_rc_weak_with_type<T: ?Sized + 'static, V: 'static, C: PointeeCodec<T, V>>(
     context: &mut ReadContext,
     ref_mode: RefMode,
     remote_field_type: &FieldType,
-) -> Result<RcWeak<T>, Error> {
+) -> Result<RcWeak<T>, Error>
+where
+    Rc<T>: From<C::Target>,
+    RcWeak<T>: Default,
+{
     read_rc_weak_owner!(
         context,
         ref_mode,
-        read_rc_inner_with_type::<T, C>(context, remote_field_type)
+        read_rc_inner_with_type::<T, V, C>(context, remote_field_type)
     )
 }
 
 impl<T, C, const NULLABLE: bool, const TRACK_REF: bool> Serializer
     for RcWeakCodec<T, C, NULLABLE, TRACK_REF>
 where
-    T: 'static,
-    C: Serializer<Target = T>,
+    T: ?Sized + 'static,
+    C: PointeeSerializer<T>,
+    Rc<T>: From<C::Target>,
+    RcWeak<T>: Default,
 {
     type Target = RcWeak<T>;
 
@@ -388,17 +405,20 @@ where
     #[inline(always)]
     fn dynamic_type_id(value: &RcWeak<T>) -> Result<Option<std::any::TypeId>, Error> {
         match value.upgrade() {
-            Some(value) => C::dynamic_type_id(&value),
+            Some(value) => C::pointee_dynamic_type_id(&value),
             None => Ok(None),
         }
     }
 }
 
-impl<T, C, const NULLABLE: bool, const TRACK_REF: bool> Codec<RcWeak<T>>
+impl<T, V, C, const NULLABLE: bool, const TRACK_REF: bool> Codec<RcWeak<T>>
     for RcWeakCodec<T, C, NULLABLE, TRACK_REF>
 where
-    T: 'static,
-    C: Codec<T>,
+    T: ?Sized + 'static,
+    V: 'static,
+    C: Serializer<Target = V> + PointeeCodec<T, V>,
+    Rc<T>: From<C::Target>,
+    RcWeak<T>: Default,
 {
     #[inline(always)]
     fn field_type(type_resolver: &TypeResolver) -> Result<FieldType, Error> {
@@ -414,7 +434,7 @@ where
             value,
             context,
             RefMode::Tracking,
-            super::codec::codec_write_type_info::<T, C>(context),
+            super::codec::codec_write_type_info::<C::Target, C>(context),
             true,
         )
     }
@@ -424,7 +444,7 @@ where
         <Self as Serializer>::read(
             context,
             RefMode::Tracking,
-            codec_read_type_info_static::<T, C>(context),
+            codec_read_type_info_static::<C::Target, C>(context),
         )
     }
 
@@ -433,7 +453,7 @@ where
         context: &mut ReadContext,
         remote_field_type: &FieldType,
     ) -> Result<RcWeak<T>, Error> {
-        read_rc_weak_with_type::<T, C>(context, RefMode::Tracking, remote_field_type)
+        read_rc_weak_with_type::<T, V, C>(context, RefMode::Tracking, remote_field_type)
     }
 
     #[inline(always)]
@@ -444,7 +464,7 @@ where
         write_type_info: bool,
         has_generics: bool,
     ) -> Result<(), Error> {
-        write_rc_weak_field::<T, C>(value, context, ref_mode, write_type_info, has_generics)
+        write_rc_weak_field::<T, V, C>(value, context, ref_mode, write_type_info, has_generics)
     }
 
     #[inline(always)]
@@ -455,7 +475,7 @@ where
         type_info: &Rc<TypeInfo>,
         has_generics: bool,
     ) -> Result<(), Error> {
-        write_rc_weak_field_with_type_info::<T, C>(
+        write_rc_weak_field_with_type_info::<T, V, C>(
             value,
             context,
             ref_mode,
@@ -473,7 +493,7 @@ where
 }
 
 #[inline(always)]
-fn arc_weak_body<T: Send + Sync + 'static>(
+fn arc_weak_body<T: ?Sized + Send + Sync + 'static>(
     value: &ArcWeak<T>,
     context: &mut WriteContext,
     ref_mode: RefMode,
@@ -498,7 +518,7 @@ fn arc_weak_body<T: Send + Sync + 'static>(
 }
 
 #[inline(always)]
-fn write_arc_weak<T: Send + Sync + 'static, C: Serializer<Target = T>>(
+fn write_arc_weak<T: ?Sized + Send + Sync + 'static, C: PointeeSerializer<T>>(
     value: &ArcWeak<T>,
     context: &mut WriteContext,
     ref_mode: RefMode,
@@ -507,11 +527,11 @@ fn write_arc_weak<T: Send + Sync + 'static, C: Serializer<Target = T>>(
     let Some(value) = arc_weak_body(value, context, ref_mode)? else {
         return Ok(());
     };
-    C::write(&value, context, RefMode::None, write_type_info)
+    C::write_pointee(&value, context, RefMode::None, write_type_info)
 }
 
 #[inline(always)]
-fn write_arc_weak_field<T: Send + Sync + 'static, C: Codec<T>>(
+fn write_arc_weak_field<T: ?Sized + Send + Sync + 'static, V: 'static, C: PointeeCodec<T, V>>(
     value: &ArcWeak<T>,
     context: &mut WriteContext,
     ref_mode: RefMode,
@@ -521,7 +541,7 @@ fn write_arc_weak_field<T: Send + Sync + 'static, C: Codec<T>>(
     let Some(value) = arc_weak_body(value, context, ref_mode)? else {
         return Ok(());
     };
-    C::write_with_mode(
+    C::write_pointee_with_mode(
         &value,
         context,
         RefMode::None,
@@ -531,7 +551,7 @@ fn write_arc_weak_field<T: Send + Sync + 'static, C: Codec<T>>(
 }
 
 #[inline(always)]
-fn write_arc_weak_with_type_info<T: Send + Sync + 'static, C: Serializer<Target = T>>(
+fn write_arc_weak_with_type_info<T: ?Sized + Send + Sync + 'static, C: PointeeSerializer<T>>(
     value: &ArcWeak<T>,
     context: &mut WriteContext,
     ref_mode: RefMode,
@@ -540,11 +560,15 @@ fn write_arc_weak_with_type_info<T: Send + Sync + 'static, C: Serializer<Target 
     let Some(value) = arc_weak_body(value, context, ref_mode)? else {
         return Ok(());
     };
-    C::write_with_type_info(&value, context, RefMode::None, type_info)
+    C::write_pointee_with_type_info(&value, context, RefMode::None, type_info)
 }
 
 #[inline(always)]
-fn write_arc_weak_field_with_type_info<T: Send + Sync + 'static, C: Codec<T>>(
+fn write_arc_weak_field_with_type_info<
+    T: ?Sized + Send + Sync + 'static,
+    V: 'static,
+    C: PointeeCodec<T, V>,
+>(
     value: &ArcWeak<T>,
     context: &mut WriteContext,
     ref_mode: RefMode,
@@ -554,16 +578,16 @@ fn write_arc_weak_field_with_type_info<T: Send + Sync + 'static, C: Codec<T>>(
     let Some(value) = arc_weak_body(value, context, ref_mode)? else {
         return Ok(());
     };
-    <C as Codec<T>>::write_with_type_info(&value, context, RefMode::None, type_info, has_generics)
+    C::write_pointee_field_with_type_info(&value, context, RefMode::None, type_info, has_generics)
 }
 
 #[inline(always)]
-fn read_arc_inner<T: Send + Sync + 'static, C: Serializer<Target = T>>(
+fn read_arc_inner<T: ?Sized + Send + Sync + 'static, C: PointeeSerializer<T>>(
     context: &mut ReadContext,
     read_type_info: bool,
     type_info: Option<&Rc<TypeInfo>>,
-) -> Result<T, Error> {
-    reserve_strong::<T>(context)?;
+) -> Result<C::Target, Error> {
+    reserve_strong::<T, C>(context)?;
     if let Some(type_info) = type_info {
         return C::read_with_type_info(context, RefMode::None, type_info);
     }
@@ -573,15 +597,19 @@ fn read_arc_inner<T: Send + Sync + 'static, C: Serializer<Target = T>>(
 }
 
 #[inline(always)]
-fn read_arc_inner_with_type<T: Send + Sync + 'static, C: Codec<T>>(
+fn read_arc_inner_with_type<
+    T: ?Sized + Send + Sync + 'static,
+    V: 'static,
+    C: PointeeCodec<T, V>,
+>(
     context: &mut ReadContext,
     remote_field_type: &FieldType,
-) -> Result<T, Error> {
-    reserve_strong::<T>(context)?;
+) -> Result<C::Target, Error> {
+    reserve_strong::<T, C>(context)?;
     // The weak envelope owns only reference framing. A compatible
     // metadata-bearing child still owns its inline TypeInfo before its body,
     // while declared carrier children consume the remote schema directly.
-    if codec_read_type_info::<T, C>(context, remote_field_type) {
+    if codec_read_type_info::<C::Target, C>(context, remote_field_type) {
         return C::read(context, RefMode::None, true);
     }
     C::read_data_with_type(context, remote_field_type)
@@ -605,7 +633,7 @@ macro_rules! read_arc_weak_owner {
                 $context.inc_depth()?;
                 let value = $read_inner?;
                 $context.dec_depth();
-                let strong = Arc::new(value);
+                let strong = Arc::from(value);
                 reserve_weak_cell::<std::sync::Weak<T>>($context)?;
                 $context.ref_reader.store_arc_ref_at(ref_id, strong.clone());
                 Ok(ArcWeak::from(&strong))
@@ -632,12 +660,16 @@ macro_rules! read_arc_weak_owner {
 }
 
 #[inline(always)]
-fn read_arc_weak<T: Send + Sync + 'static, C: Serializer<Target = T>>(
+fn read_arc_weak<T: ?Sized + Send + Sync + 'static, C: PointeeSerializer<T>>(
     context: &mut ReadContext,
     ref_mode: RefMode,
     read_type_info: bool,
     type_info: Option<&Rc<TypeInfo>>,
-) -> Result<ArcWeak<T>, Error> {
+) -> Result<ArcWeak<T>, Error>
+where
+    Arc<T>: From<C::Target>,
+    ArcWeak<T>: Default,
+{
     read_arc_weak_owner!(
         context,
         ref_mode,
@@ -646,23 +678,29 @@ fn read_arc_weak<T: Send + Sync + 'static, C: Serializer<Target = T>>(
 }
 
 #[inline(always)]
-fn read_arc_weak_with_type<T: Send + Sync + 'static, C: Codec<T>>(
+fn read_arc_weak_with_type<T: ?Sized + Send + Sync + 'static, V: 'static, C: PointeeCodec<T, V>>(
     context: &mut ReadContext,
     ref_mode: RefMode,
     remote_field_type: &FieldType,
-) -> Result<ArcWeak<T>, Error> {
+) -> Result<ArcWeak<T>, Error>
+where
+    Arc<T>: From<C::Target>,
+    ArcWeak<T>: Default,
+{
     read_arc_weak_owner!(
         context,
         ref_mode,
-        read_arc_inner_with_type::<T, C>(context, remote_field_type)
+        read_arc_inner_with_type::<T, V, C>(context, remote_field_type)
     )
 }
 
 impl<T, C, const NULLABLE: bool, const TRACK_REF: bool> Serializer
     for ArcWeakCodec<T, C, NULLABLE, TRACK_REF>
 where
-    T: Send + Sync + 'static,
-    C: Serializer<Target = T>,
+    T: ?Sized + Send + Sync + 'static,
+    C: PointeeSerializer<T>,
+    Arc<T>: From<C::Target>,
+    ArcWeak<T>: Default,
 {
     type Target = ArcWeak<T>;
 
@@ -770,17 +808,20 @@ where
     #[inline(always)]
     fn dynamic_type_id(value: &ArcWeak<T>) -> Result<Option<std::any::TypeId>, Error> {
         match value.upgrade() {
-            Some(value) => C::dynamic_type_id(&value),
+            Some(value) => C::pointee_dynamic_type_id(&value),
             None => Ok(None),
         }
     }
 }
 
-impl<T, C, const NULLABLE: bool, const TRACK_REF: bool> Codec<ArcWeak<T>>
+impl<T, V, C, const NULLABLE: bool, const TRACK_REF: bool> Codec<ArcWeak<T>>
     for ArcWeakCodec<T, C, NULLABLE, TRACK_REF>
 where
-    T: Send + Sync + 'static,
-    C: Codec<T>,
+    T: ?Sized + Send + Sync + 'static,
+    V: 'static,
+    C: Serializer<Target = V> + PointeeCodec<T, V>,
+    Arc<T>: From<C::Target>,
+    ArcWeak<T>: Default,
 {
     #[inline(always)]
     fn field_type(type_resolver: &TypeResolver) -> Result<FieldType, Error> {
@@ -796,7 +837,7 @@ where
             value,
             context,
             RefMode::Tracking,
-            super::codec::codec_write_type_info::<T, C>(context),
+            super::codec::codec_write_type_info::<C::Target, C>(context),
             true,
         )
     }
@@ -806,7 +847,7 @@ where
         <Self as Serializer>::read(
             context,
             RefMode::Tracking,
-            codec_read_type_info_static::<T, C>(context),
+            codec_read_type_info_static::<C::Target, C>(context),
         )
     }
 
@@ -815,7 +856,7 @@ where
         context: &mut ReadContext,
         remote_field_type: &FieldType,
     ) -> Result<ArcWeak<T>, Error> {
-        read_arc_weak_with_type::<T, C>(context, RefMode::Tracking, remote_field_type)
+        read_arc_weak_with_type::<T, V, C>(context, RefMode::Tracking, remote_field_type)
     }
 
     #[inline(always)]
@@ -826,7 +867,7 @@ where
         write_type_info: bool,
         has_generics: bool,
     ) -> Result<(), Error> {
-        write_arc_weak_field::<T, C>(value, context, ref_mode, write_type_info, has_generics)
+        write_arc_weak_field::<T, V, C>(value, context, ref_mode, write_type_info, has_generics)
     }
 
     #[inline(always)]
@@ -837,7 +878,7 @@ where
         type_info: &Rc<TypeInfo>,
         has_generics: bool,
     ) -> Result<(), Error> {
-        write_arc_weak_field_with_type_info::<T, C>(
+        write_arc_weak_field_with_type_info::<T, V, C>(
             value,
             context,
             ref_mode,
@@ -854,7 +895,11 @@ where
     }
 }
 
+impl_unsized_carrier_serializer!(RcWeak, RcWeakCodec);
+
 impl_single_carrier_serializer!(RcWeakSerializer, RcWeak, RcWeakCodec, wrapper = true);
+
+impl_unsized_carrier_serializer!(ArcWeak, ArcWeakCodec, bounds = [Send + Sync]);
 
 impl_single_carrier_serializer!(
     ArcWeakSerializer,

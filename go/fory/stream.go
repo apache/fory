@@ -96,6 +96,7 @@ func (is *InputStream) Shrink() {
 // DeserializeFromStream reads the next object from the stream into the provided value.
 // It preserves the stream buffer while clearing root-scoped read metadata between calls.
 func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
+	f.Freeze()
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = is.buffer
 	target := reflect.ValueOf(v).Elem()
@@ -124,6 +125,7 @@ func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 // each call, discarding any prefetched data and type metadata.
 // For sequential multi-object reads on the same stream, use NewInputStream instead.
 func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
+	f.Freeze()
 	defer f.resetReadState()
 	// Always reset to enforce stateless semantics.
 	f.readCtx.buffer.ResetWithReader(r, 0)

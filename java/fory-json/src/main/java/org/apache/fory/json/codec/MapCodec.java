@@ -983,7 +983,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements ContainerJsonCode
       int index = 0;
       for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
         writer.writeComma(index++);
-        writer.writeFieldName((String) entry.getKey());
+        writeKey(writer, entry.getKey(), STRING_KEY_CODEC);
         Object element = entry.getValue();
         if (element == null) {
           requireNullValue();
@@ -1040,7 +1040,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements ContainerJsonCode
       int index = 0;
       for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
         writer.writeComma(index++);
-        writer.writeFieldName((String) entry.getKey());
+        writeKey(writer, entry.getKey(), STRING_KEY_CODEC);
         Object element = entry.getValue();
         if (element == null) {
           requireNullValue();
@@ -1097,7 +1097,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements ContainerJsonCode
       int index = 0;
       for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
         writer.writeComma(index++);
-        writer.writeFieldName((String) entry.getKey());
+        writeKey(writer, entry.getKey(), STRING_KEY_CODEC);
         Object element = entry.getValue();
         if (element == null) {
           requireNullValue();

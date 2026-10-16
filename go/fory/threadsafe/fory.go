@@ -128,7 +128,7 @@ func (f *Fory) registerCallback(registration func(*fory.Fory) error) error {
 	f.registrationMu.Lock()
 	defer f.registrationMu.Unlock()
 	if f.started.Load() {
-		return fmt.Errorf("types must be registered before the first serialization or deserialization")
+		return fory.ErrRegistrationFrozen
 	}
 	// Registration cannot accumulate on arbitrary pool.Get results: even
 	// serialized callers can borrow different entries, and GC can discard them.

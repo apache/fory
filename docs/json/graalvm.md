@@ -22,7 +22,8 @@ license: |
 ## Reachable Models
 
 Fory JSON has one Native Image Feature. Java models are discovered from reachable annotations; the
-Feature does not use the Java annotation processor. Add `@JsonType` to each reachable concrete
+Feature does not require the Java annotation processor and ignores its generated JSON artifacts,
+including those packaged in dependencies. Add `@JsonType` to each reachable concrete
 Java object model that the native executable reads or writes:
 
 ```java
