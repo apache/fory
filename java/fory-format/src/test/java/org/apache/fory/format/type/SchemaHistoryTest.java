@@ -369,6 +369,44 @@ public class SchemaHistoryTest {
         SchemaHistory.combineHashes(0x52d9543baa314ae4L, 0x45812bbf5f4c920cL), 0x812fec70da48114dL);
   }
 
+  /**
+   * A writer has one definition of each bean class, so a class reached at two depths (directly and
+   * through another versioned bean) is at the same version in both places. The history must not
+   * enumerate combinations that put it at two versions.
+   */
+  @Test
+  public void sharedNestedClassHasOneVersionPerCombination() {
+    SchemaHistory history = SchemaHistory.build(SharedOuter.class, UnaryOperator.identity());
+    assertEquals(history.versions().size(), 4);
+    for (SchemaHistory.VersionedSchema vs : history.versions()) {
+      SchemaHistory.VersionedSchema shared = vs.nestedBeanSchemas().get(SharedLeaf.class);
+      SchemaHistory.VersionedSchema middle = vs.nestedBeanSchemas().get(SharedMiddle.class);
+      assertTrue(shared == middle.nestedBeanSchemas().get(SharedLeaf.class));
+    }
+  }
+
+  @lombok.Data
+  public static class SharedLeaf {
+    private int a;
+
+    @ForyVersion(since = 2)
+    private int b;
+  }
+
+  @lombok.Data
+  public static class SharedMiddle {
+    private SharedLeaf leaf;
+
+    @ForyVersion(since = 2)
+    private int extra;
+  }
+
+  @lombok.Data
+  public static class SharedOuter {
+    private SharedLeaf leaf;
+    private SharedMiddle middle;
+  }
+
   private static long hash(Field... fields) {
     return SchemaHistory.computeStrictSchemaHash(DataTypes.schema(fields));
   }
