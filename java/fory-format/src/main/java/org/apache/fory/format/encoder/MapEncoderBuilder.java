@@ -81,6 +81,10 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   private final Map<Class<?>, String> valNestedSuffixes;
   private final Map<Class<?>, String> keyNestedSuffixes;
 
+  // True for a projection codec, where the key and value positions can route one bean class to
+  // different historical codecs.
+  private final boolean projection;
+
   public MapEncoderBuilder(Class<?> mapCls, Class<?> keyClass) {
     this(TypeRef.of(mapCls), TypeRef.of(keyClass));
   }
@@ -109,6 +113,11 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
     this.keyCodecSuffix = keyCodecSuffix;
     this.valNestedSuffixes = valNestedSuffixes;
     this.keyNestedSuffixes = keyNestedSuffixes;
+    projection =
+        !StringUtils.isBlank(valCodecSuffix)
+            || !StringUtils.isBlank(keyCodecSuffix)
+            || valNestedSuffixes != null
+            || keyNestedSuffixes != null;
     mapToken = clsType;
     ctx.reserveName(ROOT_KEY_WRITER_NAME);
     ctx.reserveName(ROOT_VALUE_WRITER_NAME);
@@ -359,11 +368,12 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   /**
    * Register the key bean's codec under a distinct key so it does not collide with a same-class
    * value bean that projects to a historical schema. Both would otherwise share one {@code
-   * beanEncoderMap} entry and the first-registered (suffixed) codec would wrongly decode the key.
+   * beanEncoderMap} entry and the first-registered (suffixed) codec would wrongly decode the key. A
+   * current-schema codec reads both positions with the same codec, so it keeps one entry.
    */
   @Override
   protected Object beanCodecKey(TypeRef<?> typeRef) {
-    return inKeyPosition ? new KeyCodecKey(typeRef) : typeRef;
+    return inKeyPosition && projection ? new KeyCodecKey(typeRef) : typeRef;
   }
 
   /** Distinguishes a key-position bean codec registration from the value-position one. */

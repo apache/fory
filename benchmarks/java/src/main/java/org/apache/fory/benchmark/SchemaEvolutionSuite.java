@@ -68,8 +68,9 @@ public class SchemaEvolutionSuite {
 
   // Evolution-disabled codecs for the same current (V2) schema. Comparing the *NoEvolution
   // benchmarks against their evolution-on counterparts isolates the steady-state cost of the
-  // withSchemaEvolution() flag on the common path (reading and writing current-version data): the
-  // 8-byte hash slot the evolution wire format adds, plus the hash compare on decode.
+  // withSchemaEvolution() flag on the common path (reading and writing current-version data).
+  // Rows carry the 8-byte hash slot and decode compares it in both modes, so on current-version
+  // data the flag adds no work; only a hash mismatch takes the projection lookup.
   private static final RowEncoder<PersonV2> v2PlainCodec =
       Encoders.buildBeanCodec(PersonV2.class).build().get();
   private static final RowEncoder<PersonV2> v2PlainCompactCodec =

@@ -42,7 +42,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD})
 public @interface ForyVersion {
-  /** First version (inclusive) that contains this field. Defaults to the class base version. */
+  /** First version (inclusive) that contains this field. Defaults to 1, the first version. */
   int since() default 1;
 
   /**

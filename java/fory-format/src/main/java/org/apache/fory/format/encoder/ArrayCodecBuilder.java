@@ -65,10 +65,10 @@ public class ArrayCodecBuilder<C extends Collection<?>>
   }
 
   Function<BinaryArrayWriter, ArrayEncoder<C>> buildWithWriter() {
-    final CodeGenerator codeGenerator = Encoders.pinCodeGenerator();
-    loadArrayInnerCodecs();
     final TypeRef<?> elementType = TypeUtils.getElementType(collectionType);
     final Class<?> elementClass = schemaEvolution ? evolutionBean(elementType) : null;
+    final CodeGenerator codeGenerator = elementClass == null ? null : Encoders.pinCodeGenerator();
+    loadArrayInnerCodecs();
     if (elementClass == null) {
       final Function<BinaryArrayWriter, GeneratedArrayEncoder> generatedEncoderFactory =
           generatedEncoderFactory();
