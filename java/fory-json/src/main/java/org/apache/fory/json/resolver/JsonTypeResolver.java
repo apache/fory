@@ -1036,6 +1036,10 @@ public final class JsonTypeResolver {
         ResolutionSnapshot snapshot = beginResolution();
         try {
           typeInfo = resolveTypeInfo(typeRef, resolutionTypeKey(typeRef), true);
+          Object key = resolutionTypeKey(typeRef);
+          if (typeInfos.get(key) == typeInfo) {
+            typeInfos.remove(key);
+          }
           completeResolution(snapshot);
         } catch (RuntimeException | Error e) {
           rollbackResolution(snapshot);

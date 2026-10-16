@@ -77,7 +77,8 @@ public class JsonModuleTest {
             .build();
 
     json.toJson(new FactoryPet());
-    assertEquals(runtimeTypes, Arrays.asList(true));
+    json.fromJson("{}", FactoryPet.class);
+    assertEquals(runtimeTypes, Arrays.asList(true, false));
   }
 
   @Test
