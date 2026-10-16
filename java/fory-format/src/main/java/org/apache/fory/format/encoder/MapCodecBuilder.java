@@ -56,12 +56,9 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
   }
 
   public Supplier<MapEncoder<M>> build() {
-    final Class<?> valClass = schemaEvolution ? evolutionBean() : null;
-    final Class<?> keyClass = schemaEvolution ? keyEvolutionBean() : null;
-    final boolean evolving = valClass != null || keyClass != null;
-    final CodeGenerator codeGenerator = evolving ? Encoders.pinCodeGenerator() : null;
+    final CodeGenerator codeGenerator = schemaEvolution ? Encoders.pinCodeGenerator() : null;
     loadMapInnerCodecs();
-    if (!evolving) {
+    if (!schemaEvolution) {
       final var mapEncoderFactory = generatedMapEncoder();
       return new Supplier<MapEncoder<M>>() {
         @Override
@@ -79,29 +76,10 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         }
       };
     }
-    return buildVersioned(valClass, keyClass, codeGenerator);
-  }
-
-  /**
-   * Whether the value position takes the evolution path, and a representative bean for naming. A
-   * directly-typed bean (versioned or not) takes the path so the strict-hash prefix is always
-   * present and an evolution-on consumer can detect a flag-mismatched producer cleanly; a bean
-   * nested inside a list/map/array value is found by descending the wrapper. Null when the value
-   * carries no bean. The per-version enumeration over every reachable bean in the value position is
-   * done by {@link #buildElementSchemaHistory}.
-   */
-  private Class<?> evolutionBean() {
-    return SchemaHistory.evolutionBean(valType, typeCtx());
-  }
-
-  /**
-   * Bean this map's key evolves on, reachable through the key type, mirroring {@link
-   * #evolutionBean()} for the value. Null when the key carries no bean. A versioned key is read at
-   * the matching historical layout selected by the map header's combined hash, so an evolving key
-   * no longer corrupts silently.
-   */
-  private Class<?> keyEvolutionBean() {
-    return SchemaHistory.evolutionBean(keyType, typeCtx());
+    return buildVersioned(
+        SchemaHistory.evolutionBean(valType, typeCtx()),
+        SchemaHistory.evolutionBean(keyType, typeCtx()),
+        codeGenerator);
   }
 
   /**
@@ -116,6 +94,12 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         DataTypes.schema(DataTypes.field(position.name(), position.type(), wireField.nullable())));
   }
 
+  /**
+   * The evolution path, taken by every map codec with the flag on so that the payload always
+   * carries the combined key and value strict hash. {@code valClass} and {@code keyClass} name
+   * generated projection classes; a position without a reachable bean has one version and no
+   * projection.
+   */
   private Supplier<MapEncoder<M>> buildVersioned(
       final Class<?> valClass, final Class<?> keyClass, final CodeGenerator codeGenerator) {
     // The map's own key and value are independent positions on the wire (each its own array), and

@@ -478,17 +478,13 @@ public final class SchemaHistory {
   }
 
   /**
-   * Whether a top-level array/map codec must take the evolution path for {@code elementType}, and a
-   * representative reachable bean for naming the generated codec. Descends list/map/array wrappers
-   * (a map on both its key and value sides) and returns the first bean at a leaf. The bean need not
-   * be versioned: an unversioned bean must still take the evolution path so the strict-hash prefix
-   * is always present and the producer and consumer stay wire-compatible. Returns null when no bean
-   * is reachable and the codec needs no projection. The actual per-version enumeration over every
-   * reachable bean is done by {@link #forElement}; this only decides whether to evolve and which
-   * package/name to give the generated codec. The two walks descend the same wrappers but answer
-   * different questions ("is any bean reachable, versioned or not" here, "which beans have more
-   * than one version" in {@link #collectNestedSites}) at different phases, so they are deliberately
-   * kept separate rather than merged into one traversal.
+   * A representative bean reachable from a top-level array element or map position, which names and
+   * places the generated projection codecs. Descends list/map/array wrappers (a map on both its key
+   * and value sides) and returns the first bean at a leaf, or null when none is reachable; then the
+   * position has one version and needs no projection. The per-version enumeration is done by {@link
+   * #forElement}. This walk and {@link #collectNestedSites} descend the same wrappers but answer
+   * different questions ("which bean names the codec" here, "which beans have more than one
+   * version" there), so they stay separate.
    */
   public static Class<?> evolutionBean(TypeRef<?> elementType, TypeResolutionContext typeCtx) {
     Wrapper w = Wrapper.classify(void.class, elementType);

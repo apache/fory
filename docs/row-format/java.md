@@ -358,8 +358,8 @@ evolution walk.
 Producers and consumers must agree on the `withSchemaEvolution()` flag — they are not
 wire-compatible otherwise. Row payloads always carry an 8-byte hash slot; under evolution its
 value is the strict hash (which includes field name and nullability), so a flag-mismatched
-peer fails loudly with `ClassNotCompatibleException`. Arrays and maps of bean elements prepend
-an 8-byte strict-hash prefix under evolution and no prefix otherwise; an evolution-on consumer
+peer fails loudly with `ClassNotCompatibleException`. Arrays and maps prepend an 8-byte
+strict-hash prefix under evolution and no prefix otherwise; an evolution-on consumer
 reading evolution-off bytes also fails, but the reverse direction (evolution-off consumer,
 evolution-on bytes) is undefined.
 
