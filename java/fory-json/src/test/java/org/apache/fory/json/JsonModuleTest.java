@@ -71,10 +71,7 @@ public class JsonModuleTest {
           }
           return null;
         };
-    ForyJson json =
-        ForyJson.builder()
-            .withModule(context -> context.registerCodecFactory(factory))
-            .build();
+    ForyJson json = ForyJson.builder().withModule(context -> context.registerCodecFactory(factory)).build();
 
     json.toJson(new FactoryPet());
     json.fromJson("{}", FactoryPet.class);
