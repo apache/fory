@@ -48,7 +48,9 @@ public @interface ForyVersion {
   /**
    * First version (exclusive) that no longer contains this field. The default {@link
    * Integer#MAX_VALUE} means the field has no upper bound and is present in every version from
-   * {@link #since()} onward.
+   * {@link #since()} onward. Only a method of the interface named by {@link
+   * ForySchema#removedFields()} may set it; a live field or accessor that sets it fails the codec
+   * build.
    */
   int until() default Integer.MAX_VALUE;
 }

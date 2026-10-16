@@ -372,8 +372,9 @@ and limitations.
   declares for the field (a field initializer, for example) does not apply. Fields removed in the
   reader's schema are discarded.
 - When a struct contains other versioned structs (directly, or through list elements, map keys, or
-  map values, to any depth), each distinct nested struct class is one version dimension and the
-  reader enumerates the cross-product of versions. A single payload carries one version per class.
+  map values, to any depth), each distinct nested struct type is one version dimension and the
+  reader enumerates the cross-product of versions. A single payload carries one version per struct
+  type.
 
 ### Wire names and canonical field order
 
@@ -442,8 +443,9 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
 - A row payload's existing leading 8-byte hash word (little-endian) holds the strict hash of the
   writer's current layout when evolution is enabled, and the default schema hash otherwise.
 - Array and map payloads carry no hash word without evolution. With evolution, every array and
-  map payload starts with an 8-byte strict-hash prefix (little-endian), so every payload written
-  with evolution enabled starts with the strict hash of its layout.
+  map payload starts with an 8-byte prefix (little-endian), so every payload written with evolution
+  enabled starts with an 8-byte schema identifier: the strict hash of its layout for a row or an
+  array, and the combined key and value hash for a map.
 - An array's prefix is the strict hash of a layout with one field: the empty name `""`, the element
   type with each reachable struct at the payload's version, and the element's nullability.
 - A map's prefix is one combined value,
@@ -460,7 +462,7 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
 
   | Payload                                              | Prefix               |
   | ---------------------------------------------------- | -------------------- |
-  | map, key `string`, value `int32`                     | `0xe3a21bfb65b885f7` |
+  | map, key `string nn`, value `int32 n`                | `0xe3a21bfb65b885f7` |
   | array of `struct<narrow: int8 nn, wide: int64 nn> n` | `0x04a5118c46faea29` |
   | the same array, compact format                       | `0x4f855bcc79d4a8c9` |
 
