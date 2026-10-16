@@ -122,7 +122,9 @@ public class ArrayCodecBuilder<C extends Collection<?>>
         continue;
       }
       projectionSources.put(
-          vs.strictHash(), new ProjectionSource(elementClass, elementName, vs, codeGenerator));
+          vs.strictHash(),
+          new ProjectionSource(
+              collectionType, codecFormat, elementClass, elementName, vs, codeGenerator));
     }
     final Function<BinaryArrayWriter, GeneratedArrayEncoder> currentFactory =
         generatedEncoderFactory();
@@ -144,19 +146,26 @@ public class ArrayCodecBuilder<C extends Collection<?>>
   /**
    * Deferred projection codec for one historical element version. Holds only the inputs to generate
    * the codec; the row and array codec classes are compiled on the first {@link #compile} call (the
-   * first decode of this version's hash), not at build time.
+   * first decode of this version's hash), not at build time. Static and built from values captured
+   * at build time, so a later change to the builder cannot reach a lazy compile.
    */
-  private final class ProjectionSource implements BinaryArrayEncoder.ProjectionSource {
+  private static final class ProjectionSource implements BinaryArrayEncoder.ProjectionSource {
+    private final TypeRef<? extends Collection<?>> collectionType;
+    private final Encoding codecFormat;
     private final Class<?> elementClass;
     private final String elementName;
     private final SchemaHistory.VersionedSchema version;
     private final CodeGenerator codeGenerator;
 
     ProjectionSource(
+        TypeRef<? extends Collection<?>> collectionType,
+        Encoding codecFormat,
         Class<?> elementClass,
         String elementName,
         SchemaHistory.VersionedSchema version,
         CodeGenerator codeGenerator) {
+      this.collectionType = collectionType;
+      this.codecFormat = codecFormat;
       this.elementClass = elementClass;
       this.elementName = elementName;
       this.version = version;

@@ -988,6 +988,26 @@ public class SchemaEvolutionStressTest {
   // ---------------------------------------------------------------------------
 
   @Test
+  public void mapNonBeanKeyTypeChangeFailsLoud() {
+    MapEncoder<Map<String, DefaultsV1>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<Long, DefaultsV1>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<Long, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Map<String, DefaultsV1> in = new HashMap<>();
+    DefaultsV1 value = new DefaultsV1();
+    value.setName("v");
+    in.put("k", value);
+    byte[] bytes = writer.encode(in);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> reader.decode(bytes));
+  }
+
+  @Test
   public void mapWithVersionedKey() {
     MapEncoder<Map<DefaultsV2, String>> codec =
         Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, String>>() {})
