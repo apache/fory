@@ -1047,6 +1047,10 @@ public final class JsonSharedRegistry {
     return resolved == null ? null : resolved.codec;
   }
 
+  boolean hasCodecFactories() {
+    return codecFactories.length != 0;
+  }
+
   private JsonValueCodec<?> createExactCodec(
       Class<?> target,
       TypeRef<?> typeRef,

@@ -1029,8 +1029,9 @@ public final class JsonTypeResolver {
       // The default Java object model is the declared schema for this exact class. Reuse that
       // binding so generated capabilities stay on the direct root path. Only a codec actually
       // selected by a runtime factory needs the runtime-only publication below.
-      typeInfo = typeInfos.get(runtimeType);
-      if (typeInfo == null) {
+      if (!sharedRegistry.hasCodecFactories()) {
+        typeInfo = getTypeInfo(runtimeType, runtimeType);
+      } else {
         // The runtime factory already declined this root, so the declared fallback must not ask
         // the same factory again as if the root were a field occurrence.
         ResolutionSnapshot snapshot = beginResolution();
