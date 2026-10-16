@@ -145,6 +145,10 @@
 //!   `map`, or `tuple` metadata to select serializers recursively at child nodes.
 //! - **`#[fory(default)]`**: Marks the fallible deserialization default `ForyUnion` variant.
 //!   `ForyUnion` requires exactly one default variant.
+//! - **`#[fory(native)]`**: Selects the Rust-native `enum` representation for a `ForyUnion`
+//!   enum even when every variant is unit or carries only one value. The enum declares no
+//!   `#[fory(unknown)]` carrier, uses normal registration, and is rejected in xlang mode.
+//!   Valid only on `ForyUnion`.
 //!
 //! ## Field Types
 //!
@@ -239,7 +243,11 @@ pub fn proc_macro_derive_fory_struct(input: proc_macro::TokenStream) -> TokenStr
         .into_compile_error()
         .into();
     }
-    derive_serializer(input)
+    let attrs = match parse_fory_attrs(&input.attrs, false) {
+        Ok(attrs) => attrs,
+        Err(err) => return err.into_compile_error().into(),
+    };
+    derive_serializer(input, attrs)
 }
 
 /// Derive macro for pure enum serialization.
@@ -263,28 +271,33 @@ pub fn proc_macro_derive_fory_enum(input: proc_macro::TokenStream) -> TokenStrea
         .into_compile_error()
         .into();
     }
-    derive_serializer(input)
+    let attrs = match parse_fory_attrs(&input.attrs, false) {
+        Ok(attrs) => attrs,
+        Err(err) => return err.into_compile_error().into(),
+    };
+    derive_serializer(input, attrs)
 }
 
 /// Derives serialization for data-carrying Rust enums.
 ///
 /// Xlang-compatible unit and single-payload variants use the Fory `UNION`
 /// representation. Native multi-field tuple and named variants use the native
-/// `ENUM` representation.
+/// `ENUM` representation. `#[fory(native)]` selects the native `ENUM`
+/// representation for any variant shape.
 #[proc_macro_derive(ForyUnion, attributes(fory))]
 pub fn proc_macro_derive_fory_union(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    if let Err(err) = object::derive_union::validate_input(&input) {
-        return err.into_compile_error().into();
-    }
-    derive_serializer(input)
-}
-
-fn derive_serializer(input: DeriveInput) -> TokenStream {
-    let attrs = match parse_fory_attrs(&input.attrs) {
+    let attrs = match parse_fory_attrs(&input.attrs, true) {
         Ok(attrs) => attrs,
         Err(err) => return err.into_compile_error().into(),
     };
+    if let Err(err) = object::derive_union::validate_input(&input, attrs.native) {
+        return err.into_compile_error().into();
+    }
+    derive_serializer(input, attrs)
+}
+
+fn derive_serializer(input: DeriveInput, attrs: ForyAttrs) -> TokenStream {
     let runtime_root = match runtime_root::resolve_runtime_root() {
         Ok(root) => root,
         Err(err) => return err.into_compile_error().into(),
@@ -340,14 +353,17 @@ pub(crate) struct ForyAttrs {
     pub generate_default: bool,
     pub evolving: Option<bool>,
     pub target: Option<Type>,
+    pub native: bool,
 }
 
-/// Parse fory attributes and return ForyAttrs
-fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
+/// Parse fory attributes and return ForyAttrs. `native` is accepted only when
+/// `allow_native` is set by the `ForyUnion` derive.
+fn parse_fory_attrs(attrs: &[Attribute], allow_native: bool) -> syn::Result<ForyAttrs> {
     let mut debug_flag: Option<bool> = None;
     let mut generate_default_flag: Option<bool> = None;
     let mut evolving_flag: Option<bool> = None;
     let mut target: Option<Type> = None;
+    let mut native_flag: Option<bool> = None;
 
     for attr in attrs {
         if attr.path().is_ident("fory") {
@@ -411,6 +427,26 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
                         ));
                     }
                     target = Some(meta.value()?.parse()?);
+                } else if meta.path.is_ident("native") {
+                    if !allow_native {
+                        return Err(meta.error("`native` is valid only for ForyUnion"));
+                    }
+                    let value = if meta.input.is_empty() {
+                        true
+                    } else {
+                        let lit: LitBool = meta.value()?.parse()?;
+                        lit.value
+                    };
+                    native_flag = match native_flag {
+                        Some(existing) if existing != value => {
+                            return Err(syn::Error::new(
+                                meta.path.span(),
+                                "conflicting `native` attribute values",
+                            ));
+                        }
+                        Some(_) => native_flag,
+                        None => Some(value),
+                    };
                 } else {
                     return Err(meta.error("unsupported type-level fory attribute"));
                 }
@@ -433,6 +469,7 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
         generate_default: generate_default_flag.unwrap_or(false),
         evolving: evolving_flag,
         target,
+        native: native_flag.unwrap_or(false),
     })
 }
 
@@ -450,7 +487,7 @@ mod tests {
                 name: String,
             }
         };
-        let attrs = parse_fory_attrs(&input.attrs).unwrap();
+        let attrs = parse_fory_attrs(&input.attrs, false).unwrap();
         assert_eq!(
             attrs.target.unwrap().to_token_stream().to_string(),
             "external :: User"
@@ -465,7 +502,7 @@ mod tests {
                 name: String,
             }
         };
-        let err = match parse_fory_attrs(&input.attrs) {
+        let err = match parse_fory_attrs(&input.attrs, false) {
             Ok(_) => panic!("external structural serializers must reject `generate_default`"),
             Err(err) => err,
         };
