@@ -67,10 +67,12 @@ final class ProjectionRouting {
   }
 
   /**
-   * Per-nested-bean-type suffix map for codegen, recursively materializing every inner projection
-   * class implied by {@code vs}. Empty string means the inner bean uses its current-version codec
-   * class. The chosen inner entry is taken directly from {@code vs}, so this resolves the correct
-   * combination to arbitrary depth without re-deriving it from a version number.
+   * Per-nested-bean-type suffix map for codegen, recursively materializing the inner projection
+   * class for each nested bean that a live field of {@code vs} reaches. Projection skips removed
+   * slots, so a bean reached only through removed fields gets no entry and no class. Empty string
+   * means the inner bean uses its current-version codec class. The chosen inner entry is taken
+   * directly from {@code vs}, so this resolves the correct combination to arbitrary depth without
+   * re-deriving it from a version number.
    *
    * <p>Called when an outer combination is first compiled (its hash first decoded), so the inner
    * classes are generated lazily alongside it rather than at builder time. {@code codeGenerator} is
@@ -84,6 +86,9 @@ final class ProjectionRouting {
     for (Map.Entry<Class<?>, SchemaHistory.VersionedSchema> e : vs.nestedBeanSchemas().entrySet()) {
       Class<?> innerClass = e.getKey();
       SchemaHistory.VersionedSchema innerVs = e.getValue();
+      if (!vs.liveNestedClasses().contains(innerClass)) {
+        continue;
+      }
       if (innerVs.isCurrent()) {
         out.put(innerClass, "");
       } else {

@@ -79,6 +79,7 @@ public final class SchemaHistory {
     private final boolean current;
     private final Set<String> liveFieldNames;
     private final Map<Class<?>, VersionedSchema> nestedBeanSchemas;
+    private final Set<Class<?>> liveNestedClasses;
 
     VersionedSchema(
         int version,
@@ -86,13 +87,15 @@ public final class SchemaHistory {
         long strictHash,
         boolean current,
         Set<String> liveFieldNames,
-        Map<Class<?>, VersionedSchema> nestedBeanSchemas) {
+        Map<Class<?>, VersionedSchema> nestedBeanSchemas,
+        Set<Class<?>> liveNestedClasses) {
       this.version = version;
       this.schema = schema;
       this.strictHash = strictHash;
       this.current = current;
       this.liveFieldNames = liveFieldNames;
       this.nestedBeanSchemas = nestedBeanSchemas;
+      this.liveNestedClasses = liveNestedClasses;
     }
 
     public int version() {
@@ -136,6 +139,15 @@ public final class SchemaHistory {
      */
     public Map<Class<?>, VersionedSchema> nestedBeanSchemas() {
       return nestedBeanSchemas;
+    }
+
+    /**
+     * The keys of {@link #nestedBeanSchemas()} that a live field reaches. A class reached only
+     * through removed fields shapes the hash, but projection skips removed slots and never decodes
+     * it, so it needs no codec.
+     */
+    public Set<Class<?>> liveNestedClasses() {
+      return liveNestedClasses;
     }
   }
 
@@ -316,11 +328,16 @@ public final class SchemaHistory {
       // VersionedSchema from this enumeration. Retiring history entries is purely a read-side
       // concern; the writer always uses the current schema.
       LinkedHashMap<Class<?>, List<VersionedSchema>> innerChoices = new LinkedHashMap<>();
+      Set<Class<?>> liveNestedClasses = new HashSet<>();
       for (FieldEntry fe : activeEntries) {
         for (NestedSite site : fe.nestedSites) {
           innerChoices.putIfAbsent(site.beanClass, site.history.versions());
+          if (fe.live) {
+            liveNestedClasses.add(site.beanClass);
+          }
         }
       }
+      Set<Class<?>> liveNested = Collections.unmodifiableSet(liveNestedClasses);
       for (Map<Class<?>, VersionedSchema> combination : cartesian(innerChoices)) {
         List<Field> fields = new ArrayList<>(activeEntries.size());
         Set<String> liveNames = new HashSet<>();
@@ -372,7 +389,8 @@ public final class SchemaHistory {
                 hash,
                 isCurrent,
                 Collections.unmodifiableSet(liveNames),
-                Collections.unmodifiableMap(new HashMap<>(combination)));
+                Collections.unmodifiableMap(new HashMap<>(combination)),
+                liveNested);
         // Prefer the all-current combination on collapse so the stored VS's nestedBeanSchemas
         // map reflects the writer-side state at this outer version. This guards a contract on
         // current().nestedBeanSchemas() in case two combinations ever canonicalize to the same
