@@ -27,28 +27,28 @@ import java.lang.annotation.Target;
 /**
  * Class-level row-codec schema metadata used when the codec builder enables schema evolution.
  *
- * <p>Live fields without a {@link ForyVersion} annotation are treated as present from the first
+ * <p>Live fields without a {@link ForyRowVersion} annotation are treated as present from the first
  * version, so a class can adopt versioning by annotating only the fields added later.
  *
  * <p>{@link #removedFields()} points at a class (conventionally a nested {@code interface}) whose
  * accessor methods describe fields that have been removed from this bean but still appear on the
  * wire in older payloads. Each method's return type is the original Java type of the removed field;
- * each method must carry a {@link ForyVersion} annotation with {@code until} set, since removed
+ * each method must carry a {@link ForyRowVersion} annotation with {@code until} set, since removed
  * fields have a known end-of-life version.
  *
  * <p>Example:
  *
  * <pre>
  * &#64;Data
- * &#64;ForySchema(removedFields = MyBean.History.class)
+ * &#64;ForyRowSchema(removedFields = MyBean.History.class)
  * public class MyBean {
  *   private String name;
  *
  *   interface History {
- *     &#64;ForyVersion(until = 3)
+ *     &#64;ForyRowVersion(until = 3)
  *     List&lt;String&gt; tags();
  *
- *     &#64;ForyVersion(since = 2, until = 5)
+ *     &#64;ForyRowVersion(since = 2, until = 5)
  *     Map&lt;String, Long&gt; counters();
  *   }
  * }
@@ -56,7 +56,7 @@ import java.lang.annotation.Target;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
-public @interface ForySchema {
+public @interface ForyRowSchema {
   /**
    * A class whose accessor methods describe historically-present-but-now-removed fields. Default
    * {@code void.class} means there are no removed fields. The class is never instantiated; the

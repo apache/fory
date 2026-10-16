@@ -20,7 +20,7 @@
 package org.apache.fory.benchmark;
 
 import java.util.Arrays;
-import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.encoder.Encoders;
 import org.apache.fory.format.encoder.RowEncoder;
 import org.apache.fory.logging.Logger;
@@ -49,7 +49,7 @@ public class SchemaEvolutionSuite {
     String name;
     int age;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     String email;
   }
 

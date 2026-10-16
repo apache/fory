@@ -285,7 +285,7 @@ the payload's version from a strict hash at the head of the payload. Java is the
 implementation today. The protocol is language-neutral and defined in the
 [row format specification](../specification/row_format_spec.md#schema-evolution).
 
-Annotate fields added after v1 with `@ForyVersion(since = N)`:
+Annotate fields added after v1 with `@ForyRowVersion(since = N)`:
 
 ```java
 @Data
@@ -293,7 +293,7 @@ public class Person {
   String name;
   int age;
 
-  @ForyVersion(since = 2)
+  @ForyRowVersion(since = 2)
   String email;
 }
 ```
@@ -310,7 +310,7 @@ decoding an older payload. Let the constructor tolerate the missing value, for e
 normalizing `null` to a default:
 
 ```java
-public record Person(String name, @ForyVersion(since = 2) String email) {
+public record Person(String name, @ForyRowVersion(since = 2) String email) {
   public Person {
     if (email == null) {
       email = "";
@@ -320,23 +320,23 @@ public record Person(String name, @ForyVersion(since = 2) String email) {
 ```
 
 Remove a field by deleting the Java member and declaring it on a nested history interface as a
-method with a `@ForyVersion(until = N)`. The method's return type carries any parameterized
+method with a `@ForyRowVersion(until = N)`. The method's return type carries any parameterized
 type information from the original field.
 
 ```java
 @Data
-@ForySchema(removedFields = Person.History.class)
+@ForyRowSchema(removedFields = Person.History.class)
 public class Person {
   String name;
 
-  @ForyVersion(since = 2)
+  @ForyRowVersion(since = 2)
   String email;
 
   interface History {
-    @ForyVersion(until = 3)
+    @ForyRowVersion(until = 3)
     int age();
 
-    @ForyVersion(until = 5)
+    @ForyRowVersion(until = 5)
     List<String> tags();
   }
 }

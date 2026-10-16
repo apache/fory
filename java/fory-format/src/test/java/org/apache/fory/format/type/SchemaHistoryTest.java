@@ -27,8 +27,8 @@ import static org.testng.Assert.expectThrows;
 import java.lang.reflect.TypeVariable;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
-import org.apache.fory.format.annotation.ForySchema;
-import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.format.annotation.ForyRowSchema;
+import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.TypeResolutionContext;
@@ -173,7 +173,7 @@ public class SchemaHistoryTest {
   public static class DivergentNestedHolder {
     private DivergentNameOrder inner;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private int count;
   }
 
@@ -272,7 +272,7 @@ public class SchemaHistoryTest {
   public static class EvolvingBean {
     private int base;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String added;
   }
 
@@ -303,13 +303,13 @@ public class SchemaHistoryTest {
   }
 
   @lombok.Data
-  @ForySchema(removedFields = VersionedElement.History.class)
+  @ForyRowSchema(removedFields = VersionedElement.History.class)
   public static class VersionedElement {
     private byte narrow;
     private long wide;
 
     interface History {
-      @ForyVersion(until = 2)
+      @ForyRowVersion(until = 2)
       String retired();
     }
   }
@@ -389,7 +389,7 @@ public class SchemaHistoryTest {
   public static class SharedLeaf {
     private int a;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private int b;
   }
 
@@ -397,7 +397,7 @@ public class SchemaHistoryTest {
   public static class SharedMiddle {
     private SharedLeaf leaf;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private int extra;
   }
 

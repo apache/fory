@@ -36,8 +36,8 @@ import java.util.TreeSet;
 import java.util.function.UnaryOperator;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.format.annotation.ForySchema;
-import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.format.annotation.ForyRowSchema;
+import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.encoder.CustomCodec;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
@@ -65,7 +65,7 @@ import org.apache.fory.util.StringUtils;
 @Internal
 public final class SchemaHistory {
 
-  /** Implicit version of a live field that carries no {@link ForyVersion}. */
+  /** Implicit version of a live field that carries no {@link ForyRowVersion}. */
   private static final int FIRST_VERSION = 1;
 
   /** FNV-1a 64-bit offset basis, the seed for every strict-hash mix in this class. */
@@ -214,7 +214,7 @@ public final class SchemaHistory {
       return memoized;
     }
     built.put(beanClass, null);
-    ForySchema schemaAnn = beanClass.getAnnotation(ForySchema.class);
+    ForyRowSchema schemaAnn = beanClass.getAnnotation(ForyRowSchema.class);
     Class<?> removedFieldsClass = schemaAnn == null ? void.class : schemaAnn.removedFields();
 
     List<FieldEntry> all = collectLiveFields(beanClass);
@@ -734,7 +734,7 @@ public final class SchemaHistory {
     }
     if (w.raw != null && isBean(w.raw)) {
       // A bean is an evolution site when it has more than one version — whether the variation comes
-      // from its own @ForyVersion fields or only from a nested versioned bean it reaches through
+      // from its own @ForyRowVersion fields or only from a nested versioned bean it reaches through
       // its
       // fields (e.g. a wrapper struct used as a map key, whose own fields are stable but whose
       // detail field evolves). build() already expands that nested cross-product, so its version
@@ -787,14 +787,14 @@ public final class SchemaHistory {
     List<Descriptor> descriptors = Descriptor.getDescriptors(historyClass);
     List<FieldEntry> out = new ArrayList<>(descriptors.size());
     for (Descriptor d : descriptors) {
-      ForyVersion ann = lookupForyVersion(d);
+      ForyRowVersion ann = lookupForyVersion(d);
       if (ann == null) {
         throw new IllegalStateException(
             "Removed-field declaration "
                 + historyClass.getName()
                 + "."
                 + d.getName()
-                + " requires a @ForyVersion(until = ...) annotation");
+                + " requires a @ForyRowVersion(until = ...) annotation");
       }
       if (ann.until() == Integer.MAX_VALUE) {
         throw new IllegalStateException(
@@ -802,12 +802,12 @@ public final class SchemaHistory {
                 + historyClass.getName()
                 + "."
                 + d.getName()
-                + " must specify @ForyVersion.until (no upper bound makes no sense for a field "
+                + " must specify @ForyRowVersion.until (no upper bound makes no sense for a field "
                 + "that has been removed)");
       }
       if (ann.since() < FIRST_VERSION) {
         throw new IllegalStateException(
-            "Invalid @ForyVersion on "
+            "Invalid @ForyRowVersion on "
                 + historyClass.getName()
                 + "."
                 + d.getName()
@@ -820,7 +820,7 @@ public final class SchemaHistory {
       }
       if (ann.since() >= ann.until()) {
         throw new IllegalStateException(
-            "Invalid @ForyVersion on "
+            "Invalid @ForyRowVersion on "
                 + historyClass.getName()
                 + "."
                 + d.getName()
@@ -847,12 +847,12 @@ public final class SchemaHistory {
     List<Descriptor> descriptors = Descriptor.getDescriptors(beanClass);
     List<FieldEntry> out = new ArrayList<>(descriptors.size());
     for (Descriptor d : descriptors) {
-      ForyVersion ann = lookupForyVersion(d);
+      ForyRowVersion ann = lookupForyVersion(d);
       int since = ann == null ? FIRST_VERSION : ann.since();
       int until = ann == null ? Integer.MAX_VALUE : ann.until();
       if (since < FIRST_VERSION) {
         throw new IllegalStateException(
-            "Invalid @ForyVersion on "
+            "Invalid @ForyRowVersion on "
                 + beanClass.getName()
                 + "."
                 + d.getName()
@@ -867,16 +867,16 @@ public final class SchemaHistory {
       // until would silently drop it from the current schema (until extends the version set, so
       // latestVersion >= until excludes the field), and the writer would stop serializing a field
       // the bean still has. Removals are declared on the history class via
-      // @ForySchema.removedFields.
+      // @ForyRowSchema.removedFields.
       if (until != Integer.MAX_VALUE) {
         throw new IllegalStateException(
-            "Invalid @ForyVersion on "
+            "Invalid @ForyRowVersion on "
                 + beanClass.getName()
                 + "."
                 + d.getName()
                 + ": a live field must not set until ("
                 + until
-                + "). Declare removed fields on the @ForySchema.removedFields history class instead.");
+                + "). Declare removed fields on the @ForyRowSchema.removedFields history class instead.");
       }
       // No since/until ordering check here: a live field always has until == MAX_VALUE (enforced
       // above), so the ordering check lives only on the removed-field path in collectRemovedFields.
@@ -886,16 +886,16 @@ public final class SchemaHistory {
     return out;
   }
 
-  private static ForyVersion lookupForyVersion(Descriptor d) {
-    ForyVersion ann = readAnnotation(d.getField());
+  private static ForyRowVersion lookupForyVersion(Descriptor d) {
+    ForyRowVersion ann = readAnnotation(d.getField());
     if (ann != null) {
       return ann;
     }
     return readAnnotation(d.getReadMethod());
   }
 
-  private static ForyVersion readAnnotation(AnnotatedElement element) {
-    return element == null ? null : element.getAnnotation(ForyVersion.class);
+  private static ForyRowVersion readAnnotation(AnnotatedElement element) {
+    return element == null ? null : element.getAnnotation(ForyRowVersion.class);
   }
 
   private static void validateNoNameCollision(List<FieldEntry> entries) {
@@ -925,7 +925,7 @@ public final class SchemaHistory {
                   + curr.since
                   + ","
                   + curr.until
-                  + "); each version must have one definition per name. Adjust the @ForyVersion "
+                  + "); each version must have one definition per name. Adjust the @ForyRowVersion "
                   + "annotations on the live field or in the removed-fields class to make the "
                   + "windows disjoint.");
         }
