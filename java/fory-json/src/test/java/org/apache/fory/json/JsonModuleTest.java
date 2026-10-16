@@ -59,6 +59,27 @@ import org.apache.fory.type.Types;
 import org.testng.annotations.Test;
 
 public class JsonModuleTest {
+  public static class FactoryPet {}
+
+  @Test
+  public void factoryDoesNotRequeryDeclinedRoot() {
+    List<Boolean> runtimeTypes = new ArrayList<>();
+    JsonCodecFactory factory =
+        (type, resolver, runtimeType) -> {
+          if (type.getRawType() == FactoryPet.class) {
+            runtimeTypes.add(runtimeType);
+          }
+          return null;
+        };
+    ForyJson json =
+        ForyJson.builder()
+            .withModule(context -> context.registerCodecFactory(factory))
+            .build();
+
+    json.toJson(new FactoryPet());
+    assertEquals(runtimeTypes, Arrays.asList(true));
+  }
+
   @Test
   public void installsOnceAndFreezesContext() {
     AtomicInteger installs = new AtomicInteger();

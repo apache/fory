@@ -541,6 +541,11 @@ public final class JsonTypeResolver {
   }
 
   private JsonTypeInfo resolveTypeInfo(TypeRef<?> declaredType, Object key) {
+    return resolveTypeInfo(declaredType, key, false);
+  }
+
+  private JsonTypeInfo resolveTypeInfo(
+      TypeRef<?> declaredType, Object key, boolean skipModuleFactories) {
     validateCovariant(declaredType);
     Class<?> rawType = declaredType.getRawType();
     JsonTypeInfo typeInfo = customTypeInfo(declaredType, rawType);
@@ -560,7 +565,7 @@ public final class JsonTypeResolver {
       codec.resolveTypes(declaredType, this);
       return typeInfo;
     }
-    return buildTypeInfo(rawType, declaredType, key);
+    return buildTypeInfo(rawType, declaredType, key, null, skipModuleFactories);
   }
 
   private JsonTypeInfo resolveTypeInfo(TypeRef<?> declaredType, JsonCodec annotation) {
@@ -1024,7 +1029,21 @@ public final class JsonTypeResolver {
       // The default Java object model is the declared schema for this exact class. Reuse that
       // binding so generated capabilities stay on the direct root path. Only a codec actually
       // selected by a runtime factory needs the runtime-only publication below.
-      typeInfo = getTypeInfo(typeRef);
+      typeInfo = typeInfos.get(runtimeType);
+      if (typeInfo == null) {
+        // The runtime factory already declined this root, so the declared fallback must not ask
+        // the same factory again as if the root were a field occurrence.
+        ResolutionSnapshot snapshot = beginResolution();
+        try {
+          typeInfo = resolveTypeInfo(typeRef, resolutionTypeKey(typeRef), true);
+          completeResolution(snapshot);
+        } catch (RuntimeException | Error e) {
+          rollbackResolution(snapshot);
+          throw e;
+        } finally {
+          endResolution();
+        }
+      }
       runtimeTypeInfos.put(runtimeType, typeInfo);
       return typeInfo;
     }
@@ -2711,14 +2730,24 @@ public final class JsonTypeResolver {
   }
 
   private JsonTypeInfo buildTypeInfo(Class<?> rawType, TypeRef<?> typeRef, Object key) {
-    return buildTypeInfo(rawType, typeRef, key, null);
+    return buildTypeInfo(rawType, typeRef, key, null, false);
   }
 
   private JsonTypeInfo buildTypeInfo(
       Class<?> rawType, TypeRef<?> typeRef, Object key, JsonCodecFactory childFactory) {
+    return buildTypeInfo(rawType, typeRef, key, childFactory, false);
+  }
+
+  private JsonTypeInfo buildTypeInfo(
+      Class<?> rawType,
+      TypeRef<?> typeRef,
+      Object key,
+      JsonCodecFactory childFactory,
+      boolean skipModuleFactories) {
     sharedRegistry.checkSecure(rawType);
     JsonSharedRegistry.ResolvedCodec resolved =
-        sharedRegistry.resolveCodec(rawType, typeRef, this, childFactory, false);
+        sharedRegistry.resolveCodec(
+            rawType, typeRef, this, childFactory, false, skipModuleFactories);
     if (resolved == null) {
       return buildObjectTypeInfo(typeRef, key);
     }
