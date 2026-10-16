@@ -20,7 +20,6 @@
 package org.apache.fory.format.encoder;
 
 import java.lang.invoke.MethodHandle;
-import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.fory.Fory;
@@ -147,16 +146,16 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
   }
 
   /**
-   * Deferred projection codec for one historical version. Holds only the inputs needed to generate
-   * the codec; the class is compiled on the first {@link #compile} call (the first decode of this
-   * version's hash), not at build time. Shared across encoder instances and immutable, so the
-   * compile relies on the shared code generator's own memoization rather than local locking.
+   * Deferred projection codec for one historical version, shared by every encoder of the codec. The
+   * class is compiled on the first {@link #compile} call (the first decode of this version's hash
+   * by any encoder), not at build time.
    */
   private static final class ProjectionSource implements BinaryRowEncoder.ProjectionSource {
     private final Class<?> beanClass;
     private final Encoding codecFormat;
     private final SchemaHistory.VersionedSchema version;
     private final CodeGenerator codeGenerator;
+    private volatile Resolved resolved;
 
     ProjectionSource(
         Class<?> beanClass,
@@ -171,32 +170,56 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
 
     @Override
     public BinaryRowEncoder.ProjectionCodec compile(BaseBinaryRowWriter writer, Fory fory) {
-      Schema historicalSchema = version.schema();
-      String suffix = ProjectionRouting.projectionSuffix(version);
-      Map<Class<?>, String> nestedSuffixes =
-          ProjectionRouting.nestedSuffixesFor(version, codecFormat, codeGenerator);
-      Class<?> projectionClass =
-          Encoders.loadOrGenProjectionRowCodecClass(
-              beanClass,
-              codecFormat,
-              historicalSchema,
-              version.liveFieldNames(),
-              suffix,
-              nestedSuffixes,
-              codeGenerator);
-      MethodHandle ctor = Encoders.constructorHandleFor(projectionClass, GeneratedRowEncoder.class);
-      // The RowFactory depends only on the historical schema and codec format, so build it here
-      // alongside the codec the first time this version is decoded.
-      RowFactory rowFactory = codecFormat.newRowFactory(historicalSchema);
+      Resolved r = resolve();
       try {
-        Object[] references = {historicalSchema, writer, fory};
-        GeneratedRowEncoder codec = (GeneratedRowEncoder) ctor.invokeExact(references);
-        return new BinaryRowEncoder.ProjectionCodec(rowFactory, codec);
+        Object[] references = {version.schema(), writer, fory};
+        GeneratedRowEncoder codec = (GeneratedRowEncoder) r.ctor.invokeExact(references);
+        return new BinaryRowEncoder.ProjectionCodec(r.rowFactory, codec);
       } catch (final ReflectiveOperationException e) {
         throw new EncoderException(
-            "Failed to construct projection codec for schema " + historicalSchema, e);
+            "Failed to construct projection codec for schema " + version.schema(), e);
       } catch (Throwable e) {
         throw ExceptionUtils.throwException(e);
+      }
+    }
+
+    /**
+     * Generates the projection class and its row factory once per codec, on the first decode of
+     * this version by any of its encoders. Each encoder then only binds its own writer.
+     */
+    private Resolved resolve() {
+      Resolved r = resolved;
+      if (r != null) {
+        return r;
+      }
+      synchronized (this) {
+        if (resolved == null) {
+          Schema historicalSchema = version.schema();
+          Class<?> projectionClass =
+              Encoders.loadOrGenProjectionRowCodecClass(
+                  beanClass,
+                  codecFormat,
+                  historicalSchema,
+                  version.liveFieldNames(),
+                  ProjectionRouting.projectionSuffix(version),
+                  ProjectionRouting.nestedSuffixesFor(version, codecFormat, codeGenerator),
+                  codeGenerator);
+          resolved =
+              new Resolved(
+                  Encoders.constructorHandleFor(projectionClass, GeneratedRowEncoder.class),
+                  codecFormat.newRowFactory(historicalSchema));
+        }
+        return resolved;
+      }
+    }
+
+    private static final class Resolved {
+      final MethodHandle ctor;
+      final RowFactory rowFactory;
+
+      Resolved(MethodHandle ctor, RowFactory rowFactory) {
+        this.ctor = ctor;
+        this.rowFactory = rowFactory;
       }
     }
   }

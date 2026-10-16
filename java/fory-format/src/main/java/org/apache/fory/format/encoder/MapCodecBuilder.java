@@ -210,12 +210,12 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
   }
 
   /**
-   * Deferred projection codec for one (key-version, value-version) combination. Holds only the
-   * chosen versions; the per-position row codecs and the map codec class are generated on the first
-   * {@link #compile} call (the first decode of this combination's combined hash), not at build
-   * time. The build-time collision guards already proved this combination's hash is unique. Static
-   * and built from values captured at build time, so a later change to the builder cannot reach a
-   * lazy compile.
+   * Deferred projection codec for one (key-version, value-version) combination, shared by every
+   * encoder of the codec. The per-position row codecs and the map codec class are generated on the
+   * first {@link #compile} call (the first decode of this combination's combined hash by any
+   * encoder), not at build time. The build-time collision guards already proved this combination's
+   * hash is unique. Static and built from values captured at build time, so a later change to the
+   * builder cannot reach a lazy compile.
    */
   private static final class ProjectionSource implements BinaryMapEncoder.ProjectionSource {
     private final TypeRef<? extends Map<?, ?>> mapType;
@@ -228,6 +228,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     private final SchemaHistory.VersionedSchema valCurrent;
     private final SchemaHistory.VersionedSchema keyCurrent;
     private final CodeGenerator codeGenerator;
+    private volatile Resolved resolved;
 
     ProjectionSource(
         TypeRef<? extends Map<?, ?>> mapType,
@@ -260,6 +261,39 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
      */
     @Override
     public BinaryMapEncoder.ProjectionMapCodec compile(Fory fory) {
+      Resolved r = resolve();
+      try {
+        BinaryArrayWriter projKey = codecFormat.newArrayWriter(r.keyArrayField);
+        BinaryArrayWriter projVal =
+            codecFormat.newArrayWriter(r.valueArrayField, projKey.getBuffer());
+        Object[] references = {
+          r.keyArrayField, r.valueArrayField, projKey, projVal, fory, r.mapField
+        };
+        GeneratedMapEncoder codec = (GeneratedMapEncoder) r.ctor.invokeExact(references);
+        return new BinaryMapEncoder.ProjectionMapCodec(codecFormat, r.mapField, codec);
+      } catch (Throwable e) {
+        throw ExceptionUtils.throwException(e);
+      }
+    }
+
+    /**
+     * Generates the projection classes once per codec, on the first decode of this combination by
+     * any of its encoders. Each encoder then only creates its own writers and binds them.
+     */
+    private Resolved resolve() {
+      Resolved r = resolved;
+      if (r != null) {
+        return r;
+      }
+      synchronized (this) {
+        if (resolved == null) {
+          resolved = generate();
+        }
+        return resolved;
+      }
+    }
+
+    private Resolved generate() {
       // Each position's history is forElement over the position type, so its schema's single field
       // is the position field with every reachable bean projected onto this combination, and
       // nestedSuffixesFor routes each bean class in the position to its own historical row codec.
@@ -293,18 +327,25 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
               valNested,
               keyNested,
               codeGenerator);
-      MethodHandle ctor = Encoders.constructorHandleFor(mapClass, GeneratedMapEncoder.class);
       Field histMapField = DataTypes.mapField(field.name(), histKey, histVal);
-      try {
-        Field histKeyField = DataTypes.keyArrayFieldForMap(histMapField);
-        Field histValField = DataTypes.itemArrayFieldForMap(histMapField);
-        BinaryArrayWriter projKey = codecFormat.newArrayWriter(histKeyField);
-        BinaryArrayWriter projVal = codecFormat.newArrayWriter(histValField, projKey.getBuffer());
-        Object[] references = {histKeyField, histValField, projKey, projVal, fory, histMapField};
-        GeneratedMapEncoder codec = (GeneratedMapEncoder) ctor.invokeExact(references);
-        return new BinaryMapEncoder.ProjectionMapCodec(codecFormat, histMapField, codec);
-      } catch (Throwable e) {
-        throw ExceptionUtils.throwException(e);
+      return new Resolved(
+          Encoders.constructorHandleFor(mapClass, GeneratedMapEncoder.class),
+          histMapField,
+          DataTypes.keyArrayFieldForMap(histMapField),
+          DataTypes.itemArrayFieldForMap(histMapField));
+    }
+
+    private static final class Resolved {
+      final MethodHandle ctor;
+      final Field mapField;
+      final Field keyArrayField;
+      final Field valueArrayField;
+
+      Resolved(MethodHandle ctor, Field mapField, Field keyArrayField, Field valueArrayField) {
+        this.ctor = ctor;
+        this.mapField = mapField;
+        this.keyArrayField = keyArrayField;
+        this.valueArrayField = valueArrayField;
       }
     }
   }

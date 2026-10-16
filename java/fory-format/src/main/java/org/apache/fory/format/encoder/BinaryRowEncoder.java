@@ -69,7 +69,7 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
     }
   }
 
-  /** Compiles and binds one historical version's projection codec on first decode of its hash. */
+  /** Binds one historical version's projection codec to an encoder. */
   interface ProjectionSource {
     ProjectionCodec compile(BaseBinaryRowWriter writer, Fory fory);
   }

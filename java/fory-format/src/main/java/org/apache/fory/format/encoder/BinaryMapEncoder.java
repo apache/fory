@@ -72,7 +72,7 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
     }
   }
 
-  /** Compiles one historical (key,value) combination's projection codec on first decode. */
+  /** Binds one historical (key, value) combination's projection codec to an encoder. */
   interface ProjectionSource {
     ProjectionMapCodec compile(Fory fory);
   }
