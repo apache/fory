@@ -28,6 +28,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import lombok.Data;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.exception.ClassNotCompatibleException;
@@ -1447,6 +1453,63 @@ public class SchemaEvolutionTest {
     Map<String, OuterV2> out = reader.decode(bytes);
     Assert.assertEquals(out.size(), 1);
     assertProjectedToV2(out.get("k"));
+  }
+
+  /**
+   * Encoders from one codec share each projection's lazily resolved state. Several encoders that
+   * decode the same older hash for the first time at once must each get a correct result.
+   */
+  @Test
+  public void concurrentFirstProjectedDecodes() throws Exception {
+    byte[] rowBytes = evolvingCodec(OuterV1.class).encode(sampleV1());
+    Supplier<RowEncoder<OuterV2>> rows =
+        Encoders.buildBeanCodec(OuterV2.class).withSchemaEvolution().build();
+    byte[] arrayBytes =
+        Encoders.buildArrayCodec(new TypeRef<List<OuterV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get()
+            .encode(Arrays.asList(sampleV1()));
+    Supplier<ArrayEncoder<List<OuterV2>>> arrays =
+        Encoders.buildArrayCodec(new TypeRef<List<OuterV2>>() {}).withSchemaEvolution().build();
+    Map<String, OuterV1> in = new HashMap<>();
+    in.put("k", sampleV1());
+    byte[] mapBytes =
+        Encoders.buildMapCodec(new TypeRef<Map<String, OuterV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get()
+            .encode(in);
+    Supplier<MapEncoder<Map<String, OuterV2>>> maps =
+        Encoders.buildMapCodec(new TypeRef<Map<String, OuterV2>>() {})
+            .withSchemaEvolution()
+            .build();
+
+    int threads = 8;
+    CyclicBarrier start = new CyclicBarrier(threads);
+    ExecutorService pool = Executors.newFixedThreadPool(threads);
+    try {
+      List<Future<?>> results = new ArrayList<>();
+      for (int i = 0; i < threads; i++) {
+        RowEncoder<OuterV2> row = rows.get();
+        ArrayEncoder<List<OuterV2>> array = arrays.get();
+        MapEncoder<Map<String, OuterV2>> map = maps.get();
+        results.add(
+            pool.submit(
+                () -> {
+                  start.await();
+                  assertProjectedToV2(row.decode(rowBytes));
+                  assertProjectedToV2(array.decode(arrayBytes).get(0));
+                  assertProjectedToV2(map.decode(mapBytes).get("k"));
+                  return null;
+                }));
+      }
+      for (Future<?> result : results) {
+        result.get(60, TimeUnit.SECONDS);
+      }
+    } finally {
+      pool.shutdownNow();
+    }
   }
 
   /**
