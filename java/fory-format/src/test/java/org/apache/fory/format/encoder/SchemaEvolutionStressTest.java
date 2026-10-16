@@ -964,10 +964,8 @@ public class SchemaEvolutionStressTest {
     for (SchemaHistory.VersionedSchema valVs : valHistory.versions()) {
       String val = valVs.isCurrent() ? "" : ProjectionRouting.projectionSuffix(valVs);
       for (SchemaHistory.VersionedSchema keyVs : keyHistory.versions()) {
-        String keyRaw = keyVs.isCurrent() ? "" : ProjectionRouting.projectionSuffix(keyVs);
-        String key = keyRaw.isEmpty() ? "" : "_K" + keyRaw;
-        // Mirror mapClassSuffix() exactly.
-        String suffix = val + key;
+        String key = keyVs.isCurrent() ? "" : ProjectionRouting.projectionSuffix(keyVs);
+        String suffix = MapEncoderBuilder.mapClassSuffix(val, key);
         pairs.add(val + "\0" + key);
         Assert.assertTrue(
             joined.add(suffix),
@@ -985,6 +983,12 @@ public class SchemaEvolutionStressTest {
             .anyMatch(
                 vs -> !vs.isCurrent() && ProjectionRouting.projectionSuffix(vs).contains("_K_V")),
         "test did not exercise the _K_V boundary token it was designed to probe");
+    // A value-side token that repeats the start of a key-side suffix must not join to the same
+    // name as that key suffix.
+    String h = "h0123456789abcdef";
+    Assert.assertNotEquals(
+        MapEncoderBuilder.mapClassSuffix("_V1_K_V1_X2" + h, ""),
+        MapEncoderBuilder.mapClassSuffix("_V1", "_V1_X2" + h));
   }
 
   /**
