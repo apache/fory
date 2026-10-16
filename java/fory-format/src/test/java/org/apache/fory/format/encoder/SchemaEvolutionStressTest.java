@@ -35,6 +35,7 @@ import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.annotation.ForySchema;
 import org.apache.fory.format.annotation.ForyVersion;
 import org.apache.fory.format.type.SchemaHistory;
+import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -1056,6 +1057,53 @@ public class SchemaEvolutionStressTest {
     in.put("k", 7L);
     byte[] bytes = writer.encode(in);
     Assert.expectThrows(ClassNotCompatibleException.class, () -> reader.decode(bytes));
+  }
+
+  @Data
+  public static class FramingElement {
+    private byte narrow;
+    private long wide;
+  }
+
+  /**
+   * The array and map hash prefixes, built from the one-field layouts that the spec defines. The
+   * expected values are the spec's framing vectors, computed independently of this implementation.
+   */
+  @Test
+  public void hashPrefixMatchesSpecFraming() {
+    Map<String, Integer> map = new HashMap<>();
+    map.put("k", 1);
+    Assert.assertEquals(
+        prefix(
+            Encoders.buildMapCodec(new TypeRef<Map<String, Integer>>() {})
+                .withSchemaEvolution()
+                .build()
+                .get()
+                .encode(map)),
+        0xe3a21bfb65b885f7L);
+    List<FramingElement> list = new ArrayList<>();
+    list.add(new FramingElement());
+    Assert.assertEquals(
+        prefix(
+            Encoders.buildArrayCodec(new TypeRef<List<FramingElement>>() {})
+                .withSchemaEvolution()
+                .build()
+                .get()
+                .encode(list)),
+        0x04a5118c46faea29L);
+    Assert.assertEquals(
+        prefix(
+            Encoders.buildArrayCodec(new TypeRef<List<FramingElement>>() {})
+                .compactEncoding()
+                .withSchemaEvolution()
+                .build()
+                .get()
+                .encode(list)),
+        0x4f855bcc79d4a8c9L);
+  }
+
+  private static long prefix(byte[] bytes) {
+    return MemoryBuffer.fromByteArray(bytes).readInt64();
   }
 
   @Test
