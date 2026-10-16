@@ -394,3 +394,23 @@ def test_dart_generator_supports_imported_registration_calls_without_fallthrough
     assert "addressbook.AddressbookForyModule.install(fory);" in file.content
     assert "ForyRegistration" not in file.content
     assert "addressbook.AddressBook" in file.content
+
+
+def test_file_level_evolving_default_applies():
+    file = generate_dart(
+        """
+        package demo;
+        option evolving = false;
+
+        message Inner {
+            int32 x = 1;
+        }
+
+        message Holder {
+            Inner inner = 1;
+        }
+        """
+    )
+    assert "@ForyStruct(evolving: false)" in file.content
+    assert "@ForyStruct()" not in file.content
+    assert "TypeIds.compatibleStruct" not in file.content

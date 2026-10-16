@@ -2512,12 +2512,14 @@ class CppGenerator(CppServiceGeneratorMixin, BaseGenerator):
         return meta
 
     def get_field_type_spec(self, field: Field) -> str:
-        """Return the T-node spec for a field when generated metadata needs it."""
-        return self.get_type_spec(
-            field.field_type,
-            field.element_optional,
-            field.element_ref,
-        )
+        """Return the T-node spec for a field when generated metadata needs it.
+
+        Element optional/ref flags live on the container type node itself
+        (frontends sync them there); passing the field-level copies as the
+        outer optional/ref would wrap the container spec in an extra
+        ::fory::T::inner(...) that get_field_meta cannot dispatch on.
+        """
+        return self.get_type_spec(field.field_type)
 
     def get_type_spec(
         self,
