@@ -304,6 +304,12 @@ public final class SchemaHistory {
     // nullability, the same identity the strict hash mixes, so it is the canonical dedup key.
     int latestVersion = schemaVersions.last();
     Map<Schema, VersionedSchema> bySchema = new LinkedHashMap<>();
+    // Versions that collapse into one entry can disagree on which fields are live: a field removed
+    // at one version and added again with the same name and type has the same layout at both. The
+    // bytes cannot say which version wrote them, so the entry reads every field that any of its
+    // versions has live.
+    Map<Schema, Set<String>> liveNamesBySchema = new HashMap<>();
+    Map<Schema, Set<Class<?>>> liveNestedBySchema = new HashMap<>();
     Map<Long, Schema> hashToSchema = new HashMap<>();
     Schema currentSchema = null;
     for (int v : schemaVersions) {
@@ -407,9 +413,27 @@ public final class SchemaHistory {
         } else {
           bySchema.putIfAbsent(schema, vs);
         }
+        liveNamesBySchema.computeIfAbsent(schema, k -> new HashSet<>()).addAll(liveNames);
+        liveNestedBySchema.computeIfAbsent(schema, k -> new HashSet<>()).addAll(liveNested);
         if (isCurrent) {
           currentSchema = schema;
         }
+      }
+    }
+    for (Map.Entry<Schema, VersionedSchema> entry : bySchema.entrySet()) {
+      VersionedSchema vs = entry.getValue();
+      Set<String> liveNames = liveNamesBySchema.get(entry.getKey());
+      Set<Class<?>> liveNested = liveNestedBySchema.get(entry.getKey());
+      if (!liveNames.equals(vs.liveFieldNames()) || !liveNested.equals(vs.liveNestedClasses())) {
+        entry.setValue(
+            new VersionedSchema(
+                vs.version(),
+                vs.schema(),
+                vs.strictHash(),
+                vs.isCurrent(),
+                Collections.unmodifiableSet(liveNames),
+                vs.nestedBeanSchemas(),
+                Collections.unmodifiableSet(liveNested)));
       }
     }
     // The all-current combination at the latest version is always one of the cartesian entries,

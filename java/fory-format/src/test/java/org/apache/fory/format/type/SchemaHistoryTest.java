@@ -407,6 +407,35 @@ public class SchemaHistoryTest {
     private SharedMiddle middle;
   }
 
+  /**
+   * A field removed at one version and added again with the same name and type gives two versions
+   * with the same layout, which collapse into one history entry. A payload with that layout cannot
+   * say which version wrote it, so every nested combination must treat the field the same way: as
+   * live, so that its value is read.
+   */
+  @Test
+  public void collapsedVersionsKeepReaddedFieldLive() {
+    SchemaHistory history = SchemaHistory.build(ReaddedField.class, UnaryOperator.identity());
+    assertEquals(history.versions().size(), 2);
+    for (SchemaHistory.VersionedSchema vs : history.versions()) {
+      assertTrue(vs.liveFieldNames().contains("x"), "x not live in " + vs.schema());
+    }
+  }
+
+  @lombok.Data
+  @ForyRowSchema(removedFields = ReaddedField.History.class)
+  public static class ReaddedField {
+    private SharedLeaf leaf;
+
+    @ForyRowVersion(since = 2)
+    private int x;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      int x();
+    }
+  }
+
   private static long hash(Field... fields) {
     return SchemaHistory.computeStrictSchemaHash(DataTypes.schema(fields));
   }
