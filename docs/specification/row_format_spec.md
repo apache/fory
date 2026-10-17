@@ -446,6 +446,9 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
   map payload starts with an 8-byte prefix (little-endian), so every payload written with evolution
   enabled starts with an 8-byte schema identifier: the strict hash of its layout for a row or an
   array, and the combined key and value hash for a map.
+- When the payload size is written before the payload (a little-endian int32), the size comes
+  first and the hash word or prefix follows it. The size counts the 8 bytes of the hash and the
+  body, but not its own 4 bytes.
 - An array's prefix is the strict hash of a layout with one field: the empty name `""`, the element
   type with each reachable struct at the payload's version, and the element's nullability.
 - A map's prefix is one combined value,
