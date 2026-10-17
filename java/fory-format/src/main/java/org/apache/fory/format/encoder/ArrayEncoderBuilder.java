@@ -24,6 +24,7 @@ import static org.apache.fory.type.TypeUtils.getRawType;
 
 import java.lang.reflect.Array;
 import java.util.HashSet;
+import java.util.Map;
 import org.apache.fory.Fory;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CodegenContext;
@@ -54,10 +55,26 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
   }
 
   public ArrayEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType) {
+    this(clsType, beanType, null, null);
+  }
+
+  /**
+   * Construct a projection array codec builder. {@code classSuffix} names this codec's own class
+   * (encoding the whole nested-bean version combination); {@code nestedSuffixes} routes each nested
+   * versioned bean class to its own projection row codec, so an element wrapping more than one bean
+   * (such as {@code Map<KBean, VBean>}) embeds the right historical codec for each.
+   */
+  ArrayEncoderBuilder(
+      TypeRef<?> clsType,
+      TypeRef<?> beanType,
+      String classSuffix,
+      Map<Class<?>, String> nestedSuffixes) {
     // A top-level collection has no enclosing bean, so scope element-codec resolution to Object to
     // match TypeInference's empty-path enclosing type; beanType still names the element type for
     // class naming and the empty-array template below.
     super(new CodegenContext(), beanType, Object.class);
+    this.classSuffix = classSuffix;
+    this.nestedClassSuffixes = nestedSuffixes;
     arrayToken = clsType;
     ctx.reserveName(ROOT_ARRAY_WRITER_NAME);
     ctx.reserveName(ROOT_ARRAY_NAME);
@@ -86,7 +103,9 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
   @Override
   public String genCode() {
     ctx.setPackage(CodeGenerator.getPackage(beanClass));
-    String className = codecClassName(beanClass, TypeInference.inferTypeName(arrayToken));
+    String className =
+        codecClassName(beanClass, TypeInference.inferTypeName(arrayToken))
+            + (classSuffix == null ? "" : classSuffix);
     ctx.setClassName(className);
     // don't addImport(arrayClass), because user class may name collide.
     // janino don't support generics, so GeneratedCodec has no generics
@@ -126,8 +145,8 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
 
     long startTime = System.nanoTime();
     String code = ctx.genCode();
-    long durationMs = (System.nanoTime() - startTime) / 1000_000;
-    LOG.info("Generate array codec for class {} take {} us", beanClass, durationMs);
+    long durationUs = (System.nanoTime() - startTime) / 1000;
+    LOG.info("Generate array codec for class {} take {} us", beanClass, durationUs);
     return code;
   }
 

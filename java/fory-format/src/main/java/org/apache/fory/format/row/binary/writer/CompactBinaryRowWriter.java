@@ -91,6 +91,45 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
     return new Schema(sortFields(schema.fields()), schema.metadata());
   }
 
+  /**
+   * Sorts every struct in {@code schema} into compact write order, including structs in list
+   * elements and in map keys and values. {@link #sortSchema} stops at list and map boundaries
+   * because each nested row writer and reader sorts its own struct. This form gives the order of
+   * every struct on the wire in one schema, which the schema-evolution strict hash needs.
+   */
+  public static Schema sortSchemaDeep(final Schema schema) {
+    return new Schema(sortFieldsDeep(schema.fields()), schema.metadata());
+  }
+
+  private static List<Field> sortFieldsDeep(final List<Field> fields) {
+    final ArrayList<Field> sortedFields = new ArrayList<>(fields.size());
+    for (Field field : fields) {
+      sortedFields.add(sortFieldDeep(field));
+    }
+    Collections.sort(sortedFields, new FieldAlignmentComparator());
+    return sortedFields;
+  }
+
+  private static Field sortFieldDeep(final Field field) {
+    final DataType type = field.type();
+    final DataType sortedType;
+    if (type instanceof DataTypes.StructType) {
+      sortedType = new DataTypes.StructType(sortFieldsDeep(((DataTypes.StructType) type).fields()));
+    } else if (type instanceof DataTypes.ListType) {
+      sortedType = new DataTypes.ListType(sortFieldDeep(((DataTypes.ListType) type).valueField()));
+    } else if (type instanceof DataTypes.MapType) {
+      final DataTypes.MapType mapType = (DataTypes.MapType) type;
+      sortedType =
+          new DataTypes.MapType(
+              sortFieldDeep(mapType.keyField()).type(),
+              sortFieldDeep(mapType.itemField()).type(),
+              mapType.keysSorted());
+    } else {
+      return field;
+    }
+    return new Field(field.name(), sortedType, field.nullable(), field.metadata());
+  }
+
   @Override
   protected int fixedSize() {
     return fixedSize;

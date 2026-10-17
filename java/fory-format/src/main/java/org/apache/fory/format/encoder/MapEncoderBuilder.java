@@ -24,10 +24,13 @@ import static org.apache.fory.type.TypeUtils.PRIMITIVE_INT_TYPE;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
 import java.util.Map;
+import java.util.function.Supplier;
 import org.apache.fory.Fory;
+import org.apache.fory.codegen.Code;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
+import org.apache.fory.codegen.Expression.AbstractExpression;
 import org.apache.fory.codegen.ExpressionUtils;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
@@ -53,15 +56,60 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   private final TypeRef<?> mapToken;
 
+  // True while the key-array subtree generates. The key and value positions evolve independently:
+  // the map header's combined hash selects a (key version, value version) combination, so a key
+  // bean must route to its own historical projection codec (keyNestedSuffixes)
+  // rather than borrow the value position's. The flag steers both nestedBeanSuffix resolution and
+  // beanCodecKey registration to the key position. Nested bean codecs register lazily inside
+  // genCode, so the flag toggles during the key subtree's genCode via KeyPositionScope rather than
+  // at expression construction. A single boolean suffices because genCode is depth-first: the key
+  // subtree fully generates within its KeyPositionScope before the value subtree begins, so the two
+  // positions never interleave.
+  private boolean inKeyPosition;
+
+  // The key position's part of the generated class name, parallel to classSuffix for the value.
+  // Null or empty means the key is at its current schema.
+  private final String keyCodecSuffix;
+
+  // Per-class projection suffixes for the value and key positions: each bean class in a position
+  // routes to its own historical row codec, so a position that wraps more than one versioned bean
+  // class (such as a value typed Map<KBean, VBean>) embeds the right codec for each. A null map, or
+  // a class absent from it, reads at its current schema.
+  private final Map<Class<?>, String> valNestedSuffixes;
+  private final Map<Class<?>, String> keyNestedSuffixes;
+
+  // True for a projection codec, where the key and value positions can route one bean class to
+  // different historical codecs.
+  private final boolean projection;
+
   public MapEncoderBuilder(Class<?> mapCls, Class<?> keyClass) {
     this(TypeRef.of(mapCls), TypeRef.of(keyClass));
   }
 
   public MapEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType) {
+    this(clsType, beanType, null, null, null, null);
+  }
+
+  MapEncoderBuilder(
+      TypeRef<?> clsType,
+      TypeRef<?> beanType,
+      String valCodecSuffix,
+      String keyCodecSuffix,
+      Map<Class<?>, String> valNestedSuffixes,
+      Map<Class<?>, String> keyNestedSuffixes) {
     // A top-level map has no enclosing bean, so scope key/value-codec resolution to Object to match
     // TypeInference's empty-path enclosing type; beanType still names the key/value bean for class
     // naming and schema generation.
     super(new CodegenContext(), beanType, Object.class);
+    this.classSuffix = valCodecSuffix;
+    this.keyCodecSuffix = keyCodecSuffix;
+    this.valNestedSuffixes = valNestedSuffixes;
+    this.keyNestedSuffixes = keyNestedSuffixes;
+    projection =
+        !StringUtils.isBlank(valCodecSuffix)
+            || !StringUtils.isBlank(keyCodecSuffix)
+            || valNestedSuffixes != null
+            || keyNestedSuffixes != null;
     mapToken = clsType;
     ctx.reserveName(ROOT_KEY_WRITER_NAME);
     ctx.reserveName(ROOT_VALUE_WRITER_NAME);
@@ -75,7 +123,8 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   @Override
   public String genCode() {
     ctx.setPackage(CodeGenerator.getPackage(beanClass));
-    String className = codecClassName(beanClass, TypeInference.inferTypeName(mapToken));
+    String className =
+        codecClassName(beanClass, TypeInference.inferTypeName(mapToken)) + mapClassSuffix();
     ctx.setClassName(className);
     // don't addImport(arrayClass), because user class may name collide.
     // janino don't support generics, so GeneratedCodec has no generics
@@ -140,8 +189,8 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
 
     long startTime = System.nanoTime();
     String code = ctx.genCode();
-    long durationMs = (System.nanoTime() - startTime) / 1000_000;
-    LOG.info("Generate map codec for class {} take {} us", beanClass, durationMs);
+    long durationUs = (System.nanoTime() - startTime) / 1000;
+    LOG.info("Generate map codec for class {} take {} us", beanClass, durationUs);
     return code;
   }
 
@@ -181,7 +230,9 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
     expressions.add(
         new Expression.Invoke(keyArrayWriter, "writeDirectly", Expression.Literal.ofInt(-1)));
     Expression keySerializationExpr =
-        serializeForArrayByWriter(keySet, keyArrayWriter, keySetType, null, keyFieldExpr);
+        keyScoped(
+            () ->
+                serializeForArrayByWriter(keySet, keyArrayWriter, keySetType, null, keyFieldExpr));
     Expression.Invoke keyArray =
         new Expression.Invoke(keyArrayWriter, "toArray", TypeRef.of(BinaryArray.class));
     expressions.add(map);
@@ -242,9 +293,9 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
     Expression keyJavaArray;
     Expression valueJavaArray;
     if (TypeUtils.ITERABLE_TYPE.isSupertypeOf(keysType)) {
-      keyJavaArray = deserializeForCollection(keyArrayRef, keysType);
+      keyJavaArray = keyScoped(() -> deserializeForCollection(keyArrayRef, keysType));
     } else {
-      keyJavaArray = deserializeForArray(keyArrayRef, keysType);
+      keyJavaArray = keyScoped(() -> deserializeForArray(keyArrayRef, keysType));
     }
     if (TypeUtils.ITERABLE_TYPE.isSupertypeOf(valuesType)) {
       valueJavaArray = deserializeForCollection(valArrayRef, valuesType);
@@ -260,5 +311,114 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
                 new Expression.If(
                     ExpressionUtils.notNull(key), new Expression.Invoke(map, "put", key, value)));
     return new Expression.ListExpression(map, put);
+  }
+
+  /**
+   * Class-name suffix for the generated map codec. The codec class is cached by name, so distinct
+   * (value-combination, key-combination) pairs must map to distinct suffixes or the second pair
+   * would reuse the first pair's codec class. {@link ProjectionRouting#projectionSuffix} is already
+   * injective over a single position's combinations, so each side's string determines its own
+   * combination. Each half is written after its length, so no token on one side can imitate the
+   * boundary between the halves, whatever the bean simple names are. The current-schema codec, with
+   * both halves empty, gets no suffix.
+   */
+  String mapClassSuffix() {
+    return mapClassSuffix(classSuffix, keyCodecSuffix);
+  }
+
+  static String mapClassSuffix(String valueSuffix, String keySuffix) {
+    String val = valueSuffix == null ? "" : valueSuffix;
+    String key = keySuffix == null ? "" : keySuffix;
+    if (val.isEmpty() && key.isEmpty()) {
+      return "";
+    }
+    return "_" + val.length() + val + "_" + key.length() + key;
+  }
+
+  /**
+   * Route a bean to its projection row codec by position: the key position uses {@link
+   * #keyNestedSuffixes} and the value position {@link #valNestedSuffixes}, so a map whose key and
+   * value evolve independently embeds the right historical codec for each.
+   */
+  @Override
+  protected String nestedBeanSuffix(TypeRef<?> typeRef) {
+    return suffixFor(inKeyPosition ? keyNestedSuffixes : valNestedSuffixes, typeRef);
+  }
+
+  /**
+   * Register the key bean's codec under a distinct key so it does not collide with a same-class
+   * value bean that projects to a historical schema. Both would otherwise share one {@code
+   * beanEncoderMap} entry and the first-registered (suffixed) codec would wrongly decode the key. A
+   * current-schema codec reads both positions with the same codec, so it keeps one entry.
+   */
+  @Override
+  protected Object beanCodecKey(TypeRef<?> typeRef) {
+    return inKeyPosition && projection ? new KeyCodecKey(typeRef) : typeRef;
+  }
+
+  /** Distinguishes a key-position bean codec registration from the value-position one. */
+  private static final class KeyCodecKey {
+    private final TypeRef<?> typeRef;
+
+    KeyCodecKey(TypeRef<?> typeRef) {
+      this.typeRef = typeRef;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      return o instanceof KeyCodecKey && typeRef.equals(((KeyCodecKey) o).typeRef);
+    }
+
+    @Override
+    public int hashCode() {
+      return typeRef.hashCode() * 31 + 1;
+    }
+  }
+
+  /**
+   * Build a key-array subtree with {@link #inKeyPosition} set. Nested bean codecs register both at
+   * expression construction (the encode {@code ForEach} builds its body eagerly) and during genCode
+   * (the decode lazy-array body), so the scope has to cover both: the flag is set around the build
+   * here, and {@link KeyPositionScope} re-sets it around the subtree's genCode.
+   */
+  private Expression keyScoped(Supplier<Expression> build) {
+    boolean prev = inKeyPosition;
+    inKeyPosition = true;
+    try {
+      return new KeyPositionScope(build.get());
+    } finally {
+      inKeyPosition = prev;
+    }
+  }
+
+  /** Re-sets {@link #inKeyPosition} around the key subtree's genCode; see {@link #keyScoped}. */
+  private final class KeyPositionScope extends AbstractExpression {
+    private final Expression key;
+
+    KeyPositionScope(Expression key) {
+      super(key);
+      this.key = key;
+    }
+
+    @Override
+    public TypeRef<?> type() {
+      return key.type();
+    }
+
+    @Override
+    public boolean nullable() {
+      return key.nullable();
+    }
+
+    @Override
+    public Code.ExprCode doGenCode(CodegenContext ctx) {
+      boolean prev = inKeyPosition;
+      inKeyPosition = true;
+      try {
+        return key.genCode(ctx);
+      } finally {
+        inKeyPosition = prev;
+      }
+    }
   }
 }

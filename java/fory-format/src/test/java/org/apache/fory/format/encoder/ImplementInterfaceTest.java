@@ -20,7 +20,9 @@
 package org.apache.fory.format.encoder;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
@@ -329,6 +331,77 @@ public class ImplementInterfaceTest {
     Assert.assertEquals(deserializedBean.f1().get(0).f1(), 42);
   }
 
+  public interface MapOuter {
+    Map<String, ListInner> f1();
+  }
+
+  static class MapOuterImpl implements MapOuter {
+    private final Map<String, ListInner> f1;
+
+    MapOuterImpl(final Map<String, ListInner> f1) {
+      this.f1 = f1;
+    }
+
+    @Override
+    public Map<String, ListInner> f1() {
+      return f1;
+    }
+  }
+
+  /**
+   * Interface bean as a map value. Type inference reaches the map value type through {@code
+   * isSupported}, which must recognize the interface as a synthesizable bean the same way it does
+   * for a direct field or list element.
+   */
+  @Test
+  public void testMapValueInterface() {
+    final Map<String, ListInner> map = new HashMap<>();
+    map.put("k", new ListInnerImpl(42));
+    final MapOuter bean1 = new MapOuterImpl(map);
+    final RowEncoder<MapOuter> encoder = Encoders.bean(MapOuter.class);
+    final BinaryRow row = encoder.toRow(bean1);
+    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final MapOuter deserializedBean = encoder.fromRow(row);
+    Assert.assertEquals(deserializedBean.f1().get("k").f1(), 42);
+  }
+
+  public interface KeyMapOuter {
+    Map<ListInner, String> f1();
+  }
+
+  static class KeyMapOuterImpl implements KeyMapOuter {
+    private final Map<ListInner, String> f1;
+
+    KeyMapOuterImpl(final Map<ListInner, String> f1) {
+      this.f1 = f1;
+    }
+
+    @Override
+    public Map<ListInner, String> f1() {
+      return f1;
+    }
+  }
+
+  /**
+   * Interface bean as a map key. The key side of {@code isSupported} threads the resolution context
+   * the same way as the value side, so the interface must synthesize as a bean here too.
+   */
+  @Test
+  public void testMapKeyInterface() {
+    final Map<ListInner, String> map = new HashMap<>();
+    map.put(new ListInnerImpl(42), "v");
+    final KeyMapOuter bean1 = new KeyMapOuterImpl(map);
+    final RowEncoder<KeyMapOuter> encoder = Encoders.bean(KeyMapOuter.class);
+    final BinaryRow row = encoder.toRow(bean1);
+    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final KeyMapOuter deserializedBean = encoder.fromRow(row);
+    final Map.Entry<ListInner, String> entry = deserializedBean.f1().entrySet().iterator().next();
+    Assert.assertEquals(entry.getKey().f1(), 42);
+    Assert.assertEquals(entry.getValue(), "v");
+  }
+
   public interface Value extends Comparable<Value> {
     int v();
 
@@ -433,12 +506,19 @@ public class ImplementInterfaceTest {
                 new ListLazyElemInner(4)));
     final RowEncoder<ListLazyElemOuter> encoder = Encoders.bean(ListLazyElemOuter.class);
     final BinaryRow row = encoder.toRow(bean1);
+    // Only the accessed element (index 2, value 42) should be constructed; the constructor's check
+    // guard asserts that. Reset it in finally so the flag never leaks into another test decoding a
+    // ListLazyElemInner through its globally-registered codec.
     ListLazyElemInner.check = true;
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
-    row.pointTo(buffer, 0, buffer.size());
-    final ListLazyElemOuter deserializedBean = encoder.fromRow(row);
-    Assert.assertEquals(deserializedBean.f1().get(2).f1(), 42);
-    Assert.assertEquals(deserializedBean.f1().get(3), null);
+    try {
+      final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+      row.pointTo(buffer, 0, buffer.size());
+      final ListLazyElemOuter deserializedBean = encoder.fromRow(row);
+      Assert.assertEquals(deserializedBean.f1().get(2).f1(), 42);
+      Assert.assertEquals(deserializedBean.f1().get(3), null);
+    } finally {
+      ListLazyElemInner.check = false;
+    }
   }
 
   public interface IgnoredMethods {

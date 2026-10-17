@@ -96,12 +96,36 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   protected static TypeRef<BinaryArray> binaryArrayTypeToken = TypeRef.of(BinaryArray.class);
 
   protected final Map<TypeRef<?>, Reference> arrayWriterMap = new HashMap<>();
-  protected final Map<TypeRef<?>, Reference> beanEncoderMap = new HashMap<>();
+
+  // Keyed by beanCodecKey(typeRef) rather than the raw typeRef so a single builder can hold two
+  // codecs for one bean class when position matters: in a map projection the key bean and the
+  // value bean can project to different historical schemas, and the two would otherwise collide on
+  // the same type key.
+  protected final Map<Object, Reference> beanEncoderMap = new HashMap<>();
+
+  /**
+   * Suffix of the generated array or map codec class name. A projection codec sets it so that each
+   * version combination gets its own class. It does not route nested bean codecs; {@link
+   * #nestedClassSuffixes} does.
+   */
+  protected String classSuffix;
+
+  /**
+   * Per-class projection suffix for nested bean codecs, used when one generated codec embeds more
+   * than one distinct versioned bean class at independent versions — for example an element typed
+   * {@code Map<KBean, VBean>}, whose key and value beans each project to their own historical row
+   * codec. Looked up by raw class in {@link #nestedBeanSuffix}; a class absent from the map, or a
+   * null map, reads at its current schema. Routing by raw class is exact because a writer writes
+   * one definition of a class, so every occurrence of a class in one payload is at the same
+   * version.
+   */
+  protected Map<Class<?>, String> nestedClassSuffixes;
+
   // We need to call beanEncoder's rowWriter.reset() before write a corresponding nested bean every
   // time.
   // Outermost beanEncoder's rowWriter.reset() should be called outside generated code before
   // writer an outermost bean every time.
-  protected final Map<TypeRef<?>, Reference> rowWriterMap = new HashMap<>();
+  protected final Map<Object, Reference> rowWriterMap = new HashMap<>();
   protected final CustomTypeHandler customTypeHandler =
       CustomTypeEncoderRegistry.customTypeHandler();
   protected final TypeResolutionContext typeCtx;
@@ -511,40 +535,79 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       Field fieldIfKnown,
       TypeRef<?> typeRef,
       Expression structField) {
-    Class<?> rawType = getRawType(typeRef);
-    Reference rowWriter;
-    Reference beanEncoder = beanEncoderMap.get(typeRef);
-    if (beanEncoder == null) {
-      // janino generics don't add cast, so this `<${type}>` is only for generated code readability
-      Expression schema = createSchemaFromStructField(structField);
-      String rowWriterName =
-          ctx.newName(StringUtils.uncapitalize(rawType.getSimpleName() + "RowWriter"));
-      NewInstance newRowWriter = new NewInstance(rowWriterType(), schema, writer);
-      ctx.addField(ctx.type(rowWriterType()), rowWriterName, newRowWriter);
-
-      Preconditions.checkArgument(!codecClassName(rawType).contains("."));
-      String encoderName = ctx.newName(StringUtils.uncapitalize(codecClassName(rawType)));
-      String encoderClass = codecQualifiedClassName(rawType);
-      TypeRef<?> codecTypeRef = TypeRef.of(GeneratedRowEncoder.class);
-      NewInstance newEncoder =
-          new NewInstance(
-              codecTypeRef,
-              encoderClass,
-              ExpressionUtils.newObjectArray(schema, newRowWriter, foryRef));
-      ctx.addField(encoderClass, encoderName, newEncoder);
-
-      rowWriter = new Reference(rowWriterName, rowWriterType());
-      rowWriterMap.put(typeRef, rowWriter);
-      beanEncoder = new Reference(encoderName, codecTypeRef);
-      beanEncoderMap.put(typeRef, beanEncoder);
-    }
-    rowWriter = rowWriterMap.get(typeRef);
+    registerBeanCodec(writer, typeRef, structField);
+    Object codecKey = beanCodecKey(typeRef);
+    Reference rowWriter = rowWriterMap.get(codecKey);
+    Reference beanEncoder = beanEncoderMap.get(codecKey);
 
     Expression expression =
         serializeForNotNullBean(ordinal, writer, inputObject, fieldIfKnown, rowWriter, beanEncoder);
 
     return new If(
         new Expression.IsNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expression);
+  }
+
+  /**
+   * Idempotently add the nested-bean row writer and row encoder as fields on the generated codec
+   * class and register them in {@link #beanEncoderMap} and {@link #rowWriterMap}. Used both by
+   * {@link #serializeForBean} and by decode-only projection codegen, where the encode pass is
+   * skipped but the decode pass still needs the bean encoder reference.
+   */
+  protected void registerBeanCodec(Expression writer, TypeRef<?> typeRef, Expression structField) {
+    Object codecKey = beanCodecKey(typeRef);
+    if (beanEncoderMap.containsKey(codecKey)) {
+      return;
+    }
+    Class<?> rawType = getRawType(typeRef);
+    Expression schema = createSchemaFromStructField(structField);
+    String rowWriterName =
+        ctx.newName(StringUtils.uncapitalize(rawType.getSimpleName() + "RowWriter"));
+    NewInstance newRowWriter = new NewInstance(rowWriterType(), schema, writer);
+    ctx.addField(ctx.type(rowWriterType()), rowWriterName, newRowWriter);
+
+    Preconditions.checkArgument(!codecClassName(rawType).contains("."));
+    String encoderName = ctx.newName(StringUtils.uncapitalize(codecClassName(rawType)));
+    String encoderClass = codecQualifiedClassName(rawType) + nestedBeanSuffix(typeRef);
+    TypeRef<?> codecTypeRef = TypeRef.of(GeneratedRowEncoder.class);
+    NewInstance newEncoder =
+        new NewInstance(
+            codecTypeRef,
+            encoderClass,
+            ExpressionUtils.newObjectArray(schema, newRowWriter, foryRef));
+    ctx.addField(encoderClass, encoderName, newEncoder);
+
+    rowWriterMap.put(codecKey, new Reference(rowWriterName, rowWriterType()));
+    beanEncoderMap.put(codecKey, new Reference(encoderName, codecTypeRef));
+  }
+
+  /**
+   * Registration key for a nested bean's row writer and codec in {@link #beanEncoderMap} and {@link
+   * #rowWriterMap}. Defaults to the type itself, so each bean class maps to a single codec.
+   * Subclasses where one class can appear in two positions that need different codecs (such as a
+   * map key versus its value) override this to keep those registrations distinct.
+   */
+  protected Object beanCodecKey(TypeRef<?> typeRef) {
+    return typeRef;
+  }
+
+  /**
+   * Suffix to append to a nested bean's codec class name when emitting a reference, routed by
+   * {@link #nestedClassSuffixes}. Subclasses with positional routing (a map key versus its value)
+   * override this.
+   */
+  protected String nestedBeanSuffix(TypeRef<?> typeRef) {
+    return suffixFor(nestedClassSuffixes, typeRef);
+  }
+
+  /**
+   * The suffix that {@code suffixes} routes {@code typeRef} to. The map is keyed from the same
+   * field walk as this descent, and SchemaHistory.collectNestedSites sites every bean with more
+   * than one version, so an absent class (or a null map) is single-version here and reads at its
+   * current schema.
+   */
+  protected static String suffixFor(Map<Class<?>, String> suffixes, TypeRef<?> typeRef) {
+    String suffix = suffixes == null ? null : suffixes.get(getRawType(typeRef));
+    return suffix == null ? "" : suffix;
   }
 
   protected Expression createSchemaFromStructField(Expression structField) {
@@ -712,9 +775,19 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
    * </code>.
    */
   protected Expression deserializeForBean(Expression row, TypeRef<?> typeRef) {
-    Reference beanEncoder = beanEncoderMap.get(typeRef);
+    // beanCodecKey(typeRef) must resolve to the same position (key vs value) here as it did when
+    // registerBeanCodec() ran. A miss means this decode is reached outside the position scope that
+    // registered the codec -- e.g. a nested key bean built outside MapEncoderBuilder.keyScoped /
+    // KeyPositionScope -- so the lookup falls back to the wrong key. Fail loud rather than
+    // mis-route.
+    Reference beanEncoder = beanEncoderMap.get(beanCodecKey(typeRef));
     if (beanEncoder == null) {
-      throw new IllegalStateException("beanEncoder should have be added in serializeForBean()");
+      throw new IllegalStateException(
+          "No bean codec registered for "
+              + typeRef
+              + " under key "
+              + beanCodecKey(typeRef)
+              + "; registerBeanCodec() must run in the same key/value position as this decode");
     }
     Invoke beanObj = new Invoke(beanEncoder, "fromRow", TypeUtils.OBJECT_TYPE, false, row);
     return new Cast(beanObj, typeRef, "bean");

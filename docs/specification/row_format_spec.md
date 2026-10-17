@@ -345,6 +345,137 @@ if (fixed_width % 8 == 0):
 
 ---
 
+## Schema Evolution
+
+Schema evolution lets a codec read payloads written by older versions of the same struct. It is
+currently implemented in Java only and does not change the cross-language wire contract above;
+producer and consumer must agree on whether it is enabled. The protocol below is defined over
+language-neutral inputs so another runtime can implement it and interoperate with Java payloads.
+
+See the [Java row format guide](../row-format/java.md#schema-evolution) for usage, annotations,
+and limitations.
+
+### Version model
+
+- Versions are per-struct integers starting at 1. Version numbers never appear on the wire;
+  payloads are identified by a strict schema hash, so peers need identical declared histories,
+  not synchronized version counters.
+- A schema history is a set of field entries `(wire name, type, nullability, since, until)`.
+  A live field has an unbounded `until`; a removed field declares the version it disappeared in.
+  How the entries are declared is language-specific (Java uses annotations and a removed-fields
+  interface); the protocol object is the entry tuple.
+- A layout is materialized at every version where the active field set changes; layouts that come
+  out identical collapse into one entry.
+- Reading a payload that predates a field yields the reader type's absent value: an empty
+  optional for an optional type, null for another nullable field, and the type's zero value (`0`,
+  `0.0`, `false`, empty for languages without null) otherwise. A default that the reader's type
+  declares for the field (a field initializer, for example) does not apply. Fields removed in the
+  reader's schema are discarded.
+- When a struct contains other versioned structs (directly, or through list elements, map keys, or
+  map values, to any depth), each distinct nested struct type is one version dimension and the
+  reader enumerates the cross-product of versions. A single payload carries one version per struct
+  type.
+
+### Wire names and canonical field order
+
+- A field's wire name is its declared member name converted to lower `snake_case` by the field-name
+  rule of the xlang object-graph format (Java `camelCase` converts; a member name already in
+  `snake_case` is used as-is). That rule does not yet define the conversion of acronyms, a leading
+  capital letter, or non-ASCII capital letters, and the runtimes differ on them. Only ordinary
+  lowerCamelCase names, with no consecutive capital letters and only ASCII capital letters, are
+  portable across runtimes today.
+- The fields of a versioned layout are ordered ascending by wire name, compared by Unicode code
+  point (equivalently, byte-wise over the UTF-8 encodings). Duplicate wire names within one
+  version are invalid. The compact format then applies its alignment sort, which is stable, over
+  that order. It sorts every struct this way at every depth, including structs in list elements
+  and in map keys and values.
+- A custom codec's encoded shape (its struct children, their names, and their order) is fixed by
+  the codec's own definition, not by name sorting, and must be reproduced identically in every
+  runtime that registers an equivalent codec.
+
+### Strict schema hash
+
+The strict hash distinguishes layouts that differ in field name or nullability, unlike the
+default schema hash, which mixes only type IDs. All inputs are language-neutral.
+
+- State: an unsigned 64-bit accumulator `h`, seeded with the FNV-1a offset basis
+  `0xcbf29ce484222325`. Each input value `v` (one unsigned 64-bit integer) mixes as
+  `h = (h XOR v) * 0x100000001b3 mod 2^64` (the FNV-1a prime). A negative input (a negative
+  decimal scale) mixes as its 64-bit two's-complement value.
+- The hash covers fields in the order they are on the wire, at every depth: canonical wire-name
+  order for the standard format, and the alignment-sorted order for the compact format, including
+  for structs in list elements and map entries. The hash of a layout folds its top-level fields in
+  that order, each as a named field.
+- A named field mixes: each byte of the wire name's UTF-8 encoding, then one `0` terminator,
+  then the field's shape.
+- A field's shape mixes, in order:
+  1. The Fory type ID (table below).
+  2. Shape parameters the ID does not carry: for `binary`, the byte width (`0` for
+     variable-width); for `decimal`, the precision then the scale.
+  3. Nullability: `1` if nullable, `0` otherwise.
+  4. Children: a `list` mixes its element field's shape and a `map` mixes its key field's shape
+     then its value field's shape — child positions are fixed by the parent type, so no names are
+     mixed. A `struct` mixes its child count, then each child as a named field; the count
+     delimits the struct's extent so nesting structure stays unambiguous.
+- Type IDs are the row format's subset of the Fory cross-language type table: `bool` 1, `int8` 2,
+  `int16` 3, `int32` 4, `int64` 6, `float16` 17, `float32` 19, `float64` 20, `string` 21,
+  `list` 22, `map` 24, `struct` 27, `duration` 37, `timestamp` 38, `date32` 39, `decimal` 40,
+  `binary` 41.
+- The hash is 64 bits, so an implementation must reject, when the codec is built, two distinct
+  layouts in one history that hash to the same value.
+- Known-answer vectors for the strict hash (`n` is nullable, `nn` is not nullable):
+
+  | Layout                                                   | Strict hash          |
+  | -------------------------------------------------------- | -------------------- |
+  | `id: int32 nn`                                           | `0x52d9543baa314ae4` |
+  | `name: string n`                                         | `0x45812bbf5f4c920c` |
+  | `größe: int64 nn`                                        | `0xe2e70ce928534aa8` |
+  | `amount: decimal(10, 2) nn`                              | `0xf0751e7a96d89543` |
+  | `amount: decimal(38, -3) nn`                             | `0x926657849144c230` |
+  | `blob: binary n, digest: binary(4) nn`                   | `0x0c01130d4045d1b9` |
+  | `tags: list<string n> n`                                 | `0x7cd563d52d484c3f` |
+  | `counts: map<string nn, int32 n> n`                      | `0xdaae30bf1bd9077a` |
+  | `point: struct<x: int32 nn, y: int32 nn> n, z: int64 nn` | `0x0ce5f71e89c02b76` |
+  | `combine(0x52d9543baa314ae4, 0x45812bbf5f4c920c)`        | `0x812fec70da48114d` |
+
+### Framing and dispatch
+
+- A row payload's existing leading 8-byte hash word (little-endian) holds the strict hash of the
+  writer's current layout when evolution is enabled, and the default schema hash otherwise.
+- Array and map payloads carry no hash word without evolution. With evolution, every array and
+  map payload starts with an 8-byte prefix (little-endian), so every payload written with evolution
+  enabled starts with an 8-byte schema identifier: the strict hash of its layout for a row or an
+  array, and the combined key and value hash for a map.
+- When the payload size is written before the payload (a little-endian int32), the size comes
+  first and the hash word or prefix follows it. The size counts the 8 bytes of the hash and the
+  body, but not its own 4 bytes.
+- An array's prefix is the strict hash of a layout with one field: the empty name `""`, the element
+  type with each reachable struct at the payload's version, and the element's nullability.
+- A map's prefix is one combined value,
+  `combine(keyHash, valueHash) = mix(mix(basis, keyHash), valueHash)` with the same basis and mix
+  step as above. `keyHash` and `valueHash` are each the strict hash of a one-field layout built as
+  for an array element: the key with nullability `0`, and the value with nullability `1`. A
+  position that reaches no struct still hashes its type. The combination is order-sensitive, so a
+  map key and value evolve independently while the payload carries one hash. Nested versioned
+  structs need no prefix of their own: their layouts substitute into the enclosing payload's
+  hash.
+- The reader dispatches on the hash: the current layout's hash selects the current codec, a known
+  historical hash selects that layout's projection, and an unknown hash is an error.
+- Known-answer vectors for the prefix (`n` is nullable, `nn` is not nullable):
+
+  | Payload                                              | Prefix               |
+  | ---------------------------------------------------- | -------------------- |
+  | map, key `string nn`, value `int32 n`                | `0xe3a21bfb65b885f7` |
+  | array of `struct<narrow: int8 nn, wide: int64 nn> n` | `0x04a5118c46faea29` |
+  | the same array, compact format                       | `0x4f855bcc79d4a8c9` |
+
+- Whether evolution is enabled is agreed out of band. Array and map payloads written without
+  evolution have no header, so an evolution-off consumer cannot detect the prefix of an
+  evolution-enabled payload, and the result of that read is undefined; see the Java guide for the
+  rollout procedure.
+
+---
+
 ## Common Specifications
 
 The following specifications apply to both standard and compact formats.
