@@ -97,7 +97,7 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
     this.schemaHash = schemaHash;
     this.projectionSources = projectionSources;
     this.fory = fory;
-    this.projections = projectionSources == null ? null : new LongMap<>(projectionSources.size);
+    this.projections = projectionSources == null ? null : new LongMap<>();
   }
 
   @Override

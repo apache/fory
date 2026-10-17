@@ -37,9 +37,9 @@ final class ProjectionRouting {
 
   /**
    * Build a class-name suffix that uniquely identifies {@code vs} across the whole cross-product,
-   * at any nesting depth. The suffix encodes the outer version and, for each nested bean, that
-   * inner's simple name, version, and its strict hash as 16 hex digits, so each token has a fixed
-   * end.
+   * at any nesting depth. The suffix encodes the outer version and strict hash and, for each nested
+   * bean, that inner's simple name, version, and strict hash. Each hash is 16 hex digits, so each
+   * token has a fixed end, and the name follows the layout it decodes.
    *
    * <p>The cross-product for one outer schema enumerates a fixed set of nested classes, so every
    * combination carries the same classes in the same sorted-by-name positions; two combinations
@@ -50,7 +50,11 @@ final class ProjectionRouting {
    * stability is what prevents same-simple-name beans from collapsing onto one class name.
    */
   static String projectionSuffix(SchemaHistory.VersionedSchema vs) {
-    StringBuilder sb = new StringBuilder("_V").append(vs.version());
+    StringBuilder sb =
+        new StringBuilder("_V")
+            .append(vs.version())
+            .append("h")
+            .append(String.format("%016x", vs.strictHash()));
     if (!vs.nestedBeanSchemas().isEmpty()) {
       List<Map.Entry<Class<?>, SchemaHistory.VersionedSchema>> entries =
           new ArrayList<>(vs.nestedBeanSchemas().entrySet());

@@ -106,7 +106,7 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
     this.currentHash = currentHash;
     this.projectionSources = projectionSources;
     this.fory = fory;
-    this.projections = projectionSources == null ? null : new LongMap<>(projectionSources.size);
+    this.projections = projectionSources == null ? null : new LongMap<>();
   }
 
   @Override
@@ -162,7 +162,7 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
     if (projection == null) {
       throw new ClassNotCompatibleException(
           String.format(
-              "Map (key,value) schema is not consistent. self/peer hash are %x/%x.",
+              "Map (key,value) schema is not consistent. self/peer hash are %s/%s.",
               currentHash, peerHash));
     }
     BinaryMap map = projection.format.newMap(projection.mapField);
