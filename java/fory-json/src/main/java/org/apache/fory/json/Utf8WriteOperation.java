@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.fory.json;
 
 import org.apache.fory.json.writer.Utf8JsonWriter;
