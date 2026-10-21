@@ -326,6 +326,15 @@ def test_cross_language_serializer(data_file_path):
         assert _deserialize_and_append(fory, buffer, objects) == day
         instant = datetime.datetime.fromtimestamp(100, tz=datetime.timezone.utc)
         assert _deserialize_and_append(fory, buffer, objects) == instant
+        precise_instants = [
+            datetime.datetime(1970, 1, 1, microsecond=249, tzinfo=datetime.timezone.utc),
+            datetime.datetime(1969, 12, 31, 23, 59, 59, 999999, tzinfo=datetime.timezone.utc),
+            datetime.datetime(1900, 1, 1, microsecond=6, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2255, 1, 1, microsecond=123456, tzinfo=datetime.timezone.utc),
+            datetime.datetime.max.replace(tzinfo=datetime.timezone.utc),
+        ]
+        for precise_instant in precise_instants:
+            assert _deserialize_and_append(fory, buffer, objects) == precise_instant
         list_ = ["a", 1, -1.0, instant, day]
         assert _deserialize_and_append(fory, buffer, objects) == list_
         dict_ = {f"k{i}": v for i, v in enumerate(list_)}

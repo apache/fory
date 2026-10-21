@@ -22,6 +22,7 @@ import gc
 import io
 import os
 import pickle
+import time
 import weakref
 from collections import namedtuple
 from collections.abc import MutableSequence
@@ -650,6 +651,111 @@ def test_timestamp_serializer(xlang):
     result_jst = ser_de(fory, aware_jst)
     assert result_jst.tzinfo == datetime.timezone.utc
     assert result_jst.timestamp() == aware_jst.timestamp()
+
+
+@pytest.mark.parametrize("xlang", [True, False])
+@pytest.mark.parametrize(
+    ("value", "seconds", "nanos"),
+    [
+        (datetime.datetime(1970, 1, 1, microsecond=249, tzinfo=datetime.timezone.utc), 0, 249_000),
+        (datetime.datetime(1969, 12, 31, 23, 59, 59, 999999, tzinfo=datetime.timezone.utc), -1, 999_999_000),
+        (datetime.datetime(1900, 1, 1, microsecond=6, tzinfo=datetime.timezone.utc), -2_208_988_800, 6_000),
+        (datetime.datetime(2255, 1, 1, microsecond=123456, tzinfo=datetime.timezone.utc), 8_993_721_600, 123_456_000),
+        (datetime.datetime(2500, 1, 1, microsecond=123456, tzinfo=datetime.timezone.utc), 16_725_225_600, 123_456_000),
+        (datetime.datetime.min.replace(tzinfo=datetime.timezone.utc), -62_135_596_800, 0),
+        (datetime.datetime.min.replace(microsecond=1, tzinfo=datetime.timezone.utc), -62_135_596_800, 1_000),
+        (datetime.datetime.max.replace(tzinfo=datetime.timezone.utc), 253_402_300_799, 999_999_000),
+        (
+            datetime.datetime(1970, 1, 1, 1, microsecond=249, tzinfo=datetime.timezone(datetime.timedelta(hours=1))),
+            0,
+            249_000,
+        ),
+        (
+            datetime.datetime(1970, 1, 1, microsecond=250, tzinfo=datetime.timezone(datetime.timedelta(microseconds=1))),
+            0,
+            249_000,
+        ),
+    ],
+)
+def test_timestamp_precision(value, seconds, nanos, xlang):
+    fory = Fory(xlang=xlang, ref=False, compatible=xlang)
+    data = fory.serialize(value)
+    buffer = Buffer(data)
+    assert buffer.read_uint8() == (1 if xlang else 0)
+    assert buffer.read_int8() == -1
+    assert buffer.read_uint8() == TypeId.TIMESTAMP
+    assert buffer.read_int64() == seconds
+    assert buffer.read_uint32() == nanos
+    assert buffer.get_reader_index() == len(data)
+    assert fory.deserialize(data) == value
+
+
+@pytest.mark.parametrize("xlang", [True, False])
+@pytest.mark.parametrize(
+    ("seconds", "nanos", "expected"),
+    [
+        (16_725_225_600, 123_456_000, datetime.datetime(2500, 1, 1, microsecond=123456, tzinfo=datetime.timezone.utc)),
+        (253_402_300_799, 999_999_000, datetime.datetime.max.replace(tzinfo=datetime.timezone.utc)),
+        (0, 500, datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)),
+        (0, 999, datetime.datetime(1970, 1, 1, microsecond=1, tzinfo=datetime.timezone.utc)),
+        (0, 1_500, datetime.datetime(1970, 1, 1, microsecond=2, tzinfo=datetime.timezone.utc)),
+        (0, 2_500, datetime.datetime(1970, 1, 1, microsecond=2, tzinfo=datetime.timezone.utc)),
+        (0, 999_999_999, datetime.datetime(1970, 1, 1, 0, 0, 1, tzinfo=datetime.timezone.utc)),
+        (-1, 500, datetime.datetime(1969, 12, 31, 23, 59, 59, tzinfo=datetime.timezone.utc)),
+        (-1, 1_500, datetime.datetime(1969, 12, 31, 23, 59, 59, 2, tzinfo=datetime.timezone.utc)),
+        (-1, 999_999_500, datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)),
+    ],
+)
+def test_timestamp_wire_precision(seconds, nanos, expected, xlang):
+    fory = Fory(xlang=xlang, ref=False, compatible=xlang)
+    buffer = Buffer.allocate(15)
+    buffer.write_uint8(1 if xlang else 0)
+    buffer.write_int8(-1)
+    buffer.write_uint8(TypeId.TIMESTAMP)
+    buffer.write_int64(seconds)
+    buffer.write_uint32(nanos)
+    assert fory.deserialize(buffer.to_bytes()) == expected
+
+
+@pytest.mark.parametrize("xlang", [True, False])
+@pytest.mark.parametrize("seconds", [-(1 << 63), (1 << 63) - 1, -(1 << 32) * 86400, (1 << 32) * 86400])
+def test_timestamp_seconds_out_of_range(seconds, xlang):
+    fory = Fory(xlang=xlang, ref=False, compatible=xlang)
+    buffer = Buffer.allocate(15)
+    buffer.write_uint8(1 if xlang else 0)
+    buffer.write_int8(-1)
+    buffer.write_uint8(TypeId.TIMESTAMP)
+    buffer.write_int64(seconds)
+    buffer.write_uint32(0)
+    with pytest.raises(OverflowError):
+        fory.deserialize(buffer.to_bytes())
+
+
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="Requires time.tzset")
+@pytest.mark.parametrize("xlang", [True, False])
+@pytest.mark.parametrize("timezone", ["UTC0", "EST5EDT,M3.2.0/2,M11.1.0/2"])
+def test_timestamp_local_time(monkeypatch, timezone, xlang):
+    fory = Fory(xlang=xlang, ref=False, compatible=xlang)
+    try:
+        with monkeypatch.context() as local:
+            local.setenv("TZ", timezone)
+            time.tzset()
+            values = [
+                datetime.datetime(1970, 1, 1, microsecond=249),
+                datetime.datetime(1900, 1, 1, microsecond=6),
+                datetime.datetime(2500, 1, 1, microsecond=999999),
+                datetime.datetime(2026, 1, 1, 12, 0, 0, 123456),
+                datetime.datetime(2026, 7, 1, 12, 0, 0, 123456),
+                datetime.datetime(2026, 11, 1, 1, 30, 0, 123456, fold=0),
+                datetime.datetime(2026, 11, 1, 1, 30, 0, 123456, fold=1),
+            ]
+            if timezone == "UTC0":
+                values.append(datetime.datetime.max)
+            for value in values:
+                expected = value.replace(tzinfo=datetime.timezone.utc) if timezone == "UTC0" else value.astimezone(datetime.timezone.utc)
+                assert fory.deserialize(fory.serialize(value)) == expected
+    finally:
+        time.tzset()
 
 
 @pytest.mark.parametrize("xlang", [True, False])

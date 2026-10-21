@@ -15,6 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from cpython.datetime cimport (
+    datetime_microsecond, import_datetime, timedelta_days, timedelta_seconds,
+    timedelta_microseconds, timedelta_new,
+)
+from libc.math cimport round as c_round
+
+import_datetime()
+
 @cython.final
 cdef class BooleanSerializer(_PrimitiveSerializer):
     cpdef inline write(self, WriteContext write_context, value):
@@ -226,6 +234,7 @@ cdef class StringSerializer(Serializer):
 
 cdef _base_date = datetime.date(1970, 1, 1)
 cdef int _base_date_ordinal = _base_date.toordinal()
+cdef _timestamp_epoch = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
 
 
 @cython.final
@@ -265,24 +274,24 @@ cdef class TimestampSerializer(Serializer):
         self.win_platform = platform.system() == "Windows"
 
     cdef inline _get_timestamp(self, value):
-        seconds_offset = 0
-        if self.win_platform and value.tzinfo is None:
-            is_dst = time.daylight and time.localtime().tm_isdst > 0
-            seconds_offset = time.altzone if is_dst else time.timezone
-            value = value.replace(tzinfo=datetime.timezone.utc)
-        cdef long long micros = <long long>((value.timestamp() + seconds_offset) * 1000000)
+        cdef long long seconds_offset = 0
         cdef long long seconds
-        cdef long long micros_rem
-        if micros >= 0:
-            seconds = micros // 1000000
-            micros_rem = micros % 1000000
-        else:
-            seconds = -((-micros) // 1000000)
-            micros_rem = micros - seconds * 1000000
-        if micros_rem < 0:
-            seconds -= 1
-            micros_rem += 1000000
-        return seconds, <unsigned int>(micros_rem * 1000)
+        cdef unsigned int micros
+        if value.tzinfo is None:
+            if self.win_platform:
+                is_dst = time.daylight and time.localtime().tm_isdst > 0
+                seconds_offset = time.altzone if is_dst else time.timezone
+                value = value.replace(tzinfo=datetime.timezone.utc)
+            else:
+                # Recover the integral local-time second separately. Across datetime's
+                # range, timestamp rounding is far below half a second.
+                micros = datetime_microsecond(value)
+                seconds = <long long>c_round(value.timestamp() - micros / 1000000.0)
+                return seconds, micros * 1000
+        # A floating-point POSIX timestamp cannot preserve every datetime microsecond.
+        delta = value - _timestamp_epoch
+        seconds = <long long>timedelta_days(delta) * 86400 + timedelta_seconds(delta) + seconds_offset
+        return seconds, <unsigned int>(timedelta_microseconds(delta) * 1000)
 
     cpdef inline write(self, WriteContext write_context, value):
         if type(value) is not datetime.datetime:
@@ -298,8 +307,15 @@ cdef class TimestampSerializer(Serializer):
     cpdef inline read(self, ReadContext read_context):
         cdef long long seconds = read_context.read_int64()
         cdef unsigned int nanos = read_context.read_uint32()
-        ts = seconds + (<double>nanos) / 1000000000.0
-        return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+        # Keep datetime's ties-to-even rounding, including a carry into the next second.
+        cdef unsigned int micros = (<uint64_t>nanos + 500) // 1000
+        if nanos % 1000 == 500:
+            micros &= ~1
+        cdef long long days = seconds // 86400
+        # Bound the days before narrowing to the datetime C API's integer fields.
+        if days < -999999999 or days > 999999999:
+            raise OverflowError("timedelta days out of range")
+        return _timestamp_epoch + timedelta_new(<int>days, <int>(seconds - days * 86400), micros)
 
 
 @cython.final

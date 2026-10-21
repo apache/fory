@@ -21,6 +21,7 @@ import platform
 import time
 import array
 from abc import ABC
+from datetime import timedelta
 
 from pyfory._fory import NOT_NULL_INT64_FLAG
 from pyfory.resolver import NOT_NULL_VALUE_FLAG, NULL_FLAG
@@ -418,6 +419,7 @@ class StringSerializer(Serializer):
 
 
 _base_date = datetime.date(1970, 1, 1)
+_timestamp_epoch = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
 
 
 class DateSerializer(Serializer):
@@ -451,14 +453,20 @@ class TimestampSerializer(Serializer):
 
     def _get_timestamp(self, value: datetime.datetime):
         seconds_offset = 0
-        if TimestampSerializer.__win_platform and value.tzinfo is None:
-            is_dst = time.daylight and time.localtime().tm_isdst > 0
-            seconds_offset = time.altzone if is_dst else time.timezone
-            value = value.replace(tzinfo=datetime.timezone.utc)
-        micros = int((value.timestamp() + seconds_offset) * 1_000_000)
-        seconds, micros_rem = divmod(micros, 1_000_000)
-        nanos = micros_rem * 1000
-        return seconds, nanos
+        if value.tzinfo is None:
+            if TimestampSerializer.__win_platform:
+                is_dst = time.daylight and time.localtime().tm_isdst > 0
+                seconds_offset = time.altzone if is_dst else time.timezone
+                value = value.replace(tzinfo=datetime.timezone.utc)
+            else:
+                # Recover the integral local-time second separately. Across datetime's
+                # range, timestamp rounding is far below half a second.
+                seconds = round(value.timestamp() - value.microsecond / 1_000_000)
+                return seconds, value.microsecond * 1000
+        # A floating-point POSIX timestamp cannot preserve every datetime microsecond.
+        delta = value - _timestamp_epoch
+        seconds = delta.days * 86_400 + delta.seconds + seconds_offset
+        return seconds, delta.microseconds * 1000
 
     def write(self, write_context, value: datetime.datetime):
         if not isinstance(value, datetime.datetime):
@@ -470,8 +478,9 @@ class TimestampSerializer(Serializer):
     def read(self, read_context):
         seconds = read_context.read_int64()
         nanos = read_context.read_uint32()
-        ts = seconds + nanos / 1_000_000_000
-        return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+        # timedelta rounds fractional microseconds to nearest, ties to even,
+        # while keeping the integer seconds separate from the bounded float.
+        return _timestamp_epoch + timedelta(0, seconds, nanos / 1000)
 
 
 class DurationSerializer(Serializer):

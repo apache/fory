@@ -259,6 +259,16 @@ public class PyCrossLanguageTest extends ForyTestBase {
     fory.serialize(buffer, day);
     Instant instant = Instant.ofEpochSecond(100);
     fory.serialize(buffer, instant);
+    List<Instant> preciseInstants =
+        Arrays.asList(
+            Instant.ofEpochSecond(0, 249_000),
+            Instant.ofEpochSecond(-1, 999_999_000),
+            Instant.ofEpochSecond(-2_208_988_800L, 6_000),
+            Instant.ofEpochSecond(8_993_721_600L, 123_456_000),
+            Instant.ofEpochSecond(253_402_300_799L, 999_999_000));
+    for (Instant preciseInstant : preciseInstants) {
+      fory.serialize(buffer, preciseInstant);
+    }
     List<Object> list = Arrays.asList("a", 1, -1.0, instant, day);
     fory.serialize(buffer, list);
     Map<Object, Object> map = new HashMap<>();
@@ -296,6 +306,9 @@ public class PyCrossLanguageTest extends ForyTestBase {
           assertStringEquals(fory.deserialize(buf), "str", useToString);
           assertStringEquals(fory.deserialize(buf), day, useToString);
           assertStringEquals(fory.deserialize(buf), instant, useToString);
+          for (Instant preciseInstant : preciseInstants) {
+            assertStringEquals(fory.deserialize(buf), preciseInstant, useToString);
+          }
           assertStringEquals(fory.deserialize(buf), list, useToString);
           assertStringEquals(fory.deserialize(buf), map, useToString);
           assertStringEquals(fory.deserialize(buf), set, useToString);
