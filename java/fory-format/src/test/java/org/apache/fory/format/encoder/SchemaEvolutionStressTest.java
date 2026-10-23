@@ -22,9 +22,12 @@ package org.apache.fory.format.encoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 import lombok.Data;
 import org.apache.fory.exception.ClassNotCompatibleException;
@@ -33,6 +36,7 @@ import org.apache.fory.format.annotation.ForyVersion;
 import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -281,6 +285,21 @@ public class SchemaEvolutionStressTest {
       @ForyVersion(until = 2)
       DefaultsV1 detail();
     }
+  }
+
+  // A struct that itself contains a live, evolving nested bean. Used as a map KEY so the key
+  // position must keep inKeyPosition set while recursing into the nested bean, not just for the
+  // top-level key bean.
+  @Data
+  public static class KeyHolderV1 {
+    private String id;
+    private DefaultsV1 detail;
+  }
+
+  @Data
+  public static class KeyHolderV2 {
+    private String id;
+    private DefaultsV2 detail;
   }
 
   @Test
@@ -687,112 +706,191 @@ public class SchemaEvolutionStressTest {
 
   // ---------------------------------------------------------------------------
   // Evolution flag asymmetry: same class, one side opt-in, the other not.
-  // Documented as wire-incompatible. Verify the failure mode is a clear
-  // ClassNotCompatibleException, not silent garbage.
+  // Documented as wire-incompatible across the row, array, and map codecs.
+  // Forward (evolution-on reading evolution-off bytes) is a clean
+  // ClassNotCompatibleException on every codec: the missing strict-hash prefix
+  // is read as a mismatched hash. Reverse (evolution-off reading evolution-on
+  // bytes) differs by codec. The row's hash slot exists in both modes, so the
+  // off-reader sees a mismatched hash and throws cleanly. Array/map have no hash
+  // slot when off, so the prefix bleeds into the header and trips an internal
+  // bounds check (assertion-gated, fires under Surefire's -ea); we pin only that
+  // the decode does not silently return.
   // ---------------------------------------------------------------------------
 
-  @Test
-  public void evolutionFlagAsymmetryFailsLoud() {
-    RowEncoder<DefaultsV1> withFlag = evolvingCodec(DefaultsV1.class);
-    RowEncoder<DefaultsV1> noFlag = Encoders.buildBeanCodec(DefaultsV1.class).build().get();
-    DefaultsV1 in = new DefaultsV1();
-    in.setName("hi");
-    byte[] withFlagBytes = withFlag.encode(in);
-    try {
-      noFlag.decode(withFlagBytes);
-      Assert.fail("expected ClassNotCompatibleException");
-    } catch (ClassNotCompatibleException expected) {
-      // ok
-    }
-    byte[] noFlagBytes = noFlag.encode(in);
-    try {
-      withFlag.decode(noFlagBytes);
-      Assert.fail("expected ClassNotCompatibleException");
-    } catch (ClassNotCompatibleException expected) {
-      // ok
-    }
-  }
+  @DataProvider
+  public Object[][] flagAsymmetryCases() {
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("hi");
 
-  @Test
-  public void evolutionFlagAsymmetryFailsLoud_array() {
-    ArrayEncoder<List<DefaultsV1>> withFlag =
+    RowEncoder<DefaultsV1> rowOn = evolvingCodec(DefaultsV1.class);
+    RowEncoder<DefaultsV1> rowOff = Encoders.buildBeanCodec(DefaultsV1.class).build().get();
+
+    ArrayEncoder<List<DefaultsV1>> arrayOn =
         Encoders.buildArrayCodec(new TypeRef<List<DefaultsV1>>() {})
             .withSchemaEvolution()
             .build()
             .get();
-    ArrayEncoder<List<DefaultsV1>> noFlag =
+    ArrayEncoder<List<DefaultsV1>> arrayOff =
         Encoders.buildArrayCodec(new TypeRef<List<DefaultsV1>>() {}).build().get();
-    DefaultsV1 v = new DefaultsV1();
-    v.setName("hi");
-    List<DefaultsV1> in = Arrays.asList(v);
-    // Evolution-on consumer reading evolution-off bytes: the absent strict-hash prefix is read
-    // out of the array header and produces a hash mismatch.
-    byte[] noFlagBytes = noFlag.encode(in);
-    try {
-      withFlag.decode(noFlagBytes);
-      Assert.fail("expected ClassNotCompatibleException");
-    } catch (ClassNotCompatibleException expected) {
-      // ok
-    }
-    // Evolution-off consumer reading evolution-on bytes: the 8-byte hash prefix bleeds into the
-    // array header. We cannot guarantee a clean failure mode without a wire-format-level flag,
-    // but we at least require the decode to throw rather than silently return a plausible-looking
-    // array. Documented as wire-incompatible in the user guide; mismatched producers/consumers
-    // must use the same flag.
-    byte[] withFlagBytes = withFlag.encode(in);
-    try {
-      List<DefaultsV1> out = noFlag.decode(withFlagBytes);
-      // If decode returned, sanity-check it didn't silently produce a "correct" result. The
-      // array length and the recovered string must not both look right.
-      boolean lengthLooksRight = out != null && out.size() == in.size();
-      boolean stringLooksRight =
-          lengthLooksRight && !out.isEmpty() && "hi".equals(out.get(0).getName());
-      Assert.assertFalse(
-          lengthLooksRight && stringLooksRight,
-          "evolution-off decoder silently accepted evolution-on bytes as a valid array");
-    } catch (RuntimeException | AssertionError expected) {
-      // ok — undefined behavior, but a thrown exception is a tolerable failure mode.
-    }
-  }
+    List<DefaultsV1> list = Arrays.asList(v);
 
-  @Test
-  public void evolutionFlagAsymmetryFailsLoud_map() {
-    MapEncoder<Map<String, DefaultsV1>> withFlag =
+    MapEncoder<Map<String, DefaultsV1>> mapOn =
         Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
             .withSchemaEvolution()
             .build()
             .get();
-    MapEncoder<Map<String, DefaultsV1>> noFlag =
+    MapEncoder<Map<String, DefaultsV1>> mapOff =
         Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {}).build().get();
-    DefaultsV1 v = new DefaultsV1();
-    v.setName("hi");
-    LinkedHashMap<String, DefaultsV1> in = new LinkedHashMap<>();
-    in.put("k", v);
-    // Evolution-on consumer reading evolution-off bytes: clean hash mismatch.
-    byte[] noFlagBytes = noFlag.encode(in);
-    try {
-      withFlag.decode(noFlagBytes);
-      Assert.fail("expected ClassNotCompatibleException");
-    } catch (ClassNotCompatibleException expected) {
-      // ok
+    LinkedHashMap<String, DefaultsV1> map = new LinkedHashMap<>();
+    map.put("k", v);
+
+    return new Object[][] {
+      {
+        "row",
+        new FlagAsymmetryCase(
+            rowOn.encode(v), rowOff.encode(v), rowOn::decode, rowOff::decode, true)
+      },
+      {
+        "array",
+        new FlagAsymmetryCase(
+            arrayOn.encode(list), arrayOff.encode(list), arrayOn::decode, arrayOff::decode, false)
+      },
+      {
+        "map",
+        new FlagAsymmetryCase(
+            mapOn.encode(map), mapOff.encode(map), mapOn::decode, mapOff::decode, false)
+      },
+    };
+  }
+
+  @Test(dataProvider = "flagAsymmetryCases")
+  public void evolutionFlagAsymmetryFailsLoud(String label, FlagAsymmetryCase c) {
+    // Forward: evolution-on reader, evolution-off bytes -> clean ClassNotCompatibleException.
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> c.onDecoder.accept(c.offBytes));
+    // Reverse: evolution-off reader, evolution-on bytes.
+    if (c.reverseIsCleanException) {
+      Assert.expectThrows(ClassNotCompatibleException.class, () -> c.offDecoder.accept(c.onBytes));
+    } else {
+      assertDecodeThrows(() -> c.offDecoder.accept(c.onBytes));
     }
-    // Reverse direction: see the array test above for the rationale. Require a thrown exception
-    // or a value that is observably wrong.
-    byte[] withFlagBytes = withFlag.encode(in);
+  }
+
+  private static final class FlagAsymmetryCase {
+    final byte[] onBytes;
+    final byte[] offBytes;
+    final Consumer<byte[]> onDecoder;
+    final Consumer<byte[]> offDecoder;
+    final boolean reverseIsCleanException;
+
+    FlagAsymmetryCase(
+        byte[] onBytes,
+        byte[] offBytes,
+        Consumer<byte[]> onDecoder,
+        Consumer<byte[]> offDecoder,
+        boolean reverseIsCleanException) {
+      this.onBytes = onBytes;
+      this.offBytes = offBytes;
+      this.onDecoder = onDecoder;
+      this.offDecoder = offDecoder;
+      this.reverseIsCleanException = reverseIsCleanException;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // mapClassSuffix injectivity: the generated map codec class name is val + "_K" + key, and the
+  // class is cached by name, so two distinct (value-combo, key-combo) pairs must never produce the
+  // same suffix or the second pair would reuse the first's codec class. The "_K" boundary is the
+  // only place value and key strings meet, so the adversarial case is a value-side nested bean
+  // whose
+  // own suffix token contains the literal "_K_V" boundary string. A bean named K_V yields exactly
+  // that token.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class KVTokenV2 {
+    private int a;
+
+    @ForyVersion(since = 2)
+    private String b;
+  }
+
+  /**
+   * Outer value bean carrying a nested bean whose simple name is K_V, so its suffix token is _K_V*.
+   */
+  @Data
+  public static class ValueWithKVNested {
+    private K_V inner;
+
+    @ForyVersion(since = 2)
+    private String tag;
+  }
+
+  /** Simple name is literally "K_V": its projection token is "_K_V<ver>h<hash>". */
+  @Data
+  public static class K_V {
+    private int x;
+
+    @ForyVersion(since = 2)
+    private String y;
+  }
+
+  @Test
+  public void mapClassSuffixIsInjective() {
+    // Build histories for a value position that contains the adversarial _K_V token and a key
+    // position that also evolves, then join every (value, key) combination the way mapClassSuffix
+    // does and require the joined suffixes to be distinct.
+    SchemaHistory valHistory =
+        SchemaHistory.build(ValueWithKVNested.class, UnaryOperator.identity());
+    SchemaHistory keyHistory = SchemaHistory.build(KVTokenV2.class, UnaryOperator.identity());
+
+    Set<String> joined = new HashSet<>();
+    Set<String> pairs = new HashSet<>();
+    for (SchemaHistory.VersionedSchema valVs : valHistory.versions()) {
+      String val = valVs.isCurrent() ? "" : ProjectionRouting.projectionSuffix(valVs);
+      for (SchemaHistory.VersionedSchema keyVs : keyHistory.versions()) {
+        String keyRaw = keyVs.isCurrent() ? "" : ProjectionRouting.projectionSuffix(keyVs);
+        String key = keyRaw.isEmpty() ? "" : "_K" + keyRaw;
+        // Mirror mapClassSuffix() exactly.
+        String suffix = val + key;
+        pairs.add(val + "\0" + key);
+        Assert.assertTrue(
+            joined.add(suffix),
+            "mapClassSuffix collision: distinct (value, key) combinations produced the same class "
+                + "suffix \""
+                + suffix
+                + "\"");
+      }
+    }
+    // Sanity: we actually exercised more than one distinct (value, key) pair, including a value
+    // suffix that contains the _K_V boundary string.
+    Assert.assertTrue(pairs.size() > 1, "expected multiple combinations");
+    Assert.assertTrue(
+        valHistory.versions().stream()
+            .anyMatch(
+                vs -> !vs.isCurrent() && ProjectionRouting.projectionSuffix(vs).contains("_K_V")),
+        "test did not exercise the _K_V boundary token it was designed to probe");
+  }
+
+  /**
+   * Asserts that an evolution-off decode of evolution-on bytes does not silently succeed. This
+   * direction has no hash slot to compare, so the failure surfaces as an internal bounds check
+   * rather than a {@link ClassNotCompatibleException}; that check is assertion-gated, so the test
+   * only has teeth with JVM assertions enabled. Verify {@code -ea} is on first, otherwise this
+   * helper would pass vacuously and the guarantee could rot unnoticed.
+   */
+  private static void assertDecodeThrows(Runnable decode) {
+    boolean assertionsEnabled = false;
+    assert assertionsEnabled = true;
+    Assert.assertTrue(
+        assertionsEnabled,
+        "JVM assertions (-ea) must be enabled for this test: the evolution-off reverse-decode "
+            + "guard is assertion-gated and would pass vacuously otherwise");
     try {
-      Map<String, DefaultsV1> out = noFlag.decode(withFlagBytes);
-      boolean sizeLooksRight = out != null && out.size() == in.size();
-      boolean valueLooksRight =
-          sizeLooksRight
-              && out.containsKey("k")
-              && out.get("k") != null
-              && "hi".equals(out.get("k").getName());
-      Assert.assertFalse(
-          sizeLooksRight && valueLooksRight,
-          "evolution-off decoder silently accepted evolution-on bytes as a valid map");
+      decode.run();
     } catch (RuntimeException | AssertionError expected) {
-      // ok — undefined behavior, but a thrown exception is a tolerable failure mode.
+      return;
     }
+    Assert.fail("evolution-off decoder silently accepted evolution-on bytes");
   }
 
   // ---------------------------------------------------------------------------
@@ -1145,6 +1243,198 @@ public class SchemaEvolutionStressTest {
     Assert.assertEquals(e.getValue(), "v");
   }
 
+  @Test
+  public void evolveMapStructKeyWithNestedBean() {
+    // The key is a struct that itself wraps an evolving nested bean. inKeyPosition must stay set
+    // while the key subtree recurses into the nested bean, both at expression construction and in
+    // KeyPositionScope's genCode. If it does not, the nested key bean registers/decodes under the
+    // value-position codec key and decode fails loud ("No bean codec registered ... key/value
+    // position"). The nested detail is written at V1 and read by a V2 reader, so the nested key
+    // bean must project to its historical layout, not the value's.
+    MapEncoder<Map<KeyHolderV1, String>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<KeyHolderV1, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<KeyHolderV2, String>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<KeyHolderV2, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    KeyHolderV1 k = new KeyHolderV1();
+    k.setId("h");
+    DefaultsV1 d = new DefaultsV1();
+    d.setName("inner");
+    k.setDetail(d);
+    Map<KeyHolderV1, String> in = new HashMap<>();
+    in.put(k, "v");
+    Map<KeyHolderV2, String> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<KeyHolderV2, String> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getId(), "h");
+    Assert.assertEquals(e.getKey().getDetail().getName(), "inner");
+    Assert.assertEquals(e.getKey().getDetail().getPrimitiveCount(), 0); // since=2, absent in writer
+    Assert.assertNull(e.getKey().getDetail().getBoxedCount());
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  @Test
+  public void evolveMapCollectionKey() {
+    // The key is a List of versioned beans, so the key subtree is a collection rather than a bare
+    // bean. This drives the keyScoped(deserializeForCollection) branch: inKeyPosition must stay set
+    // through the collection element decode so the element bean projects to its historical layout
+    // under the key-position codec, not the value's.
+    MapEncoder<Map<List<DefaultsV1>, String>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<List<DefaultsV1>, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<List<DefaultsV2>, String>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<List<DefaultsV2>, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 d = new DefaultsV1();
+    d.setName("k");
+    Map<List<DefaultsV1>, String> in = new HashMap<>();
+    in.put(Arrays.asList(d), "v");
+    Map<List<DefaultsV2>, String> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<List<DefaultsV2>, String> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().size(), 1);
+    Assert.assertEquals(e.getKey().get(0).getName(), "k");
+    Assert.assertEquals(e.getKey().get(0).getPrimitiveCount(), 0); // since=2, absent in writer
+    Assert.assertNull(e.getKey().get(0).getBoxedCount());
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  // A versioned bean as the KEY of an inner map reached through a top-level array or map wrapper.
+  // The top-level codec's own key/value hash only covers a top-level map's own key, and the
+  // row-field path (collectNestedSites) only applies inside a bean field, so this wrapper-reached
+  // inner key is the shape that must still evolve through the top-level array/map entry point.
+
+  @Test
+  public void arrayOfMapKeyOlderPayloadReadByNewerCodec() {
+    ArrayEncoder<List<Map<DefaultsV1, String>>> writer =
+        Encoders.buildArrayCodec(new TypeRef<List<Map<DefaultsV1, String>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<Map<DefaultsV2, String>>> reader =
+        Encoders.buildArrayCodec(new TypeRef<List<Map<DefaultsV2, String>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 k = new DefaultsV1();
+    k.setName("k");
+    Map<DefaultsV1, String> inner = new HashMap<>();
+    inner.put(k, "v");
+    List<Map<DefaultsV2, String>> out = reader.decode(writer.encode(Arrays.asList(inner)));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<DefaultsV2, String> e = out.get(0).entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 0); // since=2 field absent in writer
+    Assert.assertNull(e.getKey().getBoxedCount());
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  // A top-level map whose VALUE is itself a Map<KBean, VBean> with two DIFFERENT versioned bean
+  // classes. The value position must evolve both inner beans; before the fix the value position
+  // enumerated only one and generated a codec for only it.
+  @Test
+  public void mapValueWrappingTwoBeansOlderPayloadReadByNewerCodec() {
+    MapEncoder<Map<String, Map<AlignV1, DefaultsV1>>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Map<AlignV1, DefaultsV1>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, Map<AlignV2, DefaultsV2>>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Map<AlignV2, DefaultsV2>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    AlignV1 k = new AlignV1();
+    k.setX(11);
+    k.setY(22);
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("val");
+    Map<AlignV1, DefaultsV1> inner = new HashMap<>();
+    inner.put(k, v);
+    Map<String, Map<AlignV1, DefaultsV1>> in = new HashMap<>();
+    in.put("o", inner);
+    Map<String, Map<AlignV2, DefaultsV2>> out = reader.decode(writer.encode(in));
+    Map.Entry<AlignV2, DefaultsV2> e = out.get("o").entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getX(), 11);
+    Assert.assertEquals(e.getKey().getY(), 22);
+    Assert.assertEquals(e.getKey().getFlag(), (byte) 0);
+    Assert.assertEquals(e.getValue().getName(), "val");
+    Assert.assertEquals(e.getValue().getPrimitiveCount(), 0);
+    Assert.assertNull(e.getValue().getBoxedCount());
+  }
+
+  @Test
+  public void mapOfMapKeyOlderPayloadReadByNewerCodec() {
+    MapEncoder<Map<String, Map<DefaultsV1, String>>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Map<DefaultsV1, String>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, Map<DefaultsV2, String>>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Map<DefaultsV2, String>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 k = new DefaultsV1();
+    k.setName("k");
+    Map<DefaultsV1, String> inner = new HashMap<>();
+    inner.put(k, "v");
+    Map<String, Map<DefaultsV1, String>> in = new HashMap<>();
+    in.put("o", inner);
+    Map<String, Map<DefaultsV2, String>> out = reader.decode(writer.encode(in));
+    Map.Entry<DefaultsV2, String> e = out.get("o").entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 0); // since=2 field absent in writer
+    Assert.assertNull(e.getKey().getBoxedCount());
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  // A nested map whose KEY and VALUE are DIFFERENT versioned beans, reached through a top-level
+  // array wrapper. Key is AlignV1/V2 (V2 adds a byte flag), value is DefaultsV1/V2 (V2 adds two
+  // since=2 fields). The element schema's strict hash must cover both sides at their chosen
+  // versions, just as the enclosing-bean hash does on the row-field path, so an older payload
+  // restores both beans at their historical layout. Old field values are non-default so reading
+  // either side at the wrong (current) layout would misread the bytes rather than coincide with a
+  // default. The two beans evolve independently, so dispatch must distinguish their combination.
+  @Test
+  public void arrayOfMapBothSidesOlderPayloadReadByNewerCodec() {
+    ArrayEncoder<List<Map<AlignV1, DefaultsV1>>> writer =
+        Encoders.buildArrayCodec(new TypeRef<List<Map<AlignV1, DefaultsV1>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<Map<AlignV2, DefaultsV2>>> reader =
+        Encoders.buildArrayCodec(new TypeRef<List<Map<AlignV2, DefaultsV2>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    AlignV1 k = new AlignV1();
+    k.setX(11);
+    k.setY(22);
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("val");
+    Map<AlignV1, DefaultsV1> inner = new HashMap<>();
+    inner.put(k, v);
+    List<Map<AlignV2, DefaultsV2>> out = reader.decode(writer.encode(Arrays.asList(inner)));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<AlignV2, DefaultsV2> e = out.get(0).entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getX(), 11);
+    Assert.assertEquals(e.getKey().getY(), 22);
+    Assert.assertEquals(e.getKey().getFlag(), (byte) 0); // key since=2 field absent in writer
+    Assert.assertEquals(e.getValue().getName(), "val");
+    Assert.assertEquals(e.getValue().getPrimitiveCount(), 0); // value since=2 fields absent
+    Assert.assertNull(e.getValue().getBoxedCount());
+  }
+
   // ---------------------------------------------------------------------------
   // Removed nullable struct that was null on the wire: the v1 writer leaves
   // the slot's null bit set; the v2 reader skips the slot during projection.
@@ -1462,6 +1752,70 @@ public class SchemaEvolutionStressTest {
             .build()
             .get();
     Assert.expectThrows(ClassNotCompatibleException.class, () -> codec.decode(new byte[3]));
+  }
+
+  // ---------------------------------------------------------------------------
+  // A full-length payload whose strict schema hash matches neither the reader's
+  // current schema nor any entry in its projection history must fail loudly.
+  // This is the projection-map miss, distinct from the too-short-for-the-prefix
+  // case above: the payload clears the 8-byte guard, so it can only be caught by
+  // the unknown-hash branch. Encoding one bean and decoding it with an evolving
+  // codec for a structurally different bean reaches that branch deterministically.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void rowUnknownSchemaHashFailsLoudly() {
+    ChainV2 writer = new ChainV2();
+    writer.setA(7);
+    writer.setB("foreign");
+    byte[] foreign = evolvingCodec(ChainV2.class).encode(writer);
+    Assert.assertTrue(foreign.length > 8, "payload must clear the 8-byte hash prefix");
+    RowEncoder<DefaultsV1> reader = evolvingCodec(DefaultsV1.class);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> reader.decode(foreign));
+  }
+
+  @Test
+  public void mapUnknownSchemaHashFailsLoudly() {
+    MapEncoder<Map<String, ChainV2>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<String, ChainV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ChainV2 v = new ChainV2();
+    v.setA(7);
+    v.setB("foreign");
+    LinkedHashMap<String, ChainV2> in = new LinkedHashMap<>();
+    in.put("k", v);
+    byte[] foreign = writer.encode(in);
+    Assert.assertTrue(foreign.length > 8, "payload must clear the 8-byte hash prefix");
+    MapEncoder<Map<String, DefaultsV1>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> reader.decode(foreign));
+  }
+
+  @Test
+  public void arrayUnknownSchemaHashFailsLoudly() {
+    ArrayEncoder<List<ChainV2>> writer =
+        Encoders.buildArrayCodec(new TypeRef<List<ChainV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ChainV2 v = new ChainV2();
+    v.setA(7);
+    v.setB("foreign");
+    List<ChainV2> in = new ArrayList<>();
+    in.add(v);
+    byte[] foreign = writer.encode(in);
+    Assert.assertTrue(foreign.length > 8, "payload must clear the 8-byte hash prefix");
+    ArrayEncoder<List<DefaultsV1>> reader =
+        Encoders.buildArrayCodec(new TypeRef<List<DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> reader.decode(foreign));
   }
 
   // ---------------------------------------------------------------------------
