@@ -335,7 +335,7 @@ public class Encoders {
                       codecBuilder::genCode);
                 })
             .toArray(CompileUnit[]::new);
-    return loadCls(compileUnits);
+    return loadCls(Thread.currentThread().getContextClassLoader(), compileUnits);
   }
 
   /**
@@ -343,7 +343,9 @@ public class Encoders {
    * current-version codec class is loaded separately by {@link #loadOrGenRowCodecClass}; this is
    * used by schema-evolution code paths to materialize a decoder for each older version. The {@code
    * nestedSuffixes} map directs codegen to the projection codec class to embed for each nested
-   * versioned bean type.
+   * versioned bean type. {@code codeGenerator} is the generator pinned when the evolution encoder
+   * was built: it defined the current-version codecs that the projection embeds by name, so a
+   * first-decode compile on any thread resolves them.
    */
   static Class<?> loadOrGenProjectionRowCodecClass(
       Class<?> beanClass,
@@ -351,7 +353,8 @@ public class Encoders {
       Schema historicalSchema,
       Set<String> liveNames,
       String classSuffix,
-      Map<Class<?>, String> nestedSuffixes) {
+      Map<Class<?>, String> nestedSuffixes,
+      CodeGenerator codeGenerator) {
     final RowEncoderBuilder codecBuilder =
         codecFactory.newProjectionRowEncoder(
             TypeRef.of(beanClass), historicalSchema, liveNames, classSuffix, nestedSuffixes);
@@ -360,7 +363,7 @@ public class Encoders {
             CodeGenerator.getPackage(beanClass),
             codecBuilder.codecClassName(beanClass) + classSuffix,
             codecBuilder::genCode);
-    return loadCls(compileUnit);
+    return loadCls(codeGenerator, compileUnit);
   }
 
   static <B> Class<?> loadOrGenArrayCodecClass(
@@ -377,7 +380,7 @@ public class Encoders {
             codecBuilder.codecClassName(cls, prefix),
             codecBuilder::genCode);
 
-    return loadCls(compileUnit);
+    return loadCls(Thread.currentThread().getContextClassLoader(), compileUnit);
   }
 
   static <B> Class<?> loadOrGenProjectionArrayCodecClass(
@@ -385,7 +388,8 @@ public class Encoders {
       TypeRef<B> elementType,
       Encoding codecFactory,
       String classSuffix,
-      Map<Class<?>, String> nestedSuffixes) {
+      Map<Class<?>, String> nestedSuffixes,
+      CodeGenerator codeGenerator) {
     Class<?> cls = getRawType(elementType);
     String prefix = TypeInference.inferTypeName(arrayCls);
     ArrayEncoderBuilder codecBuilder =
@@ -395,7 +399,7 @@ public class Encoders {
             CodeGenerator.getPackage(cls),
             codecBuilder.codecClassName(cls, prefix) + classSuffix,
             codecBuilder::genCode);
-    return loadCls(compileUnit);
+    return loadCls(codeGenerator, compileUnit);
   }
 
   static <K, V> Class<?> loadOrGenMapCodecClass(
@@ -428,7 +432,7 @@ public class Encoders {
             codecBuilder.codecClassName(cls, prefix),
             codecBuilder::genCode);
 
-    return loadCls(compileUnit);
+    return loadCls(Thread.currentThread().getContextClassLoader(), compileUnit);
   }
 
   static Class<?> loadOrGenProjectionMapCodecClass(
@@ -438,7 +442,8 @@ public class Encoders {
       String valCodecSuffix,
       String keyCodecSuffix,
       Map<Class<?>, String> valNestedSuffixes,
-      Map<Class<?>, String> keyNestedSuffixes) {
+      Map<Class<?>, String> keyNestedSuffixes,
+      CodeGenerator codeGenerator) {
     Class<?> cls = getRawType(beanToken);
     String prefix = TypeInference.inferTypeName(mapCls);
     MapEncoderBuilder codecBuilder =
@@ -454,12 +459,26 @@ public class Encoders {
             CodeGenerator.getPackage(cls),
             codecBuilder.codecClassName(cls, prefix) + codecBuilder.mapClassSuffix(),
             codecBuilder::genCode);
-    return loadCls(compileUnit);
+    return loadCls(codeGenerator, compileUnit);
   }
 
-  private static Class<?> loadCls(CompileUnit... compileUnit) {
-    CodeGenerator codeGenerator =
-        CodeGenerator.getSharedCodeGenerator(Thread.currentThread().getContextClassLoader());
+  /**
+   * The shared code generator for the calling thread's context classloader, for an evolution
+   * encoder to pin before it compiles its current-version codecs. A projection codec compiles
+   * lazily, on the first decode of its hash, and embeds those current-version codecs by class name,
+   * so it must compile in the generator that defined them. The shared generator is only softly
+   * reachable, and a replacement starts from the bare classloader, which cannot see them. Holding
+   * the generator from build through every projection compile keeps the shared lookup returning it.
+   */
+  static CodeGenerator pinCodeGenerator() {
+    return CodeGenerator.getSharedCodeGenerator(Thread.currentThread().getContextClassLoader());
+  }
+
+  private static Class<?> loadCls(ClassLoader classLoaderHint, CompileUnit... compileUnit) {
+    return loadCls(CodeGenerator.getSharedCodeGenerator(classLoaderHint), compileUnit);
+  }
+
+  private static Class<?> loadCls(CodeGenerator codeGenerator, CompileUnit... compileUnit) {
     ClassLoader classLoader = codeGenerator.compile(compileUnit);
     String className = compileUnit[0].getQualifiedClassName();
     try {

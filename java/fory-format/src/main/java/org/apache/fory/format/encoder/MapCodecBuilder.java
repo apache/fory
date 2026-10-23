@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import org.apache.fory.Fory;
+import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.type.DataTypes;
@@ -65,6 +66,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
   }
 
   public Supplier<MapEncoder<M>> build() {
+    final CodeGenerator codeGenerator = Encoders.pinCodeGenerator();
     loadMapInnerCodecs();
     final Class<?> valClass = schemaEvolution ? evolutionBean() : null;
     final Class<?> keyClass = schemaEvolution ? keyEvolutionBean() : null;
@@ -86,7 +88,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         }
       };
     }
-    return buildVersioned(valClass, keyClass);
+    return buildVersioned(valClass, keyClass, codeGenerator);
   }
 
   /**
@@ -123,7 +125,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     return vs == null ? NON_BEAN_POSITION_HASH : vs.strictHash();
   }
 
-  private Supplier<MapEncoder<M>> buildVersioned(final Class<?> valClass, final Class<?> keyClass) {
+  private Supplier<MapEncoder<M>> buildVersioned(
+      final Class<?> valClass, final Class<?> keyClass, final CodeGenerator codeGenerator) {
     // The map's own key and value are independent positions on the wire (each its own array), and
     // the map header's combined hash identifies the (key-layout, value-layout) pair. Each position
     // is enumerated over every versioned bean reachable through its wrappers, so a position that
@@ -171,7 +174,9 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
                   + "Please file an issue with the key and value bean definitions.");
         }
         projectionSources.put(
-            hash, new ProjectionSource(valClass, keyClass, valVs, keyVs, valCurrent, keyCurrent));
+            hash,
+            new ProjectionSource(
+                valClass, keyClass, valVs, keyVs, valCurrent, keyCurrent, codeGenerator));
       }
     }
     final var currentFactory = generatedMapEncoder();
@@ -234,6 +239,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     private final SchemaHistory.VersionedSchema keyVs;
     private final SchemaHistory.VersionedSchema valCurrent;
     private final SchemaHistory.VersionedSchema keyCurrent;
+    private final CodeGenerator codeGenerator;
 
     ProjectionSource(
         Class<?> valClass,
@@ -241,13 +247,15 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         SchemaHistory.VersionedSchema valVs,
         SchemaHistory.VersionedSchema keyVs,
         SchemaHistory.VersionedSchema valCurrent,
-        SchemaHistory.VersionedSchema keyCurrent) {
+        SchemaHistory.VersionedSchema keyCurrent,
+        CodeGenerator codeGenerator) {
       this.valClass = valClass;
       this.keyClass = keyClass;
       this.valVs = valVs;
       this.keyVs = keyVs;
       this.valCurrent = valCurrent;
       this.keyCurrent = keyCurrent;
+      this.codeGenerator = codeGenerator;
     }
 
     /**
@@ -269,7 +277,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       Map<Class<?>, String> valNested = null;
       if (valVs != null && valVs != valCurrent) {
         valSuffix = ProjectionRouting.projectionSuffix(valVs);
-        valNested = ProjectionRouting.nestedSuffixesFor(valVs, codecFormat);
+        valNested = ProjectionRouting.nestedSuffixesFor(valVs, codecFormat, codeGenerator);
         histVal = projectedPositionField(currentVal, valVs);
       }
       Field currentKey = DataTypes.keyFieldForMap(field);
@@ -278,7 +286,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       Map<Class<?>, String> keyNested = null;
       if (keyVs != null && keyVs != keyCurrent) {
         keySuffix = ProjectionRouting.projectionSuffix(keyVs);
-        keyNested = ProjectionRouting.nestedSuffixesFor(keyVs, codecFormat);
+        keyNested = ProjectionRouting.nestedSuffixesFor(keyVs, codecFormat, codeGenerator);
         histKey = projectedPositionField(currentKey, keyVs);
       }
       Class<?> mapClass =
@@ -289,7 +297,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
               valSuffix,
               keySuffix,
               valNested,
-              keyNested);
+              keyNested,
+              codeGenerator);
       MethodHandle ctor = Encoders.constructorHandleFor(mapClass, GeneratedMapEncoder.class);
       Field histMapField = DataTypes.mapField(field.name(), histKey, histVal);
       try {

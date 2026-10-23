@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.fory.Fory;
+import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.type.Schema;
@@ -93,6 +94,7 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     // field, so building does not rotate builder state that a later build()/buildForWriter() reads.
     final Schema currentSchema = currentVersion.schema();
 
+    final CodeGenerator codeGenerator = Encoders.pinCodeGenerator();
     final Function<BaseBinaryRowWriter, GeneratedRowEncoder> currentFactory =
         rowEncoderFactory(currentSchema);
     // Index of hash → deferred projection source for each non-current combination of
@@ -110,7 +112,8 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
       if (vs == currentVersion) {
         continue;
       }
-      projectionSources.put(vs.strictHash(), new ProjectionSource(beanClass, codecFormat, vs));
+      projectionSources.put(
+          vs.strictHash(), new ProjectionSource(beanClass, codecFormat, vs, codeGenerator));
     }
 
     final long currentHash = currentVersion.strictHash();
@@ -153,12 +156,17 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     private final Class<?> beanClass;
     private final Encoding codecFormat;
     private final SchemaHistory.VersionedSchema version;
+    private final CodeGenerator codeGenerator;
 
     ProjectionSource(
-        Class<?> beanClass, Encoding codecFormat, SchemaHistory.VersionedSchema version) {
+        Class<?> beanClass,
+        Encoding codecFormat,
+        SchemaHistory.VersionedSchema version,
+        CodeGenerator codeGenerator) {
       this.beanClass = beanClass;
       this.codecFormat = codecFormat;
       this.version = version;
+      this.codeGenerator = codeGenerator;
     }
 
     @Override
@@ -166,7 +174,7 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
       Schema historicalSchema = version.schema();
       String suffix = ProjectionRouting.projectionSuffix(version);
       Map<Class<?>, String> nestedSuffixes =
-          ProjectionRouting.nestedSuffixesFor(version, codecFormat);
+          ProjectionRouting.nestedSuffixesFor(version, codecFormat, codeGenerator);
       Class<?> projectionClass =
           Encoders.loadOrGenProjectionRowCodecClass(
               beanClass,
@@ -174,7 +182,8 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
               historicalSchema,
               version.liveFieldNames(),
               suffix,
-              nestedSuffixes);
+              nestedSuffixes,
+              codeGenerator);
       MethodHandle ctor = Encoders.constructorHandleFor(projectionClass, GeneratedRowEncoder.class);
       // The RowFactory depends only on the historical schema and codec format, so build it here
       // alongside the codec the first time this version is decoded.
