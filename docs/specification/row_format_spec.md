@@ -370,8 +370,8 @@ and limitations.
 ### Version Model
 
 - Versions are per-struct integers starting at 1. Version numbers never appear on the wire;
-  payloads are identified by a strict schema hash, so peers need identical declared histories,
-  not synchronized version counters.
+  payloads are identified by a strict schema hash. A reader decodes a payload when one of its
+  layouts has the payload's hash, so peers need no synchronized version counters.
 - A schema history is a set of field entries `(wire name, type, nullability, since, until)`.
   A live field has an unbounded `until`; a removed field declares the version it disappeared in.
   How the entries are declared is language-specific (Java uses annotations and a removed-fields
