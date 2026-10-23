@@ -96,9 +96,13 @@ public class CodeGeneratorTest {
       InvocationTargetException e =
           expectThrows(InvocationTargetException.class, () -> setSize.invoke(null, 0));
       assertTrue(e.getCause() instanceof IllegalArgumentException);
+      int presetSize = Math.max(1, Runtime.getRuntime().availableProcessors() / 2) + 1;
+      setSize.invoke(null, presetSize);
       ThreadPoolExecutor pool =
           (ThreadPoolExecutor) codeGenerator.getMethod("getCompilationService").invoke(null);
       try {
+        assertEquals(pool.getCorePoolSize(), presetSize);
+        assertEquals(pool.getMaximumPoolSize(), presetSize);
         for (int size : new int[] {pool.getMaximumPoolSize() + 2, 1}) {
           setSize.invoke(null, size);
           assertEquals(pool.getCorePoolSize(), size);
