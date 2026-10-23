@@ -45,6 +45,7 @@ public final class JsonConfig {
   private final boolean writeLongAsString;
   private final boolean escapeNonAscii;
   private final boolean failOnMissingRequiredProperties;
+  private final boolean failOnDuplicateProperties;
   private final JsonByteArray.Format byteArrayFormat;
   private final boolean codegenEnabled;
   private final boolean asyncCompilationEnabled;
@@ -70,6 +71,7 @@ public final class JsonConfig {
       boolean writeLongAsString,
       boolean escapeNonAscii,
       boolean failOnMissingRequiredProperties,
+      boolean failOnDuplicateProperties,
       JsonByteArray.Format byteArrayFormat,
       boolean codegenEnabled,
       boolean asyncCompilationEnabled,
@@ -92,6 +94,7 @@ public final class JsonConfig {
     this.writeLongAsString = writeLongAsString;
     this.escapeNonAscii = escapeNonAscii;
     this.failOnMissingRequiredProperties = failOnMissingRequiredProperties;
+    this.failOnDuplicateProperties = failOnDuplicateProperties;
     this.byteArrayFormat = Objects.requireNonNull(byteArrayFormat, "byteArrayFormat");
     this.codegenEnabled = codegenEnabled;
     this.asyncCompilationEnabled = asyncCompilationEnabled;
@@ -147,6 +150,11 @@ public final class JsonConfig {
   /** Returns whether required creator properties must appear in the input. */
   public boolean failOnMissingRequiredProperties() {
     return failOnMissingRequiredProperties;
+  }
+
+  /** Returns whether a repeated known property fails the read by default. */
+  public boolean failOnDuplicateProperties() {
+    return failOnDuplicateProperties;
   }
 
   /** Returns the default byte-array representation for both reading and writing. */

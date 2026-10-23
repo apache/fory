@@ -51,6 +51,7 @@ final class JsonTestSupport {
           false,
           false,
           false,
+          false,
           JsonByteArray.Format.BASE64,
           false,
           false,

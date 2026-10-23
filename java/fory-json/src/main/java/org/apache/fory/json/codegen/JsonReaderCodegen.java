@@ -82,6 +82,12 @@ abstract class JsonReaderCodegen {
   final JsonCodegen codegen;
   final JsonTypeResolver resolver;
   private int[] fastReadGroupEnds;
+  // Seen-member words in scope while a strict fast path or group helper body is built.
+  private Expression[] fastSeen;
+  private int groupSeenStart;
+  private int groupSeenEnd;
+  // Bits of the members a strict group helper has read, relative to groupSeenStart.
+  private Expression groupSeen;
   private AnyInfo any;
   private Class<?> ownerType;
   private ObjectCodec<?> objectOwner;
@@ -209,6 +215,7 @@ abstract class JsonReaderCodegen {
     addFastReadGroupMethods(ctx, builder, readMethod, slowMethod, readerType, type, properties);
     addReadFieldMethods(ctx, builder, readMethod, readerType, type, properties);
     addSlowReadMethods(ctx, builder, slowMethod, readerType, type, properties);
+    addRejectDuplicateMethod(ctx, fieldNames(properties));
     return ctx.genCode();
   }
 
@@ -309,6 +316,7 @@ abstract class JsonReaderCodegen {
         ctx, builder, readMethod, slowMethod, concreteReaderType, type, properties);
     addReadFieldMethods(ctx, builder, readMethod, concreteReaderType, type, properties);
     addSlowReadMethods(ctx, builder, slowMethod, concreteReaderType, type, properties);
+    addRejectDuplicateMethod(ctx, fieldNames(properties));
     return ctx.genCode();
   }
 
@@ -426,6 +434,7 @@ abstract class JsonReaderCodegen {
         rootArray);
     addUnwrappedCreatorMethods(builder, type, rootCreator, groups);
     addUnwrappedGroupMethods(ctx, builder, type, groups, rootArray);
+    addRejectDuplicateMethod(ctx, unwrappedNames(directFields, directCreatorFields, routes));
     ctx.clearExprState();
     Expression root = unwrappedRootWorkspace(builder, rootCreator != null);
     Expression workspaces =
@@ -703,6 +712,7 @@ abstract class JsonReaderCodegen {
     Expression anyMap =
         new Expression.Variable("anyMap", new Expression.Null(TypeRef.of(Map.class), false));
     expressions.add(anyMap);
+    Expression[] seen = seenWords(expressions, fields.length, null);
     expressions.add(expectExpr('{'));
     expressions.add(
         new Expression.If(
@@ -738,6 +748,7 @@ abstract class JsonReaderCodegen {
           new Expression.Switch.Case(
               i,
               new Expression.ListExpression(
+                  markSeen(seen, i, fields[i].name()),
                   nullReadGuard(
                       fields[i].onNullRead(),
                       fields[i].name(),
@@ -1015,7 +1026,8 @@ abstract class JsonReaderCodegen {
       return expressions;
     }
 
-    expressions.add(creatorReadLoop(builder, fields, arguments));
+    Expression[] seen = seenWords(expressions, fields.length, null);
+    expressions.add(creatorReadLoop(builder, fields, arguments, seen));
     expressions.add(reserveObject(objectOwner));
     expressions.add(new Expression.Invoke(readerRef(), "exitDepth"));
     expressions.add(finishCreator(builder, type, creatorInfo, arguments));
@@ -1025,7 +1037,8 @@ abstract class JsonReaderCodegen {
   private Expression creatorReadLoop(
       JsonGeneratedCodecBuilder builder,
       JsonCreatorFieldInfo[] fields,
-      CreatorArguments arguments) {
+      CreatorArguments arguments,
+      Expression[] seen) {
     Expression.ListExpression loop = new Expression.ListExpression();
     Reference fieldIndex = new Reference("creatorFieldIndex", TypeRef.of(int.class));
     loop.add(
@@ -1038,6 +1051,7 @@ abstract class JsonReaderCodegen {
           new Expression.Switch.Case(
               i,
               new Expression.ListExpression(
+                  markSeen(seen, i, fields[i].name()),
                   nullReadGuard(
                       fields[i].onNullRead(),
                       fields[i].name(),
@@ -1080,7 +1094,7 @@ abstract class JsonReaderCodegen {
     // to the ordinary loop so escaped, unknown, duplicate, and arbitrary-order members resume at
     // the exact cursor without reparsing successful prefix fields.
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
-    Expression next = creatorSlowReturn(type, creatorInfo, arguments);
+    Expression next = creatorSlowReturn(type, creatorInfo, arguments, fields.length);
     for (int i = fields.length - 1; i >= 0; i--) {
       JsonCreatorFieldInfo field = fields[i];
       Expression read =
@@ -1094,14 +1108,14 @@ abstract class JsonReaderCodegen {
               tryReadOrderedCreatorField(field.name()),
               new Expression.ListExpression(
                   read, new Expression.If(consumeOrderedCommaOrEndObjectExpr(), next)),
-              creatorSlowReturn(type, creatorInfo, arguments));
+              creatorSlowReturn(type, creatorInfo, arguments, i));
     }
     return next;
   }
 
   private Expression creatorSlowReturn(
-      Class<?> type, JsonCreatorInfo creatorInfo, CreatorArguments arguments) {
-    return new Expression.Return(creatorSlowCall(type, creatorInfo, arguments));
+      Class<?> type, JsonCreatorInfo creatorInfo, CreatorArguments arguments, int readCount) {
+    return new Expression.Return(creatorSlowCall(type, creatorInfo, arguments, readCount));
   }
 
   private void addCreatorSlowMethod(
@@ -1111,7 +1125,12 @@ abstract class JsonReaderCodegen {
       JsonCreatorInfo creatorInfo) {
     Expression.ListExpression expressions = new Expression.ListExpression();
     CreatorArguments arguments = creatorParameterArguments(creatorInfo, expressions);
-    expressions.add(creatorReadLoop(builder, creatorInfo.fields(), arguments));
+    Expression[] seen =
+        seenWords(
+            expressions,
+            creatorInfo.fields().length,
+            new Reference("readCount", TypeRef.of(int.class)));
+    expressions.add(creatorReadLoop(builder, creatorInfo.fields(), arguments, seen));
     expressions.add(reserveObject(objectOwner));
     expressions.add(new Expression.Invoke(readerRef(), "exitDepth"));
     expressions.add(finishCreator(builder, type, creatorInfo, arguments));
@@ -1125,15 +1144,19 @@ abstract class JsonReaderCodegen {
   }
 
   private Expression creatorSlowCall(
-      Class<?> type, JsonCreatorInfo creatorInfo, CreatorArguments arguments) {
-    int inputCount =
-        1 + arguments.values.length + (arguments.present == null ? 0 : arguments.present.length);
+      Class<?> type, JsonCreatorInfo creatorInfo, CreatorArguments arguments, int readCount) {
+    int presentCount = arguments.present == null ? 0 : arguments.present.length;
+    int inputCount = 1 + arguments.values.length + presentCount + (failOnDuplicates() ? 1 : 0);
     Expression[] inputs = new Expression[inputCount];
     inputs[0] = readerRef();
     System.arraycopy(arguments.values, 0, inputs, 1, arguments.values.length);
     if (arguments.present != null) {
       System.arraycopy(
           arguments.present, 0, inputs, 1 + arguments.values.length, arguments.present.length);
+    }
+    if (failOnDuplicates()) {
+      // The ordered prefix reads creator members in declaration order without look-ahead.
+      inputs[inputCount - 1] = Expression.Literal.ofInt(readCount);
     }
     return new Expression.Invoke(
         new Reference("this", TypeRef.of(Object.class)),
@@ -1148,7 +1171,8 @@ abstract class JsonReaderCodegen {
   private Object[] creatorSlowParameters(JsonCreatorInfo creatorInfo) {
     Class<?>[] valueTypes = creatorValueTypes(creatorInfo);
     int presentCount = creatorInfo.tracksArgumentPresence() ? valueTypes.length : 0;
-    Object[] parameters = new Object[(1 + valueTypes.length + presentCount) * 2];
+    int readCount = failOnDuplicates() ? 1 : 0;
+    Object[] parameters = new Object[(1 + valueTypes.length + presentCount + readCount) * 2];
     int index = 0;
     parameters[index++] = readerType();
     parameters[index++] = "reader";
@@ -1159,6 +1183,10 @@ abstract class JsonReaderCodegen {
     for (int i = 0; i < presentCount; i++) {
       parameters[index++] = boolean.class;
       parameters[index++] = "p" + i;
+    }
+    if (readCount != 0) {
+      parameters[index++] = int.class;
+      parameters[index] = "readCount";
     }
     return parameters;
   }
@@ -1843,36 +1871,44 @@ abstract class JsonReaderCodegen {
       return;
     }
     int start = 0;
+    Class<?> groupResult = failOnDuplicates() ? long.class : boolean.class;
     for (int group = 0; group < fastReadGroupEnds.length - 1; group++) {
       int end = fastReadGroupEnds[group];
+      Expression body = fastReadGroupExpression(builder, slowMethod, type, properties, start, end);
+      fastSeen = null;
+      groupSeen = null;
       if (any == null) {
         addGeneratedMethod(
             ctx,
             "final",
             readGroupMethod(readMethod, start),
-            fastReadGroupExpression(builder, slowMethod, type, properties, start, end),
-            boolean.class,
-            readerType,
-            "reader",
-            type,
-            "object",
-            long[].class,
-            "fieldHashes");
+            body,
+            groupResult,
+            withSeenParameters(
+                properties.length,
+                readerType,
+                "reader",
+                type,
+                "object",
+                long[].class,
+                "fieldHashes"));
       } else {
         addGeneratedMethod(
             ctx,
             "final",
             readGroupMethod(readMethod, start),
-            fastReadGroupExpression(builder, slowMethod, type, properties, start, end),
-            boolean.class,
-            readerType,
-            "reader",
-            type,
-            "object",
-            long[].class,
-            "fieldHashes",
-            Map.class,
-            "anyMap");
+            body,
+            groupResult,
+            withSeenParameters(
+                properties.length,
+                readerType,
+                "reader",
+                type,
+                "object",
+                long[].class,
+                "fieldHashes",
+                Map.class,
+                "anyMap"));
       }
       start = end;
     }
@@ -1929,26 +1965,24 @@ abstract class JsonReaderCodegen {
           methodName,
           slowReadExpression(builder, type, properties),
           void.class,
-          readerType,
-          "reader",
-          type,
-          "object",
-          int.class,
-          "expectedIndex");
+          withSeenParameters(
+              properties.length, readerType, "reader", type, "object", int.class, "expectedIndex"));
       addGeneratedMethod(
           ctx,
           "final",
           methodName,
           slowReadFromFirstExpression(builder, type, properties),
           void.class,
-          readerType,
-          "reader",
-          type,
-          "object",
-          int.class,
-          "expectedIndex",
-          int.class,
-          "firstFieldIndex");
+          withSeenParameters(
+              properties.length,
+              readerType,
+              "reader",
+              type,
+              "object",
+              int.class,
+              "expectedIndex",
+              int.class,
+              "firstFieldIndex"));
       return;
     }
     addGeneratedMethod(
@@ -1957,34 +1991,38 @@ abstract class JsonReaderCodegen {
         methodName,
         slowReadExpression(builder, type, properties),
         void.class,
-        readerType,
-        "reader",
-        type,
-        "object",
-        int.class,
-        "expectedIndex",
-        Map.class,
-        "anyMap");
+        withSeenParameters(
+            properties.length,
+            readerType,
+            "reader",
+            type,
+            "object",
+            int.class,
+            "expectedIndex",
+            Map.class,
+            "anyMap"));
     addGeneratedMethod(
         ctx,
         "final",
         methodName,
         slowReadFromFirstExpression(builder, type, properties),
         void.class,
-        readerType,
-        "reader",
-        type,
-        "object",
-        int.class,
-        "expectedIndex",
-        int.class,
-        "firstFieldIndex",
-        long.class,
-        "firstFieldHash",
-        int.class,
-        "firstFieldStart",
-        Map.class,
-        "anyMap");
+        withSeenParameters(
+            properties.length,
+            readerType,
+            "reader",
+            type,
+            "object",
+            int.class,
+            "expectedIndex",
+            int.class,
+            "firstFieldIndex",
+            long.class,
+            "firstFieldHash",
+            int.class,
+            "firstFieldStart",
+            Map.class,
+            "anyMap"));
   }
 
   private void addGeneratedMethod(
@@ -2402,6 +2440,13 @@ abstract class JsonReaderCodegen {
                 .inline());
     Expression routeRead =
         unwrappedRouteSwitch(builder, routes, groups, directCount, routeIndex, workspaces, present);
+    Expression[] seen = seenWords(expressions, directCount + routes.length, null);
+    if (seen != null) {
+      directRead = new Expression.ListExpression(markSeen(seen, direct), directRead);
+      routeRead =
+          new Expression.ListExpression(
+              markSeen(seen, add(routeIndex, Expression.Literal.ofInt(directCount))), routeRead);
+    }
     Expression unknown =
         any == null
             ? new Expression.Invoke(readerRef(), "skipValue")
@@ -3039,6 +3084,7 @@ abstract class JsonReaderCodegen {
     expressions.add(anyMap == null ? object : anyMap);
     expressions.add(expectExpr('{'));
     expressions.add(new Expression.If(consumeExpr('}'), returnObject(object)));
+    declareFastSeen(expressions, properties.length);
     if (properties.length == 0) {
       expressions.add(slowCall(slowMethod, object, Expression.Literal.ofInt(0)));
       expressions.add(returnObject(object));
@@ -3080,11 +3126,20 @@ abstract class JsonReaderCodegen {
     Expression hashes =
         new Expression.Variable("localFieldHashes", fieldRef("fieldHashes", long[].class));
     expressions.add(hashes);
+    declareFastSeen(expressions, properties.length);
     int start = 0;
     for (int group = 0; group < fastReadGroupEnds.length - 1; group++) {
       int end = fastReadGroupEnds[group];
       Expression groupCall = inline(readGroupCall(readMethod, start, object, hashes));
-      expressions.add(new Expression.If(not(groupCall), returnObject(object)));
+      if (fastSeen == null) {
+        expressions.add(new Expression.If(not(groupCall), returnObject(object)));
+      } else {
+        Expression groupBits = new Expression.Variable("groupSeen" + start, groupCall);
+        expressions.add(
+            groupBits,
+            new Expression.If(lt(groupBits, Expression.Literal.ofLong(0)), returnObject(object)),
+            mergeGroupSeen(groupBits, start, end));
+      }
       start = end;
     }
     Expression[] skips = new Expression[properties.length];
@@ -3112,6 +3167,14 @@ abstract class JsonReaderCodegen {
     Expression hashes = new Reference("fieldHashes", TypeRef.of(long[].class));
     Expression[] skips = new Expression[properties.length];
     Expression.ListExpression expressions = new Expression.ListExpression();
+    fastSeen = seenParameters(properties.length);
+    groupSeenStart = start;
+    groupSeenEnd = end;
+    groupSeen = null;
+    if (fastSeen != null) {
+      groupSeen = new Expression.Variable("groupSeen", Expression.Literal.ofLong(0));
+      expressions.add(groupSeen);
+    }
     for (int i = start + 1; i < end; i++) {
       skips[i] = new Expression.Variable("skip" + i, Expression.Literal.False);
       expressions.add(skips[i]);
@@ -3127,29 +3190,25 @@ abstract class JsonReaderCodegen {
 
   private Expression readGroupCall(
       String readMethod, int start, Expression object, Expression hashes) {
+    TypeRef<?> result = TypeRef.of(fastSeen == null ? boolean.class : long.class);
     if (any == null) {
       return new Expression.Invoke(
           new Reference("this", TypeRef.of(Object.class)),
           readGroupMethod(readMethod, start),
           "",
-          TypeRef.of(boolean.class),
+          result,
           false,
           false,
-          readerRef(),
-          object,
-          hashes);
+          withFastSeen(readerRef(), object, hashes));
     }
     return new Expression.Invoke(
         new Reference("this", TypeRef.of(Object.class)),
         readGroupMethod(readMethod, start),
         "",
-        TypeRef.of(boolean.class),
+        result,
         false,
         false,
-        readerRef(),
-        object,
-        hashes,
-        anyMapRef());
+        withFastSeen(readerRef(), object, hashes, anyMapRef()));
   }
 
   private Expression anyMap(JsonGeneratedCodecBuilder builder, Expression object) {
@@ -3210,7 +3269,7 @@ abstract class JsonReaderCodegen {
       return statementIf(
           tryReadNextFieldNameColon(properties[index].name()),
           new Expression.ListExpression(
-              readField(builder, type, properties[index], index, object, false),
+              fastReadMember(builder, type, properties, index, object),
               fieldEnd(slowMethod, properties.length, groupEnd, groupHelper, index, object)),
           nextDirectFallback(
               builder,
@@ -3245,7 +3304,7 @@ abstract class JsonReaderCodegen {
       return statementIf(
           tryReadNextFieldNameColon(properties[nextIndex].name()),
           new Expression.ListExpression(
-              readField(builder, type, properties[nextIndex], nextIndex, object, false),
+              fastReadMember(builder, type, properties, nextIndex, object),
               new Expression.Assign(skips[nextIndex], Expression.Literal.True),
               fieldEnd(slowMethod, properties.length, groupEnd, groupHelper, nextIndex, object)),
           hashFallback(
@@ -3325,7 +3384,7 @@ abstract class JsonReaderCodegen {
               eq(fieldHash, arrayValue(hashes, index + 1)),
               new Expression.ListExpression(
                   expectExpr(':'),
-                  readField(builder, type, properties[index + 1], index + 1, object, false),
+                  fastReadMember(builder, type, properties, index + 1, object),
                   new Expression.Assign(skips[index + 1], Expression.Literal.True),
                   fieldEnd(
                       slowMethod, properties.length, groupEnd, groupHelper, index + 1, object)),
@@ -3354,7 +3413,7 @@ abstract class JsonReaderCodegen {
         fallback,
         new Expression.ListExpression(
             expectExpr(':'),
-            readField(builder, type, properties[index], index, object, false),
+            fastReadMember(builder, type, properties, index, object),
             fieldEnd(slowMethod, properties.length, groupEnd, groupHelper, index, object)),
         groupHelper);
   }
@@ -3436,10 +3495,17 @@ abstract class JsonReaderCodegen {
   }
 
   final Expression returnTrue() {
+    if (groupSeen != null) {
+      return new Expression.Return(groupSeen);
+    }
     return new Expression.Return(Expression.Literal.True);
   }
 
   final Expression returnFalse() {
+    if (groupSeen != null) {
+      // A finished object needs no merge; bits of a group never set the sign bit.
+      return new Expression.Return(Expression.Literal.ofLong(-1));
+    }
     return new Expression.Return(Expression.Literal.False);
   }
 
@@ -3546,11 +3612,12 @@ abstract class JsonReaderCodegen {
     Reference expectedIndex = new Reference("expectedIndex", TypeRef.of(int.class));
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(hashes);
+    Expression[] seen = seenParameters(properties.length);
     Expression anyMapCreated = anyMapCreatedFlag(expressions);
     Expression.ListExpression loop = new Expression.ListExpression();
     loop.add(
         readNextHashedField(
-            builder, type, properties, object, hashes, expectedIndex, anyMapCreated));
+            builder, type, properties, object, hashes, expectedIndex, anyMapCreated, seen));
     loop.add(new Expression.If(not(consumeCommaOrEndObjectExpr()), new Expression.Break()));
     expressions.add(new Expression.While(Expression.Literal.True, loop));
     finishAnyRead(builder, expressions, object, anyMapCreated);
@@ -3640,9 +3707,13 @@ abstract class JsonReaderCodegen {
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(hashes);
     expressions.add(fieldIndex);
+    Expression[] seen = seenParameters(properties.length);
     Expression anyMapCreated = anyMapCreatedFlag(expressions);
     expressions.add(expectExpr(':'));
     Expression.ListExpression loop = new Expression.ListExpression();
+    if (seen != null) {
+      loop.add(markKnownSeen(seen, fieldIndex));
+    }
     loop.add(
         fieldSwitch(
             builder,
@@ -3696,9 +3767,10 @@ abstract class JsonReaderCodegen {
       Expression object,
       Expression hashes,
       Expression expectedIndex,
-      Expression anyMapCreated) {
+      Expression anyMapCreated,
+      Expression[] seen) {
     if (any == null && rawFieldNameDispatch() && hasDirectFieldName(properties)) {
-      return readNextDirectField(builder, type, properties, object, hashes, expectedIndex);
+      return readNextDirectField(builder, type, properties, object, hashes, expectedIndex, seen);
     }
     Expression fieldStart =
         any == null
@@ -3716,7 +3788,11 @@ abstract class JsonReaderCodegen {
     expressions.add(
         new Expression.Variable("fieldIndex", Expression.Literal.ofInt(JsonFieldTable.UNKNOWN)),
         assignSlowFieldIndex(fieldIndex, expectedIndex, hashes, fieldHash, properties),
-        expectExpr(':'),
+        expectExpr(':'));
+    if (seen != null) {
+      expressions.add(markKnownSeen(seen, fieldIndex));
+    }
+    expressions.add(
         fieldSwitch(
             builder, type, properties, object, fieldIndex, fieldHash, fieldStart, anyMapCreated),
         updateExpectedIndex(expectedIndex, fieldIndex));
@@ -3729,13 +3805,20 @@ abstract class JsonReaderCodegen {
       JsonFieldInfo[] properties,
       Expression object,
       Expression hashes,
-      Expression expectedIndex) {
+      Expression expectedIndex,
+      Expression[] seen) {
     Reference fieldIndex = new Reference("fieldIndex", TypeRef.of(int.class));
-    return new Expression.ListExpression(
-        new Expression.Variable("fieldIndex", Expression.Literal.ofInt(JsonFieldTable.UNKNOWN)),
-        readDirectFieldIndex(fieldIndex, expectedIndex, hashes, properties),
+    Expression.ListExpression expressions =
+        new Expression.ListExpression(
+            new Expression.Variable("fieldIndex", Expression.Literal.ofInt(JsonFieldTable.UNKNOWN)),
+            readDirectFieldIndex(fieldIndex, expectedIndex, hashes, properties));
+    if (seen != null) {
+      expressions.add(markKnownSeen(seen, fieldIndex));
+    }
+    expressions.add(
         fieldSwitch(builder, type, properties, object, fieldIndex),
         updateExpectedIndex(expectedIndex, fieldIndex));
+    return expressions;
   }
 
   private Expression readDirectFieldIndex(
@@ -4498,10 +4581,7 @@ abstract class JsonReaderCodegen {
             TypeRef.of(void.class),
             false,
             false,
-            readerRefForCall(),
-            object,
-            expectedIndex,
-            anyMapRef());
+            withFastSeen(readerRefForCall(), object, expectedIndex, anyMapRef()));
       }
       return new Expression.Invoke(
           new Reference("this", TypeRef.of(Object.class)),
@@ -4510,13 +4590,14 @@ abstract class JsonReaderCodegen {
           TypeRef.of(void.class),
           false,
           false,
-          readerRefForCall(),
-          object,
-          expectedIndex,
-          firstFieldIndex,
-          firstFieldHash,
-          firstFieldStart,
-          anyMapRef());
+          withFastSeen(
+              readerRefForCall(),
+              object,
+              expectedIndex,
+              firstFieldIndex,
+              firstFieldHash,
+              firstFieldStart,
+              anyMapRef()));
     }
     if (firstFieldIndex == null) {
       return new Expression.Invoke(
@@ -4526,9 +4607,7 @@ abstract class JsonReaderCodegen {
           TypeRef.of(void.class),
           false,
           false,
-          readerRefForCall(),
-          object,
-          expectedIndex);
+          withFastSeen(readerRefForCall(), object, expectedIndex));
     }
     return new Expression.Invoke(
         new Reference("this", TypeRef.of(Object.class)),
@@ -4537,10 +4616,7 @@ abstract class JsonReaderCodegen {
         TypeRef.of(void.class),
         false,
         false,
-        readerRefForCall(),
-        object,
-        expectedIndex,
-        firstFieldIndex);
+        withFastSeen(readerRefForCall(), object, expectedIndex, firstFieldIndex));
   }
 
   final Reference readerRefForCall() {
@@ -4636,6 +4712,249 @@ abstract class JsonReaderCodegen {
         property.onNullRead(),
         property.name(),
         readFieldValue(builder, type, property, id, object, tokenValueRead));
+  }
+
+  private boolean failOnDuplicates() {
+    return objectOwner.failOnDuplicateProperties();
+  }
+
+  // Strict object readers carry one bit per known member read so far through the generated fast
+  // path, its group helpers, and the slow method. A fast path never repeats a member, so it only
+  // sets bits; the slow method checks them. Lenient readers generate none of this.
+  private void declareFastSeen(Expression.ListExpression expressions, int memberCount) {
+    if (!failOnDuplicates()) {
+      fastSeen = null;
+      return;
+    }
+    fastSeen = new Expression[seenWordCount(memberCount)];
+    for (int i = 0; i < fastSeen.length; i++) {
+      fastSeen[i] = new Expression.Variable("seen" + i, Expression.Literal.ofLong(0));
+      expressions.add(fastSeen[i]);
+    }
+  }
+
+  private Expression[] seenParameters(int memberCount) {
+    if (!failOnDuplicates()) {
+      return null;
+    }
+    Expression[] words = new Expression[seenWordCount(memberCount)];
+    for (int i = 0; i < words.length; i++) {
+      words[i] = new Reference("seen" + i, TypeRef.of(long.class));
+    }
+    return words;
+  }
+
+  private static int seenWordCount(int memberCount) {
+    return (memberCount + Long.SIZE - 1) >>> 6;
+  }
+
+  private Object[] withSeenParameters(int memberCount, Object... parameters) {
+    if (!failOnDuplicates()) {
+      return parameters;
+    }
+    int words = seenWordCount(memberCount);
+    Object[] result = Arrays.copyOf(parameters, parameters.length + words * 2);
+    for (int i = 0; i < words; i++) {
+      result[parameters.length + i * 2] = long.class;
+      result[parameters.length + i * 2 + 1] = "seen" + i;
+    }
+    return result;
+  }
+
+  private Expression[] withFastSeen(Expression... arguments) {
+    if (fastSeen == null) {
+      return arguments;
+    }
+    Expression[] words =
+        groupSeen == null
+            ? fastSeen
+            : withGroupSeen(fastSeen, groupSeen, groupSeenStart, groupSeenEnd);
+    Expression[] result = Arrays.copyOf(arguments, arguments.length + words.length);
+    System.arraycopy(words, 0, result, arguments.length, words.length);
+    return result;
+  }
+
+  private Expression fastReadMember(
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonFieldInfo[] properties,
+      int index,
+      Expression object) {
+    Expression read = readField(builder, type, properties[index], index, object, false);
+    if (fastSeen == null) {
+      return read;
+    }
+    Expression bits = groupSeen == null ? fastSeen[index >>> 6] : groupSeen;
+    long bit = groupSeen == null ? 1L << index : 1L << (index - groupSeenStart);
+    return new Expression.ListExpression(
+        new Expression.Assign(bits, new Expression.BitOr(bits, Expression.Literal.ofLong(bit))),
+        read);
+  }
+
+  /**
+   * Adds group-relative member bits to the seen words they belong to. A group has fewer than 64
+   * members, so it touches at most two words.
+   */
+  private Expression[] withGroupSeen(Expression[] words, Expression bits, int start, int end) {
+    Expression[] result = words.clone();
+    int word = start >>> 6;
+    int offset = start & 63;
+    result[word] =
+        new Expression.BitOr(
+            words[word],
+            new Expression.BitShift(true, "<<", bits, Expression.Literal.ofInt(offset)));
+    if (offset + (end - start) > Long.SIZE) {
+      result[word + 1] =
+          new Expression.BitOr(
+              words[word + 1],
+              new Expression.BitShift(true, ">>>", bits, Expression.Literal.ofInt(64 - offset)));
+    }
+    return result;
+  }
+
+  private Expression mergeGroupSeen(Expression bits, int start, int end) {
+    Expression[] merged = withGroupSeen(fastSeen, bits, start, end);
+    Expression.ListExpression expressions = new Expression.ListExpression();
+    for (int i = 0; i < merged.length; i++) {
+      if (merged[i] != fastSeen[i]) {
+        expressions.add(new Expression.Assign(fastSeen[i], merged[i]));
+      }
+    }
+    return expressions;
+  }
+
+  /**
+   * Declares one bit per known member for a strict reader, or returns null for a lenient one.
+   * {@code readCount} seeds the bits of a contiguous declaration-order prefix already read.
+   */
+  private Expression[] seenWords(
+      Expression.ListExpression expressions, int memberCount, Expression readCount) {
+    if (!failOnDuplicates()) {
+      return null;
+    }
+    Expression[] words = new Expression[seenWordCount(memberCount)];
+    for (int i = 0; i < words.length; i++) {
+      Expression initial =
+          readCount == null
+              ? Expression.Literal.ofLong(0)
+              : new Expression.StaticInvoke(
+                  JsonFieldInfo.class,
+                  "readPrefixBits",
+                  TypeRef.of(long.class),
+                  readCount,
+                  Expression.Literal.ofInt(i));
+      words[i] = new Expression.Variable("seen" + i, initial);
+      expressions.add(words[i]);
+    }
+    return words;
+  }
+
+  private Expression markSeen(Expression[] words, int index, String name) {
+    if (words == null) {
+      return new Expression.ListExpression();
+    }
+    Expression word = words[index >>> 6];
+    Expression bit = Expression.Literal.ofLong(1L << index);
+    return new Expression.ListExpression(
+        new Expression.If(
+            ne(new Expression.BitAnd(word, bit), Expression.Literal.ofLong(0)),
+            new Expression.StaticInvoke(
+                JsonFieldInfo.class,
+                "rejectDuplicateProperty",
+                Expression.Literal.ofString(name),
+                Expression.Literal.ofString(objectOwner.type().getName()))),
+        new Expression.Assign(word, new Expression.BitOr(word, bit)));
+  }
+
+  /** Marks a known member whose index is only known at runtime; the caller excludes misses. */
+  private Expression markSeen(Expression[] words, Expression index) {
+    Expression bit = new Expression.BitShift(true, "<<", Expression.Literal.ofLong(1), index);
+    if (words.length == 1) {
+      return markWord(words[0], bit, index);
+    }
+    Expression.Switch.Case[] cases = new Expression.Switch.Case[words.length];
+    for (int i = 0; i < words.length; i++) {
+      cases[i] =
+          new Expression.Switch.Case(
+              i,
+              new Expression.ListExpression(
+                  markWord(words[i], bit, index), new Expression.Break()));
+    }
+    return new Expression.Switch(
+        new Expression.BitShift(true, ">>>", index, Expression.Literal.ofInt(6)), cases, null);
+  }
+
+  private Expression markKnownSeen(Expression[] words, Expression index) {
+    if (words.length == 0) {
+      return new Expression.ListExpression();
+    }
+    return new Expression.If(ge(index, Expression.Literal.ofInt(0)), markSeen(words, index));
+  }
+
+  private Expression markWord(Expression word, Expression bit, Expression index) {
+    return new Expression.ListExpression(
+        new Expression.If(
+            ne(new Expression.BitAnd(word, bit), Expression.Literal.ofLong(0)),
+            new Expression.Invoke(
+                new Reference("this", TypeRef.of(Object.class)),
+                "rejectDuplicate",
+                "",
+                TypeRef.of(void.class),
+                false,
+                false,
+                index)),
+        new Expression.Assign(word, new Expression.BitOr(word, bit)));
+  }
+
+  /** Adds the cold member-name lookup used by runtime-index duplicate checks. */
+  private void addRejectDuplicateMethod(CodegenContext ctx, String[] names) {
+    if (!failOnDuplicates()) {
+      return;
+    }
+    Expression.Switch.Case[] cases = new Expression.Switch.Case[names.length];
+    for (int i = 0; i < names.length; i++) {
+      cases[i] =
+          new Expression.Switch.Case(
+              i,
+              new Expression.ListExpression(
+                  new Expression.StaticInvoke(
+                      JsonFieldInfo.class,
+                      "rejectDuplicateProperty",
+                      Expression.Literal.ofString(names[i]),
+                      Expression.Literal.ofString(objectOwner.type().getName())),
+                  new Expression.Break()));
+    }
+    addGeneratedMethod(
+        ctx,
+        "private final",
+        "rejectDuplicate",
+        new Expression.Switch(new Reference("index", TypeRef.of(int.class)), cases, null),
+        void.class,
+        int.class,
+        "index");
+  }
+
+  private static String[] fieldNames(JsonFieldInfo[] fields) {
+    String[] names = new String[fields.length];
+    for (int i = 0; i < fields.length; i++) {
+      names[i] = fields[i].name();
+    }
+    return names;
+  }
+
+  private static String[] unwrappedNames(
+      JsonFieldInfo[] directFields, JsonCreatorFieldInfo[] creatorFields, ReadRoute[] routes) {
+    int directCount = creatorFields == null ? directFields.length : creatorFields.length;
+    String[] names = new String[directCount + routes.length];
+    for (int i = 0; i < directCount; i++) {
+      names[i] = creatorFields == null ? directFields[i].name() : creatorFields[i].name();
+    }
+    for (int i = 0; i < routes.length; i++) {
+      ReadRoute route = routes[i];
+      names[directCount + i] =
+          route.field() != null ? route.field().name() : route.creatorField().name();
+    }
+    return names;
   }
 
   private Expression nullReadGuard(NullHandling handling, String name, Expression read) {
