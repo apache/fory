@@ -1208,6 +1208,18 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test(dataProvider = "framedCodecs")
+  public void unknownHashWithTruncatedBodyRejected(String label, FramedCodec c) {
+    MemoryBuffer encoded = MemoryBuffer.newHeapBuffer(64);
+    c.encode.accept(encoded);
+    // The buffer ends at the payload, so a size prefix one byte too large truncates the body.
+    MemoryBuffer buffer = MemoryBuffer.fromByteArray(encoded.getBytes(0, encoded.writerIndex()));
+    buffer.putInt32(0, buffer.getInt32(0) + 1);
+    buffer.putInt64(4, buffer.getInt64(4) ^ 1);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> c.decode.apply(buffer));
+    Assert.assertEquals(buffer.readerIndex(), 12);
+  }
+
+  @Test(dataProvider = "framedCodecs")
   public void sizeBelowHashRejected(String label, FramedCodec c) {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(64);
     c.encode.accept(buffer);

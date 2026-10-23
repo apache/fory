@@ -114,8 +114,7 @@ class VersionedBinaryArrayEncoder<T> implements ArrayEncoder<T> {
     }
     ProjectionArrayCodec projection = projections.get(peerHash);
     if (projection == null) {
-      // Skip the body, so that a caller can go on to the next payload in the buffer.
-      buffer.increaseReaderIndex(bodySize);
+      BinaryRowEncoder.skipUnknownBody(buffer, bodySize);
       throw new ClassNotCompatibleException(
           String.format(
               "Array element schema is not consistent. self/peer hash are %s/%s.",
