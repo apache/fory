@@ -549,7 +549,9 @@ public final class SchemaHistory {
           return new Wrapper(WrapperKind.ENCODED, raw, encoded, null, null);
         }
       }
-      if (raw == Optional.class) {
+      // As in inferField, a codec registered on Optional itself owns the field, so only an
+      // Optional without one unwraps.
+      if (codec == null && raw == Optional.class) {
         return new Wrapper(
             WrapperKind.OPTIONAL, raw, TypeUtils.getTypeArguments(typeRef).get(0), null, null);
       }

@@ -75,11 +75,12 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    * cannot be flipped on an existing dataset without rewriting. For array and map codecs it adds an
    * 8-byte strict-hash prefix to the payload. Because those codecs have no header otherwise, an
    * evolution-off reader has no way to tell that prefix from valid body bytes, so reading
-   * evolution-on bytes with evolution off (or the reverse) mis-decodes silently rather than
-   * failing. Row payloads already carry an 8-byte hash slot, so a flag mismatch there is detected
-   * and rejected; but the slot is computed with a stricter hash under evolution (it also
-   * distinguishes field names and nullability), so flipping the flag rejects reads of previously
-   * written rows even when the field layout is byte-identical.
+   * evolution-on bytes with evolution off is undefined. The reverse fails: an evolution-on reader
+   * reads the start of an evolution-off body as a hash that matches no known schema. Row payloads
+   * already carry an 8-byte hash slot, so a flag mismatch there is detected and rejected; but the
+   * slot is computed with a stricter hash under evolution (it also distinguishes field names and
+   * nullability), so flipping the flag rejects reads of previously written rows even when the field
+   * layout is byte-identical.
    */
   public B withSchemaEvolution() {
     this.schemaEvolution = true;

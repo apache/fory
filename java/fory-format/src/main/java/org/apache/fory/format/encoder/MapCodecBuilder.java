@@ -56,11 +56,12 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
   }
 
   public Supplier<MapEncoder<M>> build() {
-    final CodeGenerator codeGenerator = Encoders.pinCodeGenerator();
-    loadMapInnerCodecs();
     final Class<?> valClass = schemaEvolution ? evolutionBean() : null;
     final Class<?> keyClass = schemaEvolution ? keyEvolutionBean() : null;
-    if (valClass == null && keyClass == null) {
+    final boolean evolving = valClass != null || keyClass != null;
+    final CodeGenerator codeGenerator = evolving ? Encoders.pinCodeGenerator() : null;
+    loadMapInnerCodecs();
+    if (!evolving) {
       final var mapEncoderFactory = generatedMapEncoder();
       return new Supplier<MapEncoder<M>>() {
         @Override
