@@ -96,7 +96,7 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
     this.currentHash = currentHash;
     this.projectionSources = projectionSources;
     this.fory = fory;
-    this.projections = projectionSources == null ? null : new LongMap<>(projectionSources.size);
+    this.projections = projectionSources == null ? null : new LongMap<>();
   }
 
   @Override
@@ -155,7 +155,7 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
     if (projection == null) {
       throw new ClassNotCompatibleException(
           String.format(
-              "Array element schema is not consistent. self/peer hash are %x/%x.",
+              "Array element schema is not consistent. self/peer hash are %s/%s.",
               currentHash, peerHash));
     }
     BinaryArray array = projection.writer.newArray();
