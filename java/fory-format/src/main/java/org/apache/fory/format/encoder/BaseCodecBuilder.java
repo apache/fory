@@ -73,7 +73,7 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    *
    * <p>This flag is part of the wire contract: producers and consumers must agree on it, and it
    * cannot be flipped on an existing dataset without rewriting. For array and map codecs it adds an
-   * 8-byte strict-hash prefix to the payload. Because those codecs have no header otherwise, an
+   * 8-byte schema-hash prefix to the payload. Because those codecs have no header otherwise, an
    * evolution-off reader has no way to tell that prefix from valid body bytes, so reading
    * evolution-on bytes with evolution off is undefined. The reverse fails: an evolution-on reader
    * reads the start of an evolution-off body as a hash that matches no known schema. Row payloads

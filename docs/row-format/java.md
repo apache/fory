@@ -362,15 +362,22 @@ evolution walk.
 Producers and consumers must agree on the `withSchemaEvolution()` flag — they are not
 wire-compatible otherwise. Row payloads always carry an 8-byte hash slot; under evolution its
 value is the strict hash (which includes field name and nullability), so a flag-mismatched
-peer fails loudly with `ClassNotCompatibleException`. Arrays and maps prepend an 8-byte
-strict-hash prefix under evolution and no prefix otherwise; an evolution-on consumer
+peer fails loudly with `ClassNotCompatibleException`. Arrays and maps prepend an 8-byte prefix
+under evolution (the strict hash for an array, the combined key and value hash for a map) and no
+prefix otherwise; an evolution-on consumer
 reading evolution-off bytes also fails, but the reverse direction (evolution-off consumer,
 evolution-on bytes) is undefined.
 
-To adopt the flag on an existing deployment, enable `withSchemaEvolution()` on both sides in a
-release that changes no schema, then start evolving schemas only once every peer is on the
-evolution-enabled build. Turning the flag on and changing a schema in the same release strands
-any peer that has not yet upgraded.
+Turning the flag on changes the wire format of every payload, so do it as a cutover, not as a
+rolling change. During a rolling deploy, flag-on and flag-off peers reject each other's rows, and a
+flag-off reader decodes flag-on arrays and maps incorrectly without an error. Rows written before
+the cutover are not readable with the flag on. Stop or drain the producers, rewrite or stop
+reading the stored payloads, and then start every peer with the flag on, in a release that changes
+no schema.
+
+After that, deploy every reader of a schema change before any writer. A reader decodes payloads
+from its own version and older versions only, and it rejects a payload from a newer writer with
+`ClassNotCompatibleException`.
 
 The hash algorithm, wire names, field order, and framing are specified language-neutrally in
 the [row format specification](../specification/row_format_spec.md#schema-evolution). Java is the
@@ -421,10 +428,13 @@ When a versioned bean contains other versioned beans, the reader can read one pr
 combination of versions across the composition, with each bean class at one version. Building the
 codec computes the layout and hash of every combination, so the build time and memory grow with
 the product of the version counts of the distinct versioned bean classes, and the codec sets no
-limit. A map whose key and value both evolve combines their versions the same way. Retiring an entry from a bean's
-`History` interface once you no longer read payloads from that range stops the reader from
-accepting those payloads; it is purely a read-side decision, and the writer always uses the current
-schema.
+limit. A map whose key and value both evolve combines their versions the same way.
+
+To bound the growth, stop reading the oldest layouts: remove an entry from a bean's `History`
+interface, or remove or lower the `since` of a live field so that no layout without that field
+remains. Either change removes every layout that differs only by that field, so the reader then
+rejects every payload written with one of those layouts. This is a read-side decision only; the
+writer always uses the current schema.
 
 ## Related Topics
 
