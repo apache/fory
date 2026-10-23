@@ -325,8 +325,9 @@ public final class SchemaHistory {
     // produce the same layout into one VersionedSchema, since they round-trip identically.
     // The strict hash is the layout identity, so it is the dedup key. Schema.equals is weaker: it
     // ignores list element nullability and fixed-size binary width, so it would merge a
-    // List<Integer> layout with an int[] layout and drop one of their hashes. A real strict-hash
-    // collision (two distinct schemas producing the same hash) is caught by hashToSchema below.
+    // List<Integer> layout with an int[] layout and drop one of their hashes. The guard on
+    // hashToSchema below rejects most real strict-hash collisions (two distinct schemas with one
+    // hash), but not all of them.
     int latestVersion = schemaVersions.last();
     Map<Long, VersionedSchema> byHash = new LinkedHashMap<>();
     // A removed field that a live field adds again with the same wire name and declared type holds
@@ -404,6 +405,9 @@ public final class SchemaHistory {
         }
         Schema schema = format.wireOrder(new Schema(fields));
         long hash = computeStrictSchemaHash(format, schema);
+        // Schema.equals ignores list element nullability and fixed-size binary width, so this guard
+        // misses a collision between two schemas that differ only there. A collision has odds of
+        // about 2^-64, so the gap is accepted.
         Schema previousSchema = hashToSchema.putIfAbsent(hash, schema);
         if (previousSchema != null && !previousSchema.equals(schema)) {
           throw new IllegalStateException(
@@ -902,6 +906,27 @@ public final class SchemaHistory {
       List<FieldEntry> group = e.getValue();
       if (group.size() < 2) {
         continue;
+      }
+      // Two live members with one wire name (aB and a_b) also have overlapping windows, but the
+      // fix is a rename, not a change to their versions, so report them by member name first.
+      FieldEntry live = null;
+      for (FieldEntry fe : group) {
+        if (!fe.live) {
+          continue;
+        }
+        if (live != null) {
+          throw new IllegalStateException(
+              "Members '"
+                  + live.javaName
+                  + "' and '"
+                  + fe.javaName
+                  + "' of "
+                  + beanClass.getName()
+                  + " both have the wire name '"
+                  + e.getKey()
+                  + "'. Rename one of them.");
+        }
+        live = fe;
       }
       group.sort((a, b) -> Integer.compare(a.since, b.since));
       for (int i = 1; i < group.size(); i++) {

@@ -1233,8 +1233,8 @@ public class SchemaEvolutionTest {
   // A versioned *interface* bean nested inside an evolving outer bean. Interface
   // beans are valid versioned row beans at the top level (see PersonIfaceV1/V2),
   // so they must also be discovered when nested as a field type, a list element,
-  // or a map value. SchemaHistory.findVersionedBean has to recognize an interface
-  // the same way the top-level container path does (synthesizing the interface as
+  // or a map value. SchemaHistory's evolution-site discovery has to recognize an
+  // interface the same way the top-level container path does (synthesizing the interface as
   // a bean); otherwise the outer's cross-product never enumerates the inner's
   // older versions, an older inner payload has no matching projection, and decode
   // fails with a schema-hash mismatch (ClassNotCompatibleException).
@@ -1304,7 +1304,7 @@ public class SchemaEvolutionTest {
   //
   // A top-level array or map whose element/value is itself a collection of a versioned bean
   // (List<Person>, Map<.., Person>) must still evolve. The versioned bean is reachable through
-  // the container element/value the same way SchemaHistory.findVersionedBean descends, so an
+  // the container element/value the same way SchemaHistory's site discovery descends, so an
   // older payload must decode under the newer codec rather than being read at a stale layout.
 
   @Test

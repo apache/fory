@@ -454,8 +454,9 @@ unlike the default schema hash, which mixes only type IDs. All inputs are langua
   `int16` 3, `int32` 4, `int64` 6, `float16` 17, `float32` 19, `float64` 20, `string` 21,
   `list` 22, `map` 24, `struct` 27, `duration` 37, `timestamp` 38, `date32` 39, `decimal` 40,
   `binary` 41.
-- The hash is 64 bits, so an implementation must reject, when the codec is built, two distinct
-  layouts in one history that hash to the same value.
+- The hash is 64 bits, so two distinct layouts in one history hash to the same value with odds of
+  about 2^-64. An implementation should reject a history with such a collision when it builds the
+  codec, but it need not detect every collision.
 - Known-answer vectors for the strict hash in the standard format, except where a row names the
   compact format (`n` is nullable, `nn` is not nullable):
 

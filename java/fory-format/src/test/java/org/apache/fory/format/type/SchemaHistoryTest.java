@@ -166,6 +166,24 @@ public class SchemaHistoryTest {
     assertTrue(e.getMessage().contains("wire name"), e.getMessage());
   }
 
+  /**
+   * Two live members with one wire name ({@code aB} and {@code a_b}) need a rename, not other
+   * versions, so the build must reject them by member name.
+   */
+  @Test
+  public void liveMembersWithOneWireNameAreRejected() {
+    IllegalStateException e =
+        expectThrows(
+            IllegalStateException.class, () -> SchemaHistory.build(SameWireName.class, STANDARD));
+    assertTrue(e.getMessage().contains("'aB' and 'a_b'"), e.getMessage());
+  }
+
+  @lombok.Data
+  public static class SameWireName {
+    private int aB;
+    private int a_b;
+  }
+
   @lombok.Data
   public static class DivergentNameOrder {
     private int aB;

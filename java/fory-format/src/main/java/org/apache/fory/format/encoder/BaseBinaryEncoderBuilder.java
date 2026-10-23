@@ -109,7 +109,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
    * Per-class projection suffix for nested bean codecs, used when one generated codec embeds more
    * than one distinct versioned bean class at independent versions — for example an element typed
    * {@code Map<KBean, VBean>}, whose key and value beans each project to their own historical row
-   * codec. Looked up by raw class in {@link #registerBeanCodec}; a class absent from the map, or a
+   * codec. Looked up by raw class in {@link #serializeForBean}; a class absent from the map, or a
    * null map, reads at its current schema. Routing by raw class is exact because a writer writes
    * one definition of a class, so every occurrence of a class in one payload is at the same
    * version.
@@ -543,11 +543,11 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
 
   /**
    * Idempotently add the nested-bean row writer and row encoder as fields on the generated codec
-   * class and register them in {@link #beanEncoderMap} and {@link #rowWriterMap}. Used both by
-   * {@link #serializeForBean} and by decode-only projection codegen, where the encode pass is
-   * skipped but the decode pass still needs the bean encoder reference.
+   * class and register them in {@link #beanEncoderMap} and {@link #rowWriterMap}. {@link
+   * #deserializeForBean} reads the encoder that this registers, so the encode pass must run before
+   * the decode pass, also for a decode-only projection codec.
    */
-  protected void registerBeanCodec(Expression writer, TypeRef<?> typeRef, Expression structField) {
+  private void registerBeanCodec(Expression writer, TypeRef<?> typeRef, Expression structField) {
     if (beanEncoderMap.containsKey(typeRef)) {
       return;
     }

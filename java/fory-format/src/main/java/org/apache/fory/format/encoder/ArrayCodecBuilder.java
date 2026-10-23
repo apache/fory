@@ -104,9 +104,11 @@ public class ArrayCodecBuilder<C extends Collection<?>>
     // with that hash is decoded. The suffix encodes each chosen inner-bean version so distinct
     // cross-product entries do not collide on a single generated class.
     //
-    // Keyed by the raw strict hash straight from SchemaHistory, which already proves these hashes
-    // are unique across versions() and distinct from the current schema, so no builder-side
-    // collision check is needed here (unlike the map codec's combined (key, value) hash).
+    // Keyed by the raw strict hash straight from SchemaHistory, whose versions() hold one entry per
+    // strict hash, so the keys are unique and none is the current hash, and no builder-side
+    // collision check is needed here (unlike the map codec's combined (key, value) hash). Two
+    // distinct layouts with one strict hash would share an entry; SchemaHistory rejects most such
+    // collisions, which have odds of about 2^-64, but not all.
     LongMap<ArrayProjectionSource> projectionSources = new LongMap<>();
     String elementName = elementField.name();
     for (SchemaHistory.VersionedSchema vs : history.versions()) {

@@ -199,9 +199,10 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     ctx.addField(rowWriterType, ROOT_ROW_WRITER_NAME);
     ctx.addField(ctx.type(Fory.class), FORY_NAME);
 
-    // Order matters for projection codecs: the encode pass registers nested-bean encoder fields
-    // on ctx as a side effect (see buildEncodeExpression), and the decode pass reads them. Building
-    // decode first would fail with "No bean codec registered". Keep encode genCode before decode.
+    // Order matters: the encode pass registers nested-bean encoder fields on ctx as a side effect
+    // (see serializeForBean), and the decode pass reads them. Building decode first would fail in
+    // deserializeForBean, which requires the registered encoder. A projection codec builds the
+    // encode pass for this reason only and then replaces it. Keep encode genCode before decode.
     Expression encodeExpr = buildEncodeExpression();
     String encodeCode = encodeExpr.genCode(ctx).code();
     Expression decodeExpr = buildDecodeExpression();
