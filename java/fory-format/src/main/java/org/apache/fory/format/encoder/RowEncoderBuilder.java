@@ -511,7 +511,10 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
         (methodName, signatures) ->
             signatures.forEach(
                 (methodType, method) -> {
-                  if (method.isDefault()) {
+                  // An absent field's default accessor returns the absent value, not its body.
+                  boolean absentAccessor =
+                      projecting && isAccessorOfAbsentField(methodName, methodType);
+                  if (!absentAccessor && method.isDefault()) {
                     return;
                   }
                   Object[] params = new Object[methodType.parameterCount() * 2];
@@ -520,7 +523,7 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
                     params[i * 2 + 1] = "unused" + i;
                   }
                   String body;
-                  if (projecting && isAccessorOfAbsentField(methodName, methodType)) {
+                  if (absentAccessor) {
                     body =
                         "return "
                             + defaultValueExpression(methodType.returnType(), implClass)
@@ -537,8 +540,8 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
   /**
    * True when {@code methodName(returnType)} on the current bean class names a property whose field
    * is not in the historical schema this projection codec is generating. Such a method gets a
-   * default-value body instead of {@code throw} so the interface proxy can serve callers that don't
-   * know the field is missing in this version.
+   * default-value body instead of {@code throw} or its interface {@code default} body, so the
+   * interface proxy can serve callers that don't know the field is missing in this version.
    */
   private boolean isAccessorOfAbsentField(String methodName, MethodType methodType) {
     // An accessor takes no arguments; the live-member pass above only removes the no-arg signature.

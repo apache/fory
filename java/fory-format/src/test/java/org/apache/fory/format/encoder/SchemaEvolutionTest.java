@@ -707,6 +707,36 @@ public class SchemaEvolutionTest {
     Assert.assertEquals(out.getNickname(), Optional.empty());
   }
 
+  /** v2 interface whose added accessor is a {@code default} method. */
+  public interface PersonIfaceDefaultV2 {
+    String getName();
+
+    int getAge();
+
+    @ForyRowVersion(since = 2)
+    default String getEmail() {
+      return "none";
+    }
+  }
+
+  @Test
+  public void interfaceAddedDefaultAccessorIsAbsent() {
+    PersonIfaceV1 in =
+        new PersonIfaceV1() {
+          public String getName() {
+            return "alice";
+          }
+
+          public int getAge() {
+            return 30;
+          }
+        };
+    byte[] bytes = evolvingCodec(PersonIfaceV1.class).encode(in);
+    PersonIfaceDefaultV2 out = evolvingCodec(PersonIfaceDefaultV2.class).decode(bytes);
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertNull(out.getEmail());
+  }
+
   /**
    * v3 interface: name and email; age removed (only present in v1 and v2). The history interface
    * declares the removed field's original signature; its method name is the live accessor's name,
