@@ -551,7 +551,8 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
       return false;
     }
     // Look up by the raw method name, not via getDescriptorByFieldName's wire-name conversion: this
-    // path runs only for interface beans (see buildImplClass), whose descriptor names are the method
+    // path runs only for interface beans (see buildImplClass), whose descriptor names are the
+    // method
     // names themselves, so descriptorsMap is keyed by exactly the names we iterate here.
     Descriptor d = descriptorsMap.get(methodName);
     if (d == null) {

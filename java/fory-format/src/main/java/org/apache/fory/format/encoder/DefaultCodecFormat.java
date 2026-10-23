@@ -96,8 +96,9 @@ enum DefaultCodecFormat implements Encoding {
   public MapEncoderBuilder newProjectionMapEncoder(
       final TypeRef<? extends Map<?, ?>> mapType,
       final TypeRef<?> beanToken,
-      final String rowCodecSuffix) {
-    return new MapEncoderBuilder(mapType, beanToken, rowCodecSuffix);
+      final String valCodecSuffix,
+      final String keyCodecSuffix) {
+    return new MapEncoderBuilder(mapType, beanToken, valCodecSuffix, keyCodecSuffix);
   }
 
   @Override
