@@ -28,9 +28,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.SortedMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.fory.TestUtils;
+import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.test.bean.BeanA;
@@ -141,6 +144,27 @@ public class DescriptorTest {
       Thread.sleep(100);
     }
     Assert.assertNull(isolate.get(), "isolated Fory classloader is still reachable");
+  }
+
+  /** A shut-down compiler pool must not reject one warm-up task for each field. */
+  @Test
+  public void testWarmSkipsShutDownPool() throws Exception {
+    try (URLClassLoader isolate =
+        new URLClassLoader(
+            TestUtils.forkClassPathUrls(), ClassLoader.getSystemClassLoader().getParent())) {
+      ThreadPoolExecutor pool =
+          (ThreadPoolExecutor)
+              isolate
+                  .loadClass(CodeGenerator.class.getName())
+                  .getMethod("getCompilationService")
+                  .invoke(null);
+      AtomicInteger rejected = new AtomicInteger();
+      pool.setRejectedExecutionHandler((task, executor) -> rejected.incrementAndGet());
+      pool.shutdown();
+      Class<?> probe = isolate.loadClass(WarmProbe.class.getName());
+      ((Runnable) probe.getDeclaredConstructor().newInstance()).run();
+      Assert.assertEquals(rejected.get(), 0);
+    }
   }
 
   private static WeakReference<ClassLoader> warmInIsolatedLoader() throws Exception {

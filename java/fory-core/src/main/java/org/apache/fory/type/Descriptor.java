@@ -889,7 +889,10 @@ public class Descriptor {
           if (executor == null) {
             executor = warmUpExecutor();
           }
-          executor.submit(warmUp);
+          // A caller can shut down the public compiler pool. Its rejection handler logs each task.
+          if (!executor.isShutdown()) {
+            executor.submit(warmUp);
+          }
         }
         if (field.isAnnotationPresent(Expose.class)) {
           haveExpose = true;
