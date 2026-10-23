@@ -136,9 +136,9 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     ctx.addImports(Row.class, ArrayData.class, MapData.class);
     ctx.addImports(BinaryRow.class, BinaryArray.class, BinaryMap.class);
     if (beanClass.isInterface()) {
-      // Append the projection suffix so each historical version of an interface bean gets its
-      // own impl class; the impl classes are inner classes of the codec and would collide on
-      // the simple name otherwise.
+      // The impl class is a member class of this codec, whose class name is unique, so the impl
+      // names cannot collide. The projection suffix only makes the impl class of a historical
+      // version easy to identify, for example in a stack trace.
       generatedBeanImplName =
           beanClass.getSimpleName() + "GeneratedImpl" + (classSuffix == null ? "" : classSuffix);
       generatedBeanImpl = buildImplClass();
