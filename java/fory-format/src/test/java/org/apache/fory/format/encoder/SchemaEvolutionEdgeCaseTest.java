@@ -31,6 +31,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import lombok.Data;
+import org.apache.fory.Fory;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
@@ -1332,6 +1333,34 @@ public class SchemaEvolutionEdgeCaseTest {
 
   private static long prefix(byte[] bytes) {
     return MemoryBuffer.fromByteArray(bytes).readInt64();
+  }
+
+  /**
+   * A projection whose code generation fails must fail the same way on every later decode of its
+   * layout, without generating again.
+   */
+  @Test
+  public void projectionGenerationFailureIsCached() {
+    int[] generated = {0};
+    IllegalStateException failure = new IllegalStateException("generation failed");
+    ProjectionSource<Object, Object> source =
+        new ProjectionSource<Object, Object>() {
+          @Override
+          Object generate() {
+            generated[0]++;
+            throw failure;
+          }
+
+          @Override
+          Object bind(Object classes, Fory fory) {
+            return classes;
+          }
+        };
+    for (int i = 0; i < 3; i++) {
+      Assert.assertSame(
+          Assert.expectThrows(IllegalStateException.class, () -> source.compile(null)), failure);
+    }
+    Assert.assertEquals(generated[0], 1);
   }
 
   /** Every field is 8 bytes wide, so the compact sort keeps the standard field order. */

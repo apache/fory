@@ -20,6 +20,7 @@
 package org.apache.fory.format.encoder;
 
 import org.apache.fory.Fory;
+import org.apache.fory.util.ExceptionUtils;
 
 /**
  * The projection codec for one historical layout of a schema-evolution codec. The generated classes
@@ -29,7 +30,13 @@ import org.apache.fory.Fory;
 abstract class ProjectionSource<C, P> {
   private volatile C classes;
 
-  /** Generates the projection classes for this layout. Runs at most once. */
+  /** The failure of {@link #generate}, rethrown by every later compile. Guarded by {@code this}. */
+  private Throwable failure;
+
+  /**
+   * Generates the projection classes for this layout. Runs at most once, unless it fails with a
+   * {@link VirtualMachineError}.
+   */
   abstract C generate();
 
   /** Creates one encoder's projection codec from the generated classes. */
@@ -41,7 +48,20 @@ abstract class ProjectionSource<C, P> {
       synchronized (this) {
         c = classes;
         if (c == null) {
-          c = generate();
+          if (failure != null) {
+            throw ExceptionUtils.throwException(failure);
+          }
+          try {
+            c = generate();
+          } catch (Throwable t) {
+            // Generation is deterministic, so a retry would rerun the code generator only to fail
+            // again, on every decode of this layout. A VirtualMachineError such as an
+            // OutOfMemoryError can be transient, so a later decode retries it.
+            if (!(t instanceof VirtualMachineError)) {
+              failure = t;
+            }
+            throw ExceptionUtils.throwException(t);
+          }
           classes = c;
         }
       }
