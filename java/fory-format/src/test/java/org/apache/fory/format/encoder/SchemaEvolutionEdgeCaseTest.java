@@ -585,6 +585,89 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   // ---------------------------------------------------------------------------
+  // List<Integer> and int[] infer list<int32> fields that differ only in element
+  // nullability, so their layouts and strict hashes differ. Schema.equals ignores
+  // element nullability; the history must not treat the two layouts as one.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class ScoresListV1 {
+    private String name;
+    private List<Integer> scores;
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = ScoresArrayV3.History.class)
+  public static class ScoresArrayV3 {
+    private String name;
+
+    @ForyRowVersion(since = 3)
+    private int[] scores;
+
+    interface History {
+      @ForyRowVersion(until = 3)
+      List<Integer> scores();
+    }
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = ScoresBase.History.class)
+  public static class ScoresBase {
+    private String name;
+
+    interface History {
+      @ForyRowVersion(until = 3)
+      List<Integer> scores();
+    }
+  }
+
+  /**
+   * Removes the {@code int[]} scores of v3 and v4; the base removes the {@code List<Integer>}
+   * scores of v1 and v2.
+   */
+  @Data
+  @lombok.EqualsAndHashCode(callSuper = true)
+  @ForyRowSchema(removedFields = ScoresRemovedV5.History.class)
+  public static class ScoresRemovedV5 extends ScoresBase {
+    interface History {
+      @ForyRowVersion(since = 3, until = 5)
+      int[] scores();
+    }
+  }
+
+  @Test
+  public void listRetypedToArray() {
+    ScoresListV1 in = new ScoresListV1();
+    in.setName("alice");
+    in.setScores(Arrays.asList(1, 2));
+    RowEncoder<ScoresArrayV3> reader = evolvingCodec(ScoresArrayV3.class);
+    ScoresArrayV3 out = reader.decode(evolvingCodec(ScoresListV1.class).encode(in));
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertNull(out.getScores());
+
+    ScoresArrayV3 current = new ScoresArrayV3();
+    current.setName("bob");
+    current.setScores(new int[] {3});
+    Assert.assertEquals(reader.decode(reader.encode(current)), current);
+  }
+
+  @Test
+  public void removedListAndArrayLayouts() {
+    RowEncoder<ScoresRemovedV5> reader = evolvingCodec(ScoresRemovedV5.class);
+    ScoresListV1 v1 = new ScoresListV1();
+    v1.setName("alice");
+    v1.setScores(Arrays.asList(1, 2));
+    Assert.assertEquals(
+        reader.decode(evolvingCodec(ScoresListV1.class).encode(v1)).getName(), "alice");
+
+    ScoresArrayV3 v3 = new ScoresArrayV3();
+    v3.setName("bob");
+    v3.setScores(new int[] {3});
+    Assert.assertEquals(
+        reader.decode(evolvingCodec(ScoresArrayV3.class).encode(v3)).getName(), "bob");
+  }
+
+  // ---------------------------------------------------------------------------
   // Wide schema (more than 64 fields) crossing the null-bitmap word boundary.
   // ---------------------------------------------------------------------------
 

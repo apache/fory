@@ -310,12 +310,13 @@ public final class SchemaHistory {
     all.sort((a, b) -> a.javaName.compareTo(b.javaName));
     // A field with finite [since, until) can leave two boundaries with identical field sets
     // (e.g. v1 and v4 both lack a field that lived in [v2, v4)). Collapse boundaries that
-    // produce the same schema into one VersionedSchema, since they round-trip identically.
-    // A real strict-hash collision — two distinct schemas producing the same hash — is caught by
-    // comparing schemas on insertion. Schema.equals compares fields by name, DataType, and
-    // nullability, the same identity the strict hash mixes, so it is the canonical dedup key.
+    // produce the same layout into one VersionedSchema, since they round-trip identically.
+    // The strict hash is the layout identity, so it is the dedup key. Schema.equals is weaker: it
+    // ignores list element nullability and fixed-size binary width, so it would merge a
+    // List<Integer> layout with an int[] layout and drop one of their hashes. A real strict-hash
+    // collision (two distinct schemas producing the same hash) is caught by hashToSchema below.
     int latestVersion = schemaVersions.last();
-    Map<Schema, VersionedSchema> bySchema = new LinkedHashMap<>();
+    Map<Long, VersionedSchema> byHash = new LinkedHashMap<>();
     // A removed field that a live field adds again with the same wire name and declared type holds
     // the same data, so the projection reads it in every older layout. Reading it only where its
     // layout happens to collapse with a version that has the field live would make the result
@@ -337,7 +338,7 @@ public final class SchemaHistory {
     // a live twin of the same declared type, and validateNoTypeChange rejects every other type
     // change whose layout could coincide with a newer one.
     Map<Long, Schema> hashToSchema = new HashMap<>();
-    Schema currentSchema = null;
+    Long currentHash = null;
     for (int v : schemaVersions) {
       List<FieldEntry> activeEntries = new ArrayList<>();
       for (FieldEntry fe : all) {
@@ -434,23 +435,23 @@ public final class SchemaHistory {
         // stored entry is the one flagged current. Enclosing histories test inner.isCurrent() to
         // find their own current combination, and fail to build if no inner entry is current.
         if (innerAllCurrent) {
-          bySchema.put(schema, vs);
+          byHash.put(hash, vs);
         } else {
-          bySchema.putIfAbsent(schema, vs);
+          byHash.putIfAbsent(hash, vs);
         }
         if (isCurrent) {
-          currentSchema = schema;
+          currentHash = hash;
         }
       }
     }
     // The all-current combination at the latest version is always one of the cartesian entries,
-    // so currentSchema is always set and present here.
-    VersionedSchema current = bySchema.get(currentSchema);
+    // so currentHash is always set and present here.
+    VersionedSchema current = byHash.get(currentHash);
     if (current == null) {
       throw new IllegalStateException("No current schema resolved for " + label);
     }
     return new SchemaHistory(
-        Collections.unmodifiableList(new ArrayList<>(bySchema.values())), current);
+        Collections.unmodifiableList(new ArrayList<>(byHash.values())), current);
   }
 
   /**
@@ -1070,9 +1071,9 @@ public final class SchemaHistory {
    * Reject a removed entry whose declared type differs from the live entry's when an older layout
    * could be byte-identical to a newer one, so the reader would decode old values with the new type
    * (a String re-added as an enum fails in valueOf). That holds when both encode to the same row
-   * field, and also when either reaches a versioned bean, whose older versions can make two
-   * different current shapes coincide. Otherwise the layouts stay distinct and the reader discards
-   * the old value.
+   * field (the same strict hash), and also when either reaches a versioned bean, whose older
+   * versions can make two different current shapes coincide. Otherwise the layouts stay distinct
+   * and the reader discards the old value.
    */
   private static void validateNoTypeChange(
       Class<?> beanClass, String name, List<FieldEntry> group) {
@@ -1085,14 +1086,18 @@ public final class SchemaHistory {
     if (live == null) {
       return;
     }
-    Field liveField = TypeInference.inferNamedField(name, live.typeRef, beanClass);
+    long liveHash =
+        computeStrictSchemaHash(
+            DataTypes.schema(TypeInference.inferNamedField(name, live.typeRef, beanClass)));
     for (FieldEntry fe : group) {
       if (fe.live || fe.typeRef.equals(live.typeRef)) {
         continue;
       }
       boolean reachesVersionedBean = !fe.nestedSites.isEmpty() || !live.nestedSites.isEmpty();
       if (reachesVersionedBean
-          || TypeInference.inferNamedField(name, fe.typeRef, beanClass).equals(liveField)) {
+          || computeStrictSchemaHash(
+                  DataTypes.schema(TypeInference.inferNamedField(name, fe.typeRef, beanClass)))
+              == liveHash) {
         throw new IllegalStateException(
             "Field '"
                 + name
