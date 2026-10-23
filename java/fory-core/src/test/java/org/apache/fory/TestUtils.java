@@ -28,6 +28,8 @@ import java.io.ObjectOutputStream;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -97,6 +99,20 @@ public class TestUtils {
     addPathElements(elements, System.getProperty("surefire.real.class.path"));
     addPathElements(elements, System.getProperty("java.class.path"));
     return String.join(File.pathSeparator, elements);
+  }
+
+  public static URL[] forkClassPathUrls() {
+    return Arrays.stream(forkClassPath().split(java.util.regex.Pattern.quote(File.pathSeparator)))
+        .map(TestUtils::toUrl)
+        .toArray(URL[]::new);
+  }
+
+  private static URL toUrl(String path) {
+    try {
+      return new File(path).toURI().toURL();
+    } catch (MalformedURLException e) {
+      throw new IllegalArgumentException(e);
+    }
   }
 
   private static void addPathElements(Set<String> elements, String path) {

@@ -32,6 +32,10 @@ public class ForyJitCompilerThreadFactory implements ThreadFactory {
     Thread thread = backingThreadFactory.newThread(task);
     thread.setName("fory-jit-compiler-" + threadNumber.incrementAndGet());
     thread.setDaemon(true);
+    // Pool threads start lazily on whichever thread submits a task and would inherit its context
+    // classloader. Pin the loader that defines Fory so every task sees the same context
+    // classloader on every JDK and a pool thread never keeps a caller's context classloader.
+    thread.setContextClassLoader(ForyJitCompilerThreadFactory.class.getClassLoader());
     return thread;
   }
 }
