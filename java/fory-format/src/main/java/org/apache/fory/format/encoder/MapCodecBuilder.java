@@ -94,6 +94,22 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
   }
 
   /**
+   * Fail the build when the history's current layout of one map position is not the position {@code
+   * wireField} that the codec writes. Only the type is compared: the history does not carry the
+   * nullability that the map writes the position with, which {@link #positionHash} supplies.
+   */
+  private void checkCurrentPosition(
+      String position, SchemaHistory.VersionedSchema current, Field wireField) {
+    Field historyField = DataTypes.fieldOfSchema(current.schema(), 0);
+    checkCurrentLayout(
+        "the " + position + " of " + mapType,
+        DataTypes.schema(
+            DataTypes.field(historyField.name(), wireField.type(), wireField.nullable())),
+        current.schema(),
+        positionHash(current, wireField));
+  }
+
+  /**
    * The evolution path, taken by every map codec with the flag on so that the payload always
    * carries the combined key and value strict hash. {@code valClass} and {@code keyClass} name
    * generated projection classes; a position without a reachable bean has one version and no
@@ -116,6 +132,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     SchemaHistory.VersionedSchema keyCurrent = keyHistory.current();
     Field valWire = DataTypes.itemFieldForMap(field);
     Field keyWire = DataTypes.keyFieldForMap(field);
+    checkCurrentPosition("key", keyCurrent, keyWire);
+    checkCurrentPosition("value", valCurrent, valWire);
 
     // Index one deferred projection source per (key-version, value-version) combination, keyed by
     // the combined hash. The current/current combination is the hot path and is handled by the

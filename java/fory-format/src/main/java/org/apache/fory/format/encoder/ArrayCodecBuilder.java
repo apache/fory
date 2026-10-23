@@ -98,6 +98,12 @@ public class ArrayCodecBuilder<C extends Collection<?>>
     // row codec for every nested class (not just one).
     SchemaHistory history = buildElementSchemaHistory(elementField.name(), elementType);
     SchemaHistory.VersionedSchema current = history.current();
+    Field element = DataTypes.arrayElementField(elementField);
+    checkCurrentLayout(
+        "the element of " + collectionType,
+        DataTypes.schema(DataTypes.field(elementField.name(), element.type(), element.nullable())),
+        current.schema(),
+        current.strictHash());
 
     // Index of hash → deferred projection source per non-current combination. Building it compiles
     // nothing: a combination's row and array codec classes are generated the first time a payload

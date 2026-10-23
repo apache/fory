@@ -118,6 +118,26 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
     return SchemaHistory.forElement(fieldName, elementType, codecFormat.historyFormat());
   }
 
+  /**
+   * Fail the build when the history's current layout of {@code owner}, with schema {@code history}
+   * and strict hash {@code historyHash}, is not the layout {@code inferred} that the codec writes.
+   * The history rebuilds the current layout from the annotations, and the writer tags its payloads
+   * with that layout's hash, so a divergence would tag payloads with the hash of another layout.
+   */
+  void checkCurrentLayout(
+      final String owner, final Schema inferred, final Schema history, final long historyHash) {
+    final SchemaHistory.Format format = codecFormat.historyFormat();
+    if (SchemaHistory.computeStrictSchemaHash(format, format.wireOrder(inferred)) != historyHash) {
+      throw new IllegalStateException(
+          "Schema history of "
+              + owner
+              + " resolved a current schema that differs from the inferred schema.\nhistory:\n"
+              + history
+              + "\ninferred:\n"
+              + inferred);
+    }
+  }
+
   @SuppressWarnings("unchecked")
   protected B castThis() {
     return (B) this;
