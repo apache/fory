@@ -97,6 +97,26 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
 
   protected final Map<TypeRef<?>, Reference> arrayWriterMap = new HashMap<>();
   protected final Map<TypeRef<?>, Reference> beanEncoderMap = new HashMap<>();
+
+  /**
+   * Suffix of the generated row, array, or map codec class name, and of the implementation class
+   * that a row codec generates for an interface bean. A projection codec sets it so that each
+   * version combination gets its own classes. It does not route nested bean codecs; {@link
+   * #nestedClassSuffixes} does.
+   */
+  String classSuffix;
+
+  /**
+   * Per-class projection suffix for nested bean codecs, used when one generated codec embeds more
+   * than one distinct versioned bean class at independent versions — for example an element typed
+   * {@code Map<KBean, VBean>}, whose key and value beans each project to their own historical row
+   * codec. Looked up by raw class in {@link #serializeForBean}; a class absent from the map, or a
+   * null map, reads at its current schema. Routing by raw class is exact because a writer writes
+   * one definition of a class, so every occurrence of a class in one payload is at the same
+   * version.
+   */
+  Map<Class<?>, String> nestedClassSuffixes;
+
   // We need to call beanEncoder's rowWriter.reset() before write a corresponding nested bean every
   // time.
   // Outermost beanEncoder's rowWriter.reset() should be called outside generated code before
@@ -511,40 +531,58 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       Field fieldIfKnown,
       TypeRef<?> typeRef,
       Expression structField) {
-    Class<?> rawType = getRawType(typeRef);
-    Reference rowWriter;
+    registerBeanCodec(writer, typeRef, structField);
+    Reference rowWriter = rowWriterMap.get(typeRef);
     Reference beanEncoder = beanEncoderMap.get(typeRef);
-    if (beanEncoder == null) {
-      // janino generics don't add cast, so this `<${type}>` is only for generated code readability
-      Expression schema = createSchemaFromStructField(structField);
-      String rowWriterName =
-          ctx.newName(StringUtils.uncapitalize(rawType.getSimpleName() + "RowWriter"));
-      NewInstance newRowWriter = new NewInstance(rowWriterType(), schema, writer);
-      ctx.addField(ctx.type(rowWriterType()), rowWriterName, newRowWriter);
-
-      Preconditions.checkArgument(!codecClassName(rawType).contains("."));
-      String encoderName = ctx.newName(StringUtils.uncapitalize(codecClassName(rawType)));
-      String encoderClass = codecQualifiedClassName(rawType);
-      TypeRef<?> codecTypeRef = TypeRef.of(GeneratedRowEncoder.class);
-      NewInstance newEncoder =
-          new NewInstance(
-              codecTypeRef,
-              encoderClass,
-              ExpressionUtils.newObjectArray(schema, newRowWriter, foryRef));
-      ctx.addField(encoderClass, encoderName, newEncoder);
-
-      rowWriter = new Reference(rowWriterName, rowWriterType());
-      rowWriterMap.put(typeRef, rowWriter);
-      beanEncoder = new Reference(encoderName, codecTypeRef);
-      beanEncoderMap.put(typeRef, beanEncoder);
-    }
-    rowWriter = rowWriterMap.get(typeRef);
 
     Expression expression =
         serializeForNotNullBean(ordinal, writer, inputObject, fieldIfKnown, rowWriter, beanEncoder);
 
     return new If(
         new Expression.IsNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expression);
+  }
+
+  /**
+   * Idempotently add the nested-bean row writer and row encoder as fields on the generated codec
+   * class and register them in {@link #beanEncoderMap} and {@link #rowWriterMap}. {@link
+   * #deserializeForBean} reads the encoder that this registers, so the encode pass must run before
+   * the decode pass, also for a decode-only projection codec.
+   */
+  private void registerBeanCodec(Expression writer, TypeRef<?> typeRef, Expression structField) {
+    if (beanEncoderMap.containsKey(typeRef)) {
+      return;
+    }
+    Class<?> rawType = getRawType(typeRef);
+    Expression schema = createSchemaFromStructField(structField);
+    String rowWriterName =
+        ctx.newName(StringUtils.uncapitalize(rawType.getSimpleName() + "RowWriter"));
+    NewInstance newRowWriter = new NewInstance(rowWriterType(), schema, writer);
+    ctx.addField(ctx.type(rowWriterType()), rowWriterName, newRowWriter);
+
+    Preconditions.checkArgument(!codecClassName(rawType).contains("."));
+    String encoderName = ctx.newName(StringUtils.uncapitalize(codecClassName(rawType)));
+    String encoderClass =
+        codecQualifiedClassName(rawType) + suffixFor(nestedClassSuffixes, typeRef);
+    TypeRef<?> codecTypeRef = TypeRef.of(GeneratedRowEncoder.class);
+    NewInstance newEncoder =
+        new NewInstance(
+            codecTypeRef,
+            encoderClass,
+            ExpressionUtils.newObjectArray(schema, newRowWriter, foryRef));
+    ctx.addField(encoderClass, encoderName, newEncoder);
+
+    rowWriterMap.put(typeRef, new Reference(rowWriterName, rowWriterType()));
+    beanEncoderMap.put(typeRef, new Reference(encoderName, codecTypeRef));
+  }
+
+  /**
+   * The suffix that {@code suffixes} routes {@code typeRef} to. The map is keyed from the same
+   * field walk as this descent, and SchemaHistory sites every bean with more than one version, so
+   * an absent class (or a null map) is single-version here and reads at its current schema.
+   */
+  private static String suffixFor(Map<Class<?>, String> suffixes, TypeRef<?> typeRef) {
+    String suffix = suffixes == null ? null : suffixes.get(getRawType(typeRef));
+    return suffix == null ? "" : suffix;
   }
 
   protected Expression createSchemaFromStructField(Expression structField) {

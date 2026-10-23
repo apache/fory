@@ -22,13 +22,14 @@ package org.apache.fory.format.encoder;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import org.apache.fory.Fory;
+import org.apache.fory.codegen.CodeGenerator;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
@@ -62,16 +63,155 @@ public class ArrayCodecBuilder<C extends Collection<?>>
   }
 
   Function<BinaryArrayWriter, ArrayEncoder<C>> buildWithWriter() {
+    final TypeRef<?> elementType = TypeUtils.getElementType(collectionType);
+    final CodeGenerator codeGenerator = schemaEvolution ? Encoders.pinCodeGenerator() : null;
     loadArrayInnerCodecs();
-    final Function<BinaryArrayWriter, GeneratedArrayEncoder> generatedEncoderFactory =
+    if (!schemaEvolution) {
+      final Function<BinaryArrayWriter, GeneratedArrayEncoder> generatedEncoderFactory =
+          generatedEncoderFactory();
+      return new Function<BinaryArrayWriter, ArrayEncoder<C>>() {
+        @Override
+        public ArrayEncoder<C> apply(final BinaryArrayWriter writer) {
+          return new BinaryArrayEncoder<>(
+              writer, generatedEncoderFactory.apply(writer), sizeEmbedded);
+        }
+      };
+    }
+    return buildVersionedWithWriter(
+        elementType, SchemaHistory.evolutionBean(elementType), codeGenerator);
+  }
+
+  /**
+   * The evolution path, taken by every array codec with the flag on so that the payload always
+   * carries the element's strict hash. {@code elementClass} names generated projection classes; it
+   * is null only when no bean is reachable, and then the history has one version and no projection.
+   */
+  private Function<BinaryArrayWriter, ArrayEncoder<C>> buildVersionedWithWriter(
+      final TypeRef<?> elementType,
+      final Class<?> elementClass,
+      final CodeGenerator codeGenerator) {
+    // Enumerate the element field over every versioned bean reachable through its wrappers, so an
+    // element like Map<KBean, VBean> evolves both the key bean and the value bean. The element
+    // schema's strict hash identifies the whole combination, and each combination's chosen versions
+    // are carried in vs.nestedBeanSchemas(), which ProjectionRouting uses to generate a projection
+    // row codec for every nested class (not just one).
+    SchemaHistory history = buildElementSchemaHistory(elementField.name(), elementType);
+    SchemaHistory.VersionedSchema current = history.current();
+    Field element = DataTypes.arrayElementField(elementField);
+    checkCurrentLayout(
+        "the element of " + collectionType,
+        DataTypes.schema(DataTypes.field(elementField.name(), element.type(), element.nullable())),
+        current.schema(),
+        current.strictHash());
+
+    // Index of hash → deferred projection source per non-current combination. Building it compiles
+    // nothing: a combination's row and array codec classes are generated the first time a payload
+    // with that hash is decoded. The suffix encodes each chosen inner-bean version so distinct
+    // cross-product entries do not collide on a single generated class.
+    //
+    // Keyed by the raw strict hash straight from SchemaHistory, whose versions() hold one entry per
+    // strict hash, so the keys are unique and none is the current hash, and no builder-side
+    // collision check is needed here (unlike the map codec's combined (key, value) hash). Two
+    // distinct layouts with one strict hash would share an entry; SchemaHistory rejects most such
+    // collisions, which have odds of about 2^-64, but not all.
+    LongMap<ArrayProjectionSource> projectionSources = new LongMap<>();
+    String elementName = elementField.name();
+    for (SchemaHistory.VersionedSchema vs : history.versions()) {
+      if (vs == current) {
+        continue;
+      }
+      projectionSources.put(
+          vs.strictHash(),
+          new ArrayProjectionSource(
+              collectionType, codecFormat, elementClass, elementName, vs, codeGenerator));
+    }
+    final Function<BinaryArrayWriter, GeneratedArrayEncoder> currentFactory =
         generatedEncoderFactory();
+    long currentHash = current.strictHash();
     return new Function<BinaryArrayWriter, ArrayEncoder<C>>() {
       @Override
       public ArrayEncoder<C> apply(final BinaryArrayWriter writer) {
-        return new BinaryArrayEncoder<>(
-            writer, generatedEncoderFactory.apply(writer), sizeEmbedded);
+        return new VersionedBinaryArrayEncoder<>(
+            writer,
+            currentFactory.apply(writer),
+            sizeEmbedded,
+            currentHash,
+            new ProjectionCache<>(projectionSources, fory));
       }
     };
+  }
+
+  /**
+   * Deferred projection codec for one historical element version, shared by every encoder of the
+   * codec. The row and array codec classes are compiled on the first {@link #compile} call (the
+   * first decode of this version's hash by any encoder), not at build time. Static and built from
+   * values captured at build time, so a later change to the builder cannot reach a lazy compile.
+   */
+  private static final class ArrayProjectionSource
+      extends ProjectionSource<
+          ArrayProjectionSource.Classes, VersionedBinaryArrayEncoder.ProjectionArrayCodec> {
+    private final TypeRef<? extends Collection<?>> collectionType;
+    private final Encoding codecFormat;
+    private final Class<?> elementClass;
+    private final String elementName;
+    private final SchemaHistory.VersionedSchema version;
+    private final CodeGenerator codeGenerator;
+
+    ArrayProjectionSource(
+        TypeRef<? extends Collection<?>> collectionType,
+        Encoding codecFormat,
+        Class<?> elementClass,
+        String elementName,
+        SchemaHistory.VersionedSchema version,
+        CodeGenerator codeGenerator) {
+      this.collectionType = collectionType;
+      this.codecFormat = codecFormat;
+      this.elementClass = elementClass;
+      this.elementName = elementName;
+      this.version = version;
+      this.codeGenerator = codeGenerator;
+    }
+
+    @Override
+    VersionedBinaryArrayEncoder.ProjectionArrayCodec bind(Classes r, Fory fory) {
+      try {
+        BinaryArrayWriter projWriter = codecFormat.newArrayWriter(r.listField);
+        Object[] references = {r.listField, projWriter, fory};
+        GeneratedArrayEncoder codec = (GeneratedArrayEncoder) r.ctor.invokeExact(references);
+        return new VersionedBinaryArrayEncoder.ProjectionArrayCodec(projWriter, codec);
+      } catch (Throwable e) {
+        throw ExceptionUtils.throwException(e);
+      }
+    }
+
+    @Override
+    Classes generate() {
+      // Generates the projection row codec for every nested versioned bean class in this
+      // combination, both map key and value, so the array codec's references all resolve.
+      Class<?> arrayClass =
+          Encoders.loadOrGenProjectionArrayCodecClass(
+              collectionType,
+              TypeRef.of(elementClass),
+              codecFormat,
+              ProjectionRouting.projectionSuffix(version),
+              ProjectionRouting.nestedSuffixesFor(version, codecFormat, codeGenerator),
+              codeGenerator);
+      // forElement substitutes each chosen historical struct into its leaf, so the element field
+      // at this combination is the single field of vs.schema(); wrap it back in the list field.
+      return new Classes(
+          Encoders.constructorHandleFor(arrayClass, GeneratedArrayEncoder.class),
+          DataTypes.arrayField(elementName, DataTypes.fieldOfSchema(version.schema(), 0)));
+    }
+
+    static final class Classes {
+      final MethodHandle ctor;
+      final Field listField;
+
+      Classes(MethodHandle ctor, Field listField) {
+        this.ctor = ctor;
+        this.listField = listField;
+      }
+    }
   }
 
   private void loadArrayInnerCodecs() {
@@ -90,23 +230,8 @@ public class ArrayCodecBuilder<C extends Collection<?>>
     final TypeRef<?> elementType = TypeUtils.getElementType(collectionType);
     final Class<?> arrayCodecClass =
         Encoders.loadOrGenArrayCodecClass(collectionType, elementType, codecFormat);
-
-    final MethodHandle constructorHandle;
-    try {
-      final var constructor =
-          arrayCodecClass.asSubclass(GeneratedArrayEncoder.class).getConstructor(Object[].class);
-      constructorHandle =
-          MethodHandles.lookup()
-              .unreflectConstructor(constructor)
-              .asType(MethodType.methodType(GeneratedArrayEncoder.class, Object[].class));
-    } catch (final NoSuchMethodException | IllegalAccessException e) {
-      throw new EncoderException(
-          "Failed to construct array codec for "
-              + collectionType
-              + " with element class "
-              + elementType,
-          e);
-    }
+    final MethodHandle constructorHandle =
+        Encoders.constructorHandleFor(arrayCodecClass, GeneratedArrayEncoder.class);
     return new Function<BinaryArrayWriter, GeneratedArrayEncoder>() {
       @Override
       public GeneratedArrayEncoder apply(final BinaryArrayWriter writer) {

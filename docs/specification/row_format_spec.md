@@ -255,28 +255,29 @@ The compact format provides space-efficient encoding with additional optimizatio
 
 1. **Field Slot Sizes**: Each field uses its natural width (Wi = type width or 8 for variable)
 2. **Null Bitmap Position**: Placed after field slots, can borrow alignment padding
-3. **Field Order**: Fields are sorted by alignment (8-byte → 4-byte → 2-byte → 1-byte → variable)
+3. **Field Order**: Fields are sorted by slot width (see [Field Sorting Algorithm](#field-sorting-algorithm))
 4. **Conditional Bitmap**: Skipped entirely if all fields are non-nullable
 
 #### Null Bitmap (Compact)
 
-- **Size**: `(num_nullable_fields + 7) / 8` bytes (byte-aligned, not 8-byte aligned)
+- **Size**: `(num_fields + 7) / 8` bytes, one bit per field (byte-aligned, not 8-byte aligned)
 - **Skipped**: When all fields are primitive/non-nullable
 - **Position**: After all fixed-size field slots, can use alignment padding space
 
 #### Field Sorting Algorithm
 
-Fields are sorted to minimize padding and optimize alignment:
+Fields are sorted to reduce padding. The sort key of a field is its slot width `w`: its fixed
+width (see [Fixed-Width Calculation](#fixed-width-calculation)), or 8 for a variable-width field,
+whose slot holds an offset and a size.
 
-```
-Priority order (highest to lowest):
-1. Fields with 8-byte alignment (int64, float64, variable-width)
-2. Fields with 4-byte alignment (int32, float32)
-3. Fields with 2-byte alignment (int16)
-4. Fields with 1-byte alignment (int8, bool)
-```
+1. Group 0 holds the fields whose `w` is 2, 4, or a multiple of 8. Group 1 holds every other
+   width, such as 1, 3, 6, or 12. Group 0 comes first.
+2. Within a group, a larger `w` comes first.
+3. The sort is stable: fields with the same group and `w` keep their order in the schema.
 
-Within each alignment group, larger fields come first.
+A struct sorts its own fields by the same rule. For example, `bool`, `int16`, `int64`, `string`,
+and a 12-byte inline struct `{int64, int32}` sort as `int64` and `string` (in schema order),
+`int16`, the 12-byte struct, then `bool`.
 
 #### Fixed-Size Struct Inlining
 
@@ -300,15 +301,22 @@ This eliminates the offset+size indirection for fixed-size nested structures.
 
 A field's fixed width is determined recursively:
 
-- **Primitive types**: Natural byte width (1, 2, 4, or 8)
-- **Struct types**: Sum of all child fixed widths (if all children are fixed-width)
-- **Variable types** (string, array, map): Returns -1 (uses 8-byte offset+size slot)
+- **Primitive types**: Natural byte width: 1 for `bool` and `int8`; 2 for `int16` and `float16`;
+  4 for `int32`, `float32`, and `date32`; 8 for `int64`, `float64`, `timestamp`, and `duration`
+- **Fixed-size binary**: Its byte width
+- **Struct types**: The struct's null bitmap bytes plus the sum of all child fixed widths (if all
+  children are fixed-width). The bitmap bytes are 0 when every child is non-nullable, and
+  `(num_children + 7) / 8` otherwise
+- **Variable types** (string, variable-size binary, decimal, list, map): Returns -1 (uses 8-byte
+  offset+size slot)
 
 ```
 fixed_width(field) =
-  if primitive: type_width
+  if primitive or fixed-size binary: type_width
   if struct and all_children_fixed: header_bytes + sum(fixed_width(child) for each child)
   else: -1 (variable, uses 8-byte slot)
+
+header_bytes = 0 if no child is nullable, else (num_children + 7) / 8
 ```
 
 ### Compact Array Binary Layout
@@ -342,6 +350,182 @@ if (fixed_width % 8 == 0):
 1. **Element Count**: 4 bytes instead of 8 bytes
 2. **Null Bitmap**: Byte-aligned, skipped if elements are non-nullable
 3. **Fixed-Size Structs**: Inline storage for fixed-width struct elements
+
+---
+
+## Schema Evolution
+
+Schema evolution lets a codec read payloads written by older versions of the same struct. It is
+opt-in and currently implemented in Java only. It does not change the existing wire contract
+above: a payload written without it is unchanged. When it is enabled, the row hash word holds the
+strict hash below instead of the default schema hash, and every top-level array and map payload
+starts with an 8-byte hash prefix. An array or map nested in a row, an array, or a map carries no
+prefix. Producer and consumer must agree on whether it is enabled. The protocol below
+is defined over language-neutral inputs so another runtime can implement it and interoperate with
+Java payloads.
+
+See the [Java row format guide](../row-format/java.md#schema-evolution) for usage, annotations,
+and limitations.
+
+### Version Model
+
+- Versions are per-struct integers starting at 1. Version numbers never appear on the wire;
+  payloads are identified by a strict schema hash. A reader decodes a payload when one of its
+  layouts has the payload's hash, so peers need no synchronized version counters.
+- A schema history is a set of field entries `(wire name, type, nullability, since, until)`.
+  A live field has an unbounded `until`; a removed field declares the version it disappeared in.
+  How the entries are declared is language-specific (Java uses annotations and a removed-fields
+  interface); the protocol object is the entry tuple.
+- A layout is materialized at version 1 and at every `since` and `until` version, even when no
+  field is active at that version (a version-1 payload of a struct whose fields all arrive later
+  has an empty layout). Layouts that come out identical collapse into one entry.
+- Reading a payload that predates a field yields the reader type's absent value: an empty
+  optional for an optional type, null for another nullable field, and the type's zero value (`0`,
+  `0.0`, `false`, empty for languages without null) otherwise. A default that the reader's type
+  declares for the field (a field initializer, for example) does not apply. Fields removed in the
+  reader's schema are discarded.
+- A removed entry and a live entry with the same wire name and the same declared type in the
+  implementation language are the same field: the reader reads the removed entry's value into the
+  live field in every layout that has it. A removed entry with a different declared type is
+  invalid, and building the history fails, when the two entries have the same row type and
+  nullability after the format puts every struct in wire order (in the compact format, the sort
+  can make two structs whose children differ only in order match: `{a: int32, b: int64}` and
+  `{b: int64, a: int32}` match, but `{x: int64, y: int64}` and `{y: int64, x: int64}` do not,
+  because children of equal width keep their order), or when either reaches a versioned struct:
+  an older layout could then be identical to a newer one, and the reader would decode old values
+  as the new type. A removed entry with a different declared type is otherwise discarded, because
+  its row type or nullability differs.
+  Layouts that come out identical are one entry, so a reader reads a field that any of the
+  collapsed versions reads.
+- When a struct contains other versioned structs (directly, or through list elements, map keys, or
+  map values, to any depth), each distinct nested struct type is one version dimension and the
+  reader enumerates the cross-product of versions. A single payload carries one version per struct
+  type.
+
+### Wire Names and Canonical Field Order
+
+- A field's wire name is its declared member name converted to lower `snake_case` by the field-name
+  rule of the xlang object-graph format (a `camelCase` name converts; a name already in
+  `snake_case` is used as-is). That rule does not yet define the conversion of acronyms, a leading
+  capital letter, or non-ASCII capital letters, and the runtimes differ on them. Only ordinary
+  lowerCamelCase names, with no consecutive capital letters and only ASCII capital letters, are
+  portable across runtimes today. A runtime can restrict its member names further: the Java
+  runtime rejects a member name that contains an underscore.
+- The canonical order of the fields of a versioned layout is ascending by wire name, compared by
+  Unicode code point (equivalently, byte-wise over the UTF-8 encodings). Duplicate wire names
+  within one version are invalid.
+- The compact format then sorts the fields of every struct, at every depth (including structs in
+  list elements and in map keys and values), with a stable sort over the canonical order. The
+  sort key is the field's slot width `w`: the [fixed width](#fixed-width-calculation) of a
+  fixed-width field, and 8 for a variable-width field. A field whose `w` is 2, 4, or a multiple
+  of 8 sorts before a field with any other `w`. Within each of those two groups, a larger `w`
+  sorts first, and fields with equal `w` keep their canonical order. For example, a `string` and
+  an `int64` keep their canonical order, and a 12-byte inline struct `{int64, int32}` sorts after
+  an `int16` and before a `bool`.
+- A custom codec's encoded shape (its struct children, their names, and their order) is fixed by
+  the codec's own definition, not by name sorting, and must be reproduced identically in every
+  runtime that registers an equivalent codec. The codec's order is the canonical order of its
+  struct.
+
+### Strict Schema Hash
+
+The strict hash distinguishes layouts that differ in row format, field name, or nullability,
+unlike the default schema hash, which mixes only type IDs. All inputs are language-neutral.
+
+- State: an unsigned 64-bit accumulator `h`, seeded with the FNV-1a offset basis
+  `0xcbf29ce484222325`. Each input value `v` (one unsigned 64-bit integer) mixes as
+  `h = (h XOR v) * 0x100000001b3 mod 2^64` (the FNV-1a prime). A negative input (a negative
+  decimal scale) mixes as its 64-bit two's-complement value.
+- The first value mixed after the seed is the format tag: `0` for the standard format and `1` for
+  the compact format. The two formats write a layout in the same field order when the compact sort
+  moves no field (for example, when every field is 8 bytes wide), so without the tag a reader of
+  one format would accept a payload of the other and decode wrong values.
+- The hash covers fields in the order they are on the wire, at every depth: the canonical order
+  for the standard format, and the compact sort order above for the compact format,
+  including for structs in list elements and map entries. The hash of a layout mixes the format
+  tag, then folds its top-level fields in that order, each as a named field.
+- A named field mixes: each byte of the wire name's UTF-8 encoding, then one `0` terminator,
+  then the field's shape.
+- A field's shape mixes, in order:
+  1. The Fory type ID (table below).
+  2. Shape parameters the ID does not carry: for `binary`, the byte width (`0` for
+     variable-width); for `decimal`, the precision then the scale.
+  3. Nullability: `1` if nullable, `0` otherwise.
+  4. Children: a `list` mixes its element field's shape and a `map` mixes its key field's shape
+     then its value field's shape — child positions are fixed by the parent type, so no names are
+     mixed. At every depth, a map's key field mixes nullability `0` and its value field mixes
+     nullability `1`. A `struct` mixes its child count, then each child as a named field; the count
+     delimits the struct's extent so nesting structure stays unambiguous.
+- Type IDs are the row format's subset of the Fory cross-language type table: `bool` 1, `int8` 2,
+  `int16` 3, `int32` 4, `int64` 6, `float16` 17, `float32` 19, `float64` 20, `string` 21,
+  `list` 22, `map` 24, `struct` 27, `duration` 37, `timestamp` 38, `date32` 39, `decimal` 40,
+  `binary` 41.
+- The hash is 64 bits, so two distinct layouts in one history hash to the same value with odds of
+  about 2^-64. An implementation should reject a history with such a collision when it builds the
+  codec, but it need not detect every collision.
+- Known-answer vectors for the strict hash in the standard format, except where a row names the
+  compact format (`n` is nullable, `nn` is not nullable):
+
+  | Layout                                                   | Strict hash          |
+  | -------------------------------------------------------- | -------------------- |
+  | `id: int32 nn`                                           | `0x506a3242a9f93ae2` |
+  | `id: int32 nn`, compact format                           | `0xb7db30d6e6593b2f` |
+  | `name: string n`                                         | `0x4bd0d984e7109ef6` |
+  | `größe: int64 nn`                                        | `0xe5fcaf6a66d32a0e` |
+  | `amount: decimal(10, 2) nn`                              | `0x2ef05b2b90e987a9` |
+  | `amount: decimal(38, -3) nn`                             | `0x7e49dad4d1337a8a` |
+  | `blob: binary n, digest: binary(4) nn`                   | `0xca28ad1d8bf595e7` |
+  | `tags: list<string n> n`                                 | `0x55f88fd672e92ea9` |
+  | `counts: map<string nn, int32 n> n`                      | `0x570b6dadf84868c8` |
+  | `point: struct<x: int32 nn, y: int32 nn> n, z: int64 nn` | `0x793051ee66a15234` |
+  | `combine(0x506a3242a9f93ae2, 0x4bd0d984e7109ef6)`        | `0x11ce9d3600e26f89` |
+
+  The layout with the fields `day: date32 n`, `dur: duration n`, `f16: float16 nn`,
+  `f32: float32 nn`, `f64: float64 nn`, and `ts: timestamp n` has the strict hash
+  `0xf6320f76f21330bc` in the standard format.
+
+  In the compact format, the layout with the fields `code: string n`, `flag: bool nn`,
+  `id: int64 nn`, `stats: struct<count: int32 nn, total: int64 nn> n`, and `version: int16 nn`
+  hashes in the order `code`, `id`, `version`, `stats` (children `total`, `count`), `flag`. Its
+  strict hash is `0xa6ca2310859be6e6`.
+
+### Framing and Dispatch
+
+- A row payload's existing leading 8-byte hash word (little-endian) holds the strict hash of the
+  writer's current layout when evolution is enabled, and the default schema hash otherwise.
+- Array and map payloads carry no hash word without evolution. With evolution, every top-level
+  array and map payload starts with an 8-byte prefix (little-endian). An array or map nested in a
+  row, an array, or a map carries no prefix. So every payload written with evolution enabled
+  starts, after any size prefix, with an 8-byte schema identifier: the strict hash of its layout
+  for a row or an array, and the combined key and value hash for a map.
+- When the payload size is written before the payload (a little-endian int32), the size comes
+  first and the hash word or prefix follows it. The size counts the 8 bytes of the hash and the
+  body, but not its own 4 bytes.
+- An array's prefix is the strict hash of a layout with one field: the empty name `""`, the element
+  type with each reachable struct at the payload's version, and the element's nullability.
+- A map's prefix is one combined value,
+  `combine(keyHash, valueHash) = mix(mix(basis, keyHash), valueHash)` with the same basis and mix
+  step as above. `keyHash` and `valueHash` are each the strict hash of a one-field layout built as
+  for an array element: the key with nullability `0`, and the value with nullability `1`. A
+  position that reaches no struct still hashes its type. The combination is order-sensitive, so a
+  map key and value evolve independently while the payload carries one hash. Nested versioned
+  structs need no prefix of their own: their layouts substitute into the enclosing payload's
+  hash.
+- The reader dispatches on the hash: the current layout's hash selects the current codec, a known
+  historical hash selects that layout's projection, and an unknown hash is an error.
+- Known-answer vectors for the prefix in the standard format, except where a row names the
+  compact format (`n` is nullable, `nn` is not nullable):
+
+  | Payload                                              | Prefix               |
+  | ---------------------------------------------------- | -------------------- |
+  | map, key `string nn`, value `int32 n`                | `0xa8efad587d8a6b3b` |
+  | array of `struct<narrow: int8 nn, wide: int64 nn> n` | `0x66c342b5ad6942cb` |
+  | the same array, compact format                       | `0x905b89131d905a88` |
+
+- Whether evolution is enabled is agreed out of band. Array and map payloads written without
+  evolution have no header, so an evolution-off consumer cannot detect the prefix of an
+  evolution-enabled payload, and the result of that read is undefined; see the Java guide for the
+  rollout procedure.
 
 ---
 
@@ -440,7 +624,7 @@ row_size = fixed_region_size + bitmap_size + variable_data_size
 
 where:
   fixed_region_size = sum of (fixed_width(field) or 8 for each field)
-  bitmap_size = all_non_nullable ? 0 : (num_nullable_fields + 7) / 8
+  bitmap_size = all_non_nullable ? 0 : (num_fields + 7) / 8
   // May be rounded to 8-byte boundary if has variable fields
 ```
 

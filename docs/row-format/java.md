@@ -277,6 +277,204 @@ BinaryRow row = encoder.toRow(child);
 Parent decoded = encoder.fromRow(row);
 ```
 
+## Schema Evolution
+
+Enable `.withSchemaEvolution()` on a row, array, or map codec builder to read payloads written
+by older versions of the same bean. Writing always uses the current version; reading detects
+the payload's version from a strict hash at the head of the payload. Java is the only
+implementation today. The protocol is language-neutral and defined in the
+[row format specification](../specification/row_format_spec.md#schema-evolution).
+
+Annotate fields added after v1 with `@ForyRowVersion(since = N)`:
+
+```java
+@Data
+public class Person {
+  String name;
+  int age;
+
+  @ForyRowVersion(since = 2)
+  String email;
+}
+```
+
+Build the codec with schema evolution enabled. It writes the current version and reads the
+current and older versions:
+
+```java
+RowEncoder<Person> codec =
+    Encoders.buildBeanCodec(Person.class).withSchemaEvolution().build().get();
+byte[] bytes = codec.encode(person);
+Person current = codec.decode(bytes);
+// v1Bytes was written with schema evolution, before Person had the email field.
+Person older = codec.decode(v1Bytes);
+```
+
+A v1 payload (with `name` and `age` only) decodes to a `Person` whose `email` is `null`.
+Primitive fields added later default to `0`, `0.0`, or `false`, and `Optional` fields to
+`Optional.empty()`. A field initializer does not apply to a field that the payload lacks.
+Unannotated fields are treated as present from the first version, so a class can adopt versioning
+by annotating only the fields added after v1.
+
+Put the annotation on the field of a class, on a record component, or on an accessor method of an
+interface bean. The codec does not read it from other methods, so building the codec fails when
+another method carries it, such as the getter of a class field. A class bean does not read the
+annotations of an interface that it implements, because they belong to the codec of that
+interface bean. Annotate the fields of the class.
+
+For a record, the absent component's default is passed to the canonical constructor, so a
+constructor that rejects `null` for a reference component added in a later version throws when
+decoding an older payload. Let the constructor tolerate the missing value, for example by
+normalizing `null` to a default:
+
+```java
+public record Person(String name, @ForyRowVersion(since = 2) String email) {
+  public Person {
+    if (email == null) {
+      email = "";
+    }
+  }
+}
+```
+
+Remove a field by deleting the Java member and declaring it on a nested history interface as a
+method with a `@ForyRowVersion(until = N)`. The method's return type carries any parameterized
+type information from the original field. `removedFields` must name an interface; building the
+codec fails for a class.
+
+```java
+@Data
+@ForyRowSchema(removedFields = Person.History.class)
+public class Person {
+  String name;
+
+  @ForyRowVersion(since = 2)
+  String email;
+
+  interface History {
+    @ForyRowVersion(until = 3)
+    int age();
+
+    @ForyRowVersion(until = 5)
+    List<String> tags();
+  }
+}
+```
+
+The history method name matches the name of the original live member. For a class or a record,
+including a Lombok `@Data` class, that is the field name (`age`, `tags`). For an interface bean,
+it is the accessor method name (`getAge`). The codec cannot detect a history method with the wrong
+name: a class that declares `getTags()` instead of `tags()` gets the wire name `get_tags`, so
+every historical layout that holds that field hashes differently from the payloads that the old
+version wrote, and those payloads fail to decode with `ClassNotCompatibleException`. Test that an
+old payload still decodes before you retire a live field.
+
+A subclass inherits the removed fields that its superclasses declare with `@ForyRowSchema`, and
+an interface bean inherits those of its superinterfaces, the same as it inherits their live fields.
+
+A field that is removed and later added again with the same name and the same Java type is one
+field: older payloads that hold it decode with its value. If the Java type changes and the row
+type or the nullability changes too (for example `String` to `int`, or `Integer` to `int`), older
+values are discarded. If the Java type changes but the row type and the nullability stay the same
+(for example `String` to an enum), or either type reaches a versioned bean (directly, or through a
+list or map), building the codec fails, because an old layout could be identical to the new one
+and old values would decode as the new type. To change the type of a field, give the new member a
+new name.
+
+A field handled by a custom codec evolves as its encoded representation. When `getForyField`
+returns null, the column follows `encodedType()`, and a versioned bean in that type evolves as
+usual. When `getForyField` returns a field, that field is the whole column: the members of the
+declared Java type do not change the layout, and their `@ForyRowVersion` annotations have no
+effect.
+
+### Wire Format and Limitations
+
+Producers and consumers must agree on the `withSchemaEvolution()` flag — they are not
+wire-compatible otherwise. Row payloads always carry an 8-byte hash slot; under evolution its
+value is the strict hash (which includes field name and nullability), so a flag-mismatched
+peer fails loudly with `ClassNotCompatibleException`. Arrays and maps prepend an 8-byte prefix
+under evolution (the strict hash for an array, the combined key and value hash for a map) and no
+prefix otherwise. An evolution-on consumer rejects evolution-off array and map bytes. An
+evolution-off consumer cannot detect evolution-on array and map bytes, so the result of that read
+is undefined. With evolution on, the hash also identifies the row format, so a compact consumer
+rejects standard payloads with `ClassNotCompatibleException`, and the reverse.
+
+Only `encode` and `decode` write and check the hash. `toRow`, `fromRow`, `toArray`, `fromArray`,
+`toMap`, and `fromMap` always use the current schema, and the bytes of a `BinaryRow` hold no hash.
+To read older versions, store the output of `encode` and read it with `decode`.
+
+Turning the flag on changes the wire format of every payload, so do it as a cutover, not as a
+rolling change. During a rolling deploy, flag-on and flag-off peers reject each other's rows, and
+the result of a flag-off reader on flag-on arrays and maps is undefined. Rows written before the
+cutover are not readable with the flag on. Stop or drain the producers, rewrite or stop reading
+the stored payloads, and then start every peer with the flag on, in a release that changes no
+schema.
+
+After that, deploy every reader of a schema change before any writer. A reader decodes payloads
+whose layout it knows, from its own version and older versions, and it rejects a payload whose
+layout it does not know with `ClassNotCompatibleException`.
+
+In a GraalVM native image, an evolution codec cannot decode a payload with an older layout: the
+decode fails. This is a known limitation.
+
+The hash algorithm, wire names, field order, and framing are specified language-neutrally in
+the [row format specification](../specification/row_format_spec.md#schema-evolution). Java is the
+only implementation today, so Python, C++, and other runtimes cannot read evolution-enabled
+payloads until they implement that protocol.
+
+Field identity on the wire is the snake_case form of the member name (`createdAt` becomes
+`created_at`), and a versioned layout orders fields by that wire name. The `snake_case` conversion
+inserts an underscore before each ASCII capital letter and lowercases it, and changes no other
+character.
+
+With schema evolution, a member name or a history method name with an underscore, such as
+`created_at` or `count_`, fails the codec build. The build also fails when the member-name order
+and the wire-name order differ, which happens only for a character outside the Basic Multilingual
+Plane. The error names the members to rename. Other Fory runtimes do not all convert acronyms, a
+leading capital letter, or non-ASCII capital letters the same way, so use ordinary lowerCamelCase
+member names (`createdAt`, not `fooURL` or `URLValue`) for portability.
+
+Because field names are wire identity, a rename is a removal plus an addition, not an in-place
+mapping: declare the old name on the history interface with `until = N` and annotate the renamed
+member with `since = N`. Older payloads then decode with the renamed field at its default, not
+carrying over the old field's value; renaming without those declarations changes the payload hash
+and older payloads stop decoding. The wire name derives from the field name for a class or a
+record, and from the accessor method name for an interface bean, so converting a bean between a
+class and an interface also changes every wire name and is a rename of every field.
+
+A reader selects the matching layout from the 8-byte strict hash on the payload. The hash includes
+field names and nullability and is checked for collisions across a bean's own versions when the
+codec is built, but it is still a 64-bit value: a payload whose hash coincides with one of the
+reader's historical layouts is decoded against that layout. This is the same hash-based dispatch
+the row format has always used, so feeding a codec bytes it was not built for has undefined results
+whether or not evolution is enabled. Only hand a codec payloads produced for the same bean.
+
+Nested evolution works to arbitrary depth and places no restriction on shape: a versioned bean
+may contain versioned beans that themselves contain versioned beans, the same versioned bean
+class may back more than one field, and fields typed as a non-evolving bean, a list, or a map are
+unrestricted. Each nesting level is routed to the correct historical layout. A versioned bean may
+be used as a map key as well as a map value. When the key and value are different classes, they
+evolve independently; when one class backs both, a payload holds one version of it. This
+holds wherever the map appears: as the codec's top-level type, nested inside a bean field, or
+reached through a top-level array or map (such as `List<Map<KeyBean, ValueBean>>`), and a single
+map may evolve more than one distinct bean class across its key and value. A top-level map carries
+its own hash identifying both layouts together; a map nested inside an array, another map, or a
+bean field has its layouts folded into the enclosing payload's hash.
+
+When a versioned bean contains other versioned beans, the reader can read one layout per
+combination of versions across the composition, with each bean class at one version. Building the
+codec computes the layout and hash of every combination, so the build time and memory grow with
+the product of the version counts of the distinct versioned bean classes, and the codec sets no
+limit. A map whose key and value both evolve combines their versions the same way. The first
+`decode` of a payload with each older layout takes longer than later ones, because the codec
+prepares its reader for that layout inside that call.
+
+To bound the growth, stop reading the oldest layouts: remove an entry from a bean's `History`
+interface, or remove or lower the `since` of a live field so that no layout without that field
+remains. Either change removes every layout that differs only by that field, so the reader then
+rejects every payload written with one of those layouts. This is a read-side decision only; the
+writer always uses the current schema.
+
 ## Related Topics
 
 - [Cross-Language Interoperability](../object-serialization/java/basic-serialization.md#cross-language-interoperability) - xlang mode

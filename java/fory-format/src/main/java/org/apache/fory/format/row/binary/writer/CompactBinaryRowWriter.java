@@ -22,6 +22,7 @@ package org.apache.fory.format.row.binary.writer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.CompactRowLayout;
@@ -89,6 +90,17 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
 
   public static Schema sortSchema(final Schema schema) {
     return new Schema(sortFields(schema.fields()), schema.metadata());
+  }
+
+  /**
+   * Sorts every struct in {@code schema} into compact write order, including structs in list
+   * elements and in map keys and values. {@link #sortSchema} stops at list and map boundaries
+   * because each nested row writer and reader sorts its own struct. This form gives the order of
+   * every struct on the wire in one schema, which the schema-evolution strict hash needs.
+   */
+  @Internal
+  public static Schema sortSchemaDeep(final Schema schema) {
+    return new Schema(sortFields(schema.fields(), true), schema.metadata());
   }
 
   @Override
@@ -167,26 +179,57 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
   }
 
   static List<Field> sortFields(final List<Field> fields) {
+    return sortFields(fields, false);
+  }
+
+  /**
+   * Sorts {@code fields} and the fields of every struct they hold. With {@code deep}, the sort also
+   * descends into list elements and map keys and values; see {@link #sortSchemaDeep}.
+   */
+  private static List<Field> sortFields(final List<Field> fields, final boolean deep) {
     final ArrayList<Field> sortedFields = new ArrayList<>(fields);
     for (int i = 0; i < sortedFields.size(); i++) {
-      sortedFields.set(i, sortField(sortedFields.get(i)));
+      sortedFields.set(i, sortField(sortedFields.get(i), deep));
     }
     Collections.sort(sortedFields, new FieldAlignmentComparator());
     return sortedFields;
   }
 
   static Field sortField(final Field field) {
-    DataType type = field.type();
-    if (!(type instanceof DataTypes.StructType)) {
+    return sortField(field, false);
+  }
+
+  private static Field sortField(final Field field, final boolean deep) {
+    final DataType type = field.type();
+    final DataType sortedType;
+    if (type instanceof DataTypes.StructType) {
+      final List<Field> children = ((DataTypes.StructType) type).fields();
+      final List<Field> sortedChildren = sortFields(children, deep);
+      if (children.equals(sortedChildren)) {
+        return field;
+      }
+      sortedType = new DataTypes.StructType(sortedChildren);
+    } else if (deep && type instanceof DataTypes.ListType) {
+      final Field value = ((DataTypes.ListType) type).valueField();
+      final Field sortedValue = sortField(value, true);
+      if (sortedValue == value) {
+        return field;
+      }
+      sortedType = new DataTypes.ListType(sortedValue);
+    } else if (deep && type instanceof DataTypes.MapType) {
+      final DataTypes.MapType mapType = (DataTypes.MapType) type;
+      final Field key = mapType.keyField();
+      final Field item = mapType.itemField();
+      final Field sortedKey = sortField(key, true);
+      final Field sortedItem = sortField(item, true);
+      if (sortedKey == key && sortedItem == item) {
+        return field;
+      }
+      sortedType = new DataTypes.MapType(sortedKey.type(), sortedItem.type(), mapType.keysSorted());
+    } else {
       return field;
     }
-    DataTypes.StructType structType = (DataTypes.StructType) type;
-    final List<Field> children = structType.fields();
-    final List<Field> sortedChildren = sortFields(children);
-    if (children.equals(sortedChildren)) {
-      return field;
-    }
-    return new Field(field.name(), new DataTypes.StructType(sortedChildren), field.nullable());
+    return new Field(field.name(), sortedType, field.nullable());
   }
 
   public void resetFor(final CompactBinaryRowWriter nestedWriter, final int ordinal) {

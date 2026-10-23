@@ -179,6 +179,42 @@ public class TypeUtilsTest {
     TypeUtils.isSupported(TypeRef.of(AbstractList.class));
   }
 
+  public interface Named {
+    String getName();
+  }
+
+  public static class NamedValues {
+    private Map<String, Named> byKey;
+
+    public Map<String, Named> getByKey() {
+      return byKey;
+    }
+
+    public void setByKey(Map<String, Named> byKey) {
+      this.byKey = byKey;
+    }
+  }
+
+  public static class NamedKeys {
+    private Map<Named, String> byName;
+
+    public Map<Named, String> getByName() {
+      return byName;
+    }
+
+    public void setByName(Map<Named, String> byName) {
+      this.byName = byName;
+    }
+  }
+
+  /** Map keys and values resolve with the caller's context, as list elements do. */
+  @Test
+  public void mapTypesUseCallerContext() {
+    TypeResolutionContext ctx = new TypeResolutionContext(CustomTypeRegistry.EMPTY, true);
+    assertTrue(TypeUtils.isBean(NamedValues.class, ctx));
+    assertTrue(TypeUtils.isBean(NamedKeys.class, ctx));
+  }
+
   public static class A {
     @Override
     public String toString() {

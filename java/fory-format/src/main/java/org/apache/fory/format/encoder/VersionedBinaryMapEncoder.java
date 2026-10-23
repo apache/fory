@@ -1,0 +1,200 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.fory.format.encoder;
+
+import org.apache.fory.exception.ClassNotCompatibleException;
+import org.apache.fory.format.row.binary.BinaryArray;
+import org.apache.fory.format.row.binary.BinaryMap;
+import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.memory.LittleEndian;
+import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.memory.MemoryUtils;
+
+/**
+ * The map encoder of a codec built with schema evolution. Every payload starts, after any size
+ * prefix, with the 8-byte combined key and value strict hash, and the hash precedes the body.
+ * Decode reads an older (key, value) layout through its projection codec. Codecs without evolution
+ * use {@link BinaryMapEncoder}, which has no hash on any path.
+ */
+class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
+  private final Encoding format;
+  private final Field mapField;
+  private final BinaryArrayWriter valWriter;
+  private final BinaryArrayWriter keyWriter;
+  private final GeneratedMapEncoder codec;
+  private final boolean sizeEmbedded;
+  private final long currentHash;
+
+  /**
+   * Projection codecs for older (key, value) layouts, keyed by the combined hash; empty when no
+   * older combination exists.
+   */
+  private final ProjectionCache<ProjectionMapCodec> projections;
+
+  /**
+   * Per-version projection codec; the {@code Encoding} and historical {@code mapField} together
+   * materialize an empty map shaped for the historical layout (standard vs. compact).
+   */
+  static final class ProjectionMapCodec {
+    final Encoding format;
+    final Field mapField;
+    final GeneratedMapEncoder codec;
+
+    ProjectionMapCodec(Encoding format, Field mapField, GeneratedMapEncoder codec) {
+      this.format = format;
+      this.mapField = mapField;
+      this.codec = codec;
+    }
+  }
+
+  VersionedBinaryMapEncoder(
+      final Encoding format,
+      final Field mapField,
+      final BinaryArrayWriter valWriter,
+      final BinaryArrayWriter keyWriter,
+      final GeneratedMapEncoder codec,
+      final boolean sizeEmbedded,
+      final long currentHash,
+      final ProjectionCache<ProjectionMapCodec> projections) {
+    this.format = format;
+    this.mapField = mapField;
+    this.valWriter = valWriter;
+    this.keyWriter = keyWriter;
+    this.codec = codec;
+    this.sizeEmbedded = sizeEmbedded;
+    this.currentHash = currentHash;
+    this.projections = projections;
+  }
+
+  @Override
+  public Field keyField() {
+    return keyWriter.getField();
+  }
+
+  @Override
+  public Field valueField() {
+    return valWriter.getField();
+  }
+
+  @SuppressWarnings("unchecked")
+  @Override
+  public M fromMap(final BinaryArray key, final BinaryArray value) {
+    return (M) codec.fromMap(key, value);
+  }
+
+  @Override
+  public BinaryMap toMap(final M obj) {
+    return codec.toMap(obj);
+  }
+
+  @Override
+  public M decode(final MemoryBuffer buffer) {
+    return decode(buffer, sizeEmbedded ? buffer.readInt32() : buffer.remaining());
+  }
+
+  M decode(final MemoryBuffer buffer, final int size) {
+    if (size < 8) {
+      throw BinaryRowEncoder.sizeBelowHash(size);
+    }
+    long peerHash = buffer.readInt64();
+    int bodySize = size - 8;
+    if (peerHash == currentHash) {
+      final BinaryMap map = format.newMap(mapField);
+      int readerIndex = buffer.readerIndex();
+      // Advance first: on a stream-backed buffer this loads the body that pointTo reads.
+      buffer.readerIndex(readerIndex + bodySize);
+      map.pointTo(buffer, readerIndex, bodySize);
+      return fromMap(map);
+    }
+    return decodeOtherSchema(buffer, peerHash, bodySize);
+  }
+
+  @Override
+  public M decode(final byte[] bytes) {
+    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (the 8-byte hash
+    // precedes the body, but that is data, not framing), so decode takes the size from
+    // bytes.length.
+    return decode(MemoryUtils.wrap(bytes), bytes.length);
+  }
+
+  /**
+   * Decodes a map whose hash is not the current schema's: an older version through its projection,
+   * or a schema that this codec does not know, which it rejects. Kept out of {@link
+   * #decode(MemoryBuffer, int)} so the current-schema path stays small.
+   */
+  @SuppressWarnings("unchecked")
+  private M decodeOtherSchema(final MemoryBuffer buffer, final long peerHash, final int bodySize) {
+    ProjectionMapCodec projection = projections.get(peerHash);
+    if (projection == null) {
+      // Skip the body, so that a caller can go on to the next payload in the buffer.
+      buffer.increaseReaderIndex(bodySize);
+      throw new ClassNotCompatibleException(
+          String.format(
+              "Map (key,value) schema is not consistent. self/peer hash are %s/%s.",
+              currentHash, peerHash));
+    }
+    BinaryMap map = projection.format.newMap(projection.mapField);
+    int readerIndex = buffer.readerIndex();
+    // Advance first: on a stream-backed buffer this loads the body that pointTo reads.
+    buffer.readerIndex(readerIndex + bodySize);
+    map.pointTo(buffer, readerIndex, bodySize);
+    return (M) projection.codec.fromMap(map);
+  }
+
+  @Override
+  public byte[] encode(final M obj) {
+    final BinaryMap map = toMap(obj);
+    // Build the result with a single allocation: the result byte[]. The hash header is poked
+    // in via LittleEndian (no buffer wrapper) and the body is bulk-copied out of the map's
+    // backing buffer into the result.
+    final int n = map.getSizeInBytes();
+    if (n > Integer.MAX_VALUE - 8) {
+      throw new EncoderException("Map body too large to prepend schema hash header: " + n);
+    }
+    final byte[] result = new byte[8 + n];
+    LittleEndian.putInt64(result, 0, currentHash);
+    map.getBuf().get(map.getBaseOffset(), result, 8, n);
+    return result;
+  }
+
+  @Override
+  public int encode(final MemoryBuffer buffer, final M obj) {
+    final MemoryBuffer prevBuffer = keyWriter.getBuffer();
+    final int writerIndex = buffer.writerIndex();
+    if (sizeEmbedded) {
+      buffer.writeInt32(-1);
+    }
+    buffer.writeInt64(currentHash);
+    try {
+      keyWriter.setBuffer(buffer);
+      valWriter.setBuffer(buffer);
+      toMap(obj);
+      final int size = buffer.writerIndex() - writerIndex;
+      if (sizeEmbedded) {
+        buffer.putInt32(writerIndex, size - 4);
+      }
+      return size;
+    } finally {
+      keyWriter.setBuffer(prevBuffer);
+      valWriter.setBuffer(prevBuffer);
+    }
+  }
+}

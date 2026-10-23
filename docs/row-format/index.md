@@ -96,5 +96,14 @@ Reuse the encoder within one thread. Create separate encoders for concurrent thr
 Choose Compact Row only when every reader is Java and the space reduction justifies the
 Java-specific layout. Use Standard Row for Java, Python, C++, Rust, and Go interchange.
 
+## Schema Evolution
+
+Java row, array, and map codecs built with `withSchemaEvolution()` read payloads that older
+versions of a bean wrote, in Standard Row and in Compact Row. Each payload then carries a schema
+hash, and a reader rejects a payload whose hash it does not know with
+`ClassNotCompatibleException`. Producers and consumers must agree on the setting. See the
+[Java guide](java.md#schema-evolution) for the annotations, the rollout procedure, and the
+limits.
+
 See the [Row Format specification](../specification/row_format_spec.md) for the exact Standard and
 Compact binary layouts.

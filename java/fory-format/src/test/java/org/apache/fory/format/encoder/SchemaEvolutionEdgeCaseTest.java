@@ -1,0 +1,2758 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.fory.format.encoder;
+
+import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import lombok.Data;
+import org.apache.fory.Fory;
+import org.apache.fory.exception.ClassNotCompatibleException;
+import org.apache.fory.format.annotation.ForyRowSchema;
+import org.apache.fory.format.annotation.ForyRowVersion;
+import org.apache.fory.io.ForyInputStream;
+import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.reflect.TypeRef;
+import org.testng.Assert;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+
+/**
+ * Edge cases of row-codec schema evolution: long version chains, nested and collection-typed beans,
+ * maps, and the build-time checks. Each test probes one case.
+ */
+public class SchemaEvolutionEdgeCaseTest {
+
+  // ---------------------------------------------------------------------------
+  // Long version chain: a field added at each version 1..5, plus the removal of 'a' at v5.
+  // Verifies projection codecs are built and dispatched for every historical version.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class ChainV1 {
+    private int a; // since 1
+  }
+
+  @Data
+  public static class ChainV2 {
+    private int a;
+
+    @ForyRowVersion(since = 2)
+    private String b;
+  }
+
+  @Data
+  public static class ChainV3 {
+    private int a;
+
+    @ForyRowVersion(since = 2)
+    private String b;
+
+    @ForyRowVersion(since = 3)
+    private long c;
+  }
+
+  @Data
+  public static class ChainV4 {
+    private int a;
+
+    @ForyRowVersion(since = 2)
+    private String b;
+
+    @ForyRowVersion(since = 3)
+    private long c;
+
+    @ForyRowVersion(since = 4)
+    private double d;
+  }
+
+  /**
+   * v5 also removes the v1 'a' field ({@code until = 5}). Each version adds a field, so the reader
+   * must know four older layouts, v1 to v4, besides the current v5 layout.
+   */
+  @Data
+  @ForyRowSchema(removedFields = ChainV5.History.class)
+  public static class ChainV5 {
+    @ForyRowVersion(since = 2)
+    private String b;
+
+    @ForyRowVersion(since = 3)
+    private long c;
+
+    @ForyRowVersion(since = 4)
+    private double d;
+
+    @ForyRowVersion(since = 5)
+    private boolean e;
+
+    interface History {
+      @ForyRowVersion(until = 5)
+      int a();
+    }
+  }
+
+  @Test
+  public void longChainAllVersionsReadable() {
+    RowEncoder<ChainV1> w1 = evolvingCodec(ChainV1.class);
+    RowEncoder<ChainV2> w2 = evolvingCodec(ChainV2.class);
+    RowEncoder<ChainV3> w3 = evolvingCodec(ChainV3.class);
+    RowEncoder<ChainV4> w4 = evolvingCodec(ChainV4.class);
+    RowEncoder<ChainV5> reader = evolvingCodec(ChainV5.class);
+
+    ChainV1 v1 = new ChainV1();
+    v1.setA(11);
+    ChainV2 v2 = new ChainV2();
+    v2.setA(21);
+    v2.setB("two");
+    ChainV3 v3 = new ChainV3();
+    v3.setA(31);
+    v3.setB("three");
+    v3.setC(333L);
+    ChainV4 v4 = new ChainV4();
+    v4.setA(41);
+    v4.setB("four");
+    v4.setC(444L);
+    v4.setD(4.4);
+
+    ChainV5 out1 = reader.decode(w1.encode(v1));
+    Assert.assertNull(out1.getB());
+    Assert.assertEquals(out1.getC(), 0L);
+    Assert.assertEquals(out1.getD(), 0.0);
+    Assert.assertFalse(out1.isE());
+
+    ChainV5 out2 = reader.decode(w2.encode(v2));
+    Assert.assertEquals(out2.getB(), "two");
+    Assert.assertEquals(out2.getC(), 0L);
+
+    ChainV5 out3 = reader.decode(w3.encode(v3));
+    Assert.assertEquals(out3.getC(), 333L);
+    Assert.assertEquals(out3.getD(), 0.0);
+
+    ChainV5 out4 = reader.decode(w4.encode(v4));
+    Assert.assertEquals(out4.getB(), "four");
+    Assert.assertEquals(out4.getC(), 444L);
+    Assert.assertEquals(out4.getD(), 4.4);
+    Assert.assertFalse(out4.isE());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Compact format with alignment shuffle: v1 has only longs; v2 adds a byte.
+  // Compact sorts fields by alignment width so the v1 and v2 schemas have
+  // different physical orders, even though their logical field sets differ by
+  // only the added byte.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class AlignV1 {
+    private long x;
+    private long y;
+  }
+
+  @Data
+  public static class AlignV2 {
+    private long x;
+    private long y;
+
+    @ForyRowVersion(since = 2)
+    private byte flag;
+  }
+
+  @Test
+  public void compactAlignmentReshuffleAcrossVersions() {
+    RowEncoder<AlignV1> writer =
+        Encoders.buildBeanCodec(AlignV1.class)
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    RowEncoder<AlignV2> reader =
+        Encoders.buildBeanCodec(AlignV2.class)
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    AlignV1 in = new AlignV1();
+    in.setX(11);
+    in.setY(22);
+    AlignV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getX(), 11);
+    Assert.assertEquals(out.getY(), 22);
+    Assert.assertEquals(out.getFlag(), (byte) 0); // primitive default
+  }
+
+  // ---------------------------------------------------------------------------
+  // Boxed vs primitive default for an absent field.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class DefaultsV1 {
+    private String name;
+  }
+
+  @Data
+  public static class DefaultsV2 {
+    private String name;
+
+    @ForyRowVersion(since = 2)
+    private int primitiveCount; // default 0
+
+    @ForyRowVersion(since = 2)
+    private Integer boxedCount; // default null
+  }
+
+  @Test
+  public void primitiveAndBoxedDefaults() {
+    RowEncoder<DefaultsV1> writer = evolvingCodec(DefaultsV1.class);
+    RowEncoder<DefaultsV2> reader = evolvingCodec(DefaultsV2.class);
+    DefaultsV1 in = new DefaultsV1();
+    in.setName("n");
+    DefaultsV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getName(), "n");
+    Assert.assertEquals(out.getPrimitiveCount(), 0);
+    Assert.assertNull(out.getBoxedCount());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Disjoint-window false collision. A field whose [since, until)
+  // window starts above the base version and ends below infinity leaves the
+  // pre-since and post-until boundaries with identical field sets. SchemaHistory
+  // must collapse those into one entry rather than flagging a false collision.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  @ForyRowSchema(removedFields = GappedWindow.History.class)
+  public static class GappedWindow {
+    private String name;
+
+    interface History {
+      @ForyRowVersion(since = 2, until = 4)
+      int oldField();
+    }
+  }
+
+  /** A bean field keyed by a list of versioned beans: the substituted key stays non-nullable. */
+  @Data
+  public static class ListKeyHolder {
+    private Map<List<DefaultsV2>, String> byList;
+  }
+
+  @Test
+  public void listOfVersionedBeansAsMapKey() {
+    DefaultsV2 d = new DefaultsV2();
+    d.setName("k");
+    ListKeyHolder in = new ListKeyHolder();
+    in.setByList(Collections.singletonMap(Arrays.asList(d), "v"));
+    RowEncoder<ListKeyHolder> codec = evolvingCodec(ListKeyHolder.class);
+    Map.Entry<List<DefaultsV2>, String> e =
+        codec.decode(codec.encode(in)).getByList().entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().get(0).getName(), "k");
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  @Data
+  public static class OldDetail {
+    private String name;
+  }
+
+  /** {@code detail} is removed as a plain bean and added again as the versioned DefaultsV2. */
+  @Data
+  @ForyRowSchema(removedFields = RetypedDetail.History.class)
+  public static class RetypedDetail {
+    @ForyRowVersion(since = 3)
+    private DefaultsV2 detail;
+
+    @ForyRowVersion(since = 2)
+    private String label;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      OldDetail detail();
+    }
+  }
+
+  /** DefaultsV2 at v1 has OldDetail's layout, so the two versions could collapse; reject it. */
+  @Test
+  public void retypedVersionedBeanRejected() {
+    try {
+      evolvingCodec(RetypedDetail.class);
+      Assert.fail("expected the codec build to reject the type change");
+    } catch (IllegalStateException e) {
+      Assert.assertTrue(e.getMessage().contains("'detail'"), e.getMessage());
+    }
+  }
+
+  /** Holds GappedWindow, whose v1 and v4 layouts collapse, in every nested position. */
+  @Data
+  public static class GappedHolder {
+    private GappedWindow window;
+    private List<GappedWindow> windows;
+    private Map<String, GappedWindow> byName;
+  }
+
+  @Test
+  public void collapsedNestedBean() {
+    GappedWindow w = new GappedWindow();
+    w.setName("w");
+    GappedHolder in = new GappedHolder();
+    in.setWindow(w);
+    in.setWindows(Arrays.asList(w));
+    in.setByName(Collections.singletonMap("k", w));
+    RowEncoder<GappedHolder> holder =
+        Encoders.buildBeanCodec(GappedHolder.class).withSchemaEvolution().build().get();
+    GappedHolder out = holder.decode(holder.encode(in));
+    Assert.assertEquals(out.getWindow().getName(), "w");
+    Assert.assertEquals(out.getWindows().get(0).getName(), "w");
+    Assert.assertEquals(out.getByName().get("k").getName(), "w");
+
+    ArrayEncoder<List<GappedWindow>> list =
+        Encoders.buildArrayCodec(new TypeRef<List<GappedWindow>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Assert.assertEquals(list.decode(list.encode(Arrays.asList(w))).get(0).getName(), "w");
+    MapEncoder<Map<String, GappedWindow>> map =
+        Encoders.buildMapCodec(new TypeRef<Map<String, GappedWindow>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Assert.assertEquals(
+        map.decode(map.encode(Collections.singletonMap("k", w))).get("k").getName(), "w");
+  }
+
+  @Data
+  public static class InitializedV1 {
+    private String name;
+  }
+
+  @Data
+  public static class InitializedV2 {
+    private String name;
+
+    @ForyRowVersion(since = 2)
+    private Optional<String> nick;
+
+    @ForyRowVersion(since = 2)
+    private String label = "unset";
+  }
+
+  @Test
+  public void absentFieldsGetDefaultsOnPlainBeans() {
+    RowEncoder<InitializedV1> writer = evolvingCodec(InitializedV1.class);
+    RowEncoder<InitializedV2> reader = evolvingCodec(InitializedV2.class);
+    InitializedV1 in = new InitializedV1();
+    in.setName("a");
+    InitializedV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getName(), "a");
+    Assert.assertEquals(out.getNick(), Optional.empty());
+    Assert.assertNull(out.getLabel());
+  }
+
+  @Test
+  public void disjointWindowDoesNotFalseCollide() {
+    // Build alone is the assertion: a false collision fails the build.
+    RowEncoder<GappedWindow> codec = evolvingCodec(GappedWindow.class);
+    GappedWindow in = new GappedWindow();
+    in.setName("hi");
+    Assert.assertEquals(codec.decode(codec.encode(in)).getName(), "hi");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Removed field whose original type was a nested struct. The projection
+  // codec must skip the slot without trying to read or decode it.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class StructRefV1 {
+    private String id;
+    private DefaultsV1 detail; // removed at v2
+    private long tail; // live in both versions, positioned after the removed slot
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = StructRefV2.History.class)
+  public static class StructRefV2 {
+    private String id;
+    private long tail;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      DefaultsV1 detail();
+    }
+  }
+
+  // A struct that itself contains a live, evolving nested bean. Used as a map KEY so the nested
+  // bean, not only the top-level key bean, must route to its projection codec.
+  @Data
+  public static class KeyHolderV1 {
+    private String id;
+    private DefaultsV1 detail;
+  }
+
+  @Data
+  public static class KeyHolderV2 {
+    private String id;
+    private DefaultsV2 detail;
+  }
+
+  @Test
+  public void removedNestedStructField() {
+    RowEncoder<StructRefV1> writer = evolvingCodec(StructRefV1.class);
+    RowEncoder<StructRefV2> reader = evolvingCodec(StructRefV2.class);
+    StructRefV1 in = new StructRefV1();
+    in.setId("x");
+    DefaultsV1 d = new DefaultsV1();
+    d.setName("inner");
+    in.setDetail(d);
+    in.setTail(42L);
+    StructRefV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), "x");
+    // The field after the removed slot must read correctly, proving projection skipped exactly the
+    // removed struct's width.
+    Assert.assertEquals(out.getTail(), 42L);
+  }
+
+  // A removed field whose type is a versioned bean that in turn holds an unversioned bean. Nothing
+  // live on the reader reaches either class, so the reader never compiles their current-version
+  // codecs. The writer uses look-alike classes so that it does not compile them either: the strict
+  // hash keys on field names, not class names.
+  @Data
+  public static class RemovedGeo {
+    private double lat;
+  }
+
+  @Data
+  public static class RemovedGeoWriter {
+    private double lat;
+  }
+
+  @Data
+  public static class RemovedAddrWriter {
+    private RemovedGeoWriter geo;
+    private String street;
+  }
+
+  @Data
+  public static class RemovedAddr {
+    private RemovedGeo geo;
+    private String street;
+
+    @ForyRowVersion(since = 2)
+    private String zip;
+  }
+
+  @Data
+  public static class RemovedAddrHolderV1 {
+    private RemovedAddrWriter addr;
+    private String id;
+    private long tail;
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = RemovedAddrHolderV2.History.class)
+  public static class RemovedAddrHolderV2 {
+    private String id;
+    private long tail;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      RemovedAddr addr();
+    }
+  }
+
+  @Test
+  public void removedVersionedBeanFieldAtHistoricalVersion() {
+    RowEncoder<RemovedAddrHolderV1> writer = evolvingCodec(RemovedAddrHolderV1.class);
+    RowEncoder<RemovedAddrHolderV2> reader = evolvingCodec(RemovedAddrHolderV2.class);
+    RemovedAddrHolderV1 in = new RemovedAddrHolderV1();
+    RemovedAddrWriter addr = new RemovedAddrWriter();
+    RemovedGeoWriter geo = new RemovedGeoWriter();
+    geo.setLat(1.5);
+    addr.setGeo(geo);
+    addr.setStreet("main");
+    in.setAddr(addr);
+    in.setId("x");
+    in.setTail(42L);
+    RemovedAddrHolderV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), "x");
+    Assert.assertEquals(out.getTail(), 42L);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Removed collection-typed field. The history interface preserves the full
+  // parameterized type, so List<String> and Map<String, Long> round-trip
+  // through the projection without losing element-type information.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class CollectionsV1 {
+    private String id;
+    private List<String> tags; // removed at v2
+    private Map<String, Long> counters; // removed at v2
+    private long tail; // live in both versions, positioned after the removed slots
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = CollectionsV2.History.class)
+  public static class CollectionsV2 {
+    private String id;
+    private long tail;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      List<String> tags();
+
+      @ForyRowVersion(until = 2)
+      Map<String, Long> counters();
+    }
+  }
+
+  @Test
+  public void removedParameterizedCollectionFields() {
+    RowEncoder<CollectionsV1> writer = evolvingCodec(CollectionsV1.class);
+    RowEncoder<CollectionsV2> reader = evolvingCodec(CollectionsV2.class);
+    CollectionsV1 in = new CollectionsV1();
+    in.setId("c");
+    in.setTags(Arrays.asList("alpha", "beta"));
+    Map<String, Long> counters = new HashMap<>();
+    counters.put("k1", 1L);
+    counters.put("k2", 2L);
+    in.setCounters(counters);
+    in.setTail(42L);
+    CollectionsV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), "c");
+    // The field after the removed slots must read correctly, proving projection skipped exactly the
+    // two removed collection slots' width.
+    Assert.assertEquals(out.getTail(), 42L);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Same wire-name retyped across versions: 'tag' was int [1,3), then String [3,inf).
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class RetypeV1 {
+    private int tag; // present in v1, v2
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = RetypeV3.History.class)
+  public static class RetypeV3 {
+    @ForyRowVersion(since = 3)
+    private String tag;
+
+    interface History {
+      @ForyRowVersion(until = 3)
+      int tag();
+    }
+  }
+
+  @Test
+  public void retypedSameNameAcrossVersions() {
+    RowEncoder<RetypeV1> writer = evolvingCodec(RetypeV1.class);
+    RowEncoder<RetypeV3> reader = evolvingCodec(RetypeV3.class);
+    RetypeV1 in = new RetypeV1();
+    in.setTag(7);
+    RetypeV3 out = reader.decode(writer.encode(in));
+    // The 'tag' on the wire was int and is dropped during projection; the v3 String 'tag' has
+    // no source in this payload so defaults to null.
+    Assert.assertNull(out.getTag());
+  }
+
+  // ---------------------------------------------------------------------------
+  // List<Integer> and int[] infer list<int32> fields that differ only in element
+  // nullability, so their layouts and strict hashes differ. Schema.equals ignores
+  // element nullability; the history must not treat the two layouts as one.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class ScoresListV1 {
+    private String name;
+    private List<Integer> scores;
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = ScoresArrayV3.History.class)
+  public static class ScoresArrayV3 {
+    private String name;
+
+    @ForyRowVersion(since = 3)
+    private int[] scores;
+
+    interface History {
+      @ForyRowVersion(until = 3)
+      List<Integer> scores();
+    }
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = ScoresBase.History.class)
+  public static class ScoresBase {
+    private String name;
+
+    interface History {
+      @ForyRowVersion(until = 3)
+      List<Integer> scores();
+    }
+  }
+
+  /**
+   * Removes the {@code int[]} scores of v3 and v4; the base removes the {@code List<Integer>}
+   * scores of v1 and v2.
+   */
+  @Data
+  @lombok.EqualsAndHashCode(callSuper = true)
+  @ForyRowSchema(removedFields = ScoresRemovedV5.History.class)
+  public static class ScoresRemovedV5 extends ScoresBase {
+    interface History {
+      @ForyRowVersion(since = 3, until = 5)
+      int[] scores();
+    }
+  }
+
+  @Test
+  public void listRetypedToArray() {
+    ScoresListV1 in = new ScoresListV1();
+    in.setName("alice");
+    in.setScores(Arrays.asList(1, 2));
+    RowEncoder<ScoresArrayV3> reader = evolvingCodec(ScoresArrayV3.class);
+    ScoresArrayV3 out = reader.decode(evolvingCodec(ScoresListV1.class).encode(in));
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertNull(out.getScores());
+
+    ScoresArrayV3 current = new ScoresArrayV3();
+    current.setName("bob");
+    current.setScores(new int[] {3});
+    Assert.assertEquals(reader.decode(reader.encode(current)), current);
+  }
+
+  @Test
+  public void removedListAndArrayLayouts() {
+    RowEncoder<ScoresRemovedV5> reader = evolvingCodec(ScoresRemovedV5.class);
+    ScoresListV1 v1 = new ScoresListV1();
+    v1.setName("alice");
+    v1.setScores(Arrays.asList(1, 2));
+    Assert.assertEquals(
+        reader.decode(evolvingCodec(ScoresListV1.class).encode(v1)).getName(), "alice");
+
+    ScoresArrayV3 v3 = new ScoresArrayV3();
+    v3.setName("bob");
+    v3.setScores(new int[] {3});
+    Assert.assertEquals(
+        reader.decode(evolvingCodec(ScoresArrayV3.class).encode(v3)).getName(), "bob");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wide schema (more than 64 fields) crossing the null-bitmap word boundary.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class WideV1 {
+    private int f00, f01, f02, f03, f04, f05, f06, f07, f08, f09;
+    private int f10, f11, f12, f13, f14, f15, f16, f17, f18, f19;
+    private int f20, f21, f22, f23, f24, f25, f26, f27, f28, f29;
+    private int f30, f31, f32, f33, f34, f35, f36, f37, f38, f39;
+    private int f40, f41, f42, f43, f44, f45, f46, f47, f48, f49;
+    private int f50, f51, f52, f53, f54, f55, f56, f57, f58, f59;
+    private int f60, f61, f62, f63, f64, f65, f66, f67;
+  }
+
+  @Data
+  public static class WideV2 {
+    private int f00, f01, f02, f03, f04, f05, f06, f07, f08, f09;
+    private int f10, f11, f12, f13, f14, f15, f16, f17, f18, f19;
+    private int f20, f21, f22, f23, f24, f25, f26, f27, f28, f29;
+    private int f30, f31, f32, f33, f34, f35, f36, f37, f38, f39;
+    private int f40, f41, f42, f43, f44, f45, f46, f47, f48, f49;
+    private int f50, f51, f52, f53, f54, f55, f56, f57, f58, f59;
+    private int f60, f61, f62, f63, f64, f65, f66, f67;
+
+    @ForyRowVersion(since = 2)
+    private String extra;
+  }
+
+  @Test
+  public void wideSchemaAcrossBitmapWord() {
+    RowEncoder<WideV1> writer = evolvingCodec(WideV1.class);
+    RowEncoder<WideV2> reader = evolvingCodec(WideV2.class);
+    WideV1 in = new WideV1();
+    in.setF00(100);
+    in.setF63(163);
+    in.setF67(167); // past the first 64-bit bitmap word
+    WideV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getF00(), 100);
+    Assert.assertEquals(out.getF63(), 163);
+    Assert.assertEquals(out.getF67(), 167);
+    Assert.assertNull(out.getExtra());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Many elements through a single projection codec: 100 elements written by the
+  // same older version must all decode correctly via the same projection codec,
+  // with each element's data preserved and no carry-over of state across slots.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void arrayManyElementsThroughOneProjection() {
+    ArrayEncoder<List<ChainV2>> writer =
+        Encoders.buildArrayCodec(new TypeRef<List<ChainV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<ChainV5>> reader =
+        Encoders.buildArrayCodec(new TypeRef<List<ChainV5>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    List<ChainV2> in = new ArrayList<>();
+    for (int i = 0; i < 100; i++) {
+      ChainV2 e = new ChainV2();
+      e.setA(i);
+      e.setB("elem-" + i);
+      in.add(e);
+    }
+    List<ChainV5> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 100);
+    for (int i = 0; i < 100; i++) {
+      Assert.assertEquals(out.get(i).getB(), "elem-" + i);
+      Assert.assertEquals(out.get(i).getC(), 0L);
+      Assert.assertFalse(out.get(i).isE());
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sanity: two readers for the same (class, history) co-exist without
+  // interfering. The two readers share the cached generated codec class (by
+  // design of the codec cache), so the test exercises whether
+  // BinaryRowEncoder's per-instance projection map and current-codec instance
+  // are correctly per-reader rather than accidentally shared.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void twoIndependentReadersForSameClass() {
+    RowEncoder<DefaultsV1> writer = evolvingCodec(DefaultsV1.class);
+    RowEncoder<DefaultsV2> r1 = evolvingCodec(DefaultsV2.class);
+    RowEncoder<DefaultsV2> r2 = evolvingCodec(DefaultsV2.class);
+    DefaultsV1 in1 = new DefaultsV1();
+    in1.setName("first");
+    DefaultsV1 in2 = new DefaultsV1();
+    in2.setName("second");
+    byte[] b1 = writer.encode(in1);
+    byte[] b2 = writer.encode(in2);
+    Assert.assertEquals(r1.decode(b1).getName(), "first");
+    Assert.assertEquals(r2.decode(b2).getName(), "second");
+    Assert.assertEquals(r1.decode(b2).getName(), "second");
+    Assert.assertEquals(r2.decode(b1).getName(), "first");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Schema-history misconfiguration: overlapping windows for the same name
+  // must fail builder construction, not at first bad payload.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  @ForyRowSchema(removedFields = OverlapMisconfig.History.class)
+  public static class OverlapMisconfig {
+    // Live field 'x' since 1 (default) collides with the removed window [1, 5).
+    private int x;
+
+    interface History {
+      @ForyRowVersion(since = 1, until = 5)
+      int x();
+    }
+  }
+
+  @Test(expectedExceptions = IllegalStateException.class)
+  public void overlappingWindowFailsAtBuild() {
+    evolvingCodec(OverlapMisconfig.class);
+  }
+
+  // ---------------------------------------------------------------------------
+  // A removed-field history declaration must carry a well-formed @ForyRowVersion.
+  // Each misconfiguration fails at build with a message that names the offending
+  // declaration, so the user can fix the annotation rather than chase a decode error.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  @ForyRowSchema(removedFields = MissingAnnotation.History.class)
+  public static class MissingAnnotation {
+    private int x;
+
+    interface History {
+      // No @ForyRowVersion: a removed field has no [since, until) window without it.
+      String legacy();
+    }
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = MissingUntil.History.class)
+  public static class MissingUntil {
+    private int x;
+
+    interface History {
+      @ForyRowVersion(since = 2)
+      String legacy();
+    }
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = EmptyWindow.History.class)
+  public static class EmptyWindow {
+    private int x;
+
+    interface History {
+      @ForyRowVersion(since = 5, until = 5)
+      String legacy();
+    }
+  }
+
+  @Test
+  public void removedFieldWithoutForyVersionFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class,
+            () ->
+                Encoders.buildBeanCodec(MissingAnnotation.class)
+                    .withSchemaEvolution()
+                    .build()
+                    .get());
+    Assert.assertTrue(e.getMessage().contains("requires a @ForyRowVersion"), e.getMessage());
+  }
+
+  @Test
+  public void removedFieldWithoutUntilFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(IllegalStateException.class, () -> evolvingCodec(MissingUntil.class));
+    Assert.assertTrue(
+        e.getMessage().contains("must specify @ForyRowVersion.until"), e.getMessage());
+  }
+
+  @Test
+  public void removedFieldEmptyWindowFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(IllegalStateException.class, () -> evolvingCodec(EmptyWindow.class));
+    Assert.assertTrue(e.getMessage().contains("must be strictly less than until"), e.getMessage());
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = RemovedFieldCycle.History.class)
+  public static class RemovedFieldCycle {
+    private int x;
+
+    interface History {
+      // A removed field typed as the bean itself: the historical schema would be cyclic. Live
+      // fields cannot do this (inferSchema rejects them), so only the history path reaches it.
+      @ForyRowVersion(until = 2)
+      RemovedFieldCycle previous();
+    }
+  }
+
+  @Test
+  public void removedFieldCycleFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(RemovedFieldCycle.class));
+    Assert.assertTrue(e.getMessage().contains("Circular schema history"), e.getMessage());
+  }
+
+  /** A still-present field carrying a finite until; removals belong on the history class. */
+  @Data
+  public static class LiveFieldWithUntil {
+    private int x;
+
+    @ForyRowVersion(until = 3)
+    private String stillHere;
+  }
+
+  @Test
+  public void liveFieldWithUntilFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(LiveFieldWithUntil.class));
+    Assert.assertTrue(e.getMessage().contains("live field must not set until"), e.getMessage());
+  }
+
+  /** A since below the first version adds a schema version no writer can emit. */
+  @Data
+  public static class LiveFieldSinceBelowFirst {
+    private int x;
+
+    @ForyRowVersion(since = 0)
+    private String added;
+  }
+
+  @Test
+  public void liveFieldSinceBelowFirstFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(LiveFieldSinceBelowFirst.class));
+    Assert.assertTrue(e.getMessage().contains("must be >= 1"), e.getMessage());
+  }
+
+  /** A window that starts at the open bound of until is empty: no version would hold a field. */
+  @Data
+  public static class LiveFieldSinceMax {
+    private int x;
+
+    @ForyRowVersion(since = Integer.MAX_VALUE)
+    private String added;
+  }
+
+  @Test
+  public void liveFieldSinceMaxFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(LiveFieldSinceMax.class));
+    Assert.assertTrue(e.getMessage().contains("less than Integer.MAX_VALUE"), e.getMessage());
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = RemovedFieldSinceBelowFirst.History.class)
+  public static class RemovedFieldSinceBelowFirst {
+    private int x;
+
+    interface History {
+      @ForyRowVersion(since = 0, until = 3)
+      String legacy();
+    }
+  }
+
+  @Test
+  public void removedFieldSinceBelowFirstFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(RemovedFieldSinceBelowFirst.class));
+    Assert.assertTrue(e.getMessage().contains("must be >= 1"), e.getMessage());
+  }
+
+  /** The codec reads the version of a class field from the field, never from its getter. */
+  @Data
+  public static class VersionedGetter {
+    private String name;
+    private String email;
+
+    @ForyRowVersion(since = 2)
+    public String getEmail() {
+      return email;
+    }
+  }
+
+  @Test
+  public void versionedGetterFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(VersionedGetter.class));
+    Assert.assertTrue(e.getMessage().contains("getEmail() has no effect"), e.getMessage());
+  }
+
+  public interface VersionedContact {
+    String getName();
+
+    @ForyRowVersion(since = 2)
+    String getNickname();
+  }
+
+  /**
+   * The descriptors of a class bean are its fields, which carry their own versions. The annotations
+   * of an interface that it implements belong to the codec of that interface bean.
+   */
+  @Data
+  public static class VersionedContactImpl implements VersionedContact {
+    private String name;
+
+    @ForyRowVersion(since = 2)
+    private String nickname;
+  }
+
+  @Data
+  public static class VersionedContactV1 {
+    private String name;
+  }
+
+  @Test
+  public void classImplementingVersionedInterfaceBeanBuilds() {
+    VersionedContactV1 in = new VersionedContactV1();
+    in.setName("ann");
+    VersionedContactImpl out =
+        evolvingCodec(VersionedContactImpl.class)
+            .decode(evolvingCodec(VersionedContactV1.class).encode(in));
+    Assert.assertEquals(out.getName(), "ann");
+    Assert.assertNull(out.getNickname());
+    evolvingCodec(VersionedContact.class);
+  }
+
+  /** A class has its fields, not its methods, as descriptors, so it cannot declare removals. */
+  @Data
+  @ForyRowSchema(removedFields = RemovedFieldsClass.History.class)
+  public static class RemovedFieldsClass {
+    private String name;
+
+    abstract static class History {
+      @ForyRowVersion(until = 2)
+      abstract int age();
+    }
+  }
+
+  @Test
+  public void removedFieldsClassFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(RemovedFieldsClass.class));
+    Assert.assertTrue(e.getMessage().contains("must name an interface"), e.getMessage());
+  }
+
+  // ---------------------------------------------------------------------------
+  // A field whose type is a Collection subclass that shadows a field name across
+  // its own hierarchy. The row format encodes it through the iterable branch and
+  // never introspects it as a bean, so it round-trips fine. SchemaHistory must
+  // apply the same iterable/map/bean classification before introspecting a nested
+  // field type; otherwise it calls Descriptor.getDescriptors on the shadowed
+  // collection class and fails the whole history build on a bean that works.
+  // ---------------------------------------------------------------------------
+
+  public static class TaggedListBase<E> extends ArrayList<E> {
+    protected String marker;
+  }
+
+  // Shadows TaggedListBase.marker, which makes Descriptor.getDescriptors reject
+  // this class even though the codec treats it purely as a List.
+  public static class TaggedList<E> extends TaggedListBase<E> {
+    protected String marker;
+  }
+
+  @Data
+  public static class ShadowedCollectionV2 {
+    private TaggedList<String> labels;
+
+    @ForyRowVersion(since = 2)
+    private String tag;
+  }
+
+  @Test
+  public void versionedBeanWithShadowedCollectionFieldBuilds() {
+    RowEncoder<ShadowedCollectionV2> codec = evolvingCodec(ShadowedCollectionV2.class);
+    ShadowedCollectionV2 in = new ShadowedCollectionV2();
+    TaggedList<String> labels = new TaggedList<>();
+    labels.add("a");
+    labels.add("b");
+    in.setLabels(labels);
+    in.setTag("t");
+    ShadowedCollectionV2 out = codec.decode(codec.encode(in));
+    Assert.assertEquals(out.getLabels(), Arrays.asList("a", "b"));
+    Assert.assertEquals(out.getTag(), "t");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Roundtrip a List<DefaultsV1> field nested inside a versioned outer record.
+  // Verifies the projection codec generated for the outer correctly handles
+  // an inline list of plain beans whose layout is fixed.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class NestedListV1 {
+    private List<DefaultsV1> items;
+  }
+
+  @Data
+  public static class NestedListV2 {
+    private List<DefaultsV1> items;
+
+    @ForyRowVersion(since = 2)
+    private String tag;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Evolution flag asymmetry: same class, one side opt-in, the other not.
+  // Documented as wire-incompatible across the row, array, and map codecs.
+  // An evolution-on reader rejects evolution-off bytes on every codec: it reads
+  // the start of the body as a hash that matches no known layout. A row has a
+  // hash slot in both modes, so an evolution-off row reader also rejects
+  // evolution-on bytes. Array and map payloads have no hash without evolution,
+  // so an evolution-off reader cannot detect evolution-on bytes, and the spec
+  // leaves that read undefined; no test pins its result.
+  // ---------------------------------------------------------------------------
+
+  @DataProvider
+  public Object[][] flagAsymmetryCases() {
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("hi");
+
+    RowEncoder<DefaultsV1> rowOn = evolvingCodec(DefaultsV1.class);
+    RowEncoder<DefaultsV1> rowOff = Encoders.buildBeanCodec(DefaultsV1.class).build().get();
+
+    ArrayEncoder<List<DefaultsV1>> arrayOn =
+        Encoders.buildArrayCodec(new TypeRef<List<DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<DefaultsV1>> arrayOff =
+        Encoders.buildArrayCodec(new TypeRef<List<DefaultsV1>>() {}).build().get();
+    List<DefaultsV1> list = Arrays.asList(v);
+
+    MapEncoder<Map<String, DefaultsV1>> mapOn =
+        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, DefaultsV1>> mapOff =
+        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {}).build().get();
+    LinkedHashMap<String, DefaultsV1> map = new LinkedHashMap<>();
+    map.put("k", v);
+
+    return new Object[][] {
+      {"row", rowOff.encode(v), (Consumer<byte[]>) rowOn::decode},
+      {"array", arrayOff.encode(list), (Consumer<byte[]>) arrayOn::decode},
+      {"map", mapOff.encode(map), (Consumer<byte[]>) mapOn::decode},
+    };
+  }
+
+  @Test(dataProvider = "flagAsymmetryCases")
+  public void evolutionOnReaderRejectsEvolutionOffBytes(
+      String label, byte[] offBytes, Consumer<byte[]> onDecoder) {
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> onDecoder.accept(offBytes));
+  }
+
+  @Test
+  public void evolutionOffRowReaderRejectsEvolutionOnBytes() {
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("hi");
+    RowEncoder<DefaultsV1> rowOff = Encoders.buildBeanCodec(DefaultsV1.class).build().get();
+    byte[] onBytes = evolvingCodec(DefaultsV1.class).encode(v);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> rowOff.decode(onBytes));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Framing: payloads with a size prefix, several in one buffer. A decode that
+  // rejects a payload must leave the buffer at the start of the next payload,
+  // and a size too small to hold the hash must not move the buffer backward.
+  // ---------------------------------------------------------------------------
+
+  @DataProvider
+  public Object[][] framedCodecs() {
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("hi");
+    List<DefaultsV1> list = Arrays.asList(v);
+    LinkedHashMap<String, DefaultsV1> map = new LinkedHashMap<>();
+    map.put("k", v);
+
+    RowEncoder<DefaultsV1> row =
+        Encoders.buildBeanCodec(DefaultsV1.class)
+            .withSchemaEvolution()
+            .withSizeEmbedded(true)
+            .build()
+            .get();
+    RowEncoder<DefaultsV1> rowOff =
+        Encoders.buildBeanCodec(DefaultsV1.class).withSizeEmbedded(true).build().get();
+    ArrayEncoder<List<DefaultsV1>> array =
+        Encoders.buildArrayCodec(new TypeRef<List<DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .withSizeEmbedded(true)
+            .build()
+            .get();
+    MapEncoder<Map<String, DefaultsV1>> mapCodec =
+        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .withSizeEmbedded(true)
+            .build()
+            .get();
+
+    return new Object[][] {
+      {"row", new FramedCodec(b -> row.encode(b, v), row::decode, v)},
+      {"row without evolution", new FramedCodec(b -> rowOff.encode(b, v), rowOff::decode, v)},
+      {"array", new FramedCodec(b -> array.encode(b, list), array::decode, list)},
+      {"map", new FramedCodec(b -> mapCodec.encode(b, map), mapCodec::decode, map)},
+    };
+  }
+
+  @Test(dataProvider = "framedCodecs")
+  public void unknownHashSkipsPayload(String label, FramedCodec c) {
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(64);
+    c.encode.accept(buffer);
+    c.encode.accept(buffer);
+    // The hash of the first payload follows its 4-byte size prefix.
+    buffer.putInt64(4, buffer.getInt64(4) ^ 1);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> c.decode.apply(buffer));
+    Assert.assertEquals(c.decode.apply(buffer), c.value);
+  }
+
+  /**
+   * On a stream-backed buffer, the skip of an unknown payload moves the reader index past exactly
+   * its body, so the next payload still decodes. The stream returns one byte per read, so the
+   * buffer holds no byte that a decode did not ask for.
+   */
+  @Test(dataProvider = "framedCodecs")
+  public void unknownHashSkipsStreamedPayload(String label, FramedCodec c) {
+    MemoryBuffer encoded = MemoryBuffer.newHeapBuffer(64);
+    c.encode.accept(encoded);
+    int next = encoded.writerIndex();
+    c.encode.accept(encoded);
+    encoded.putInt64(4, encoded.getInt64(4) ^ 1);
+    MemoryBuffer buffer = oneByteStream(encoded);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> c.decode.apply(buffer));
+    Assert.assertEquals(buffer.readerIndex(), next);
+    Assert.assertEquals(c.decode.apply(buffer), c.value);
+  }
+
+  /**
+   * A row, array, or map decode loads the body from the stream for the current and an older layout.
+   */
+  @Test
+  public void streamedDecode() {
+    DefaultsV1 old = new DefaultsV1();
+    old.setName("old");
+    DefaultsV2 current = new DefaultsV2();
+    current.setName("current");
+    current.setPrimitiveCount(3);
+    current.setBoxedCount(4);
+    DefaultsV2 oldAsCurrent = new DefaultsV2();
+    oldAsCurrent.setName("old");
+
+    MemoryBuffer rows = MemoryBuffer.newHeapBuffer(64);
+    framedRowCodec(DefaultsV1.class).encode(rows, old);
+    RowEncoder<DefaultsV2> rowReader = framedRowCodec(DefaultsV2.class);
+    rowReader.encode(rows, current);
+    MemoryBuffer rowStream = oneByteStream(rows);
+    Assert.assertEquals(rowReader.decode(rowStream), oldAsCurrent);
+    Assert.assertEquals(rowReader.decode(rowStream), current);
+
+    MemoryBuffer arrays = MemoryBuffer.newHeapBuffer(64);
+    framedArrayCodec(new TypeRef<List<DefaultsV1>>() {}).encode(arrays, Arrays.asList(old));
+    ArrayEncoder<List<DefaultsV2>> arrayReader =
+        framedArrayCodec(new TypeRef<List<DefaultsV2>>() {});
+    arrayReader.encode(arrays, Arrays.asList(current));
+    MemoryBuffer arrayStream = oneByteStream(arrays);
+    Assert.assertEquals(arrayReader.decode(arrayStream), Arrays.asList(oldAsCurrent));
+    Assert.assertEquals(arrayReader.decode(arrayStream), Arrays.asList(current));
+
+    MemoryBuffer maps = MemoryBuffer.newHeapBuffer(64);
+    framedMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
+        .encode(maps, Collections.singletonMap("k", old));
+    MapEncoder<Map<String, DefaultsV2>> mapReader =
+        framedMapCodec(new TypeRef<Map<String, DefaultsV2>>() {});
+    mapReader.encode(maps, Collections.singletonMap("k", current));
+    MemoryBuffer mapStream = oneByteStream(maps);
+    Assert.assertEquals(mapReader.decode(mapStream), Collections.singletonMap("k", oldAsCurrent));
+    Assert.assertEquals(mapReader.decode(mapStream), Collections.singletonMap("k", current));
+  }
+
+  private static <T> RowEncoder<T> framedRowCodec(Class<T> type) {
+    return Encoders.buildBeanCodec(type).withSchemaEvolution().withSizeEmbedded(true).build().get();
+  }
+
+  private static <T extends Collection<?>> ArrayEncoder<T> framedArrayCodec(TypeRef<T> type) {
+    return Encoders.buildArrayCodec(type)
+        .withSchemaEvolution()
+        .withSizeEmbedded(true)
+        .build()
+        .get();
+  }
+
+  private static <T extends Map<?, ?>> MapEncoder<T> framedMapCodec(TypeRef<T> type) {
+    return Encoders.buildMapCodec(type).withSchemaEvolution().withSizeEmbedded(true).build().get();
+  }
+
+  /** Streams the written bytes of {@code encoded} one byte per read. */
+  private static MemoryBuffer oneByteStream(MemoryBuffer encoded) {
+    InputStream stream =
+        new FilterInputStream(
+            new ByteArrayInputStream(encoded.getBytes(0, encoded.writerIndex()))) {
+          @Override
+          public int read(byte[] b, int off, int len) throws IOException {
+            return super.read(b, off, Math.min(len, 1));
+          }
+        };
+    return new ForyInputStream(stream).getBuffer();
+  }
+
+  /**
+   * A size prefix below the 8-byte hash fails the decode, and the decode does not move the reader
+   * index backward. The stream returns one byte per read, so the buffer holds only the bytes that
+   * the decode asked for, and a decode that moves back leaves the reader index before their end.
+   */
+  @Test(dataProvider = "framedCodecs")
+  public void sizeBelowHashRejected(String label, FramedCodec c) {
+    MemoryBuffer encoded = MemoryBuffer.newHeapBuffer(64);
+    c.encode.accept(encoded);
+    // The payload keeps its valid hash, but its size prefix says 4 bytes, less than the hash.
+    encoded.putInt32(0, 4);
+    MemoryBuffer buffer = oneByteStream(encoded);
+    Assert.expectThrows(RuntimeException.class, () -> c.decode.apply(buffer));
+    Assert.assertEquals(buffer.readerIndex(), buffer.size());
+  }
+
+  private static final class FramedCodec {
+    final Consumer<MemoryBuffer> encode;
+    final Function<MemoryBuffer, Object> decode;
+    final Object value;
+
+    FramedCodec(
+        Consumer<MemoryBuffer> encode, Function<MemoryBuffer, Object> decode, Object value) {
+      this.encode = encode;
+      this.decode = decode;
+      this.value = value;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // mapSuffix injectivity: the generated map codec class name joins the value and key suffixes,
+  // and the class is cached by name, so two distinct (value-combo, key-combo) pairs must never
+  // produce the same suffix or the second pair would reuse the first's codec class. The boundary
+  // between the halves is the only place value and key strings meet, so the adversarial case is a
+  // value-side nested bean whose own suffix token contains a boundary-like string such as "_K_V".
+  // A bean named K_V yields exactly that token.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class KVTokenV2 {
+    private int a;
+
+    @ForyRowVersion(since = 2)
+    private String b;
+  }
+
+  /**
+   * Outer value bean carrying a nested bean whose simple name is K_V, so its suffix token is _K_V*.
+   */
+  @Data
+  public static class ValueWithKVNested {
+    private K_V inner;
+
+    @ForyRowVersion(since = 2)
+    private String tag;
+  }
+
+  /** Simple name is literally "K_V": its projection token is "_K_V<ver>h<hash>". */
+  @Data
+  public static class K_V {
+    private int x;
+
+    @ForyRowVersion(since = 2)
+    private String y;
+  }
+
+  @Test
+  public void mapSuffixIsInjective() {
+    // Build histories for a value position that contains the adversarial _K_V token and a key
+    // position that also evolves, then join every (value, key) combination the way the map codec
+    // does and require the joined suffixes to be distinct.
+    SchemaHistory valHistory =
+        SchemaHistory.build(ValueWithKVNested.class, SchemaHistory.Format.STANDARD);
+    SchemaHistory keyHistory = SchemaHistory.build(KVTokenV2.class, SchemaHistory.Format.STANDARD);
+
+    Set<String> joined = new HashSet<>();
+    Set<String> pairs = new HashSet<>();
+    for (SchemaHistory.VersionedSchema valVs : valHistory.versions()) {
+      String val = valVs.isCurrent() ? "" : ProjectionRouting.projectionSuffix(valVs);
+      for (SchemaHistory.VersionedSchema keyVs : keyHistory.versions()) {
+        String key = keyVs.isCurrent() ? "" : ProjectionRouting.projectionSuffix(keyVs);
+        String suffix =
+            ProjectionRouting.mapSuffix(
+                val, key, SchemaHistory.combineHashes(keyVs.strictHash(), valVs.strictHash()));
+        pairs.add(val + "\0" + key);
+        Assert.assertTrue(
+            joined.add(suffix),
+            "mapSuffix collision: distinct (value, key) combinations produced the same class "
+                + "suffix \""
+                + suffix
+                + "\"");
+      }
+    }
+    // Sanity: we actually exercised more than one distinct (value, key) pair, including a value
+    // suffix that contains the _K_V boundary string.
+    Assert.assertTrue(pairs.size() > 1, "expected multiple combinations");
+    Assert.assertTrue(
+        valHistory.versions().stream()
+            .anyMatch(
+                vs -> !vs.isCurrent() && ProjectionRouting.projectionSuffix(vs).contains("_K_V")),
+        "test did not exercise the _K_V boundary token it was designed to probe");
+    // A value-side token that repeats the start of a key-side suffix must not join to the same
+    // name as that key suffix.
+    String h = "h0123456789abcdef";
+    Assert.assertNotEquals(
+        ProjectionRouting.mapSuffix("_V1_K_V1_X2" + h, "", 0),
+        ProjectionRouting.mapSuffix("_V1", "_V1_X2" + h, 0));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Projection class names: a projection suffix holds a token per nested versioned class, so a
+  // bean with several of them, several levels down, gets a long class name. FORY_CODE_DIR writes
+  // the source of every generated class to a file named after it, which fails past the 255-byte
+  // file name limit unless the suffix is bounded.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class LongNameLeafV1 {
+    private int a;
+  }
+
+  @Data
+  public static class VersionedLeafWithASimpleNameLongEnoughToWidenA {
+    private int a;
+
+    @ForyRowVersion(since = 2)
+    private int b;
+  }
+
+  @Data
+  public static class VersionedLeafWithASimpleNameLongEnoughToWidenB {
+    private int a;
+
+    @ForyRowVersion(since = 2)
+    private int b;
+  }
+
+  @Data
+  public static class VersionedLeafWithASimpleNameLongEnoughToWidenC {
+    private int a;
+
+    @ForyRowVersion(since = 2)
+    private int b;
+  }
+
+  @Data
+  public static class WideMiddleV1 {
+    private LongNameLeafV1 alpha;
+    private LongNameLeafV1 beta;
+    private LongNameLeafV1 gamma;
+  }
+
+  /** Its projection suffix has a token for each of three leaf classes with long simple names. */
+  @Data
+  public static class WideMiddle {
+    private VersionedLeafWithASimpleNameLongEnoughToWidenA alpha;
+    private VersionedLeafWithASimpleNameLongEnoughToWidenB beta;
+    private VersionedLeafWithASimpleNameLongEnoughToWidenC gamma;
+  }
+
+  @Data
+  public static class DeepTopV1 {
+    private WideMiddleV1 middle;
+    private int x;
+  }
+
+  @Data
+  public static class DeepTop {
+    private WideMiddle middle;
+    private int x;
+  }
+
+  private static DeepTopV1 deepTopV1(int x) {
+    LongNameLeafV1 leaf = new LongNameLeafV1();
+    leaf.setA(x * 10);
+    WideMiddleV1 middle = new WideMiddleV1();
+    middle.setAlpha(leaf);
+    middle.setBeta(leaf);
+    middle.setGamma(leaf);
+    DeepTopV1 top = new DeepTopV1();
+    top.setMiddle(middle);
+    top.setX(x);
+    return top;
+  }
+
+  private static void assertDeepTop(DeepTop top, int x) {
+    Assert.assertEquals(top.getX(), x);
+    Assert.assertEquals(top.getMiddle().getAlpha().getA(), x * 10);
+    Assert.assertEquals(top.getMiddle().getBeta().getA(), x * 10);
+    Assert.assertEquals(top.getMiddle().getGamma().getA(), x * 10);
+    Assert.assertEquals(top.getMiddle().getGamma().getB(), 0);
+  }
+
+  /**
+   * Older payloads of a deeply nested bean decode, as a row, an array element, and a map value,
+   * while {@code FORY_CODE_DIR} writes the source of every generated class, and every file name
+   * stays under the 255-byte limit.
+   */
+  @Test
+  public void projectionClassNamesAreBounded() throws IOException {
+    Path codeDir = Files.createTempDirectory("fory-projection-code");
+    String previous = System.getProperty("FORY_CODE_DIR");
+    System.setProperty("FORY_CODE_DIR", codeDir.toString());
+    List<Path> files;
+    try {
+      DeepTop row =
+          Encoders.buildBeanCodec(DeepTop.class)
+              .withSchemaEvolution()
+              .build()
+              .get()
+              .decode(
+                  Encoders.buildBeanCodec(DeepTopV1.class)
+                      .withSchemaEvolution()
+                      .build()
+                      .get()
+                      .encode(deepTopV1(1)));
+      assertDeepTop(row, 1);
+      List<DeepTop> list =
+          Encoders.buildArrayCodec(new TypeRef<List<DeepTop>>() {})
+              .withSchemaEvolution()
+              .build()
+              .get()
+              .decode(
+                  Encoders.buildArrayCodec(new TypeRef<List<DeepTopV1>>() {})
+                      .withSchemaEvolution()
+                      .build()
+                      .get()
+                      .encode(Collections.singletonList(deepTopV1(2))));
+      assertDeepTop(list.get(0), 2);
+      Map<String, DeepTop> map =
+          Encoders.buildMapCodec(new TypeRef<Map<String, DeepTop>>() {})
+              .withSchemaEvolution()
+              .build()
+              .get()
+              .decode(
+                  Encoders.buildMapCodec(new TypeRef<Map<String, DeepTopV1>>() {})
+                      .withSchemaEvolution()
+                      .build()
+                      .get()
+                      .encode(Collections.singletonMap("k", deepTopV1(3))));
+      assertDeepTop(map.get("k"), 3);
+    } finally {
+      if (previous == null) {
+        System.clearProperty("FORY_CODE_DIR");
+      } else {
+        System.setProperty("FORY_CODE_DIR", previous);
+      }
+      try (Stream<Path> walk = Files.walk(codeDir)) {
+        files = walk.sorted(Comparator.reverseOrder()).collect(Collectors.toList());
+      }
+      for (Path file : files) {
+        Files.delete(file);
+      }
+    }
+    Assert.assertTrue(
+        files.stream()
+            .map(f -> f.getFileName().toString())
+            .anyMatch(name -> name.contains("WideMiddleRowCodec") && name.contains("_V1h")),
+        files.toString());
+    for (Path file : files) {
+      String name = file.getFileName().toString();
+      Assert.assertTrue(name.getBytes(StandardCharsets.UTF_8).length < 255, name);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Map with a versioned bean as the KEY: current-version round-trip.
+  // Cross-version key evolution is covered by evolveMapKey* below; this pins the
+  // same-schema baseline so a regression there is distinguishable from a build
+  // or encode/decode fault.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void mapNonBeanKeyTypeChangeFailsLoud() {
+    MapEncoder<Map<String, DefaultsV1>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<Long, DefaultsV1>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<Long, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Map<String, DefaultsV1> in = new HashMap<>();
+    DefaultsV1 value = new DefaultsV1();
+    value.setName("v");
+    in.put("k", value);
+    byte[] bytes = writer.encode(in);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> reader.decode(bytes));
+  }
+
+  @Test
+  public void mapWithoutBeanValueTypeChangeFailsLoud() {
+    MapEncoder<Map<String, Long>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Long>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, Integer>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Integer>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Map<String, Long> in = new HashMap<>();
+    in.put("k", 7L);
+    byte[] bytes = writer.encode(in);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> reader.decode(bytes));
+  }
+
+  @Data
+  public static class FramingElement {
+    private byte narrow;
+    private long wide;
+  }
+
+  /**
+   * The array and map hash prefixes, built from the one-field layouts that the spec defines. The
+   * expected values are the spec's framing vectors, computed independently of this implementation.
+   */
+  @Test
+  public void hashPrefixMatchesSpecFraming() {
+    Map<String, Integer> map = new HashMap<>();
+    map.put("k", 1);
+    Assert.assertEquals(
+        prefix(
+            Encoders.buildMapCodec(new TypeRef<Map<String, Integer>>() {})
+                .withSchemaEvolution()
+                .build()
+                .get()
+                .encode(map)),
+        0xa8efad587d8a6b3bL);
+    List<FramingElement> list = new ArrayList<>();
+    list.add(new FramingElement());
+    Assert.assertEquals(
+        prefix(
+            Encoders.buildArrayCodec(new TypeRef<List<FramingElement>>() {})
+                .withSchemaEvolution()
+                .build()
+                .get()
+                .encode(list)),
+        0x66c342b5ad6942cbL);
+    Assert.assertEquals(
+        prefix(
+            Encoders.buildArrayCodec(new TypeRef<List<FramingElement>>() {})
+                .compactEncoding()
+                .withSchemaEvolution()
+                .build()
+                .get()
+                .encode(list)),
+        0x905b89131d905a88L);
+  }
+
+  private static long prefix(byte[] bytes) {
+    return MemoryBuffer.fromByteArray(bytes).readInt64();
+  }
+
+  /**
+   * A projection whose code generation fails must fail on every later decode of its layout, without
+   * generating again. A later decode throws a new exception, caused by the first failure, so that
+   * threads do not share one exception instance and its stack trace.
+   */
+  @Test
+  public void projectionGenerationFailureIsCached() {
+    int[] generated = {0};
+    IllegalStateException failure = new IllegalStateException("generation failed");
+    ProjectionSource<Object, Object> source =
+        new ProjectionSource<Object, Object>() {
+          @Override
+          Object generate() {
+            generated[0]++;
+            throw failure;
+          }
+
+          @Override
+          Object bind(Object classes, Fory fory) {
+            return classes;
+          }
+        };
+    Assert.assertSame(
+        Assert.expectThrows(IllegalStateException.class, () -> source.compile(null)), failure);
+    EncoderException second =
+        Assert.expectThrows(EncoderException.class, () -> source.compile(null));
+    EncoderException third =
+        Assert.expectThrows(EncoderException.class, () -> source.compile(null));
+    Assert.assertSame(second.getCause(), failure);
+    Assert.assertSame(third.getCause(), failure);
+    Assert.assertNotSame(second, third);
+    Assert.assertEquals(generated[0], 1);
+  }
+
+  /** Every field is 8 bytes wide, so the compact sort keeps the standard field order. */
+  @Data
+  public static class EightByteFields {
+    private long count;
+    private String name;
+  }
+
+  /**
+   * The standard and compact formats write {@link EightByteFields} in the same field order, so only
+   * the format tag in the strict hash tells their layouts apart. A reader of either format must
+   * reject the other format's row, array, and map payloads instead of decoding wrong values.
+   */
+  @Test
+  public void formatMismatchIsRejected() {
+    EightByteFields bean = new EightByteFields();
+    bean.setCount(7);
+    bean.setName("n");
+    List<EightByteFields> list = Collections.singletonList(bean);
+    Map<String, EightByteFields> map = Collections.singletonMap("k", bean);
+    TypeRef<List<EightByteFields>> listType = new TypeRef<List<EightByteFields>>() {};
+    TypeRef<Map<String, EightByteFields>> mapType = new TypeRef<Map<String, EightByteFields>>() {};
+    for (boolean compactWriter : new boolean[] {false, true}) {
+      RowCodecBuilder<EightByteFields> rowWriter = Encoders.buildBeanCodec(EightByteFields.class);
+      RowCodecBuilder<EightByteFields> rowReader = Encoders.buildBeanCodec(EightByteFields.class);
+      ArrayCodecBuilder<List<EightByteFields>> arrayWriter = Encoders.buildArrayCodec(listType);
+      ArrayCodecBuilder<List<EightByteFields>> arrayReader = Encoders.buildArrayCodec(listType);
+      MapCodecBuilder<Map<String, EightByteFields>> mapWriter = Encoders.buildMapCodec(mapType);
+      MapCodecBuilder<Map<String, EightByteFields>> mapReader = Encoders.buildMapCodec(mapType);
+      if (compactWriter) {
+        rowWriter.compactEncoding();
+        arrayWriter.compactEncoding();
+        mapWriter.compactEncoding();
+      } else {
+        rowReader.compactEncoding();
+        arrayReader.compactEncoding();
+        mapReader.compactEncoding();
+      }
+      byte[] row = rowWriter.withSchemaEvolution().build().get().encode(bean);
+      byte[] array = arrayWriter.withSchemaEvolution().build().get().encode(list);
+      byte[] mapBytes = mapWriter.withSchemaEvolution().build().get().encode(map);
+      RowEncoder<EightByteFields> rowCodec = rowReader.withSchemaEvolution().build().get();
+      ArrayEncoder<List<EightByteFields>> arrayCodec =
+          arrayReader.withSchemaEvolution().build().get();
+      MapEncoder<Map<String, EightByteFields>> mapCodec =
+          mapReader.withSchemaEvolution().build().get();
+      Assert.expectThrows(ClassNotCompatibleException.class, () -> rowCodec.decode(row));
+      Assert.expectThrows(ClassNotCompatibleException.class, () -> arrayCodec.decode(array));
+      Assert.expectThrows(ClassNotCompatibleException.class, () -> mapCodec.decode(mapBytes));
+    }
+  }
+
+  @Data
+  public static class CompactOrderStats {
+    private int count;
+    private long total;
+  }
+
+  @Data
+  public static class CompactOrderRow {
+    private String code;
+    private boolean flag;
+    private long id;
+    private CompactOrderStats stats;
+    private short version;
+  }
+
+  /**
+   * The compact row hash covers the fields in the spec's compact sort order: the string keeps its
+   * wire-name order among the 8-byte fields, and the 12-byte inline struct sorts after the int16
+   * and before the bool. The expected value is the spec's compact vector, computed independently of
+   * this implementation.
+   */
+  @Test
+  public void compactRowHashMatchesSpecVector() {
+    byte[] bytes =
+        Encoders.buildBeanCodec(CompactOrderRow.class)
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get()
+            .encode(new CompactOrderRow());
+    Assert.assertEquals(prefix(bytes), 0xa6ca2310859be6e6L);
+  }
+
+  @Test
+  public void mapWithVersionedKey() {
+    MapEncoder<Map<DefaultsV2, String>> codec =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV2 k = new DefaultsV2();
+    k.setName("k");
+    k.setPrimitiveCount(1);
+    k.setBoxedCount(2);
+    Map<DefaultsV2, String> in = new HashMap<>();
+    in.put(k, "v");
+    Map<DefaultsV2, String> out = codec.decode(codec.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    DefaultsV2 outKey = out.keySet().iterator().next();
+    Assert.assertEquals(outKey.getName(), "k");
+    Assert.assertEquals(outKey.getPrimitiveCount(), 1);
+    Assert.assertEquals(outKey.getBoxedCount(), Integer.valueOf(2));
+  }
+
+  // A top-level map whose value evolves while the key is an unversioned struct bean with the same
+  // shape on both sides. The key must round-trip unchanged at its current schema.
+  @Test
+  public void mapStructKeyValueEvolution() {
+    MapEncoder<Map<RemovedGeo, DefaultsV1>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<RemovedGeo, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<RemovedGeo, DefaultsV2>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<RemovedGeo, DefaultsV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    RemovedGeo key = new RemovedGeo();
+    key.setLat(7.5);
+    DefaultsV1 val = new DefaultsV1();
+    val.setName("val");
+    Map<RemovedGeo, DefaultsV1> in = new HashMap<>();
+    in.put(key, val);
+    Map<RemovedGeo, DefaultsV2> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<RemovedGeo, DefaultsV2> entry = out.entrySet().iterator().next();
+    Assert.assertEquals(entry.getKey().getLat(), 7.5);
+    Assert.assertEquals(entry.getValue().getName(), "val");
+    Assert.assertEquals(entry.getValue().getPrimitiveCount(), 0);
+    Assert.assertNull(entry.getValue().getBoxedCount());
+  }
+
+  // A row field typed as Map<DefaultsV2, String> with the key bean at its current version on both
+  // sides. A map key is a version site of the outer history, like a map value (see
+  // evolvingMapKeyInRowField). Here the writer and reader differ only in the outer bean, so the
+  // keyed map round-trips with the key at its current layout.
+  @Data
+  public static class KeyMapHolderV1 {
+    private Map<DefaultsV2, String> byKey;
+  }
+
+  @Data
+  public static class KeyMapHolderV2 {
+    private Map<DefaultsV2, String> byKey;
+
+    @ForyRowVersion(since = 2)
+    private String note;
+  }
+
+  @Test
+  public void versionedBeanAsMapKeyInRowField() {
+    RowEncoder<KeyMapHolderV1> writer = evolvingCodec(KeyMapHolderV1.class);
+    RowEncoder<KeyMapHolderV2> reader = evolvingCodec(KeyMapHolderV2.class);
+    DefaultsV2 key = new DefaultsV2();
+    key.setName("k");
+    key.setPrimitiveCount(7);
+    key.setBoxedCount(8);
+    KeyMapHolderV1 in = new KeyMapHolderV1();
+    in.setByKey(new HashMap<>());
+    in.getByKey().put(key, "v");
+    KeyMapHolderV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getByKey().size(), 1);
+    DefaultsV2 outKey = out.getByKey().keySet().iterator().next();
+    Assert.assertEquals(outKey.getName(), "k");
+    Assert.assertEquals(outKey.getPrimitiveCount(), 7);
+    Assert.assertEquals(out.getByKey().get(outKey), "v");
+    Assert.assertNull(out.getNote()); // note added at v2; v1 payload defaults it
+  }
+
+  // A row field whose map KEY is a versioned bean that actually skews across writer and reader:
+  // writer's key is DefaultsV1 (name only), reader's key is DefaultsV2 (adds two since=2 fields).
+  // Unlike versionedBeanAsMapKeyInRowField, the key version differs on the two sides, so this is
+  // the case that must not corrupt: the reader must materialize the since=2 fields at their
+  // defaults rather than reinterpreting the writer's bytes against the current key layout.
+  @Data
+  public static class SkewKeyMapHolderV1 {
+    private Map<DefaultsV1, String> byKey;
+  }
+
+  @Data
+  public static class SkewKeyMapHolderV2 {
+    private Map<DefaultsV2, String> byKey;
+  }
+
+  @Test
+  public void evolvingMapKeyInRowField() {
+    RowEncoder<SkewKeyMapHolderV1> writer = evolvingCodec(SkewKeyMapHolderV1.class);
+    RowEncoder<SkewKeyMapHolderV2> reader = evolvingCodec(SkewKeyMapHolderV2.class);
+    DefaultsV1 key = new DefaultsV1();
+    key.setName("k");
+    SkewKeyMapHolderV1 in = new SkewKeyMapHolderV1();
+    in.setByKey(new HashMap<>());
+    in.getByKey().put(key, "v");
+    SkewKeyMapHolderV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getByKey().size(), 1);
+    DefaultsV2 outKey = out.getByKey().keySet().iterator().next();
+    Assert.assertEquals(outKey.getName(), "k");
+    Assert.assertEquals(outKey.getPrimitiveCount(), 0); // since=2 field absent in writer; defaults
+    Assert.assertNull(outKey.getBoxedCount());
+    Assert.assertEquals(out.getByKey().get(outKey), "v");
+  }
+
+  // A versioned bean as the KEY of a map nested inside another map's value: the substitution path
+  // must take value at the outer map and key at the inner map. A single key/value flag cannot
+  // express that two-step descent, so this exercises the multi-step branch path.
+  @Data
+  public static class NestedKeyMapHolderV1 {
+    private Map<String, Map<DefaultsV1, String>> outer;
+  }
+
+  @Data
+  public static class NestedKeyMapHolderV2 {
+    private Map<String, Map<DefaultsV2, String>> outer;
+  }
+
+  @Test
+  public void evolvingKeyOfNestedMap() {
+    RowEncoder<NestedKeyMapHolderV1> writer = evolvingCodec(NestedKeyMapHolderV1.class);
+    RowEncoder<NestedKeyMapHolderV2> reader = evolvingCodec(NestedKeyMapHolderV2.class);
+    DefaultsV1 key = new DefaultsV1();
+    key.setName("k");
+    Map<DefaultsV1, String> inner = new HashMap<>();
+    inner.put(key, "v");
+    NestedKeyMapHolderV1 in = new NestedKeyMapHolderV1();
+    in.setOuter(new HashMap<>());
+    in.getOuter().put("o", inner);
+    NestedKeyMapHolderV2 out = reader.decode(writer.encode(in));
+    Map<DefaultsV2, String> outInner = out.getOuter().get("o");
+    Assert.assertEquals(outInner.size(), 1);
+    DefaultsV2 outKey = outInner.keySet().iterator().next();
+    Assert.assertEquals(outKey.getName(), "k");
+    Assert.assertEquals(outKey.getPrimitiveCount(), 0); // since=2 field absent in writer; defaults
+    Assert.assertNull(outKey.getBoxedCount());
+    Assert.assertEquals(outInner.get(outKey), "v");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Evolving map key: the map header's combined (key,value) hash selects the
+  // historical key layout, so an older key decodes correctly instead of being
+  // read against the current layout and corrupting silently.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void evolveMapKeyValuePrimitive() {
+    // Writer key is DefaultsV1 (name only); reader key is DefaultsV2 (adds two since=2 fields).
+    // Value is a plain String on both sides, so only the key dimension evolves.
+    MapEncoder<Map<DefaultsV1, String>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV1, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV2, String>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 k = new DefaultsV1();
+    k.setName("k");
+    Map<DefaultsV1, String> in = new HashMap<>();
+    in.put(k, "v");
+    Map<DefaultsV2, String> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<DefaultsV2, String> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 0); // absent since=2 field defaults
+    Assert.assertNull(e.getKey().getBoxedCount());
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  @Test
+  public void evolveBothMapKeyAndValue() {
+    // Both key and value evolve independently: V1 writer, V2 reader on each side.
+    MapEncoder<Map<DefaultsV1, DefaultsV1>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV1, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV2, DefaultsV2>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, DefaultsV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 k = new DefaultsV1();
+    k.setName("k");
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("val");
+    Map<DefaultsV1, DefaultsV1> in = new HashMap<>();
+    in.put(k, v);
+    Map<DefaultsV2, DefaultsV2> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<DefaultsV2, DefaultsV2> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 0);
+    Assert.assertNull(e.getKey().getBoxedCount());
+    Assert.assertEquals(e.getValue().getName(), "val");
+    Assert.assertEquals(e.getValue().getPrimitiveCount(), 0);
+    Assert.assertNull(e.getValue().getBoxedCount());
+  }
+
+  @Test
+  public void evolveMapKeyCurrentValueOlder() {
+    // The key is a versioned bean already at its current version; the value is a different
+    // versioned bean at an older version. Exercises the (key-current, value-older) projection.
+    MapEncoder<Map<InitializedV2, DefaultsV1>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<InitializedV2, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<InitializedV2, DefaultsV2>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<InitializedV2, DefaultsV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    InitializedV2 k = new InitializedV2();
+    k.setName("k");
+    k.setNick(Optional.of("n"));
+    k.setLabel("l");
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("val");
+    Map<InitializedV2, DefaultsV1> in = new HashMap<>();
+    in.put(k, v);
+    Map<InitializedV2, DefaultsV2> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<InitializedV2, DefaultsV2> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getNick(), Optional.of("n")); // key fully present
+    Assert.assertEquals(e.getKey().getLabel(), "l");
+    Assert.assertEquals(e.getValue().getName(), "val");
+    Assert.assertEquals(e.getValue().getPrimitiveCount(), 0);
+    Assert.assertNull(e.getValue().getBoxedCount());
+  }
+
+  @Test
+  public void evolveMapSameBeanKeyAndValue() {
+    // Key and value are the same versioned bean class. A writer has one definition of the class,
+    // so both positions are at one version: a payload with both at V1 decodes, and the reader does
+    // not accept a payload that puts the class at two versions.
+    MapEncoder<Map<DefaultsV1, DefaultsV1>> olderWriter =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV1, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV1, DefaultsV2>> mixedWriter =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV1, DefaultsV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV2, DefaultsV2>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, DefaultsV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+
+    DefaultsV1 oldKey = new DefaultsV1();
+    oldKey.setName("ok");
+    DefaultsV1 oldVal = new DefaultsV1();
+    oldVal.setName("ov");
+    Map<DefaultsV1, DefaultsV1> older = new HashMap<>();
+    older.put(oldKey, oldVal);
+    Map.Entry<DefaultsV2, DefaultsV2> e =
+        reader.decode(olderWriter.encode(older)).entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "ok");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 0);
+    Assert.assertEquals(e.getValue().getName(), "ov");
+    Assert.assertNull(e.getValue().getBoxedCount());
+
+    DefaultsV2 newVal = new DefaultsV2();
+    newVal.setName("nv");
+    Map<DefaultsV1, DefaultsV2> mixed = new HashMap<>();
+    mixed.put(oldKey, newVal);
+    byte[] mixedBytes = mixedWriter.encode(mixed);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> reader.decode(mixedBytes));
+  }
+
+  @Test
+  public void evolveMapKeyCompact() {
+    // The key dimension must also project under the compact format, which sorts schema fields by
+    // alignment; the historical key schema is sorted the same way as the writer's, so the layouts
+    // line up.
+    MapEncoder<Map<DefaultsV1, String>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV1, String>>() {})
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV2, String>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, String>>() {})
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 k = new DefaultsV1();
+    k.setName("k");
+    Map<DefaultsV1, String> in = new HashMap<>();
+    in.put(k, "v");
+    Map<DefaultsV2, String> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<DefaultsV2, String> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 0);
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  @Test
+  public void evolveMapStructKeyWithNestedBean() {
+    // The key is a struct that itself wraps an evolving nested bean. The nested detail is written
+    // at V1 and read by a V2 reader, so the nested key bean must project to its historical layout.
+    MapEncoder<Map<KeyHolderV1, String>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<KeyHolderV1, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<KeyHolderV2, String>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<KeyHolderV2, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    KeyHolderV1 k = new KeyHolderV1();
+    k.setId("h");
+    DefaultsV1 d = new DefaultsV1();
+    d.setName("inner");
+    k.setDetail(d);
+    Map<KeyHolderV1, String> in = new HashMap<>();
+    in.put(k, "v");
+    Map<KeyHolderV2, String> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<KeyHolderV2, String> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getId(), "h");
+    Assert.assertEquals(e.getKey().getDetail().getName(), "inner");
+    Assert.assertEquals(e.getKey().getDetail().getPrimitiveCount(), 0); // since=2, absent in writer
+    Assert.assertNull(e.getKey().getDetail().getBoxedCount());
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  @Test
+  public void evolveMapCollectionKey() {
+    // The key is a List of versioned beans, so the key subtree is a collection rather than a bare
+    // bean. The element bean must project to its historical layout through the collection decode.
+    MapEncoder<Map<List<DefaultsV1>, String>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<List<DefaultsV1>, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<List<DefaultsV2>, String>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<List<DefaultsV2>, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 d = new DefaultsV1();
+    d.setName("k");
+    Map<List<DefaultsV1>, String> in = new HashMap<>();
+    in.put(Arrays.asList(d), "v");
+    Map<List<DefaultsV2>, String> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<List<DefaultsV2>, String> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().size(), 1);
+    Assert.assertEquals(e.getKey().get(0).getName(), "k");
+    Assert.assertEquals(e.getKey().get(0).getPrimitiveCount(), 0); // since=2, absent in writer
+    Assert.assertNull(e.getKey().get(0).getBoxedCount());
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  // A versioned bean as the KEY of an inner map reached through a top-level array or map wrapper.
+  // The top-level codec's own key/value hash only covers a top-level map's own key, and the
+  // row-field path (the nested sites of a bean field) only applies inside a bean, so this
+  // wrapper-reached inner key is the shape that must still evolve through the top-level array/map
+  // entry point.
+
+  @Test
+  public void arrayOfMapKeyOlderPayload() {
+    ArrayEncoder<List<Map<DefaultsV1, String>>> writer =
+        Encoders.buildArrayCodec(new TypeRef<List<Map<DefaultsV1, String>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<Map<DefaultsV2, String>>> reader =
+        Encoders.buildArrayCodec(new TypeRef<List<Map<DefaultsV2, String>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 k = new DefaultsV1();
+    k.setName("k");
+    Map<DefaultsV1, String> inner = new HashMap<>();
+    inner.put(k, "v");
+    List<Map<DefaultsV2, String>> out = reader.decode(writer.encode(Arrays.asList(inner)));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<DefaultsV2, String> e = out.get(0).entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 0); // since=2 field absent in writer
+    Assert.assertNull(e.getKey().getBoxedCount());
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  // A top-level map whose VALUE is itself a Map<KBean, VBean> with two DIFFERENT versioned bean
+  // classes. The value position must evolve both inner beans and generate a codec for each.
+  @Test
+  public void mapValueWrappingTwoBeansOlderPayload() {
+    MapEncoder<Map<String, Map<AlignV1, DefaultsV1>>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Map<AlignV1, DefaultsV1>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, Map<AlignV2, DefaultsV2>>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Map<AlignV2, DefaultsV2>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    AlignV1 k = new AlignV1();
+    k.setX(11);
+    k.setY(22);
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("val");
+    Map<AlignV1, DefaultsV1> inner = new HashMap<>();
+    inner.put(k, v);
+    Map<String, Map<AlignV1, DefaultsV1>> in = new HashMap<>();
+    in.put("o", inner);
+    Map<String, Map<AlignV2, DefaultsV2>> out = reader.decode(writer.encode(in));
+    Map.Entry<AlignV2, DefaultsV2> e = out.get("o").entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getX(), 11);
+    Assert.assertEquals(e.getKey().getY(), 22);
+    Assert.assertEquals(e.getKey().getFlag(), (byte) 0);
+    Assert.assertEquals(e.getValue().getName(), "val");
+    Assert.assertEquals(e.getValue().getPrimitiveCount(), 0);
+    Assert.assertNull(e.getValue().getBoxedCount());
+  }
+
+  @Test
+  public void mapOfMapKeyOlderPayload() {
+    MapEncoder<Map<String, Map<DefaultsV1, String>>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Map<DefaultsV1, String>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, Map<DefaultsV2, String>>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Map<DefaultsV2, String>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 k = new DefaultsV1();
+    k.setName("k");
+    Map<DefaultsV1, String> inner = new HashMap<>();
+    inner.put(k, "v");
+    Map<String, Map<DefaultsV1, String>> in = new HashMap<>();
+    in.put("o", inner);
+    Map<String, Map<DefaultsV2, String>> out = reader.decode(writer.encode(in));
+    Map.Entry<DefaultsV2, String> e = out.get("o").entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 0); // since=2 field absent in writer
+    Assert.assertNull(e.getKey().getBoxedCount());
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  // A nested map whose KEY and VALUE are DIFFERENT versioned beans, reached through a top-level
+  // array wrapper. Key is AlignV1/V2 (V2 adds a byte flag), value is DefaultsV1/V2 (V2 adds two
+  // since=2 fields). The element schema's strict hash must cover both sides at their chosen
+  // versions, just as the enclosing-bean hash does on the row-field path, so an older payload
+  // restores both beans at their historical layout. Old field values are non-default so reading
+  // either side at the wrong (current) layout would misread the bytes rather than coincide with a
+  // default. The two beans evolve independently, so dispatch must distinguish their combination.
+  @Test
+  public void arrayOfMapBothSidesOlderPayload() {
+    ArrayEncoder<List<Map<AlignV1, DefaultsV1>>> writer =
+        Encoders.buildArrayCodec(new TypeRef<List<Map<AlignV1, DefaultsV1>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<Map<AlignV2, DefaultsV2>>> reader =
+        Encoders.buildArrayCodec(new TypeRef<List<Map<AlignV2, DefaultsV2>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    AlignV1 k = new AlignV1();
+    k.setX(11);
+    k.setY(22);
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("val");
+    Map<AlignV1, DefaultsV1> inner = new HashMap<>();
+    inner.put(k, v);
+    List<Map<AlignV2, DefaultsV2>> out = reader.decode(writer.encode(Arrays.asList(inner)));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<AlignV2, DefaultsV2> e = out.get(0).entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getX(), 11);
+    Assert.assertEquals(e.getKey().getY(), 22);
+    Assert.assertEquals(e.getKey().getFlag(), (byte) 0); // key since=2 field absent in writer
+    Assert.assertEquals(e.getValue().getName(), "val");
+    Assert.assertEquals(e.getValue().getPrimitiveCount(), 0); // value since=2 fields absent
+    Assert.assertNull(e.getValue().getBoxedCount());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Removed nullable struct that was null on the wire: the v1 writer leaves
+  // the slot's null bit set; the v2 reader skips the slot during projection.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class NullableStructV1 {
+    private String id;
+    private DefaultsV1 detail; // nullable, removed at v2
+    private long tail; // live in both versions, positioned after the removed slot
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = NullableStructV2.History.class)
+  public static class NullableStructV2 {
+    private String id;
+    private long tail;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      DefaultsV1 detail();
+    }
+  }
+
+  @Test
+  public void removedNullableStructWasNullOnWire() {
+    RowEncoder<NullableStructV1> writer = evolvingCodec(NullableStructV1.class);
+    RowEncoder<NullableStructV2> reader = evolvingCodec(NullableStructV2.class);
+    NullableStructV1 in = new NullableStructV1();
+    in.setId("only-id");
+    // detail intentionally left null
+    in.setTail(42L);
+    NullableStructV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), "only-id");
+    // The field after the removed (null-on-wire) slot must read correctly, proving projection
+    // skipped the slot rather than reading its null bit as part of a later field.
+    Assert.assertEquals(out.getTail(), 42L);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Builder method ordering: compactEncoding() before vs after withSchemaEvolution()
+  // must produce equivalent codecs.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void builderMethodOrderingIsCommutative() {
+    RowEncoder<DefaultsV1> w =
+        Encoders.buildBeanCodec(DefaultsV1.class)
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    RowEncoder<DefaultsV2> rOrderA =
+        Encoders.buildBeanCodec(DefaultsV2.class)
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    RowEncoder<DefaultsV2> rOrderB =
+        Encoders.buildBeanCodec(DefaultsV2.class)
+            .withSchemaEvolution()
+            .compactEncoding()
+            .build()
+            .get();
+    DefaultsV1 in = new DefaultsV1();
+    in.setName("commute");
+    byte[] bytes = w.encode(in);
+    Assert.assertEquals(rOrderA.decode(bytes).getName(), "commute");
+    Assert.assertEquals(rOrderB.decode(bytes).getName(), "commute");
+  }
+
+  @Test
+  public void nestedListSurvivesOuterProjection() {
+    RowEncoder<NestedListV1> writer = evolvingCodec(NestedListV1.class);
+    RowEncoder<NestedListV2> reader = evolvingCodec(NestedListV2.class);
+    DefaultsV1 a = new DefaultsV1();
+    a.setName("a");
+    DefaultsV1 b = new DefaultsV1();
+    b.setName("b");
+    NestedListV1 in = new NestedListV1();
+    in.setItems(Arrays.asList(a, b));
+    NestedListV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getItems().size(), 2);
+    Assert.assertEquals(out.getItems().get(0).getName(), "a");
+    Assert.assertEquals(out.getItems().get(1).getName(), "b");
+    Assert.assertNull(out.getTag());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Nested versioned bean: a parent bean with a struct field whose own type is
+  // versioned independently. The wire layout for the inner struct is inline in
+  // the parent's bytes with no per-inner hash. The reader, dispatching on the
+  // parent's strict hash, needs to choose an inner schema consistent with what
+  // the writer used.
+  // ---------------------------------------------------------------------------
+
+  /** Stand-in for "older code that wrote the inner struct without field x". */
+  @Data
+  public static class NestedInnerWriter {
+    private String name;
+  }
+
+  /** Stand-in for "older code that wrote the outer containing NestedInnerWriter". */
+  @Data
+  public static class NestedOuterWriter {
+    private long id;
+    private NestedInnerWriter inner;
+  }
+
+  /** Newer inner with an added field at v2. */
+  @Data
+  public static class NestedInnerV2 {
+    private String name;
+
+    @ForyRowVersion(since = 2)
+    private String addedField;
+  }
+
+  /** Newer outer that still has just (id, inner) but its inner type evolved. */
+  @Data
+  public static class NestedOuterV2 {
+    private long id;
+    private NestedInnerV2 inner;
+  }
+
+  @Test
+  public void readerInnerNewerThanWriter() {
+    // Writer uses the "older shape" inner. Both writer and reader are evolution-on so they
+    // agree on strict-hash framing.
+    RowEncoder<NestedOuterWriter> writer = evolvingCodec(NestedOuterWriter.class);
+    RowEncoder<NestedOuterV2> reader = evolvingCodec(NestedOuterV2.class);
+
+    NestedOuterWriter in = new NestedOuterWriter();
+    in.setId(42);
+    NestedInnerWriter inn = new NestedInnerWriter();
+    inn.setName("hello");
+    in.setInner(inn);
+
+    byte[] bytes = writer.encode(in);
+    NestedOuterV2 out = reader.decode(bytes);
+    Assert.assertEquals(out.getId(), 42);
+    Assert.assertNotNull(out.getInner());
+    Assert.assertEquals(out.getInner().getName(), "hello");
+    Assert.assertNull(out.getInner().getAddedField());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Outer + inner versioned independently. The cross-product enumeration must
+  // generate a projection codec for each (outer-version, inner-version) pair
+  // that isn't the current combination.
+  // ---------------------------------------------------------------------------
+
+  /** Outer with its own added field at v2; inner stays at v1. */
+  @Data
+  public static class CrossOuterV2_InnerV1 {
+    private long id;
+    private NestedInnerWriter inner;
+
+    @ForyRowVersion(since = 2)
+    private String label;
+  }
+
+  /** Outer v2 reader with inner evolved to v2. Both dimensions evolve independently. */
+  @Data
+  public static class CrossOuterV2_InnerV2 {
+    private long id;
+    private NestedInnerV2 inner;
+
+    @ForyRowVersion(since = 2)
+    private String label;
+  }
+
+  @Test
+  public void crossOuterAndInnerEvolution() {
+    // Writer writes outer V1 + inner V1 (no label, no addedField).
+    RowEncoder<NestedOuterWriter> writer = evolvingCodec(NestedOuterWriter.class);
+    RowEncoder<CrossOuterV2_InnerV2> reader = evolvingCodec(CrossOuterV2_InnerV2.class);
+
+    NestedOuterWriter in = new NestedOuterWriter();
+    in.setId(100);
+    NestedInnerWriter inn = new NestedInnerWriter();
+    inn.setName("legacy-inner");
+    in.setInner(inn);
+
+    byte[] bytes = writer.encode(in);
+    CrossOuterV2_InnerV2 out = reader.decode(bytes);
+    Assert.assertEquals(out.getId(), 100);
+    Assert.assertEquals(out.getInner().getName(), "legacy-inner");
+    Assert.assertNull(out.getInner().getAddedField());
+    Assert.assertNull(out.getLabel());
+  }
+
+  /**
+   * Contract: {@code SchemaHistory.current().nestedBeanSchemas()} must report each nested bean at
+   * its current entry. Two cross-product combinations canonicalizing to the same signature is rare
+   * today (the inner's own strict-hash collapse, {@code byHash}, merges wire-equal schemas before
+   * the outer sees them) but the contract is documented and future callers may rely on it.
+   */
+  @Test
+  public void schemaHistoryCurrentReflectsCurrentInnerVersions() {
+    SchemaHistory history =
+        SchemaHistory.build(CrossOuterV2_InnerV2.class, SchemaHistory.Format.STANDARD);
+    SchemaHistory.VersionedSchema current = history.current();
+    Assert.assertTrue(current.isCurrent(), "history.current() must be marked current");
+    for (Map.Entry<Class<?>, SchemaHistory.VersionedSchema> e :
+        current.nestedBeanSchemas().entrySet()) {
+      SchemaHistory innerHistory = SchemaHistory.build(e.getKey(), SchemaHistory.Format.STANDARD);
+      Assert.assertTrue(
+          e.getValue().isCurrent(),
+          "current().nestedBeanSchemas() must report inner " + e.getKey() + " at its current");
+      Assert.assertEquals(
+          e.getValue().version(),
+          innerHistory.current().version(),
+          "inner current version mismatch for " + e.getKey());
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cross-product enumeration must route inner-bean versions through array and
+  // map projection codecs, not just through the row codec. The reader's outer
+  // type has N outer versions x M inner versions; multiple cross-product entries
+  // share an outer version number, so the per-class suffix must encode the
+  // inner version to keep them from colliding on the codegen cache.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void crossOuterAndInnerEvolutionArray() {
+    ArrayEncoder<List<NestedOuterWriter>> writer =
+        Encoders.buildArrayCodec(new TypeRef<List<NestedOuterWriter>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<CrossOuterV2_InnerV2>> reader =
+        Encoders.buildArrayCodec(new TypeRef<List<CrossOuterV2_InnerV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+
+    List<NestedOuterWriter> in = new ArrayList<>();
+    for (int i = 0; i < 3; i++) {
+      NestedOuterWriter e = new NestedOuterWriter();
+      e.setId(i);
+      NestedInnerWriter inn = new NestedInnerWriter();
+      inn.setName("legacy-" + i);
+      e.setInner(inn);
+      in.add(e);
+    }
+
+    List<CrossOuterV2_InnerV2> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 3);
+    for (int i = 0; i < 3; i++) {
+      Assert.assertEquals(out.get(i).getId(), i);
+      Assert.assertEquals(out.get(i).getInner().getName(), "legacy-" + i);
+      Assert.assertNull(out.get(i).getInner().getAddedField());
+      Assert.assertNull(out.get(i).getLabel());
+    }
+  }
+
+  @Test
+  public void crossOuterAndInnerEvolutionMap() {
+    MapEncoder<Map<String, NestedOuterWriter>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<String, NestedOuterWriter>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, CrossOuterV2_InnerV2>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, CrossOuterV2_InnerV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+
+    LinkedHashMap<String, NestedOuterWriter> in = new LinkedHashMap<>();
+    for (int i = 0; i < 3; i++) {
+      NestedOuterWriter e = new NestedOuterWriter();
+      e.setId(i);
+      NestedInnerWriter inn = new NestedInnerWriter();
+      inn.setName("legacy-" + i);
+      e.setInner(inn);
+      in.put("k" + i, e);
+    }
+
+    Map<String, CrossOuterV2_InnerV2> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 3);
+    for (int i = 0; i < 3; i++) {
+      CrossOuterV2_InnerV2 v = out.get("k" + i);
+      Assert.assertNotNull(v, "missing key k" + i);
+      Assert.assertEquals(v.getId(), i);
+      Assert.assertEquals(v.getInner().getName(), "legacy-" + i);
+      Assert.assertNull(v.getInner().getAddedField());
+      Assert.assertNull(v.getLabel());
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // A full-length payload whose strict schema hash matches neither the reader's
+  // current schema nor any entry in its projection history must fail loudly.
+  // This is the projection-map miss. Encoding one bean and decoding it with an
+  // evolving codec for a structurally different bean reaches that branch
+  // deterministically.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void rowUnknownSchemaHashFailsLoudly() {
+    ChainV2 writer = new ChainV2();
+    writer.setA(7);
+    writer.setB("foreign");
+    byte[] foreign = evolvingCodec(ChainV2.class).encode(writer);
+    Assert.assertTrue(foreign.length > 8, "payload must clear the 8-byte hash prefix");
+    RowEncoder<DefaultsV1> reader = evolvingCodec(DefaultsV1.class);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> reader.decode(foreign));
+  }
+
+  @Test
+  public void mapUnknownSchemaHashFailsLoudly() {
+    MapEncoder<Map<String, ChainV2>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<String, ChainV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ChainV2 v = new ChainV2();
+    v.setA(7);
+    v.setB("foreign");
+    LinkedHashMap<String, ChainV2> in = new LinkedHashMap<>();
+    in.put("k", v);
+    byte[] foreign = writer.encode(in);
+    Assert.assertTrue(foreign.length > 8, "payload must clear the 8-byte hash prefix");
+    MapEncoder<Map<String, DefaultsV1>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> reader.decode(foreign));
+  }
+
+  @Test
+  public void arrayUnknownSchemaHashFailsLoudly() {
+    ArrayEncoder<List<ChainV2>> writer =
+        Encoders.buildArrayCodec(new TypeRef<List<ChainV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ChainV2 v = new ChainV2();
+    v.setA(7);
+    v.setB("foreign");
+    List<ChainV2> in = new ArrayList<>();
+    in.add(v);
+    byte[] foreign = writer.encode(in);
+    Assert.assertTrue(foreign.length > 8, "payload must clear the 8-byte hash prefix");
+    ArrayEncoder<List<DefaultsV1>> reader =
+        Encoders.buildArrayCodec(new TypeRef<List<DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> reader.decode(foreign));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Three-level nesting: L1 -> L2 -> L3, each independently versioned. Because
+  // L2's own history cross-products over L3's versions, L2's history holds two
+  // entries that share a version number but differ in their L3 layout. Routing
+  // must pick the L2 entry whose L3 matches the writer, not the first one with a
+  // matching version number. Identifies the inner combination by strict hash, so
+  // it resolves the correct subtree to arbitrary depth.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class L3Writer {
+    private String name;
+  }
+
+  @Data
+  public static class L2Writer {
+    private long tag;
+    private L3Writer leaf;
+  }
+
+  @Data
+  public static class L1Writer {
+    private long id;
+    private L2Writer mid;
+  }
+
+  @Data
+  public static class L3V2 {
+    private String name;
+
+    @ForyRowVersion(since = 2)
+    private String note;
+  }
+
+  @Data
+  public static class L2V2 {
+    private long tag;
+    private L3V2 leaf;
+
+    @ForyRowVersion(since = 2)
+    private String midLabel;
+  }
+
+  @Data
+  public static class L1V2 {
+    private long id;
+    private L2V2 mid;
+
+    @ForyRowVersion(since = 2)
+    private String outerLabel;
+  }
+
+  @Test
+  public void threeLevelNestedEvolution() {
+    RowEncoder<L1Writer> writer = evolvingCodec(L1Writer.class);
+    RowEncoder<L1V2> reader = evolvingCodec(L1V2.class);
+
+    L1Writer in = new L1Writer();
+    in.setId(7);
+    L2Writer mid = new L2Writer();
+    mid.setTag(11);
+    L3Writer leaf = new L3Writer();
+    leaf.setName("deep");
+    mid.setLeaf(leaf);
+    in.setMid(mid);
+
+    L1V2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), 7);
+    Assert.assertNull(out.getOuterLabel());
+    Assert.assertEquals(out.getMid().getTag(), 11);
+    Assert.assertNull(out.getMid().getMidLabel());
+    Assert.assertEquals(out.getMid().getLeaf().getName(), "deep");
+    Assert.assertNull(out.getMid().getLeaf().getNote());
+  }
+
+  // ---------------------------------------------------------------------------
+  // The same versioned bean class in two fields. A writer writes one definition
+  // of that class, so both fields are always at the same version on the wire;
+  // the enumeration carries one version dimension per class, not per field, so a
+  // class may back more than one slot.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class TwoLeafWriter {
+    private L3Writer first;
+    private L3Writer second;
+  }
+
+  @Data
+  public static class TwoLeafV2 {
+    private L3V2 first;
+    private L3V2 second;
+  }
+
+  @Test
+  public void sameClassInTwoFields() {
+    RowEncoder<TwoLeafWriter> writer = evolvingCodec(TwoLeafWriter.class);
+    RowEncoder<TwoLeafV2> reader = evolvingCodec(TwoLeafV2.class);
+
+    TwoLeafWriter in = new TwoLeafWriter();
+    L3Writer a = new L3Writer();
+    a.setName("alpha");
+    L3Writer b = new L3Writer();
+    b.setName("beta");
+    in.setFirst(a);
+    in.setSecond(b);
+
+    TwoLeafV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getFirst().getName(), "alpha");
+    Assert.assertNull(out.getFirst().getNote());
+    Assert.assertEquals(out.getSecond().getName(), "beta");
+    Assert.assertNull(out.getSecond().getNote());
+  }
+
+  private static <T> RowEncoder<T> evolvingCodec(Class<T> beanClass) {
+    return Encoders.buildBeanCodec(beanClass).withSchemaEvolution().build().get();
+  }
+}
