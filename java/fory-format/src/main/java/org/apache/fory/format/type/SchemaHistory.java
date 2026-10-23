@@ -369,11 +369,12 @@ public final class SchemaHistory {
       // own history is held to that same version (see cartesian). If no entries have nested
       // histories, this yields a single combination.
       //
-      // The combination count is the product of the per-class version counts. If
-      // that growth becomes a concern, drop entries from each bean's History interface once you
-      // no longer need to read payloads from that range — that removes the corresponding
-      // VersionedSchema from this enumeration. Retiring history entries is purely a read-side
-      // concern; the writer always uses the current schema.
+      // The combination count is the product of the per-class version counts. There is no cap on
+      // purpose: what a host can afford ranges from a microcontroller to a large server, so no one
+      // limit fits. If the growth becomes a concern, drop entries from each bean's History
+      // interface once you no longer need to read payloads from that range — that removes the
+      // corresponding VersionedSchema from this enumeration. Retiring history entries is purely a
+      // read-side concern; the writer always uses the current schema.
       LinkedHashMap<Class<?>, List<VersionedSchema>> innerChoices = new LinkedHashMap<>();
       Set<Class<?>> liveNestedClasses = new HashSet<>();
       for (FieldEntry fe : activeEntries) {

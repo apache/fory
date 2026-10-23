@@ -121,11 +121,10 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     // the map header's combined hash identifies the (key-layout, value-layout) pair. Each position
     // is enumerated over every versioned bean reachable through its wrappers, so a position that
     // itself wraps more than one bean (such as a value typed Map<KBean, VBean>) evolves all of
-    // them.
-    // A position with no versioned bean has a single current-only layout, so the cross-product
-    // degenerates to the evolving position's versions (or to just the current layout when neither
-    // evolves, i.e. a non-versioned bean that still needs the hash prefix for flag-mismatch
-    // detection).
+    // them. A position with no versioned bean has a single current-only layout, so the
+    // cross-product degenerates to the evolving position's versions (or to just the current layout
+    // when neither evolves, i.e. a non-versioned bean that still needs the hash prefix for
+    // flag-mismatch detection).
     SchemaHistory valHistory = buildElementSchemaHistory(field.name(), valType);
     SchemaHistory keyHistory = buildElementSchemaHistory(field.name(), keyType);
     SchemaHistory.VersionedSchema valCurrent = valHistory.current();
@@ -144,7 +143,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     //
     // A writer has one definition of each bean class, so a pair that puts a class reached from
     // both the key and the value at two versions cannot occur on the wire; skip it, as the row
-    // enumeration does.
+    // enumeration does. The pair count is the product of the key and value version counts, with no
+    // cap, for the reason that SchemaHistory.enumerate gives.
     LongMap<MapProjectionSource> projectionSources = new LongMap<>();
     for (SchemaHistory.VersionedSchema valVs : valHistory.versions()) {
       for (SchemaHistory.VersionedSchema keyVs : keyHistory.versions()) {
