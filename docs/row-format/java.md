@@ -371,6 +371,15 @@ next to a case boundary makes the two orders diverge (`aB` sorts before `a_a` as
 but its wire name `a_b` sorts after `a_a`); such a bean is rejected when the codec is built, with
 a message naming the members to rename.
 
+Because field names are wire identity, a rename is a removal plus an addition, not an in-place
+mapping: declare the old name on the history interface with `until = N` and annotate the renamed
+member with `since = N`. Older payloads then decode with the renamed field at its default, not
+carrying over the old field's value; renaming without those declarations changes the payload hash
+and older payloads stop decoding. The member the wire name derives from is whatever backs the
+descriptor — the field for field-backed beans, the accessor method for interface beans — so
+converting a bean between the two styles also changes every wire name and is a rename of every
+field.
+
 A reader selects the matching layout from the 8-byte strict hash on the payload. The hash includes
 field names and nullability and is checked for collisions across a bean's own versions when the
 codec is built, but it is still a 64-bit value: a payload whose hash coincides with one of the
