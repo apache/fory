@@ -115,9 +115,6 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     Preconditions.checkArgument(beanClass.isInterface() || TypeUtils.isBean(beanType, typeCtx));
     this.projectionLiveNames = liveNames;
     this.projectionClassSuffix = classSuffix;
-    // Per-class nested-bean routing lives in the inherited nestedClassSuffixes; the base
-    // nestedBeanSuffix reads it and returns "" for a class absent from a non-null map, which is the
-    // routing this builder needs. A null arg means no projection (current schema for every bean).
     this.nestedClassSuffixes = nestedSuffixes;
     className =
         projectionClassSuffix == null

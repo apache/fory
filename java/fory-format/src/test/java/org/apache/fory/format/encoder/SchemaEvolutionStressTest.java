@@ -316,9 +316,8 @@ public class SchemaEvolutionStressTest {
     }
   }
 
-  // A struct that itself contains a live, evolving nested bean. Used as a map KEY so the key
-  // position must keep inKeyPosition set while recursing into the nested bean, not just for the
-  // top-level key bean.
+  // A struct that itself contains a live, evolving nested bean. Used as a map KEY so the nested
+  // bean, not only the top-level key bean, must route to its projection codec.
   @Data
   public static class KeyHolderV1 {
     private String id;
@@ -1430,12 +1429,8 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void evolveMapStructKeyWithNestedBean() {
-    // The key is a struct that itself wraps an evolving nested bean. inKeyPosition must stay set
-    // while the key subtree recurses into the nested bean, both at expression construction and in
-    // KeyPositionScope's genCode. If it does not, the nested key bean registers/decodes under the
-    // value-position codec key and decode fails loud ("No bean codec registered ... key/value
-    // position"). The nested detail is written at V1 and read by a V2 reader, so the nested key
-    // bean must project to its historical layout, not the value's.
+    // The key is a struct that itself wraps an evolving nested bean. The nested detail is written
+    // at V1 and read by a V2 reader, so the nested key bean must project to its historical layout.
     MapEncoder<Map<KeyHolderV1, String>> writer =
         Encoders.buildMapCodec(new TypeRef<Map<KeyHolderV1, String>>() {})
             .withSchemaEvolution()
@@ -1466,9 +1461,7 @@ public class SchemaEvolutionStressTest {
   @Test
   public void evolveMapCollectionKey() {
     // The key is a List of versioned beans, so the key subtree is a collection rather than a bare
-    // bean. This drives the keyScoped(deserializeForCollection) branch: inKeyPosition must stay set
-    // through the collection element decode so the element bean projects to its historical layout
-    // under the key-position codec, not the value's.
+    // bean. The element bean must project to its historical layout through the collection decode.
     MapEncoder<Map<List<DefaultsV1>, String>> writer =
         Encoders.buildMapCodec(new TypeRef<Map<List<DefaultsV1>, String>>() {})
             .withSchemaEvolution()

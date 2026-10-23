@@ -19,7 +19,6 @@
 
 package org.apache.fory.format.encoder;
 
-import java.util.function.UnaryOperator;
 import org.apache.fory.Fory;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
@@ -69,7 +68,9 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    * Enable schema evolution. The codec accepts payloads written by older versions of the same bean,
    * using the {@link org.apache.fory.format.annotation.ForyRowVersion} and {@link
    * org.apache.fory.format.annotation.ForyRowSchema} annotations to reconstruct historical schemas.
-   * Writing always uses the current version.
+   * Writing always uses the current version. Only {@code encode} and {@code decode} carry and check
+   * the schema hash; {@code toRow}, {@code fromRow}, and their array and map forms always use the
+   * current schema.
    *
    * <p>This flag is part of the wire contract: producers and consumers must agree on it, and it
    * cannot be flipped on an existing dataset without rewriting. For array and map codecs it adds an
@@ -104,7 +105,7 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    * order. The default format passes schemas through unchanged.
    */
   protected SchemaHistory buildSchemaHistory(final Class<?> targetClass) {
-    return SchemaHistory.build(targetClass, schemaTransform());
+    return SchemaHistory.build(targetClass, codecFormat::wireOrderSchema);
   }
 
   /**
@@ -116,7 +117,7 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    */
   protected SchemaHistory buildElementSchemaHistory(
       final String fieldName, final TypeRef<?> elementType) {
-    return SchemaHistory.forElement(fieldName, elementType, schemaTransform());
+    return SchemaHistory.forElement(fieldName, elementType, codecFormat::wireOrderSchema);
   }
 
   /**
@@ -127,12 +128,6 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    */
   protected static TypeResolutionContext typeCtx() {
     return new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
-  }
-
-  private UnaryOperator<Schema> schemaTransform() {
-    return codecFormat == CompactCodecFormat.INSTANCE
-        ? CompactBinaryRowWriter::sortSchemaDeep
-        : UnaryOperator.identity();
   }
 
   @SuppressWarnings("unchecked")

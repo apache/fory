@@ -42,9 +42,8 @@ class CompactMapEncoderBuilder extends MapEncoderBuilder {
       final TypeRef<?> beanType,
       final String valCodecSuffix,
       final String keyCodecSuffix,
-      final Map<Class<?>, String> valNestedSuffixes,
-      final Map<Class<?>, String> keyNestedSuffixes) {
-    super(clsType, beanType, valCodecSuffix, keyCodecSuffix, valNestedSuffixes, keyNestedSuffixes);
+      final Map<Class<?>, String> nestedSuffixes) {
+    super(clsType, beanType, valCodecSuffix, keyCodecSuffix, nestedSuffixes);
   }
 
   @Override

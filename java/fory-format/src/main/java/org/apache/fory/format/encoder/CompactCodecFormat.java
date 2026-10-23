@@ -102,10 +102,9 @@ enum CompactCodecFormat implements Encoding {
       final TypeRef<?> beanToken,
       final String valCodecSuffix,
       final String keyCodecSuffix,
-      final Map<Class<?>, String> valNestedSuffixes,
-      final Map<Class<?>, String> keyNestedSuffixes) {
+      final Map<Class<?>, String> nestedSuffixes) {
     return new CompactMapEncoderBuilder(
-        mapType, beanToken, valCodecSuffix, keyCodecSuffix, valNestedSuffixes, keyNestedSuffixes);
+        mapType, beanToken, valCodecSuffix, keyCodecSuffix, nestedSuffixes);
   }
 
   @Override
@@ -114,6 +113,11 @@ enum CompactCodecFormat implements Encoding {
     // and the nested-slot read path).
     final CompactRowLayout layout = new CompactRowLayout(schema);
     return layout::newRow;
+  }
+
+  @Override
+  public Schema wireOrderSchema(final Schema schema) {
+    return CompactBinaryRowWriter.sortSchemaDeep(schema);
   }
 
   @Override

@@ -99,15 +99,19 @@ enum DefaultCodecFormat implements Encoding {
       final TypeRef<?> beanToken,
       final String valCodecSuffix,
       final String keyCodecSuffix,
-      final Map<Class<?>, String> valNestedSuffixes,
-      final Map<Class<?>, String> keyNestedSuffixes) {
+      final Map<Class<?>, String> nestedSuffixes) {
     return new MapEncoderBuilder(
-        mapType, beanToken, valCodecSuffix, keyCodecSuffix, valNestedSuffixes, keyNestedSuffixes);
+        mapType, beanToken, valCodecSuffix, keyCodecSuffix, nestedSuffixes);
   }
 
   @Override
   public RowFactory newRowFactory(final Schema schema) {
     return () -> new BinaryRow(schema);
+  }
+
+  @Override
+  public Schema wireOrderSchema(final Schema schema) {
+    return schema;
   }
 
   @Override

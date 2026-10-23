@@ -78,19 +78,17 @@ interface Encoding {
    * Construct a map encoder builder whose generated code references the value and key bean row
    * codec classes for one historical (key-version, value-version) combination. {@code
    * valCodecSuffix} and {@code keyCodecSuffix} name the generated map codec class per position;
-   * {@code valNestedSuffixes} and {@code keyNestedSuffixes} route each nested bean class within a
-   * position to its own projection row codec, so a position wrapping more than one distinct
-   * versioned bean (such as a value typed {@code Map<KBean, VBean>}) embeds the right historical
-   * codec for each. An empty suffix or absent class means that position, or that bean, is read at
-   * its current schema.
+   * {@code nestedSuffixes} routes each nested bean class in either position to its own projection
+   * row codec. One map covers both positions because a payload holds one version of each bean
+   * class. An empty suffix or absent class means that position, or that bean, is read at its
+   * current schema.
    */
   MapEncoderBuilder newProjectionMapEncoder(
       TypeRef<? extends Map<?, ?>> mapType,
       TypeRef<?> beanToken,
       String valCodecSuffix,
       String keyCodecSuffix,
-      Map<Class<?>, String> valNestedSuffixes,
-      Map<Class<?>, String> keyNestedSuffixes);
+      Map<Class<?>, String> nestedSuffixes);
 
   /**
    * Build a {@link RowFactory} for {@code schema}, precomputing any schema-derived layout once.
@@ -98,6 +96,12 @@ interface Encoding {
    * re-deriving the layout on every decode.
    */
   RowFactory newRowFactory(Schema schema);
+
+  /**
+   * Return {@code schema} with the fields of every struct, at any depth, in the order this format
+   * writes them. Schema evolution hashes historical schemas in this order.
+   */
+  Schema wireOrderSchema(Schema schema);
 
   BinaryArray newArray(Field field);
 

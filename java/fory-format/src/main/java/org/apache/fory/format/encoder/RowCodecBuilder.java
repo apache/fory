@@ -48,7 +48,7 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
    * virtual thread.
    */
   public Supplier<RowEncoder<T>> build() {
-    final RowEncoderFactory<T> factory = buildEncoderFactory();
+    final RowEncoderFactory<T> factory = buildForWriter();
     return new Supplier<RowEncoder<T>>() {
       @Override
       public RowEncoder<T> get() {
@@ -58,17 +58,12 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     };
   }
 
-  Function<BaseBinaryRowWriter, RowEncoder<T>> buildForWriter() {
-    return buildEncoderFactory();
-  }
-
   /**
    * Resolve the schema and the per-writer encoder factory together. The evolution path rotates the
    * schema to the history-derived current version; returning it alongside the factory keeps that
-   * resolution out of the mutable builder state, so a reused builder or a direct {@link
-   * #buildForWriter()} caller is unaffected.
+   * resolution out of the mutable builder state, so a reused builder is unaffected.
    */
-  private RowEncoderFactory<T> buildEncoderFactory() {
+  RowEncoderFactory<T> buildForWriter() {
     return schemaEvolution ? evolvingBuildForWriter() : defaultBuildForWriter();
   }
 

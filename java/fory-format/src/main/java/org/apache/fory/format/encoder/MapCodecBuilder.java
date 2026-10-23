@@ -298,24 +298,31 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       // Each position's history is forElement over the position type, so its schema's single field
       // is the position field with every reachable bean projected onto this combination, and
       // nestedSuffixesFor routes each bean class in the position to its own historical row codec.
+      // sameClassVersions holds for every indexed combination, so a class that both positions
+      // reach gets the same suffix from either side and one class-keyed map serves both.
       // The projected field carries only the substituted type; the position's own nullability is
       // taken from the current map field (map keys are non-nullable, values nullable).
       Field currentVal = DataTypes.itemFieldForMap(field);
       Field histVal = currentVal;
       String valSuffix = "";
-      Map<Class<?>, String> valNested = null;
+      Map<Class<?>, String> nested = null;
       if (valVs != valCurrent) {
         valSuffix = ProjectionRouting.projectionSuffix(valVs);
-        valNested = ProjectionRouting.nestedSuffixesFor(valVs, codecFormat, codeGenerator);
+        nested = ProjectionRouting.nestedSuffixesFor(valVs, codecFormat, codeGenerator);
         histVal = projectedPositionField(currentVal, valVs);
       }
       Field currentKey = DataTypes.keyFieldForMap(field);
       Field histKey = currentKey;
       String keySuffix = "";
-      Map<Class<?>, String> keyNested = null;
       if (keyVs != keyCurrent) {
         keySuffix = ProjectionRouting.projectionSuffix(keyVs);
-        keyNested = ProjectionRouting.nestedSuffixesFor(keyVs, codecFormat, codeGenerator);
+        Map<Class<?>, String> keyNested =
+            ProjectionRouting.nestedSuffixesFor(keyVs, codecFormat, codeGenerator);
+        if (nested == null) {
+          nested = keyNested;
+        } else {
+          nested.putAll(keyNested);
+        }
         histKey = projectedPositionField(currentKey, keyVs);
       }
       Class<?> mapClass =
@@ -325,8 +332,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
               codecFormat,
               valSuffix,
               keySuffix,
-              valNested,
-              keyNested,
+              nested,
               codeGenerator);
       Field histMapField = DataTypes.mapField(field.name(), histKey, histVal);
       return new Resolved(
