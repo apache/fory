@@ -165,14 +165,16 @@ public sealed class MetadataPublicationTests
             public static async Task Replacement(bool trackRef, bool independent)
             {
                 using var reader = global::Apache.Fory.Fory.Builder().Compatible(true).TrackRef(trackRef).BuildThreadSafe();
+                using var otherReader = global::Apache.Fory.Fory.Builder().Compatible(true).TrackRef(trackRef).BuildThreadSafe();
                 using var writer = global::Apache.Fory.Fory.Builder().Compatible(true).TrackRef(trackRef).BuildThreadSafe();
                 reader.Register<Payload>("test", "Payload");
+                otherReader.Register<Payload>("test", "Payload");
+                otherReader.Register<ExtendedPayload>("test", "Extra");
                 writer.Register<ExtendedPayload>("test", "Payload");
                 byte[] exact = reader.Serialize(new Payload { Count = 37, Message = "correct" });
                 byte[] evolved = writer.Serialize(new ExtendedPayload { Count = 37, Message = "correct", Extra = 99 });
                 Check(reader.Deserialize<Payload>(exact));
-                // Registration between completed roots is supported; no concurrent mutation.
-                reader.Register<ExtendedPayload>("test", "Extra");
+                // Different preconfigured readers replace the shared snapshot without late registration.
                 Task[] workers = new Task[4];
                 for (int worker = 0; worker < workers.Length; worker++)
                 {
@@ -182,6 +184,8 @@ public sealed class MetadataPublicationTests
                         {
                             Check(reader.Deserialize<Payload>(evolved));
                             Check(reader.Deserialize<Payload>(exact));
+                            Check(otherReader.Deserialize<Payload>(evolved));
+                            Check(otherReader.Deserialize<Payload>(exact));
                         }
                     });
                 }
