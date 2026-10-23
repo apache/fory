@@ -513,7 +513,8 @@ unlike the default schema hash, which mixes only type IDs. All inputs are langua
   hash.
 - The reader dispatches on the hash: the current layout's hash selects the current codec, a known
   historical hash selects that layout's projection, and an unknown hash is an error.
-- Known-answer vectors for the prefix (`n` is nullable, `nn` is not nullable):
+- Known-answer vectors for the prefix in the standard format, except where a row names the
+  compact format (`n` is nullable, `nn` is not nullable):
 
   | Payload                                              | Prefix               |
   | ---------------------------------------------------- | -------------------- |
