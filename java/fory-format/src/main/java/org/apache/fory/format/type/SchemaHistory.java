@@ -881,7 +881,7 @@ public final class SchemaHistory {
    * name. The algorithm is specified in {@code docs/specification/row_format_spec.md}; do not
    * change it without updating the spec.
    */
-  static long computeStrictSchemaHash(Schema schema) {
+  public static long computeStrictSchemaHash(Schema schema) {
     long hash = FNV_OFFSET_BASIS;
     for (Field field : schema.fields()) {
       hash = hashNamedField(hash, field);

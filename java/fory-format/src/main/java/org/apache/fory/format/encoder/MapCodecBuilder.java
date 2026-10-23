@@ -20,8 +20,6 @@
 package org.apache.fory.format.encoder;
 
 import java.lang.invoke.MethodHandle;
-import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
@@ -38,14 +36,6 @@ import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.ExceptionUtils;
 
 public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCodecBuilder<M>> {
-
-  // Strict hash for a map position that carries no versioned bean. Such a position has a single
-  // fixed wire layout, so a constant identity is correct: it is the same on writer and reader and
-  // simply leaves the combined hash determined by the position that does evolve. 0L is also a
-  // legitimate FNV result for a real schema, so this sentinel's safety does not rest on 0L being
-  // unreachable; it rests on the build-time collision guards in buildVersioned, which reject any
-  // combined hash that duplicates another combination or the current schema.
-  private static final long NON_BEAN_POSITION_HASH = 0L;
 
   private final TypeRef<M> mapType;
   private final Field field;
@@ -114,15 +104,15 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
   }
 
   /**
-   * Versions for one map position: the history's entries, or a single null when it does not evolve.
+   * Strict hash of one map position at {@code positionVs}: the position's one-field layout with the
+   * nullability the map writes it with (a key is non-nullable, a value nullable), which the element
+   * history's inferred field does not carry. A position without a bean still hashes its type, so a
+   * change to it changes the map hash.
    */
-  private static List<SchemaHistory.VersionedSchema> positionVersions(SchemaHistory history) {
-    return history == null ? Collections.singletonList(null) : history.versions();
-  }
-
-  /** Strict hash contributed by one position: its schema's hash, or the non-bean constant. */
-  private static long positionHash(SchemaHistory.VersionedSchema vs) {
-    return vs == null ? NON_BEAN_POSITION_HASH : vs.strictHash();
+  private static long positionHash(SchemaHistory.VersionedSchema positionVs, Field wireField) {
+    Field position = DataTypes.fieldOfSchema(positionVs.schema(), 0);
+    return SchemaHistory.computeStrictSchemaHash(
+        DataTypes.schema(DataTypes.field(position.name(), position.type(), wireField.nullable())));
   }
 
   private Supplier<MapEncoder<M>> buildVersioned(
@@ -132,21 +122,20 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     // is enumerated over every versioned bean reachable through its wrappers, so a position that
     // itself wraps more than one bean (such as a value typed Map<KBean, VBean>) evolves all of
     // them.
-    // A position with no bean contributes a single current-only layout, so the cross-product
+    // A position with no versioned bean has a single current-only layout, so the cross-product
     // degenerates to the evolving position's versions (or to just the current layout when neither
     // evolves, i.e. a non-versioned bean that still needs the hash prefix for flag-mismatch
     // detection).
-    SchemaHistory valHistory =
-        valClass == null ? null : buildElementSchemaHistory(field.name(), valType);
-    SchemaHistory keyHistory =
-        keyClass == null ? null : buildElementSchemaHistory(field.name(), keyType);
-    SchemaHistory.VersionedSchema valCurrent = valHistory == null ? null : valHistory.current();
-    SchemaHistory.VersionedSchema keyCurrent = keyHistory == null ? null : keyHistory.current();
+    SchemaHistory valHistory = buildElementSchemaHistory(field.name(), valType);
+    SchemaHistory keyHistory = buildElementSchemaHistory(field.name(), keyType);
+    SchemaHistory.VersionedSchema valCurrent = valHistory.current();
+    SchemaHistory.VersionedSchema keyCurrent = keyHistory.current();
+    Field valWire = DataTypes.itemFieldForMap(field);
+    Field keyWire = DataTypes.keyFieldForMap(field);
 
     // Index one deferred projection source per (key-version, value-version) combination, keyed by
     // the combined hash. The current/current combination is the hot path and is handled by the
-    // unsuffixed current codec, so it is skipped here. A null history means that position does not
-    // evolve and contributes only its current entry. Building the index compiles nothing: a
+    // unsuffixed current codec, so it is skipped here. Building the index compiles nothing: a
     // combination's codec classes are generated the first time its hash is decoded. The collision
     // guards below still run eagerly over the full cross-product, so a hash clash fails fast at
     // build rather than surfacing on an unlucky decode.
@@ -154,18 +143,17 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     // The full cross-product is required even when key and value are the same bean family: a writer
     // can pin them to different versions via distinct type arguments (Map<DefaultsV1, DefaultsV2>),
     // so off-diagonal pairs are reachable. See evolveMapSameBeanKeyAndValueCrossCombos.
-    List<SchemaHistory.VersionedSchema> valVersions = positionVersions(valHistory);
-    List<SchemaHistory.VersionedSchema> keyVersions = positionVersions(keyHistory);
     LongMap<BinaryMapEncoder.ProjectionSource> projectionSources = new LongMap<>();
-    for (SchemaHistory.VersionedSchema valVs : valVersions) {
-      for (SchemaHistory.VersionedSchema keyVs : keyVersions) {
+    for (SchemaHistory.VersionedSchema valVs : valHistory.versions()) {
+      for (SchemaHistory.VersionedSchema keyVs : keyHistory.versions()) {
         if (valVs == valCurrent && keyVs == keyCurrent) {
           continue;
         }
         // The map header carries a single hash, so combine the key and value strict hashes into
         // one 64-bit map-layout hash that identifies the (key-version, value-version) combination
         // jointly. The collision check below proves these combined hashes are unique at build time.
-        long hash = SchemaHistory.combineHashes(positionHash(keyVs), positionHash(valVs));
+        long hash =
+            SchemaHistory.combineHashes(positionHash(keyVs, keyWire), positionHash(valVs, valWire));
         if (projectionSources.containsKey(hash)) {
           throw new IllegalStateException(
               "Combined (key, value) schema-hash collision for map "
@@ -176,12 +164,22 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         projectionSources.put(
             hash,
             new ProjectionSource(
-                valClass, keyClass, valVs, keyVs, valCurrent, keyCurrent, codeGenerator));
+                mapType,
+                field,
+                codecFormat,
+                valClass,
+                keyClass,
+                valVs,
+                keyVs,
+                valCurrent,
+                keyCurrent,
+                codeGenerator));
       }
     }
     final var currentFactory = generatedMapEncoder();
     long currentHash =
-        SchemaHistory.combineHashes(positionHash(keyCurrent), positionHash(valCurrent));
+        SchemaHistory.combineHashes(
+            positionHash(keyCurrent, keyWire), positionHash(valCurrent, valWire));
     // The decode hot path matches currentHash before consulting the projection map, so a projection
     // colliding with it would be shadowed and never dispatched to. Prove that cannot happen.
     if (projectionSources.containsKey(currentHash)) {
@@ -230,9 +228,14 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
    * Deferred projection codec for one (key-version, value-version) combination. Holds only the
    * chosen versions; the per-position row codecs and the map codec class are generated on the first
    * {@link #compile} call (the first decode of this combination's combined hash), not at build
-   * time. The build-time collision guards already proved this combination's hash is unique.
+   * time. The build-time collision guards already proved this combination's hash is unique. Static
+   * and built from values captured at build time, so a later change to the builder cannot reach a
+   * lazy compile.
    */
-  private final class ProjectionSource implements BinaryMapEncoder.ProjectionSource {
+  private static final class ProjectionSource implements BinaryMapEncoder.ProjectionSource {
+    private final TypeRef<? extends Map<?, ?>> mapType;
+    private final Field field;
+    private final Encoding codecFormat;
     private final Class<?> valClass;
     private final Class<?> keyClass;
     private final SchemaHistory.VersionedSchema valVs;
@@ -242,6 +245,9 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     private final CodeGenerator codeGenerator;
 
     ProjectionSource(
+        TypeRef<? extends Map<?, ?>> mapType,
+        Field field,
+        Encoding codecFormat,
         Class<?> valClass,
         Class<?> keyClass,
         SchemaHistory.VersionedSchema valVs,
@@ -249,6 +255,9 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         SchemaHistory.VersionedSchema valCurrent,
         SchemaHistory.VersionedSchema keyCurrent,
         CodeGenerator codeGenerator) {
+      this.mapType = mapType;
+      this.field = field;
+      this.codecFormat = codecFormat;
       this.valClass = valClass;
       this.keyClass = keyClass;
       this.valVs = valVs;
@@ -265,7 +274,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
      * current field, so a map where only one side evolves pays no codegen for the unchanged side.
      */
     @Override
-    public BinaryMapEncoder.ProjectionMapCodec compile(Encoding format, Fory fory) {
+    public BinaryMapEncoder.ProjectionMapCodec compile(Fory fory) {
       // Each position's history is forElement over the position type, so its schema's single field
       // is the position field with every reachable bean projected onto this combination, and
       // nestedSuffixesFor routes each bean class in the position to its own historical row codec.
@@ -275,7 +284,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       Field histVal = currentVal;
       String valSuffix = "";
       Map<Class<?>, String> valNested = null;
-      if (valVs != null && valVs != valCurrent) {
+      if (valVs != valCurrent) {
         valSuffix = ProjectionRouting.projectionSuffix(valVs);
         valNested = ProjectionRouting.nestedSuffixesFor(valVs, codecFormat, codeGenerator);
         histVal = projectedPositionField(currentVal, valVs);
@@ -284,7 +293,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       Field histKey = currentKey;
       String keySuffix = "";
       Map<Class<?>, String> keyNested = null;
-      if (keyVs != null && keyVs != keyCurrent) {
+      if (keyVs != keyCurrent) {
         keySuffix = ProjectionRouting.projectionSuffix(keyVs);
         keyNested = ProjectionRouting.nestedSuffixesFor(keyVs, codecFormat, codeGenerator);
         histKey = projectedPositionField(currentKey, keyVs);
@@ -304,11 +313,11 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       try {
         Field histKeyField = DataTypes.keyArrayFieldForMap(histMapField);
         Field histValField = DataTypes.itemArrayFieldForMap(histMapField);
-        BinaryArrayWriter projKey = format.newArrayWriter(histKeyField);
-        BinaryArrayWriter projVal = format.newArrayWriter(histValField, projKey.getBuffer());
+        BinaryArrayWriter projKey = codecFormat.newArrayWriter(histKeyField);
+        BinaryArrayWriter projVal = codecFormat.newArrayWriter(histValField, projKey.getBuffer());
         Object[] references = {histKeyField, histValField, projKey, projVal, fory, histMapField};
         GeneratedMapEncoder codec = (GeneratedMapEncoder) ctor.invokeExact(references);
-        return new BinaryMapEncoder.ProjectionMapCodec(format, histMapField, codec);
+        return new BinaryMapEncoder.ProjectionMapCodec(codecFormat, histMapField, codec);
       } catch (Throwable e) {
         throw ExceptionUtils.throwException(e);
       }

@@ -74,7 +74,7 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
 
   /** Compiles one historical (key,value) combination's projection codec on first decode. */
   interface ProjectionSource {
-    ProjectionMapCodec compile(Encoding format, Fory fory);
+    ProjectionMapCodec compile(Fory fory);
   }
 
   BinaryMapEncoder(
@@ -198,7 +198,7 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
     if (source == null) {
       return null;
     }
-    ProjectionMapCodec projection = source.compile(format, fory);
+    ProjectionMapCodec projection = source.compile(fory);
     projections.put(peerHash, projection);
     return projection;
   }
