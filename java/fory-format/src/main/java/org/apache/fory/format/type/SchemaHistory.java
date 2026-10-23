@@ -221,9 +221,17 @@ public final class SchemaHistory {
     }
     built.put(beanClass, null);
     List<FieldEntry> all = collectLiveFields(beanClass);
+    // A subclass's History interface can extend its parent's, so the same declaration can arrive
+    // from both classes. Keep one copy of each, so an inherited removal is not an overlapping one.
+    List<FieldEntry> removed = new ArrayList<>();
     for (Class<?> removedFieldsClass : removedFieldsClasses(beanClass)) {
-      all.addAll(collectRemovedFields(removedFieldsClass));
+      for (FieldEntry fe : collectRemovedFields(removedFieldsClass)) {
+        if (!containsSameDeclaration(removed, fe)) {
+          removed.add(fe);
+        }
+      }
     }
+    all.addAll(removed);
 
     // Recursively expand any nested versioned bean field's own history. A versioned bean can be the
     // field type directly, the element of a list, or the key or value of a map; we locate it at any
@@ -324,12 +332,9 @@ public final class SchemaHistory {
         readEntries.add(fe);
       }
     }
-    // Versions that collapse into one entry can still disagree on which fields are read: a removed
-    // bean field and a live bean field of different classes can reach the same layout through
-    // their nested versions. The bytes cannot say which version wrote them, so the entry reads
-    // every field that any of its versions reads.
-    Map<Schema, Set<String>> liveNamesBySchema = new HashMap<>();
-    Map<Schema, Set<Class<?>>> liveNestedBySchema = new HashMap<>();
+    // Versions that collapse into one entry read the same fields: a removed entry is read only with
+    // a live twin of the same declared type, and validateNoTypeChange rejects every other type
+    // change whose layout could coincide with a newer one.
     Map<Long, Schema> hashToSchema = new HashMap<>();
     Schema currentSchema = null;
     for (int v : schemaVersions) {
@@ -423,28 +428,18 @@ public final class SchemaHistory {
                 Collections.unmodifiableSet(liveNames),
                 Collections.unmodifiableMap(new HashMap<>(combination)),
                 liveNested);
-        bySchema.putIfAbsent(schema, vs);
-        liveNamesBySchema.computeIfAbsent(schema, k -> new HashSet<>()).addAll(liveNames);
-        liveNestedBySchema.computeIfAbsent(schema, k -> new HashSet<>()).addAll(liveNested);
+        // Versions collapse when their layouts are identical: v1 and v4 of a field that lived in
+        // [v2, v4), or a field removed and later added again. The latest version must win, so the
+        // stored entry is the one flagged current. Enclosing histories test inner.isCurrent() to
+        // find their own current combination, and fail to build if no inner entry is current.
+        if (innerAllCurrent) {
+          bySchema.put(schema, vs);
+        } else {
+          bySchema.putIfAbsent(schema, vs);
+        }
         if (isCurrent) {
           currentSchema = schema;
         }
-      }
-    }
-    for (Map.Entry<Schema, VersionedSchema> entry : bySchema.entrySet()) {
-      VersionedSchema vs = entry.getValue();
-      Set<String> liveNames = liveNamesBySchema.get(entry.getKey());
-      Set<Class<?>> liveNested = liveNestedBySchema.get(entry.getKey());
-      if (!liveNames.equals(vs.liveFieldNames()) || !liveNested.equals(vs.liveNestedClasses())) {
-        entry.setValue(
-            new VersionedSchema(
-                vs.version(),
-                vs.schema(),
-                vs.strictHash(),
-                vs.isCurrent(),
-                Collections.unmodifiableSet(liveNames),
-                vs.nestedBeanSchemas(),
-                Collections.unmodifiableSet(liveNested)));
       }
     }
     // The all-current combination at the latest version is always one of the cartesian entries,
@@ -712,7 +707,13 @@ public final class SchemaHistory {
           } else {
             itemField = substitute(itemField, w.value, historical, depth + 1);
           }
-          return DataTypes.mapField(current.name(), keyField, itemField);
+          // Rebuild through MapType, which keeps the key non-nullable: a substituted key that is a
+          // list or map comes back nullable, and DataTypes.mapField rejects a nullable key.
+          DataTypes.MapType mapType = (DataTypes.MapType) current.type();
+          return new Field(
+              current.name(),
+              new DataTypes.MapType(keyField.type(), itemField.type(), mapType.keysSorted()),
+              current.nullable());
         case LEAF:
           return DataTypes.field(current.name(), historical, current.nullable());
         default:
@@ -841,6 +842,18 @@ public final class SchemaHistory {
       }
     }
     return out;
+  }
+
+  private static boolean containsSameDeclaration(List<FieldEntry> entries, FieldEntry fe) {
+    for (FieldEntry other : entries) {
+      if (other.name.equals(fe.name)
+          && other.since == fe.since
+          && other.until == fe.until
+          && other.typeRef.equals(fe.typeRef)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static List<FieldEntry> collectRemovedFields(Class<?> historyClass) {
@@ -995,10 +1008,12 @@ public final class SchemaHistory {
   }
 
   /**
-   * Reject a removed entry whose declared type differs from the live entry's but encodes to the
-   * same row field. An older layout can then be byte-identical to a newer one, so the reader would
-   * decode old values with the new type (a String re-added as an enum fails in valueOf). Entries
-   * whose row fields differ have distinct layouts, and the reader discards the old value.
+   * Reject a removed entry whose declared type differs from the live entry's when an older layout
+   * could be byte-identical to a newer one, so the reader would decode old values with the new type
+   * (a String re-added as an enum fails in valueOf). That holds when both encode to the same row
+   * field, and also when either reaches a versioned bean, whose older versions can make two
+   * different current shapes coincide. Otherwise the layouts stay distinct and the reader discards
+   * the old value.
    */
   private static void validateNoTypeChange(
       Class<?> beanClass, String name, List<FieldEntry> group) {
@@ -1016,7 +1031,9 @@ public final class SchemaHistory {
       if (fe.live || fe.typeRef.equals(live.typeRef)) {
         continue;
       }
-      if (TypeInference.inferNamedField(name, fe.typeRef, beanClass).equals(liveField)) {
+      boolean reachesVersionedBean = !fe.nestedSites.isEmpty() || !live.nestedSites.isEmpty();
+      if (reachesVersionedBean
+          || TypeInference.inferNamedField(name, fe.typeRef, beanClass).equals(liveField)) {
         throw new IllegalStateException(
             "Field '"
                 + name
@@ -1026,10 +1043,8 @@ public final class SchemaHistory {
                 + fe.typeRef
                 + " in the removed-fields class and as "
                 + live.typeRef
-                + " on the live member, and both encode as "
-                + liveField.type()
-                + ". An older layout can then be identical to a newer one, so old values would "
-                + "decode as the new type. Give the live member a new name.");
+                + " on the live member. An older layout can then be identical to a newer one, so "
+                + "old values would decode as the new type. Give the live member a new name.");
       }
     }
   }

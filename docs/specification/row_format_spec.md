@@ -374,10 +374,11 @@ and limitations.
   reader's schema are discarded.
 - A removed entry and a live entry with the same wire name and the same declared type in the
   implementation language are the same field: the reader reads the removed entry's value into the
-  live field in every layout that has it. A removed entry with a different declared type whose
-  type and nullability also differ is discarded. A removed entry with a different declared type
-  but the same type and nullability is invalid, and building the history fails: an older layout
-  could be identical to a newer one, and the reader would decode old values as the new type.
+  live field in every layout that has it. A removed entry with a different declared type is
+  invalid, and building the history fails, when the two entries have the same row type and
+  nullability, or when either reaches a versioned struct: an older layout could then be identical
+  to a newer one, and the reader would decode old values as the new type. A removed entry with a
+  different declared type is otherwise discarded, because its row type or nullability differs.
   Layouts that come out identical are one entry, so a reader reads a field that any of the
   collapsed versions reads.
 - When a struct contains other versioned structs (directly, or through list elements, map keys, or

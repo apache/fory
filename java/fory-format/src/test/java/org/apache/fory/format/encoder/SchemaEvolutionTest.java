@@ -761,6 +761,27 @@ public class SchemaEvolutionTest {
     Assert.assertEquals(second.decode(bytes).getEmail(), "alice@example.com");
   }
 
+  /** Removes email at v3; its History extends the parent's, which removes age at v2. */
+  @Data
+  @lombok.EqualsAndHashCode(callSuper = true)
+  @ForyRowSchema(removedFields = AccountV3.History.class)
+  public static class AccountV3 extends AccountBaseV2 {
+    interface History extends AccountBaseV2.History {
+      @ForyRowVersion(until = 3)
+      String email();
+    }
+  }
+
+  @Test
+  public void extendedHistoryInterface() {
+    AccountV2 in = new AccountV2();
+    in.setName("alice");
+    in.setEmail("alice@example.com");
+    AccountV3 out =
+        evolvingCodec(AccountV3.class).decode(evolvingCodec(AccountV2.class).encode(in));
+    Assert.assertEquals(out.getName(), "alice");
+  }
+
   /** A field that a superclass removed is still read from older payloads of the subclass. */
   @Test
   public void superclassRemovedField() {

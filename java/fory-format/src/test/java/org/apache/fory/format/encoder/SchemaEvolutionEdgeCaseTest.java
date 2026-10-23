@@ -21,6 +21,7 @@ package org.apache.fory.format.encoder;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -253,6 +254,95 @@ public class SchemaEvolutionEdgeCaseTest {
       @ForyRowVersion(since = 2, until = 4)
       int oldField();
     }
+  }
+
+  /** A bean field keyed by a list of versioned beans: the substituted key stays non-nullable. */
+  @Data
+  public static class ListKeyHolder {
+    private Map<List<DefaultsV2>, String> byList;
+  }
+
+  @Test
+  public void listOfVersionedBeansAsMapKey() {
+    DefaultsV2 d = new DefaultsV2();
+    d.setName("k");
+    ListKeyHolder in = new ListKeyHolder();
+    in.setByList(Collections.singletonMap(Arrays.asList(d), "v"));
+    RowEncoder<ListKeyHolder> codec = evolvingCodec(ListKeyHolder.class);
+    Map.Entry<List<DefaultsV2>, String> e =
+        codec.decode(codec.encode(in)).getByList().entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().get(0).getName(), "k");
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  @Data
+  public static class OldDetail {
+    private String name;
+  }
+
+  /** {@code detail} is removed as a plain bean and added again as the versioned DefaultsV2. */
+  @Data
+  @ForyRowSchema(removedFields = RetypedDetail.History.class)
+  public static class RetypedDetail {
+    @ForyRowVersion(since = 3)
+    private DefaultsV2 detail;
+
+    @ForyRowVersion(since = 2)
+    private String label;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      OldDetail detail();
+    }
+  }
+
+  /** DefaultsV2 at v1 has OldDetail's layout, so the two versions could collapse; reject it. */
+  @Test
+  public void retypedVersionedBeanRejected() {
+    try {
+      evolvingCodec(RetypedDetail.class);
+      Assert.fail("expected the codec build to reject the type change");
+    } catch (IllegalStateException e) {
+      Assert.assertTrue(e.getMessage().contains("'detail'"), e.getMessage());
+    }
+  }
+
+  /** Holds GappedWindow, whose v1 and v4 layouts collapse, in every nested position. */
+  @Data
+  public static class GappedHolder {
+    private GappedWindow window;
+    private List<GappedWindow> windows;
+    private Map<String, GappedWindow> byName;
+  }
+
+  @Test
+  public void collapsedNestedBean() {
+    GappedWindow w = new GappedWindow();
+    w.setName("w");
+    GappedHolder in = new GappedHolder();
+    in.setWindow(w);
+    in.setWindows(Arrays.asList(w));
+    in.setByName(Collections.singletonMap("k", w));
+    RowEncoder<GappedHolder> holder =
+        Encoders.buildBeanCodec(GappedHolder.class).withSchemaEvolution().build().get();
+    GappedHolder out = holder.decode(holder.encode(in));
+    Assert.assertEquals(out.getWindow().getName(), "w");
+    Assert.assertEquals(out.getWindows().get(0).getName(), "w");
+    Assert.assertEquals(out.getByName().get("k").getName(), "w");
+
+    ArrayEncoder<List<GappedWindow>> list =
+        Encoders.buildArrayCodec(new TypeRef<List<GappedWindow>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Assert.assertEquals(list.decode(list.encode(Arrays.asList(w))).get(0).getName(), "w");
+    MapEncoder<Map<String, GappedWindow>> map =
+        Encoders.buildMapCodec(new TypeRef<Map<String, GappedWindow>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Assert.assertEquals(
+        map.decode(map.encode(Collections.singletonMap("k", w))).get("k").getName(), "w");
   }
 
   @Data
