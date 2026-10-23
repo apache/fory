@@ -67,8 +67,8 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
 
   /**
    * Enable schema evolution. The codec accepts payloads written by older versions of the same bean,
-   * using the {@link org.apache.fory.format.annotation.ForyVersion} and {@link
-   * org.apache.fory.format.annotation.ForySchema} annotations to reconstruct historical schemas.
+   * using the {@link org.apache.fory.format.annotation.ForyRowVersion} and {@link
+   * org.apache.fory.format.annotation.ForyRowSchema} annotations to reconstruct historical schemas.
    * Writing always uses the current version.
    *
    * <p>This flag is part of the wire contract: producers and consumers must agree on it, and it

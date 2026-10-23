@@ -37,8 +37,8 @@ import java.util.function.Supplier;
 import lombok.Data;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.exception.ClassNotCompatibleException;
-import org.apache.fory.format.annotation.ForySchema;
-import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.format.annotation.ForyRowSchema;
+import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryWriter;
 import org.apache.fory.format.type.DataTypes;
@@ -67,7 +67,7 @@ public class SchemaEvolutionTest {
     private String name;
     private int age;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String email;
   }
 
@@ -76,15 +76,15 @@ public class SchemaEvolutionTest {
    * payloads (with age) and v2 payloads (with age + email).
    */
   @Data
-  @ForySchema(removedFields = PersonV3.History.class)
+  @ForyRowSchema(removedFields = PersonV3.History.class)
   public static class PersonV3 {
     private String name;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String email;
 
     interface History {
-      @ForyVersion(until = 3)
+      @ForyRowVersion(until = 3)
       int age();
     }
   }
@@ -413,7 +413,7 @@ public class SchemaEvolutionTest {
   // --- Unversioned element bean still carries the strict-hash prefix ---
   //
   // A top-level array/map built with withSchemaEvolution() must emit the 8-byte prefix even when
-  // its element/value bean has no @ForyVersion fields, so two independently-built evolution-on
+  // its element/value bean has no @ForyRowVersion fields, so two independently-built evolution-on
   // codecs stay wire-compatible (see SchemaHistory#evolutionBean). Each test compares the evolving
   // payload against a non-evolving one: the lengths must differ by exactly the prefix, which a
   // regression skipping the evolution path for an unversioned element would not produce.
@@ -491,7 +491,7 @@ public class SchemaEvolutionTest {
 
     int getAge();
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     String getEmail();
   }
 
@@ -522,15 +522,15 @@ public class SchemaEvolutionTest {
    * declares the removed field's original signature; its method name follows the same JavaBeans
    * accessor convention as the live interface, so {@code getAge()} maps to wire name {@code age}.
    */
-  @ForySchema(removedFields = PersonIfaceV3.History.class)
+  @ForyRowSchema(removedFields = PersonIfaceV3.History.class)
   public interface PersonIfaceV3 {
     String getName();
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     String getEmail();
 
     interface History {
-      @ForyVersion(until = 3)
+      @ForyRowVersion(until = 3)
       int getAge();
     }
   }
@@ -578,7 +578,7 @@ public class SchemaEvolutionTest {
   public interface ScoredV2 {
     String getName();
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     int getScore();
 
     int getScore(int seed);
@@ -665,11 +665,11 @@ public class SchemaEvolutionTest {
    * as OuterV2.
    */
   @Data
-  @ForySchema(removedFields = OuterV2.History.class)
+  @ForyRowSchema(removedFields = OuterV2.History.class)
   public static class OuterV2 {
     private long id;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String displayName;
 
     private Profile profile;
@@ -678,7 +678,7 @@ public class SchemaEvolutionTest {
     private Map<String, Item> properties;
 
     interface History {
-      @ForyVersion(until = 2)
+      @ForyRowVersion(until = 2)
       String legacyName();
     }
   }
@@ -773,7 +773,7 @@ public class SchemaEvolutionTest {
   public static class TagV2 {
     private String key;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private long weight;
   }
 
@@ -839,7 +839,7 @@ public class SchemaEvolutionTest {
   public interface SlugV2 {
     String getKey();
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     long getWeight();
   }
 
@@ -990,10 +990,10 @@ public class SchemaEvolutionTest {
   public static class HolderV2 {
     private long id;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private Profile profile;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private List<Item> items;
   }
 
@@ -1119,7 +1119,7 @@ public class SchemaEvolutionTest {
   public static class AmountV2 {
     private long cents;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String currency;
   }
 
@@ -1234,7 +1234,7 @@ public class SchemaEvolutionTest {
     private String id;
     private Money balance;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String note;
   }
 
@@ -1327,7 +1327,7 @@ public class SchemaEvolutionTest {
     private String id;
     private Handle handle;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String note;
   }
 
@@ -1466,7 +1466,7 @@ public class SchemaEvolutionTest {
   public static class RaceInnerV2 {
     private String a;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String b;
   }
 
@@ -1478,7 +1478,7 @@ public class SchemaEvolutionTest {
 
   @Data
   public static class RaceV2 {
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String extra;
 
     private String id;

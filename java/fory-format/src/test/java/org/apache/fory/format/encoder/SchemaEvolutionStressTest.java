@@ -32,8 +32,8 @@ import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 import lombok.Data;
 import org.apache.fory.exception.ClassNotCompatibleException;
-import org.apache.fory.format.annotation.ForySchema;
-import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.format.annotation.ForyRowSchema;
+import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
@@ -61,7 +61,7 @@ public class SchemaEvolutionStressTest {
   public static class ChainV2 {
     private int a;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String b;
   }
 
@@ -69,10 +69,10 @@ public class SchemaEvolutionStressTest {
   public static class ChainV3 {
     private int a;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String b;
 
-    @ForyVersion(since = 3)
+    @ForyRowVersion(since = 3)
     private long c;
   }
 
@@ -80,13 +80,13 @@ public class SchemaEvolutionStressTest {
   public static class ChainV4 {
     private int a;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String b;
 
-    @ForyVersion(since = 3)
+    @ForyRowVersion(since = 3)
     private long c;
 
-    @ForyVersion(since = 4)
+    @ForyRowVersion(since = 4)
     private double d;
   }
 
@@ -96,22 +96,22 @@ public class SchemaEvolutionStressTest {
    * up in v5; 'a' removal makes v5 differ from v4).
    */
   @Data
-  @ForySchema(removedFields = ChainV5.History.class)
+  @ForyRowSchema(removedFields = ChainV5.History.class)
   public static class ChainV5 {
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String b;
 
-    @ForyVersion(since = 3)
+    @ForyRowVersion(since = 3)
     private long c;
 
-    @ForyVersion(since = 4)
+    @ForyRowVersion(since = 4)
     private double d;
 
-    @ForyVersion(since = 5)
+    @ForyRowVersion(since = 5)
     private boolean e;
 
     interface History {
-      @ForyVersion(until = 5)
+      @ForyRowVersion(until = 5)
       int a();
     }
   }
@@ -178,7 +178,7 @@ public class SchemaEvolutionStressTest {
     private long x;
     private long y;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private byte flag;
   }
 
@@ -218,10 +218,10 @@ public class SchemaEvolutionStressTest {
   public static class DefaultsV2 {
     private String name;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private int primitiveCount; // default 0
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private Integer boxedCount; // default null
   }
 
@@ -245,12 +245,12 @@ public class SchemaEvolutionStressTest {
   // ---------------------------------------------------------------------------
 
   @Data
-  @ForySchema(removedFields = GappedWindow.History.class)
+  @ForyRowSchema(removedFields = GappedWindow.History.class)
   public static class GappedWindow {
     private String name;
 
     interface History {
-      @ForyVersion(since = 2, until = 4)
+      @ForyRowVersion(since = 2, until = 4)
       int oldField();
     }
   }
@@ -264,10 +264,10 @@ public class SchemaEvolutionStressTest {
   public static class InitializedV2 {
     private String name;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private Optional<String> nick;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String label = "unset";
   }
 
@@ -305,13 +305,13 @@ public class SchemaEvolutionStressTest {
   }
 
   @Data
-  @ForySchema(removedFields = StructRefV2.History.class)
+  @ForyRowSchema(removedFields = StructRefV2.History.class)
   public static class StructRefV2 {
     private String id;
     private long tail;
 
     interface History {
-      @ForyVersion(until = 2)
+      @ForyRowVersion(until = 2)
       DefaultsV1 detail();
     }
   }
@@ -373,7 +373,7 @@ public class SchemaEvolutionStressTest {
     private RemovedGeo geo;
     private String street;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String zip;
   }
 
@@ -385,13 +385,13 @@ public class SchemaEvolutionStressTest {
   }
 
   @Data
-  @ForySchema(removedFields = RemovedAddrHolderV2.History.class)
+  @ForyRowSchema(removedFields = RemovedAddrHolderV2.History.class)
   public static class RemovedAddrHolderV2 {
     private String id;
     private long tail;
 
     interface History {
-      @ForyVersion(until = 2)
+      @ForyRowVersion(until = 2)
       RemovedAddr addr();
     }
   }
@@ -429,16 +429,16 @@ public class SchemaEvolutionStressTest {
   }
 
   @Data
-  @ForySchema(removedFields = CollectionsV2.History.class)
+  @ForyRowSchema(removedFields = CollectionsV2.History.class)
   public static class CollectionsV2 {
     private String id;
     private long tail;
 
     interface History {
-      @ForyVersion(until = 2)
+      @ForyRowVersion(until = 2)
       List<String> tags();
 
-      @ForyVersion(until = 2)
+      @ForyRowVersion(until = 2)
       Map<String, Long> counters();
     }
   }
@@ -472,13 +472,13 @@ public class SchemaEvolutionStressTest {
   }
 
   @Data
-  @ForySchema(removedFields = RetypeV3.History.class)
+  @ForyRowSchema(removedFields = RetypeV3.History.class)
   public static class RetypeV3 {
-    @ForyVersion(since = 3)
+    @ForyRowVersion(since = 3)
     private String tag;
 
     interface History {
-      @ForyVersion(until = 3)
+      @ForyRowVersion(until = 3)
       int tag();
     }
   }
@@ -520,7 +520,7 @@ public class SchemaEvolutionStressTest {
     private int f50, f51, f52, f53, f54, f55, f56, f57, f58, f59;
     private int f60, f61, f62, f63, f64, f65, f66, f67;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String extra;
   }
 
@@ -604,13 +604,13 @@ public class SchemaEvolutionStressTest {
   // ---------------------------------------------------------------------------
 
   @Data
-  @ForySchema(removedFields = OverlapMisconfig.History.class)
+  @ForyRowSchema(removedFields = OverlapMisconfig.History.class)
   public static class OverlapMisconfig {
     // Live field 'x' since 1 (default) collides with the removed window [1, 5).
     private int x;
 
     interface History {
-      @ForyVersion(since = 1, until = 5)
+      @ForyRowVersion(since = 1, until = 5)
       int x();
     }
   }
@@ -621,40 +621,40 @@ public class SchemaEvolutionStressTest {
   }
 
   // ---------------------------------------------------------------------------
-  // A removed-field history declaration must carry a well-formed @ForyVersion.
+  // A removed-field history declaration must carry a well-formed @ForyRowVersion.
   // Each misconfiguration fails at build with a message that names the offending
   // declaration, so the user can fix the annotation rather than chase a decode error.
   // ---------------------------------------------------------------------------
 
   @Data
-  @ForySchema(removedFields = MissingAnnotation.History.class)
+  @ForyRowSchema(removedFields = MissingAnnotation.History.class)
   public static class MissingAnnotation {
     private int x;
 
     interface History {
-      // No @ForyVersion: a removed field has no [since, until) window without it.
+      // No @ForyRowVersion: a removed field has no [since, until) window without it.
       String legacy();
     }
   }
 
   @Data
-  @ForySchema(removedFields = MissingUntil.History.class)
+  @ForyRowSchema(removedFields = MissingUntil.History.class)
   public static class MissingUntil {
     private int x;
 
     interface History {
-      @ForyVersion(since = 2)
+      @ForyRowVersion(since = 2)
       String legacy();
     }
   }
 
   @Data
-  @ForySchema(removedFields = EmptyWindow.History.class)
+  @ForyRowSchema(removedFields = EmptyWindow.History.class)
   public static class EmptyWindow {
     private int x;
 
     interface History {
-      @ForyVersion(since = 5, until = 5)
+      @ForyRowVersion(since = 5, until = 5)
       String legacy();
     }
   }
@@ -669,14 +669,15 @@ public class SchemaEvolutionStressTest {
                     .withSchemaEvolution()
                     .build()
                     .get());
-    Assert.assertTrue(e.getMessage().contains("requires a @ForyVersion"), e.getMessage());
+    Assert.assertTrue(e.getMessage().contains("requires a @ForyRowVersion"), e.getMessage());
   }
 
   @Test
   public void removedFieldWithoutUntilFailsAtBuild() {
     IllegalStateException e =
         Assert.expectThrows(IllegalStateException.class, () -> evolvingCodec(MissingUntil.class));
-    Assert.assertTrue(e.getMessage().contains("must specify @ForyVersion.until"), e.getMessage());
+    Assert.assertTrue(
+        e.getMessage().contains("must specify @ForyRowVersion.until"), e.getMessage());
   }
 
   @Test
@@ -687,14 +688,14 @@ public class SchemaEvolutionStressTest {
   }
 
   @Data
-  @ForySchema(removedFields = RemovedFieldCycle.History.class)
+  @ForyRowSchema(removedFields = RemovedFieldCycle.History.class)
   public static class RemovedFieldCycle {
     private int x;
 
     interface History {
       // A removed field typed as the bean itself: the historical schema would be cyclic. Live
       // fields cannot do this (inferSchema rejects them), so only the history path reaches it.
-      @ForyVersion(until = 2)
+      @ForyRowVersion(until = 2)
       RemovedFieldCycle previous();
     }
   }
@@ -712,7 +713,7 @@ public class SchemaEvolutionStressTest {
   public static class LiveFieldWithUntil {
     private int x;
 
-    @ForyVersion(until = 3)
+    @ForyRowVersion(until = 3)
     private String stillHere;
   }
 
@@ -729,7 +730,7 @@ public class SchemaEvolutionStressTest {
   public static class LiveFieldSinceBelowFirst {
     private int x;
 
-    @ForyVersion(since = 0)
+    @ForyRowVersion(since = 0)
     private String added;
   }
 
@@ -742,12 +743,12 @@ public class SchemaEvolutionStressTest {
   }
 
   @Data
-  @ForySchema(removedFields = RemovedFieldSinceBelowFirst.History.class)
+  @ForyRowSchema(removedFields = RemovedFieldSinceBelowFirst.History.class)
   public static class RemovedFieldSinceBelowFirst {
     private int x;
 
     interface History {
-      @ForyVersion(since = 0, until = 3)
+      @ForyRowVersion(since = 0, until = 3)
       String legacy();
     }
   }
@@ -783,7 +784,7 @@ public class SchemaEvolutionStressTest {
   public static class ShadowedCollectionV2 {
     private TaggedList<String> labels;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String tag;
   }
 
@@ -816,7 +817,7 @@ public class SchemaEvolutionStressTest {
   public static class NestedListV2 {
     private List<DefaultsV1> items;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String tag;
   }
 
@@ -926,7 +927,7 @@ public class SchemaEvolutionStressTest {
   public static class KVTokenV2 {
     private int a;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String b;
   }
 
@@ -937,7 +938,7 @@ public class SchemaEvolutionStressTest {
   public static class ValueWithKVNested {
     private K_V inner;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String tag;
   }
 
@@ -946,7 +947,7 @@ public class SchemaEvolutionStressTest {
   public static class K_V {
     private int x;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String y;
   }
 
@@ -1169,7 +1170,7 @@ public class SchemaEvolutionStressTest {
   public static class KeyMapHolderV2 {
     private Map<DefaultsV2, String> byKey;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String note;
   }
 
@@ -1631,13 +1632,13 @@ public class SchemaEvolutionStressTest {
   }
 
   @Data
-  @ForySchema(removedFields = NullableStructV2.History.class)
+  @ForyRowSchema(removedFields = NullableStructV2.History.class)
   public static class NullableStructV2 {
     private String id;
     private long tail;
 
     interface History {
-      @ForyVersion(until = 2)
+      @ForyRowVersion(until = 2)
       DefaultsV1 detail();
     }
   }
@@ -1732,7 +1733,7 @@ public class SchemaEvolutionStressTest {
   public static class NestedInnerV2 {
     private String name;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String addedField;
   }
 
@@ -1776,7 +1777,7 @@ public class SchemaEvolutionStressTest {
     private long id;
     private NestedInnerWriter inner;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String label;
   }
 
@@ -1786,7 +1787,7 @@ public class SchemaEvolutionStressTest {
     private long id;
     private NestedInnerV2 inner;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String label;
   }
 
@@ -2004,7 +2005,7 @@ public class SchemaEvolutionStressTest {
   public static class L3V2 {
     private String name;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String note;
   }
 
@@ -2013,7 +2014,7 @@ public class SchemaEvolutionStressTest {
     private long tag;
     private L3V2 leaf;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String midLabel;
   }
 
@@ -2022,7 +2023,7 @@ public class SchemaEvolutionStressTest {
     private long id;
     private L2V2 mid;
 
-    @ForyVersion(since = 2)
+    @ForyRowVersion(since = 2)
     private String outerLabel;
   }
 

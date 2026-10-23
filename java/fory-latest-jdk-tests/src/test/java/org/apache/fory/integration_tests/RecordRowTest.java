@@ -21,8 +21,8 @@ package org.apache.fory.integration_tests;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import org.apache.fory.format.annotation.ForySchema;
-import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.format.annotation.ForyRowSchema;
+import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.encoder.Encoders;
 import org.apache.fory.format.encoder.RowEncoder;
 import org.apache.fory.format.row.binary.BinaryRow;
@@ -90,7 +90,7 @@ public class RecordRowTest {
   }
 
   // ---------------------------------------------------------------------------
-  // Records with schema evolution. @ForyVersion on a record component propagates
+  // Records with schema evolution. @ForyRowVersion on a record component propagates
   // to the backing field and the accessor (its FIELD/METHOD targets), where the
   // codec reads it, so a newer reader record can pick up older payloads and
   // default components added later. The history interface still works because the
@@ -100,10 +100,10 @@ public class RecordRowTest {
 
   public record PersonV1(String name, int age) {}
 
-  @ForySchema(removedFields = PersonV2.History.class)
-  public record PersonV2(String name, @ForyVersion(since = 2) String email) {
+  @ForyRowSchema(removedFields = PersonV2.History.class)
+  public record PersonV2(String name, @ForyRowVersion(since = 2) String email) {
     interface History {
-      @ForyVersion(until = 2)
+      @ForyRowVersion(until = 2)
       int age();
     }
   }
@@ -130,7 +130,7 @@ public class RecordRowTest {
   /** Record with a primitive added at v2: an older payload must produce the primitive default. */
   public record CounterV1(String name) {}
 
-  public record CounterV2(String name, @ForyVersion(since = 2) int count) {}
+  public record CounterV2(String name, @ForyRowVersion(since = 2) int count) {}
 
   @Test
   public void recordSchemaEvolution_primitiveDefault() {
@@ -149,7 +149,7 @@ public class RecordRowTest {
   // cross-product enumeration with record-component field naming.
   public record InnerV1(String name) {}
 
-  public record InnerV2(String name, @ForyVersion(since = 2) String tag) {}
+  public record InnerV2(String name, @ForyRowVersion(since = 2) String tag) {}
 
   public record OuterInnerV1(long id, InnerV1 inner) {}
 
@@ -173,7 +173,7 @@ public class RecordRowTest {
   // to tolerate the missing value, e.g. by normalizing null to a default in the constructor.
   public record DefaultedV1(String name) {}
 
-  public record DefaultedV2(String name, @ForyVersion(since = 2) String email) {
+  public record DefaultedV2(String name, @ForyRowVersion(since = 2) String email) {
     public DefaultedV2 {
       if (email == null) {
         email = "unknown";
