@@ -456,10 +456,18 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
   hash.
 - The reader dispatches on the hash: the current layout's hash selects the current codec, a known
   historical hash selects that layout's projection, and an unknown hash is an error.
-- Whether evolution is enabled is agreed out of band. Payloads written without evolution carry no
-  marker an evolution-off consumer could detect, so an evolution-off consumer reading
-  evolution-enabled array or map bytes is undefined; see the Java guide for the rollout
-  procedure.
+- Known-answer vectors for the prefix (`n` is nullable, `nn` is not nullable):
+
+  | Payload                                              | Prefix               |
+  | ---------------------------------------------------- | -------------------- |
+  | map, key `string`, value `int32`                     | `0xe3a21bfb65b885f7` |
+  | array of `struct<narrow: int8 nn, wide: int64 nn> n` | `0x04a5118c46faea29` |
+  | the same array, compact format                       | `0x4f855bcc79d4a8c9` |
+
+- Whether evolution is enabled is agreed out of band. Array and map payloads written without
+  evolution have no header, so an evolution-off consumer cannot detect the prefix of an
+  evolution-enabled payload, and the result of that read is undefined; see the Java guide for the
+  rollout procedure.
 
 ---
 
