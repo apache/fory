@@ -108,10 +108,8 @@ public class DescriptorTest {
   }
 
   public static class WarmInner {
-    WarmLeaf leaf;
+    DescriptorWarmLeaf leaf;
   }
-
-  public static class WarmLeaf {}
 
   public static class WarmProbe implements Runnable {
     @Override
@@ -122,8 +120,8 @@ public class DescriptorTest {
 
   /**
    * Builds descriptors with Fory loaded in its own classloader. Only the background warm-up of
-   * {@code WarmInner} loads {@code WarmLeaf}, so the recorded loader is the TCCL of a warm-up
-   * thread.
+   * {@code WarmInner} loads {@code DescriptorWarmLeaf}, so the recorded loader is the TCCL of a
+   * warm-up thread.
    */
   @Test
   public void testWarmContextClassLoader() throws Exception {
@@ -187,7 +185,7 @@ public class DescriptorTest {
     @Override
     protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
       Class<?> cls = super.loadClass(name, resolve);
-      if (name.equals(WarmLeaf.class.getName())) {
+      if (name.equals(DescriptorWarmLeaf.class.getName())) {
         leafContextClassLoader.complete(Thread.currentThread().getContextClassLoader());
       }
       return cls;
