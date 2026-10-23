@@ -418,12 +418,10 @@ its own hash identifying both layouts together; a map nested inside an array, an
 bean field has its layouts folded into the enclosing payload's hash.
 
 When a versioned bean contains other versioned beans, the reader can read one projection layout per
-combination of versions across the composition, with each bean class at one version. A reader
-compiles a combination's codec the first time it decodes a payload at that combination, so code
-generation tracks the historical versions you actually receive. Building the codec still computes
-the layout and hash of every combination, so that a hash collision fails at build time; that cost
-grows with the product of the version counts of the distinct versioned bean classes. A map whose
-key and value both evolve combines their versions the same way. Retiring an entry from a bean's
+combination of versions across the composition, with each bean class at one version. Building the
+codec computes the layout and hash of every combination, so the build time and memory grow with
+the product of the version counts of the distinct versioned bean classes, and the codec sets no
+limit. A map whose key and value both evolve combines their versions the same way. Retiring an entry from a bean's
 `History` interface once you no longer read payloads from that range stops the reader from
 accepting those payloads; it is purely a read-side decision, and the writer always uses the current
 schema.
