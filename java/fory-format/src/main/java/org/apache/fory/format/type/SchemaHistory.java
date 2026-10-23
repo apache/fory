@@ -957,9 +957,11 @@ public final class SchemaHistory {
    * Reject a removed entry whose declared type differs from the live entry's when an older layout
    * could be byte-identical to a newer one, so the reader would decode old values with the new type
    * (a String re-added as an enum fails in valueOf). That holds when both encode to the same row
-   * field (the same strict hash), and also when either reaches a versioned bean, whose older
-   * versions can make two different current shapes coincide. Otherwise the layouts stay distinct
-   * and the reader discards the old value.
+   * field in the wire order of {@code format} (the same strict hash; the compact format sorts
+   * struct children, so two codecs that write one struct in different orders encode the same
+   * field), and also when either reaches a versioned bean, whose older versions can make two
+   * different current shapes coincide. Otherwise the layouts stay distinct and the reader discards
+   * the old value.
    */
   private static void validateNoTypeChange(
       Class<?> beanClass, String name, List<FieldEntry> group, Format format) {
@@ -972,14 +974,15 @@ public final class SchemaHistory {
     if (live == null) {
       return;
     }
-    long liveHash = computeStrictSchemaHash(format, DataTypes.schema(live.field));
+    long liveHash = computeStrictSchemaHash(format, format.wireOrder(DataTypes.schema(live.field)));
     for (FieldEntry fe : group) {
       if (fe.live || fe.typeRef.equals(live.typeRef)) {
         continue;
       }
       boolean reachesVersionedBean = !fe.nestedSites.isEmpty() || !live.nestedSites.isEmpty();
       if (reachesVersionedBean
-          || computeStrictSchemaHash(format, DataTypes.schema(fe.field)) == liveHash) {
+          || computeStrictSchemaHash(format, format.wireOrder(DataTypes.schema(fe.field)))
+              == liveHash) {
         throw new IllegalStateException(
             "Field '"
                 + name

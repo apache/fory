@@ -30,6 +30,8 @@ import java.lang.reflect.TypeVariable;
 import java.util.Optional;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
+import org.apache.fory.format.encoder.CustomCodec;
+import org.apache.fory.format.encoder.Encoders;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.annotations.Test;
@@ -474,6 +476,79 @@ public class SchemaHistoryTest {
     interface History {
       @ForyRowVersion(until = 2)
       int x();
+    }
+  }
+
+  /**
+   * The removed and live types of {@code pair} differ, and their codecs write the same two children
+   * in opposite orders. The standard format keeps each order, so the two layouts differ. The
+   * compact format sorts both into one order, so an older compact layout is identical to the
+   * current one, and the history must reject the type change.
+   */
+  @Test
+  public void permutedCodecChildrenTypeChangeRejectedInCompact() {
+    Encoders.registerCustomCodec(
+        PermutedCodecField.class, WideFirst.class, new PermutedStructCodec<>(true));
+    Encoders.registerCustomCodec(
+        PermutedCodecField.class, NarrowFirst.class, new PermutedStructCodec<>(false));
+
+    SchemaHistory.build(PermutedCodecField.class, STANDARD);
+    IllegalStateException e =
+        expectThrows(
+            IllegalStateException.class,
+            () -> SchemaHistory.build(PermutedCodecField.class, COMPACT));
+    assertTrue(e.getMessage().contains("'pair'"), e.getMessage());
+  }
+
+  public static final class WideFirst {}
+
+  public static final class NarrowFirst {}
+
+  /** Writes a struct of an int64 and an int32 child, in the order the constructor selects. */
+  private static final class PermutedStructCodec<T> implements CustomCodec<T, Object> {
+    private final boolean wideFirst;
+
+    PermutedStructCodec(boolean wideFirst) {
+      this.wideFirst = wideFirst;
+    }
+
+    @Override
+    public Field getForyField(String fieldName) {
+      Field wide = DataTypes.field("wide", DataTypes.int64(), false);
+      Field narrow = DataTypes.field("narrow", DataTypes.int32(), false);
+      return wideFirst
+          ? DataTypes.structField(fieldName, true, wide, narrow)
+          : DataTypes.structField(fieldName, true, narrow, wide);
+    }
+
+    @Override
+    public TypeRef<Object> encodedType() {
+      return TypeRef.of(Object.class);
+    }
+
+    @Override
+    public Object encode(T value) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public T decode(Object value) {
+      throw new UnsupportedOperationException();
+    }
+  }
+
+  @lombok.Data
+  @ForyRowSchema(removedFields = PermutedCodecField.History.class)
+  public static class PermutedCodecField {
+    @ForyRowVersion(since = 2)
+    private String label;
+
+    @ForyRowVersion(since = 3)
+    private NarrowFirst pair;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      WideFirst pair();
     }
   }
 

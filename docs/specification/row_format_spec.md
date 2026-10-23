@@ -387,9 +387,11 @@ and limitations.
   implementation language are the same field: the reader reads the removed entry's value into the
   live field in every layout that has it. A removed entry with a different declared type is
   invalid, and building the history fails, when the two entries have the same row type and
-  nullability, or when either reaches a versioned struct: an older layout could then be identical
-  to a newer one, and the reader would decode old values as the new type. A removed entry with a
-  different declared type is otherwise discarded, because its row type or nullability differs.
+  nullability after the format puts every struct in wire order (in the compact format, two structs
+  whose children differ only in order match), or when either reaches a versioned struct: an older
+  layout could then be identical to a newer one, and the reader would decode old values as the new
+  type. A removed entry with a different declared type is otherwise discarded, because its row
+  type or nullability differs.
   Layouts that come out identical are one entry, so a reader reads a field that any of the
   collapsed versions reads.
 - When a struct contains other versioned structs (directly, or through list elements, map keys, or
