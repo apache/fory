@@ -402,6 +402,10 @@ After that, deploy every reader of a schema change before any writer. A reader d
 whose layout it knows, from its own version and older versions, and it rejects a payload whose
 layout it does not know with `ClassNotCompatibleException`.
 
+An evolution codec generates the projection for an older layout with Janino when it first decodes
+a payload with that layout. A GraalVM native image cannot define classes at run time, so in a
+native image the decode of a payload with an older layout fails. This is a known limitation.
+
 The hash algorithm, wire names, field order, and framing are specified language-neutrally in
 the [row format specification](../specification/row_format_spec.md#schema-evolution). Java is the
 only implementation today, so Python, C++, and other runtimes cannot read evolution-enabled
