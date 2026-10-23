@@ -363,11 +363,12 @@ an interface bean inherits those of its superinterfaces, the same as it inherits
 
 A field that is removed and later added again with the same name and the same Java type is one
 field: older payloads that hold it decode with its value. If the Java type changes and the row
-type changes too (for example `String` to `int`), older values are discarded. If the Java type
-changes but the row type stays the same (for example `String` to an enum), or either type reaches
-a versioned bean (directly, or through a list or map), building the codec fails, because an old
-layout could be identical to the new one and old values would decode as the new type. To change
-the type of a field, give the new member a new name.
+type or the nullability changes too (for example `String` to `int`, or `Integer` to `int`), older
+values are discarded. If the Java type changes but the row type and the nullability stay the same
+(for example `String` to an enum), or either type reaches a versioned bean (directly, or through a
+list or map), building the codec fails, because an old layout could be identical to the new one
+and old values would decode as the new type. To change the type of a field, give the new member a
+new name.
 
 A field handled by a custom codec evolves as its encoded representation. A codec that encodes
 to another type descends that type, so a versioned bean reachable only through the codec is
