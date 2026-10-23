@@ -775,9 +775,9 @@ final class SchemaHistory {
       }
       // The history method's name must mirror the live field/method name. Wire names are
       // derived the same way the live path derives them: descriptor name -> lower_underscore.
-      // For Lombok @Data or record-style beans the descriptor name is the field name
-      // ("tags"); for interface beans or JavaBean-style classes it is the method name
-      // ("getTags"). The user writes the history method to match.
+      // For a class bean or a record the descriptor name is the field name ("tags"); for an
+      // interface bean it is the accessor method name ("getTags"). The user writes the history
+      // method to match.
       String wireName = wireName(historyClass, d);
       out.add(
           new FieldEntry(
