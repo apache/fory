@@ -1524,8 +1524,9 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   /**
-   * A projection whose code generation fails must fail the same way on every later decode of its
-   * layout, without generating again.
+   * A projection whose code generation fails must fail on every later decode of its layout, without
+   * generating again. A later decode throws a new exception, caused by the first failure, so that
+   * threads do not share one exception instance and its stack trace.
    */
   @Test
   public void projectionGenerationFailureIsCached() {
@@ -1544,10 +1545,15 @@ public class SchemaEvolutionEdgeCaseTest {
             return classes;
           }
         };
-    for (int i = 0; i < 3; i++) {
-      Assert.assertSame(
-          Assert.expectThrows(IllegalStateException.class, () -> source.compile(null)), failure);
-    }
+    Assert.assertSame(
+        Assert.expectThrows(IllegalStateException.class, () -> source.compile(null)), failure);
+    EncoderException second =
+        Assert.expectThrows(EncoderException.class, () -> source.compile(null));
+    EncoderException third =
+        Assert.expectThrows(EncoderException.class, () -> source.compile(null));
+    Assert.assertSame(second.getCause(), failure);
+    Assert.assertSame(third.getCause(), failure);
+    Assert.assertNotSame(second, third);
     Assert.assertEquals(generated[0], 1);
   }
 

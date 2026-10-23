@@ -30,7 +30,10 @@ import org.apache.fory.util.ExceptionUtils;
 abstract class ProjectionSource<C, P> {
   private volatile C classes;
 
-  /** The failure of {@link #generate}, rethrown by every later compile. Guarded by {@code this}. */
+  /**
+   * The failure of {@link #generate}, the cause of the exception of every later compile. Guarded by
+   * {@code this}.
+   */
   private Throwable failure;
 
   /**
@@ -49,7 +52,10 @@ abstract class ProjectionSource<C, P> {
         c = classes;
         if (c == null) {
           if (failure != null) {
-            throw ExceptionUtils.throwException(failure);
+            // A new exception for each throw: decodes on several threads must not share one
+            // instance, to which each can add suppressed exceptions, and whose stack trace shows
+            // only the first decode.
+            throw new EncoderException("Projection code generation failed earlier", failure);
           }
           try {
             c = generate();
