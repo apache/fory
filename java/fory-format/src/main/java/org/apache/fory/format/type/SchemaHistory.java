@@ -20,6 +20,7 @@
 package org.apache.fory.format.type;
 
 import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.nio.charset.StandardCharsets;
@@ -833,7 +834,18 @@ public final class SchemaHistory {
       }
       ForyRowSchema schemaAnn = cls.getAnnotation(ForyRowSchema.class);
       if (schemaAnn != null && schemaAnn.removedFields() != void.class) {
-        out.add(schemaAnn.removedFields());
+        Class<?> removedFields = schemaAnn.removedFields();
+        // The removed fields are the descriptors of this type, and only an interface has its
+        // methods as descriptors. A class would yield its fields, so its methods would be ignored.
+        if (!removedFields.isInterface()) {
+          throw new IllegalStateException(
+              "@ForyRowSchema(removedFields = "
+                  + removedFields.getName()
+                  + ") on "
+                  + cls.getName()
+                  + " must name an interface: removed fields are declared as its accessor methods.");
+        }
+        out.add(removedFields);
       }
       if (cls.isInterface()) {
         pending.addAll(Arrays.asList(cls.getInterfaces()));
@@ -858,6 +870,7 @@ public final class SchemaHistory {
 
   private static List<FieldEntry> collectRemovedFields(Class<?> historyClass) {
     List<Descriptor> descriptors = Descriptor.getDescriptors(historyClass);
+    checkVersionedMethodsRead(historyClass, descriptors);
     List<FieldEntry> out = new ArrayList<>(descriptors.size());
     for (Descriptor d : descriptors) {
       ForyRowVersion ann = lookupForyVersion(d);
@@ -918,6 +931,7 @@ public final class SchemaHistory {
 
   private static List<FieldEntry> collectLiveFields(Class<?> beanClass) {
     List<Descriptor> descriptors = Descriptor.getDescriptors(beanClass);
+    checkVersionedMethodsRead(beanClass, descriptors);
     List<FieldEntry> out = new ArrayList<>(descriptors.size());
     for (Descriptor d : descriptors) {
       ForyRowVersion ann = lookupForyVersion(d);
@@ -969,6 +983,51 @@ public final class SchemaHistory {
 
   private static ForyRowVersion readAnnotation(AnnotatedElement element) {
     return element == null ? null : element.getAnnotation(ForyRowVersion.class);
+  }
+
+  /**
+   * Reject a {@link ForyRowVersion} on a method of {@code type} or its supertypes that is not the
+   * read method of one of its descriptors, such as a getter of a field-backed bean or an interface
+   * method that takes parameters. {@link #lookupForyVersion} reads only the descriptor field and
+   * read method, so such an annotation would have no effect.
+   */
+  private static void checkVersionedMethodsRead(Class<?> type, List<Descriptor> descriptors) {
+    Set<Method> readMethods = new HashSet<>();
+    for (Descriptor d : descriptors) {
+      if (d.getReadMethod() != null) {
+        readMethods.add(d.getReadMethod());
+      }
+    }
+    Set<Class<?>> visited = new HashSet<>();
+    ArrayDeque<Class<?>> pending = new ArrayDeque<>();
+    pending.add(type);
+    while (!pending.isEmpty()) {
+      Class<?> cls = pending.poll();
+      if (cls == Object.class || !visited.add(cls)) {
+        continue;
+      }
+      for (Method method : cls.getDeclaredMethods()) {
+        // A bridge method carries the annotations of the method that it forwards to.
+        if (!method.isBridge()
+            && method.isAnnotationPresent(ForyRowVersion.class)
+            && !readMethods.contains(method)) {
+          throw new IllegalStateException(
+              "@ForyRowVersion on "
+                  + cls.getName()
+                  + "."
+                  + method.getName()
+                  + "() has no effect on "
+                  + type.getName()
+                  + ": schema evolution reads it only from fields, record components, and the "
+                  + "accessor methods of an interface. On a class, annotate the field, not its "
+                  + "getter.");
+        }
+      }
+      if (cls.getSuperclass() != null) {
+        pending.add(cls.getSuperclass());
+      }
+      pending.addAll(Arrays.asList(cls.getInterfaces()));
+    }
   }
 
   private static void validateNoNameCollision(Class<?> beanClass, List<FieldEntry> entries) {

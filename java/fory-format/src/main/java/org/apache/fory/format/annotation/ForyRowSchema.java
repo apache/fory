@@ -30,10 +30,10 @@ import java.lang.annotation.Target;
  * <p>Live fields without a {@link ForyRowVersion} annotation are treated as present from the first
  * version, so a class can adopt versioning by annotating only the fields added later.
  *
- * <p>{@link #removedFields()} points at a class (conventionally a nested {@code interface}) whose
- * accessor methods describe fields that have been removed from this bean but still appear on the
- * wire in older payloads. Each method's return type is the original Java type of the removed field;
- * each method must carry a {@link ForyRowVersion} annotation with {@code until} set, since removed
+ * <p>{@link #removedFields()} points at an interface (conventionally a nested one) whose accessor
+ * methods describe fields that have been removed from this bean but still appear on the wire in
+ * older payloads. Each method's return type is the original Java type of the removed field; each
+ * method must carry a {@link ForyRowVersion} annotation with {@code until} set, since removed
  * fields have a known end-of-life version.
  *
  * <p>A class inherits the removed fields that its superclasses declare, and an interface bean
@@ -61,9 +61,10 @@ import java.lang.annotation.Target;
 @Target(ElementType.TYPE)
 public @interface ForyRowSchema {
   /**
-   * A class whose accessor methods describe historically-present-but-now-removed fields. Default
-   * {@code void.class} means there are no removed fields. The class is never instantiated; the
-   * codec reads its method signatures and annotations.
+   * An interface whose accessor methods describe historically-present-but-now-removed fields.
+   * Default {@code void.class} means there are no removed fields. The interface is never
+   * implemented; the codec reads its method signatures and annotations. Building the codec fails
+   * when this names a class.
    */
   Class<?> removedFields() default void.class;
 }

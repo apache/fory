@@ -304,6 +304,10 @@ Primitive fields added later default to `0`, `0.0`, or `false`, and `Optional` f
 Unannotated fields are treated as present from the first version, so a class can adopt versioning
 by annotating only the fields added after v1.
 
+Put the annotation on the field of a class, on a record component, or on an accessor method of an
+interface bean. The codec does not read it from other methods, so building the codec fails when
+another method carries it, such as the getter of a class field.
+
 For a record, the absent component's default is passed to the canonical constructor, so a
 constructor that rejects `null` for a reference component added in a later version throws when
 decoding an older payload. Let the constructor tolerate the missing value, for example by
@@ -321,7 +325,8 @@ public record Person(String name, @ForyRowVersion(since = 2) String email) {
 
 Remove a field by deleting the Java member and declaring it on a nested history interface as a
 method with a `@ForyRowVersion(until = N)`. The method's return type carries any parameterized
-type information from the original field.
+type information from the original field. `removedFields` must name an interface; building the
+codec fails for a class.
 
 ```java
 @Data

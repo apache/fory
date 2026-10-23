@@ -32,12 +32,15 @@ import java.lang.annotation.Target;
  * <p>Only effective when the codec builder is configured with {@code withSchemaEvolution()};
  * otherwise the annotation is ignored and the field is treated as always present.
  *
- * <p>May be placed on a field or an accessor method, which also covers a record component. Record
- * components are covered by {@code FIELD} and {@code METHOD} rather than {@code
- * ElementType.RECORD_COMPONENT}: the compiler propagates a record-component annotation to the
- * backing field and the accessor method (the targets it declares), and the codec reads the
- * annotation from those elements. {@code RECORD_COMPONENT} is a JDK 16 enum constant and would
- * break this Java 11 module at runtime, so it is intentionally omitted.
+ * <p>Place it on a field of a class, on a record component, or on an accessor method of an
+ * interface (a non-static method with no parameters and a return value). The codec reads it from no
+ * other method, so building a schema-evolution codec fails when another method of the bean or of
+ * one of its supertypes carries it, such as the getter of a class field. Record components are
+ * covered by {@code FIELD} and {@code METHOD} rather than {@code ElementType.RECORD_COMPONENT}: the
+ * compiler propagates a record-component annotation to the backing field and the accessor method
+ * (the targets it declares), and the codec reads the annotation from those elements. {@code
+ * RECORD_COMPONENT} is a JDK 16 enum constant and would break this Java 11 module at runtime, so it
+ * is intentionally omitted.
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD})
@@ -48,7 +51,7 @@ public @interface ForyRowVersion {
   /**
    * First version (exclusive) that no longer contains this field. The default {@link
    * Integer#MAX_VALUE} means the field has no upper bound and is present in every version from
-   * {@link #since()} onward. Only a member of the class named by {@link
+   * {@link #since()} onward. Only a method of the interface named by {@link
    * ForyRowSchema#removedFields()} may set it; a live field or accessor that sets it fails the
    * codec build.
    */

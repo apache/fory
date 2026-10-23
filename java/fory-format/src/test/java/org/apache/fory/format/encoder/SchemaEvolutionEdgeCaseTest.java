@@ -850,6 +850,46 @@ public class SchemaEvolutionEdgeCaseTest {
     Assert.assertTrue(e.getMessage().contains("must be >= 1"), e.getMessage());
   }
 
+  /** The codec reads the version of a class field from the field, never from its getter. */
+  @Data
+  public static class VersionedGetter {
+    private String name;
+    private String email;
+
+    @ForyRowVersion(since = 2)
+    public String getEmail() {
+      return email;
+    }
+  }
+
+  @Test
+  public void versionedGetterFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(VersionedGetter.class));
+    Assert.assertTrue(e.getMessage().contains("getEmail() has no effect"), e.getMessage());
+  }
+
+  /** A class has its fields, not its methods, as descriptors, so it cannot declare removals. */
+  @Data
+  @ForyRowSchema(removedFields = RemovedFieldsClass.History.class)
+  public static class RemovedFieldsClass {
+    private String name;
+
+    abstract static class History {
+      @ForyRowVersion(until = 2)
+      abstract int age();
+    }
+  }
+
+  @Test
+  public void removedFieldsClassFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(RemovedFieldsClass.class));
+    Assert.assertTrue(e.getMessage().contains("must name an interface"), e.getMessage());
+  }
+
   // ---------------------------------------------------------------------------
   // A field whose type is a Collection subclass that shadows a field name across
   // its own hierarchy. The row format encodes it through the iterable branch and
