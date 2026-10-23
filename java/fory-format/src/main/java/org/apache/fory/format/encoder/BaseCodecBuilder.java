@@ -25,8 +25,21 @@ import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.SchemaHistory;
+import org.apache.fory.logging.Logger;
+import org.apache.fory.logging.LoggerFactory;
 
 public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
+  private static final Logger LOG = LoggerFactory.getLogger(BaseCodecBuilder.class);
+
+  /**
+   * Number of historical schemas for one bean above which {@link #buildSchemaHistory} logs a
+   * warning. Each distinct schema becomes one generated projection codec class (compiled and loaded
+   * at build time), and the count grows as the product of the per-class version counts across
+   * nested versioned beans. The JVM handles far more classes than this; the threshold flags a
+   * likely misconfigured version history, since no hand-written history reaches it by accident.
+   */
+  private static final int PROJECTION_COUNT_WARN_THRESHOLD = 256;
+
   protected Schema schema;
   protected int initialBufferSize = 16;
   protected boolean sizeEmbedded = true;
@@ -98,7 +111,18 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
         codecFormat == CompactCodecFormat.INSTANCE
             ? CompactBinaryRowWriter::sortSchema
             : UnaryOperator.identity();
-    return SchemaHistory.build(targetClass, schemaTransform);
+    SchemaHistory history = SchemaHistory.build(targetClass, schemaTransform);
+    int projectionCount = history.versions().size();
+    if (projectionCount > PROJECTION_COUNT_WARN_THRESHOLD) {
+      LOG.warn(
+          "Schema evolution for {} resolved {} historical schemas, each generating a projection "
+              + "codec class. This count grows as the product of per-class version counts across "
+              + "nested versioned beans; retire @ForyVersion history ranges you no longer read to "
+              + "reduce it.",
+          targetClass.getName(),
+          projectionCount);
+    }
+    return history;
   }
 
   @SuppressWarnings("unchecked")

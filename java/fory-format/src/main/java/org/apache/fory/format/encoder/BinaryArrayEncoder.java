@@ -99,13 +99,18 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
 
   @Override
   public T decode(final byte[] bytes) {
-    // byte[] overloads ignore sizeEmbedded: encode writes no size prefix, decode uses bytes.length.
+    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (under schema evolution
+    // an 8-byte hash leads the body, but that is data, not framing), so decode takes the size from
+    // bytes.length.
     return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 
   @SuppressWarnings("unchecked")
   T decode(final MemoryBuffer buffer, final int size) {
     if (projections == null) {
+      // Evolution off: the whole payload is body, with no hash prefix. Reading evolution-on bytes
+      // here misreads the leading hash as data; that direction is documented as unsupported in the
+      // row-format guide (producer and consumer must agree on the flag).
       final BinaryArray array = writer.newArray();
       final int readerIndex = buffer.readerIndex();
       array.pointTo(buffer, readerIndex, size);
@@ -117,25 +122,25 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
           "Array payload too small for an 8-byte schema hash under schema evolution: size=" + size);
     }
     final long peerHash = buffer.readInt64();
-    final int payloadSize = size - 8;
+    final int bodySize = size - 8;
     if (peerHash == currentHash) {
       final BinaryArray array = writer.newArray();
       final int readerIndex = buffer.readerIndex();
-      array.pointTo(buffer, readerIndex, payloadSize);
-      buffer.readerIndex(readerIndex + payloadSize);
+      array.pointTo(buffer, readerIndex, bodySize);
+      buffer.readerIndex(readerIndex + bodySize);
       return fromArray(array);
     }
     ProjectionArrayCodec projection = projections.get(peerHash);
     if (projection == null) {
       throw new ClassNotCompatibleException(
           String.format(
-              "Array element schema is not consistent. self/peer hash are %s/%s.",
+              "Array element schema is not consistent. self/peer hash are %x/%x.",
               currentHash, peerHash));
     }
     BinaryArray array = projection.writer.newArray();
     final int readerIndex = buffer.readerIndex();
-    array.pointTo(buffer, readerIndex, payloadSize);
-    buffer.readerIndex(readerIndex + payloadSize);
+    array.pointTo(buffer, readerIndex, bodySize);
+    buffer.readerIndex(readerIndex + bodySize);
     return (T) projection.codec.fromArray(array);
   }
 
