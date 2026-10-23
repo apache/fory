@@ -318,19 +318,21 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
    * (value-combination, key-combination) pairs must map to distinct suffixes or the second pair
    * would reuse the first pair's codec class. {@link ProjectionRouting#projectionSuffix} is already
    * injective over a single position's combinations, so each side's string determines its own
-   * combination. The key side is prefixed with a {@code _K} marker before its own {@code _V...}
-   * suffix, which keeps the two halves from interleaving: a {@code _K} only ever introduces the key
-   * suffix, never a value token, so "value v2, key current" ({@code _V2}) and "value current, key
-   * v2" ({@code _K_V2}) stay distinct rather than both reducing to {@code _V2}. The {@code _K} is a
-   * namespace prefix, not a parse boundary; the name is never split, only compared for equality, so
-   * a value-side nested-bean token that happens to contain {@code _K_V} (a bean named {@code K_V})
-   * does not cause a collision. Must match the name {@link
-   * Encoders#loadOrGenProjectionMapCodecClass} computes for the same builder.
+   * combination. Each half is written after its length, so no token on one side can imitate the
+   * boundary between the halves, whatever the bean simple names are. The current-schema codec, with
+   * both halves empty, gets no suffix.
    */
   String mapClassSuffix() {
-    String val = classSuffix == null ? "" : classSuffix;
-    String key = keyCodecSuffix == null || keyCodecSuffix.isEmpty() ? "" : "_K" + keyCodecSuffix;
-    return val + key;
+    return mapClassSuffix(classSuffix, keyCodecSuffix);
+  }
+
+  static String mapClassSuffix(String valueSuffix, String keySuffix) {
+    String val = valueSuffix == null ? "" : valueSuffix;
+    String key = keySuffix == null ? "" : keySuffix;
+    if (val.isEmpty() && key.isEmpty()) {
+      return "";
+    }
+    return "_" + val.length() + val + "_" + key.length() + key;
   }
 
   /**
