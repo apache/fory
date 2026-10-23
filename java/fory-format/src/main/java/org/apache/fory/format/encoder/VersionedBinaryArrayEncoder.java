@@ -28,9 +28,10 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 
 /**
- * The array encoder of a codec built with schema evolution. Every payload body starts with the
- * strict hash of its element layout, and decode reads an older layout through its projection codec.
- * Codecs without evolution use {@link BinaryArrayEncoder}, which has no hash on any path.
+ * The array encoder of a codec built with schema evolution. Every payload starts, after any size
+ * prefix, with the 8-byte strict hash of its element layout, and the hash precedes the body. Decode
+ * reads an older layout through its projection codec. Codecs without evolution use {@link
+ * BinaryArrayEncoder}, which has no hash on any path.
  */
 class VersionedBinaryArrayEncoder<T> implements ArrayEncoder<T> {
   private final BinaryArrayWriter writer;

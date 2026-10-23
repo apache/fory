@@ -119,8 +119,8 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
 
   @Override
   public T decode(final byte[] bytes) {
-    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (the schema-hash prefix
-    // is part of the body, not framing), so decode takes the size from bytes.length.
+    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (the 8-byte schema hash
+    // precedes the body and is not framing), so decode takes the size from bytes.length.
     return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 

@@ -29,10 +29,10 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 
 /**
- * The map encoder of a codec built with schema evolution. Every payload body starts with the
- * combined key and value strict hash, and decode reads an older (key, value) layout through its
- * projection codec. Codecs without evolution use {@link BinaryMapEncoder}, which has no hash on any
- * path.
+ * The map encoder of a codec built with schema evolution. Every payload starts, after any size
+ * prefix, with the 8-byte combined key and value strict hash, and the hash precedes the body.
+ * Decode reads an older (key, value) layout through its projection codec. Codecs without evolution
+ * use {@link BinaryMapEncoder}, which has no hash on any path.
  */
 class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
   private final Encoding format;

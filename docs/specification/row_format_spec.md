@@ -624,7 +624,7 @@ row_size = fixed_region_size + bitmap_size + variable_data_size
 
 where:
   fixed_region_size = sum of (fixed_width(field) or 8 for each field)
-  bitmap_size = all_non_nullable ? 0 : (num_nullable_fields + 7) / 8
+  bitmap_size = all_non_nullable ? 0 : (num_fields + 7) / 8
   // May be rounded to 8-byte boundary if has variable fields
 ```
 
