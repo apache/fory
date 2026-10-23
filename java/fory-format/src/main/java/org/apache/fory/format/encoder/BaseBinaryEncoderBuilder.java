@@ -99,8 +99,9 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   protected final Map<TypeRef<?>, Reference> beanEncoderMap = new HashMap<>();
 
   /**
-   * Suffix of the generated array or map codec class name. A projection codec sets it so that each
-   * version combination gets its own class. It does not route nested bean codecs; {@link
+   * Suffix of the generated row, array, or map codec class name, and of the implementation class
+   * that a row codec generates for an interface bean. A projection codec sets it so that each
+   * version combination gets its own classes. It does not route nested bean codecs; {@link
    * #nestedClassSuffixes} does.
    */
   protected String classSuffix;

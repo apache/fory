@@ -87,8 +87,6 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
    */
   private final Set<String> projectionLiveNames;
 
-  private final String projectionClassSuffix;
-
   public RowEncoderBuilder(Class<?> beanClass) {
     this(TypeRef.of(beanClass));
   }
@@ -114,12 +112,10 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     super(new CodegenContext(), beanType);
     Preconditions.checkArgument(beanClass.isInterface() || TypeUtils.isBean(beanType, typeCtx));
     this.projectionLiveNames = liveNames;
-    this.projectionClassSuffix = classSuffix;
+    this.classSuffix = classSuffix;
     this.nestedClassSuffixes = nestedSuffixes;
     className =
-        projectionClassSuffix == null
-            ? codecClassName(beanClass)
-            : codecClassName(beanClass) + projectionClassSuffix;
+        classSuffix == null ? codecClassName(beanClass) : codecClassName(beanClass) + classSuffix;
     this.schema = historicalSchema != null ? historicalSchema : inferSchema(beanType);
     this.descriptorsMap = Descriptor.getDescriptorsMap(beanClass);
     ctx.reserveName(ROOT_ROW_WRITER_NAME);
@@ -144,9 +140,7 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
       // own impl class; the impl classes are inner classes of the codec and would collide on
       // the simple name otherwise.
       generatedBeanImplName =
-          beanClass.getSimpleName()
-              + "GeneratedImpl"
-              + (projectionClassSuffix == null ? "" : projectionClassSuffix);
+          beanClass.getSimpleName() + "GeneratedImpl" + (classSuffix == null ? "" : classSuffix);
       generatedBeanImpl = buildImplClass();
     } else {
       generatedBeanImplName = null;
