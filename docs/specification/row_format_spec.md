@@ -478,6 +478,10 @@ unlike the default schema hash, which mixes only type IDs. All inputs are langua
   | `point: struct<x: int32 nn, y: int32 nn> n, z: int64 nn` | `0x793051ee66a15234` |
   | `combine(0x506a3242a9f93ae2, 0x4bd0d984e7109ef6)`        | `0x11ce9d3600e26f89` |
 
+  The layout with the fields `day: date32 n`, `dur: duration n`, `f16: float16 nn`,
+  `f32: float32 nn`, `f64: float64 nn`, and `ts: timestamp n` has the strict hash
+  `0xf6320f76f21330bc` in the standard format.
+
   In the compact format, the layout with the fields `code: string n`, `flag: bool nn`,
   `id: int64 nn`, `stats: struct<count: int32 nn, total: int64 nn> n`, and `version: int16 nn`
   hashes in the order `code`, `id`, `version`, `stats` (children `total`, `count`), `flag`. Its

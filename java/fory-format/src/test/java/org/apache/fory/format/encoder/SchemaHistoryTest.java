@@ -27,10 +27,13 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import java.lang.reflect.TypeVariable;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
+import org.apache.fory.format.type.DataType;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
 import org.apache.fory.format.type.Schema;
@@ -433,7 +436,37 @@ public class SchemaHistoryTest {
             DataTypes.notNullField("z", DataTypes.int64())),
         0x793051ee66a15234L);
     assertEquals(
+        hash(
+            DataTypes.field("day", DataTypes.date32(), true),
+            DataTypes.field("dur", DataTypes.duration(), true),
+            DataTypes.notNullField("f16", DataTypes.float16()),
+            DataTypes.notNullField("f32", DataTypes.float32()),
+            DataTypes.notNullField("f64", DataTypes.float64()),
+            DataTypes.field("ts", DataTypes.timestamp(), true)),
+        0xf6320f76f21330bcL);
+    assertEquals(
         SchemaHistory.combineHashes(0x506a3242a9f93ae2L, 0x4bd0d984e7109ef6L), 0x11ce9d3600e26f89L);
+  }
+
+  /**
+   * Schemas that differ only in a floating-point or time type, or only in the nullability of such a
+   * field, have different strict hashes, so a reader does not decode one as the other.
+   */
+  @Test
+  public void strictHashSeparatesFloatAndTimeTypes() {
+    DataType[] types = {
+      DataTypes.float16(),
+      DataTypes.float32(),
+      DataTypes.float64(),
+      DataTypes.duration(),
+      DataTypes.timestamp(),
+      DataTypes.date32(),
+    };
+    Set<Long> hashes = new HashSet<>();
+    for (DataType type : types) {
+      assertTrue(hashes.add(hash(DataTypes.field("v", type, false))), type.toString());
+      assertTrue(hashes.add(hash(DataTypes.field("v", type, true))), type.toString());
+    }
   }
 
   /**
