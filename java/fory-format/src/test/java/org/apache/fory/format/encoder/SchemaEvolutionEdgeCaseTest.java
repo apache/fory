@@ -1287,14 +1287,20 @@ public class SchemaEvolutionEdgeCaseTest {
     return new ForyInputStream(stream).getBuffer();
   }
 
+  /**
+   * A size prefix below the 8-byte hash fails the decode, and the decode does not move the reader
+   * index backward. The stream returns one byte per read, so the buffer holds only the bytes that
+   * the decode asked for, and a decode that moves back leaves the reader index before their end.
+   */
   @Test(dataProvider = "framedCodecs")
   public void sizeBelowHashRejected(String label, FramedCodec c) {
-    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(64);
-    c.encode.accept(buffer);
+    MemoryBuffer encoded = MemoryBuffer.newHeapBuffer(64);
+    c.encode.accept(encoded);
     // The payload keeps its valid hash, but its size prefix says 4 bytes, less than the hash.
-    buffer.putInt32(0, 4);
+    encoded.putInt32(0, 4);
+    MemoryBuffer buffer = oneByteStream(encoded);
     Assert.expectThrows(RuntimeException.class, () -> c.decode.apply(buffer));
-    Assert.assertTrue(buffer.readerIndex() >= 4);
+    Assert.assertEquals(buffer.readerIndex(), buffer.size());
   }
 
   private static final class FramedCodec {
