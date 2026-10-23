@@ -37,8 +37,8 @@ final class ProjectionRouting {
    * to a suffix, and a map codec joins a value and a key suffix, so a wide bean or map could push
    * the source file that {@code FORY_CODE_DIR} writes for the class past the 255-byte file name
    * limit of common file systems. A longer suffix is cut to this length and ends with a hash token
-   * instead, so a projection class name is at most 97 characters longer than the name of the
-   * current codec class.
+   * instead, so a projection class name is at most 97 characters longer than the codec class name
+   * before its suffix.
    */
   static final int MAX_READABLE_SUFFIX_LENGTH = 80;
 

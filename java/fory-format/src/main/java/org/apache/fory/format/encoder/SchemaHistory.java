@@ -845,8 +845,9 @@ final class SchemaHistory {
 
   /**
    * The wire name of member {@code d} of {@code type}. The generated codec finds the member of a
-   * wire name by removing its underscores, so a member name with an underscore would bind to
-   * another member ({@code a_} to {@code a}) or to none. Reject it.
+   * wire name by removing its underscores and capitalizing a lowercase letter after each one
+   * ({@code a_b} to {@code aB}), so a member name with an underscore would bind to another member
+   * ({@code a_} to {@code a}) or to none. Reject it.
    */
   private static String wireName(Class<?> type, Descriptor d) {
     String name = d.getName();
