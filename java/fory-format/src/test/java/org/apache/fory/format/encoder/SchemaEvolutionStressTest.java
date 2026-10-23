@@ -43,8 +43,7 @@ import org.testng.annotations.Test;
 
 /**
  * Stress tests for row-codec schema evolution. Each test probes a specific edge case; the names say
- * what is being stressed. Tests that surfaced real bugs are kept with a note pointing at the fix;
- * tests kept for coverage are short.
+ * what is being stressed.
  */
 public class SchemaEvolutionStressTest {
 
@@ -239,7 +238,7 @@ public class SchemaEvolutionStressTest {
   }
 
   // ---------------------------------------------------------------------------
-  // Disjoint-window false collision (regression). A field whose [since, until)
+  // Disjoint-window false collision. A field whose [since, until)
   // window starts above the base version and ends below infinity leaves the
   // pre-since and post-until boundaries with identical field sets. SchemaHistory
   // must collapse those into one entry rather than flagging a false collision.
@@ -286,7 +285,7 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void disjointWindowDoesNotFalseCollide() {
-    // Build alone is the assertion: the bug was an IllegalStateException at build time.
+    // Build alone is the assertion: a false collision fails the build.
     RowEncoder<GappedWindow> codec = evolvingCodec(GappedWindow.class);
     GappedWindow in = new GappedWindow();
     in.setName("hi");
@@ -1524,8 +1523,7 @@ public class SchemaEvolutionStressTest {
   }
 
   // A top-level map whose VALUE is itself a Map<KBean, VBean> with two DIFFERENT versioned bean
-  // classes. The value position must evolve both inner beans; before the fix the value position
-  // enumerated only one and generated a codec for only it.
+  // classes. The value position must evolve both inner beans and generate a codec for each.
   @Test
   public void mapValueWrappingTwoBeansOlderPayloadReadByNewerCodec() {
     MapEncoder<Map<String, Map<AlignV1, DefaultsV1>>> writer =
