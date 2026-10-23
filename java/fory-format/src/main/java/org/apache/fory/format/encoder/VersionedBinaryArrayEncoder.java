@@ -108,8 +108,9 @@ class VersionedBinaryArrayEncoder<T> implements ArrayEncoder<T> {
     if (peerHash == currentHash) {
       final BinaryArray array = writer.newArray();
       final int readerIndex = buffer.readerIndex();
-      array.pointTo(buffer, readerIndex, bodySize);
+      // Advance first: on a stream-backed buffer this loads the body that pointTo reads.
       buffer.readerIndex(readerIndex + bodySize);
+      array.pointTo(buffer, readerIndex, bodySize);
       return fromArray(array);
     }
     ProjectionArrayCodec projection = projections.get(peerHash);
@@ -123,8 +124,9 @@ class VersionedBinaryArrayEncoder<T> implements ArrayEncoder<T> {
     }
     BinaryArray array = projection.writer.newArray();
     final int readerIndex = buffer.readerIndex();
-    array.pointTo(buffer, readerIndex, bodySize);
+    // Advance first: on a stream-backed buffer this loads the body that pointTo reads.
     buffer.readerIndex(readerIndex + bodySize);
+    array.pointTo(buffer, readerIndex, bodySize);
     return (T) projection.codec.fromArray(array);
   }
 

@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -1214,8 +1215,7 @@ public class SchemaEvolutionEdgeCaseTest {
   /**
    * On a stream-backed buffer, the skip of an unknown payload reads exactly its body from the
    * stream, so the next payload still decodes. The stream returns one byte per read, so the buffer
-   * holds no byte that a decode did not ask for. An array or map decode reads the element count
-   * before the buffer loads the body, so only a row decodes the next payload from such a stream.
+   * holds no byte that a decode did not ask for.
    */
   @Test(dataProvider = "framedCodecs")
   public void unknownHashSkipsStreamedPayload(String label, FramedCodec c) {
@@ -1224,6 +1224,58 @@ public class SchemaEvolutionEdgeCaseTest {
     int next = encoded.writerIndex();
     c.encode.accept(encoded);
     encoded.putInt64(4, encoded.getInt64(4) ^ 1);
+    MemoryBuffer buffer = oneByteStream(encoded);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> c.decode.apply(buffer));
+    Assert.assertEquals(buffer.readerIndex(), next);
+    Assert.assertEquals(c.decode.apply(buffer), c.value);
+  }
+
+  /** An array or map decode loads the body from the stream for the current and an older layout. */
+  @Test
+  public void streamedArrayAndMapDecode() {
+    DefaultsV1 old = new DefaultsV1();
+    old.setName("old");
+    DefaultsV2 current = new DefaultsV2();
+    current.setName("current");
+    current.setPrimitiveCount(3);
+    current.setBoxedCount(4);
+    DefaultsV2 oldAsCurrent = new DefaultsV2();
+    oldAsCurrent.setName("old");
+
+    MemoryBuffer arrays = MemoryBuffer.newHeapBuffer(64);
+    framedArrayCodec(new TypeRef<List<DefaultsV1>>() {}).encode(arrays, Arrays.asList(old));
+    ArrayEncoder<List<DefaultsV2>> arrayReader =
+        framedArrayCodec(new TypeRef<List<DefaultsV2>>() {});
+    arrayReader.encode(arrays, Arrays.asList(current));
+    MemoryBuffer arrayStream = oneByteStream(arrays);
+    Assert.assertEquals(arrayReader.decode(arrayStream), Arrays.asList(oldAsCurrent));
+    Assert.assertEquals(arrayReader.decode(arrayStream), Arrays.asList(current));
+
+    MemoryBuffer maps = MemoryBuffer.newHeapBuffer(64);
+    framedMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
+        .encode(maps, Collections.singletonMap("k", old));
+    MapEncoder<Map<String, DefaultsV2>> mapReader =
+        framedMapCodec(new TypeRef<Map<String, DefaultsV2>>() {});
+    mapReader.encode(maps, Collections.singletonMap("k", current));
+    MemoryBuffer mapStream = oneByteStream(maps);
+    Assert.assertEquals(mapReader.decode(mapStream), Collections.singletonMap("k", oldAsCurrent));
+    Assert.assertEquals(mapReader.decode(mapStream), Collections.singletonMap("k", current));
+  }
+
+  private static <T extends Collection<?>> ArrayEncoder<T> framedArrayCodec(TypeRef<T> type) {
+    return Encoders.buildArrayCodec(type)
+        .withSchemaEvolution()
+        .withSizeEmbedded(true)
+        .build()
+        .get();
+  }
+
+  private static <T extends Map<?, ?>> MapEncoder<T> framedMapCodec(TypeRef<T> type) {
+    return Encoders.buildMapCodec(type).withSchemaEvolution().withSizeEmbedded(true).build().get();
+  }
+
+  /** Streams the written bytes of {@code encoded} one byte per read. */
+  private static MemoryBuffer oneByteStream(MemoryBuffer encoded) {
     InputStream stream =
         new FilterInputStream(
             new ByteArrayInputStream(encoded.getBytes(0, encoded.writerIndex()))) {
@@ -1232,12 +1284,7 @@ public class SchemaEvolutionEdgeCaseTest {
             return super.read(b, off, Math.min(len, 1));
           }
         };
-    MemoryBuffer buffer = new ForyInputStream(stream).getBuffer();
-    Assert.expectThrows(ClassNotCompatibleException.class, () -> c.decode.apply(buffer));
-    Assert.assertEquals(buffer.readerIndex(), next);
-    if (c.value instanceof DefaultsV1) {
-      Assert.assertEquals(c.decode.apply(buffer), c.value);
-    }
+    return new ForyInputStream(stream).getBuffer();
   }
 
   @Test(dataProvider = "framedCodecs")

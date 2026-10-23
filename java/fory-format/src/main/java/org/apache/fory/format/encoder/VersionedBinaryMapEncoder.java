@@ -120,8 +120,9 @@ class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
     if (peerHash == currentHash) {
       final BinaryMap map = format.newMap(mapField);
       int readerIndex = buffer.readerIndex();
-      map.pointTo(buffer, readerIndex, bodySize);
+      // Advance first: on a stream-backed buffer this loads the body that pointTo reads.
       buffer.readerIndex(readerIndex + bodySize);
+      map.pointTo(buffer, readerIndex, bodySize);
       return fromMap(map);
     }
     ProjectionMapCodec projection = projections.get(peerHash);
@@ -135,8 +136,9 @@ class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
     }
     BinaryMap map = projection.format.newMap(projection.mapField);
     int readerIndex = buffer.readerIndex();
-    map.pointTo(buffer, readerIndex, bodySize);
+    // Advance first: on a stream-backed buffer this loads the body that pointTo reads.
     buffer.readerIndex(readerIndex + bodySize);
+    map.pointTo(buffer, readerIndex, bodySize);
     return (M) projection.codec.fromMap(map);
   }
 
