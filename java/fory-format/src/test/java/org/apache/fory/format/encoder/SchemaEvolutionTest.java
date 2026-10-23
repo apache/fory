@@ -24,6 +24,7 @@ import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -182,6 +183,136 @@ public class SchemaEvolutionTest {
             .get()
             .schema(),
         Encoders.buildBeanCodec(PairListV2.class).compactEncoding().build().get().schema());
+  }
+
+  /** One 8-byte field: the compact format inlines it as an 8-byte struct, with the 8-byte slots. */
+  @Data
+  public static class SlotV1 {
+    private long a;
+  }
+
+  /**
+   * Version 2 adds an int, so the inline struct is 12 bytes wide. The compact sort then moves it
+   * from the group of 2-, 4-, and 8-multiple widths to the group of other widths, after them.
+   */
+  @Data
+  public static class SlotV2 {
+    private long a;
+
+    @ForyRowVersion(since = 2)
+    private int b;
+  }
+
+  /** The compact order is slot, tag, x, flag at version 1 and tag, x, slot, flag at version 2. */
+  @Data
+  public static class SlotFieldV1 {
+    private boolean flag;
+    private SlotV1 slot;
+    private String tag;
+    private int x;
+  }
+
+  @Data
+  public static class SlotFieldV2 {
+    private boolean flag;
+    private SlotV2 slot;
+    private String tag;
+    private int x;
+  }
+
+  @Data
+  public static class SlotListV1 {
+    private List<SlotV1> slots;
+    private int x;
+  }
+
+  @Data
+  public static class SlotListV2 {
+    private List<SlotV2> slots;
+    private int x;
+  }
+
+  @Data
+  public static class SlotMapV1 {
+    private Map<String, SlotV1> slots;
+    private int x;
+  }
+
+  @Data
+  public static class SlotMapV2 {
+    private Map<String, SlotV2> slots;
+    private int x;
+  }
+
+  private static SlotV1 slotV1(long a) {
+    SlotV1 slot = new SlotV1();
+    slot.setA(a);
+    return slot;
+  }
+
+  private static <T> RowEncoder<T> compactEvolvingCodec(Class<T> beanClass) {
+    return Encoders.buildBeanCodec(beanClass).compactEncoding().withSchemaEvolution().build().get();
+  }
+
+  /**
+   * An older compact payload whose inline nested bean is in another sort group than the current
+   * one: the projection must read the bean, and the fields that the sort moved around it, at their
+   * version-1 offsets.
+   */
+  @Test
+  public void compactNestedBeanChangesSortGroup() {
+    SlotFieldV1 in = new SlotFieldV1();
+    in.setFlag(true);
+    in.setSlot(slotV1(0x0102030405060708L));
+    in.setTag("t");
+    in.setX(-7);
+    SlotFieldV2 out =
+        compactEvolvingCodec(SlotFieldV2.class)
+            .decode(compactEvolvingCodec(SlotFieldV1.class).encode(in));
+    Assert.assertTrue(out.isFlag());
+    Assert.assertEquals(out.getSlot().getA(), 0x0102030405060708L);
+    Assert.assertEquals(out.getSlot().getB(), 0);
+    Assert.assertEquals(out.getTag(), "t");
+    Assert.assertEquals(out.getX(), -7);
+  }
+
+  /** The same change for list elements, which the compact format stores inline at their width. */
+  @Test
+  public void compactListElementChangesSortGroup() {
+    SlotListV1 in = new SlotListV1();
+    in.setSlots(Arrays.asList(slotV1(11), slotV1(-12), slotV1(Long.MAX_VALUE)));
+    in.setX(5);
+    SlotListV2 out =
+        compactEvolvingCodec(SlotListV2.class)
+            .decode(compactEvolvingCodec(SlotListV1.class).encode(in));
+    Assert.assertEquals(out.getSlots().size(), 3);
+    Assert.assertEquals(out.getSlots().get(0).getA(), 11);
+    Assert.assertEquals(out.getSlots().get(1).getA(), -12);
+    Assert.assertEquals(out.getSlots().get(2).getA(), Long.MAX_VALUE);
+    for (SlotV2 slot : out.getSlots()) {
+      Assert.assertEquals(slot.getB(), 0);
+    }
+    Assert.assertEquals(out.getX(), 5);
+  }
+
+  /** The same change for the values of a map in a row field. */
+  @Test
+  public void compactMapValueChangesSortGroup() {
+    Map<String, SlotV1> slots = new LinkedHashMap<>();
+    slots.put("p", slotV1(21));
+    slots.put("q", slotV1(-22));
+    SlotMapV1 in = new SlotMapV1();
+    in.setSlots(slots);
+    in.setX(6);
+    SlotMapV2 out =
+        compactEvolvingCodec(SlotMapV2.class)
+            .decode(compactEvolvingCodec(SlotMapV1.class).encode(in));
+    Assert.assertEquals(out.getSlots().size(), 2);
+    Assert.assertEquals(out.getSlots().get("p").getA(), 21);
+    Assert.assertEquals(out.getSlots().get("q").getA(), -22);
+    Assert.assertEquals(out.getSlots().get("p").getB(), 0);
+    Assert.assertEquals(out.getSlots().get("q").getB(), 0);
+    Assert.assertEquals(out.getX(), 6);
   }
 
   /**
