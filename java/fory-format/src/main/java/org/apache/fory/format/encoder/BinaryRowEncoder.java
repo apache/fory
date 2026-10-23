@@ -143,8 +143,8 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
         return (T) projection.codec.fromRow(row);
       }
     }
-    // Skip the body, so that a caller can go on to the next payload in the buffer. On a
-    // stream-backed buffer, the skip reads exactly the body from the stream.
+    // Skip the body, so that a caller can go on to the next payload in the buffer. The skip moves
+    // the reader index past exactly the body, and loads the body from the stream if needed.
     buffer.increaseReaderIndex(rowSize);
     throw new ClassNotCompatibleException(
         String.format(

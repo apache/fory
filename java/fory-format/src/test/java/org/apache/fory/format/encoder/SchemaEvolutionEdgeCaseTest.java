@@ -1213,9 +1213,9 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   /**
-   * On a stream-backed buffer, the skip of an unknown payload reads exactly its body from the
-   * stream, so the next payload still decodes. The stream returns one byte per read, so the buffer
-   * holds no byte that a decode did not ask for.
+   * On a stream-backed buffer, the skip of an unknown payload moves the reader index past exactly
+   * its body, so the next payload still decodes. The stream returns one byte per read, so the
+   * buffer holds no byte that a decode did not ask for.
    */
   @Test(dataProvider = "framedCodecs")
   public void unknownHashSkipsStreamedPayload(String label, FramedCodec c) {
