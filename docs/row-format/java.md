@@ -416,13 +416,12 @@ Field identity on the wire is the snake_case form of the member name (`createdAt
 inserts an underscore before each ASCII capital letter and lowercases it, and changes no other
 character.
 
-With schema evolution, Java member names must be lowerCamelCase. A member name or a history method
-name with an underscore, such as `created_at` or `count_`, fails the codec build. The build also
-fails when the member-name order and the wire-name order differ, which happens only for a
-character outside the Basic Multilingual Plane. The error names the members to rename. Other Fory
-runtimes do not all convert acronyms, a leading capital letter, or non-ASCII capital letters the
-same way, so give versioned beans ordinary lowerCamelCase member names (`createdAt`, not `fooURL`
-or `URLValue`) if another runtime will read the payloads.
+With schema evolution, a member name or a history method name with an underscore, such as
+`created_at` or `count_`, fails the codec build. The build also fails when the member-name order
+and the wire-name order differ, which happens only for a character outside the Basic Multilingual
+Plane. The error names the members to rename. Other Fory runtimes do not all convert acronyms, a
+leading capital letter, or non-ASCII capital letters the same way, so use ordinary lowerCamelCase
+member names (`createdAt`, not `fooURL` or `URLValue`) for portability.
 
 Because field names are wire identity, a rename is a removal plus an addition, not an in-place
 mapping: declare the old name on the history interface with `until = N` and annotate the renamed

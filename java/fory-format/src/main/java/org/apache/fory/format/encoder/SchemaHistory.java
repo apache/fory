@@ -855,8 +855,8 @@ final class SchemaHistory {
               + name
               + "' of "
               + type.getName()
-              + " has an underscore in its name, but schema evolution requires lowerCamelCase "
-              + "member names. Rename it.");
+              + " has an underscore in its name, which schema evolution rejects. Rename it, for "
+              + "example to lowerCamelCase.");
     }
     return StringUtils.lowerCamelToLowerUnderscore(name);
   }
