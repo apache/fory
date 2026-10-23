@@ -1335,6 +1335,39 @@ public class SchemaEvolutionEdgeCaseTest {
     return MemoryBuffer.fromByteArray(bytes).readInt64();
   }
 
+  @Data
+  public static class CompactOrderStats {
+    private int count;
+    private long total;
+  }
+
+  @Data
+  public static class CompactOrderRow {
+    private String code;
+    private boolean flag;
+    private long id;
+    private CompactOrderStats stats;
+    private short version;
+  }
+
+  /**
+   * The compact row hash covers the fields in the spec's compact sort order: the string keeps its
+   * wire-name order among the 8-byte fields, and the 12-byte inline struct sorts after the int16
+   * and before the bool. The expected value is the spec's compact vector, computed independently of
+   * this implementation.
+   */
+  @Test
+  public void compactRowHashMatchesSpecVector() {
+    byte[] bytes =
+        Encoders.buildBeanCodec(CompactOrderRow.class)
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get()
+            .encode(new CompactOrderRow());
+    Assert.assertEquals(prefix(bytes), 0xc4ea6b794482924bL);
+  }
+
   @Test
   public void mapWithVersionedKey() {
     MapEncoder<Map<DefaultsV2, String>> codec =

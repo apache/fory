@@ -255,28 +255,29 @@ The compact format provides space-efficient encoding with additional optimizatio
 
 1. **Field Slot Sizes**: Each field uses its natural width (Wi = type width or 8 for variable)
 2. **Null Bitmap Position**: Placed after field slots, can borrow alignment padding
-3. **Field Order**: Fields are sorted by alignment (8-byte → 4-byte → 2-byte → 1-byte → variable)
+3. **Field Order**: Fields are sorted by slot width (see [Field Sorting Algorithm](#field-sorting-algorithm))
 4. **Conditional Bitmap**: Skipped entirely if all fields are non-nullable
 
 #### Null Bitmap (Compact)
 
-- **Size**: `(num_nullable_fields + 7) / 8` bytes (byte-aligned, not 8-byte aligned)
+- **Size**: `(num_fields + 7) / 8` bytes, one bit per field (byte-aligned, not 8-byte aligned)
 - **Skipped**: When all fields are primitive/non-nullable
 - **Position**: After all fixed-size field slots, can use alignment padding space
 
 #### Field Sorting Algorithm
 
-Fields are sorted to minimize padding and optimize alignment:
+Fields are sorted to reduce padding. The sort key of a field is its slot width `w`: its fixed
+width (see [Fixed-Width Calculation](#fixed-width-calculation)), or 8 for a variable-width field,
+whose slot holds an offset and a size.
 
-```
-Priority order (highest to lowest):
-1. Fields with 8-byte alignment (int64, float64, variable-width)
-2. Fields with 4-byte alignment (int32, float32)
-3. Fields with 2-byte alignment (int16)
-4. Fields with 1-byte alignment (int8, bool)
-```
+1. Group 0 holds the fields whose `w` is 2, 4, or a multiple of 8. Group 1 holds every other
+   width, such as 1, 3, 6, or 12. Group 0 comes first.
+2. Within a group, a larger `w` comes first.
+3. The sort is stable: fields with the same group and `w` keep their order in the schema.
 
-Within each alignment group, larger fields come first.
+A struct sorts its own fields by the same rule. For example, `bool`, `int16`, `int64`, `string`,
+and a 12-byte inline struct `{int64, int32}` sort as `int64` and `string` (in schema order),
+`int16`, the 12-byte struct, then `bool`.
 
 #### Fixed-Size Struct Inlining
 
@@ -300,15 +301,22 @@ This eliminates the offset+size indirection for fixed-size nested structures.
 
 A field's fixed width is determined recursively:
 
-- **Primitive types**: Natural byte width (1, 2, 4, or 8)
-- **Struct types**: Sum of all child fixed widths (if all children are fixed-width)
-- **Variable types** (string, array, map): Returns -1 (uses 8-byte offset+size slot)
+- **Primitive types**: Natural byte width: 1 for `bool` and `int8`; 2 for `int16` and `float16`;
+  4 for `int32`, `float32`, and `date32`; 8 for `int64`, `float64`, `timestamp`, and `duration`
+- **Fixed-size binary**: Its byte width
+- **Struct types**: The struct's null bitmap bytes plus the sum of all child fixed widths (if all
+  children are fixed-width). The bitmap bytes are 0 when every child is non-nullable, and
+  `(num_children + 7) / 8` otherwise
+- **Variable types** (string, variable-size binary, decimal, list, map): Returns -1 (uses 8-byte
+  offset+size slot)
 
 ```
 fixed_width(field) =
-  if primitive: type_width
+  if primitive or fixed-size binary: type_width
   if struct and all_children_fixed: header_bytes + sum(fixed_width(child) for each child)
   else: -1 (variable, uses 8-byte slot)
+
+header_bytes = 0 if no child is nullable, else (num_children + 7) / 8
 ```
 
 ### Compact Array Binary Layout
@@ -396,9 +404,15 @@ and limitations.
   portable across runtimes today.
 - The fields of a versioned layout are ordered ascending by wire name, compared by Unicode code
   point (equivalently, byte-wise over the UTF-8 encodings). Duplicate wire names within one
-  version are invalid. The compact format then applies its alignment sort, which is stable, over
-  that order. It sorts every struct this way at every depth, including structs in list elements
-  and in map keys and values.
+  version are invalid.
+- The compact format then sorts the fields of every struct, at every depth (including structs in
+  list elements and in map keys and values), with a stable sort over the wire-name order. The
+  sort key is the field's slot width `w`: the [fixed width](#fixed-width-calculation) of a
+  fixed-width field, and 8 for a variable-width field. A field whose `w` is 2, 4, or a multiple
+  of 8 sorts before a field with any other `w`. Within each of those two groups, a larger `w`
+  sorts first, and fields with equal `w` keep their wire-name order. For example, a `string` and
+  an `int64` keep their wire-name order, and a 12-byte inline struct `{int64, int32}` sorts after
+  an `int16` and before a `bool`.
 - A custom codec's encoded shape (its struct children, their names, and their order) is fixed by
   the codec's own definition, not by name sorting, and must be reproduced identically in every
   runtime that registers an equivalent codec.
@@ -413,9 +427,9 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
   `h = (h XOR v) * 0x100000001b3 mod 2^64` (the FNV-1a prime). A negative input (a negative
   decimal scale) mixes as its 64-bit two's-complement value.
 - The hash covers fields in the order they are on the wire, at every depth: canonical wire-name
-  order for the standard format, and the alignment-sorted order for the compact format, including
-  for structs in list elements and map entries. The hash of a layout folds its top-level fields in
-  that order, each as a named field.
+  order for the standard format, and the compact sort order above for the compact format,
+  including for structs in list elements and map entries. The hash of a layout folds its
+  top-level fields in that order, each as a named field.
 - A named field mixes: each byte of the wire name's UTF-8 encoding, then one `0` terminator,
   then the field's shape.
 - A field's shape mixes, in order:
@@ -447,6 +461,11 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
   | `counts: map<string nn, int32 n> n`                      | `0xdaae30bf1bd9077a` |
   | `point: struct<x: int32 nn, y: int32 nn> n, z: int64 nn` | `0x0ce5f71e89c02b76` |
   | `combine(0x52d9543baa314ae4, 0x45812bbf5f4c920c)`        | `0x812fec70da48114d` |
+
+  In the compact format, the layout with the fields `code: string n`, `flag: bool nn`,
+  `id: int64 nn`, `stats: struct<count: int32 nn, total: int64 nn> n`, and `version: int16 nn`
+  hashes in the order `code`, `id`, `version`, `stats` (children `total`, `count`), `flag`. Its
+  strict hash is `0xc4ea6b794482924b`.
 
 ### Framing and Dispatch
 
