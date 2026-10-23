@@ -37,6 +37,7 @@ import java.util.TreeSet;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
+import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.DataType;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
@@ -44,6 +45,7 @@ import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
+import org.apache.fory.type.TypeResolutionContext;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.StringUtils;
 
@@ -666,7 +668,8 @@ final class SchemaHistory {
    * is not a bean there, and build() must see it to report a cycle through a removed field.
    */
   private static boolean isBean(Class<?> cls) {
-    return TypeUtils.isBean(cls, TypeInference.newTypeContext());
+    return TypeUtils.isBean(
+        cls, new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
   }
 
   /**
