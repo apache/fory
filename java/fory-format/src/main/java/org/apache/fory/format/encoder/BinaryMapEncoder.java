@@ -149,10 +149,6 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
       buffer.readerIndex(readerIndex + size);
       return fromMap(map);
     }
-    if (size < 8) {
-      throw new ClassNotCompatibleException(
-          "Map payload too small for an 8-byte schema hash under schema evolution: size=" + size);
-    }
     long peerHash = buffer.readInt64();
     int bodySize = size - 8;
     if (peerHash == currentHash) {

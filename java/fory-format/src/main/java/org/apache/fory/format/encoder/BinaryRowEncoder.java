@@ -123,10 +123,6 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
 
   @SuppressWarnings("unchecked")
   T decode(final MemoryBuffer buffer, final int size) {
-    if (size < 8) {
-      throw new ClassNotCompatibleException(
-          "Row payload too small for an 8-byte schema hash: size=" + size);
-    }
     final long peerSchemaHash = buffer.readInt64();
     // The 8-byte hash has just been consumed; the row body occupies the remaining bytes.
     final int rowSize = size - 8;
