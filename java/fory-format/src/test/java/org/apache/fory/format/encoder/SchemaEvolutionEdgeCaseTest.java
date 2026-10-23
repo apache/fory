@@ -978,6 +978,42 @@ public class SchemaEvolutionEdgeCaseTest {
     Assert.assertTrue(e.getMessage().contains("getEmail() has no effect"), e.getMessage());
   }
 
+  public interface VersionedContact {
+    String getName();
+
+    @ForyRowVersion(since = 2)
+    String getNickname();
+  }
+
+  /**
+   * The descriptors of a class bean are its fields, which carry their own versions. The annotations
+   * of an interface that it implements belong to the codec of that interface bean.
+   */
+  @Data
+  public static class VersionedContactImpl implements VersionedContact {
+    private String name;
+
+    @ForyRowVersion(since = 2)
+    private String nickname;
+  }
+
+  @Data
+  public static class VersionedContactV1 {
+    private String name;
+  }
+
+  @Test
+  public void classImplementingVersionedInterfaceBeanBuilds() {
+    VersionedContactV1 in = new VersionedContactV1();
+    in.setName("ann");
+    VersionedContactImpl out =
+        evolvingCodec(VersionedContactImpl.class)
+            .decode(evolvingCodec(VersionedContactV1.class).encode(in));
+    Assert.assertEquals(out.getName(), "ann");
+    Assert.assertNull(out.getNickname());
+    evolvingCodec(VersionedContact.class);
+  }
+
   /** A class has its fields, not its methods, as descriptors, so it cannot declare removals. */
   @Data
   @ForyRowSchema(removedFields = RemovedFieldsClass.History.class)

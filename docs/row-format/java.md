@@ -306,7 +306,9 @@ by annotating only the fields added after v1.
 
 Put the annotation on the field of a class, on a record component, or on an accessor method of an
 interface bean. The codec does not read it from other methods, so building the codec fails when
-another method carries it, such as the getter of a class field.
+another method carries it, such as the getter of a class field. A class bean does not read the
+annotations of an interface that it implements, because they belong to the codec of that
+interface bean. Annotate the fields of the class.
 
 For a record, the absent component's default is passed to the canonical constructor, so a
 constructor that rejects `null` for a reference component added in a later version throws when

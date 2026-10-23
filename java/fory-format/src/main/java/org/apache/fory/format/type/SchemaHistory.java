@@ -851,10 +851,12 @@ public final class SchemaHistory {
   }
 
   /**
-   * Reject a {@link ForyRowVersion} on a method of {@code type} or its supertypes that is not the
+   * Reject a {@link ForyRowVersion} on a method of {@code type} or the supertypes that it inherits
+   * descriptors from (its superclasses, or for an interface its superinterfaces) that is not the
    * read method of one of its descriptors, such as a getter of a field-backed bean or an interface
    * method that takes parameters. {@link #lookupForyVersion} reads only the descriptor field and
-   * read method, so such an annotation would have no effect.
+   * read method, so such an annotation would have no effect. The interfaces of a class are not
+   * checked: their annotations belong to the codecs of those interface beans.
    */
   private static void checkVersionedMethodsRead(Class<?> type, List<Descriptor> descriptors) {
     Set<Method> readMethods = new HashSet<>();
@@ -888,10 +890,11 @@ public final class SchemaHistory {
                   + "getter.");
         }
       }
-      if (cls.getSuperclass() != null) {
+      if (cls.isInterface()) {
+        pending.addAll(Arrays.asList(cls.getInterfaces()));
+      } else if (cls.getSuperclass() != null) {
         pending.add(cls.getSuperclass());
       }
-      pending.addAll(Arrays.asList(cls.getInterfaces()));
     }
   }
 
