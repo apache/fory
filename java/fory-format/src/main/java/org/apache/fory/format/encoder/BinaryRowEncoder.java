@@ -100,7 +100,6 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
     return decode(buffer, sizeEmbedded ? buffer.readInt32() : buffer.remaining());
   }
 
-  @SuppressWarnings("unchecked")
   T decode(final MemoryBuffer buffer, final int size) {
     final long peerSchemaHash = buffer.readInt64();
     // The 8-byte hash has just been consumed; the row body occupies the remaining bytes.
@@ -112,6 +111,24 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
       buffer.increaseReaderIndex(rowSize);
       return fromRow(row);
     }
+    return decodeOtherSchema(buffer, peerSchemaHash, rowSize);
+  }
+
+  @Override
+  public T decode(final byte[] bytes) {
+    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (the schema-hash prefix
+    // is part of the body, not framing), so decode takes the size from bytes.length.
+    return decode(MemoryUtils.wrap(bytes), bytes.length);
+  }
+
+  /**
+   * Decodes a row whose hash is not the current schema's: an older version through its projection,
+   * or a schema that this codec does not know, which it rejects. Kept out of {@link #decode} so the
+   * current-schema path stays small.
+   */
+  @SuppressWarnings("unchecked")
+  private T decodeOtherSchema(
+      final MemoryBuffer buffer, final long peerSchemaHash, final int rowSize) {
     if (projections != null) {
       ProjectionCodec projection = projections.get(peerSchemaHash);
       if (projection != null) {
@@ -129,13 +146,6 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
                 + "self/peer schema hash are %s/%s. "
                 + "Please check writer schema.",
             schema, schemaHash, peerSchemaHash));
-  }
-
-  @Override
-  public T decode(final byte[] bytes) {
-    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (the schema-hash prefix
-    // is part of the body, not framing), so decode takes the size from bytes.length.
-    return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 
   @Override
