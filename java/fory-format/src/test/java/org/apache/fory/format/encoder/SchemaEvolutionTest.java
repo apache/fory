@@ -323,7 +323,7 @@ public class SchemaEvolutionTest {
    * record's embedded size.
    */
   @Test
-  public void streamingOlderPayload() {
+  public void sequentialOlderPayloads() {
     RowEncoder<PersonV1> oldWriter = evolvingCodec(PersonV1.class);
     RowEncoder<PersonV2> newReader = evolvingCodec(PersonV2.class);
 

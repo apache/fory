@@ -1230,9 +1230,11 @@ public class SchemaEvolutionEdgeCaseTest {
     Assert.assertEquals(c.decode.apply(buffer), c.value);
   }
 
-  /** An array or map decode loads the body from the stream for the current and an older layout. */
+  /**
+   * A row, array, or map decode loads the body from the stream for the current and an older layout.
+   */
   @Test
-  public void streamedArrayAndMapDecode() {
+  public void streamedDecode() {
     DefaultsV1 old = new DefaultsV1();
     old.setName("old");
     DefaultsV2 current = new DefaultsV2();
@@ -1241,6 +1243,14 @@ public class SchemaEvolutionEdgeCaseTest {
     current.setBoxedCount(4);
     DefaultsV2 oldAsCurrent = new DefaultsV2();
     oldAsCurrent.setName("old");
+
+    MemoryBuffer rows = MemoryBuffer.newHeapBuffer(64);
+    framedRowCodec(DefaultsV1.class).encode(rows, old);
+    RowEncoder<DefaultsV2> rowReader = framedRowCodec(DefaultsV2.class);
+    rowReader.encode(rows, current);
+    MemoryBuffer rowStream = oneByteStream(rows);
+    Assert.assertEquals(rowReader.decode(rowStream), oldAsCurrent);
+    Assert.assertEquals(rowReader.decode(rowStream), current);
 
     MemoryBuffer arrays = MemoryBuffer.newHeapBuffer(64);
     framedArrayCodec(new TypeRef<List<DefaultsV1>>() {}).encode(arrays, Arrays.asList(old));
@@ -1260,6 +1270,10 @@ public class SchemaEvolutionEdgeCaseTest {
     MemoryBuffer mapStream = oneByteStream(maps);
     Assert.assertEquals(mapReader.decode(mapStream), Collections.singletonMap("k", oldAsCurrent));
     Assert.assertEquals(mapReader.decode(mapStream), Collections.singletonMap("k", current));
+  }
+
+  private static <T> RowEncoder<T> framedRowCodec(Class<T> type) {
+    return Encoders.buildBeanCodec(type).withSchemaEvolution().withSizeEmbedded(true).build().get();
   }
 
   private static <T extends Collection<?>> ArrayEncoder<T> framedArrayCodec(TypeRef<T> type) {
