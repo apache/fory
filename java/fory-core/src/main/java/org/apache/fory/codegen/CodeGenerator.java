@@ -260,9 +260,8 @@ public class CodeGenerator {
 
   /**
    * Sets the thread count of the compiler pool that runs async compilation and descriptor warm-up.
-   * The default is half the available processors, at least 1. Call this method before the pool is
-   * created, which happens at the first async compilation or the first descriptor warm-up. A later
-   * call logs a warning and has no effect.
+   * The default is half the available processors, at least 1. A call after the pool exists resizes
+   * it: extra threads exit when they finish their current task.
    *
    * @param maxCompilationThreadPoolSize thread count, at least 1
    */
@@ -270,11 +269,16 @@ public class CodeGenerator {
     Preconditions.checkArgument(
         maxCompilationThreadPoolSize >= 1,
         "Compilation thread pool size must be at least 1: " + maxCompilationThreadPoolSize);
-    if (compilationExecutorService != null) {
-      LOG.warn(
-          "Ignoring compilation thread pool size {}: the pool already exists.",
-          maxCompilationThreadPoolSize);
-      return;
+    if (compilationExecutorService instanceof ThreadPoolExecutor) {
+      ThreadPoolExecutor executor = (ThreadPoolExecutor) compilationExecutorService;
+      // ThreadPoolExecutor requires core <= max after each setter call.
+      if (maxCompilationThreadPoolSize > executor.getMaximumPoolSize()) {
+        executor.setMaximumPoolSize(maxCompilationThreadPoolSize);
+        executor.setCorePoolSize(maxCompilationThreadPoolSize);
+      } else {
+        executor.setCorePoolSize(maxCompilationThreadPoolSize);
+        executor.setMaximumPoolSize(maxCompilationThreadPoolSize);
+      }
     }
     maxPoolSize = maxCompilationThreadPoolSize;
   }

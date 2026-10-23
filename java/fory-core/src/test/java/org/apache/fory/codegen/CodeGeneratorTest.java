@@ -19,20 +19,27 @@
 
 package org.apache.fory.codegen;
 
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.net.URLClassLoader;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.fory.Fory;
+import org.apache.fory.TestUtils;
 import org.apache.fory.builder.ObjectCodecBuilder;
 import org.apache.fory.collection.MultiKeyWeakMap;
 import org.apache.fory.test.bean.Foo;
@@ -75,6 +82,31 @@ public class CodeGeneratorTest {
       sharedCodeGenerator2 = (MultiKeyWeakMap) field2.get(null);
     } catch (IllegalAccessException | NoSuchFieldException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  /** Loads Fory in its own classloader, so the test does not change the shared compiler pool. */
+  @Test
+  public void testCompilationThreadPoolSize() throws Exception {
+    try (URLClassLoader isolate =
+        new URLClassLoader(
+            TestUtils.forkClassPathUrls(), ClassLoader.getSystemClassLoader().getParent())) {
+      Class<?> codeGenerator = isolate.loadClass(CodeGenerator.class.getName());
+      Method setSize = codeGenerator.getMethod("seMaxCompilationThreadPoolSize", int.class);
+      InvocationTargetException e =
+          expectThrows(InvocationTargetException.class, () -> setSize.invoke(null, 0));
+      assertTrue(e.getCause() instanceof IllegalArgumentException);
+      ThreadPoolExecutor pool =
+          (ThreadPoolExecutor) codeGenerator.getMethod("getCompilationService").invoke(null);
+      try {
+        for (int size : new int[] {pool.getMaximumPoolSize() + 2, 1}) {
+          setSize.invoke(null, size);
+          assertEquals(pool.getCorePoolSize(), size);
+          assertEquals(pool.getMaximumPoolSize(), size);
+        }
+      } finally {
+        pool.shutdownNow();
+      }
     }
   }
 

@@ -94,7 +94,7 @@ public class DescriptorTest {
   public void testWarmField() throws Exception {
     Assert.assertEquals(int.class.getName(), "int");
     Assert.assertEquals(Integer.class.getName(), "java.lang.Integer");
-    Descriptor.warmField(BeanA.class, BeanA.class.getDeclaredField("beanB"));
+    Descriptor.warmUpTask(BeanA.class, BeanA.class.getDeclaredField("beanB")).run();
     Descriptor.getAllDescriptorsMap(BeanA.class);
     Descriptor.clearDescriptorCache();
     Descriptor.getAllDescriptorsMap(BeanA.class);
