@@ -349,11 +349,10 @@ public class Person {
 }
 ```
 
-The history method name matches the original live descriptor name. For field-backed beans
-(Lombok `@Data`, records, or plain classes with a backing field) that is the field name
-(`age`, `tags`). For interface beans, where the live member is a getter with no backing field,
-it is the method name (`getAge`). The codec cannot detect a history method with the wrong name: a
-field-backed bean that declares `getTags()` instead of `tags()` gets the wire name `get_tags`, so
+The history method name matches the name of the original live member. For a class or a record,
+including a Lombok `@Data` class, that is the field name (`age`, `tags`). For an interface bean,
+it is the accessor method name (`getAge`). The codec cannot detect a history method with the wrong
+name: a class that declares `getTags()` instead of `tags()` gets the wire name `get_tags`, so
 every historical layout that holds that field hashes differently from the payloads that the old
 version wrote, and those payloads fail to decode with `ClassNotCompatibleException`. Test that an
 old payload still decodes before you retire a live field.
@@ -427,10 +426,9 @@ Because field names are wire identity, a rename is a removal plus an addition, n
 mapping: declare the old name on the history interface with `until = N` and annotate the renamed
 member with `since = N`. Older payloads then decode with the renamed field at its default, not
 carrying over the old field's value; renaming without those declarations changes the payload hash
-and older payloads stop decoding. The member the wire name derives from is whatever backs the
-descriptor — the field for field-backed beans, the accessor method for interface beans — so
-converting a bean between the two styles also changes every wire name and is a rename of every
-field.
+and older payloads stop decoding. The wire name derives from the field name for a class or a
+record, and from the accessor method name for an interface bean, so converting a bean between a
+class and an interface also changes every wire name and is a rename of every field.
 
 A reader selects the matching layout from the 8-byte strict hash on the payload. The hash includes
 field names and nullability and is checked for collisions across a bean's own versions when the
