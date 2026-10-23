@@ -460,6 +460,29 @@ public final class SchemaHistory {
   }
 
   /**
+   * Whether {@code first} and {@code second}, which can come from separate builds, put every bean
+   * class that both reach, at any depth, at the same version. Separate builds hold separate entries
+   * for one version, so this compares versions by strict hash, which is unique within a history.
+   */
+  public static boolean sameClassVersions(VersionedSchema first, VersionedSchema second) {
+    Map<Class<?>, Long> versions = new HashMap<>();
+    return collectVersions(first, versions) && collectVersions(second, versions);
+  }
+
+  private static boolean collectVersions(VersionedSchema vs, Map<Class<?>, Long> versions) {
+    for (Map.Entry<Class<?>, VersionedSchema> nested : vs.nestedBeanSchemas().entrySet()) {
+      Long prior = versions.putIfAbsent(nested.getKey(), nested.getValue().strictHash());
+      if (prior != null && prior != nested.getValue().strictHash()) {
+        return false;
+      }
+      if (!collectVersions(nested.getValue(), versions)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Fix {@code cls} at {@code vs} in {@code fixed}, together with every class that {@code vs} fixes
    * at any depth. Returns false when one of them is already fixed at another version.
    */
