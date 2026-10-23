@@ -578,8 +578,8 @@ public class SchemaEvolutionTest {
 
   /**
    * v3 interface: name and email; age removed (only present in v1 and v2). The history interface
-   * declares the removed field's original signature; its method name follows the same JavaBeans
-   * accessor convention as the live interface, so {@code getAge()} maps to wire name {@code age}.
+   * declares the removed field's original signature; its method name is the live accessor's name,
+   * so {@code getAge()} maps to the live accessor's wire name, {@code get_age}.
    */
   @ForyRowSchema(removedFields = PersonIfaceV3.History.class)
   public interface PersonIfaceV3 {
