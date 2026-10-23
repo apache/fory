@@ -71,7 +71,7 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
     }
   }
 
-  /** Compiles one historical element version's projection codec on first decode of its hash. */
+  /** Binds one historical element version's projection codec to an encoder. */
   interface ProjectionSource {
     ProjectionArrayCodec compile(Fory fory);
   }
