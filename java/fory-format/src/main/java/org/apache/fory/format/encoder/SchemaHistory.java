@@ -962,11 +962,11 @@ final class SchemaHistory {
    * Reject a removed entry whose declared type differs from the live entry's when an older layout
    * could be byte-identical to a newer one, so the reader would decode old values with the new type
    * (a String re-added as an enum fails in valueOf). That holds when both encode to the same row
-   * field in the wire order of {@code format} (the same strict hash; the compact format sorts
-   * struct children, so two codecs that write one struct in different orders encode the same
-   * field), and also when either reaches a versioned bean, whose older versions can make two
-   * different current shapes coincide. Otherwise the layouts stay distinct and the reader discards
-   * the old value.
+   * field in the wire order of {@code format} (the same strict hash; the compact sort can put the
+   * children of two codecs that write one struct in different orders into one order, but children
+   * of equal width keep the codec's order), and also when either reaches a versioned bean, whose
+   * older versions can make two different current shapes coincide. Otherwise the layouts stay
+   * distinct and the reader discards the old value.
    */
   private static void validateNoTypeChange(
       Class<?> beanClass, String name, List<FieldEntry> group, Format format) {

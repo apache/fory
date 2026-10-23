@@ -544,10 +544,12 @@ public class SchemaHistoryTest {
    */
   @Test
   public void permutedCodecChildrenTypeChangeRejectedInCompact() {
+    Field wide = DataTypes.field("wide", DataTypes.int64(), false);
+    Field narrow = DataTypes.field("narrow", DataTypes.int32(), false);
     Encoders.registerCustomCodec(
-        PermutedCodecField.class, WideFirst.class, new PermutedStructCodec<>(true));
+        PermutedCodecField.class, WideFirst.class, new PermutedStructCodec<>(wide, narrow));
     Encoders.registerCustomCodec(
-        PermutedCodecField.class, NarrowFirst.class, new PermutedStructCodec<>(false));
+        PermutedCodecField.class, NarrowFirst.class, new PermutedStructCodec<>(narrow, wide));
 
     SchemaHistory.build(PermutedCodecField.class, STANDARD);
     IllegalStateException e =
@@ -561,21 +563,17 @@ public class SchemaHistoryTest {
 
   public static final class NarrowFirst {}
 
-  /** Writes a struct of an int64 and an int32 child, in the order the constructor selects. */
+  /** Writes a struct of the constructor's children, in the constructor's order. */
   private static final class PermutedStructCodec<T> implements CustomCodec<T, Object> {
-    private final boolean wideFirst;
+    private final Field[] children;
 
-    PermutedStructCodec(boolean wideFirst) {
-      this.wideFirst = wideFirst;
+    PermutedStructCodec(Field... children) {
+      this.children = children;
     }
 
     @Override
     public Field getForyField(String fieldName) {
-      Field wide = DataTypes.field("wide", DataTypes.int64(), false);
-      Field narrow = DataTypes.field("narrow", DataTypes.int32(), false);
-      return wideFirst
-          ? DataTypes.structField(fieldName, true, wide, narrow)
-          : DataTypes.structField(fieldName, true, narrow, wide);
+      return DataTypes.structField(fieldName, true, children);
     }
 
     @Override
@@ -606,6 +604,49 @@ public class SchemaHistoryTest {
     interface History {
       @ForyRowVersion(until = 2)
       WideFirst pair();
+    }
+  }
+
+  /**
+   * The removed and live types of {@code pair} differ, and their codecs write two int64 children in
+   * opposite orders. The compact sort is stable, so children of equal width keep the codec's order:
+   * the two layouts differ in both formats, the history accepts the type change, and the reader
+   * discards the old value.
+   */
+  @Test
+  public void equalWidthCodecChildrenKeepOrderInCompact() {
+    Field x = DataTypes.field("x", DataTypes.int64(), false);
+    Field y = DataTypes.field("y", DataTypes.int64(), false);
+    Encoders.registerCustomCodec(
+        EqualWidthCodecField.class, XFirst.class, new PermutedStructCodec<>(x, y));
+    Encoders.registerCustomCodec(
+        EqualWidthCodecField.class, YFirst.class, new PermutedStructCodec<>(y, x));
+
+    for (SchemaHistory.Format format : SchemaHistory.Format.values()) {
+      SchemaHistory history = SchemaHistory.build(EqualWidthCodecField.class, format);
+      assertEquals(history.versions().size(), 2, format.name());
+      for (SchemaHistory.VersionedSchema vs : history.versions()) {
+        Field pair = vs.schema().field(0);
+        assertEquals(pair.name(), "pair");
+        assertEquals(pair.type().fields().get(0).name(), vs.isCurrent() ? "y" : "x", format.name());
+        assertEquals(vs.liveFieldNames().contains("pair"), vs.isCurrent(), format.name());
+      }
+    }
+  }
+
+  public static final class XFirst {}
+
+  public static final class YFirst {}
+
+  @lombok.Data
+  @ForyRowSchema(removedFields = EqualWidthCodecField.History.class)
+  public static class EqualWidthCodecField {
+    @ForyRowVersion(since = 2)
+    private YFirst pair;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      XFirst pair();
     }
   }
 
