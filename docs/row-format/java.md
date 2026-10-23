@@ -281,7 +281,9 @@ Parent decoded = encoder.fromRow(row);
 
 Enable `.withSchemaEvolution()` on a row, array, or map codec builder to read payloads written
 by older versions of the same bean. Writing always uses the current version; reading detects
-the payload's version from a strict hash at the head of the payload. Java only.
+the payload's version from a strict hash at the head of the payload. Java is the only
+implementation today. The protocol is language-neutral and defined in the
+[row format specification](../specification/row_format_spec.md#schema-evolution).
 
 Annotate fields added after v1 with `@ForyVersion(since = N)`:
 
@@ -365,10 +367,10 @@ release that changes no schema, then start evolving schemas only once every peer
 evolution-enabled build. Turning the flag on and changing a schema in the same release strands
 any peer that has not yet upgraded.
 
-Cross-language consumers (Python, C++) cannot read evolution-enabled payloads today. The hash
-algorithm, wire names, field order, and framing are specified language-neutrally in the
-[row format specification](../specification/row_format_spec.md#schema-evolution) so other runtimes
-can implement them.
+The hash algorithm, wire names, field order, and framing are specified language-neutrally in
+the [row format specification](../specification/row_format_spec.md#schema-evolution). Java is the
+only implementation today, so Python, C++, and other runtimes cannot read evolution-enabled
+payloads until they implement that protocol.
 
 Field identity on the wire is the snake_case form of the member name (`createdAt` becomes
 `created_at`), and a versioned layout orders fields by that wire name. For ordinary member names
