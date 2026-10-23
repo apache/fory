@@ -19,6 +19,7 @@
 
 package org.apache.fory.format.encoder;
 
+import org.apache.fory.Fory;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryArray;
@@ -39,8 +40,22 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
    */
   private final long currentHash;
 
-  /** Per-version projection codecs and their element fields. {@code null} disables versioning. */
+  /**
+   * Hash → source able to compile a projection codec for an older element schema. {@code null}
+   * disables versioning (evolution off, no hash prefix). Non-null but empty under evolution with no
+   * historical versions: the hash prefix is still written for flag-mismatch detection. Shared and
+   * immutable; a combination's codec class is compiled only the first time its hash is decoded.
+   */
+  private final LongMap<ProjectionSource> projectionSources;
+
+  /**
+   * Per-encoder cache of projection codecs compiled on first decode of their hash. Lock-free: an
+   * encoder is single-threaded (see {@link ArrayEncoder}), and the class compile is memoized
+   * globally by the shared code generator.
+   */
   private final LongMap<ProjectionArrayCodec> projections;
+
+  private final Fory fory;
 
   /**
    * A projection variant of the array codec along with the writer used to materialize an array
@@ -56,11 +71,16 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
     }
   }
 
+  /** Compiles one historical element version's projection codec on first decode of its hash. */
+  interface ProjectionSource {
+    ProjectionArrayCodec compile(Fory fory);
+  }
+
   BinaryArrayEncoder(
       final BinaryArrayWriter writer,
       final GeneratedArrayEncoder codec,
       final boolean sizeEmbedded) {
-    this(writer, codec, sizeEmbedded, 0L, null);
+    this(writer, codec, sizeEmbedded, 0L, null, null);
   }
 
   BinaryArrayEncoder(
@@ -68,12 +88,15 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
       final GeneratedArrayEncoder codec,
       final boolean sizeEmbedded,
       final long currentHash,
-      final LongMap<ProjectionArrayCodec> projections) {
+      final LongMap<ProjectionSource> projectionSources,
+      final Fory fory) {
     this.writer = writer;
     this.codec = codec;
     this.sizeEmbedded = sizeEmbedded;
     this.currentHash = currentHash;
-    this.projections = projections;
+    this.projectionSources = projectionSources;
+    this.fory = fory;
+    this.projections = projectionSources == null ? null : new LongMap<>(projectionSources.size);
   }
 
   @Override
@@ -107,7 +130,7 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
 
   @SuppressWarnings("unchecked")
   T decode(final MemoryBuffer buffer, final int size) {
-    if (projections == null) {
+    if (projectionSources == null) {
       // Evolution off: the whole payload is body, with no hash prefix. Reading evolution-on bytes
       // here cannot be caught: the array wire form has no hash slot when evolution is off, and an
       // evolution-on payload's leading 8-byte FNV hash is indistinguishable from a valid array
@@ -132,7 +155,7 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
       buffer.readerIndex(readerIndex + bodySize);
       return fromArray(array);
     }
-    ProjectionArrayCodec projection = projections.get(peerHash);
+    ProjectionArrayCodec projection = resolveProjection(peerHash);
     if (projection == null) {
       throw new ClassNotCompatibleException(
           String.format(
@@ -146,10 +169,29 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
     return (T) projection.codec.fromArray(array);
   }
 
+  /**
+   * The projection codec for {@code peerHash}, or {@code null} if no historical version has that
+   * hash. Compiles the codec on first encounter and caches it. Single-threaded by the {@link
+   * ArrayEncoder} contract, so the cache needs no locking.
+   */
+  private ProjectionArrayCodec resolveProjection(final long peerHash) {
+    ProjectionArrayCodec cached = projections.get(peerHash);
+    if (cached != null) {
+      return cached;
+    }
+    ProjectionSource source = projectionSources.get(peerHash);
+    if (source == null) {
+      return null;
+    }
+    ProjectionArrayCodec projection = source.compile(fory);
+    projections.put(peerHash, projection);
+    return projection;
+  }
+
   @Override
   public byte[] encode(final T obj) {
     final BinaryArray array = toArray(obj);
-    if (projections == null) {
+    if (projectionSources == null) {
       return writer.getBuffer().getBytes(0, array.getSizeInBytes());
     }
     // Build the result with a single allocation: the result byte[]. The hash header is poked
@@ -172,7 +214,7 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
     if (sizeEmbedded) {
       buffer.writeInt32(-1);
     }
-    if (projections != null) {
+    if (projectionSources != null) {
       buffer.writeInt64(currentHash);
     }
     try {

@@ -26,22 +26,10 @@ import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.SchemaHistory;
-import org.apache.fory.logging.Logger;
-import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.TypeResolutionContext;
 
 public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
-  private static final Logger LOG = LoggerFactory.getLogger(BaseCodecBuilder.class);
-
-  /**
-   * Number of historical schemas for one bean above which {@link #buildSchemaHistory} logs a
-   * warning. Each distinct schema becomes one generated projection codec class (compiled and loaded
-   * at build time), and the count grows as the product of the per-class version counts across
-   * nested versioned beans. The JVM handles far more classes than this; the threshold flags a
-   * likely misconfigured version history, since no hand-written history reaches it by accident.
-   */
-  private static final int PROJECTION_COUNT_WARN_THRESHOLD = 256;
 
   protected Schema schema;
   protected int initialBufferSize = 16;
@@ -115,9 +103,7 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    * unchanged.
    */
   protected SchemaHistory buildSchemaHistory(final Class<?> targetClass) {
-    SchemaHistory history = SchemaHistory.build(targetClass, schemaTransform());
-    warnIfManyProjections(targetClass.getName(), history);
-    return history;
+    return SchemaHistory.build(targetClass, schemaTransform());
   }
 
   /**
@@ -128,19 +114,6 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    * than one distinct versioned bean class evolve every one of them.
    */
   protected SchemaHistory buildElementSchemaHistory(
-      final String fieldName, final TypeRef<?> elementType) {
-    SchemaHistory history = elementSchemaHistory(fieldName, elementType);
-    warnIfManyProjections("element " + elementType, history);
-    return history;
-  }
-
-  /**
-   * Builds a position's history without the per-position projection-count warning. The map path
-   * uses this and warns once on the key/value cross-product, which is the count of classes it
-   * generates; the array path uses {@link #buildElementSchemaHistory}, whose per-position count is
-   * exact.
-   */
-  protected SchemaHistory elementSchemaHistory(
       final String fieldName, final TypeRef<?> elementType) {
     return SchemaHistory.forElement(fieldName, elementType, schemaTransform());
   }
@@ -159,27 +132,6 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
     return codecFormat == CompactCodecFormat.INSTANCE
         ? CompactBinaryRowWriter::sortSchema
         : UnaryOperator.identity();
-  }
-
-  private static void warnIfManyProjections(final String label, final SchemaHistory history) {
-    warnIfManyProjections(label, history.versions().size());
-  }
-
-  /**
-   * Warn when {@code projectionCount} generated projection codec classes exceeds the threshold. The
-   * map path passes the key/value cross-product here, not a single position's count, because that
-   * product is the number of classes it actually generates.
-   */
-  protected static void warnIfManyProjections(final String label, final int projectionCount) {
-    if (projectionCount > PROJECTION_COUNT_WARN_THRESHOLD) {
-      LOG.warn(
-          "Schema evolution for {} resolved {} historical schemas, each generating a projection "
-              + "codec class. This count grows as the product of per-class version counts across "
-              + "nested versioned beans; retire @ForyVersion history ranges you no longer read to "
-              + "reduce it.",
-          label,
-          projectionCount);
-    }
   }
 
   @SuppressWarnings("unchecked")
