@@ -22,6 +22,7 @@ package org.apache.fory.format.row.binary.writer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.CompactRowLayout;
@@ -97,6 +98,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
    * because each nested row writer and reader sorts its own struct. This form gives the order of
    * every struct on the wire in one schema, which the schema-evolution strict hash needs.
    */
+  @Internal
   public static Schema sortSchemaDeep(final Schema schema) {
     return new Schema(sortFields(schema.fields(), true), schema.metadata());
   }
