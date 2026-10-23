@@ -576,9 +576,8 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
 
   /**
    * The suffix that {@code suffixes} routes {@code typeRef} to. The map is keyed from the same
-   * field walk as this descent, and SchemaHistory.collectNestedSites sites every bean with more
-   * than one version, so an absent class (or a null map) is single-version here and reads at its
-   * current schema.
+   * field walk as this descent, and SchemaHistory sites every bean with more than one version, so
+   * an absent class (or a null map) is single-version here and reads at its current schema.
    */
   private static String suffixFor(Map<Class<?>, String> suffixes, TypeRef<?> typeRef) {
     String suffix = suffixes == null ? null : suffixes.get(getRawType(typeRef));

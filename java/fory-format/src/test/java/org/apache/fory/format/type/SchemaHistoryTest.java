@@ -149,9 +149,9 @@ public class SchemaHistoryTest {
   }
 
   /**
-   * The same divergence inside a nested bean must also be rejected. Coverage comes from {@code
-   * collectNestedSites}, which builds every reachable bean's history (even a single-version one, to
-   * count its versions), so the nested bean's own enumeration runs the order check.
+   * The same divergence inside a nested bean must also be rejected. Nested-site discovery builds
+   * every reachable bean's history (even a single-version one, to count its versions), so the
+   * nested bean's own enumeration runs the order check.
    */
   @Test
   public void divergentWireNameOrderInNestedBeanIsRejected() {
@@ -202,12 +202,10 @@ public class SchemaHistoryTest {
 
   /**
    * A field typed as a bare type variable bounded to a wrapper (the Scala 3 LTS case that {@code
-   * TypeInference.inferField} resolves to its bound, see issue 2439) must descend through the same
-   * wrapper grammar during evolution-site discovery. Before the bound was resolved in {@code
-   * Wrapper.classify}, {@code getRawType} resolved the variable to {@code Optional} but the bare
-   * variable carried no type arguments, so the OPTIONAL branch threw {@link
-   * IndexOutOfBoundsException} reading the missing element. The bean inside the bound must be
-   * discovered instead.
+   * TypeInference.inferField} resolves to its bound, see issue 2439) must descend through the bound
+   * during evolution-site discovery. {@code getRawType} resolves the variable to {@code Optional},
+   * but the bare variable carries no type arguments, so a descent that does not resolve the bound
+   * first fails reading the missing element. The bean inside the bound must be discovered instead.
    */
   @Test
   public void typeVariableBoundedToWrapperResolvesToInnerBean() {

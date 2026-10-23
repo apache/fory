@@ -21,8 +21,6 @@ package org.apache.fory.format.type;
 
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
-import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -34,15 +32,12 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.UnaryOperator;
 import org.apache.fory.annotation.Internal;
-import org.apache.fory.collection.Tuple2;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
-import org.apache.fory.format.encoder.CustomCodec;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.TypeUtils;
@@ -234,22 +229,22 @@ public final class SchemaHistory {
     }
     all.addAll(removed);
 
-    // Recursively expand any nested versioned bean field's own history. A versioned bean can be the
-    // field type directly, the element of a list, or the key or value of a map; we locate it at any
-    // of those sites so the outer's enumeration can cross-product over the inner's versions. A map
-    // contributes a key site and a value site independently. The inner schema substitutes back into
-    // the same site at materialization time.
+    // Infer each field once and recursively expand the history of every versioned bean it reaches.
+    // A versioned bean can be the field type directly, the element of a list, or the key or value
+    // of a map; we locate it at any of those sites so the outer's enumeration can cross-product
+    // over the inner's versions. A map contributes a key site and a value site independently. The
+    // inner schema substitutes back into the same site at materialization time.
     //
     // Live-field cycles are rejected before build() runs: TypeInference.inferField calls
     // ctx.checkNoCycle on every bean it descends into, and RowCodecBuilder runs inferSchema in its
     // constructor. Removed fields never pass through inferSchema, so a cycle reachable only through
     // a removed-field declaration is caught by the in-progress memo entry above instead.
     for (FieldEntry fe : all) {
-      collectNestedSites(beanClass, fe.typeRef, schemaTransform, built, fe.nestedSites);
+      inferEntry(beanClass, fe, schemaTransform, built);
     }
 
     validateNoNameCollision(beanClass, all);
-    SchemaHistory history = enumerate(beanClass.getName(), beanClass, all, schemaTransform);
+    SchemaHistory history = enumerate(beanClass.getName(), all, schemaTransform);
     built.put(beanClass, history);
     return history;
   }
@@ -269,25 +264,19 @@ public final class SchemaHistory {
         new FieldEntry(fieldName, fieldName, elementType, FIRST_VERSION, Integer.MAX_VALUE, true);
     // A top-level element has no enclosing bean; codec lookups behave as inferField's do at the
     // top level, where only globally-registered (enclosing-agnostic) codecs can match.
-    collectNestedSites(
-        void.class, elementType, schemaTransform, new HashMap<>(), element.nestedSites);
+    inferEntry(void.class, element, schemaTransform, new HashMap<>());
     List<FieldEntry> all = new ArrayList<>(1);
     all.add(element);
-    return enumerate("element " + elementType, void.class, all, schemaTransform);
+    return enumerate("element " + elementType, all, schemaTransform);
   }
 
   /**
    * Enumerate every distinct historical schema for {@code all} over its version boundaries and the
    * cross-product of nested bean versions, returning a {@link SchemaHistory}. {@code label} names
-   * the owner for collision diagnostics; {@code enclosing} is the bean class declaring the fields
-   * ({@code void.class} for a top-level element), so custom-codec lookups during field
-   * reconstruction match the live inference path.
+   * the owner for collision diagnostics. Each entry's field is already inferred.
    */
   private static SchemaHistory enumerate(
-      String label,
-      Class<?> enclosing,
-      List<FieldEntry> all,
-      UnaryOperator<Schema> schemaTransform) {
+      String label, List<FieldEntry> all, UnaryOperator<Schema> schemaTransform) {
     // Materialize a schema at every version V where the field set changes — both "since" and
     // "until" boundaries qualify, because either adds or removes a field from the active set.
     // FIRST_VERSION is always materialized even when every field declares since >= 2: a payload
@@ -372,26 +361,18 @@ public final class SchemaHistory {
         }
       }
       Set<Class<?>> liveNested = Collections.unmodifiableSet(liveNestedClasses);
-      List<Field> inferredFields = new ArrayList<>(activeEntries.size());
-      for (FieldEntry fe : activeEntries) {
-        inferredFields.add(TypeInference.inferNamedField(fe.name, fe.typeRef, enclosing));
-      }
       for (Map<Class<?>, VersionedSchema> combination : cartesian(innerChoices)) {
         List<Field> fields = new ArrayList<>(activeEntries.size());
         Set<String> liveNames = new HashSet<>();
-        for (int i = 0; i < activeEntries.size(); i++) {
-          FieldEntry fe = activeEntries.get(i);
-          Field current = inferredFields.get(i);
+        for (FieldEntry fe : activeEntries) {
           // Substitute each nested versioned site (a direct field, list element, map value, or map
           // key) with the version this combination chose for its bean class, keeping every
           // collection/map wrapper intact. A map can have both a key site and a value site, which
           // are substituted independently.
-          Field field = current;
+          Field field = fe.field;
           for (NestedSite site : fe.nestedSites) {
             VersionedSchema innerVs = combination.get(site.beanClass);
-            field =
-                site.substitute(
-                    field, fe.typeRef, new DataTypes.StructType(innerVs.schema().fields()));
+            field = site.substitute(field, new DataTypes.StructType(innerVs.schema().fields()));
           }
           fields.add(field);
           if (readEntries.contains(fe)) {
@@ -534,127 +515,25 @@ public final class SchemaHistory {
 
   /**
    * A representative bean reachable from a top-level array element or map position, which names and
-   * places the generated projection codecs. Descends list/map/array wrappers (a map on both its key
-   * and value sides) and returns the first bean at a leaf, or null when none is reachable; then the
-   * position has one version and needs no projection. The per-version enumeration is done by {@link
-   * #forElement}. This walk and {@link #collectNestedSites} descend the same wrappers but answer
-   * different questions ("which bean names the codec" here, "which beans have more than one
-   * version" there), so they stay separate.
+   * places the generated projection codecs: the first bean that the element type reaches when the
+   * value side of every map comes first, or null when no bean is reachable; then the position has
+   * one version and needs no projection. The per-version enumeration is done by {@link
+   * #forElement}, which sites every reachable bean, so the choice here only names the codec. Do not
+   * derive codec structure from it.
    */
   public static Class<?> evolutionBean(TypeRef<?> elementType) {
-    Wrapper w = Wrapper.classify(void.class, elementType);
-    switch (w.kind) {
-      case ENCODED:
-      case OPTIONAL:
-      case SEQUENCE:
-        return evolutionBean(w.child);
-      case MAP:
-        // Return one representative bean (value side preferred) only to name the generated codec.
-        // collectNestedSites enumerates both the key and value sites, so the codec's actual shape
-        // covers both; this asymmetry is safe precisely because the result is naming-only. Do not
-        // derive codec structure from it.
-        Class<?> value = evolutionBean(w.value);
-        return value != null ? value : evolutionBean(w.key);
-      case LEAF:
-        return w.raw != null && isBean(w.raw) ? w.raw : null;
-      default:
-        throw new AssertionError("Unhandled wrapper kind: " + w.kind);
-    }
-  }
-
-  /** A branch taken at a map node while descending toward a nested bean: its key or its value. */
-  private enum MapBranch {
-    KEY,
-    VALUE
-  }
-
-  /**
-   * The wrapper kinds the row format unwraps before reaching a leaf, in {@code inferField} order.
-   */
-  private enum WrapperKind {
-    /** A custom codec whose {@code encodedType()} the field is re-inferred as. No path entry. */
-    ENCODED,
-    /** A {@link Optional} unwrapped to its element. No path entry. */
-    OPTIONAL,
-    /** An array or any {@code Iterable}, descended through its single element. No path entry. */
-    SEQUENCE,
-    /** A {@code Map}, descended independently through its key (KEY branch) and value (VALUE). */
-    MAP,
-    /** A non-wrapper type: a bean or a scalar. Terminates the descent. */
-    LEAF
-  }
-
-  /**
-   * One step of the wrapper-descent grammar shared by {@link #evolutionBean}, {@link
-   * #collectNestedSites}, and {@link NestedSite#substitute}. It classifies a type into the next
-   * wrapper kind and resolves the child type(s) to recurse into, so the three walks agree on which
-   * types are transparent and how their children are derived. This grammar mirrors {@link
-   * TypeInference#inferField}; a new wrapper type must be added here and in {@code inferField}
-   * together, or nested versioned beans go undiscovered.
-   */
-  private static final class Wrapper {
-    final WrapperKind kind;
-    final Class<?> raw;
-    final TypeRef<?> child; // ENCODED/OPTIONAL/SEQUENCE
-    final TypeRef<?> key; // MAP
-    final TypeRef<?> value; // MAP
-
-    private Wrapper(
-        WrapperKind kind, Class<?> raw, TypeRef<?> child, TypeRef<?> key, TypeRef<?> value) {
-      this.kind = kind;
-      this.raw = raw;
-      this.child = child;
-      this.key = key;
-      this.value = value;
-    }
-
-    static Wrapper classify(Class<?> enclosing, TypeRef<?> typeRef) {
-      // Resolve a bare type variable to its bound first, exactly as inferField does, so the
-      // wrapper checks below see the same parameterized type inferField sees. Without this a field
-      // typed as a type variable bounded to Optional/Iterable/Map would resolve its raw type to the
-      // bound but carry no type arguments, and the wrapper branches would read element types off an
-      // empty argument list.
-      Type type = typeRef.getType();
-      if (type instanceof TypeVariable) {
-        return classify(enclosing, TypeRef.of(((TypeVariable<?>) type).getBounds()[0]));
-      }
-      Class<?> raw = TypeUtils.getRawType(typeRef);
-      if (raw == null) {
-        return new Wrapper(WrapperKind.LEAF, null, null, null, null);
-      }
-      // The same codec lookup inferField makes. A codec supplying its own terminal foryField
-      // replaces the whole column, so the declared type is never introspected as a bean and can
-      // carry no evolution site; classify it as a raw-less leaf instead of falling through to
-      // the bean descend, which would introspect a class the codec exists to hide (and may fail
-      // on it, e.g. libphonenumber's PhoneNumber under the canonical-order check). A codec
-      // encoding to a different type descends that encodedType(); an intercepting codec
-      // (encodedType == declared) falls through and descends the declared bean as usual.
-      CustomCodec<?, ?> codec =
-          CustomTypeEncoderRegistry.customTypeHandler().findCodec(enclosing, raw);
-      if (codec != null) {
-        if (codec.getForyField("") != null) {
-          return new Wrapper(WrapperKind.LEAF, null, null, null, null);
-        }
-        TypeRef<?> encoded = codec.encodedType();
-        if (encoded != null && !encoded.equals(typeRef)) {
-          return new Wrapper(WrapperKind.ENCODED, raw, encoded, null, null);
-        }
-      }
-      // As in inferField, a codec registered on Optional itself owns the field, so only an
-      // Optional without one unwraps.
-      if (codec == null && raw == Optional.class) {
-        return new Wrapper(
-            WrapperKind.OPTIONAL, raw, TypeUtils.getTypeArguments(typeRef).get(0), null, null);
-      }
-      if (raw.isArray() || TypeUtils.ITERABLE_TYPE.isSupertypeOf(typeRef)) {
-        return new Wrapper(WrapperKind.SEQUENCE, raw, elementTypeRef(typeRef, raw), null, null);
-      }
-      if (TypeUtils.MAP_TYPE.isSupertypeOf(typeRef)) {
-        Tuple2<TypeRef<?>, TypeRef<?>> kv = TypeUtils.getMapKeyValueType(typeRef);
-        return new Wrapper(WrapperKind.MAP, raw, null, kv.f0, kv.f1);
-      }
-      return new Wrapper(WrapperKind.LEAF, raw, null, null, null);
-    }
+    // The descent reaches a map's key before its value, so its last bean is the value-first one.
+    List<Class<?>> beans = new ArrayList<>();
+    TypeInference.inferNamedField(
+        "",
+        elementType,
+        void.class,
+        (leafType, path) -> {
+          if (isBean(leafType)) {
+            beans.add(leafType);
+          }
+        });
+    return beans.isEmpty() ? null : beans.get(beans.size() - 1);
   }
 
   /**
@@ -665,153 +544,102 @@ public final class SchemaHistory {
    * each with its own path; every other field shape has at most one site.
    */
   private static final class NestedSite {
-    final Class<?> enclosing;
     final Class<?> beanClass;
     final SchemaHistory history;
-    final List<MapBranch> path;
+    final List<TypeInference.MapBranch> path;
 
-    NestedSite(
-        Class<?> enclosing, Class<?> beanClass, SchemaHistory history, List<MapBranch> path) {
-      this.enclosing = enclosing;
+    NestedSite(Class<?> beanClass, SchemaHistory history, List<TypeInference.MapBranch> path) {
       this.beanClass = beanClass;
       this.history = history;
       this.path = path;
     }
 
     /**
-     * Replace this site's bean struct in {@code current} with {@code historical}, descending
-     * list/array wrappers and taking {@code path[depth]} at each map, while leaving every other
-     * leaf intact so independent sites (a map's key and value, or beans under different map sides
-     * at any depth) substitute without disturbing one another.
+     * Replace this site's bean struct in {@code current} with {@code historical}, descending list
+     * elements and taking {@code path[depth]} at each map, while leaving every other leaf intact so
+     * independent sites (a map's key and value, or beans under different map sides at any depth)
+     * substitute without disturbing one another. {@code current} is the inferred field, whose shape
+     * follows the descent that found the site: a custom codec or an Optional adds no level, an
+     * array or iterable is a list, a map is a map, and the bean is the struct at the end.
      */
-    Field substitute(Field current, TypeRef<?> typeRef, DataTypes.StructType historical) {
-      return substitute(current, typeRef, historical, 0);
+    Field substitute(Field current, DataTypes.StructType historical) {
+      return substitute(current, historical, 0);
     }
 
-    private Field substitute(
-        Field current, TypeRef<?> typeRef, DataTypes.StructType historical, int depth) {
-      // A custom-codec'd field is already inferred as its encodedType() shape in `current`, and an
-      // Optional unwraps straight through, so both descend without touching the field.
-      Wrapper w = Wrapper.classify(enclosing, typeRef);
-      switch (w.kind) {
-        case ENCODED:
-        case OPTIONAL:
-          return substitute(current, w.child, historical, depth);
-        case SEQUENCE:
-          Field element =
-              substitute(DataTypes.arrayElementField(current), w.child, historical, depth);
-          return DataTypes.arrayField(current.name(), element);
-        case MAP:
-          Field keyField = DataTypes.keyFieldForMap(current);
-          Field itemField = DataTypes.itemFieldForMap(current);
-          if (path.get(depth) == MapBranch.KEY) {
-            keyField = substitute(keyField, w.key, historical, depth + 1);
-          } else {
-            itemField = substitute(itemField, w.value, historical, depth + 1);
-          }
-          // Rebuild through MapType, which keeps the key non-nullable: a substituted key that is a
-          // list or map comes back nullable, and DataTypes.mapField rejects a nullable key.
-          DataTypes.MapType mapType = (DataTypes.MapType) current.type();
-          return new Field(
-              current.name(),
-              new DataTypes.MapType(keyField.type(), itemField.type(), mapType.keysSorted()),
-              current.nullable());
-        case LEAF:
-          return DataTypes.field(current.name(), historical, current.nullable());
-        default:
-          throw new AssertionError("Unhandled wrapper kind: " + w.kind);
+    private Field substitute(Field current, DataTypes.StructType historical, int depth) {
+      DataType type = current.type();
+      if (type instanceof DataTypes.ListType) {
+        Field element = substitute(DataTypes.arrayElementField(current), historical, depth);
+        return DataTypes.arrayField(current.name(), element);
       }
-    }
-  }
-
-  /**
-   * Collect the versioned beans reachable from a field type into {@code out}: the field type
-   * itself, a list/array element, a map value, and a map key, to arbitrary nesting depth. Each site
-   * records the map-branch path needed to substitute its historical struct back. A map contributes
-   * a key site and a value site independently, so an evolving key and an evolving value each become
-   * their own cross-product dimension.
-   */
-  private static void collectNestedSites(
-      Class<?> enclosing,
-      TypeRef<?> typeRef,
-      UnaryOperator<Schema> schemaTransform,
-      Map<Class<?>, SchemaHistory> built,
-      List<NestedSite> out) {
-    collectNestedSites(enclosing, typeRef, new ArrayList<>(), schemaTransform, built, out);
-  }
-
-  private static void collectNestedSites(
-      Class<?> enclosing,
-      TypeRef<?> typeRef,
-      List<MapBranch> path,
-      UnaryOperator<Schema> schemaTransform,
-      Map<Class<?>, SchemaHistory> built,
-      List<NestedSite> out) {
-    // A custom codec replaces the whole field with its encodedType(); an Optional unwraps; arrays
-    // and any Iterable descend their element; all transparently, with no path entry. A map descends
-    // its key and value independently, each adding a path entry so its historical struct
-    // substitutes back into exactly that branch.
-    Wrapper w = Wrapper.classify(enclosing, typeRef);
-    switch (w.kind) {
-      case ENCODED:
-      case OPTIONAL:
-      case SEQUENCE:
-        collectNestedSites(enclosing, w.child, path, schemaTransform, built, out);
-        return;
-      case MAP:
-        collectNestedSites(
-            enclosing, w.key, append(path, MapBranch.KEY), schemaTransform, built, out);
-        collectNestedSites(
-            enclosing, w.value, append(path, MapBranch.VALUE), schemaTransform, built, out);
-        return;
-      case LEAF:
-        break;
-      default:
-        throw new AssertionError("Unhandled wrapper kind: " + w.kind);
-    }
-    if (w.raw != null && isBean(w.raw)) {
-      // A bean is an evolution site when it has more than one version — whether the variation comes
-      // from its own @ForyRowVersion fields or only from a nested versioned bean it reaches through
-      // its fields (e.g. a wrapper struct used as a map key, whose own fields are stable but whose
-      // detail field evolves). build() already expands that nested cross-product, so its version
-      // count is the exact evolution test; a single-version history means nothing here evolves and
-      // the site needs no projection.
-      SchemaHistory history = build(w.raw, schemaTransform, built);
-      if (history.versions().size() > 1) {
-        out.add(new NestedSite(enclosing, w.raw, history, path));
+      if (type instanceof DataTypes.MapType) {
+        Field keyField = DataTypes.keyFieldForMap(current);
+        Field itemField = DataTypes.itemFieldForMap(current);
+        if (path.get(depth) == TypeInference.MapBranch.KEY) {
+          keyField = substitute(keyField, historical, depth + 1);
+        } else {
+          itemField = substitute(itemField, historical, depth + 1);
+        }
+        // Rebuild through MapType, which keeps the key non-nullable: a substituted key that is a
+        // list or map comes back nullable, and DataTypes.mapField rejects a nullable key.
+        DataTypes.MapType mapType = (DataTypes.MapType) type;
+        return new Field(
+            current.name(),
+            new DataTypes.MapType(keyField.type(), itemField.type(), mapType.keysSorted()),
+            current.nullable());
       }
+      return DataTypes.field(current.name(), historical, current.nullable());
     }
   }
 
-  private static List<MapBranch> append(List<MapBranch> path, MapBranch branch) {
-    List<MapBranch> next = new ArrayList<>(path.size() + 1);
-    next.addAll(path);
-    next.add(branch);
-    return next;
-  }
-
   /**
-   * Element type of a list/array field, derived the same way {@link TypeInference} does: arrays use
-   * the component type, iterables use the element type.
+   * Infer {@code fe}'s row field and collect the versioned beans that its type reaches: the field
+   * type itself, a list/array element, a map value, and a map key, to arbitrary nesting depth. Each
+   * site records the map-branch path needed to substitute its historical struct back. A map
+   * contributes a key site and a value site independently, so an evolving key and an evolving value
+   * each become their own cross-product dimension. {@code enclosing} is the class that declares the
+   * field ({@code void.class} for a top-level element), so custom-codec lookups match the live
+   * inference path.
    */
-  private static TypeRef<?> elementTypeRef(TypeRef<?> typeRef, Class<?> raw) {
-    return raw.isArray() ? typeRef.getComponentType() : TypeUtils.getElementType(typeRef);
+  private static void inferEntry(
+      Class<?> enclosing,
+      FieldEntry fe,
+      UnaryOperator<Schema> schemaTransform,
+      Map<Class<?>, SchemaHistory> built) {
+    fe.field =
+        TypeInference.inferNamedField(
+            fe.name,
+            fe.typeRef,
+            enclosing,
+            (leafType, path) -> {
+              if (!isBean(leafType)) {
+                return;
+              }
+              // A bean is an evolution site when it has more than one version, whether the
+              // variation comes from its own @ForyRowVersion fields or only from a nested versioned
+              // bean it reaches through its fields (e.g. a wrapper struct used as a map key, whose
+              // own fields are stable but whose detail field evolves). build() already expands that
+              // nested cross-product, so its version count is the exact evolution test; a
+              // single-version history means nothing here evolves and the site needs no projection.
+              SchemaHistory history = build(leafType, schemaTransform, built);
+              if (history.versions().size() > 1) {
+                fe.nestedSites.add(new NestedSite(leafType, history, path));
+              }
+            });
   }
 
   /**
-   * True if the row format treats {@code cls} as a bean, so it is safe to descend into for
-   * evolution-site discovery. Whether the bean actually evolves is decided by its version count in
-   * {@link #collectNestedSites}, not here.
+   * True if the row format treats {@code cls} as a bean, so its history is built for evolution-site
+   * discovery. Whether the bean actually evolves is decided by its version count in {@link
+   * #inferEntry}, not here.
    *
-   * <p>Only beans are introspected. TypeInference.inferField routes collection/map/array/enum field
-   * types away from Descriptor.getDescriptors, so a collection subclass that shadows a field name
-   * across its hierarchy round-trips fine even though getDescriptors would reject it. Gating on
-   * isBean keeps this probe consistent with inferField; getDescriptors then only throws for a class
-   * that genuinely cannot be a bean, which fails identically on the real encode/decode path. Use
-   * the same synthesize-interfaces context as inferField and the top-level array/map entry point
-   * (evolutionBean), so an interface bean nested as a field type, list element, or map key/value is
-   * discovered as a bean rather than rejected; otherwise its older versions are never enumerated
-   * and an older payload decodes at the interface's current layout.
+   * <p>The inference descent reports every leaf that is not a scalar, so this skips a type that the
+   * row format does not support; inference then fails on it as it does on the encode path. Use the
+   * same synthesize-interfaces context as inferField, so an interface bean nested as a field type,
+   * list element, or map key/value is discovered as a bean rather than rejected; otherwise its
+   * older versions are never enumerated and an older payload decodes at the interface's current
+   * layout. The context is a fresh one, not the descent's own: a bean on the descent's walked path
+   * is not a bean there, and build() must see it to report a cycle through a removed field.
    */
   private static boolean isBean(Class<?> cls) {
     return TypeUtils.isBean(cls, TypeInference.newTypeContext());
@@ -1098,18 +926,13 @@ public final class SchemaHistory {
     if (live == null) {
       return;
     }
-    long liveHash =
-        computeStrictSchemaHash(
-            DataTypes.schema(TypeInference.inferNamedField(name, live.typeRef, beanClass)));
+    long liveHash = computeStrictSchemaHash(DataTypes.schema(live.field));
     for (FieldEntry fe : group) {
       if (fe.live || fe.typeRef.equals(live.typeRef)) {
         continue;
       }
       boolean reachesVersionedBean = !fe.nestedSites.isEmpty() || !live.nestedSites.isEmpty();
-      if (reachesVersionedBean
-          || computeStrictSchemaHash(
-                  DataTypes.schema(TypeInference.inferNamedField(name, fe.typeRef, beanClass)))
-              == liveHash) {
+      if (reachesVersionedBean || computeStrictSchemaHash(DataTypes.schema(fe.field)) == liveHash) {
         throw new IllegalStateException(
             "Field '"
                 + name
@@ -1278,6 +1101,9 @@ public final class SchemaHistory {
     final int since;
     final int until;
     final boolean live;
+
+    /** The row field inferred from {@link #typeRef}, set by {@link #inferEntry}. */
+    Field field;
 
     /**
      * The versioned beans reachable from this field (the field type, a list element, a map value,

@@ -1751,8 +1751,9 @@ public class SchemaEvolutionEdgeCaseTest {
 
   // A versioned bean as the KEY of an inner map reached through a top-level array or map wrapper.
   // The top-level codec's own key/value hash only covers a top-level map's own key, and the
-  // row-field path (collectNestedSites) only applies inside a bean field, so this wrapper-reached
-  // inner key is the shape that must still evolve through the top-level array/map entry point.
+  // row-field path (the nested sites of a bean field) only applies inside a bean, so this
+  // wrapper-reached inner key is the shape that must still evolve through the top-level array/map
+  // entry point.
 
   @Test
   public void arrayOfMapKeyOlderPayload() {
