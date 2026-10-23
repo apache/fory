@@ -112,6 +112,9 @@ class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
 
   @SuppressWarnings("unchecked")
   M decode(final MemoryBuffer buffer, final int size) {
+    if (size < 8) {
+      throw BinaryRowEncoder.sizeBelowHash(size);
+    }
     long peerHash = buffer.readInt64();
     int bodySize = size - 8;
     if (peerHash == currentHash) {
@@ -123,6 +126,8 @@ class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
     }
     ProjectionMapCodec projection = projections.get(peerHash);
     if (projection == null) {
+      // Skip the body, so that a caller can go on to the next payload in the buffer.
+      buffer.increaseReaderIndex(bodySize);
       throw new ClassNotCompatibleException(
           String.format(
               "Map (key,value) schema is not consistent. self/peer hash are %s/%s.",

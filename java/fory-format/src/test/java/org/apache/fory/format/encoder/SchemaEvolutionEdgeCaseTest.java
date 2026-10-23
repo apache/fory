@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.Data;
@@ -1115,6 +1116,83 @@ public class SchemaEvolutionEdgeCaseTest {
     RowEncoder<DefaultsV1> rowOff = Encoders.buildBeanCodec(DefaultsV1.class).build().get();
     byte[] onBytes = evolvingCodec(DefaultsV1.class).encode(v);
     Assert.expectThrows(ClassNotCompatibleException.class, () -> rowOff.decode(onBytes));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Framing: payloads with a size prefix, several in one buffer. A decode that
+  // rejects a payload must leave the buffer at the start of the next payload,
+  // and a size too small to hold the hash must not move the buffer backward.
+  // ---------------------------------------------------------------------------
+
+  @DataProvider
+  public Object[][] framedCodecs() {
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("hi");
+    List<DefaultsV1> list = Arrays.asList(v);
+    LinkedHashMap<String, DefaultsV1> map = new LinkedHashMap<>();
+    map.put("k", v);
+
+    RowEncoder<DefaultsV1> row =
+        Encoders.buildBeanCodec(DefaultsV1.class)
+            .withSchemaEvolution()
+            .withSizeEmbedded(true)
+            .build()
+            .get();
+    RowEncoder<DefaultsV1> rowOff =
+        Encoders.buildBeanCodec(DefaultsV1.class).withSizeEmbedded(true).build().get();
+    ArrayEncoder<List<DefaultsV1>> array =
+        Encoders.buildArrayCodec(new TypeRef<List<DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .withSizeEmbedded(true)
+            .build()
+            .get();
+    MapEncoder<Map<String, DefaultsV1>> mapCodec =
+        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .withSizeEmbedded(true)
+            .build()
+            .get();
+
+    return new Object[][] {
+      {"row", new FramedCodec(b -> row.encode(b, v), row::decode, v)},
+      {"row without evolution", new FramedCodec(b -> rowOff.encode(b, v), rowOff::decode, v)},
+      {"array", new FramedCodec(b -> array.encode(b, list), array::decode, list)},
+      {"map", new FramedCodec(b -> mapCodec.encode(b, map), mapCodec::decode, map)},
+    };
+  }
+
+  @Test(dataProvider = "framedCodecs")
+  public void unknownHashSkipsPayload(String label, FramedCodec c) {
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(64);
+    c.encode.accept(buffer);
+    c.encode.accept(buffer);
+    // The hash of the first payload follows its 4-byte size prefix.
+    buffer.putInt64(4, buffer.getInt64(4) ^ 1);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> c.decode.apply(buffer));
+    Assert.assertEquals(c.decode.apply(buffer), c.value);
+  }
+
+  @Test(dataProvider = "framedCodecs")
+  public void sizeBelowHashRejected(String label, FramedCodec c) {
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(64);
+    c.encode.accept(buffer);
+    // The payload keeps its valid hash, but its size prefix says 4 bytes, less than the hash.
+    buffer.putInt32(0, 4);
+    Assert.expectThrows(EncoderException.class, () -> c.decode.apply(buffer));
+    Assert.assertEquals(buffer.readerIndex(), 4);
+  }
+
+  private static final class FramedCodec {
+    final Consumer<MemoryBuffer> encode;
+    final Function<MemoryBuffer, Object> decode;
+    final Object value;
+
+    FramedCodec(
+        Consumer<MemoryBuffer> encode, Function<MemoryBuffer, Object> decode, Object value) {
+      this.encode = encode;
+      this.decode = decode;
+      this.value = value;
+    }
   }
 
   // ---------------------------------------------------------------------------

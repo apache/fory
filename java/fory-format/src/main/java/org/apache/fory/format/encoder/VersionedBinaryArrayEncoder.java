@@ -100,6 +100,9 @@ class VersionedBinaryArrayEncoder<T> implements ArrayEncoder<T> {
 
   @SuppressWarnings("unchecked")
   T decode(final MemoryBuffer buffer, final int size) {
+    if (size < 8) {
+      throw BinaryRowEncoder.sizeBelowHash(size);
+    }
     final long peerHash = buffer.readInt64();
     final int bodySize = size - 8;
     if (peerHash == currentHash) {
@@ -111,6 +114,8 @@ class VersionedBinaryArrayEncoder<T> implements ArrayEncoder<T> {
     }
     ProjectionArrayCodec projection = projections.get(peerHash);
     if (projection == null) {
+      // Skip the body, so that a caller can go on to the next payload in the buffer.
+      buffer.increaseReaderIndex(bodySize);
       throw new ClassNotCompatibleException(
           String.format(
               "Array element schema is not consistent. self/peer hash are %s/%s.",

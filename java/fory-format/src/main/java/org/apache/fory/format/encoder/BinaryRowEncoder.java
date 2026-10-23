@@ -101,6 +101,9 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
   }
 
   T decode(final MemoryBuffer buffer, final int size) {
+    if (size < 8) {
+      throw sizeBelowHash(size);
+    }
     final long peerSchemaHash = buffer.readInt64();
     // The 8-byte hash has just been consumed; the row body occupies the remaining bytes.
     final int rowSize = size - 8;
@@ -140,12 +143,24 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
         return (T) projection.codec.fromRow(row);
       }
     }
+    // Skip the body, so that a caller can go on to the next payload in the buffer.
+    buffer.increaseReaderIndex(rowSize);
     throw new ClassNotCompatibleException(
         String.format(
             "Schema is not consistent, encoder schema is %s. "
                 + "self/peer schema hash are %s/%s. "
                 + "Please check writer schema.",
             schema, schemaHash, peerSchemaHash));
+  }
+
+  /**
+   * The failure of a decode whose payload {@code size} cannot hold the 8-byte schema hash that
+   * every row, and every array and map with schema evolution, starts with. A negative body size
+   * would move the reader index backward.
+   */
+  static EncoderException sizeBelowHash(final int size) {
+    return new EncoderException(
+        "Payload size " + size + " is less than the 8-byte schema hash at its start");
   }
 
   @Override
