@@ -19,9 +19,14 @@
 
 package org.apache.fory.format.encoder;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -30,6 +35,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.exception.ClassNotCompatibleException;
@@ -1143,13 +1150,12 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   // ---------------------------------------------------------------------------
-  // mapClassSuffix injectivity: the generated map codec class name is val + "_K" + key, and the
-  // class is cached by name, so two distinct (value-combo, key-combo) pairs must never produce the
-  // same suffix or the second pair would reuse the first's codec class. The "_K" boundary is the
-  // only place value and key strings meet, so the adversarial case is a value-side nested bean
-  // whose
-  // own suffix token contains the literal "_K_V" boundary string. A bean named K_V yields exactly
-  // that token.
+  // mapSuffix injectivity: the generated map codec class name joins the value and key suffixes,
+  // and the class is cached by name, so two distinct (value-combo, key-combo) pairs must never
+  // produce the same suffix or the second pair would reuse the first's codec class. The boundary
+  // between the halves is the only place value and key strings meet, so the adversarial case is a
+  // value-side nested bean whose own suffix token contains a boundary-like string such as "_K_V".
+  // A bean named K_V yields exactly that token.
   // ---------------------------------------------------------------------------
 
   @Data
@@ -1181,9 +1187,9 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void mapClassSuffixIsInjective() {
+  public void mapSuffixIsInjective() {
     // Build histories for a value position that contains the adversarial _K_V token and a key
-    // position that also evolves, then join every (value, key) combination the way mapClassSuffix
+    // position that also evolves, then join every (value, key) combination the way the map codec
     // does and require the joined suffixes to be distinct.
     SchemaHistory valHistory =
         SchemaHistory.build(ValueWithKVNested.class, SchemaHistory.Format.STANDARD);
@@ -1195,11 +1201,13 @@ public class SchemaEvolutionEdgeCaseTest {
       String val = valVs.isCurrent() ? "" : ProjectionRouting.projectionSuffix(valVs);
       for (SchemaHistory.VersionedSchema keyVs : keyHistory.versions()) {
         String key = keyVs.isCurrent() ? "" : ProjectionRouting.projectionSuffix(keyVs);
-        String suffix = MapEncoderBuilder.mapClassSuffix(val, key);
+        String suffix =
+            ProjectionRouting.mapSuffix(
+                val, key, SchemaHistory.combineHashes(keyVs.strictHash(), valVs.strictHash()));
         pairs.add(val + "\0" + key);
         Assert.assertTrue(
             joined.add(suffix),
-            "mapClassSuffix collision: distinct (value, key) combinations produced the same class "
+            "mapSuffix collision: distinct (value, key) combinations produced the same class "
                 + "suffix \""
                 + suffix
                 + "\"");
@@ -1217,8 +1225,164 @@ public class SchemaEvolutionEdgeCaseTest {
     // name as that key suffix.
     String h = "h0123456789abcdef";
     Assert.assertNotEquals(
-        MapEncoderBuilder.mapClassSuffix("_V1_K_V1_X2" + h, ""),
-        MapEncoderBuilder.mapClassSuffix("_V1", "_V1_X2" + h));
+        ProjectionRouting.mapSuffix("_V1_K_V1_X2" + h, "", 0),
+        ProjectionRouting.mapSuffix("_V1", "_V1_X2" + h, 0));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Projection class names: a projection suffix holds a token per nested versioned class, so a
+  // bean with several of them, several levels down, gets a long class name. FORY_CODE_DIR writes
+  // the source of every generated class to a file named after it, which fails past the 255-byte
+  // file name limit unless the suffix is bounded.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class LongNameLeafV1 {
+    private int a;
+  }
+
+  @Data
+  public static class VersionedLeafWithASimpleNameLongEnoughToWidenA {
+    private int a;
+
+    @ForyRowVersion(since = 2)
+    private int b;
+  }
+
+  @Data
+  public static class VersionedLeafWithASimpleNameLongEnoughToWidenB {
+    private int a;
+
+    @ForyRowVersion(since = 2)
+    private int b;
+  }
+
+  @Data
+  public static class VersionedLeafWithASimpleNameLongEnoughToWidenC {
+    private int a;
+
+    @ForyRowVersion(since = 2)
+    private int b;
+  }
+
+  @Data
+  public static class WideMiddleV1 {
+    private LongNameLeafV1 alpha;
+    private LongNameLeafV1 beta;
+    private LongNameLeafV1 gamma;
+  }
+
+  /** Its projection suffix has a token for each of three leaf classes with long simple names. */
+  @Data
+  public static class WideMiddle {
+    private VersionedLeafWithASimpleNameLongEnoughToWidenA alpha;
+    private VersionedLeafWithASimpleNameLongEnoughToWidenB beta;
+    private VersionedLeafWithASimpleNameLongEnoughToWidenC gamma;
+  }
+
+  @Data
+  public static class DeepTopV1 {
+    private WideMiddleV1 middle;
+    private int x;
+  }
+
+  @Data
+  public static class DeepTop {
+    private WideMiddle middle;
+    private int x;
+  }
+
+  private static DeepTopV1 deepTopV1(int x) {
+    LongNameLeafV1 leaf = new LongNameLeafV1();
+    leaf.setA(x * 10);
+    WideMiddleV1 middle = new WideMiddleV1();
+    middle.setAlpha(leaf);
+    middle.setBeta(leaf);
+    middle.setGamma(leaf);
+    DeepTopV1 top = new DeepTopV1();
+    top.setMiddle(middle);
+    top.setX(x);
+    return top;
+  }
+
+  private static void assertDeepTop(DeepTop top, int x) {
+    Assert.assertEquals(top.getX(), x);
+    Assert.assertEquals(top.getMiddle().getAlpha().getA(), x * 10);
+    Assert.assertEquals(top.getMiddle().getBeta().getA(), x * 10);
+    Assert.assertEquals(top.getMiddle().getGamma().getA(), x * 10);
+    Assert.assertEquals(top.getMiddle().getGamma().getB(), 0);
+  }
+
+  /**
+   * Older payloads of a deeply nested bean decode, as a row, an array element, and a map value,
+   * while {@code FORY_CODE_DIR} writes the source of every generated class, and every file name
+   * stays under the 255-byte limit.
+   */
+  @Test
+  public void projectionClassNamesAreBounded() throws IOException {
+    Path codeDir = Files.createTempDirectory("fory-projection-code");
+    String previous = System.getProperty("FORY_CODE_DIR");
+    System.setProperty("FORY_CODE_DIR", codeDir.toString());
+    List<Path> files;
+    try {
+      DeepTop row =
+          Encoders.buildBeanCodec(DeepTop.class)
+              .withSchemaEvolution()
+              .build()
+              .get()
+              .decode(
+                  Encoders.buildBeanCodec(DeepTopV1.class)
+                      .withSchemaEvolution()
+                      .build()
+                      .get()
+                      .encode(deepTopV1(1)));
+      assertDeepTop(row, 1);
+      List<DeepTop> list =
+          Encoders.buildArrayCodec(new TypeRef<List<DeepTop>>() {})
+              .withSchemaEvolution()
+              .build()
+              .get()
+              .decode(
+                  Encoders.buildArrayCodec(new TypeRef<List<DeepTopV1>>() {})
+                      .withSchemaEvolution()
+                      .build()
+                      .get()
+                      .encode(Collections.singletonList(deepTopV1(2))));
+      assertDeepTop(list.get(0), 2);
+      Map<String, DeepTop> map =
+          Encoders.buildMapCodec(new TypeRef<Map<String, DeepTop>>() {})
+              .withSchemaEvolution()
+              .build()
+              .get()
+              .decode(
+                  Encoders.buildMapCodec(new TypeRef<Map<String, DeepTopV1>>() {})
+                      .withSchemaEvolution()
+                      .build()
+                      .get()
+                      .encode(Collections.singletonMap("k", deepTopV1(3))));
+      assertDeepTop(map.get("k"), 3);
+    } finally {
+      if (previous == null) {
+        System.clearProperty("FORY_CODE_DIR");
+      } else {
+        System.setProperty("FORY_CODE_DIR", previous);
+      }
+      try (Stream<Path> walk = Files.walk(codeDir)) {
+        files = walk.sorted(Comparator.reverseOrder()).collect(Collectors.toList());
+      }
+      for (Path file : files) {
+        Files.delete(file);
+      }
+    }
+    Assert.assertTrue(
+        files.stream()
+            .map(f -> f.getFileName().toString())
+            .anyMatch(name -> name.contains("WideMiddleRowCodec") && name.contains("_V1h")),
+        files.toString());
+    for (Path file : files) {
+      String name = file.getFileName().toString();
+      Assert.assertTrue(name.getBytes(StandardCharsets.UTF_8).length < 255, name);
+    }
   }
 
   /**

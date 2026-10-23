@@ -439,19 +439,17 @@ public class Encoders {
       TypeRef<? extends Map<?, ?>> mapCls,
       TypeRef<?> beanToken,
       Encoding codecFactory,
-      String valCodecSuffix,
-      String keyCodecSuffix,
+      String classSuffix,
       Map<Class<?>, String> nestedSuffixes,
       CodeGenerator codeGenerator) {
     Class<?> cls = getRawType(beanToken);
     String prefix = TypeInference.inferTypeName(mapCls);
     MapEncoderBuilder codecBuilder =
-        codecFactory.newProjectionMapEncoder(
-            mapCls, beanToken, valCodecSuffix, keyCodecSuffix, nestedSuffixes);
+        codecFactory.newProjectionMapEncoder(mapCls, beanToken, classSuffix, nestedSuffixes);
     CompileUnit compileUnit =
         new CompileUnit(
             CodeGenerator.getPackage(cls),
-            codecBuilder.codecClassName(cls, prefix) + codecBuilder.mapClassSuffix(),
+            codecBuilder.codecClassName(cls, prefix) + classSuffix,
             codecBuilder::genCode);
     return loadCls(codeGenerator, compileUnit);
   }

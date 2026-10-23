@@ -53,30 +53,29 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   private final TypeRef<?> mapToken;
 
-  // The key position's part of the generated class name, parallel to classSuffix for the value.
-  // Null or empty means the key is at its current schema.
-  private final String keyCodecSuffix;
-
   public MapEncoderBuilder(Class<?> mapCls, Class<?> keyClass) {
     this(TypeRef.of(mapCls), TypeRef.of(keyClass));
   }
 
   public MapEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType) {
-    this(clsType, beanType, null, null, null);
+    this(clsType, beanType, null, null);
   }
 
+  /**
+   * Construct a projection map codec builder. {@code classSuffix} names this codec's own class
+   * (encoding the whole key and value version combination); {@code nestedSuffixes} routes each
+   * nested versioned bean class, in either position, to its own projection row codec.
+   */
   MapEncoderBuilder(
       TypeRef<?> clsType,
       TypeRef<?> beanType,
-      String valCodecSuffix,
-      String keyCodecSuffix,
+      String classSuffix,
       Map<Class<?>, String> nestedSuffixes) {
     // A top-level map has no enclosing bean, so scope key/value-codec resolution to Object to match
     // TypeInference's empty-path enclosing type; beanType still names the key/value bean for class
     // naming and schema generation.
     super(new CodegenContext(), beanType, Object.class);
-    this.classSuffix = valCodecSuffix;
-    this.keyCodecSuffix = keyCodecSuffix;
+    this.classSuffix = classSuffix;
     this.nestedClassSuffixes = nestedSuffixes;
     mapToken = clsType;
     ctx.reserveName(ROOT_KEY_WRITER_NAME);
@@ -92,7 +91,8 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   public String genCode() {
     ctx.setPackage(CodeGenerator.getPackage(beanClass));
     String className =
-        codecClassName(beanClass, TypeInference.inferTypeName(mapToken)) + mapClassSuffix();
+        codecClassName(beanClass, TypeInference.inferTypeName(mapToken))
+            + (classSuffix == null ? "" : classSuffix);
     ctx.setClassName(className);
     // don't addImport(arrayClass), because user class may name collide.
     // janino don't support generics, so GeneratedCodec has no generics
@@ -277,27 +277,5 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
                 new Expression.If(
                     ExpressionUtils.notNull(key), new Expression.Invoke(map, "put", key, value)));
     return new Expression.ListExpression(map, put);
-  }
-
-  /**
-   * Class-name suffix for the generated map codec. The codec class is cached by name, so distinct
-   * (value-combination, key-combination) pairs must map to distinct suffixes or the second pair
-   * would reuse the first pair's codec class. {@link ProjectionRouting#projectionSuffix} is already
-   * injective over a single position's combinations, so each side's string determines its own
-   * combination. Each half is written after its length, so no token on one side can imitate the
-   * boundary between the halves, whatever the bean simple names are. The current-schema codec, with
-   * both halves empty, gets no suffix.
-   */
-  String mapClassSuffix() {
-    return mapClassSuffix(classSuffix, keyCodecSuffix);
-  }
-
-  static String mapClassSuffix(String valueSuffix, String keySuffix) {
-    String val = valueSuffix == null ? "" : valueSuffix;
-    String key = keySuffix == null ? "" : keySuffix;
-    if (val.isEmpty() && key.isEmpty()) {
-      return "";
-    }
-    return "_" + val.length() + val + "_" + key.length() + key;
   }
 }

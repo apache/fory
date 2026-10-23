@@ -33,6 +33,16 @@ import org.apache.fory.format.type.SchemaHistory;
  * this combination's versions.
  */
 final class ProjectionRouting {
+  /**
+   * Longest readable class-name suffix. Each nested versioned bean adds its simple name and a hash
+   * to a suffix, and a map codec joins a value and a key suffix, so a wide bean or map could push
+   * the source file that {@code FORY_CODE_DIR} writes for the class past the 255-byte file name
+   * limit of common file systems. A longer suffix is cut to this length and ends with a hash token
+   * instead, so a projection class name is at most 97 characters longer than the name of the
+   * current codec class.
+   */
+  static final int MAX_READABLE_SUFFIX_LENGTH = 80;
+
   private ProjectionRouting() {}
 
   /**
@@ -48,6 +58,9 @@ final class ProjectionRouting {
    * share a simple name and an identical (structural) strict hash. The simple name is for human
    * readability, not disambiguation. Do not switch this to an unordered per-class join: positional
    * stability is what prevents same-simple-name beans from collapsing onto one class name.
+   *
+   * <p>A suffix longer than {@link #MAX_READABLE_SUFFIX_LENGTH} is cut, and the strict hash of
+   * {@code vs} identifies the combination instead; see {@link #bounded}.
    */
   static String projectionSuffix(SchemaHistory.VersionedSchema vs) {
     StringBuilder sb =
@@ -68,7 +81,43 @@ final class ProjectionRouting {
             .append(String.format("%016x", inner.strictHash()));
       }
     }
-    return sb.toString();
+    return bounded(sb.toString(), vs.strictHash());
+  }
+
+  /**
+   * Class-name suffix for the projection map codec of one (value-combination, key-combination)
+   * pair, from the {@link #projectionSuffix} of each position, empty for a position at its current
+   * schema. The codec class is cached by name, so distinct pairs must map to distinct suffixes or
+   * the second pair would reuse the first pair's codec class. Each half is written after its
+   * length, so no token on one side can imitate the boundary between the halves, whatever the bean
+   * simple names are. The current-schema codec, with both halves empty, gets no suffix. A suffix
+   * longer than {@link #MAX_READABLE_SUFFIX_LENGTH} is cut, and {@code mapHash}, the combined hash
+   * that the map payload carries for the pair, identifies it instead.
+   */
+  static String mapSuffix(String valueSuffix, String keySuffix, long mapHash) {
+    if (valueSuffix.isEmpty() && keySuffix.isEmpty()) {
+      return "";
+    }
+    return bounded(
+        "_" + valueSuffix.length() + valueSuffix + "_" + keySuffix.length() + keySuffix, mapHash);
+  }
+
+  /**
+   * {@code readable} if it is at most {@link #MAX_READABLE_SUFFIX_LENGTH} characters long, else its
+   * first {@code MAX_READABLE_SUFFIX_LENGTH} characters (one fewer if the cut would split a
+   * surrogate pair), then {@code _} and the 16 hex digits of {@code hash}. A cut suffix is longer
+   * than every suffix that is not cut, so the two kinds never collide, and {@code hash} must be
+   * unique among the suffixes of one codec class.
+   */
+  private static String bounded(String readable, long hash) {
+    if (readable.length() <= MAX_READABLE_SUFFIX_LENGTH) {
+      return readable;
+    }
+    int end = MAX_READABLE_SUFFIX_LENGTH;
+    if (Character.isHighSurrogate(readable.charAt(end - 1))) {
+      end--;
+    }
+    return readable.substring(0, end) + "_" + String.format("%016x", hash);
   }
 
   /**

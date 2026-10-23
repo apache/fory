@@ -158,6 +158,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
                 keyVs,
                 valCurrent,
                 keyCurrent,
+                hash,
                 codeGenerator));
       }
     }
@@ -228,6 +229,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     private final SchemaHistory.VersionedSchema keyVs;
     private final SchemaHistory.VersionedSchema valCurrent;
     private final SchemaHistory.VersionedSchema keyCurrent;
+    private final long mapHash;
     private final CodeGenerator codeGenerator;
 
     MapProjectionSource(
@@ -240,6 +242,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         SchemaHistory.VersionedSchema keyVs,
         SchemaHistory.VersionedSchema valCurrent,
         SchemaHistory.VersionedSchema keyCurrent,
+        long mapHash,
         CodeGenerator codeGenerator) {
       this.mapType = mapType;
       this.field = field;
@@ -250,6 +253,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       this.keyVs = keyVs;
       this.valCurrent = valCurrent;
       this.keyCurrent = keyCurrent;
+      this.mapHash = mapHash;
       this.codeGenerator = codeGenerator;
     }
 
@@ -312,8 +316,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
               mapType,
               TypeRef.of(valClass != null ? valClass : keyClass),
               codecFormat,
-              valSuffix,
-              keySuffix,
+              ProjectionRouting.mapSuffix(valSuffix, keySuffix, mapHash),
               nested,
               codeGenerator);
       Field histMapField = DataTypes.mapField(field.name(), histKey, histVal);

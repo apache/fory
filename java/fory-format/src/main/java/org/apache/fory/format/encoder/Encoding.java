@@ -77,18 +77,16 @@ interface Encoding {
 
   /**
    * Construct a map encoder builder whose generated code references the value and key bean row
-   * codec classes for one historical (key-version, value-version) combination. {@code
-   * valCodecSuffix} and {@code keyCodecSuffix} name the generated map codec class per position;
-   * {@code nestedSuffixes} routes each nested bean class in either position to its own projection
-   * row codec. One map covers both positions because a payload holds one version of each bean
-   * class. An empty suffix or absent class means that position, or that bean, is read at its
-   * current schema.
+   * codec classes for one historical (key-version, value-version) combination. {@code classSuffix}
+   * names the generated map codec class for the whole combination; {@code nestedSuffixes} routes
+   * each nested bean class in either position to its own projection row codec. One map covers both
+   * positions because a payload holds one version of each bean class. An absent class means that
+   * bean is read at its current schema.
    */
   MapEncoderBuilder newProjectionMapEncoder(
       TypeRef<? extends Map<?, ?>> mapType,
       TypeRef<?> beanToken,
-      String valCodecSuffix,
-      String keyCodecSuffix,
+      String classSuffix,
       Map<Class<?>, String> nestedSuffixes);
 
   /**
