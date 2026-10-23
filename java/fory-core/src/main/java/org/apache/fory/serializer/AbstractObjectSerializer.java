@@ -19,6 +19,8 @@
 
 package org.apache.fory.serializer;
 
+import org.apache.fory.platform.GraalvmSupport;
+
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -109,6 +111,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     this.isRecord = RecordUtils.isRecord(type);
     this.objectInstantiator = objectInstantiator;
     this.objectGraphMemoryBytes = GraphMemoryEstimates.shallowObjectBytes(type);
+    if (GraalvmSupport.isGraalBuildTime()) {
+      buildFieldsInfo();
+    }
   }
 
   // Keep exception construction and message formatting off the field write success path.
@@ -1102,6 +1107,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   private Object copyNotPrimitiveField(
       CopyContext copyContext, Object targetObject, FieldAccessor fieldAccessor, int typeId) {
     return copyFieldValue(copyContext, fieldAccessor.getObject(targetObject), typeId);
+  }
+
+  void setFieldInfos(SerializationFieldInfo[] fieldInfos) {
+    this.fieldInfos = fieldInfos;
   }
 
   private SerializationFieldInfo[] buildFieldsInfo() {
