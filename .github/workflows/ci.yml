@@ -199,7 +199,8 @@ jobs:
 
   compiler_import:
     name: Compiler Import ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    # setup-python has no Python 3.8/3.9 binaries for Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ["3.8", "3.9"]
@@ -218,7 +219,8 @@ jobs:
   java:
     name: Java CI
     needs: changes
-    runs-on: ubuntu-latest
+    # Keep the Python 3.8 CI driver on a supported runner image.
+    runs-on: ubuntu-24.04
     env:
       MY_VAR: "PATH"
     strategy:
@@ -258,7 +260,7 @@ jobs:
     name: Openj9 Java CI
     needs: changes
     if: needs.changes.outputs.java_code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       MY_VAR: "PATH"
     strategy:
@@ -852,7 +854,7 @@ jobs:
 
   integration_tests:
     name: Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up JDK11
@@ -1177,10 +1179,11 @@ jobs:
     strategy:
       matrix:
         node-version: [18, 24]
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # node-gyp uses Python 3.8 on Linux.
+        os: [ubuntu-24.04, macos-latest, windows-latest]
         include:
           - node-version: 20
-            os: ubuntu-latest
+            os: ubuntu-24.04
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -1326,7 +1329,8 @@ jobs:
     name: C++ CI
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # Keep the C++ toolchain stable across ubuntu-latest image upgrades.
+        os: [ubuntu-24.04, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -1451,7 +1455,7 @@ jobs:
     name: C++ Sanitizer (${{ matrix.sanitizer }})
     needs: changes
     if: needs.changes.outputs.cpp_code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         sanitizer: [asan, ubsan]
@@ -1636,7 +1640,8 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.12", "3.14"]
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        # Python 3.8 is available on Ubuntu 24.04, but not Ubuntu 26.04.
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest]
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up Python ${{ matrix.python-version }}
@@ -1749,7 +1754,7 @@ jobs:
 
   go:
     name: Golang CI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up Go
@@ -2156,7 +2161,7 @@ jobs:
 
   lint:
     name: Code Style Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up JDK ${{ matrix.java-version }}
