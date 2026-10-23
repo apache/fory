@@ -79,10 +79,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.apache.fory.collection.LazyMap;
+import org.apache.fory.config.Language;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
+import org.apache.fory.exception.SerializationException;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.EnumSerializerTest;
 import org.apache.fory.serializer.EnumSerializerTest.EnumFoo;
@@ -208,6 +210,35 @@ public class ForyCopyTest extends ForyTestBase {
     fory.register(BeanA.class);
     assertEquals(fory.copy(beanA), beanA);
     Assert.assertThrows(ForyException.class, () -> fory.serialize(beanA));
+  }
+
+  @Test
+  public void testCopyNonSerializableJdkObject() {
+    Fory fory =
+        builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(true)
+            .withRefCopy(true)
+            .requireClassRegistration(false)
+            .build();
+    Package packageValue = String.class.getPackage();
+
+    Assert.assertSame(fory.copy(packageValue), packageValue);
+
+    Object[] values = new Object[] {packageValue};
+    Object[] copiedValues = fory.copy(values);
+    Assert.assertNotSame(copiedValues, values);
+    Assert.assertSame(copiedValues[0], packageValue);
+  }
+
+  @Test
+  public void testSerializeNonSerializableJdkObjectStillFails() {
+    Fory fory = builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Package packageValue = String.class.getPackage();
+
+    SerializationException exception =
+        Assert.expectThrows(SerializationException.class, () -> fory.serialize(packageValue));
+    Assert.assertTrue(exception.getCause() instanceof UnsupportedOperationException);
   }
 
   @Test
