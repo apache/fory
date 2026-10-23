@@ -319,6 +319,72 @@ public class SchemaEvolutionStressTest {
     Assert.assertEquals(out.getTail(), 42L);
   }
 
+  // A removed field whose type is a versioned bean that in turn holds an unversioned bean. Nothing
+  // live on the reader reaches either class, so the reader never compiles their current-version
+  // codecs. The writer uses look-alike classes so that it does not compile them either: the strict
+  // hash keys on field names, not class names.
+  @Data
+  public static class RemovedGeo {
+    private double lat;
+  }
+
+  @Data
+  public static class RemovedGeoWriter {
+    private double lat;
+  }
+
+  @Data
+  public static class RemovedAddrWriter {
+    private RemovedGeoWriter geo;
+    private String street;
+  }
+
+  @Data
+  public static class RemovedAddr {
+    private RemovedGeo geo;
+    private String street;
+
+    @ForyVersion(since = 2)
+    private String zip;
+  }
+
+  @Data
+  public static class RemovedAddrHolderV1 {
+    private RemovedAddrWriter addr;
+    private String id;
+    private long tail;
+  }
+
+  @Data
+  @ForySchema(removedFields = RemovedAddrHolderV2.History.class)
+  public static class RemovedAddrHolderV2 {
+    private String id;
+    private long tail;
+
+    interface History {
+      @ForyVersion(until = 2)
+      RemovedAddr addr();
+    }
+  }
+
+  @Test
+  public void removedVersionedBeanFieldAtHistoricalVersion() {
+    RowEncoder<RemovedAddrHolderV1> writer = evolvingCodec(RemovedAddrHolderV1.class);
+    RowEncoder<RemovedAddrHolderV2> reader = evolvingCodec(RemovedAddrHolderV2.class);
+    RemovedAddrHolderV1 in = new RemovedAddrHolderV1();
+    RemovedAddrWriter addr = new RemovedAddrWriter();
+    RemovedGeoWriter geo = new RemovedGeoWriter();
+    geo.setLat(1.5);
+    addr.setGeo(geo);
+    addr.setStreet("main");
+    in.setAddr(addr);
+    in.setId("x");
+    in.setTail(42L);
+    RemovedAddrHolderV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), "x");
+    Assert.assertEquals(out.getTail(), 42L);
+  }
+
   // ---------------------------------------------------------------------------
   // Removed collection-typed field. The history interface preserves the full
   // parameterized type, so List<String> and Map<String, Long> round-trip
