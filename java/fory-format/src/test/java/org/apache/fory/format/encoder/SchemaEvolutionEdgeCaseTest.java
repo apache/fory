@@ -914,6 +914,23 @@ public class SchemaEvolutionEdgeCaseTest {
     Assert.assertTrue(e.getMessage().contains("must be >= 1"), e.getMessage());
   }
 
+  /** A window that starts at the open bound of until is empty: no version would hold a field. */
+  @Data
+  public static class LiveFieldSinceMax {
+    private int x;
+
+    @ForyRowVersion(since = Integer.MAX_VALUE)
+    private String added;
+  }
+
+  @Test
+  public void liveFieldSinceMaxFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(LiveFieldSinceMax.class));
+    Assert.assertTrue(e.getMessage().contains("less than Integer.MAX_VALUE"), e.getMessage());
+  }
+
   @Data
   @ForyRowSchema(removedFields = RemovedFieldSinceBelowFirst.History.class)
   public static class RemovedFieldSinceBelowFirst {

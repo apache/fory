@@ -87,6 +87,18 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     // on. It travels back to build() through the returned factory rather than the mutable schema
     // field, so building does not rotate builder state that a later build()/buildForWriter() reads.
     final Schema currentSchema = currentVersion.schema();
+    // The history rebuilds the current schema from the bean's annotations; it must describe the
+    // layout that inference gives the bean, or the writer would drop or misplace fields.
+    if (SchemaHistory.computeStrictSchemaHash(codecFormat.wireOrderSchema(schema))
+        != currentVersion.strictHash()) {
+      throw new IllegalStateException(
+          "Schema history of "
+              + beanClass.getName()
+              + " resolved a current schema that differs from the inferred schema.\nhistory:\n"
+              + currentSchema
+              + "\ninferred:\n"
+              + schema);
+    }
 
     final CodeGenerator codeGenerator = Encoders.pinCodeGenerator();
     final Function<BaseBinaryRowWriter, GeneratedRowEncoder> currentFactory =

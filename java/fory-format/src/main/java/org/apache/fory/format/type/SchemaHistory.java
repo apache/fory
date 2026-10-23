@@ -951,6 +951,18 @@ public final class SchemaHistory {
                 + " (the first schema version). A since below that adds a version no writer can "
                 + "emit.");
       }
+      // until is exclusive and Integer.MAX_VALUE is its open bound, so a window that starts there
+      // is empty. Every live field would leave the latest version, and the current schema would be
+      // empty.
+      if (since == Integer.MAX_VALUE) {
+        throw new IllegalStateException(
+            "Invalid @ForyRowVersion on "
+                + beanClass.getName()
+                + "."
+                + d.getName()
+                + ": since must be less than Integer.MAX_VALUE, the open upper bound of every "
+                + "version window.");
+      }
       // A live field still exists as a Java member, so it has no end-of-life version. A finite
       // until would silently drop it from the current schema (until extends the version set, so
       // latestVersion >= until excludes the field), and the writer would stop serializing a field

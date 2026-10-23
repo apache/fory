@@ -45,7 +45,10 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD})
 public @interface ForyRowVersion {
-  /** First version (inclusive) that contains this field. Defaults to 1, the first version. */
+  /**
+   * First version (inclusive) that contains this field. Defaults to 1, the first version. Must be
+   * at least 1 and less than {@link Integer#MAX_VALUE}.
+   */
   int since() default 1;
 
   /**
