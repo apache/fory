@@ -124,7 +124,7 @@ public class ArrayCodecBuilder<C extends Collection<?>>
     return new Function<BinaryArrayWriter, ArrayEncoder<C>>() {
       @Override
       public ArrayEncoder<C> apply(final BinaryArrayWriter writer) {
-        return new BinaryArrayEncoder<>(
+        return new VersionedBinaryArrayEncoder<>(
             writer,
             currentFactory.apply(writer),
             sizeEmbedded,
@@ -142,7 +142,7 @@ public class ArrayCodecBuilder<C extends Collection<?>>
    */
   private static final class ArrayProjectionSource
       extends ProjectionSource<
-          ArrayProjectionSource.Classes, BinaryArrayEncoder.ProjectionArrayCodec> {
+          ArrayProjectionSource.Classes, VersionedBinaryArrayEncoder.ProjectionArrayCodec> {
     private final TypeRef<? extends Collection<?>> collectionType;
     private final Encoding codecFormat;
     private final Class<?> elementClass;
@@ -166,12 +166,12 @@ public class ArrayCodecBuilder<C extends Collection<?>>
     }
 
     @Override
-    BinaryArrayEncoder.ProjectionArrayCodec bind(Classes r, Fory fory) {
+    VersionedBinaryArrayEncoder.ProjectionArrayCodec bind(Classes r, Fory fory) {
       try {
         BinaryArrayWriter projWriter = codecFormat.newArrayWriter(r.listField);
         Object[] references = {r.listField, projWriter, fory};
         GeneratedArrayEncoder codec = (GeneratedArrayEncoder) r.ctor.invokeExact(references);
-        return new BinaryArrayEncoder.ProjectionArrayCodec(projWriter, codec);
+        return new VersionedBinaryArrayEncoder.ProjectionArrayCodec(projWriter, codec);
       } catch (Throwable e) {
         throw ExceptionUtils.throwException(e);
       }

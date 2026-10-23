@@ -19,11 +19,9 @@
 
 package org.apache.fory.format.encoder;
 
-import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.type.Field;
-import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 
@@ -32,51 +30,13 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
   private final GeneratedArrayEncoder codec;
   private final boolean sizeEmbedded;
 
-  /**
-   * Strict hash of the current one-field element layout (the element need not be a bean); written
-   * before the array body when schema evolution is on.
-   */
-  private final long currentHash;
-
-  /**
-   * Projection codecs for older element layouts. {@code null} disables versioning (evolution off,
-   * no hash prefix). Non-null but empty under evolution with no older layout: the hash prefix is
-   * still written for flag-mismatch detection.
-   */
-  private final ProjectionCache<ProjectionArrayCodec> projections;
-
-  /**
-   * A projection variant of the array codec along with the writer used to materialize an array
-   * instance of the right physical type (standard vs. compact) for the historical element field.
-   */
-  static final class ProjectionArrayCodec {
-    final BinaryArrayWriter writer;
-    final GeneratedArrayEncoder codec;
-
-    ProjectionArrayCodec(BinaryArrayWriter writer, GeneratedArrayEncoder codec) {
-      this.writer = writer;
-      this.codec = codec;
-    }
-  }
-
   BinaryArrayEncoder(
       final BinaryArrayWriter writer,
       final GeneratedArrayEncoder codec,
       final boolean sizeEmbedded) {
-    this(writer, codec, sizeEmbedded, 0L, null);
-  }
-
-  BinaryArrayEncoder(
-      final BinaryArrayWriter writer,
-      final GeneratedArrayEncoder codec,
-      final boolean sizeEmbedded,
-      final long currentHash,
-      final ProjectionCache<ProjectionArrayCodec> projections) {
     this.writer = writer;
     this.codec = codec;
     this.sizeEmbedded = sizeEmbedded;
-    this.currentHash = currentHash;
-    this.projections = projections;
   }
 
   @Override
@@ -102,66 +62,22 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
 
   @Override
   public T decode(final byte[] bytes) {
-    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (under schema evolution
-    // an 8-byte hash leads the body, but that is data, not framing), so decode takes the size from
-    // bytes.length.
+    // byte[] overloads ignore sizeEmbedded: encode writes no size prefix, decode uses bytes.length.
     return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 
-  @SuppressWarnings("unchecked")
   T decode(final MemoryBuffer buffer, final int size) {
-    if (projections == null) {
-      // Evolution off: the whole payload is body, with no hash prefix. Reading evolution-on bytes
-      // here cannot be caught: the array wire form has no hash slot when evolution is off, and an
-      // evolution-on payload's leading 8-byte FNV hash is indistinguishable from a valid array
-      // body, so it silently mis-decodes. The row-format guide documents this direction as
-      // unsupported; producer and consumer must agree on the flag.
-      final BinaryArray array = writer.newArray();
-      final int readerIndex = buffer.readerIndex();
-      array.pointTo(buffer, readerIndex, size);
-      buffer.readerIndex(readerIndex + size);
-      return fromArray(array);
-    }
-    final long peerHash = buffer.readInt64();
-    final int bodySize = size - 8;
-    if (peerHash == currentHash) {
-      final BinaryArray array = writer.newArray();
-      final int readerIndex = buffer.readerIndex();
-      array.pointTo(buffer, readerIndex, bodySize);
-      buffer.readerIndex(readerIndex + bodySize);
-      return fromArray(array);
-    }
-    ProjectionArrayCodec projection = projections.get(peerHash);
-    if (projection == null) {
-      throw new ClassNotCompatibleException(
-          String.format(
-              "Array element schema is not consistent. self/peer hash are %s/%s.",
-              currentHash, peerHash));
-    }
-    BinaryArray array = projection.writer.newArray();
+    final BinaryArray array = writer.newArray();
     final int readerIndex = buffer.readerIndex();
-    array.pointTo(buffer, readerIndex, bodySize);
-    buffer.readerIndex(readerIndex + bodySize);
-    return (T) projection.codec.fromArray(array);
+    array.pointTo(buffer, readerIndex, size);
+    buffer.readerIndex(readerIndex + size);
+    return fromArray(array);
   }
 
   @Override
   public byte[] encode(final T obj) {
     final BinaryArray array = toArray(obj);
-    if (projections == null) {
-      return writer.getBuffer().getBytes(0, array.getSizeInBytes());
-    }
-    // Build the result with a single allocation: the result byte[]. The hash header is poked
-    // in via LittleEndian (no buffer wrapper) and the body is bulk-copied out of the writer's
-    // backing buffer into the result.
-    final int n = array.getSizeInBytes();
-    if (n > Integer.MAX_VALUE - 8) {
-      throw new EncoderException("Array body too large to prepend schema hash header: " + n);
-    }
-    final byte[] result = new byte[8 + n];
-    LittleEndian.putInt64(result, 0, currentHash);
-    writer.getBuffer().get(0, result, 8, n);
-    return result;
+    return writer.getBuffer().getBytes(0, array.getSizeInBytes());
   }
 
   @Override
@@ -170,9 +86,6 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
     final int writerIndex = buffer.writerIndex();
     if (sizeEmbedded) {
       buffer.writeInt32(-1);
-    }
-    if (projections != null) {
-      buffer.writeInt64(currentHash);
     }
     try {
       writer.setBuffer(buffer);

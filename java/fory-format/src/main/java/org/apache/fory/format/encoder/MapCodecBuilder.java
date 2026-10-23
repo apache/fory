@@ -184,7 +184,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
             initialBufferSize,
             keyWriter,
             valWriter,
-            new BinaryMapEncoder<M>(
+            new VersionedBinaryMapEncoder<M>(
                 codecFormat,
                 field,
                 valWriter,
@@ -217,7 +217,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
    * builder cannot reach a lazy compile.
    */
   private static final class MapProjectionSource
-      extends ProjectionSource<MapProjectionSource.Classes, BinaryMapEncoder.ProjectionMapCodec> {
+      extends ProjectionSource<
+          MapProjectionSource.Classes, VersionedBinaryMapEncoder.ProjectionMapCodec> {
     private final TypeRef<? extends Map<?, ?>> mapType;
     private final Field field;
     private final Encoding codecFormat;
@@ -259,7 +260,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
      * current field, so a map where only one side evolves pays no codegen for the unchanged side.
      */
     @Override
-    BinaryMapEncoder.ProjectionMapCodec bind(Classes r, Fory fory) {
+    VersionedBinaryMapEncoder.ProjectionMapCodec bind(Classes r, Fory fory) {
       try {
         BinaryArrayWriter projKey = codecFormat.newArrayWriter(r.keyArrayField);
         BinaryArrayWriter projVal =
@@ -268,7 +269,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
           r.keyArrayField, r.valueArrayField, projKey, projVal, fory, r.mapField
         };
         GeneratedMapEncoder codec = (GeneratedMapEncoder) r.ctor.invokeExact(references);
-        return new BinaryMapEncoder.ProjectionMapCodec(codecFormat, r.mapField, codec);
+        return new VersionedBinaryMapEncoder.ProjectionMapCodec(codecFormat, r.mapField, codec);
       } catch (Throwable e) {
         throw ExceptionUtils.throwException(e);
       }
