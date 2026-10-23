@@ -319,10 +319,11 @@ public final class SchemaHistory {
       // payload is at the same version; the off-diagonal combinations (the same class at two
       // versions in one record) are unreachable on the wire. Enumerating one dimension per class
       // keeps the count a product over distinct nested classes rather than over fields, and lets
-      // a class appear in more than one field. If no entries have nested histories, this yields a
-      // single combination.
+      // a class appear in more than one field. A class also reached through another nested bean's
+      // own history is held to that same version (see cartesian). If no entries have nested
+      // histories, this yields a single combination.
       //
-      // The class count generated downstream is the product of the per-class version counts. If
+      // The combination count is the product of the per-class version counts. If
       // that growth becomes a concern, drop entries from each bean's History interface once you
       // no longer need to read payloads from that range — that removes the corresponding
       // VersionedSchema from this enumeration. Retiring history entries is purely a read-side
@@ -338,11 +339,16 @@ public final class SchemaHistory {
         }
       }
       Set<Class<?>> liveNested = Collections.unmodifiableSet(liveNestedClasses);
+      List<Field> inferredFields = new ArrayList<>(activeEntries.size());
+      for (FieldEntry fe : activeEntries) {
+        inferredFields.add(TypeInference.inferNamedField(fe.name, fe.typeRef, enclosing));
+      }
       for (Map<Class<?>, VersionedSchema> combination : cartesian(innerChoices)) {
         List<Field> fields = new ArrayList<>(activeEntries.size());
         Set<String> liveNames = new HashSet<>();
-        for (FieldEntry fe : activeEntries) {
-          Field current = TypeInference.inferNamedField(fe.name, fe.typeRef, enclosing);
+        for (int i = 0; i < activeEntries.size(); i++) {
+          FieldEntry fe = activeEntries.get(i);
+          Field current = inferredFields.get(i);
           // Substitute each nested versioned site (a direct field, list element, map value, or map
           // key) with the version this combination chose for its bean class, keeping every
           // collection/map wrapper intact. A map can have both a key site and a value site, which
@@ -416,25 +422,59 @@ public final class SchemaHistory {
         Collections.unmodifiableList(new ArrayList<>(bySchema.values())), current);
   }
 
-  /** Cartesian product over (nested bean class, list-of-inner-VersionedSchema). */
+  /**
+   * Cartesian product over (nested bean class, list-of-inner-VersionedSchema), keeping only the
+   * combinations that put every class at one version. A class reached both directly and through
+   * another chosen inner schema is at the same version in both places on the wire, because a writer
+   * has one definition of each class. Each class has one history per build (the build memo), so its
+   * entries compare by identity.
+   */
   private static List<Map<Class<?>, VersionedSchema>> cartesian(
       LinkedHashMap<Class<?>, List<VersionedSchema>> choices) {
     List<Map<Class<?>, VersionedSchema>> out = new ArrayList<>();
+    // Parallel to out: every class each partial combination fixes, at any depth.
+    List<Map<Class<?>, VersionedSchema>> pinned = new ArrayList<>();
     out.add(new HashMap<>());
+    pinned.add(new HashMap<>());
     for (Map.Entry<Class<?>, List<VersionedSchema>> choice : choices.entrySet()) {
       Class<?> cls = choice.getKey();
       List<VersionedSchema> options = choice.getValue();
       List<Map<Class<?>, VersionedSchema>> next = new ArrayList<>(out.size() * options.size());
-      for (Map<Class<?>, VersionedSchema> prefix : out) {
+      List<Map<Class<?>, VersionedSchema>> nextPinned = new ArrayList<>(next.size());
+      for (int i = 0; i < out.size(); i++) {
         for (VersionedSchema opt : options) {
-          Map<Class<?>, VersionedSchema> extended = new HashMap<>(prefix);
+          Map<Class<?>, VersionedSchema> fixed = new HashMap<>(pinned.get(i));
+          if (!pin(fixed, cls, opt)) {
+            continue;
+          }
+          Map<Class<?>, VersionedSchema> extended = new HashMap<>(out.get(i));
           extended.put(cls, opt);
           next.add(extended);
+          nextPinned.add(fixed);
         }
       }
       out = next;
+      pinned = nextPinned;
     }
     return out;
+  }
+
+  /**
+   * Fix {@code cls} at {@code vs} in {@code fixed}, together with every class that {@code vs} fixes
+   * at any depth. Returns false when one of them is already fixed at another version.
+   */
+  private static boolean pin(
+      Map<Class<?>, VersionedSchema> fixed, Class<?> cls, VersionedSchema vs) {
+    VersionedSchema prior = fixed.putIfAbsent(cls, vs);
+    if (prior != null) {
+      return prior == vs;
+    }
+    for (Map.Entry<Class<?>, VersionedSchema> nested : vs.nestedBeanSchemas().entrySet()) {
+      if (!pin(fixed, nested.getKey(), nested.getValue())) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
