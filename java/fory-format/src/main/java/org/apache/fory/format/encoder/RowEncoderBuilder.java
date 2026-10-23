@@ -216,8 +216,8 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
               + generatedBeanImpl.genCode()
               + code.substring(insertPoint);
     }
-    long durationUs = (System.nanoTime() - startTime) / 1000;
-    LOG.info("Generate codec for class {} take {} us", beanClass, durationUs);
+    long durationMs = (System.nanoTime() - startTime) / 1000;
+    LOG.info("Generate codec for class {} take {} us", beanClass, durationMs);
     return code;
   }
 
