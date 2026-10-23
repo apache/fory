@@ -126,7 +126,8 @@ class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
     }
     ProjectionMapCodec projection = projections.get(peerHash);
     if (projection == null) {
-      BinaryRowEncoder.skipUnknownBody(buffer, bodySize);
+      // Skip the body, so that a caller can go on to the next payload in the buffer.
+      buffer.increaseReaderIndex(bodySize);
       throw new ClassNotCompatibleException(
           String.format(
               "Map (key,value) schema is not consistent. self/peer hash are %s/%s.",

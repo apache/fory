@@ -143,7 +143,9 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
         return (T) projection.codec.fromRow(row);
       }
     }
-    skipUnknownBody(buffer, rowSize);
+    // Skip the body, so that a caller can go on to the next payload in the buffer. On a
+    // stream-backed buffer, the skip reads exactly the body from the stream.
+    buffer.increaseReaderIndex(rowSize);
     throw new ClassNotCompatibleException(
         String.format(
             "Schema is not consistent, encoder schema is %s. "
@@ -160,19 +162,6 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
   static EncoderException sizeBelowHash(final int size) {
     return new EncoderException(
         "Payload size " + size + " is less than the 8-byte schema hash at its start");
-  }
-
-  /**
-   * Skips the body of a payload whose schema hash is unknown, so that a caller can go on to the
-   * next payload in the buffer. A body that the buffer does not hold stays unread: a skip would
-   * fail with an {@link IndexOutOfBoundsException} in place of the schema mismatch, or pull bytes
-   * past the payload from the stream of a stream-backed buffer, whose {@code remaining()} counts
-   * only the bytes it already holds.
-   */
-  static void skipUnknownBody(final MemoryBuffer buffer, final int bodySize) {
-    if (bodySize <= buffer.remaining()) {
-      buffer.increaseReaderIndex(bodySize);
-    }
   }
 
   @Override

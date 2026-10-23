@@ -19,7 +19,10 @@
 
 package org.apache.fory.format.encoder;
 
+import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,6 +46,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
+import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.Assert;
@@ -1207,16 +1211,33 @@ public class SchemaEvolutionEdgeCaseTest {
     Assert.assertEquals(c.decode.apply(buffer), c.value);
   }
 
+  /**
+   * On a stream-backed buffer, the skip of an unknown payload reads exactly its body from the
+   * stream, so the next payload still decodes. The stream returns one byte per read, so the buffer
+   * holds no byte that a decode did not ask for. An array or map decode reads the element count
+   * before the buffer loads the body, so only a row decodes the next payload from such a stream.
+   */
   @Test(dataProvider = "framedCodecs")
-  public void unknownHashWithTruncatedBodyRejected(String label, FramedCodec c) {
+  public void unknownHashSkipsStreamedPayload(String label, FramedCodec c) {
     MemoryBuffer encoded = MemoryBuffer.newHeapBuffer(64);
     c.encode.accept(encoded);
-    // The buffer ends at the payload, so a size prefix one byte too large truncates the body.
-    MemoryBuffer buffer = MemoryBuffer.fromByteArray(encoded.getBytes(0, encoded.writerIndex()));
-    buffer.putInt32(0, buffer.getInt32(0) + 1);
-    buffer.putInt64(4, buffer.getInt64(4) ^ 1);
+    int next = encoded.writerIndex();
+    c.encode.accept(encoded);
+    encoded.putInt64(4, encoded.getInt64(4) ^ 1);
+    InputStream stream =
+        new FilterInputStream(
+            new ByteArrayInputStream(encoded.getBytes(0, encoded.writerIndex()))) {
+          @Override
+          public int read(byte[] b, int off, int len) throws IOException {
+            return super.read(b, off, Math.min(len, 1));
+          }
+        };
+    MemoryBuffer buffer = new ForyInputStream(stream).getBuffer();
     Assert.expectThrows(ClassNotCompatibleException.class, () -> c.decode.apply(buffer));
-    Assert.assertEquals(buffer.readerIndex(), 12);
+    Assert.assertEquals(buffer.readerIndex(), next);
+    if (c.value instanceof DefaultsV1) {
+      Assert.assertEquals(c.decode.apply(buffer), c.value);
+    }
   }
 
   @Test(dataProvider = "framedCodecs")
