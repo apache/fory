@@ -22,6 +22,7 @@ package org.apache.fory.format.type;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -52,6 +53,14 @@ import org.apache.fory.util.StringUtils;
  * <p>The hash mixes field names and nullability in addition to types, so that two schemas that
  * differ only in field order or naming are distinguishable. This is intentionally a different hash
  * from {@link DataTypes#computeSchemaHash} and is used only by versioning code paths.
+ *
+ * <p>Every hash input is language-neutral so another runtime can reproduce the same value from the
+ * same declared schema: snake_case wire names, Fory type IDs, and the shape parameters a type ID
+ * does not carry (decimal precision/scale, fixed-size binary width). The algorithm is specified in
+ * {@code docs/specification/row_format_spec.md}. Versioned schemas additionally require the
+ * canonical field order — ascending by wire name — which for Java coincides with the
+ * member-name order the generated codecs bake in; beans whose member names sort differently by
+ * wire name (literal underscores at case boundaries) are rejected at build time.
  */
 @Internal
 public final class SchemaHistory {
@@ -271,6 +280,9 @@ public final class SchemaHistory {
     // Sort by Java member name so the per-version schema matches the order
     // TypeInference.inferSchema produces (which iterates Descriptor.getDescriptors, alphabetical
     // by Java member name). Removed fields synthesize a Java name from their wire name.
+    // The canonical cross-language order is ascending by wire name; checkCanonicalOrder below
+    // verifies per version that the member-name order coincides with it, so the emitted schemas
+    // comply with the spec while staying byte-identical to the generated codec's baked order.
     all.sort((a, b) -> a.javaName.compareTo(b.javaName));
     // A field with finite [since, until) can leave two boundaries with identical field sets
     // (e.g. v1 and v4 both lack a field that lived in [v2, v4)). Collapse boundaries that
@@ -289,6 +301,7 @@ public final class SchemaHistory {
           activeEntries.add(fe);
         }
       }
+      checkCanonicalOrder(label, v, activeEntries);
       // Cross-product over each nested versioned bean *class*, not each field. A writer always
       // writes one definition of a given bean class, so every field of that class in a single
       // payload is at the same version; the off-diagonal combinations (the same class at two
@@ -847,38 +860,46 @@ public final class SchemaHistory {
 
   /**
    * Strict schema hash, used only by versioning code paths. Distinguishes schemas that differ in
-   * field name or nullability, unlike {@link DataTypes#computeSchemaHash}.
+   * field name or nullability, unlike {@link DataTypes#computeSchemaHash}. Every input is
+   * language-neutral so another runtime reproduces the value from the same declared schema: wire
+   * names as UTF-8 bytes, Fory type IDs, and the shape parameters a type ID does not carry. List
+   * and map children have positions fixed by the parent type, so only struct-owned fields mix a
+   * name. The algorithm is specified in {@code docs/specification/row_format_spec.md}; do not
+   * change it without updating the spec.
    */
   static long computeStrictSchemaHash(Schema schema) {
     long hash = FNV_OFFSET_BASIS;
-    Set<String> seen = new HashSet<>();
     for (Field field : schema.fields()) {
-      if (!seen.add(field.name())) {
-        throw new IllegalStateException("Duplicate field name in schema: " + field.name());
-      }
-      hash = hashField(hash, field);
+      hash = hashNamedField(hash, field);
     }
     return hash;
   }
 
-  private static long hashField(long hash, Field field) {
+  private static long hashNamedField(long hash, Field field) {
     hash = mix(hash, field.name());
+    return hashFieldShape(hash, field);
+  }
+
+  private static long hashFieldShape(long hash, Field field) {
     DataType type = field.type();
-    // The type's name() carries its identity including any inline width (e.g.
-    // fixedSizeBinary(N)), which is enough for every type except DecimalType, whose
-    // precision and scale are stored separately. Mix those in explicitly so two decimals of
-    // different shape don't collide.
-    hash = mix(hash, type.name());
-    if (type instanceof DataTypes.DecimalType) {
+    // The Fory type ID identifies every type except the parameterized ones: TYPE_BINARY covers
+    // both variable and fixed-size binary, so the byte width follows the ID (0 = variable), and a
+    // decimal's precision and scale are not part of its ID either.
+    hash = mix(hash, type.typeId());
+    if (type instanceof DataTypes.BinaryType) {
+      hash = mix(hash, 0);
+    } else if (type instanceof DataTypes.FixedWidthBinaryType) {
+      hash = mix(hash, type.byteWidth());
+    } else if (type instanceof DataTypes.DecimalType) {
       hash = mix(hash, ((DataTypes.DecimalType) type).precision());
       hash = mix(hash, ((DataTypes.DecimalType) type).scale());
     }
     hash = mix(hash, field.nullable() ? 1 : 0);
     if (type instanceof DataTypes.ListType) {
-      hash = hashField(hash, DataTypes.arrayElementField(field));
+      hash = hashFieldShape(hash, DataTypes.arrayElementField(field));
     } else if (type instanceof DataTypes.MapType) {
-      hash = hashField(hash, DataTypes.keyFieldForMap(field));
-      hash = hashField(hash, DataTypes.itemFieldForMap(field));
+      hash = hashFieldShape(hash, DataTypes.keyFieldForMap(field));
+      hash = hashFieldShape(hash, DataTypes.itemFieldForMap(field));
     } else if (type instanceof DataTypes.StructType) {
       // Mix the child count before recursing. Unlike list and map, whose arity is fixed by the
       // type kind, a struct has a variable number of children with no boundary marker between a
@@ -888,10 +909,67 @@ public final class SchemaHistory {
       List<Field> children = type.fields();
       hash = mix(hash, children.size());
       for (Field child : children) {
-        hash = hashField(hash, child);
+        hash = hashNamedField(hash, child);
       }
     }
     return hash;
+  }
+
+  /**
+   * Verify that {@code active} — one version's field entries, already sorted by Java member name —
+   * is also strictly ascending by wire name, the canonical cross-language order versioned schemas
+   * are defined in. The two orders agree for ordinary member names and diverge only when a literal
+   * underscore sorts against an uppercase letter; Java cannot emit the canonical order then,
+   * because the generated codec bakes member-name order, so reject the bean with rename guidance.
+   * Duplicate wire names within one version are unreachable here ({@link #validateNoNameCollision}
+   * forces their windows apart), but the strict comparison covers them all the same.
+   */
+  private static void checkCanonicalOrder(String label, int version, List<FieldEntry> active) {
+    for (int i = 1; i < active.size(); i++) {
+      FieldEntry prev = active.get(i - 1);
+      FieldEntry curr = active.get(i);
+      if (compareWireNames(prev.name, curr.name) >= 0) {
+        throw new IllegalStateException(
+            "Version "
+                + version
+                + " of "
+                + label
+                + " orders member '"
+                + prev.javaName
+                + "' (wire name '"
+                + prev.name
+                + "') before '"
+                + curr.javaName
+                + "' (wire name '"
+                + curr.name
+                + "'), but schema evolution orders fields by wire name, which requires '"
+                + curr.name
+                + "' to sort strictly after '"
+                + prev.name
+                + "'. Rename one of the members so the member-name order and the wire-name order "
+                + "agree; literal underscores next to case boundaries cause the divergence.");
+      }
+    }
+  }
+
+  /**
+   * Compare wire names by Unicode code point, equivalent to byte-wise comparison of their UTF-8
+   * encodings — the order the spec defines. {@link String#compareTo} would misorder supplementary
+   * characters against BMP characters above the surrogate range.
+   */
+  private static int compareWireNames(String a, String b) {
+    int i = 0;
+    int limit = Math.min(a.length(), b.length());
+    while (i < limit) {
+      int cpA = a.codePointAt(i);
+      int cpB = b.codePointAt(i);
+      if (cpA != cpB) {
+        return Integer.compare(cpA, cpB);
+      }
+      // Equal code points consume equal char counts, so one index serves both strings.
+      i += Character.charCount(cpA);
+    }
+    return Integer.compare(a.length(), b.length());
   }
 
   /**
@@ -910,8 +988,11 @@ public final class SchemaHistory {
   }
 
   private static long mix(long hash, String value) {
-    for (int i = 0; i < value.length(); i++) {
-      hash = mix(hash, value.charAt(i));
+    // A wire name mixes as its UTF-8 bytes followed by a zero terminator, so a runtime that
+    // stores names as raw bytes reproduces the hash without a UTF-16 round trip.
+    byte[] utf8 = value.getBytes(StandardCharsets.UTF_8);
+    for (byte b : utf8) {
+      hash = mix(hash, b & 0xFFL);
     }
     return mix(hash, 0);
   }
