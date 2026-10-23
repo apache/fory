@@ -32,9 +32,9 @@ import java.lang.annotation.Target;
  *
  * <p>{@link #removedFields()} points at a class (conventionally a nested {@code interface}) whose
  * accessor methods describe fields that have been removed from this bean but still appear on the
- * wire in older payloads. Each method's return type is the original Java type of the removed
- * field; each method must carry a {@link ForyVersion} annotation with {@code until} set, since
- * removed fields have a known end-of-life version.
+ * wire in older payloads. Each method's return type is the original Java type of the removed field;
+ * each method must carry a {@link ForyVersion} annotation with {@code until} set, since removed
+ * fields have a known end-of-life version.
  *
  * <p>Example:
  *

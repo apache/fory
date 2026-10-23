@@ -31,6 +31,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import org.apache.fory.Fory;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.CustomTypeEncoderRegistry;
@@ -70,7 +71,7 @@ public class ArrayCodecBuilder<C extends Collection<?>>
 
   Function<BinaryArrayWriter, ArrayEncoder<C>> buildWithWriter() {
     loadArrayInnerCodecs();
-    if (!schemaEvolution || !isVersionedBeanElement()) {
+    if (!schemaEvolution || !isBeanElement()) {
       final Function<BinaryArrayWriter, GeneratedArrayEncoder> generatedEncoderFactory =
           generatedEncoderFactory();
       return new Function<BinaryArrayWriter, ArrayEncoder<C>>() {
@@ -84,7 +85,12 @@ public class ArrayCodecBuilder<C extends Collection<?>>
     return buildVersionedWithWriter();
   }
 
-  private boolean isVersionedBeanElement() {
+  /**
+   * True if the element is a bean — the only case where schema evolution affects the wire format.
+   * Unversioned beans still take the evolution path so the strict-hash prefix is always present and
+   * an evolution-on consumer can detect a flag-mismatched producer cleanly.
+   */
+  private boolean isBeanElement() {
     Class<?> elementClass = getRawType(TypeUtils.getElementType(collectionType));
     // Use the same resolution context as the row-format type inference, which synthesizes
     // interface-typed bean fields. Without this, classes that contain interface members
@@ -103,15 +109,18 @@ public class ArrayCodecBuilder<C extends Collection<?>>
     SchemaHistory history = SchemaHistory.build(elementClass, schemaTransform);
     SchemaHistory.VersionedSchema current = history.current();
 
-    // Generate per-version row codec classes and per-version array codec classes.
+    // Generate per-combination row codec classes and per-combination array codec classes. The
+    // suffix encodes the outer version plus each chosen inner-bean version so that distinct
+    // cross-product entries do not collide on a single generated class.
     Map<Long, ProjectionArrayFactory> projectionFactories = new HashMap<>();
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
       if (vs == current) {
         continue;
       }
-      String suffix = "_V" + vs.version();
+      String suffix = ProjectionRouting.projectionSuffix(vs);
+      Map<Class<?>, String> nestedSuffixes = ProjectionRouting.nestedSuffixesFor(vs, codecFormat);
       Encoders.loadOrGenProjectionRowCodecClass(
-          elementClass, codecFormat, vs.schema(), vs.liveFieldNames(), suffix);
+          elementClass, codecFormat, vs.schema(), vs.liveFieldNames(), suffix, nestedSuffixes);
       Class<?> arrayClass =
           Encoders.loadOrGenProjectionArrayCodecClass(
               collectionType, TypeRef.of(elementClass), codecFormat, suffix);
@@ -131,7 +140,8 @@ public class ArrayCodecBuilder<C extends Collection<?>>
     return new Function<BinaryArrayWriter, ArrayEncoder<C>>() {
       @Override
       public ArrayEncoder<C> apply(final BinaryArrayWriter writer) {
-        Map<Long, BinaryArrayEncoder.ProjectionArrayCodec> proj = new HashMap<>();
+        LongMap<BinaryArrayEncoder.ProjectionArrayCodec> proj =
+            new LongMap<>(projectionFactories.size());
         for (Map.Entry<Long, ProjectionArrayFactory> entry : projectionFactories.entrySet()) {
           proj.put(entry.getKey(), entry.getValue().instantiate(fory));
         }

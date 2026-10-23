@@ -19,7 +19,7 @@
 
 package org.apache.fory.format.encoder;
 
-import java.util.Map;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
@@ -34,11 +34,13 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
   private final BaseBinaryRowWriter writer;
   private final boolean sizeEmbedded;
   private final long schemaHash;
+
   /**
    * Hash → (historical schema, projection codec) for older versions. {@code null} when schema
    * evolution is disabled; in that case a hash mismatch is a hard error.
    */
-  private final Map<Long, ProjectionCodec> projections;
+  private final LongMap<ProjectionCodec> projections;
+
   private final MemoryBuffer buffer = MemoryUtils.buffer(16);
 
   /**
@@ -69,7 +71,7 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
       final BaseBinaryRowWriter writer,
       final boolean sizeEmbedded,
       final long schemaHash,
-      final Map<Long, ProjectionCodec> projections) {
+      final LongMap<ProjectionCodec> projections) {
     this.schema = schema;
     this.codec = codec;
     this.writer = writer;
@@ -101,6 +103,10 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
 
   @SuppressWarnings("unchecked")
   T decode(final MemoryBuffer buffer, final int size) {
+    if (size < 8) {
+      throw new ClassNotCompatibleException(
+          "Row payload too small for an 8-byte schema hash: size=" + size);
+    }
     final long peerSchemaHash = buffer.readInt64();
     // The 8-byte hash has just been consumed; the row body occupies the remaining bytes.
     final int rowSize = size - 8;
