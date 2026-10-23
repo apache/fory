@@ -29,7 +29,6 @@ import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
-import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.TypeUtils;

@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.fory.format.type;
+package org.apache.fory.format.encoder;
 
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
@@ -34,10 +34,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import org.apache.fory.annotation.Internal;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
+import org.apache.fory.format.type.DataType;
+import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
+import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.TypeUtils;
@@ -61,13 +65,8 @@ import org.apache.fory.util.StringUtils;
  * canonical field order — ascending by wire name — which for Java coincides with the member-name
  * order the generated codecs bake in; beans whose member names sort differently by wire name
  * (literal underscores at case boundaries) are rejected at build time.
- *
- * <p>The class and its members are public only because the codec builders in {@code
- * org.apache.fory.format.encoder} use them across the package boundary. It is not a user API: users
- * declare history with {@code ForyRowVersion} and {@code ForyRowSchema}.
  */
-@Internal
-public final class SchemaHistory {
+final class SchemaHistory {
 
   /** Implicit version of a live field that carries no {@link ForyRowVersion}. */
   private static final int FIRST_VERSION = 1;
@@ -81,7 +80,7 @@ public final class SchemaHistory {
    * write one schema in the same field order when the compact sort moves no field (every field 8
    * bytes wide, for example), so only the tag keeps their hashes apart.
    */
-  public enum Format {
+  enum Format {
     STANDARD(0),
     COMPACT(1);
 
@@ -96,13 +95,13 @@ public final class SchemaHistory {
      * writes them: unchanged for the standard format, and sorted at every depth, including structs
      * in list elements and map entries, for the compact format.
      */
-    public Schema wireOrder(Schema schema) {
+    Schema wireOrder(Schema schema) {
       return this == COMPACT ? CompactBinaryRowWriter.sortSchemaDeep(schema) : schema;
     }
   }
 
   /** One entry in a {@link SchemaHistory}. */
-  public static final class VersionedSchema {
+  static final class VersionedSchema {
     private final int version;
     private final Schema schema;
     private final long strictHash;
@@ -128,15 +127,15 @@ public final class SchemaHistory {
       this.liveNestedClasses = liveNestedClasses;
     }
 
-    public int version() {
+    int version() {
       return version;
     }
 
-    public Schema schema() {
+    Schema schema() {
       return schema;
     }
 
-    public long strictHash() {
+    long strictHash() {
       return strictHash;
     }
 
@@ -145,7 +144,7 @@ public final class SchemaHistory {
      * whether a nested-bean slot embeds the current-version codec class (no suffix) or a historical
      * projection class.
      */
-    public boolean isCurrent() {
+    boolean isCurrent() {
       return current;
     }
 
@@ -153,7 +152,7 @@ public final class SchemaHistory {
      * Names of fields in this version that still have a Java member on the current bean class.
      * Other fields are read-and-discarded during projection.
      */
-    public Set<String> liveFieldNames() {
+    Set<String> liveFieldNames() {
       return liveFieldNames;
     }
 
@@ -167,7 +166,7 @@ public final class SchemaHistory {
      * every field of that class in a single payload is at the same version; the enumeration carries
      * one entry per class, and a class may back more than one field.
      */
-    public Map<Class<?>, VersionedSchema> nestedBeanSchemas() {
+    Map<Class<?>, VersionedSchema> nestedBeanSchemas() {
       return nestedBeanSchemas;
     }
 
@@ -176,7 +175,7 @@ public final class SchemaHistory {
      * through removed fields shapes the hash, but projection skips removed slots and never decodes
      * it, so it needs no codec.
      */
-    public Set<Class<?>> liveNestedClasses() {
+    Set<Class<?>> liveNestedClasses() {
       return liveNestedClasses;
     }
   }
@@ -195,7 +194,7 @@ public final class SchemaHistory {
    * per-version projection codecs may skip it with a reference identity check ({@code vs ==
    * current()}) rather than comparing hashes.
    */
-  public VersionedSchema current() {
+  VersionedSchema current() {
     return current;
   }
 
@@ -206,7 +205,7 @@ public final class SchemaHistory {
    * an earlier slot. Dispatch keys on the strict hash, so callers must not rely on positional
    * order.
    */
-  public List<VersionedSchema> versions() {
+  List<VersionedSchema> versions() {
     return versions;
   }
 
@@ -214,7 +213,7 @@ public final class SchemaHistory {
    * Build a history from the bean's annotations. The schema for each version is put in the wire
    * order of {@code format} and hashed with its tag.
    */
-  public static SchemaHistory build(Class<?> beanClass, Format format) {
+  static SchemaHistory build(Class<?> beanClass, Format format) {
     return build(beanClass, format, new HashMap<>());
   }
 
@@ -283,7 +282,7 @@ public final class SchemaHistory {
    * and an older payload restores every nested bean — on either map side — at its historical
    * layout.
    */
-  public static SchemaHistory forElement(String fieldName, TypeRef<?> elementType, Format format) {
+  static SchemaHistory forElement(String fieldName, TypeRef<?> elementType, Format format) {
     FieldEntry element =
         new FieldEntry(fieldName, fieldName, elementType, FIRST_VERSION, Integer.MAX_VALUE, true);
     // A top-level element has no enclosing bean; codec lookups behave as inferField's do at the
@@ -505,7 +504,7 @@ public final class SchemaHistory {
    * class that both reach, at any depth, at the same version. Separate builds hold separate entries
    * for one version, so this compares versions by strict hash, which is unique within a history.
    */
-  public static boolean sameClassVersions(VersionedSchema first, VersionedSchema second) {
+  static boolean sameClassVersions(VersionedSchema first, VersionedSchema second) {
     Map<Class<?>, Long> versions = new HashMap<>();
     return collectVersions(first, versions) && collectVersions(second, versions);
   }
@@ -549,7 +548,7 @@ public final class SchemaHistory {
    * #forElement}, which sites every reachable bean, so the choice here only names the codec. Do not
    * derive codec structure from it.
    */
-  public static Class<?> evolutionBean(TypeRef<?> elementType) {
+  static Class<?> evolutionBean(TypeRef<?> elementType) {
     // The descent reaches a map's key before its value, so its last bean is the value-first one.
     List<Class<?>> beans = new ArrayList<>();
     TypeInference.inferNamedField(
@@ -1012,7 +1011,7 @@ public final class SchemaHistory {
    * fields mix a name. The algorithm is specified in {@code docs/specification/row_format_spec.md};
    * do not change it without updating the spec.
    */
-  public static long computeStrictSchemaHash(Format format, Schema schema) {
+  static long computeStrictSchemaHash(Format format, Schema schema) {
     long hash = mix(FNV_OFFSET_BASIS, format.tag);
     for (Field field : schema.fields()) {
       hash = hashNamedField(hash, field);
@@ -1122,7 +1121,7 @@ public final class SchemaHistory {
    * hashing, so a map header carrying a single hash can identify a (key, value) layout combination
    * jointly. Order-sensitive: {@code combineHashes(a, b) != combineHashes(b, a)}.
    */
-  public static long combineHashes(long first, long second) {
+  static long combineHashes(long first, long second) {
     return mix(mix(FNV_OFFSET_BASIS, first), second);
   }
 

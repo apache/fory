@@ -43,7 +43,6 @@ import org.apache.fory.Fory;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
-import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.Assert;

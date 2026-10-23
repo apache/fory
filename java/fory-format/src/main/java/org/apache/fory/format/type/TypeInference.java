@@ -33,6 +33,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.format.encoder.CustomCodec;
 import org.apache.fory.format.encoder.CustomCollectionFactory;
@@ -296,14 +297,16 @@ public class TypeInference {
   }
 
   /** The branch that a descent takes at a map: its key or its value. */
-  enum MapBranch {
+  @Internal
+  public enum MapBranch {
     KEY,
     VALUE
   }
 
   /** Receives the leaves of a field-type descent; see {@link #inferNamedField}. */
+  @Internal
   @FunctionalInterface
-  interface LeafVisitor {
+  public interface LeafVisitor {
     void visit(Class<?> leafType, List<MapBranch> path);
   }
 
@@ -321,7 +324,8 @@ public class TypeInference {
    * The path lists the branch taken at each map from the field root; the descent reports nothing
    * inside a reported bean.
    */
-  static Field inferNamedField(
+  @Internal
+  public static Field inferNamedField(
       String name, TypeRef<?> typeRef, Class<?> enclosingType, LeafVisitor leaves) {
     return inferField(
         name,
@@ -336,7 +340,8 @@ public class TypeInference {
    * row-format inference uses it. Schema-evolution discovery must use the same context, or it
    * classifies a type differently from the codec that encodes it.
    */
-  static TypeResolutionContext newTypeContext() {
+  @Internal
+  public static TypeResolutionContext newTypeContext() {
     return new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
   }
 

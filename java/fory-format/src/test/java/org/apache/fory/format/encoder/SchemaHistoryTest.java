@@ -17,10 +17,10 @@
  * under the License.
  */
 
-package org.apache.fory.format.type;
+package org.apache.fory.format.encoder;
 
-import static org.apache.fory.format.type.SchemaHistory.Format.COMPACT;
-import static org.apache.fory.format.type.SchemaHistory.Format.STANDARD;
+import static org.apache.fory.format.encoder.SchemaHistory.Format.COMPACT;
+import static org.apache.fory.format.encoder.SchemaHistory.Format.STANDARD;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
@@ -30,9 +30,11 @@ import java.lang.reflect.TypeVariable;
 import java.util.Optional;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
-import org.apache.fory.format.encoder.CustomCodec;
-import org.apache.fory.format.encoder.Encoders;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
+import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
+import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.annotations.Test;
 

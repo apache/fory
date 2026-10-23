@@ -23,7 +23,6 @@ import org.apache.fory.Fory;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.Schema;
-import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.reflect.TypeRef;
 
 public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {

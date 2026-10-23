@@ -27,7 +27,6 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.type.Schema;
-import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.util.ExceptionUtils;
 

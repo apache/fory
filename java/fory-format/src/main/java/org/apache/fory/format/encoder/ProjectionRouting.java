@@ -24,7 +24,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.fory.codegen.CodeGenerator;
-import org.apache.fory.format.type.SchemaHistory;
 
 /**
  * Suffix routing shared by row/array/map projection codec generation. Each cross-product entry gets
