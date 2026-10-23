@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.function.UnaryOperator;
 import lombok.Data;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.annotation.ForyRowSchema;
@@ -1186,8 +1185,8 @@ public class SchemaEvolutionEdgeCaseTest {
     // position that also evolves, then join every (value, key) combination the way mapClassSuffix
     // does and require the joined suffixes to be distinct.
     SchemaHistory valHistory =
-        SchemaHistory.build(ValueWithKVNested.class, UnaryOperator.identity());
-    SchemaHistory keyHistory = SchemaHistory.build(KVTokenV2.class, UnaryOperator.identity());
+        SchemaHistory.build(ValueWithKVNested.class, SchemaHistory.Format.STANDARD);
+    SchemaHistory keyHistory = SchemaHistory.build(KVTokenV2.class, SchemaHistory.Format.STANDARD);
 
     Set<String> joined = new HashSet<>();
     Set<String> pairs = new HashSet<>();
@@ -1309,7 +1308,7 @@ public class SchemaEvolutionEdgeCaseTest {
                 .build()
                 .get()
                 .encode(map)),
-        0xe3a21bfb65b885f7L);
+        0xa8efad587d8a6b3bL);
     List<FramingElement> list = new ArrayList<>();
     list.add(new FramingElement());
     Assert.assertEquals(
@@ -1319,7 +1318,7 @@ public class SchemaEvolutionEdgeCaseTest {
                 .build()
                 .get()
                 .encode(list)),
-        0x04a5118c46faea29L);
+        0x66c342b5ad6942cbL);
     Assert.assertEquals(
         prefix(
             Encoders.buildArrayCodec(new TypeRef<List<FramingElement>>() {})
@@ -1328,11 +1327,62 @@ public class SchemaEvolutionEdgeCaseTest {
                 .build()
                 .get()
                 .encode(list)),
-        0x4f855bcc79d4a8c9L);
+        0x905b89131d905a88L);
   }
 
   private static long prefix(byte[] bytes) {
     return MemoryBuffer.fromByteArray(bytes).readInt64();
+  }
+
+  /** Every field is 8 bytes wide, so the compact sort keeps the standard field order. */
+  @Data
+  public static class EightByteFields {
+    private long count;
+    private String name;
+  }
+
+  /**
+   * The standard and compact formats write {@link EightByteFields} in the same field order, so only
+   * the format tag in the strict hash tells their layouts apart. A reader of either format must
+   * reject the other format's row, array, and map payloads instead of decoding wrong values.
+   */
+  @Test
+  public void formatMismatchIsRejected() {
+    EightByteFields bean = new EightByteFields();
+    bean.setCount(7);
+    bean.setName("n");
+    List<EightByteFields> list = Collections.singletonList(bean);
+    Map<String, EightByteFields> map = Collections.singletonMap("k", bean);
+    TypeRef<List<EightByteFields>> listType = new TypeRef<List<EightByteFields>>() {};
+    TypeRef<Map<String, EightByteFields>> mapType = new TypeRef<Map<String, EightByteFields>>() {};
+    for (boolean compactWriter : new boolean[] {false, true}) {
+      RowCodecBuilder<EightByteFields> rowWriter = Encoders.buildBeanCodec(EightByteFields.class);
+      RowCodecBuilder<EightByteFields> rowReader = Encoders.buildBeanCodec(EightByteFields.class);
+      ArrayCodecBuilder<List<EightByteFields>> arrayWriter = Encoders.buildArrayCodec(listType);
+      ArrayCodecBuilder<List<EightByteFields>> arrayReader = Encoders.buildArrayCodec(listType);
+      MapCodecBuilder<Map<String, EightByteFields>> mapWriter = Encoders.buildMapCodec(mapType);
+      MapCodecBuilder<Map<String, EightByteFields>> mapReader = Encoders.buildMapCodec(mapType);
+      if (compactWriter) {
+        rowWriter.compactEncoding();
+        arrayWriter.compactEncoding();
+        mapWriter.compactEncoding();
+      } else {
+        rowReader.compactEncoding();
+        arrayReader.compactEncoding();
+        mapReader.compactEncoding();
+      }
+      byte[] row = rowWriter.withSchemaEvolution().build().get().encode(bean);
+      byte[] array = arrayWriter.withSchemaEvolution().build().get().encode(list);
+      byte[] mapBytes = mapWriter.withSchemaEvolution().build().get().encode(map);
+      RowEncoder<EightByteFields> rowCodec = rowReader.withSchemaEvolution().build().get();
+      ArrayEncoder<List<EightByteFields>> arrayCodec =
+          arrayReader.withSchemaEvolution().build().get();
+      MapEncoder<Map<String, EightByteFields>> mapCodec =
+          mapReader.withSchemaEvolution().build().get();
+      Assert.expectThrows(ClassNotCompatibleException.class, () -> rowCodec.decode(row));
+      Assert.expectThrows(ClassNotCompatibleException.class, () -> arrayCodec.decode(array));
+      Assert.expectThrows(ClassNotCompatibleException.class, () -> mapCodec.decode(mapBytes));
+    }
   }
 
   @Data
@@ -1365,7 +1415,7 @@ public class SchemaEvolutionEdgeCaseTest {
             .build()
             .get()
             .encode(new CompactOrderRow());
-    Assert.assertEquals(prefix(bytes), 0xc4ea6b794482924bL);
+    Assert.assertEquals(prefix(bytes), 0xa6ca2310859be6e6L);
   }
 
   @Test
@@ -2077,12 +2127,12 @@ public class SchemaEvolutionEdgeCaseTest {
   @Test
   public void schemaHistoryCurrentReflectsCurrentInnerVersions() {
     SchemaHistory history =
-        SchemaHistory.build(CrossOuterV2_InnerV2.class, UnaryOperator.identity());
+        SchemaHistory.build(CrossOuterV2_InnerV2.class, SchemaHistory.Format.STANDARD);
     SchemaHistory.VersionedSchema current = history.current();
     Assert.assertTrue(current.isCurrent(), "history.current() must be marked current");
     for (Map.Entry<Class<?>, SchemaHistory.VersionedSchema> e :
         current.nestedBeanSchemas().entrySet()) {
-      SchemaHistory innerHistory = SchemaHistory.build(e.getKey(), UnaryOperator.identity());
+      SchemaHistory innerHistory = SchemaHistory.build(e.getKey(), SchemaHistory.Format.STANDARD);
       Assert.assertTrue(
           e.getValue().isCurrent(),
           "current().nestedBeanSchemas() must report inner " + e.getKey() + " at its current");

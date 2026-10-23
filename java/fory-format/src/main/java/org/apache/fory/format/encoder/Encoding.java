@@ -28,6 +28,7 @@ import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.type.Field;
 import org.apache.fory.format.type.Schema;
+import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
 
@@ -98,10 +99,10 @@ interface Encoding {
   RowFactory newRowFactory(Schema schema);
 
   /**
-   * Return {@code schema} with the fields of every struct, at any depth, in the order this format
-   * writes them. Schema evolution hashes historical schemas in this order.
+   * The row format that schema evolution builds histories for: it orders the fields of historical
+   * schemas the way this format writes them, and tags their strict hashes.
    */
-  Schema wireOrderSchema(Schema schema);
+  SchemaHistory.Format historyFormat();
 
   BinaryArray newArray(Field field);
 

@@ -30,6 +30,7 @@ import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.type.Field;
 import org.apache.fory.format.type.Schema;
+import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
 
@@ -110,8 +111,8 @@ enum DefaultCodecFormat implements Encoding {
   }
 
   @Override
-  public Schema wireOrderSchema(final Schema schema) {
-    return schema;
+  public SchemaHistory.Format historyFormat() {
+    return SchemaHistory.Format.STANDARD;
   }
 
   @Override

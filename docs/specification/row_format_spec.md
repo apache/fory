@@ -419,17 +419,21 @@ and limitations.
 
 ### Strict Schema Hash
 
-The strict hash distinguishes layouts that differ in field name or nullability, unlike the
-default schema hash, which mixes only type IDs. All inputs are language-neutral.
+The strict hash distinguishes layouts that differ in row format, field name, or nullability,
+unlike the default schema hash, which mixes only type IDs. All inputs are language-neutral.
 
 - State: an unsigned 64-bit accumulator `h`, seeded with the FNV-1a offset basis
   `0xcbf29ce484222325`. Each input value `v` (one unsigned 64-bit integer) mixes as
   `h = (h XOR v) * 0x100000001b3 mod 2^64` (the FNV-1a prime). A negative input (a negative
   decimal scale) mixes as its 64-bit two's-complement value.
+- The first value mixed after the seed is the format tag: `0` for the standard format and `1` for
+  the compact format. The two formats write a layout in the same field order when the compact sort
+  moves no field (for example, when every field is 8 bytes wide), so without the tag a reader of
+  one format would accept a payload of the other and decode wrong values.
 - The hash covers fields in the order they are on the wire, at every depth: canonical wire-name
   order for the standard format, and the compact sort order above for the compact format,
-  including for structs in list elements and map entries. The hash of a layout folds its
-  top-level fields in that order, each as a named field.
+  including for structs in list elements and map entries. The hash of a layout mixes the format
+  tag, then folds its top-level fields in that order, each as a named field.
 - A named field mixes: each byte of the wire name's UTF-8 encoding, then one `0` terminator,
   then the field's shape.
 - A field's shape mixes, in order:
@@ -447,25 +451,27 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
   `binary` 41.
 - The hash is 64 bits, so an implementation must reject, when the codec is built, two distinct
   layouts in one history that hash to the same value.
-- Known-answer vectors for the strict hash (`n` is nullable, `nn` is not nullable):
+- Known-answer vectors for the strict hash in the standard format, except where a row names the
+  compact format (`n` is nullable, `nn` is not nullable):
 
   | Layout                                                   | Strict hash          |
   | -------------------------------------------------------- | -------------------- |
-  | `id: int32 nn`                                           | `0x52d9543baa314ae4` |
-  | `name: string n`                                         | `0x45812bbf5f4c920c` |
-  | `größe: int64 nn`                                        | `0xe2e70ce928534aa8` |
-  | `amount: decimal(10, 2) nn`                              | `0xf0751e7a96d89543` |
-  | `amount: decimal(38, -3) nn`                             | `0x926657849144c230` |
-  | `blob: binary n, digest: binary(4) nn`                   | `0x0c01130d4045d1b9` |
-  | `tags: list<string n> n`                                 | `0x7cd563d52d484c3f` |
-  | `counts: map<string nn, int32 n> n`                      | `0xdaae30bf1bd9077a` |
-  | `point: struct<x: int32 nn, y: int32 nn> n, z: int64 nn` | `0x0ce5f71e89c02b76` |
-  | `combine(0x52d9543baa314ae4, 0x45812bbf5f4c920c)`        | `0x812fec70da48114d` |
+  | `id: int32 nn`                                           | `0x506a3242a9f93ae2` |
+  | `id: int32 nn`, compact format                           | `0xb7db30d6e6593b2f` |
+  | `name: string n`                                         | `0x4bd0d984e7109ef6` |
+  | `größe: int64 nn`                                        | `0xe5fcaf6a66d32a0e` |
+  | `amount: decimal(10, 2) nn`                              | `0x2ef05b2b90e987a9` |
+  | `amount: decimal(38, -3) nn`                             | `0x7e49dad4d1337a8a` |
+  | `blob: binary n, digest: binary(4) nn`                   | `0xca28ad1d8bf595e7` |
+  | `tags: list<string n> n`                                 | `0x55f88fd672e92ea9` |
+  | `counts: map<string nn, int32 n> n`                      | `0x570b6dadf84868c8` |
+  | `point: struct<x: int32 nn, y: int32 nn> n, z: int64 nn` | `0x793051ee66a15234` |
+  | `combine(0x506a3242a9f93ae2, 0x4bd0d984e7109ef6)`        | `0x11ce9d3600e26f89` |
 
   In the compact format, the layout with the fields `code: string n`, `flag: bool nn`,
   `id: int64 nn`, `stats: struct<count: int32 nn, total: int64 nn> n`, and `version: int16 nn`
   hashes in the order `code`, `id`, `version`, `stats` (children `total`, `count`), `flag`. Its
-  strict hash is `0xc4ea6b794482924b`.
+  strict hash is `0xa6ca2310859be6e6`.
 
 ### Framing and Dispatch
 
@@ -494,9 +500,9 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
 
   | Payload                                              | Prefix               |
   | ---------------------------------------------------- | -------------------- |
-  | map, key `string nn`, value `int32 n`                | `0xe3a21bfb65b885f7` |
-  | array of `struct<narrow: int8 nn, wide: int64 nn> n` | `0x04a5118c46faea29` |
-  | the same array, compact format                       | `0x4f855bcc79d4a8c9` |
+  | map, key `string nn`, value `int32 n`                | `0xa8efad587d8a6b3b` |
+  | array of `struct<narrow: int8 nn, wide: int64 nn> n` | `0x66c342b5ad6942cb` |
+  | the same array, compact format                       | `0x905b89131d905a88` |
 
 - Whether evolution is enabled is agreed out of band. Array and map payloads written without
   evolution have no header, so an evolution-off consumer cannot detect the prefix of an

@@ -34,10 +34,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.function.UnaryOperator;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
+import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.TypeUtils;
@@ -48,9 +48,11 @@ import org.apache.fory.util.StringUtils;
  * a particular version, along with a strict hash that uniquely identifies the historical layout.
  * Only used when {@code withSchemaEvolution()} is configured on the codec builder.
  *
- * <p>The hash mixes field names and nullability in addition to types, so that two schemas that
- * differ only in field order or naming are distinguishable. This is intentionally a different hash
- * from {@link DataTypes#computeSchemaHash} and is used only by versioning code paths.
+ * <p>The hash mixes the row format, field names, and nullability in addition to types, so that two
+ * schemas that differ only in field order or naming are distinguishable, and a reader of one format
+ * rejects a payload of the other even when both formats write the same field order. This is
+ * intentionally a different hash from {@link DataTypes#computeSchemaHash} and is used only by
+ * versioning code paths.
  *
  * <p>Every hash input is language-neutral so another runtime can reproduce the same value from the
  * same declared schema: snake_case wire names, Fory type IDs, and the shape parameters a type ID
@@ -72,6 +74,32 @@ public final class SchemaHistory {
 
   /** FNV-1a 64-bit offset basis, the seed for every strict-hash mix in this class. */
   private static final long FNV_OFFSET_BASIS = 0xcbf29ce484222325L;
+
+  /**
+   * A row format as schema evolution sees it: the tag that every strict hash mixes first, and the
+   * order in which the format writes the fields of each struct. The standard and compact formats
+   * write one schema in the same field order when the compact sort moves no field (every field 8
+   * bytes wide, for example), so only the tag keeps their hashes apart.
+   */
+  public enum Format {
+    STANDARD(0),
+    COMPACT(1);
+
+    private final long tag;
+
+    Format(long tag) {
+      this.tag = tag;
+    }
+
+    /**
+     * Return {@code schema} with the fields of every struct, at any depth, in the order this format
+     * writes them: unchanged for the standard format, and sorted at every depth, including structs
+     * in list elements and map entries, for the compact format.
+     */
+    public Schema wireOrder(Schema schema) {
+      return this == COMPACT ? CompactBinaryRowWriter.sortSchemaDeep(schema) : schema;
+    }
+  }
 
   /** One entry in a {@link SchemaHistory}. */
   public static final class VersionedSchema {
@@ -183,24 +211,21 @@ public final class SchemaHistory {
   }
 
   /**
-   * Build a history from the bean's annotations. The schema for each version is transformed by
-   * {@code schemaTransform} after filtering; pass an identity for standard format, or {@code
-   * CompactBinaryRowWriter::sortSchemaDeep} for compact format.
+   * Build a history from the bean's annotations. The schema for each version is put in the wire
+   * order of {@code format} and hashed with its tag.
    */
-  public static SchemaHistory build(Class<?> beanClass, UnaryOperator<Schema> schemaTransform) {
-    return build(beanClass, schemaTransform, new HashMap<>());
+  public static SchemaHistory build(Class<?> beanClass, Format format) {
+    return build(beanClass, format, new HashMap<>());
   }
 
   /**
    * Build a history, reusing {@code built} for any bean class already enumerated in this build, so
    * a bean reached through several field paths (a diamond in the type graph, or two fields of the
    * same type) is enumerated once rather than once per path. The memo is per top-level build, not
-   * static: the transform (standard vs compact) and registry state must not leak across builds.
+   * static: the format (standard vs compact) and registry state must not leak across builds.
    */
   private static SchemaHistory build(
-      Class<?> beanClass,
-      UnaryOperator<Schema> schemaTransform,
-      Map<Class<?>, SchemaHistory> built) {
+      Class<?> beanClass, Format format, Map<Class<?>, SchemaHistory> built) {
     if (built.containsKey(beanClass)) {
       SchemaHistory memoized = built.get(beanClass);
       // A null memo entry marks a build in progress: this bean's history reaches back to itself,
@@ -240,11 +265,11 @@ public final class SchemaHistory {
     // constructor. Removed fields never pass through inferSchema, so a cycle reachable only through
     // a removed-field declaration is caught by the in-progress memo entry above instead.
     for (FieldEntry fe : all) {
-      inferEntry(beanClass, fe, schemaTransform, built);
+      inferEntry(beanClass, fe, format, built);
     }
 
-    validateNoNameCollision(beanClass, all);
-    SchemaHistory history = enumerate(beanClass.getName(), all, schemaTransform);
+    validateNoNameCollision(beanClass, all, format);
+    SchemaHistory history = enumerate(beanClass.getName(), all, format);
     built.put(beanClass, history);
     return history;
   }
@@ -258,16 +283,15 @@ public final class SchemaHistory {
    * and an older payload restores every nested bean — on either map side — at its historical
    * layout.
    */
-  public static SchemaHistory forElement(
-      String fieldName, TypeRef<?> elementType, UnaryOperator<Schema> schemaTransform) {
+  public static SchemaHistory forElement(String fieldName, TypeRef<?> elementType, Format format) {
     FieldEntry element =
         new FieldEntry(fieldName, fieldName, elementType, FIRST_VERSION, Integer.MAX_VALUE, true);
     // A top-level element has no enclosing bean; codec lookups behave as inferField's do at the
     // top level, where only globally-registered (enclosing-agnostic) codecs can match.
-    inferEntry(void.class, element, schemaTransform, new HashMap<>());
+    inferEntry(void.class, element, format, new HashMap<>());
     List<FieldEntry> all = new ArrayList<>(1);
     all.add(element);
-    return enumerate("element " + elementType, all, schemaTransform);
+    return enumerate("element " + elementType, all, format);
   }
 
   /**
@@ -275,8 +299,7 @@ public final class SchemaHistory {
    * cross-product of nested bean versions, returning a {@link SchemaHistory}. {@code label} names
    * the owner for collision diagnostics. Each entry's field is already inferred.
    */
-  private static SchemaHistory enumerate(
-      String label, List<FieldEntry> all, UnaryOperator<Schema> schemaTransform) {
+  private static SchemaHistory enumerate(String label, List<FieldEntry> all, Format format) {
     // Materialize a schema at every version V where the field set changes — both "since" and
     // "until" boundaries qualify, because either adds or removes a field from the active set.
     // FIRST_VERSION is always materialized even when every field declares since >= 2: a payload
@@ -379,8 +402,8 @@ public final class SchemaHistory {
             liveNames.add(fe.name);
           }
         }
-        Schema schema = schemaTransform.apply(new Schema(fields));
-        long hash = computeStrictSchemaHash(schema);
+        Schema schema = format.wireOrder(new Schema(fields));
+        long hash = computeStrictSchemaHash(format, schema);
         Schema previousSchema = hashToSchema.putIfAbsent(hash, schema);
         if (previousSchema != null && !previousSchema.equals(schema)) {
           throw new IllegalStateException(
@@ -602,10 +625,7 @@ public final class SchemaHistory {
    * inference path.
    */
   private static void inferEntry(
-      Class<?> enclosing,
-      FieldEntry fe,
-      UnaryOperator<Schema> schemaTransform,
-      Map<Class<?>, SchemaHistory> built) {
+      Class<?> enclosing, FieldEntry fe, Format format, Map<Class<?>, SchemaHistory> built) {
     fe.field =
         TypeInference.inferNamedField(
             fe.name,
@@ -621,7 +641,7 @@ public final class SchemaHistory {
               // own fields are stable but whose detail field evolves). build() already expands that
               // nested cross-product, so its version count is the exact evolution test; a
               // single-version history means nothing here evolves and the site needs no projection.
-              SchemaHistory history = build(leafType, schemaTransform, built);
+              SchemaHistory history = build(leafType, format, built);
               if (history.versions().size() > 1) {
                 fe.nestedSites.add(new NestedSite(leafType, history, path));
               }
@@ -871,7 +891,8 @@ public final class SchemaHistory {
     }
   }
 
-  private static void validateNoNameCollision(Class<?> beanClass, List<FieldEntry> entries) {
+  private static void validateNoNameCollision(
+      Class<?> beanClass, List<FieldEntry> entries, Format format) {
     // For each pair with the same name, their [since, until) windows must not overlap.
     Map<String, List<FieldEntry>> byName = new HashMap<>();
     for (FieldEntry fe : entries) {
@@ -903,7 +924,7 @@ public final class SchemaHistory {
                   + "windows disjoint.");
         }
       }
-      validateNoTypeChange(beanClass, e.getKey(), group);
+      validateNoTypeChange(beanClass, e.getKey(), group, format);
     }
   }
 
@@ -916,7 +937,7 @@ public final class SchemaHistory {
    * and the reader discards the old value.
    */
   private static void validateNoTypeChange(
-      Class<?> beanClass, String name, List<FieldEntry> group) {
+      Class<?> beanClass, String name, List<FieldEntry> group, Format format) {
     FieldEntry live = null;
     for (FieldEntry fe : group) {
       if (fe.live) {
@@ -926,13 +947,14 @@ public final class SchemaHistory {
     if (live == null) {
       return;
     }
-    long liveHash = computeStrictSchemaHash(DataTypes.schema(live.field));
+    long liveHash = computeStrictSchemaHash(format, DataTypes.schema(live.field));
     for (FieldEntry fe : group) {
       if (fe.live || fe.typeRef.equals(live.typeRef)) {
         continue;
       }
       boolean reachesVersionedBean = !fe.nestedSites.isEmpty() || !live.nestedSites.isEmpty();
-      if (reachesVersionedBean || computeStrictSchemaHash(DataTypes.schema(fe.field)) == liveHash) {
+      if (reachesVersionedBean
+          || computeStrictSchemaHash(format, DataTypes.schema(fe.field)) == liveHash) {
         throw new IllegalStateException(
             "Field '"
                 + name
@@ -949,16 +971,17 @@ public final class SchemaHistory {
   }
 
   /**
-   * Strict schema hash, used only by versioning code paths. Distinguishes schemas that differ in
-   * field name or nullability, unlike {@link DataTypes#computeSchemaHash}. Every input is
-   * language-neutral so another runtime reproduces the value from the same declared schema: wire
-   * names as UTF-8 bytes, Fory type IDs, and the shape parameters a type ID does not carry. List
-   * and map children have positions fixed by the parent type, so only struct-owned fields mix a
-   * name. The algorithm is specified in {@code docs/specification/row_format_spec.md}; do not
-   * change it without updating the spec.
+   * Strict schema hash of {@code schema}, whose fields are already in the wire order of {@code
+   * format}; used only by versioning code paths. Distinguishes schemas that differ in row format,
+   * field name, or nullability, unlike {@link DataTypes#computeSchemaHash}. Every input is
+   * language-neutral so another runtime reproduces the value from the same declared schema: the
+   * format tag, wire names as UTF-8 bytes, Fory type IDs, and the shape parameters a type ID does
+   * not carry. List and map children have positions fixed by the parent type, so only struct-owned
+   * fields mix a name. The algorithm is specified in {@code docs/specification/row_format_spec.md};
+   * do not change it without updating the spec.
    */
-  public static long computeStrictSchemaHash(Schema schema) {
-    long hash = FNV_OFFSET_BASIS;
+  public static long computeStrictSchemaHash(Format format, Schema schema) {
+    long hash = mix(FNV_OFFSET_BASIS, format.tag);
     for (Field field : schema.fields()) {
       hash = hashNamedField(hash, field);
     }

@@ -86,9 +86,10 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
    * history's inferred field does not carry. A position without a bean still hashes its type, so a
    * change to it changes the map hash.
    */
-  private static long positionHash(SchemaHistory.VersionedSchema positionVs, Field wireField) {
+  private long positionHash(SchemaHistory.VersionedSchema positionVs, Field wireField) {
     Field position = DataTypes.fieldOfSchema(positionVs.schema(), 0);
     return SchemaHistory.computeStrictSchemaHash(
+        codecFormat.historyFormat(),
         DataTypes.schema(DataTypes.field(position.name(), position.type(), wireField.nullable())));
   }
 

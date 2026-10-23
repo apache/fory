@@ -19,6 +19,8 @@
 
 package org.apache.fory.format.type;
 
+import static org.apache.fory.format.type.SchemaHistory.Format.COMPACT;
+import static org.apache.fory.format.type.SchemaHistory.Format.STANDARD;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
@@ -26,7 +28,6 @@ import static org.testng.Assert.expectThrows;
 
 import java.lang.reflect.TypeVariable;
 import java.util.Optional;
-import java.util.function.UnaryOperator;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
@@ -50,8 +51,8 @@ public class SchemaHistoryTest {
         DataTypes.schema(DataTypes.field("a", DataTypes.struct(field("x"), field("b")), false));
 
     assertNotEquals(
-        SchemaHistory.computeStrictSchemaHash(fieldOutsideStruct),
-        SchemaHistory.computeStrictSchemaHash(fieldInsideStruct));
+        SchemaHistory.computeStrictSchemaHash(STANDARD, fieldOutsideStruct),
+        SchemaHistory.computeStrictSchemaHash(STANDARD, fieldInsideStruct));
   }
 
   /**
@@ -66,8 +67,8 @@ public class SchemaHistoryTest {
         DataTypes.schema(DataTypes.field("a", DataTypes.struct(field("b")), false));
 
     assertNotEquals(
-        SchemaHistory.computeStrictSchemaHash(emptyThenSibling),
-        SchemaHistory.computeStrictSchemaHash(siblingInsideStruct));
+        SchemaHistory.computeStrictSchemaHash(STANDARD, emptyThenSibling),
+        SchemaHistory.computeStrictSchemaHash(STANDARD, siblingInsideStruct));
   }
 
   /**
@@ -77,9 +78,11 @@ public class SchemaHistoryTest {
   public void identicalNestedStructsHashEqual() {
     assertEquals(
         SchemaHistory.computeStrictSchemaHash(
+            STANDARD,
             DataTypes.schema(
                 DataTypes.field("a", DataTypes.struct(field("x"), field("b")), false))),
         SchemaHistory.computeStrictSchemaHash(
+            STANDARD,
             DataTypes.schema(
                 DataTypes.field("a", DataTypes.struct(field("x"), field("b")), false))));
   }
@@ -94,13 +97,13 @@ public class SchemaHistoryTest {
   public void decimalPrecisionAndScaleDoNotCollide() {
     long p10s2 =
         SchemaHistory.computeStrictSchemaHash(
-            DataTypes.schema(DataTypes.field("a", DataTypes.decimal(10, 2), false)));
+            STANDARD, DataTypes.schema(DataTypes.field("a", DataTypes.decimal(10, 2), false)));
     long p20s2 =
         SchemaHistory.computeStrictSchemaHash(
-            DataTypes.schema(DataTypes.field("a", DataTypes.decimal(20, 2), false)));
+            STANDARD, DataTypes.schema(DataTypes.field("a", DataTypes.decimal(20, 2), false)));
     long p10s4 =
         SchemaHistory.computeStrictSchemaHash(
-            DataTypes.schema(DataTypes.field("a", DataTypes.decimal(10, 4), false)));
+            STANDARD, DataTypes.schema(DataTypes.field("a", DataTypes.decimal(10, 4), false)));
     assertNotEquals(p10s2, p20s2);
     assertNotEquals(p10s2, p10s4);
     assertNotEquals(p20s2, p10s4);
@@ -116,19 +119,20 @@ public class SchemaHistoryTest {
   public void binaryWidthDoesNotCollide() {
     long variable =
         SchemaHistory.computeStrictSchemaHash(
-            DataTypes.schema(DataTypes.field("a", DataTypes.binary(), false)));
+            STANDARD, DataTypes.schema(DataTypes.field("a", DataTypes.binary(), false)));
     long fixed4 =
         SchemaHistory.computeStrictSchemaHash(
-            DataTypes.schema(DataTypes.field("a", DataTypes.fixedWidthBinary(4), false)));
+            STANDARD, DataTypes.schema(DataTypes.field("a", DataTypes.fixedWidthBinary(4), false)));
     long fixed8 =
         SchemaHistory.computeStrictSchemaHash(
-            DataTypes.schema(DataTypes.field("a", DataTypes.fixedWidthBinary(8), false)));
+            STANDARD, DataTypes.schema(DataTypes.field("a", DataTypes.fixedWidthBinary(8), false)));
     assertNotEquals(variable, fixed4);
     assertNotEquals(variable, fixed8);
     assertNotEquals(fixed4, fixed8);
     assertEquals(
         fixed4,
         SchemaHistory.computeStrictSchemaHash(
+            STANDARD,
             DataTypes.schema(DataTypes.field("a", DataTypes.fixedWidthBinary(4), false))));
   }
 
@@ -144,7 +148,7 @@ public class SchemaHistoryTest {
     IllegalStateException e =
         expectThrows(
             IllegalStateException.class,
-            () -> SchemaHistory.build(DivergentNameOrder.class, UnaryOperator.identity()));
+            () -> SchemaHistory.build(DivergentNameOrder.class, STANDARD));
     assertTrue(e.getMessage().contains("wire name"), e.getMessage());
   }
 
@@ -158,7 +162,7 @@ public class SchemaHistoryTest {
     IllegalStateException e =
         expectThrows(
             IllegalStateException.class,
-            () -> SchemaHistory.build(DivergentNestedHolder.class, UnaryOperator.identity()));
+            () -> SchemaHistory.build(DivergentNestedHolder.class, STANDARD));
     assertTrue(e.getMessage().contains("wire name"), e.getMessage());
   }
 
@@ -181,9 +185,9 @@ public class SchemaHistoryTest {
   public void identicalDecimalsHashEqual() {
     assertEquals(
         SchemaHistory.computeStrictSchemaHash(
-            DataTypes.schema(DataTypes.field("a", DataTypes.decimal(10, 2), false))),
+            STANDARD, DataTypes.schema(DataTypes.field("a", DataTypes.decimal(10, 2), false))),
         SchemaHistory.computeStrictSchemaHash(
-            DataTypes.schema(DataTypes.field("a", DataTypes.decimal(10, 2), false))));
+            STANDARD, DataTypes.schema(DataTypes.field("a", DataTypes.decimal(10, 2), false))));
   }
 
   /**
@@ -237,7 +241,7 @@ public class SchemaHistoryTest {
           OutOfOrderFields.class, NestedHolder.class, CollectionHolder.class, EvolvingBean.class
         }) {
       assertEquals(
-          SchemaHistory.build(bean, UnaryOperator.identity()).current().schema(),
+          SchemaHistory.build(bean, STANDARD).current().schema(),
           TypeInference.inferSchema(bean),
           "current() schema diverged from inferSchema for " + bean.getSimpleName());
     }
@@ -255,8 +259,7 @@ public class SchemaHistoryTest {
           OutOfOrderFields.class, NestedHolder.class, CollectionHolder.class, EvolvingBean.class
         }) {
       Schema inferred = TypeInference.inferSchema(bean);
-      Schema history =
-          SchemaHistory.build(bean, CompactBinaryRowWriter::sortSchemaDeep).current().schema();
+      Schema history = SchemaHistory.build(bean, COMPACT).current().schema();
       assertEquals(history, CompactBinaryRowWriter.sortSchemaDeep(inferred), bean.getSimpleName());
       Schema codecOrder = CompactBinaryRowWriter.sortSchema(inferred);
       for (int i = 0; i < history.numFields(); i++) {
@@ -301,9 +304,8 @@ public class SchemaHistoryTest {
    */
   @Test
   public void compactHashFollowsWireOrderInsideCollections() {
-    UnaryOperator<Schema> compact = CompactBinaryRowWriter::sortSchemaDeep;
-    SchemaHistory plain = SchemaHistory.build(PlainCollectionHolder.class, compact);
-    SchemaHistory versioned = SchemaHistory.build(VersionedCollectionHolder.class, compact);
+    SchemaHistory plain = SchemaHistory.build(PlainCollectionHolder.class, COMPACT);
+    SchemaHistory versioned = SchemaHistory.build(VersionedCollectionHolder.class, COMPACT);
     assertEquals(plain.current().strictHash(), versioned.current().strictHash());
 
     DataTypes.ListType items =
@@ -351,27 +353,31 @@ public class SchemaHistoryTest {
    */
   @Test
   public void strictHashKnownAnswers() {
-    assertEquals(hash(DataTypes.notNullField("id", DataTypes.int32())), 0x52d9543baa314ae4L);
-    assertEquals(hash(DataTypes.field("name", DataTypes.utf8(), true)), 0x45812bbf5f4c920cL);
+    assertEquals(hash(DataTypes.notNullField("id", DataTypes.int32())), 0x506a3242a9f93ae2L);
     assertEquals(
-        hash(DataTypes.notNullField("gr\u00f6\u00dfe", DataTypes.int64())), 0xe2e70ce928534aa8L);
+        SchemaHistory.computeStrictSchemaHash(
+            COMPACT, DataTypes.schema(DataTypes.notNullField("id", DataTypes.int32()))),
+        0xb7db30d6e6593b2fL);
+    assertEquals(hash(DataTypes.field("name", DataTypes.utf8(), true)), 0x4bd0d984e7109ef6L);
     assertEquals(
-        hash(DataTypes.notNullField("amount", DataTypes.decimal(10, 2))), 0xf0751e7a96d89543L);
+        hash(DataTypes.notNullField("gr\u00f6\u00dfe", DataTypes.int64())), 0xe5fcaf6a66d32a0eL);
     assertEquals(
-        hash(DataTypes.notNullField("amount", DataTypes.decimal(38, -3))), 0x926657849144c230L);
+        hash(DataTypes.notNullField("amount", DataTypes.decimal(10, 2))), 0x2ef05b2b90e987a9L);
+    assertEquals(
+        hash(DataTypes.notNullField("amount", DataTypes.decimal(38, -3))), 0x7e49dad4d1337a8aL);
     assertEquals(
         hash(
             DataTypes.field("blob", DataTypes.binary(), true),
             DataTypes.notNullField("digest", DataTypes.fixedWidthBinary(4))),
-        0x0c01130d4045d1b9L);
+        0xca28ad1d8bf595e7L);
     assertEquals(
         hash(
             DataTypes.arrayField(
                 "tags", DataTypes.field(DataTypes.ARRAY_ITEM_NAME, DataTypes.utf8(), true))),
-        0x7cd563d52d484c3fL);
+        0x55f88fd672e92ea9L);
     assertEquals(
         hash(DataTypes.mapField("counts", DataTypes.utf8(), DataTypes.int32())),
-        0xdaae30bf1bd9077aL);
+        0x570b6dadf84868c8L);
     assertEquals(
         hash(
             DataTypes.field(
@@ -381,9 +387,9 @@ public class SchemaHistoryTest {
                     DataTypes.notNullField("y", DataTypes.int32())),
                 true),
             DataTypes.notNullField("z", DataTypes.int64())),
-        0x0ce5f71e89c02b76L);
+        0x793051ee66a15234L);
     assertEquals(
-        SchemaHistory.combineHashes(0x52d9543baa314ae4L, 0x45812bbf5f4c920cL), 0x812fec70da48114dL);
+        SchemaHistory.combineHashes(0x506a3242a9f93ae2L, 0x4bd0d984e7109ef6L), 0x11ce9d3600e26f89L);
   }
 
   /**
@@ -393,7 +399,7 @@ public class SchemaHistoryTest {
    */
   @Test
   public void sharedNestedClassHasOneVersionPerCombination() {
-    SchemaHistory history = SchemaHistory.build(SharedOuter.class, UnaryOperator.identity());
+    SchemaHistory history = SchemaHistory.build(SharedOuter.class, STANDARD);
     assertEquals(history.versions().size(), 4);
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
       SchemaHistory.VersionedSchema shared = vs.nestedBeanSchemas().get(SharedLeaf.class);
@@ -432,7 +438,7 @@ public class SchemaHistoryTest {
    */
   @Test
   public void collapsedVersionsKeepReaddedFieldLive() {
-    SchemaHistory history = SchemaHistory.build(ReaddedField.class, UnaryOperator.identity());
+    SchemaHistory history = SchemaHistory.build(ReaddedField.class, STANDARD);
     assertEquals(history.versions().size(), 2);
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
       assertTrue(vs.liveFieldNames().contains("x"), "x not live in " + vs.schema());
@@ -454,7 +460,7 @@ public class SchemaHistoryTest {
   }
 
   private static long hash(Field... fields) {
-    return SchemaHistory.computeStrictSchemaHash(DataTypes.schema(fields));
+    return SchemaHistory.computeStrictSchemaHash(STANDARD, DataTypes.schema(fields));
   }
 
   private static Field field(String name) {

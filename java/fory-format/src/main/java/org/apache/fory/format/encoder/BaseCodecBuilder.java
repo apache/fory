@@ -100,10 +100,11 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    * Build the schema history for {@code targetClass} under the active codec format. The compact
    * format sorts the fields of every struct, including structs in list elements and map entries, so
    * historical schemas are sorted the same way: the strict hash then covers the fields in wire
-   * order. The default format passes schemas through unchanged.
+   * order. The default format passes schemas through unchanged. Each format tags its hashes, so a
+   * reader rejects a payload written in the other format.
    */
   SchemaHistory buildSchemaHistory(final Class<?> targetClass) {
-    return SchemaHistory.build(targetClass, codecFormat::wireOrderSchema);
+    return SchemaHistory.build(targetClass, codecFormat.historyFormat());
   }
 
   /**
@@ -114,7 +115,7 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    * than one distinct versioned bean class evolve every one of them.
    */
   SchemaHistory buildElementSchemaHistory(final String fieldName, final TypeRef<?> elementType) {
-    return SchemaHistory.forElement(fieldName, elementType, codecFormat::wireOrderSchema);
+    return SchemaHistory.forElement(fieldName, elementType, codecFormat.historyFormat());
   }
 
   @SuppressWarnings("unchecked")

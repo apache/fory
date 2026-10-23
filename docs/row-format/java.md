@@ -382,7 +382,8 @@ peer fails loudly with `ClassNotCompatibleException`. Arrays and maps prepend an
 under evolution (the strict hash for an array, the combined key and value hash for a map) and no
 prefix otherwise; an evolution-on consumer
 reading evolution-off bytes also fails, but the reverse direction (evolution-off consumer,
-evolution-on bytes) is undefined.
+evolution-on bytes) is undefined. With evolution on, the hash also identifies the row format, so a
+compact consumer rejects standard payloads with `ClassNotCompatibleException`, and the reverse.
 
 Only `encode` and `decode` write and check the hash. `toRow`, `fromRow`, `toArray`, `fromArray`,
 `toMap`, and `fromMap` always use the current schema, and the bytes of a `BinaryRow` hold no hash.

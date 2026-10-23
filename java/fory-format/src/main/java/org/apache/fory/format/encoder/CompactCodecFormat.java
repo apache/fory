@@ -33,6 +33,7 @@ import org.apache.fory.format.row.binary.writer.CompactBinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.Field;
 import org.apache.fory.format.type.Schema;
+import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
 
@@ -116,8 +117,8 @@ enum CompactCodecFormat implements Encoding {
   }
 
   @Override
-  public Schema wireOrderSchema(final Schema schema) {
-    return CompactBinaryRowWriter.sortSchemaDeep(schema);
+  public SchemaHistory.Format historyFormat() {
+    return SchemaHistory.Format.COMPACT;
   }
 
   @Override

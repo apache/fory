@@ -89,7 +89,8 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     final Schema currentSchema = currentVersion.schema();
     // The history rebuilds the current schema from the bean's annotations; it must describe the
     // layout that inference gives the bean, or the writer would drop or misplace fields.
-    if (SchemaHistory.computeStrictSchemaHash(codecFormat.wireOrderSchema(schema))
+    final SchemaHistory.Format historyFormat = codecFormat.historyFormat();
+    if (SchemaHistory.computeStrictSchemaHash(historyFormat, historyFormat.wireOrder(schema))
         != currentVersion.strictHash()) {
       throw new IllegalStateException(
           "Schema history of "
