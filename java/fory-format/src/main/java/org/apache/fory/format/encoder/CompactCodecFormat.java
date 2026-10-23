@@ -21,10 +21,12 @@ package org.apache.fory.format.encoder;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
 import org.apache.fory.format.row.binary.CompactBinaryArray;
 import org.apache.fory.format.row.binary.CompactBinaryMap;
+import org.apache.fory.format.row.binary.CompactRowLayout;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryArrayWriter;
@@ -63,15 +65,48 @@ enum CompactCodecFormat implements Encoding {
   }
 
   @Override
+  public RowEncoderBuilder newProjectionRowEncoder(
+      final TypeRef<?> beanType,
+      final Schema historicalSchema,
+      final Set<String> liveNames,
+      final String classSuffix) {
+    return new CompactRowEncoderBuilder(beanType, historicalSchema, liveNames, classSuffix);
+  }
+
+  @Override
   public ArrayEncoderBuilder newArrayEncoder(
       final TypeRef<? extends Collection<?>> collectionType, final TypeRef<?> elementType) {
     return new CompactArrayEncoderBuilder(collectionType, elementType);
   }
 
   @Override
+  public ArrayEncoderBuilder newProjectionArrayEncoder(
+      final TypeRef<? extends Collection<?>> collectionType,
+      final TypeRef<?> elementType,
+      final String rowCodecSuffix) {
+    return new CompactArrayEncoderBuilder(collectionType, elementType, rowCodecSuffix);
+  }
+
+  @Override
   public MapEncoderBuilder newMapEncoder(
       final TypeRef<? extends Map<?, ?>> mapType, final TypeRef<?> beanToken) {
     return new CompactMapEncoderBuilder(mapType, beanToken);
+  }
+
+  @Override
+  public MapEncoderBuilder newProjectionMapEncoder(
+      final TypeRef<? extends Map<?, ?>> mapType,
+      final TypeRef<?> beanToken,
+      final String rowCodecSuffix) {
+    return new CompactMapEncoderBuilder(mapType, beanToken, rowCodecSuffix);
+  }
+
+  @Override
+  public RowFactory newRowFactory(final Schema schema) {
+    // Compute the compact layout once; every newRow() call reuses it (same model as the writer
+    // and the nested-slot read path).
+    final CompactRowLayout layout = new CompactRowLayout(schema);
+    return layout::newRow;
   }
 
   @Override
