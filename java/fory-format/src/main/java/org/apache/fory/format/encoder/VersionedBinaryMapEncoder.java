@@ -110,7 +110,6 @@ class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
     return decode(buffer, sizeEmbedded ? buffer.readInt32() : buffer.remaining());
   }
 
-  @SuppressWarnings("unchecked")
   M decode(final MemoryBuffer buffer, final int size) {
     if (size < 8) {
       throw BinaryRowEncoder.sizeBelowHash(size);
@@ -125,6 +124,23 @@ class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
       map.pointTo(buffer, readerIndex, bodySize);
       return fromMap(map);
     }
+    return decodeOtherSchema(buffer, peerHash, bodySize);
+  }
+
+  @Override
+  public M decode(final byte[] bytes) {
+    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (the 8-byte hash leads
+    // the body, but that is data, not framing), so decode takes the size from bytes.length.
+    return decode(MemoryUtils.wrap(bytes), bytes.length);
+  }
+
+  /**
+   * Decodes a map whose hash is not the current schema's: an older version through its projection,
+   * or a schema that this codec does not know, which it rejects. Kept out of {@link
+   * #decode(MemoryBuffer, int)} so the current-schema path stays small.
+   */
+  @SuppressWarnings("unchecked")
+  private M decodeOtherSchema(final MemoryBuffer buffer, final long peerHash, final int bodySize) {
     ProjectionMapCodec projection = projections.get(peerHash);
     if (projection == null) {
       // Skip the body, so that a caller can go on to the next payload in the buffer.
@@ -140,13 +156,6 @@ class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
     buffer.readerIndex(readerIndex + bodySize);
     map.pointTo(buffer, readerIndex, bodySize);
     return (M) projection.codec.fromMap(map);
-  }
-
-  @Override
-  public M decode(final byte[] bytes) {
-    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (the 8-byte hash leads
-    // the body, but that is data, not framing), so decode takes the size from bytes.length.
-    return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 
   @Override

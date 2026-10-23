@@ -98,7 +98,6 @@ class VersionedBinaryArrayEncoder<T> implements ArrayEncoder<T> {
     return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 
-  @SuppressWarnings("unchecked")
   T decode(final MemoryBuffer buffer, final int size) {
     if (size < 8) {
       throw BinaryRowEncoder.sizeBelowHash(size);
@@ -113,6 +112,16 @@ class VersionedBinaryArrayEncoder<T> implements ArrayEncoder<T> {
       array.pointTo(buffer, readerIndex, bodySize);
       return fromArray(array);
     }
+    return decodeOtherSchema(buffer, peerHash, bodySize);
+  }
+
+  /**
+   * Decodes an array whose hash is not the current schema's: an older version through its
+   * projection, or a schema that this codec does not know, which it rejects. Kept out of {@link
+   * #decode(MemoryBuffer, int)} so the current-schema path stays small.
+   */
+  @SuppressWarnings("unchecked")
+  private T decodeOtherSchema(final MemoryBuffer buffer, final long peerHash, final int bodySize) {
     ProjectionArrayCodec projection = projections.get(peerHash);
     if (projection == null) {
       // Skip the body, so that a caller can go on to the next payload in the buffer.
