@@ -19,6 +19,7 @@
 
 import warnings
 from typing import List, Set, Optional, Tuple
+from fory_compiler.ir.validator import ValidationRule
 
 from fory_compiler.ir.ast import (
     Schema,
@@ -77,7 +78,7 @@ KNOWN_FIELD_OPTIONS: Set[str] = {
     "thread_safe_pointer",
     "weak_ref",
     "java_array",
-}
+} | {rule.value for rule in ValidationRule}
 
 KNOWN_REF_OPTIONS: Set[str] = {
     "weak",

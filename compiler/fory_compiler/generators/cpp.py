@@ -39,6 +39,7 @@ from fory_compiler.ir.ast import (
     Schema,
 )
 from fory_compiler.ir.types import PrimitiveKind
+from fory_compiler.ir.validator import ValidationRule
 
 
 class CppGenerator(CppServiceGeneratorMixin, BaseGenerator):
@@ -829,6 +830,15 @@ class CppGenerator(CppServiceGeneratorMixin, BaseGenerator):
     def _namespace_for_type(self, type_def: object) -> str:
         location = getattr(type_def, "location", None)
         file_path = getattr(location, "file", None) if location else None
+        if not file_path:
+            return self.get_namespace()
+        try:
+            if self.schema.source_file and str(Path(file_path).resolve()) == str(
+                Path(self.schema.source_file).resolve()
+            ):
+                return self.get_namespace()
+        except Exception:
+            pass
         schema = self._load_schema(file_path)
         if schema is None:
             return ""
@@ -901,6 +911,449 @@ class CppGenerator(CppServiceGeneratorMixin, BaseGenerator):
         lines.append(f"{indent}}}")
         return lines
 
+    def generate_validator(self) -> List[str]:
+        lines: List[str] = []
+        lines.append("namespace Validator {")
+        for type_def in self.schema.messages + self.schema.unions:
+            lines.extend(self.generate_validator_forward_declarations(type_def, 0, []))
+        for message in self.schema.messages:
+            lines.extend(self.generate_message_validation(message, 0, []))
+        for union in self.schema.unions:
+            lines.extend(self.generate_union_validation(union, 0, []))
+        lines.append("} // namespace Validator")
+        return lines
+
+    def generate_validator_forward_declarations(
+        self,
+        type_def: typing.Union["Message", "Union"],
+        indent: int,
+        stack: List[Message],
+    ) -> List[str]:
+        if (
+            not stack
+            and type_def.source_package
+            and type_def.source_package != self.schema.package
+        ):
+            return []
+
+        lines: List[str] = []
+        lines.append(self.indent(f"namespace {type_def.name} {{", indent))
+
+        if isinstance(type_def, Message):
+            stack.append(type_def)
+            for nested in type_def.nested_messages:
+                lines.extend(
+                    self.generate_validator_forward_declarations(
+                        nested, indent + 1, stack
+                    )
+                )
+            for nested in type_def.nested_unions:
+                lines.extend(
+                    self.generate_validator_forward_declarations(
+                        nested, indent + 1, stack
+                    )
+                )
+            stack.pop()
+
+        lines.append(
+            self.indent(
+                f"inline bool validate(const ::{self.get_namespaced_type_name(type_def.name, stack)}& obj);",
+                indent + 1,
+            )
+        )
+        lines.append(self.indent(f"}} // namespace {type_def.name}", indent))
+        return lines
+
+    def _validation_access(
+        self, message: Message, field: Field, stack: List[Message]
+    ) -> Tuple[Optional[str], str]:
+        """Return (guard, value) for accessing a field's value inside the validator."""
+        fname = self.get_field_identifier(message, field)
+        is_msg = self.is_message_type(field.field_type, stack)
+        weak_ref = self.get_field_weak_ref(field)
+
+        if is_msg and weak_ref:
+            return (f"if (auto p = obj.{fname}().upgrade())", "*p")
+        if is_msg and field.ref:
+            return (f"if (obj.{fname}())", f"*obj.{fname}()")
+        if is_msg or field.optional:
+            return (f"if (obj.has_{fname}())", f"obj.{fname}()")
+        return (None, f"obj.{fname}()")
+
+    def generate_message_validation(
+        self, message: Message, indent: int, stack: List[Message]
+    ) -> List[str]:
+        if (
+            not stack
+            and message.source_package
+            and message.source_package != self.schema.package
+        ):
+            return []
+
+        email_pattern = R"(^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$)"
+        lines: List[str] = []
+        lines.append(self.indent(f"namespace {message.name} {{", indent))
+
+        stack.append(message)
+        for nested in message.nested_messages:
+            lines.extend(self.generate_message_validation(nested, indent + 1, stack))
+        for nested in message.nested_unions:
+            lines.extend(self.generate_union_validation(nested, indent + 1, stack))
+        stack.pop()
+
+        lines.append(
+            self.indent(
+                f"inline bool validate(const ::{self.get_namespaced_type_name(message.name, stack)}& obj) {{",
+                indent + 1,
+            )
+        )
+        lines.append(self.indent("bool ok = true;", indent + 2))
+
+        for field in message.fields:
+            field_name = self.get_field_identifier(message, field)
+            guard, value = self._validation_access(message, field, stack + [message])
+            resolved = (
+                self.resolve_named_type(field.field_type.name, stack + [message])
+                if isinstance(field.field_type, NamedType)
+                else None
+            )
+            if isinstance(resolved, Message) or isinstance(resolved, Union):
+                qualified_name = self._validator_path_for(resolved)
+                if guard:
+                    lines.append(
+                        self.indent(
+                            f"{guard} {{ ok &= {qualified_name}::validate({value}); }}",
+                            indent + 2,
+                        )
+                    )
+                else:
+                    lines.append(
+                        self.indent(
+                            f"ok &= {qualified_name}::validate({value});", indent + 2
+                        )
+                    )
+            option_lines: List[str] = []
+            for key, rule_val in field.options.items():
+                try:
+                    rule = ValidationRule(key)
+                except ValueError:
+                    continue
+                if rule == ValidationRule.GTE:
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= ({value} >= {rule_val});",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                elif rule == ValidationRule.LTE:
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= ({value} <= {rule_val});",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                elif rule == ValidationRule.GT:
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= ({value} > {rule_val});",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                elif rule == ValidationRule.LT:
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= ({value} < {rule_val});",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                elif rule == ValidationRule.EQL:
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= ({value} == {rule_val});",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                elif rule == ValidationRule.NEQ:
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= ({value} != {rule_val});",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                elif rule == ValidationRule.MIN_LEN:
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= ({value}.size() >= {rule_val});",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                elif rule == ValidationRule.MAX_LEN:
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= ({value}.size() <= {rule_val});",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                elif rule == ValidationRule.PATTERN:
+                    option_lines.append(
+                        self.indent(
+                            f'static const std::regex re_{field_name}(R"({rule_val})");',
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= (std::regex_match({value}, re_{field_name}));",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                elif rule == ValidationRule.EMAIL and rule_val:
+                    option_lines.append(
+                        self.indent(
+                            f'static const std::regex re_{field_name}(R"({email_pattern})");',
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= (std::regex_match({value}, re_{field_name}));",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                elif rule == ValidationRule.UUID and rule_val:
+                    i3 = indent + 3 if guard else indent + 2
+                    option_lines.append(
+                        self.indent(f"ok &= ({value}.size() == 36);", i3)
+                    )
+                    option_lines.append(
+                        self.indent(f"if ({value}.size() == 36) {{", i3)
+                    )
+                    option_lines.append(
+                        self.indent("for (size_t i = 0; i < 36; i++) {", i3 + 1)
+                    )
+                    option_lines.append(
+                        self.indent(
+                            "if (i == 8 || i == 13 || i == 18 || i == 23) {", i3 + 2
+                        )
+                    )
+                    option_lines.append(
+                        self.indent(f"ok &= ({value}[i] == '-');", i3 + 3)
+                    )
+                    option_lines.append(self.indent("} else {", i3 + 2))
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= (std::isxdigit(static_cast<unsigned char>({value}[i])));",
+                            i3 + 3,
+                        )
+                    )
+                    option_lines.append(self.indent("}", i3 + 2))
+                    option_lines.append(self.indent("}", i3 + 1))
+                    option_lines.append(self.indent("}", i3))
+                elif rule == ValidationRule.MIN_ITEMS:
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= ({value}.size() >= {rule_val});",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+                elif rule == ValidationRule.MAX_ITEMS:
+                    option_lines.append(
+                        self.indent(
+                            f"ok &= ({value}.size() <= {rule_val});",
+                            indent + 3 if guard else indent + 2,
+                        )
+                    )
+
+            if option_lines:
+                if guard:
+                    lines.append(self.indent(f"{guard} {{", indent + 2))
+                    lines.extend(option_lines)
+                    lines.append(self.indent("}", indent + 2))
+                else:
+                    lines.extend(option_lines)
+
+        lines.append(self.indent("return ok;", indent + 2))
+        lines.append(self.indent("}", indent + 1))
+        lines.append(self.indent(f"}} // namespace {message.name}", indent))
+        return lines
+
+    def generate_union_validation(
+        self, union: Union, indent: int, stack: List[Message]
+    ) -> List[str]:
+        if (
+            not stack
+            and union.source_package
+            and union.source_package != self.schema.package
+        ):
+            return []
+
+        email_pattern = R"(^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$)"
+        lines: List[str] = []
+        lines.append(self.indent(f"namespace {union.name} {{", indent))
+        lines.append(
+            self.indent(
+                f"inline bool validate(const ::{self.get_namespaced_type_name(union.name, stack)}& obj) {{",
+                indent + 1,
+            )
+        )
+        lines.append(self.indent("bool ok = true;", indent + 2))
+
+        for field in union.fields:
+            field_name = self.get_union_case_identifier(union, field)
+            value = f"obj.{field_name}()"
+            guard = f"if (obj.is_{field_name}())"
+
+            case_lines: List[str] = []
+            resolved = (
+                self.resolve_named_type(field.field_type.name, stack)
+                if isinstance(field.field_type, NamedType)
+                else None
+            )
+            if isinstance(resolved, Message) or isinstance(resolved, Union):
+                qualified_name = self._validator_path_for(resolved)
+                if guard:
+                    case_lines.append(
+                        self.indent(
+                            f"{guard} {{ ok &= {qualified_name}::validate({value}); }}",
+                            indent + 2,
+                        )
+                    )
+                else:
+                    case_lines.append(
+                        self.indent(
+                            f"ok &= {qualified_name}::validate({value});", indent + 2
+                        )
+                    )
+
+            for key, rule_val in field.options.items():
+                try:
+                    rule = ValidationRule(key)
+                except ValueError:
+                    continue
+                if rule == ValidationRule.GTE:
+                    case_lines.append(
+                        self.indent(f"ok &= ({value} >= {rule_val});", indent + 3)
+                    )
+                elif rule == ValidationRule.LTE:
+                    case_lines.append(
+                        self.indent(f"ok &= ({value} <= {rule_val});", indent + 3)
+                    )
+                elif rule == ValidationRule.GT:
+                    case_lines.append(
+                        self.indent(f"ok &= ({value} > {rule_val});", indent + 3)
+                    )
+                elif rule == ValidationRule.LT:
+                    case_lines.append(
+                        self.indent(f"ok &= ({value} < {rule_val});", indent + 3)
+                    )
+                elif rule == ValidationRule.EQL:
+                    case_lines.append(
+                        self.indent(f"ok &= ({value} == {rule_val});", indent + 3)
+                    )
+                elif rule == ValidationRule.NEQ:
+                    case_lines.append(
+                        self.indent(f"ok &= ({value} != {rule_val});", indent + 3)
+                    )
+                elif rule == ValidationRule.MIN_LEN:
+                    case_lines.append(
+                        self.indent(
+                            f"ok &= ({value}.size() >= {rule_val});", indent + 3
+                        )
+                    )
+                elif rule == ValidationRule.MAX_LEN:
+                    case_lines.append(
+                        self.indent(
+                            f"ok &= ({value}.size() <= {rule_val});", indent + 3
+                        )
+                    )
+                elif rule == ValidationRule.PATTERN:
+                    case_lines.append(
+                        self.indent(
+                            f'static const std::regex re_{field_name}(R"({rule_val})");',
+                            indent + 3,
+                        )
+                    )
+                    case_lines.append(
+                        self.indent(
+                            f"ok &= (std::regex_match({value}, re_{field_name}));",
+                            indent + 3,
+                        )
+                    )
+                elif rule == ValidationRule.EMAIL and rule_val:
+                    case_lines.append(
+                        self.indent(
+                            f'static const std::regex re_{field_name}(R"({email_pattern})");',
+                            indent + 3,
+                        )
+                    )
+                    case_lines.append(
+                        self.indent(
+                            f"ok &= (std::regex_match({value}, re_{field_name}));",
+                            indent + 3,
+                        )
+                    )
+                elif rule == ValidationRule.UUID and rule_val:
+                    case_lines.append(
+                        self.indent(f"ok &= ({value}.size() == 36);", indent + 3)
+                    )
+                    case_lines.append(
+                        self.indent(f"if ({value}.size() == 36) {{", indent + 3)
+                    )
+                    case_lines.append(
+                        self.indent("for (size_t i = 0; i < 36; i++) {", indent + 4)
+                    )
+                    case_lines.append(
+                        self.indent(
+                            "if (i == 8 || i == 13 || i == 18 || i == 23) {",
+                            indent + 5,
+                        )
+                    )
+                    case_lines.append(
+                        self.indent(f"ok &= ({value}[i] == '-');", indent + 6)
+                    )
+                    case_lines.append(self.indent("} else {", indent + 5))
+                    case_lines.append(
+                        self.indent(
+                            f"ok &= (std::isxdigit(static_cast<unsigned char>({value}[i])));",
+                            indent + 6,
+                        )
+                    )
+                    case_lines.append(self.indent("}", indent + 5))
+                    case_lines.append(self.indent("}", indent + 4))
+                    case_lines.append(self.indent("}", indent + 3))
+                elif rule == ValidationRule.MIN_ITEMS:
+                    case_lines.append(
+                        self.indent(
+                            f"ok &= ({value}.size() >= {rule_val});", indent + 3
+                        )
+                    )
+                elif rule == ValidationRule.MAX_ITEMS:
+                    case_lines.append(
+                        self.indent(
+                            f"ok &= ({value}.size() <= {rule_val});", indent + 3
+                        )
+                    )
+
+            if case_lines:
+                lines.append(self.indent(f"{guard} {{", indent + 2))
+                lines.extend(case_lines)
+                lines.append(self.indent("}", indent + 2))
+
+        lines.append(self.indent("return ok;", indent + 2))
+        lines.append(self.indent("}", indent + 1))
+        lines.append(self.indent(f"}} // namespace {union.name}", indent))
+        return lines
+
+    def _validator_path_for(self, type_def: object) -> str:
+        ns = self._namespace_for_type(type_def)
+        parents = self._parent_stack_for_type(type_def)
+        parts = [self.get_type_identifier(p) for p in parents]
+        parts.append(self.get_type_identifier(type_def))
+        qualified = "::".join(parts)
+        if ns:
+            return f"::{ns}::Validator::{qualified}"
+        return f"::Validator::{qualified}"
+
     def generate_header(self) -> GeneratedFile:
         """Generate a C++ header file with all types."""
         lines = []
@@ -918,9 +1371,11 @@ class CppGenerator(CppServiceGeneratorMixin, BaseGenerator):
         includes.add("<unordered_map>")
         includes.add("<vector>")
         includes.add("<utility>")
+        includes.add("<regex>")
+        includes.add("<cctype>")
+        includes.add("<cstddef>")
         includes.add('"fory/serialization/fory.h"')
         if self.schema_has_unions():
-            includes.add("<cstddef>")
             includes.add("<utility>")
             includes.add("<variant>")
             includes.add("<memory>")
@@ -1013,6 +1468,7 @@ class CppGenerator(CppServiceGeneratorMixin, BaseGenerator):
         lines.extend(self.generate_registration())
         lines.append("")
 
+        lines.extend(self.generate_validator())
         if namespace:
             lines.append(f"}} // namespace {namespace}")
             lines.append("")

@@ -1152,6 +1152,50 @@ Use `ref(thread_safe=false)` in Fory IDL (or
 `[(fory).thread_safe_pointer = false]` in protobuf) to generate `Rc` instead of
 `Arc` in Rust.
 
+### Validation Options
+
+Fields can declare validation rules as field options. The compiler checks
+the option's type compatibility at schema compile time and generates
+validator functions in supported target languages.
+
+| Option      | Applies to               | Meaning                               |
+| ----------- | ------------------------ | ------------------------------------- |
+| `gte`       | numeric primitives       | value must be `>=` the given number   |
+| `lte`       | numeric primitives       | value must be `<=` the given number   |
+| `gt`        | numeric primitives       | value must be `>` the given number    |
+| `lt`        | numeric primitives       | value must be `<` the given number    |
+| `eql`       | numeric primitives       | value must equal the given number     |
+| `neq`       | numeric primitives       | value must not equal the given number |
+| `min_len`   | `string`                 | length must be `>=` the given count   |
+| `max_len`   | `string`                 | length must be `<=` the given count   |
+| `pattern`   | `string`                 | value must match the given regex      |
+| `uuid`      | `string`                 | value must be a 36-char UUID          |
+| `email`     | `string`                 | value must be a valid email address   |
+| `min_items` | `list` / `array` / `map` | collection size must be `>=` N        |
+| `max_items` | `list` / `array` / `map` | collection size must be `<=` N        |
+
+**Rules:**
+
+- Numeric options accept integer or float values.
+- Length and item-count options accept non-negative integers.
+- `pattern` must be a valid regular expression.
+- `email` and `uuid` are boolean flags: `[email = true]`, `[uuid = true]`.
+- `pattern`, `email`, and `uuid` are mutually exclusive on the same field.
+- Validation options may only be used on fields of a compatible type
+  (for example, `gte` on a non-numeric field is a compile error).
+
+**Example:**
+
+```protobuf
+message Account {
+    int64 account_id = 1 [gte = 1000, lte = 2000000000];
+    string username = 2 [min_len = 4, max_len = 16, pattern = "^[a-zA-Z0-9_]+$"];
+    string email = 3 [email = true];
+    string uuid = 4 [uuid = true];
+    list<string> tags = 5 [min_items = 1, max_items = 5];
+}
+```
+
 ## Field Numbers
 
 Each field must have a unique tag ID in the protocol range:
