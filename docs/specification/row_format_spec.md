@@ -402,11 +402,12 @@ and limitations.
 ### Wire Names and Canonical Field Order
 
 - A field's wire name is its declared member name converted to lower `snake_case` by the field-name
-  rule of the xlang object-graph format (Java `camelCase` converts; a member name already in
+  rule of the xlang object-graph format (a `camelCase` name converts; a name already in
   `snake_case` is used as-is). That rule does not yet define the conversion of acronyms, a leading
   capital letter, or non-ASCII capital letters, and the runtimes differ on them. Only ordinary
   lowerCamelCase names, with no consecutive capital letters and only ASCII capital letters, are
-  portable across runtimes today.
+  portable across runtimes today. A runtime can restrict its member names further: the Java
+  runtime requires lowerCamelCase member names.
 - The canonical order of the fields of a versioned layout is ascending by wire name, compared by
   Unicode code point (equivalently, byte-wise over the UTF-8 encodings). Duplicate wire names
   within one version are invalid.

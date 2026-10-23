@@ -415,10 +415,12 @@ but its wire name `a_b` sorts after `a_a`); such a bean is rejected when the cod
 a message naming the members to rename.
 
 The `snake_case` conversion inserts an underscore before each ASCII capital letter and lowercases
-it, and changes no other character. Other Fory runtimes do not all convert acronyms, a leading
-capital letter, or non-ASCII capital letters the same way, so give versioned beans ordinary
-lowerCamelCase member names (`createdAt`, not `fooURL` or `URLValue`) if another runtime will read
-the payloads.
+it, and changes no other character. The Java codec finds the member of each field with the
+reverse conversion, which removes every underscore, so Java member names must be lowerCamelCase:
+a member name with an underscore, such as `created_at`, fails the codec build. Other Fory runtimes
+do not all convert acronyms, a leading capital letter, or non-ASCII capital letters the same way,
+so give versioned beans ordinary lowerCamelCase member names (`createdAt`, not `fooURL` or
+`URLValue`) if another runtime will read the payloads.
 
 Because field names are wire identity, a rename is a removal plus an addition, not an in-place
 mapping: declare the old name on the history interface with `until = N` and annotate the renamed
