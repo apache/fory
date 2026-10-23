@@ -102,7 +102,7 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     // version map directs the projection codec to embed the right inner projection class.
     //
     // Keyed by the raw strict hash straight from SchemaHistory, which already proves these hashes
-    // are unique across versions() and distinct from the current schema (its hashToSignature guard
+    // are unique across versions() and distinct from the current schema (its hashToSchema guard
     // throws on a real collision). No builder-side collision check is needed here, unlike the map
     // codec, whose key is a combined (key, value) hash computed outside SchemaHistory.
     final LongMap<BinaryRowEncoder.ProjectionSource> projectionSources = new LongMap<>();

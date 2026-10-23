@@ -591,6 +591,27 @@ public class SchemaEvolutionStressTest {
     Assert.assertTrue(e.getMessage().contains("must be strictly less than until"), e.getMessage());
   }
 
+  @Data
+  @ForySchema(removedFields = RemovedFieldCycle.History.class)
+  public static class RemovedFieldCycle {
+    private int x;
+
+    interface History {
+      // A removed field typed as the bean itself: the historical schema would be cyclic. Live
+      // fields cannot do this (inferSchema rejects them), so only the history path reaches it.
+      @ForyVersion(until = 2)
+      RemovedFieldCycle previous();
+    }
+  }
+
+  @Test
+  public void removedFieldCycleFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(RemovedFieldCycle.class));
+    Assert.assertTrue(e.getMessage().contains("Circular schema history"), e.getMessage());
+  }
+
   /** A still-present field carrying a finite until; removals belong on the history class. */
   @Data
   public static class LiveFieldWithUntil {
