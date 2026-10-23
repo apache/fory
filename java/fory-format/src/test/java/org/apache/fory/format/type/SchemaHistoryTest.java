@@ -326,6 +326,53 @@ public class SchemaHistoryTest {
     private java.util.Map<String, VersionedElement> byName;
   }
 
+  /**
+   * Known-answer vectors for the strict hash, computed from the algorithm in {@code
+   * docs/specification/row_format_spec.md} independently of this implementation. The spec lists the
+   * same values. A change to any of them breaks every payload already written with schema
+   * evolution, so update them only together with a wire-format change.
+   */
+  @Test
+  public void strictHashKnownAnswers() {
+    assertEquals(hash(DataTypes.notNullField("id", DataTypes.int32())), 0x52d9543baa314ae4L);
+    assertEquals(hash(DataTypes.field("name", DataTypes.utf8(), true)), 0x45812bbf5f4c920cL);
+    assertEquals(
+        hash(DataTypes.notNullField("gr\u00f6\u00dfe", DataTypes.int64())), 0xe2e70ce928534aa8L);
+    assertEquals(
+        hash(DataTypes.notNullField("amount", DataTypes.decimal(10, 2))), 0xf0751e7a96d89543L);
+    assertEquals(
+        hash(DataTypes.notNullField("amount", DataTypes.decimal(38, -3))), 0x926657849144c230L);
+    assertEquals(
+        hash(
+            DataTypes.field("blob", DataTypes.binary(), true),
+            DataTypes.notNullField("digest", DataTypes.fixedWidthBinary(4))),
+        0x0c01130d4045d1b9L);
+    assertEquals(
+        hash(
+            DataTypes.arrayField(
+                "tags", DataTypes.field(DataTypes.ARRAY_ITEM_NAME, DataTypes.utf8(), true))),
+        0x7cd563d52d484c3fL);
+    assertEquals(
+        hash(DataTypes.mapField("counts", DataTypes.utf8(), DataTypes.int32())),
+        0xdaae30bf1bd9077aL);
+    assertEquals(
+        hash(
+            DataTypes.field(
+                "point",
+                DataTypes.struct(
+                    DataTypes.notNullField("x", DataTypes.int32()),
+                    DataTypes.notNullField("y", DataTypes.int32())),
+                true),
+            DataTypes.notNullField("z", DataTypes.int64())),
+        0x0ce5f71e89c02b76L);
+    assertEquals(
+        SchemaHistory.combineHashes(0x52d9543baa314ae4L, 0x45812bbf5f4c920cL), 0x812fec70da48114dL);
+  }
+
+  private static long hash(Field... fields) {
+    return SchemaHistory.computeStrictSchemaHash(DataTypes.schema(fields));
+  }
+
   private static Field field(String name) {
     return DataTypes.field(name, DataTypes.int32(), false);
   }
