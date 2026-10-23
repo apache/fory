@@ -356,9 +356,12 @@ if (fixed_width % 8 == 0):
 ## Schema Evolution
 
 Schema evolution lets a codec read payloads written by older versions of the same struct. It is
-currently implemented in Java only and does not change the cross-language wire contract above;
-producer and consumer must agree on whether it is enabled. The protocol below is defined over
-language-neutral inputs so another runtime can implement it and interoperate with Java payloads.
+opt-in and currently implemented in Java only. It does not change the existing wire contract
+above: a payload written without it is unchanged. When it is enabled, the row hash word holds the
+strict hash below instead of the default schema hash, and every array and map body starts with an
+8-byte hash prefix. Producer and consumer must agree on whether it is enabled. The protocol below
+is defined over language-neutral inputs so another runtime can implement it and interoperate with
+Java payloads.
 
 See the [Java row format guide](../row-format/java.md#schema-evolution) for usage, annotations,
 and limitations.
@@ -402,20 +405,21 @@ and limitations.
   capital letter, or non-ASCII capital letters, and the runtimes differ on them. Only ordinary
   lowerCamelCase names, with no consecutive capital letters and only ASCII capital letters, are
   portable across runtimes today.
-- The fields of a versioned layout are ordered ascending by wire name, compared by Unicode code
-  point (equivalently, byte-wise over the UTF-8 encodings). Duplicate wire names within one
-  version are invalid.
+- The canonical order of the fields of a versioned layout is ascending by wire name, compared by
+  Unicode code point (equivalently, byte-wise over the UTF-8 encodings). Duplicate wire names
+  within one version are invalid.
 - The compact format then sorts the fields of every struct, at every depth (including structs in
-  list elements and in map keys and values), with a stable sort over the wire-name order. The
+  list elements and in map keys and values), with a stable sort over the canonical order. The
   sort key is the field's slot width `w`: the [fixed width](#fixed-width-calculation) of a
   fixed-width field, and 8 for a variable-width field. A field whose `w` is 2, 4, or a multiple
   of 8 sorts before a field with any other `w`. Within each of those two groups, a larger `w`
-  sorts first, and fields with equal `w` keep their wire-name order. For example, a `string` and
-  an `int64` keep their wire-name order, and a 12-byte inline struct `{int64, int32}` sorts after
+  sorts first, and fields with equal `w` keep their canonical order. For example, a `string` and
+  an `int64` keep their canonical order, and a 12-byte inline struct `{int64, int32}` sorts after
   an `int16` and before a `bool`.
 - A custom codec's encoded shape (its struct children, their names, and their order) is fixed by
   the codec's own definition, not by name sorting, and must be reproduced identically in every
-  runtime that registers an equivalent codec.
+  runtime that registers an equivalent codec. The codec's order is the canonical order of its
+  struct.
 
 ### Strict Schema Hash
 
@@ -430,8 +434,8 @@ unlike the default schema hash, which mixes only type IDs. All inputs are langua
   the compact format. The two formats write a layout in the same field order when the compact sort
   moves no field (for example, when every field is 8 bytes wide), so without the tag a reader of
   one format would accept a payload of the other and decode wrong values.
-- The hash covers fields in the order they are on the wire, at every depth: canonical wire-name
-  order for the standard format, and the compact sort order above for the compact format,
+- The hash covers fields in the order they are on the wire, at every depth: the canonical order
+  for the standard format, and the compact sort order above for the compact format,
   including for structs in list elements and map entries. The hash of a layout mixes the format
   tag, then folds its top-level fields in that order, each as a named field.
 - A named field mixes: each byte of the wire name's UTF-8 encoding, then one `0` terminator,
@@ -443,7 +447,8 @@ unlike the default schema hash, which mixes only type IDs. All inputs are langua
   3. Nullability: `1` if nullable, `0` otherwise.
   4. Children: a `list` mixes its element field's shape and a `map` mixes its key field's shape
      then its value field's shape — child positions are fixed by the parent type, so no names are
-     mixed. A `struct` mixes its child count, then each child as a named field; the count
+     mixed. At every depth, a map's key field mixes nullability `0` and its value field mixes
+     nullability `1`. A `struct` mixes its child count, then each child as a named field; the count
      delimits the struct's extent so nesting structure stays unambiguous.
 - Type IDs are the row format's subset of the Fory cross-language type table: `bool` 1, `int8` 2,
   `int16` 3, `int32` 4, `int64` 6, `float16` 17, `float32` 19, `float64` 20, `string` 21,
