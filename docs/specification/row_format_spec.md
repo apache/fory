@@ -438,10 +438,9 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
 
 - A row payload's existing leading 8-byte hash word (little-endian) holds the strict hash of the
   writer's current layout when evolution is enabled, and the default schema hash otherwise.
-- Array and map payloads carry no hash word without evolution. With evolution, an array whose
-  element reaches a struct, and a map whose key or value reaches a struct, gain an 8-byte
-  strict-hash prefix (little-endian). The struct does not need to be versioned. An array or map
-  that reaches no struct has no prefix.
+- Array and map payloads carry no hash word without evolution. With evolution, every array and
+  map payload starts with an 8-byte strict-hash prefix (little-endian), so every payload written
+  with evolution enabled starts with the strict hash of its layout.
 - An array's prefix is the strict hash of a layout with one field: the empty name `""`, the element
   type with each reachable struct at the payload's version, and the element's nullability.
 - A map's prefix is one combined value,

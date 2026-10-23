@@ -66,10 +66,9 @@ public class ArrayCodecBuilder<C extends Collection<?>>
 
   Function<BinaryArrayWriter, ArrayEncoder<C>> buildWithWriter() {
     final TypeRef<?> elementType = TypeUtils.getElementType(collectionType);
-    final Class<?> elementClass = schemaEvolution ? evolutionBean(elementType) : null;
-    final CodeGenerator codeGenerator = elementClass == null ? null : Encoders.pinCodeGenerator();
+    final CodeGenerator codeGenerator = schemaEvolution ? Encoders.pinCodeGenerator() : null;
     loadArrayInnerCodecs();
-    if (elementClass == null) {
+    if (!schemaEvolution) {
       final Function<BinaryArrayWriter, GeneratedArrayEncoder> generatedEncoderFactory =
           generatedEncoderFactory();
       return new Function<BinaryArrayWriter, ArrayEncoder<C>>() {
@@ -80,21 +79,15 @@ public class ArrayCodecBuilder<C extends Collection<?>>
         }
       };
     }
-    return buildVersionedWithWriter(elementType, elementClass, codeGenerator);
+    return buildVersionedWithWriter(
+        elementType, SchemaHistory.evolutionBean(elementType, typeCtx()), codeGenerator);
   }
 
   /**
-   * Whether this array takes the evolution path, and a representative bean for naming the generated
-   * codec. A directly-typed bean (versioned or not) takes the path so the strict-hash prefix is
-   * always present and an evolution-on consumer can detect a flag-mismatched producer cleanly; a
-   * bean nested inside a list/map/array element is found by descending the wrapper. Null when the
-   * element carries no bean. The per-version enumeration over every reachable bean is done by
-   * {@link #buildElementSchemaHistory}.
+   * The evolution path, taken by every array codec with the flag on so that the payload always
+   * carries the element's strict hash. {@code elementClass} names generated projection classes; it
+   * is null only when no bean is reachable, and then the history has one version and no projection.
    */
-  private Class<?> evolutionBean(final TypeRef<?> elementType) {
-    return SchemaHistory.evolutionBean(elementType, typeCtx());
-  }
-
   private Function<BinaryArrayWriter, ArrayEncoder<C>> buildVersionedWithWriter(
       final TypeRef<?> elementType,
       final Class<?> elementClass,
