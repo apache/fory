@@ -1455,35 +1455,80 @@ public class SchemaEvolutionTest {
     assertProjectedToV2(out.get("k"));
   }
 
+  // Used only by concurrentFirstProjectedDecodes, so the race compiles their projection classes,
+  // including the nested inner projection, for the first time.
+  @Data
+  public static class RaceInnerV1 {
+    private String a;
+  }
+
+  @Data
+  public static class RaceInnerV2 {
+    private String a;
+
+    @ForyVersion(since = 2)
+    private String b;
+  }
+
+  @Data
+  public static class RaceV1 {
+    private String id;
+    private RaceInnerV1 inner;
+  }
+
+  @Data
+  public static class RaceV2 {
+    @ForyVersion(since = 2)
+    private String extra;
+
+    private String id;
+    private RaceInnerV2 inner;
+  }
+
+  private static RaceV1 raceSample() {
+    RaceInnerV1 inner = new RaceInnerV1();
+    inner.setA("a");
+    RaceV1 v1 = new RaceV1();
+    v1.setId("id");
+    v1.setInner(inner);
+    return v1;
+  }
+
+  private static void assertRaceProjected(RaceV2 out) {
+    Assert.assertEquals(out.getId(), "id");
+    Assert.assertNull(out.getExtra());
+    Assert.assertEquals(out.getInner().getA(), "a");
+    Assert.assertNull(out.getInner().getB());
+  }
+
   /**
    * Encoders from one codec share each projection's lazily resolved state. Several encoders that
-   * decode the same older hash for the first time at once must each get a correct result.
+   * decode the same older hash for the first time at once must each get a correct result, while the
+   * projection classes compile.
    */
   @Test
   public void concurrentFirstProjectedDecodes() throws Exception {
-    byte[] rowBytes = evolvingCodec(OuterV1.class).encode(sampleV1());
-    Supplier<RowEncoder<OuterV2>> rows =
-        Encoders.buildBeanCodec(OuterV2.class).withSchemaEvolution().build();
+    byte[] rowBytes = evolvingCodec(RaceV1.class).encode(raceSample());
+    Supplier<RowEncoder<RaceV2>> rows =
+        Encoders.buildBeanCodec(RaceV2.class).withSchemaEvolution().build();
     byte[] arrayBytes =
-        Encoders.buildArrayCodec(new TypeRef<List<OuterV1>>() {})
+        Encoders.buildArrayCodec(new TypeRef<List<RaceV1>>() {})
             .withSchemaEvolution()
             .build()
             .get()
-            .encode(Arrays.asList(sampleV1()));
-    Supplier<ArrayEncoder<List<OuterV2>>> arrays =
-        Encoders.buildArrayCodec(new TypeRef<List<OuterV2>>() {}).withSchemaEvolution().build();
-    Map<String, OuterV1> in = new HashMap<>();
-    in.put("k", sampleV1());
+            .encode(Arrays.asList(raceSample()));
+    Supplier<ArrayEncoder<List<RaceV2>>> arrays =
+        Encoders.buildArrayCodec(new TypeRef<List<RaceV2>>() {}).withSchemaEvolution().build();
+    Map<String, RaceV1> in = new HashMap<>();
+    in.put("k", raceSample());
     byte[] mapBytes =
-        Encoders.buildMapCodec(new TypeRef<Map<String, OuterV1>>() {})
+        Encoders.buildMapCodec(new TypeRef<Map<String, RaceV1>>() {})
             .withSchemaEvolution()
             .build()
             .get()
             .encode(in);
-    Supplier<MapEncoder<Map<String, OuterV2>>> maps =
-        Encoders.buildMapCodec(new TypeRef<Map<String, OuterV2>>() {})
-            .withSchemaEvolution()
-            .build();
+    Supplier<MapEncoder<Map<String, RaceV2>>> maps =
+        Encoders.buildMapCodec(new TypeRef<Map<String, RaceV2>>() {}).withSchemaEvolution().build();
 
     int threads = 8;
     CyclicBarrier start = new CyclicBarrier(threads);
@@ -1491,16 +1536,16 @@ public class SchemaEvolutionTest {
     try {
       List<Future<?>> results = new ArrayList<>();
       for (int i = 0; i < threads; i++) {
-        RowEncoder<OuterV2> row = rows.get();
-        ArrayEncoder<List<OuterV2>> array = arrays.get();
-        MapEncoder<Map<String, OuterV2>> map = maps.get();
+        RowEncoder<RaceV2> row = rows.get();
+        ArrayEncoder<List<RaceV2>> array = arrays.get();
+        MapEncoder<Map<String, RaceV2>> map = maps.get();
         results.add(
             pool.submit(
                 () -> {
                   start.await();
-                  assertProjectedToV2(row.decode(rowBytes));
-                  assertProjectedToV2(array.decode(arrayBytes).get(0));
-                  assertProjectedToV2(map.decode(mapBytes).get("k"));
+                  assertRaceProjected(row.decode(rowBytes));
+                  assertRaceProjected(array.decode(arrayBytes).get(0));
+                  assertRaceProjected(map.decode(mapBytes).get("k"));
                   return null;
                 }));
       }
