@@ -50,13 +50,8 @@ final class ProjectionRouting {
    * bean, that inner's simple name, version, and strict hash. Each hash is 16 hex digits, so each
    * token has a fixed end, and the name follows the layout it decodes.
    *
-   * <p>The cross-product for one outer schema enumerates a fixed set of nested classes, so every
-   * combination carries the same classes in the same sorted-by-name positions; two combinations
-   * differ only in some inner's chosen (version, hash). Sorting by full class name therefore binds
-   * each token position to one class, which keeps the suffix injective even when two nested beans
-   * share a simple name and an identical (structural) strict hash. The simple name is for human
-   * readability, not disambiguation. Do not switch this to an unordered per-class join: positional
-   * stability is what prevents same-simple-name beans from collapsing onto one class name.
+   * <p>The leading outer hash identifies the combination, and the nested tokens are for
+   * readability.
    *
    * <p>A suffix longer than {@link #MAX_READABLE_SUFFIX_LENGTH} is cut, and the strict hash of
    * {@code vs} identifies the combination instead; see {@link #bounded}.
