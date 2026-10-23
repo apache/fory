@@ -380,21 +380,21 @@ wire-compatible otherwise. Row payloads always carry an 8-byte hash slot; under 
 value is the strict hash (which includes field name and nullability), so a flag-mismatched
 peer fails loudly with `ClassNotCompatibleException`. Arrays and maps prepend an 8-byte prefix
 under evolution (the strict hash for an array, the combined key and value hash for a map) and no
-prefix otherwise; an evolution-on consumer
-reading evolution-off bytes also fails, but the reverse direction (evolution-off consumer,
-evolution-on bytes) is undefined. With evolution on, the hash also identifies the row format, so a
-compact consumer rejects standard payloads with `ClassNotCompatibleException`, and the reverse.
+prefix otherwise. An evolution-on consumer rejects evolution-off array and map bytes. An
+evolution-off consumer cannot detect evolution-on array and map bytes, so the result of that read
+is undefined. With evolution on, the hash also identifies the row format, so a compact consumer
+rejects standard payloads with `ClassNotCompatibleException`, and the reverse.
 
 Only `encode` and `decode` write and check the hash. `toRow`, `fromRow`, `toArray`, `fromArray`,
 `toMap`, and `fromMap` always use the current schema, and the bytes of a `BinaryRow` hold no hash.
 To read older versions, store the output of `encode` and read it with `decode`.
 
 Turning the flag on changes the wire format of every payload, so do it as a cutover, not as a
-rolling change. During a rolling deploy, flag-on and flag-off peers reject each other's rows, and a
-flag-off reader decodes flag-on arrays and maps incorrectly without an error. Rows written before
-the cutover are not readable with the flag on. Stop or drain the producers, rewrite or stop
-reading the stored payloads, and then start every peer with the flag on, in a release that changes
-no schema.
+rolling change. During a rolling deploy, flag-on and flag-off peers reject each other's rows, and
+the result of a flag-off reader on flag-on arrays and maps is undefined. Rows written before the
+cutover are not readable with the flag on. Stop or drain the producers, rewrite or stop reading
+the stored payloads, and then start every peer with the flag on, in a release that changes no
+schema.
 
 After that, deploy every reader of a schema change before any writer. A reader decodes payloads
 whose layout it knows, from its own version and older versions, and it rejects a payload whose

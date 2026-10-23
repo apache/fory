@@ -1060,14 +1060,12 @@ public class SchemaEvolutionEdgeCaseTest {
   // ---------------------------------------------------------------------------
   // Evolution flag asymmetry: same class, one side opt-in, the other not.
   // Documented as wire-incompatible across the row, array, and map codecs.
-  // Forward (evolution-on reading evolution-off bytes) is a clean
-  // ClassNotCompatibleException on every codec: the missing strict-hash prefix
-  // is read as a mismatched hash. Reverse (evolution-off reading evolution-on
-  // bytes) differs by codec. The row's hash slot exists in both modes, so the
-  // off-reader sees a mismatched hash and throws cleanly. Array/map have no hash
-  // slot when off, so the prefix bleeds into the header and trips an internal
-  // bounds check (assertion-gated, fires under Surefire's -ea); we pin only that
-  // the decode does not silently return.
+  // An evolution-on reader rejects evolution-off bytes on every codec: it reads
+  // the start of the body as a hash that matches no known layout. A row has a
+  // hash slot in both modes, so an evolution-off row reader also rejects
+  // evolution-on bytes. Array and map payloads have no hash without evolution,
+  // so an evolution-off reader cannot detect evolution-on bytes, and the spec
+  // leaves that read undefined; no test pins its result.
   // ---------------------------------------------------------------------------
 
   @DataProvider
@@ -1098,55 +1096,25 @@ public class SchemaEvolutionEdgeCaseTest {
     map.put("k", v);
 
     return new Object[][] {
-      {
-        "row",
-        new FlagAsymmetryCase(
-            rowOn.encode(v), rowOff.encode(v), rowOn::decode, rowOff::decode, true)
-      },
-      {
-        "array",
-        new FlagAsymmetryCase(
-            arrayOn.encode(list), arrayOff.encode(list), arrayOn::decode, arrayOff::decode, false)
-      },
-      {
-        "map",
-        new FlagAsymmetryCase(
-            mapOn.encode(map), mapOff.encode(map), mapOn::decode, mapOff::decode, false)
-      },
+      {"row", rowOff.encode(v), (Consumer<byte[]>) rowOn::decode},
+      {"array", arrayOff.encode(list), (Consumer<byte[]>) arrayOn::decode},
+      {"map", mapOff.encode(map), (Consumer<byte[]>) mapOn::decode},
     };
   }
 
   @Test(dataProvider = "flagAsymmetryCases")
-  public void evolutionFlagAsymmetryFailsLoud(String label, FlagAsymmetryCase c) {
-    // Forward: evolution-on reader, evolution-off bytes -> clean ClassNotCompatibleException.
-    Assert.expectThrows(ClassNotCompatibleException.class, () -> c.onDecoder.accept(c.offBytes));
-    // Reverse: evolution-off reader, evolution-on bytes.
-    if (c.reverseIsCleanException) {
-      Assert.expectThrows(ClassNotCompatibleException.class, () -> c.offDecoder.accept(c.onBytes));
-    } else {
-      assertDecodeThrows(() -> c.offDecoder.accept(c.onBytes));
-    }
+  public void evolutionOnReaderRejectsEvolutionOffBytes(
+      String label, byte[] offBytes, Consumer<byte[]> onDecoder) {
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> onDecoder.accept(offBytes));
   }
 
-  private static final class FlagAsymmetryCase {
-    final byte[] onBytes;
-    final byte[] offBytes;
-    final Consumer<byte[]> onDecoder;
-    final Consumer<byte[]> offDecoder;
-    final boolean reverseIsCleanException;
-
-    FlagAsymmetryCase(
-        byte[] onBytes,
-        byte[] offBytes,
-        Consumer<byte[]> onDecoder,
-        Consumer<byte[]> offDecoder,
-        boolean reverseIsCleanException) {
-      this.onBytes = onBytes;
-      this.offBytes = offBytes;
-      this.onDecoder = onDecoder;
-      this.offDecoder = offDecoder;
-      this.reverseIsCleanException = reverseIsCleanException;
-    }
+  @Test
+  public void evolutionOffRowReaderRejectsEvolutionOnBytes() {
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("hi");
+    RowEncoder<DefaultsV1> rowOff = Encoders.buildBeanCodec(DefaultsV1.class).build().get();
+    byte[] onBytes = evolvingCodec(DefaultsV1.class).encode(v);
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> rowOff.decode(onBytes));
   }
 
   // ---------------------------------------------------------------------------
@@ -1383,28 +1351,6 @@ public class SchemaEvolutionEdgeCaseTest {
       String name = file.getFileName().toString();
       Assert.assertTrue(name.getBytes(StandardCharsets.UTF_8).length < 255, name);
     }
-  }
-
-  /**
-   * Asserts that an evolution-off decode of evolution-on bytes does not silently succeed. This
-   * direction has no hash slot to compare, so the failure surfaces as an internal bounds check
-   * rather than a {@link ClassNotCompatibleException}; that check is assertion-gated, so the test
-   * only has teeth with JVM assertions enabled. Verify {@code -ea} is on first, otherwise this
-   * helper would pass vacuously and the guarantee could rot unnoticed.
-   */
-  private static void assertDecodeThrows(Runnable decode) {
-    boolean assertionsEnabled = false;
-    assert assertionsEnabled = true;
-    Assert.assertTrue(
-        assertionsEnabled,
-        "JVM assertions (-ea) must be enabled for this test: the evolution-off reverse-decode "
-            + "guard is assertion-gated and would pass vacuously otherwise");
-    try {
-      decode.run();
-    } catch (RuntimeException | AssertionError expected) {
-      return;
-    }
-    Assert.fail("evolution-off decoder silently accepted evolution-on bytes");
   }
 
   // ---------------------------------------------------------------------------
