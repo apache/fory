@@ -29,15 +29,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.function.UnaryOperator;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
-import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
-import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.reflect.TypeRef;
@@ -102,11 +99,7 @@ public class ArrayCodecBuilder<C extends Collection<?>>
 
   private Function<BinaryArrayWriter, ArrayEncoder<C>> buildVersionedWithWriter() {
     Class<?> elementClass = getRawType(TypeUtils.getElementType(collectionType));
-    UnaryOperator<Schema> schemaTransform =
-        codecFormat == CompactCodecFormat.INSTANCE
-            ? CompactBinaryRowWriter::sortSchema
-            : UnaryOperator.identity();
-    SchemaHistory history = SchemaHistory.build(elementClass, schemaTransform);
+    SchemaHistory history = buildSchemaHistory(elementClass);
     SchemaHistory.VersionedSchema current = history.current();
 
     // Generate per-combination row codec classes and per-combination array codec classes. The

@@ -31,9 +31,17 @@ import java.lang.annotation.Target;
  *
  * <p>Only effective when the codec builder is configured with {@code withSchemaEvolution()};
  * otherwise the annotation is ignored and the field is treated as always present.
+ *
+ * <p>May be placed on a field or an accessor method, which also covers a record component. Record
+ * components are covered by {@code FIELD} and {@code METHOD} rather than {@code
+ * ElementType.RECORD_COMPONENT}: the
+ * compiler propagates a record-component annotation to the backing field and the accessor method
+ * (the targets it declares), and the codec reads the annotation from those elements. {@code
+ * RECORD_COMPONENT} is a JDK 16 enum constant and would break this Java 11 module at runtime, so it
+ * is intentionally omitted.
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.METHOD, ElementType.RECORD_COMPONENT})
+@Target({ElementType.FIELD, ElementType.METHOD})
 public @interface ForyVersion {
   /** First version (inclusive) that contains this field. Defaults to the class base version. */
   int since() default 1;

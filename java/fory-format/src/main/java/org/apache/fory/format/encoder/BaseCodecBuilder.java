@@ -19,10 +19,12 @@
 
 package org.apache.fory.format.encoder;
 
+import java.util.function.UnaryOperator;
 import org.apache.fory.Fory;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.Schema;
+import org.apache.fory.format.type.SchemaHistory;
 
 public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
   protected Schema schema;
@@ -83,6 +85,20 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
     schema = CompactBinaryRowWriter.sortSchema(schema);
     codecFormat = CompactCodecFormat.INSTANCE;
     return castThis();
+  }
+
+  /**
+   * Build the schema history for {@code targetClass} under the active codec format. The compact
+   * format sorts schema fields, so historical schemas must be sorted the same way for their strict
+   * hashes and layouts to match what the writer produces; the default format passes schemas through
+   * unchanged.
+   */
+  protected SchemaHistory buildSchemaHistory(final Class<?> targetClass) {
+    UnaryOperator<Schema> schemaTransform =
+        codecFormat == CompactCodecFormat.INSTANCE
+            ? CompactBinaryRowWriter::sortSchema
+            : UnaryOperator.identity();
+    return SchemaHistory.build(targetClass, schemaTransform);
   }
 
   @SuppressWarnings("unchecked")
