@@ -95,7 +95,7 @@ public class SchemaHistoryTest {
    * {@link DataTypes.DecimalType#name} returns a bare "decimal" with no precision or scale, so the
    * strict hash must mix those in explicitly. Two decimals that differ only in precision or scale
    * must hash apart, or an old payload would route to a projection codec with the wrong numeric
-   * layout. This guards the dedicated decimal branch in {@code hashField}.
+   * layout. This guards the dedicated decimal branch in {@code hashFieldShape}.
    */
   @Test
   public void decimalPrecisionAndScaleDoNotCollide() {
@@ -235,11 +235,11 @@ public class SchemaHistoryTest {
   }
 
   /**
-   * A map header carries one combined hash for the (key, value) layout pair. When key and value are
-   * the same versioned bean at different versions, the two cross combinations have swapped per-side
-   * hashes, so {@link SchemaHistory#combineHashes} must be order-sensitive or the combinations
-   * collide and one payload decodes with the other's codec. This pins the invariant the map
-   * key/value cross-product dispatch relies on.
+   * A map header carries one combined hash for the ordered (key layout, value layout) pair, and
+   * {@link SchemaHistory#combineHashes} documents that it is order-sensitive. A swapped pair does
+   * not reach it today: the map codec skips pairs that put one bean class at two versions, and a
+   * key position hash differs from a value position hash in nullability. This pins the documented
+   * property, so the combined hash does not depend on those two facts.
    */
   @Test
   public void combineHashesIsOrderSensitive() {

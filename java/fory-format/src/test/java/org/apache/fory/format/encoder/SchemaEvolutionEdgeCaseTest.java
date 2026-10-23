@@ -61,7 +61,7 @@ import org.testng.annotations.Test;
 public class SchemaEvolutionEdgeCaseTest {
 
   // ---------------------------------------------------------------------------
-  // Long version chain: a field added at each version 1..5, plus a removal at v3.
+  // Long version chain: a field added at each version 1..5, plus the removal of 'a' at v5.
   // Verifies projection codecs are built and dispatched for every historical version.
   // ---------------------------------------------------------------------------
 
@@ -104,9 +104,8 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   /**
-   * v5 also removes the v1 'a' field starting at v5. The reader must therefore know about three
-   * different historical schemas: v1, v2-3, and v4 (since 'a' is removed and a new field 'e' shows
-   * up in v5; 'a' removal makes v5 differ from v4).
+   * v5 also removes the v1 'a' field ({@code until = 5}). Each version adds a field, so the reader
+   * must know four older layouts, v1 to v4, besides the current v5 layout.
    */
   @Data
   @ForyRowSchema(removedFields = ChainV5.History.class)
@@ -1826,11 +1825,10 @@ public class SchemaEvolutionEdgeCaseTest {
     Assert.assertNull(entry.getValue().getBoxedCount());
   }
 
-  // A row field typed as Map<VersionedKeyBean, String>. findVersionedBean must not treat the map
-  // key
-  // as a version dimension: keys carry no per-payload hash and are read with the current schema, so
-  // enumerating key versions would only generate projection codecs decode never dispatches to. The
-  // outer bean still evolves on its own fields; the keyed map round-trips with the key at current.
+  // A row field typed as Map<DefaultsV2, String> with the key bean at its current version on both
+  // sides. A map key is a version site of the outer history, like a map value (see
+  // evolvingMapKeyInRowField). Here the writer and reader differ only in the outer bean, so the
+  // keyed map round-trips with the key at its current layout.
   @Data
   public static class KeyMapHolderV1 {
     private Map<DefaultsV2, String> byKey;
@@ -2479,8 +2477,8 @@ public class SchemaEvolutionEdgeCaseTest {
   /**
    * Contract: {@code SchemaHistory.current().nestedBeanSchemas()} must report each nested bean at
    * its current entry. Two cross-product combinations canonicalizing to the same signature is rare
-   * today (the inner's own bySignature collapses wire-equal schemas before the outer sees them) but
-   * the contract is documented and future callers may rely on it.
+   * today (the inner's own strict-hash collapse, {@code byHash}, merges wire-equal schemas before
+   * the outer sees them) but the contract is documented and future callers may rely on it.
    */
   @Test
   public void schemaHistoryCurrentReflectsCurrentInnerVersions() {
