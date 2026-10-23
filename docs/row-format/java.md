@@ -298,6 +298,18 @@ public class Person {
 }
 ```
 
+Build the codec with schema evolution enabled. It writes the current version and reads the
+current and older versions:
+
+```java
+RowEncoder<Person> codec =
+    Encoders.buildBeanCodec(Person.class).withSchemaEvolution().build().get();
+byte[] bytes = codec.encode(person);
+Person current = codec.decode(bytes);
+// v1Bytes was written with schema evolution, before Person had the email field.
+Person older = codec.decode(v1Bytes);
+```
+
 A v1 payload (with `name` and `age` only) decodes to a `Person` whose `email` is `null`.
 Primitive fields added later default to `0`, `0.0`, or `false`, and `Optional` fields to
 `Optional.empty()`. A field initializer does not apply to a field that the payload lacks.
