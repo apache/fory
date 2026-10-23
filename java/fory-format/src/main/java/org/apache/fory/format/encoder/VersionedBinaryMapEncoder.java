@@ -129,8 +129,9 @@ class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
 
   @Override
   public M decode(final byte[] bytes) {
-    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (the 8-byte hash leads
-    // the body, but that is data, not framing), so decode takes the size from bytes.length.
+    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (the 8-byte hash
+    // precedes the body, but that is data, not framing), so decode takes the size from
+    // bytes.length.
     return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 

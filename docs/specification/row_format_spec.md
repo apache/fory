@@ -495,9 +495,9 @@ unlike the default schema hash, which mixes only type IDs. All inputs are langua
   writer's current layout when evolution is enabled, and the default schema hash otherwise.
 - Array and map payloads carry no hash word without evolution. With evolution, every top-level
   array and map payload starts with an 8-byte prefix (little-endian). An array or map nested in a
-  row, an array, or a map carries no prefix. So the body of every payload written with evolution
-  enabled starts with an 8-byte schema identifier: the strict hash of its layout for a
-  row or an array, and the combined key and value hash for a map.
+  row, an array, or a map carries no prefix. So every payload written with evolution enabled
+  starts, after any size prefix, with an 8-byte schema identifier: the strict hash of its layout
+  for a row or an array, and the combined key and value hash for a map.
 - When the payload size is written before the payload (a little-endian int32), the size comes
   first and the hash word or prefix follows it. The size counts the 8 bytes of the hash and the
   body, but not its own 4 bytes.
