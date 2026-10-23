@@ -104,7 +104,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
    * version combination gets its own classes. It does not route nested bean codecs; {@link
    * #nestedClassSuffixes} does.
    */
-  protected String classSuffix;
+  String classSuffix;
 
   /**
    * Per-class projection suffix for nested bean codecs, used when one generated codec embeds more
@@ -115,7 +115,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
    * one definition of a class, so every occurrence of a class in one payload is at the same
    * version.
    */
-  protected Map<Class<?>, String> nestedClassSuffixes;
+  Map<Class<?>, String> nestedClassSuffixes;
 
   // We need to call beanEncoder's rowWriter.reset() before write a corresponding nested bean every
   // time.
