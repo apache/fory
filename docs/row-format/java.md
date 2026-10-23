@@ -370,11 +370,11 @@ list or map), building the codec fails, because an old layout could be identical
 and old values would decode as the new type. To change the type of a field, give the new member a
 new name.
 
-A field handled by a custom codec evolves as its encoded representation. A codec that encodes
-to another type descends that type, so a versioned bean reachable only through the codec is
-still enumerated; a codec that supplies its own terminal `foryField` column replaces the whole
-field, so the declared type is never introspected and its members are invisible to the
-evolution walk.
+A field handled by a custom codec evolves as its encoded representation. When `getForyField`
+returns null, the column follows `encodedType()`, and a versioned bean in that type evolves as
+usual. When `getForyField` returns a field, that field is the whole column: the members of the
+declared Java type do not change the layout, and their `@ForyRowVersion` annotations have no
+effect.
 
 ### Wire Format and Limitations
 
@@ -403,9 +403,8 @@ After that, deploy every reader of a schema change before any writer. A reader d
 whose layout it knows, from its own version and older versions, and it rejects a payload whose
 layout it does not know with `ClassNotCompatibleException`.
 
-An evolution codec generates the projection for an older layout with Janino when it first decodes
-a payload with that layout. A GraalVM native image cannot define classes at run time, so in a
-native image the decode of a payload with an older layout fails. This is a known limitation.
+In a GraalVM native image, an evolution codec cannot decode a payload with an older layout: the
+decode fails. This is a known limitation.
 
 The hash algorithm, wire names, field order, and framing are specified language-neutrally in
 the [row format specification](../specification/row_format_spec.md#schema-evolution). Java is the
@@ -453,13 +452,13 @@ map may evolve more than one distinct bean class across its key and value. A top
 its own hash identifying both layouts together; a map nested inside an array, another map, or a
 bean field has its layouts folded into the enclosing payload's hash.
 
-When a versioned bean contains other versioned beans, the reader can read one projection layout per
+When a versioned bean contains other versioned beans, the reader can read one layout per
 combination of versions across the composition, with each bean class at one version. Building the
 codec computes the layout and hash of every combination, so the build time and memory grow with
 the product of the version counts of the distinct versioned bean classes, and the codec sets no
-limit. A map whose key and value both evolve combines their versions the same way. The codec
-compiles the projection for an older layout the first time it decodes a payload with that layout,
-inside that `decode` call, so the first older payload of each layout takes longer to decode.
+limit. A map whose key and value both evolve combines their versions the same way. The first
+`decode` of a payload with each older layout takes longer than later ones, because the codec
+prepares its reader for that layout inside that call.
 
 To bound the growth, stop reading the oldest layouts: remove an entry from a bean's `History`
 interface, or remove or lower the `since` of a live field so that no layout without that field
