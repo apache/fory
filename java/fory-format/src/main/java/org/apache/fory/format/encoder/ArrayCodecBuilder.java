@@ -32,13 +32,11 @@ import java.util.function.Supplier;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
-import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
 import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.type.TypeResolutionContext;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.ExceptionUtils;
 
@@ -89,8 +87,8 @@ public class ArrayCodecBuilder<C extends Collection<?>>
    * codec. A directly-typed bean (versioned or not) takes the path so the strict-hash prefix is
    * always present and an evolution-on consumer can detect a flag-mismatched producer cleanly; a
    * bean nested inside a list/map/array element is found by descending the wrapper. Null when the
-   * element carries no bean. The per-version enumeration over every reachable bean is done by {@link
-   * #buildElementSchemaHistory}.
+   * element carries no bean. The per-version enumeration over every reachable bean is done by
+   * {@link #buildElementSchemaHistory}.
    */
   private Class<?> evolutionBean(final TypeRef<?> elementType) {
     return SchemaHistory.evolutionBean(elementType, typeCtx());
