@@ -412,19 +412,17 @@ only implementation today, so Python, C++, and other runtimes cannot read evolut
 payloads until they implement that protocol.
 
 Field identity on the wire is the snake_case form of the member name (`createdAt` becomes
-`created_at`), and a versioned layout orders fields by that wire name. For ordinary member names
-this is the same order the generated codecs already use. A member name with a literal underscore
-next to a case boundary makes the two orders diverge (`aB` sorts before `a_a` as a member name,
-but its wire name `a_b` sorts after `a_a`); such a bean is rejected when the codec is built, with
-a message naming the members to rename.
+`created_at`), and a versioned layout orders fields by that wire name. The `snake_case` conversion
+inserts an underscore before each ASCII capital letter and lowercases it, and changes no other
+character.
 
-The `snake_case` conversion inserts an underscore before each ASCII capital letter and lowercases
-it, and changes no other character. The Java codec finds the member of each field with the
-reverse conversion, which removes every underscore, so Java member names must be lowerCamelCase:
-a member name with an underscore, such as `created_at`, fails the codec build. Other Fory runtimes
-do not all convert acronyms, a leading capital letter, or non-ASCII capital letters the same way,
-so give versioned beans ordinary lowerCamelCase member names (`createdAt`, not `fooURL` or
-`URLValue`) if another runtime will read the payloads.
+With schema evolution, Java member names must be lowerCamelCase. A member name or a history method
+name with an underscore, such as `created_at` or `count_`, fails the codec build. The build also
+fails when the member-name order and the wire-name order differ, which happens only for a
+character outside the Basic Multilingual Plane. The error names the members to rename. Other Fory
+runtimes do not all convert acronyms, a leading capital letter, or non-ASCII capital letters the
+same way, so give versioned beans ordinary lowerCamelCase member names (`createdAt`, not `fooURL`
+or `URLValue`) if another runtime will read the payloads.
 
 Because field names are wire identity, a rename is a removal plus an addition, not an in-place
 mapping: declare the old name on the history interface with `until = N` and annotate the renamed

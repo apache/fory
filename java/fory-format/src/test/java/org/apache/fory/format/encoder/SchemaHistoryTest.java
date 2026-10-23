@@ -141,11 +141,11 @@ public class SchemaHistoryTest {
   }
 
   /**
-   * The canonical cross-language field order is ascending by snake_case wire name, but Java's
-   * generated codecs bake the member-name order. A literal underscore sorting against an uppercase
-   * letter makes the two orders diverge ({@code aB} before {@code a_a} by member name, {@code a_a}
-   * before {@code a_b} by wire name), so the bean cannot be emitted in canonical order and the
-   * build must reject it with rename guidance.
+   * The canonical cross-language field order is ascending by snake_case wire name, compared by code
+   * point, but Java's generated codecs bake the member-name order, compared by UTF-16 code unit. A
+   * character outside the Basic Multilingual Plane against one above the surrogate range makes the
+   * two orders diverge, so the bean cannot be emitted in canonical order and the build must reject
+   * it with rename guidance.
    */
   @Test
   public void divergentWireNameOrderIsRejected() {
@@ -153,7 +153,7 @@ public class SchemaHistoryTest {
         expectThrows(
             IllegalStateException.class,
             () -> SchemaHistory.build(DivergentNameOrder.class, STANDARD));
-    assertTrue(e.getMessage().contains("wire name"), e.getMessage());
+    assertTrue(e.getMessage().contains("orders member"), e.getMessage());
   }
 
   /**
@@ -167,31 +167,53 @@ public class SchemaHistoryTest {
         expectThrows(
             IllegalStateException.class,
             () -> SchemaHistory.build(DivergentNestedHolder.class, STANDARD));
-    assertTrue(e.getMessage().contains("wire name"), e.getMessage());
+    assertTrue(e.getMessage().contains("orders member"), e.getMessage());
   }
 
   /**
-   * Two live members with one wire name ({@code aB} and {@code a_b}) need a rename, not other
-   * versions, so the build must reject them by member name.
+   * The codec finds the member of a wire name by removing its underscores, so member {@code a_}
+   * would read and write member {@code a}, and its own value would be lost. The build must reject
+   * an underscore in a live member name and in a removed-field declaration.
    */
   @Test
-  public void liveMembersWithOneWireNameAreRejected() {
-    IllegalStateException e =
+  public void underscoreMemberNameIsRejected() {
+    IllegalStateException live =
         expectThrows(
-            IllegalStateException.class, () -> SchemaHistory.build(SameWireName.class, STANDARD));
-    assertTrue(e.getMessage().contains("'aB' and 'a_b'"), e.getMessage());
+            IllegalStateException.class,
+            () -> SchemaHistory.build(TrailingUnderscore.class, STANDARD));
+    assertTrue(live.getMessage().contains("'a_'"), live.getMessage());
+    IllegalStateException removed =
+        expectThrows(
+            IllegalStateException.class,
+            () -> SchemaHistory.build(RemovedUnderscore.class, STANDARD));
+    assertTrue(removed.getMessage().contains("'old_name'"), removed.getMessage());
   }
 
   @lombok.Data
-  public static class SameWireName {
-    private int aB;
-    private int a_b;
+  public static class TrailingUnderscore {
+    private int a;
+    private int a_;
   }
 
+  @lombok.Data
+  @ForyRowSchema(removedFields = RemovedUnderscore.History.class)
+  public static class RemovedUnderscore {
+    private int a;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      int old_name();
+    }
+  }
+
+  /**
+   * U+1D44E sorts before U+FF41 by UTF-16 code unit, the member-name order, and after it by code
+   * point, the wire-name order.
+   */
   @lombok.Data
   public static class DivergentNameOrder {
-    private int aB;
-    private int a_a;
+    private int a𝑎;
+    private int aａ;
   }
 
   @lombok.Data

@@ -1690,9 +1690,8 @@ public class SchemaEvolutionTest {
   }
 
   /**
-   * A class the codec exists to hide, with member names whose wire-name order diverges from their
-   * member-name order (member 'codeSource_' sorts before 'code_', wire name 'code_source_' sorts
-   * after 'code_' — the libphonenumber PhoneNumber shape the canonical-order check rejects).
+   * A class the codec exists to hide, with member names that schema evolution rejects: they have
+   * underscores, the libphonenumber PhoneNumber shape.
    */
   @Data
   public static class Handle {
@@ -1743,8 +1742,8 @@ public class SchemaEvolutionTest {
 
   /**
    * A codec supplying its own terminal foryField replaces the whole column, so the evolution walk
-   * must not introspect the declared type as a bean: Handle's member names would fail the
-   * canonical-order check if it did.
+   * must not introspect the declared type as a bean: Handle's member names would fail the build if
+   * it did.
    */
   @Test
   public void terminalCodecFieldIsNotIntrospected() {

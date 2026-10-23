@@ -65,8 +65,9 @@ import org.apache.fory.util.StringUtils;
  * does not carry (decimal precision/scale, fixed-size binary width). The algorithm is specified in
  * {@code docs/specification/row_format_spec.md}. Versioned schemas additionally require the
  * canonical field order — ascending by wire name — which for Java coincides with the member-name
- * order the generated codecs bake in; beans whose member names sort differently by wire name
- * (literal underscores at case boundaries) are rejected at build time.
+ * order the generated codecs bake in. Member names with an underscore are rejected at build time,
+ * and so are beans whose member names sort differently by wire name (a character outside the Basic
+ * Multilingual Plane against one above the surrogate range).
  */
 final class SchemaHistory {
 
@@ -777,7 +778,7 @@ final class SchemaHistory {
       // For Lombok @Data or record-style beans the descriptor name is the field name
       // ("tags"); for interface beans or JavaBean-style classes it is the method name
       // ("getTags"). The user writes the history method to match.
-      String wireName = StringUtils.lowerCamelToLowerUnderscore(d.getName());
+      String wireName = wireName(historyClass, d);
       out.add(
           new FieldEntry(
               wireName, d.getName(), d.getTypeRef(), ann.since(), ann.until(), /*live*/ false));
@@ -835,10 +836,29 @@ final class SchemaHistory {
       }
       // No since/until ordering check here: a live field always has until == MAX_VALUE (enforced
       // above), so the ordering check lives only on the removed-field path in collectRemovedFields.
-      String wireName = StringUtils.lowerCamelToLowerUnderscore(d.getName());
+      String wireName = wireName(beanClass, d);
       out.add(new FieldEntry(wireName, d.getName(), d.getTypeRef(), since, until, /*live*/ true));
     }
     return out;
+  }
+
+  /**
+   * The wire name of member {@code d} of {@code type}. The generated codec finds the member of a
+   * wire name by removing its underscores, so a member name with an underscore would bind to
+   * another member ({@code a_} to {@code a}) or to none. Reject it.
+   */
+  private static String wireName(Class<?> type, Descriptor d) {
+    String name = d.getName();
+    if (name.indexOf('_') >= 0) {
+      throw new IllegalStateException(
+          "Member '"
+              + name
+              + "' of "
+              + type.getName()
+              + " has an underscore in its name, but schema evolution requires lowerCamelCase "
+              + "member names. Rename it.");
+    }
+    return StringUtils.lowerCamelToLowerUnderscore(name);
   }
 
   private static ForyRowVersion lookupForyVersion(Descriptor d) {
@@ -912,27 +932,6 @@ final class SchemaHistory {
       List<FieldEntry> group = e.getValue();
       if (group.size() < 2) {
         continue;
-      }
-      // Two live members with one wire name (aB and a_b) also have overlapping windows, but the
-      // fix is a rename, not a change to their versions, so report them by member name first.
-      FieldEntry live = null;
-      for (FieldEntry fe : group) {
-        if (!fe.live) {
-          continue;
-        }
-        if (live != null) {
-          throw new IllegalStateException(
-              "Members '"
-                  + live.javaName
-                  + "' and '"
-                  + fe.javaName
-                  + "' of "
-                  + beanClass.getName()
-                  + " both have the wire name '"
-                  + e.getKey()
-                  + "'. Rename one of them.");
-        }
-        live = fe;
       }
       group.sort((a, b) -> Integer.compare(a.since, b.since));
       for (int i = 1; i < group.size(); i++) {
@@ -1065,11 +1064,13 @@ final class SchemaHistory {
   /**
    * Verify that {@code active} — one version's field entries, already sorted by Java member name —
    * is also strictly ascending by wire name, the canonical cross-language order versioned schemas
-   * are defined in. The two orders agree for ordinary member names and diverge only when a literal
-   * underscore sorts against an uppercase letter; Java cannot emit the canonical order then,
-   * because the generated codec bakes member-name order, so reject the bean with rename guidance.
-   * Duplicate wire names within one version are unreachable here ({@link #validateNoNameCollision}
-   * forces their windows apart), but the strict comparison covers them all the same.
+   * are defined in. Member names have no underscore ({@link #wireName}), so the two orders diverge
+   * only where {@link String#compareTo}, which compares UTF-16 code units, disagrees with code
+   * point order: a character outside the Basic Multilingual Plane against one above the surrogate
+   * range. Java cannot emit the canonical order then, because the generated codec bakes member-name
+   * order, so reject the bean with rename guidance. Duplicate wire names within one version are
+   * unreachable here ({@link #validateNoNameCollision} forces their windows apart), but the strict
+   * comparison covers them all the same.
    */
   private static void checkCanonicalOrder(String label, int version, List<FieldEntry> active) {
     for (int i = 1; i < active.size(); i++) {
@@ -1094,7 +1095,7 @@ final class SchemaHistory {
                 + "' to sort strictly after '"
                 + prev.name
                 + "'. Rename one of the members so the member-name order and the wire-name order "
-                + "agree; literal underscores next to case boundaries cause the divergence.");
+                + "agree. The orders differ for a character outside the Basic Multilingual Plane.");
       }
     }
   }
