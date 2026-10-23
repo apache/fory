@@ -71,7 +71,7 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
 
   /** Binds one historical version's projection codec to an encoder. */
   interface ProjectionSource {
-    ProjectionCodec compile(BaseBinaryRowWriter writer, Fory fory);
+    ProjectionCodec compile(Fory fory);
   }
 
   BinaryRowEncoder(
@@ -173,7 +173,7 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
     if (source == null) {
       return null;
     }
-    ProjectionCodec projection = source.compile(writer, fory);
+    ProjectionCodec projection = source.compile(fory);
     projections.put(peerSchemaHash, projection);
     return projection;
   }

@@ -169,10 +169,13 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     }
 
     @Override
-    public BinaryRowEncoder.ProjectionCodec compile(BaseBinaryRowWriter writer, Fory fory) {
+    public BinaryRowEncoder.ProjectionCodec compile(Fory fory) {
       Resolved r = resolve();
       try {
-        Object[] references = {version.schema(), writer, fory};
+        // A decode-only codec still builds child writers under its root writer, so give it a
+        // detached one: the encoder's own writer would collect those children and walk them on
+        // every encode.
+        Object[] references = {version.schema(), codecFormat.newWriter(version.schema()), fory};
         GeneratedRowEncoder codec = (GeneratedRowEncoder) r.ctor.invokeExact(references);
         return new BinaryRowEncoder.ProjectionCodec(r.rowFactory, codec);
       } catch (final ReflectiveOperationException e) {
@@ -185,7 +188,7 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
 
     /**
      * Generates the projection class and its row factory once per codec, on the first decode of
-     * this version by any of its encoders. Each encoder then only binds its own writer.
+     * this version by any of its encoders. Each encoder then only creates its codec instance.
      */
     private Resolved resolve() {
       Resolved r = resolved;
