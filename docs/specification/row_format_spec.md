@@ -358,8 +358,9 @@ if (fixed_width % 8 == 0):
 Schema evolution lets a codec read payloads written by older versions of the same struct. It is
 opt-in and currently implemented in Java only. It does not change the existing wire contract
 above: a payload written without it is unchanged. When it is enabled, the row hash word holds the
-strict hash below instead of the default schema hash, and every array and map body starts with an
-8-byte hash prefix. Producer and consumer must agree on whether it is enabled. The protocol below
+strict hash below instead of the default schema hash, and every top-level array and map payload
+starts with an 8-byte hash prefix. An array or map nested in a row, an array, or a map carries no
+prefix. Producer and consumer must agree on whether it is enabled. The protocol below
 is defined over language-neutral inputs so another runtime can implement it and interoperate with
 Java payloads.
 
@@ -486,9 +487,10 @@ unlike the default schema hash, which mixes only type IDs. All inputs are langua
 
 - A row payload's existing leading 8-byte hash word (little-endian) holds the strict hash of the
   writer's current layout when evolution is enabled, and the default schema hash otherwise.
-- Array and map payloads carry no hash word without evolution. With evolution, every array and
-  map body starts with an 8-byte prefix (little-endian), so the body of every payload written with
-  evolution enabled starts with an 8-byte schema identifier: the strict hash of its layout for a
+- Array and map payloads carry no hash word without evolution. With evolution, every top-level
+  array and map payload starts with an 8-byte prefix (little-endian). An array or map nested in a
+  row, an array, or a map carries no prefix. So the body of every payload written with evolution
+  enabled starts with an 8-byte schema identifier: the strict hash of its layout for a
   row or an array, and the combined key and value hash for a map.
 - When the payload size is written before the payload (a little-endian int32), the size comes
   first and the hash word or prefix follows it. The size counts the 8 bytes of the hash and the
