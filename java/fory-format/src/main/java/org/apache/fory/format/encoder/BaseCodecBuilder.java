@@ -98,9 +98,9 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
 
   /**
    * Build the schema history for {@code targetClass} under the active codec format. The compact
-   * format sorts schema fields, so historical schemas must be sorted the same way for their strict
-   * hashes and layouts to match what the writer produces; the default format passes schemas through
-   * unchanged.
+   * format sorts the fields of every struct, including structs in list elements and map entries, so
+   * historical schemas are sorted the same way: the strict hash then covers the fields in wire
+   * order. The default format passes schemas through unchanged.
    */
   protected SchemaHistory buildSchemaHistory(final Class<?> targetClass) {
     return SchemaHistory.build(targetClass, schemaTransform());
@@ -130,7 +130,7 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
 
   private UnaryOperator<Schema> schemaTransform() {
     return codecFormat == CompactCodecFormat.INSTANCE
-        ? CompactBinaryRowWriter::sortSchema
+        ? CompactBinaryRowWriter::sortSchemaDeep
         : UnaryOperator.identity();
   }
 

@@ -183,7 +183,7 @@ public final class SchemaHistory {
   /**
    * Build a history from the bean's annotations. The schema for each version is transformed by
    * {@code schemaTransform} after filtering; pass an identity for standard format, or {@code
-   * CompactBinaryRowWriter::sortSchema} for compact format.
+   * CompactBinaryRowWriter::sortSchemaDeep} for compact format.
    */
   public static SchemaHistory build(Class<?> beanClass, UnaryOperator<Schema> schemaTransform) {
     return build(beanClass, schemaTransform, new HashMap<>());

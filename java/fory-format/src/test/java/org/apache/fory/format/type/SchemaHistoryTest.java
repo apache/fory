@@ -27,7 +27,9 @@ import static org.testng.Assert.expectThrows;
 import java.lang.reflect.TypeVariable;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
+import org.apache.fory.format.annotation.ForySchema;
 import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.TypeResolutionContext;
 import org.testng.annotations.Test;
@@ -272,6 +274,56 @@ public class SchemaHistoryTest {
 
     @ForyVersion(since = 2)
     private String added;
+  }
+
+  /**
+   * The compact format sorts every struct it writes, including list elements and map values. The
+   * strict hash must follow that wire order whether or not the nested bean is versioned: a
+   * versioned bean substitutes its own sorted history schema, so an unversioned bean with the same
+   * layout must hash the same.
+   */
+  @Test
+  public void compactHashFollowsWireOrderInsideCollections() {
+    UnaryOperator<Schema> compact = CompactBinaryRowWriter::sortSchemaDeep;
+    SchemaHistory plain = SchemaHistory.build(PlainCollectionHolder.class, compact);
+    SchemaHistory versioned = SchemaHistory.build(VersionedCollectionHolder.class, compact);
+    assertEquals(plain.current().strictHash(), versioned.current().strictHash());
+
+    DataTypes.ListType items =
+        (DataTypes.ListType) plain.current().schema().getFieldByName("items").type();
+    DataTypes.StructType element = (DataTypes.StructType) items.valueType();
+    assertEquals(element.fields().get(0).name(), "wide");
+    assertEquals(element.fields().get(1).name(), "narrow");
+  }
+
+  @lombok.Data
+  public static class PlainElement {
+    private byte narrow;
+    private long wide;
+  }
+
+  @lombok.Data
+  @ForySchema(removedFields = VersionedElement.History.class)
+  public static class VersionedElement {
+    private byte narrow;
+    private long wide;
+
+    interface History {
+      @ForyVersion(until = 2)
+      String retired();
+    }
+  }
+
+  @lombok.Data
+  public static class PlainCollectionHolder {
+    private java.util.List<PlainElement> items;
+    private java.util.Map<String, PlainElement> byName;
+  }
+
+  @lombok.Data
+  public static class VersionedCollectionHolder {
+    private java.util.List<VersionedElement> items;
+    private java.util.Map<String, VersionedElement> byName;
   }
 
   private static Field field(String name) {
