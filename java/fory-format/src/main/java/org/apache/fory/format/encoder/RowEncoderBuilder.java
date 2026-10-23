@@ -243,8 +243,8 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     for (int i = 0; i < numFields; i++) {
       Field field = schema.field(i);
       if (projectionLiveNames != null && !projectionLiveNames.contains(field.name())) {
-        // Removed wire field — no Java accessor to encode from, and a projection codec is
-        // never dispatched on write anyway.
+        // A slot that the projection does not read: a removed field without a live field of the
+        // same name and declared type. A projection codec never encodes.
         continue;
       }
       Descriptor d = getDescriptorByFieldName(field.name());
@@ -287,9 +287,9 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
       bean = new Expression.Reference("new " + generatedBeanImplName + "(row)");
     } else {
       int numFields = schema.numFields();
-      // Build, in schema order, the per-slot bean-side info for live fields only; removed slots
-      // stay in the row layout but have no Java target. Offsets are keyed on slot index, so
-      // skipping them is safe.
+      // Build, in schema order, the per-slot bean-side info for the fields that the projection
+      // reads; the other slots stay in the row layout and are skipped. Offsets are keyed on slot
+      // index, so skipping them is safe.
       List<Descriptor> liveDescriptors = new ArrayList<>();
       List<Expression> liveValues = new ArrayList<>();
       for (int i = 0; i < numFields; i++) {
@@ -451,7 +451,7 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
       Literal ordinal = Literal.ofInt(i);
       String wireName = schema.field(i).name();
       if (projectionLiveNames != null && !projectionLiveNames.contains(wireName)) {
-        // Removed wire field — no Java member to back this slot.
+        // A slot that the projection skips: it does not read the field.
         continue;
       }
       Descriptor d = getDescriptorByFieldName(wireName);

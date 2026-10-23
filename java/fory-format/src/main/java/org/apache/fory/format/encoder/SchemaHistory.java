@@ -152,8 +152,9 @@ final class SchemaHistory {
     }
 
     /**
-     * Names of fields in this version that still have a Java member on the current bean class.
-     * Other fields are read-and-discarded during projection.
+     * Wire names of the fields in this version that a projection reads into the current bean: every
+     * live field, and every removed field that has a live field with the same name and declared
+     * type. A projection skips the slots of the other fields and does not read them.
      */
     Set<String> liveFieldNames() {
       return liveFieldNames;
@@ -317,7 +318,7 @@ final class SchemaHistory {
 
     // Sort by Java member name so the per-version schema matches the order
     // TypeInference.inferSchema produces (which iterates Descriptor.getDescriptors, alphabetical
-    // by Java member name). Removed fields synthesize a Java name from their wire name.
+    // by Java member name).
     // The canonical cross-language order is ascending by wire name; checkCanonicalOrder below
     // verifies per version that the member-name order coincides with it, so the emitted schemas
     // comply with the spec while staying byte-identical to the generated codec's baked order.
