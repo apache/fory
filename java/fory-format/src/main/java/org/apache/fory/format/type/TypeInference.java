@@ -118,8 +118,7 @@ public class TypeInference {
   }
 
   private static Field inferField(TypeRef<?> arrayTypeRef, TypeRef<?> typeRef) {
-    TypeResolutionContext ctx =
-        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
+    TypeResolutionContext ctx = newTypeContext();
     String name = "";
     if (arrayTypeRef != null) {
       Field f = inferField(DataTypes.ARRAY_ITEM_NAME, typeRef, ctx);
@@ -272,10 +271,16 @@ public class TypeInference {
    * registrations.
    */
   static Field inferNamedField(String name, TypeRef<?> typeRef, Class<?> enclosingType) {
-    TypeResolutionContext ctx =
-        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true)
-            .appendTypePath(enclosingType);
-    return inferField(name, typeRef, ctx);
+    return inferField(name, typeRef, newTypeContext().appendTypePath(enclosingType));
+  }
+
+  /**
+   * A fresh type-resolution context with the registered custom codecs and interface synthesis, as
+   * row-format inference uses it. Schema-evolution discovery must use the same context, or it
+   * classifies a type differently from the codec that encodes it.
+   */
+  static TypeResolutionContext newTypeContext() {
+    return new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
   }
 
   public static String inferTypeName(TypeRef<?> token) {

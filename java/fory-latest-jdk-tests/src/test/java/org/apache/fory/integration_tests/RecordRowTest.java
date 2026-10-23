@@ -109,7 +109,7 @@ public class RecordRowTest {
   }
 
   @Test
-  public void recordSchemaEvolution_readsOlderPayloads() {
+  public void evolutionOlderPayload() {
     RowEncoder<PersonV1> writer =
         Encoders.buildBeanCodec(PersonV1.class).withSchemaEvolution().build().get();
     RowEncoder<PersonV2> reader =
@@ -120,7 +120,7 @@ public class RecordRowTest {
   }
 
   @Test
-  public void recordSchemaEvolution_currentRoundTrip() {
+  public void evolutionRoundTrip() {
     RowEncoder<PersonV2> codec =
         Encoders.buildBeanCodec(PersonV2.class).withSchemaEvolution().build().get();
     PersonV2 in = new PersonV2("Mars", "mars@example.com");
@@ -133,7 +133,7 @@ public class RecordRowTest {
   public record CounterV2(String name, @ForyRowVersion(since = 2) int count) {}
 
   @Test
-  public void recordSchemaEvolution_primitiveDefault() {
+  public void evolutionPrimitiveDefault() {
     RowEncoder<CounterV1> writer =
         Encoders.buildBeanCodec(CounterV1.class).withSchemaEvolution().build().get();
     RowEncoder<CounterV2> reader =
@@ -156,7 +156,7 @@ public class RecordRowTest {
   public record OuterInnerV2(long id, InnerV2 inner) {}
 
   @Test
-  public void recordSchemaEvolution_nestedRecordInnerNewerThanWriter() {
+  public void evolutionNestedInnerNewerThanWriter() {
     RowEncoder<OuterInnerV1> writer =
         Encoders.buildBeanCodec(OuterInnerV1.class).withSchemaEvolution().build().get();
     RowEncoder<OuterInnerV2> reader =
@@ -182,7 +182,7 @@ public class RecordRowTest {
   }
 
   @Test
-  public void recordSchemaEvolution_constructorDefaultsAddedComponent() {
+  public void evolutionConstructorDefaults() {
     RowEncoder<DefaultedV1> writer =
         Encoders.buildBeanCodec(DefaultedV1.class).withSchemaEvolution().build().get();
     RowEncoder<DefaultedV2> reader =

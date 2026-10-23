@@ -77,9 +77,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       };
     }
     return buildVersioned(
-        SchemaHistory.evolutionBean(valType, typeCtx()),
-        SchemaHistory.evolutionBean(keyType, typeCtx()),
-        codeGenerator);
+        SchemaHistory.evolutionBean(valType), SchemaHistory.evolutionBean(keyType), codeGenerator);
   }
 
   /**
@@ -128,7 +126,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     // A writer has one definition of each bean class, so a pair that puts a class reached from
     // both the key and the value at two versions cannot occur on the wire; skip it, as the row
     // enumeration does.
-    LongMap<BinaryMapEncoder.ProjectionSource> projectionSources = new LongMap<>();
+    LongMap<MapProjectionSource> projectionSources = new LongMap<>();
     for (SchemaHistory.VersionedSchema valVs : valHistory.versions()) {
       for (SchemaHistory.VersionedSchema keyVs : keyHistory.versions()) {
         if (valVs == valCurrent && keyVs == keyCurrent
@@ -149,7 +147,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         }
         projectionSources.put(
             hash,
-            new ProjectionSource(
+            new MapProjectionSource(
                 mapType,
                 field,
                 codecFormat,
@@ -193,8 +191,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
                 codec,
                 sizeEmbedded,
                 currentHash,
-                projectionSources,
-                fory));
+                new ProjectionCache<>(projectionSources, fory)));
       }
     };
   }
@@ -218,7 +215,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
    * hash is unique. Static and built from values captured at build time, so a later change to the
    * builder cannot reach a lazy compile.
    */
-  private static final class ProjectionSource implements BinaryMapEncoder.ProjectionSource {
+  private static final class MapProjectionSource
+      extends ProjectionSource<MapProjectionSource.Classes, BinaryMapEncoder.ProjectionMapCodec> {
     private final TypeRef<? extends Map<?, ?>> mapType;
     private final Field field;
     private final Encoding codecFormat;
@@ -229,9 +227,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     private final SchemaHistory.VersionedSchema valCurrent;
     private final SchemaHistory.VersionedSchema keyCurrent;
     private final CodeGenerator codeGenerator;
-    private volatile Resolved resolved;
 
-    ProjectionSource(
+    MapProjectionSource(
         TypeRef<? extends Map<?, ?>> mapType,
         Field field,
         Encoding codecFormat,
@@ -261,8 +258,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
      * current field, so a map where only one side evolves pays no codegen for the unchanged side.
      */
     @Override
-    public BinaryMapEncoder.ProjectionMapCodec compile(Fory fory) {
-      Resolved r = resolve();
+    BinaryMapEncoder.ProjectionMapCodec bind(Classes r, Fory fory) {
       try {
         BinaryArrayWriter projKey = codecFormat.newArrayWriter(r.keyArrayField);
         BinaryArrayWriter projVal =
@@ -277,24 +273,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       }
     }
 
-    /**
-     * Generates the projection classes once per codec, on the first decode of this combination by
-     * any of its encoders. Each encoder then only creates its own writers and binds them.
-     */
-    private Resolved resolve() {
-      Resolved r = resolved;
-      if (r != null) {
-        return r;
-      }
-      synchronized (this) {
-        if (resolved == null) {
-          resolved = generate();
-        }
-        return resolved;
-      }
-    }
-
-    private Resolved generate() {
+    @Override
+    Classes generate() {
       // Each position's history is forElement over the position type, so its schema's single field
       // is the position field with every reachable bean projected onto this combination, and
       // nestedSuffixesFor routes each bean class in the position to its own historical row codec.
@@ -335,20 +315,20 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
               nested,
               codeGenerator);
       Field histMapField = DataTypes.mapField(field.name(), histKey, histVal);
-      return new Resolved(
+      return new Classes(
           Encoders.constructorHandleFor(mapClass, GeneratedMapEncoder.class),
           histMapField,
           DataTypes.keyArrayFieldForMap(histMapField),
           DataTypes.itemArrayFieldForMap(histMapField));
     }
 
-    private static final class Resolved {
+    static final class Classes {
       final MethodHandle ctor;
       final Field mapField;
       final Field keyArrayField;
       final Field valueArrayField;
 
-      Resolved(MethodHandle ctor, Field mapField, Field keyArrayField, Field valueArrayField) {
+      Classes(MethodHandle ctor, Field mapField, Field keyArrayField, Field valueArrayField) {
         this.ctor = ctor;
         this.mapField = mapField;
         this.keyArrayField = keyArrayField;
@@ -375,7 +355,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         final Object[] references = {keyField, valField, keyWriter, valWriter, fory, field};
         try {
           return (GeneratedMapEncoder) constructorHandle.invokeExact(references);
-        } catch (Throwable t) {
+        } catch (final Throwable t) {
           throw ExceptionUtils.throwException(t);
         }
       }

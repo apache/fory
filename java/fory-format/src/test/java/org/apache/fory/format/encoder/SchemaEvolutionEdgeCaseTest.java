@@ -42,10 +42,10 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Stress tests for row-codec schema evolution. Each test probes a specific edge case; the names say
- * what is being stressed.
+ * Edge cases of row-codec schema evolution: long version chains, nested and collection-typed beans,
+ * maps, and the build-time checks. Each test probes one case.
  */
-public class SchemaEvolutionStressTest {
+public class SchemaEvolutionEdgeCaseTest {
 
   // ---------------------------------------------------------------------------
   // Long version chain: a field added at each version 1..5, plus a removal at v3.
@@ -1492,7 +1492,7 @@ public class SchemaEvolutionStressTest {
   // inner key is the shape that must still evolve through the top-level array/map entry point.
 
   @Test
-  public void arrayOfMapKeyOlderPayloadReadByNewerCodec() {
+  public void arrayOfMapKeyOlderPayload() {
     ArrayEncoder<List<Map<DefaultsV1, String>>> writer =
         Encoders.buildArrayCodec(new TypeRef<List<Map<DefaultsV1, String>>>() {})
             .withSchemaEvolution()
@@ -1519,7 +1519,7 @@ public class SchemaEvolutionStressTest {
   // A top-level map whose VALUE is itself a Map<KBean, VBean> with two DIFFERENT versioned bean
   // classes. The value position must evolve both inner beans and generate a codec for each.
   @Test
-  public void mapValueWrappingTwoBeansOlderPayloadReadByNewerCodec() {
+  public void mapValueWrappingTwoBeansOlderPayload() {
     MapEncoder<Map<String, Map<AlignV1, DefaultsV1>>> writer =
         Encoders.buildMapCodec(new TypeRef<Map<String, Map<AlignV1, DefaultsV1>>>() {})
             .withSchemaEvolution()
@@ -1550,7 +1550,7 @@ public class SchemaEvolutionStressTest {
   }
 
   @Test
-  public void mapOfMapKeyOlderPayloadReadByNewerCodec() {
+  public void mapOfMapKeyOlderPayload() {
     MapEncoder<Map<String, Map<DefaultsV1, String>>> writer =
         Encoders.buildMapCodec(new TypeRef<Map<String, Map<DefaultsV1, String>>>() {})
             .withSchemaEvolution()
@@ -1583,7 +1583,7 @@ public class SchemaEvolutionStressTest {
   // either side at the wrong (current) layout would misread the bytes rather than coincide with a
   // default. The two beans evolve independently, so dispatch must distinguish their combination.
   @Test
-  public void arrayOfMapBothSidesOlderPayloadReadByNewerCodec() {
+  public void arrayOfMapBothSidesOlderPayload() {
     ArrayEncoder<List<Map<AlignV1, DefaultsV1>>> writer =
         Encoders.buildArrayCodec(new TypeRef<List<Map<AlignV1, DefaultsV1>>>() {})
             .withSchemaEvolution()
@@ -1738,7 +1738,7 @@ public class SchemaEvolutionStressTest {
   }
 
   @Test
-  public void nestedInnerEvolution_readerInnerNewerThanWriter() {
+  public void readerInnerNewerThanWriter() {
     // Writer uses the "older shape" inner. Both writer and reader are evolution-on so they
     // agree on strict-hash framing.
     RowEncoder<NestedOuterWriter> writer = evolvingCodec(NestedOuterWriter.class);
@@ -1838,7 +1838,7 @@ public class SchemaEvolutionStressTest {
   // ---------------------------------------------------------------------------
 
   @Test
-  public void crossOuterAndInnerEvolution_array() {
+  public void crossOuterAndInnerEvolutionArray() {
     ArrayEncoder<List<NestedOuterWriter>> writer =
         Encoders.buildArrayCodec(new TypeRef<List<NestedOuterWriter>>() {})
             .withSchemaEvolution()
@@ -1871,7 +1871,7 @@ public class SchemaEvolutionStressTest {
   }
 
   @Test
-  public void crossOuterAndInnerEvolution_map() {
+  public void crossOuterAndInnerEvolutionMap() {
     MapEncoder<Map<String, NestedOuterWriter>> writer =
         Encoders.buildMapCodec(new TypeRef<Map<String, NestedOuterWriter>>() {})
             .withSchemaEvolution()

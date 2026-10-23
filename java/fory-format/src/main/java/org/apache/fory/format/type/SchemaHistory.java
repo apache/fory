@@ -44,7 +44,6 @@ import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.encoder.CustomCodec;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
-import org.apache.fory.type.TypeResolutionContext;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.StringUtils;
 
@@ -64,6 +63,10 @@ import org.apache.fory.util.StringUtils;
  * canonical field order — ascending by wire name — which for Java coincides with the member-name
  * order the generated codecs bake in; beans whose member names sort differently by wire name
  * (literal underscores at case boundaries) are rejected at build time.
+ *
+ * <p>The class and its members are public only because the codec builders in {@code
+ * org.apache.fory.format.encoder} use them across the package boundary. It is not a user API: users
+ * declare history with {@code ForyRowVersion} and {@code ForyRowSchema}.
  */
 @Internal
 public final class SchemaHistory {
@@ -236,7 +239,7 @@ public final class SchemaHistory {
       collectNestedSites(beanClass, fe.typeRef, schemaTransform, built, fe.nestedSites);
     }
 
-    validateNoNameCollision(all);
+    validateNoNameCollision(beanClass, all);
     SchemaHistory history = enumerate(beanClass.getName(), beanClass, all, schemaTransform);
     built.put(beanClass, history);
     return history;
@@ -307,9 +310,8 @@ public final class SchemaHistory {
     // A removed field that a live field adds again with the same wire name and declared type holds
     // the same data, so the projection reads it in every older layout. Reading it only where its
     // layout happens to collapse with a version that has the field live would make the result
-    // depend on unrelated fields. Equal row types are not enough: a String re-added as an enum, or
-    // one bean class re-added as another of the same shape, would feed old values to a decoder
-    // that cannot read them.
+    // depend on unrelated fields. A removed field with another declared type is discarded;
+    // validateNoTypeChange already rejected the case where both types encode to the same row field.
     Map<String, TypeRef<?>> liveTypes = new HashMap<>();
     for (FieldEntry fe : all) {
       if (fe.live) {
@@ -322,10 +324,10 @@ public final class SchemaHistory {
         readEntries.add(fe);
       }
     }
-    // Versions that collapse into one entry can still disagree on which fields are read, when a
-    // removed field and a live field of different declared types share one layout. The bytes
-    // cannot say which version wrote them, so the entry reads every field that any of its versions
-    // reads.
+    // Versions that collapse into one entry can still disagree on which fields are read: a removed
+    // bean field and a live bean field of different classes can reach the same layout through
+    // their nested versions. The bytes cannot say which version wrote them, so the entry reads
+    // every field that any of its versions reads.
     Map<Schema, Set<String>> liveNamesBySchema = new HashMap<>();
     Map<Schema, Set<Class<?>>> liveNestedBySchema = new HashMap<>();
     Map<Long, Schema> hashToSchema = new HashMap<>();
@@ -421,16 +423,7 @@ public final class SchemaHistory {
                 Collections.unmodifiableSet(liveNames),
                 Collections.unmodifiableMap(new HashMap<>(combination)),
                 liveNested);
-        // Prefer the all-current combination on collapse so the stored VS's nestedBeanSchemas
-        // map reflects the writer-side state at this outer version. This guards a contract on
-        // current().nestedBeanSchemas() in case two combinations ever canonicalize to the same
-        // schema; today's inner-by-schema collapse means inner.versions() has no wire-equal
-        // duplicates, but the guard preserves the invariant for future callers.
-        if (innerAllCurrent) {
-          bySchema.put(schema, vs);
-        } else {
-          bySchema.putIfAbsent(schema, vs);
-        }
+        bySchema.putIfAbsent(schema, vs);
         liveNamesBySchema.computeIfAbsent(schema, k -> new HashSet<>()).addAll(liveNames);
         liveNestedBySchema.computeIfAbsent(schema, k -> new HashSet<>()).addAll(liveNested);
         if (isCurrent) {
@@ -551,22 +544,22 @@ public final class SchemaHistory {
    * different questions ("which bean names the codec" here, "which beans have more than one
    * version" there), so they stay separate.
    */
-  public static Class<?> evolutionBean(TypeRef<?> elementType, TypeResolutionContext typeCtx) {
+  public static Class<?> evolutionBean(TypeRef<?> elementType) {
     Wrapper w = Wrapper.classify(void.class, elementType);
     switch (w.kind) {
       case ENCODED:
       case OPTIONAL:
       case SEQUENCE:
-        return evolutionBean(w.child, typeCtx);
+        return evolutionBean(w.child);
       case MAP:
         // Return one representative bean (value side preferred) only to name the generated codec.
         // collectNestedSites enumerates both the key and value sites, so the codec's actual shape
         // covers both; this asymmetry is safe precisely because the result is naming-only. Do not
         // derive codec structure from it.
-        Class<?> value = evolutionBean(w.value, typeCtx);
-        return value != null ? value : evolutionBean(w.key, typeCtx);
+        Class<?> value = evolutionBean(w.value);
+        return value != null ? value : evolutionBean(w.key);
       case LEAF:
-        return w.raw != null && TypeUtils.isBean(TypeRef.of(w.raw), typeCtx) ? w.raw : null;
+        return w.raw != null && isBean(w.raw) ? w.raw : null;
       default:
         throw new AssertionError("Unhandled wrapper kind: " + w.kind);
     }
@@ -818,9 +811,7 @@ public final class SchemaHistory {
    * and an older payload decodes at the interface's current layout.
    */
   private static boolean isBean(Class<?> cls) {
-    TypeResolutionContext typeCtx =
-        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
-    return TypeUtils.isBean(cls, typeCtx);
+    return TypeUtils.isBean(cls, TypeInference.newTypeContext());
   }
 
   /**
@@ -967,7 +958,7 @@ public final class SchemaHistory {
     return element == null ? null : element.getAnnotation(ForyRowVersion.class);
   }
 
-  private static void validateNoNameCollision(List<FieldEntry> entries) {
+  private static void validateNoNameCollision(Class<?> beanClass, List<FieldEntry> entries) {
     // For each pair with the same name, their [since, until) windows must not overlap.
     Map<String, List<FieldEntry>> byName = new HashMap<>();
     for (FieldEntry fe : entries) {
@@ -998,6 +989,47 @@ public final class SchemaHistory {
                   + "annotations on the live field or in the removed-fields class to make the "
                   + "windows disjoint.");
         }
+      }
+      validateNoTypeChange(beanClass, e.getKey(), group);
+    }
+  }
+
+  /**
+   * Reject a removed entry whose declared type differs from the live entry's but encodes to the
+   * same row field. An older layout can then be byte-identical to a newer one, so the reader would
+   * decode old values with the new type (a String re-added as an enum fails in valueOf). Entries
+   * whose row fields differ have distinct layouts, and the reader discards the old value.
+   */
+  private static void validateNoTypeChange(
+      Class<?> beanClass, String name, List<FieldEntry> group) {
+    FieldEntry live = null;
+    for (FieldEntry fe : group) {
+      if (fe.live) {
+        live = fe;
+      }
+    }
+    if (live == null) {
+      return;
+    }
+    Field liveField = TypeInference.inferNamedField(name, live.typeRef, beanClass);
+    for (FieldEntry fe : group) {
+      if (fe.live || fe.typeRef.equals(live.typeRef)) {
+        continue;
+      }
+      if (TypeInference.inferNamedField(name, fe.typeRef, beanClass).equals(liveField)) {
+        throw new IllegalStateException(
+            "Field '"
+                + name
+                + "' of "
+                + beanClass.getName()
+                + " is declared as "
+                + fe.typeRef
+                + " in the removed-fields class and as "
+                + live.typeRef
+                + " on the live member, and both encode as "
+                + liveField.type()
+                + ". An older layout can then be identical to a newer one, so old values would "
+                + "decode as the new type. Give the live member a new name.");
       }
     }
   }

@@ -355,10 +355,11 @@ A subclass inherits the removed fields that its superclasses declare with `@Fory
 an interface bean inherits those of its superinterfaces, the same as it inherits their live fields.
 
 A field that is removed and later added again with the same name and the same Java type is one
-field: older payloads that hold it decode with its value. If the Java type changes, older values
-are discarded. To change the type of a field, also rename it. If you keep the name and the
-row type stays the same (for example `String` to an enum), an old layout can be identical to the
-new one, and the reader then decodes old values with the new type.
+field: older payloads that hold it decode with its value. If the Java type changes and the row
+type changes too (for example `String` to `int`), older values are discarded. If the Java type
+changes but the row type stays the same (for example `String` to an enum), building the codec
+fails, because an old layout could be identical to the new one and old values would decode as the
+new type. To change the type of a field, give the new member a new name.
 
 A field handled by a custom codec evolves as its encoded representation. A codec that encodes
 to another type descends that type, so a versioned bean reachable only through the codec is
@@ -442,7 +443,9 @@ When a versioned bean contains other versioned beans, the reader can read one pr
 combination of versions across the composition, with each bean class at one version. Building the
 codec computes the layout and hash of every combination, so the build time and memory grow with
 the product of the version counts of the distinct versioned bean classes, and the codec sets no
-limit. A map whose key and value both evolve combines their versions the same way.
+limit. A map whose key and value both evolve combines their versions the same way. The codec
+compiles the projection for an older layout the first time it decodes a payload with that layout,
+inside that `decode` call, so the first older payload of each layout takes longer to decode.
 
 To bound the growth, stop reading the oldest layouts: remove an entry from a bean's `History`
 interface, or remove or lower the `since` of a live field so that no layout without that field

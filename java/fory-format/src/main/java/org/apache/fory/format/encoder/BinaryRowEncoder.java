@@ -19,8 +19,6 @@
 
 package org.apache.fory.format.encoder;
 
-import org.apache.fory.Fory;
-import org.apache.fory.collection.LongMap;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
@@ -35,23 +33,12 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
   private final BaseBinaryRowWriter writer;
   private final boolean sizeEmbedded;
   private final long schemaHash;
-  private final Fory fory;
 
   /**
-   * Hash → source able to compile and bind a projection codec for an older version. {@code null}
-   * when schema evolution is disabled; in that case a hash mismatch is a hard error. Shared,
-   * immutable, and built without compiling anything: a combination's codec class is compiled only
-   * the first time its hash is decoded.
+   * Projection codecs for older versions. {@code null} when schema evolution is disabled or the
+   * bean has only one version; in that case a hash mismatch is a hard error.
    */
-  private final LongMap<ProjectionSource> projectionSources;
-
-  /**
-   * Per-encoder cache of projection codecs compiled on first decode of their hash. Lock-free: an
-   * encoder is single-threaded (see {@link RowEncoder}), and the underlying class compile is
-   * memoized globally by the shared code generator, so a concurrent first-miss on the same hash in
-   * another encoder compiles the class once.
-   */
-  private final LongMap<ProjectionCodec> projections;
+  private final ProjectionCache<ProjectionCodec> projections;
 
   private final MemoryBuffer buffer = MemoryUtils.buffer(16);
 
@@ -69,17 +56,12 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
     }
   }
 
-  /** Binds one historical version's projection codec to an encoder. */
-  interface ProjectionSource {
-    ProjectionCodec compile(Fory fory);
-  }
-
   BinaryRowEncoder(
       final Schema schema,
       final GeneratedRowEncoder codec,
       final BaseBinaryRowWriter writer,
       final boolean sizeEmbedded) {
-    this(schema, codec, writer, sizeEmbedded, DataTypes.computeSchemaHash(schema), null, null);
+    this(schema, codec, writer, sizeEmbedded, DataTypes.computeSchemaHash(schema), null);
   }
 
   BinaryRowEncoder(
@@ -88,16 +70,13 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
       final BaseBinaryRowWriter writer,
       final boolean sizeEmbedded,
       final long schemaHash,
-      final LongMap<ProjectionSource> projectionSources,
-      final Fory fory) {
+      final ProjectionCache<ProjectionCodec> projections) {
     this.schema = schema;
     this.codec = codec;
     this.writer = writer;
     this.sizeEmbedded = sizeEmbedded;
     this.schemaHash = schemaHash;
-    this.projectionSources = projectionSources;
-    this.fory = fory;
-    this.projections = projectionSources == null ? null : new LongMap<>();
+    this.projections = projections;
   }
 
   @Override
@@ -133,8 +112,8 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
       buffer.increaseReaderIndex(rowSize);
       return fromRow(row);
     }
-    if (projectionSources != null) {
-      ProjectionCodec projection = resolveProjection(peerSchemaHash);
+    if (projections != null) {
+      ProjectionCodec projection = projections.get(peerSchemaHash);
       if (projection != null) {
         // The writer is bound to the current schema, so the historical row comes from the
         // projection's own factory, which carries that schema's precomputed layout.
@@ -157,25 +136,6 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
     // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (the schema-hash prefix
     // is part of the body, not framing), so decode takes the size from bytes.length.
     return decode(MemoryUtils.wrap(bytes), bytes.length);
-  }
-
-  /**
-   * The projection codec for {@code peerSchemaHash}, or {@code null} if no historical version has
-   * that hash. Compiles the codec on first encounter and caches it for the rest of this encoder's
-   * life. Single-threaded by the {@link RowEncoder} contract, so the cache needs no locking.
-   */
-  private ProjectionCodec resolveProjection(final long peerSchemaHash) {
-    ProjectionCodec cached = projections.get(peerSchemaHash);
-    if (cached != null) {
-      return cached;
-    }
-    ProjectionSource source = projectionSources.get(peerSchemaHash);
-    if (source == null) {
-      return null;
-    }
-    ProjectionCodec projection = source.compile(fory);
-    projections.put(peerSchemaHash, projection);
-    return projection;
   }
 
   @Override

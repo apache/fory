@@ -101,27 +101,31 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     // are unique across versions() and distinct from the current schema (its hashToSchema guard
     // throws on a real collision). No builder-side collision check is needed here, unlike the map
     // codec, whose key is a combined (key, value) hash computed outside SchemaHistory.
-    final LongMap<BinaryRowEncoder.ProjectionSource> projectionSources = new LongMap<>();
+    final LongMap<RowProjectionSource> projectionSources = new LongMap<>();
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
       if (vs == currentVersion) {
         continue;
       }
       projectionSources.put(
-          vs.strictHash(), new ProjectionSource(beanClass, codecFormat, vs, codeGenerator));
+          vs.strictHash(), new RowProjectionSource(beanClass, codecFormat, vs, codeGenerator));
     }
 
     final long currentHash = currentVersion.strictHash();
+    // The writer and codec need the history schema, which the compact format sorts at every depth
+    // so the hash covers the wire order. schema() reports the builder's schema instead, the same
+    // value an evolution-off codec reports. The two hold the same fields in the same top-level
+    // order and differ only in the field order inside nested structs.
+    final Schema reportedSchema = schema;
     return new RowEncoderFactory<T>(currentSchema) {
       @Override
       public RowEncoder<T> apply(final BaseBinaryRowWriter writer) {
         return new BinaryRowEncoder<T>(
-            currentSchema,
+            reportedSchema,
             currentFactory.apply(writer),
             writer,
             sizeEmbedded,
             currentHash,
-            projectionSources.size == 0 ? null : projectionSources,
-            fory);
+            projectionSources.size == 0 ? null : new ProjectionCache<>(projectionSources, fory));
       }
     };
   }
@@ -145,14 +149,14 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
    * class is compiled on the first {@link #compile} call (the first decode of this version's hash
    * by any encoder), not at build time.
    */
-  private static final class ProjectionSource implements BinaryRowEncoder.ProjectionSource {
+  private static final class RowProjectionSource
+      extends ProjectionSource<RowProjectionSource.Classes, BinaryRowEncoder.ProjectionCodec> {
     private final Class<?> beanClass;
     private final Encoding codecFormat;
     private final SchemaHistory.VersionedSchema version;
     private final CodeGenerator codeGenerator;
-    private volatile Resolved resolved;
 
-    ProjectionSource(
+    RowProjectionSource(
         Class<?> beanClass,
         Encoding codecFormat,
         SchemaHistory.VersionedSchema version,
@@ -164,8 +168,7 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     }
 
     @Override
-    public BinaryRowEncoder.ProjectionCodec compile(Fory fory) {
-      Resolved r = resolve();
+    BinaryRowEncoder.ProjectionCodec bind(Classes r, Fory fory) {
       try {
         // A decode-only codec still builds child writers under its root writer, so give it a
         // detached one: the encoder's own writer would collect those children and walk them on
@@ -181,41 +184,29 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
       }
     }
 
-    /**
-     * Generates the projection class and its row factory once per codec, on the first decode of
-     * this version by any of its encoders. Each encoder then only creates its codec instance.
-     */
-    private Resolved resolve() {
-      Resolved r = resolved;
-      if (r != null) {
-        return r;
-      }
-      synchronized (this) {
-        if (resolved == null) {
-          Schema historicalSchema = version.schema();
-          Class<?> projectionClass =
-              Encoders.loadOrGenProjectionRowCodecClass(
-                  beanClass,
-                  codecFormat,
-                  historicalSchema,
-                  version.liveFieldNames(),
-                  ProjectionRouting.projectionSuffix(version),
-                  ProjectionRouting.nestedSuffixesFor(version, codecFormat, codeGenerator),
-                  codeGenerator);
-          resolved =
-              new Resolved(
-                  Encoders.constructorHandleFor(projectionClass, GeneratedRowEncoder.class),
-                  codecFormat.newRowFactory(historicalSchema));
-        }
-        return resolved;
-      }
+    /** Generates the projection class and the row factory for its historical schema. */
+    @Override
+    Classes generate() {
+      Schema historicalSchema = version.schema();
+      Class<?> projectionClass =
+          Encoders.loadOrGenProjectionRowCodecClass(
+              beanClass,
+              codecFormat,
+              historicalSchema,
+              version.liveFieldNames(),
+              ProjectionRouting.projectionSuffix(version),
+              ProjectionRouting.nestedSuffixesFor(version, codecFormat, codeGenerator),
+              codeGenerator);
+      return new Classes(
+          Encoders.constructorHandleFor(projectionClass, GeneratedRowEncoder.class),
+          codecFormat.newRowFactory(historicalSchema));
     }
 
-    private static final class Resolved {
+    static final class Classes {
       final MethodHandle ctor;
       final RowFactory rowFactory;
 
-      Resolved(MethodHandle ctor, RowFactory rowFactory) {
+      Classes(MethodHandle ctor, RowFactory rowFactory) {
         this.ctor = ctor;
         this.rowFactory = rowFactory;
       }

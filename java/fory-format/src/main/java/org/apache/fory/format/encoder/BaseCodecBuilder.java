@@ -22,11 +22,9 @@ package org.apache.fory.format.encoder;
 import org.apache.fory.Fory;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
-import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.type.TypeResolutionContext;
 
 public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
 
@@ -104,7 +102,7 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    * historical schemas are sorted the same way: the strict hash then covers the fields in wire
    * order. The default format passes schemas through unchanged.
    */
-  protected SchemaHistory buildSchemaHistory(final Class<?> targetClass) {
+  SchemaHistory buildSchemaHistory(final Class<?> targetClass) {
     return SchemaHistory.build(targetClass, codecFormat::wireOrderSchema);
   }
 
@@ -115,19 +113,8 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    * schema's strict hash identifies all nested layouts jointly, letting a wrapper that reaches more
    * than one distinct versioned bean class evolve every one of them.
    */
-  protected SchemaHistory buildElementSchemaHistory(
-      final String fieldName, final TypeRef<?> elementType) {
+  SchemaHistory buildElementSchemaHistory(final String fieldName, final TypeRef<?> elementType) {
     return SchemaHistory.forElement(fieldName, elementType, codecFormat::wireOrderSchema);
-  }
-
-  /**
-   * Type-resolution context for discovering versioned beans reachable from array/map element types.
-   * Synthesizes interface-typed bean fields the same way the row-format type inference does;
-   * without it a class with interface members would not be recognized as a bean even though the row
-   * codec can encode it, and its older versions would never be enumerated.
-   */
-  protected static TypeResolutionContext typeCtx() {
-    return new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
   }
 
   @SuppressWarnings("unchecked")

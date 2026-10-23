@@ -364,8 +364,9 @@ and limitations.
   A live field has an unbounded `until`; a removed field declares the version it disappeared in.
   How the entries are declared is language-specific (Java uses annotations and a removed-fields
   interface); the protocol object is the entry tuple.
-- A layout is materialized at every version where the active field set changes; layouts that come
-  out identical collapse into one entry.
+- A layout is materialized at version 1 and at every `since` and `until` version, even when no
+  field is active at that version (a version-1 payload of a struct whose fields all arrive later
+  has an empty layout). Layouts that come out identical collapse into one entry.
 - Reading a payload that predates a field yields the reader type's absent value: an empty
   optional for an optional type, null for another nullable field, and the type's zero value (`0`,
   `0.0`, `false`, empty for languages without null) otherwise. A default that the reader's type
@@ -373,9 +374,12 @@ and limitations.
   reader's schema are discarded.
 - A removed entry and a live entry with the same wire name and the same declared type in the
   implementation language are the same field: the reader reads the removed entry's value into the
-  live field in every layout that has it. A removed entry with a different declared type is
-  discarded, even when its column type is equal. Layouts that come out identical are one entry,
-  so a reader reads a field that any of the collapsed versions reads.
+  live field in every layout that has it. A removed entry with a different declared type whose
+  type and nullability also differ is discarded. A removed entry with a different declared type
+  but the same type and nullability is invalid, and building the history fails: an older layout
+  could be identical to a newer one, and the reader would decode old values as the new type.
+  Layouts that come out identical are one entry, so a reader reads a field that any of the
+  collapsed versions reads.
 - When a struct contains other versioned structs (directly, or through list elements, map keys, or
   map values, to any depth), each distinct nested struct type is one version dimension and the
   reader enumerates the cross-product of versions. A single payload carries one version per struct
@@ -448,9 +452,9 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
 - A row payload's existing leading 8-byte hash word (little-endian) holds the strict hash of the
   writer's current layout when evolution is enabled, and the default schema hash otherwise.
 - Array and map payloads carry no hash word without evolution. With evolution, every array and
-  map payload starts with an 8-byte prefix (little-endian), so every payload written with evolution
-  enabled starts with an 8-byte schema identifier: the strict hash of its layout for a row or an
-  array, and the combined key and value hash for a map.
+  map body starts with an 8-byte prefix (little-endian), so the body of every payload written with
+  evolution enabled starts with an 8-byte schema identifier: the strict hash of its layout for a
+  row or an array, and the combined key and value hash for a map.
 - When the payload size is written before the payload (a little-endian int32), the size comes
   first and the hash word or prefix follows it. The size counts the 8 bytes of the hash and the
   body, but not its own 4 bytes.

@@ -31,7 +31,6 @@ import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.type.TypeResolutionContext;
 import org.testng.annotations.Test;
 
 public class SchemaHistoryTest {
@@ -213,10 +212,7 @@ public class SchemaHistoryTest {
   @Test
   public void typeVariableBoundedToWrapperResolvesToInnerBean() {
     TypeVariable<?> boundedToOptionalBean = OptionalBeanHolder.class.getTypeParameters()[0];
-    TypeResolutionContext ctx =
-        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
-
-    assertEquals(SchemaHistory.evolutionBean(TypeRef.of(boundedToOptionalBean), ctx), Inner.class);
+    assertEquals(SchemaHistory.evolutionBean(TypeRef.of(boundedToOptionalBean)), Inner.class);
   }
 
   /** {@code <T extends Optional<Inner>>}: a wrapper-bounded type variable for the test above. */
@@ -246,6 +242,29 @@ public class SchemaHistoryTest {
           SchemaHistory.build(bean, UnaryOperator.identity()).current().schema(),
           TypeInference.inferSchema(bean),
           "current() schema diverged from inferSchema for " + bean.getSimpleName());
+    }
+  }
+
+  /**
+   * The compact codec bakes its field order from {@code sortSchema(inferSchema(bean))}, while the
+   * compact evolution writer hashes the deep-sorted history schema. Their top-level orders must
+   * agree, or a current-version compact payload hashes one order and writes another.
+   */
+  @Test
+  public void compactCurrentSchemaMatchesCodecOrder() {
+    for (Class<?> bean :
+        new Class<?>[] {
+          OutOfOrderFields.class, NestedHolder.class, CollectionHolder.class, EvolvingBean.class
+        }) {
+      Schema inferred = TypeInference.inferSchema(bean);
+      Schema history =
+          SchemaHistory.build(bean, CompactBinaryRowWriter::sortSchemaDeep).current().schema();
+      assertEquals(history, CompactBinaryRowWriter.sortSchemaDeep(inferred), bean.getSimpleName());
+      Schema codecOrder = CompactBinaryRowWriter.sortSchema(inferred);
+      for (int i = 0; i < history.numFields(); i++) {
+        assertEquals(
+            history.field(i).name(), codecOrder.field(i).name(), bean.getSimpleName() + " " + i);
+      }
     }
   }
 

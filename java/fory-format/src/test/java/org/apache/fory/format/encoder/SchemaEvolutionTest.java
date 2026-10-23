@@ -112,7 +112,7 @@ public class SchemaEvolutionTest {
    * v1 (without email) and v2 (with email) entries that match PersonV1's single entry by hash.
    */
   @Test
-  public void olderPayloadReadByNewerCodec() {
+  public void olderPayload() {
     RowEncoder<PersonV1> oldWriter = evolvingCodec(PersonV1.class);
     RowEncoder<PersonV2> newReader = evolvingCodec(PersonV2.class);
 
@@ -130,7 +130,7 @@ public class SchemaEvolutionTest {
   // --- Compact row format ---
 
   @Test
-  public void compactRowOlderPayloadReadByNewerCodec() {
+  public void compactRowOlderPayload() {
     RowEncoder<PersonV1> oldWriter =
         Encoders.buildBeanCodec(PersonV1.class)
             .compactEncoding()
@@ -153,6 +153,37 @@ public class SchemaEvolutionTest {
     Assert.assertNull(out.getEmail());
   }
 
+  /** The compact sort puts the 8-byte String slot before the int, against the name order. */
+  @Data
+  public static class Pair {
+    private int a;
+    private String b;
+  }
+
+  @Data
+  public static class PairListV2 {
+    private List<Pair> pairs;
+
+    @ForyRowVersion(since = 2)
+    private String label;
+  }
+
+  /**
+   * A compact codec reports the same schema with evolution on as with it off, although the
+   * evolution writer sorts the struct inside the list element too.
+   */
+  @Test
+  public void compactSchemaMatchesEvolutionOff() {
+    Assert.assertEquals(
+        Encoders.buildBeanCodec(PairListV2.class)
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get()
+            .schema(),
+        Encoders.buildBeanCodec(PairListV2.class).compactEncoding().build().get().schema());
+  }
+
   /**
    * The byte[] overloads use bytes.length for the body size; the MemoryBuffer overloads write and
    * read an embedded int32 size prefix ahead of the 8-byte hash. That framing is a distinct code
@@ -161,7 +192,7 @@ public class SchemaEvolutionTest {
    * record's embedded size.
    */
   @Test
-  public void streamingOlderPayloadReadByNewerCodec() {
+  public void streamingOlderPayload() {
     RowEncoder<PersonV1> oldWriter = evolvingCodec(PersonV1.class);
     RowEncoder<PersonV2> newReader = evolvingCodec(PersonV2.class);
 
@@ -189,7 +220,7 @@ public class SchemaEvolutionTest {
   // --- Array of versioned beans ---
 
   @Test
-  public void arrayStandardOlderPayloadReadByNewerCodec() {
+  public void arrayStandardOlderPayload() {
     ArrayEncoder<List<PersonV1>> oldWriter =
         Encoders.buildArrayCodec(new TypeRef<List<PersonV1>>() {})
             .withSchemaEvolution()
@@ -216,7 +247,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void arrayCompactOlderPayloadReadByNewerCodec() {
+  public void arrayCompactOlderPayload() {
     ArrayEncoder<List<PersonV1>> oldWriter =
         Encoders.buildArrayCodec(new TypeRef<List<PersonV1>>() {})
             .compactEncoding()
@@ -243,7 +274,7 @@ public class SchemaEvolutionTest {
   // --- Map with versioned bean values ---
 
   @Test
-  public void mapStandardOlderPayloadReadByNewerCodec() {
+  public void mapStandardOlderPayload() {
     MapEncoder<Map<String, PersonV1>> oldWriter =
         Encoders.buildMapCodec(new TypeRef<Map<String, PersonV1>>() {})
             .withSchemaEvolution()
@@ -268,7 +299,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void mapCompactOlderPayloadReadByNewerCodec() {
+  public void mapCompactOlderPayload() {
     MapEncoder<Map<String, PersonV1>> oldWriter =
         Encoders.buildMapCodec(new TypeRef<Map<String, PersonV1>>() {})
             .compactEncoding()
@@ -332,12 +363,12 @@ public class SchemaEvolutionTest {
   }
 
   /**
-   * Streaming counterpart of {@link #arrayStandardOlderPayloadReadByNewerCodec}: the
-   * encode(MemoryBuffer) overload frames each record with an embedded int32 size. Two older-schema
-   * lists in one buffer confirm the reader advances past each record's size on a projection hit.
+   * Streaming counterpart of {@link #arrayStandardOlderPayload}: the encode(MemoryBuffer) overload
+   * frames each record with an embedded int32 size. Two older-schema lists in one buffer confirm
+   * the reader advances past each record's size on a projection hit.
    */
   @Test
-  public void arrayStreamingOlderPayloadReadByNewerCodec() {
+  public void arrayStreamingOlderPayload() {
     ArrayEncoder<List<PersonV1>> oldWriter =
         Encoders.buildArrayCodec(new TypeRef<List<PersonV1>>() {})
             .withSchemaEvolution()
@@ -370,12 +401,12 @@ public class SchemaEvolutionTest {
   }
 
   /**
-   * Streaming counterpart of {@link #mapStandardOlderPayloadReadByNewerCodec}. The map
-   * encode(MemoryBuffer) path restores both the key and value writer buffers in a finally block;
-   * two records in one buffer exercise that restore across records.
+   * Streaming counterpart of {@link #mapStandardOlderPayload}. The map encode(MemoryBuffer) path
+   * restores both the key and value writer buffers in a finally block; two records in one buffer
+   * exercise that restore across records.
    */
   @Test
-  public void mapStreamingOlderPayloadReadByNewerCodec() {
+  public void mapStreamingOlderPayload() {
     MapEncoder<Map<String, PersonV1>> oldWriter =
         Encoders.buildMapCodec(new TypeRef<Map<String, PersonV1>>() {})
             .withSchemaEvolution()
@@ -496,7 +527,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void interfaceOlderPayloadReadByNewerCodec() {
+  public void interfaceOlderPayload() {
     RowEncoder<PersonIfaceV1> oldWriter = evolvingCodec(PersonIfaceV1.class);
     RowEncoder<PersonIfaceV2> newReader = evolvingCodec(PersonIfaceV2.class);
     PersonIfaceV1 in =
@@ -580,7 +611,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void superinterfaceRemovedFieldReadByNewerCodec() {
+  public void superinterfaceRemovedField() {
     PersonIfaceV2 in =
         new PersonIfaceV2() {
           public String getName() {
@@ -602,7 +633,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void interfaceRemovedFieldReadByNewerCodec() {
+  public void interfaceRemovedField() {
     RowEncoder<PersonIfaceV2> v2Writer = evolvingCodec(PersonIfaceV2.class);
     RowEncoder<PersonIfaceV3> v3Reader = evolvingCodec(PersonIfaceV3.class);
     PersonIfaceV2 in =
@@ -670,7 +701,7 @@ public class SchemaEvolutionTest {
 
   /** Removed-field test: v3 codec reads v2 payload, dropping the no-longer-present 'age'. */
   @Test
-  public void removedFieldReadByNewerCodec() {
+  public void removedField() {
     RowEncoder<PersonV2> v2Writer = evolvingCodec(PersonV2.class);
     RowEncoder<PersonV3> v3Reader = evolvingCodec(PersonV3.class);
 
@@ -732,7 +763,7 @@ public class SchemaEvolutionTest {
 
   /** A field that a superclass removed is still read from older payloads of the subclass. */
   @Test
-  public void superclassRemovedFieldReadByNewerCodec() {
+  public void superclassRemovedField() {
     AccountV1 in = new AccountV1();
     in.setName("alice");
     in.setAge(30);
@@ -788,8 +819,8 @@ public class SchemaEvolutionTest {
   }
 
   /**
-   * {@code status} is removed as a String at v2 and added again as an enum at v3. Both are utf8
-   * columns, but the declared types differ, so the v1 value is discarded.
+   * {@code status} is removed as a String at v2 and added again as an enum at v3. Both encode as
+   * utf8, so the v1 and v3 layouts could be identical; the codec build rejects the change.
    */
   @Data
   @ForyRowSchema(removedFields = TicketV3.History.class)
@@ -807,11 +838,43 @@ public class SchemaEvolutionTest {
   }
 
   @Test
+  public void typeChangeWithSameRowTypeRejected() {
+    try {
+      evolvingCodec(TicketV3.class);
+      Assert.fail("expected the codec build to reject the type change");
+    } catch (IllegalStateException e) {
+      Assert.assertTrue(e.getMessage().contains("'status'"), e.getMessage());
+    }
+  }
+
+  @Data
+  public static class CounterTextV1 {
+    private String count;
+  }
+
+  /** {@code count} is removed as a String at v2 and added again as an int at v3. */
+  @Data
+  @ForyRowSchema(removedFields = CounterIntV3.History.class)
+  public static class CounterIntV3 {
+    @ForyRowVersion(since = 3)
+    private int count;
+
+    @ForyRowVersion(since = 2)
+    private String label;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      String count();
+    }
+  }
+
+  @Test
   public void readdedFieldWithNewTypeDiscarded() {
-    TicketV1 in = new TicketV1();
-    in.setStatus("free text");
-    TicketV3 out = evolvingCodec(TicketV3.class).decode(evolvingCodec(TicketV1.class).encode(in));
-    Assert.assertNull(out.getStatus());
+    CounterTextV1 in = new CounterTextV1();
+    in.setCount("forty-two");
+    CounterIntV3 out =
+        evolvingCodec(CounterIntV3.class).decode(evolvingCodec(CounterTextV1.class).encode(in));
+    Assert.assertEquals(out.getCount(), 0);
   }
 
   // ---------------------------------------------------------------------------
@@ -1093,7 +1156,7 @@ public class SchemaEvolutionTest {
   // older payload must decode under the newer codec rather than being read at a stale layout.
 
   @Test
-  public void mapOfListValueOlderPayloadReadByNewerCodec() {
+  public void mapOfListValueOlderPayload() {
     MapEncoder<Map<String, List<PersonV1>>> oldWriter =
         Encoders.buildMapCodec(new TypeRef<Map<String, List<PersonV1>>>() {})
             .withSchemaEvolution()
@@ -1119,7 +1182,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void arrayOfListElementOlderPayloadReadByNewerCodec() {
+  public void arrayOfListElementOlderPayload() {
     ArrayEncoder<List<List<PersonV1>>> oldWriter =
         Encoders.buildArrayCodec(new TypeRef<List<List<PersonV1>>>() {})
             .withSchemaEvolution()
@@ -1144,7 +1207,7 @@ public class SchemaEvolutionTest {
 
   /** Map value is itself a map of the versioned bean, exercising the map-wrapper projection. */
   @Test
-  public void mapOfMapValueOlderPayloadReadByNewerCodec() {
+  public void mapOfMapValueOlderPayload() {
     MapEncoder<Map<String, Map<String, PersonV1>>> oldWriter =
         Encoders.buildMapCodec(new TypeRef<Map<String, Map<String, PersonV1>>>() {})
             .withSchemaEvolution()
@@ -1594,24 +1657,35 @@ public class SchemaEvolutionTest {
    * bean's current-version codec must still compile after that: the replacement generator starts
    * from the bare classloader, which cannot see the codec classes the dropped generator defined.
    * Each test below drops the generator after build, as the GC would, then decodes an old payload.
+   * The helper restores the dropped generators afterward, so later tests in the JVM see the state
+   * they would have seen without this one.
    */
-  private static void dropSharedCodeGenerators() throws ReflectiveOperationException {
-    java.lang.reflect.Field shared = CodeGenerator.class.getDeclaredField("sharedCodeGenerator");
-    shared.setAccessible(true);
-    ((Map<?, ?>) shared.get(null)).clear();
+  @SuppressWarnings("unchecked")
+  private static <R> R withSharedCodeGeneratorsDropped(Supplier<R> decode)
+      throws ReflectiveOperationException {
+    java.lang.reflect.Field field = CodeGenerator.class.getDeclaredField("sharedCodeGenerator");
+    field.setAccessible(true);
+    Map<Object, Object> shared = (Map<Object, Object>) field.get(null);
+    Map<Object, Object> saved = new HashMap<>(shared);
+    shared.clear();
+    try {
+      return decode.get();
+    } finally {
+      shared.clear();
+      shared.putAll(saved);
+    }
   }
 
   @Test
-  public void rowProjectionCompilesAfterSharedCodeGeneratorIsDropped() throws Exception {
+  public void rowProjectionAfterGeneratorDropped() throws Exception {
     RowEncoder<OuterV1> writer = evolvingCodec(OuterV1.class);
     RowEncoder<OuterV2> reader = evolvingCodec(OuterV2.class);
     byte[] bytes = writer.encode(sampleV1());
-    dropSharedCodeGenerators();
-    assertProjectedToV2(reader.decode(bytes));
+    assertProjectedToV2(withSharedCodeGeneratorsDropped(() -> reader.decode(bytes)));
   }
 
   @Test
-  public void arrayProjectionCompilesAfterSharedCodeGeneratorIsDropped() throws Exception {
+  public void arrayProjectionAfterGeneratorDropped() throws Exception {
     ArrayEncoder<List<OuterV1>> writer =
         Encoders.buildArrayCodec(new TypeRef<List<OuterV1>>() {})
             .withSchemaEvolution()
@@ -1623,14 +1697,13 @@ public class SchemaEvolutionTest {
             .build()
             .get();
     byte[] bytes = writer.encode(Arrays.asList(sampleV1()));
-    dropSharedCodeGenerators();
-    List<OuterV2> out = reader.decode(bytes);
+    List<OuterV2> out = withSharedCodeGeneratorsDropped(() -> reader.decode(bytes));
     Assert.assertEquals(out.size(), 1);
     assertProjectedToV2(out.get(0));
   }
 
   @Test
-  public void mapProjectionCompilesAfterSharedCodeGeneratorIsDropped() throws Exception {
+  public void mapProjectionAfterGeneratorDropped() throws Exception {
     MapEncoder<Map<String, OuterV1>> writer =
         Encoders.buildMapCodec(new TypeRef<Map<String, OuterV1>>() {})
             .withSchemaEvolution()
@@ -1644,8 +1717,7 @@ public class SchemaEvolutionTest {
     Map<String, OuterV1> in = new HashMap<>();
     in.put("k", sampleV1());
     byte[] bytes = writer.encode(in);
-    dropSharedCodeGenerators();
-    Map<String, OuterV2> out = reader.decode(bytes);
+    Map<String, OuterV2> out = withSharedCodeGeneratorsDropped(() -> reader.decode(bytes));
     Assert.assertEquals(out.size(), 1);
     assertProjectedToV2(out.get("k"));
   }
@@ -1761,7 +1833,7 @@ public class SchemaEvolutionTest {
    * old-writer/new-reader contract.
    */
   @Test(expectedExceptions = ClassNotCompatibleException.class)
-  public void newerPayloadRejectedByOlderCodec() {
+  public void newerPayloadRejected() {
     RowEncoder<PersonV2> newWriter = evolvingCodec(PersonV2.class);
     RowEncoder<PersonV1> oldReader = evolvingCodec(PersonV1.class);
 
