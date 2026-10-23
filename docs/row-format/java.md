@@ -277,7 +277,7 @@ BinaryRow row = encoder.toRow(child);
 Parent decoded = encoder.fromRow(row);
 ```
 
-## Schema evolution
+## Schema Evolution
 
 Enable `.withSchemaEvolution()` on a row, array, or map codec builder to read payloads written
 by older versions of the same bean. Writing always uses the current version; reading detects
@@ -351,13 +351,22 @@ every historical layout that holds that field hashes differently from the payloa
 version wrote, and those payloads fail to decode with `ClassNotCompatibleException`. Test that an
 old payload still decodes before you retire a live field.
 
+A subclass inherits the removed fields that its superclasses declare with `@ForyRowSchema`, and
+an interface bean inherits those of its superinterfaces, the same as it inherits their live fields.
+
+A field that is removed and later added again with the same name and the same Java type is one
+field: older payloads that hold it decode with its value. If the Java type changes, older values
+are discarded. To change the type of a field, also rename it. If you keep the name and the
+row type stays the same (for example `String` to an enum), an old layout can be identical to the
+new one, and the reader then decodes old values with the new type.
+
 A field handled by a custom codec evolves as its encoded representation. A codec that encodes
 to another type descends that type, so a versioned bean reachable only through the codec is
 still enumerated; a codec that supplies its own terminal `foryField` column replaces the whole
 field, so the declared type is never introspected and its members are invisible to the
 evolution walk.
 
-### Wire format and limitations
+### Wire Format and Limitations
 
 Producers and consumers must agree on the `withSchemaEvolution()` flag — they are not
 wire-compatible otherwise. Row payloads always carry an 8-byte hash slot; under evolution its
@@ -367,6 +376,10 @@ under evolution (the strict hash for an array, the combined key and value hash f
 prefix otherwise; an evolution-on consumer
 reading evolution-off bytes also fails, but the reverse direction (evolution-off consumer,
 evolution-on bytes) is undefined.
+
+Only `encode` and `decode` write and check the hash. `toRow`, `fromRow`, `toArray`, `fromArray`,
+`toMap`, and `fromMap` always use the current schema, and the bytes of a `BinaryRow` hold no hash.
+To read older versions, store the output of `encode` and read it with `decode`.
 
 Turning the flag on changes the wire format of every payload, so do it as a cutover, not as a
 rolling change. During a rolling deploy, flag-on and flag-off peers reject each other's rows, and a
@@ -417,7 +430,8 @@ Nested evolution works to arbitrary depth and places no restriction on shape: a 
 may contain versioned beans that themselves contain versioned beans, the same versioned bean
 class may back more than one field, and fields typed as a non-evolving bean, a list, or a map are
 unrestricted. Each nesting level is routed to the correct historical layout. A versioned bean may
-be used as a map key as well as a map value, and the key and value evolve independently. This
+be used as a map key as well as a map value. When the key and value are different classes, they
+evolve independently; when one class backs both, a payload holds one version of it. This
 holds wherever the map appears: as the codec's top-level type, nested inside a bean field, or
 reached through a top-level array or map (such as `List<Map<KeyBean, ValueBean>>`), and a single
 map may evolve more than one distinct bean class across its key and value. A top-level map carries

@@ -36,6 +36,9 @@ import java.lang.annotation.Target;
  * each method must carry a {@link ForyRowVersion} annotation with {@code until} set, since removed
  * fields have a known end-of-life version.
  *
+ * <p>A class inherits the removed fields that its superclasses declare, and an interface bean
+ * inherits those of its superinterfaces, in the same way that it inherits their live fields.
+ *
  * <p>Example:
  *
  * <pre>

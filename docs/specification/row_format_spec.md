@@ -355,7 +355,7 @@ language-neutral inputs so another runtime can implement it and interoperate wit
 See the [Java row format guide](../row-format/java.md#schema-evolution) for usage, annotations,
 and limitations.
 
-### Version model
+### Version Model
 
 - Versions are per-struct integers starting at 1. Version numbers never appear on the wire;
   payloads are identified by a strict schema hash, so peers need identical declared histories,
@@ -371,12 +371,17 @@ and limitations.
   `0.0`, `false`, empty for languages without null) otherwise. A default that the reader's type
   declares for the field (a field initializer, for example) does not apply. Fields removed in the
   reader's schema are discarded.
+- A removed entry and a live entry with the same wire name and the same declared type in the
+  implementation language are the same field: the reader reads the removed entry's value into the
+  live field in every layout that has it. A removed entry with a different declared type is
+  discarded, even when its column type is equal. Layouts that come out identical are one entry,
+  so a reader reads a field that any of the collapsed versions reads.
 - When a struct contains other versioned structs (directly, or through list elements, map keys, or
   map values, to any depth), each distinct nested struct type is one version dimension and the
   reader enumerates the cross-product of versions. A single payload carries one version per struct
   type.
 
-### Wire names and canonical field order
+### Wire Names and Canonical Field Order
 
 - A field's wire name is its declared member name converted to lower `snake_case` by the field-name
   rule of the xlang object-graph format (Java `camelCase` converts; a member name already in
@@ -393,7 +398,7 @@ and limitations.
   the codec's own definition, not by name sorting, and must be reproduced identically in every
   runtime that registers an equivalent codec.
 
-### Strict schema hash
+### Strict Schema Hash
 
 The strict hash distinguishes layouts that differ in field name or nullability, unlike the
 default schema hash, which mixes only type IDs. All inputs are language-neutral.
@@ -438,7 +443,7 @@ default schema hash, which mixes only type IDs. All inputs are language-neutral.
   | `point: struct<x: int32 nn, y: int32 nn> n, z: int64 nn` | `0x0ce5f71e89c02b76` |
   | `combine(0x52d9543baa314ae4, 0x45812bbf5f4c920c)`        | `0x812fec70da48114d` |
 
-### Framing and dispatch
+### Framing and Dispatch
 
 - A row payload's existing leading 8-byte hash word (little-endian) holds the strict hash of the
   writer's current layout when evolution is enabled, and the default schema hash otherwise.

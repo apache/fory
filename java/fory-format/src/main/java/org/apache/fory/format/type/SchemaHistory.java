@@ -23,11 +23,14 @@ import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -214,11 +217,8 @@ public final class SchemaHistory {
       return memoized;
     }
     built.put(beanClass, null);
-    ForyRowSchema schemaAnn = beanClass.getAnnotation(ForyRowSchema.class);
-    Class<?> removedFieldsClass = schemaAnn == null ? void.class : schemaAnn.removedFields();
-
     List<FieldEntry> all = collectLiveFields(beanClass);
-    if (removedFieldsClass != void.class) {
+    for (Class<?> removedFieldsClass : removedFieldsClasses(beanClass)) {
       all.addAll(collectRemovedFields(removedFieldsClass));
     }
 
@@ -304,10 +304,28 @@ public final class SchemaHistory {
     // nullability, the same identity the strict hash mixes, so it is the canonical dedup key.
     int latestVersion = schemaVersions.last();
     Map<Schema, VersionedSchema> bySchema = new LinkedHashMap<>();
-    // Versions that collapse into one entry can disagree on which fields are live: a field removed
-    // at one version and added again with the same name and type has the same layout at both. The
-    // bytes cannot say which version wrote them, so the entry reads every field that any of its
-    // versions has live.
+    // A removed field that a live field adds again with the same wire name and declared type holds
+    // the same data, so the projection reads it in every older layout. Reading it only where its
+    // layout happens to collapse with a version that has the field live would make the result
+    // depend on unrelated fields. Equal row types are not enough: a String re-added as an enum, or
+    // one bean class re-added as another of the same shape, would feed old values to a decoder
+    // that cannot read them.
+    Map<String, TypeRef<?>> liveTypes = new HashMap<>();
+    for (FieldEntry fe : all) {
+      if (fe.live) {
+        liveTypes.put(fe.name, fe.typeRef);
+      }
+    }
+    Set<FieldEntry> readEntries = new HashSet<>();
+    for (FieldEntry fe : all) {
+      if (fe.live || fe.typeRef.equals(liveTypes.get(fe.name))) {
+        readEntries.add(fe);
+      }
+    }
+    // Versions that collapse into one entry can still disagree on which fields are read, when a
+    // removed field and a live field of different declared types share one layout. The bytes
+    // cannot say which version wrote them, so the entry reads every field that any of its versions
+    // reads.
     Map<Schema, Set<String>> liveNamesBySchema = new HashMap<>();
     Map<Schema, Set<Class<?>>> liveNestedBySchema = new HashMap<>();
     Map<Long, Schema> hashToSchema = new HashMap<>();
@@ -339,7 +357,7 @@ public final class SchemaHistory {
       for (FieldEntry fe : activeEntries) {
         for (NestedSite site : fe.nestedSites) {
           innerChoices.putIfAbsent(site.beanClass, site.history.versions());
-          if (fe.live) {
+          if (readEntries.contains(fe)) {
             liveNestedClasses.add(site.beanClass);
           }
         }
@@ -367,7 +385,7 @@ public final class SchemaHistory {
                     field, fe.typeRef, new DataTypes.StructType(innerVs.schema().fields()));
           }
           fields.add(field);
-          if (fe.live) {
+          if (readEntries.contains(fe)) {
             liveNames.add(fe.name);
           }
         }
@@ -736,8 +754,7 @@ public final class SchemaHistory {
     // A custom codec replaces the whole field with its encodedType(); an Optional unwraps; arrays
     // and any Iterable descend their element; all transparently, with no path entry. A map descends
     // its key and value independently, each adding a path entry so its historical struct
-    // substitutes
-    // back into exactly that branch.
+    // substitutes back into exactly that branch.
     Wrapper w = Wrapper.classify(enclosing, typeRef);
     switch (w.kind) {
       case ENCODED:
@@ -759,8 +776,7 @@ public final class SchemaHistory {
     if (w.raw != null && isBean(w.raw)) {
       // A bean is an evolution site when it has more than one version — whether the variation comes
       // from its own @ForyRowVersion fields or only from a nested versioned bean it reaches through
-      // its
-      // fields (e.g. a wrapper struct used as a map key, whose own fields are stable but whose
+      // its fields (e.g. a wrapper struct used as a map key, whose own fields are stable but whose
       // detail field evolves). build() already expands that nested cross-product, so its version
       // count is the exact evolution test; a single-version history means nothing here evolves and
       // the site needs no projection.
@@ -805,6 +821,35 @@ public final class SchemaHistory {
     TypeResolutionContext typeCtx =
         new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
     return TypeUtils.isBean(cls, typeCtx);
+  }
+
+  /**
+   * The {@link ForyRowSchema#removedFields} classes declared on {@code beanClass} and every type it
+   * inherits live fields from: its superclasses, or for an interface bean its superinterfaces. Live
+   * fields come from the whole hierarchy, so the removed fields must too, or a subclass codec would
+   * omit the slots a parent removed and reject the parent's older payloads.
+   */
+  private static Set<Class<?>> removedFieldsClasses(Class<?> beanClass) {
+    Set<Class<?>> out = new LinkedHashSet<>();
+    Set<Class<?>> visited = new HashSet<>();
+    ArrayDeque<Class<?>> pending = new ArrayDeque<>();
+    pending.add(beanClass);
+    while (!pending.isEmpty()) {
+      Class<?> cls = pending.poll();
+      if (!visited.add(cls)) {
+        continue;
+      }
+      ForyRowSchema schemaAnn = cls.getAnnotation(ForyRowSchema.class);
+      if (schemaAnn != null && schemaAnn.removedFields() != void.class) {
+        out.add(schemaAnn.removedFields());
+      }
+      if (cls.isInterface()) {
+        pending.addAll(Arrays.asList(cls.getInterfaces()));
+      } else if (cls.getSuperclass() != null && cls.getSuperclass() != Object.class) {
+        pending.add(cls.getSuperclass());
+      }
+    }
+    return out;
   }
 
   private static List<FieldEntry> collectRemovedFields(Class<?> historyClass) {

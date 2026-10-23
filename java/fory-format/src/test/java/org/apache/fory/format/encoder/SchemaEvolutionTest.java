@@ -517,6 +517,34 @@ public class SchemaEvolutionTest {
     Assert.assertNull(out.getEmail());
   }
 
+  /** v2 interface whose added accessor returns an Optional. */
+  public interface PersonIfaceOptionalV2 {
+    String getName();
+
+    int getAge();
+
+    @ForyRowVersion(since = 2)
+    Optional<String> getNickname();
+  }
+
+  @Test
+  public void interfaceAddedOptionalFieldIsEmpty() {
+    PersonIfaceV1 in =
+        new PersonIfaceV1() {
+          public String getName() {
+            return "alice";
+          }
+
+          public int getAge() {
+            return 30;
+          }
+        };
+    byte[] bytes = evolvingCodec(PersonIfaceV1.class).encode(in);
+    PersonIfaceOptionalV2 out = evolvingCodec(PersonIfaceOptionalV2.class).decode(bytes);
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertEquals(out.getNickname(), Optional.empty());
+  }
+
   /**
    * v3 interface: name and email; age removed (only present in v1 and v2). The history interface
    * declares the removed field's original signature; its method name follows the same JavaBeans
@@ -533,6 +561,44 @@ public class SchemaEvolutionTest {
       @ForyRowVersion(until = 3)
       int getAge();
     }
+  }
+
+  @ForyRowSchema(removedFields = PersonIfaceBaseV3.History.class)
+  public interface PersonIfaceBaseV3 {
+    String getName();
+
+    interface History {
+      @ForyRowVersion(until = 3)
+      int getAge();
+    }
+  }
+
+  /** Inherits name and the removed age from its superinterface. */
+  public interface PersonIfaceChildV3 extends PersonIfaceBaseV3 {
+    @ForyRowVersion(since = 2)
+    String getEmail();
+  }
+
+  @Test
+  public void superinterfaceRemovedFieldReadByNewerCodec() {
+    PersonIfaceV2 in =
+        new PersonIfaceV2() {
+          public String getName() {
+            return "alice";
+          }
+
+          public int getAge() {
+            return 30;
+          }
+
+          public String getEmail() {
+            return "alice@example.com";
+          }
+        };
+    byte[] bytes = evolvingCodec(PersonIfaceV2.class).encode(in);
+    PersonIfaceChildV3 out = evolvingCodec(PersonIfaceChildV3.class).decode(bytes);
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertEquals(out.getEmail(), "alice@example.com");
   }
 
   @Test
@@ -617,6 +683,135 @@ public class SchemaEvolutionTest {
     PersonV3 out = v3Reader.decode(bytes);
     Assert.assertEquals(out.getName(), "alice");
     Assert.assertEquals(out.getEmail(), "alice@example.com");
+  }
+
+  @Data
+  public static class AccountBaseV1 {
+    private String name;
+    private int age;
+  }
+
+  @Data
+  @lombok.EqualsAndHashCode(callSuper = true)
+  public static class AccountV1 extends AccountBaseV1 {
+    private String email;
+  }
+
+  @Data
+  @ForyRowSchema(removedFields = AccountBaseV2.History.class)
+  public static class AccountBaseV2 {
+    private String name;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      int age();
+    }
+  }
+
+  @Data
+  @lombok.EqualsAndHashCode(callSuper = true)
+  public static class AccountV2 extends AccountBaseV2 {
+    private String email;
+  }
+
+  /** Encoders from one codec share its projection; each still decodes with its own writer. */
+  @Test
+  public void encodersShareProjection() {
+    PersonV2 in = new PersonV2();
+    in.setName("alice");
+    in.setAge(30);
+    in.setEmail("alice@example.com");
+    byte[] bytes = evolvingCodec(PersonV2.class).encode(in);
+    Supplier<RowEncoder<PersonV3>> codec =
+        Encoders.buildBeanCodec(PersonV3.class).withSchemaEvolution().build();
+    RowEncoder<PersonV3> first = codec.get();
+    RowEncoder<PersonV3> second = codec.get();
+    Assert.assertEquals(first.decode(bytes).getEmail(), "alice@example.com");
+    Assert.assertEquals(second.decode(bytes).getEmail(), "alice@example.com");
+  }
+
+  /** A field that a superclass removed is still read from older payloads of the subclass. */
+  @Test
+  public void superclassRemovedFieldReadByNewerCodec() {
+    AccountV1 in = new AccountV1();
+    in.setName("alice");
+    in.setAge(30);
+    in.setEmail("alice@example.com");
+    byte[] bytes = evolvingCodec(AccountV1.class).encode(in);
+
+    AccountV2 out = evolvingCodec(AccountV2.class).decode(bytes);
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertEquals(out.getEmail(), "alice@example.com");
+  }
+
+  @Data
+  public static class CounterV1 {
+    private int count;
+  }
+
+  /**
+   * {@code count} is removed at v2 and added again with the same type at v3. {@code label} arrives
+   * at v2, so the v1 layout does not collapse with any version where {@code count} is live.
+   */
+  @Data
+  @ForyRowSchema(removedFields = CounterV3.History.class)
+  public static class CounterV3 {
+    @ForyRowVersion(since = 3)
+    private int count;
+
+    @ForyRowVersion(since = 2)
+    private String label;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      int count();
+    }
+  }
+
+  @Test
+  public void readdedFieldReadFromOlderPayload() {
+    CounterV1 in = new CounterV1();
+    in.setCount(42);
+    CounterV3 out =
+        evolvingCodec(CounterV3.class).decode(evolvingCodec(CounterV1.class).encode(in));
+    Assert.assertEquals(out.getCount(), 42);
+    Assert.assertNull(out.getLabel());
+  }
+
+  public enum Status {
+    ACTIVE,
+  }
+
+  @Data
+  public static class TicketV1 {
+    private String status;
+  }
+
+  /**
+   * {@code status} is removed as a String at v2 and added again as an enum at v3. Both are utf8
+   * columns, but the declared types differ, so the v1 value is discarded.
+   */
+  @Data
+  @ForyRowSchema(removedFields = TicketV3.History.class)
+  public static class TicketV3 {
+    @ForyRowVersion(since = 2)
+    private String label;
+
+    @ForyRowVersion(since = 3)
+    private Status status;
+
+    interface History {
+      @ForyRowVersion(until = 2)
+      String status();
+    }
+  }
+
+  @Test
+  public void readdedFieldWithNewTypeDiscarded() {
+    TicketV1 in = new TicketV1();
+    in.setStatus("free text");
+    TicketV3 out = evolvingCodec(TicketV3.class).decode(evolvingCodec(TicketV1.class).encode(in));
+    Assert.assertNull(out.getStatus());
   }
 
   // ---------------------------------------------------------------------------
