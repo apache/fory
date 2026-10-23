@@ -362,10 +362,10 @@ an interface bean inherits those of its superinterfaces, the same as it inherits
 A field that is removed and later added again with the same name and the same Java type is one
 field: older payloads that hold it decode with its value. If the Java type changes and the row
 type changes too (for example `String` to `int`), older values are discarded. If the Java type
-changes but the row type stays the same (for example `String` to an enum), or either type is a
-bean with its own version history, building the codec fails, because an old layout could be
-identical to the new one and old values would decode as the new type. To change the type of a
-field, give the new member a new name.
+changes but the row type stays the same (for example `String` to an enum), or either type reaches
+a versioned bean (directly, or through a list or map), building the codec fails, because an old
+layout could be identical to the new one and old values would decode as the new type. To change
+the type of a field, give the new member a new name.
 
 A field handled by a custom codec evolves as its encoded representation. A codec that encodes
 to another type descends that type, so a versioned bean reachable only through the codec is
@@ -397,8 +397,8 @@ reading the stored payloads, and then start every peer with the flag on, in a re
 no schema.
 
 After that, deploy every reader of a schema change before any writer. A reader decodes payloads
-from its own version and older versions only, and it rejects a payload from a newer writer with
-`ClassNotCompatibleException`.
+whose layout it knows, from its own version and older versions, and it rejects a payload whose
+layout it does not know with `ClassNotCompatibleException`.
 
 The hash algorithm, wire names, field order, and framing are specified language-neutrally in
 the [row format specification](../specification/row_format_spec.md#schema-evolution). Java is the
