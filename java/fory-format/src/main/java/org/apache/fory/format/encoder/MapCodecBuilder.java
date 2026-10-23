@@ -211,12 +211,6 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
   }
 
   /**
-   * Generate the projection row codec(s) and projection map codec for one (key-version,
-   * value-version) combination, and rebuild the map field with each position projected onto its
-   * historical schema. A position at its current schema gets an empty suffix and keeps its current
-   * field, so a map where only one side evolves pays no codegen for the unchanged side.
-   */
-  /**
    * The map position field projected onto {@code positionVs}: the substituted type from the
    * position's historical schema, but the current position field's name and nullability (a map key
    * is non-nullable, a value nullable), which forElement's inferred field does not carry.
@@ -256,6 +250,12 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       this.keyCurrent = keyCurrent;
     }
 
+    /**
+     * Generate the projection row codec(s) and projection map codec for one (key-version,
+     * value-version) combination, and rebuild the map field with each position projected onto its
+     * historical schema. A position at its current schema gets an empty suffix and keeps its
+     * current field, so a map where only one side evolves pays no codegen for the unchanged side.
+     */
     @Override
     public BinaryMapEncoder.ProjectionMapCodec compile(Encoding format, Fory fory) {
       // Each position's history is forElement over the position type, so its schema's single field
