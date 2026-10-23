@@ -20,11 +20,17 @@
 package org.apache.fory.benchmark;
 
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.apache.fory.format.annotation.ForyRowVersion;
+import org.apache.fory.format.encoder.ArrayEncoder;
 import org.apache.fory.format.encoder.Encoders;
+import org.apache.fory.format.encoder.MapEncoder;
 import org.apache.fory.format.encoder.RowEncoder;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
+import org.apache.fory.reflect.TypeRef;
 import org.openjdk.jmh.Main;
 import org.openjdk.jmh.annotations.Benchmark;
 
@@ -35,7 +41,9 @@ import org.openjdk.jmh.annotations.Benchmark;
  * codec allocates no more than decoding the current schema, because each projection holds its
  * historical schema's row layout (no per-decode rebuild); and the {@code *NoEvolution} benchmarks
  * vs their evolution-on counterparts show the steady-state cost of enabling {@code
- * withSchemaEvolution()} when reading and writing current-version data.
+ * withSchemaEvolution()} when reading and writing current-version data. The {@code array*} and
+ * {@code map*} benchmarks repeat both comparisons for a top-level {@code List<PersonV2>} and {@code
+ * Map<String, PersonV2>}, whose evolution-on payloads carry an 8-byte hash prefix.
  */
 public class SchemaEvolutionSuite {
   private static final Logger LOG = LoggerFactory.getLogger(SchemaEvolutionSuite.class);
@@ -83,6 +91,49 @@ public class SchemaEvolutionSuite {
   private static final byte[] olderCompactBytes = v1CompactCodec.encode(newPersonV1());
   private static final byte[] plainBytes = v2PlainCodec.encode(person);
   private static final byte[] plainCompactBytes = v2PlainCompactCodec.encode(person);
+
+  private static final TypeRef<List<PersonV1>> V1_LIST = new TypeRef<List<PersonV1>>() {};
+  private static final TypeRef<List<PersonV2>> V2_LIST = new TypeRef<List<PersonV2>>() {};
+  private static final TypeRef<Map<String, PersonV1>> V1_MAP =
+      new TypeRef<Map<String, PersonV1>>() {};
+  private static final TypeRef<Map<String, PersonV2>> V2_MAP =
+      new TypeRef<Map<String, PersonV2>>() {};
+
+  private static final ArrayEncoder<List<PersonV2>> v2ArrayCodec =
+      Encoders.buildArrayCodec(V2_LIST).withSchemaEvolution().build().get();
+  private static final ArrayEncoder<List<PersonV2>> v2PlainArrayCodec =
+      Encoders.buildArrayCodec(V2_LIST).build().get();
+  private static final MapEncoder<Map<String, PersonV2>> v2MapCodec =
+      Encoders.buildMapCodec(V2_MAP).withSchemaEvolution().build().get();
+  private static final MapEncoder<Map<String, PersonV2>> v2PlainMapCodec =
+      Encoders.buildMapCodec(V2_MAP).build().get();
+
+  private static final List<PersonV2> people = Arrays.asList(person, person, person, person);
+  private static final Map<String, PersonV2> personMap = newPersonMap(person);
+  private static final byte[] currentArrayBytes = v2ArrayCodec.encode(people);
+  private static final byte[] olderArrayBytes =
+      Encoders.buildArrayCodec(V1_LIST)
+          .withSchemaEvolution()
+          .build()
+          .get()
+          .encode(Arrays.asList(newPersonV1(), newPersonV1(), newPersonV1(), newPersonV1()));
+  private static final byte[] plainArrayBytes = v2PlainArrayCodec.encode(people);
+  private static final byte[] currentMapBytes = v2MapCodec.encode(personMap);
+  private static final byte[] olderMapBytes =
+      Encoders.buildMapCodec(V1_MAP)
+          .withSchemaEvolution()
+          .build()
+          .get()
+          .encode(newPersonMap(newPersonV1()));
+  private static final byte[] plainMapBytes = v2PlainMapCodec.encode(personMap);
+
+  private static <V> Map<String, V> newPersonMap(V value) {
+    Map<String, V> map = new LinkedHashMap<>();
+    for (int i = 0; i < 4; i++) {
+      map.put("person" + i, value);
+    }
+    return map;
+  }
 
   private static PersonV2 newPerson() {
     PersonV2 p = new PersonV2();
@@ -149,6 +200,56 @@ public class SchemaEvolutionSuite {
   @Benchmark
   public Object compactCurrentDecodeNoEvolution() {
     return v2PlainCompactCodec.decode(plainCompactBytes);
+  }
+
+  @Benchmark
+  public Object arrayEncode() {
+    return v2ArrayCodec.encode(people);
+  }
+
+  @Benchmark
+  public Object arrayCurrentDecode() {
+    return v2ArrayCodec.decode(currentArrayBytes);
+  }
+
+  @Benchmark
+  public Object arrayOlderDecode() {
+    return v2ArrayCodec.decode(olderArrayBytes);
+  }
+
+  @Benchmark
+  public Object arrayEncodeNoEvolution() {
+    return v2PlainArrayCodec.encode(people);
+  }
+
+  @Benchmark
+  public Object arrayCurrentDecodeNoEvolution() {
+    return v2PlainArrayCodec.decode(plainArrayBytes);
+  }
+
+  @Benchmark
+  public Object mapEncode() {
+    return v2MapCodec.encode(personMap);
+  }
+
+  @Benchmark
+  public Object mapCurrentDecode() {
+    return v2MapCodec.decode(currentMapBytes);
+  }
+
+  @Benchmark
+  public Object mapOlderDecode() {
+    return v2MapCodec.decode(olderMapBytes);
+  }
+
+  @Benchmark
+  public Object mapEncodeNoEvolution() {
+    return v2PlainMapCodec.encode(personMap);
+  }
+
+  @Benchmark
+  public Object mapCurrentDecodeNoEvolution() {
+    return v2PlainMapCodec.decode(plainMapBytes);
   }
 
   public static void main(String[] args) throws Exception {
