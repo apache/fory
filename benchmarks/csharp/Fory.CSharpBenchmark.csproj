@@ -28,7 +28,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MessagePack" Version="2.5.301" />
+    <PackageReference Include="MessagePack" Version="2.5.303" />
     <PackageReference Include="protobuf-net" Version="3.2.56" />
   </ItemGroup>
 
