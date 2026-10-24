@@ -875,3 +875,27 @@ public final class ByteBuffer {
         }
     }
 }
+
+extension ByteBuffer {
+
+    // For row support, a writer first reserves the fixed slots and patches them in place later.
+    // This appends `count` zero bytes and returns the absolute offset of the first one.
+    @inlinable
+    @inline(__always)
+    internal func appendZeros(_ count: Int) -> Int {
+        let start = storage.count
+        storage.append(contentsOf: repeatElement(0, count: count))
+        return start
+    }
+
+    // Writes `value` at `offset` with the smallest byte first, replacing the bytes already there.
+    // Row writers use this to fill a slot they reserved earlier. The offset doesn't need to be
+    // aligned, but those bytes must already exist.
+    @inlinable
+    @inline(__always)
+    internal func storeLittleEndian<T: FixedWidthInteger>(_ value: T, at offset: Int) {
+        storage.withUnsafeMutableBytes { raw in
+            raw.storeBytes(of: value.littleEndian, toByteOffset: offset, as: T.self)
+        }
+    }
+}

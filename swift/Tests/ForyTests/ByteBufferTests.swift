@@ -283,3 +283,30 @@ func byteBufferRejectsInvalidVarintsAndUtf8() throws {
         #expect("\(error)".contains("invalid UTF-8"))
     }
 }
+
+@Test
+func byteBufferAppendZeros() {
+    let buffer = ByteBuffer(bytes: [0x01, 0x02, 0x03])
+    #expect(buffer.appendZeros(5) == 3)
+    #expect(buffer.storage == [0x01, 0x02, 0x03, 0, 0, 0, 0, 0])
+
+    buffer.writeBytes([0xFF, 0xFF])
+    buffer.clear()
+    #expect(buffer.appendZeros(2) == 0)
+    #expect(buffer.storage == [0, 0])
+}
+
+@Test
+func byteBufferStoreLittleEndian() {
+    let buffer = ByteBuffer(bytes: [UInt8](repeating: 0, count: 16))
+    buffer.storeLittleEndian(UInt32(0x0102_0304), at: 3)
+    buffer.storeLittleEndian(UInt64(0x1122_3344_5566_7788), at: 7)
+    #expect(
+        buffer.storage == [
+            0x00, 0x00, 0x00,
+            0x04, 0x03, 0x02, 0x01,
+            0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11,
+            0x00
+        ]
+    )
+}
