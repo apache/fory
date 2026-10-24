@@ -199,7 +199,8 @@ jobs:
 
   compiler_import:
     name: Compiler Import ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    # setup-python has no Python 3.8/3.9 binaries for Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ["3.8", "3.9"]
@@ -218,7 +219,8 @@ jobs:
   java:
     name: Java CI
     needs: changes
-    runs-on: ubuntu-latest
+    # Keep the Python 3.8 CI driver on a supported runner image.
+    runs-on: ubuntu-24.04
     env:
       MY_VAR: "PATH"
     strategy:
@@ -258,7 +260,7 @@ jobs:
     name: Openj9 Java CI
     needs: changes
     if: needs.changes.outputs.java_code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       MY_VAR: "PATH"
     strategy:
@@ -347,7 +349,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         with:
           gradle-version: "8.13"
       - name: Install Fory Java and Kotlin JSON artifacts
@@ -661,7 +663,7 @@ jobs:
         java-version: ["17", "25"]
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
+      - uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1.6.7
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "graalvm"
@@ -688,7 +690,7 @@ jobs:
         java-version: ["17", "25"]
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
+      - uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1.6.7
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "graalvm"
@@ -712,7 +714,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
+      - uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1.6.7
         with:
           java-version: "25"
           distribution: "graalvm"
@@ -783,7 +785,7 @@ jobs:
         with:
           java-version: 11
           distribution: "temurin"
-      - uses: sbt/setup-sbt@ce95da69b39609ea153bad087708da5f37366897 # v1.5.10
+      - uses: sbt/setup-sbt@ecad189dd245444b9ae0a0cd5922fd938b88906f # v1.5.12
         with:
           disk-cache: false
       - name: Install fory java
@@ -810,7 +812,7 @@ jobs:
         uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@ce95da69b39609ea153bad087708da5f37366897 # v1.5.10
+      - uses: sbt/setup-sbt@ecad189dd245444b9ae0a0cd5922fd938b88906f # v1.5.12
         with:
           disk-cache: false
       - name: Run Scala Xlang Test
@@ -838,7 +840,7 @@ jobs:
         uses: actions/setup-python@v7.0.0
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@ce95da69b39609ea153bad087708da5f37366897 # v1.5.10
+      - uses: sbt/setup-sbt@ecad189dd245444b9ae0a0cd5922fd938b88906f # v1.5.12
         with:
           disk-cache: false
       - name: Install Fory Java
@@ -852,7 +854,7 @@ jobs:
 
   integration_tests:
     name: Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up JDK11
@@ -1177,10 +1179,11 @@ jobs:
     strategy:
       matrix:
         node-version: [18, 24]
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # node-gyp uses Python 3.8 on Linux.
+        os: [ubuntu-24.04, macos-latest, windows-latest]
         include:
           - node-version: 20
-            os: ubuntu-latest
+            os: ubuntu-24.04
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -1326,7 +1329,8 @@ jobs:
     name: C++ CI
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # Keep the C++ toolchain stable across ubuntu-latest image upgrades.
+        os: [ubuntu-24.04, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -1336,7 +1340,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1413,7 +1417,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1451,7 +1455,7 @@ jobs:
     name: C++ Sanitizer (${{ matrix.sanitizer }})
     needs: changes
     if: needs.changes.outputs.cpp_code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         sanitizer: [asan, ubsan]
@@ -1463,7 +1467,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1543,7 +1547,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1607,7 +1611,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1636,7 +1640,8 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.12", "3.14"]
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        # Python 3.8 is available on Ubuntu 24.04, but not Ubuntu 26.04.
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest]
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up Python ${{ matrix.python-version }}
@@ -1645,7 +1650,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1686,7 +1691,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1749,7 +1754,7 @@ jobs:
 
   go:
     name: Golang CI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up Go
@@ -1764,7 +1769,7 @@ jobs:
           python-version: 3.8
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -2156,7 +2161,7 @@ jobs:
 
   lint:
     name: Code Style Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up JDK ${{ matrix.java-version }}
