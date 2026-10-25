@@ -162,6 +162,89 @@ public class UnsignedTest {
     assertEquals(UInt64.valueOf(0x0000000000000001L).shiftLeft(63).toLong(), Long.MIN_VALUE);
   }
 
+  @Test
+  public void uint64WideningRoundsToTheNearestFloatAndDouble() {
+    // 2^54 + 3 is one above the midpoint between the doubles 2^54 and 2^54 + 4, and 2^62 + 513 one
+    // above the midpoint of its own binade; both must round up.
+    assertEquals(UInt64.valueOf(0x40000000000003L).doubleValue(), 1.8014398509481988E16);
+    assertEquals(UInt64.valueOf(0x4000000000000201L).doubleValue(), 4.6116860184273889E18);
+    assertEquals(UInt64.valueOf(-1L).doubleValue(), 1.8446744073709552E19);
+    assertEquals(UInt64.valueOf(Long.MIN_VALUE).doubleValue(), 9.223372036854776E18);
+    // 2^53 + 2^29 + 1 is above the float midpoint 2^53 + 2^29, so it must round up to 2^53 + 2^30.
+    assertEquals(UInt64.valueOf(0x0020000020000001L).floatValue(), 9.0072003E15f);
+  }
+
+  @Test
+  public void uint64DoubleValueMatchesTheCorrectlyRoundedUnsignedDecimal() {
+    // Double.parseDouble is correctly rounded, so a value's own unsigned decimal string is an
+    // independent oracle. The midpoint between two adjacent doubles, and the values on either side
+    // of it, are the only inputs where a widening conversion can disagree.
+    int wrong = 0;
+    String first = "";
+    for (int e = 53; e <= 63; e++) {
+      long base = (e == 63) ? Long.MIN_VALUE : 1L << e;
+      long ulp = 1L << (e - 52);
+      for (int k = 0; k < 64; k++) {
+        long midpoint = base + (long) k * 2 * ulp + (ulp >> 1);
+        for (long d = -1; d <= 1; d++) {
+          UInt64 value = UInt64.valueOf(midpoint + d);
+          double expected = Double.parseDouble(value.toUnsignedString(10));
+          if (value.doubleValue() != expected) {
+            wrong++;
+            if (first.length() == 0) {
+              first =
+                  value.toUnsignedString(10) + " -> " + value.doubleValue() + ", want " + expected;
+            }
+          }
+        }
+      }
+    }
+    assertEquals(
+        wrong,
+        0,
+        "uint64 doubleValue is not the nearest double " + wrong + " times; first " + first);
+  }
+
+  @Test
+  public void uint64FloatValueIsRoundedOnceNotTwice() {
+    // Rounding the unsigned magnitude to double first, then to float, is wrong for every value that
+    // the double step lands on a float midpoint: the tie then breaks by mantissa parity instead of
+    // by which side of the midpoint the integer is actually on.
+    int wrong = 0;
+    String first = "";
+    for (int e = 53; e <= 63; e++) {
+      long base = (e == 63) ? Long.MIN_VALUE : 1L << e;
+      long floatUlp = 1L << (e - 23);
+      long doubleUlp = 1L << (e - 52);
+      long[] offsets = {
+        -doubleUlp,
+        -(doubleUlp >> 1) - 1,
+        -(doubleUlp >> 1),
+        -1,
+        1,
+        doubleUlp >> 1,
+        (doubleUlp >> 1) + 1,
+        doubleUlp
+      };
+      for (int j = 0; j < 4; j++) {
+        long midpoint = base + (long) j * floatUlp + (floatUlp >> 1);
+        for (long d : offsets) {
+          UInt64 value = UInt64.valueOf(midpoint + d);
+          float expected = Float.parseFloat(value.toUnsignedString(10));
+          if (value.floatValue() != expected) {
+            wrong++;
+            if (first.length() == 0) {
+              first =
+                  value.toUnsignedString(10) + " -> " + value.floatValue() + ", want " + expected;
+            }
+          }
+        }
+      }
+    }
+    assertEquals(
+        wrong, 0, "uint64 floatValue is not the nearest float " + wrong + " times; first " + first);
+  }
+
   // POJO1: Using UInt8/16/32/64 wrapper types as fields
   @Data
   @NoArgsConstructor

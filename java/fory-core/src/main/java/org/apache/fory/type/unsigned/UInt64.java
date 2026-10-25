@@ -194,7 +194,7 @@ public final class UInt64 implements Comparable<UInt64>, Serializable {
   }
 
   public float floatValue() {
-    return (float) toUnsignedDouble(data);
+    return toUnsignedFloat(data);
   }
 
   public double doubleValue() {
@@ -225,8 +225,39 @@ public final class UInt64 implements Comparable<UInt64>, Serializable {
     return (int) (data ^ (data >>> 32));
   }
 
+  /**
+   * Rounds the unsigned magnitude to the nearest double. The value is never shifted by one and
+   * scaled back: that halves the grid, so a low residue can only round down, never break the tie.
+   */
   private static double toUnsignedDouble(long value) {
-    double high = (double) (value >>> 1);
-    return high * 2.0 + (value & 1L);
+    if (value >= 0) {
+      return (double) value;
+    }
+    // Unsigned values here are in [2^63, 2^64), where the double grid is a multiple of 2^11.
+    long grid = value >>> 11;
+    long rest = value & 2047L;
+    if (rest > 1024L || (rest == 1024L && (grid & 1L) != 0L)) {
+      grid++;
+    }
+    return (double) grid * 2048.0;
+  }
+
+  /**
+   * Rounds the unsigned magnitude straight to the nearest float. Narrowing through {@link
+   * #doubleValue()} would round twice: a value just above a float midpoint can collapse onto that
+   * midpoint in the double step, where the tie then breaks the wrong way.
+   */
+  private static float toUnsignedFloat(long value) {
+    if (value >= 0) {
+      return (float) value;
+    }
+    // Unsigned values here are in [2^63, 2^64), where the float grid is a multiple of 2^40.
+    long grid = value >>> 40;
+    long rest = value & ((1L << 40) - 1);
+    long half = 1L << 39;
+    if (rest > half || (rest == half && (grid & 1L) != 0L)) {
+      grid++;
+    }
+    return (float) grid * (1L << 40);
   }
 }
