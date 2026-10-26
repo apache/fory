@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+import Foundation
+
 // A variable-width value such as a string, array, map, or nested struct is stored after the fixed
 // slots. Its slot holds one UInt64 ticket: the offset from the start of the enclosing row or array
 // in the upper 32 bits and the byte size in the lower 32 bits, so the size comes first in memory.
@@ -43,6 +45,18 @@ func rowCheckedRange(offset: UInt32, size: UInt32, regionBase: Int, regionCount:
     }
     let start = regionBase + Int(offset)
     return start..<(start + Int(size))
+}
+
+// `micros` counts from 1970 but a Date counts from 2001, so the whole seconds are shifted as integers
+// and the fraction is added once; going through timeIntervalSince1970 would round twice. Floor
+// division keeps the fraction positive.
+func rowDate(micros: Int64) -> Date {
+    var (seconds, remainder) = micros.quotientAndRemainder(dividingBy: 1_000_000)
+    if remainder < 0 {
+        seconds -= 1
+        remainder += 1_000_000
+    }
+    return Date(timeIntervalSinceReferenceDate: Double(seconds - 978_307_200) + Double(remainder) / 1e6)
 }
 
 @inline(never)
