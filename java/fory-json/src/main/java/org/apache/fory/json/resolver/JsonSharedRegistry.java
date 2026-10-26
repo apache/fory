@@ -899,6 +899,16 @@ public final class JsonSharedRegistry {
       JsonTypeResolver localResolver,
       JsonCodecFactory childFactory,
       boolean runtimeType) {
+    return resolveCodec(rawType, typeRef, localResolver, childFactory, runtimeType, false);
+  }
+
+  ResolvedCodec resolveCodec(
+      Class<?> rawType,
+      TypeRef<?> typeRef,
+      JsonTypeResolver localResolver,
+      JsonCodecFactory childFactory,
+      boolean runtimeType,
+      boolean skipModuleFactories) {
     JsonValueCodec<?> customCodec = customCodec(rawType);
     if (customCodec != null) {
       return new ResolvedCodec(customCodec, null);
@@ -944,7 +954,8 @@ public final class JsonSharedRegistry {
     if (semanticToken) {
       // The exact JVM carrier codec cannot erase an explicit semantic type. The installed module
       // owns that representation even when the semantic value uses a primitive carrier.
-      ResolvedCodec resolved = createModuleCodec(typeRef, localResolver, runtimeType);
+      ResolvedCodec resolved =
+          skipModuleFactories ? null : createModuleCodec(typeRef, localResolver, runtimeType);
       if (resolved == null) {
         throw new ForyJsonException("No installed JSON module owns semantic type " + typeRef);
       }
@@ -955,7 +966,8 @@ public final class JsonSharedRegistry {
       return new ResolvedCodec(codec, null);
     }
     if (rawType == Object.class) {
-      ResolvedCodec resolved = createModuleCodec(typeRef, localResolver, runtimeType);
+      ResolvedCodec resolved =
+          skipModuleFactories ? null : createModuleCodec(typeRef, localResolver, runtimeType);
       if (resolved != null) {
         return resolved;
       }
@@ -1009,7 +1021,8 @@ public final class JsonSharedRegistry {
     if (Path.class.isAssignableFrom(rawType)) {
       return new ResolvedCodec(ScalarCodecs.PathCodec.INSTANCE, null);
     }
-    ResolvedCodec resolved = createModuleCodec(typeRef, localResolver, runtimeType);
+    ResolvedCodec resolved =
+        skipModuleFactories ? null : createModuleCodec(typeRef, localResolver, runtimeType);
     if (resolved != null) {
       return resolved;
     }
@@ -1032,6 +1045,10 @@ public final class JsonSharedRegistry {
   JsonValueCodec<?> createRuntimeCodec(Class<?> rawType, JsonTypeResolver localResolver) {
     ResolvedCodec resolved = resolveCodec(rawType, TypeRef.of(rawType), localResolver, null, true);
     return resolved == null ? null : resolved.codec;
+  }
+
+  boolean hasCodecFactories() {
+    return codecFactories.length != 0;
   }
 
   private JsonValueCodec<?> createExactCodec(
