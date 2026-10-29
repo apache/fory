@@ -59,6 +59,48 @@ func rowDate(micros: Int64) -> Date {
     return Date(timeIntervalSinceReferenceDate: Double(seconds - 978_307_200) + Double(remainder) / 1e6)
 }
 
+// The reverse of rowDate. The fraction is rounded to the nearest microsecond rather than floored,
+// because the Double inside a Date made from `m` microseconds can land just below `m`. A fraction
+// that rounds up to a whole second needs no carry: adding 1_000_000 to the scaled seconds is the same.
+func rowTimestampMicros(_ date: Date) throws -> Int64 {
+    let interval = date.timeIntervalSinceReferenceDate
+    let wholeSeconds = interval.rounded(.down)
+    // Int64(exactly:) is nil for infinity and NaN as well as for values too large.
+    guard let seconds = Int64(exactly: wholeSeconds) else {
+        throw rowTimestampOutOfRange(interval)
+    }
+    let fraction = Int64(((interval - wholeSeconds) * 1_000_000).rounded(.toNearestOrAwayFromZero))
+    let (unixSeconds, shiftOverflow) = seconds.addingReportingOverflow(978_307_200)
+    let (scaled, scaleOverflow) = unixSeconds.multipliedReportingOverflow(by: 1_000_000)
+    let (micros, addOverflow) = scaled.addingReportingOverflow(fraction)
+    guard !shiftOverflow, !scaleOverflow, !addOverflow else {
+        throw rowTimestampOutOfRange(interval)
+    }
+    return micros
+}
+
+// Both parts of `components` carry the same sign, so dividing each toward zero truncates the
+// whole duration toward zero.
+func rowDurationMicros(_ duration: Duration) throws -> Int64 {
+    let (seconds, attoseconds) = duration.components
+    let (scaled, scaleOverflow) = seconds.multipliedReportingOverflow(by: 1_000_000)
+    let (micros, addOverflow) = scaled.addingReportingOverflow(attoseconds / 1_000_000_000_000)
+    guard !scaleOverflow, !addOverflow else {
+        throw rowDurationOutOfRange(duration)
+    }
+    return micros
+}
+
+@inline(never)
+func rowTimestampOutOfRange(_ interval: Double) -> ForyError {
+    .encodingError("timestamp \(interval) seconds from 2001 does not fit in 64-bit microseconds")
+}
+
+@inline(never)
+func rowDurationOutOfRange(_ duration: Duration) -> ForyError {
+    .encodingError("duration \(duration) does not fit in 64-bit microseconds")
+}
+
 @inline(never)
 func rowValueTooLarge(offset: Int, size: Int) -> ForyError {
     .encodingError(
