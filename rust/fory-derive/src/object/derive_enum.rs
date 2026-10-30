@@ -25,6 +25,10 @@ use crate::util::{extract_fields, source_fields, SourceField};
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use syn::{DataEnum, Fields};
+
+const NATIVE_ENUM_XLANG_ERROR: &str =
+    "#[fory(native)] and multi-field enum variants are Rust-native and not representable in xlang mode";
+
 fn temp_var_name(i: usize) -> String {
     format!("f{}", i)
 }
@@ -231,16 +235,15 @@ fn gen_read_single_payload(source_fields: &[SourceField<'_>]) -> TokenStream {
     }
 }
 
-/// For Union-compatible enums with data variants, return UNION TypeId in xlang mode.
-pub fn gen_actual_type_id(data_enum: &DataEnum) -> TokenStream {
-    let is_union_compatible = is_union_compatible_enum(data_enum);
+/// For xlang unions, return UNION TypeId in xlang mode.
+pub fn gen_actual_type_id(data_enum: &DataEnum, xlang_union: bool) -> TokenStream {
     let has_data_variants = data_enum
         .variants
         .iter()
         .any(|v| !matches!(v.fields, Fields::Unit));
 
-    if is_union_compatible && has_data_variants {
-        // Union-compatible enum: use typed/named union IDs in xlang mode
+    if xlang_union {
+        // Xlang union: use typed/named union IDs in xlang mode
         quote! {
             Ok(if xlang {
                 if register_by_name {
@@ -255,9 +258,7 @@ pub fn gen_actual_type_id(data_enum: &DataEnum) -> TokenStream {
     } else if has_data_variants {
         quote! {
             if xlang {
-                Err(fory_core::Error::not_allowed(
-                    "multi-field tuple and named enum variants are not representable in xlang mode",
-                ))
+                Err(fory_core::Error::not_allowed(#NATIVE_ENUM_XLANG_ERROR))
             } else {
                 Ok(fory_core::serializer::enum_::actual_type_id(
                     type_id,
@@ -695,6 +696,7 @@ fn compatible_variant_writes(
 
 pub fn gen_write_data(
     data_enum: &DataEnum,
+    xlang_union: bool,
     generics: &syn::Generics,
     target_path: &TokenStream,
 ) -> TokenStream {
@@ -702,7 +704,7 @@ pub fn gen_write_data(
         .variants
         .iter()
         .any(|variant| !matches!(variant.fields, Fields::Unit))
-        && !is_union_compatible_enum(data_enum);
+        && !xlang_union;
     let default_variant_value = data_enum
         .variants
         .iter()
@@ -717,9 +719,7 @@ pub fn gen_write_data(
         compatible_variant_writes(data_enum, generics, target_path, default_variant_value);
     let xlang_write = if native_only {
         quote! {
-            Err(fory_core::Error::not_allowed(
-                "multi-field tuple and named enum variants are not representable in xlang mode",
-            ))
+            Err(fory_core::Error::not_allowed(#NATIVE_ENUM_XLANG_ERROR))
         }
     } else {
         quote! {
@@ -749,15 +749,9 @@ pub fn gen_write_data(
     }
 }
 
-pub fn gen_write_type_info(data_enum: &DataEnum) -> TokenStream {
-    let is_union_compatible = is_union_compatible_enum(data_enum);
-    let has_data_variants = data_enum
-        .variants
-        .iter()
-        .any(|v| !matches!(v.fields, Fields::Unit));
-
-    if is_union_compatible && has_data_variants {
-        // Union-compatible with data: write typed/named union type info in xlang mode
+pub fn gen_write_type_info(xlang_union: bool) -> TokenStream {
+    if xlang_union {
+        // Xlang union: write typed/named union type info in xlang mode
         quote! {
             if context.is_xlang() {
                 let provider_type_id = ::std::any::TypeId::of::<Self>();
@@ -792,7 +786,7 @@ pub fn gen_read_with_type_info(_: &DataEnum) -> TokenStream {
 /// Check if enum is Union-compatible:
 /// - Must have at least one data-carrying variant (single-field)
 /// - All variants must be either unit or single-field
-fn is_union_compatible_enum(data_enum: &DataEnum) -> bool {
+pub(crate) fn is_union_compatible_enum(data_enum: &DataEnum) -> bool {
     let has_data_variant = data_enum
         .variants
         .iter()
@@ -819,16 +813,10 @@ fn xlang_union_case_id(data_enum: &DataEnum, idx: usize, variant: &syn::Variant)
 }
 
 /// Generate the static TypeId for enum.
-/// For Union-compatible enums with data variants, return UNION TypeId
-/// to ensure correct type info handling in xlang mode struct field read/write.
-pub fn gen_static_type_id(data_enum: &DataEnum) -> TokenStream {
-    let is_union_compatible = is_union_compatible_enum(data_enum);
-    let has_data_variants = data_enum
-        .variants
-        .iter()
-        .any(|v| !matches!(v.fields, Fields::Unit));
-
-    if is_union_compatible && has_data_variants {
+/// For xlang unions, return UNION TypeId to ensure correct type info handling
+/// in xlang mode struct field read/write.
+pub fn gen_static_type_id(xlang_union: bool) -> TokenStream {
+    if xlang_union {
         quote! { fory_core::TypeId::UNION }
     } else {
         quote! { fory_core::TypeId::ENUM }
@@ -1096,10 +1084,10 @@ fn compatible_variant_reads(
 
 pub fn gen_read_data(
     data_enum: &DataEnum,
+    xlang_union: bool,
     generics: &syn::Generics,
     target_path: &TokenStream,
 ) -> TokenStream {
-    let is_union_compatible = is_union_compatible_enum(data_enum);
     let has_data_variants = data_enum
         .variants
         .iter()
@@ -1127,7 +1115,7 @@ pub fn gen_read_data(
 
     let default_variant_construction = variant_default_value(default_variant, target_path);
 
-    let unknown_xlang_branch = if is_union_compatible && has_data_variants {
+    let unknown_xlang_branch = if xlang_union {
         // ForyUnion validation guarantees xlang-compatible ADTs have the
         // runtime unknown carrier. A skip/default fallback here would drop
         // forward-compatible payload metadata instead of preserving it.
@@ -1158,11 +1146,9 @@ pub fn gen_read_data(
             }
         }
     };
-    let xlang_read = if has_data_variants && !is_union_compatible {
+    let xlang_read = if has_data_variants && !xlang_union {
         quote! {
-            Err(fory_core::Error::not_allowed(
-                "multi-field tuple and named enum variants are not representable in xlang mode",
-            ))
+            Err(fory_core::Error::not_allowed(#NATIVE_ENUM_XLANG_ERROR))
         }
     } else {
         quote! {
