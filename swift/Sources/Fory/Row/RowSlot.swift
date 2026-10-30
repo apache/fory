@@ -79,6 +79,13 @@ func rowTimestampMicros(_ date: Date) throws -> Int64 {
     return micros
 }
 
+func rowEpochDay(_ date: LocalDate) throws -> Int32 {
+    guard let days = Int32(exactly: date.epochDay) else {
+        throw rowDateOutOfRange(date.epochDay)
+    }
+    return days
+}
+
 // Both parts of `components` carry the same sign, so dividing each toward zero truncates the
 // whole duration toward zero.
 func rowDurationMicros(_ duration: Duration) throws -> Int64 {
@@ -89,6 +96,11 @@ func rowDurationMicros(_ duration: Duration) throws -> Int64 {
         throw rowDurationOutOfRange(duration)
     }
     return micros
+}
+
+@inline(never)
+func rowDateOutOfRange(_ epochDay: Int64) -> ForyError {
+    .encodingError("date \(epochDay) days from 1970 does not fit in 32 bits")
 }
 
 @inline(never)

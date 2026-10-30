@@ -86,10 +86,7 @@ public struct RowWriter {
 
     /// Throws if the date is too far from 1970 to fit in 32-bit days.
     public func writeLocalDate(_ value: LocalDate, at index: Int) throws {
-        guard let days = Int32(exactly: value.epochDay) else {
-            throw rowDateOutOfRange(value.epochDay)
-        }
-        writeInt32(days, at: index)
+        writeInt32(try rowEpochDay(value), at: index)
     }
 
     /// Stores the date rounded to the nearest microsecond. Throws if it does not fit in 64-bit
@@ -108,14 +105,14 @@ public struct RowWriter {
     public func writeString(_ value: String, at index: Int) throws {
         let start = buffer.count
         buffer.writeBytes(value.utf8)
-        try finishValue(at: index, start: start)
+        try setOffsetAndSize(at: index, absoluteStart: start, size: rowPadValue(buffer, from: start))
     }
 
     /// Throws if the row grows past the 32-bit offsets and sizes a slot can hold.
     public func writeBytes(_ value: some ContiguousBytes, at index: Int) throws {
         let start = buffer.count
         value.withUnsafeBytes { buffer.writeBytes($0) }
-        try finishValue(at: index, start: start)
+        try setOffsetAndSize(at: index, absoluteStart: start, size: rowPadValue(buffer, from: start))
     }
 
     /// Points slot `index` at `size` bytes that already sit in the buffer at `absoluteStart`.
@@ -133,17 +130,164 @@ public struct RowWriter {
         precondition(index >= 0 && index < fields.count, "field index \(index) is outside 0..<\(fields.count)")
         return base + bitmapWidth + index * 8
     }
+}
 
-    // Pads the value that was just appended from `start` to a whole word and points the slot at it.
-    // An empty value adds no padding, so its slot points at the current end with size 0.
-    private func finishValue(at index: Int, start: Int) throws {
-        let size = buffer.count - start
-        _ = buffer.appendZeros(rowRoundToWord(size) - size)
-        try setOffsetAndSize(at: index, absoluteStart: start, size: size)
+/// Writes one array into a buffer: the element count, the null bitmap, each element at its natural
+/// width, then strings, bytes, and nested values. It has the same write methods as ``RowWriter``,
+/// taking element indexes.
+public struct RowArrayWriter {
+    public let elementWidth: Int
+    public let buffer: ByteBuffer
+    public private(set) var base: Int
+    public private(set) var elementCount: Int
+    private var headerSize: Int
+
+    public init(element: RowField, buffer: ByteBuffer) {
+        self.init(elementWidth: element.dataType.byteWidth ?? 8, buffer: buffer)
+    }
+
+    init(elementWidth: Int, buffer: ByteBuffer) {
+        self.elementWidth = elementWidth
+        self.buffer = buffer
+        self.base = buffer.count
+        self.elementCount = 0
+        self.headerSize = 8
+    }
+
+    /// Throws if `count` is negative or the elements would not fit in 2 GiB.
+    public mutating func reset(count: Int) throws {
+        // Dividing instead of multiplying keeps a huge count from overflowing before it is rejected.
+        guard count >= 0, count <= (Int(Int32.max) - 15) / elementWidth else {
+            throw rowArrayCountOutOfRange(count, elementWidth: elementWidth)
+        }
+        headerSize = 8 + rowBitmapWidth(count)
+        base = buffer.appendZeros(headerSize + rowRoundToWord(count * elementWidth))
+        elementCount = count
+        buffer.storeLittleEndian(UInt64(count), at: base)
+    }
+
+    public var size: Int {
+        buffer.count - base
+    }
+
+    public func setNullAt(_ index: Int) {
+        let offset = elementOffset(index)
+        buffer.storage.withUnsafeMutableBytes { raw in
+            rowSetBit(raw, bitmapOffset: base + 8, index: index)
+            for byte in offset..<offset + elementWidth {
+                raw[byte] = 0
+            }
+        }
+    }
+
+    public func writeBool(_ value: Bool, at index: Int) {
+        store(UInt8(value ? 1 : 0), at: index)
+    }
+
+    public func writeInt8(_ value: Int8, at index: Int) {
+        store(UInt8(bitPattern: value), at: index)
+    }
+
+    public func writeInt16(_ value: Int16, at index: Int) {
+        store(UInt16(bitPattern: value), at: index)
+    }
+
+    public func writeInt32(_ value: Int32, at index: Int) {
+        store(UInt32(bitPattern: value), at: index)
+    }
+
+    public func writeInt64(_ value: Int64, at index: Int) {
+        store(UInt64(bitPattern: value), at: index)
+    }
+
+    public func writeFloat32(_ value: Float, at index: Int) {
+        store(value.bitPattern, at: index)
+    }
+
+    public func writeFloat64(_ value: Double, at index: Int) {
+        store(value.bitPattern, at: index)
+    }
+
+    public func writeLocalDate(_ value: LocalDate, at index: Int) throws {
+        writeInt32(try rowEpochDay(value), at: index)
+    }
+
+    public func writeTimestamp(_ value: Date, at index: Int) throws {
+        writeInt64(try rowTimestampMicros(value), at: index)
+    }
+
+    public func writeDuration(_ value: Duration, at index: Int) throws {
+        writeInt64(try rowDurationMicros(value), at: index)
+    }
+
+    public func writeString(_ value: String, at index: Int) throws {
+        let start = buffer.count
+        buffer.writeBytes(value.utf8)
+        try setOffsetAndSize(at: index, absoluteStart: start, size: rowPadValue(buffer, from: start))
+    }
+
+    public func writeBytes(_ value: some ContiguousBytes, at index: Int) throws {
+        let start = buffer.count
+        value.withUnsafeBytes { buffer.writeBytes($0) }
+        try setOffsetAndSize(at: index, absoluteStart: start, size: rowPadValue(buffer, from: start))
+    }
+
+    public func setOffsetAndSize(at index: Int, absoluteStart: Int, size: Int) throws {
+        store(try rowEncodeOffsetAndSize(offset: absoluteStart - base, size: size), at: index)
+    }
+
+    public func toBytes() -> [UInt8] {
+        buffer.copyBytes(start: base, end: buffer.count)
+    }
+
+    private func elementOffset(_ index: Int) -> Int {
+        precondition(index >= 0 && index < elementCount, "element index \(index) is outside 0..<\(elementCount)")
+        return base + headerSize + index * elementWidth
+    }
+
+    // A value wider than the element would overwrite its neighbors or run past the buffer.
+    private func store<T: FixedWidthInteger>(_ value: T, at index: Int) {
+        precondition(
+            MemoryLayout<T>.size <= elementWidth,
+            "\(MemoryLayout<T>.size)-byte value written to a \(elementWidth)-byte element"
+        )
+        buffer.storeLittleEndian(value, at: elementOffset(index))
     }
 }
 
+/// Writes one map into a buffer: the size of the keys array, the keys array, then the values array.
+/// Call `reset()`, write the keys with a ``RowArrayWriter``, call `finishKeys()`, then write the
+/// values with another ``RowArrayWriter`` on the same buffer.
+public struct RowMapWriter {
+    public let buffer: ByteBuffer
+    public private(set) var base: Int
+
+    public init(buffer: ByteBuffer) {
+        self.buffer = buffer
+        self.base = buffer.count
+    }
+
+    public mutating func reset() {
+        base = buffer.appendZeros(8)
+    }
+
+    public func finishKeys() {
+        buffer.storeLittleEndian(UInt64(buffer.count - base - 8), at: base)
+    }
+
+    public var size: Int {
+        buffer.count - base
+    }
+}
+
+// Pads the value appended since `start` to a whole word and returns its unpadded size.
+private func rowPadValue(_ buffer: ByteBuffer, from start: Int) -> Int {
+    let size = buffer.count - start
+    _ = buffer.appendZeros(rowRoundToWord(size) - size)
+    return size
+}
+
 @inline(never)
-func rowDateOutOfRange(_ epochDay: Int64) -> ForyError {
-    .encodingError("date \(epochDay) days from 1970 does not fit in 32 bits")
+func rowArrayCountOutOfRange(_ count: Int, elementWidth: Int) -> ForyError {
+    .encodingError("array of \(count) elements of \(elementWidth) bytes each cannot be written")
 }
