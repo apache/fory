@@ -21,6 +21,11 @@ license: |
 
 This page covers how to register user types in Apache Fory™ C#.
 
+Complete all type and custom serializer registrations before the first `Serialize` or
+`Deserialize` call. That first call permanently freezes registration, even if it fails.
+Later registration attempts throw `InvalidOperationException`. Create a new Fory instance
+when a different registration set is needed.
+
 ## Register by Numeric Type ID
 
 Use explicit IDs for compact and stable cross-service mapping.
@@ -69,7 +74,9 @@ fory.Register<MyType, MyTypeSerializer>("com.example.MyType");
 
 ## Thread-Safe Registration
 
-`ThreadSafeFory` exposes the same registration APIs. Registrations are propagated to all per-thread Fory instances.
+`ThreadSafeFory` exposes the same registration APIs. Complete registration before starting
+serialization or deserialization on any thread. First use freezes registration for the whole
+wrapper, including threads that have not used it yet.
 
 ```csharp
 using ThreadSafeFory fory = Fory.Builder().BuildThreadSafe();
@@ -90,7 +97,7 @@ fory.Register<Order>(101);
   Registering a derived class does not make an unannotated base class
   serializable.
 - For the split overloads, `typeName` must be non-empty and must not contain dots.
-- Register before high-volume serialization workloads to avoid missing type metadata.
+- Register before the first serialization or deserialization call.
 
 ## Related Topics
 
