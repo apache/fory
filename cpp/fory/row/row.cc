@@ -232,30 +232,36 @@ void ArrayData::point_to(std::shared_ptr<Buffer> buffer, uint32_t offset,
 int ArrayData::calculate_header_in_bytes(int num_elements) {
   return 8 + ((num_elements + 63) / 64) * 8;
 }
-
 int *ArrayData::get_dimensions(ArrayData &array, int num_dims) {
-  // use deep-first search to search to num_dimensions-1 layer to get
-  // dimensions.
+
   int depth = 0;
   auto dimensions = new int[num_dims];
   std::vector<int> start_from_lefts(num_dims);
   std::vector<const ArrayData *> arrs(num_dims); // root to current node
   ArrayData &arr = array;
+
   while (depth < num_dims) {
     arrs[depth] = &arr;
     int size = arr.num_elements();
     dimensions[depth] = size;
+
     if (depth == num_dims - 1) {
       break;
     }
+
     bool all_null = true;
     if (start_from_lefts[depth] == size) {
-      // this node's subtree has all be traversed, but no node has depth count
-      // to num_dims-1.
+
       start_from_lefts[depth] = 0;
       depth--;
+
+      if (depth < 0) {
+        delete[] dimensions;
+        return nullptr;
+      }
       continue;
     }
+
     for (int i = start_from_lefts[depth]; i < size; i++) {
       if (!arr.is_null_at(i)) {
         arr = *arr.get_array(i);
@@ -263,15 +269,24 @@ int *ArrayData::get_dimensions(ArrayData &array, int num_dims) {
         break;
       }
     }
+
     if (all_null) {
-      // start_from_lefts[depth-1] = 0;
-      depth--; // move up to parent node
+
+      depth--;
+
+      if (depth < 0) {
+        delete[] dimensions;
+        return nullptr;
+      }
+
       start_from_lefts[depth]++;
       arr = *arrs[depth];
     } else {
       depth++;
     }
+
     if (depth <= 0) {
+      delete[] dimensions;
       return nullptr;
     }
   }
