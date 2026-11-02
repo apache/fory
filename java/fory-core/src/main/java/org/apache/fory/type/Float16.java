@@ -123,7 +123,10 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
         int shift = 1 - newExp;
         int netShift = 13 + shift;
 
-        if (netShift >= 24) {
+        // Shifting past the hidden bit is what actually flushes a value to zero. At netShift
+        // == 24 the round and sticky bits still decide: every float strictly between the
+        // 2^-25 mid-point and 2^-24 rounds up to the smallest subnormal.
+        if (netShift > 24) {
           outExp = 0;
           outMant = 0;
         } else {
