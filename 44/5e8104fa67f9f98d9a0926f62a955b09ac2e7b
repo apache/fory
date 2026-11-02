@@ -1,0 +1,18 @@
+java/fory-core/pom.xml
+  h_e94f2b5704cbef 59-63
+java/fory-json/pom.xml
+  h_e94f2b5704cbef 66-70
+java/pom.xml
+  h_e94f2b5704cbef 180-184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "445e8104fa67f9f98d9a0926f62a955b09ac2e7b",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
