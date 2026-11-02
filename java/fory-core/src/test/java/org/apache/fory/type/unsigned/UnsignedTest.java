@@ -185,7 +185,7 @@ public class UnsignedTest {
       long base = (e == 63) ? Long.MIN_VALUE : 1L << e;
       long ulp = 1L << (e - 52);
       for (int k = 0; k < 64; k++) {
-        long midpoint = base + (long) k * 2 * ulp + (ulp >> 1);
+        long midpoint = base + (long) k * ulp + (ulp >> 1);
         for (long d = -1; d <= 1; d++) {
           UInt64 value = UInt64.valueOf(midpoint + d);
           double expected = Double.parseDouble(value.toUnsignedString(10));
@@ -221,6 +221,7 @@ public class UnsignedTest {
         -(doubleUlp >> 1) - 1,
         -(doubleUlp >> 1),
         -1,
+        0,
         1,
         doubleUlp >> 1,
         (doubleUlp >> 1) + 1,
