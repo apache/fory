@@ -178,6 +178,11 @@
         <version>${guava.version}</version>
       </dependency>
       <dependency>
+        <groupId>com.google.code.findbugs</groupId>
+        <artifactId>jsr305</artifactId>
+        <version>${jsr305.version}</version>
+      </dependency>
+      <dependency>
         <groupId>org.codehaus.janino</groupId>
         <artifactId>janino</artifactId>
         <version>${janino.version}</version>
