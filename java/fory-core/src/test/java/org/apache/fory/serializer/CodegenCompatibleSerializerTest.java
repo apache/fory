@@ -24,8 +24,10 @@ import static org.apache.fory.serializer.ClassUtils.loadClass;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
@@ -368,5 +370,46 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
     Assert.assertEquals(
         ((MapFields) (fory.deserialize(fory2.serialize(mapFields)))).toCanEqual(),
         mapFields.toCanEqual());
+  }
+
+  public static class InnerClassHolder {
+    public int value;
+    public Inner inner;
+
+    public class Inner {
+      public int value;
+
+      InnerClassHolder outer() {
+        return InnerClassHolder.this;
+      }
+    }
+  }
+
+  @Test
+  public void testNonStaticInnerClass() {
+    Fory fory = foryBuilder().withRefTracking(true).withCodegen(true).build();
+    InnerClassHolder holder = new InnerClassHolder();
+    holder.value = 1;
+    holder.inner = holder.new Inner();
+    holder.inner.value = 2;
+    InnerClassHolder copy = serDe(fory, holder);
+    Assert.assertEquals(copy.value, 1);
+    Assert.assertEquals(copy.inner.value, 2);
+    Assert.assertSame(copy.inner.outer(), copy);
+
+    Fory noRefFory = foryBuilder().withRefTracking(false).withCodegen(true).build();
+    InnerClassHolder.Inner inner = new InnerClassHolder().new Inner();
+    inner.value = 5;
+    InnerClassHolder.Inner innerCopy = serDe(noRefFory, inner);
+    Assert.assertEquals(innerCopy.value, 5);
+    Assert.assertNotNull(innerCopy.outer());
+
+    // PriorityBlockingQueue holds an AbstractQueuedSynchronizer.ConditionObject inner instance.
+    PriorityBlockingQueue<Integer> queue =
+        new PriorityBlockingQueue<>(4, Collections.reverseOrder());
+    queue.addAll(Arrays.asList(1, 3, 2));
+    PriorityBlockingQueue<Integer> queueCopy = serDe(fory, queue);
+    Assert.assertEquals(queueCopy.poll(), Integer.valueOf(3));
+    Assert.assertEquals(queueCopy.size(), 2);
   }
 }
