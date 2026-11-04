@@ -397,12 +397,21 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
     Assert.assertEquals(copy.inner.value, 2);
     Assert.assertSame(copy.inner.outer(), copy);
 
+    InnerClassHolder.Inner innerRootCopy = serDe(fory, holder.inner);
+    Assert.assertEquals(innerRootCopy.value, 2);
+    Assert.assertEquals(innerRootCopy.outer().value, 1);
+    Assert.assertSame(innerRootCopy.outer().inner, innerRootCopy);
+
     Fory noRefFory = foryBuilder().withRefTracking(false).withCodegen(true).build();
-    InnerClassHolder.Inner inner = new InnerClassHolder().new Inner();
+    InnerClassHolder outer = new InnerClassHolder();
+    outer.value = 3;
+    InnerClassHolder.Inner inner = outer.new Inner();
     inner.value = 5;
     InnerClassHolder.Inner innerCopy = serDe(noRefFory, inner);
     Assert.assertEquals(innerCopy.value, 5);
-    Assert.assertNotNull(innerCopy.outer());
+    Assert.assertEquals(innerCopy.outer().value, 3);
+    Assert.assertNotSame(innerCopy.outer(), outer);
+    Assert.assertNull(innerCopy.outer().inner);
 
     // PriorityBlockingQueue holds an AbstractQueuedSynchronizer.ConditionObject inner instance.
     PriorityBlockingQueue<Integer> queue =
