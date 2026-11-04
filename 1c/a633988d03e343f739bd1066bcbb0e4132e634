@@ -1,0 +1,16 @@
+integration_tests/graalvm_tests/src/main/java/org/apache/fory/graalvm/CompatibleExample.java
+  h_e94f2b5704cbef 22,24,43-44,52,57,60-82
+java/fory-core/src/test/java/org/apache/fory/serializer/CodegenCompatibleSerializerTest.java
+  h_e94f2b5704cbef 400-404,406-408,412-414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1ca633988d03e343f739bd1066bcbb0e4132e634",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
