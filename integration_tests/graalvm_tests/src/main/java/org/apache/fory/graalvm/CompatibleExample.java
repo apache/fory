@@ -19,7 +19,9 @@
 
 package org.apache.fory.graalvm;
 
+import java.io.Serializable;
 import org.apache.fory.Fory;
+import org.apache.fory.util.Preconditions;
 
 public class CompatibleExample {
   static Fory fory;
@@ -38,6 +40,8 @@ public class CompatibleExample {
             .build();
     // register and generate serializer code.
     fory.register(Foo.class);
+    fory.register(Outer.class);
+    fory.register(Outer.Inner.class);
     fory.ensureSerializersCompiled();
     return fory;
   }
@@ -45,10 +49,35 @@ public class CompatibleExample {
   public static void main(String[] args) {
     System.out.println("CompatibleExample started");
     Example.test(fory);
+    testInnerClass(fory);
     System.out.println("CompatibleExample succeed 1/2");
     // Test new created Fory at runtime
     fory = createFory();
     Example.test(fory);
+    testInnerClass(fory);
     System.out.println("CompatibleExample succeed");
+  }
+
+  private static void testInnerClass(Fory fory) {
+    Outer outer = new Outer();
+    outer.value = 7;
+    Outer.Inner inner = outer.new Inner();
+    inner.value = 5;
+    Outer.Inner copy = (Outer.Inner) fory.deserialize(fory.serialize(inner));
+    Preconditions.checkArgument(copy.value == 5);
+    Preconditions.checkArgument(copy.outer().value == 7);
+    Preconditions.checkArgument(copy.outer() != outer);
+  }
+
+  public static class Outer {
+    public int value;
+
+    public class Inner implements Serializable {
+      public int value;
+
+      Outer outer() {
+        return Outer.this;
+      }
+    }
   }
 }
