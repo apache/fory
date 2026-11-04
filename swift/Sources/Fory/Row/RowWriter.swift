@@ -146,6 +146,7 @@ public struct RowArrayWriter {
         self.init(elementWidth: element.dataType.byteWidth ?? 8, buffer: buffer)
     }
 
+    @usableFromInline
     init(elementWidth: Int, buffer: ByteBuffer) {
         self.elementWidth = elementWidth
         self.buffer = buffer
@@ -238,6 +239,17 @@ public struct RowArrayWriter {
 
     public func toBytes() -> [UInt8] {
         buffer.copyBytes(start: base, end: buffer.count)
+    }
+
+    // Fills every element of an int8 array at once, one byte each.
+    func writeInt8Elements(_ bytes: Data) {
+        precondition(elementWidth == 1 && bytes.count == elementCount, "\(bytes.count) bytes do not fill the array")
+        let start = base + headerSize
+        buffer.storage.withUnsafeMutableBytes { raw in
+            bytes.withUnsafeBytes { source in
+                UnsafeMutableRawBufferPointer(rebasing: raw[start..<(start + source.count)]).copyMemory(from: source)
+            }
+        }
     }
 
     private func elementOffset(_ index: Int) -> Int {

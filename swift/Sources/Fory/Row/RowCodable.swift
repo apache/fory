@@ -316,6 +316,229 @@ extension Optional: RowCodable where Wrapped: RowCodable {
     }
 }
 
+extension Array: RowCodable where Element: RowCodable {
+    public static var rowDataType: RowDataType { .list(.inferred("item", Element.self)) }
+    public static var rowNullable: Bool { true }
+    public static var rowFixedWidth: Int? { nil }
+
+    @inlinable
+    public static func writeRow<W: RowValueWriter>(_ value: [Element], to writer: W, at index: Int) throws {
+        let array = try rowAppendArray(value, to: writer.buffer)
+        try writer.setOffsetAndSize(at: index, absoluteStart: array.base, size: array.size)
+    }
+
+    @inlinable
+    public static func readRow<R: RowValueReader>(from reader: R, at index: Int) throws -> [Element] {
+        guard let array = try reader.array(at: index) else {
+            throw rowNullValue(Self.self)
+        }
+        var elements: [Element] = []
+        elements.reserveCapacity(array.elementCount)
+        for elementIndex in 0..<array.elementCount {
+            elements.append(try Element.readRow(from: array, at: elementIndex))
+        }
+        return elements
+    }
+}
+
+// A set is stored as a list; its elements come out in no particular order.
+extension Set: RowCodable where Element: RowCodable {
+    public static var rowDataType: RowDataType { .list(.inferred("item", Element.self)) }
+    public static var rowNullable: Bool { true }
+    public static var rowFixedWidth: Int? { nil }
+
+    @inlinable
+    public static func writeRow<W: RowValueWriter>(_ value: Set<Element>, to writer: W, at index: Int) throws {
+        let array = try rowAppendArray(value, to: writer.buffer)
+        try writer.setOffsetAndSize(at: index, absoluteStart: array.base, size: array.size)
+    }
+
+    @inlinable
+    public static func readRow<R: RowValueReader>(from reader: R, at index: Int) throws -> Set<Element> {
+        guard let array = try reader.array(at: index) else {
+            throw rowNullValue(Self.self)
+        }
+        var elements = Set<Element>(minimumCapacity: array.elementCount)
+        for elementIndex in 0..<array.elementCount {
+            elements.insert(try Element.readRow(from: array, at: elementIndex))
+        }
+        return elements
+    }
+}
+
+// Map keys are never null and map values always may be, whatever the Swift types say.
+extension Dictionary: RowCodable where Key: RowCodable, Value: RowCodable {
+    public static var rowDataType: RowDataType { .mapOf(Key.rowDataType, Value.rowDataType) }
+    public static var rowNullable: Bool { true }
+    public static var rowFixedWidth: Int? { nil }
+
+    // `keys` and `values` of one dictionary come out in the same order, so entry i of the keys
+    // array pairs with entry i of the values array.
+    @inlinable
+    public static func writeRow<W: RowValueWriter>(_ value: [Key: Value], to writer: W, at index: Int) throws {
+        var map = RowMapWriter(buffer: writer.buffer)
+        map.reset()
+        _ = try rowAppendArray(value.keys, to: writer.buffer)
+        map.finishKeys()
+        _ = try rowAppendArray(value.values, to: writer.buffer)
+        try writer.setOffsetAndSize(at: index, absoluteStart: map.base, size: map.size)
+    }
+
+    @inlinable
+    public static func readRow<R: RowValueReader>(from reader: R, at index: Int) throws -> [Key: Value] {
+        guard let map = try reader.map(at: index) else {
+            throw rowNullValue(Self.self)
+        }
+        var entries = [Key: Value](minimumCapacity: map.count)
+        for entryIndex in 0..<map.count {
+            let key = try Key.readRow(from: map.keys, at: entryIndex)
+            entries[key] = try Value.readRow(from: map.values, at: entryIndex)
+        }
+        return entries
+    }
+}
+
+// Data is a list of int8 elements that are never null, the same as [Int8], but its bytes are copied
+// in one go instead of element by element.
+extension Data: RowCodable {
+    public static var rowDataType: RowDataType { .list(RowField(name: "item", dataType: .int8, nullable: false)) }
+    public static var rowNullable: Bool { true }
+    public static var rowFixedWidth: Int? { nil }
+
+    public static func writeRow<W: RowValueWriter>(_ value: Data, to writer: W, at index: Int) throws {
+        var array = RowArrayWriter(elementWidth: 1, buffer: writer.buffer)
+        try array.reset(count: value.count)
+        array.writeInt8Elements(value)
+        try writer.setOffsetAndSize(at: index, absoluteStart: array.base, size: array.size)
+    }
+
+    public static func readRow<R: RowValueReader>(from reader: R, at index: Int) throws -> Data {
+        guard let array = try reader.array(at: index) else {
+            throw rowNullValue(Data.self)
+        }
+        guard let bytes = array.int8Elements() else {
+            throw rowNullValue(Int8.self)
+        }
+        return bytes
+    }
+}
+
+/// Stores an enum as the string of its raw value. Opt in with an empty `extension MyEnum: RowCodable {}`.
+extension RowCodable where Self: RawRepresentable, Self.RawValue == String {
+    public static var rowDataType: RowDataType { .string }
+    public static var rowNullable: Bool { true }
+    public static var rowFixedWidth: Int? { nil }
+
+    @inlinable
+    public static func writeRow<W: RowValueWriter>(_ value: Self, to writer: W, at index: Int) throws {
+        try writer.writeString(value.rawValue, at: index)
+    }
+
+    @inlinable
+    public static func readRow<R: RowValueReader>(from reader: R, at index: Int) throws -> Self {
+        guard let name = try reader.string(at: index) else {
+            throw rowNullValue(Self.self)
+        }
+        guard let value = Self(rawValue: name) else {
+            throw rowUnknownCase(name, of: Self.self)
+        }
+        return value
+    }
+}
+
+/// A struct stored as its own row. `@ForyRow` adopts it.
+public protocol RowStruct: RowCodable {
+    static var rowSchema: RowSchema { get }
+    static func writeRowFields(_ value: Self, to writer: RowWriter) throws
+    static func readRowFields(from row: Row) throws -> Self
+}
+
+// A struct field holds a complete child row written after the parent's slots.
+extension RowStruct {
+    public static var rowDataType: RowDataType { .struct(rowSchema.fields) }
+    public static var rowNullable: Bool { true }
+    public static var rowFixedWidth: Int? { nil }
+
+    @inlinable
+    public static func writeRow<W: RowValueWriter>(_ value: Self, to writer: W, at index: Int) throws {
+        var child = RowWriter(schema: rowSchema, buffer: writer.buffer)
+        child.reset()
+        try writeRowFields(value, to: child)
+        try writer.setOffsetAndSize(at: index, absoluteStart: child.base, size: child.size)
+    }
+
+    @inlinable
+    public static func readRow<R: RowValueReader>(from reader: R, at index: Int) throws -> Self {
+        guard let row = try reader.row(at: index) else {
+            throw rowNullValue(Self.self)
+        }
+        return try readRowFields(from: row)
+    }
+}
+
+/// Converts a ``RowStruct`` to and from row bytes. It reuses one buffer, so use an encoder from one
+/// thread at a time.
+public final class RowEncoder<T: RowStruct> {
+    public let schema: RowSchema
+    public let schemaHash: Int64
+    private let buffer = ByteBuffer()
+
+    public init() {
+        schema = T.rowSchema
+        schemaHash = schema.hash
+    }
+
+    public func toRow(_ value: T) throws -> Data {
+        buffer.clear()
+        try writeRow(value)
+        return buffer.toData()
+    }
+
+    public func fromRow(_ data: Data) throws -> T {
+        try T.readRowFields(from: Row(schema: schema, bytes: Array(data)))
+    }
+
+    /// The schema hash as 8 little-endian bytes, then the row.
+    public func encode(_ value: T) throws -> Data {
+        buffer.clear()
+        buffer.writeInt64(schemaHash)
+        try writeRow(value)
+        return buffer.toData()
+    }
+
+    /// Throws if the data is shorter than the hash or was written with a different schema.
+    public func decode(_ data: Data) throws -> T {
+        guard data.count >= 8 else {
+            throw rowEncodedTooShort(data.count)
+        }
+        let bytes = Array(data)
+        let hash = Int64(littleEndian: bytes.withUnsafeBytes { $0.loadUnaligned(as: Int64.self) })
+        guard hash == schemaHash else {
+            throw rowSchemaHashMismatch(found: hash, expected: schemaHash)
+        }
+        return try T.readRowFields(from: Row(fields: schema.fields, bytes: bytes, base: 8, count: bytes.count - 8))
+    }
+
+    private func writeRow(_ value: T) throws {
+        var writer = RowWriter(schema: schema, buffer: buffer)
+        writer.reset()
+        try T.writeRowFields(value, to: writer)
+    }
+}
+
+// Appends `elements` as an array at the end of the buffer. The returned writer's base and size are
+// what the parent slot points at.
+@inlinable
+func rowAppendArray<C: Collection>(_ elements: C, to buffer: ByteBuffer) throws -> RowArrayWriter
+where C.Element: RowCodable {
+    var array = RowArrayWriter(elementWidth: C.Element.rowFixedWidth ?? 8, buffer: buffer)
+    try array.reset(count: elements.count)
+    for (elementIndex, element) in elements.enumerated() {
+        try C.Element.writeRow(element, to: array, at: elementIndex)
+    }
+    return array
+}
+
 @inlinable
 @inline(__always)
 func rowNonNull<T>(_ value: T?) throws -> T {
@@ -335,4 +558,20 @@ func rowNullValue(_ type: Any.Type) -> ForyError {
 @inline(never)
 func rowIntOutOfRange(_ value: Int64) -> ForyError {
     .invalidData("int64 \(value) does not fit in Int")
+}
+
+@usableFromInline
+@inline(never)
+func rowUnknownCase(_ name: String, of type: Any.Type) -> ForyError {
+    .invalidData("unknown case \"\(name)\" for \(type)")
+}
+
+@inline(never)
+private func rowEncodedTooShort(_ count: Int) -> ForyError {
+    .invalidData("encoded row of \(count) bytes is shorter than its 8-byte schema hash")
+}
+
+@inline(never)
+private func rowSchemaHashMismatch(found: Int64, expected: Int64) -> ForyError {
+    .invalidData("row schema hash \(found) does not match the expected \(expected)")
 }

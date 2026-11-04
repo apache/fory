@@ -292,6 +292,16 @@ public struct RowArray {
         Array(bytes[base..<(base + sizeInBytes)])
     }
 
+    // Copies every element of an int8 array at once, or returns nil when any element is null.
+    func int8Elements() -> Data? {
+        precondition(elementWidth == 1, "array element type is \(element.dataType), not int8")
+        let hasNull = bytes.withUnsafeBytes { raw in
+            (0..<elementCount).contains { rowIsBitSet(raw, bitmapOffset: base + 8, index: $0) }
+        }
+        let start = base + headerSize
+        return hasNull ? nil : Data(bytes[start..<(start + elementCount)])
+    }
+
     // Slots here can be narrower than 8 bytes, so a getter that does not match the element type
     // could read past the last slot and out of the buffer. That is a bug in the caller, so it stops.
     @inline(__always)
