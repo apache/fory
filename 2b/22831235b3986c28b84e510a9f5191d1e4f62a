@@ -1,0 +1,16 @@
+javascript/package-lock.json
+  h_e94f2b5704cbef 780-786,3300-3302,3304,3306-3308,3310-3311,4514-4516,4520-4521,4524,4893-4895,4899-4900,4903,4910-4912,4914-4917
+javascript/package.json
+  h_e94f2b5704cbef 36-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2b22831235b3986c28b84e510a9f5191d1e4f62a",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
