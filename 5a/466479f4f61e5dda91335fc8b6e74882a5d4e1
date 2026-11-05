@@ -1,0 +1,14 @@
+integration_tests/android_tests/build.gradle
+  h_e94f2b5704cbef 112-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5a466479f4f61e5dda91335fc8b6e74882a5d4e1",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
