@@ -108,7 +108,7 @@ dependencies {
     implementation 'org.apache.fory:kotlin-json-corpus:1.8.0-SNAPSHOT'
     ksp 'org.apache.fory:fory-json-kotlin-ksp:1.8.0-SNAPSHOT'
     annotationProcessor 'org.apache.fory:fory-annotation-processor:1.8.0-SNAPSHOT'
-    implementation 'com.google.guava:guava:32.1.2-android'
+    implementation 'com.google.guava:guava:33.8.0-android'
     implementation 'org.slf4j:slf4j-api:2.0.12'
 
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
