@@ -147,6 +147,8 @@ public class DescriptorTest {
   /** A shut-down compiler pool must not reject one warm-up task for each field. */
   @Test
   public void testWarmSkipsShutDownPool() throws Exception {
+    Assert.assertNotNull(
+        Descriptor.warmUpTask(WarmOuter.class, WarmOuter.class.getDeclaredField("inner")));
     try (URLClassLoader isolate =
         new URLClassLoader(
             TestUtils.forkClassPathUrls(), ClassLoader.getSystemClassLoader().getParent())) {
