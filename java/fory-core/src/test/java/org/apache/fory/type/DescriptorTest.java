@@ -135,7 +135,6 @@ public class DescriptorTest {
       throw new SkipException("OpenJ9 unsupported");
     }
     WeakReference<ClassLoader> isolate = warmInIsolatedLoader();
-    // Idle compiler pool threads keep the loader reachable until their 5 second keep-alive ends.
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
     while (isolate.get() != null && System.nanoTime() < deadline) {
       System.gc();
@@ -152,12 +151,7 @@ public class DescriptorTest {
     try (URLClassLoader isolate =
         new URLClassLoader(
             TestUtils.forkClassPathUrls(), ClassLoader.getSystemClassLoader().getParent())) {
-      ThreadPoolExecutor pool =
-          (ThreadPoolExecutor)
-              isolate
-                  .loadClass(CodeGenerator.class.getName())
-                  .getMethod("getCompilationService")
-                  .invoke(null);
+      ThreadPoolExecutor pool = compilationService(isolate);
       AtomicInteger rejected = new AtomicInteger();
       pool.setRejectedExecutionHandler((task, executor) -> rejected.incrementAndGet());
       pool.shutdown();
@@ -170,11 +164,29 @@ public class DescriptorTest {
   private static WeakReference<ClassLoader> warmInIsolatedLoader() throws Exception {
     try (WarmLeafRecorder isolate = new WarmLeafRecorder()) {
       Assert.assertNotSame(Thread.currentThread().getContextClassLoader(), isolate);
+      ThreadPoolExecutor pool = compilationService(isolate);
+      // Keep core-thread timeout under test, but do not wait for the 5 second default keep-alive.
+      pool.setKeepAliveTime(100, TimeUnit.MILLISECONDS);
       Class<?> probe = isolate.loadClass(WarmProbe.class.getName());
       ((Runnable) probe.getDeclaredConstructor().newInstance()).run();
       Assert.assertSame(isolate.leafContextClassLoader.get(30, TimeUnit.SECONDS), isolate);
+      // The last pool thread exits only when the queue is empty, so no warm-up task can still load
+      // classes when the loader closes.
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+      while (pool.getPoolSize() > 0 && System.nanoTime() < deadline) {
+        Thread.sleep(10);
+      }
+      Assert.assertEquals(pool.getPoolSize(), 0, "compiler pool threads did not time out");
       return new WeakReference<>(isolate);
     }
+  }
+
+  private static ThreadPoolExecutor compilationService(ClassLoader isolate) throws Exception {
+    return (ThreadPoolExecutor)
+        isolate
+            .loadClass(CodeGenerator.class.getName())
+            .getMethod("getCompilationService")
+            .invoke(null);
   }
 
   private static final class WarmLeafRecorder extends URLClassLoader {
