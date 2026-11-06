@@ -132,20 +132,21 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
   @SuppressWarnings("unchecked")
   private T decodeOtherSchema(
       final MemoryBuffer buffer, final long peerSchemaHash, final int rowSize) {
+    // Skip the body before the projection lookup, so that a caller can go on to the next payload
+    // in the buffer even when the projection fails to compile. The skip moves the reader index
+    // past exactly the body, and loads the body from the stream if needed.
+    final int readerIndex = buffer.readerIndex();
+    buffer.increaseReaderIndex(rowSize);
     if (projections != null) {
       ProjectionCodec projection = projections.get(peerSchemaHash);
       if (projection != null) {
         // The writer is bound to the current schema, so the historical row comes from the
         // projection's own factory, which carries that schema's precomputed layout.
         final BinaryRow row = projection.rowFactory.newRow();
-        row.pointTo(buffer, buffer.readerIndex(), rowSize);
-        buffer.increaseReaderIndex(rowSize);
+        row.pointTo(buffer, readerIndex, rowSize);
         return (T) projection.codec.fromRow(row);
       }
     }
-    // Skip the body, so that a caller can go on to the next payload in the buffer. The skip moves
-    // the reader index past exactly the body, and loads the body from the stream if needed.
-    buffer.increaseReaderIndex(rowSize);
     throw new ClassNotCompatibleException(
         String.format(
             "Schema is not consistent, encoder schema is %s. "

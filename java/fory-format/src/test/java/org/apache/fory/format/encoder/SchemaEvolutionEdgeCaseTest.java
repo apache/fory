@@ -44,6 +44,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.Data;
 import org.apache.fory.Fory;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.annotation.ForyRowSchema;
 import org.apache.fory.format.annotation.ForyRowVersion;
@@ -1227,6 +1228,61 @@ public class SchemaEvolutionEdgeCaseTest {
     Assert.expectThrows(ClassNotCompatibleException.class, () -> c.decode.apply(buffer));
     Assert.assertEquals(buffer.readerIndex(), next);
     Assert.assertEquals(c.decode.apply(buffer), c.value);
+  }
+
+  /**
+   * A projection that fails to compile also skips the body of its payload, at the first failure and
+   * at the cached failure of a later decode. The codecs need no current-schema collaborators,
+   * because every payload carries the older hash.
+   */
+  @Test(dataProvider = "failingProjectionDecoders")
+  public void failedProjectionSkipsPayload(String label, Function<MemoryBuffer, Object> decoder) {
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(64);
+    for (int i = 0; i < 2; i++) {
+      buffer.writeInt32(12);
+      buffer.writeInt64(FAILING_HASH);
+      buffer.writeInt32(0);
+    }
+    Assert.expectThrows(IllegalStateException.class, () -> decoder.apply(buffer));
+    Assert.assertEquals(buffer.readerIndex(), 16);
+    Assert.expectThrows(EncoderException.class, () -> decoder.apply(buffer));
+    Assert.assertEquals(buffer.readerIndex(), 32);
+  }
+
+  private static final long FAILING_HASH = 2;
+
+  @DataProvider
+  public Object[][] failingProjectionDecoders() {
+    Function<MemoryBuffer, Object> row =
+        new BinaryRowEncoder<Object>(null, null, null, true, 1, failingProjections(FAILING_HASH))
+            ::decode;
+    Function<MemoryBuffer, Object> array =
+        new VersionedBinaryArrayEncoder<Object>(
+                null, null, true, 1, failingProjections(FAILING_HASH))
+            ::decode;
+    Function<MemoryBuffer, Object> map =
+        new VersionedBinaryMapEncoder<Object>(
+                null, null, null, null, null, true, 1, failingProjections(FAILING_HASH))
+            ::decode;
+    return new Object[][] {{"row", row}, {"array", array}, {"map", map}};
+  }
+
+  private static <P> ProjectionCache<P> failingProjections(long hash) {
+    LongMap<ProjectionSource<Object, P>> sources = new LongMap<>();
+    sources.put(
+        hash,
+        new ProjectionSource<Object, P>() {
+          @Override
+          Object generate() {
+            throw new IllegalStateException("generation failed");
+          }
+
+          @Override
+          P bind(Object classes, Fory fory) {
+            throw new AssertionError("bind after a failed generation");
+          }
+        });
+    return new ProjectionCache<>(sources, null);
   }
 
   /**

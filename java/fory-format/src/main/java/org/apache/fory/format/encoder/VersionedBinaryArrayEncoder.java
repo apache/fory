@@ -124,19 +124,19 @@ class VersionedBinaryArrayEncoder<T> implements ArrayEncoder<T> {
    */
   @SuppressWarnings("unchecked")
   private T decodeOtherSchema(final MemoryBuffer buffer, final long peerHash, final int bodySize) {
+    // Skip the body before the projection lookup, so that a caller can go on to the next payload
+    // in the buffer even when the projection fails to compile. On a stream-backed buffer the skip
+    // also loads the body that pointTo reads.
+    final int readerIndex = buffer.readerIndex();
+    buffer.readerIndex(readerIndex + bodySize);
     ProjectionArrayCodec projection = projections.get(peerHash);
     if (projection == null) {
-      // Skip the body, so that a caller can go on to the next payload in the buffer.
-      buffer.increaseReaderIndex(bodySize);
       throw new ClassNotCompatibleException(
           String.format(
               "Array element schema is not consistent. self/peer hash are %s/%s.",
               currentHash, peerHash));
     }
     BinaryArray array = projection.writer.newArray();
-    final int readerIndex = buffer.readerIndex();
-    // Advance first: on a stream-backed buffer this loads the body that pointTo reads.
-    buffer.readerIndex(readerIndex + bodySize);
     array.pointTo(buffer, readerIndex, bodySize);
     return (T) projection.codec.fromArray(array);
   }

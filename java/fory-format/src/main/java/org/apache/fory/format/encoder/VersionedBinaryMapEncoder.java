@@ -142,19 +142,19 @@ class VersionedBinaryMapEncoder<M> implements MapEncoder<M> {
    */
   @SuppressWarnings("unchecked")
   private M decodeOtherSchema(final MemoryBuffer buffer, final long peerHash, final int bodySize) {
+    // Skip the body before the projection lookup, so that a caller can go on to the next payload
+    // in the buffer even when the projection fails to compile. On a stream-backed buffer the skip
+    // also loads the body that pointTo reads.
+    final int readerIndex = buffer.readerIndex();
+    buffer.readerIndex(readerIndex + bodySize);
     ProjectionMapCodec projection = projections.get(peerHash);
     if (projection == null) {
-      // Skip the body, so that a caller can go on to the next payload in the buffer.
-      buffer.increaseReaderIndex(bodySize);
       throw new ClassNotCompatibleException(
           String.format(
               "Map (key,value) schema is not consistent. self/peer hash are %s/%s.",
               currentHash, peerHash));
     }
     BinaryMap map = projection.format.newMap(projection.mapField);
-    int readerIndex = buffer.readerIndex();
-    // Advance first: on a stream-backed buffer this loads the body that pointTo reads.
-    buffer.readerIndex(readerIndex + bodySize);
     map.pointTo(buffer, readerIndex, bodySize);
     return (M) projection.codec.fromMap(map);
   }
