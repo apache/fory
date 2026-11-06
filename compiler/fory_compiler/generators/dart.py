@@ -372,6 +372,23 @@ class DartGenerator(DartServiceGeneratorMixin, BaseGenerator):
         self._schema_cache[path] = schema
         return schema
 
+    def _type_evolving(self, message: Message) -> bool:
+        """Resolve the effective evolving flag for a message.
+
+        A message-level option wins; otherwise an imported type uses its own
+        file's `option evolving` default, and a local type uses this file's.
+        """
+        if "evolving" in message.options:
+            return bool(message.options.get("evolving"))
+        location = getattr(message, "location", None)
+        file_path = getattr(location, "file", None) if location else None
+        if file_path and self.is_imported_type(message):
+            imported_schema = self._load_schema(file_path)
+            if imported_schema is not None:
+                file_default = imported_schema.get_option("evolving")
+                return True if file_default is None else bool(file_default)
+        return self.get_effective_evolving(message)
+
     def _import_statements(self) -> List[str]:
         seen: Dict[str, Tuple[str, str]] = {}
         for item in self.schema.enums + self.schema.unions + self.schema.messages:
@@ -657,7 +674,7 @@ class DartGenerator(DartServiceGeneratorMixin, BaseGenerator):
         )
 
     def struct_annotation(self, message: Message) -> str:
-        if message.options.get("evolving", True):
+        if self._type_evolving(message):
             return "@ForyStruct()"
         return "@ForyStruct(evolving: false)"
 
@@ -1210,11 +1227,11 @@ class DartGenerator(DartServiceGeneratorMixin, BaseGenerator):
                 # root or dynamic Any identities.
                 return self.ref_name(resolved), "TypeIds.union"
             if isinstance(resolved, Message):
-                return self.ref_name(
-                    resolved
-                ), "TypeIds.compatibleStruct" if resolved.options.get(
-                    "evolving", True
-                ) else "TypeIds.struct"
+                return self.ref_name(resolved), (
+                    "TypeIds.compatibleStruct"
+                    if self._type_evolving(resolved)
+                    else "TypeIds.struct"
+                )
             return self.safe_type_identifier(
                 self.to_pascal_case(field_type.name)
             ), "TypeIds.struct"

@@ -137,6 +137,8 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
         self._qualified_type_names: dict[int, str] = {}
         self._schema_cache: dict[Path, Schema] = {}
         self._equatable_cache: dict[int, bool] = {}
+        # In-progress types whose provisional True a traversal depended on.
+        self._equatable_pending: set[int] = set()
         self._messages_requiring_class: set[int] = set()
         self._indirect_unions: set[int] = set()
         self._build_qualified_type_name_index()
@@ -350,14 +352,22 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
         self._schema_cache[path] = schema
         return schema
 
-    def _package_components_for_schema(self, schema: Schema) -> list[str]:
+    def _raw_package_components_for_schema(self, schema: Schema) -> list[str]:
+        """PascalCase package components without keyword escaping.
+
+        Flattened identifiers compose these raw components and escape the
+        composed identifier once as a whole; escaping per component would
+        embed backticks inside an identifier, which is invalid Swift.
+        """
         package = schema.package
         if not package:
             return []
+        return [self.to_pascal_case(part) for part in package.split(".") if part]
+
+    def _package_components_for_schema(self, schema: Schema) -> list[str]:
         return [
-            self.safe_type_identifier(self.to_pascal_case(part))
-            for part in package.split(".")
-            if part
+            self.safe_type_identifier(part)
+            for part in self._raw_package_components_for_schema(schema)
         ]
 
     def _namespace_components_for_schema(self, schema: Schema) -> list[str]:
@@ -374,7 +384,8 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
     def _namespace_prefix_for_schema(self, schema: Schema) -> str:
         if self.get_namespace_style() != "flatten":
             return ""
-        components = self._package_components_for_schema(schema)
+        # Raw components: callers escape the composed identifier as a whole.
+        components = self._raw_package_components_for_schema(schema)
         if not components:
             return ""
         return "_".join(components)
@@ -383,10 +394,12 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
         parts = qualified_name.split(".")
         if not parts:
             return qualified_name
-        top_level = self.safe_type_identifier(self.to_pascal_case(parts[0]))
+        raw_top_level = self.to_pascal_case(parts[0])
         prefix = self._namespace_prefix_for_schema(schema)
         if prefix:
-            top_level = self.safe_type_identifier(f"{prefix}_{top_level}")
+            top_level = self.safe_type_identifier(f"{prefix}_{raw_top_level}")
+        else:
+            top_level = self.safe_type_identifier(raw_top_level)
         nested = [
             self.safe_type_identifier(self.to_pascal_case(part)) for part in parts[1:]
         ]
@@ -492,9 +505,12 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
 
     def _collect_messages_requiring_class(self) -> None:
         for message in self.schema.messages:
-            self._collect_messages_requiring_class_for_message(message)
+            self._collect_messages_requiring_class_for_message(message, [])
 
-    def _collect_messages_requiring_class_for_message(self, message: Message) -> None:
+    def _collect_messages_requiring_class_for_message(
+        self, message: Message, parents: list[Message]
+    ) -> None:
+        lineage = parents + [message]
         if self.message_has_weak_field(message):
             self._messages_requiring_class.add(id(message))
 
@@ -521,12 +537,14 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
                 continue
 
             if isinstance(ref_target_type, NamedType):
-                resolved = self._resolve_named_type(ref_target_type.name, [message])
+                # Resolve against the full parent lineage so a ref field in a
+                # nested message can reach sibling nested types.
+                resolved = self._resolve_named_type(ref_target_type.name, lineage)
                 if isinstance(resolved, Message):
                     self._messages_requiring_class.add(id(resolved))
 
         for nested in message.nested_messages:
-            self._collect_messages_requiring_class_for_message(nested)
+            self._collect_messages_requiring_class_for_message(nested, lineage)
 
     def _analyze_recursive_value_types(self) -> None:
         value_types = [
@@ -638,13 +656,13 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
         name: str,
         parent_stack: list[Message] | None = None,
     ) -> str:
-        type_name = self.safe_type_identifier(self.to_pascal_case(name))
+        raw_name = self.to_pascal_case(name)
         if parent_stack:
-            return type_name
+            return self.safe_type_identifier(raw_name)
         prefix = self._namespace_prefix_for_schema(self.schema)
         if not prefix:
-            return type_name
-        return self.safe_type_identifier(f"{prefix}_{type_name}")
+            return self.safe_type_identifier(raw_name)
+        return self.safe_type_identifier(f"{prefix}_{raw_name}")
 
     def _qualified_type_path(
         self,
@@ -1112,8 +1130,10 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
     ) -> bool:
         if visiting is None:
             visiting = set()
+            self._equatable_pending = set()
         key = id(union)
         if key in visiting:
+            self._equatable_pending.add(key)
             return True
         visiting.add(key)
         lineage = parent_stack or []
@@ -1122,8 +1142,10 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
                 field.field_type, parent_stack=lineage, visiting=visiting
             ):
                 visiting.remove(key)
+                self._equatable_pending.discard(key)
                 return False
         visiting.remove(key)
+        self._equatable_pending.discard(key)
         return True
 
     def message_supports_equatable(
@@ -1139,7 +1161,11 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
             return self._equatable_cache[key]
         if visiting is None:
             visiting = set()
+            self._equatable_pending = set()
         if key in visiting:
+            # Provisional back-edge answer: results built on it must not be
+            # cached until this in-progress node completes.
+            self._equatable_pending.add(key)
             return True
         visiting.add(key)
 
@@ -1148,12 +1174,19 @@ class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
             if not self.type_supports_equatable(
                 field.field_type, parent_stack=lineage, visiting=visiting
             ):
+                # False never derives from a provisional True, so it is final.
                 self._equatable_cache[key] = False
                 visiting.remove(key)
+                self._equatable_pending.discard(key)
                 return False
 
-        self._equatable_cache[key] = True
         visiting.remove(key)
+        self._equatable_pending.discard(key)
+        # A True that still depends on an unresolved in-progress type may be
+        # overturned by a later case of that cycle, so cache it only once no
+        # provisional dependency remains; acyclic results always memoize.
+        if not self._equatable_pending:
+            self._equatable_cache[key] = True
         return True
 
     def _lineage_for_message(self, message: Message) -> list[Message]:
