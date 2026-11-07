@@ -23,6 +23,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -163,22 +164,22 @@ public final class JsonDefaultCodecs {
     }
     Class<?> rawType = type.getRawType();
     if (rawType.isArray()) {
-      codec = codec(type.getComponentType());
+      codec = childCodec(type.getComponentType());
       return codec == null ? null : new SelectedCodec(null, codec, null, null);
     }
     if (rawType.getTypeParameters().length != 0 && !type.hasExplicitTypeArguments()) {
       return null;
     }
     if (Collection.class.isAssignableFrom(rawType) || rawType == AtomicReferenceArray.class) {
-      codec = codec(CodecUtils.elementTypeRef(type));
+      codec = childCodec(CodecUtils.elementTypeRef(type));
       return codec == null ? null : new SelectedCodec(null, codec, null, null);
     }
     if (rawType == Optional.class || rawType == AtomicReference.class) {
-      codec = codec(CodecUtils.elementTypeRef(type));
+      codec = childCodec(CodecUtils.elementTypeRef(type));
       return codec == null ? null : new SelectedCodec(null, null, codec, null);
     }
     if (Map.class.isAssignableFrom(rawType)) {
-      codec = codec(CodecUtils.mapKeyValueTypeRefs(type).f1);
+      codec = childCodec(CodecUtils.mapKeyValueTypeRefs(type).f1);
       return codec == null ? null : new SelectedCodec(null, null, null, codec);
     }
     return null;
@@ -207,16 +208,49 @@ public final class JsonDefaultCodecs {
     if (semantic(type)) {
       return null;
     }
-    return codec((type.isPrimitive() ? type.wrap() : type).getType());
-  }
-
-  private Class<? extends JsonValueCodec<?>> codec(Type type) {
+    TypeRef<?> occurrence = type.isPrimitive() ? type.wrap() : type;
     for (Entry entry : entries) {
-      if (sameType(entry.target, type)) {
+      if (matches(entry.target, occurrence)) {
         return entry.codecClass;
       }
     }
     return null;
+  }
+
+  /**
+   * Matches a target against an occurrence. A language module may describe a generic array as a raw
+   * array class with a parameterized component token, so arrays are compared by their components.
+   */
+  private static boolean matches(Type target, TypeRef<?> occurrence) {
+    if (target instanceof GenericArrayType
+        && occurrence.getRawType().isArray()
+        && !(occurrence.getType() instanceof GenericArrayType)) {
+      return matches(
+          ((GenericArrayType) target).getGenericComponentType(), occurrence.getComponentType());
+    }
+    return sameType(target, occurrence.getType());
+  }
+
+  /** A wildcard child is not concrete, which an explicit child member rejects as well. */
+  private Class<? extends JsonValueCodec<?>> childCodec(TypeRef<?> child) {
+    return child.getType() instanceof WildcardType ? null : codec(child);
+  }
+
+  /**
+   * Reads {@code ? extends X} as {@code X}. Kotlin writes declaration-site variance into generic
+   * signatures, so a codec of {@code List<Long>} declares {@code List<? extends Long>}.
+   */
+  private static Type covariant(Type type) {
+    if (type instanceof WildcardType) {
+      WildcardType wildcard = (WildcardType) type;
+      // An unbounded wildcard reads as ? extends Object and stays a wildcard: it names no type.
+      if (wildcard.getLowerBounds().length == 0
+          && wildcard.getUpperBounds().length == 1
+          && wildcard.getUpperBounds()[0] != Object.class) {
+        return wildcard.getUpperBounds()[0];
+      }
+    }
+    return type;
   }
 
   private static boolean semantic(TypeRef<?> type) {
@@ -252,6 +286,7 @@ public final class JsonDefaultCodecs {
   }
 
   private static boolean concrete(Type type) {
+    type = covariant(type);
     if (type instanceof Class) {
       return true;
     }
@@ -275,6 +310,8 @@ public final class JsonDefaultCodecs {
 
   /** Compares reflected types structurally, independent of their implementation classes. */
   private static boolean sameType(Type a, Type b) {
+    a = covariant(a);
+    b = covariant(b);
     if (a instanceof Class || b instanceof Class) {
       return a.equals(b);
     }

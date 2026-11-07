@@ -147,6 +147,46 @@ class KotlinBuiltInCodecsTest {
     assertTrue(error.message.orEmpty().contains("Kotlin unsigned type"), error.message)
   }
 
+  class LongListArrayCodec : AbstractJsonValueCodec<Array<List<Long>>>() {
+    override fun write(writer: JsonWriter, value: Array<List<Long>>) {
+      writer.writeString("arrays:${value.size}")
+    }
+
+    override fun read(reader: JsonReader): Array<List<Long>> {
+      reader.readString()
+      return arrayOf(listOf(1L))
+    }
+  }
+
+  @JsonDefaultCodec(LongListArrayCodec::class)
+  class GenericArrayHolder(val values: Array<List<Long>>)
+
+  class LongListCodec : AbstractJsonValueCodec<List<Long>>() {
+    override fun write(writer: JsonWriter, value: List<Long>) {
+      writer.writeString("longs:${value.size}")
+    }
+
+    override fun read(reader: JsonReader): List<Long> {
+      reader.readString()
+      return listOf(1L)
+    }
+  }
+
+  @JsonDefaultCodec(LongListCodec::class) class LongListHolder(val values: List<Long>)
+
+  @Test
+  fun defaultCodecMatchesKotlinCollectionTarget() {
+    assertEquals("{\"values\":\"longs:2\"}", fory.toJson(LongListHolder(listOf(1L, 2L))))
+  }
+
+  @Test
+  fun defaultCodecMatchesGenericArrayProperty() {
+    assertEquals(
+      "{\"values\":\"arrays:2\"}",
+      fory.toJson(GenericArrayHolder(arrayOf(listOf(1L), listOf(2L)))),
+    )
+  }
+
   @Test
   fun defaultCodecKeepsUnsignedMapping() {
     val value = SignedAndUnsigned(5, UInt.MAX_VALUE, listOf(1), listOf(UInt.MAX_VALUE))

@@ -296,25 +296,31 @@ one class may name at most one codec per target type.
 
 A property or creator parameter whose resolved type equals a target uses the codec as if it
 declared `@JsonCodec(value = ...)`; a primitive property or array element matches its wrapper type.
+A target written as `? extends T`, which Kotlin emits for declaration-site variance, reads as `T`.
+
 Otherwise a target equal to the direct child of an array, `Collection`, `AtomicReferenceArray`,
 `Optional`, `AtomicReference`, or the value of a `Map` fills the matching child member from the
 table above, so a `Byte` default writes a `byte[]` as a JSON array of codec values whatever
-`byteArrayFormat` says. Deeper nesting is not searched, and a wildcard child such as `List<? extends Shape>` keeps its
-mapping, as an explicit child member would reject it. A child is filled only where the container keeps its
-standard mapping: a registered codec or factory, a module, or a type declaration that owns the
-container keeps it unchanged.
+`byteArrayFormat` says. A child is filled only where the container keeps its standard mapping: a
+registered codec or factory, a module, or a type declaration that owns the container keeps it
+unchanged. Deeper nesting is not searched, and a wildcard child such as `List<? extends Shape>`
+keeps its mapping, as an explicit child member would reject it.
 
-Properties that declare `JsonCodec`, `JsonFormat`, `JsonByteArray`, `JsonRawValue`, or
-`JsonUnwrapped`, and JSON Any properties, do not use defaults. Defaults declared on superclasses
-apply to the subclass, and a subclass default for the same target type replaces the inherited one.
 A default codec is used exactly like a property `JsonCodec`, so it receives and owns null as
-described above for every property it reaches. A declaration on an interface is rejected, and so
-is a target that is a Kotlin unsigned type, which the Kotlin module carries as a tagged primitive. A value-class property read and written through its
-unboxed carrier cannot take a codec, so a default that matches one fails like a declared
-`JsonCodec`; a nullable or container occurrence of the value class is boxed and uses the default. Defaults stop at the class boundary: a nested object
-type uses its own declarations. An exact-target Mixin may supply or replace the annotation; a Mixin
-that supplies or removes either the single or the repeated form replaces both forms declared on the
-target, and a removal also drops the defaults inherited from superclasses.
+described above for every property it reaches. Properties that declare `JsonCodec`, `JsonFormat`,
+`JsonByteArray`, `JsonRawValue`, or `JsonUnwrapped`, and JSON Any properties, do not use defaults.
+A value-class property read and written through its unboxed carrier cannot take a codec, so a
+default that matches one fails like a declared `JsonCodec`; a nullable or container occurrence of
+the value class is boxed and uses the default. A target that is a Kotlin unsigned type, which the
+Kotlin module carries as a tagged primitive, is rejected.
+
+Defaults declared on superclasses apply to the subclass, and a subclass default for the same target
+type replaces the inherited one. Defaults stop at the class boundary: a nested object type uses its
+own declarations. A declaration on an interface is rejected; the build-time processors also reject
+one on an enum or annotation type, which never gets an object mapping. An exact-target Mixin may
+supply or replace the annotation; a Mixin that supplies or removes either the single or the
+repeated form replaces both forms declared on the target, and a removal also drops the defaults
+inherited from superclasses.
 
 ### Kotlin occurrences
 

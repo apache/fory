@@ -236,10 +236,16 @@ final class JsonTypeProcessor {
         continue;
       }
       for (Element element : roundEnvironment.getElementsAnnotatedWith(annotationType)) {
-        if (element.getKind() == ElementKind.INTERFACE && !hasAnnotation(element, JSON_MIXIN)) {
+        ElementKind kind = element.getKind();
+        boolean notClass =
+            kind == ElementKind.INTERFACE
+                || kind == ElementKind.ENUM
+                || kind == ElementKind.ANNOTATION_TYPE;
+        if (notClass && !hasAnnotation(element, JSON_MIXIN)) {
           messager.printMessage(
               Diagnostic.Kind.ERROR,
-              "@JsonDefaultCodec is read from classes only, not from interfaces",
+              "@JsonDefaultCodec is read from classes only, not from interfaces, enums, or"
+                  + " annotation types",
               element);
         }
       }

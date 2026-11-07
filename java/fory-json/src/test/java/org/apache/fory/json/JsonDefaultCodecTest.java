@@ -827,7 +827,21 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(newJson().toJson(value), "{\"prices\":[1E+1]}");
   }
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  public static final class TreeNodeCodec extends AbstractJsonValueCodec<TreeNode> {
+    @Override
+    public void write(JsonWriter writer, TreeNode value) {
+      writer.writeString("node");
+    }
+
+    @Override
+    public TreeNode read(JsonReader reader) {
+      reader.readString();
+      return new TreeNode();
+    }
+  }
+
+  /** The TreeNode default makes List<TreeNode> select a child default, so ownership is checked. */
+  @JsonDefaultCodec({TaggedDecimalCodec.class, TreeNodeCodec.class})
   public static class TreeNode {
     public BigDecimal value;
     public List<TreeNode> children;

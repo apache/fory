@@ -63,14 +63,18 @@ internal class ForyJsonKotlinSymbolProcessor(environment: SymbolProcessorEnviron
     sequenceOf(JSON_DEFAULT_CODEC_NAME, "$JSON_DEFAULT_CODEC_NAME.List")
       .flatMap(resolver::getSymbolsWithAnnotation)
       .filterIsInstance<KSClassDeclaration>()
-      .filter { it.classKind == ClassKind.INTERFACE }
+      .filter {
+        it.classKind == ClassKind.INTERFACE ||
+          it.classKind == ClassKind.ENUM_CLASS ||
+          it.classKind == ClassKind.ANNOTATION_CLASS
+      }
       .filter { declaration ->
         declaration.annotations.none {
           it.annotationType.resolve().declaration.qualifiedName?.asString() == JSON_MIXIN
         }
       }
       .forEach {
-        logger.error("@JsonDefaultCodec is read from classes only, not from interfaces", it)
+        logger.error("@JsonDefaultCodec is read from classes only, not from interfaces, enums, or annotation types", it)
       }
     for (symbol in resolver.getSymbolsWithAnnotation(JSON_MIXIN)) {
       if (!symbol.validate()) {

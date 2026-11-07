@@ -141,6 +141,28 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void defaultCodecOnEnumFailsCompilation() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.DefaultStatus",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonDefaultCodec;\n"
+                + "@JsonDefaultCodec(DefaultStatus.LongCodec.class)\n"
+                + "public enum DefaultStatus {\n"
+                + "  ACTIVE;\n"
+                + "  public static final class LongCodec\n"
+                + "      extends org.apache.fory.json.codec.AbstractJsonValueCodec<Long> {\n"
+                + "    public void write(org.apache.fory.json.writer.JsonWriter writer, Long value) {}\n"
+                + "    public Long read(org.apache.fory.json.reader.JsonReader reader) { return null; }\n"
+                + "  }\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result.diagnostics().contains("@JsonDefaultCodec is read from classes only"),
+        result.diagnostics());
+  }
+
+  @Test
   public void mixinDefaultCodecRules() throws Exception {
     CompilationResult result =
         compile(

@@ -36,7 +36,8 @@ import org.apache.fory.json.codec.JsonValueCodec;
  * <p>Each codec targets the type argument it declares for {@link JsonValueCodec}: a codec of {@code
  * BigDecimal} targets {@code BigDecimal}, a codec of {@code Optional<BigDecimal>} targets exactly
  * {@code Optional<BigDecimal>}. That type must be concrete, without type variables or wildcards,
- * and one class may name at most one codec per target type.
+ * except that a covariant {@code ? extends T}, which Kotlin emits, reads as {@code T}. One class
+ * may name at most one codec per target type.
  *
  * <p>A property or creator parameter whose resolved type equals a target uses that codec as if it
  * declared {@code @JsonCodec(value = ...)}; a primitive property or array element matches its
