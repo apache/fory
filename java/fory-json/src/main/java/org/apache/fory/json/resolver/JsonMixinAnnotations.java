@@ -514,6 +514,13 @@ final class JsonMixinAnnotations {
       ElementOverlay overlay = declarations.get(target);
       return overlay != null && overlay.removals.contains(annotationType);
     }
+
+    boolean overrides(AnnotatedElement target, Class<? extends Annotation> annotationType) {
+      ElementOverlay overlay = declarations.get(target);
+      return overlay != null
+          && (overlay.replacements.containsKey(annotationType)
+              || overlay.removals.contains(annotationType));
+    }
   }
 
   private static final class ElementOverlay {

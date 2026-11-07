@@ -720,9 +720,14 @@ final class JsonTypeProcessor {
       }
     }
     for (String annotationType : model.annotationTypes) {
+      // Keep rules name nested annotation types by binary name, such as JsonDefaultCodec$List.
+      TypeElement annotationElement = elements.getTypeElement(annotationType);
       builder
           .append("-keep,allowoptimization,allowobfuscation @interface ")
-          .append(annotationType)
+          .append(
+              annotationElement == null
+                  ? annotationType
+                  : elements.getBinaryName(annotationElement).toString())
           .append("\n");
     }
     for (String container : model.containerTypes) {

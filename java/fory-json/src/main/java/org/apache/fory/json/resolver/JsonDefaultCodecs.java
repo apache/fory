@@ -49,34 +49,33 @@ import org.apache.fory.reflect.TypeRef;
  */
 @Internal
 public final class JsonDefaultCodecs {
-  private static final JsonDefaultCodecs NONE = new JsonDefaultCodecs(null, new Entry[0]);
+  private static final JsonDefaultCodecs NONE = new JsonDefaultCodecs(new Entry[0]);
 
-  private final JsonSharedRegistry registry;
   private final Entry[] entries;
 
-  private JsonDefaultCodecs(JsonSharedRegistry registry, Entry[] entries) {
-    this.registry = registry;
+  private JsonDefaultCodecs(Entry[] entries) {
     this.entries = entries;
   }
 
   /** Collects the defaults of {@code type}; a subclass entry replaces a superclass one. */
   public static JsonDefaultCodecs of(Class<?> type, JsonSharedRegistry registry) {
+    // Like a type-level JsonCodec, a Mixin removal on the target also drops inherited defaults.
+    boolean inherit =
+        !registry.mixinRemoves(type, type, JsonDefaultCodec.class)
+            && !registry.mixinRemoves(type, type, JsonDefaultCodec.List.class);
     List<Entry> entries = null;
     for (Class<?> declaring = type;
-        declaring != null && declaring != Object.class;
+        declaring != null && declaring != Object.class && (inherit || declaring == type);
         declaring = declaring.getSuperclass()) {
+      rejectInterfaceDeclarations(type, declaring.getInterfaces(), registry);
       JsonDefaultCodec single = registry.annotation(type, declaring, JsonDefaultCodec.class);
       JsonDefaultCodec.List repeated =
           registry.annotation(type, declaring, JsonDefaultCodec.List.class);
       // Java stores repeated declarations in the container, so a Mixin that supplies or removes
       // either form replaces both forms declared on the target.
-      boolean singleReplaced =
-          !Objects.equals(
-              single, JsonMixinAnnotations.targetAnnotation(declaring, JsonDefaultCodec.class));
+      boolean singleReplaced = registry.mixinOverrides(type, declaring, JsonDefaultCodec.class);
       boolean repeatedReplaced =
-          !Objects.equals(
-              repeated,
-              JsonMixinAnnotations.targetAnnotation(declaring, JsonDefaultCodec.List.class));
+          registry.mixinOverrides(type, declaring, JsonDefaultCodec.List.class);
       if (singleReplaced && !repeatedReplaced) {
         repeated = null;
       } else if (repeatedReplaced && !singleReplaced) {
@@ -116,7 +115,23 @@ public final class JsonDefaultCodecs {
         }
       }
     }
-    return entries == null ? NONE : new JsonDefaultCodecs(registry, entries.toArray(new Entry[0]));
+    return entries == null ? NONE : new JsonDefaultCodecs(entries.toArray(new Entry[0]));
+  }
+
+  /** Interface defaults would need a merge order across unrelated interfaces, so they fail. */
+  private static void rejectInterfaceDeclarations(
+      Class<?> type, Class<?>[] interfaces, JsonSharedRegistry registry) {
+    for (Class<?> interfaceType : interfaces) {
+      if (registry.annotation(type, interfaceType, JsonDefaultCodec.class) != null
+          || registry.annotation(type, interfaceType, JsonDefaultCodec.List.class) != null) {
+        throw new ForyJsonException(
+            "@JsonDefaultCodec is read from classes only, not from interface "
+                + interfaceType.getName()
+                + " of "
+                + type.getName());
+      }
+      rejectInterfaceDeclarations(type, interfaceType.getInterfaces(), registry);
+    }
   }
 
   public boolean isEmpty() {
@@ -134,13 +149,9 @@ public final class JsonDefaultCodecs {
       return new SelectedCodec(codec, null, null, null);
     }
     Class<?> rawType = declared.getRawType();
-    if (registry.customCodec(rawType) != null
-        || registry.codecDeclaration(rawType) != null
-        || registry.hasSubTypes(rawType)) {
-      return null;
-    }
     if (rawType.isArray()) {
-      codec = codec(declared.getComponentType().getType());
+      TypeRef<?> component = declared.getComponentType();
+      codec = codec((component.isPrimitive() ? component.wrap() : component).getType());
       return codec == null ? null : new SelectedCodec(null, codec, null, null);
     }
     if (rawType.getTypeParameters().length != 0 && !declared.hasExplicitTypeArguments()) {
@@ -159,6 +170,15 @@ public final class JsonDefaultCodecs {
       return codec == null ? null : new SelectedCodec(null, null, null, codec);
     }
     return null;
+  }
+
+  /**
+   * Returns whether {@code annotation} is a default that fills a child member. The resolver keeps
+   * the container's own mapping when it is not the standard container representation.
+   */
+  static boolean selectsChild(JsonCodec annotation) {
+    return annotation instanceof SelectedCodec
+        && annotation.value() == JsonCodec.NoJsonValueCodec.class;
   }
 
   private Class<? extends JsonValueCodec<?>> codec(Type type) {

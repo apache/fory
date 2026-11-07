@@ -1663,7 +1663,12 @@ public class JsonTypeProcessorTest {
     assertTrue(
         rules.contains("class test.DefaultCodecModel$OptionalCodec { public <init>(); }"), rules);
     assertTrue(rules.contains("class test.DefaultCodecBase$BaseCodec { public <init>(); }"), rules);
-    assertTrue(rules.contains("org.apache.fory.json.annotation.JsonDefaultCodec"), rules);
+    // The model itself uses only the repeated form, compiled into the nested container.
+    String keep = "-keep,allowoptimization,allowobfuscation @interface ";
+    assertTrue(rules.contains(keep + "org.apache.fory.json.annotation.JsonDefaultCodec\n"), rules);
+    assertTrue(
+        rules.contains(keep + "org.apache.fory.json.annotation.JsonDefaultCodec$List\n"), rules);
+    assertFalse(rules.contains("JsonDefaultCodec.List"), rules);
   }
 
   @Test

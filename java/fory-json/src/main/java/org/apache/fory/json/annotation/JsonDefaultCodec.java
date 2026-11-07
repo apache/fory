@@ -39,18 +39,20 @@ import org.apache.fory.json.codec.JsonValueCodec;
  * and one class may name at most one codec per target type.
  *
  * <p>A property or creator parameter whose resolved type equals a target uses that codec as if it
- * declared {@code @JsonCodec(value = ...)}; a primitive property matches its wrapper type. Without
- * a whole-type match, a target that equals the direct child of an array, {@code Collection}, {@code
- * AtomicReferenceArray}, {@code Optional}, {@code AtomicReference}, or the value of a {@code Map}
- * is used as the matching {@link JsonCodec} child member. A child that a complete codec of its
- * container would hide is left unchanged.
+ * declared {@code @JsonCodec(value = ...)}; a primitive property or array element matches its
+ * wrapper type. Without a whole-type match, a target that equals the direct child of an array,
+ * {@code Collection}, {@code AtomicReferenceArray}, {@code Optional}, {@code AtomicReference}, or
+ * the value of a {@code Map} is used as the matching {@link JsonCodec} child member, but only where
+ * the container keeps its standard mapping: a registered codec or factory, a module, or a type
+ * declaration that owns the container keeps it unchanged.
  *
  * <p>A property that declares its own {@link JsonCodec}, {@link JsonFormat}, {@link JsonByteArray},
  * {@link JsonRawValue}, or {@link JsonUnwrapped}, and JSON Any properties, do not use defaults.
  * Defaults declared on superclasses apply too, and a subclass default for the same target type
- * replaces the inherited one. Defaults do not reach nested object types, which use their own class
- * declarations. An exact-target {@link JsonMixin} may supply or replace this annotation; supplying
- * or removing either the single or the repeated form replaces both forms declared on the target.
+ * replaces the inherited one. Declarations on interfaces are rejected. Defaults do not reach nested
+ * object types, which use their own class declarations. An exact-target {@link JsonMixin} may
+ * supply or replace this annotation; supplying or removing either the single or the repeated form
+ * replaces both forms declared on the target, and a removal also drops inherited defaults.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

@@ -34,7 +34,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonDefaultCodec;
+import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonMixinRemove;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.codec.AbstractJsonValueCodec;
 import org.apache.fory.json.reader.JsonReader;
@@ -382,6 +384,155 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(json.toJson(value), "{\"bag\":\"bag:1\",\"registered\":\"list:1\"}");
   }
 
+  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  public static class WithList {
+    public List<BigDecimal> values;
+  }
+
+  @Test
+  public void containerFactoryKeepsItsRepresentation() {
+    AbstractJsonValueCodec<List<?>> listCodec =
+        new AbstractJsonValueCodec<List<?>>() {
+          @Override
+          public void write(JsonWriter writer, List<?> value) {
+            writer.writeString("factory:" + value.size());
+          }
+
+          @Override
+          public List<?> read(JsonReader reader) {
+            reader.readString();
+            return Collections.emptyList();
+          }
+        };
+    JsonCodecFactory factory =
+        (type, resolver, runtimeType) -> type.getRawType() == List.class ? listCodec : null;
+    WithList value = new WithList();
+    value.values = Collections.singletonList(TEN);
+    ForyJson exact = newJsonBuilder().registerCodec(List.class, factory).build();
+    ForyJson module =
+        newJsonBuilder().withModule(context -> context.registerCodecFactory(factory)).build();
+    assertEquals(exact.toJson(value), "{\"values\":\"factory:1\"}");
+    assertEquals(module.toJson(value), "{\"values\":\"factory:1\"}");
+  }
+
+  @JsonDefaultCodec(TaggedIntegerCodec.class)
+  public static class IntArrays {
+    public int[] primitive;
+    public Integer[] boxed;
+  }
+
+  @Test
+  public void primitiveArrayElementsMatchTheirWrapper() {
+    ForyJson json = newJson();
+    IntArrays value = new IntArrays();
+    value.primitive = new int[] {1, 2};
+    value.boxed = new Integer[] {3};
+    String text = json.toJson(value);
+    assertEquals(text, "{\"primitive\":[\"i:1\",\"i:2\"],\"boxed\":[\"i:3\"]}");
+    IntArrays read = json.fromJson(text, IntArrays.class);
+    assertEquals(read.primitive, new int[] {1, 2});
+    assertEquals(read.boxed, new Integer[] {3});
+  }
+
+  @JsonMixin(target = RepeatedForm.class)
+  @JsonMixinRemove(JsonDefaultCodec.class)
+  public interface RemoveSingleFromRepeated {}
+
+  @JsonMixin(target = ListForm.class)
+  @JsonMixinRemove(JsonDefaultCodec.List.class)
+  public interface RemoveRepeatedFromSingle {}
+
+  @Test
+  public void mixinRemovalClearsBothDeclarationForms() {
+    ForyJson json =
+        newJsonBuilder()
+            .registerMixin(RemoveSingleFromRepeated.class)
+            .registerMixin(RemoveRepeatedFromSingle.class)
+            .build();
+    RepeatedForm repeated = new RepeatedForm();
+    repeated.price = TEN;
+    ListForm list = new ListForm();
+    list.price = TEN;
+    // An empty Optional without a codec keeps Fory's default null form.
+    assertEquals(json.toJson(repeated), "{\"price\":1E+1,\"bid\":null}");
+    assertEquals(json.toJson(list), "{\"price\":1E+1,\"bid\":null}");
+  }
+
+  @JsonMixin(target = Child.class)
+  @JsonMixinRemove(JsonDefaultCodec.class)
+  public interface ChildWithoutDefaults {}
+
+  @Test
+  public void mixinRemovalOnTargetDropsInheritedDefaults() {
+    ForyJson json = newJsonBuilder().registerMixin(ChildWithoutDefaults.class).build();
+    Child child = new Child();
+    child.inherited = TEN;
+    child.own = TEN;
+    assertEquals(json.toJson(child), "{\"inherited\":1E+1,\"own\":1E+1}");
+    Base base = new Base();
+    base.inherited = TEN;
+    assertEquals(json.toJson(base), "{\"inherited\":\"d:10\"}");
+  }
+
+  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  public static class Box<T> {
+    public T value;
+    public List<T> values;
+  }
+
+  public static class Holder {
+    public Box<BigDecimal> decimals;
+    public Box<String> strings;
+  }
+
+  @Test
+  public void typeVariablesMatchAfterResolution() {
+    ForyJson json = newJson();
+    Holder holder = new Holder();
+    holder.decimals = new Box<>();
+    holder.decimals.value = TEN;
+    holder.decimals.values = Collections.singletonList(TEN);
+    holder.strings = new Box<>();
+    holder.strings.value = "s";
+    String text = json.toJson(holder);
+    assertEquals(
+        text,
+        "{\"decimals\":{\"value\":\"d:10\",\"values\":[\"d:10\"]},"
+            + "\"strings\":{\"value\":\"s\"}}");
+    Holder read = json.fromJson(text, Holder.class);
+    assertEquals(read.decimals.value, PLAIN_TEN);
+    assertEquals(read.decimals.values, Collections.singletonList(PLAIN_TEN));
+    assertEquals(read.strings.value, "s");
+  }
+
+  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  public static class FormattedCreator {
+    private final BigDecimal price;
+
+    @JsonCreator
+    public FormattedCreator(
+        @JsonProperty("price") @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal price) {
+      this.price = price;
+    }
+
+    public BigDecimal price() {
+      return price;
+    }
+  }
+
+  @Test
+  public void declaredFormatOnCreatorParameterWins() {
+    ForyJson json = newJson();
+    assertEquals(json.fromJson("{\"price\":\"10\"}", FormattedCreator.class).price(), PLAIN_TEN);
+  }
+
+  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  public interface DefaultsOnInterface {}
+
+  public static class ImplementsDefaults implements DefaultsOnInterface {
+    public BigDecimal price;
+  }
+
   @JsonDefaultCodec({TaggedDecimalCodec.class, OtherDecimalCodec.class})
   public static class DuplicateTarget {
     public BigDecimal price;
@@ -404,6 +555,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertInvalid(json, DuplicateTarget.class, "Duplicate @JsonDefaultCodec target");
     assertInvalid(json, RepeatedDuplicateTarget.class, "Duplicate @JsonDefaultCodec target");
     assertInvalid(json, NoConcreteTarget.class, "does not declare a concrete value type");
+    assertInvalid(json, ImplementsDefaults.class, "not from interface");
   }
 
   private static void assertInvalid(ForyJson json, Class<?> type, String message) {

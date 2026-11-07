@@ -295,18 +295,20 @@ several codecs in one annotation, `@JsonDefaultCodec({A.class, B.class})`, or re
 one class may name at most one codec per target type.
 
 A property or creator parameter whose resolved type equals a target uses the codec as if it
-declared `@JsonCodec(value = ...)`; a primitive property matches its wrapper type. Otherwise a
-target equal to the direct child of an array, `Collection`, `AtomicReferenceArray`, `Optional`,
-`AtomicReference`, or the value of a `Map` fills the matching child member from the table above.
-Deeper nesting is not searched. A child that a complete codec of its container hides is left
-unchanged instead of failing.
+declared `@JsonCodec(value = ...)`; a primitive property or array element matches its wrapper type.
+Otherwise a target equal to the direct child of an array, `Collection`, `AtomicReferenceArray`,
+`Optional`, `AtomicReference`, or the value of a `Map` fills the matching child member from the
+table above. Deeper nesting is not searched. A child is filled only where the container keeps its
+standard mapping: a registered codec or factory, a module, or a type declaration that owns the
+container keeps it unchanged.
 
 Properties that declare `JsonCodec`, `JsonFormat`, `JsonByteArray`, `JsonRawValue`, or
 `JsonUnwrapped`, and JSON Any properties, do not use defaults. Defaults declared on superclasses
 apply to the subclass, and a subclass default for the same target type replaces the inherited one.
-Defaults stop at the class boundary: a nested object type uses its own declarations. An
-exact-target Mixin may supply or replace the annotation; a Mixin that supplies or removes either
-the single or the repeated form replaces both forms declared on the target.
+A declaration on an interface is rejected. Defaults stop at the class boundary: a nested object
+type uses its own declarations. An exact-target Mixin may supply or replace the annotation; a Mixin
+that supplies or removes either the single or the repeated form replaces both forms declared on the
+target, and a removal also drops the defaults inherited from superclasses.
 
 ### Kotlin occurrences
 

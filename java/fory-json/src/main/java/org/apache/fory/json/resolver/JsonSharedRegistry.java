@@ -1270,6 +1270,20 @@ public final class JsonSharedRegistry {
         : overlay.annotation(declaration, annotationType);
   }
 
+  /** Returns whether the target's Mixin removes this annotation from the declaration. */
+  boolean mixinRemoves(
+      Class<?> targetType, AnnotatedElement declaration, Class<? extends Annotation> type) {
+    JsonMixinAnnotations.TargetOverlay overlay = mixinAnnotations.overlay(targetType);
+    return overlay != null && overlay.removed(declaration, type);
+  }
+
+  /** Returns whether the target's Mixin supplies or removes this annotation on the declaration. */
+  boolean mixinOverrides(
+      Class<?> targetType, AnnotatedElement declaration, Class<? extends Annotation> type) {
+    JsonMixinAnnotations.TargetOverlay overlay = mixinAnnotations.overlay(targetType);
+    return overlay != null && overlay.overrides(declaration, type);
+  }
+
   Class<?> mixinType(Class<?> targetType) {
     JsonMixinAnnotations.TargetOverlay overlay = mixinAnnotations.overlay(targetType);
     return overlay == null ? null : overlay.mixinType();
