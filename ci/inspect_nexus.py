@@ -31,6 +31,10 @@ credentials = f"{os.environ['NEXUS_USERNAME']}:{os.environ['NEXUS_PASSWORD']}"
 authorization = "Basic " + base64.b64encode(credentials.encode()).decode()
 for path, method in (
     ("/service/local/status", "GET"),
+    (
+        "/service/local/authentication/login?perms=nexus:stagingprofiles,nexus:stagingrepos",
+        "GET",
+    ),
     ("/service/local/staging/profiles", "GET"),
     ("/service/local/staging/profile_repositories", "GET"),
     (
@@ -50,18 +54,39 @@ for path, method in (
                 continue
             data = json.load(response).get("data")
             if isinstance(data, list):
+                print("Number of entries:", len(data), flush=True)
                 for item in data:
-                    if "fory" in json.dumps(item).lower():
+                    if any(
+                        name in json.dumps(item).lower() for name in ("fory", "fury")
+                    ):
                         print(json.dumps(item, sort_keys=True), flush=True)
             else:
                 print(
                     json.dumps(
-                        {key: data.get(key) for key in ("state", "version", "edition")}
+                        {
+                            key: data.get(key)
+                            for key in (
+                                "state",
+                                "version",
+                                "edition",
+                                "loggedIn",
+                                "permissions",
+                                "clientPermissions",
+                            )
+                        }
                     ),
                     flush=True,
                 )
     except urllib.error.HTTPError as error:
         print(method, path, error.code, flush=True)
+        detail = error.read(2048).decode(errors="replace")
+        for secret in (
+            os.environ["NEXUS_USERNAME"],
+            os.environ["NEXUS_PASSWORD"],
+            authorization,
+        ):
+            detail = detail.replace(secret, "[REDACTED]")
+        print(detail, flush=True)
 
 
 class Capture(http.server.BaseHTTPRequestHandler):
@@ -84,6 +109,7 @@ class Capture(http.server.BaseHTTPRequestHandler):
                 "Transfer-Encoding",
                 "Expect",
                 "Content-Type",
+                "Accept",
             )
         }
         print("LOCAL PUT", self.path, json.dumps(headers), flush=True)
