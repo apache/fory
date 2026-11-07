@@ -110,14 +110,14 @@ public class CodegenContextTest {
     CodegenContext ctx = new CodegenContext();
 
     ctx.setPackage(CodegenContextTest.class.getPackage().getName());
-    // we expect the simple name here.
-    Assert.assertEquals(ctx.type(Object.class), Object.class.getSimpleName());
+    Assert.assertEquals(ctx.type(Object.class), Object.class.getName());
+    Assert.assertEquals(ctx.type(String.class), String.class.getName());
+    ctx.addImport(Integer.class);
+    Assert.assertEquals(ctx.type(Integer.class), Integer.class.getName());
 
     ctx.setPackage(
         org.apache.fory.codegen.javalangnameconflict.Object.class.getPackage().getName());
-    // we expect the full name here.
     Assert.assertEquals(ctx.type(Object.class), Object.class.getName());
-    // we expect the simple name here.
-    Assert.assertEquals(ctx.type(Integer.class), Integer.class.getSimpleName());
+    Assert.assertEquals(ctx.type(Integer.class), Integer.class.getName());
   }
 }
