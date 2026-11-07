@@ -1,0 +1,18 @@
+docs/json/integration.md
+  h_e94f2b5704cbef 95-97,126-128,134-137
+java/fory-json/src/main/java/org/apache/fory/json/ForyJson.java
+  h_e94f2b5704cbef 33-34,813-822,824-825,834,857-862,864,872
+java/fory-json/src/test/java/org/apache/fory/json/ForyJsonTokenOperationTest.java
+  h_e94f2b5704cbef 30,32-33,35,45-56,59-60,85-86,88,95,97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9dfe850a27c257cc6d29755c2c5887c4d37809aa",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
