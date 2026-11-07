@@ -970,6 +970,37 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(newJson().toJson(deeper), "{\"bucket\":[]}");
   }
 
+  @SuppressWarnings("rawtypes")
+  public static final class RawListArrayCodec extends AbstractJsonValueCodec<List[]> {
+    @Override
+    public void write(JsonWriter writer, List[] value) {
+      writer.writeNull();
+    }
+
+    @Override
+    public List[] read(JsonReader reader) {
+      return null;
+    }
+  }
+
+  @JsonDefaultCodec(RawListArrayCodec.class)
+  public static class RawListArrayDefaults {}
+
+  @Test
+  @SuppressWarnings("rawtypes")
+  public void rawArrayTargetComparesComponentTokens() {
+    org.apache.fory.json.resolver.JsonDefaultCodecs defaults =
+        org.apache.fory.json.resolver.JsonDefaultCodecs.of(
+            RawListArrayDefaults.class,
+            new org.apache.fory.json.resolver.JsonSharedRegistry(newJsonBuilder().buildConfig()));
+    // A language module may describe Array<List<Long>> as List[] with a parameterized component.
+    org.apache.fory.reflect.TypeRef<?> kotlinStyle =
+        org.apache.fory.reflect.TypeRef.of(
+            List[].class, null, null, new org.apache.fory.reflect.TypeRef<List<Long>>() {});
+    assertEquals(defaults.select(kotlinStyle), null);
+    assertTrue(defaults.select(org.apache.fory.reflect.TypeRef.of(List[].class)) != null);
+  }
+
   public static final class Money {
     public final long cents;
 

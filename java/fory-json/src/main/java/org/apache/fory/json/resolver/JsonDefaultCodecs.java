@@ -227,9 +227,16 @@ public final class JsonDefaultCodecs {
     if (type instanceof WildcardType) {
       return sameType(target, type);
     }
-    if (target instanceof GenericArrayType && occurrence.getRawType().isArray()) {
-      return matches(
-          ((GenericArrayType) target).getGenericComponentType(), occurrence.getComponentType());
+    if (occurrence.getRawType().isArray()) {
+      // Compare by component for raw and generic array targets alike: an occurrence token may
+      // carry a parameterized component that its raw array class does not show.
+      if (target instanceof GenericArrayType) {
+        return matches(
+            ((GenericArrayType) target).getGenericComponentType(), occurrence.getComponentType());
+      }
+      if (target instanceof Class && ((Class<?>) target).isArray()) {
+        return matches(((Class<?>) target).getComponentType(), occurrence.getComponentType());
+      }
     }
     if (target instanceof ParameterizedType && type instanceof ParameterizedType) {
       ParameterizedType parameterized = (ParameterizedType) target;
