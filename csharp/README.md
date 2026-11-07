@@ -32,7 +32,7 @@ From NuGet, reference the single `Apache.Fory` package. It includes the Fory lib
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Apache.Fory" Version="1.7.7" />
+  <PackageReference Include="Apache.Fory" Version="1.7.8" />
 </ItemGroup>
 ```
 
