@@ -1561,7 +1561,8 @@ final class ObjectCodecBuilder {
               i,
               resolved,
               rawTypes[i],
-              builder.creatorCodec(resolved, ownerType),
+              builder.codecAnnotation(),
+              builder.creatorDefault(resolved, ownerType),
               builder.valueCodecClass(),
               builder.formatAnnotation(),
               builder.creatorUnboxedRequired,
@@ -1694,7 +1695,7 @@ final class ObjectCodecBuilder {
         }
         if (!builder.isAny() && builder.unwrappedAnnotation == null) {
           TypeRef<?> resolved = ownerType.resolveType(parameterTypes[i]);
-          JsonCodec codecAnnotation = builder.creatorCodec(resolved, ownerType);
+          JsonCodec codecAnnotation = builder.codecAnnotation();
           Class<? extends JsonValueCodec<?>> valueCodecClass = builder.valueCodecClass();
           fields.add(
               new JsonCreatorFieldInfo(
@@ -1703,6 +1704,7 @@ final class ObjectCodecBuilder {
                   resolved,
                   rawTypes[i],
                   codecAnnotation,
+                  builder.creatorDefault(resolved, ownerType),
                   valueCodecClass,
                   builder.formatAnnotation(),
                   builder.creatorUnboxedRequired,
@@ -1776,13 +1778,12 @@ final class ObjectCodecBuilder {
             builder == null
                 ? annotations.get(parameters[i], JsonUnwrapped.class)
                 : builder.unwrappedAnnotation;
-        if (builder == null) {
-          if (codecAnnotation == null && formatAnnotation == null && unwrapped == null) {
-            codecAnnotation = annotations.defaultCodecs.select(resolved);
-          }
-        } else {
-          codecAnnotation = builder.creatorCodec(resolved, ownerType);
-        }
+        JsonDefaultCodecs.Selection defaultCodec =
+            builder != null
+                ? builder.creatorDefault(resolved, ownerType)
+                : codecAnnotation == null && formatAnnotation == null && unwrapped == null
+                    ? annotations.defaultCodecs.select(resolved)
+                    : null;
         if (unwrapped != null) {
           if (builder == null
               && (property.onNullRead() != NullHandling.DEFAULT
@@ -1818,6 +1819,7 @@ final class ObjectCodecBuilder {
                   resolved,
                   rawTypes[i],
                   codecAnnotation,
+                  defaultCodec,
                   valueCodecClass,
                   formatAnnotation,
                   false,
@@ -1963,7 +1965,8 @@ final class ObjectCodecBuilder {
                 i,
                 resolved,
                 rawTypes[i],
-                builder.creatorCodec(resolved, ownerType),
+                builder.codecAnnotation(),
+                builder.creatorDefault(resolved, ownerType),
                 builder.valueCodecClass(),
                 builder.formatAnnotation(),
                 builder.creatorUnboxedRequired,
@@ -3433,9 +3436,8 @@ final class ObjectCodecBuilder {
           readAccessor,
           ownerType,
           objectModelType,
-          usesDefaultCodec()
-              ? annotations.defaultCodecs.select(logicalTypeRef(ownerType))
-              : codecAnnotation,
+          codecAnnotation,
+          usesDefaultCodec() ? annotations.defaultCodecs.select(logicalTypeRef(ownerType)) : null,
           valueCodecClass,
           formatAnnotation,
           rawValue,
@@ -3523,19 +3525,17 @@ final class ObjectCodecBuilder {
     }
 
     /**
-     * Returns the declared codec, or the class default for {@code type} when nothing is declared.
+     * Returns the class default for a creator parameter, or null when the property declares its own
+     * representation. A property that also has a field or accessor selects from that logical type,
+     * so reading and writing use the same default.
      */
-    private JsonCodec effectiveCodec(TypeRef<?> type) {
-      return usesDefaultCodec() ? annotations.defaultCodecs.select(type) : codecAnnotation;
-    }
-
-    /**
-     * Returns the creator parameter's codec. A property that also has a field or accessor selects
-     * its default from that logical type, so reading and writing always use the same default.
-     */
-    private JsonCodec creatorCodec(TypeRef<?> parameterType, TypeRef<?> ownerType) {
-      return effectiveCodec(
-          usesDefaultCodec() && hasLogicalMember() ? logicalTypeRef(ownerType) : parameterType);
+    private JsonDefaultCodecs.Selection creatorDefault(
+        TypeRef<?> parameterType, TypeRef<?> ownerType) {
+      if (!usesDefaultCodec()) {
+        return null;
+      }
+      return annotations.defaultCodecs.select(
+          hasLogicalMember() ? logicalTypeRef(ownerType) : parameterType);
     }
 
     private boolean usesDefaultCodec() {

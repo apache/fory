@@ -39,7 +39,6 @@ import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonDefaultCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.JsonValueCodec;
-import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Types;
 
@@ -150,14 +149,14 @@ public final class JsonDefaultCodecs {
     return entries.length == 0;
   }
 
-  /** Returns the codec configuration for a property of {@code type}, or null without a match. */
-  public JsonCodec select(TypeRef<?> type) {
+  /** Returns the codecs a property of {@code type} defaults to, or null without a match. */
+  public Selection select(TypeRef<?> type) {
     if (entries.length == 0) {
       return null;
     }
     Class<? extends JsonValueCodec<?>> codec = codec(type);
     if (codec != null) {
-      return new SelectedCodec(codec, null, null, null);
+      return new Selection(codec, null, null, null);
     }
     if (semantic(type)) {
       return null;
@@ -165,38 +164,24 @@ public final class JsonDefaultCodecs {
     Class<?> rawType = type.getRawType();
     if (rawType.isArray()) {
       codec = childCodec(type.getComponentType());
-      return codec == null ? null : new SelectedCodec(null, codec, null, null);
+      return codec == null ? null : new Selection(null, codec, null, null);
     }
     if (rawType.getTypeParameters().length != 0 && !type.hasExplicitTypeArguments()) {
       return null;
     }
     if (Collection.class.isAssignableFrom(rawType) || rawType == AtomicReferenceArray.class) {
       codec = childCodec(CodecUtils.elementTypeRef(type));
-      return codec == null ? null : new SelectedCodec(null, codec, null, null);
+      return codec == null ? null : new Selection(null, codec, null, null);
     }
     if (rawType == Optional.class || rawType == AtomicReference.class) {
       codec = childCodec(CodecUtils.elementTypeRef(type));
-      return codec == null ? null : new SelectedCodec(null, null, codec, null);
+      return codec == null ? null : new Selection(null, null, codec, null);
     }
     if (Map.class.isAssignableFrom(rawType)) {
       codec = childCodec(CodecUtils.mapKeyValueTypeRefs(type).f1);
-      return codec == null ? null : new SelectedCodec(null, null, null, codec);
+      return codec == null ? null : new Selection(null, null, null, codec);
     }
     return null;
-  }
-
-  /** Names a class default as the source of {@code annotation} in an error, or returns "". */
-  public static String origin(JsonCodec annotation) {
-    return annotation instanceof SelectedCodec ? " selected by the class @JsonDefaultCodec" : "";
-  }
-
-  /**
-   * Returns whether {@code annotation} is a default that fills a child member. The resolver keeps
-   * the container's own mapping when it is not the standard container representation.
-   */
-  static boolean selectsChild(JsonCodec annotation) {
-    return annotation instanceof SelectedCodec
-        && annotation.value() == JsonCodec.NoJsonValueCodec.class;
   }
 
   /**
@@ -495,14 +480,19 @@ public final class JsonDefaultCodecs {
     }
   }
 
-  /** {@link JsonCodec} configuration selected by a default rather than declared on a property. */
-  private static final class SelectedCodec implements JsonCodec {
+  /**
+   * Codecs a class default selects for one occurrence. It deliberately does not implement {@link
+   * JsonCodec}: a program class implementing an annotation interface lets a shrinker such as R8
+   * devirtualize every annotation member call to it, breaking real annotation instances.
+   */
+  @Internal
+  public static final class Selection {
     private final Class<? extends JsonValueCodec<?>> value;
     private final Class<? extends JsonValueCodec<?>> elementCodec;
     private final Class<? extends JsonValueCodec<?>> contentCodec;
     private final Class<? extends JsonValueCodec<?>> valueCodec;
 
-    private SelectedCodec(
+    private Selection(
         Class<? extends JsonValueCodec<?>> value,
         Class<? extends JsonValueCodec<?>> elementCodec,
         Class<? extends JsonValueCodec<?>> contentCodec,
@@ -518,61 +508,26 @@ public final class JsonDefaultCodecs {
       return codec == null ? JsonCodec.NoJsonValueCodec.class : codec;
     }
 
-    @Override
+    /** Returns the complete-value codec, or {@code NoJsonValueCodec} for a child selection. */
     public Class<? extends JsonValueCodec<?>> value() {
       return value;
     }
 
-    @Override
     public Class<? extends JsonValueCodec<?>> elementCodec() {
       return elementCodec;
     }
 
-    @Override
     public Class<? extends JsonValueCodec<?>> contentCodec() {
       return contentCodec;
     }
 
-    @Override
-    public Class<? extends MapKeyCodec> keyCodec() {
-      return JsonCodec.NoMapKeyCodec.class;
-    }
-
-    @Override
     public Class<? extends JsonValueCodec<?>> valueCodec() {
       return valueCodec;
     }
 
-    @Override
-    public Class<? extends Annotation> annotationType() {
-      return JsonCodec.class;
-    }
-
-    // Annotation contract: equal to any JsonCodec with the same member values.
-    @Override
-    public boolean equals(Object other) {
-      if (!(other instanceof JsonCodec)) {
-        return false;
-      }
-      JsonCodec that = (JsonCodec) other;
-      return value == that.value()
-          && elementCodec == that.elementCodec()
-          && contentCodec == that.contentCodec()
-          && that.keyCodec() == JsonCodec.NoMapKeyCodec.class
-          && valueCodec == that.valueCodec();
-    }
-
-    @Override
-    public int hashCode() {
-      return member("value", value)
-          + member("elementCodec", elementCodec)
-          + member("contentCodec", contentCodec)
-          + member("keyCodec", JsonCodec.NoMapKeyCodec.class)
-          + member("valueCodec", valueCodec);
-    }
-
-    private static int member(String name, Class<?> value) {
-      return (127 * name.hashCode()) ^ value.hashCode();
+    /** Returns whether this selection fills a child member rather than the complete value. */
+    public boolean child() {
+      return value == JsonCodec.NoJsonValueCodec.class;
     }
 
     @Override

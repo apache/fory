@@ -117,6 +117,7 @@ public final class JsonFieldInfo {
   private final TypeRef<?> readTypeRef;
   private final Class<?> readRawType;
   private final JsonCodec codecAnnotation;
+  private final JsonDefaultCodecs.Selection defaultCodec;
   private final Class<? extends JsonValueCodec<?>> valueCodecClass;
   private final JsonFormat formatAnnotation;
   private final boolean writeUnboxedRequired;
@@ -410,6 +411,7 @@ public final class JsonFieldInfo {
       TypeRef<?> ownerType,
       TypeRef<?> objectModelType,
       JsonCodec codecAnnotation,
+      JsonDefaultCodecs.Selection defaultCodec,
       Class<? extends JsonValueCodec<?>> valueCodecClass,
       JsonFormat formatAnnotation,
       boolean rawValue,
@@ -464,6 +466,7 @@ public final class JsonFieldInfo {
       readIndexAndWriteNull |= OMIT_EMPTY_MASK;
     }
     this.codecAnnotation = codecAnnotation;
+    this.defaultCodec = defaultCodec;
     this.valueCodecClass = valueCodecClass;
     this.formatAnnotation = formatAnnotation;
     this.writeAccessor = writeAccessor;
@@ -593,6 +596,7 @@ public final class JsonFieldInfo {
             ownerType,
             writeTypeRef != null ? writeTypeRef : readTypeRef,
             codecAnnotation,
+            defaultCodec,
             valueCodecClass,
             formatAnnotation,
             writesRawString(),
@@ -915,23 +919,28 @@ public final class JsonFieldInfo {
   public void resolveTypes(JsonTypeResolver typeResolver) {
     TypeRef<?> codecType = writeTypeRef == null ? readTypeRef : writeTypeRef;
     boolean selectedCodec =
-        codecAnnotation != null || valueCodecClass != null || formatAnnotation != null;
+        codecAnnotation != null
+            || defaultCodec != null
+            || valueCodecClass != null
+            || formatAnnotation != null;
     if (selectedCodec && (writeUnboxedRequired || readUnboxedRequired)) {
       throw new ForyJsonException(
           "JSON property "
               + name
               + " cannot select a codec or format for the unboxed logical type "
               + codecType
-              + JsonDefaultCodecs.origin(codecAnnotation));
+              + (defaultCodec == null ? "" : " selected by the class @JsonDefaultCodec"));
     }
     JsonTypeInfo selectedTypeInfo =
         codecAnnotation != null
             ? typeResolver.getTypeInfo(codecType, codecAnnotation)
-            : valueCodecClass != null
-                ? typeResolver.getTypeInfo(codecType, valueCodecClass)
-                : formatAnnotation != null
-                    ? typeResolver.getTypeInfo(codecType, formatAnnotation)
-                    : null;
+            : defaultCodec != null
+                ? typeResolver.getTypeInfo(codecType, defaultCodec)
+                : valueCodecClass != null
+                    ? typeResolver.getTypeInfo(codecType, valueCodecClass)
+                    : formatAnnotation != null
+                        ? typeResolver.getTypeInfo(codecType, formatAnnotation)
+                        : null;
     boolean rawString = writeKindId == KIND_RAW_STRING;
     if (writeRawType != null) {
       JsonTypeInfo writeOccurrenceTypeInfo;
@@ -1264,6 +1273,7 @@ public final class JsonFieldInfo {
         readTypeRef,
         readRawType,
         codecAnnotation,
+        defaultCodec,
         valueCodecClass,
         formatAnnotation,
         readUnboxedRequired,

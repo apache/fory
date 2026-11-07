@@ -421,14 +421,36 @@ public final class JsonTypeResolver {
     }
     ResolutionSnapshot snapshot = beginResolution();
     try {
+      JsonTypeInfo result = resolveTypeInfo(declaredType, annotation);
+      completeResolution(snapshot);
+      return result;
+    } catch (RuntimeException | Error e) {
+      rollbackResolution(snapshot);
+      throw e;
+    } finally {
+      endResolution();
+    }
+  }
+
+  /** Resolves the codecs a class {@code JsonDefaultCodec} selected for one occurrence. */
+  @Internal
+  public JsonTypeInfo getTypeInfo(TypeRef<?> declaredType, JsonDefaultCodecs.Selection selection) {
+    ResolutionSnapshot snapshot = beginResolution();
+    try {
       // A class default fills a child only where the container keeps its standard mapping, so a
       // registration, factory, module, or type declaration that owns the container still wins.
       // The check runs inside the snapshot because a module factory may resolve child types.
       JsonTypeInfo result =
-          JsonDefaultCodecs.selectsChild(annotation)
-                  && sharedRegistry.ownsContainer(declaredType, this)
+          selection.child() && sharedRegistry.ownsContainer(declaredType, this)
               ? getTypeInfo(declaredType)
-              : resolveTypeInfo(declaredType, annotation);
+              : resolveTypeInfo(
+                  declaredType,
+                  null,
+                  selection.value(),
+                  selection.elementCodec(),
+                  selection.contentCodec(),
+                  JsonCodec.NoMapKeyCodec.class,
+                  selection.valueCodec());
       completeResolution(snapshot);
       return result;
     } catch (RuntimeException | Error e) {
@@ -571,13 +593,31 @@ public final class JsonTypeResolver {
   }
 
   private JsonTypeInfo resolveTypeInfo(TypeRef<?> declaredType, JsonCodec annotation) {
+    return resolveTypeInfo(
+        declaredType,
+        annotation,
+        annotation.value(),
+        annotation.elementCodec(),
+        annotation.contentCodec(),
+        annotation.keyCodec(),
+        annotation.valueCodec());
+  }
+
+  /**
+   * Resolves an occurrence's selected codecs. {@code annotation} is the declaring {@link
+   * JsonCodec}, or null for a class default, which never selects a child of a composite module
+   * codec.
+   */
+  private JsonTypeInfo resolveTypeInfo(
+      TypeRef<?> declaredType,
+      JsonCodec annotation,
+      Class<? extends JsonValueCodec<?>> valueCodec,
+      Class<? extends JsonValueCodec<?>> elementCodec,
+      Class<? extends JsonValueCodec<?>> contentCodec,
+      Class<? extends MapKeyCodec> keyCodec,
+      Class<? extends JsonValueCodec<?>> mapValueCodec) {
     validateCovariant(declaredType);
     Class<?> rawType = declaredType.getRawType();
-    Class<? extends JsonValueCodec<?>> valueCodec = annotation.value();
-    Class<? extends JsonValueCodec<?>> elementCodec = annotation.elementCodec();
-    Class<? extends JsonValueCodec<?>> contentCodec = annotation.contentCodec();
-    Class<? extends MapKeyCodec> keyCodec = annotation.keyCodec();
-    Class<? extends JsonValueCodec<?>> mapValueCodec = annotation.valueCodec();
     boolean hasValue = valueCodec != JsonCodec.NoJsonValueCodec.class;
     boolean hasElement = elementCodec != JsonCodec.NoJsonValueCodec.class;
     boolean hasContent = contentCodec != JsonCodec.NoJsonValueCodec.class;
@@ -662,7 +702,7 @@ public final class JsonTypeResolver {
       return newTypeInfo(declaredType, codec);
     }
     JsonValueCodec<?> codec = sharedRegistry.createCodec(rawType, typeRef, this);
-    if (codec instanceof CompositeJsonCodec) {
+    if (codec instanceof CompositeJsonCodec && annotation != null) {
       JsonTypeInfo typeInfo = newTypeInfo(declaredType, JsonFieldKind.OBJECT, codec, true);
       ((CompositeJsonCodec<?>) codec).resolveTypes(typeRef, this, annotation);
       return typeInfo;
