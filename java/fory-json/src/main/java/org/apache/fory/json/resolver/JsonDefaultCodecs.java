@@ -223,7 +223,6 @@ public final class JsonDefaultCodecs {
    * token, so arrays are compared by component and parameterized types argument by argument.
    */
   private static boolean matches(Type target, TypeRef<?> occurrence) {
-    target = covariant(target);
     Type type = occurrence.getType();
     if (type instanceof WildcardType) {
       return sameType(target, type);
@@ -262,7 +261,7 @@ public final class JsonDefaultCodecs {
   private static TypeRef<?> argument(Type declared, List<TypeRef<?>> tokens, int index, int count) {
     if (tokens.size() == count) {
       TypeRef<?> token = tokens.get(index);
-      if (sameType(declared, token.getType(), true)) {
+      if (sameType(declared, token.getType())) {
         return token;
       }
     }
@@ -275,20 +274,47 @@ public final class JsonDefaultCodecs {
   }
 
   /**
-   * Reads {@code ? extends X} as {@code X}. Kotlin writes declaration-site variance into generic
-   * signatures, so a codec of {@code List<Long>} declares {@code List<? extends Long>}.
+   * Reads each covariant {@code ? extends T} in a Kotlin codec's declared type as {@code T}. Kotlin
+   * writes declaration-site variance into generic signatures, so a Kotlin codec of {@code
+   * List<Long>} declares {@code List<? extends Long>}; a Java codec's wildcards stay wildcards.
    */
-  private static Type covariant(Type type) {
+  private static Type kotlinInvariant(Type type) {
     if (type instanceof WildcardType) {
       WildcardType wildcard = (WildcardType) type;
       // An unbounded wildcard reads as ? extends Object and stays a wildcard: it names no type.
       if (wildcard.getLowerBounds().length == 0
           && wildcard.getUpperBounds().length == 1
           && wildcard.getUpperBounds()[0] != Object.class) {
-        return wildcard.getUpperBounds()[0];
+        return kotlinInvariant(wildcard.getUpperBounds()[0]);
       }
+      return type;
+    }
+    if (type instanceof ParameterizedType) {
+      ParameterizedType parameterized = (ParameterizedType) type;
+      Type[] arguments = parameterized.getActualTypeArguments().clone();
+      for (int i = 0; i < arguments.length; i++) {
+        arguments[i] = kotlinInvariant(arguments[i]);
+      }
+      Type owner = parameterized.getOwnerType();
+      return new InvariantParameterizedType(
+          parameterized.getRawType(), arguments, owner == null ? null : kotlinInvariant(owner));
+    }
+    if (type instanceof GenericArrayType) {
+      Type component = kotlinInvariant(((GenericArrayType) type).getGenericComponentType());
+      return component instanceof Class
+          ? java.lang.reflect.Array.newInstance((Class<?>) component, 0).getClass()
+          : new InvariantArrayType(component);
     }
     return type;
+  }
+
+  private static boolean kotlinClass(Class<?> type) {
+    for (Annotation annotation : type.getDeclaredAnnotations()) {
+      if (annotation.annotationType().getName().equals("kotlin.Metadata")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static boolean semantic(TypeRef<?> type) {
@@ -297,7 +323,7 @@ public final class JsonDefaultCodecs {
 
   private static Entry find(List<Entry> entries, Type target) {
     for (Entry entry : entries) {
-      if (sameType(entry.target, target, true)) {
+      if (sameType(entry.target, target)) {
         return entry;
       }
     }
@@ -313,6 +339,9 @@ public final class JsonDefaultCodecs {
     List<TypeRef<?>> arguments =
         ((TypeRef) TypeRef.of(codecClass)).getSupertype(JsonValueCodec.class).getTypeArguments();
     Type target = arguments.size() == 1 ? arguments.get(0).getType() : null;
+    if (target != null && kotlinClass(codecClass)) {
+      target = kotlinInvariant(target);
+    }
     if (target == null || !concrete(target)) {
       throw invalid(declaring, codecClass, "does not declare a concrete value type");
     }
@@ -324,7 +353,6 @@ public final class JsonDefaultCodecs {
   }
 
   private static boolean concrete(Type type) {
-    type = covariant(type);
     if (type instanceof Class) {
       return true;
     }
@@ -346,20 +374,8 @@ public final class JsonDefaultCodecs {
     return false;
   }
 
-  /**
-   * Compares a target with a reflected type structurally, independent of their implementation
-   * classes. Only the target's covariant wildcards read as their bound: Kotlin writes them into a
-   * codec's declared type, while a property declared {@code List<? extends T>} stays a wildcard.
-   */
-  private static boolean sameType(Type target, Type type) {
-    return sameType(target, type, false);
-  }
-
-  private static boolean sameType(Type a, Type b, boolean bothTargets) {
-    a = covariant(a);
-    if (bothTargets) {
-      b = covariant(b);
-    }
+  /** Compares reflected types structurally, independent of their implementation classes. */
+  private static boolean sameType(Type a, Type b) {
     if (a instanceof Class || b instanceof Class) {
       return a.equals(b);
     }
@@ -373,7 +389,7 @@ public final class JsonDefaultCodecs {
         return false;
       }
       for (int i = 0; i < leftArguments.length; i++) {
-        if (!sameType(leftArguments[i], rightArguments[i], bothTargets)) {
+        if (!sameType(leftArguments[i], rightArguments[i])) {
           return false;
         }
       }
@@ -381,13 +397,12 @@ public final class JsonDefaultCodecs {
       Type rightOwner = right.getOwnerType();
       return leftOwner == null || rightOwner == null
           ? Objects.equals(leftOwner, rightOwner)
-          : sameType(leftOwner, rightOwner, bothTargets);
+          : sameType(leftOwner, rightOwner);
     }
     if (a instanceof GenericArrayType && b instanceof GenericArrayType) {
       return sameType(
           ((GenericArrayType) a).getGenericComponentType(),
-          ((GenericArrayType) b).getGenericComponentType(),
-          bothTargets);
+          ((GenericArrayType) b).getGenericComponentType());
     }
     return a.equals(b);
   }
@@ -400,6 +415,61 @@ public final class JsonDefaultCodecs {
             + codecClass.getName()
             + " "
             + reason);
+  }
+
+  /** A Kotlin codec target with its covariant wildcards read as their bounds. */
+  private static final class InvariantParameterizedType implements ParameterizedType {
+    private final Type rawType;
+    private final Type[] arguments;
+    private final Type ownerType;
+
+    private InvariantParameterizedType(Type rawType, Type[] arguments, Type ownerType) {
+      this.rawType = rawType;
+      this.arguments = arguments;
+      this.ownerType = ownerType;
+    }
+
+    @Override
+    public Type[] getActualTypeArguments() {
+      return arguments.clone();
+    }
+
+    @Override
+    public Type getRawType() {
+      return rawType;
+    }
+
+    @Override
+    public Type getOwnerType() {
+      return ownerType;
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder builder = new StringBuilder(rawType.getTypeName()).append('<');
+      for (int i = 0; i < arguments.length; i++) {
+        builder.append(i == 0 ? "" : ", ").append(arguments[i].getTypeName());
+      }
+      return builder.append('>').toString();
+    }
+  }
+
+  private static final class InvariantArrayType implements GenericArrayType {
+    private final Type component;
+
+    private InvariantArrayType(Type component) {
+      this.component = component;
+    }
+
+    @Override
+    public Type getGenericComponentType() {
+      return component;
+    }
+
+    @Override
+    public String toString() {
+      return component.getTypeName() + "[]";
+    }
   }
 
   private static final class Entry {

@@ -36,16 +36,16 @@ import org.apache.fory.json.codec.JsonValueCodec;
  * <p>Each codec targets the type argument it declares for {@link JsonValueCodec}: a codec of {@code
  * BigDecimal} targets {@code BigDecimal}, a codec of {@code Optional<BigDecimal>} targets exactly
  * {@code Optional<BigDecimal>}. That type must be concrete, without type variables or wildcards,
- * except that a covariant {@code ? extends T}, which Kotlin emits, reads as {@code T}. One class
- * may name at most one codec per target type.
+ * except that in a Kotlin codec a covariant {@code ? extends T}, which Kotlin emits, reads as
+ * {@code T}. One class may name at most one codec per target type.
  *
  * <p>A property or creator parameter whose resolved type equals a target uses that codec as if it
  * declared {@code @JsonCodec(value = ...)}; a primitive property or array element matches its
  * wrapper type. Without a whole-type match, a target that equals the direct child of an array,
  * {@code Collection}, {@code AtomicReferenceArray}, {@code Optional}, {@code AtomicReference}, or
- * the value of a {@code Map} is used as the matching {@link JsonCodec} child member, but only where
- * the container keeps its standard mapping: a registered codec or factory, a module, or a type
- * declaration that owns the container keeps it unchanged.
+ * the value of a {@code Map} (Java containers only) is used as the matching {@link JsonCodec} child
+ * member, but only where the container keeps its standard mapping: a registered codec or factory, a
+ * module, or a type declaration that owns the container keeps it unchanged.
  *
  * <p>A property that declares its own {@link JsonCodec}, {@link JsonFormat}, {@link JsonByteArray},
  * {@link JsonRawValue}, or {@link JsonUnwrapped}, and JSON Any properties, do not use defaults.

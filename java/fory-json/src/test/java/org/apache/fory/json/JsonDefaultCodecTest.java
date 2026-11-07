@@ -1077,6 +1077,24 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(json.toJson(node), "{\"value\":\"d:10\",\"children\":\"list:1\"}");
   }
 
+  public static final class BoundedListCodec
+      extends AbstractJsonValueCodec<List<? extends Number>> {
+    @Override
+    public void write(JsonWriter writer, List<? extends Number> value) {
+      writer.writeNull();
+    }
+
+    @Override
+    public List<? extends Number> read(JsonReader reader) {
+      return null;
+    }
+  }
+
+  @JsonDefaultCodec(BoundedListCodec.class)
+  public static class BoundedWildcardTarget {
+    public List<Number> numbers;
+  }
+
   @JsonDefaultCodec({TaggedDecimalCodec.class, OtherDecimalCodec.class})
   public static class DuplicateTarget {
     public BigDecimal price;
@@ -1103,6 +1121,8 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertInvalid(json, ImplementsThroughSuperinterface.class, "not from interface");
     assertInvalid(json, ImplementsThroughSuperclass.class, "not from interface");
     assertInvalid(json, SentinelTarget.class, "is not a codec");
+    // Only a Kotlin codec's declaration-site variance reads as its bound.
+    assertInvalid(json, BoundedWildcardTarget.class, "does not declare a concrete value type");
   }
 
   private static void assertInvalid(ForyJson json, Class<?> type, String message) {

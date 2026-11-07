@@ -296,11 +296,13 @@ one class may name at most one codec per target type.
 
 A property or creator parameter whose resolved type equals a target uses the codec as if it
 declared `@JsonCodec(value = ...)`; a primitive property or array element matches its wrapper type.
-A target written as `? extends T`, which Kotlin emits for declaration-site variance, reads as `T`.
+In a Kotlin codec's declared type, a `? extends T` that Kotlin emits for declaration-site variance
+reads as `T`; a Java codec's target must not contain wildcards.
 
-Otherwise a target equal to the direct child of an array, `Collection`, `AtomicReferenceArray`,
-`Optional`, `AtomicReference`, or the value of a `Map` fills the matching child member from the
-table above, so a `Byte` default writes a `byte[]` as a JSON array of codec values whatever
+Otherwise a target equal to the direct child of a Java array, `Collection`,
+`AtomicReferenceArray`, `Optional`, `AtomicReference`, or the value of a `Map` fills the matching
+child member from the table above; a language module's own containers, such as Scala `Option` or
+`Seq`, are not filled, so a `Byte` default writes a `byte[]` as a JSON array of codec values whatever
 `byteArrayFormat` says. A child is filled only where the container keeps its standard mapping: a
 registered codec or factory, a module, or a type declaration that owns the container keeps it
 unchanged. Deeper nesting is not searched, and a wildcard child such as `List<? extends Shape>`
