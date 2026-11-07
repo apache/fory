@@ -1,0 +1,18 @@
+java/fory-json/src/main/java/org/apache/fory/json/resolver/JsonSharedRegistry.java
+  h_e94f2b5704cbef 947,958,1012
+java/fory-json/src/main/java/org/apache/fory/json/resolver/JsonTypeResolver.java
+  h_e94f2b5704cbef 563,1023-1028,1030-1031,1033-1035,1060-1064,2724,2731
+java/fory-json/src/test/java/org/apache/fory/json/JsonModuleTest.java
+  h_e94f2b5704cbef 59,83-135,554-582
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "385a06f49bfc51bbc786730e1aedd03f0865f04c",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
