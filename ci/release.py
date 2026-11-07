@@ -427,6 +427,19 @@ def verify_ci_artifacts(
             env=gpg_env,
             stdout=subprocess.DEVNULL,
         )
+        # The CI key must be publicly available before an expensive local rebuild.
+        key = subprocess.run(
+            ["gpg", "--batch", "--list-keys", expected_fingerprint],
+            env=gpg_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if key.returncode != 0:
+            raise RuntimeError(
+                f"Signing key {expected_fingerprint} is missing from {keys_url}; "
+                "publish the expected public signing key before verification"
+            )
         if rebuild_dir:
             checkout_commit = subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], cwd=checkout, text=True

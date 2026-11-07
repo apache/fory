@@ -11,6 +11,38 @@ unless the user explicitly asks for a manual release. The workflow uses
 closure, or artifact-verification logic in shell commands. Do not add unrelated
 test runs.
 
+## CI signing and staging prerequisites
+
+The workflow runs only in `apache/fory` and uses these Infra-provisioned GitHub
+Actions secrets:
+
+| Secret                      | Purpose                                                     |
+| --------------------------- | ----------------------------------------------------------- |
+| `FORY_GPG_SECRET_KEY`       | Import the Infra-managed CI signing key in each signing job |
+| `NEXUS_STAGE_DEPLOYER_USER` | Authenticate Java/Kotlin and Scala Nexus staging            |
+| `NEXUS_STAGE_DEPLOYER_PW`   | Authenticate Java/Kotlin and Scala Nexus staging            |
+
+Source staging uses ATR with GitHub OIDC, not SVN credentials. Do not add a
+personal signing key, a GPG passphrase secret, or SVN credentials to this flow.
+
+Before the first CI release, or after a signing-key rotation:
+
+- Obtain the CI public key and its full primary fingerprint from Infra's message
+  to the project's private mailing list. Confirm that this public key is present
+  in the published [Fory KEYS](https://downloads.apache.org/fory/KEYS). If it is
+  absent, arrange publication of the public key before staging a candidate.
+  Keep private key material and revocation certificates out of the repository.
+- Set `gpg_fingerprint` to that independently confirmed CI key fingerprint for
+  local verification and the vote email. Do not reuse a personal signing
+  fingerprint from an earlier manual release or trust a CI log alone.
+- Merge the staging workflow to the default branch before dispatching it, and
+  create the RC from a commit that contains the workflow. Do not move an old RC
+  tag to make the workflow available.
+
+Secret provisioning and ordinary PR checks do not prove that signing, ATR
+upload, or Nexus staging works. The first authorized CI staging run must succeed,
+and its artifacts must pass the trusted-hardware verification below before voting.
+
 ## Required Inputs
 
 Collect these values before starting:
@@ -160,9 +192,9 @@ incomplete runs as successful.
 
 ### 7. Verify all CI artifacts on trusted hardware
 
-Do not run this comparison in GitHub Actions. Obtain the public fingerprint of
-the Infra-managed CI signing key, then run the repository verifier on a machine
-controlled by the release manager:
+Do not run this comparison in GitHub Actions. Use the independently confirmed
+Infra-managed CI key fingerprint from the prerequisites, then run the repository
+verifier on a machine controlled by the release manager:
 
 ```bash
 : "${gpg_fingerprint:?missing CI signing-key fingerprint}"
@@ -182,6 +214,8 @@ every source, JAR, POM, source JAR, documentation JAR, and distribution file
 byte-for-byte. Each JVM ecosystem is built once and may reuse the machine's
 normal dependency caches; only source and build outputs are clean. It writes a
 Markdown report under `dist/`. Any mismatch or missing artifact blocks the vote.
+Before rebuilding, the verifier requires the expected public key in `KEYS`;
+local personal keyrings are not used to satisfy this check.
 Failed verification retains the local rebuild and downloaded artifacts beside
 the report for diagnosis; successful verification removes these temporary files.
 After a download failure, retry with `--rebuild-dir <retained-directory>` to

@@ -77,7 +77,7 @@ jobs:
           fi
 
       - name: Checkout release candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -105,13 +105,13 @@ jobs:
       id-token: write
     steps:
       - name: Checkout release candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
 
-      - name: Import release signing key
+      - name: Import Infra-managed CI signing key
         shell: bash
         env:
           FORY_GPG_SECRET_KEY: ${{ secrets.FORY_GPG_SECRET_KEY }}
@@ -135,20 +135,31 @@ jobs:
           project: fory
           version: ${{ needs.validate.outputs.version }}
 
+      - name: Summarize source staging
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          {
+            echo "### Source candidate"
+            echo
+            echo "https://release-test.apache.org/vote/fory/$VERSION"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   stage-jvm:
     needs: validate
     if: ${{ needs.validate.result == 'success' && inputs.jvm }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout release candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
 
       - name: Set up Java 25 and Apache Nexus
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: 25
@@ -157,9 +168,9 @@ jobs:
           server-password: NEXUS_PASSWORD
 
       - name: Set up sbt
-        uses: sbt/setup-sbt@c7d2d6258b4bd0d3ec5129e6b3453199d3c79729 # v1.5.8
+        uses: sbt/setup-sbt@b113b960ba361e87e08ce02a390d51871b7ee459 # v1.5.13
 
-      - name: Import release signing key
+      - name: Import Infra-managed CI signing key
         shell: bash
         env:
           FORY_GPG_SECRET_KEY: ${{ secrets.FORY_GPG_SECRET_KEY }}
@@ -199,8 +210,8 @@ jobs:
             echo
             echo "- Staging result: \`${{ steps.stage.outcome }}\`"
             if [[ -n "$java_kotlin_id" && "$java_kotlin_id" != "null" ]]; then
-              echo "- Java/Kotlin: \`$java_kotlin_id\`"
-              echo "- Scala: \`$scala_id\`"
+              echo "- Java/Kotlin: [$java_kotlin_id](https://repository.apache.org/content/repositories/$java_kotlin_id/)"
+              echo "- Scala: [$scala_id](https://repository.apache.org/content/repositories/$scala_id/)"
             else
               while IFS= read -r staging_id; do
                 echo "- Open repository requiring review: \`$staging_id\`"
