@@ -582,6 +582,24 @@ public class JsonContainerTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void preserveNaturalDecimalPrecision() {
+    ForyJson json = newJson();
+    String literal = "1.234567890123456789012345678901234567890";
+
+    Object value = json.fromJson(literal, Object.class);
+
+    assertEquals(value, new BigDecimal(literal));
+    assertEquals(value.getClass(), BigDecimal.class);
+    assertEquals(
+        json.fromJson(literal.getBytes(StandardCharsets.UTF_8), Object.class),
+        new BigDecimal(literal));
+    assertEquals(json.fromJson("1e400", Object.class), new BigDecimal("1e400"));
+    assertEquals(
+        json.fromJson("123456789012345678901234567890", Object.class),
+        new BigInteger("123456789012345678901234567890"));
+  }
+
+  @Test
   public void parsedContainersStartSmall() {
     ForyJson json = newJson();
     JsonArray array = json.fromJson("[1]", JsonArray.class);
