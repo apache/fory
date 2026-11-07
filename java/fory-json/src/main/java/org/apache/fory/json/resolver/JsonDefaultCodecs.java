@@ -273,10 +273,9 @@ public final class JsonDefaultCodecs {
   private static Type kotlinInvariant(Type type) {
     if (type instanceof WildcardType) {
       WildcardType wildcard = (WildcardType) type;
-      // An unbounded wildcard reads as ? extends Object and stays a wildcard: it names no type.
-      if (wildcard.getLowerBounds().length == 0
-          && wildcard.getUpperBounds().length == 1
-          && wildcard.getUpperBounds()[0] != Object.class) {
+      // Kotlin writes Any as ? extends Object, which reflection cannot tell from a star
+      // projection; a star-projected target names no type, so Any is the useful reading.
+      if (wildcard.getLowerBounds().length == 0 && wildcard.getUpperBounds().length == 1) {
         return kotlinInvariant(wildcard.getUpperBounds()[0]);
       }
       return type;

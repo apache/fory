@@ -297,7 +297,8 @@ one class may name at most one codec per target type.
 A property or creator parameter whose resolved type equals a target uses the codec as if it
 declared `@JsonCodec(value = ...)`; a primitive property or array element matches its wrapper type.
 In the declared type of a codec with a Kotlin class on its superclass chain, a `? extends T` that Kotlin emits for declaration-site variance
-reads as `T`; a Java codec's target must not contain wildcards.
+reads as `T`, including `Any`, which reflection cannot tell from a star projection; a Java
+codec's target must not contain wildcards.
 
 Otherwise a target equal to the direct child of a Java array, `Collection`,
 `AtomicReferenceArray`, `Optional`, `AtomicReference`, or the value of a `Map` fills the matching

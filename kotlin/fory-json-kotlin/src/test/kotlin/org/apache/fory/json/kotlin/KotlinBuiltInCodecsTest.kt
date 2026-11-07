@@ -177,6 +177,26 @@ class KotlinBuiltInCodecsTest {
 
   @JsonDefaultCodec(LongListCodec::class) class LongListHolder(val values: List<Long>)
 
+  class AnyMapCodec : AbstractJsonValueCodec<Map<String, Any?>>() {
+    override fun write(writer: JsonWriter, value: Map<String, Any?>) {
+      writer.writeString("any:${value.size}")
+    }
+
+    override fun read(reader: JsonReader): Map<String, Any?> {
+      reader.readString()
+      return emptyMap()
+    }
+  }
+
+  // Kotlin writes Any as ? extends Object; the declaration must still be accepted.
+  @JsonDefaultCodec(AnyMapCodec::class, TaggedIntCodec::class)
+  data class AnyTargetDeclared(val count: Int)
+
+  @Test
+  fun defaultCodecAcceptsKotlinAnyArguments() {
+    assertEquals("{\"count\":\"i:3\"}", fory.toJson(AnyTargetDeclared(3)))
+  }
+
   @Test
   fun defaultCodecMatchesKotlinCollectionTarget() {
     assertEquals("{\"values\":\"longs:2\"}", fory.toJson(LongListHolder(listOf(1L, 2L))))
