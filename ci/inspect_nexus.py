@@ -55,6 +55,12 @@ for path, method in (
             data = json.load(response).get("data")
             if isinstance(data, list):
                 print("Number of entries:", len(data), flush=True)
+                if path == "/service/local/staging/profiles":
+                    print(
+                        "Visible profile names:",
+                        [item.get("name") for item in data],
+                        flush=True,
+                    )
                 for item in data:
                     if any(
                         name in json.dumps(item).lower() for name in ("fory", "fury")
@@ -79,6 +85,26 @@ for path, method in (
                 )
     except urllib.error.HTTPError as error:
         print(method, path, error.code, flush=True)
+        detail = error.read(2048).decode(errors="replace")
+        for secret in (
+            os.environ["NEXUS_USERNAME"],
+            os.environ["NEXUS_PASSWORD"],
+            authorization,
+        ):
+            detail = detail.replace(secret, "[REDACTED]")
+        print(detail, flush=True)
+
+for accept in ("application/problem+json,*/*", "*/*"):
+    path = "/service/local/staging/deploy/maven2/org/apache/fory/fory-parent/1.7.8/fory-parent-1.7.8.pom"
+    request = urllib.request.Request(
+        "https://repository.apache.org" + path,
+        headers={"Authorization": authorization, "Accept": accept},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            print("GET deployment endpoint", accept, response.status, flush=True)
+    except urllib.error.HTTPError as error:
+        print("GET deployment endpoint", accept, error.code, flush=True)
         detail = error.read(2048).decode(errors="replace")
         for secret in (
             os.environ["NEXUS_USERNAME"],
