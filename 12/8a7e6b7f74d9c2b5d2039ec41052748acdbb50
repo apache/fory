@@ -1,0 +1,20 @@
+.agents/languages/java.md
+  h_e94f2b5704cbef 63-64
+java/fory-core/src/main/java/org/apache/fory/codegen/CodegenContext.java
+  h_e94f2b5704cbef 282-283,293-297
+java/fory-core/src/test/java/org/apache/fory/builder/JITContextTest.java
+  h_e94f2b5704cbef 35-36,45,104-159
+java/fory-core/src/test/java/org/apache/fory/codegen/CodegenContextTest.java
+  h_e94f2b5704cbef 113-116,121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "128a7e6b7f74d9c2b5d2039ec41052748acdbb50",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
