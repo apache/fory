@@ -19,6 +19,8 @@
 
 package org.apache.fory.format.encoder;
 
+import static org.apache.fory.format.encoder.SchemaEvolutionTest.evolvingCodec;
+
 import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -2806,9 +2808,5 @@ public class SchemaEvolutionEdgeCaseTest {
     Assert.assertNull(out.getFirst().getNote());
     Assert.assertEquals(out.getSecond().getName(), "beta");
     Assert.assertNull(out.getSecond().getNote());
-  }
-
-  private static <T> RowEncoder<T> evolvingCodec(Class<T> beanClass) {
-    return Encoders.buildBeanCodec(beanClass).withSchemaEvolution().build().get();
   }
 }

@@ -443,11 +443,11 @@ record, and from the accessor method name for an interface bean, so converting a
 class and an interface also changes every wire name and is a rename of every field.
 
 A reader selects the matching layout from the 8-byte strict hash on the payload. The hash includes
-field names and nullability and is checked for collisions across a bean's own versions when the
-codec is built, but it is still a 64-bit value: a payload whose hash coincides with one of the
-reader's historical layouts is decoded against that layout. This is the same hash-based dispatch
-the row format has always used, so feeding a codec bytes it was not built for has undefined results
-whether or not evolution is enabled. Only hand a codec payloads produced for the same bean.
+field names and nullability, and the codec build rejects most collisions between a bean's own
+versions, but it is still a 64-bit value: a payload whose hash coincides with one of the reader's
+historical layouts is decoded against that layout. Rows without evolution also select on a hash,
+so feeding a codec bytes it was not built for has undefined results whether or not evolution is
+enabled. Only hand a codec payloads produced for the same bean.
 
 Nested evolution works to arbitrary depth and places no restriction on shape: a versioned bean
 may contain versioned beans that themselves contain versioned beans, the same versioned bean

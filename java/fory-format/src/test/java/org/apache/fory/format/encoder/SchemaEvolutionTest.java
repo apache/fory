@@ -2042,7 +2042,7 @@ public class SchemaEvolutionTest {
     Assert.assertEquals(((List<?>) children.get(rowWriter)).size(), before);
   }
 
-  private static <T> RowEncoder<T> evolvingCodec(Class<T> beanClass) {
+  static <T> RowEncoder<T> evolvingCodec(Class<T> beanClass) {
     return Encoders.buildBeanCodec(beanClass).withSchemaEvolution().build().get();
   }
 }
