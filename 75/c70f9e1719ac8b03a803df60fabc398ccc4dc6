@@ -1,0 +1,18 @@
+.agents/skills/fory-release/SKILL.md
+  h_e94f2b5704cbef 61
+.github/workflows/stage-release-candidate.yml
+  h_e94f2b5704cbef 133,146
+ci/release.py
+  h_e94f2b5704cbef 392
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "75c70f9e1719ac8b03a803df60fabc398ccc4dc6",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
