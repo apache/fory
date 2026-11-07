@@ -266,6 +266,48 @@ The child members have these meanings:
 | `keyCodec`     | `Map<K, V>`                                       | JSON member name for `K`          |
 | `valueCodec`   | `Map<K, V>`                                       | direct `V` value                  |
 
+### Class defaults with `JsonDefaultCodec`
+
+Use `@JsonDefaultCodec` on a class when every property of one type needs the same occurrence codec.
+Built-in scalar types such as `BigDecimal` cannot be registered with `registerCodec`, so this is
+the way to give them one representation across a model without annotating each property:
+
+```java
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Optional;
+import org.apache.fory.json.annotation.JsonDefaultCodec;
+
+@JsonDefaultCodec(PlainDecimalCodec.class)
+public class Invoice {
+  public BigDecimal total; // PlainDecimalCodec
+  public Optional<BigDecimal> discount; // contentCodec = PlainDecimalCodec
+  public List<BigDecimal> lines; // elementCodec = PlainDecimalCodec
+  @JsonCodec(OtherDecimalCodec.class)
+  public BigDecimal tax; // the property declaration wins
+}
+```
+
+Each codec targets the type argument it declares for `JsonValueCodec`. `PlainDecimalCodec extends
+AbstractJsonValueCodec<BigDecimal>` targets `BigDecimal`, and a codec declared over
+`Optional<BigDecimal>` targets exactly that parameterized type. The target must be concrete. List
+several codecs in one annotation, `@JsonDefaultCodec({A.class, B.class})`, or repeat the annotation;
+one class may name at most one codec per target type.
+
+A property or creator parameter whose resolved type equals a target uses the codec as if it
+declared `@JsonCodec(value = ...)`; a primitive property matches its wrapper type. Otherwise a
+target equal to the direct child of an array, `Collection`, `AtomicReferenceArray`, `Optional`,
+`AtomicReference`, or the value of a `Map` fills the matching child member from the table above.
+Deeper nesting is not searched. A child that a complete codec of its container hides is left
+unchanged instead of failing.
+
+Properties that declare `JsonCodec`, `JsonFormat`, `JsonByteArray`, `JsonRawValue`, or
+`JsonUnwrapped`, and JSON Any properties, do not use defaults. Defaults declared on superclasses
+apply to the subclass, and a subclass default for the same target type replaces the inherited one.
+Defaults stop at the class boundary: a nested object type uses its own declarations. An
+exact-target Mixin may supply or replace the annotation; a Mixin that supplies or removes either
+the single or the repeated form replaces both forms declared on the target.
+
 ### Kotlin occurrences
 
 Kotlin uses the same codec registrations and `JsonCodec` annotation. Apply property annotations to
@@ -352,13 +394,13 @@ The first `JsonAnySetter` parameter is the String property name. Its second para
 
 Fory resolves each current value in this order:
 
-| Priority | Source                                            |
-| -------: | ------------------------------------------------- |
-|        1 | Current property or parameter `JsonCodec`         |
-|        2 | Exact `registerCodec` registration                |
-|        3 | Exact-target type `JsonCodec` after Mixin overlay |
-|        4 | Inherited-frontier type `JsonCodec` declaration   |
-|        5 | Built-in or default JSON mapping                  |
+| Priority | Source                                                                   |
+| -------: | ------------------------------------------------------------------------ |
+|        1 | Current property or parameter `JsonCodec`, else class `JsonDefaultCodec` |
+|        2 | Exact `registerCodec` registration                                       |
+|        3 | Exact-target type `JsonCodec` after Mixin overlay                        |
+|        4 | Inherited-frontier type `JsonCodec` declaration                          |
+|        5 | Built-in or default JSON mapping                                         |
 
 One logical property may expose the annotation from its field, getter, setter parameter, creator
 parameter, or record propagation. Repeated configurations must be identical; Fory does not merge

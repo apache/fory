@@ -1618,6 +1618,55 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void defaultCodecRules() throws Exception {
+    String codec =
+        "  public static final class %s extends org.apache.fory.json.codec.AbstractJsonValueCodec<%s> {\n"
+            + "    public void write(org.apache.fory.json.writer.JsonWriter writer, %s value) {}\n"
+            + "    public %s read(org.apache.fory.json.reader.JsonReader reader) { return null; }\n"
+            + "  }\n";
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put(
+        "test.DefaultCodecBase",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.JsonDefaultCodec;\n"
+            + "@JsonDefaultCodec(DefaultCodecBase.BaseCodec.class)\n"
+            + "public class DefaultCodecBase {\n"
+            + String.format(codec, "BaseCodec", "Long", "Long", "Long")
+            + "  public Long id;\n"
+            + "}\n");
+    sources.put(
+        "test.DefaultCodecModel",
+        "package test;\n"
+            + "import java.math.BigDecimal;\n"
+            + "import java.util.Optional;\n"
+            + "import org.apache.fory.json.annotation.JsonDefaultCodec;\n"
+            + "import org.apache.fory.json.annotation.JsonType;\n"
+            + "@JsonType\n"
+            + "@JsonDefaultCodec(DefaultCodecModel.DecimalCodec.class)\n"
+            + "@JsonDefaultCodec(DefaultCodecModel.OptionalCodec.class)\n"
+            + "public class DefaultCodecModel extends DefaultCodecBase {\n"
+            + String.format(codec, "DecimalCodec", "BigDecimal", "BigDecimal", "BigDecimal")
+            + String.format(
+                codec,
+                "OptionalCodec",
+                "Optional<BigDecimal>",
+                "Optional<BigDecimal>",
+                "Optional<BigDecimal>")
+            + "  public BigDecimal price;\n"
+            + "  public Optional<BigDecimal> bid = Optional.empty();\n"
+            + "}\n");
+    CompilationResult result = compile(sources);
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(RULE_PREFIX + "test.DefaultCodecModel.pro");
+    assertTrue(
+        rules.contains("class test.DefaultCodecModel$DecimalCodec { public <init>(); }"), rules);
+    assertTrue(
+        rules.contains("class test.DefaultCodecModel$OptionalCodec { public <init>(); }"), rules);
+    assertTrue(rules.contains("class test.DefaultCodecBase$BaseCodec { public <init>(); }"), rules);
+    assertTrue(rules.contains("org.apache.fory.json.annotation.JsonDefaultCodec"), rules);
+  }
+
+  @Test
   public void unwrappedMemberRules() throws Exception {
     CompilationResult result =
         compile(

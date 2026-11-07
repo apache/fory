@@ -22,7 +22,7 @@ license: |
 Fory JSON provides these mapping and validation annotations in
 `org.apache.fory.json.annotation`:
 `JsonAnyGetter`, `JsonAnyProperty`, `JsonAnySetter`, `JsonByteArray`, `JsonCodec`, `JsonCreator`,
-`JsonDuplicateProperties`, `JsonFormat`, `JsonIgnore`, `JsonInclude`, `JsonProperty`, `JsonPropertyOrder`, `JsonRawValue`, `JsonSubTypes`, `JsonUnwrapped`,
+`JsonDefaultCodec`, `JsonDuplicateProperties`, `JsonFormat`, `JsonIgnore`, `JsonInclude`, `JsonProperty`, `JsonPropertyOrder`, `JsonRawValue`, `JsonSubTypes`, `JsonUnwrapped`,
 `JsonValidator`, and `JsonValue`. `JsonType` is a separate build-time model marker. They are
 Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 

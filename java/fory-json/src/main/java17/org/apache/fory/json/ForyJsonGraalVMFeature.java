@@ -53,6 +53,7 @@ import org.apache.fory.json.annotation.ForyJsonProvider;
 import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonDefaultCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonSubTypes;
@@ -585,6 +586,14 @@ final class ForyJsonGraalVMFeature implements Feature {
     registerDeclarations(targetType);
     JsonCodec directTypeCodec = annotations.annotation(targetType, JsonCodec.class);
     registerCodecs(directTypeCodec);
+    registerDefaultCodecs(annotations.annotation(targetType, JsonDefaultCodec.class));
+    JsonDefaultCodec.List defaultCodecs =
+        annotations.annotation(targetType, JsonDefaultCodec.List.class);
+    if (defaultCodecs != null) {
+      for (JsonDefaultCodec defaults : defaultCodecs.value()) {
+        registerDefaultCodecs(defaults);
+      }
+    }
     RuntimeReflection.register(targetType);
     registerContainer(targetType);
     boolean intrinsicTarget =
@@ -995,6 +1004,11 @@ final class ForyJsonGraalVMFeature implements Feature {
       registerCodecs(annotation);
       changed = true;
     }
+    for (JsonDefaultCodec defaults : type.getDeclaredAnnotationsByType(JsonDefaultCodec.class)) {
+      RuntimeReflection.register(type);
+      registerDefaultCodecs(defaults);
+      changed = true;
+    }
     changed |= registerDeclarations(type.getSuperclass());
     for (Class<?> interfaceType : type.getInterfaces()) {
       changed |= registerDeclarations(interfaceType);
@@ -1096,6 +1110,15 @@ final class ForyJsonGraalVMFeature implements Feature {
     registerCodec(annotation.contentCodec());
     registerCodec(annotation.keyCodec());
     registerCodec(annotation.valueCodec());
+  }
+
+  private void registerDefaultCodecs(JsonDefaultCodec annotation) {
+    if (annotation == null) {
+      return;
+    }
+    for (Class<?> codecClass : annotation.value()) {
+      registerCodec(codecClass);
+    }
   }
 
   private void registerCodec(Class<?> codecClass) {

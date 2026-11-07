@@ -64,6 +64,8 @@ final class JsonTypeProcessor {
   private static final String JSON_MIXIN = JSON_PACKAGE + ".annotation.JsonMixin";
   private static final String JSON_MIXIN_REMOVE = JSON_PACKAGE + ".annotation.JsonMixinRemove";
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
+  private static final String JSON_DEFAULT_CODEC = JSON_PACKAGE + ".annotation.JsonDefaultCodec";
+  private static final String JSON_DEFAULT_CODEC_LIST = JSON_DEFAULT_CODEC + ".List";
   private static final String JSON_SUB_TYPES = JSON_PACKAGE + ".annotation.JsonSubTypes";
   private static final String JSON_SUBTYPE_GENERATION =
       JSON_PACKAGE + ".codec.GeneratedJsonSubtypeTable.Generation";
@@ -476,6 +478,14 @@ final class JsonTypeProcessor {
     for (TypeElement type : classes) {
       collectAnnotations(annotations, type, model.annotationTypes);
       collectCodecAnnotation(annotationMirror(annotations, type, JSON_CODEC), model);
+      collectDefaultCodecs(annotationMirror(annotations, type, JSON_DEFAULT_CODEC), model);
+      AnnotationMirror defaultCodecList =
+          annotationMirror(annotations, type, JSON_DEFAULT_CODEC_LIST);
+      if (defaultCodecList != null) {
+        for (AnnotationMirror defaultCodec : annotationMirrors(defaultCodecList)) {
+          collectDefaultCodecs(defaultCodec, model);
+        }
+      }
       if (hasJsonAnnotations(annotations, type)) {
         model.annotationOwnerTypes.add(elements.getBinaryName(type).toString());
       }
@@ -600,6 +610,45 @@ final class JsonTypeProcessor {
         model.codecTypes.add(codecName);
       }
     }
+  }
+
+  /** Retains the codec classes a class-level {@code JsonDefaultCodec} may select at runtime. */
+  private void collectDefaultCodecs(AnnotationMirror annotation, Model model) {
+    if (annotation == null) {
+      return;
+    }
+    AnnotationValue value = annotationValue(annotation, "value");
+    if (value == null || !(value.getValue() instanceof List<?>)) {
+      return;
+    }
+    for (Object entry : (List<?>) value.getValue()) {
+      Object codecType =
+          entry instanceof AnnotationValue ? ((AnnotationValue) entry).getValue() : null;
+      TypeElement codec =
+          codecType instanceof TypeMirror ? asTypeElement((TypeMirror) codecType) : null;
+      if (codec != null) {
+        model.codecTypes.add(elements.getBinaryName(codec).toString());
+      }
+    }
+  }
+
+  private static List<AnnotationMirror> annotationMirrors(AnnotationMirror container) {
+    List<AnnotationMirror> mirrors = new ArrayList<>();
+    for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> member :
+        container.getElementValues().entrySet()) {
+      if (!member.getKey().getSimpleName().contentEquals("value")
+          || !(member.getValue().getValue() instanceof List<?>)) {
+        continue;
+      }
+      for (Object entry : (List<?>) member.getValue().getValue()) {
+        Object mirror =
+            entry instanceof AnnotationValue ? ((AnnotationValue) entry).getValue() : null;
+        if (mirror instanceof AnnotationMirror) {
+          mirrors.add((AnnotationMirror) mirror);
+        }
+      }
+    }
+    return mirrors;
   }
 
   private void emitR8(Model model) {

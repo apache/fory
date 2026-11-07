@@ -74,6 +74,7 @@ import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonValidatorInfo;
+import org.apache.fory.json.resolver.JsonDefaultCodecs;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.ObjectInstantiator;
@@ -1560,7 +1561,7 @@ final class ObjectCodecBuilder {
               i,
               resolved,
               rawTypes[i],
-              builder.codecAnnotation(),
+              builder.effectiveCodec(resolved),
               builder.valueCodecClass(),
               builder.formatAnnotation(),
               builder.creatorUnboxedRequired,
@@ -1693,7 +1694,7 @@ final class ObjectCodecBuilder {
         }
         if (!builder.isAny() && builder.unwrappedAnnotation == null) {
           TypeRef<?> resolved = ownerType.resolveType(parameterTypes[i]);
-          JsonCodec codecAnnotation = builder.codecAnnotation();
+          JsonCodec codecAnnotation = builder.effectiveCodec(resolved);
           Class<? extends JsonValueCodec<?>> valueCodecClass = builder.valueCodecClass();
           fields.add(
               new JsonCreatorFieldInfo(
@@ -1775,6 +1776,13 @@ final class ObjectCodecBuilder {
             builder == null
                 ? annotations.get(parameters[i], JsonUnwrapped.class)
                 : builder.unwrappedAnnotation;
+        if (builder == null) {
+          if (codecAnnotation == null && formatAnnotation == null && unwrapped == null) {
+            codecAnnotation = annotations.defaultCodecs.select(resolved);
+          }
+        } else {
+          codecAnnotation = builder.effectiveCodec(resolved);
+        }
         if (unwrapped != null) {
           if (builder == null
               && (property.onNullRead() != NullHandling.DEFAULT
@@ -1955,7 +1963,7 @@ final class ObjectCodecBuilder {
                 i,
                 resolved,
                 rawTypes[i],
-                builder.codecAnnotation(),
+                builder.effectiveCodec(resolved),
                 builder.valueCodecClass(),
                 builder.formatAnnotation(),
                 builder.creatorUnboxedRequired,
@@ -3109,10 +3117,12 @@ final class ObjectCodecBuilder {
   private static final class Annotations {
     private final Class<?> targetType;
     private final JsonSharedRegistry registry;
+    private final JsonDefaultCodecs defaultCodecs;
 
     private Annotations(Class<?> targetType, JsonSharedRegistry registry) {
       this.targetType = targetType;
       this.registry = registry;
+      defaultCodecs = JsonDefaultCodecs.of(targetType, registry);
     }
 
     private <A extends Annotation> A get(AnnotatedElement element, Class<A> annotationType) {
@@ -3423,7 +3433,9 @@ final class ObjectCodecBuilder {
           readAccessor,
           ownerType,
           objectModelType,
-          codecAnnotation,
+          usesDefaultCodec()
+              ? annotations.defaultCodecs.select(logicalTypeRef(ownerType))
+              : codecAnnotation,
           valueCodecClass,
           formatAnnotation,
           rawValue,
@@ -3508,6 +3520,23 @@ final class ObjectCodecBuilder {
 
     private JsonCodec codecAnnotation() {
       return codecAnnotation;
+    }
+
+    /**
+     * Returns the declared codec, or the class default for {@code type} when nothing is declared.
+     */
+    private JsonCodec effectiveCodec(TypeRef<?> type) {
+      return usesDefaultCodec() ? annotations.defaultCodecs.select(type) : codecAnnotation;
+    }
+
+    private boolean usesDefaultCodec() {
+      return !annotations.defaultCodecs.isEmpty()
+          && codecAnnotation == null
+          && valueCodecClass == null
+          && formatAnnotation == null
+          && rawValueSource == null
+          && unwrappedAnnotation == null
+          && !isAny();
     }
 
     private Class<? extends JsonValueCodec<?>> valueCodecClass() {
