@@ -419,15 +419,16 @@ public final class JsonTypeResolver {
     if (annotation == null) {
       return getTypeInfo(declaredType);
     }
-    // A class default fills a child only where the container keeps its standard mapping, so a
-    // registration, factory, module, or type declaration that owns the container still wins.
-    if (JsonDefaultCodecs.selectsChild(annotation)
-        && sharedRegistry.ownsContainer(declaredType, this)) {
-      return getTypeInfo(declaredType);
-    }
     ResolutionSnapshot snapshot = beginResolution();
     try {
-      JsonTypeInfo result = resolveTypeInfo(declaredType, annotation);
+      // A class default fills a child only where the container keeps its standard mapping, so a
+      // registration, factory, module, or type declaration that owns the container still wins.
+      // The check runs inside the snapshot because a module factory may resolve child types.
+      JsonTypeInfo result =
+          JsonDefaultCodecs.selectsChild(annotation)
+                  && sharedRegistry.ownsContainer(declaredType, this)
+              ? getTypeInfo(declaredType)
+              : resolveTypeInfo(declaredType, annotation);
       completeResolution(snapshot);
       return result;
     } catch (RuntimeException | Error e) {

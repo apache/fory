@@ -299,7 +299,8 @@ declared `@JsonCodec(value = ...)`; a primitive property or array element matche
 Otherwise a target equal to the direct child of an array, `Collection`, `AtomicReferenceArray`,
 `Optional`, `AtomicReference`, or the value of a `Map` fills the matching child member from the
 table above, so a `Byte` default writes a `byte[]` as a JSON array of codec values whatever
-`byteArrayFormat` says. Deeper nesting is not searched. A child is filled only where the container keeps its
+`byteArrayFormat` says. Deeper nesting is not searched, and a wildcard child such as `List<? extends Shape>` keeps its
+mapping, as an explicit child member would reject it. A child is filled only where the container keeps its
 standard mapping: a registered codec or factory, a module, or a type declaration that owns the
 container keeps it unchanged.
 

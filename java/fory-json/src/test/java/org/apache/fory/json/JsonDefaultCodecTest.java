@@ -814,6 +814,55 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     public BigDecimal price;
   }
 
+  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  public static class WildcardPrices {
+    public List<? extends BigDecimal> prices;
+  }
+
+  @Test
+  public void wildcardChildrenKeepTheirMapping() {
+    WildcardPrices value = new WildcardPrices();
+    value.prices = Collections.singletonList(TEN);
+    // A wildcard is not a concrete child, which an explicit elementCodec rejects as well.
+    assertEquals(newJson().toJson(value), "{\"prices\":[1E+1]}");
+  }
+
+  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  public static class TreeNode {
+    public BigDecimal value;
+    public List<TreeNode> children;
+  }
+
+  @Test
+  public void moduleFactoryResolvingSelfReferencingChildren() {
+    JsonCodecFactory factory =
+        (type, resolver, runtimeType) -> {
+          if (type.getRawType() != List.class) {
+            return null;
+          }
+          // Resolving the element re-enters the type that is still being built.
+          resolver.getTypeInfo(org.apache.fory.json.codec.CodecUtils.elementTypeRef(type));
+          return new AbstractJsonValueCodec<List<?>>() {
+            @Override
+            public void write(JsonWriter writer, List<?> value) {
+              writer.writeString("list:" + value.size());
+            }
+
+            @Override
+            public List<?> read(JsonReader reader) {
+              reader.readString();
+              return Collections.emptyList();
+            }
+          };
+        };
+    ForyJson json =
+        newJsonBuilder().withModule(context -> context.registerCodecFactory(factory)).build();
+    TreeNode node = new TreeNode();
+    node.value = TEN;
+    node.children = Collections.singletonList(new TreeNode());
+    assertEquals(json.toJson(node), "{\"value\":\"d:10\",\"children\":\"list:1\"}");
+  }
+
   @JsonDefaultCodec({TaggedDecimalCodec.class, OtherDecimalCodec.class})
   public static class DuplicateTarget {
     public BigDecimal price;

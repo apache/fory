@@ -1272,7 +1272,8 @@ public final class JsonSharedRegistry {
 
   /**
    * Returns whether a representation other than the standard container mapping owns this container
-   * type. It follows {@link #resolveCodec} without resolving the container's children.
+   * type, in {@link #resolveCodec} order. Only an installed module factory is asked by building its
+   * codec, which may resolve children; the standard mapping itself is never built here.
    */
   boolean ownsContainer(TypeRef<?> typeRef, JsonTypeResolver localResolver) {
     Class<?> rawType = typeRef.getRawType();
