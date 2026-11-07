@@ -36,6 +36,7 @@ for path, method in (
         "GET",
     ),
     ("/service/local/staging/profiles", "GET"),
+    ("/service/local/staging/profiles/572a17401b629", "GET"),
     ("/service/local/staging/profile_repositories", "GET"),
     (
         "/service/local/staging/deploy/maven2/org/apache/fory/fory-parent/1.7.8/fory-parent-1.7.8.pom",
