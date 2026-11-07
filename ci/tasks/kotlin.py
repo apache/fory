@@ -35,9 +35,12 @@ CORPUS_RULE_MODELS = (
     "PlatformAccount",
     "PlatformBox",
     "PlatformCircle",
+    "PlatformContainerDefaults",
+    "PlatformDefaultCodecs",
     "PlatformDefaults",
     "PlatformDirectOverride",
     "PlatformId",
+    "PlatformInheritedDefaults",
     "PlatformMarker",
     "PlatformNullHandling",
     "PlatformOpen",
@@ -48,6 +51,7 @@ CORPUS_RULE_MODELS = (
 CORPUS_MIXIN_TARGETS = {
     "PlatformDefaultMixin": "PlatformDefaultTarget",
     "PlatformJavaProfileMixin": "PlatformJavaProfile",
+    "PlatformMixinDefaults": "PlatformMixinDefaultsTarget",
     "PlatformMixinOverrideAnnotations": "PlatformMixinOverride",
 }
 
