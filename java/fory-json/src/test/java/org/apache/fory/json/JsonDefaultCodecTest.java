@@ -752,6 +752,68 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertTrue(!text.contains("d:") && !text.contains("s:") && !text.contains("b:"), text);
   }
 
+  /** A default reaches properties the author never annotated, so it must own null itself. */
+  public static final class NullableTaggedCodec extends AbstractJsonValueCodec<BigDecimal> {
+    @Override
+    public void write(JsonWriter writer, BigDecimal value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString("n:" + value.toPlainString());
+      }
+    }
+
+    @Override
+    public BigDecimal read(JsonReader reader) {
+      return reader.tryReadNull() ? null : new BigDecimal(reader.readString().substring(2));
+    }
+  }
+
+  @JsonDefaultCodec(NullableTaggedCodec.class)
+  public static class NullablePrices {
+    @JsonProperty(include = JsonProperty.Include.ALWAYS)
+    public BigDecimal price;
+
+    public List<BigDecimal> floors;
+    public Map<String, BigDecimal> byKey;
+  }
+
+  @Test
+  public void defaultCodecOwnsNullWithDefaultSettings() {
+    ForyJson json = newJson();
+    NullablePrices value = new NullablePrices();
+    value.floors = Arrays.asList(TEN, null);
+    value.byKey = Collections.singletonMap("k", null);
+    String text = json.toJson(value);
+    assertEquals(text, "{\"price\":null,\"floors\":[\"n:10\",null],\"byKey\":{\"k\":null}}");
+    NullablePrices read = json.fromJson(text, NullablePrices.class);
+    assertEquals(read.price, null);
+    assertEquals(read.floors, Arrays.asList(PLAIN_TEN, null));
+    assertEquals(read.byKey, Collections.singletonMap("k", null));
+  }
+
+  public interface Contract {}
+
+  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  public interface AnnotatedContract {}
+
+  public interface ExtendsAnnotated extends AnnotatedContract {}
+
+  public static class ImplementsThroughSuperinterface implements ExtendsAnnotated {
+    public BigDecimal price;
+  }
+
+  public static class AnnotatedBase implements AnnotatedContract {}
+
+  public static class ImplementsThroughSuperclass extends AnnotatedBase implements Contract {
+    public BigDecimal price;
+  }
+
+  @JsonDefaultCodec(JsonCodec.NoJsonValueCodec.class)
+  public static class SentinelTarget {
+    public BigDecimal price;
+  }
+
   @JsonDefaultCodec({TaggedDecimalCodec.class, OtherDecimalCodec.class})
   public static class DuplicateTarget {
     public BigDecimal price;
@@ -775,6 +837,9 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertInvalid(json, RepeatedDuplicateTarget.class, "Duplicate @JsonDefaultCodec target");
     assertInvalid(json, NoConcreteTarget.class, "does not declare a concrete value type");
     assertInvalid(json, ImplementsDefaults.class, "not from interface");
+    assertInvalid(json, ImplementsThroughSuperinterface.class, "not from interface");
+    assertInvalid(json, ImplementsThroughSuperclass.class, "not from interface");
+    assertInvalid(json, SentinelTarget.class, "is not a codec");
   }
 
   private static void assertInvalid(ForyJson json, Class<?> type, String message) {

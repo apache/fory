@@ -51,6 +51,16 @@ import org.apache.fory.type.Types;
 @Internal
 public final class JsonDefaultCodecs {
   private static final JsonDefaultCodecs NONE = new JsonDefaultCodecs(new Entry[0]);
+  private static final List<String> KOTLIN_UNSIGNED =
+      Arrays.asList(
+          "kotlin.UByte",
+          "kotlin.UShort",
+          "kotlin.UInt",
+          "kotlin.ULong",
+          "kotlin.UByteArray",
+          "kotlin.UShortArray",
+          "kotlin.UIntArray",
+          "kotlin.ULongArray");
 
   private final Entry[] entries;
 
@@ -233,6 +243,10 @@ public final class JsonDefaultCodecs {
     Type target = arguments.size() == 1 ? arguments.get(0).getType() : null;
     if (target == null || !concrete(target)) {
       throw invalid(declaring, codecClass, "does not declare a concrete value type");
+    }
+    if (target instanceof Class && KOTLIN_UNSIGNED.contains(((Class<?>) target).getName())) {
+      // The Kotlin module carries these as tagged JVM primitives, so no occurrence could match.
+      throw invalid(declaring, codecClass, "cannot target the Kotlin unsigned type " + target);
     }
     return target;
   }

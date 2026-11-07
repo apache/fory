@@ -131,6 +131,22 @@ class KotlinBuiltInCodecsTest {
     assertEquals(value, fory.fromJson(json, BoxedPrices::class.java))
   }
 
+  class UIntTagCodec : AbstractJsonValueCodec<UInt>() {
+    override fun write(writer: JsonWriter, value: UInt) {
+      writer.writeString("u:$value")
+    }
+
+    override fun read(reader: JsonReader): UInt = reader.readString().substring(2).toUInt()
+  }
+
+  @JsonDefaultCodec(UIntTagCodec::class) data class UnsignedTarget(val value: UInt)
+
+  @Test
+  fun defaultCodecRejectsUnsignedTarget() {
+    val error = assertFailsWith<ForyJsonException> { fory.toJson(UnsignedTarget(1u)) }
+    assertTrue(error.message.orEmpty().contains("Kotlin unsigned type"), error.message)
+  }
+
   @Test
   fun defaultCodecKeepsUnsignedMapping() {
     val value = SignedAndUnsigned(5, UInt.MAX_VALUE, listOf(1), listOf(UInt.MAX_VALUE))
