@@ -1933,6 +1933,11 @@ public abstract class JsonReader {
     boolean negative = bytes[start] == '-';
     int offset = start + (negative ? 1 : 0);
     int digits = end - offset;
+    if (digits > 6144) {
+      // Amortize the multiplication tree's temporary owners before leaving the compact limb loop.
+      BigInteger value = parseLargeCoefficient(bytes, offset, end);
+      return negative ? value.negate() : value;
+    }
     int capacity = (digits + 17) / 18;
     long[] words = numericWorkspace.bigIntegerBuffer;
     if (words.length < capacity) {
@@ -2008,6 +2013,22 @@ public abstract class JsonReader {
           magnitude, magnitude.length - (i + 1) * Long.BYTES, Long.reverseBytes(words[i]));
     }
     return new BigInteger(negative ? -1 : 1, magnitude);
+  }
+
+  private BigInteger parseLargeCoefficient(byte[] bytes, int start, int end) {
+    int digits = end - start;
+    if (digits <= 4096) {
+      return parseBigInteger(bytes, start, end, 0, start);
+    }
+    // Bound the quadratic leaf work. After extracting 2^n from 10^n, a 3/5 lower block
+    // balances the bit lengths of the upper coefficient and 5^n for subquadratic multiplication.
+    // Fixed 256-digit steps bound the immutable powers table independently of input values.
+    int power = (digits * 3 / 5) >>> 8;
+    int lowerDigits = power << 8;
+    int split = end - lowerDigits;
+    BigInteger high = parseLargeCoefficient(bytes, start, split);
+    BigInteger low = parseLargeCoefficient(bytes, split, end);
+    return high.multiply(CoefficientPowers.FIVES[power]).shiftLeft(lowerDigits).add(low);
   }
 
   private static BigInteger bigInteger(int[] magnitude, int signum) {
@@ -3281,6 +3302,22 @@ public abstract class JsonReader {
   }
 
   protected abstract String slice(int start, int end);
+
+  private static final class CoefficientPowers {
+    // The reader length limit bounds this immutable table independently of input values.
+    private static final BigInteger[] FIVES = powers();
+
+    private static BigInteger[] powers() {
+      int count = ((MAX_BIG_NUMBER_LENGTH * 3 / 5) >>> 8) + 1;
+      BigInteger[] values = new BigInteger[count];
+      BigInteger step = BigInteger.valueOf(5).pow(256);
+      values[0] = BigInteger.ONE;
+      for (int i = 1; i < count; i++) {
+        values[i] = values[i - 1].multiply(step);
+      }
+      return values;
+    }
+  }
 
   private static final class NumericWorkspace {
     private long[] bigIntegerBuffer = new long[4];

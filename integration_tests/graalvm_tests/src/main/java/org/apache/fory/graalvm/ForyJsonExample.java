@@ -825,7 +825,7 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(json.toJson(value).equals(expected));
     Preconditions.checkArgument(
         new String(json.toJsonBytes(value), StandardCharsets.UTF_8).equals(expected));
-    for (int bits : new int[] {64, 95, 127, 128, 256, 4096}) {
+    for (int bits : new int[] {64, 95, 127, 128, 256, 512, 513, 2048, 2049, 4096, 8192, 30000}) {
       for (int sign : new int[] {-1, 1}) {
         BigInteger integer =
             BigInteger.ONE
@@ -833,11 +833,17 @@ public final class ForyJsonExample {
                 .subtract(BigInteger.ONE)
                 .multiply(BigInteger.valueOf(sign));
         String text = integer.toString();
+        Preconditions.checkArgument(json.toJson(integer).equals(text));
+        Preconditions.checkArgument(
+            new String(json.toJsonBytes(integer), StandardCharsets.UTF_8).equals(text));
         Preconditions.checkArgument(json.fromJson(text, BigInteger.class).equals(integer));
         Preconditions.checkArgument(
             json.fromJson(text.getBytes(StandardCharsets.UTF_8), BigInteger.class).equals(integer));
         BigDecimal decimal = new BigDecimal(integer, 7);
         text = decimal.toPlainString();
+        Preconditions.checkArgument(json.toJson(decimal).equals(text));
+        Preconditions.checkArgument(
+            new String(json.toJsonBytes(decimal), StandardCharsets.UTF_8).equals(text));
         Preconditions.checkArgument(json.fromJson(text, BigDecimal.class).equals(decimal));
         Preconditions.checkArgument(
             json.fromJson(text.getBytes(StandardCharsets.UTF_8), BigDecimal.class).equals(decimal));

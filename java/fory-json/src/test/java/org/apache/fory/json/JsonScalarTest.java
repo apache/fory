@@ -1414,7 +1414,11 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeCoefficientGroups() {
-    for (int bits : new int[] {127, 128, 129, 255, 256, 1023, 1024, 4095, 4096, 4097}) {
+    for (int bits :
+        new int[] {
+          127, 128, 129, 255, 256, 511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 4095, 4096,
+          4097
+        }) {
       BigInteger boundary = BigInteger.ONE.shiftLeft(bits);
       for (int delta = -1; delta <= 1; delta++) {
         BigInteger value = boundary.add(BigInteger.valueOf(delta));
@@ -1513,6 +1517,47 @@ public class JsonScalarTest extends ForyJsonTestModels {
       String decimalText = decimal.toString();
       assertWriterNumber(decimal, decimalText);
       assertBigDecimalReaders(decimalText);
+    }
+  }
+
+  @Test
+  public void readLargeCoefficients() {
+    Random random = new Random(64173);
+    for (int digits :
+        new int[] {
+          511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 4095, 4096, 4097, 6143, 6144, 6145,
+          8191, 8192, 8193, 9900
+        }) {
+      StringBuilder coefficient = new StringBuilder(digits);
+      coefficient.append('1');
+      for (int i = 1; i < digits; i++) {
+        coefficient.append((char) ('0' + random.nextInt(10)));
+      }
+      for (String value :
+          new String[] {
+            coefficient.toString(), "1" + repeat('0', digits - 1), repeat('9', digits)
+          }) {
+        for (String sign : new String[] {"", "-"}) {
+          assertBigIntegerReaders(sign + value);
+          assertQuotedBigIntegerReaders(sign + value);
+          for (int point : new int[] {1, digits / 2, digits - 1}) {
+            String token = sign + value.substring(0, point) + '.' + value.substring(point) + "e-7";
+            assertBigDecimalReaders(token);
+            assertQuotedBigDecimalReaders(token);
+          }
+        }
+      }
+      assertBigDecimalReaders("0." + repeat('0', digits - 1));
+      assertBigDecimalReaders("-0." + repeat('0', digits - 2) + '1');
+    }
+    for (int i = 0; i < 64; i++) {
+      BigInteger coefficient = new BigInteger(13610 + random.nextInt(19200), random);
+      if ((i & 1) != 0) {
+        coefficient = coefficient.negate();
+      }
+      BigDecimal value = new BigDecimal(coefficient, random.nextInt(10001));
+      assertBigIntegerReaders(coefficient.toString());
+      assertBigDecimalReaders(value.toString());
     }
   }
 
@@ -1710,7 +1755,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     Utf8JsonReader reader = newUtf8Reader(new byte[0]);
     List<BigInteger> expected = new ArrayList<>();
     List<BigInteger> actual = new ArrayList<>();
-    for (int bits = 64; bits <= 2048; bits += 31) {
+    for (int bits = 64; bits <= 32768; bits += bits < 2048 ? 31 : 1021) {
       BigInteger boundary = BigInteger.ONE.shiftLeft(bits);
       for (int delta : new int[] {-1, 0, 1}) {
         for (int sign : new int[] {-1, 1}) {

@@ -21,6 +21,7 @@ package org.apache.fory.json.writer;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 /**
  * Stateless decimal digit arithmetic shared by concrete writer implementations.
@@ -32,9 +33,8 @@ import java.nio.charset.StandardCharsets;
 final class BigNumberDigits {
   // Packed 1-3 digit stores write one four-byte word; concrete writers reserve this tail once.
   static final int PACKED_WRITE_SLACK = 3;
-  // Repeated division is quadratic in magnitude size. Keep it bounded and leave larger values
-  // with the JDK's recursive conversion; this range also avoids intermediate quotient objects.
-  static final int MAX_ITERATIVE_BITS = 4096;
+  // Larger values retain the JDK's recursive conversion and BigDecimal string caching.
+  static final int MAX_FORMATTED_BITS = 4096;
   static final long[] LONG_POWERS_OF_TEN = {
     1L,
     10L,
@@ -113,17 +113,33 @@ final class BigNumberDigits {
 
   /** Formats a bounded exact JDK coefficient above the signed 128-bit range. */
   static String formatMagnitude(BigInteger value, int scale, int bitLength) {
-    byte[] magnitude = value.abs().toByteArray();
+    // A group contains more than 29 bits. Negative powers of two have one extra magnitude bit.
+    // Eight leading bytes and sixteen trailing bytes cover either decimal layout and its sign.
+    int end = 8 + ((bitLength + 30) / 29) * 9;
+    byte[] digits = new byte[end + 16];
+    int start = writeMagnitude(value.abs(), digits, end);
+    return formatDigits(digits, start, end, scale, value.signum() < 0);
+  }
+
+  private static int writeMagnitude(BigInteger value, byte[] digits, int end) {
+    int bitLength = value.bitLength();
+    if (bitLength > 2048) {
+      // Split near the middle instead of repeatedly dividing the whole magnitude by 10^9.
+      // 10^36 occupies about 120 bits, so 18 * 2^power digits form a balanced lower block.
+      int power = 31 - Integer.numberOfLeadingZeros(bitLength / 120);
+      int split = end - (18 << power);
+      BigInteger[] parts = value.divideAndRemainder(CoefficientPowers.VALUES[power]);
+      int start = writeMagnitude(parts[1], digits, end);
+      Arrays.fill(digits, split, start, (byte) '0');
+      return writeMagnitude(parts[0], digits, split);
+    }
+    byte[] magnitude = value.toByteArray();
     int wordCount = (magnitude.length + 3) >>> 2;
     int[] words = new int[wordCount];
     for (int i = 0; i < magnitude.length; i++) {
       words[wordCount - 1 - (i >>> 2)] |=
           (magnitude[magnitude.length - 1 - i] & 0xff) << ((i & 3) << 3);
     }
-    // A group contains more than 29 bits. Negative powers of two have one extra magnitude bit.
-    // Eight leading bytes and sixteen trailing bytes cover either decimal layout and its sign.
-    int end = 8 + ((bitLength + 30) / 29) * 9;
-    byte[] digits = new byte[end + 16];
     int start = end;
     int first = 0;
     while (first < wordCount) {
@@ -148,7 +164,21 @@ final class BigNumberDigits {
     while (digits[start] == '0' && start < end - 1) {
       start++;
     }
-    return formatDigits(digits, start, end, scale, value.signum() < 0);
+    return start;
+  }
+
+  private static final class CoefficientPowers {
+    private static final BigInteger[] VALUES = powers();
+
+    private static BigInteger[] powers() {
+      int count = 32 - Integer.numberOfLeadingZeros(MAX_FORMATTED_BITS / 120);
+      BigInteger[] values = new BigInteger[count];
+      values[0] = BigInteger.valueOf(1_000_000_000_000_000_000L);
+      for (int i = 1; i < count; i++) {
+        values[i] = values[i - 1].multiply(values[i - 1]);
+      }
+      return values;
+    }
   }
 
   private static String formatDigits(
