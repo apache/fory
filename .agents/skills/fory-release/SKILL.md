@@ -58,7 +58,7 @@ Derive the release values:
 ```bash
 release_branch="releases-${release_version}"
 rc_tag="v${release_version}-${rc}"
-release_candidate_url="https://release-test.apache.org/vote/fory/${release_version}"
+release_candidate_url="https://releases.apache.org/download/path/fory/${release_version}"
 ```
 
 ### Find the release discussion

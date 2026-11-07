@@ -389,7 +389,7 @@ def verify_ci_artifacts(
             raise ValueError(f"Invalid Apache Fory staging repository ID: {staging_id}")
     expected_fingerprint = _normalize_gpg_fingerprint(gpg_fingerprint)
     source_url = (
-        source_url or f"https://release-test.apache.org/vote/fory/{v}"
+        source_url or f"https://releases.apache.org/download/path/fory/{v}"
     ).rstrip("/")
     output = output or os.path.join(
         PROJECT_ROOT_DIR,
