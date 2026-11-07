@@ -1,0 +1,22 @@
+integration_tests/graalvm_tests/src/main/java/org/apache/fory/graalvm/ForyJsonExample.java
+  h_e94f2b5704cbef 828,836-838,844-846
+java/fory-json/src/main/java/org/apache/fory/json/reader/JsonReader.java
+  h_e94f2b5704cbef 1936-1940,2018-2033,3306-3321
+java/fory-json/src/main/java/org/apache/fory/json/writer/BigNumberDigits.java
+  h_e94f2b5704cbef 24,36-37,116-136,167-181
+java/fory-json/src/main/java/org/apache/fory/json/writer/Utf8JsonWriter.java
+  h_e94f2b5704cbef 395,2724
+java/fory-json/src/test/java/org/apache/fory/json/JsonScalarTest.java
+  h_e94f2b5704cbef 1417-1421,1523-1563,1758
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8f8348d94c6f7724c1ea91e971f78ff32dc36032",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
