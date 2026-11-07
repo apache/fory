@@ -310,7 +310,7 @@ public class SchemaEvolutionEdgeCaseTest {
 
   /** DefaultsV2 at v1 has OldDetail's layout, so the two versions could collapse; reject it. */
   @Test
-  public void retypedVersionedBeanRejected() {
+  public void retypedVersionedBean() {
     try {
       evolvingCodec(RetypedDetail.class);
       Assert.fail("expected the codec build to reject the type change");
@@ -386,7 +386,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void disjointWindowDoesNotFalseCollide() {
+  public void disjointWindows() {
     // Build alone is the assertion: a false collision fails the build.
     RowEncoder<GappedWindow> codec = evolvingCodec(GappedWindow.class);
     GappedWindow in = new GappedWindow();
@@ -800,7 +800,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test(expectedExceptions = IllegalStateException.class)
-  public void overlappingWindowFailsAtBuild() {
+  public void overlappingWindow() {
     evolvingCodec(OverlapMisconfig.class);
   }
 
@@ -844,7 +844,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void removedFieldWithoutForyVersionFailsAtBuild() {
+  public void removedFieldWithoutForyVersion() {
     IllegalStateException e =
         Assert.expectThrows(
             IllegalStateException.class,
@@ -857,7 +857,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void removedFieldWithoutUntilFailsAtBuild() {
+  public void removedFieldWithoutUntil() {
     IllegalStateException e =
         Assert.expectThrows(IllegalStateException.class, () -> evolvingCodec(MissingUntil.class));
     Assert.assertTrue(
@@ -865,7 +865,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void removedFieldEmptyWindowFailsAtBuild() {
+  public void removedFieldEmptyWindow() {
     IllegalStateException e =
         Assert.expectThrows(IllegalStateException.class, () -> evolvingCodec(EmptyWindow.class));
     Assert.assertTrue(e.getMessage().contains("must be strictly less than until"), e.getMessage());
@@ -885,14 +885,14 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void removedFieldCycleFailsAtBuild() {
+  public void removedFieldCycle() {
     IllegalStateException e =
         Assert.expectThrows(
             IllegalStateException.class, () -> evolvingCodec(RemovedFieldCycle.class));
     Assert.assertTrue(e.getMessage().contains("Circular schema history"), e.getMessage());
   }
 
-  /** A still-present field carrying a finite until; removals belong on the history class. */
+  /** A still-present field carrying a finite until; removals belong on the history interface. */
   @Data
   public static class LiveFieldWithUntil {
     private int x;
@@ -902,7 +902,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void liveFieldWithUntilFailsAtBuild() {
+  public void liveFieldWithUntil() {
     IllegalStateException e =
         Assert.expectThrows(
             IllegalStateException.class, () -> evolvingCodec(LiveFieldWithUntil.class));
@@ -919,7 +919,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void liveFieldSinceBelowFirstFailsAtBuild() {
+  public void liveFieldSinceBelowFirst() {
     IllegalStateException e =
         Assert.expectThrows(
             IllegalStateException.class, () -> evolvingCodec(LiveFieldSinceBelowFirst.class));
@@ -936,7 +936,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void liveFieldSinceMaxFailsAtBuild() {
+  public void liveFieldSinceMax() {
     IllegalStateException e =
         Assert.expectThrows(
             IllegalStateException.class, () -> evolvingCodec(LiveFieldSinceMax.class));
@@ -955,7 +955,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void removedFieldSinceBelowFirstFailsAtBuild() {
+  public void removedFieldSinceBelowFirst() {
     IllegalStateException e =
         Assert.expectThrows(
             IllegalStateException.class, () -> evolvingCodec(RemovedFieldSinceBelowFirst.class));
@@ -975,7 +975,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void versionedGetterFailsAtBuild() {
+  public void versionedGetter() {
     IllegalStateException e =
         Assert.expectThrows(
             IllegalStateException.class, () -> evolvingCodec(VersionedGetter.class));
@@ -1007,7 +1007,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void classImplementingVersionedInterfaceBeanBuilds() {
+  public void classImplementingVersionedInterface() {
     VersionedContactV1 in = new VersionedContactV1();
     in.setName("ann");
     VersionedContactImpl out =
@@ -1031,7 +1031,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void removedFieldsClassFailsAtBuild() {
+  public void removedFieldsOnClass() {
     IllegalStateException e =
         Assert.expectThrows(
             IllegalStateException.class, () -> evolvingCodec(RemovedFieldsClass.class));
@@ -1066,7 +1066,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void versionedBeanWithShadowedCollectionFieldBuilds() {
+  public void shadowedCollectionField() {
     RowEncoder<ShadowedCollectionV2> codec = evolvingCodec(ShadowedCollectionV2.class);
     ShadowedCollectionV2 in = new ShadowedCollectionV2();
     TaggedList<String> labels = new TaggedList<>();
@@ -1144,13 +1144,13 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test(dataProvider = "flagAsymmetryCases")
-  public void evolutionOnReaderRejectsEvolutionOffBytes(
+  public void evolutionOffBytesWithEvolutionOnReader(
       String label, byte[] offBytes, Consumer<byte[]> onDecoder) {
     Assert.expectThrows(ClassNotCompatibleException.class, () -> onDecoder.accept(offBytes));
   }
 
   @Test
-  public void evolutionOffRowReaderRejectsEvolutionOnBytes() {
+  public void evolutionOnBytesWithEvolutionOffReader() {
     DefaultsV1 v = new DefaultsV1();
     v.setName("hi");
     RowEncoder<DefaultsV1> rowOff = Encoders.buildBeanCodec(DefaultsV1.class).build().get();
@@ -1202,7 +1202,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test(dataProvider = "framedCodecs")
-  public void unknownHashSkipsPayload(String label, FramedCodec c) {
+  public void unknownHashSkip(String label, FramedCodec c) {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(64);
     c.encode.accept(buffer);
     c.encode.accept(buffer);
@@ -1218,7 +1218,7 @@ public class SchemaEvolutionEdgeCaseTest {
    * buffer holds no byte that a decode did not ask for.
    */
   @Test(dataProvider = "framedCodecs")
-  public void unknownHashSkipsStreamedPayload(String label, FramedCodec c) {
+  public void unknownHashStreamedSkip(String label, FramedCodec c) {
     MemoryBuffer encoded = MemoryBuffer.newHeapBuffer(64);
     c.encode.accept(encoded);
     int next = encoded.writerIndex();
@@ -1236,7 +1236,7 @@ public class SchemaEvolutionEdgeCaseTest {
    * because every payload carries the older hash.
    */
   @Test(dataProvider = "failingProjectionDecoders")
-  public void failedProjectionSkipsPayload(String label, Function<MemoryBuffer, Object> decoder) {
+  public void failedProjectionSkip(String label, Function<MemoryBuffer, Object> decoder) {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(64);
     for (int i = 0; i < 2; i++) {
       buffer.writeInt32(12);
@@ -1362,7 +1362,7 @@ public class SchemaEvolutionEdgeCaseTest {
    * the decode asked for, and a decode that moves back leaves the reader index before their end.
    */
   @Test(dataProvider = "framedCodecs")
-  public void sizeBelowHashRejected(String label, FramedCodec c) {
+  public void sizeBelowHash(String label, FramedCodec c) {
     MemoryBuffer encoded = MemoryBuffer.newHeapBuffer(64);
     c.encode.accept(encoded);
     // The payload keeps its valid hash, but its size prefix says 4 bytes, less than the hash.
@@ -1423,7 +1423,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void mapSuffixIsInjective() {
+  public void mapSuffixInjectivity() {
     // Build histories for a value position that contains the adversarial _K_V token and a key
     // position that also evolves, then join every (value, key) combination the way the map codec
     // does and require the joined suffixes to be distinct.
@@ -1555,7 +1555,7 @@ public class SchemaEvolutionEdgeCaseTest {
    * stays under the 255-byte limit.
    */
   @Test
-  public void projectionClassNamesAreBounded() throws IOException {
+  public void projectionClassNameLength() throws IOException {
     Path codeDir = Files.createTempDirectory("fory-projection-code");
     String previous = System.getProperty("FORY_CODE_DIR");
     System.setProperty("FORY_CODE_DIR", codeDir.toString());
@@ -1629,7 +1629,7 @@ public class SchemaEvolutionEdgeCaseTest {
   // ---------------------------------------------------------------------------
 
   @Test
-  public void mapNonBeanKeyTypeChangeFailsLoud() {
+  public void mapNonBeanKeyTypeChange() {
     MapEncoder<Map<String, DefaultsV1>> writer =
         Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
             .withSchemaEvolution()
@@ -1649,7 +1649,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void mapWithoutBeanValueTypeChangeFailsLoud() {
+  public void mapWithoutBeanValueTypeChange() {
     MapEncoder<Map<String, Long>> writer =
         Encoders.buildMapCodec(new TypeRef<Map<String, Long>>() {})
             .withSchemaEvolution()
@@ -1677,7 +1677,7 @@ public class SchemaEvolutionEdgeCaseTest {
    * expected values are the spec's framing vectors, computed independently of this implementation.
    */
   @Test
-  public void hashPrefixMatchesSpecFraming() {
+  public void hashPrefixFraming() {
     Map<String, Integer> map = new HashMap<>();
     map.put("k", 1);
     Assert.assertEquals(
@@ -1719,7 +1719,7 @@ public class SchemaEvolutionEdgeCaseTest {
    * threads do not share one exception instance and its stack trace.
    */
   @Test
-  public void projectionGenerationFailureIsCached() {
+  public void projectionGenerationFailure() {
     int[] generated = {0};
     IllegalStateException failure = new IllegalStateException("generation failed");
     ProjectionSource<Object, Object> source =
@@ -1760,7 +1760,7 @@ public class SchemaEvolutionEdgeCaseTest {
    * reject the other format's row, array, and map payloads instead of decoding wrong values.
    */
   @Test
-  public void formatMismatchIsRejected() {
+  public void formatMismatch() {
     EightByteFields bean = new EightByteFields();
     bean.setCount(7);
     bean.setName("n");
@@ -1820,7 +1820,7 @@ public class SchemaEvolutionEdgeCaseTest {
    * this implementation.
    */
   @Test
-  public void compactRowHashMatchesSpecVector() {
+  public void compactRowHashVector() {
     byte[] bytes =
         Encoders.buildBeanCodec(CompactOrderRow.class)
             .compactEncoding()
@@ -2363,7 +2363,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void removedNullableStructWasNullOnWire() {
+  public void removedNullStruct() {
     RowEncoder<NullableStructV1> writer = evolvingCodec(NullableStructV1.class);
     RowEncoder<NullableStructV2> reader = evolvingCodec(NullableStructV2.class);
     NullableStructV1 in = new NullableStructV1();
@@ -2383,7 +2383,7 @@ public class SchemaEvolutionEdgeCaseTest {
   // ---------------------------------------------------------------------------
 
   @Test
-  public void builderMethodOrderingIsCommutative() {
+  public void builderMethodOrder() {
     RowEncoder<DefaultsV1> w =
         Encoders.buildBeanCodec(DefaultsV1.class)
             .compactEncoding()
@@ -2410,7 +2410,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void nestedListSurvivesOuterProjection() {
+  public void nestedListInOuterProjection() {
     RowEncoder<NestedListV1> writer = evolvingCodec(NestedListV1.class);
     RowEncoder<NestedListV2> reader = evolvingCodec(NestedListV2.class);
     DefaultsV1 a = new DefaultsV1();
@@ -2537,7 +2537,7 @@ public class SchemaEvolutionEdgeCaseTest {
    * the outer sees them) but the contract is documented and future callers may rely on it.
    */
   @Test
-  public void schemaHistoryCurrentReflectsCurrentInnerVersions() {
+  public void schemaHistoryCurrentInnerVersions() {
     SchemaHistory history =
         SchemaHistory.build(CrossOuterV2_InnerV2.class, SchemaHistory.Format.STANDARD);
     SchemaHistory.VersionedSchema current = history.current();
@@ -2640,7 +2640,7 @@ public class SchemaEvolutionEdgeCaseTest {
   // ---------------------------------------------------------------------------
 
   @Test
-  public void rowUnknownSchemaHashFailsLoudly() {
+  public void rowUnknownSchemaHash() {
     ChainV2 writer = new ChainV2();
     writer.setA(7);
     writer.setB("foreign");
@@ -2651,7 +2651,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void mapUnknownSchemaHashFailsLoudly() {
+  public void mapUnknownSchemaHash() {
     MapEncoder<Map<String, ChainV2>> writer =
         Encoders.buildMapCodec(new TypeRef<Map<String, ChainV2>>() {})
             .withSchemaEvolution()
@@ -2673,7 +2673,7 @@ public class SchemaEvolutionEdgeCaseTest {
   }
 
   @Test
-  public void arrayUnknownSchemaHashFailsLoudly() {
+  public void arrayUnknownSchemaHash() {
     ArrayEncoder<List<ChainV2>> writer =
         Encoders.buildArrayCodec(new TypeRef<List<ChainV2>>() {})
             .withSchemaEvolution()

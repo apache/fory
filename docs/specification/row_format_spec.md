@@ -415,13 +415,9 @@ and limitations.
   Unicode code point (equivalently, byte-wise over the UTF-8 encodings). Duplicate wire names
   within one version are invalid.
 - The compact format then sorts the fields of every struct, at every depth (including structs in
-  list elements and in map keys and values), with a stable sort over the canonical order. The
-  sort key is the field's slot width `w`: the [fixed width](#fixed-width-calculation) of a
-  fixed-width field, and 8 for a variable-width field. A field whose `w` is 2, 4, or a multiple
-  of 8 sorts before a field with any other `w`. Within each of those two groups, a larger `w`
-  sorts first, and fields with equal `w` keep their canonical order. For example, a `string` and
-  an `int64` keep their canonical order, and a 12-byte inline struct `{int64, int32}` sorts after
-  an `int16` and before a `bool`.
+  list elements and in map keys and values), by the
+  [Field Sorting Algorithm](#field-sorting-algorithm). Fields with equal sort keys keep their
+  canonical order.
 - A custom codec's encoded shape (its struct children, their names, and their order) is fixed by
   the codec's own definition, not by name sorting, and must be reproduced identically in every
   runtime that registers an equivalent codec. The codec's order is the canonical order of its

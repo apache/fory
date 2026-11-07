@@ -330,7 +330,7 @@ final class SchemaHistory {
     // ignores list element nullability and fixed-size binary width, so it would merge a
     // List<Integer> layout with an int[] layout and drop one of their hashes. The guard on
     // hashToSchema below rejects most real strict-hash collisions (two distinct schemas with one
-    // hash), but not all of them.
+    // hash), but not all of them. Their odds are about 2^-64.
     int latestVersion = schemaVersions.last();
     Map<Long, VersionedSchema> byHash = new LinkedHashMap<>();
     // A removed field that a live field adds again with the same wire name and declared type holds
@@ -823,7 +823,7 @@ final class SchemaHistory {
       // A live field still exists as a Java member, so it has no end-of-life version. A finite
       // until would silently drop it from the current schema (until extends the version set, so
       // latestVersion >= until excludes the field), and the writer would stop serializing a field
-      // the bean still has. Removals are declared on the history class via
+      // the bean still has. Removals are declared on the history interface via
       // @ForyRowSchema.removedFields.
       if (until != Integer.MAX_VALUE) {
         throw new IllegalStateException(
@@ -833,10 +833,9 @@ final class SchemaHistory {
                 + d.getName()
                 + ": a live field must not set until ("
                 + until
-                + "). Declare removed fields on the @ForyRowSchema.removedFields history class instead.");
+                + "). Declare removed fields on the @ForyRowSchema.removedFields history interface"
+                + " instead.");
       }
-      // No since/until ordering check here: a live field always has until == MAX_VALUE (enforced
-      // above), so the ordering check lives only on the removed-field path in collectRemovedFields.
       String wireName = wireName(beanClass, d);
       out.add(new FieldEntry(wireName, d.getName(), d.getTypeRef(), since, until, /*live*/ true));
     }
@@ -1152,8 +1151,8 @@ final class SchemaHistory {
 
     /**
      * Java member name used for canonical ordering. Matches {@link Descriptor#getName} so live
-     * fields and removed fields (declared on the history class) sort into the same order as {@link
-     * TypeInference#inferSchema} produces.
+     * fields and removed fields (declared on the history interface) sort into the same order as
+     * {@link TypeInference#inferSchema} produces.
      */
     final String javaName;
 

@@ -174,7 +174,7 @@ public class SchemaEvolutionTest {
    * evolution writer sorts the struct inside the list element too.
    */
   @Test
-  public void compactSchemaMatchesEvolutionOff() {
+  public void compactSchemaWithEvolutionOff() {
     Assert.assertEquals(
         Encoders.buildBeanCodec(PairListV2.class)
             .compactEncoding()
@@ -581,7 +581,7 @@ public class SchemaEvolutionTest {
   // regression skipping the evolution path for an unversioned element would not produce.
 
   @Test
-  public void arrayOfUnversionedBeanCarriesHashPrefix() {
+  public void arrayOfUnversionedBean() {
     ArrayEncoder<List<Item>> evolving =
         Encoders.buildArrayCodec(new TypeRef<List<Item>>() {}).withSchemaEvolution().build().get();
     ArrayEncoder<List<Item>> plain =
@@ -605,7 +605,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void mapOfUnversionedBeanCarriesHashPrefix() {
+  public void mapOfUnversionedBean() {
     MapEncoder<Map<String, Item>> evolving =
         Encoders.buildMapCodec(new TypeRef<Map<String, Item>>() {})
             .withSchemaEvolution()
@@ -690,7 +690,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void interfaceAddedOptionalFieldIsEmpty() {
+  public void interfaceAddedOptionalField() {
     PersonIfaceV1 in =
         new PersonIfaceV1() {
           public String getName() {
@@ -720,7 +720,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void interfaceAddedDefaultAccessorIsAbsent() {
+  public void interfaceAddedDefaultAccessor() {
     PersonIfaceV1 in =
         new PersonIfaceV1() {
           public String getName() {
@@ -843,7 +843,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void projectionNonAccessorOverloadStillThrows() {
+  public void projectionNonAccessorOverload() {
     RowEncoder<ScoredV1> v1Writer = evolvingCodec(ScoredV1.class);
     RowEncoder<ScoredV2> reader = evolvingCodec(ScoredV2.class);
     ScoredV1 in = () -> "alice";
@@ -1020,7 +1020,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void typeChangeWithSameRowTypeRejected() {
+  public void typeChangeWithSameRowType() {
     try {
       evolvingCodec(TicketV3.class);
       Assert.fail("expected the codec build to reject the type change");
@@ -1051,7 +1051,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void readdedFieldWithNewTypeDiscarded() {
+  public void readdedFieldWithNewType() {
     CounterTextV1 in = new CounterTextV1();
     in.setCount("forty-two");
     CounterIntV3 out =
@@ -1438,7 +1438,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void addedReferenceFieldsDefaultToNull() {
+  public void addedReferenceFields() {
     RowEncoder<HolderV1> writer = evolvingCodec(HolderV1.class);
     RowEncoder<HolderV2> reader = evolvingCodec(HolderV2.class);
 
@@ -1776,7 +1776,7 @@ public class SchemaEvolutionTest {
    * it did.
    */
   @Test
-  public void terminalCodecFieldIsNotIntrospected() {
+  public void terminalCodecField() {
     Encoders.registerCustomCodec(ContactV1.class, Handle.class, new HandleCodec());
     Encoders.registerCustomCodec(ContactV2.class, Handle.class, new HandleCodec());
 
@@ -1805,7 +1805,7 @@ public class SchemaEvolutionTest {
    * carries a loader that can see neither Fory nor the bean classes.
    */
   @Test
-  public void projectionCompileUsesBuildTimeClassLoader() throws Exception {
+  public void projectionClassLoader() throws Exception {
     RowEncoder<PersonV1> oldWriter = evolvingCodec(PersonV1.class);
     RowEncoder<PersonV2> newReader = evolvingCodec(PersonV2.class);
     PersonV1 in = new PersonV1();
@@ -2014,7 +2014,7 @@ public class SchemaEvolutionTest {
    * old-writer/new-reader contract.
    */
   @Test(expectedExceptions = ClassNotCompatibleException.class)
-  public void newerPayloadRejected() {
+  public void newerPayload() {
     RowEncoder<PersonV2> newWriter = evolvingCodec(PersonV2.class);
     RowEncoder<PersonV1> oldReader = evolvingCodec(PersonV1.class);
 
@@ -2027,7 +2027,7 @@ public class SchemaEvolutionTest {
   }
 
   @Test
-  public void projectedDecodeAddsNoWritersToEncoderWriter() throws Exception {
+  public void encoderWriterAfterProjectedDecode() throws Exception {
     byte[] bytes = evolvingCodec(OuterV1.class).encode(sampleV1());
     BinaryRowWriter rowWriter = new BinaryRowWriter(TypeInference.inferSchema(OuterV2.class));
     RowEncoder<OuterV2> reader =

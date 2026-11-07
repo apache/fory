@@ -48,7 +48,7 @@ public class SchemaHistoryTest {
    * shared hash would route an old payload to the wrong projection codec.
    */
   @Test
-  public void structBoundaryDoesNotCollide() {
+  public void structBoundaryHash() {
     Schema fieldOutsideStruct =
         DataTypes.schema(DataTypes.field("a", DataTypes.struct(field("x")), false), field("b"));
     Schema fieldInsideStruct =
@@ -64,7 +64,7 @@ public class SchemaHistoryTest {
    * nested struct that contains that sibling, the minimal form of the boundary ambiguity.
    */
   @Test
-  public void emptyStructBoundaryDoesNotCollide() {
+  public void emptyStructBoundaryHash() {
     Schema emptyThenSibling =
         DataTypes.schema(DataTypes.field("a", DataTypes.struct(), false), field("b"));
     Schema siblingInsideStruct =
@@ -79,7 +79,7 @@ public class SchemaHistoryTest {
    * Structurally identical schemas must still hash equal; the delimiter must not over-discriminate.
    */
   @Test
-  public void identicalNestedStructsHashEqual() {
+  public void identicalNestedStructsHash() {
     assertEquals(
         SchemaHistory.computeStrictSchemaHash(
             STANDARD,
@@ -98,7 +98,7 @@ public class SchemaHistoryTest {
    * layout. This guards the dedicated decimal branch in {@code hashFieldShape}.
    */
   @Test
-  public void decimalPrecisionAndScaleDoNotCollide() {
+  public void decimalPrecisionAndScaleHash() {
     long p10s2 =
         SchemaHistory.computeStrictSchemaHash(
             STANDARD, DataTypes.schema(DataTypes.field("a", DataTypes.decimal(10, 2), false)));
@@ -120,7 +120,7 @@ public class SchemaHistoryTest {
    * route to a projection codec with the wrong slot width.
    */
   @Test
-  public void binaryWidthDoesNotCollide() {
+  public void binaryWidthHash() {
     long variable =
         SchemaHistory.computeStrictSchemaHash(
             STANDARD, DataTypes.schema(DataTypes.field("a", DataTypes.binary(), false)));
@@ -148,7 +148,7 @@ public class SchemaHistoryTest {
    * it with rename guidance.
    */
   @Test
-  public void divergentWireNameOrderIsRejected() {
+  public void divergentWireNameOrder() {
     IllegalStateException e =
         expectThrows(
             IllegalStateException.class,
@@ -162,7 +162,7 @@ public class SchemaHistoryTest {
    * nested bean's own enumeration runs the order check.
    */
   @Test
-  public void divergentWireNameOrderInNestedBeanIsRejected() {
+  public void divergentWireNameOrderInNestedBean() {
     IllegalStateException e =
         expectThrows(
             IllegalStateException.class,
@@ -176,7 +176,7 @@ public class SchemaHistoryTest {
    * an underscore in a live member name and in a removed-field declaration.
    */
   @Test
-  public void underscoreMemberNameIsRejected() {
+  public void underscoreMemberName() {
     IllegalStateException live =
         expectThrows(
             IllegalStateException.class,
@@ -226,7 +226,7 @@ public class SchemaHistoryTest {
 
   /** Identical decimal shapes must still hash equal; the precision/scale mix must not be noisy. */
   @Test
-  public void identicalDecimalsHashEqual() {
+  public void identicalDecimalsHash() {
     assertEquals(
         SchemaHistory.computeStrictSchemaHash(
             STANDARD, DataTypes.schema(DataTypes.field("a", DataTypes.decimal(10, 2), false))),
@@ -242,7 +242,7 @@ public class SchemaHistoryTest {
    * property, so the combined hash does not depend on those two facts.
    */
   @Test
-  public void combineHashesIsOrderSensitive() {
+  public void combineHashesOrder() {
     long a = 0x0123456789abcdefL;
     long b = 0x7766554433221100L;
     assertNotEquals(SchemaHistory.combineHashes(a, b), SchemaHistory.combineHashes(b, a));
@@ -256,7 +256,7 @@ public class SchemaHistoryTest {
    * first fails reading the missing element. The bean inside the bound must be discovered instead.
    */
   @Test
-  public void typeVariableBoundedToWrapperResolvesToInnerBean() {
+  public void typeVariableBoundedToWrapper() {
     TypeVariable<?> boundedToOptionalBean = OptionalBeanHolder.class.getTypeParameters()[0];
     assertEquals(SchemaHistory.evolutionBean(TypeRef.of(boundedToOptionalBean)), Inner.class);
   }
@@ -279,7 +279,7 @@ public class SchemaHistoryTest {
    * the assertion has teeth.
    */
   @Test
-  public void currentSchemaMatchesInferSchema() {
+  public void currentSchemaAndInferSchema() {
     for (Class<?> bean :
         new Class<?>[] {
           OutOfOrderFields.class, NestedHolder.class, CollectionHolder.class, EvolvingBean.class
@@ -297,7 +297,7 @@ public class SchemaHistoryTest {
    * agree, or a current-version compact payload hashes one order and writes another.
    */
   @Test
-  public void compactCurrentSchemaMatchesCodecOrder() {
+  public void compactCurrentSchemaOrder() {
     for (Class<?> bean :
         new Class<?>[] {
           OutOfOrderFields.class, NestedHolder.class, CollectionHolder.class, EvolvingBean.class
@@ -347,7 +347,7 @@ public class SchemaHistoryTest {
    * layout must hash the same.
    */
   @Test
-  public void compactHashFollowsWireOrderInsideCollections() {
+  public void compactHashWireOrderInCollections() {
     SchemaHistory plain = SchemaHistory.build(PlainCollectionHolder.class, COMPACT);
     SchemaHistory versioned = SchemaHistory.build(VersionedCollectionHolder.class, COMPACT);
     assertEquals(plain.current().strictHash(), versioned.current().strictHash());
@@ -451,7 +451,7 @@ public class SchemaHistoryTest {
    * enumerate combinations that put it at two versions.
    */
   @Test
-  public void sharedNestedClassHasOneVersionPerCombination() {
+  public void sharedNestedClassVersions() {
     SchemaHistory history = SchemaHistory.build(SharedOuter.class, STANDARD);
     assertEquals(history.versions().size(), 4);
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
@@ -490,7 +490,7 @@ public class SchemaHistoryTest {
    * live, so that its value is read.
    */
   @Test
-  public void collapsedVersionsKeepReaddedFieldLive() {
+  public void collapsedVersionsWithReaddedField() {
     SchemaHistory history = SchemaHistory.build(ReaddedField.class, STANDARD);
     assertEquals(history.versions().size(), 2);
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
@@ -519,7 +519,7 @@ public class SchemaHistoryTest {
    * current one, and the history must reject the type change.
    */
   @Test
-  public void permutedCodecChildrenTypeChangeRejectedInCompact() {
+  public void compactPermutedCodecChildrenTypeChange() {
     Field wide = DataTypes.field("wide", DataTypes.int64(), false);
     Field narrow = DataTypes.field("narrow", DataTypes.int32(), false);
     Encoders.registerCustomCodec(
@@ -590,7 +590,7 @@ public class SchemaHistoryTest {
    * discards the old value.
    */
   @Test
-  public void equalWidthCodecChildrenKeepOrderInCompact() {
+  public void compactEqualWidthCodecChildren() {
     Field x = DataTypes.field("x", DataTypes.int64(), false);
     Field y = DataTypes.field("y", DataTypes.int64(), false);
     Encoders.registerCustomCodec(

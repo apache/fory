@@ -97,11 +97,9 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     // combination so distinct cross-product entries get distinct generated classes; the nested-bean
     // version map directs the projection codec to embed the right inner projection class.
     //
-    // Keyed by the raw strict hash straight from SchemaHistory, whose versions() hold one entry per
-    // strict hash, so the keys are unique and none is the current hash. No builder-side collision
-    // check is needed here, unlike the map codec, whose key is a combined (key, value) hash that
-    // is computed outside SchemaHistory. Two distinct layouts with one strict hash would share an
-    // entry. SchemaHistory rejects most, not all, such collisions, which have odds of about 2^-64.
+    // Keyed by the strict hash: SchemaHistory.versions() holds one entry per strict hash, so the
+    // keys are unique and none is the current hash. The map codec needs its own collision check
+    // because its combined (key, value) hash is computed outside SchemaHistory.
     final LongMap<RowProjectionSource> projectionSources = new LongMap<>();
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
       if (vs == currentVersion) {
