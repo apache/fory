@@ -1453,6 +1453,7 @@ public class JsonAsyncCompilationTest {
             false,
             false,
             failOnMissingRequiredProperties,
+            false,
             JsonByteArray.Format.BASE64,
             true,
             true,

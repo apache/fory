@@ -90,6 +90,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
   private final AnyInfo anyInfo;
   private final JsonUnwrappedInfo unwrappedInfo;
   private final int graphMemoryBytes;
+  private final boolean failOnDuplicateProperties;
   private boolean directTypesResolved;
 
   private ObjectCodec(
@@ -100,7 +101,8 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
       AnyInfo anyInfo,
       String[] skippedNames,
       JsonUnwrappedInfo unwrappedInfo,
-      ObjectInstantiator<?> instantiator) {
+      ObjectInstantiator<?> instantiator,
+      boolean failOnDuplicateProperties) {
     this.type = type;
     this.writeFields = writeFields;
     this.readFields = readFields;
@@ -112,6 +114,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             : new JsonFieldTable(readFields, skippedNames);
     this.instantiator = instantiator;
     this.creatorInfo = creatorInfo;
+    this.failOnDuplicateProperties = failOnDuplicateProperties;
     graphMemoryBytes =
         creatorInfo != null && creatorInfo.fixedInstance()
             ? 0
@@ -172,6 +175,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
       String[] skippedNames,
       JsonUnwrappedInfo unwrappedInfo,
       ObjectInstantiator<?> instantiator,
+      boolean failOnDuplicateProperties,
       JsonValidatorInfo validatorInfo) {
     Class<?> type = ownerType.getRawType();
     if (creatorInfo != null && creatorInfo.fixedInstance()) {
@@ -185,6 +189,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             skippedNames,
             unwrappedInfo,
             instantiator,
+            failOnDuplicateProperties,
             validatorInfo);
       }
       return new FixedObjectCodec<>(
@@ -195,7 +200,8 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           anyInfo,
           skippedNames,
           unwrappedInfo,
-          instantiator);
+          instantiator,
+          failOnDuplicateProperties);
     }
     if (ownerType.getType() instanceof Class) {
       if (validatorInfo != null) {
@@ -208,6 +214,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             skippedNames,
             unwrappedInfo,
             instantiator,
+            failOnDuplicateProperties,
             validatorInfo);
       }
       return new ObjectCodec<>(
@@ -218,7 +225,8 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           anyInfo,
           skippedNames,
           unwrappedInfo,
-          instantiator);
+          instantiator,
+          failOnDuplicateProperties);
     }
     if (validatorInfo != null) {
       return new ValidatingParameterizedCodec<>(
@@ -230,6 +238,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           skippedNames,
           unwrappedInfo,
           instantiator,
+          failOnDuplicateProperties,
           validatorInfo);
     }
     return new ParameterizedObjectCodec<>(
@@ -240,7 +249,8 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         anyInfo,
         skippedNames,
         unwrappedInfo,
-        instantiator);
+        instantiator,
+        failOnDuplicateProperties);
   }
 
   /** Returns whether hosted metadata must retain this method for object discovery. */
@@ -271,6 +281,12 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
 
   public final JsonFieldInfo[] readFields() {
     return readFields;
+  }
+
+  /** Returns whether reading this type rejects a repeated known property. */
+  @Internal
+  public final boolean failOnDuplicateProperties() {
+    return failOnDuplicateProperties;
   }
 
   public final JsonFieldTable readTable() {
@@ -454,6 +470,45 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
     return written;
   }
 
+  // Interpreted strict reads keep one bit per known member of the object being read. Generated
+  // readers keep the same bits in locals instead.
+  private long[] newSeenProperties(int count) {
+    return failOnDuplicateProperties ? new long[(count + Long.SIZE - 1) >>> 6] : null;
+  }
+
+  private void markRead(long[] seen, int index, String name) {
+    int word = index >>> 6;
+    long bit = 1L << index;
+    long bits = seen[word];
+    if ((bits & bit) != 0) {
+      JsonFieldInfo.rejectDuplicateProperty(name, type.getName());
+    }
+    seen[word] = bits | bit;
+  }
+
+  private void markUnwrappedRead(long[] seen, int index) {
+    int word = index >>> 6;
+    long bit = 1L << index;
+    long bits = seen[word];
+    if ((bits & bit) != 0) {
+      JsonFieldInfo.rejectDuplicateProperty(unwrappedPropertyName(index), type.getName());
+    }
+    seen[word] = bits | bit;
+  }
+
+  private int unwrappedDirectCount() {
+    return creatorInfo != null ? creatorInfo.fields().length : readFields.length;
+  }
+
+  private String unwrappedPropertyName(int index) {
+    int directCount = unwrappedDirectCount();
+    if (index < directCount) {
+      return creatorInfo != null ? creatorInfo.fields()[index].name() : readFields[index].name();
+    }
+    ReadRoute route = unwrappedInfo.readRoutes()[index - directCount];
+    return route.field() != null ? route.field().name() : route.creatorField().name();
+  }
+
   private boolean reservedAnyHash(long hash) {
     // These names belong to the child's declared schema and must never be reintroduced through
     // Any. Inline discriminators are different: their parent codec owns the fixed-schema check and
@@ -511,6 +566,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
     if (anyInfo != null && anyInfo.readEnabled()) {
       return readLatin1AnyObject(reader, readTable);
     }
+    if (failOnDuplicateProperties && creatorInfo == null) {
+      return readLatin1StrictFixedObject(reader);
+    }
     return readLatin1FixedObject(reader);
   }
 
@@ -560,12 +618,52 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
     return object;
   }
 
+  // Kept apart from the lenient loop: one extra check per member in that loop measurably slows
+  // interpreted reads of ordinary beans.
+  private T readLatin1StrictFixedObject(Latin1JsonReader reader) {
+    reader.enterDepth();
+    reader.reserveGraphMemory(graphMemoryBytes);
+    T object = newInstance();
+    reader.expect('{');
+    if (reader.consume('}')) {
+      reader.exitDepth();
+      return object;
+    }
+    long[] seen = newSeenProperties(readFields.length);
+    int expectedIndex = 0;
+    do {
+      JsonFieldInfo field;
+      if (expectedIndex < readFields.length
+          && tryReadLatin1Field(reader, readFields[expectedIndex])) {
+        field = readFields[expectedIndex++];
+      } else {
+        field = reader.readField(readTable);
+        reader.expect(':');
+        if (field != null) {
+          expectedIndex = field.readIndex() + 1;
+        }
+      }
+      if (field == null) {
+        reader.skipValue();
+      } else {
+        markRead(seen, field.readIndex(), field.name());
+        field.readLatin1(reader, object);
+      }
+    } while (reader.consume(','));
+    reader.expect('}');
+    reader.exitDepth();
+    return object;
+  }
+
   T readUtf16Object(Utf16JsonReader reader) {
     if (unwrappedInfo != null) {
       return readUtf16UnwrappedObject(reader, readTable);
     }
     if (anyInfo != null && anyInfo.readEnabled()) {
       return readUtf16AnyObject(reader, readTable);
+    }
+    if (failOnDuplicateProperties && creatorInfo == null) {
+      return readUtf16StrictFixedObject(reader);
     }
     return readUtf16FixedObject(reader);
   }
@@ -616,12 +714,50 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
     return object;
   }
 
+  private T readUtf16StrictFixedObject(Utf16JsonReader reader) {
+    reader.enterDepth();
+    reader.reserveGraphMemory(graphMemoryBytes);
+    T object = newInstance();
+    reader.expect('{');
+    if (reader.consume('}')) {
+      reader.exitDepth();
+      return object;
+    }
+    long[] seen = newSeenProperties(readFields.length);
+    int expectedIndex = 0;
+    do {
+      JsonFieldInfo field;
+      if (expectedIndex < readFields.length
+          && tryReadUtf16Field(reader, readFields[expectedIndex])) {
+        field = readFields[expectedIndex++];
+      } else {
+        field = reader.readField(readTable);
+        reader.expect(':');
+        if (field != null) {
+          expectedIndex = field.readIndex() + 1;
+        }
+      }
+      if (field == null) {
+        reader.skipValue();
+      } else {
+        markRead(seen, field.readIndex(), field.name());
+        field.readUtf16(reader, object);
+      }
+    } while (reader.consume(','));
+    reader.expect('}');
+    reader.exitDepth();
+    return object;
+  }
+
   T readUtf8Object(Utf8JsonReader reader) {
     if (unwrappedInfo != null) {
       return readUtf8UnwrappedObject(reader, readTable);
     }
     if (anyInfo != null && anyInfo.readEnabled()) {
       return readUtf8AnyObject(reader, readTable);
+    }
+    if (failOnDuplicateProperties && creatorInfo == null) {
+      return readUtf8StrictFixedObject(reader);
     }
     return readUtf8FixedObject(reader);
   }
@@ -672,6 +808,41 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
     return object;
   }
 
+  private T readUtf8StrictFixedObject(Utf8JsonReader reader) {
+    reader.enterDepth();
+    reader.reserveGraphMemory(graphMemoryBytes);
+    T object = newInstance();
+    reader.expect('{');
+    if (reader.consume('}')) {
+      reader.exitDepth();
+      return object;
+    }
+    long[] seen = newSeenProperties(readFields.length);
+    int expectedIndex = 0;
+    do {
+      JsonFieldInfo field;
+      if (expectedIndex < readFields.length
+          && tryReadUtf8Field(reader, readFields[expectedIndex])) {
+        field = readFields[expectedIndex++];
+      } else {
+        field = reader.readField(readTable);
+        reader.expect(':');
+        if (field != null) {
+          expectedIndex = field.readIndex() + 1;
+        }
+      }
+      if (field == null) {
+        reader.skipValue();
+      } else {
+        markRead(seen, field.readIndex(), field.name());
+        field.readUtf8(reader, object);
+      }
+    } while (reader.consume(','));
+    reader.expect('}');
+    reader.exitDepth();
+    return object;
+  }
+
   @Override
   public T readLatin1(Latin1JsonReader reader) {
     Latin1ReaderCodec<T> codec = reader.typeResolver().latin1Reader(this);
@@ -714,6 +885,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
     Group[] resolvedGroups = unwrappedInfo.groups();
     Object[] groupWorkspaces = new Object[resolvedGroups.length];
     boolean[] present = new boolean[resolvedGroups.length];
+    long[] seen = newSeenProperties(unwrappedDirectCount() + unwrappedInfo.readRoutes().length);
     Map<Object, Object> anyMap = null;
     boolean newAnyMap = false;
     Latin1ReaderCodec<Object> anyReader =
@@ -726,6 +898,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         int direct = creatorInfo != null ? creatorInfo.index(hash) : directTable.match(hash);
         reader.expect(':');
         if (direct >= 0) {
+          if (seen != null) {
+            markUnwrappedRead(seen, direct);
+          }
           if (creatorInfo == null) {
             readFields[direct].readLatin1(reader, rootWorkspace);
           } else {
@@ -743,6 +918,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         }
         int routeIndex = unwrappedInfo.match(hash);
         if (routeIndex >= 0) {
+          if (seen != null) {
+            markUnwrappedRead(seen, unwrappedDirectCount() + routeIndex);
+          }
           readLatin1Route(reader, unwrappedInfo.readRoutes()[routeIndex], groupWorkspaces, present);
         } else if (routeIndex == JsonUnwrappedInfo.SKIP || anyReader == null) {
           reader.skipValue();
@@ -787,6 +965,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
     Group[] resolvedGroups = unwrappedInfo.groups();
     Object[] groupWorkspaces = new Object[resolvedGroups.length];
     boolean[] present = new boolean[resolvedGroups.length];
+    long[] seen = newSeenProperties(unwrappedDirectCount() + unwrappedInfo.readRoutes().length);
     Map<Object, Object> anyMap = null;
     boolean newAnyMap = false;
     Utf16ReaderCodec<Object> anyReader =
@@ -799,6 +978,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         int direct = creatorInfo != null ? creatorInfo.index(hash) : directTable.match(hash);
         reader.expect(':');
         if (direct >= 0) {
+          if (seen != null) {
+            markUnwrappedRead(seen, direct);
+          }
           if (creatorInfo == null) {
             readFields[direct].readUtf16(reader, rootWorkspace);
           } else {
@@ -816,6 +998,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         }
         int routeIndex = unwrappedInfo.match(hash);
         if (routeIndex >= 0) {
+          if (seen != null) {
+            markUnwrappedRead(seen, unwrappedDirectCount() + routeIndex);
+          }
           readUtf16Route(reader, unwrappedInfo.readRoutes()[routeIndex], groupWorkspaces, present);
         } else if (routeIndex == JsonUnwrappedInfo.SKIP || anyReader == null) {
           reader.skipValue();
@@ -860,6 +1045,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
     Group[] resolvedGroups = unwrappedInfo.groups();
     Object[] groupWorkspaces = new Object[resolvedGroups.length];
     boolean[] present = new boolean[resolvedGroups.length];
+    long[] seen = newSeenProperties(unwrappedDirectCount() + unwrappedInfo.readRoutes().length);
     Map<Object, Object> anyMap = null;
     boolean newAnyMap = false;
     Utf8ReaderCodec<Object> anyReader =
@@ -872,6 +1058,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         int direct = creatorInfo != null ? creatorInfo.index(hash) : directTable.match(hash);
         reader.expect(':');
         if (direct >= 0) {
+          if (seen != null) {
+            markUnwrappedRead(seen, direct);
+          }
           if (creatorInfo == null) {
             readFields[direct].readUtf8(reader, rootWorkspace);
           } else {
@@ -889,6 +1078,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         }
         int routeIndex = unwrappedInfo.match(hash);
         if (routeIndex >= 0) {
+          if (seen != null) {
+            markUnwrappedRead(seen, unwrappedDirectCount() + routeIndex);
+          }
           readUtf8Route(reader, unwrappedInfo.readRoutes()[routeIndex], groupWorkspaces, present);
         } else if (routeIndex == JsonUnwrappedInfo.SKIP || anyReader == null) {
           reader.skipValue();
@@ -1047,6 +1239,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
     T object = newInstance();
     Map<Object, Object> anyMap = null;
     boolean newMap = false;
+    long[] seen = newSeenProperties(readFields.length);
     Latin1ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.latin1Reader();
     reader.expect('{');
     if (!reader.consume('}')) {
@@ -1065,6 +1258,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           }
         }
         if (match >= 0) {
+          if (seen != null) {
+            markRead(seen, match, readFields[match].name());
+          }
           readFields[match].readLatin1(reader, object);
         } else if (match == JsonFieldTable.SKIP) {
           reader.skipValue();
@@ -1105,6 +1301,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
     T object = newInstance();
     Map<Object, Object> anyMap = null;
     boolean newMap = false;
+    long[] seen = newSeenProperties(readFields.length);
     Utf16ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf16Reader();
     reader.expect('{');
     if (!reader.consume('}')) {
@@ -1123,6 +1320,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           }
         }
         if (match >= 0) {
+          if (seen != null) {
+            markRead(seen, match, readFields[match].name());
+          }
           readFields[match].readUtf16(reader, object);
         } else if (match == JsonFieldTable.SKIP) {
           reader.skipValue();
@@ -1163,6 +1363,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
     T object = newInstance();
     Map<Object, Object> anyMap = null;
     boolean newMap = false;
+    long[] seen = newSeenProperties(readFields.length);
     Utf8ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf8Reader();
     reader.expect('{');
     if (!reader.consume('}')) {
@@ -1181,6 +1382,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           }
         }
         if (match >= 0) {
+          if (seen != null) {
+            markRead(seen, match, readFields[match].name());
+          }
           readFields[match].readUtf8(reader, object);
         } else if (match == JsonFieldTable.SKIP) {
           reader.skipValue();
@@ -1219,6 +1423,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
   private Object[] readLatin1AnyCreatorArguments(Latin1JsonReader reader, JsonFieldTable table) {
     Object[] arguments = creatorInfo.newArguments();
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
+    long[] seen = newSeenProperties(fields.length);
     Map<Object, Object> anyMap = null;
     Latin1ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.latin1Reader();
     reader.expect('{');
@@ -1240,6 +1445,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         }
         if (index >= 0) {
           JsonCreatorFieldInfo field = fields[index];
+          if (seen != null) {
+            markRead(seen, index, field.name());
+          }
           if (!field.skipNullRead(reader)) {
             arguments[field.argumentIndex()] = field.readLatin1(reader);
           }
@@ -1272,6 +1480,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
   private Object[] readUtf16AnyCreatorArguments(Utf16JsonReader reader, JsonFieldTable table) {
     Object[] arguments = creatorInfo.newArguments();
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
+    long[] seen = newSeenProperties(fields.length);
     Map<Object, Object> anyMap = null;
     Utf16ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf16Reader();
     reader.expect('{');
@@ -1293,6 +1502,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         }
         if (index >= 0) {
           JsonCreatorFieldInfo field = fields[index];
+          if (seen != null) {
+            markRead(seen, index, field.name());
+          }
           if (!field.skipNullRead(reader)) {
             arguments[field.argumentIndex()] = field.readUtf16(reader);
           }
@@ -1325,6 +1537,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
   private Object[] readUtf8AnyCreatorArguments(Utf8JsonReader reader, JsonFieldTable table) {
     Object[] arguments = creatorInfo.newArguments();
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
+    long[] seen = newSeenProperties(fields.length);
     Map<Object, Object> anyMap = null;
     Utf8ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf8Reader();
     reader.expect('{');
@@ -1346,6 +1559,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         }
         if (index >= 0) {
           JsonCreatorFieldInfo field = fields[index];
+          if (seen != null) {
+            markRead(seen, index, field.name());
+          }
           if (!field.skipNullRead(reader)) {
             arguments[field.argumentIndex()] = field.readUtf8(reader);
           }
@@ -1378,6 +1594,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
   private Object[] readLatin1CreatorArguments(Latin1JsonReader reader) {
     Object[] arguments = creatorInfo.newArguments();
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
+    long[] seen = newSeenProperties(fields.length);
     reader.expect('{');
     if (!reader.consume('}')) {
       int expectedIndex = 0;
@@ -1396,6 +1613,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           reader.skipValue();
         } else {
           JsonCreatorFieldInfo field = fields[index];
+          if (seen != null) {
+            markRead(seen, index, field.name());
+          }
           if (!field.skipNullRead(reader)) {
             arguments[field.argumentIndex()] = field.readLatin1(reader);
           }
@@ -1409,6 +1629,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
   private Object[] readUtf16CreatorArguments(Utf16JsonReader reader) {
     Object[] arguments = creatorInfo.newArguments();
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
+    long[] seen = newSeenProperties(fields.length);
     reader.expect('{');
     if (!reader.consume('}')) {
       int expectedIndex = 0;
@@ -1427,6 +1648,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           reader.skipValue();
         } else {
           JsonCreatorFieldInfo field = fields[index];
+          if (seen != null) {
+            markRead(seen, index, field.name());
+          }
           if (!field.skipNullRead(reader)) {
             arguments[field.argumentIndex()] = field.readUtf16(reader);
           }
@@ -1440,6 +1664,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
   private Object[] readUtf8CreatorArguments(Utf8JsonReader reader) {
     Object[] arguments = creatorInfo.newArguments();
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
+    long[] seen = newSeenProperties(fields.length);
     reader.expect('{');
     if (!reader.consume('}')) {
       int expectedIndex = 0;
@@ -1458,6 +1683,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           reader.skipValue();
         } else {
           JsonCreatorFieldInfo field = fields[index];
+          if (seen != null) {
+            markRead(seen, index, field.name());
+          }
           if (!field.skipNullRead(reader)) {
             arguments[field.argumentIndex()] = field.readUtf8(reader);
           }
@@ -2098,7 +2326,8 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         AnyInfo anyInfo,
         String[] skippedNames,
         JsonUnwrappedInfo unwrappedInfo,
-        ObjectInstantiator<?> instantiator) {
+        ObjectInstantiator<?> instantiator,
+        boolean failOnDuplicateProperties) {
       super(
           type,
           writeFields,
@@ -2107,7 +2336,8 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           anyInfo,
           skippedNames,
           unwrappedInfo,
-          instantiator);
+          instantiator,
+          failOnDuplicateProperties);
       instance = (T) type.cast(creatorInfo.create(null));
     }
 
@@ -2246,6 +2476,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         String[] skippedNames,
         JsonUnwrappedInfo unwrappedInfo,
         ObjectInstantiator<?> instantiator,
+        boolean failOnDuplicateProperties,
         JsonValidatorInfo validatorInfo) {
       super(
           type,
@@ -2255,7 +2486,8 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           anyInfo,
           skippedNames,
           unwrappedInfo,
-          instantiator);
+          instantiator,
+          failOnDuplicateProperties);
       this.validatorInfo = validatorInfo;
     }
 
@@ -2322,7 +2554,8 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         AnyInfo anyInfo,
         String[] skippedNames,
         JsonUnwrappedInfo unwrappedInfo,
-        ObjectInstantiator<?> instantiator) {
+        ObjectInstantiator<?> instantiator,
+        boolean failOnDuplicateProperties) {
       super(
           type,
           writeFields,
@@ -2331,7 +2564,8 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           anyInfo,
           skippedNames,
           unwrappedInfo,
-          instantiator);
+          instantiator,
+          failOnDuplicateProperties);
     }
 
     @Override
@@ -2381,6 +2615,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         String[] skippedNames,
         JsonUnwrappedInfo unwrappedInfo,
         ObjectInstantiator<?> instantiator,
+        boolean failOnDuplicateProperties,
         JsonValidatorInfo validatorInfo) {
       super(
           type,
@@ -2390,7 +2625,8 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           anyInfo,
           skippedNames,
           unwrappedInfo,
-          instantiator);
+          instantiator,
+          failOnDuplicateProperties);
       this.validatorInfo = validatorInfo;
     }
 
@@ -2467,6 +2703,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         String[] skippedNames,
         JsonUnwrappedInfo unwrappedInfo,
         ObjectInstantiator<?> instantiator,
+        boolean failOnDuplicateProperties,
         JsonValidatorInfo validatorInfo) {
       super(
           type,
@@ -2476,7 +2713,8 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           anyInfo,
           skippedNames,
           unwrappedInfo,
-          instantiator);
+          instantiator,
+          failOnDuplicateProperties);
       this.validatorInfo = validatorInfo;
     }
 
