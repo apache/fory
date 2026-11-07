@@ -168,7 +168,7 @@ public class UnbackedContainerItemsTest {
     String code = new ObjectCodecBuilder(PositiveStructHolder.class, fory).genCode();
     int remoteRead = code.indexOf("private void remoteSameTypeElemsRead(");
     int dynamicProgressCheck = code.indexOf(".readDataAlwaysAdvances()", remoteRead);
-    int readCollection = code.indexOf("private Object readCollection(");
+    int readCollection = code.indexOf("private java.lang.Object readCollection(");
     int declaredRead = code.indexOf("& 4) == 4", readCollection);
     int remoteCall = code.indexOf("this.remoteSameTypeElemsRead(", declaredRead);
     assertTrue(remoteRead >= 0 && dynamicProgressCheck > remoteRead, code);
