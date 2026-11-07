@@ -27,8 +27,12 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.testng.annotations.Test;
 
 /** Covers the token-level reader and writer operations used by external serializers. */
@@ -38,21 +42,22 @@ public class ForyJsonTokenOperationTest {
       ForyJson.builder().withAsyncCompilation(false).withConcurrencyLevel(1).build();
 
   @Test
-  public void writeAndReadObjectTokens() throws IOException {
-    byte[] bytes =
-        json.writeUtf8(
-            writer -> {
-              writer.writeObjectStart();
-              writer.writeFieldName("id");
-              writer.writeInt(7);
-              writer.writeComma(1);
-              writer.writeFieldName("name");
-              writer.writeString("fory");
-              writer.writeObjectEnd();
-            });
+  public void writeAndReadObjectTokens() {
+    Consumer<Utf8JsonWriter> write =
+        writer -> {
+          writer.writeObjectStart();
+          writer.writeFieldName("id");
+          writer.writeInt(7);
+          writer.writeComma(1);
+          writer.writeFieldName("name");
+          writer.writeString("fory");
+          writer.writeObjectEnd();
+        };
+    byte[] bytes = json.writeUtf8(write);
     assertEquals(new String(bytes, StandardCharsets.UTF_8), "{\"id\":7,\"name\":\"fory\"}");
 
-    Pair pair = json.readUtf8(bytes, 0, bytes.length, ForyJsonTokenOperationTest::readPair);
+    Function<Utf8JsonReader, Pair> read = ForyJsonTokenOperationTest::readPair;
+    Pair pair = json.readUtf8(bytes, 0, bytes.length, read);
     assertEquals(pair.id, 7);
     assertEquals(pair.name, "fory");
     // The same document still reads through the object-mapping root API.
@@ -77,19 +82,19 @@ public class ForyJsonTokenOperationTest {
   @Test
   public void propagatesOperationFailuresAndReleasesState() {
     byte[] bytes = "{}".getBytes(StandardCharsets.UTF_8);
-    IOException checked = new IOException("checked");
-    IOException thrownChecked =
+    UncheckedIOException readFailure = new UncheckedIOException(new IOException("read failure"));
+    UncheckedIOException thrownReadFailure =
         expectThrows(
-            IOException.class,
+            UncheckedIOException.class,
             () ->
                 json.readUtf8(
                     bytes,
                     0,
                     bytes.length,
                     reader -> {
-                      throw checked;
+                      throw readFailure;
                     }));
-    assertSame(thrownChecked, checked);
+    assertSame(thrownReadFailure, readFailure);
     IllegalStateException runtime = new IllegalStateException("runtime");
     IllegalStateException thrownRuntime =
         expectThrows(

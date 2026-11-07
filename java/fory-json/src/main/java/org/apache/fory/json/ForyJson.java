@@ -30,6 +30,8 @@ import java.lang.reflect.WildcardType;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -808,9 +810,19 @@ public final class ForyJson {
    * custom codecs do, so this instance's depth and graph-memory limits apply. Like the other root
    * APIs, this method is not reentrant on the same instance: the operation must not invoke a {@code
    * ForyJson} root API.
+   *
+   * <p>The operation must synchronously consume exactly one JSON value. Unchecked exceptions thrown
+   * by the operation propagate unchanged.
+   *
+   * @param bytes UTF-8 JSON input
+   * @param offset start of the input range
+   * @param length number of bytes in the input range
+   * @param operation reads one JSON value using the borrowed reader
+   * @param <R> the operation's result type
+   * @return the operation's result
    */
-  public <R, E extends Throwable> R readUtf8(
-      byte[] bytes, int offset, int length, Utf8ReadOperation<R, E> operation) throws E {
+  public <R> R readUtf8(
+      byte[] bytes, int offset, int length, Function<Utf8JsonReader, R> operation) {
     checkByteRange(bytes, offset, length);
     Objects.requireNonNull(operation, "operation");
     PooledState entry = acquire();
@@ -819,7 +831,7 @@ public final class ForyJson {
       state.typeResolver.lockJIT();
       try {
         Utf8JsonReader reader = state.utf8Reader(bytes, offset, length);
-        R value = operation.read(reader);
+        R value = operation.apply(reader);
         reader.finish();
         return value;
       } finally {
@@ -842,8 +854,14 @@ public final class ForyJson {
    * with their own serializers. The writer shares this instance's options and resolver; it must not
    * escape the operation. Like the other root APIs, this method is not reentrant on the same
    * instance: the operation must not invoke a {@code ForyJson} root API.
+   *
+   * <p>The operation must synchronously write exactly one JSON value. Unchecked exceptions thrown
+   * by the operation propagate unchanged.
+   *
+   * @param operation writes one JSON value using the borrowed writer
+   * @return a detached byte array containing the written UTF-8 JSON
    */
-  public <E extends Throwable> byte[] writeUtf8(Utf8WriteOperation<E> operation) throws E {
+  public byte[] writeUtf8(Consumer<Utf8JsonWriter> operation) {
     Objects.requireNonNull(operation, "operation");
     PooledState entry = acquire();
     JsonState state = entry.state;
@@ -851,7 +869,7 @@ public final class ForyJson {
     try {
       state.typeResolver.lockJIT();
       try {
-        operation.write(writer);
+        operation.accept(writer);
       } finally {
         state.typeResolver.unlockJIT();
       }
