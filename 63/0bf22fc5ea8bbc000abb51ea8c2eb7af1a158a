@@ -1,0 +1,214 @@
+MODULE.bazel
+  h_e94f2b5704cbef 20
+README.md
+  h_e94f2b5704cbef 9,153,160,182,190,199,221,233,244-245,278,284,294,865,872
+benchmarks/cpp/CMakeLists.txt
+  h_e94f2b5704cbef 25
+benchmarks/go/go.mod
+  h_e94f2b5704cbef 23
+benchmarks/java/pom.xml
+  h_e94f2b5704cbef 29
+benchmarks/java25/pom.xml
+  h_e94f2b5704cbef 29
+benchmarks/kotlin/gradle.properties
+  h_e94f2b5704cbef 18
+benchmarks/rust/Cargo.toml
+  h_e94f2b5704cbef 23
+benchmarks/scala/build.sbt
+  h_e94f2b5704cbef 30
+compiler/fory_compiler/__init__.py
+  h_e94f2b5704cbef 20
+compiler/pyproject.toml
+  h_e94f2b5704cbef 27
+cpp/CMakeLists.txt
+  h_e94f2b5704cbef 21
+csharp/Directory.Build.props
+  h_e94f2b5704cbef 23
+csharp/README.md
+  h_e94f2b5704cbef 35
+dart/CHANGELOG.md
+  h_e94f2b5704cbef 1-4
+dart/packages/fory-test/pubspec.yaml
+  h_e94f2b5704cbef 20,29
+dart/packages/fory/CHANGELOG.md
+  h_e94f2b5704cbef 1-4
+dart/packages/fory/README.md
+  h_e94f2b5704cbef 28
+dart/packages/fory/pubspec.yaml
+  h_e94f2b5704cbef 20
+dart/pubspec.yaml
+  h_e94f2b5704cbef 20,28
+docs/compiler/build-integration.md
+  h_e94f2b5704cbef 214
+docs/compiler/cli.md
+  h_e94f2b5704cbef 692
+docs/grpc/csharp.md
+  h_e94f2b5704cbef 42,51
+docs/grpc/dart.md
+  h_e94f2b5704cbef 41
+docs/grpc/rust.md
+  h_e94f2b5704cbef 40
+docs/json/getting-started.md
+  h_e94f2b5704cbef 46,60,69
+docs/json/kotlin.md
+  h_e94f2b5704cbef 44,57
+docs/json/scala.md
+  h_e94f2b5704cbef 28
+docs/object-serialization/cpp/index.md
+  h_e94f2b5704cbef 65,95,99,131
+docs/object-serialization/csharp/index.md
+  h_e94f2b5704cbef 49
+docs/object-serialization/dart/index.md
+  h_e94f2b5704cbef 50
+docs/object-serialization/java/index.md
+  h_e94f2b5704cbef 66,74
+docs/object-serialization/kotlin/index.md
+  h_e94f2b5704cbef 56,63
+docs/object-serialization/rust/basic-serialization.md
+  h_e94f2b5704cbef 185
+docs/object-serialization/rust/index.md
+  h_e94f2b5704cbef 40-42,55
+docs/object-serialization/scala/index.md
+  h_e94f2b5704cbef 52
+docs/row-format/java.md
+  h_e94f2b5704cbef 46,53
+docs/start/cpp.md
+  h_e94f2b5704cbef 48
+docs/start/csharp.md
+  h_e94f2b5704cbef 39
+docs/start/dart.md
+  h_e94f2b5704cbef 39
+docs/start/go.md
+  h_e94f2b5704cbef 41
+docs/start/java.md
+  h_e94f2b5704cbef 47,54,100
+docs/start/javascript.md
+  h_e94f2b5704cbef 39,75
+docs/start/kotlin.md
+  h_e94f2b5704cbef 47,91
+docs/start/python.md
+  h_e94f2b5704cbef 38
+docs/start/rust.md
+  h_e94f2b5704cbef 39
+docs/start/scala.md
+  h_e94f2b5704cbef 40
+docs/start/swift.md
+  h_e94f2b5704cbef 45
+examples/cpp/hello_row/MODULE.bazel.example
+  h_e94f2b5704cbef 31,39
+examples/cpp/hello_row/README.md
+  h_e94f2b5704cbef 80
+examples/cpp/hello_world/MODULE.bazel.example
+  h_e94f2b5704cbef 31,39
+examples/cpp/hello_world/README.md
+  h_e94f2b5704cbef 73
+integration_tests/android_tests/README.md
+  h_e94f2b5704cbef 14-18
+integration_tests/android_tests/build.gradle
+  h_e94f2b5704cbef 102,106-110
+integration_tests/graalvm_kotlin_tests/pom.xml
+  h_e94f2b5704cbef 28
+integration_tests/graalvm_tests/pom.xml
+  h_e94f2b5704cbef 28
+integration_tests/grpc_tests/java/pom.xml
+  h_e94f2b5704cbef 28
+integration_tests/grpc_tests/kotlin/pom.xml
+  h_e94f2b5704cbef 28
+integration_tests/grpc_tests/python/pyproject.toml
+  h_e94f2b5704cbef 27
+integration_tests/grpc_tests/rust/Cargo.toml
+  h_e94f2b5704cbef 26
+integration_tests/idl_tests/cpp/CMakeLists.txt
+  h_e94f2b5704cbef 21
+integration_tests/idl_tests/dart/pubspec.yaml
+  h_e94f2b5704cbef 2
+integration_tests/idl_tests/go/go.mod
+  h_e94f2b5704cbef 22
+integration_tests/idl_tests/java/pom.xml
+  h_e94f2b5704cbef 28
+integration_tests/idl_tests/javascript/package.json
+  h_e94f2b5704cbef 3,21
+integration_tests/idl_tests/kotlin/pom.xml
+  h_e94f2b5704cbef 28
+integration_tests/idl_tests/python/pyproject.toml
+  h_e94f2b5704cbef 27
+integration_tests/idl_tests/rust/Cargo.lock
+  h_e94f2b5704cbef 81,89,102,143
+integration_tests/idl_tests/rust/Cargo.toml
+  h_e94f2b5704cbef 20
+integration_tests/jdk_compatibility_tests/pom.xml
+  h_e94f2b5704cbef 28
+integration_tests/jpms_tests/pom.xml
+  h_e94f2b5704cbef 28
+integration_tests/kotlin_json_corpus/pom.xml
+  h_e94f2b5704cbef 28
+java/README.md
+  h_e94f2b5704cbef 98,105,112,119,128,130,132,134
+java/fory-annotation-processor/pom.xml
+  h_e94f2b5704cbef 28
+java/fory-core/pom.xml
+  h_e94f2b5704cbef 28
+java/fory-extensions/pom.xml
+  h_e94f2b5704cbef 28
+java/fory-format/pom.xml
+  h_e94f2b5704cbef 28
+java/fory-json/README.md
+  h_e94f2b5704cbef 45,52
+java/fory-json/pom.xml
+  h_e94f2b5704cbef 28
+java/fory-latest-jdk-tests/pom.xml
+  h_e94f2b5704cbef 28
+java/fory-test-core/pom.xml
+  h_e94f2b5704cbef 28
+java/fory-testsuite/pom.xml
+  h_e94f2b5704cbef 28
+java/pom.xml
+  h_e94f2b5704cbef 37
+javascript/package-lock.json
+  h_e94f2b5704cbef 6088,6105
+javascript/packages/core/package.json
+  h_e94f2b5704cbef 3
+javascript/packages/hps/package.json
+  h_e94f2b5704cbef 3
+kotlin/fory-json-kotlin-ksp/README.md
+  h_e94f2b5704cbef 22-23
+kotlin/fory-json-kotlin-ksp/pom.xml
+  h_e94f2b5704cbef 28
+kotlin/fory-json-kotlin/README.md
+  h_e94f2b5704cbef 24,39
+kotlin/fory-json-kotlin/pom.xml
+  h_e94f2b5704cbef 28
+kotlin/fory-kotlin-ksp/pom.xml
+  h_e94f2b5704cbef 28
+kotlin/fory-kotlin-tests/pom.xml
+  h_e94f2b5704cbef 28
+kotlin/fory-kotlin/pom.xml
+  h_e94f2b5704cbef 28
+kotlin/pom.xml
+  h_e94f2b5704cbef 35
+python/pyfory/__init__.py
+  h_e94f2b5704cbef 139
+rust/Cargo.toml
+  h_e94f2b5704cbef 36,49-50
+rust/README.md
+  h_e94f2b5704cbef 3,26-28,41
+scala/build.sbt
+  h_e94f2b5704cbef 20
+scala/fory-json-scala/README.md
+  h_e94f2b5704cbef 10
+scala/fory-scala/README.md
+  h_e94f2b5704cbef 166
+swift/README.md
+  h_e94f2b5704cbef 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "630bf22fc5ea8bbc000abb51ea8c2eb7af1a158a",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
