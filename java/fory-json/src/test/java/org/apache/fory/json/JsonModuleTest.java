@@ -56,6 +56,7 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Types;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class JsonModuleTest {
@@ -77,6 +78,59 @@ public class JsonModuleTest {
     json.toJson(new FactoryPet());
     json.fromJson("{}", FactoryPet.class);
     assertEquals(runtimeTypes, Arrays.asList(true, false));
+  }
+
+  @DataProvider
+  public Object[][] declinedRoots() {
+    return new Object[][] {{false, false}, {true, false}, {false, true}, {true, true}};
+  }
+
+  @Test(dataProvider = "declinedRoots")
+  public void declinedRootResolvesDeclaredChildren(boolean codegen, boolean failFirst) {
+    AtomicBoolean fail = new AtomicBoolean(failFirst);
+    List<Boolean> runtimeTypes = new ArrayList<>();
+    JsonCodecFactory factory =
+        (type, resolver, runtimeType) -> {
+          if (type.getRawType() != Node.class) {
+            return null;
+          }
+          runtimeTypes.add(runtimeType);
+          if (!runtimeType && fail.getAndSet(false)) {
+            throw new ForyJsonException("forced declared resolution failure");
+          }
+          return runtimeType ? null : new NodeCodec();
+        };
+    ForyJson json =
+        ForyJson.builder()
+            .withModule(context -> context.registerCodecFactory(factory))
+            .withFieldMode(true)
+            .withConcurrencyLevel(1)
+            .withCodegen(codegen)
+            .withAsyncCompilation(false)
+            .build();
+    Node value = new Node();
+    value.next = new Node();
+    value.link = new NodeLink();
+    value.link.node = new Node();
+    String expected = "{\"link\":{\"node\":\"declared\"},\"next\":\"declared\"}";
+
+    if (failFirst) {
+      assertThrows(ForyJsonException.class, () -> json.toJson(value));
+    }
+    assertEquals(json.toJson(value), expected);
+    assertEquals(json.toJsonBytes(value), expected.getBytes(StandardCharsets.UTF_8));
+    assertEquals(json.toJson(value, Node.class), "\"declared\"");
+    assertNotNull(json.fromJson("\"declared\"", Node.class));
+    assertNotNull(json.fromJson("{\"node\":\"declared\"}", NodeLink.class).node);
+    assertEquals(json.toJson(value), expected);
+    assertEquals(
+        runtimeTypes,
+        failFirst ? Arrays.asList(true, false, true, false) : Arrays.asList(true, false));
+    if (codegen) {
+      assertGeneratedCapabilities(
+          JsonTestSupport.currentTypeResolver(json),
+          JsonTestSupport.runtimeTypeInfo(json, Node.class));
+    }
   }
 
   @Test
@@ -494,6 +548,35 @@ public class JsonModuleTest {
     @Override
     public Text read(JsonReader reader) {
       return reader.tryReadNullToken() ? null : new Text(reader.readString());
+    }
+  }
+
+  public static final class Node {
+    public NodeLink link;
+    public Node next;
+  }
+
+  public static final class NodeLink {
+    public Node node;
+  }
+
+  private static final class NodeCodec extends AbstractJsonValueCodec<Node> {
+    @Override
+    public void write(JsonWriter writer, Node value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString("declared");
+      }
+    }
+
+    @Override
+    public Node read(JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      assertEquals(reader.readString(), "declared");
+      return new Node();
     }
   }
 
