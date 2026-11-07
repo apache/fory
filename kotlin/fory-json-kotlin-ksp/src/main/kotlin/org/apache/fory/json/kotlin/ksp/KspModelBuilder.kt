@@ -1127,21 +1127,34 @@ internal class KspModelBuilder(
     mixin: KSClassDeclaration?,
   ): Sequence<KSAnnotation> = sequence {
     val source = mixin?.let { matchingMixinSource(target, it) }
+    // A repeatable annotation may appear several times, so replacements are grouped, not keyed.
     val replacements =
       source
         ?.annotations
         ?.filter { annotationName(it) !in CONTROL_ANNOTATIONS }
-        ?.associateBy(::annotationName)
+        ?.groupBy { replacementKey(annotationName(it)) }
         .orEmpty()
     for (annotation in target.annotations) {
       val name = annotationName(annotation)
       if (!name.startsWith(JSON_ANNOTATION_PACKAGE)) continue
-      if (name !in replacements && (source == null || !removesAnnotation(source, name))) {
+      if (replacementKey(name) !in replacements && (source == null || !removes(source, name))) {
         yield(annotation)
       }
     }
-    replacements.values.forEach { yield(it) }
+    replacements.values.forEach { group -> group.forEach { yield(it) } }
   }
+
+  /** The single and the container form of JsonDefaultCodec replace each other, as at runtime. */
+  private fun replacementKey(name: String): String =
+    if (name == JSON_DEFAULT_CODEC_LIST) JSON_DEFAULT_CODEC else name
+
+  private fun removes(source: KSAnnotated, name: String): Boolean =
+    if (replacementKey(name) == JSON_DEFAULT_CODEC) {
+      removesAnnotation(source, JSON_DEFAULT_CODEC) ||
+        removesAnnotation(source, JSON_DEFAULT_CODEC_LIST)
+    } else {
+      removesAnnotation(source, name)
+    }
 
   private fun matchingMixinSource(
     target: KSAnnotated,

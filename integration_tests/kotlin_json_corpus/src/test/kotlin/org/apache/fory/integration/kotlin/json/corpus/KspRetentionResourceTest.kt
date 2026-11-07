@@ -132,6 +132,13 @@ public class KspRetentionResourceTest {
       rules("PlatformInheritedDefaults").contains("class $PACKAGE.PlatformDefaultBase"),
       rules("PlatformInheritedDefaults"),
     )
+    val mixinDefaults = mixinRules("PlatformMixinDefaults")
+    assertConstructor(mixinDefaults, "$PACKAGE.PlatformDefaultTokenCodec")
+    assertConstructor(mixinDefaults, "$PACKAGE.PlatformLabelCodec")
+    assertTrue(
+      mixinDefaults.contains("-keep,allowoptimization class $PACKAGE.PlatformPrefixCodec\n"),
+      mixinDefaults,
+    )
     val mixin = mixinRules("PlatformJavaProfileMixin")
     assertTrue(mixin.contains("class $PACKAGE.PlatformJavaProfile"), mixin)
     assertTrue(mixin.contains("class $PACKAGE.PlatformJavaProfileMixin"), mixin)
@@ -193,6 +200,7 @@ public class KspRetentionResourceTest {
         "META-INF/proguard/fory-json-$PACKAGE.PlatformSquare.pro",
         "META-INF/proguard/fory-json-mixin-$PACKAGE.PlatformJavaProfileMixin.pro",
         "META-INF/proguard/fory-json-mixin-$PACKAGE.PlatformDefaultMixin.pro",
+        "META-INF/proguard/fory-json-mixin-$PACKAGE.PlatformMixinDefaults.pro",
         "META-INF/proguard/fory-json-mixin-$PACKAGE.PlatformMixinOverrideAnnotations.pro",
       )
   }

@@ -115,15 +115,38 @@ public data class PlatformDefaultCodecs(
   public val tokens: List<PlatformToken>,
 )
 
-@JsonDefaultCodec(PlatformDefaultTokenCodec::class)
-public abstract class PlatformDefaultBase
+@JsonDefaultCodec(PlatformDefaultTokenCodec::class) public abstract class PlatformDefaultBase
 
 @JsonType
-public data class PlatformInheritedDefaults(public val token: PlatformToken) : PlatformDefaultBase()
+public data class PlatformInheritedDefaults(public val token: PlatformToken) :
+  PlatformDefaultBase()
 
 @JsonType
 @JsonDefaultCodec.List(JsonDefaultCodec(PlatformDefaultTokenCodec::class))
 public data class PlatformContainerDefaults(public val token: PlatformToken)
+
+public data class PlatformLabel(public val value: String)
+
+public class PlatformLabelCodec : PlatformPrefixCodec<PlatformLabel>() {
+  override fun write(writer: JsonWriter, value: PlatformLabel?) {
+    if (value == null) writer.writeNull() else writer.writeString("l:" + value.value)
+  }
+
+  override fun read(reader: JsonReader): PlatformLabel? {
+    val value = reader.readString() ?: return null
+    return PlatformLabel(value.removePrefix("l:"))
+  }
+}
+
+public data class PlatformMixinDefaultsTarget(
+  public val token: PlatformToken,
+  public val label: PlatformLabel,
+)
+
+@JsonMixin(target = PlatformMixinDefaultsTarget::class)
+@JsonDefaultCodec(PlatformDefaultTokenCodec::class)
+@JsonDefaultCodec(PlatformLabelCodec::class)
+public interface PlatformMixinDefaults
 
 @JsonSubTypes
 @JsonCodec(PlatformDirectOverrideCodec::class)
