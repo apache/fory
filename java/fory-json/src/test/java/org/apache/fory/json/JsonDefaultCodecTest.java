@@ -462,6 +462,27 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
   @JsonMixinRemove(JsonDefaultCodec.class)
   public interface ChildWithoutDefaults {}
 
+  @JsonDefaultCodec({TaggedDecimalCodec.class, TaggedIntegerCodec.class})
+  public static class TwoDefaultsBase {
+    public BigDecimal price;
+    public Integer count;
+  }
+
+  public static class TwoDefaultsChild extends TwoDefaultsBase {}
+
+  @JsonMixin(target = TwoDefaultsChild.class)
+  @JsonDefaultCodec(OtherDecimalCodec.class)
+  public interface TwoDefaultsChildMixin {}
+
+  @Test
+  public void mixinDefaultReplacesOneInheritedTargetAndKeepsTheOther() {
+    ForyJson json = newJsonBuilder().registerMixin(TwoDefaultsChildMixin.class).build();
+    TwoDefaultsChild child = new TwoDefaultsChild();
+    child.price = TEN;
+    child.count = 3;
+    assertEquals(json.toJson(child), "{\"price\":\"o:10\",\"count\":\"i:3\"}");
+  }
+
   @Test
   public void mixinRemovalOnTargetDropsInheritedDefaults() {
     ForyJson json = newJsonBuilder().registerMixin(ChildWithoutDefaults.class).build();

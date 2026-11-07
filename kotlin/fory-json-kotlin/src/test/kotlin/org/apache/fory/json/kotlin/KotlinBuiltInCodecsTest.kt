@@ -37,7 +37,10 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.annotation.JsonByteArray
+import org.apache.fory.json.annotation.JsonCreator
 import org.apache.fory.json.annotation.JsonDefaultCodec
+import org.apache.fory.json.annotation.JsonIgnore
+import org.apache.fory.json.annotation.JsonProperty
 import org.apache.fory.json.codec.AbstractJsonValueCodec
 import org.apache.fory.json.codec.DirectUnboxedValueCodec
 import org.apache.fory.json.reader.JsonReader
@@ -192,6 +195,58 @@ class KotlinBuiltInCodecsTest {
 
   @JsonDefaultCodec(NestedArrayCodec::class)
   class NestedArrayHolder(val values: List<Array<List<Long>>>)
+
+  open class OpenShape(val name: String) {
+    override fun equals(other: Any?): Boolean = other is OpenShape && name == other.name
+
+    override fun hashCode(): Int = name.hashCode()
+  }
+
+  class OpenShapeCodec : AbstractJsonValueCodec<OpenShape>() {
+    override fun write(writer: JsonWriter, value: OpenShape) {
+      writer.writeString("s:${value.name}")
+    }
+
+    override fun read(reader: JsonReader): OpenShape = OpenShape(reader.readString().substring(2))
+  }
+
+  @JsonDefaultCodec(OpenShapeCodec::class)
+  class ListedCreator
+  private constructor(
+    val shapes: List<OpenShape>,
+    val byKey: Map<String, OpenShape>,
+    @get:JsonIgnore val selected: Boolean,
+  ) {
+    @JsonCreator(value = ["shapes", "byKey"])
+    constructor(
+      sourceShapes: List<OpenShape>,
+      sourceByKey: Map<String, OpenShape>,
+    ) : this(sourceShapes, sourceByKey, true)
+  }
+
+  @JsonDefaultCodec(OpenShapeCodec::class)
+  class LocalCreator
+  @JsonCreator
+  constructor(
+    @JsonProperty("shapes") val shapes: List<OpenShape>,
+    @JsonProperty("byKey") val byKey: Map<String, OpenShape>,
+  )
+
+  @Test
+  fun creatorReadsOpenElementsWithTheWrittenDefault() {
+    for (codegen in listOf(false, true)) {
+      val json = ForyJsonKotlin.builder().withCodegen(codegen).withAsyncCompilation(false).build()
+      val text = "{\"shapes\":[\"s:a\"],\"byKey\":{\"k\":\"s:b\"}}"
+      val listed = json.fromJson(text, ListedCreator::class.java)
+      assertEquals(listOf(OpenShape("a")), listed.shapes)
+      assertEquals(mapOf("k" to OpenShape("b")), listed.byKey)
+      assertEquals(text, json.toJson(listed))
+      val local = json.fromJson(text, LocalCreator::class.java)
+      assertEquals(listOf(OpenShape("a")), local.shapes)
+      assertEquals(mapOf("k" to OpenShape("b")), local.byKey)
+      assertEquals(text, json.toJson(local))
+    }
+  }
 
   @Test
   fun defaultCodecMatchesNestedGenericArrayProperty() {
