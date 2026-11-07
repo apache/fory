@@ -60,6 +60,8 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   Fory's defining loader. Native-image build time is the only exception: `CodeGenerator` is
   initialized at build time, so using its compiler service there would store a direct executor in
   the image, and descriptor warm-up keeps the common pool.
+- Generated source must qualify `java.lang` type names. A compiler thread's context classloader
+  may not see same-package application classes, so do not use it to detect type-name conflicts.
 - Java root deserialization graph memory budgeting belongs to `ReadContext`
   and is initialized by `Fory` root APIs. Public config is `maxGraphMemoryBytes`
   with fixed `128 MiB` default. Positive explicit values override the default;
