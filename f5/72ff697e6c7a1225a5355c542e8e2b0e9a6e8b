@@ -1,0 +1,14 @@
+ci/inspect_nexus.py
+  h_e94f2b5704cbef 34-37,57,59-61,66-76,82-89,112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f572ff697e6c7a1225a5355c542e8e2b0e9a6e8b",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
