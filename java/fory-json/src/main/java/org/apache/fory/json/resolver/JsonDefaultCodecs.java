@@ -218,17 +218,39 @@ public final class JsonDefaultCodecs {
   }
 
   /**
-   * Matches a target against an occurrence. A language module may describe a generic array as a raw
-   * array class with a parameterized component token, so arrays are compared by their components.
+   * Matches a target against an occurrence through the occurrence's own tokens. A language module
+   * may describe a generic array, at any depth, as a raw array class with a parameterized component
+   * token, so arrays are compared by component and parameterized types argument by argument.
    */
   private static boolean matches(Type target, TypeRef<?> occurrence) {
-    if (target instanceof GenericArrayType
-        && occurrence.getRawType().isArray()
-        && !(occurrence.getType() instanceof GenericArrayType)) {
+    target = covariant(target);
+    Type type = occurrence.getType();
+    if (type instanceof WildcardType) {
+      return sameType(target, type);
+    }
+    if (target instanceof GenericArrayType && occurrence.getRawType().isArray()) {
       return matches(
           ((GenericArrayType) target).getGenericComponentType(), occurrence.getComponentType());
     }
-    return sameType(target, occurrence.getType());
+    if (target instanceof ParameterizedType && occurrence.hasExplicitTypeArguments()) {
+      ParameterizedType parameterized = (ParameterizedType) target;
+      Type[] arguments = parameterized.getActualTypeArguments();
+      List<TypeRef<?>> occurrenceArguments = occurrence.getTypeArguments();
+      if (!parameterized.getRawType().equals(occurrence.getRawType())
+          || arguments.length != occurrenceArguments.size()) {
+        return false;
+      }
+      for (int i = 0; i < arguments.length; i++) {
+        if (!matches(arguments[i], occurrenceArguments.get(i))) {
+          return false;
+        }
+      }
+      Type owner = parameterized.getOwnerType();
+      return owner == null
+          || !(type instanceof ParameterizedType)
+          || sameType(owner, ((ParameterizedType) type).getOwnerType());
+    }
+    return sameType(target, type);
   }
 
   /** A wildcard child is not concrete, which an explicit child member rejects as well. */

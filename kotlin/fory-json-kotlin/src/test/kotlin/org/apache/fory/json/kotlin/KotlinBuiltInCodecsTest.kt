@@ -179,6 +179,28 @@ class KotlinBuiltInCodecsTest {
     assertEquals("{\"values\":\"longs:2\"}", fory.toJson(LongListHolder(listOf(1L, 2L))))
   }
 
+  class NestedArrayCodec : AbstractJsonValueCodec<List<Array<List<Long>>>>() {
+    override fun write(writer: JsonWriter, value: List<Array<List<Long>>>) {
+      writer.writeString("nested:${value.size}")
+    }
+
+    override fun read(reader: JsonReader): List<Array<List<Long>>> {
+      reader.readString()
+      return emptyList()
+    }
+  }
+
+  @JsonDefaultCodec(NestedArrayCodec::class)
+  class NestedArrayHolder(val values: List<Array<List<Long>>>)
+
+  @Test
+  fun defaultCodecMatchesNestedGenericArrayProperty() {
+    assertEquals(
+      "{\"values\":\"nested:1\"}",
+      fory.toJson(NestedArrayHolder(listOf(arrayOf(listOf(1L))))),
+    )
+  }
+
   @Test
   fun defaultCodecMatchesGenericArrayProperty() {
     assertEquals(
