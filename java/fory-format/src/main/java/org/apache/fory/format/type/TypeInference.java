@@ -26,12 +26,14 @@ import java.lang.reflect.TypeVariable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.format.encoder.CustomCodec;
 import org.apache.fory.format.encoder.CustomCollectionFactory;
@@ -129,20 +131,33 @@ public class TypeInference {
     }
   }
 
+  private static Field inferField(String name, TypeRef<?> typeRef, TypeResolutionContext ctx) {
+    return inferField(name, typeRef, ctx, null, null);
+  }
+
   /**
    * When type is both iterable and bean, we take it as iterable in row-format. Note circular
    * references in bean class is not allowed.
    *
+   * <p>{@code leaves} and {@code path} are null except under {@link #inferNamedField}, which
+   * describes what the descent reports. Schema evolution finds the nested beans of a field through
+   * them, so this is the only descent through custom codecs, Optional, arrays, iterables, and maps.
+   *
    * @return DataType of a typeToken
    */
-  private static Field inferField(String name, TypeRef<?> typeRef, TypeResolutionContext ctx) {
+  private static Field inferField(
+      String name,
+      TypeRef<?> typeRef,
+      TypeResolutionContext ctx,
+      LeafVisitor leaves,
+      List<MapBranch> path) {
     // Handle TypeVariable (e.g., K, V from Map<K, V>) by resolving to its bound.
     // This can happen with Scala 3 LTS where generic type information may not be fully resolved.
     Type type = typeRef.getType();
     if (type instanceof TypeVariable) {
       TypeVariable<?> typeVariable = (TypeVariable<?>) type;
       Type bound = typeVariable.getBounds()[0]; // First bound is a class, others are interfaces
-      return inferField(name, TypeRef.of(bound), ctx);
+      return inferField(name, TypeRef.of(bound), ctx, leaves, path);
     }
     Class<?> rawType = getRawType(typeRef);
     Class<?> enclosingType = ctx.getEnclosingType().getRawType();
@@ -164,11 +179,11 @@ public class TypeInference {
       }
       TypeRef<?> replacementType = customEncoder.encodedType();
       if (replacementType != null && !typeRef.equals(replacementType)) {
-        return inferField(name, replacementType, ctx);
+        return inferField(name, replacementType, ctx, leaves, path);
       }
     } else if (rawType == Optional.class) {
       TypeRef<?> elemType = TypeUtils.getTypeArguments(typeRef).get(0);
-      Field result = inferField(name, elemType, ctx);
+      Field result = inferField(name, elemType, ctx, leaves, path);
       if (result.nullable()) {
         return result;
       }
@@ -225,22 +240,37 @@ public class TypeInference {
     } else if (rawType.isArray()) { // array
       Field f =
           inferField(
-              DataTypes.ARRAY_ITEM_NAME, Objects.requireNonNull(typeRef.getComponentType()), ctx);
+              DataTypes.ARRAY_ITEM_NAME,
+              Objects.requireNonNull(typeRef.getComponentType()),
+              ctx,
+              leaves,
+              path);
       return DataTypes.arrayField(name, f);
     } else if (TypeUtils.ITERABLE_TYPE.isSupertypeOf(typeRef)) { // iterable
       // when type is both iterable and bean, we take it as iterable in row-format
-      Field f = inferField(DataTypes.ARRAY_ITEM_NAME, TypeUtils.getElementType(typeRef), ctx);
+      Field f =
+          inferField(
+              DataTypes.ARRAY_ITEM_NAME, TypeUtils.getElementType(typeRef), ctx, leaves, path);
       return DataTypes.arrayField(name, f);
     } else if (TypeUtils.MAP_TYPE.isSupertypeOf(typeRef)) {
       Tuple2<TypeRef<?>, TypeRef<?>> kvType = TypeUtils.getMapKeyValueType(typeRef);
-      Field keyField = inferField(DataTypes.MAP_KEY_NAME, kvType.f0, ctx);
+      Field keyField =
+          inferField(DataTypes.MAP_KEY_NAME, kvType.f0, ctx, leaves, append(path, MapBranch.KEY));
       // Map's keys must be non-nullable
       if (keyField.nullable()) {
         keyField = keyField.withNullable(false);
       }
-      Field valueField = inferField(DataTypes.MAP_VALUE_NAME, kvType.f1, ctx);
+      Field valueField =
+          inferField(
+              DataTypes.MAP_VALUE_NAME, kvType.f1, ctx, leaves, append(path, MapBranch.VALUE));
       return DataTypes.mapField(name, keyField, valueField);
-    } else if (TypeUtils.isBean(rawType, ctx)) { // bean field
+    }
+    // Report the leaf before the bean check: that check fails for a type already on the walked
+    // path, and schema evolution reports a cycle through a removed field itself.
+    if (leaves != null) {
+      leaves.visit(rawType, path);
+    }
+    if (TypeUtils.isBean(rawType, ctx)) { // bean field
       ctx.checkNoCycle(rawType);
       List<Descriptor> descriptors = Descriptor.getDescriptors(rawType);
       List<Field> fields = new ArrayList<>(descriptors.size());
@@ -250,12 +280,58 @@ public class TypeInference {
         fields.add(inferField(n, fieldType, ctx.appendTypePath(rawType)));
       }
       return DataTypes.structField(name, true, fields);
-    } else {
-      throw new UnsupportedOperationException(
-          String.format(
-              "Unsupported type %s for field %s, seen type set is %s",
-              typeRef, name, ctx.getWalkedTypePath()));
     }
+    throw new UnsupportedOperationException(
+        String.format(
+            "Unsupported type %s for field %s, seen type set is %s",
+            typeRef, name, ctx.getWalkedTypePath()));
+  }
+
+  private static List<MapBranch> append(List<MapBranch> path, MapBranch branch) {
+    if (path == null) {
+      return null;
+    }
+    List<MapBranch> next = new ArrayList<>(path.size() + 1);
+    next.addAll(path);
+    next.add(branch);
+    return next;
+  }
+
+  /** The branch that a descent takes at a map: its key or its value. */
+  @Internal
+  public enum MapBranch {
+    KEY,
+    VALUE
+  }
+
+  /** Receives the leaves of a field-type descent; see {@link #inferNamedField}. */
+  @Internal
+  @FunctionalInterface
+  public interface LeafVisitor {
+    void visit(Class<?> leafType, List<MapBranch> path);
+  }
+
+  /**
+   * Infer a single named field from its Java type, used by schema-evolution code paths that need to
+   * reconstruct historical fields by name and type without going through a Java member. {@code
+   * enclosingType} is the bean class declaring the field, so bean-scoped custom codecs resolve
+   * exactly as they do when {@link #inferSchema} walks the live bean; pass {@code void.class} for a
+   * top-level array/map element, which has no enclosing bean and matches only enclosing-agnostic
+   * registrations.
+   *
+   * <p>{@code leaves} receives, in descent order, each type at which the descent stops unwrapping
+   * custom codecs, Optional, arrays, iterables, and map keys and values, unless that type is a
+   * scalar: a bean, or a type the row format does not support. A map's key comes before its value.
+   * The path lists the branch taken at each map from the field root; the descent reports nothing
+   * inside a reported bean.
+   */
+  @Internal
+  public static Field inferNamedField(
+      String name, TypeRef<?> typeRef, Class<?> enclosingType, LeafVisitor leaves) {
+    TypeResolutionContext ctx =
+        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
+    return inferField(
+        name, typeRef, ctx.appendTypePath(enclosingType), leaves, Collections.emptyList());
   }
 
   public static String inferTypeName(TypeRef<?> token) {

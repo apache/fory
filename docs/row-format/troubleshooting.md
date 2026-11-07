@@ -24,6 +24,20 @@ license: |
 Compact Row is a Java-only row family. Use Standard Row on Java, Python, C++, Rust, and Go for shared
 bytes.
 
+## Decoding fails with `ClassNotCompatibleException`
+
+The schema hash at the start of the payload does not identify a schema that the reader knows.
+Check that:
+
+- The writer and the reader use the same bean schema. With `withSchemaEvolution()`, the reader
+  also reads the older versions in the bean's history, but it rejects a version that it does not
+  know, such as a newer one, so deploy readers before writers.
+- Both sides set `withSchemaEvolution()` the same way.
+- With `withSchemaEvolution()`, both sides use the same layout: a Compact Row reader rejects
+  Standard Row payloads, and the reverse.
+
+See [Schema Evolution](java.md#schema-evolution) in the Java guide.
+
 ## A field lookup fails
 
 Verify that the reader uses the same schema and field type as the encoded row. Cache typed field
