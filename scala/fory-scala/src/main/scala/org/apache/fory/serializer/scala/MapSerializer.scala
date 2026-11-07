@@ -20,6 +20,7 @@
 package org.apache.fory.serializer.scala
 
 import org.apache.fory.collection.MapEntry
+import org.apache.fory.context.CopyContext
 import org.apache.fory.context.ReadContext
 import org.apache.fory.context.WriteContext
 import org.apache.fory.resolver.TypeResolver
@@ -45,7 +46,9 @@ import scala.collection.{Factory, mutable}
  * invoke [[java.util.Map#put]] to add it into builder.</li>
  * <li>`onMapRead`: create scala map from builder.</li>
  */
-abstract class AbstractScalaMapSerializer[K, V, T](typeResolver: TypeResolver, cls: Class[T])
+abstract class AbstractScalaMapSerializer[K, V, T <: scala.collection.Map[K, V]](
+    typeResolver: TypeResolver,
+    cls: Class[T])
   extends MapLikeSerializer[T](typeResolver, cls) {
   private val ReferenceBytes = 4L
   // Lower-bound shallow owner cost for the retained Scala map wrapper itself. Key/value slots are
@@ -83,6 +86,72 @@ abstract class AbstractScalaMapSerializer[K, V, T](typeResolver: TypeResolver, c
 
   override def onMapRead(map: util.Map[_, _]): T = {
     map.asInstanceOf[MapBuilder[K, V, T]].builder.result()
+  }
+
+  override def copy(copyContext: CopyContext, value: T): T = {
+    if (isImmutable) {
+      value
+    } else if (value.isInstanceOf[mutable.Map[_, _]]) {
+      newMutableMapCopy(value, value.size) match {
+        case result: mutable.Map[_, _] =>
+          val mutableResult = result.asInstanceOf[mutable.Map[K, V]]
+          copyContext.reference(value, mutableResult.asInstanceOf[T])
+          copyEntries(copyContext, value, mutableResult)
+          mutableResult.asInstanceOf[T]
+        case _ =>
+          copyWithBuilder(copyContext, value, newCopyBuilder(value))
+      }
+    } else {
+      copyWithBuilder(copyContext, value, newCopyBuilder(value))
+    }
+  }
+
+  protected def newCopyBuilder(value: T): mutable.Builder[(K, V), T] =
+    value.mapFactory.newBuilder[K, V].asInstanceOf[mutable.Builder[(K, V), T]]
+
+  private def newMutableMapCopy(value: T, numElements: Int): scala.collection.Map[K, V] = {
+    val builder = newCopyBuilder(value)
+    builder.sizeHint(numElements)
+    builder.result()
+  }
+
+  private def copyEntries(
+      copyContext: CopyContext,
+      value: T,
+      result: mutable.Map[K, V]): Unit = {
+    val iterator = value.iterator
+    while (iterator.hasNext) {
+      val entry = iterator.next()
+      result.addOne(
+        (
+          copyContext.copyObject(entry._1).asInstanceOf[K],
+          copyContext.copyObject(entry._2).asInstanceOf[V]))
+    }
+  }
+
+  private def copyWithBuilder(
+      copyContext: CopyContext,
+      value: T,
+      builder: mutable.Builder[(K, V), T]): T = {
+    val iterator = value.iterator
+    while (iterator.hasNext) {
+      val entry = iterator.next()
+      builder.addOne(
+        (
+          copyContext.copyObject(entry._1).asInstanceOf[K],
+          copyContext.copyObject(entry._2).asInstanceOf[V]))
+    }
+    // A recursive copy through a mutable child may already have constructed and registered the
+    // canonical immutable copy of this map. Reuse it instead of returning a second builder result
+    // that would split the cycle's identity.
+    val recursiveCopy = copyContext.getCopyObject(value)
+    if (recursiveCopy != null) {
+      recursiveCopy
+    } else {
+      val result = builder.result()
+      copyContext.reference(value, result)
+      result
+    }
   }
 }
 
@@ -154,6 +223,12 @@ class ScalaSortedMapSerializer[K, V, T <: scala.collection.SortedMap[K, V]](
     typeResolver: TypeResolver,
     cls: Class[T])
   extends AbstractScalaMapSerializer[K, V, T](typeResolver, cls) {
+  override protected def newCopyBuilder(value: T): mutable.Builder[(K, V), T] = {
+    val factory = value.sortedMapFactory.sortedMapFactory[Any, Any](
+      value.ordering.asInstanceOf[Ordering[Any]])
+    factory.newBuilder.asInstanceOf[mutable.Builder[(K, V), T]]
+  }
+
   override def onMapWrite(
       writeContext: WriteContext,
       value: T): util.Map[_, _] = {

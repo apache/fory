@@ -19,6 +19,7 @@
 
 package org.apache.fory.serializer.scala
 
+import org.apache.fory.context.CopyContext
 import org.apache.fory.context.ReadContext
 import org.apache.fory.context.WriteContext
 import org.apache.fory.resolver.TypeResolver
@@ -81,6 +82,91 @@ abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](
 
   override def onCollectionRead(collection: util.Collection[_]): T = {
     collection.asInstanceOf[JavaCollectionBuilder[A, T]].builder.result()
+  }
+
+  override def copy(copyContext: CopyContext, value: T): T = {
+    if (isImmutable) {
+      value
+    } else if (
+        value.isInstanceOf[mutable.IndexedSeq[_]] &&
+        !value.isInstanceOf[mutable.Growable[_]]) {
+      copyIndexedSeq(copyContext, value, value.asInstanceOf[mutable.IndexedSeq[A]])
+    } else if (value.isInstanceOf[mutable.Iterable[_]]) {
+      newMutableCopy(value, value.size) match {
+        case result: mutable.Iterable[_] with mutable.Growable[_] =>
+          val growable = result.asInstanceOf[mutable.Iterable[A] with mutable.Growable[A]]
+          copyContext.reference(value, growable.asInstanceOf[T])
+          copyElements(copyContext, value, growable)
+          growable.asInstanceOf[T]
+        case _ =>
+          copyWithBuilder(copyContext, value, newCopyBuilder(value))
+      }
+    } else {
+      copyWithBuilder(copyContext, value, newCopyBuilder(value))
+    }
+  }
+
+  protected def newCopyBuilder(value: T): mutable.Builder[A, T] =
+    value.iterableFactory.newBuilder[A].asInstanceOf[mutable.Builder[A, T]]
+
+  private def newMutableCopy(value: T, numElements: Int): scala.collection.Iterable[A] = {
+    val builder = newCopyBuilder(value)
+    builder.sizeHint(numElements)
+    builder.result()
+  }
+
+  private def copyElements(
+      copyContext: CopyContext,
+      value: T,
+      result: mutable.Growable[A]): Unit = {
+    val iterator = value.iterator
+    while (iterator.hasNext) {
+      result.addOne(copyContext.copyObject(iterator.next()).asInstanceOf[A])
+    }
+  }
+
+  private def copyWithBuilder(
+      copyContext: CopyContext,
+      value: T,
+      builder: mutable.Builder[A, T]): T = {
+    val iterator = value.iterator
+    while (iterator.hasNext) {
+      builder.addOne(copyContext.copyObject(iterator.next()).asInstanceOf[A])
+    }
+    // A recursive copy through a mutable child may already have constructed and registered the
+    // canonical immutable copy of this collection. Reuse it instead of returning a second builder
+    // result that would split the cycle's identity.
+    val recursiveCopy = copyContext.getCopyObject(value)
+    if (recursiveCopy != null) {
+      recursiveCopy
+    } else {
+      val result = builder.result()
+      copyContext.reference(value, result)
+      result
+    }
+  }
+
+  private def copyIndexedSeq(
+      copyContext: CopyContext,
+      value: T,
+      indexed: mutable.IndexedSeq[A]): T = {
+    val result = indexed match {
+      case arraySeq: mutable.ArraySeq[_] =>
+        val sourceArray = arraySeq.array.asInstanceOf[AnyRef]
+        val array =
+          java.lang.reflect.Array.newInstance(sourceArray.getClass.getComponentType, indexed.size)
+        mutable.ArraySeq.make(array.asInstanceOf[Array[_]]).asInstanceOf[mutable.IndexedSeq[A]]
+      case _ =>
+        mutable.ArraySeq.make(new Array[Any](indexed.size)).asInstanceOf[mutable.IndexedSeq[A]]
+    }
+    val copied = result.asInstanceOf[T]
+    copyContext.reference(value, copied)
+    var i = 0
+    while (i < indexed.size) {
+      result.update(i, copyContext.copyObject(indexed(i)).asInstanceOf[A])
+      i += 1
+    }
+    copied
   }
 }
 
@@ -171,6 +257,12 @@ class ScalaSortedSetSerializer[A, T <: scala.collection.SortedSet[A]](
     typeResolver: TypeResolver,
     cls: Class[T])
   extends AbstractScalaCollectionSerializer[A, T](typeResolver, cls) {
+  override protected def newCopyBuilder(value: T): mutable.Builder[A, T] = {
+    val factory = value.sortedIterableFactory.evidenceIterableFactory[Any](
+      value.ordering.asInstanceOf[Ordering[Any]])
+    factory.newBuilder.asInstanceOf[mutable.Builder[A, T]]
+  }
+
   override def onCollectionWrite(
       writeContext: WriteContext,
       value: T): util.Collection[_] = {
