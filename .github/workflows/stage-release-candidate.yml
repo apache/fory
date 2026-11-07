@@ -130,7 +130,7 @@ jobs:
           python3 ci/release.py build -v "$VERSION" --rc-tag "$RC_TAG"
 
       - name: Upload source release to ATR
-        uses: apache/tooling-actions/upload-to-atr@ca6ed9e095c40db61c42a90db2599bb2fbc2319f
+        uses: apache/tooling-actions/upload-to-atr@43a38c48536aaf8f29c58aed22d7ac9f170eced7
         with:
           project: fory
           version: ${{ needs.validate.outputs.version }}
@@ -143,7 +143,7 @@ jobs:
           {
             echo "### Source candidate"
             echo
-            echo "https://release-test.apache.org/vote/fory/$VERSION"
+            echo "https://releases.apache.org/download/path/fory/$VERSION"
           } >> "$GITHUB_STEP_SUMMARY"
 
   stage-jvm:
