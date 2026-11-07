@@ -33,6 +33,7 @@ import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.resolver.JsonDefaultCodecs;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
@@ -74,11 +75,12 @@ public final class JsonCreatorFieldInfo {
     this.argumentIndex = argumentIndex;
     this.typeRef = typeRef;
     this.rawType = rawType;
-    this.codecAnnotation = codecAnnotation;
+    this.codecAnnotation = JsonDefaultCodecs.forOccurrence(codecAnnotation, unboxedRequired);
     this.valueCodecClass = valueCodecClass;
     this.formatAnnotation = formatAnnotation;
     this.unboxedRequired = unboxedRequired;
-    selectedCodec = codecAnnotation != null || valueCodecClass != null || formatAnnotation != null;
+    selectedCodec =
+        this.codecAnnotation != null || valueCodecClass != null || formatAnnotation != null;
   }
 
   public String name() {

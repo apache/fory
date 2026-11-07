@@ -101,6 +101,20 @@ public class KspRetentionResourceTest {
       rules("PlatformDirectOverride"),
       "$PACKAGE.PlatformDirectOverrideCodec",
     )
+    val defaultCodecs = rules("PlatformDefaultCodecs")
+    assertConstructor(defaultCodecs, "$PACKAGE.PlatformDefaultTokenCodec")
+    assertTrue(
+      defaultCodecs.contains("-keep,allowoptimization class $PACKAGE.PlatformPrefixCodec\n"),
+      defaultCodecs,
+    )
+    assertTrue(
+      defaultCodecs.contains("@interface org.apache.fory.json.annotation.JsonDefaultCodec\n"),
+      defaultCodecs,
+    )
+    assertTrue(
+      defaultCodecs.contains("@interface org.apache.fory.json.annotation.JsonDefaultCodec\$List"),
+      defaultCodecs,
+    )
     val mixin = mixinRules("PlatformJavaProfileMixin")
     assertTrue(mixin.contains("class $PACKAGE.PlatformJavaProfile"), mixin)
     assertTrue(mixin.contains("class $PACKAGE.PlatformJavaProfileMixin"), mixin)
@@ -148,6 +162,7 @@ public class KspRetentionResourceTest {
         "META-INF/proguard/fory-json-$PACKAGE.PlatformAccount.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformBox.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformCircle.pro",
+        "META-INF/proguard/fory-json-$PACKAGE.PlatformDefaultCodecs.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformDefaults.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformNullHandling.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformDirectOverride.pro",

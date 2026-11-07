@@ -47,6 +47,7 @@ internal const val JSON_MIXIN: String = "org.apache.fory.json.annotation.JsonMix
 internal const val JSON_SUB_TYPES: String = "org.apache.fory.json.annotation.JsonSubTypes"
 private const val JSON_SUB_TYPE = "org.apache.fory.json.annotation.JsonSubTypes.Type"
 private const val JSON_CODEC = "org.apache.fory.json.annotation.JsonCodec"
+private const val JSON_DEFAULT_CODEC = "org.apache.fory.json.annotation.JsonDefaultCodec"
 private const val JSON_BYTE_ARRAY = "org.apache.fory.json.annotation.JsonByteArray"
 private const val JSON_ANY_SETTER = "org.apache.fory.json.annotation.JsonAnySetter"
 private const val JSON_VALIDATOR = "org.apache.fory.json.annotation.JsonValidator"
@@ -1147,6 +1148,14 @@ internal class KspModelBuilder(
     result.annotations += name
     when (name) {
       JSON_CODEC -> collectCodecAnnotation(annotation, result.codecs)
+      JSON_DEFAULT_CODEC -> {
+        // Kotlin compiles a repeated declaration into the nested container annotation.
+        result.annotations += "$JSON_DEFAULT_CODEC\$List"
+        annotation.arguments.forEach { argument ->
+          collectCodecType(argument.value, result.codecs)
+          collectCodecSupertypes(argument.value, result.types)
+        }
+      }
       JSON_BYTE_ARRAY -> {
         val format =
           annotation.arguments.first { it.name?.asString() == "value" }.value as KSClassDeclaration
@@ -1208,6 +1217,34 @@ internal class KspModelBuilder(
         if (binary != null && binary !in CODEC_SENTINELS) result += binary
       }
       is Iterable<*> -> value.forEach { collectCodecType(it, result) }
+    }
+  }
+
+  /**
+   * The runtime reads a default codec's target from the generic signatures of its supertypes, so a
+   * shrinker must neither drop nor merge the classes on the way to `JsonValueCodec`.
+   */
+  private fun collectCodecSupertypes(value: Any?, result: MutableSet<String>) {
+    when (value) {
+      is KSType ->
+        (actual(value.declaration) as? KSClassDeclaration)?.let { collectSupertypes(it, result) }
+      is Iterable<*> -> value.forEach { collectCodecSupertypes(it, result) }
+    }
+  }
+
+  private fun collectSupertypes(declaration: KSClassDeclaration, result: MutableSet<String>) {
+    declaration.superTypes.forEach { reference ->
+      val supertype = actual(reference.resolve().declaration) as? KSClassDeclaration
+      val name = supertype?.let(::binaryName)
+      if (
+        supertype != null &&
+          name != null &&
+          !name.startsWith("java.") &&
+          !name.startsWith("kotlin.") &&
+          result.add(name)
+      ) {
+        collectSupertypes(supertype, result)
+      }
     }
   }
 

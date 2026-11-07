@@ -106,6 +106,28 @@ class KotlinBuiltInCodecsTest {
     val unsignedList: List<UInt>,
   )
 
+  @JvmInline value class Price(val amount: Long)
+
+  class TaggedPriceCodec : AbstractJsonValueCodec<Price>() {
+    override fun write(writer: JsonWriter, value: Price) {
+      writer.writeString("p:${value.amount}")
+    }
+
+    override fun read(reader: JsonReader): Price = Price(reader.readString().substring(2).toLong())
+  }
+
+  @JsonDefaultCodec(TaggedPriceCodec::class)
+  data class Priced(val price: Price, val prices: List<Price>)
+
+  @Test
+  fun defaultCodecKeepsValueClassCarrier() {
+    val value = Priced(Price(10), listOf(Price(20)))
+    val json = fory.toJson(value)
+    // The unboxed property keeps the module mapping; the boxed list element uses the default.
+    assertEquals("{\"price\":10,\"prices\":[\"p:20\"]}", json)
+    assertEquals(value, fory.fromJson(json, Priced::class.java))
+  }
+
   @Test
   fun defaultCodecKeepsUnsignedMapping() {
     val value = SignedAndUnsigned(5, UInt.MAX_VALUE, listOf(1), listOf(UInt.MAX_VALUE))

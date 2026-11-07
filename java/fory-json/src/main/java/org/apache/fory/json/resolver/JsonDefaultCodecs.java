@@ -175,6 +175,14 @@ public final class JsonDefaultCodecs {
   }
 
   /**
+   * Returns the codec an occurrence keeps. A class default never applies to a value-class property
+   * that needs an unboxed carrier: it keeps its module mapping, where a declared codec would fail.
+   */
+  public static JsonCodec forOccurrence(JsonCodec annotation, boolean unboxedRequired) {
+    return unboxedRequired && annotation instanceof SelectedCodec ? null : annotation;
+  }
+
+  /**
    * Returns whether {@code annotation} is a default that fills a child member. The resolver keeps
    * the container's own mapping when it is not the standard container representation.
    */

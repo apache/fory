@@ -22,6 +22,7 @@ package org.apache.fory.integration.kotlin.json.corpus
 import kotlin.jvm.JvmInline
 import org.apache.fory.json.annotation.JsonByteArray
 import org.apache.fory.json.annotation.JsonCodec
+import org.apache.fory.json.annotation.JsonDefaultCodec
 import org.apache.fory.json.annotation.JsonInclude
 import org.apache.fory.json.annotation.JsonMixin
 import org.apache.fory.json.annotation.JsonProperty
@@ -93,6 +94,26 @@ public class PlatformTokenCodec : AbstractJsonValueCodec<PlatformToken>() {
     return PlatformToken(value)
   }
 }
+
+public abstract class PlatformPrefixCodec<T> : AbstractJsonValueCodec<T>()
+
+public class PlatformDefaultTokenCodec : PlatformPrefixCodec<PlatformToken>() {
+  override fun write(writer: JsonWriter, value: PlatformToken?) {
+    if (value == null) writer.writeNull() else writer.writeString("t:" + value.value)
+  }
+
+  override fun read(reader: JsonReader): PlatformToken? {
+    val value = reader.readString() ?: return null
+    return PlatformToken(value.removePrefix("t:"))
+  }
+}
+
+@JsonType
+@JsonDefaultCodec(PlatformDefaultTokenCodec::class)
+public data class PlatformDefaultCodecs(
+  public val token: PlatformToken,
+  public val tokens: List<PlatformToken>,
+)
 
 @JsonSubTypes
 @JsonCodec(PlatformDirectOverrideCodec::class)

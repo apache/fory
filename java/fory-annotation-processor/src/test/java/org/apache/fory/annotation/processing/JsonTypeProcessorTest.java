@@ -121,6 +121,30 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void mixinDefaultCodecRules() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.DefaultTarget",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public final class DefaultTarget {\n"
+                + "  public Long id;\n"
+                + "}\n"
+                + "@JsonMixin(target = DefaultTarget.class)\n"
+                + "@JsonDefaultCodec(DefaultMixin.LongCodec.class) interface DefaultMixin {\n"
+                + "  abstract class Prefix<T> extends org.apache.fory.json.codec.AbstractJsonValueCodec<T> {}\n"
+                + "  final class LongCodec extends Prefix<Long> {\n"
+                + "    public void write(org.apache.fory.json.writer.JsonWriter writer, Long value) {}\n"
+                + "    public Long read(org.apache.fory.json.reader.JsonReader reader) { return null; }\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.DefaultMixin.pro");
+    assertTrue(rules.contains("class test.DefaultMixin$LongCodec { public <init>(); }"), rules);
+    assertTrue(rules.contains("-keep,allowoptimization class test.DefaultMixin$Prefix\n"), rules);
+  }
+
+  @Test
   public void mixinTypeCodecRules() throws Exception {
     CompilationResult result =
         compile(
@@ -2126,6 +2150,31 @@ public class JsonTypeProcessorTest {
     assertFalse(result.hasGeneratedSource("test/Child_ForyJsonCodec.java"));
     String rules = result.generatedResource(RULE_PREFIX + "test.Base.pro");
     assertTrue(rules.contains("-keep,allowoptimization class external.HiddenChild"), rules);
+  }
+
+  @Test
+  public void defaultCodecSupertypesMergeFromSubtypeModels() throws Exception {
+    assumeJava17Source();
+    CompilationResult result =
+        compile(
+            "test.Priced",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonDefaultCodec;\n"
+                + "import org.apache.fory.json.annotation.JsonSubTypes;\n"
+                + "@JsonSubTypes(property = \"kind\")\n"
+                + "public sealed interface Priced permits Priced.Item {\n"
+                + "  abstract class Prefix<T> extends org.apache.fory.json.codec.AbstractJsonValueCodec<T> {}\n"
+                + "  final class LongCodec extends Prefix<Long> {\n"
+                + "    public void write(org.apache.fory.json.writer.JsonWriter writer, Long value) {}\n"
+                + "    public Long read(org.apache.fory.json.reader.JsonReader reader) { return null; }\n"
+                + "  }\n"
+                + "  @JsonDefaultCodec(LongCodec.class)\n"
+                + "  final class Item implements Priced { public Long price; public Item() {} }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(RULE_PREFIX + "test.Priced.pro");
+    assertTrue(rules.contains("class test.Priced$LongCodec { public <init>(); }"), rules);
+    assertTrue(rules.contains("-keep,allowoptimization class test.Priced$Prefix\n"), rules);
   }
 
   @Test

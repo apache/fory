@@ -51,6 +51,7 @@ import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.resolver.JsonDefaultCodecs;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.JsonStringEscaper;
@@ -462,7 +463,9 @@ public final class JsonFieldInfo {
         && !writeRawType.isPrimitive()) {
       readIndexAndWriteNull |= OMIT_EMPTY_MASK;
     }
-    this.codecAnnotation = codecAnnotation;
+    this.codecAnnotation =
+        JsonDefaultCodecs.forOccurrence(
+            codecAnnotation, writeUnboxedRequired || readUnboxedRequired);
     this.valueCodecClass = valueCodecClass;
     this.formatAnnotation = formatAnnotation;
     this.writeAccessor = writeAccessor;

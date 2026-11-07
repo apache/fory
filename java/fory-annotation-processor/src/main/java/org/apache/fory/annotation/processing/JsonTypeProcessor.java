@@ -1538,6 +1538,7 @@ final class JsonTypeProcessor {
       annotationTypes.addAll(other.annotationTypes);
       containerTypes.addAll(other.containerTypes);
       codecTypes.addAll(other.codecTypes);
+      codecSupertypes.addAll(other.codecSupertypes);
       binaryFallbackTypes.addAll(other.binaryFallbackTypes);
       annotationOwnerTypes.addAll(other.annotationOwnerTypes);
       nameTypes.addAll(other.nameTypes);
