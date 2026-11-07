@@ -315,10 +315,16 @@ public final class JsonDefaultCodecs {
     return type;
   }
 
-  private static boolean kotlinClass(Class<?> type) {
-    for (Annotation annotation : type.getDeclaredAnnotations()) {
-      if (annotation.annotationType().getName().equals("kotlin.Metadata")) {
-        return true;
+  /**
+   * Returns whether any class on the codec's superclass chain is Kotlin. The target is resolved
+   * through that whole chain, so a Kotlin base class can contribute the variance wildcards.
+   */
+  private static boolean kotlinCodec(Class<?> codecClass) {
+    for (Class<?> type = codecClass; type != null; type = type.getSuperclass()) {
+      for (Annotation annotation : type.getDeclaredAnnotations()) {
+        if (annotation.annotationType().getName().equals("kotlin.Metadata")) {
+          return true;
+        }
       }
     }
     return false;
@@ -346,7 +352,7 @@ public final class JsonDefaultCodecs {
     List<TypeRef<?>> arguments =
         ((TypeRef) TypeRef.of(codecClass)).getSupertype(JsonValueCodec.class).getTypeArguments();
     Type target = arguments.size() == 1 ? arguments.get(0).getType() : null;
-    if (target != null && kotlinClass(codecClass)) {
+    if (target != null && kotlinCodec(codecClass)) {
       target = kotlinInvariant(target);
     }
     if (target == null || !concrete(target)) {

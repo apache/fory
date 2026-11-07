@@ -296,7 +296,7 @@ one class may name at most one codec per target type.
 
 A property or creator parameter whose resolved type equals a target uses the codec as if it
 declared `@JsonCodec(value = ...)`; a primitive property or array element matches its wrapper type.
-In a Kotlin codec's declared type, a `? extends T` that Kotlin emits for declaration-site variance
+In the declared type of a codec with a Kotlin class on its superclass chain, a `? extends T` that Kotlin emits for declaration-site variance
 reads as `T`; a Java codec's target must not contain wildcards.
 
 Otherwise a target equal to the direct child of a Java array, `Collection`,
@@ -310,7 +310,8 @@ keeps its mapping, as an explicit child member would reject it.
 
 A default codec is used exactly like a property `JsonCodec`, so it receives and owns null as
 described above for every property it reaches. Properties that declare `JsonCodec`, `JsonFormat`,
-`JsonByteArray`, `JsonRawValue`, or `JsonUnwrapped`, and JSON Any properties, do not use defaults.
+`JsonByteArray`, `JsonRawValue`, or `JsonUnwrapped`, and JSON Any properties, do not use defaults;
+there is no separate per-property opt-out.
 A value-class property read and written through its unboxed carrier cannot take a codec, so a
 default that matches one fails like a declared `JsonCodec`; a nullable or container occurrence of
 the value class is boxed and uses the default. A target that is a Kotlin unsigned type, which the

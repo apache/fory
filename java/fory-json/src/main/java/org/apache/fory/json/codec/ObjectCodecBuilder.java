@@ -1561,7 +1561,7 @@ final class ObjectCodecBuilder {
               i,
               resolved,
               rawTypes[i],
-              builder.effectiveCodec(resolved),
+              builder.creatorCodec(resolved, ownerType),
               builder.valueCodecClass(),
               builder.formatAnnotation(),
               builder.creatorUnboxedRequired,
@@ -1694,7 +1694,7 @@ final class ObjectCodecBuilder {
         }
         if (!builder.isAny() && builder.unwrappedAnnotation == null) {
           TypeRef<?> resolved = ownerType.resolveType(parameterTypes[i]);
-          JsonCodec codecAnnotation = builder.effectiveCodec(resolved);
+          JsonCodec codecAnnotation = builder.creatorCodec(resolved, ownerType);
           Class<? extends JsonValueCodec<?>> valueCodecClass = builder.valueCodecClass();
           fields.add(
               new JsonCreatorFieldInfo(
@@ -1781,7 +1781,7 @@ final class ObjectCodecBuilder {
             codecAnnotation = annotations.defaultCodecs.select(resolved);
           }
         } else {
-          codecAnnotation = builder.effectiveCodec(resolved);
+          codecAnnotation = builder.creatorCodec(resolved, ownerType);
         }
         if (unwrapped != null) {
           if (builder == null
@@ -1963,7 +1963,7 @@ final class ObjectCodecBuilder {
                 i,
                 resolved,
                 rawTypes[i],
-                builder.effectiveCodec(resolved),
+                builder.creatorCodec(resolved, ownerType),
                 builder.valueCodecClass(),
                 builder.formatAnnotation(),
                 builder.creatorUnboxedRequired,
@@ -3527,6 +3527,15 @@ final class ObjectCodecBuilder {
      */
     private JsonCodec effectiveCodec(TypeRef<?> type) {
       return usesDefaultCodec() ? annotations.defaultCodecs.select(type) : codecAnnotation;
+    }
+
+    /**
+     * Returns the creator parameter's codec. A property that also has a field or accessor selects
+     * its default from that logical type, so reading and writing always use the same default.
+     */
+    private JsonCodec creatorCodec(TypeRef<?> parameterType, TypeRef<?> ownerType) {
+      return effectiveCodec(
+          usesDefaultCodec() && hasLogicalMember() ? logicalTypeRef(ownerType) : parameterType);
     }
 
     private boolean usesDefaultCodec() {

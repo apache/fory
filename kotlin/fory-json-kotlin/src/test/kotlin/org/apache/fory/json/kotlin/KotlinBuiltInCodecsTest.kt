@@ -264,6 +264,22 @@ class KotlinBuiltInCodecsTest {
     )
   }
 
+  @JsonDefaultCodec(TaggedIntCodec::class)
+  class UnsignedCreator
+  private constructor(val signed: Int, val unsigned: UInt, @get:JsonIgnore val selected: Boolean) {
+    @JsonCreator(value = ["signed", "unsigned"])
+    constructor(sourceSigned: Int, sourceUnsigned: UInt) : this(sourceSigned, sourceUnsigned, true)
+  }
+
+  @Test
+  fun explicitCreatorKeepsUnsignedMapping() {
+    val text = "{\"signed\":\"i:5\",\"unsigned\":4294967295}"
+    val value = fory.fromJson(text, UnsignedCreator::class.java)
+    assertEquals(5, value.signed)
+    assertEquals(UInt.MAX_VALUE, value.unsigned)
+    assertEquals(text, fory.toJson(value))
+  }
+
   @Test
   fun defaultCodecKeepsUnsignedMapping() {
     val value = SignedAndUnsigned(5, UInt.MAX_VALUE, listOf(1), listOf(UInt.MAX_VALUE))
