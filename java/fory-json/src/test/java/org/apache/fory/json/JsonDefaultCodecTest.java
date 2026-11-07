@@ -533,6 +533,176 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     public BigDecimal price;
   }
 
+  public interface Shape {
+    String name();
+  }
+
+  public static final class ShapeCodec extends AbstractJsonValueCodec<Shape> {
+    @Override
+    public void write(JsonWriter writer, Shape value) {
+      writer.writeString("shape:" + value.name());
+    }
+
+    @Override
+    public Shape read(JsonReader reader) {
+      String name = reader.readString().substring(6);
+      return () -> name;
+    }
+  }
+
+  @JsonDefaultCodec(ShapeCodec.class)
+  public static class Shapes {
+    public Shape single;
+    public List<Shape> list;
+    public Optional<Shape> optional = Optional.empty();
+    public Shape[] array;
+    public Map<String, Shape> map;
+  }
+
+  @Test
+  public void interfaceChildWithoutOrdinaryMapping() {
+    ForyJson json = newJson();
+    Shapes shapes = new Shapes();
+    shapes.single = () -> "a";
+    shapes.list = Collections.singletonList(() -> "b");
+    shapes.optional = Optional.of(() -> "c");
+    shapes.array = new Shape[] {() -> "d"};
+    shapes.map = Collections.singletonMap("k", () -> "e");
+    String text = json.toJson(shapes);
+    assertEquals(
+        text,
+        "{\"single\":\"shape:a\",\"list\":[\"shape:b\"],\"optional\":\"shape:c\","
+            + "\"array\":[\"shape:d\"],\"map\":{\"k\":\"shape:e\"}}");
+    Shapes read = json.fromJson(text, Shapes.class);
+    assertEquals(read.single.name(), "a");
+    assertEquals(read.list.get(0).name(), "b");
+    assertEquals(read.optional.get().name(), "c");
+    assertEquals(read.array[0].name(), "d");
+    assertEquals(read.map.get("k").name(), "e");
+  }
+
+  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  public static class Shallow {
+    public List<Optional<BigDecimal>> nested;
+    public Map<String, List<BigDecimal>> nestedMap;
+    public java.util.concurrent.atomic.AtomicReferenceArray<BigDecimal> atomic;
+  }
+
+  @Test
+  public void onlyDirectChildrenAndMapValuesAreDefaulted() {
+    ForyJson json = newJson();
+    Shallow value = new Shallow();
+    value.nested = Collections.singletonList(Optional.of(TEN));
+    value.nestedMap = Collections.singletonMap("k", Collections.singletonList(TEN));
+    value.atomic = new java.util.concurrent.atomic.AtomicReferenceArray<>(new BigDecimal[] {TEN});
+    String text = json.toJson(value);
+    assertEquals(
+        text, "{\"nested\":[1E+1],\"nestedMap\":{\"k\":[1E+1]}," + "\"atomic\":[\"d:10\"]}");
+    Shallow read = json.fromJson(text, Shallow.class);
+    assertEquals(read.atomic.get(0), PLAIN_TEN);
+  }
+
+  @JsonDefaultCodec(TaggedIntegerCodec.class)
+  public static class Keyed {
+    public Map<Integer, Integer> counts;
+  }
+
+  @Test
+  public void mapKeysKeepTheirMapping() {
+    ForyJson json = newJson();
+    Keyed value = new Keyed();
+    value.counts = Collections.singletonMap(1, 2);
+    String text = json.toJson(value);
+    assertEquals(text, "{\"counts\":{\"1\":\"i:2\"}}");
+    assertEquals(json.fromJson(text, Keyed.class).counts, Collections.singletonMap(1, 2));
+  }
+
+  @Test
+  public void contentNullSkipStillAppliesAroundChildDefault() {
+    ForyJson json = newJsonBuilder().onContentNullRead(JsonProperty.NullHandling.SKIP).build();
+    Prices read = json.fromJson("{\"floors\":[\"d:1\",null]}", Prices.class);
+    assertEquals(read.floors, Collections.singletonList(BigDecimal.ONE));
+  }
+
+  /** Declares its value type through an intermediate generic superclass. */
+  public abstract static class PrefixCodec<T> extends AbstractJsonValueCodec<T> {}
+
+  public static final class InheritedDecimalCodec extends PrefixCodec<BigDecimal> {
+    @Override
+    public void write(JsonWriter writer, BigDecimal value) {
+      writer.writeString("x:" + value.toPlainString());
+    }
+
+    @Override
+    public BigDecimal read(JsonReader reader) {
+      return new BigDecimal(reader.readString().substring(2));
+    }
+  }
+
+  @JsonDefaultCodec(InheritedDecimalCodec.class)
+  public static class InheritedTarget {
+    public BigDecimal price;
+  }
+
+  @Test
+  public void codecValueTypeResolvesThroughGenericSuperclass() {
+    InheritedTarget value = new InheritedTarget();
+    value.price = TEN;
+    assertEquals(newJson().toJson(value), "{\"price\":\"x:10\"}");
+  }
+
+  @JsonDefaultCodec(TaggedIntegerCodec.class)
+  public static class MergedCreator {
+    private final int count;
+
+    @JsonCreator
+    public MergedCreator(@JsonProperty("count") int count) {
+      this.count = count;
+    }
+
+    public int getCount() {
+      return count;
+    }
+  }
+
+  @Test
+  public void getterAndCreatorParameterShareTheDefault() {
+    ForyJson json = newJson();
+    String text = json.toJson(new MergedCreator(7));
+    assertEquals(text, "{\"count\":\"i:7\"}");
+    assertEquals(json.fromJson(text, MergedCreator.class).getCount(), 7);
+  }
+
+  @JsonDefaultCodec(TaggedByteCodec.class)
+  public static class Bytes {
+    public byte[] data;
+  }
+
+  public static final class TaggedByteCodec extends AbstractJsonValueCodec<Byte> {
+    @Override
+    public void write(JsonWriter writer, Byte value) {
+      writer.writeString("b:" + value);
+    }
+
+    @Override
+    public Byte read(JsonReader reader) {
+      return Byte.valueOf(reader.readString().substring(2));
+    }
+  }
+
+  @Test
+  public void byteArrayElementsUseDefaultInEveryByteArrayFormat() {
+    Bytes value = new Bytes();
+    value.data = new byte[] {1, 2};
+    for (org.apache.fory.json.annotation.JsonByteArray.Format format :
+        org.apache.fory.json.annotation.JsonByteArray.Format.values()) {
+      ForyJson json = newJsonBuilder().byteArrayFormat(format).build();
+      String text = json.toJson(value);
+      assertEquals(text, "{\"data\":[\"b:1\",\"b:2\"]}", format.name());
+      assertEquals(json.fromJson(text, Bytes.class).data, new byte[] {1, 2});
+    }
+  }
+
   @JsonDefaultCodec({TaggedDecimalCodec.class, OtherDecimalCodec.class})
   public static class DuplicateTarget {
     public BigDecimal price;

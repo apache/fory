@@ -1270,6 +1270,29 @@ public final class JsonSharedRegistry {
         : overlay.annotation(declaration, annotationType);
   }
 
+  /**
+   * Returns whether a representation other than the standard container mapping owns this container
+   * type. It follows {@link #resolveCodec} without resolving the container's children.
+   */
+  boolean ownsContainer(TypeRef<?> typeRef, JsonTypeResolver localResolver) {
+    Class<?> rawType = typeRef.getRawType();
+    if (hasRegisteredCodec(rawType)
+        || codecDeclaration(rawType) != null
+        || valueDeclaration(rawType) != null
+        || hasSubTypes(rawType)
+        || exactCodecs.get(rawType) != null) {
+      return true;
+    }
+    if (typeRef.getTypeExtMeta() != null && typeRef.getTypeExtMeta().typeId() != Types.UNKNOWN) {
+      return true;
+    }
+    if (!Collection.class.isAssignableFrom(rawType) && !Map.class.isAssignableFrom(rawType)) {
+      return false;
+    }
+    return codecFactories.length != 0 && createModuleCodec(typeRef, localResolver, false) != null
+        || inferredSubTypes(rawType);
+  }
+
   /** Returns whether the target's Mixin removes this annotation from the declaration. */
   boolean mixinRemoves(
       Class<?> targetType, AnnotatedElement declaration, Class<? extends Annotation> type) {

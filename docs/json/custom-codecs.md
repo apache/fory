@@ -298,7 +298,8 @@ A property or creator parameter whose resolved type equals a target uses the cod
 declared `@JsonCodec(value = ...)`; a primitive property or array element matches its wrapper type.
 Otherwise a target equal to the direct child of an array, `Collection`, `AtomicReferenceArray`,
 `Optional`, `AtomicReference`, or the value of a `Map` fills the matching child member from the
-table above. Deeper nesting is not searched. A child is filled only where the container keeps its
+table above, so a `Byte` default writes a `byte[]` as a JSON array of codec values whatever
+`byteArrayFormat` says. Deeper nesting is not searched. A child is filled only where the container keeps its
 standard mapping: a registered codec or factory, a module, or a type declaration that owns the
 container keeps it unchanged.
 

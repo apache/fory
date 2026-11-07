@@ -419,13 +419,11 @@ public final class JsonTypeResolver {
     if (annotation == null) {
       return getTypeInfo(declaredType);
     }
-    if (JsonDefaultCodecs.selectsChild(annotation)) {
-      // A class default fills a child only where the container keeps its standard mapping, so a
-      // registration, factory, module, or type declaration that owns the container still wins.
-      JsonTypeInfo container = getTypeInfo(declaredType);
-      if (!standardContainer(container.valueCodec())) {
-        return container;
-      }
+    // A class default fills a child only where the container keeps its standard mapping, so a
+    // registration, factory, module, or type declaration that owns the container still wins.
+    if (JsonDefaultCodecs.selectsChild(annotation)
+        && sharedRegistry.ownsContainer(declaredType, this)) {
+      return getTypeInfo(declaredType);
     }
     ResolutionSnapshot snapshot = beginResolution();
     try {
@@ -801,15 +799,6 @@ public final class JsonTypeResolver {
       throw new ForyJsonException(
           "Covariant JSON type must be final or declare effective @JsonSubTypes: " + type);
     }
-  }
-
-  private static boolean standardContainer(JsonValueCodec<?> codec) {
-    return codec instanceof ArrayCodec
-        || codec instanceof CollectionCodec
-        || codec instanceof MapCodec
-        || codec instanceof ScalarCodecs.OptionalCodec
-        || codec instanceof ScalarCodecs.AtomicReferenceCodec
-        || codec instanceof ScalarCodecs.AtomicReferenceArrayCodec;
   }
 
   private static TypeRef<?> directElementType(TypeRef<?> typeRef, Class<?> rawType, String slot) {

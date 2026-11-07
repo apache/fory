@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -44,6 +45,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -1615,6 +1617,46 @@ public class JsonTypeProcessorTest {
     assertTrue(rules.contains("void putExtra(java.lang.String,java.lang.Object);"), rules);
     assertTrue(rules.contains("class java.util.ArrayList { public <init>(); }"), rules);
     assertTrue(rules.contains("class java.util.HashMap { public <init>(); }"), rules);
+  }
+
+  @Test
+  public void defaultCodecRecordPipeline() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.DefaultCodecRecord",
+            "package test;\n"
+                + "import java.math.BigDecimal;\n"
+                + "import java.util.Optional;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType @JsonDefaultCodec(DefaultCodecRecord.Plain.class)\n"
+                + "public record DefaultCodecRecord(BigDecimal price, Optional<BigDecimal> bid) {\n"
+                + "  public DefaultCodecRecord {\n"
+                + "    bid = bid == null ? Optional.empty() : bid;\n"
+                + "  }\n"
+                + "  public static final class Plain\n"
+                + "      extends org.apache.fory.json.codec.AbstractJsonValueCodec<BigDecimal> {\n"
+                + "    public void write(org.apache.fory.json.writer.JsonWriter w, BigDecimal v) {\n"
+                + "      w.writeString(\"p:\" + v.toPlainString());\n"
+                + "    }\n"
+                + "    public BigDecimal read(org.apache.fory.json.reader.JsonReader r) {\n"
+                + "      return new BigDecimal(r.readString().substring(2));\n"
+                + "    }\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.DefaultCodecRecord");
+    BigDecimal ten = new BigDecimal("1E+1");
+    Object value =
+        type.getConstructor(BigDecimal.class, Optional.class).newInstance(ten, Optional.of(ten));
+    for (ForyJson json : jsonRuntimes(loader)) {
+      String text = json.toJson(value);
+      assertEquals(text, "{\"price\":\"p:10\",\"bid\":\"p:10\"}");
+      Object decoded = json.fromJson(text, type);
+      assertEquals(type.getMethod("price").invoke(decoded), new BigDecimal("10"));
+      assertEquals(type.getMethod("bid").invoke(decoded), Optional.of(new BigDecimal("10")));
+    }
   }
 
   @Test
