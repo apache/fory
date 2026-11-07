@@ -106,6 +106,7 @@ final class JsonTypeProcessor {
 
   void process(RoundEnvironment roundEnvironment) {
     validateMixinControls(roundEnvironment);
+    validateDefaultCodecOwners(roundEnvironment);
     collectSubtypeGenerations(roundEnvironment);
     TypeElement jsonType = elements.getTypeElement(JSON_TYPE);
     TypeElement jsonSubTypes = elements.getTypeElement(JSON_SUB_TYPES);
@@ -223,6 +224,24 @@ final class JsonTypeProcessor {
             Diagnostic.Kind.ERROR,
             "@JsonMixinRemove is valid only inside a direct @JsonMixin source",
             element);
+      }
+    }
+  }
+
+  /** The runtime reads JsonDefaultCodec from classes only; a Mixin source may still supply it. */
+  private void validateDefaultCodecOwners(RoundEnvironment roundEnvironment) {
+    for (String name : new String[] {JSON_DEFAULT_CODEC, JSON_DEFAULT_CODEC_LIST}) {
+      TypeElement annotationType = elements.getTypeElement(name);
+      if (annotationType == null) {
+        continue;
+      }
+      for (Element element : roundEnvironment.getElementsAnnotatedWith(annotationType)) {
+        if (element.getKind() == ElementKind.INTERFACE && !hasAnnotation(element, JSON_MIXIN)) {
+          messager.printMessage(
+              Diagnostic.Kind.ERROR,
+              "@JsonDefaultCodec is read from classes only, not from interfaces",
+              element);
+        }
       }
     }
   }

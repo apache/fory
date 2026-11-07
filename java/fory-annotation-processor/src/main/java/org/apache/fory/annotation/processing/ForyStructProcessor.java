@@ -114,6 +114,8 @@ public final class ForyStructProcessor extends AbstractProcessor {
     annotations.add(JSON_MIXIN_REMOVE);
     annotations.add(JSON_SUB_TYPES);
     annotations.add(JSON_SUBTYPE_GENERATION);
+    annotations.add("org.apache.fory.json.annotation.JsonDefaultCodec");
+    annotations.add("org.apache.fory.json.annotation.JsonDefaultCodec.List");
     return Collections.unmodifiableSet(annotations);
   }
 

@@ -75,12 +75,11 @@ public final class JsonCreatorFieldInfo {
     this.argumentIndex = argumentIndex;
     this.typeRef = typeRef;
     this.rawType = rawType;
-    this.codecAnnotation = JsonDefaultCodecs.forOccurrence(codecAnnotation, unboxedRequired);
+    this.codecAnnotation = codecAnnotation;
     this.valueCodecClass = valueCodecClass;
     this.formatAnnotation = formatAnnotation;
     this.unboxedRequired = unboxedRequired;
-    selectedCodec =
-        this.codecAnnotation != null || valueCodecClass != null || formatAnnotation != null;
+    selectedCodec = codecAnnotation != null || valueCodecClass != null || formatAnnotation != null;
   }
 
   public String name() {
@@ -159,7 +158,8 @@ public final class JsonCreatorFieldInfo {
           "JSON creator property "
               + name
               + " cannot select a codec or format for the unboxed logical type "
-              + typeRef);
+              + typeRef
+              + JsonDefaultCodecs.origin(codecAnnotation));
     }
     JsonTypeInfo canonical =
         resolver.withContentNullRead(resolver.getTypeInfo(typeRef), onContentNullRead);

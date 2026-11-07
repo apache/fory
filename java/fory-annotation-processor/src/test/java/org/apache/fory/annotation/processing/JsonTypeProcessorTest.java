@@ -121,6 +121,26 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void defaultCodecOnInterfaceFailsCompilation() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.DefaultContract",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonDefaultCodec;\n"
+                + "@JsonDefaultCodec(DefaultContract.LongCodec.class)\n"
+                + "public interface DefaultContract {\n"
+                + "  final class LongCodec extends org.apache.fory.json.codec.AbstractJsonValueCodec<Long> {\n"
+                + "    public void write(org.apache.fory.json.writer.JsonWriter writer, Long value) {}\n"
+                + "    public Long read(org.apache.fory.json.reader.JsonReader reader) { return null; }\n"
+                + "  }\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result.diagnostics().contains("@JsonDefaultCodec is read from classes only"),
+        result.diagnostics());
+  }
+
+  @Test
   public void mixinDefaultCodecRules() throws Exception {
     CompilationResult result =
         compile(

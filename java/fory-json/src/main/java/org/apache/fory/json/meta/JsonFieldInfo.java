@@ -463,9 +463,7 @@ public final class JsonFieldInfo {
         && !writeRawType.isPrimitive()) {
       readIndexAndWriteNull |= OMIT_EMPTY_MASK;
     }
-    this.codecAnnotation =
-        JsonDefaultCodecs.forOccurrence(
-            codecAnnotation, writeUnboxedRequired || readUnboxedRequired);
+    this.codecAnnotation = codecAnnotation;
     this.valueCodecClass = valueCodecClass;
     this.formatAnnotation = formatAnnotation;
     this.writeAccessor = writeAccessor;
@@ -923,7 +921,8 @@ public final class JsonFieldInfo {
           "JSON property "
               + name
               + " cannot select a codec or format for the unboxed logical type "
-              + codecType);
+              + codecType
+              + JsonDefaultCodecs.origin(codecAnnotation));
     }
     JsonTypeInfo selectedTypeInfo =
         codecAnnotation != null

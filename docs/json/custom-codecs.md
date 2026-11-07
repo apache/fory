@@ -306,7 +306,9 @@ container keeps it unchanged.
 Properties that declare `JsonCodec`, `JsonFormat`, `JsonByteArray`, `JsonRawValue`, or
 `JsonUnwrapped`, and JSON Any properties, do not use defaults. Defaults declared on superclasses
 apply to the subclass, and a subclass default for the same target type replaces the inherited one.
-A declaration on an interface is rejected. Defaults stop at the class boundary: a nested object
+A declaration on an interface is rejected. A value-class property read and written through its
+unboxed carrier cannot take a codec, so a default that matches one fails like a declared
+`JsonCodec`; a nullable or container occurrence of the value class is boxed and uses the default. Defaults stop at the class boundary: a nested object
 type uses its own declarations. An exact-target Mixin may supply or replace the annotation; a Mixin
 that supplies or removes either the single or the repeated form replaces both forms declared on the
 target, and a removal also drops the defaults inherited from superclasses.

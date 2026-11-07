@@ -115,6 +115,16 @@ public data class PlatformDefaultCodecs(
   public val tokens: List<PlatformToken>,
 )
 
+@JsonDefaultCodec(PlatformDefaultTokenCodec::class)
+public abstract class PlatformDefaultBase
+
+@JsonType
+public data class PlatformInheritedDefaults(public val token: PlatformToken) : PlatformDefaultBase()
+
+@JsonType
+@JsonDefaultCodec.List(JsonDefaultCodec(PlatformDefaultTokenCodec::class))
+public data class PlatformContainerDefaults(public val token: PlatformToken)
+
 @JsonSubTypes
 @JsonCodec(PlatformDirectOverrideCodec::class)
 public data class PlatformDirectOverride(public val value: String)

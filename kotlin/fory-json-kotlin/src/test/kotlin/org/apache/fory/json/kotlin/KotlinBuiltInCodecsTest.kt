@@ -116,16 +116,19 @@ class KotlinBuiltInCodecsTest {
     override fun read(reader: JsonReader): Price = Price(reader.readString().substring(2).toLong())
   }
 
+  @JsonDefaultCodec(TaggedPriceCodec::class) data class Priced(val price: Price)
+
   @JsonDefaultCodec(TaggedPriceCodec::class)
-  data class Priced(val price: Price, val prices: List<Price>)
+  data class BoxedPrices(val price: Price?, val prices: List<Price>)
 
   @Test
-  fun defaultCodecKeepsValueClassCarrier() {
-    val value = Priced(Price(10), listOf(Price(20)))
+  fun defaultCodecOnValueClassCarrierFails() {
+    val error = assertFailsWith<ForyJsonException> { fory.toJson(Priced(Price(10))) }
+    assertTrue(error.message.orEmpty().contains("@JsonDefaultCodec"), error.message)
+    val value = BoxedPrices(Price(10), listOf(Price(20)))
     val json = fory.toJson(value)
-    // The unboxed property keeps the module mapping; the boxed list element uses the default.
-    assertEquals("{\"price\":10,\"prices\":[\"p:20\"]}", json)
-    assertEquals(value, fory.fromJson(json, Priced::class.java))
+    assertEquals("{\"price\":\"p:10\",\"prices\":[\"p:20\"]}", json)
+    assertEquals(value, fory.fromJson(json, BoxedPrices::class.java))
   }
 
   @Test

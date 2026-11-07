@@ -50,9 +50,12 @@ import org.apache.fory.json.codec.JsonValueCodec;
  * {@link JsonRawValue}, or {@link JsonUnwrapped}, and JSON Any properties, do not use defaults.
  * Defaults declared on superclasses apply too, and a subclass default for the same target type
  * replaces the inherited one. Declarations on interfaces are rejected. Defaults do not reach nested
- * object types, which use their own class declarations. An exact-target {@link JsonMixin} may
- * supply or replace this annotation; supplying or removing either the single or the repeated form
- * replaces both forms declared on the target, and a removal also drops inherited defaults.
+ * object types, which use their own class declarations. A value-class property read and written
+ * through its unboxed carrier cannot take a codec, so a default that matches one fails like a
+ * declared {@link JsonCodec}; a nullable or container occurrence of the value class is boxed and
+ * uses the default. An exact-target {@link JsonMixin} may supply or replace this annotation;
+ * supplying or removing either the single or the repeated form replaces both forms declared on the
+ * target, and a removal also drops inherited defaults.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

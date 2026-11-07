@@ -115,6 +115,23 @@ public class KspRetentionResourceTest {
       defaultCodecs.contains("@interface org.apache.fory.json.annotation.JsonDefaultCodec\$List"),
       defaultCodecs,
     )
+    for (model in listOf("PlatformInheritedDefaults", "PlatformContainerDefaults")) {
+      val text = rules(model)
+      assertConstructor(text, "$PACKAGE.PlatformDefaultTokenCodec")
+      assertTrue(
+        text.contains("-keep,allowoptimization class $PACKAGE.PlatformPrefixCodec\n"),
+        text,
+      )
+      assertTrue(
+        text.contains("@interface org.apache.fory.json.annotation.JsonDefaultCodec\$List"),
+        text,
+      )
+      assertFalse(text.contains("JsonDefaultCodec.List"), text)
+    }
+    assertTrue(
+      rules("PlatformInheritedDefaults").contains("class $PACKAGE.PlatformDefaultBase"),
+      rules("PlatformInheritedDefaults"),
+    )
     val mixin = mixinRules("PlatformJavaProfileMixin")
     assertTrue(mixin.contains("class $PACKAGE.PlatformJavaProfile"), mixin)
     assertTrue(mixin.contains("class $PACKAGE.PlatformJavaProfileMixin"), mixin)
@@ -162,11 +179,13 @@ public class KspRetentionResourceTest {
         "META-INF/proguard/fory-json-$PACKAGE.PlatformAccount.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformBox.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformCircle.pro",
+        "META-INF/proguard/fory-json-$PACKAGE.PlatformContainerDefaults.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformDefaultCodecs.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformDefaults.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformNullHandling.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformDirectOverride.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformId.pro",
+        "META-INF/proguard/fory-json-$PACKAGE.PlatformInheritedDefaults.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformMarker.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformOpen.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformRoot.pro",

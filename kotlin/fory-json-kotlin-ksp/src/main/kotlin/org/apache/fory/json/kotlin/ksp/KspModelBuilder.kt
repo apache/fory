@@ -48,6 +48,7 @@ internal const val JSON_SUB_TYPES: String = "org.apache.fory.json.annotation.Jso
 private const val JSON_SUB_TYPE = "org.apache.fory.json.annotation.JsonSubTypes.Type"
 private const val JSON_CODEC = "org.apache.fory.json.annotation.JsonCodec"
 private const val JSON_DEFAULT_CODEC = "org.apache.fory.json.annotation.JsonDefaultCodec"
+private const val JSON_DEFAULT_CODEC_LIST = "$JSON_DEFAULT_CODEC.List"
 private const val JSON_BYTE_ARRAY = "org.apache.fory.json.annotation.JsonByteArray"
 private const val JSON_ANY_SETTER = "org.apache.fory.json.annotation.JsonAnySetter"
 private const val JSON_VALIDATOR = "org.apache.fory.json.annotation.JsonValidator"
@@ -1084,8 +1085,41 @@ internal class KspModelBuilder(
           .forEach(result.annotations::add)
       }
     }
+    collectInheritedDefaultCodecs(target, mixin, result)
     collectEndpoints(target, mixin, result)
     return result
+  }
+
+  /**
+   * The runtime reads `JsonDefaultCodec` from every superclass, so declarations inherited from a
+   * class that is not itself a JSON model need the same retention. A Mixin removal on the target
+   * drops inherited defaults, as it does at runtime; interfaces are rejected there.
+   */
+  private fun collectInheritedDefaultCodecs(
+    target: KSClassDeclaration,
+    mixin: KSClassDeclaration?,
+    result: Retention,
+  ) {
+    if (
+      mixin != null &&
+        (removesAnnotation(mixin, JSON_DEFAULT_CODEC) ||
+          removesAnnotation(mixin, JSON_DEFAULT_CODEC_LIST))
+    ) {
+      return
+    }
+    target.getAllSuperTypes().forEach { supertype ->
+      val owner = actual(supertype.declaration) as? KSClassDeclaration ?: return@forEach
+      if (owner.classKind != ClassKind.CLASS) return@forEach
+      owner.annotations
+        .filter {
+          val name = annotationName(it)
+          name == JSON_DEFAULT_CODEC || name == JSON_DEFAULT_CODEC_LIST
+        }
+        .forEach { annotation ->
+          collectAnnotation(annotation, result)
+          binaryName(owner)?.let(result.annotationOwners::add)
+        }
+    }
   }
 
   private fun effectiveAnnotations(
@@ -1145,7 +1179,8 @@ internal class KspModelBuilder(
   private fun collectAnnotation(annotation: KSAnnotation, result: Retention) {
     val name = annotationName(annotation)
     if (!name.startsWith(JSON_ANNOTATION_PACKAGE) || name in CONTROL_ANNOTATIONS) return
-    result.annotations += name
+    // Keep rules name the nested container by its JVM binary name.
+    result.annotations += if (name == JSON_DEFAULT_CODEC_LIST) "$JSON_DEFAULT_CODEC\$List" else name
     when (name) {
       JSON_CODEC -> collectCodecAnnotation(annotation, result.codecs)
       JSON_DEFAULT_CODEC -> {
@@ -1156,6 +1191,12 @@ internal class KspModelBuilder(
           collectCodecSupertypes(argument.value, result.types)
         }
       }
+      JSON_DEFAULT_CODEC_LIST ->
+        annotation.arguments.forEach { argument ->
+          (argument.value as? Iterable<*>)?.filterIsInstance<KSAnnotation>()?.forEach {
+            collectAnnotation(it, result)
+          }
+        }
       JSON_BYTE_ARRAY -> {
         val format =
           annotation.arguments.first { it.name?.asString() == "value" }.value as KSClassDeclaration

@@ -174,12 +174,9 @@ public final class JsonDefaultCodecs {
     return null;
   }
 
-  /**
-   * Returns the codec an occurrence keeps. A class default never applies to a value-class property
-   * that needs an unboxed carrier: it keeps its module mapping, where a declared codec would fail.
-   */
-  public static JsonCodec forOccurrence(JsonCodec annotation, boolean unboxedRequired) {
-    return unboxedRequired && annotation instanceof SelectedCodec ? null : annotation;
+  /** Names a class default as the source of {@code annotation} in an error, or returns "". */
+  public static String origin(JsonCodec annotation) {
+    return annotation instanceof SelectedCodec ? " selected by the class @JsonDefaultCodec" : "";
   }
 
   /**
