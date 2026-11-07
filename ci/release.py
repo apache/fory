@@ -270,6 +270,7 @@ def stage_jvm(v, rc_tag, output=None):
         raise ValueError(f"HEAD {head} does not match {rc_tag} at {release_commit}")
     _require_jvm_release_version(v)
     authorization = _nexus_authorization()
+    _require_nexus_staging_profile(authorization)
     repositories_before = set(_nexus_repositories(authorization))
 
     try:
@@ -1021,6 +1022,20 @@ def _nexus_request(path, authorization, method="GET", payload=None):
         ) from None
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Nexus {method} {path} failed: {exc.reason}") from None
+
+
+def _require_nexus_staging_profile(authorization):
+    # Nexus can authenticate a shared CI deployer and list other projects while
+    # still denying access to Fory. Check the project grant before any upload.
+    _, body = _nexus_request("/service/local/staging/profiles", authorization)
+    profiles = json.loads(body).get("data", [])
+    if not any(profile.get("name") == "org.apache.fory" for profile in profiles):
+        raise RuntimeError(
+            "Nexus credentials cannot access the org.apache.fory staging profile. "
+            "Ask ASF Infra to grant Fory staging access to the account provided by "
+            "NEXUS_STAGE_DEPLOYER_USER and NEXUS_STAGE_DEPLOYER_PW. "
+            "Authentication and access to other projects do not establish this grant."
+        )
 
 
 def _nexus_repositories(authorization):

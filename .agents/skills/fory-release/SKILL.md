@@ -25,6 +25,12 @@ Actions secrets:
 Source staging uses ATR with GitHub OIDC, not SVN credentials. Do not add a
 personal signing key, a GPG passphrase secret, or SVN credentials to this flow.
 
+The Nexus account must have staging access to the `org.apache.fory` profile.
+Provisioning the shared CI credentials alone does not grant access to this
+project. `stage_jvm` checks profile access before building or uploading artifacts;
+if it is missing, ask Infra to grant Fory staging access to the provisioned CI
+account. Do not replace the CI credentials with a personal account.
+
 Before the first CI release, or after a signing-key rotation:
 
 - Obtain the CI public key and its full primary fingerprint from Infra's message
