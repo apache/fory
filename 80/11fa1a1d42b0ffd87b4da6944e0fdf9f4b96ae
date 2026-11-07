@@ -1,0 +1,14 @@
+.github/workflows/ci.yml
+  h_e94f2b5704cbef 153,1260-1261
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8011fa1a1d42b0ffd87b4da6944e0fdf9f4b96ae",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
