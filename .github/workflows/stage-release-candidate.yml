@@ -54,13 +54,12 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
-      - name: Read Nexus access and capture local Maven requests
+      - name: Verify the Fory staging profile preflight
         env:
           NEXUS_USERNAME: ${{ secrets.NEXUS_STAGE_DEPLOYER_USER }}
           NEXUS_PASSWORD: ${{ secrets.NEXUS_STAGE_DEPLOYER_PW }}
         run: |
-          mvn --version
-          python3 ci/inspect_nexus.py
+          python3 -c 'from ci.release import _nexus_authorization, _require_nexus_staging_profile; _require_nexus_staging_profile(_nexus_authorization())'
   validate:
     if: ${{ false }}
     runs-on: ubuntu-24.04
