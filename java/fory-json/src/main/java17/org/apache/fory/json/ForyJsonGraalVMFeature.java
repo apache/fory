@@ -53,8 +53,8 @@ import org.apache.fory.json.annotation.ForyJsonProvider;
 import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
-import org.apache.fory.json.annotation.JsonDefaultCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonDefaultCodec;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
@@ -117,6 +117,7 @@ final class ForyJsonGraalVMFeature implements Feature {
   private final Set<Class<?>> scalaFactoryModels = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> scalaEnumerationOwners = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedCodecs = ConcurrentHashMap.newKeySet();
+  private final Set<Class<?>> processedCodecSupertypes = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedContainers = ConcurrentHashMap.newKeySet();
   private final Set<Executable> processedCreators = new LinkedHashSet<>();
   // Reflection-only registrations are tracked apart from processedCreators, whose membership also
@@ -1118,6 +1119,21 @@ final class ForyJsonGraalVMFeature implements Feature {
     }
     for (Class<?> codecClass : annotation.value()) {
       registerCodec(codecClass);
+      registerCodecSupertypes(codecClass);
+    }
+  }
+
+  /** The runtime reads a default codec's target from the generic signatures of its supertypes. */
+  private void registerCodecSupertypes(Class<?> type) {
+    List<Class<?>> supertypes = new ArrayList<>(Arrays.asList(type.getInterfaces()));
+    if (type.getSuperclass() != null) {
+      supertypes.add(type.getSuperclass());
+    }
+    for (Class<?> supertype : supertypes) {
+      if (supertype != Object.class && processedCodecSupertypes.add(supertype)) {
+        RuntimeReflection.register(supertype);
+        registerCodecSupertypes(supertype);
+      }
     }
   }
 

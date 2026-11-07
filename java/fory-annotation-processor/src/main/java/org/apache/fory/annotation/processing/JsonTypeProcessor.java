@@ -628,6 +628,25 @@ final class JsonTypeProcessor {
           codecType instanceof TypeMirror ? asTypeElement((TypeMirror) codecType) : null;
       if (codec != null) {
         model.codecTypes.add(elements.getBinaryName(codec).toString());
+        collectCodecSupertypes(codec, model);
+      }
+    }
+  }
+
+  /**
+   * The runtime reads a default codec's target from the generic signatures of its supertypes, so a
+   * shrinker must neither drop nor merge the classes on the way to {@code JsonValueCodec}.
+   */
+  private void collectCodecSupertypes(TypeElement type, Model model) {
+    List<TypeMirror> supertypes = new ArrayList<>(type.getInterfaces());
+    supertypes.add(type.getSuperclass());
+    for (TypeMirror supertype : supertypes) {
+      TypeElement element = asTypeElement(supertype);
+      if (element == null || element.getQualifiedName().toString().startsWith("java.")) {
+        continue;
+      }
+      if (model.codecSupertypes.add(elements.getBinaryName(element).toString())) {
+        collectCodecSupertypes(element, model);
       }
     }
   }
@@ -729,6 +748,9 @@ final class JsonTypeProcessor {
                   ? annotationType
                   : elements.getBinaryName(annotationElement).toString())
           .append("\n");
+    }
+    for (String supertype : model.codecSupertypes) {
+      builder.append("-keep,allowoptimization class ").append(supertype).append("\n");
     }
     for (String container : model.containerTypes) {
       builder
@@ -1460,6 +1482,7 @@ final class JsonTypeProcessor {
     final Set<String> annotationTypes = new LinkedHashSet<>();
     final Set<String> containerTypes = new LinkedHashSet<>();
     final Set<String> codecTypes = new LinkedHashSet<>();
+    final Set<String> codecSupertypes = new LinkedHashSet<>();
     final Set<String> binaryFallbackTypes = new LinkedHashSet<>();
     final Set<String> annotationOwnerTypes = new LinkedHashSet<>();
     final Set<String> nameTypes = new LinkedHashSet<>();

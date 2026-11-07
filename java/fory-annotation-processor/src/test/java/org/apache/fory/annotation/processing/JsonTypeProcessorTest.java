@@ -1673,7 +1673,12 @@ public class JsonTypeProcessorTest {
             + "import org.apache.fory.json.annotation.JsonDefaultCodec;\n"
             + "@JsonDefaultCodec(DefaultCodecBase.BaseCodec.class)\n"
             + "public class DefaultCodecBase {\n"
-            + String.format(codec, "BaseCodec", "Long", "Long", "Long")
+            + "  public abstract static class Prefix<T>\n"
+            + "      extends org.apache.fory.json.codec.AbstractJsonValueCodec<T> {}\n"
+            + "  public static final class BaseCodec extends Prefix<Long> {\n"
+            + "    public void write(org.apache.fory.json.writer.JsonWriter writer, Long value) {}\n"
+            + "    public Long read(org.apache.fory.json.reader.JsonReader reader) { return null; }\n"
+            + "  }\n"
             + "  public Long id;\n"
             + "}\n");
     sources.put(
@@ -1705,6 +1710,13 @@ public class JsonTypeProcessorTest {
     assertTrue(
         rules.contains("class test.DefaultCodecModel$OptionalCodec { public <init>(); }"), rules);
     assertTrue(rules.contains("class test.DefaultCodecBase$BaseCodec { public <init>(); }"), rules);
+    // The codec's target is read from the generic signature of its intermediate superclass.
+    assertTrue(
+        rules.contains("-keep,allowoptimization class test.DefaultCodecBase$Prefix\n"), rules);
+    assertTrue(
+        rules.contains(
+            "-keep,allowoptimization class org.apache.fory.json.codec.AbstractJsonValueCodec\n"),
+        rules);
     // The model itself uses only the repeated form, compiled into the nested container.
     String keep = "-keep,allowoptimization,allowobfuscation @interface ";
     assertTrue(rules.contains(keep + "org.apache.fory.json.annotation.JsonDefaultCodec\n"), rules);

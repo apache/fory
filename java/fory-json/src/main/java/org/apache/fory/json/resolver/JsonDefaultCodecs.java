@@ -40,6 +40,7 @@ import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.type.Types;
 
 /**
  * Effective {@link JsonDefaultCodec} declarations of one object type and its superclasses.
@@ -143,33 +144,50 @@ public final class JsonDefaultCodecs {
     if (entries.length == 0) {
       return null;
     }
-    TypeRef<?> declared = type.isPrimitive() ? type.wrap() : type;
-    Class<? extends JsonValueCodec<?>> codec = codec(declared.getType());
+    Class<? extends JsonValueCodec<?>> codec = codec(type);
     if (codec != null) {
       return new SelectedCodec(codec, null, null, null);
     }
-    Class<?> rawType = declared.getRawType();
+    if (semantic(type)) {
+      return null;
+    }
+    Class<?> rawType = type.getRawType();
     if (rawType.isArray()) {
-      TypeRef<?> component = declared.getComponentType();
-      codec = codec((component.isPrimitive() ? component.wrap() : component).getType());
+      codec = codec(type.getComponentType());
       return codec == null ? null : new SelectedCodec(null, codec, null, null);
     }
-    if (rawType.getTypeParameters().length != 0 && !declared.hasExplicitTypeArguments()) {
+    if (rawType.getTypeParameters().length != 0 && !type.hasExplicitTypeArguments()) {
       return null;
     }
     if (Collection.class.isAssignableFrom(rawType) || rawType == AtomicReferenceArray.class) {
-      codec = codec(CodecUtils.elementTypeRef(declared).getType());
+      codec = codec(CodecUtils.elementTypeRef(type));
       return codec == null ? null : new SelectedCodec(null, codec, null, null);
     }
     if (rawType == Optional.class || rawType == AtomicReference.class) {
-      codec = codec(CodecUtils.elementTypeRef(declared).getType());
+      codec = codec(CodecUtils.elementTypeRef(type));
       return codec == null ? null : new SelectedCodec(null, null, codec, null);
     }
     if (Map.class.isAssignableFrom(rawType)) {
-      codec = codec(CodecUtils.mapKeyValueTypeRefs(declared).f1.getType());
+      codec = codec(CodecUtils.mapKeyValueTypeRefs(type).f1);
       return codec == null ? null : new SelectedCodec(null, null, null, codec);
     }
     return null;
+  }
+
+  /**
+   * Returns the default for one occurrence. A primitive matches its wrapper, but a type a language
+   * module tags with its own semantic type, such as a Kotlin {@code UInt} carried as {@code int},
+   * keeps that module's mapping.
+   */
+  private Class<? extends JsonValueCodec<?>> codec(TypeRef<?> type) {
+    if (semantic(type)) {
+      return null;
+    }
+    return codec((type.isPrimitive() ? type.wrap() : type).getType());
+  }
+
+  private static boolean semantic(TypeRef<?> type) {
+    return type.getTypeExtMeta() != null && type.getTypeExtMeta().typeId() != Types.UNKNOWN;
   }
 
   /**

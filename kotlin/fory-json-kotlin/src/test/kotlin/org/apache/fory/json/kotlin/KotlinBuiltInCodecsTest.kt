@@ -37,6 +37,8 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.annotation.JsonByteArray
+import org.apache.fory.json.annotation.JsonDefaultCodec
+import org.apache.fory.json.codec.AbstractJsonValueCodec
 import org.apache.fory.json.codec.DirectUnboxedValueCodec
 import org.apache.fory.json.reader.JsonReader
 import org.apache.fory.json.writer.JsonWriter
@@ -87,6 +89,34 @@ class KotlinBuiltInCodecsTest {
   )
 
   private val fory = ForyJsonKotlin.builder().withAsyncCompilation(false).build()
+
+  class TaggedIntCodec : AbstractJsonValueCodec<Int>() {
+    override fun write(writer: JsonWriter, value: Int) {
+      writer.writeString("i:$value")
+    }
+
+    override fun read(reader: JsonReader): Int = reader.readString().substring(2).toInt()
+  }
+
+  @JsonDefaultCodec(TaggedIntCodec::class)
+  data class SignedAndUnsigned(
+    val signed: Int,
+    val unsigned: UInt,
+    val signedList: List<Int>,
+    val unsignedList: List<UInt>,
+  )
+
+  @Test
+  fun defaultCodecKeepsUnsignedMapping() {
+    val value = SignedAndUnsigned(5, UInt.MAX_VALUE, listOf(1), listOf(UInt.MAX_VALUE))
+    val json = fory.toJson(value)
+    assertEquals(
+      "{\"signed\":\"i:5\",\"unsigned\":4294967295,\"signedList\":[\"i:1\"]," +
+        "\"unsignedList\":[4294967295]}",
+      json,
+    )
+    assertEquals(value, fory.fromJson(json, SignedAndUnsigned::class.java))
+  }
 
   data class BinaryFields(
     val label: String,

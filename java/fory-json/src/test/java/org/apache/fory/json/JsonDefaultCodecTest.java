@@ -703,6 +703,55 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     }
   }
 
+  public static final class TaggedStringCodec extends AbstractJsonValueCodec<String> {
+    @Override
+    public void write(JsonWriter writer, String value) {
+      writer.writeString("s:" + value);
+    }
+
+    @Override
+    public String read(JsonReader reader) {
+      return reader.readString().substring(2);
+    }
+  }
+
+  @JsonDefaultCodec({TaggedDecimalCodec.class, TaggedByteCodec.class, TaggedStringCodec.class})
+  public static class Excluded {
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    public BigDecimal formatted;
+
+    @org.apache.fory.json.annotation.JsonByteArray(
+        org.apache.fory.json.annotation.JsonByteArray.Format.BASE16)
+    public byte[] bytes;
+
+    @org.apache.fory.json.annotation.JsonRawValue public String raw;
+
+    @org.apache.fory.json.annotation.JsonUnwrapped public Nested unwrapped;
+
+    @org.apache.fory.json.annotation.JsonAnyProperty
+    public Map<String, BigDecimal> extra = new java.util.LinkedHashMap<>();
+  }
+
+  @Test
+  public void representationAnnotationsAndAnyValuesKeepTheirMapping() {
+    ForyJson json = newJson();
+    Excluded value = new Excluded();
+    value.formatted = TEN;
+    value.bytes = new byte[] {1, 2};
+    value.raw = "{\"a\":1}";
+    value.unwrapped = new Nested();
+    value.unwrapped.value = TEN;
+    value.extra.put("x", TEN);
+    String text = json.toJson(value);
+    assertTrue(text.contains("\"formatted\":\"1E+1\""), text);
+    assertTrue(text.contains("\"bytes\":\"0102\""), text);
+    assertTrue(text.contains("\"raw\":{\"a\":1}"), text);
+    // The unwrapped Nested properties follow Nested's declarations, which have no default.
+    assertTrue(text.contains("\"value\":1E+1"), text);
+    assertTrue(text.contains("\"x\":1E+1"), text);
+    assertTrue(!text.contains("d:") && !text.contains("s:") && !text.contains("b:"), text);
+  }
+
   @JsonDefaultCodec({TaggedDecimalCodec.class, OtherDecimalCodec.class})
   public static class DuplicateTarget {
     public BigDecimal price;
