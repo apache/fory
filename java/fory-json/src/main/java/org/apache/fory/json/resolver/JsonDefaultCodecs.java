@@ -175,6 +175,15 @@ public final class JsonDefaultCodecs {
   }
 
   /**
+   * Returns whether {@code annotation} is a default that fills a child member. The resolver keeps
+   * the container's own mapping when it is not the standard container representation.
+   */
+  static boolean selectsChild(JsonCodec annotation) {
+    return annotation instanceof SelectedCodec
+        && annotation.value() == JsonCodec.NoJsonValueCodec.class;
+  }
+
+  /**
    * Returns the default for one occurrence. A primitive matches its wrapper, but a type a language
    * module tags with its own semantic type, such as a Kotlin {@code UInt} carried as {@code int},
    * keeps that module's mapping.
@@ -186,19 +195,6 @@ public final class JsonDefaultCodecs {
     return codec((type.isPrimitive() ? type.wrap() : type).getType());
   }
 
-  private static boolean semantic(TypeRef<?> type) {
-    return type.getTypeExtMeta() != null && type.getTypeExtMeta().typeId() != Types.UNKNOWN;
-  }
-
-  /**
-   * Returns whether {@code annotation} is a default that fills a child member. The resolver keeps
-   * the container's own mapping when it is not the standard container representation.
-   */
-  static boolean selectsChild(JsonCodec annotation) {
-    return annotation instanceof SelectedCodec
-        && annotation.value() == JsonCodec.NoJsonValueCodec.class;
-  }
-
   private Class<? extends JsonValueCodec<?>> codec(Type type) {
     for (Entry entry : entries) {
       if (sameType(entry.target, type)) {
@@ -206,6 +202,10 @@ public final class JsonDefaultCodecs {
       }
     }
     return null;
+  }
+
+  private static boolean semantic(TypeRef<?> type) {
+    return type.getTypeExtMeta() != null && type.getTypeExtMeta().typeId() != Types.UNKNOWN;
   }
 
   private static Entry find(List<Entry> entries, Type target) {
