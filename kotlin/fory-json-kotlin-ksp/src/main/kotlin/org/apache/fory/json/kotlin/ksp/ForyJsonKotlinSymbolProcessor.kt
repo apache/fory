@@ -74,7 +74,10 @@ internal class ForyJsonKotlinSymbolProcessor(environment: SymbolProcessorEnviron
         }
       }
       .forEach {
-        logger.error("@JsonDefaultCodec is read from classes only, not from interfaces, enums, or annotation types", it)
+        logger.error(
+          "@JsonDefaultCodec is read from classes only, not from interfaces, enums, or annotation types",
+          it
+        )
       }
     for (symbol in resolver.getSymbolsWithAnnotation(JSON_MIXIN)) {
       if (!symbol.validate()) {
