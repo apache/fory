@@ -19,7 +19,7 @@
 # https://github.com/apache/infrastructure-actions/blob/main/actions.yml
 
 name: Stage Release Candidate
-run-name: "Stage Fory ${{ github.ref_name }}"
+run-name: Diagnose Nexus staging without publishing
 
 on:
   workflow_dispatch:
@@ -43,8 +43,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
+  diagnose:
     if: github.repository == 'apache/fory'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: Read Nexus access and capture local Maven requests
+        env:
+          NEXUS_USERNAME: ${{ secrets.NEXUS_STAGE_DEPLOYER_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_STAGE_DEPLOYER_PW }}
+        run: |
+          mvn --version
+          python3 ci/inspect_nexus.py
+  validate:
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     outputs:
       rc-tag: ${{ steps.release.outputs.rc-tag }}
