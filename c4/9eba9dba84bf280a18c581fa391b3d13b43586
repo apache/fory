@@ -1,0 +1,16 @@
+.github/workflows/stage-release-candidate.yml
+  h_e94f2b5704cbef 22,46,49-66
+ci/inspect_nexus.py
+  h_e94f2b5704cbef 1-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c49eba9dba84bf280a18c581fa391b3d13b43586",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
