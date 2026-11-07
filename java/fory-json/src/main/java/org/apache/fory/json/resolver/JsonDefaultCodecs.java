@@ -232,25 +232,41 @@ public final class JsonDefaultCodecs {
       return matches(
           ((GenericArrayType) target).getGenericComponentType(), occurrence.getComponentType());
     }
-    if (target instanceof ParameterizedType && occurrence.hasExplicitTypeArguments()) {
+    if (target instanceof ParameterizedType && type instanceof ParameterizedType) {
       ParameterizedType parameterized = (ParameterizedType) target;
+      ParameterizedType declared = (ParameterizedType) type;
       Type[] arguments = parameterized.getActualTypeArguments();
-      List<TypeRef<?>> occurrenceArguments = occurrence.getTypeArguments();
-      if (!parameterized.getRawType().equals(occurrence.getRawType())
-          || arguments.length != occurrenceArguments.size()) {
+      Type[] declaredArguments = declared.getActualTypeArguments();
+      if (!parameterized.getRawType().equals(declared.getRawType())
+          || arguments.length != declaredArguments.length) {
         return false;
       }
+      List<TypeRef<?>> tokens = occurrence.getTypeArguments();
       for (int i = 0; i < arguments.length; i++) {
-        if (!matches(arguments[i], occurrenceArguments.get(i))) {
+        if (!matches(arguments[i], argument(declaredArguments[i], tokens, i, arguments.length))) {
           return false;
         }
       }
       Type owner = parameterized.getOwnerType();
-      return owner == null
-          || !(type instanceof ParameterizedType)
-          || sameType(owner, ((ParameterizedType) type).getOwnerType());
+      return owner == null || sameType(owner, declared.getOwnerType());
     }
     return sameType(target, type);
+  }
+
+  /**
+   * Returns the occurrence token of one declared type argument. {@code TypeRef} may normalize a
+   * container subclass's arguments to its element type, so a token is used only when it describes
+   * the same raw type as the declared argument, as for a Kotlin array with a component token.
+   */
+  private static TypeRef<?> argument(Type declared, List<TypeRef<?>> tokens, int index, int count) {
+    if (tokens.size() == count) {
+      TypeRef<?> token = tokens.get(index);
+      if (CodecUtils.rawType(token.getType(), Object.class)
+          == CodecUtils.rawType(declared, Object.class)) {
+        return token;
+      }
+    }
+    return TypeRef.of(declared);
   }
 
   /** A wildcard child is not concrete, which an explicit child member rejects as well. */
@@ -281,7 +297,7 @@ public final class JsonDefaultCodecs {
 
   private static Entry find(List<Entry> entries, Type target) {
     for (Entry entry : entries) {
-      if (sameType(entry.target, target)) {
+      if (sameType(entry.target, target, true)) {
         return entry;
       }
     }
@@ -330,10 +346,20 @@ public final class JsonDefaultCodecs {
     return false;
   }
 
-  /** Compares reflected types structurally, independent of their implementation classes. */
-  private static boolean sameType(Type a, Type b) {
+  /**
+   * Compares a target with a reflected type structurally, independent of their implementation
+   * classes. Only the target's covariant wildcards read as their bound: Kotlin writes them into a
+   * codec's declared type, while a property declared {@code List<? extends T>} stays a wildcard.
+   */
+  private static boolean sameType(Type target, Type type) {
+    return sameType(target, type, false);
+  }
+
+  private static boolean sameType(Type a, Type b, boolean bothTargets) {
     a = covariant(a);
-    b = covariant(b);
+    if (bothTargets) {
+      b = covariant(b);
+    }
     if (a instanceof Class || b instanceof Class) {
       return a.equals(b);
     }
@@ -347,7 +373,7 @@ public final class JsonDefaultCodecs {
         return false;
       }
       for (int i = 0; i < leftArguments.length; i++) {
-        if (!sameType(leftArguments[i], rightArguments[i])) {
+        if (!sameType(leftArguments[i], rightArguments[i], bothTargets)) {
           return false;
         }
       }
@@ -355,12 +381,13 @@ public final class JsonDefaultCodecs {
       Type rightOwner = right.getOwnerType();
       return leftOwner == null || rightOwner == null
           ? Objects.equals(leftOwner, rightOwner)
-          : sameType(leftOwner, rightOwner);
+          : sameType(leftOwner, rightOwner, bothTargets);
     }
     if (a instanceof GenericArrayType && b instanceof GenericArrayType) {
       return sameType(
           ((GenericArrayType) a).getGenericComponentType(),
-          ((GenericArrayType) b).getGenericComponentType());
+          ((GenericArrayType) b).getGenericComponentType(),
+          bothTargets);
     }
     return a.equals(b);
   }

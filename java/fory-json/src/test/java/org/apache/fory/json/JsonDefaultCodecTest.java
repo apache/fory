@@ -848,6 +848,80 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(newJson().toJson(value), "{\"prices\":[1E+1]}");
   }
 
+  public static final class DecimalListCodec extends AbstractJsonValueCodec<List<BigDecimal>> {
+    @Override
+    public void write(JsonWriter writer, List<BigDecimal> value) {
+      writer.writeString("list:" + value.size());
+    }
+
+    @Override
+    public List<BigDecimal> read(JsonReader reader) {
+      reader.readString();
+      return Collections.emptyList();
+    }
+  }
+
+  @JsonDefaultCodec(DecimalListCodec.class)
+  public static class ExactAndWildcardLists {
+    public List<BigDecimal> exact;
+    public List<? extends BigDecimal> wildcard;
+  }
+
+  @Test
+  public void propertyWildcardDoesNotMatchAnExactTarget() {
+    ExactAndWildcardLists value = new ExactAndWildcardLists();
+    value.exact = Collections.singletonList(TEN);
+    value.wildcard = Collections.singletonList(TEN);
+    assertEquals(newJson().toJson(value), "{\"exact\":\"list:1\",\"wildcard\":[1E+1]}");
+  }
+
+  public static class Bucket<T> extends java.util.ArrayList<List<T>> {}
+
+  public static final class StringBucketCodec extends AbstractJsonValueCodec<Bucket<String>> {
+    @Override
+    public void write(JsonWriter writer, Bucket<String> value) {
+      writer.writeString("bucket:" + value.size());
+    }
+
+    @Override
+    public Bucket<String> read(JsonReader reader) {
+      reader.readString();
+      return new Bucket<>();
+    }
+  }
+
+  public static class Dictionary<V> extends java.util.HashMap<String, V> {}
+
+  public static final class DecimalDictionaryCodec
+      extends AbstractJsonValueCodec<Dictionary<BigDecimal>> {
+    @Override
+    public void write(JsonWriter writer, Dictionary<BigDecimal> value) {
+      writer.writeString("dict:" + value.size());
+    }
+
+    @Override
+    public Dictionary<BigDecimal> read(JsonReader reader) {
+      reader.readString();
+      return new Dictionary<>();
+    }
+  }
+
+  @JsonDefaultCodec({StringBucketCodec.class, DecimalDictionaryCodec.class})
+  public static class TransformedContainers {
+    public Bucket<String> bucket;
+    public Dictionary<BigDecimal> dictionary;
+  }
+
+  @Test
+  public void containerSubclassTargetsMatchTheirDeclaredArguments() {
+    TransformedContainers value = new TransformedContainers();
+    value.bucket = new Bucket<>();
+    value.bucket.add(Collections.singletonList("a"));
+    value.dictionary = new Dictionary<>();
+    value.dictionary.put("k", TEN);
+    assertEquals(newJson().toJson(value), "{\"bucket\":\"bucket:1\",\"dictionary\":\"dict:1\"}");
+  }
+
   public static final class TreeNodeCodec extends AbstractJsonValueCodec<TreeNode> {
     @Override
     public void write(JsonWriter writer, TreeNode value) {
