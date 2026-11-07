@@ -255,14 +255,14 @@ public final class JsonDefaultCodecs {
 
   /**
    * Returns the occurrence token of one declared type argument. {@code TypeRef} may normalize a
-   * container subclass's arguments to its element type, so a token is used only when it describes
-   * the same raw type as the declared argument, as for a Kotlin array with a component token.
+   * container subclass's arguments to its element type, so a token is used only when its reflected
+   * type is the declared argument itself; it then adds what reflection lacks, such as a Kotlin
+   * array's parameterized component token.
    */
   private static TypeRef<?> argument(Type declared, List<TypeRef<?>> tokens, int index, int count) {
     if (tokens.size() == count) {
       TypeRef<?> token = tokens.get(index);
-      if (CodecUtils.rawType(token.getType(), Object.class)
-          == CodecUtils.rawType(declared, Object.class)) {
+      if (sameType(declared, token.getType(), true)) {
         return token;
       }
     }

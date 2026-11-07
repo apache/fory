@@ -922,6 +922,54 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(newJson().toJson(value), "{\"bucket\":\"bucket:1\",\"dictionary\":\"dict:1\"}");
   }
 
+  public static final class NestedBucketCodec extends AbstractJsonValueCodec<Bucket<List<String>>> {
+    @Override
+    public void write(JsonWriter writer, Bucket<List<String>> value) {
+      writer.writeString("nested:" + value.size());
+    }
+
+    @Override
+    public Bucket<List<String>> read(JsonReader reader) {
+      reader.readString();
+      return new Bucket<>();
+    }
+  }
+
+  public static final class DeeperBucketCodec
+      extends AbstractJsonValueCodec<Bucket<List<List<String>>>> {
+    @Override
+    public void write(JsonWriter writer, Bucket<List<List<String>>> value) {
+      writer.writeString("deeper:" + value.size());
+    }
+
+    @Override
+    public Bucket<List<List<String>>> read(JsonReader reader) {
+      reader.readString();
+      return new Bucket<>();
+    }
+  }
+
+  @JsonDefaultCodec(NestedBucketCodec.class)
+  public static class NestedBucketHolder {
+    public Bucket<List<String>> bucket;
+  }
+
+  @JsonDefaultCodec(DeeperBucketCodec.class)
+  public static class DeeperTargetHolder {
+    public Bucket<List<String>> bucket;
+  }
+
+  @Test
+  public void containerSubclassArgumentsAreNotConfusedWithTheirElementToken() {
+    Bucket<List<String>> bucket = new Bucket<>();
+    NestedBucketHolder nested = new NestedBucketHolder();
+    nested.bucket = bucket;
+    assertEquals(newJson().toJson(nested), "{\"bucket\":\"nested:0\"}");
+    DeeperTargetHolder deeper = new DeeperTargetHolder();
+    deeper.bucket = bucket;
+    assertEquals(newJson().toJson(deeper), "{\"bucket\":[]}");
+  }
+
   public static final class Money {
     public final long cents;
 
