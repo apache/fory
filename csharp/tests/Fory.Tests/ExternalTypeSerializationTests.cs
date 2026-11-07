@@ -401,6 +401,8 @@ public sealed class ExternalTypeSerializationTests
         ExternalFields value = new() { Count = 19, Name = "custom" };
         ForyRuntime generated = ForyRuntime.Builder().Build();
         generated.Register<ExternalFields>(6106);
+        Assert.Throws<InvalidDataException>(
+            () => generated.Register<ExternalFields, ExternalFieldsCustomSerializer>(6107));
         byte[] generatedBytes = generated.Serialize(value);
 
         ForyRuntime custom = ForyRuntime.Builder().Build();
@@ -411,8 +413,6 @@ public sealed class ExternalTypeSerializationTests
         Assert.NotEqual(generatedBytes, customBytes);
         Assert.Equal(value.Count, decoded.Count);
         Assert.Equal(value.Name, decoded.Name);
-        Assert.Throws<InvalidDataException>(
-            () => generated.Register<ExternalFields, ExternalFieldsCustomSerializer>(6107));
     }
 
     [Fact]

@@ -834,18 +834,12 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
-    public void ThreadSafeForyRegistrationAppliesToInitializedThreadLocalInstance()
+    public void ThreadSafeForyRejectsLateRegistration()
     {
         using ThreadSafeFory fory = ForyRuntime.Builder().TrackRef(true).BuildThreadSafe();
         _ = fory.Serialize(1);
-        fory.Register<Node>(952);
-
-        Node source = new() { Value = 7 };
-        source.Next = source;
-        Node decoded = fory.Deserialize<Node>(fory.Serialize(source));
-        Assert.Equal(7, decoded.Value);
-        Assert.NotNull(decoded.Next);
-        Assert.Same(decoded, decoded.Next);
+        Assert.Throws<InvalidOperationException>(() => fory.Register<Node>(952));
+        Assert.Equal(7, fory.Deserialize<int>(fory.Serialize(7)));
     }
 
     [Fact]

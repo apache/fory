@@ -16,24 +16,30 @@
 // under the License.
 
 using System.Buffers;
+using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
 /// <summary>
 /// Thread-safe wrapper around <see cref="Fory"/> based on one <see cref="Fory"/> instance per thread.
 /// </summary>
+/// <remarks>
+/// Register all types and serializers before the first serialization or deserialization on any thread.
+/// Later registration throws <see cref="InvalidOperationException"/>, even if that operation failed.
+/// </remarks>
 public sealed class ThreadSafeFory : IDisposable
 {
     private readonly Config _config;
     private readonly object _registrationLock = new();
     private readonly List<Action<Fory>> _registrations = [];
     private readonly ThreadLocal<Fory> _threadLocalFory;
+    private bool _registrationFrozen;
     private bool _disposed;
 
     internal ThreadSafeFory(Config config)
     {
         _config = config;
-        _threadLocalFory = new ThreadLocal<Fory>(CreatePerThreadFory, trackAllValues: true);
+        _threadLocalFory = new ThreadLocal<Fory>(CreatePerThreadFory);
     }
 
     /// <summary>
@@ -181,6 +187,10 @@ public sealed class ThreadSafeFory : IDisposable
         get
         {
             ThrowIfDisposed();
+            if (!Volatile.Read(ref _registrationFrozen))
+            {
+                FreezeRegistration();
+            }
             return _threadLocalFory.Value!;
         }
     }
@@ -204,16 +214,27 @@ public sealed class ThreadSafeFory : IDisposable
         return fory;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void FreezeRegistration()
+    {
+        // Serialize first use with registration before creating any thread's runtime.
+        // Every later thread must receive this same, permanently fixed registration list.
+        lock (_registrationLock)
+        {
+            Volatile.Write(ref _registrationFrozen, true);
+        }
+    }
+
     private void ApplyRegistration(Action<Fory> registration)
     {
         lock (_registrationLock)
         {
             ThrowIfDisposed();
-            _registrations.Add(registration);
-            foreach (Fory fory in _threadLocalFory.Values)
+            if (_registrationFrozen)
             {
-                registration(fory);
+                TypeResolver.ThrowRegistrationFrozen();
             }
+            _registrations.Add(registration);
         }
     }
 
