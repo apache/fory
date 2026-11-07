@@ -922,6 +922,63 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(newJson().toJson(value), "{\"bucket\":\"bucket:1\",\"dictionary\":\"dict:1\"}");
   }
 
+  public static final class Money {
+    public final long cents;
+
+    public Money(long cents) {
+      this.cents = cents;
+    }
+  }
+
+  public static final class RegisteredMoneyCodec extends AbstractJsonValueCodec<Money> {
+    @Override
+    public void write(JsonWriter writer, Money value) {
+      writer.writeString("registered:" + value.cents);
+    }
+
+    @Override
+    public Money read(JsonReader reader) {
+      return new Money(Long.parseLong(reader.readString().substring(11)));
+    }
+  }
+
+  public static final class DefaultMoneyCodec extends AbstractJsonValueCodec<Money> {
+    @Override
+    public void write(JsonWriter writer, Money value) {
+      writer.writeString("default:" + value.cents);
+    }
+
+    @Override
+    public Money read(JsonReader reader) {
+      return new Money(Long.parseLong(reader.readString().substring(8)));
+    }
+  }
+
+  @JsonDefaultCodec(DefaultMoneyCodec.class)
+  public static class Wallet {
+    public Money cash;
+    public List<Money> coins;
+
+    @JsonCodec(RegisteredMoneyCodec.class)
+    public Money declared;
+  }
+
+  @Test
+  public void classDefaultWinsOverRegistrationLikeAPropertyCodec() {
+    ForyJson json = newJsonBuilder().registerCodec(Money.class, new RegisteredMoneyCodec()).build();
+    Wallet wallet = new Wallet();
+    wallet.cash = new Money(1);
+    wallet.coins = Collections.singletonList(new Money(2));
+    wallet.declared = new Money(3);
+    String text = json.toJson(wallet);
+    assertEquals(
+        text, "{\"cash\":\"default:1\",\"coins\":[\"default:2\"],\"declared\":\"registered:3\"}");
+    Wallet read = json.fromJson(text, Wallet.class);
+    assertEquals(read.cash.cents, 1);
+    assertEquals(read.coins.get(0).cents, 2);
+    assertEquals(read.declared.cents, 3);
+  }
+
   public static final class TreeNodeCodec extends AbstractJsonValueCodec<TreeNode> {
     @Override
     public void write(JsonWriter writer, TreeNode value) {
