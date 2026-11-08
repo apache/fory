@@ -41,6 +41,7 @@ import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.test.bean.Struct;
+import org.apache.fory.util.StringUtils;
 import org.codehaus.commons.compiler.util.reflect.ByteArrayClassLoader;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -474,10 +475,15 @@ public class UnknownClassSerializersTest extends ForyTestBase {
     }
 
     // Verify all field values are preserved (compare by simple field name)
+    assertEquals(actualMap.size(), expectedMap.size());
     for (Map.Entry<String, Object> entry : expectedMap.entrySet()) {
       String qualifiedFieldName = entry.getKey();
       String simpleFieldName =
           qualifiedFieldName.substring(qualifiedFieldName.lastIndexOf('.') + 1);
+      if (xlang) {
+        simpleFieldName = StringUtils.toSnakeCase(simpleFieldName);
+      }
+      assertTrue(actualMap.containsKey(simpleFieldName));
       Object expectedValue = entry.getValue();
       Object actualValue = actualMap.get(simpleFieldName);
 
@@ -521,10 +527,15 @@ public class UnknownClassSerializersTest extends ForyTestBase {
     }
 
     // Verify values including nulls (compare by simple field name)
+    assertEquals(actualMap.size(), expectedMap.size());
     for (Map.Entry<String, Object> entry : expectedMap.entrySet()) {
       String qualifiedFieldName = entry.getKey();
       String simpleFieldName =
           qualifiedFieldName.substring(qualifiedFieldName.lastIndexOf('.') + 1);
+      if (xlang) {
+        simpleFieldName = StringUtils.toSnakeCase(simpleFieldName);
+      }
+      assertTrue(actualMap.containsKey(simpleFieldName));
       Object expectedValue = entry.getValue();
       Object actualValue = actualMap.get(simpleFieldName);
 
@@ -574,10 +585,15 @@ public class UnknownClassSerializersTest extends ForyTestBase {
       actualMap.put(simpleFieldName, result.get(key));
     }
 
+    assertEquals(actualMap.size(), expectedMap.size());
     for (Map.Entry<String, Object> entry : expectedMap.entrySet()) {
       String qualifiedFieldName = entry.getKey();
       String simpleFieldName =
           qualifiedFieldName.substring(qualifiedFieldName.lastIndexOf('.') + 1);
+      if (xlang) {
+        simpleFieldName = StringUtils.toSnakeCase(simpleFieldName);
+      }
+      assertTrue(actualMap.containsKey(simpleFieldName));
       Object expectedValue = entry.getValue();
       Object actualValue = actualMap.get(simpleFieldName);
 

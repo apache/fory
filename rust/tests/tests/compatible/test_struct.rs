@@ -22,6 +22,71 @@ use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 
 #[test]
+#[allow(non_snake_case)]
+fn field_names() {
+    #[derive(ForyStruct, Debug, PartialEq)]
+    struct Declared {
+        createdAt: i32,
+        fooURL: String,
+        URLValue: i32,
+        HTTP2Server: i32,
+        x2Y: i32,
+        ABc: i32,
+        fooÖl: i32,
+        _URL_Value_: i32,
+    }
+    #[derive(ForyStruct, Debug, PartialEq)]
+    struct Canonical {
+        created_at: i32,
+        foo_url: String,
+        url_value: i32,
+        http2_server: i32,
+        x2_y: i32,
+        a_bc: i32,
+        fooÖl: i32,
+        _url_value_: i32,
+    }
+    let declared = Declared {
+        createdAt: 7,
+        fooURL: "hi".into(),
+        URLValue: 13,
+        HTTP2Server: 17,
+        x2Y: 19,
+        ABc: 23,
+        fooÖl: 29,
+        _URL_Value_: 31,
+    };
+    let canonical = Canonical {
+        created_at: 7,
+        foo_url: "hi".into(),
+        url_value: 13,
+        http2_server: 17,
+        x2_y: 19,
+        a_bc: 23,
+        fooÖl: 29,
+        _url_value_: 31,
+    };
+    for compatible in [false, true] {
+        let mut writer = Fory::builder().xlang(true).compatible(compatible).build();
+        let mut reader = Fory::builder().xlang(true).compatible(compatible).build();
+        writer.register::<Declared>(9201).unwrap();
+        reader.register::<Canonical>(9201).unwrap();
+        assert_eq!(
+            reader
+                .deserialize::<Canonical>(&writer.serialize(&declared).unwrap())
+                .unwrap(),
+            canonical
+        );
+        assert_eq!(
+            writer
+                .deserialize::<Declared>(&reader.serialize(&canonical).unwrap())
+                .unwrap(),
+            declared
+        );
+    }
+}
+
+#[test]
 fn schema_overflow_root_reuse() {
     #[derive(ForyStruct, Debug, PartialEq)]
     struct Local {

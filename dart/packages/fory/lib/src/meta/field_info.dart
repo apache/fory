@@ -19,6 +19,28 @@
 
 import 'package:fory/src/meta/field_type.dart';
 
+/// Canonical xlang field spelling, shared by code generation and name matching.
+String toSnakeCase(String value) {
+  final buffer = StringBuffer();
+  for (var index = 0; index < value.length; index += 1) {
+    final codeUnit = value.codeUnitAt(index);
+    final isUpper = codeUnit >= 65 && codeUnit <= 90;
+    if (isUpper && index > 0) {
+      final previous = value.codeUnitAt(index - 1);
+      final next = index + 1 < value.length ? value.codeUnitAt(index + 1) : 0;
+      if ((previous >= 97 && previous <= 122) ||
+          (previous >= 48 && previous <= 57) ||
+          (previous >= 65 && previous <= 90 && next >= 97 && next <= 122)) {
+        buffer.write('_');
+      }
+    }
+    buffer.writeCharCode(
+      isUpper ? codeUnit + 32 : (codeUnit == 45 ? 95 : codeUnit),
+    );
+  }
+  return buffer.toString();
+}
+
 final class FieldInfo {
   /// The local source name used in diagnostics.
   ///

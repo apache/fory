@@ -26,12 +26,23 @@ import (
 func TestSnake(t *testing.T) {
 	require.Equal(t, "a_bcd_efg_hij", SnakeCase("aBcdEfgHij"))
 	require.Equal(t, "a_bcd_efg_hij", SnakeCase("ABcdEfgHij"))
-	require.Equal(t, "a_b_c_d_efg_hij", SnakeCase("ABCDEfgHij"))
+	require.Equal(t, "abcd_efg_hij", SnakeCase("ABCDEfgHij"))
 	require.Equal(t, SnakeCase("ToSnake"), "to_snake")
 	require.Equal(t, SnakeCase("toSnake"), "to_snake")
 	require.Equal(t, SnakeCase("to_snake"), "to_snake")
 	require.Equal(t, SnakeCase("AbcAbcAbc"), "abc_abc_abc")
-	require.Equal(t, SnakeCase("ABC"), "a_b_c")
+	require.Equal(t, SnakeCase("ABC"), "abc")
+	for input, expected := range map[string]string{
+		"createdAt": "created_at", "CreatedAt": "created_at",
+		"fooURL": "foo_url", "URLValue": "url_value",
+		"HTTP2Server": "http2_server", "x2Y": "x2_y", "ABc": "a_bc",
+		"fooÖl": "fooÖl", "ÖValue": "Övalue",
+		"_URL_Value_": "_url_value_", "already__snake": "already__snake",
+		"foo-Bar": "foo_bar", "": "",
+	} {
+		require.Equal(t, expected, SnakeCase(input), input)
+		require.Equal(t, expected, SnakeCase(expected), expected)
+	}
 }
 
 func TestTime(t *testing.T) {

@@ -59,15 +59,23 @@ func unsafeGetBytes(s string) []byte {
 
 func SnakeCase(camel string) string {
 	var buf bytes.Buffer
-	for _, c := range camel {
+	buf.Grow(len(camel) + 4)
+	for i := 0; i < len(camel); i++ {
+		c := camel[i]
 		if 'A' <= c && c <= 'Z' {
-			// just convert [A-Z] to _[a-z]
-			if buf.Len() > 0 {
-				buf.WriteRune('_')
+			if i > 0 {
+				previous := camel[i-1]
+				nextLower := i+1 < len(camel) && camel[i+1] >= 'a' && camel[i+1] <= 'z'
+				if (previous >= 'a' && previous <= 'z') || (previous >= '0' && previous <= '9') ||
+					(previous >= 'A' && previous <= 'Z' && nextLower) {
+					buf.WriteByte('_')
+				}
 			}
-			buf.WriteRune(c - 'A' + 'a')
+			buf.WriteByte(c - 'A' + 'a')
+		} else if c == '-' {
+			buf.WriteByte('_')
 		} else {
-			buf.WriteRune(c)
+			buf.WriteByte(c)
 		}
 	}
 	return buf.String()

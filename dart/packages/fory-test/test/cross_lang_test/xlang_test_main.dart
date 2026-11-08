@@ -469,6 +469,21 @@ void _runListArrayCompatibleNullableListToArrayError() {
 
 void _runCase(String caseName) {
   switch (caseName) {
+    case 'test_field_names':
+    case 'test_field_names_compatible':
+      final fory = _newFory(compatible: caseName.endsWith('_compatible'));
+      registerXlangType(fory, FieldNames, id: 9201);
+      final value = fory.deserialize<FieldNames>(_readFile());
+      if (value.createdAt != 7 ||
+          value.fooURL != 11 ||
+          value.URLValue != 13 ||
+          value.HTTP2Server != 17 ||
+          value.x2Y != 19 ||
+          value.ABc != 23) {
+        throw StateError('FieldNames mismatch');
+      }
+      _writeFile(fory.serialize(value));
+      return;
     case 'test_buffer':
       _verifyBufferCase();
       return;

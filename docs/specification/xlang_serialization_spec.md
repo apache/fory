@@ -879,8 +879,48 @@ Field names:
   32-bit field-ID type; the extended form still writes `tag_id - 15` with the
   existing `varuint32` encoding.
 - Otherwise, write the encoded field name bytes as a meta string.
-- For xlang, field names are converted to `snake_case` before encoding for
-  cross-language compatibility.
+- For xlang, field names use the [canonical snake-case conversion](#field-name-normalization)
+  before encoding.
+
+### Field name normalization
+
+The same conversion MUST determine the encoded field name, field ordering, schema fingerprint,
+and compatible-reader name matching. Source-language member access still uses the declared name.
+Tag IDs are not affected by name normalization.
+
+Process the original name from left to right. Only ASCII `A` through `Z`, `a` through `z`, and
+`0` through `9` count as uppercase letters, lowercase letters, and digits in these rules:
+
+1. Before an ASCII uppercase letter, insert `_` if the preceding original character is an ASCII
+   lowercase letter or digit, or if the preceding character is ASCII uppercase and the following
+   original character is ASCII lowercase. Do not insert a separator at the start of the name.
+2. Convert ASCII uppercase letters to ASCII lowercase.
+3. Replace `-` with `_`. Preserve all other characters, including existing underscores and
+   non-ASCII characters, unchanged. Do not trim or collapse underscores or apply Unicode case
+   conversion or normalization.
+
+| Declared name    | Normalized name  |
+| ---------------- | ---------------- |
+| `createdAt`      | `created_at`     |
+| `CreatedAt`      | `created_at`     |
+| `fooURL`         | `foo_url`        |
+| `URLValue`       | `url_value`      |
+| `HTTP2Server`    | `http2_server`   |
+| `x2Y`            | `x2_y`           |
+| `ABc`            | `a_bc`           |
+| `fooÖl`          | `fooÖl`          |
+| `ÖValue`         | `Övalue`         |
+| `_URL_Value_`    | `_url_value_`    |
+| `already__snake` | `already__snake` |
+| `foo-Bar`        | `foo_bar`        |
+
+Compatible readers compare normalized received names with normalized local names. Thus a
+received `createdAt` or `CreatedAt` matches a local `created_at`. Names whose normalized forms
+differ are different field identifiers: for example, `foo_u_r_l` does not match `foo_url`.
+Data written with a different naming convention is compatible only when its normalized field
+identifiers agree with the reader's schema; otherwise it must be decoded with its writer's schema
+and re-encoded. Same-schema readers and writers must also agree on ordering and schema hashes.
+Fields with the same normalized name require distinct explicit tag IDs.
 
 Field order:
 

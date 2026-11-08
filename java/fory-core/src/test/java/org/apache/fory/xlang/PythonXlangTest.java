@@ -40,6 +40,12 @@ import org.testng.annotations.Test;
 /** Executes cross-language tests against the Python implementation. */
 @Test
 public class PythonXlangTest extends XlangTestBase {
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testFieldNames(boolean enableCodegen) throws java.io.IOException {
+    super.testFieldNames(enableCodegen);
+  }
+
   @ForyStruct
   public static class AbcContainers {
     public List<String> sequence;

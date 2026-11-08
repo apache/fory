@@ -41,6 +41,16 @@ private struct Item {
 }
 
 @ForyStruct
+private struct FieldNames: Equatable {
+    var createdAt: Int32 = 0
+    var fooURL: Int32 = 0
+    var URLValue: Int32 = 0
+    var HTTP2Server: Int32 = 0
+    var x2Y: Int32 = 0
+    var ABc: Int32 = 0
+}
+
+@ForyStruct
 private struct SimpleStruct {
     // Java xlang uses boxed collection element types for this case, so the
     // schema marks map keys/values and list elements nullable even when the
@@ -893,6 +903,16 @@ private func handleConsistentNamed(_ bytes: [UInt8]) throws -> [UInt8] {
     }
 }
 
+private func handleFieldNames(_ bytes: [UInt8], compatible: Bool) throws -> [UInt8] {
+    let fory = Fory(config: .init(trackRef: false, compatible: compatible))
+    try fory.register(FieldNames.self, id: 9201)
+    let value: FieldNames = try fory.deserialize(Data(bytes))
+    guard value == FieldNames(createdAt: 7, fooURL: 11, URLValue: 13, HTTP2Server: 17, x2Y: 19, ABc: 23) else {
+        throw PeerError.invalidFieldValue("FieldNames mismatch")
+    }
+    return [UInt8](try fory.serialize(value))
+}
+
 private func handleStructVersionCheck(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
     try fory.register(VersionCheckStruct.self, id: 201)
@@ -1218,6 +1238,10 @@ private func rewritePayload(caseName: String, bytes: [UInt8]) throws -> [UInt8] 
         return try handleConsistentNamed(bytes)
     case "test_struct_version_check":
         return try handleStructVersionCheck(bytes)
+    case "test_field_names":
+        return try handleFieldNames(bytes, compatible: false)
+    case "test_field_names_compatible":
+        return try handleFieldNames(bytes, compatible: true)
     case "test_polymorphic_list":
         return try handlePolymorphicList(bytes)
     case "test_polymorphic_map":

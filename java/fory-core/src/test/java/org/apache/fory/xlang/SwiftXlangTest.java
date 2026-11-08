@@ -39,6 +39,12 @@ import org.testng.annotations.Test;
 /** Executes cross-language tests against the Swift implementation. */
 @Test
 public class SwiftXlangTest extends XlangTestBase {
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testFieldNames(boolean enableCodegen) throws java.io.IOException {
+    super.testFieldNames(enableCodegen);
+  }
+
   private static final Logger LOG = LoggerFactory.getLogger(SwiftXlangTest.class);
   private static final String SWIFT_EXECUTABLE = "swift";
   private static final String SWIFT_PEER_TARGET = "ForyXlangTests";

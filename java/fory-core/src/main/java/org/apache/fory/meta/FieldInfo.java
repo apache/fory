@@ -41,7 +41,7 @@ public final class FieldInfo implements Serializable {
   /** where are current field defined. */
   final String definedClass;
 
-  /** Name of a field. */
+  /** Declared name for local metadata; received wire name for decoded metadata. */
   final String fieldName;
 
   final FieldTypes.FieldType fieldType;
@@ -573,7 +573,7 @@ public final class FieldInfo implements Serializable {
   public String toString() {
     return "FieldInfo{"
         + "fieldName='"
-        + StringUtils.lowerCamelToLowerUnderscore(fieldName)
+        + fieldName
         + '\''
         + ", definedClass='"
         + definedClass

@@ -48,6 +48,7 @@ import org.apache.fory.meta.FieldTypes.MapFieldType;
 import org.apache.fory.meta.FieldTypes.RegisteredFieldType;
 import org.apache.fory.type.Float16;
 import org.apache.fory.type.Types;
+import org.apache.fory.util.StringUtils;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -217,7 +218,19 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(128);
     typeDef.writeTypeDef(buffer);
     TypeDef decoded = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
-    Assert.assertEquals(decoded, typeDef);
+    Assert.assertEquals(decoded.getClassSpec(), typeDef.getClassSpec());
+    Assert.assertEquals(decoded.getId(), typeDef.getId());
+    Assert.assertEquals(decoded.getFieldCount(), typeDef.getFieldCount());
+    for (int i = 0; i < typeDef.getFieldCount(); i++) {
+      FieldInfo field = typeDef.getFieldsInfo().get(i);
+      Assert.assertEquals(
+          decoded.getFieldsInfo().get(i),
+          new FieldInfo(
+              field.getDefinedClass(),
+              StringUtils.toSnakeCase(field.getFieldName()),
+              field.getFieldType(),
+              field.getFieldId()));
+    }
     assertNestedAnnotatedStructMeta(decoded);
   }
 
@@ -508,7 +521,8 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
 
   private static FieldType fieldType(TypeDef typeDef, String fieldName) {
     for (FieldInfo fieldInfo : typeDef.getFieldsInfo()) {
-      if (fieldInfo.getFieldName().equals(fieldName)) {
+      if (StringUtils.toSnakeCase(fieldInfo.getFieldName())
+          .equals(StringUtils.toSnakeCase(fieldName))) {
         return fieldInfo.getFieldType();
       }
     }

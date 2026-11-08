@@ -1048,6 +1048,51 @@ struct TwoEnumFieldStruct {
 
 #[test]
 #[ignore]
+fn test_field_names() {
+    field_names(false);
+}
+
+#[test]
+#[ignore]
+fn test_field_names_compatible() {
+    field_names(true);
+}
+
+#[allow(non_snake_case)]
+fn field_names(compatible: bool) {
+    #[derive(ForyStruct, Debug, PartialEq)]
+    struct FieldNames {
+        createdAt: i32,
+        fooURL: i32,
+        URLValue: i32,
+        HTTP2Server: i32,
+        x2Y: i32,
+        ABc: i32,
+    }
+    let data_file = get_data_file();
+    let mut fory = Fory::builder()
+        .xlang(true)
+        .compatible(compatible)
+        .check_struct_version(true)
+        .build();
+    fory.register::<FieldNames>(9201).unwrap();
+    let value: FieldNames = fory.deserialize(&fs::read(&data_file).unwrap()).unwrap();
+    assert_eq!(
+        value,
+        FieldNames {
+            createdAt: 7,
+            fooURL: 11,
+            URLValue: 13,
+            HTTP2Server: 17,
+            x2Y: 19,
+            ABc: 23,
+        }
+    );
+    fs::write(data_file, fory.serialize(&value).unwrap()).unwrap();
+}
+
+#[test]
+#[ignore]
 fn test_struct_version_check() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();

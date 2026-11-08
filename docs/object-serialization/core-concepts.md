@@ -74,6 +74,19 @@ Use it only when one release process keeps every reader and writer aligned.
 Field IDs or names should remain stable after a contract is published. Renaming or reusing an
 identity can turn an intended evolution into a different field or type.
 
+In xlang mode, untagged field names use the same ASCII snake-case conversion in every language:
+`createdAt` and `CreatedAt` match `created_at`, `fooURL` matches `foo_url`, and `HTTP2Server`
+matches `http2_server`. Existing underscores and non-ASCII characters are preserved. Choose names
+that remain distinct after conversion, or give the fields distinct explicit IDs. See the
+[field name normalization rules](../specification/xlang_serialization_spec.md#field-name-normalization)
+for the complete definition.
+
+Java native mode and Go native mode also use this ordering rule. When upgrading
+readers and writers, re-encode stored data if its field names produce a different order or schema
+hash under the canonical rule. For example, `fooURL` and `fooUaa` can change relative order under
+different acronym-splitting rules. Compatible mode does not provide aliases between `foo_u_r_l`
+and `foo_url`; migrate such data with its writer's schema before switching to the new names.
+
 ## Nullability
 
 Nullability determines whether a value position may contain no value. Languages express it through

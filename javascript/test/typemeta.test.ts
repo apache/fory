@@ -212,6 +212,85 @@ describe("typemeta", () => {
     expect(explicitInfo.typeName).toBe("com.example.Raw");
   });
 
+  test.each([
+    ["createdAt", "created_at"],
+    ["CreatedAt", "created_at"],
+    ["fooURL", "foo_url"],
+    ["URLValue", "url_value"],
+    ["HTTP2Server", "http2_server"],
+    ["x2Y", "x2_y"],
+    ["ABc", "a_bc"],
+    ["fooÖl", "fooÖl"],
+    ["ÖValue", "Övalue"],
+    ["_URL_Value_", "_url_value_"],
+    ["already__snake", "already__snake"],
+    ["foo-Bar", "foo_bar"],
+  ])("normalizes field %s as %s", (declared, canonical) => {
+    expect(TypeMeta.toSnakeCase(declared)).toBe(canonical);
+    expect(TypeMeta.toSnakeCase(canonical)).toBe(canonical);
+    const remoteType: TypeInfo = Type.struct(9201, {
+      [declared]: Type.int32(),
+      tail: Type.string(),
+    });
+    const localType: TypeInfo = Type.struct(9201, {
+      [canonical]: Type.int32(),
+      tail: Type.string(),
+    });
+    const metadata = TypeMeta.fromTypeInfo(remoteType).toBytes();
+    const metadataReader = new BinaryReader({});
+    metadataReader.reset(metadata);
+    expect(
+      TypeMeta.fromBytes(metadataReader)
+        .getFieldInfo()
+        .map((field) => field.fieldName),
+    ).toEqual([canonical, "tail"]);
+    for (const compatible of [false, true]) {
+      const writerType = compatible
+        ? Type.struct(9201, {
+            [declared]: Type.int32(),
+            tail: Type.string(),
+            extra: Type.int32(),
+          })
+        : remoteType;
+      const writer = new Fory({ compatible }).register(writerType);
+      const reader = new Fory({ compatible }).register(localType);
+      expect(
+        reader.deserialize(writer.serialize({ [declared]: 7, tail: "hi", extra: 11 })),
+      ).toEqual({
+        [canonical]: 7,
+        tail: "hi",
+      });
+      expect(writer.deserialize(reader.serialize({ [canonical]: 7, tail: "hi" }))).toEqual({
+        [declared]: 7,
+        tail: "hi",
+      });
+    }
+  });
+
+  test("keeps name and tag identities separate", () => {
+    const writer = new Fory({ compatible: true }).register(
+      Type.struct(9201, {
+        fooURL: Type.int32(),
+        extra: Type.int32(),
+      }),
+    );
+    const reader = new Fory({ compatible: true }).register(
+      Type.struct(9201, {
+        fooURL: Type.int32(),
+        foo_url: Type.int32().setId(9),
+      }),
+    );
+    const result = reader.deserialize(writer.serialize({ fooURL: 7, extra: 11 }));
+    expect(result.fooURL).toBe(7);
+    expect(result.foo_url).toBeUndefined();
+    const taggedReader = new Fory({ compatible: true }).register(
+      Type.struct(9201, {
+        foo_url: Type.int32().setId(9),
+      }),
+    );
+    expect(taggedReader.deserialize(writer.serialize({ fooURL: 7, extra: 11 }))).toEqual({});
+  });
+
   test("writes TypeMeta header bits in the xlang layout", () => {
     const typeInfo = Type.struct(7001, {
       fullName: Type.string().setId(1),

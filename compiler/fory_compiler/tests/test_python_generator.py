@@ -96,8 +96,7 @@ def test_field_names_shadowing_default_helpers_are_escaped():
     )
     output = generate_python(source)
 
-    # The escaped attribute names keep the wire names: pyfory strips the
-    # trailing underscore when computing the snake_case field name.
+    # Explicit field IDs preserve wire identity independently of escaped attribute names.
     assert "pyfory_: str = pyfory.field(id=1" in output
     assert "field_: str = pyfory.field(id=2" in output
 

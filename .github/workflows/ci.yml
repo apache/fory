@@ -1257,8 +1257,8 @@ jobs:
     needs: changes
     strategy:
       matrix:
-        # macos-14 is the arm64 runner; keep it for Rust code changes only.
-        os: ${{ fromJSON(needs.changes.outputs.rust == 'true' && '["ubuntu-latest","macos-14","macos-latest"]' || '["ubuntu-latest","macos-latest"]') }}
+        # Keep a pinned arm64 macOS image for Rust code changes.
+        os: ${{ fromJSON(needs.changes.outputs.rust == 'true' && '["ubuntu-latest","macos-15","macos-latest"]' || '["ubuntu-latest","macos-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:

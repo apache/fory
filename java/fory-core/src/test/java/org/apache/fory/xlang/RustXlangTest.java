@@ -39,6 +39,12 @@ import org.testng.annotations.Test;
 /** Executes cross-language tests against the Rust implementation. */
 @Test
 public class RustXlangTest extends XlangTestBase {
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testFieldNames(boolean enableCodegen) throws java.io.IOException {
+    super.testFieldNames(enableCodegen);
+  }
+
   private static final String RUST_EXECUTABLE = "cargo";
   private static final String RUST_MODULE = "test_cross_language";
 

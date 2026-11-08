@@ -69,6 +69,17 @@ constructor(
 public data class KotlinMaximumFieldTag constructor(@ForyField(id = 536_870_911) val value: Int)
 
 @ForyStruct
+public data class KotlinFieldNames
+constructor(
+  val CreatedAt: Int,
+  val fooURL: Int,
+  val URLValue: Int,
+  val HTTP2Server: Int,
+  val x2Y: Int,
+  val ABc: Int,
+)
+
+@ForyStruct
 internal data class KotlinInternalUser
 constructor(
   @ForyField(id = 1) val id: UInt,
@@ -296,8 +307,25 @@ public fun main(args: Array<String>) {
     "constructor_backref_copy" -> constructorBackrefCopy()
     "dense_array_round_trip" -> denseArrayRoundTrip(args[1])
     "unsigned_collection_round_trip" -> unsignedCollectionRoundTrip(args[1])
+    "test_field_names" -> fieldNames(args[1], compatible = false)
+    "test_field_names_compatible" -> fieldNames(args[1], compatible = true)
     else -> throw IllegalArgumentException("Unsupported Kotlin xlang case ${args[0]}")
   }
+}
+
+private fun fieldNames(dataFile: String, compatible: Boolean) {
+  val fory =
+    ForyKotlin.builder()
+      .withXlang(true)
+      .withCompatible(compatible)
+      .withClassVersionCheck(true)
+      .withCodegen(false)
+      .build()
+  fory.register<KotlinFieldNames>(9201)
+  val value = fory.deserialize(java.io.File(dataFile).readBytes(), KotlinFieldNames::class.java)
+  check(value == KotlinFieldNames(7, 11, 13, 17, 19, 23))
+  check(fory.getSerializer(KotlinFieldNames::class.java) is StaticGeneratedStructSerializer<*>)
+  java.io.File(dataFile).writeBytes(fory.serialize(value))
 }
 
 private fun staticSerializerRoundTrip(dataFile: String) {

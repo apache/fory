@@ -203,55 +203,6 @@ class TypeDef:
     def get_field_names(self):
         return [field_info.name for field_info in self.fields]
 
-    def _resolve_field_names_from_tag_ids(self):
-        """Resolve actual field names from TAG_ID encoding or wire field names.
-
-        When TAG_ID encoding is used, field names in the TypeDef are placeholders like "__tag_N__".
-        This method looks up the registered class's field metadata to find the actual field names
-        that correspond to each tag_id.
-
-        For field name encoding (non-TAG_ID), the wire field name may be in snake_case
-        (Java's xlang convention) while the Python class may use either snake_case or camelCase.
-        This method tries to match the wire name against the Python class fields.
-
-        Returns:
-            List of resolved field names (same order as self.fields)
-        """
-        import dataclasses
-        from pyfory.field import extract_field_meta
-
-        # Build tag_id -> actual field name mapping from the class
-        tag_id_to_field_name = {}
-        class_field_names = set()
-        if dataclasses.is_dataclass(self.cls):
-            for dc_field in dataclasses.fields(self.cls):
-                class_field_names.add(dc_field.name)
-                meta = extract_field_meta(dc_field)
-                if meta is not None and meta.id >= 0:
-                    tag_id_to_field_name[meta.id] = dc_field.name
-
-        # Resolve field names
-        resolved_names = []
-        for field_info in self.fields:
-            if field_info.tag_id >= 0 and field_info.tag_id in tag_id_to_field_name:
-                # TAG_ID encoding: use the actual field name from the class
-                resolved_names.append(tag_id_to_field_name[field_info.tag_id])
-            else:
-                # Field name encoding: try to match with class fields
-                wire_name = field_info.name
-                if wire_name in class_field_names:
-                    # Wire name matches class field directly (e.g., snake_case or camelCase)
-                    resolved_names.append(wire_name)
-                else:
-                    # Try converting snake_case to camelCase
-                    camel_name = _snake_to_camel(wire_name)
-                    if camel_name in class_field_names:
-                        resolved_names.append(camel_name)
-                    else:
-                        # Fallback: use the wire name as-is
-                        resolved_names.append(wire_name)
-        return resolved_names
-
     def create_serializer(self, resolver):
         if not is_struct_typedef_kind(self.type_id):
             if is_named_typedef_kind(self.type_id):
@@ -271,22 +222,20 @@ class TypeDef:
         if self.cls is UnknownStruct:
             return UnknownStructSerializer(resolver, self)
 
-        # Resolve actual field names from TAG_ID encoding if needed
-        field_names = self._resolve_field_names_from_tag_ids()
-
         local_field_infos = build_field_infos(resolver, self.cls)
-        local_infos_by_name = {field_info.name: field_info for field_info in local_field_infos}
+        # Only active name-identified fields participate in canonical-name matching.
+        # Retain their declared names for attribute access; normalization is not invertible.
+        local_infos_by_name = {_to_snake_case(field_info.name): field_info for field_info in local_field_infos if field_info.tag_id < 0}
         local_infos_by_tag = {field_info.tag_id: field_info for field_info in local_field_infos if field_info.tag_id >= 0}
         local_field_types = infer_field_types(self.cls, field_nullable=resolver.field_nullable)
         type_hints = get_type_hints(self.cls)
         runtime_field_infos = []
         for i, field_info in enumerate(self.fields):
-            resolved_name = field_names[i]
-            local_info = None
             if field_info.tag_id >= 0:
                 local_info = local_infos_by_tag.get(field_info.tag_id)
-            if local_info is None:
-                local_info = local_infos_by_name.get(resolved_name)
+            else:
+                local_info = local_infos_by_name.get(_to_snake_case(field_info.name))
+            resolved_name = local_info.name if local_info is not None else field_info.name
             can_assign, validation_field_type = plan_field_assignment(
                 field_info.field_type,
                 local_info.field_type if local_info is not None else None,
@@ -295,7 +244,8 @@ class TypeDef:
                 from pyfory.error import TypeNotCompatibleError
 
                 raise TypeNotCompatibleError(f"Compatible field {resolved_name!r} cannot be read as local field {local_info.name!r}")
-            type_hint = type_hints.get(resolved_name, typing.Any)
+            # An unmatched wire name must not borrow a tagged or ignored local field's carrier.
+            type_hint = type_hints.get(resolved_name, typing.Any) if local_info is not None else typing.Any
             unwrapped_type, _ = unwrap_optional(type_hint, field_nullable=resolver.field_nullable)
             serializer = _create_compatible_field_serializer(
                 resolver,
@@ -303,7 +253,7 @@ class TypeDef:
                 type_hint,
                 field_info.field_type,
                 local_info.field_type if local_info is not None else None,
-                local_field_types.get(resolved_name, None),
+                local_field_types.get(resolved_name) if local_info is not None else None,
             )
             runtime_field_infos.append(
                 StructFieldInfo(
@@ -339,21 +289,20 @@ class TypeDef:
         )
 
 
-def _snake_to_camel(s: str) -> str:
-    """Convert snake_case to camelCase.
-
-    This reverses Java's lowerCamelToLowerUnderscore conversion:
-    - new_object -> newObject
-    - old_object -> oldObject
-    - my_field_name -> myFieldName
-
-    If there are no underscores, the string is returned unchanged.
-    """
-    if "_" not in s:
-        return s
-    parts = s.split("_")
-    # First part stays lowercase, rest are capitalized
-    return parts[0] + "".join(part.capitalize() for part in parts[1:])
+def _to_snake_case(name: str) -> str:
+    """Return the canonical ASCII xlang field identifier without changing Unicode."""
+    result = []
+    for index, char in enumerate(name):
+        if "A" <= char <= "Z":
+            if index > 0:
+                previous = name[index - 1]
+                next_lower = index + 1 < len(name) and "a" <= name[index + 1] <= "z"
+                if "a" <= previous <= "z" or "0" <= previous <= "9" or ("A" <= previous <= "Z" and next_lower):
+                    result.append("_")
+            result.append(char.lower())
+        else:
+            result.append("_" if char == "-" else char)
+    return "".join(result)
 
 
 class FieldInfo:

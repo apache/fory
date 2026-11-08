@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sort"
 	"unicode"
 	"unicode/utf8"
 )
@@ -113,7 +112,6 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 	type_ := s.type_
 	var fields []FieldInfo
 	var fieldNames []string
-	var serializers []Serializer
 	var typeIds []TypeId
 	var nullables []bool
 	var tagIDs []int32
@@ -227,35 +225,17 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 		}
 		fields = append(fields, fieldInfo)
 		fieldNames = append(fieldNames, fieldInfo.Meta.Name)
-		serializers = append(serializers, fieldSerializer)
 		typeIds = append(typeIds, fieldTypeId)
 		nullables = append(nullables, nullableFlag)
 		tagIDs = append(tagIDs, fieldSpec.TagID)
 	}
 
 	// Sort fields according to specification using nullable info and tag IDs for consistent ordering
-	serializers, fieldNames = sortFields(typeResolver, fieldNames, serializers, typeIds, nullables, tagIDs)
-	order := make(map[string]int, len(fieldNames))
-	for idx, name := range fieldNames {
-		order[name] = idx
+	order := sortFields(fieldNames, typeIds, nullables, tagIDs)
+	s.fields = make([]FieldInfo, len(fields))
+	for i, index := range order {
+		s.fields[i] = fields[index]
 	}
-
-	sort.SliceStable(fields, func(i, j int) bool {
-		oi, okI := order[fields[i].Meta.Name]
-		oj, okJ := order[fields[j].Meta.Name]
-		switch {
-		case okI && okJ:
-			return oi < oj
-		case okI:
-			return true
-		case okJ:
-			return false
-		default:
-			return false
-		}
-	})
-
-	s.fields = fields
 	s.fieldGroup = GroupFields(s.fields)
 
 	// Debug output for field order comparison with Java
@@ -361,12 +341,13 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			name:   fieldSpec.Name,
 			spec:   fieldSpec,
 		}
-		fieldNameToBinding[fieldSpec.Name] = binding
 		localNullableByIndex[i] = fieldDeclaredNullable(fieldSpec)
 		localTrackRefByIndex[i] = fieldDeclaredTrackRef(fieldSpec, typeResolver.fory.config.IsXlang, typeResolver.TrackRef())
 		localSpecByIndex[i] = fieldSpec.Type
 		if fieldSpec.TagID >= 0 {
 			fieldTagIDToBinding[fieldSpec.TagID] = binding
+		} else {
+			fieldNameToBinding[fieldSpec.Name] = binding
 		}
 	}
 
@@ -412,8 +393,8 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			}
 		}
 
-		if !exists && def.name != "" {
-			if binding, ok := fieldNameToBinding[def.name]; ok {
+		if def.tagID < 0 && def.name != "" {
+			if binding, ok := fieldNameToBinding[SnakeCase(def.name)]; ok {
 				exists = true
 				fieldIndex = binding.index
 				localType = binding.goType

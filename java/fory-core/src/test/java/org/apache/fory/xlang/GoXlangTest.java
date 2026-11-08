@@ -39,6 +39,12 @@ import org.testng.annotations.Test;
 /** Executes cross-language tests against the Go implementation. */
 @Test
 public class GoXlangTest extends XlangTestBase {
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testFieldNames(boolean enableCodegen) throws java.io.IOException {
+    super.testFieldNames(enableCodegen);
+  }
+
   private static final boolean IS_WINDOWS =
       System.getProperty("os.name").toLowerCase().contains("windows");
   private static final String GO_BINARY = IS_WINDOWS ? "xlang_test_main.exe" : "xlang_test_main";

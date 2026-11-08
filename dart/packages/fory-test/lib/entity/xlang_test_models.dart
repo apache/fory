@@ -56,6 +56,25 @@ class Item {
 }
 
 @ForyStruct()
+class FieldNames {
+  @ForyField(type: Int32Type())
+  int createdAt = 0;
+  @ForyField(type: Int32Type())
+  int fooURL = 0;
+  @ForyField(type: Int32Type())
+  // ignore: non_constant_identifier_names
+  int URLValue = 0;
+  @ForyField(type: Int32Type())
+  // ignore: non_constant_identifier_names
+  int HTTP2Server = 0;
+  @ForyField(type: Int32Type())
+  int x2Y = 0;
+  @ForyField(type: Int32Type())
+  // ignore: non_constant_identifier_names
+  int ABc = 0;
+}
+
+@ForyStruct()
 class SimpleStruct {
   SimpleStruct();
 

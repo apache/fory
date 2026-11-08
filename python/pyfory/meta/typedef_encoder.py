@@ -36,6 +36,7 @@ from pyfory.meta.typedef import (
     is_struct_typedef_kind,
     xlang_non_struct_kind_code,
     _typedef_header_hash,
+    _to_snake_case,
 )
 from pyfory.meta.metastring import MetaStringEncoder
 from pyfory._fory import NO_USER_TYPE_ID
@@ -243,8 +244,9 @@ def write_field_info(buffer: Buffer, field_info: FieldInfo):
         field_info.field_type.write(buffer, False)
     else:
         # Field name encoding
-        encoding = FIELD_NAME_ENCODER.compute_encoding(field_info.name, FIELD_NAME_ENCODINGS)
-        meta_string = FIELD_NAME_ENCODER.encode_with_encoding(field_info.name, encoding)
+        field_name = _to_snake_case(field_info.name)
+        encoding = FIELD_NAME_ENCODER.compute_encoding(field_name, FIELD_NAME_ENCODINGS)
+        meta_string = FIELD_NAME_ENCODER.encode_with_encoding(field_name, encoding)
         # Store (length - 1) in size field, matching Java TypeDefEncoder
         field_name_binary_size = len(meta_string.encoded_data) - 1
         encoding_flags = FIELD_NAME_ENCODINGS.index(meta_string.encoding)

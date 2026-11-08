@@ -146,6 +146,21 @@ struct MaximumFieldTagStruct {
   FORY_STRUCT(MaximumFieldTagStruct, (value, fory::F(536870911)));
 };
 
+struct FieldNameWriter {
+  int32_t fooURL;
+  int32_t tagged;
+  int32_t extra;
+
+  FORY_STRUCT(FieldNameWriter, fooURL, (tagged, fory::F(3)), extra);
+};
+
+struct FieldNameReader {
+  int32_t FooURL = 0;
+  int32_t foo_url = 0;
+
+  FORY_STRUCT(FieldNameReader, (FooURL, fory::F(3)), foo_url);
+};
+
 struct HighTagCompatibleWriter {
   std::string removed;
   int32_t shared;
@@ -1614,6 +1629,36 @@ TEST(StructComprehensiveTest,
                   .ok());
   EXPECT_EQ(untagged_remote_for_tagged_local[0].field_id, -1);
   EXPECT_EQ(untagged_remote_for_tagged_local[0].matched_field_id, -1);
+}
+
+TEST(StructComprehensiveTest, CanonicalFieldIdentity) {
+  TypeMeta local_type;
+  local_type.field_infos = {
+      make_test_field_info("fooURL", 3, make_test_field_type(TypeId::VARINT32)),
+      make_test_field_info("foo_url", -1,
+                           make_test_field_type(TypeId::VARINT32))};
+  std::vector<FieldInfo> remote_fields = {
+      make_test_field_info("FooURL", -1,
+                           make_test_field_type(TypeId::VARINT32)),
+      make_test_field_info("renamed", 3,
+                           make_test_field_type(TypeId::VARINT32))};
+  ASSERT_TRUE(
+      TypeMeta::assign_local_dispatch_ids(&local_type, remote_fields).ok());
+  EXPECT_EQ(remote_fields[0].matched_field_id, 2);
+  EXPECT_EQ(remote_fields[1].matched_field_id, 0);
+
+  auto writer =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  auto reader =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(writer.register_struct<FieldNameWriter>(632).ok());
+  ASSERT_TRUE(reader.register_struct<FieldNameReader>(632).ok());
+  auto bytes = writer.serialize(FieldNameWriter{7, 11, 17});
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  auto decoded = reader.deserialize<FieldNameReader>(bytes.value());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  EXPECT_EQ(decoded->FooURL, 11);
+  EXPECT_EQ(decoded->foo_url, 7);
 }
 
 TEST(StructComprehensiveTest, CompatibleSignedToUnsignedStructRead) {

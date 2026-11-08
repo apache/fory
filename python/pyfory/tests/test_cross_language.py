@@ -521,7 +521,7 @@ def test_struct_hash(data_file_path):
         fory.type_resolver,
         serializer._field_names,
         serializer._serializers,
-        serializer._nullable_fields,
+        {field.name: field.nullable for field in serializer._field_infos},
         serializer._field_infos,
     )[0]
     assert read_hash == v, (read_hash, v)

@@ -1792,6 +1792,36 @@ func metaStringEncodingRoundTrip() throws {
 }
 
 @Test
+func typeMetaFieldNames() throws {
+    let cases = [
+        ("createdAt", "created_at"), ("CreatedAt", "created_at"),
+        ("fooURL", "foo_url"), ("URLValue", "url_value"),
+        ("HTTP2Server", "http2_server"), ("x2Y", "x2_y"), ("ABc", "a_bc"),
+        ("fooÖl", "fooÖl"), ("ÖValue", "Övalue"),
+        ("_URL_Value_", "_url_value_"), ("already__snake", "already__snake"),
+        ("foo-Bar", "foo_bar")
+    ]
+    for (declared, canonical) in cases {
+        let meta = try TypeMeta(
+            typeID: TypeId.structType.rawValue,
+            userTypeID: 9201,
+            namespace: .empty(specialChar1: ".", specialChar2: "_"),
+            typeName: .empty(specialChar1: "$", specialChar2: "_"),
+            registerByName: false,
+            fields: [
+                .init(
+                    fieldID: -1, fieldName: declared,
+                    fieldType: .init(typeID: TypeId.varint32.rawValue, nullable: false)
+                )
+            ]
+        )
+        let decoded = try TypeMeta.decode(meta.encode())
+        #expect(decoded.fields[0].fieldName == canonical)
+        #expect(try decoded.encode() == meta.encode())
+    }
+}
+
+@Test
 func typeMetaRoundTripByName() throws {
     let namespace = try MetaStringEncoder.namespace.encode("com.example")
     let typeName = try MetaStringEncoder.typeName.encode("UserProfile")

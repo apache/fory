@@ -235,6 +235,52 @@ public class ExampleStaticGeneratedSerializerTest {
     Assert.assertEquals(result.after, "after");
   }
 
+  @Test(dataProvider = "modes")
+  public void testCompatibleFieldNames(boolean annotated, boolean codegen) throws Exception {
+    Class<? extends ExtraFieldNames> remoteType =
+        annotated ? ExtraFieldNames.class : RuntimeExtraFieldNames.class;
+    Class<? extends FieldNames> localType = annotated ? FieldNames.class : RuntimeFieldNames.class;
+    Fory writer = Fory.builder().withXlang(true).withCompatible(true).withCodegen(codegen).build();
+    Fory reader = Fory.builder().withXlang(true).withCompatible(true).withCodegen(codegen).build();
+    writer.register(remoteType, 9201);
+    reader.register(localType, 9201);
+    ExtraFieldNames value = remoteType.getDeclaredConstructor().newInstance();
+    value.fooURL = 7;
+    value._URL_Value_ = 11;
+    value.already__snake = 13;
+    value.extra = 17;
+    FieldNames result = (FieldNames) reader.deserialize(writer.serialize(value));
+    Assert.assertEquals(result.fooURL, 7);
+    Assert.assertEquals(result._URL_Value_, 11);
+    Assert.assertEquals(result.already__snake, 13);
+    if (annotated && !codegen) {
+      assertStaticSerializer(reader, localType);
+      assertStaticSerializer(writer, remoteType);
+    } else {
+      assertNotStaticSerializer(reader, localType);
+      assertNotStaticSerializer(writer, remoteType);
+    }
+  }
+
+  @ForyStruct
+  public static class FieldNames {
+    public int fooURL;
+    public int _URL_Value_;
+    public int already__snake;
+  }
+
+  @ForyStruct
+  public static class ExtraFieldNames {
+    public int fooURL;
+    public int _URL_Value_;
+    public int already__snake;
+    public int extra;
+  }
+
+  public static class RuntimeFieldNames extends FieldNames {}
+
+  public static class RuntimeExtraFieldNames extends ExtraFieldNames {}
+
   @ForyStruct
   public static class EmptyMessage {
     public EmptyMessage() {}

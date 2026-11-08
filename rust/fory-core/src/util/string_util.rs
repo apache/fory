@@ -106,23 +106,25 @@ pub fn to_utf8(utf16: &[u16], is_little_endian: bool) -> Result<Vec<u8>, String>
     Ok(utf8_bytes)
 }
 
-/// Converts a camelCase or PascalCase string to snake_case.
+/// Converts an xlang field name to its canonical ASCII snake-case identifier.
 pub fn to_snake_case(name: &str) -> String {
     let mut result = String::with_capacity(name.len() + 4);
-    let chars: Vec<char> = name.chars().collect();
-
-    for (i, &c) in chars.iter().enumerate() {
+    let bytes = name.as_bytes();
+    for (i, c) in name.char_indices() {
         if c.is_ascii_uppercase() {
             if i > 0 {
-                let prev_upper = chars.get(i - 1).is_some_and(|c| c.is_ascii_uppercase());
-                let next_upper_or_end = chars.get(i + 1).map_or(true, |c| c.is_ascii_uppercase());
-                if !prev_upper || !next_upper_or_end {
+                let previous = bytes[i - 1];
+                let next_lower = bytes.get(i + 1).is_some_and(u8::is_ascii_lowercase);
+                if previous.is_ascii_lowercase()
+                    || previous.is_ascii_digit()
+                    || (previous.is_ascii_uppercase() && next_lower)
+                {
                     result.push('_');
                 }
             }
             result.push(c.to_ascii_lowercase());
         } else {
-            result.push(c);
+            result.push(if c == '-' { '_' } else { c });
         }
     }
     result
@@ -672,6 +674,24 @@ mod case_tests {
         assert_eq!(to_snake_case("simpleTest"), "simple_test");
         assert_eq!(to_snake_case("already_snake"), "already_snake");
         assert_eq!(to_snake_case("ABC"), "abc");
+        for (name, expected) in [
+            ("createdAt", "created_at"),
+            ("CreatedAt", "created_at"),
+            ("fooURL", "foo_url"),
+            ("URLValue", "url_value"),
+            ("HTTP2Server", "http2_server"),
+            ("x2Y", "x2_y"),
+            ("ABc", "a_bc"),
+            ("fooÖl", "fooÖl"),
+            ("ÖValue", "Övalue"),
+            ("_URL_Value_", "_url_value_"),
+            ("already__snake", "already__snake"),
+            ("foo-Bar", "foo_bar"),
+            ("", ""),
+        ] {
+            assert_eq!(to_snake_case(name), expected, "{name}");
+            assert_eq!(to_snake_case(expected), expected);
+        }
     }
 
     #[test]

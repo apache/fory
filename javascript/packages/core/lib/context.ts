@@ -1627,7 +1627,9 @@ export class ReadContext {
         : Type.struct(typeMeta.getUserTypeId());
     const localProps = originalTypeInfo?.options?.props;
     const fieldEntries = typeMeta.remapFieldNames(localProps).map((fieldInfo) => {
-      const localFieldTypeInfo = localProps?.[fieldInfo.getFieldName()];
+      const candidate = localProps?.[fieldInfo.getFieldName()];
+      // Unmatched names must not bind to a tagged property with the same spelling.
+      const localFieldTypeInfo = candidate?.id === fieldInfo.fieldId ? candidate : undefined;
       let fieldTypeInfo = this.fieldInfoToTypeInfo(fieldInfo, localFieldTypeInfo)
         .setNullable(fieldInfo.nullable)
         .setTrackingRef(fieldInfo.trackingRef);

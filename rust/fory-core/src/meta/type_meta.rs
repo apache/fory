@@ -572,8 +572,8 @@ impl FieldInfo {
             // Field name mode (original behavior)
             // field_bytes: | header | type_info | field_name |
             // header: | field_name_encoding:2bits | size:4bits | nullability:1bit | track_ref:1bit |
-            let meta_string =
-                FIELD_NAME_ENCODER.encode_with_encodings(&self.field_name, FIELD_NAME_ENCODINGS)?;
+            let meta_string = FIELD_NAME_ENCODER
+                .encode_with_encodings(&to_snake_case(&self.field_name), FIELD_NAME_ENCODINGS)?;
             let name_encoded = meta_string.bytes.as_slice();
             let name_size = name_encoded.len() - 1;
             let mut header: u8 = (min(FIELD_NAME_SIZE_THRESHOLD, name_size) as u8) << 2;
@@ -874,7 +874,7 @@ pub fn match_remote_fields(
         .iter()
         .enumerate()
         .filter(|(_, f)| f.field_id < 0 && !f.field_name.is_empty())
-        .map(|(i, f)| (f.field_name.clone(), (i, f)))
+        .map(|(i, f)| (to_snake_case(&f.field_name), (i, f)))
         .collect();
 
     let field_index_by_id: HashMap<i32, (usize, &FieldInfo)> = local_field_infos

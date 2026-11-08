@@ -1346,11 +1346,15 @@ TypeMeta::assign_local_dispatch_ids(const TypeMeta *local_type,
         Error::invalid("Field tag exceeds the wire TAG_ID range"));
   }
 
-  // Primary mapping: field name -> sorted index in local schema
+  // Tagged fields have no name identity and must not hide an untagged field
+  // with the same canonical name.
   std::unordered_map<std::string, size_t> local_field_index_map;
   local_field_index_map.reserve(local_fields.size());
   for (size_t i = 0; i < local_fields.size(); ++i) {
-    local_field_index_map.emplace(local_fields[i].field_name, i);
+    if (local_fields[i].field_id < 0) {
+      local_field_index_map.emplace(to_snake_case(local_fields[i].field_name),
+                                    i);
+    }
   }
   // Tag ID mapping when field IDs are explicitly configured.
   std::unordered_map<int32_t, size_t> local_field_id_map;
@@ -1426,18 +1430,14 @@ TypeMeta::assign_local_dispatch_ids(const TypeMeta *local_type,
         matched = is_matched;
       }
     } else {
-      // 1) Try exact name + type match first (fast path for same-language
-      //    schemas and most C++-only cases). A local tag-ID field's identifier
+      // 1) Match canonical name and type. A local tag-ID field's identifier
       //    is the tag ID, not the field name, so it must not match an untagged
       //    remote field by name in a mixed schema.
-      auto it = local_field_index_map.find(remote_field.field_name);
+      auto it =
+          local_field_index_map.find(to_snake_case(remote_field.field_name));
       if (it != local_field_index_map.end()) {
-        size_t idx = it->second;
-        const FieldInfo &local_field = local_fields[idx];
-        if (local_field.field_id < 0) {
-          FORY_TRY(is_matched, assign_matched_field(remote_field, idx));
-          matched = is_matched;
-        }
+        FORY_TRY(is_matched, assign_matched_field(remote_field, it->second));
+        matched = is_matched;
       }
 
       // 2) Fallback by type signature only when no canonical remote name was
@@ -1474,79 +1474,6 @@ int64_t TypeMeta::compute_hash(const std::vector<uint8_t> &meta_bytes) {
   return compute_type_meta_hash(meta_bytes.data(), meta_bytes.size());
 }
 
-namespace {
-
-std::string to_snake_case(const std::string &name) {
-  bool all_lower = true;
-  for (char c : name) {
-    unsigned char uc = static_cast<unsigned char>(c);
-    if (!(static_cast<bool>(std::islower(uc)) ||
-          static_cast<bool>(std::isdigit(uc)) || c == '_')) {
-      all_lower = false;
-      break;
-    }
-  }
-  if (all_lower) {
-    return name;
-  }
-
-  std::string result;
-  result.reserve(name.size() * 2);
-  std::optional<char> prev;
-
-  for (size_t i = 0; i < name.size(); ++i) {
-    char ch = name[i];
-    if (ch == '_') {
-      result.push_back('_');
-      prev = ch;
-      continue;
-    }
-
-    if (static_cast<bool>(std::isupper(static_cast<unsigned char>(ch)))) {
-      bool need_underscore = false;
-      if (prev.has_value()) {
-        char prev_ch = *prev;
-        bool prev_lower_or_digit = static_cast<bool>(
-            std::islower(static_cast<unsigned char>(prev_ch)) ||
-            std::isdigit(static_cast<unsigned char>(prev_ch)));
-        bool prev_upper = static_cast<bool>(
-            std::isupper(static_cast<unsigned char>(prev_ch)));
-
-        bool next_is_lower = false;
-        if (i + 1 < name.size()) {
-          char next = name[i + 1];
-          next_is_lower =
-              static_cast<bool>(std::islower(static_cast<unsigned char>(next)));
-        }
-
-        if (prev_lower_or_digit || (prev_upper && next_is_lower)) {
-          need_underscore = true;
-        }
-      }
-      if (need_underscore && !result.empty() && result.back() != '_') {
-        result.push_back('_');
-      }
-      result.push_back(
-          static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
-    } else {
-      result.push_back(ch);
-    }
-    prev = ch;
-  }
-
-  return result;
-}
-
-std::string normalize_field_name(const std::string &name) {
-  std::string normalized = to_snake_case(name);
-  while (!normalized.empty() && normalized.back() == '_') {
-    normalized.pop_back();
-  }
-  return normalized;
-}
-
-} // anonymous namespace
-
 std::string TypeMeta::compute_struct_fingerprint(
     const std::vector<FieldInfo> &field_infos) {
   // Computes the fingerprint string for a struct type used in schema
@@ -1569,21 +1496,21 @@ std::string TypeMeta::compute_struct_fingerprint(
 
   // Copy fields and sort by canonical field identifier for fingerprint.
   std::vector<FieldInfo> sorted_fields = field_infos;
-  std::sort(
-      sorted_fields.begin(), sorted_fields.end(),
-      [](const FieldInfo &a, const FieldInfo &b) {
-        if (a.field_id >= 0 && b.field_id >= 0 && a.field_id != b.field_id) {
-          return a.field_id < b.field_id;
-        }
-        std::string a_id = a.field_id >= 0 ? std::to_string(a.field_id)
-                                           : normalize_field_name(a.field_name);
-        std::string b_id = b.field_id >= 0 ? std::to_string(b.field_id)
-                                           : normalize_field_name(b.field_name);
-        if (a_id != b_id) {
-          return a_id < b_id;
-        }
-        return a.field_name < b.field_name;
-      });
+  std::sort(sorted_fields.begin(), sorted_fields.end(),
+            [](const FieldInfo &a, const FieldInfo &b) {
+              if (a.field_id >= 0 && b.field_id >= 0 &&
+                  a.field_id != b.field_id) {
+                return a.field_id < b.field_id;
+              }
+              std::string a_id = a.field_id >= 0 ? std::to_string(a.field_id)
+                                                 : to_snake_case(a.field_name);
+              std::string b_id = b.field_id >= 0 ? std::to_string(b.field_id)
+                                                 : to_snake_case(b.field_name);
+              if (a_id != b_id) {
+                return a_id < b_id;
+              }
+              return a.field_name < b.field_name;
+            });
 
   std::string fingerprint;
   // reserve a rough estimate to avoid reallocations
@@ -1636,7 +1563,7 @@ std::string TypeMeta::compute_struct_fingerprint(
   for (const auto &fi : sorted_fields) {
     std::string field_id_or_name = fi.field_id >= 0
                                        ? std::to_string(fi.field_id)
-                                       : normalize_field_name(fi.field_name);
+                                       : to_snake_case(fi.field_name);
     fingerprint.append(field_id_or_name);
     fingerprint.push_back(',');
     append_field_type(fingerprint, fi.field_type, true, true);
