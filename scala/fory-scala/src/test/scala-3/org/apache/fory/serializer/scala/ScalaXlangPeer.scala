@@ -378,6 +378,8 @@ object ScalaXlangPeer {
       case "test_cross_language_serializer" => roundTripValues(dataFile, crossLanguageFory())
       case "test_simple_struct" => roundTripValues(dataFile, simpleStructFory(false))
       case "test_exact_field_tags" => roundTripValues(dataFile, exactFieldTagsFory())
+      case "test_field_names" => fieldNames(dataFile, compatible = false)
+      case "test_field_names_compatible" => fieldNames(dataFile, compatible = true)
       case "test_named_simple_struct" => roundTripValues(dataFile, simpleStructFory(true))
       case "test_struct_evolving_override" => roundTripValues(dataFile, evolvingOverrideFory())
       case "test_list" | "test_map" | "test_item" => roundTripValues(dataFile, itemFory())
@@ -457,6 +459,24 @@ object ScalaXlangPeer {
       System.arraycopy(data, offset, result, 0, size)
       result
     }
+  }
+
+  @ForyStruct
+  final case class FieldNames(
+      CreatedAt: Int,
+      fooURL: Int,
+      URLValue: Int,
+      HTTP2Server: Int,
+      x2Y: Int,
+      ABc: Int)
+      derives ForySerializer
+
+  private def fieldNames(dataFile: Path, compatible: Boolean): Unit = {
+    val fory = newFory(compatible = compatible, classVersionCheck = true)
+    registerStruct(fory, classOf[FieldNames], 9201)
+    val value = readOne[FieldNames](dataFile, fory)
+    require(value == FieldNames(7, 11, 13, 17, 19, 23))
+    writeOne(dataFile, fory, value)
   }
 
   private def newFory(

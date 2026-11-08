@@ -116,7 +116,9 @@ public class KotlinXlangTest extends XlangTestBase {
     if (!STATIC_SERIALIZER_CASE.equals(caseName)
         && !FIELD_TYPE_GUARD_CASE.equals(caseName)
         && !DENSE_ARRAY_CASE.equals(caseName)
-        && !UNSIGNED_COLLECTION_CASE.equals(caseName)) {
+        && !UNSIGNED_COLLECTION_CASE.equals(caseName)
+        && !"test_field_names".equals(caseName)
+        && !"test_field_names_compatible".equals(caseName)) {
       throw new SkipException(
           "Kotlin xlang phase 1 only provides static generated serializer peer cases");
     }
@@ -136,6 +138,12 @@ public class KotlinXlangTest extends XlangTestBase {
     Assert.assertEquals(response.id, 4_294_967_294L);
     Assert.assertEquals(response.name, "kotlin-to-java");
     Assert.assertEquals(response.score, 987654321L);
+  }
+
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testFieldNames(boolean enableCodegen) throws IOException {
+    super.testFieldNames(enableCodegen);
   }
 
   @Test(groups = "xlang")
