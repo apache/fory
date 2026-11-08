@@ -120,9 +120,25 @@ jobs:
           printf '%s' "$FORY_GPG_SECRET_KEY" | \
             gpg --batch --import --import-options import-show
 
+      - name: Set up source SBOM generator
+        id: syft
+        shell: bash
+        run: |
+          set -euo pipefail
+          syft_dir="$(mktemp -d)"
+          curl --fail --location --retry 3 \
+            https://github.com/anchore/syft/releases/download/v1.57.0/syft_1.57.0_linux_amd64.tar.gz \
+            --output "$syft_dir/syft.tar.gz"
+          printf '%s  %s\n' \
+            9c077a7d43029b3b13e98a8db720661e700c4d58db6352153a06395ae4a2a704 \
+            "$syft_dir/syft.tar.gz" | sha256sum --check
+          tar -xzf "$syft_dir/syft.tar.gz" -C "$syft_dir" syft
+          echo "cmd=$syft_dir/syft" >> "$GITHUB_OUTPUT"
+
       - name: Build source release
         shell: bash
         env:
+          SYFT: ${{ steps.syft.outputs.cmd }}
           RC_TAG: ${{ needs.validate.outputs.rc-tag }}
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
@@ -130,7 +146,7 @@ jobs:
           python3 ci/release.py build -v "$VERSION" --rc-tag "$RC_TAG"
 
       - name: Upload source release to ATR
-        uses: apache/tooling-actions/upload-to-atr@ca6ed9e095c40db61c42a90db2599bb2fbc2319f
+        uses: apache/tooling-actions/upload-to-atr@43a38c48536aaf8f29c58aed22d7ac9f170eced7
         with:
           project: fory
           version: ${{ needs.validate.outputs.version }}
@@ -143,7 +159,7 @@ jobs:
           {
             echo "### Source candidate"
             echo
-            echo "https://release-test.apache.org/vote/fory/$VERSION"
+            echo "https://releases.apache.org/download/path/fory/$VERSION"
           } >> "$GITHUB_STEP_SUMMARY"
 
   stage-jvm:

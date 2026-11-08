@@ -45,6 +45,7 @@ until the vote passes.
 Start from the clean release branch. Archive the exact RC tag without changing
 tracked files, creating commits, or moving refs. The root LICENSE and NOTICE
 must remain unchanged; benchmark attribution stays with the excluded benchmarks.
+Install the pinned Syft version specified in the main skill before building.
 
 ```bash
 test -z "$(git status --porcelain)"
@@ -55,15 +56,19 @@ test -z "$(git status --porcelain)"
 test -f "dist/apache-fory-${release_version}-src.tar.gz"
 test -f "dist/apache-fory-${release_version}-src.tar.gz.asc"
 test -f "dist/apache-fory-${release_version}-src.tar.gz.sha512"
+test -f "dist/apache-fory-${release_version}-src.tar.gz.cdx.json"
+test -f "dist/apache-fory-${release_version}-src.tar.gz.cdx.json.asc"
+test -f "dist/apache-fory-${release_version}-src.tar.gz.cdx.json.sha512"
 test "$(gzip -dc "dist/apache-fory-${release_version}-src.tar.gz" | git get-tar-commit-id)" = "$release_commit"
 ```
 
-The command verifies the generated PGP signature and SHA-512 checksum.
+The command verifies the PGP signatures and SHA-512 checksums of the source
+archive and its SBOM.
 
 ## Upload the Source Release to ASF Subversion
 
 Use a clean, updated working copy of the ASF development distribution
-repository. Upload only the source archive, its signature, and its checksum.
+repository. Upload the source archive and its SBOM, each with its signature and checksum.
 Verification reports and logs are not distribution artifacts and must not be
 committed to SVN.
 
@@ -75,6 +80,9 @@ mkdir -p "$svn_wc/$release_version"
 cp "dist/apache-fory-${release_version}-src.tar.gz" \
   "dist/apache-fory-${release_version}-src.tar.gz.asc" \
   "dist/apache-fory-${release_version}-src.tar.gz.sha512" \
+  "dist/apache-fory-${release_version}-src.tar.gz.cdx.json" \
+  "dist/apache-fory-${release_version}-src.tar.gz.cdx.json.asc" \
+  "dist/apache-fory-${release_version}-src.tar.gz.cdx.json.sha512" \
   "$svn_wc/$release_version/"
 svn add --force "$svn_wc/$release_version"
 svn status "$svn_wc/$release_version"
@@ -85,7 +93,7 @@ svn ls "https://dist.apache.org/repos/dist/dev/fory/${release_version}/"
 ```
 
 Inspect `svn status` before committing. The upload is complete only after the
-commit returns a revision and remote `svn ls` shows all three source-release
+commit returns a revision and remote `svn ls` shows all six source-release
 files. For the vote template, set:
 
 ```bash

@@ -17,6 +17,32 @@
 
 # For more information, see https://cwiki.apache.org/confluence/display/INFRA/Git+-+.asf.yaml+features.
 
+project:
+  metadata:
+    key: fory
+    committee: fory
+    name: Apache Fory
+  policy:
+    # These vendored files retain upstream notices documented in LICENSE.
+    # Restrict exceptions to the matching files in Fory source archives.
+    source_excludes_lightweight:
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/cpp/fory/thirdparty/MurmurHash3.cc"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/cpp/fory/thirdparty/MurmurHash3.h"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/collection/ForyObjectMap.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/collection/IdentityMap.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/collection/IdentityObjectIntMap.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/collection/LongLongByteMap.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/collection/LongMap.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/collection/ObjectIntMap.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/reflect/TypeParameter.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/reflect/TypeRef.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/type/Generics.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/util/MurmurHash3.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/util/Preconditions.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/main/java/org/apache/fory/util/concurrency/DirectExecutorService.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/java/fory-core/src/test/java/org/apache/fory/type/GenericsTest.java"
+      - "/apache-fory-*-src.tar.gz/apache-fory-*-src/javascript/packages/core/lib/murmurHash3.ts"
+
 github:
   description: >-
     A blazingly fast multi-language serialization framework for idiomatic domain objects, schema IDL, and cross-language data exchange.

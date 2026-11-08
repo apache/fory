@@ -11,6 +11,12 @@ unless the user explicitly asks for a manual release. The workflow uses
 closure, or artifact-verification logic in shell commands. Do not add unrelated
 test runs.
 
+Release automation, CI, and artifact-compliance fixes belong in PRs targeting
+`apache/main`. Merge those fixes before preparing the candidate. Keep the
+version-preparation branch local and push only the immutable RC tag; do not
+push a `releases-*` branch or target it with repair PRs unless the release
+manager explicitly requests that separate branch workflow.
+
 ## CI signing and staging prerequisites
 
 The workflow runs only in `apache/fory` and uses these Infra-provisioned GitHub
@@ -24,6 +30,29 @@ Actions secrets:
 
 Source staging uses ATR with GitHub OIDC, not SVN credentials. Do not add a
 personal signing key, a GPG passphrase secret, or SVN credentials to this flow.
+
+Source packaging requires Syft 1.57.0. CI installs this pinned version; install
+the same version on the trusted verification machine and put `syft` on `PATH`
+(or set `SYFT` to its executable path). The build emits a signed CycloneDX 1.6
+SBOM beside the source archive, with its own SHA-512 checksum. It inventories
+the manifests and lock files included in the archive; it is not a complete
+resolved dependency inventory for every runtime's binaries. Dependency
+enrichment is disabled and the source commit supplies the timestamp so the
+SBOM can be compared byte-for-byte during verification.
+
+The source archive includes `.rat-excludes` for machine-readable metadata,
+bundled license texts, and specifically attributed third-party files. Keep
+third-party notices intact. The matching lightweight-check exclusions are in
+`.asf.yaml` under `project.policy.source_excludes_lightweight`. ASF synchronizes
+that policy from the default branch. After merging policy changes to
+`apache/main`, confirm the exact patterns are active in ATR before staging.
+Do not disable either license check or add broad source-directory exclusions.
+
+The Nexus account must have staging access to the `org.apache.fory` profile.
+Provisioning the shared CI credentials alone does not grant access to this
+project. `stage_jvm` checks profile access before building or uploading artifacts;
+if it is missing, ask Infra to grant Fory staging access to the provisioned CI
+account. Do not replace the CI credentials with a personal account.
 
 Before the first CI release, or after a signing-key rotation:
 
@@ -58,7 +87,7 @@ Derive the release values:
 ```bash
 release_branch="releases-${release_version}"
 rc_tag="v${release_version}-${rc}"
-release_candidate_url="https://release-test.apache.org/vote/fory/${release_version}"
+release_candidate_url="https://releases.apache.org/download/path/fory/${release_version}"
 ```
 
 ### Find the release discussion
@@ -83,7 +112,7 @@ open and verify it instead of assuming it matches this release.
 
 ## Default CI Workflow
 
-### 1. Create a clean release branch
+### 1. Create a clean local release branch
 
 Run from the repository root. Clean means no staged, modified, or untracked files.
 
@@ -116,7 +145,8 @@ test -z "$(git status --porcelain)"
 release_commit="$(git rev-parse HEAD)"
 ```
 
-Stage only the version changes produced by the release script.
+Stage only the version changes produced by the release script. Keep this
+version-preparation commit local until the RC tag is pushed in the next step.
 
 ### 4. Create and push the RC tag
 
@@ -208,7 +238,7 @@ python3 ci/release.py verify_ci_artifacts \
 ```
 
 The command checks out the exact RC commit in a temporary clone, rebuilds the
-source archive and the complete JVM publication without signing or upload
+source archive, source SBOM, and complete JVM publication without signing or upload
 credentials, verifies the staged signatures with the public key, and compares
 every source, JAR, POM, source JAR, documentation JAR, and distribution file
 byte-for-byte. Each JVM ecosystem is built once and may reuse the machine's
