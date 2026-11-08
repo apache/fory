@@ -1,0 +1,158 @@
+compiler/fory_compiler/tests/test_python_generator.py
+  h_e94f2b5704cbef 99
+cpp/fory/serialization/struct_test.cc
+  h_e94f2b5704cbef 149-163,1634-1663
+cpp/fory/serialization/type_resolver.cc
+  h_e94f2b5704cbef 1349-1350,1354-1357,1433,1436-1437,1439-1440,1499-1513,1566
+cpp/fory/serialization/xlang_test_main.cc
+  h_e94f2b5704cbef 121-130,979,1086-1089,2045-2059
+cpp/fory/util/string_util.h
+  h_e94f2b5704cbef 316-327
+cpp/fory/util/string_util_test.cc
+  h_e94f2b5704cbef 130-149
+csharp/src/Fory.Generator/ForyModelGenerator.Analysis.cs
+  h_e94f2b5704cbef 2814,2818-2821,2827,2831
+csharp/src/Fory/TypeMeta.cs
+  h_e94f2b5704cbef 81,89,91-92,96-99,105,109,113,333,821,842
+csharp/tests/Fory.Tests/RuntimeEdgeCaseTests.cs
+  h_e94f2b5704cbef 1393-1419
+csharp/tests/Fory.XlangPeer/Program.cs
+  h_e94f2b5704cbef 213-214,717-727,829,837-840,1317-1327,1472,1474
+dart/packages/fory-test/lib/entity/xlang_test_models.dart
+  h_e94f2b5704cbef 58-76
+dart/packages/fory-test/test/cross_lang_test/xlang_test_main.dart
+  h_e94f2b5704cbef 472-486
+dart/packages/fory/lib/src/codegen/fory_generator.dart
+  h_e94f2b5704cbef 30,1955-1956,1984
+dart/packages/fory/lib/src/meta/field_info.dart
+  h_e94f2b5704cbef 22-43
+dart/packages/fory/lib/src/serializer/struct_serializer.dart
+  h_e94f2b5704cbef 186,274
+dart/packages/fory/test/xlang_protocol_test.dart
+  h_e94f2b5704cbef 581-601
+docs/object-serialization/core-concepts.md
+  h_e94f2b5704cbef 77-89
+docs/specification/xlang_serialization_spec.md
+  h_e94f2b5704cbef 882-923
+go/fory/field_info.go
+  h_e94f2b5704cbef 728-732,793,799,814,817,888,890,892
+go/fory/struct_init.go
+  h_e94f2b5704cbef 234-237,349-350,396-397
+go/fory/struct_test.go
+  h_e94f2b5704cbef 357-398
+go/fory/tag_test.go
+  h_e94f2b5704cbef 222-223
+go/fory/tests/xlang/xlang_test_main.go
+  h_e94f2b5704cbef 1257-1282,2987-2990
+go/fory/type_def.go
+  h_e94f2b5704cbef 482,511,516,521-525,530,532-533
+go/fory/util.go
+  h_e94f2b5704cbef 62-64,66-72,74-76,78
+go/fory/util_test.go
+  h_e94f2b5704cbef 29,34-45
+java/fory-core/src/main/java/org/apache/fory/meta/FieldInfo.java
+  h_e94f2b5704cbef 44,576
+java/fory-core/src/main/java/org/apache/fory/meta/TypeDef.java
+  h_e94f2b5704cbef 463
+java/fory-core/src/main/java/org/apache/fory/meta/TypeDefDecoder.java
+  h_e94f2b5704cbef 267-268
+java/fory-core/src/main/java/org/apache/fory/meta/TypeDefEncoder.java
+  h_e94f2b5704cbef 276
+java/fory-core/src/main/java/org/apache/fory/serializer/StaticGeneratedStructSerializer.java
+  h_e94f2b5704cbef 642-649,750-751
+java/fory-core/src/main/java/org/apache/fory/serializer/UnknownClass.java
+  h_e94f2b5704cbef 110
+java/fory-core/src/main/java/org/apache/fory/type/Descriptor.java
+  h_e94f2b5704cbef 603
+java/fory-core/src/main/java/org/apache/fory/util/StringUtils.java
+  h_e94f2b5704cbef 254-274,277
+java/fory-core/src/test/java/org/apache/fory/meta/NestedTypeAnnotationTest.java
+  h_e94f2b5704cbef 51,221-233,524-525
+java/fory-core/src/test/java/org/apache/fory/meta/TypeDefTest.java
+  h_e94f2b5704cbef 46,691-707,724
+java/fory-core/src/test/java/org/apache/fory/serializer/UnknownClassSerializersTest.java
+  h_e94f2b5704cbef 44,478,483-486,530,535-538,588,593-596
+java/fory-core/src/test/java/org/apache/fory/util/StringUtilsTest.java
+  h_e94f2b5704cbef 92-114
+java/fory-core/src/test/java/org/apache/fory/xlang/CPPXlangTest.java
+  h_e94f2b5704cbef 41-46
+java/fory-core/src/test/java/org/apache/fory/xlang/CSharpXlangTest.java
+  h_e94f2b5704cbef 47-52
+java/fory-core/src/test/java/org/apache/fory/xlang/DartXlangTest.java
+  h_e94f2b5704cbef 45-50
+java/fory-core/src/test/java/org/apache/fory/xlang/GoXlangTest.java
+  h_e94f2b5704cbef 42-47
+java/fory-core/src/test/java/org/apache/fory/xlang/JavaScriptXlangTest.java
+  h_e94f2b5704cbef 48-53
+java/fory-core/src/test/java/org/apache/fory/xlang/PythonXlangTest.java
+  h_e94f2b5704cbef 43-48
+java/fory-core/src/test/java/org/apache/fory/xlang/RustXlangTest.java
+  h_e94f2b5704cbef 42-47
+java/fory-core/src/test/java/org/apache/fory/xlang/SwiftXlangTest.java
+  h_e94f2b5704cbef 42-47
+java/fory-core/src/test/java/org/apache/fory/xlang/XlangTestBase.java
+  h_e94f2b5704cbef 1589-1630
+java/fory-latest-jdk-tests/src/test/java/org/apache/fory/integration_tests/ExampleStaticGeneratedSerializerTest.java
+  h_e94f2b5704cbef 238-283
+javascript/packages/core/lib/context.ts
+  h_e94f2b5704cbef 1630-1632
+javascript/packages/core/lib/meta/TypeMeta.ts
+  h_e94f2b5704cbef 646,760-764,886,916,995-996,999-1005,1011
+javascript/test/crossLanguage.test.ts
+  h_e94f2b5704cbef 628-655
+javascript/test/typemeta.test.ts
+  h_e94f2b5704cbef 215-293
+python/pyfory/meta/metastring.py
+  h_e94f2b5704cbef 403,430,433,435,437
+python/pyfory/meta/typedef.py
+  h_e94f2b5704cbef 226-228,236-238,247-248,256,292-305
+python/pyfory/meta/typedef_decoder.py
+  h_e94f2b5704cbef 310-311
+python/pyfory/meta/typedef_encoder.py
+  h_e94f2b5704cbef 39,247-249
+python/pyfory/struct.pxi
+  h_e94f2b5704cbef 307-317
+python/pyfory/struct.py
+  h_e94f2b5704cbef 68,613-615,620-622,630-632,635-638,642,652,664,667-677,707,714-716,833-835,843-845,854-856,864-866,887-889,925-927,947-949
+python/pyfory/tests/test_array.py
+  h_e94f2b5704cbef 111
+python/pyfory/tests/test_cross_language.py
+  h_e94f2b5704cbef 524
+python/pyfory/tests/test_struct.py
+  h_e94f2b5704cbef 134,795-900
+python/pyfory/tests/xlang_test_main.py
+  h_e94f2b5704cbef 688-713
+rust/fory-core/src/meta/meta_string.rs
+  h_e94f2b5704cbef 229,253-254,261,268
+rust/fory-core/src/meta/type_meta.rs
+  h_e94f2b5704cbef 575-576,877
+rust/fory-core/src/resolver/meta_resolver.rs
+  h_e94f2b5704cbef 501-502
+rust/fory-core/src/util/string_util.rs
+  h_e94f2b5704cbef 109,112-113,116-121,127,677-694
+rust/fory-derive/src/object/util.rs
+  h_e94f2b5704cbef 397,409,413,420-421,433,1107,1126-1127,1133-1134,1143-1147,1155-1161,1187-1191,1199-1203
+rust/tests/tests/compatible/test_struct.rs
+  h_e94f2b5704cbef 24-88
+rust/tests/tests/test_cross_language.rs
+  h_e94f2b5704cbef 1049-1093
+swift/Sources/Fory/TypeMeta.swift
+  h_e94f2b5704cbef 267,1128-1130,1133,1135-1141,1144,1146,1150-1152
+swift/Sources/ForyMacro/ForyObjectMacro.swift
+  h_e94f2b5704cbef 3703-3705,3708,3710-3716,3719,3721,3725-3727
+swift/Tests/ForyTests/ForySwiftTests.swift
+  h_e94f2b5704cbef 1794-1823
+swift/Tests/ForyXlangTests/main.swift
+  h_e94f2b5704cbef 43-52,906-915,1241-1244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f7133e7264ae51c851e8209cb3474c123741a2a6",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
