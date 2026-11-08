@@ -34,6 +34,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -100,6 +101,7 @@ SCALA_SNAPSHOT_COMMANDS = (
     "sbt 'project fory-json-scala' +publish",
 )
 JVM_PUBLICATION_MODES = ("release", "snapshot")
+SYFT_VERSION = "1.57.0"
 KOTLIN_PUBLIC_ARTIFACTS = (
     "fory-kotlin",
     "fory-kotlin-ksp",
@@ -190,13 +192,89 @@ def build(v: str, rc_tag: str, skip_sign: bool = False):
         ]
     )
     os.chdir("dist")
-    if not skip_sign:
-        logger.info("Start to generate signature")
-        subprocess.check_call(
-            f"gpg --armor --output {src_tar}.asc --detach-sig {src_tar}", shell=True
+    _build_source_sbom(src_tar, v, rc_tag)
+    for artifact in (src_tar, src_tar + ".cdx.json"):
+        if not skip_sign:
+            subprocess.check_call(
+                [
+                    "gpg",
+                    "--armor",
+                    "--output",
+                    artifact + ".asc",
+                    "--detach-sig",
+                    artifact,
+                ]
+            )
+        Path(artifact + ".sha512").write_text(
+            f"{_sha512(artifact)}  {artifact}\n", encoding="utf-8"
         )
-    subprocess.check_call(f"sha512sum {src_tar} >{src_tar}.sha512", shell=True)
     verify(v, signature=not skip_sign)
+
+
+def _build_source_sbom(source_archive, version, rc_tag):
+    syft = os.environ.get("SYFT", "syft")
+    # Host-specific Syft settings and enrichment must not change release metadata.
+    env = {
+        key: value for key, value in os.environ.items() if not key.startswith("SYFT_")
+    }
+    tool = json.loads(subprocess.check_output([syft, "version", "-o", "json"], env=env))
+    if tool["version"] != SYFT_VERSION:
+        raise RuntimeError(f"Source SBOM generation requires Syft {SYFT_VERSION}")
+    source_archive = os.path.abspath(source_archive)
+    sbom_path = source_archive + ".cdx.json"
+    with tempfile.TemporaryDirectory(prefix="fory-source-sbom-") as directory:
+        subprocess.check_call(["tar", "-xzf", source_archive, "-C", directory])
+        source_root = os.path.join(directory, f"apache-fory-{version}-src")
+        subprocess.check_call(
+            [
+                syft,
+                "scan",
+                "dir:.",
+                "--config",
+                os.path.join(source_root, ".syft.yaml"),
+                "--source-name",
+                os.path.basename(source_archive),
+                "--source-version",
+                version,
+                "--output",
+                f"cyclonedx-json@1.6={sbom_path}",
+            ],
+            cwd=source_root,
+            env=env,
+        )
+    sbom = json.loads(Path(sbom_path).read_text(encoding="utf-8"))
+    if not sbom.get("components"):
+        raise RuntimeError("The source SBOM contains no components")
+    source_hash = _sha512(source_archive)
+    timestamp = int(
+        subprocess.check_output(
+            ["git", "show", "-s", "--format=%ct", f"refs/tags/{rc_tag}^{{commit}}"],
+            cwd=PROJECT_ROOT_DIR,
+            text=True,
+        ).strip()
+    )
+    # Use the source commit time and artifact identity instead of scan time/random UUIDs.
+    sbom["serialNumber"] = "urn:uuid:" + str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f"apache-fory:{source_hash}:syft:{SYFT_VERSION}")
+    )
+    metadata = sbom["metadata"]
+    metadata["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(timestamp))
+    metadata["supplier"] = {"name": "The Apache Software Foundation"}
+    component = metadata["component"]
+    component["supplier"] = metadata["supplier"]
+    component["hashes"] = [{"alg": "SHA-512", "content": source_hash}]
+    component["licenses"] = [{"license": {"id": "Apache-2.0"}}]
+    component["description"] = (
+        "Source archive inventory from included manifests and lock files; "
+        "not a resolved dependency inventory of built runtime packages."
+    )
+    sbom["compositions"] = [
+        {"aggregate": "incomplete", "assemblies": [component["bom-ref"]]}
+    ]
+    Path(sbom_path).write_text(
+        json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    logger.info("Built source SBOM with %d components", len(sbom["components"]))
 
 
 def _check_release_version(v: str):
@@ -220,10 +298,10 @@ def _check_all_committed():
 
 def verify(v, signature=True):
     src_tar = f"apache-fory-{v}-src.tar.gz"
-    if signature:
-        subprocess.check_call(f"gpg --verify {src_tar}.asc {src_tar}", shell=True)
-        logger.info("Verified signature")
-    subprocess.check_call(f"sha512sum --check {src_tar}.sha512", shell=True)
+    for artifact in (src_tar, src_tar + ".cdx.json"):
+        if signature:
+            subprocess.check_call(["gpg", "--verify", artifact + ".asc", artifact])
+        _verify_sha512_file(artifact, artifact + ".sha512")
     logger.info("Verified checksum successfully")
 
 
@@ -270,6 +348,7 @@ def stage_jvm(v, rc_tag, output=None):
         raise ValueError(f"HEAD {head} does not match {rc_tag} at {release_commit}")
     _require_jvm_release_version(v)
     authorization = _nexus_authorization()
+    _require_nexus_staging_profile(authorization)
     repositories_before = set(_nexus_repositories(authorization))
 
     try:
@@ -508,6 +587,20 @@ def verify_ci_artifacts(
         local_source = os.path.join(checkout, "dist", source_archive)
         rows.append(
             _compare_release_file("Source", source_archive, staged_source, local_source)
+        )
+
+        source_sbom = source_archive + ".cdx.json"
+        staged_sbom = os.path.join(staged, source_sbom)
+        for suffix in ("", ".asc", ".sha512"):
+            _download_file(f"{source_url}/{source_sbom}{suffix}", staged_sbom + suffix)
+        _verify_sha512_file(staged_sbom, staged_sbom + ".sha512")
+        _verify_gpg_signature(
+            staged_sbom, staged_sbom + ".asc", expected_fingerprint, gpg_env
+        )
+        rows.append(
+            _compare_release_file(
+                "Source SBOM", source_sbom, staged_sbom, local_source + ".cdx.json"
+            )
         )
 
         staged_payloads = {}
@@ -1021,6 +1114,20 @@ def _nexus_request(path, authorization, method="GET", payload=None):
         ) from None
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Nexus {method} {path} failed: {exc.reason}") from None
+
+
+def _require_nexus_staging_profile(authorization):
+    # Nexus can authenticate a shared CI deployer and list other projects while
+    # still denying access to Fory. Check the project grant before any upload.
+    _, body = _nexus_request("/service/local/staging/profiles", authorization)
+    profiles = json.loads(body).get("data", [])
+    if not any(profile.get("name") == "org.apache.fory" for profile in profiles):
+        raise RuntimeError(
+            "Nexus credentials cannot access the org.apache.fory staging profile. "
+            "Ask ASF Infra to grant Fory staging access to the account provided by "
+            "NEXUS_STAGE_DEPLOYER_USER and NEXUS_STAGE_DEPLOYER_PW. "
+            "Authentication and access to other projects do not establish this grant."
+        )
 
 
 def _nexus_repositories(authorization):

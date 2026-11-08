@@ -1,0 +1,52 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Machine-readable metadata and generated lock files; licensed by the root LICENSE.
+.bazelversion
+go/fory/go.sum
+javascript/.prettierrc
+swift/.swift-format
+swift/Package.resolved
+csharp/src/Fory.Generator/AnalyzerReleases.Shipped.md
+csharp/src/Fory.Generator/AnalyzerReleases.Unshipped.md
+java/fory-annotation-processor/src/main/resources/META-INF/services/javax.annotation.processing.Processor
+java/fory-core/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker
+java/fory-latest-jdk-tests/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker
+kotlin/fory-json-kotlin-ksp/src/main/resources/META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider
+kotlin/fory-kotlin-ksp/src/main/resources/META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider
+
+# Bundled license texts must retain the upstream wording.
+java/fory-core/src/main/resources/META-INF/licenses/LICENSE-janino.txt
+java/fory-core/src/main/resources/META-INF/licenses/LICENSE-kryo.txt
+licenses/LICENSE-kryo.txt
+
+# Third-party sources retain the licenses and attribution listed in LICENSE.
+cpp/fory/thirdparty/MurmurHash3.cc
+cpp/fory/thirdparty/MurmurHash3.h
+java/fory-core/src/main/java/org/apache/fory/collection/ForyObjectMap.java
+java/fory-core/src/main/java/org/apache/fory/collection/IdentityMap.java
+java/fory-core/src/main/java/org/apache/fory/collection/IdentityObjectIntMap.java
+java/fory-core/src/main/java/org/apache/fory/collection/LongLongByteMap.java
+java/fory-core/src/main/java/org/apache/fory/collection/LongMap.java
+java/fory-core/src/main/java/org/apache/fory/collection/ObjectIntMap.java
+java/fory-core/src/main/java/org/apache/fory/type/Generics.java
+java/fory-core/src/main/java/org/apache/fory/util/MurmurHash3.java
+java/fory-core/src/test/java/org/apache/fory/type/GenericsTest.java
+javascript/packages/core/lib/murmurHash3.ts
+
+# ATR stops applying its Git defaults when this file is present.
+**/.gitignore

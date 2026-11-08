@@ -25,6 +25,31 @@ Actions secrets:
 Source staging uses ATR with GitHub OIDC, not SVN credentials. Do not add a
 personal signing key, a GPG passphrase secret, or SVN credentials to this flow.
 
+Source packaging requires Syft 1.57.0. CI installs this pinned version; install
+the same version on the trusted verification machine and put `syft` on `PATH`
+(or set `SYFT` to its executable path). The build emits a signed CycloneDX 1.6
+SBOM beside the source archive, with its own SHA-512 checksum. It inventories
+the manifests and lock files included in the archive; it is not a complete
+resolved dependency inventory for every runtime's binaries. Dependency
+enrichment is disabled and the source commit supplies the timestamp so the
+SBOM can be compared byte-for-byte during verification.
+
+The source archive includes `.rat-excludes` for machine-readable metadata,
+bundled license texts, and specifically attributed third-party files. Keep
+third-party notices intact. The matching lightweight-check exclusions are in
+`.asf.yaml` under `project.policy.source_excludes_lightweight`. ASF synchronizes
+that policy from the default branch, not a release-branch PR. Before staging,
+ensure the same policy is active in ATR; until the default-branch change is
+merged, a release manager must apply those exact patterns in the project's
+Lightweight Exclusions setting. Do not disable either license check or add
+broad source-directory exclusions.
+
+The Nexus account must have staging access to the `org.apache.fory` profile.
+Provisioning the shared CI credentials alone does not grant access to this
+project. `stage_jvm` checks profile access before building or uploading artifacts;
+if it is missing, ask Infra to grant Fory staging access to the provisioned CI
+account. Do not replace the CI credentials with a personal account.
+
 Before the first CI release, or after a signing-key rotation:
 
 - Obtain the CI public key and its full primary fingerprint from Infra's message
@@ -208,7 +233,7 @@ python3 ci/release.py verify_ci_artifacts \
 ```
 
 The command checks out the exact RC commit in a temporary clone, rebuilds the
-source archive and the complete JVM publication without signing or upload
+source archive, source SBOM, and complete JVM publication without signing or upload
 credentials, verifies the staged signatures with the public key, and compares
 every source, JAR, POM, source JAR, documentation JAR, and distribution file
 byte-for-byte. Each JVM ecosystem is built once and may reuse the machine's
