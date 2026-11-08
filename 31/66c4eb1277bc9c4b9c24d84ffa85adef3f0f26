@@ -1,0 +1,108 @@
+.agents/skills/fory-release/SKILL.md
+  h_e94f2b5704cbef 28-46,236
+.agents/skills/fory-release/references/manual-release.md
+  h_e94f2b5704cbef 48,59-61,65-66,71,83-85,96
+.asf.yaml
+  h_e94f2b5704cbef 20-45
+.gitattributes
+  h_e94f2b5704cbef 1-17
+.github/workflows/stage-release-candidate.yml
+  h_e94f2b5704cbef 123-137,141
+.prettierignore
+  h_e94f2b5704cbef 1-17
+.rat-excludes
+  h_e94f2b5704cbef 1-52
+.syft.yaml
+  h_e94f2b5704cbef 1-32
+.yamllint
+  h_e94f2b5704cbef 1-17
+AGENTS.md
+  h_e94f2b5704cbef 1-19
+AI_POLICY.md
+  h_e94f2b5704cbef 1-19
+CONTRIBUTING.md
+  h_e94f2b5704cbef 1-19
+README.md
+  h_e94f2b5704cbef 1-19
+ci/format.sh
+  h_e94f2b5704cbef 3-19
+ci/release.py
+  h_e94f2b5704cbef 37,104,195-209,214-279,301-304,592-605
+compiler/README.md
+  h_e94f2b5704cbef 1-19
+cpp/README.md
+  h_e94f2b5704cbef 1-19
+csharp/README.md
+  h_e94f2b5704cbef 1-19
+dart/CHANGELOG.md
+  h_e94f2b5704cbef 1-19
+dart/README.md
+  h_e94f2b5704cbef 1-19
+dart/packages/fory-test/README.md
+  h_e94f2b5704cbef 1-19
+dart/packages/fory/CHANGELOG.md
+  h_e94f2b5704cbef 1-19
+dart/packages/fory/README.md
+  h_e94f2b5704cbef 1-19
+docs/security/deserialization.md
+  h_e94f2b5704cbef 6-24
+docs/security/index.md
+  h_e94f2b5704cbef 6-24
+docs/security/threat-model.md
+  h_e94f2b5704cbef 6-24
+examples/cpp/hello_row/README.md
+  h_e94f2b5704cbef 1-19
+examples/cpp/hello_world/README.md
+  h_e94f2b5704cbef 1-19
+go/README.md
+  h_e94f2b5704cbef 1-19
+go/fory/README.md
+  h_e94f2b5704cbef 1-19
+java/README.md
+  h_e94f2b5704cbef 1-19
+java/fory-annotation-processor/README.md
+  h_e94f2b5704cbef 1-19
+java/fory-format/README.md
+  h_e94f2b5704cbef 1-19
+java/fory-json/README.md
+  h_e94f2b5704cbef 1-19
+java/fory-testsuite/README.md
+  h_e94f2b5704cbef 1-19
+javascript/.npmrc
+  h_e94f2b5704cbef 1-17
+javascript/.prettierignore
+  h_e94f2b5704cbef 1-17
+kotlin/README.md
+  h_e94f2b5704cbef 1-19
+kotlin/fory-json-kotlin-ksp/README.md
+  h_e94f2b5704cbef 1-19
+kotlin/fory-json-kotlin/README.md
+  h_e94f2b5704cbef 1-19
+kotlin/fory-kotlin-ksp/README.md
+  h_e94f2b5704cbef 1-19
+python/CONTRIBUTING.md
+  h_e94f2b5704cbef 1-19
+python/README.md
+  h_e94f2b5704cbef 1-19
+rust/README.md
+  h_e94f2b5704cbef 1-19
+scala/README.md
+  h_e94f2b5704cbef 1-19
+scala/fory-json-scala/README.md
+  h_e94f2b5704cbef 1-19
+scala/fory-scala/README.md
+  h_e94f2b5704cbef 1-19
+swift/README.md
+  h_e94f2b5704cbef 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3166c4eb1277bc9c4b9c24d84ffa85adef3f0f26",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
