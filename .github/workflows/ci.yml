@@ -150,7 +150,7 @@ jobs:
             echo "graalvm_kotlin=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^(rust/)' <<< "$changed_files"; then
+          if grep -Eq '^(\.github/workflows/ci\.yml$|rust/)' <<< "$changed_files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -1257,8 +1257,8 @@ jobs:
     needs: changes
     strategy:
       matrix:
-        # macos-14 is the arm64 runner; keep it for Rust code changes only.
-        os: ${{ fromJSON(needs.changes.outputs.rust == 'true' && '["ubuntu-latest","macos-14","macos-latest"]' || '["ubuntu-latest","macos-latest"]') }}
+        # Exercise macOS 15 for Rust code and workflow changes.
+        os: ${{ fromJSON(needs.changes.outputs.rust == 'true' && '["ubuntu-latest","macos-15","macos-latest"]' || '["ubuntu-latest","macos-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
