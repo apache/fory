@@ -225,7 +225,7 @@ jobs:
       MY_VAR: "PATH"
     strategy:
       matrix:
-        java-version: ${{ fromJSON(needs.changes.outputs.java_code == 'true' && '["8","11","17","21","25","26"]' || '["8"]') }}
+        java-version: ${{ fromJSON(needs.changes.outputs.java_code == 'true' && '["8","11","17","21","25","27"]' || '["8"]') }}
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up JDK ${{ matrix.java-version }}
@@ -749,9 +749,9 @@ jobs:
           - java-version: "17"
             kotlin_args: ""
             label: JDK 17
-          - java-version: "26"
+          - java-version: "27"
             kotlin_args: --kotlin-version 2.4.10
-            label: Kotlin 2.4.10 / JDK 26
+            label: Kotlin 2.4.10 / JDK 27
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up JDK ${{ matrix.java-version }}

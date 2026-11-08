@@ -26,11 +26,11 @@ JAVA_HOME="${JAVA_HOME:-$(
   java -XshowSettings:properties -version 2>&1 \
     | awk -F= '/java.home =/ { gsub(/^ +| +$/, "", $2); print $2; exit }'
 )}"
-JAVA_MAJOR="$(
-  java -version 2>&1 \
-    | awk -F '"' '/version/ {print $2; exit}' \
-    | awk -F. '{ if ($1 == "1") print $2; else print $1 }'
-)"
+# Accepts "1.8.0_382", "27.0.1", and pre-release forms such as "27-ea"; some
+# distribution JDK packages keep the "-ea" suffix on GA builds.
+JAVA_MAJOR="$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')"
+JAVA_MAJOR="${JAVA_MAJOR#1.}"
+JAVA_MAJOR="${JAVA_MAJOR%%[.-]*}"
 
 if [[ "$JAVA_MAJOR" -lt 11 ]]; then
   echo "Skipping jlink smoke test on JDK $JAVA_MAJOR; fory-format is Java 11+."
