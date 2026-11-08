@@ -1,0 +1,20 @@
+.github/workflows/ci.yml
+  h_e94f2b5704cbef 1260-1261
+java/fory-core/src/test/java/org/apache/fory/xlang/KotlinXlangTest.java
+  h_e94f2b5704cbef 119-121,143-148
+kotlin/fory-kotlin-tests/src/main/kotlin/org/apache/fory/kotlin/xlang/KotlinXlangPeer.kt
+  h_e94f2b5704cbef 71-81,310-311,316-330
+scala/fory-scala/src/test/scala-3/org/apache/fory/serializer/scala/ScalaXlangPeer.scala
+  h_e94f2b5704cbef 381-382,464-481
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dc6b7ece5a98b5637eb9005e532707813a0572e5",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
