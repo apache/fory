@@ -44,6 +44,12 @@ import org.testng.annotations.Test;
 /** Executes cross-language tests against the C# implementation. */
 @Test
 public class CSharpXlangTest extends XlangTestBase {
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testFieldNames(boolean enableCodegen) throws java.io.IOException {
+    super.testFieldNames(enableCodegen);
+  }
+
   private static final String CSHARP_DLL = "Fory.XlangPeer.dll";
   private static final File CSHARP_DIR = new File("../../csharp");
   private static final File CSHARP_BINARY_DIR =

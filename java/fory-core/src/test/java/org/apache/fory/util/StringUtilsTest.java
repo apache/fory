@@ -89,6 +89,29 @@ public class StringUtilsTest extends ForyTestBase {
     assertEquals(StringUtils.lowerCamelToLowerUnderscore("someVariable123"), "some_variable123");
   }
 
+  @Test
+  public void testSnakeCase() {
+    String[][] cases = {
+      {"createdAt", "created_at"},
+      {"CreatedAt", "created_at"},
+      {"fooURL", "foo_url"},
+      {"URLValue", "url_value"},
+      {"HTTP2Server", "http2_server"},
+      {"x2Y", "x2_y"},
+      {"ABc", "a_bc"},
+      {"fooÖl", "fooÖl"},
+      {"ÖValue", "Övalue"},
+      {"_URL_Value_", "_url_value_"},
+      {"already__snake", "already__snake"},
+      {"foo-Bar", "foo_bar"},
+      {"", ""}
+    };
+    for (String[] entry : cases) {
+      assertEquals(StringUtils.toSnakeCase(entry[0]), entry[1], entry[0]);
+      assertEquals(StringUtils.toSnakeCase(entry[1]), entry[1]);
+    }
+  }
+
   @Test(dataProvider = "endian")
   public void testVectorizedLatinCheckAlgorithm(boolean endian) {
     // assertTrue(isLatin("Fory".toCharArray(), endian));

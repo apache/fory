@@ -685,6 +685,32 @@ def test_consistent_named():
         f.write(new_buffer.get_bytes(0, new_buffer.get_writer_index()))
 
 
+@dataclass
+class FieldNames:
+    createdAt: pyfory.Int32
+    fooURL: pyfory.Int32
+    URLValue: pyfory.Int32
+    HTTP2Server: pyfory.Int32
+    x2Y: pyfory.Int32
+    ABc: pyfory.Int32
+
+
+def test_field_names(compatible=False):
+    data_file = get_data_file()
+    with open(data_file, "rb") as stream:
+        data = stream.read()
+    fory = pyfory.Fory(xlang=True, compatible=compatible)
+    fory.register(FieldNames, type_id=9201)
+    value = fory.deserialize(data)
+    assert value == FieldNames(7, 11, 13, 17, 19, 23)
+    with open(data_file, "wb") as stream:
+        stream.write(fory.serialize(value))
+
+
+def test_field_names_compatible():
+    test_field_names(compatible=True)
+
+
 def test_struct_version_check():
     """Test struct version check."""
     data_file = get_data_file()

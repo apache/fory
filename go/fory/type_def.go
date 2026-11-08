@@ -479,12 +479,7 @@ func fieldTypeToString(spec *TypeSpec) string {
 
 // buildFieldDefs extracts field definitions from a struct value
 func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
-	type fieldDefEntry struct {
-		fieldDef   FieldDef
-		serializer Serializer
-	}
-
-	var entries []fieldDefEntry
+	var fieldDefs []FieldDef
 
 	type_ := value.Type()
 	for i := 0; i < type_.NumField(); i++ {
@@ -513,47 +508,29 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 			typeSpec:     fieldSpec.Type.typeDefProjection(false),
 			tagID:        fieldSpec.TagID,
 		}
-		serializer, serErr := serializerForTypeSpec(fory.typeResolver, field.Type, fieldSpec.Type)
-		if serErr != nil {
-			serializer = nil
-		}
-		entries = append(entries, fieldDefEntry{fieldDef: fieldDef, serializer: serializer})
-	}
-
-	fieldDefs := make([]FieldDef, len(entries))
-	for i, entry := range entries {
-		fieldDefs[i] = entry.fieldDef
+		fieldDefs = append(fieldDefs, fieldDef)
 	}
 
 	// Sort field definitions
 	if len(fieldDefs) > 1 {
-		// Extract serializers, names, typeIds, nullable info and tagIDs for sorting
-		serializers := make([]Serializer, len(fieldDefs))
+		// Extract names, typeIds, nullable info and tagIDs for sorting.
 		fieldNames := make([]string, len(fieldDefs))
 		typeIds := make([]TypeId, len(fieldDefs))
 		nullables := make([]bool, len(fieldDefs))
 		tagIDs := make([]int32, len(fieldDefs))
-		for i, entry := range entries {
-			serializers[i] = entry.serializer
-			fieldNames[i] = entry.fieldDef.name
-			typeIds[i] = entry.fieldDef.typeSpec.TypeId()
-			nullables[i] = entry.fieldDef.nullable
-			tagIDs[i] = entry.fieldDef.tagID
+		for i, fieldDef := range fieldDefs {
+			fieldNames[i] = fieldDef.name
+			typeIds[i] = fieldDef.typeSpec.TypeId()
+			nullables[i] = fieldDef.nullable
+			tagIDs[i] = fieldDef.tagID
 		}
 
 		// Use sortFields to match Java's field ordering
 		// (primitives before boxed/nullable primitives, sorted by tag ID if available)
-		_, sortedNames := sortFields(fory.typeResolver, fieldNames, serializers, typeIds, nullables, tagIDs)
-
-		// Rebuild fieldInfos in the sorted order
-		nameToFieldInfo := make(map[string]FieldDef)
-		for _, fieldInfo := range fieldDefs {
-			nameToFieldInfo[fieldInfo.name] = fieldInfo
-		}
-
+		order := sortFields(fieldNames, typeIds, nullables, tagIDs)
 		sortedFieldInfos := make([]FieldDef, len(fieldDefs))
-		for i, name := range sortedNames {
-			sortedFieldInfos[i] = nameToFieldInfo[name]
+		for i, index := range order {
+			sortedFieldInfos[i] = fieldDefs[index]
 		}
 
 		fieldDefs = sortedFieldInfos

@@ -226,7 +226,7 @@ impl MetaStringEncoder {
             }
             let upper_count: usize = statistics.upper_count;
             if upper_count == 1
-                && input.chars().next().unwrap().is_uppercase()
+                && input.chars().next().unwrap().is_ascii_uppercase()
                 && allow(Encoding::FirstToLowerSpecial)
             {
                 return Encoding::FirstToLowerSpecial;
@@ -250,22 +250,22 @@ impl MetaStringEncoder {
         let mut upper_count = 0;
         for c in chars.chars() {
             if can_lower_upper_digit_special_encoded
-                && !(c.is_lowercase()
-                    || c.is_uppercase()
+                && !(c.is_ascii_lowercase()
+                    || c.is_ascii_uppercase()
                     || c.is_ascii_digit()
                     || (c == self.special_char1 || c == self.special_char2))
             {
                 can_lower_upper_digit_special_encoded = false;
             }
             if can_lower_special_encoded
-                && !(c.is_lowercase() || matches!(c, '.' | '_' | '$' | '|'))
+                && !(c.is_ascii_lowercase() || matches!(c, '.' | '_' | '$' | '|'))
             {
                 can_lower_special_encoded = false;
             }
             if c.is_ascii_digit() {
                 digit_count += 1;
             }
-            if c.is_uppercase() {
+            if c.is_ascii_uppercase() {
                 upper_count += 1;
             }
         }

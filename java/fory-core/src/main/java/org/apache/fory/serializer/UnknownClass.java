@@ -107,6 +107,7 @@ public interface UnknownClass {
   /** Ensure no fields here to avoid conflicts with peer class fields. */
   class UnknownEmptyStruct implements UnknownClass {}
 
+  /** Unknown struct fields retain their qualified wire names, including snake_case in xlang. */
   class UnknownStruct extends LazyMap<Object, Object> implements UnknownClass {
     final TypeDef typeDef;
 

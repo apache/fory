@@ -394,7 +394,7 @@ fn is_compress(type_id: u32) -> bool {
     .contains(&type_id)
 }
 
-/// Group fields into serialization categories while normalizing field names to snake_case.
+/// Group declared fields using canonical wire names only for ordering.
 /// The returned groups preserve the ordering rules required by the serialization layout.
 fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
     use super::field_meta::parse_field_meta;
@@ -406,20 +406,19 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
     // First handle Forward fields separately to avoid borrow checker issues
     for (idx, field) in fields.iter().enumerate() {
         if is_forward_field(&field.ty) {
-            let raw_ident = get_field_name(field, idx);
-            let ident = to_snake_case(&raw_ident);
+            let ident = get_field_name(field, idx);
             // Forward fields don't have explicit IDs; sort by name.
             non_primitive_fields.push((
                 ident.clone(),
-                FieldSortKey::name(ident),
+                FieldSortKey::name(to_snake_case(&ident)),
                 TypeId::UNKNOWN as u32,
             ));
         }
     }
 
     for (idx, field) in fields.iter().enumerate() {
-        let raw_ident = get_field_name(field, idx);
-        let ident = to_snake_case(&raw_ident);
+        // Generated member access must retain the declared Rust identifier.
+        let ident = get_field_name(field, idx);
 
         // Skip if already handled as Forward field
         if is_forward_field(&field.ty) {
@@ -431,7 +430,7 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
         let sort_key = if meta.uses_tag_id() {
             FieldSortKey::id(meta.effective_id())
         } else {
-            FieldSortKey::name(ident.clone())
+            FieldSortKey::name(to_snake_case(&ident))
         };
 
         let ty: String = field
@@ -1105,7 +1104,7 @@ mod tests {
     use syn::parse_quote;
 
     #[test]
-    fn group_fields_normalizes_names_and_preserves_ordering() {
+    fn group_fields_preserves_names() {
         let fields: Vec<syn::Field> = vec![
             parse_quote!(pub camelCase: i32),
             parse_quote!(pub optionalValue: Option<i64>),
@@ -1124,13 +1123,15 @@ mod tests {
             .iter()
             .map(|(name, _, _)| name.as_str())
             .collect();
-        assert_eq!(primitive_names, vec!["camel_case"]);
+        assert_eq!(primitive_names, vec!["camelCase"]);
+        assert_eq!(primitive_fields[0].1.text, "camel_case");
 
         let nullable_names: Vec<&str> = nullable_primitive_fields
             .iter()
             .map(|(name, _, _)| name.as_str())
             .collect();
-        assert_eq!(nullable_names, vec!["optional_value"]);
+        assert_eq!(nullable_names, vec!["optionalValue"]);
+        assert_eq!(nullable_primitive_fields[0].1.text, "optional_value");
 
         let non_primitive_names: Vec<&str> = non_primitive_fields
             .iter()
@@ -1139,11 +1140,11 @@ mod tests {
         assert_eq!(
             non_primitive_names,
             vec![
-                "custom_type",
-                "list_items",
-                "map_values",
-                "set_items",
-                "simple_string"
+                "customType",
+                "listItems",
+                "mapValues",
+                "setItems",
+                "simpleString"
             ]
         );
 
@@ -1151,13 +1152,13 @@ mod tests {
         assert_eq!(
             sorted_names,
             vec![
-                "camel_case".to_string(),
-                "optional_value".to_string(),
-                "custom_type".to_string(),
-                "list_items".to_string(),
-                "map_values".to_string(),
-                "set_items".to_string(),
-                "simple_string".to_string(),
+                "camelCase".to_string(),
+                "optionalValue".to_string(),
+                "customType".to_string(),
+                "listItems".to_string(),
+                "mapValues".to_string(),
+                "setItems".to_string(),
+                "simpleString".to_string(),
             ]
         );
     }
@@ -1183,11 +1184,11 @@ mod tests {
         assert_eq!(
             non_primitive_names,
             vec![
-                "bytes_value",
-                "int8_array",
-                "uint8_array",
-                "uint16_array",
-                "custom_type"
+                "bytesValue",
+                "int8Array",
+                "uint8Array",
+                "uint16Array",
+                "customType"
             ]
         );
 
@@ -1195,11 +1196,11 @@ mod tests {
         assert_eq!(
             sorted_names,
             vec![
-                "bytes_value".to_string(),
-                "int8_array".to_string(),
-                "uint8_array".to_string(),
-                "uint16_array".to_string(),
-                "custom_type".to_string(),
+                "bytesValue".to_string(),
+                "int8Array".to_string(),
+                "uint8Array".to_string(),
+                "uint16Array".to_string(),
+                "customType".to_string(),
             ]
         );
     }

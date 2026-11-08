@@ -354,6 +354,48 @@ type SetFieldsStruct struct {
 	NullableMap map[string]bool `fory:"nullable"`
 }
 
+func TestTaggedFieldNames(t *testing.T) {
+	type Declared struct {
+		FooURL int32 `fory:"id=2"`
+		FooUrl int32 `fory:"id=1"`
+	}
+	type Canonical struct {
+		First  int32 `fory:"id=1"`
+		Second int32 `fory:"id=2"`
+	}
+	for _, compatible := range []bool{false, true} {
+		writer := New(WithXlang(true), WithCompatible(compatible))
+		reader := New(WithXlang(true), WithCompatible(compatible))
+		require.NoError(t, writer.RegisterStruct(Declared{}, 9201))
+		require.NoError(t, reader.RegisterStruct(Canonical{}, 9201))
+		data, err := writer.Serialize(&Declared{FooURL: 7, FooUrl: 11})
+		require.NoError(t, err)
+		var value Canonical
+		require.NoError(t, reader.Deserialize(data, &value))
+		require.Equal(t, Canonical{First: 11, Second: 7}, value)
+	}
+}
+
+func TestFieldNameIdentity(t *testing.T) {
+	type Remote struct {
+		FooURL int32
+		Extra  int32
+	}
+	type Local struct {
+		FooURL int32
+		FooUrl int32 `fory:"id=9"`
+	}
+	writer := New(WithXlang(true), WithCompatible(true))
+	reader := New(WithXlang(true), WithCompatible(true))
+	require.NoError(t, writer.RegisterStruct(Remote{}, 9201))
+	require.NoError(t, reader.RegisterStruct(Local{}, 9201))
+	data, err := writer.Serialize(&Remote{FooURL: 7, Extra: 11})
+	require.NoError(t, err)
+	var value Local
+	require.NoError(t, reader.Deserialize(data, &value))
+	require.Equal(t, Local{FooURL: 7}, value)
+}
+
 func TestSetFieldSerializationSchemaConsistent(t *testing.T) {
 	f := New(WithXlang(true), WithCompatible(false))
 	err := f.RegisterStruct(SetFieldsStruct{}, 1001)

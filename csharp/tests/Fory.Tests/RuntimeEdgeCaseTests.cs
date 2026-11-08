@@ -1390,6 +1390,33 @@ public sealed class RuntimeEdgeCaseTests
         Assert.Contains("MaxDepth", exception.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("createdAt", "created_at")]
+    [InlineData("CreatedAt", "created_at")]
+    [InlineData("fooURL", "foo_url")]
+    [InlineData("URLValue", "url_value")]
+    [InlineData("HTTP2Server", "http2_server")]
+    [InlineData("x2Y", "x2_y")]
+    [InlineData("ABc", "a_bc")]
+    [InlineData("BFloat16Value", "b_float16_value")]
+    [InlineData("fooÖl", "fooÖl")]
+    [InlineData("ÖValue", "Övalue")]
+    [InlineData("_URL_Value_", "_url_value_")]
+    [InlineData("already__snake", "already__snake")]
+    [InlineData("foo-Bar", "foo_bar")]
+    public void FieldNames(string declared, string canonical)
+    {
+        TypeMeta remote = RemoteStructTypeMeta(9201, declared);
+        TypeMeta decoded = TypeMeta.Decode(remote.Encode());
+        Assert.Equal(canonical, decoded.Fields[0].FieldName);
+        Assert.Equal(remote.Encode(), decoded.Encode());
+        TypeMeta local = RemoteStructTypeMeta(9201, canonical);
+        TypeMeta.AssignFieldIds(remote, local.Fields);
+        Assert.Equal(0, remote.Fields[0].AssignedFieldId);
+        TypeMeta.AssignFieldIds(local, remote.Fields);
+        Assert.Equal(0, local.Fields[0].AssignedFieldId);
+    }
+
     private static TypeMeta RemoteStructTypeMeta(uint userTypeId, string fieldName)
     {
         return RemoteStructTypeMeta(userTypeId, [fieldName]);

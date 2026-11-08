@@ -3700,24 +3700,29 @@ private func toSnakeCase(_ name: String) -> String {
         return name
     }
 
-    let chars = Array(name)
-    var result = String()
-    result.reserveCapacity(name.count + 4)
+    let chars = Array(name.utf8)
+    var result: [UInt8] = []
+    result.reserveCapacity(chars.count + 4)
 
     for (index, char) in chars.enumerated() {
-        if char.isUppercase {
+        if char >= 65 && char <= 90 {
             if index > 0 {
-                let prevUpper = chars[index - 1].isUppercase
-                let nextUpperOrEnd = (index + 1 >= chars.count) || chars[index + 1].isUppercase
-                if !prevUpper || !nextUpperOrEnd {
-                    result.append("_")
+                let previous = chars[index - 1]
+                let nextLower = index + 1 < chars.count && chars[index + 1] >= 97 && chars[index + 1] <= 122
+                if (previous >= 97 && previous <= 122)
+                    || (previous >= 48 && previous <= 57)
+                    || (previous >= 65 && previous <= 90 && nextLower)
+                {
+                    result.append(95)
                 }
             }
-            result.append(char.lowercased())
+            result.append(char + 32)
         } else {
-            result.append(char)
+            result.append(char == 45 ? 95 : char)
         }
     }
 
-    return result
+    // Replacing only ASCII bytes preserves the input string's valid UTF-8.
+    // swiftlint:disable:next optional_data_string_conversion
+    return String(decoding: result, as: UTF8.self)
 }

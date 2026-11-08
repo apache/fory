@@ -78,39 +78,39 @@ internal static class TypeMetaUtils
         return -1;
     }
 
-    public static string LowerCamelToLowerUnderscore(string name)
+    public static string ToSnakeCase(string name)
     {
         if (name.Length == 0)
         {
             return name;
         }
 
-        Span<char> chars = name.ToCharArray();
         var sb = new System.Text.StringBuilder(name.Length + 4);
-        for (int i = 0; i < chars.Length; i++)
+        for (int i = 0; i < name.Length; i++)
         {
-            char c = chars[i];
-            if (char.IsUpper(c))
+            char c = name[i];
+            if (c is >= 'A' and <= 'Z')
             {
                 if (i > 0)
                 {
-                    bool prevUpper = char.IsUpper(chars[i - 1]);
-                    bool nextUpperOrEnd = i + 1 >= chars.Length || char.IsUpper(chars[i + 1]);
-                    if (!prevUpper || !nextUpperOrEnd)
+                    char previous = name[i - 1];
+                    bool nextLower = i + 1 < name.Length && name[i + 1] is >= 'a' and <= 'z';
+                    if (previous is >= 'a' and <= 'z' or >= '0' and <= '9'
+                        || (previous is >= 'A' and <= 'Z' && nextLower))
                     {
                         sb.Append('_');
                     }
                 }
 
-                sb.Append(char.ToLowerInvariant(c));
+                sb.Append((char)(c + ('a' - 'A')));
             }
             else
             {
-                sb.Append(c);
+                sb.Append(c == '-' ? '_' : c);
             }
         }
 
-        return sb.ToString().Replace("b_float16", "bfloat16");
+        return sb.ToString();
     }
 }
 
@@ -330,7 +330,7 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
             return;
         }
 
-        string snakeName = TypeMetaUtils.LowerCamelToLowerUnderscore(FieldName);
+        string snakeName = TypeMetaUtils.ToSnakeCase(FieldName);
         MetaString encoded = MetaStringEncoder.FieldName.Encode(snakeName, TypeMetaEncodings.FieldNameMetaStringEncodings);
         int encodingIndex = Array.IndexOf(TypeMetaEncodings.FieldNameMetaStringEncodings, encoded.Encoding);
         if (encodingIndex < 0)
@@ -818,7 +818,7 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
             }
             else if (!string.IsNullOrEmpty(localField.FieldName))
             {
-                localByName.TryAdd(localField.FieldName, (i, localField));
+                localByName.TryAdd(TypeMetaUtils.ToSnakeCase(localField.FieldName), (i, localField));
             }
         }
 
@@ -839,20 +839,10 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
             }
             else if (remoteField.FieldId < 0)
             {
-                if (localByName.TryGetValue(remoteField.FieldName, out (int Index, TypeMetaFieldInfo Field) byName))
+                if (localByName.TryGetValue(TypeMetaUtils.ToSnakeCase(remoteField.FieldName), out (int Index, TypeMetaFieldInfo Field) byName))
                 {
                     localIndex = byName.Index;
                     localMatch = byName.Field;
-                }
-                else
-                {
-                    string normalizedName = TypeMetaUtils.LowerCamelToLowerUnderscore(remoteField.FieldName);
-                    if (!ReferenceEquals(normalizedName, remoteField.FieldName) &&
-                        localByName.TryGetValue(normalizedName, out byName))
-                    {
-                        localIndex = byName.Index;
-                        localMatch = byName.Field;
-                    }
                 }
             }
 

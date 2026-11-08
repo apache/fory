@@ -131,7 +131,7 @@ def test_scalar_marker_typeids_drive_struct_fields():
         fory.type_resolver,
         serializer._field_names,
         serializer._serializers,
-        serializer._nullable_fields,
+        {field.name: field.nullable for field in serializer._field_infos},
         serializer._field_infos,
     )
     assert f"byte_value,{TypeId.INT8},0,0;" in fingerprint
@@ -790,6 +790,112 @@ def test_name_based_fields_sort_by_snake_case_identifier():
     fory = Fory(xlang=True, compatible=False, ref=True)
     serializer = DataClassSerializer(fory.type_resolver, CamelCaseClass)
     assert serializer._field_names == ["alpha_list", "alphaString"]
+
+
+@pytest.mark.parametrize("compatible", [False, True])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize(
+    "declared, canonical",
+    [
+        ("createdAt", "created_at"),
+        ("CreatedAt", "created_at"),
+        ("fooURL", "foo_url"),
+        ("URLValue", "url_value"),
+        ("HTTP2Server", "http2_server"),
+        ("x2Y", "x2_y"),
+        ("ABc", "a_bc"),
+        ("fooÖl", "fooÖl"),
+        ("ÖValue", "Övalue"),
+        ("_URL_Value_", "_url_value_"),
+        ("already__snake", "already__snake"),
+    ],
+)
+def test_field_names(declared, canonical, compatible, reverse):
+    from pyfory.meta.typedef_decoder import decode_typedef
+    from pyfory.meta.typedef_encoder import encode_typedef
+    from pyfory.serialization import Buffer
+
+    remote_name, local_name = (canonical, declared) if reverse else (declared, canonical)
+    remote_fields = [(remote_name, int), ("tail", str)]
+    if compatible:
+        remote_fields.append(("extra", str, dataclasses.field(default="remote")))
+    remote_cls = dataclasses.make_dataclass("Remote", remote_fields)
+    local_cls = dataclasses.make_dataclass("Local", [(local_name, int), ("tail", str)])
+    writer = Fory(xlang=True, compatible=compatible)
+    reader = Fory(xlang=True, compatible=compatible)
+    writer.register(remote_cls, name="test.FieldNames")
+    reader.register(local_cls, name="test.FieldNames")
+    encoded = encode_typedef(writer.type_resolver, remote_cls)
+    decoded = decode_typedef(Buffer(encoded.encoded), reader.type_resolver)
+    assert decoded.get_field_names() == ([canonical, "extra", "tail"] if compatible else [canonical, "tail"])
+    assert reader.deserialize(writer.serialize(remote_cls(7, "hi"))) == local_cls(7, "hi")
+
+
+def test_received_field_names():
+    # A complete compatible root whose peer wrote the declared createdAt/fooURL names.
+    # Keep this wire fixture independent of the canonicalizing writer.
+    data = bytes.fromhex("01ff1e0019105247c5dea93fe20d0c8c700f3c848858078a2404c83e826090150a71d757280e086869")
+    local_cls = dataclasses.make_dataclass("Local", [("created_at", int), ("foo_url", str)])
+    reader = Fory(xlang=True, compatible=True)
+    reader.register(local_cls, name="demo.Peer")
+    assert reader.deserialize(data) == local_cls(7, "hi")
+
+
+@pytest.mark.parametrize("ignored", [False, True])
+def test_field_name_identity(ignored):
+    from pyfory import field
+
+    @dataclass
+    class Remote:
+        fooURL: int = 7
+        extra: int = 11
+
+    @dataclass
+    class Local:
+        fooURL: int = 0
+        foo_url: int = field(ignore=True, default=0) if ignored else field(id=9, default=0)
+
+    writer = Fory(xlang=True, compatible=True)
+    reader = Fory(xlang=True, compatible=True)
+    writer.register(Remote, name="test.FieldNames")
+    reader.register(Local, name="test.FieldNames")
+    assert reader.deserialize(writer.serialize(Remote())) == Local(fooURL=7)
+
+
+@pytest.mark.parametrize("ignored", [False, True])
+def test_unmatched_field_name(ignored):
+    @dataclass
+    class Remote:
+        fooURL: pyfory.Array[pyfory.Int32]
+        tail: str = "ok"
+
+    @dataclass
+    class Local:
+        foo_url: pyfory.Array[pyfory.Float64] = (
+            pyfory.field(ignore=True, default_factory=pyfory.Float64Array) if ignored else pyfory.field(id=9, default_factory=pyfory.Float64Array)
+        )
+        tail: str = ""
+
+    writer = Fory(xlang=True, compatible=True)
+    reader = Fory(xlang=True, compatible=True)
+    writer.register(Remote, name="test.FieldNames")
+    reader.register(Local, name="test.FieldNames")
+    value = reader.deserialize(writer.serialize(Remote(pyfory.Int32Array([1, 2, 3]))))
+    assert list(value.foo_url) == []
+    assert value.tail == "ok"
+
+
+def test_skipped_field_name():
+    @dataclass
+    class Remote:
+        value: int = pyfory.field(id=9, default=7)
+        fooURL: Optional[str] = "skip"
+
+    @dataclass
+    class Local:
+        foo_url: int = pyfory.field(id=9, default=0)
+
+    assert compat_ser_de(Remote, Local, Remote(), 9202) == Local(foo_url=7)
 
 
 def test_duration_and_decimal_fields_use_declared_serializers():

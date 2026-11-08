@@ -42,6 +42,12 @@ import org.testng.annotations.Test;
 /** Executes cross-language tests against the Dart implementation. */
 @Test
 public class DartXlangTest extends XlangTestBase {
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testFieldNames(boolean enableCodegen) throws java.io.IOException {
+    super.testFieldNames(enableCodegen);
+  }
+
   private static final String DART_EXECUTABLE = "dart";
   private static final int DART_SETUP_TIMEOUT_SECONDS = 300;
   private static final File DART_WORK_DIR = new File("../../dart");

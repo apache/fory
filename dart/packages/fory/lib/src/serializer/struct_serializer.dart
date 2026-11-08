@@ -183,7 +183,7 @@ final class StructSerializer extends Serializer<Object?> {
       final remoteId = remoteField.id;
       final localField =
           remoteId < 0
-              ? localFieldsByName[remoteField.identifier]
+              ? localFieldsByName[toSnakeCase(remoteField.identifier)]
               : localFieldsById[remoteId];
       if (localField == null) {
         fields.add(
@@ -271,7 +271,7 @@ final class StructSerializer extends Serializer<Object?> {
     for (final field in _localFields) {
       final id = field.id;
       if (id < 0) {
-        fieldsByName[field.identifier] = field;
+        fieldsByName[toSnakeCase(field.identifier)] = field;
       } else {
         fieldsById[id] = field;
       }

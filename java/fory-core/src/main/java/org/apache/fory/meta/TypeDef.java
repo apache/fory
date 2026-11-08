@@ -460,9 +460,7 @@ public class TypeDef implements Serializable {
       if (fieldInfo.hasFieldId()) {
         descriptor = fieldIdToDescriptorMap.get(fieldInfo.getFieldId());
       } else if (isXlang) {
-        descriptor =
-            xlangNameDescriptors.get(
-                StringUtils.lowerCamelToLowerUnderscore(fieldInfo.getFieldName()));
+        descriptor = xlangNameDescriptors.get(StringUtils.toSnakeCase(fieldInfo.getFieldName()));
       } else {
         String fieldName = fieldInfo.getFieldName();
         String definedClass = fieldInfo.getDefinedClass();

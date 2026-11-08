@@ -108,7 +108,7 @@ def test_unsigned_array_fingerprint_type_ids():
         fory.type_resolver,
         serializer._field_names,
         serializer._serializers,
-        serializer._nullable_fields,
+        {field.name: field.nullable for field in serializer._field_infos},
         serializer._field_infos,
     )
 

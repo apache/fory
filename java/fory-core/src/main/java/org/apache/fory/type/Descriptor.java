@@ -600,7 +600,7 @@ public class Descriptor {
 
   public String getSnakeCaseName() {
     if (snakeCaseName == null) {
-      snakeCaseName = StringUtils.lowerCamelToLowerUnderscore(name);
+      snakeCaseName = StringUtils.toSnakeCase(name);
     }
     return snakeCaseName;
   }

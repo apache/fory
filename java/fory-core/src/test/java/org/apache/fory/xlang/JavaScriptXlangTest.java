@@ -45,6 +45,12 @@ import org.testng.annotations.Test;
 /** Executes cross-language tests against the JavaScript implementation. */
 @Test
 public class JavaScriptXlangTest extends XlangTestBase {
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testFieldNames(boolean enableCodegen) throws java.io.IOException {
+    super.testFieldNames(enableCodegen);
+  }
+
   private static final String NODE_EXECUTABLE = "node";
   private static final String PROTOCOL_READY = "__FORY_XLANG_READY__";
   private static final String PROTOCOL_RESULT = "__FORY_XLANG_RESULT__";

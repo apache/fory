@@ -313,6 +313,18 @@ to_snake_case(std::string_view name) {
 constexpr size_t snake_case_length(std::string_view name) {
   return detail::snake_case_length(name);
 }
+
+inline std::string to_snake_case(std::string_view name) {
+  std::string result;
+  result.reserve(detail::snake_case_length(name));
+  for (size_t i = 0; i < name.size(); ++i) {
+    if (detail::needs_snake_separator(name, i)) {
+      result.push_back('_');
+    }
+    result.push_back(name[i] == '-' ? '_' : detail::to_lower_ascii(name[i]));
+  }
+  return result;
+}
 #if defined(FORY_HAS_IMMINTRIN)
 
 inline bool is_ascii(const char *data, size_t length) {

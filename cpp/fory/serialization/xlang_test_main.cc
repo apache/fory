@@ -118,6 +118,16 @@ struct Item {
   FORY_STRUCT(Item, name);
 };
 
+struct FieldNames {
+  int32_t createdAt;
+  int32_t fooURL;
+  int32_t URLValue;
+  int32_t HTTP2Server;
+  int32_t x2Y;
+  int32_t ABc;
+  FORY_STRUCT(FieldNames, createdAt, fooURL, URLValue, HTTP2Server, x2Y, ABc);
+};
+
 struct SimpleStruct {
   std::map<int32_t, double> f1;
   int32_t f2;
@@ -966,6 +976,7 @@ void run_test_skip_id_custom(const std::string &data_file);
 void run_test_skip_name_custom(const std::string &data_file);
 void run_test_consistent_named(const std::string &data_file);
 void run_test_struct_version_check(const std::string &data_file);
+void run_test_field_names(const std::string &data_file, bool compatible);
 void run_test_polymorphic_list(const std::string &data_file);
 void run_test_polymorphic_map(const std::string &data_file);
 void run_test_one_string_field_schema(const std::string &data_file);
@@ -1072,6 +1083,10 @@ int main(int argc, char **argv) {
       run_test_consistent_named(data_file);
     } else if (case_name == "test_struct_version_check") {
       run_test_struct_version_check(data_file);
+    } else if (case_name == "test_field_names") {
+      run_test_field_names(data_file, false);
+    } else if (case_name == "test_field_names_compatible") {
+      run_test_field_names(data_file, true);
     } else if (case_name == "test_polymorphic_list") {
       run_test_polymorphic_list(data_file);
     } else if (case_name == "test_polymorphic_map") {
@@ -2024,6 +2039,21 @@ void run_test_consistent_named(const std::string &data_file) {
   for (int i = 0; i < 3; ++i) {
     append_serialized(fory, my_ext, out);
   }
+  write_file(data_file, out);
+}
+
+void run_test_field_names(const std::string &data_file, bool compatible) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(compatible, true, true);
+  ensure_ok(fory.register_struct<FieldNames>(9201), "register FieldNames");
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<FieldNames>(fory, buffer);
+  if (value.createdAt != 7 || value.fooURL != 11 || value.URLValue != 13 ||
+      value.HTTP2Server != 17 || value.x2Y != 19 || value.ABc != 23) {
+    fail("FieldNames mismatch");
+  }
+  std::vector<uint8_t> out;
+  append_serialized(fory, value, out);
   write_file(data_file, out);
 }
 

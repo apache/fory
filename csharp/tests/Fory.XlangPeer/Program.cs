@@ -210,6 +210,8 @@ internal static class Program
             "test_skip_name_custom" => CaseSkipNameCustom(input),
             "test_consistent_named" => CaseConsistentNamed(input),
             "test_struct_version_check" => CaseStructVersionCheck(input),
+            "test_field_names" => CaseFieldNames(input, compatible: false),
+            "test_field_names_compatible" => CaseFieldNames(input, compatible: true),
             "test_polymorphic_list" => CasePolymorphicList(input),
             "test_polymorphic_map" => CasePolymorphicMap(input),
             "test_one_field_struct_compatible" => CaseOneFieldStructCompatible(input),
@@ -712,6 +714,17 @@ internal static class Program
         return output.ToArray();
     }
 
+    private static byte[] CaseFieldNames(byte[] input, bool compatible)
+    {
+        ForyRuntime fory = BuildFory(compatible: compatible, checkStructVersion: true);
+        fory.Register<FieldNames>(9201);
+        FieldNames value = fory.Deserialize<FieldNames>(input);
+        Ensure(value.CreatedAt == 7 && value.FooURL == 11 && value.URLValue == 13
+            && value.HTTP2Server == 17 && value.X2Y == 19 && value.ABc == 23,
+            "FieldNames mismatch");
+        return fory.Serialize(value);
+    }
+
     private static byte[] CaseStructVersionCheck(byte[] input)
     {
         ForyRuntime fory = BuildFory(compatible: false, checkStructVersion: true);
@@ -813,7 +826,7 @@ internal static class Program
         ReducedPrecisionFloatStruct value = fory.DeserializeFromReader<ReducedPrecisionFloatStruct>(inputReader);
         EnsureConsumed(inputReader, nameof(CaseReducedPrecisionFloatStruct));
         Ensure(BitConverter.HalfToUInt16Bits(value.Float16Value) == 0x3E00, "float16_value mismatch");
-        Ensure(value.BFloat16Value.Bits == 0x3FC0, "bfloat16_value mismatch");
+        Ensure(value.Bfloat16Value.Bits == 0x3FC0, "bfloat16_value mismatch");
         Ensure(
             value.Float16Array is { Count: 3 }
             && BitConverter.HalfToUInt16Bits(value.Float16Array[0]) == 0x0000
@@ -821,10 +834,10 @@ internal static class Program
             && BitConverter.HalfToUInt16Bits(value.Float16Array[2]) == 0xBC00,
             "float16_array mismatch");
         Ensure(
-            value.BFloat16Array is { Count: 3 }
-            && value.BFloat16Array[0].Bits == 0x0000
-            && value.BFloat16Array[1].Bits == 0x3F80
-            && value.BFloat16Array[2].Bits == 0xBF80,
+            value.Bfloat16Array is { Count: 3 }
+            && value.Bfloat16Array[0].Bits == 0x0000
+            && value.Bfloat16Array[1].Bits == 0x3F80
+            && value.Bfloat16Array[2].Bits == 0xBF80,
             "bfloat16_array mismatch");
         return fory.Serialize<object?>(value);
     }
@@ -1302,6 +1315,17 @@ public sealed class ExactFieldTags
 }
 
 [ForyStruct]
+public sealed class FieldNames
+{
+    public int CreatedAt { get; set; }
+    public int FooURL { get; set; }
+    public int URLValue { get; set; }
+    public int HTTP2Server { get; set; }
+    public int X2Y { get; set; }
+    public int ABc { get; set; }
+}
+
+[ForyStruct]
 public sealed class EvolvingOverrideStruct
 {
     public string F1 { get; set; } = string.Empty;
@@ -1445,9 +1469,9 @@ public sealed class EmptyStruct
 public sealed class ReducedPrecisionFloatStruct
 {
     public Half Float16Value { get; set; }
-    public BFloat16 BFloat16Value { get; set; }
+    public BFloat16 Bfloat16Value { get; set; }
     public List<Half> Float16Array { get; set; } = [];
-    public List<BFloat16> BFloat16Array { get; set; } = [];
+    public List<BFloat16> Bfloat16Array { get; set; } = [];
 }
 
 [ForyStruct]

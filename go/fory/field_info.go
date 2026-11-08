@@ -725,11 +725,11 @@ func fingerprintTypeID(typeID TypeId) TypeId {
 // Field sorting helpers
 
 type triple struct {
-	typeID     TypeId
-	serializer Serializer
-	name       string
-	nullable   bool
-	tagID      int32 // -1 = use field name, >=0 = use tag ID for sorting
+	typeID   TypeId
+	index    int
+	name     string
+	nullable bool
+	tagID    int32 // -1 = use field name, >=0 = use tag ID for sorting
 }
 
 // getSortKeyText returns the text key used when fields do not both use numeric tag IDs.
@@ -790,14 +790,13 @@ func lessFieldSortKey(a, b *FieldInfo) bool {
 // Java separates primitive types (int, long) from boxed types (Integer, Long).
 // In Go, this corresponds to non-pointer primitives vs pointer-to-primitive.
 // When tagIDs are provided (>= 0), fields are sorted by tag ID instead of field name.
+// Return source indexes: distinct tagged fields may have the same normalized name.
 func sortFields(
-	typeResolver *TypeResolver,
 	fieldNames []string,
-	serializers []Serializer,
 	typeIds []TypeId,
 	nullables []bool,
 	tagIDs []int32,
-) ([]Serializer, []string) {
+) []int {
 	var (
 		typeTriples []triple
 		others      []triple
@@ -805,7 +804,6 @@ func sortFields(
 	)
 
 	for i, name := range fieldNames {
-		ser := serializers[i]
 		tagID := TagIDUseFieldName // default: use field name
 		if tagIDs != nil && i < len(tagIDs) {
 			tagID = tagIDs[i]
@@ -813,11 +811,10 @@ func sortFields(
 		typeID := typeIds[i]
 		if typeID == UNKNOWN {
 			// Unknown stays in "other" group regardless of serializer presence.
-			others = append(others, triple{UNKNOWN, ser, name, nullables[i], tagID})
+			others = append(others, triple{UNKNOWN, i, name, nullables[i], tagID})
 			continue
 		}
-		// Serializer may be nil for dynamic element types; field ordering must rely on typeId only.
-		typeTriples = append(typeTriples, triple{typeID, ser, name, nullables[i], tagID})
+		typeTriples = append(typeTriples, triple{typeID, i, name, nullables[i], tagID})
 	}
 	// Ordering:
 	// 1) primitives (nullable=false), 2) primitives (nullable=true),
@@ -888,13 +885,11 @@ func sortFields(
 	all = append(all, boxed...)
 	all = append(all, nonPrimitives...)
 
-	outSer := make([]Serializer, len(all))
-	outNam := make([]string, len(all))
+	indexes := make([]int, len(all))
 	for i, t := range all {
-		outSer[i] = t.serializer
-		outNam[i] = t.name
+		indexes[i] = t.index
 	}
-	return outSer, outNam
+	return indexes
 }
 
 func typesCompatible(actual, expected reflect.Type) bool {

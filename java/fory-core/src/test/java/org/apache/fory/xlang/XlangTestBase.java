@@ -1586,6 +1586,48 @@ public abstract class XlangTestBase extends ForyTestBase {
     Map<String, Animal> animal_map;
   }
 
+  @Data
+  @ForyStruct
+  public static class FieldNames {
+    int createdAt;
+    int fooURL;
+    int URLValue;
+    int HTTP2Server;
+    int x2Y;
+    int ABc;
+  }
+
+  @ForyStruct
+  public static class ExtraFieldNames extends FieldNames {
+    int extra;
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testFieldNames(boolean enableCodegen) throws IOException {
+    for (boolean compatible : new boolean[] {false, true}) {
+      Fory fory =
+          Fory.builder()
+              .withXlang(true)
+              .withCompatible(compatible)
+              .withCodegen(enableCodegen)
+              .withClassVersionCheck(true)
+              .build();
+      // The extra field forces compatible metadata misses on both sides of the round trip.
+      FieldNames value = compatible ? new ExtraFieldNames() : new FieldNames();
+      fory.register(value.getClass(), 9201);
+      value.createdAt = 7;
+      value.fooURL = 11;
+      value.URLValue = 13;
+      value.HTTP2Server = 17;
+      value.x2Y = 19;
+      value.ABc = 23;
+      String caseName = compatible ? "test_field_names_compatible" : "test_field_names";
+      ExecutionContext ctx = prepareExecution(caseName, fory.serialize(value));
+      runPeer(ctx);
+      Assert.assertEquals(fory.deserialize(readBytes(ctx.dataFile())), value);
+    }
+  }
+
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testPolymorphicList(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_polymorphic_list";

@@ -127,6 +127,26 @@ TEST(StringUtilTest, Latin1SizeBoundary) {
 }
 
 TEST(StringUtilTest, ToSnakeCaseHandlesCommonPatterns) {
+  for (const auto &entry : std::vector<std::pair<std::string, std::string>>{
+           {"createdAt", "created_at"},
+           {"CreatedAt", "created_at"},
+           {"fooURL", "foo_url"},
+           {"URLValue", "url_value"},
+           {"HTTP2Server", "http2_server"},
+           {"x2Y", "x2_y"},
+           {"ABc", "a_bc"},
+           {"fooÖl", "fooÖl"},
+           {"ÖValue", "Övalue"},
+           {"_URL_Value_", "_url_value_"},
+           {"already__snake", "already__snake"},
+           {"foo-Bar", "foo_bar"},
+           {"", ""}}) {
+    EXPECT_EQ(to_snake_case(entry.first), entry.second);
+    EXPECT_EQ(to_snake_case(entry.second), entry.second);
+    auto encoded = to_snake_case<64>(entry.first);
+    EXPECT_EQ(std::string(encoded.first.data(), encoded.second), entry.second);
+    EXPECT_EQ(snake_case_length(entry.first), entry.second.size());
+  }
   constexpr std::string_view simple_name{"DisplayName"};
   constexpr size_t simple_len = snake_case_length(simple_name);
   constexpr auto simple_pair = to_snake_case<simple_len>(simple_name);

@@ -578,6 +578,27 @@ List<int> _taggedInt32FieldBytes(int id) {
 }
 
 void main() {
+  test('canonical field names', () {
+    const cases = <String, String>{
+      'createdAt': 'created_at',
+      'CreatedAt': 'created_at',
+      'fooURL': 'foo_url',
+      'URLValue': 'url_value',
+      'HTTP2Server': 'http2_server',
+      'x2Y': 'x2_y',
+      'ABc': 'a_bc',
+      'fooÖl': 'fooÖl',
+      'ÖValue': 'Övalue',
+      '_URL_Value_': '_url_value_',
+      'already__snake': 'already__snake',
+      'foo-Bar': 'foo_bar',
+      '': '',
+    };
+    for (final entry in cases.entries) {
+      expect(toSnakeCase(entry.key), entry.value);
+      expect(toSnakeCase(entry.value), entry.value);
+    }
+  });
   group('xlang protocol regressions', () {
     test('deserializes NONE wire values as null', () {
       final fory = Fory();

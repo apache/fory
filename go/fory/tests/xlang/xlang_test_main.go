@@ -1254,6 +1254,32 @@ func testConsistentNamed() {
 	writeFile(dataFile, outData)
 }
 
+func testFieldNames(compatible bool) {
+	type FieldNames struct {
+		CreatedAt   int32
+		FooURL      int32
+		URLValue    int32
+		HTTP2Server int32
+		X2Y         int32
+		ABc         int32
+	}
+	dataFile := getDataFile()
+	f := fory.New(fory.WithXlang(true), fory.WithCompatible(compatible))
+	if err := f.RegisterStruct(FieldNames{}, 9201); err != nil {
+		panic(err)
+	}
+	var value FieldNames
+	if err := f.Deserialize(readFile(dataFile), &value); err != nil {
+		panic(err)
+	}
+	assertEqual(FieldNames{7, 11, 13, 17, 19, 23}, value, "field names")
+	data, err := f.Serialize(&value)
+	if err != nil {
+		panic(err)
+	}
+	writeFile(dataFile, data)
+}
+
 func testStructVersionCheck() {
 	dataFile := getDataFile()
 	data := readFile(dataFile)
@@ -2958,6 +2984,10 @@ func main() {
 		testConsistentNamed()
 	case "test_struct_version_check":
 		testStructVersionCheck()
+	case "test_field_names":
+		testFieldNames(false)
+	case "test_field_names_compatible":
+		testFieldNames(true)
 	case "test_polymorphic_list":
 		testPolymorphicList()
 	case "test_polymorphic_map":

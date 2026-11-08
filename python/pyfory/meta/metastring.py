@@ -400,7 +400,7 @@ class MetaStringEncoder:
                 return Encoding.LOWER_UPPER_DIGIT_SPECIAL
             else:
                 upper_count = statistics.upper_count
-                if upper_count == 1 and chars[0].isupper():
+                if upper_count == 1 and "A" <= chars[0] <= "Z" and Encoding.FIRST_TO_LOWER_SPECIAL in encodings:
                     return Encoding.FIRST_TO_LOWER_SPECIAL
                 if (len(chars) + upper_count) * 5 < len(chars) * 6 and Encoding.ALL_TO_LOWER_SPECIAL in encodings:
                     return Encoding.ALL_TO_LOWER_SPECIAL
@@ -427,14 +427,14 @@ class MetaStringEncoder:
         upper_count = 0
         for c in chars:
             if can_lower_upper_digit_special_encoded and not (
-                c.islower() or c.isupper() or c.isdigit() or c in {self.special_char1, self.special_char2}
+                "a" <= c <= "z" or "A" <= c <= "Z" or "0" <= c <= "9" or c in {self.special_char1, self.special_char2}
             ):
                 can_lower_upper_digit_special_encoded = False
-            if can_lower_special_encoded and not (c.islower() or c in {".", "_", "$", "|"}):
+            if can_lower_special_encoded and not ("a" <= c <= "z" or c in {".", "_", "$", "|"}):
                 can_lower_special_encoded = False
-            if c.isdigit():
+            if "0" <= c <= "9":
                 digit_count += 1
-            if c.isupper():
+            if "A" <= c <= "Z":
                 upper_count += 1
 
         return Statistics(

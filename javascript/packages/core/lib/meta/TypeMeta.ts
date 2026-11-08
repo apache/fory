@@ -643,7 +643,7 @@ export class TypeMeta {
       const encoding = FieldInfo.u8ToEncoding(encodingFlags);
 
       fieldName = fieldDecoder.decode(reader, size + 1, encoding || Encoding.UTF_8);
-      fieldName = TypeMeta.lowerUnderscoreToLowerCamelCase(fieldName);
+      // Keep wire identity intact; remapFieldNames resolves the declared local property.
     }
 
     return new FieldInfo(fieldName, typeId, userTypeId, trackingRef, nullable, options, fieldId);
@@ -757,10 +757,11 @@ export class TypeMeta {
       if (typeInfo.id !== -1) {
         checkFieldId(typeInfo.id);
         localNameById.set(typeInfo.id, fieldName);
-      }
-      const normalized = TypeMeta.toSnakeCase(fieldName);
-      if (!localNameByNormalized.has(normalized)) {
-        localNameByNormalized.set(normalized, fieldName);
+      } else {
+        const normalized = TypeMeta.toSnakeCase(fieldName);
+        if (!localNameByNormalized.has(normalized)) {
+          localNameByNormalized.set(normalized, fieldName);
+        }
       }
     }
 
@@ -771,8 +772,6 @@ export class TypeMeta {
         if (localName) {
           resolvedName = localName;
         }
-      } else if (Object.prototype.hasOwnProperty.call(localProps, resolvedName)) {
-        resolvedName = fieldInfo.getFieldName();
       } else {
         const normalized = TypeMeta.toSnakeCase(resolvedName);
         const localName = localNameByNormalized.get(normalized);
@@ -884,7 +883,7 @@ export class TypeMeta {
   }
 
   writeFieldName(writer: BinaryWriter, fieldName: string) {
-    const name = TypeMeta.lowerCamelToLowerUnderscore(fieldName);
+    const name = TypeMeta.toSnakeCase(fieldName);
     const metaString = fieldEncoder.encodeByEncodings(name, fieldNameEncoding);
     const encoded = metaString.getBytes();
     const encoding = fieldNameEncoding.indexOf(metaString.getEncoding());
@@ -914,7 +913,7 @@ export class TypeMeta {
         encodingFlags = 3; // TAG_ID encoding
       } else {
         // Convert camelCase to snake_case for xlang compatibility
-        const fieldName = TypeMeta.lowerCamelToLowerUnderscore(fieldInfo.getFieldName());
+        const fieldName = TypeMeta.toSnakeCase(fieldInfo.getFieldName());
         const metaString = fieldEncoder.encodeByEncodings(fieldName, fieldNameEncoding);
         encodingFlags = fieldNameEncoding.indexOf(metaString.getEncoding());
         encoded = metaString.getBytes();
@@ -939,71 +938,6 @@ export class TypeMeta {
         writer.buffer(encoded);
       }
     }
-  }
-
-  static lowerUnderscoreToLowerCamelCase(lowerUnderscore: string) {
-    if (lowerUnderscore === "__proto__") {
-      return lowerUnderscore;
-    }
-    let result = "";
-    const length = lowerUnderscore.length;
-
-    let fromIndex = 0;
-    let index;
-
-    while ((index = lowerUnderscore.indexOf("_", fromIndex)) !== -1) {
-      // 拼接下划线前的内容
-      result += lowerUnderscore.substring(fromIndex, index);
-
-      if (length > index + 1) {
-        const symbol = lowerUnderscore.charAt(index + 1);
-        // 判断是否为小写字母
-        if (symbol >= "a" && symbol <= "z") {
-          result += symbol.toUpperCase();
-          fromIndex = index + 2;
-          continue;
-        }
-      }
-
-      fromIndex = index + 1;
-    }
-
-    // 处理剩余部分
-    if (fromIndex < length) {
-      result += lowerUnderscore.substring(fromIndex, length);
-    }
-
-    return result;
-  }
-
-  static lowerCamelToLowerUnderscore(lowerCamel: string) {
-    if (lowerCamel === "__proto__") {
-      return lowerCamel;
-    }
-    let result = "";
-    const length = lowerCamel.length;
-    let fromIndex = 0;
-
-    for (let i = 0; i < length; i++) {
-      const symbol = lowerCamel.charAt(i);
-
-      // 检查是否为大写字母
-      if (symbol >= "A" && symbol <= "Z") {
-        // 拼接从上一个索引到当前大写字母前的部分，加下划线，加小写化后的字母
-        result += lowerCamel.substring(fromIndex, i);
-        result += "_";
-        result += symbol.toLowerCase();
-        // 更新起始索引
-        fromIndex = i + 1;
-      }
-    }
-
-    // 处理剩余部分
-    if (fromIndex < length) {
-      result += lowerCamel.substring(fromIndex, length);
-    }
-
-    return result;
   }
 
   private static buildHeader(buffer: Uint8Array, isCompressed: boolean) {
@@ -1058,23 +992,23 @@ export class TypeMeta {
 
   static toSnakeCase(name: string) {
     const result = [];
-    const chars = Array.from(name);
-
-    for (let i = 0; i < chars.length; i++) {
-      const c = chars[i];
+    for (let i = 0; i < name.length; i++) {
+      const c = name[i];
       if (c >= "A" && c <= "Z") {
         if (i > 0) {
-          const prevUpper = chars[i - 1] >= "A" && chars[i - 1] <= "Z";
-          const nextUpperOrEnd =
-            i + 1 >= chars.length || (chars[i + 1] >= "A" && chars[i + 1] <= "Z");
-
-          if (!prevUpper || !nextUpperOrEnd) {
+          const previous = name[i - 1];
+          const nextLower = i + 1 < name.length && name[i + 1] >= "a" && name[i + 1] <= "z";
+          if (
+            (previous >= "a" && previous <= "z") ||
+            (previous >= "0" && previous <= "9") ||
+            (previous >= "A" && previous <= "Z" && nextLower)
+          ) {
             result.push("_");
           }
         }
         result.push(c.toLowerCase());
       } else {
-        result.push(c);
+        result.push(c === "-" ? "_" : c);
       }
     }
     return result.join("");

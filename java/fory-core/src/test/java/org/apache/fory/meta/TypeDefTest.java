@@ -43,6 +43,7 @@ import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.test.bean.Foo;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.Types;
+import org.apache.fory.util.StringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -687,7 +688,23 @@ public class TypeDefTest extends ForyTestBase {
     typeDef.writeTypeDef(buffer);
     TypeDef typeDef1 = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
     assertEquals(typeDef1.getClassName(), typeDef.getClassName());
-    assertEquals(typeDef1, typeDef);
+    assertXlangTypeDef(typeDef1, typeDef);
+  }
+
+  private static void assertXlangTypeDef(TypeDef decoded, TypeDef local) {
+    assertEquals(decoded.getClassSpec(), local.getClassSpec());
+    assertEquals(decoded.getId(), local.getId());
+    assertEquals(decoded.getFieldCount(), local.getFieldCount());
+    for (int i = 0; i < local.getFieldCount(); i++) {
+      FieldInfo field = local.getFieldsInfo().get(i);
+      assertEquals(
+          decoded.getFieldsInfo().get(i),
+          new FieldInfo(
+              field.getDefinedClass(),
+              StringUtils.toSnakeCase(field.getFieldName()),
+              field.getFieldType(),
+              field.getFieldId()));
+    }
   }
 
   @Test
@@ -704,7 +721,7 @@ public class TypeDefTest extends ForyTestBase {
     typeDef.writeTypeDef(buffer);
     TypeDef typeDef1 = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
     assertEquals(typeDef1.getClassName(), typeDef.getClassName());
-    assertEquals(typeDef1, typeDef);
+    assertXlangTypeDef(typeDef1, typeDef);
   }
 
   @Test

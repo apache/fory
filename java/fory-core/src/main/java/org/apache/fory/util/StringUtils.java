@@ -251,11 +251,30 @@ public class StringUtils {
     return builder.toString();
   }
 
-  // example: "variableName" -> "variable_name"
-  public static String toSnakeCase(String lowerCamel) {
-    return lowerCamelToLowerUnderscore(lowerCamel);
+  /** Converts an xlang field name to the canonical ASCII snake-case identifier. */
+  public static String toSnakeCase(String name) {
+    StringBuilder builder = new StringBuilder(name.length() + 4);
+    for (int i = 0; i < name.length(); i++) {
+      char c = name.charAt(i);
+      if (c >= 'A' && c <= 'Z') {
+        if (i > 0) {
+          char previous = name.charAt(i - 1);
+          char next = i + 1 < name.length() ? name.charAt(i + 1) : 0;
+          if ((previous >= 'a' && previous <= 'z')
+              || (previous >= '0' && previous <= '9')
+              || (previous >= 'A' && previous <= 'Z' && next >= 'a' && next <= 'z')) {
+            builder.append('_');
+          }
+        }
+        builder.append((char) (c + ('a' - 'A')));
+      } else {
+        builder.append(c == '-' ? '_' : c);
+      }
+    }
+    return builder.toString();
   }
 
+  // Row-format names retain their per-capital conversion independently of xlang field identifiers.
   public static String lowerCamelToLowerUnderscore(String lowerCamel) {
     StringBuilder builder = new StringBuilder();
     int length = lowerCamel.length();

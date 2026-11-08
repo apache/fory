@@ -498,8 +498,8 @@ mod tests {
     use crate::serializer::{Serializer, StructSerializer};
     use crate::TypeId;
 
-    const LOCAL_COLLISION_FIELD: &str = "!AsA3daaa";
-    const REMOTE_COLLISION_FIELD: &str = "!aR5Ocaaaa";
+    const LOCAL_COLLISION_FIELD: &str = "!467cf8d818135a";
+    const REMOTE_COLLISION_FIELD: &str = "!7eaab5830f2de";
 
     struct LocalExt;
 

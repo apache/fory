@@ -215,14 +215,12 @@ func TestGroupFieldsUsesFlatOrderForFullyTaggedStructs(t *testing.T) {
 
 func TestSortFieldsOrdersNonPrimitivesByFieldIdentifier(t *testing.T) {
 	fieldNames := []string{"string_value", "map_value", "custom_value", "list_value", "int_value"}
-	serializers := make([]Serializer, len(fieldNames))
 	typeIDs := []TypeId{STRING, MAP, NAMED_STRUCT, LIST, VARINT32}
 	nullables := []bool{false, false, false, false, false}
 	tagIDs := []int32{20, 10, TagIDUseFieldName, TagIDUseFieldName, 30}
 
-	_, sortedNames := sortFields(nil, fieldNames, serializers, typeIDs, nullables, tagIDs)
-
-	require.Equal(t, []string{"int_value", "map_value", "string_value", "custom_value", "list_value"}, sortedNames)
+	order := sortFields(fieldNames, typeIDs, nullables, tagIDs)
+	require.Equal(t, []int{4, 1, 0, 2, 3}, order)
 }
 
 func TestComputeStructFingerprintOrdersTagIdsBeforeNames(t *testing.T) {

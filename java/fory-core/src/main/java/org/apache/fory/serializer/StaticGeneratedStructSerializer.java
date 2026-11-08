@@ -639,7 +639,14 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
       if (descriptor.hasForyFieldId()) {
         fieldIds.put(descriptor.getForyFieldId(), i);
       }
-      fields.put(fieldKey(descriptor), i);
+      if (typeResolver.isCrossLanguage()) {
+        // Xlang flattens declaring classes and matches only untagged canonical names.
+        if (!descriptor.hasForyFieldId()) {
+          fields.put(descriptor.getSnakeCaseName(), i);
+        }
+      } else {
+        fields.put(fieldKey(descriptor), i);
+      }
     }
     // Keep compatible-read descriptor ordering owned by TypeResolver, matching the sorted
     // DescriptorGrouper order used by ObjectCodecBuilder and CompatibleCodecBuilder.
@@ -740,16 +747,11 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
     Integer localId;
     if (fieldInfo.hasFieldId()) {
       localId = fieldIds.get(fieldInfo.getFieldId());
+    } else if (typeResolver.isCrossLanguage()) {
+      localId = fields.get(StringUtils.toSnakeCase(fieldInfo.getFieldName()));
     } else {
       String key = fieldInfo.getDefinedClass() + "." + fieldInfo.getFieldName();
       localId = fields.get(key);
-      if (localId == null && typeResolver.isCrossLanguage()) {
-        localId =
-            fields.get(
-                fieldInfo.getDefinedClass()
-                    + "."
-                    + StringUtils.lowerCamelToLowerUnderscore(fieldInfo.getFieldName()));
-      }
     }
     return localId == null ? UNKNOWN_FIELD : localId;
   }

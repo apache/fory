@@ -304,9 +304,17 @@ cdef class DataClassSerializer(Serializer):
         for i in range(len(self._field_names)):
             field_name = self._field_names[i]
             serializer = self._serializer_owner[i]
-            is_nullable = bool(self._nullable_fields.get(field_name, False))
-            is_tracking_ref = bool(self._ref_fields.get(field_name, False))
-            is_dynamic = bool(self._dynamic_fields.get(field_name, False))
+            # Skipped wire fields can share a resolved name with a matched tagged field.
+            # Read flags belong to each wire position, not to the assignment name.
+            if self._fields_from_typedef and self._field_infos:
+                field_info = self._field_infos[i]
+                is_nullable = bool(field_info.nullable)
+                is_tracking_ref = bool(field_info.runtime_ref_tracking)
+                is_dynamic = bool(field_info.dynamic)
+            else:
+                is_nullable = bool(self._nullable_fields.get(field_name, False))
+                is_tracking_ref = bool(self._ref_fields.get(field_name, False))
+                is_dynamic = bool(self._dynamic_fields.get(field_name, False))
             assign = bool(self._assign_fields[i])
             validation_field_type = (
                 getattr(self._field_infos[i], "validation_field_type", None)

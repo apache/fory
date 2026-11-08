@@ -27,6 +27,7 @@ import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:build/build.dart';
 import 'package:fory/fory.dart';
+import 'package:fory/src/meta/field_info.dart' show toSnakeCase;
 import 'package:source_gen/source_gen.dart';
 
 part 'fory_constructor_analysis.dart';
@@ -1951,9 +1952,8 @@ final class ForyGenerator extends Generator {
     final idValue = reader?.peek('id');
     final nullableValue = reader?.peek('nullable');
     final dynamicValue = reader?.peek('dynamic');
-    final rawFieldId = idValue == null || idValue.isNull
-        ? -1
-        : idValue.intValue;
+    final rawFieldId =
+        idValue == null || idValue.isNull ? -1 : idValue.intValue;
     if (rawFieldId < -1) {
       throw InvalidGenerationSourceError(
         'Fory field id must be non-negative.',
@@ -1981,7 +1981,7 @@ final class ForyGenerator extends Generator {
       type: effectiveType,
       displayType: _typeCodeString(effectiveType),
       wireName:
-          rawFieldId < 0 ? _toSnakeCase(annotationField.displayName) : null,
+          rawFieldId < 0 ? toSnakeCase(annotationField.displayName) : null,
       id: rawFieldId,
       writable: writable,
       codegenName: codegenName,
@@ -5734,19 +5734,6 @@ GeneratedFieldType(
       return pascal;
     }
     return '${pascal[0].toLowerCase()}${pascal.substring(1)}';
-  }
-
-  String _toSnakeCase(String value) {
-    final buffer = StringBuffer();
-    for (var index = 0; index < value.length; index += 1) {
-      final codeUnit = value.codeUnitAt(index);
-      final isUpper = codeUnit >= 65 && codeUnit <= 90;
-      if (isUpper && index > 0) {
-        buffer.write('_');
-      }
-      buffer.write(String.fromCharCode(isUpper ? codeUnit + 32 : codeUnit));
-    }
-    return buffer.toString();
   }
 
   bool _structNeedsEarlyReadReference(_GeneratedStructSpec structSpec) {

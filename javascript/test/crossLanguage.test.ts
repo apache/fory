@@ -625,6 +625,34 @@ describe("bool", () => {
     writeToFile(Buffer.concat(bfs));
   });
 
+  test.each(
+    [false, true].map(
+      (compatible) =>
+        [compatible ? "test_field_names_compatible" : "test_field_names", compatible] as const,
+    ),
+  )("%s", (_name, compatible) => {
+    const fory = new Fory({ compatible });
+    const schema = Type.struct(9201, {
+      createdAt: Type.int32(),
+      fooURL: Type.int32(),
+      URLValue: Type.int32(),
+      HTTP2Server: Type.int32(),
+      x2Y: Type.int32(),
+      ABc: Type.int32(),
+    });
+    const codec = fory.register(schema);
+    const value = codec.deserialize(content);
+    expect(value).toEqual({
+      createdAt: 7,
+      fooURL: 11,
+      URLValue: 13,
+      HTTP2Server: 17,
+      x2Y: 19,
+      ABc: 23,
+    });
+    writeToFile(Buffer.from(codec.serialize(value)));
+  });
+
   test("test_item", () => {
     const fory = new Fory({
       compatible: true,

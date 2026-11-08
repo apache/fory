@@ -48,7 +48,6 @@ import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.type.Types;
-import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.Utils;
 
 /**
@@ -265,9 +264,8 @@ class TypeDefDecoder {
         Encoding encoding = fieldNameEncodings[encodingFlags];
         String wireFieldName =
             Encoders.FIELD_NAME_DECODER.decode(buffer.readBytes((int) fieldNameSize), encoding);
-        // Convert snake_case field names back to camelCase for Java field matching
-        String fieldName = StringUtils.lowerUnderscoreToLowerCamelCase(wireFieldName);
-        fieldInfos.add(new FieldInfo(className, fieldName, fieldType));
+        // Preserve wire identity; reverse case conversion loses acronyms and underscores.
+        fieldInfos.add(new FieldInfo(className, wireFieldName, fieldType));
       }
     }
     return fieldInfos;
