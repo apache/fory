@@ -1,0 +1,14 @@
+.github/workflows/stage-release-candidate.yml
+  h_e94f2b5704cbef 1,10,13,15-18,20-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "30f0da747cd9de6193811840da6148603979bd2a",
+  "prompts": {},
+  "humans": {
+    "h_e94f2b5704cbef": {
+      "author": "chaokunyang <shawn.ck.yang@gmail.com>"
+    }
+  }
+}
