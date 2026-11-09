@@ -19,6 +19,11 @@
 # the source SBOM depend on the machine and time at which it is rebuilt.
 check-for-app-update: false
 enrich: []
+# This attribution-only NOTICE is not a license. Syft's Dart cataloger otherwise
+# adds its content hash as an unknown license alongside Apache-2.0. The source
+# archive retains the NOTICE, and the package LICENSE remains in the scan.
+exclude:
+  - ./dart/packages/fory/NOTICE
 java:
   use-network: false
   use-maven-local-repository: false

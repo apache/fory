@@ -183,11 +183,14 @@ archive to Apache Trusted Release through OIDC, publishes the JVM artifacts,
 and closes the Java/Kotlin and Scala Nexus repositories. It does not use SVN.
 
 From the successful run summary, record and open both distinct Nexus staging
-repository IDs and the ATR candidate URL:
+repository IDs and the ATR candidate URL. Also record the reported Java runtime
+version and vendor for the independent rebuild:
 
 ```bash
 java_kotlin_staging_id="orgapachefory-..."
 scala_staging_id="orgapachefory-..."
+java_runtime_version="..." # Complete java.runtime.version from JVM staging
+java_vendor="..." # Exact java.vendor from JVM staging
 test -n "$java_kotlin_staging_id"
 test -n "$scala_staging_id"
 test "$java_kotlin_staging_id" != "$scala_staging_id"
@@ -223,7 +226,9 @@ incomplete runs as successful.
 ### 7. Verify all CI artifacts on trusted hardware
 
 Do not run this comparison in GitHub Actions. Use the independently confirmed
-Infra-managed CI key fingerprint from the prerequisites, then run the repository
+Infra-managed CI key fingerprint from the prerequisites. Install the same JDK
+distribution and complete runtime version recorded by JVM staging, including the
+build suffix, and set `JAVA_HOME` and `PATH` to it. Then run the repository
 verifier on a machine controlled by the release manager:
 
 ```bash
@@ -234,6 +239,8 @@ python3 ci/release.py verify_ci_artifacts \
   --java-kotlin-id "$java_kotlin_staging_id" \
   --scala-id "$scala_staging_id" \
   --gpg-fingerprint "$gpg_fingerprint" \
+  --java-runtime-version "$java_runtime_version" \
+  --java-vendor "$java_vendor" \
   --source-url "$release_candidate_url"
 ```
 
@@ -244,13 +251,18 @@ every source, JAR, POM, source JAR, documentation JAR, and distribution file
 byte-for-byte. Each JVM ecosystem is built once and may reuse the machine's
 normal dependency caches; only source and build outputs are clean. It writes a
 Markdown report under `dist/`. Any mismatch or missing artifact blocks the vote.
-Before rebuilding, the verifier requires the expected public key in `KEYS`;
+Before downloading or rebuilding, the verifier requires an OpenJDK 25 runtime
+whose `java.runtime.version` and `java.vendor` exactly match the supplied staging
+values. Matching only the Java major version is insufficient. The verifier also
+requires the expected public key in `KEYS`;
 local personal keyrings are not used to satisfy this check.
 Failed verification retains the local rebuild and downloaded artifacts beside
 the report for diagnosis; successful verification removes these temporary files.
 After a download failure, retry with `--rebuild-dir <retained-directory>` to
 reuse the completed unsigned build on the same machine without recompiling.
-The checkout must still match the RC commit and remain unchanged. Downloads,
+The completed rebuild must have a matching JDK record; a missing or different
+record requires a fresh build. The checkout must still match the RC commit and
+remain unchanged. Downloads,
 signature checks, and every byte comparison run again; retained files are not
 deleted in this mode.
 Source packaging uses a direct `git archive` of the RC tag without rewriting

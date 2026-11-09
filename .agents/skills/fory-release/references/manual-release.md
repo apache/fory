@@ -35,7 +35,9 @@ store. Do not print them or save them in the local release environment file.
 python3 ci/release.py publish_jvm
 ```
 
-Record the distinct Java/Kotlin and Scala staging IDs created by this command.
+Record the distinct Java/Kotlin and Scala staging IDs created by this command,
+plus the `java.runtime.version` and `java.vendor` printed for the publication JDK.
+Use those exact values as `java_runtime_version` and `java_vendor` below.
 Then read and follow [Nexus staging closure](nexus-staging.md), using only those
 two IDs. Keep both repositories closed during the vote and do not promote them
 until the vote passes.
@@ -103,7 +105,9 @@ release_candidate_url="https://dist.apache.org/repos/dist/dev/fory/${release_ver
 ## Verify Staged Artifacts
 
 After closing both Nexus repositories, rebuild from the exact RC tag and compare
-the unsigned local output with every staged source and JVM artifact:
+the unsigned local output with every staged source and JVM artifact. Set
+`JAVA_HOME` and `PATH` to the same JDK distribution and full runtime version used
+for publication; the verifier checks both before downloading or building:
 
 ```bash
 python3 ci/release.py verify_ci_artifacts \
@@ -112,6 +116,8 @@ python3 ci/release.py verify_ci_artifacts \
   --java-kotlin-id "$java_kotlin_staging_id" \
   --scala-id "$scala_staging_id" \
   --gpg-fingerprint "$gpg_fingerprint" \
+  --java-runtime-version "$java_runtime_version" \
+  --java-vendor "$java_vendor" \
   --source-url "$release_candidate_url"
 ```
 
