@@ -228,6 +228,8 @@ jobs:
             if [[ -n "$java_kotlin_id" && "$java_kotlin_id" != "null" ]]; then
               echo "- Java/Kotlin: [$java_kotlin_id](https://repository.apache.org/content/repositories/$java_kotlin_id/)"
               echo "- Scala: [$scala_id](https://repository.apache.org/content/repositories/$scala_id/)"
+              echo "- Java runtime version: \`$(jq -r .java_runtime_version "$metadata")\`"
+              echo "- Java vendor: \`$(jq -r .java_vendor "$metadata")\`"
             else
               while IFS= read -r staging_id; do
                 echo "- Open repository requiring review: \`$staging_id\`"

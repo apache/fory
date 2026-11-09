@@ -349,6 +349,7 @@ def stage_jvm(v, rc_tag, output=None):
     _require_jvm_release_version(v)
     authorization = _nexus_authorization()
     _require_nexus_staging_profile(authorization)
+    runtime = _ensure_openjdk25()
     repositories_before = set(_nexus_repositories(authorization))
 
     try:
@@ -366,6 +367,8 @@ def stage_jvm(v, rc_tag, output=None):
 
     staging = {
         "java_kotlin_staging_id": java_kotlin_id,
+        "java_runtime_version": runtime["props"]["java.runtime.version"],
+        "java_vendor": runtime["props"]["java.vendor"],
         "new_staging_ids": sorted(
             _new_fory_staging_repositories(repositories_before, repositories)
         ),
@@ -453,6 +456,8 @@ def verify_ci_artifacts(
     java_kotlin_staging_id,
     scala_staging_id,
     gpg_fingerprint,
+    java_runtime_version,
+    java_vendor,
     source_url=None,
     keys_url=FORY_KEYS_URL,
     output=None,
@@ -481,7 +486,7 @@ def verify_ci_artifacts(
         cwd=PROJECT_ROOT_DIR,
         text=True,
     ).strip()
-    _ensure_openjdk25()
+    jdk = _require_verification_jdk(java_runtime_version, java_vendor)
 
     os.makedirs(os.path.dirname(output), exist_ok=True)
     root = (
@@ -491,6 +496,20 @@ def verify_ci_artifacts(
             prefix=f"{rc_tag}-verification-", dir=os.path.dirname(output)
         )
     )
+    jdk_path = os.path.join(root, "jdk.json")
+    if rebuild_dir:
+        # The current process's JDK cannot establish which JDK built retained jars.
+        if not os.path.isfile(jdk_path):
+            raise RuntimeError(
+                "Retained rebuild has no JDK record; run a fresh verification"
+            )
+        with open(jdk_path, encoding="utf-8") as f:
+            retained_jdk = json.load(f)
+        if retained_jdk != jdk:
+            raise RuntimeError(
+                f"Retained rebuild JDK does not match staging: "
+                f"expected {jdk}, found {retained_jdk}; run a fresh verification"
+            )
     logger.info("Verification files (retained on failure): %s", root)
     with tempfile.TemporaryDirectory(prefix="fg-", dir="/tmp") as gnupg_home:
         checkout = os.path.join(root, "checkout")
@@ -565,6 +584,9 @@ def verify_ci_artifacts(
                 ],
                 cwd=checkout,
             )
+            with open(jdk_path, "w", encoding="utf-8") as f:
+                json.dump(jdk, f, indent=2, sort_keys=True)
+                f.write("\n")
 
         rows = []
         source_archive = f"apache-fory-{v}-src.tar.gz"
@@ -667,6 +689,8 @@ def verify_ci_artifacts(
             "maven": _tool_version(["mvn", "--version"]),
             "python": sys.version.replace("\n", " "),
             "sbt": _tool_version(["sbt", "--numeric-version"]),
+            "staging_java_runtime_version": java_runtime_version,
+            "staging_java_vendor": java_vendor,
             "system": platform.platform(),
         }
         _write_ci_verification_report(
@@ -1441,8 +1465,10 @@ def _ensure_openjdk25():
     # JDK silently publishes a jar without the required JDK25 overlay.
     if runtime and _is_openjdk25(runtime):
         _export_java_home(runtime["props"]["java.home"])
-        logger.info("Using OpenJDK 25 release runtime: %s", os.environ["JAVA_HOME"])
-        return
+        logger.info(
+            "Using OpenJDK 25 release runtime: %s", _java_runtime_summary(runtime)
+        )
+        return runtime
     if sys.platform != "darwin":
         raise RuntimeError(
             "JVM releases must run with OpenJDK 25. "
@@ -1458,7 +1484,30 @@ def _ensure_openjdk25():
             f"Found {_java_runtime_summary(runtime)} after setting "
             f"JAVA_HOME={java_home}."
         )
-    logger.info("Using OpenJDK 25 release runtime: %s", os.environ["JAVA_HOME"])
+    logger.info("Using OpenJDK 25 release runtime: %s", _java_runtime_summary(runtime))
+    return runtime
+
+
+def _require_verification_jdk(java_runtime_version, java_vendor):
+    if not java_runtime_version.strip() or not java_vendor.strip():
+        raise ValueError("The staging JDK runtime version and vendor must be non-empty")
+    runtime = _read_java_runtime(_java_tool("java"))
+    expected = {
+        "java.runtime.version": java_runtime_version,
+        "java.vendor": java_vendor,
+    }
+    actual = {key: runtime["props"].get(key) for key in expected} if runtime else None
+    # JDK patch releases change module descriptors and bundled Javadoc resources.
+    # Verification must use the publisher's complete runtime version and vendor.
+    if not runtime or not _is_openjdk25(runtime) or actual != expected:
+        raise RuntimeError(
+            f"Verification JDK does not match staging: expected {expected}, "
+            f"found {_java_runtime_summary(runtime)}. "
+            "Set JAVA_HOME and PATH to the staging JDK before verification."
+        )
+    _export_java_home(runtime["props"]["java.home"])
+    logger.info("Verified staging JDK identity: %s", expected)
+    return actual
 
 
 def _homebrew_openjdk25_home():
@@ -1545,6 +1594,8 @@ def _java_runtime_summary(runtime):
     return (
         f"java.home={props.get('java.home', '')}, "
         f"java.version={props.get('java.version', '')}, "
+        f"java.runtime.version={props.get('java.runtime.version', '')}, "
+        f"java.vendor={props.get('java.vendor', '')}, "
         f"java.specification.version={props.get('java.specification.version', '')}, "
         f"java.runtime.name={props.get('java.runtime.name', '')}, "
         f"java.vm.name={props.get('java.vm.name', '')}"
@@ -2986,6 +3037,16 @@ def _parse_args():
         "--gpg-fingerprint",
         required=True,
         help="expected primary fingerprint of the CI signing key",
+    )
+    verify_ci_parser.add_argument(
+        "--java-runtime-version",
+        required=True,
+        help="complete java.runtime.version recorded by JVM staging, including build suffix",
+    )
+    verify_ci_parser.add_argument(
+        "--java-vendor",
+        required=True,
+        help="java.vendor recorded by JVM staging",
     )
     verify_ci_parser.add_argument(
         "--source-url",
