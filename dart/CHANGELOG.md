@@ -1,3 +1,7 @@
+## 1.7.8
+
+- Align the Dart workspace version with the Apache Fory 1.7.8 release.
+
 <!--
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file

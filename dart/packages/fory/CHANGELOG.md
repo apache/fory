@@ -1,3 +1,7 @@
+## 1.7.8
+
+- Release Apache Fory Dart 1.7.8.
+
 <!--
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file

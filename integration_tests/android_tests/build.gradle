@@ -99,15 +99,15 @@ kotlin {
 }
 
 dependencies {
-    implementation('org.apache.fory:fory-core:1.8.0-SNAPSHOT') {
+    implementation('org.apache.fory:fory-core:1.7.8') {
         exclude group: 'com.google.guava', module: 'guava'
         exclude group: 'org.codehaus.janino', module: 'janino'
     }
-    implementation 'org.apache.fory:fory-json:1.8.0-SNAPSHOT'
-    implementation 'org.apache.fory:fory-json-kotlin:1.8.0-SNAPSHOT'
-    implementation 'org.apache.fory:kotlin-json-corpus:1.8.0-SNAPSHOT'
-    ksp 'org.apache.fory:fory-json-kotlin-ksp:1.8.0-SNAPSHOT'
-    annotationProcessor 'org.apache.fory:fory-annotation-processor:1.8.0-SNAPSHOT'
+    implementation 'org.apache.fory:fory-json:1.7.8'
+    implementation 'org.apache.fory:fory-json-kotlin:1.7.8'
+    implementation 'org.apache.fory:kotlin-json-corpus:1.7.8'
+    ksp 'org.apache.fory:fory-json-kotlin-ksp:1.7.8'
+    annotationProcessor 'org.apache.fory:fory-annotation-processor:1.7.8'
     implementation 'com.google.guava:guava:33.8.0-android'
     // Fory's provided annotations must be available to R8 without Guava supplying them transitively.
     implementation 'com.google.code.findbugs:jsr305:3.0.2'
