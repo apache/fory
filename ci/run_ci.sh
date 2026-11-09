@@ -60,7 +60,7 @@ install_pyfory() {
 }
 
 JDKS=(
-"zulu26.30.11-ca-crac-jdk26.0.1-linux_x64"
+"zulu27.30.109-ca-jdk27.0.1.0.3-linux_x64"
 "zulu25.30.17-ca-jdk25.0.1-linux_x64"
 "zulu21.28.85-ca-jdk21.0.0-linux_x64"
 "zulu17.44.17-ca-crac-jdk17.0.8-linux_x64"
@@ -78,16 +78,22 @@ install_jdks() {
   done
 }
 
-run_graalvm_test() {
-  local main_class="$1"
+# Accepts "1.8.0_382", "27.0.1", and pre-release forms such as "27-ea"; some
+# distribution JDK packages keep the "-ea" suffix on GA builds.
+java_major_version() {
   local java_version
-  local java_major
   java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')
   if [[ "$java_version" == 1.* ]]; then
-    java_major=$(echo "$java_version" | cut -d. -f2)
-  else
-    java_major=$(echo "$java_version" | cut -d. -f1)
+    java_version="${java_version#1.}"
   fi
+  java_version="${java_version%%[.-]*}"
+  echo "$java_version"
+}
+
+run_graalvm_test() {
+  local main_class="$1"
+  local java_major
+  java_major=$(java_major_version)
   if [[ "$java_major" -ge 25 ]]; then
     export JDK_JAVA_OPTIONS="$(jdk25_javac_options)"
   else
@@ -229,12 +235,7 @@ integration_tests() {
 
 jdk17_plus_tests() {
   java -version
-  java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')
-  if [[ "$java_version" == 1.* ]]; then
-    java_major=$(echo "$java_version" | cut -d. -f2)
-  else
-    java_major=$(echo "$java_version" | cut -d. -f1)
-  fi
+  java_major=$(java_major_version)
   JDK_JAVA_OPTIONS="--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
   if [[ "$java_major" -ge 25 ]]; then
     JDK_JAVA_OPTIONS="$JDK_JAVA_OPTIONS $(jdk25_runtime_options "ALL-UNNAMED") $(jdk25_javac_options)"
@@ -315,7 +316,7 @@ case $1 in
     java25)
       jdk17_plus_tests
     ;;
-    java26)
+    java27)
       jdk17_plus_tests
     ;;
     windows_java21)
