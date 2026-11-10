@@ -303,7 +303,8 @@ child member from the table above; a language module's own containers, such as S
 `byteArrayFormat`. A child is filled only where the container keeps its standard mapping: a
 registered codec or factory, a module, or a type declaration that owns the container keeps it
 unchanged. Deeper nesting is not searched, and a wildcard child such as `List<? extends Shape>`
-keeps its mapping, as an explicit child member would reject it.
+or an unresolved type variable such as `List<T>` in a raw generic class keeps its mapping, as an
+explicit child member would reject it.
 
 A default codec is used exactly like a property `JsonCodec`, so it receives and owns null as
 described above for every property it reaches. Properties that declare `JsonCodec`, `JsonFormat`,

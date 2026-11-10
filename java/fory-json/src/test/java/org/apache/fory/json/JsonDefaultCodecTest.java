@@ -516,6 +516,26 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
   }
 
   @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
+  public static class BoundedGroup<T extends BigDecimal> {
+    public List<T> values;
+    public T[] array;
+  }
+
+  @Test
+  public void unresolvedTypeVariableChildrenKeepTheirMapping() {
+    ForyJson json = newJson();
+    BoundedGroup<BigDecimal> group = new BoundedGroup<>();
+    group.values = Collections.singletonList(TEN);
+    group.array = new BigDecimal[] {TEN};
+    String text = json.toJson(group);
+    assertEquals(text, "{\"values\":[1E+1],\"array\":[1E+1]}");
+    BoundedGroup<?> read = json.fromJson(text, BoundedGroup.class);
+    assertEquals(read.values, Collections.singletonList(TEN));
+    assertEquals(read.array.length, 1);
+    assertEquals(read.array[0], TEN);
+  }
+
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public static class FormattedCreator {
     private final BigDecimal price;
 

@@ -605,8 +605,7 @@ public final class JsonTypeResolver {
 
   /**
    * Resolves an occurrence's selected codecs. {@code annotation} is the declaring {@link
-   * JsonCodec}, or null for a class default, which never selects a child of a composite module
-   * codec.
+   * JsonCodec}, or null for a class default.
    */
   private JsonTypeInfo resolveTypeInfo(
       TypeRef<?> declaredType,

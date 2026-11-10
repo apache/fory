@@ -19,6 +19,8 @@
 
 package org.apache.fory.json.resolver;
 
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -215,11 +217,15 @@ public final class JsonDefaultCodecs {
   }
 
   /**
-   * A wildcard child is not concrete, which an explicit child member rejects as well, and a child a
-   * language module tags with its own semantic type keeps that module's mapping.
+   * A wildcard or unresolved type-variable child is not concrete, which an explicit child member
+   * rejects as well, and a child a language module tags with its own semantic type keeps that
+   * module's mapping.
    */
   private Class<? extends JsonValueCodec<?>> childCodec(TypeRef<?> child) {
-    return child.getType() instanceof WildcardType || semantic(child) ? null : codec(child);
+    Type type = child.getType();
+    return type instanceof WildcardType || type instanceof TypeVariable || semantic(child)
+        ? null
+        : codec(child);
   }
 
   /** A type such as a Kotlin {@code UInt} carried as {@code int} keeps its module's mapping. */
