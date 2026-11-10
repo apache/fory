@@ -56,12 +56,14 @@ import org.apache.fory.annotation.UInt16Type;
 import org.apache.fory.annotation.UInt32Type;
 import org.apache.fory.annotation.UInt64Type;
 import org.apache.fory.annotation.UInt8Type;
+import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.collection.Cache;
 import org.apache.fory.collection.CacheBuilder;
 import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.collection.Collections;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.meta.TypeExtMeta;
+import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.reflect.TypeUseMetadata;
 import org.apache.fory.serializer.converter.FieldConverter;
@@ -843,8 +845,6 @@ public class Descriptor {
     TreeMap<Member, Descriptor> descriptorMap = new TreeMap<>(memberComparator);
     TreeMap<Member, Descriptor> currentDescriptorMap = new TreeMap<>(memberComparator);
     Class<?> clazz = clz;
-    // TODO(chaokunyang) use fory compiler thread pool
-    ExecutorService compilationService = ForkJoinPool.commonPool();
     if (RecordUtils.isRecord(clz)) {
       RecordComponent[] components = RecordUtils.getRecordComponents(clazz);
       assert components != null;
@@ -879,11 +879,21 @@ public class Descriptor {
       currentDescriptorMap = new TreeMap<>(descriptorMap);
       return Tuple2.of(descriptorMap, currentDescriptorMap);
     }
+    ExecutorService executor = null;
     do {
       Field[] fields = clazz.getDeclaredFields();
       boolean haveExpose = false, haveIgnore = false;
       for (Field field : fields) {
-        warmField(clz, field, compilationService);
+        Runnable warmUp = warmUpTask(clz, field);
+        if (warmUp != null) {
+          if (executor == null) {
+            executor = warmUpExecutor();
+          }
+          // A caller can shut down the public compiler pool. Its rejection handler logs each task.
+          if (!executor.isShutdown()) {
+            executor.submit(warmUp);
+          }
+        }
         if (field.isAnnotationPresent(Expose.class)) {
           haveExpose = true;
         }
@@ -919,42 +929,55 @@ public class Descriptor {
   }
 
   /**
-   * Speedup generics resolve by multi-thread since {@link Field#getGenericType()} is slow and
-   * nested Descriptor is slow in single thread.
+   * Warm-up runs on Fory's compiler pool, not a JVM-global pool. A global pool's threads serve the
+   * whole JVM, so their context classloader may not be the loader that loaded Fory. Native-image
+   * build time keeps the common pool: {@link CodeGenerator} is initialized at build time, so its
+   * compiler service would store a direct executor in the image and make warm-up serial at runtime.
    */
-  static void warmField(Class<?> context, Field field, ExecutorService compilationService) {
+  private static ExecutorService warmUpExecutor() {
+    return GraalvmSupport.isGraalBuildTime()
+        ? ForkJoinPool.commonPool()
+        : CodeGenerator.getCompilationService();
+  }
+
+  /**
+   * Speedup generics resolve by multi-thread since {@link Field#getGenericType()} is slow and
+   * nested Descriptor is slow in single thread. Returns the warm-up task for {@code field}, or null
+   * when the field needs no warm-up.
+   */
+  static Runnable warmUpTask(Class<?> context, Field field) {
     Class<?> fieldRawType = field.getType();
     if (fieldRawType.isPrimitive()
         || fieldRawType == String.class
         || fieldRawType == Object.class) {
-      return;
+      return null;
     }
     if (TypeUtils.isBoxed(fieldRawType)) {
-      return;
+      return null;
     }
     if (fieldRawType == context) {
       // avoid duplicate build.
-      return;
+      return null;
     }
     if (!fieldRawType.getName().startsWith("java")) {
-      compilationService.submit(
-          () -> {
-            // use a flag to avoid blocking thread.
-            AtomicBoolean flag = flags.computeIfAbsent(fieldRawType, k -> new AtomicBoolean(false));
-            if (flag.compareAndSet(false, true)) {
-              getAllDescriptorsMap(fieldRawType);
-            }
-          });
+      return () -> {
+        // use a flag to avoid blocking thread.
+        AtomicBoolean flag = flags.computeIfAbsent(fieldRawType, k -> new AtomicBoolean(false));
+        if (flag.compareAndSet(false, true)) {
+          getAllDescriptorsMap(fieldRawType);
+        }
+      };
     } else if (TypeUtils.isCollection(fieldRawType) || TypeUtils.isMap(fieldRawType)) {
       // warm up generic type, sun.reflect.generics.repository.FieldRepository
       // is expensive.
-      compilationService.submit(() -> warmGenericTask(TypeUtils.getFieldTypeRef(field)));
+      return () -> warmGenericTask(TypeUtils.getFieldTypeRef(field));
     } else if (fieldRawType.isArray()) {
       Class<?> componentType = fieldRawType.getComponentType();
       if (!componentType.isPrimitive()) {
-        compilationService.submit(() -> warmGenericTask(TypeUtils.getFieldTypeRef(field)));
+        return () -> warmGenericTask(TypeUtils.getFieldTypeRef(field));
       }
     }
+    return null;
   }
 
   // this method should b executed in background thread pool.

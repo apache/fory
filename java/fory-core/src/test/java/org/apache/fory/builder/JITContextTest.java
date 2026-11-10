@@ -32,6 +32,8 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.ThreadSafeFory;
+import org.apache.fory.codegen.CompileUnit;
+import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.logging.Logger;
@@ -40,6 +42,7 @@ import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
+import org.codehaus.commons.compiler.util.reflect.ByteArrayClassLoader;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -96,6 +99,62 @@ public class JITContextTest extends ForyTestBase {
     Assert.assertTrue(getSerializer(fory, BeanA.class) instanceof Generated);
     assertEquals(fory.deserialize(bytes1), beanB);
     assertEquals(fory.deserialize(bytes2), beanA);
+  }
+
+  @Test(dataProvider = "config1", timeOut = 60_000)
+  public void testAsyncTypeNames(boolean referenceTracking, boolean compatible) throws Exception {
+    String pkg = "org.apache.fory.codegen.loaderconflict";
+    ClassLoader parent = Fory.class.getClassLoader();
+    ByteArrayClassLoader loader =
+        JaninoUtils.compile(
+            parent,
+            new CompileUnit(pkg, "Object", "package " + pkg + "; public class Object {}"),
+            new CompileUnit(pkg, "String", "package " + pkg + "; public class String {}"),
+            new CompileUnit(
+                pkg,
+                "Bean",
+                "package "
+                    + pkg
+                    + "; public class Bean {"
+                    + " public java.lang.Object value;"
+                    + " public java.lang.String text;"
+                    + "}"));
+    Assert.assertSame(loader.loadClass(Fory.class.getName()), Fory.class);
+    Assert.expectThrows(ClassNotFoundException.class, () -> parent.loadClass(pkg + ".Object"));
+    Assert.expectThrows(ClassNotFoundException.class, () -> parent.loadClass(pkg + ".String"));
+    Class<?> beanClass = loader.loadClass(pkg + ".Bean");
+    Object bean = beanClass.getDeclaredConstructor().newInstance();
+    beanClass.getField("value").set(bean, 42);
+    beanClass.getField("text").set(bean, "child loader");
+
+    Thread current = Thread.currentThread();
+    ClassLoader previous = current.getContextClassLoader();
+    try {
+      current.setContextClassLoader(loader);
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .withRefTracking(referenceTracking)
+              .withCompatible(compatible)
+              .withClassLoader(loader)
+              .withAsyncCompilation(true)
+              .build();
+      fory.register(beanClass);
+      byte[] beforeJit = fory.serialize(bean);
+      while (fory.getJITContext().hasJITResult(beanClass)) {
+        Thread.sleep(10);
+      }
+      // A round trip alone can pass with the interpreter after an async compilation failure.
+      Assert.assertTrue(getSerializer(fory, beanClass) instanceof Generated);
+      for (byte[] bytes : new byte[][] {beforeJit, fory.serialize(bean)}) {
+        Object copy = fory.deserialize(bytes);
+        Assert.assertSame(copy.getClass(), beanClass);
+        Assert.assertEquals(beanClass.getField("value").get(copy), 42);
+        Assert.assertEquals(beanClass.getField("text").get(copy), "child loader");
+      }
+    } finally {
+      current.setContextClassLoader(previous);
+    }
   }
 
   private Serializer getSerializer(Fory fory, Class<?> cls) {

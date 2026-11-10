@@ -88,3 +88,50 @@ arguments. `AbstractGenericHttpMessageConverter` preserves Java generics, but
 `TypeRef.of(javaType)` does not restore Kotlin nullability. Neither a Java `Type` nor the runtime
 value alone can recover the full Kotlin declaration. Use `jsonTypeRef(kType)` after obtaining that
 declaration; this API does not automatically install a Spring converter.
+
+## Token-level reading and writing
+
+Frameworks that bring their own (de)serializers, for example generated at compile time, can use
+Fory JSON's UTF-8 reader and writer directly instead of its object mapping. `readUtf8` accepts a
+`Function<Utf8JsonReader, R>` and returns its result. `writeUtf8` accepts a
+`Consumer<Utf8JsonWriter>` and returns the written bytes:
+
+```java
+ForyJson json = ForyJson.builder().build();
+
+byte[] bytes =
+    json.writeUtf8(
+        writer -> {
+          writer.writeObjectStart();
+          writer.writeFieldName("id");
+          writer.writeInt(7);
+          writer.writeObjectEnd();
+        });
+
+int id =
+    json.readUtf8(
+        bytes,
+        0,
+        bytes.length,
+        reader -> {
+          reader.expectNextToken('{');
+          String name = reader.readFieldName(); // "id"
+          reader.expect(':');
+          int value = reader.readInt();
+          reader.expectNextToken('}');
+          return value;
+        });
+```
+
+Each operation must synchronously read or write exactly one JSON value. The reader and writer are
+only valid inside the operation. `readUtf8` rejects trailing non-whitespace content after the
+operation returns.
+
+Token methods such as `expectNextToken` do not track nesting or allocation on their own. Like a
+custom codec, an external deserializer that reads untrusted input should call
+`reader.enterDepth()` / `reader.exitDepth()` around each object or array and
+`reader.reserveGraphMemory(bytes)` before allocating containers, so the instance's `maxDepth` and
+graph-memory limits apply; see [Security](security.md). Unchecked exceptions thrown by the operation
+propagate unchanged. Integration code must wrap checked exceptions, for example by wrapping an
+`IOException` in an `UncheckedIOException`. Like the other root APIs, these methods are not reentrant
+on the same `ForyJson` instance.

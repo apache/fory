@@ -666,7 +666,10 @@ public abstract class CodecBuilder {
   /** Returns an Expression that create a new java object of type {@link CodecBuilder#beanClass}. */
   protected Expression newBean() {
     // TODO allow default access-level class.
+    // A non-static inner class has no no-arg constructor and `NewInstance` would need an outer
+    // instance, so allocate it without a constructor like JDK25+ does.
     if (sourcePublicAccessible(beanClass)
+        && (Modifier.isStatic(beanClass.getModifiers()) || !beanClass.isMemberClass())
         && (JdkVersion.MAJOR_VERSION < 25
             || ReflectionUtils.hasPublicNoArgConstructor(beanClass))) {
       return new Expression.NewInstance(beanType);

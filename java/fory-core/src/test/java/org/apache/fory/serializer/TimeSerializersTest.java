@@ -253,6 +253,12 @@ public class TimeSerializersTest extends ForyTestBase {
     copyCheckWithoutSame(fory, new java.sql.Date(-100));
     copyCheckWithoutSame(fory, new java.sql.Time(-200));
     copyCheckWithoutSame(fory, new Timestamp(-300));
+    Timestamp timestamp = new Timestamp(300);
+    timestamp.setNanos(300_000_001);
+    copyCheckWithoutSame(fory, timestamp);
+    Timestamp negativeTimestamp = new Timestamp(-300);
+    negativeTimestamp.setNanos(700_000_001);
+    copyCheckWithoutSame(fory, negativeTimestamp);
     copyCheckWithoutSame(fory, LocalDate.now());
     copyCheckWithoutSame(fory, LocalTime.now());
     copyCheckWithoutSame(fory, LocalDateTime.now());

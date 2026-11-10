@@ -1020,13 +1020,19 @@ public final class JsonTypeResolver {
     }
     TypeRef<?> typeRef = TypeRef.of(runtimeType);
     JsonValueCodec<?> codec = sharedRegistry.createRuntimeCodec(runtimeType, this);
-    if (codec == null) {
-      // The default Java object model is the declared schema for this exact class. Reuse that
-      // binding so generated capabilities stay on the direct root path. Only a codec actually
-      // selected by a runtime factory needs the runtime-only publication below.
-      typeInfo = getTypeInfo(typeRef);
-      runtimeTypeInfos.put(runtimeType, typeInfo);
-      return typeInfo;
+    boolean defaultObject = codec == null;
+    if (defaultObject) {
+      if (!sharedRegistry.hasCodecFactories()
+          || sharedRegistry.explicitSubTypesInfo(runtimeType) != null) {
+        // Without module factories, the default object has the same declared schema. An explicit
+        // subtype table also owns its declared representation independently of module factories.
+        typeInfo = getTypeInfo(runtimeType, runtimeType);
+        runtimeTypeInfos.put(runtimeType, typeInfo);
+        return typeInfo;
+      }
+      // A declined runtime lookup does not select a declared model. Keep this default owner out
+      // of the declared caches so recursive fields can still select their own factory codec.
+      codec = newObjectCodec(typeRef);
     }
     if (codec instanceof ClosedSubtypeCodec) {
       Class<?> baseType = ((ClosedSubtypeCodec) codec).baseType();
@@ -1051,7 +1057,11 @@ public final class JsonTypeResolver {
       runtimeTypeInfos.put(runtimeType, typeInfo);
       registerTypeInfoOwner(typeInfo, codec);
       JsonTypeInfo previousRuntimeTypeInfo = activeRuntimeTypeInfo;
-      activeRuntimeTypeInfo = typeInfo;
+      // Only a selected runtime codec may close its own recursive binding. A default fallback
+      // must let declared children query the factories, including fields of this same raw type.
+      if (!defaultObject) {
+        activeRuntimeTypeInfo = typeInfo;
+      }
       try {
         resolveCodecTypes(codec, typeRef);
       } finally {

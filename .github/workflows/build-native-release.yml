@@ -35,7 +35,7 @@ jobs:
         # Pass the tag name from the push so the python package version matches the tag.
         run: ./ci/deploy.sh bump_py_version "${{ github.ref_name }}"
         shell: bash
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -80,7 +80,7 @@ jobs:
       - name: Bump version
         run: ./ci/deploy.sh bump_py_version "${{ github.ref_name }}"
         shell: bash
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -127,7 +127,7 @@ jobs:
       - name: Bump version
         run: ./ci/deploy.sh bump_py_version "${{ github.ref_name }}"
         shell: bash
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -171,7 +171,7 @@ jobs:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
     steps:
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install wheel tooling

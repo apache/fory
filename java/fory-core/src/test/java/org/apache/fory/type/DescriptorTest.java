@@ -21,15 +21,24 @@ package org.apache.fory.type;
 
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
+import java.net.URLClassLoader;
 import java.util.Arrays;
 import java.util.List;
 import java.util.SortedMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import org.apache.fory.TestUtils;
 import org.apache.fory.codegen.CodeGenerator;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.test.bean.BeanA;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class DescriptorTest {
@@ -88,11 +97,113 @@ public class DescriptorTest {
   public void testWarmField() throws Exception {
     Assert.assertEquals(int.class.getName(), "int");
     Assert.assertEquals(Integer.class.getName(), "java.lang.Integer");
-    Descriptor.warmField(
-        BeanA.class, BeanA.class.getDeclaredField("beanB"), CodeGenerator.getCompilationService());
+    Descriptor.warmUpTask(BeanA.class, BeanA.class.getDeclaredField("beanB")).run();
     Descriptor.getAllDescriptorsMap(BeanA.class);
     Descriptor.clearDescriptorCache();
     Descriptor.getAllDescriptorsMap(BeanA.class);
+  }
+
+  public static class WarmOuter {
+    WarmInner inner;
+  }
+
+  public static class WarmInner {
+    DescriptorWarmLeaf leaf;
+  }
+
+  public static class WarmProbe implements Runnable {
+    @Override
+    public void run() {
+      Descriptor.getAllDescriptorsMap(WarmOuter.class);
+    }
+  }
+
+  /**
+   * Builds descriptors with Fory loaded in its own classloader. Only the background warm-up of
+   * {@code WarmInner} loads {@code DescriptorWarmLeaf}, so the recorded loader is the TCCL of a
+   * warm-up thread.
+   */
+  @Test
+  public void testWarmContextClassLoader() throws Exception {
+    warmInIsolatedLoader();
+  }
+
+  /** Descriptor warm-up must not keep an isolated Fory classloader reachable after close. */
+  @Test
+  public void testWarmReleasesLoader() throws Exception {
+    if (_JDKAccess.IS_OPEN_J9) {
+      throw new SkipException("OpenJ9 unsupported");
+    }
+    WeakReference<ClassLoader> isolate = warmInIsolatedLoader();
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+    while (isolate.get() != null && System.nanoTime() < deadline) {
+      System.gc();
+      Thread.sleep(100);
+    }
+    Assert.assertNull(isolate.get(), "isolated Fory classloader is still reachable");
+  }
+
+  /** A shut-down compiler pool must not reject one warm-up task for each field. */
+  @Test
+  public void testWarmSkipsShutDownPool() throws Exception {
+    Assert.assertNotNull(
+        Descriptor.warmUpTask(WarmOuter.class, WarmOuter.class.getDeclaredField("inner")));
+    try (URLClassLoader isolate =
+        new URLClassLoader(
+            TestUtils.forkClassPathUrls(), ClassLoader.getSystemClassLoader().getParent())) {
+      ThreadPoolExecutor pool = compilationService(isolate);
+      AtomicInteger rejected = new AtomicInteger();
+      pool.setRejectedExecutionHandler((task, executor) -> rejected.incrementAndGet());
+      pool.shutdown();
+      Class<?> probe = isolate.loadClass(WarmProbe.class.getName());
+      ((Runnable) probe.getDeclaredConstructor().newInstance()).run();
+      Assert.assertEquals(rejected.get(), 0);
+    }
+  }
+
+  private static WeakReference<ClassLoader> warmInIsolatedLoader() throws Exception {
+    try (WarmLeafRecorder isolate = new WarmLeafRecorder()) {
+      Assert.assertNotSame(Thread.currentThread().getContextClassLoader(), isolate);
+      ThreadPoolExecutor pool = compilationService(isolate);
+      // Keep core-thread timeout under test, but do not wait for the 5 second default keep-alive.
+      pool.setKeepAliveTime(100, TimeUnit.MILLISECONDS);
+      Class<?> probe = isolate.loadClass(WarmProbe.class.getName());
+      ((Runnable) probe.getDeclaredConstructor().newInstance()).run();
+      Assert.assertSame(isolate.leafContextClassLoader.get(30, TimeUnit.SECONDS), isolate);
+      // The last pool thread exits only when the queue is empty, so no warm-up task can still load
+      // classes when the loader closes.
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+      while (pool.getPoolSize() > 0 && System.nanoTime() < deadline) {
+        Thread.sleep(10);
+      }
+      Assert.assertEquals(pool.getPoolSize(), 0, "compiler pool threads did not time out");
+      return new WeakReference<>(isolate);
+    }
+  }
+
+  private static ThreadPoolExecutor compilationService(ClassLoader isolate) throws Exception {
+    return (ThreadPoolExecutor)
+        isolate
+            .loadClass(CodeGenerator.class.getName())
+            .getMethod("getCompilationService")
+            .invoke(null);
+  }
+
+  private static final class WarmLeafRecorder extends URLClassLoader {
+    private final CompletableFuture<ClassLoader> leafContextClassLoader = new CompletableFuture<>();
+
+    private WarmLeafRecorder() {
+      super(TestUtils.forkClassPathUrls(), ClassLoader.getSystemClassLoader().getParent());
+    }
+
+    @Override
+    protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+      Class<?> cls = super.loadClass(name, resolve);
+      if (name.equals(DescriptorWarmLeaf.class.getName())) {
+        leafContextClassLoader.complete(Thread.currentThread().getContextClassLoader());
+      }
+      return cls;
+    }
   }
 
   @Test
