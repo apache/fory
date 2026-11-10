@@ -31,10 +31,10 @@ import org.apache.fory.json.codec.JsonValueCodec;
  * Selects a default codec for the properties of the annotated class that have one declared type.
  * Repeat the annotation for several types; one class may name each type at most once.
  *
- * <pre>{@code
- * @JsonDefaultCodec(type = BigDecimal.class, codec = PlainBigDecimalCodec.class)
+ * <pre>
+ * &#64;JsonDefaultCodec(type = BigDecimal.class, codec = PlainBigDecimalCodec.class)
  * public class Invoice { ... }
- * }</pre>
+ * </pre>
  *
  * <p>A property or creator parameter whose raw type equals {@link #type()} uses the codec as if it
  * declared {@code @JsonCodec(value = ...)}; a primitive and its wrapper are the same type.
