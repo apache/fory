@@ -83,15 +83,15 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     }
   }
 
-  public static final class TaggedOptionalCodec
-      extends AbstractJsonValueCodec<Optional<BigDecimal>> {
+  @SuppressWarnings("rawtypes")
+  public static final class TaggedOptionalCodec extends AbstractJsonValueCodec<Optional> {
     @Override
-    public void write(JsonWriter writer, Optional<BigDecimal> value) {
-      writer.writeString("od:" + value.get().toPlainString());
+    public void write(JsonWriter writer, Optional value) {
+      writer.writeString("od:" + ((BigDecimal) value.get()).toPlainString());
     }
 
     @Override
-    public Optional<BigDecimal> read(JsonReader reader) {
+    public Optional read(JsonReader reader) {
       return Optional.of(new BigDecimal(reader.readString().substring(3)));
     }
   }
@@ -108,19 +108,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     }
   }
 
-  public static final class WildcardListCodec extends AbstractJsonValueCodec<List<?>> {
-    @Override
-    public void write(JsonWriter writer, List<?> value) {
-      writer.writeNull();
-    }
-
-    @Override
-    public List<?> read(JsonReader reader) {
-      return null;
-    }
-  }
-
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public static class Prices {
     public BigDecimal price;
     public Optional<BigDecimal> bid = Optional.empty();
@@ -177,36 +165,37 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     expectThrows(ForyJsonException.class, () -> json.fromJson("{\"price\":\"10\"}", Prices.class));
   }
 
-  @JsonDefaultCodec({TaggedDecimalCodec.class, TaggedOptionalCodec.class})
-  public static class ListForm {
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
+  public static class SingleForm {
     public BigDecimal price;
     public Optional<BigDecimal> bid = Optional.empty();
   }
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
-  @JsonDefaultCodec(TaggedOptionalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = Optional.class, codec = TaggedOptionalCodec.class)
   public static class RepeatedForm {
     public BigDecimal price;
     public Optional<BigDecimal> bid = Optional.empty();
   }
 
   @Test
-  public void listAndRepeatedFormsPreferExactParameterizedTarget() {
+  public void wholeTypeMatchWinsOverChildFill() {
     ForyJson json = newJson();
-    ListForm list = new ListForm();
-    list.price = TEN;
-    list.bid = Optional.of(TEN);
+    SingleForm single = new SingleForm();
+    single.price = TEN;
+    single.bid = Optional.of(TEN);
     RepeatedForm repeated = new RepeatedForm();
     repeated.price = TEN;
     repeated.bid = Optional.of(TEN);
+    // Without an Optional default, the BigDecimal default fills the Optional content.
+    assertEquals(json.toJson(single), "{\"price\":\"d:10\",\"bid\":\"d:10\"}");
+    assertEquals(json.fromJson("{\"bid\":\"d:10\"}", SingleForm.class).bid, Optional.of(PLAIN_TEN));
     String expected = "{\"price\":\"d:10\",\"bid\":\"od:10\"}";
-    assertEquals(json.toJson(list), expected);
     assertEquals(json.toJson(repeated), expected);
-    assertEquals(json.fromJson(expected, ListForm.class).bid, Optional.of(PLAIN_TEN));
     assertEquals(json.fromJson(expected, RepeatedForm.class).bid, Optional.of(PLAIN_TEN));
   }
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public static class Base {
     public BigDecimal inherited;
   }
@@ -215,7 +204,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     public BigDecimal own;
   }
 
-  @JsonDefaultCodec(OtherDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = OtherDecimalCodec.class)
   public static class Overriding extends Base {
     public BigDecimal own;
   }
@@ -234,7 +223,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(json.fromJson("{\"inherited\":\"o:10\"}", Overriding.class).inherited, PLAIN_TEN);
   }
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public static class Created {
     private final BigDecimal price;
     private final Optional<BigDecimal> bid;
@@ -270,7 +259,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
         "{\"price\":\"d:10\",\"bid\":\"d:10\"}");
   }
 
-  @JsonDefaultCodec(TaggedIntegerCodec.class)
+  @JsonDefaultCodec(type = Integer.class, codec = TaggedIntegerCodec.class)
   public static class Counts {
     public int primitive;
     public Integer boxed;
@@ -294,7 +283,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = Plain.class)
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public interface PlainMixin {}
 
   @Test
@@ -308,31 +297,30 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = RepeatedForm.class)
-  @JsonDefaultCodec(OtherDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = OtherDecimalCodec.class)
   public interface RepeatedFormMixin {}
 
-  @JsonMixin(target = ListForm.class)
-  @JsonDefaultCodec(OtherDecimalCodec.class)
-  @JsonDefaultCodec(TaggedOptionalCodec.class)
-  public interface ListFormMixin {}
+  @JsonMixin(target = SingleForm.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = OtherDecimalCodec.class)
+  @JsonDefaultCodec(type = Optional.class, codec = TaggedOptionalCodec.class)
+  public interface SingleFormMixin {}
 
   @Test
   public void mixinReplacesBothDeclarationForms() {
     ForyJson json =
         newJsonBuilder()
             .registerMixin(RepeatedFormMixin.class)
-            .registerMixin(ListFormMixin.class)
+            .registerMixin(SingleFormMixin.class)
             .build();
     RepeatedForm repeated = new RepeatedForm();
     repeated.price = TEN;
     repeated.bid = Optional.of(TEN);
-    // The single Mixin declaration replaces the target's repeated ones, Optional<BigDecimal>
-    // included.
+    // The single Mixin declaration replaces the target's repeated ones, Optional included.
     assertEquals(json.toJson(repeated), "{\"price\":\"o:10\",\"bid\":\"o:10\"}");
-    ListForm list = new ListForm();
-    list.price = TEN;
-    list.bid = Optional.of(TEN);
-    assertEquals(json.toJson(list), "{\"price\":\"o:10\",\"bid\":\"od:10\"}");
+    SingleForm single = new SingleForm();
+    single.price = TEN;
+    single.bid = Optional.of(TEN);
+    assertEquals(json.toJson(single), "{\"price\":\"o:10\",\"bid\":\"od:10\"}");
   }
 
   /** Owns its whole representation, so its elements are not a child slot a default can fill. */
@@ -352,7 +340,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
   @JsonCodec(DecimalBagCodec.class)
   public static class DecimalBag extends java.util.ArrayList<BigDecimal> {}
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public static class WithBag {
     public DecimalBag bag;
     public List<BigDecimal> registered;
@@ -384,7 +372,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(json.toJson(value), "{\"bag\":\"bag:1\",\"registered\":\"list:1\"}");
   }
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public static class WithList {
     public List<BigDecimal> values;
   }
@@ -415,20 +403,20 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(module.toJson(value), "{\"values\":\"factory:1\"}");
   }
 
-  @JsonDefaultCodec(TaggedIntegerCodec.class)
+  @JsonDefaultCodec(type = Integer.class, codec = TaggedIntegerCodec.class)
   public static class IntArrays {
     public int[] primitive;
     public Integer[] boxed;
   }
 
   @Test
-  public void primitiveArrayElementsMatchTheirWrapper() {
+  public void primitiveArrayKeepsItsMapping() {
     ForyJson json = newJson();
     IntArrays value = new IntArrays();
     value.primitive = new int[] {1, 2};
     value.boxed = new Integer[] {3};
     String text = json.toJson(value);
-    assertEquals(text, "{\"primitive\":[\"i:1\",\"i:2\"],\"boxed\":[\"i:3\"]}");
+    assertEquals(text, "{\"primitive\":[1,2],\"boxed\":[\"i:3\"]}");
     IntArrays read = json.fromJson(text, IntArrays.class);
     assertEquals(read.primitive, new int[] {1, 2});
     assertEquals(read.boxed, new Integer[] {3});
@@ -438,7 +426,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
   @JsonMixinRemove(JsonDefaultCodec.class)
   public interface RemoveSingleFromRepeated {}
 
-  @JsonMixin(target = ListForm.class)
+  @JsonMixin(target = SingleForm.class)
   @JsonMixinRemove(JsonDefaultCodec.List.class)
   public interface RemoveRepeatedFromSingle {}
 
@@ -451,18 +439,19 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
             .build();
     RepeatedForm repeated = new RepeatedForm();
     repeated.price = TEN;
-    ListForm list = new ListForm();
-    list.price = TEN;
+    SingleForm single = new SingleForm();
+    single.price = TEN;
     // An empty Optional without a codec keeps Fory's default null form.
     assertEquals(json.toJson(repeated), "{\"price\":1E+1,\"bid\":null}");
-    assertEquals(json.toJson(list), "{\"price\":1E+1,\"bid\":null}");
+    assertEquals(json.toJson(single), "{\"price\":1E+1,\"bid\":null}");
   }
 
   @JsonMixin(target = Child.class)
   @JsonMixinRemove(JsonDefaultCodec.class)
   public interface ChildWithoutDefaults {}
 
-  @JsonDefaultCodec({TaggedDecimalCodec.class, TaggedIntegerCodec.class})
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = Integer.class, codec = TaggedIntegerCodec.class)
   public static class TwoDefaultsBase {
     public BigDecimal price;
     public Integer count;
@@ -471,7 +460,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
   public static class TwoDefaultsChild extends TwoDefaultsBase {}
 
   @JsonMixin(target = TwoDefaultsChild.class)
-  @JsonDefaultCodec(OtherDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = OtherDecimalCodec.class)
   public interface TwoDefaultsChildMixin {}
 
   @Test
@@ -495,7 +484,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(json.toJson(base), "{\"inherited\":\"d:10\"}");
   }
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public static class Box<T> {
     public T value;
     public List<T> values;
@@ -526,7 +515,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(read.strings.value, "s");
   }
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public static class FormattedCreator {
     private final BigDecimal price;
 
@@ -547,7 +536,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(json.fromJson("{\"price\":\"10\"}", FormattedCreator.class).price(), PLAIN_TEN);
   }
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public interface DefaultsOnInterface {}
 
   public static class ImplementsDefaults implements DefaultsOnInterface {
@@ -571,7 +560,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     }
   }
 
-  @JsonDefaultCodec(ShapeCodec.class)
+  @JsonDefaultCodec(type = Shape.class, codec = ShapeCodec.class)
   public static class Shapes {
     public Shape single;
     public List<Shape> list;
@@ -602,7 +591,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(read.map.get("k").name(), "e");
   }
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public static class Shallow {
     public List<Optional<BigDecimal>> nested;
     public Map<String, List<BigDecimal>> nestedMap;
@@ -623,7 +612,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(read.atomic.get(0), PLAIN_TEN);
   }
 
-  @JsonDefaultCodec(TaggedIntegerCodec.class)
+  @JsonDefaultCodec(type = Integer.class, codec = TaggedIntegerCodec.class)
   public static class Keyed {
     public Map<Integer, Integer> counts;
   }
@@ -645,34 +634,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(read.floors, Collections.singletonList(BigDecimal.ONE));
   }
 
-  /** Declares its value type through an intermediate generic superclass. */
-  public abstract static class PrefixCodec<T> extends AbstractJsonValueCodec<T> {}
-
-  public static final class InheritedDecimalCodec extends PrefixCodec<BigDecimal> {
-    @Override
-    public void write(JsonWriter writer, BigDecimal value) {
-      writer.writeString("x:" + value.toPlainString());
-    }
-
-    @Override
-    public BigDecimal read(JsonReader reader) {
-      return new BigDecimal(reader.readString().substring(2));
-    }
-  }
-
-  @JsonDefaultCodec(InheritedDecimalCodec.class)
-  public static class InheritedTarget {
-    public BigDecimal price;
-  }
-
-  @Test
-  public void codecValueTypeResolvesThroughGenericSuperclass() {
-    InheritedTarget value = new InheritedTarget();
-    value.price = TEN;
-    assertEquals(newJson().toJson(value), "{\"price\":\"x:10\"}");
-  }
-
-  @JsonDefaultCodec(TaggedIntegerCodec.class)
+  @JsonDefaultCodec(type = int.class, codec = TaggedIntegerCodec.class)
   public static class MergedCreator {
     private final int count;
 
@@ -686,6 +648,25 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     }
   }
 
+  @JsonDefaultCodec(type = int.class, codec = TaggedIntegerCodec.class)
+  public static class PrimitiveTypeCounts {
+    public Integer boxed;
+    public List<Integer> list;
+  }
+
+  @Test
+  public void primitiveTypeMatchesWrapperOccurrences() {
+    ForyJson json = newJson();
+    PrimitiveTypeCounts counts = new PrimitiveTypeCounts();
+    counts.boxed = 6;
+    counts.list = Collections.singletonList(7);
+    String text = json.toJson(counts);
+    assertEquals(text, "{\"boxed\":\"i:6\",\"list\":[\"i:7\"]}");
+    PrimitiveTypeCounts read = json.fromJson(text, PrimitiveTypeCounts.class);
+    assertEquals(read.boxed, Integer.valueOf(6));
+    assertEquals(read.list, Collections.singletonList(7));
+  }
+
   @Test
   public void getterAndCreatorParameterShareTheDefault() {
     ForyJson json = newJson();
@@ -694,8 +675,12 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(json.fromJson(text, MergedCreator.class).getCount(), 7);
   }
 
-  @JsonDefaultCodec(TaggedByteCodec.class)
+  @JsonDefaultCodec(type = Byte.class, codec = TaggedByteCodec.class)
   public static class Bytes {
+    public byte[] data;
+  }
+
+  public static class PlainBytes {
     public byte[] data;
   }
 
@@ -712,14 +697,16 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void byteArrayElementsUseDefaultInEveryByteArrayFormat() {
+  public void byteArrayKeepsEveryByteArrayFormat() {
     Bytes value = new Bytes();
     value.data = new byte[] {1, 2};
+    PlainBytes plain = new PlainBytes();
+    plain.data = value.data;
     for (org.apache.fory.json.annotation.JsonByteArray.Format format :
         org.apache.fory.json.annotation.JsonByteArray.Format.values()) {
       ForyJson json = newJsonBuilder().byteArrayFormat(format).build();
       String text = json.toJson(value);
-      assertEquals(text, "{\"data\":[\"b:1\",\"b:2\"]}", format.name());
+      assertEquals(text, json.toJson(plain), format.name());
       assertEquals(json.fromJson(text, Bytes.class).data, new byte[] {1, 2});
     }
   }
@@ -736,7 +723,9 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     }
   }
 
-  @JsonDefaultCodec({TaggedDecimalCodec.class, TaggedByteCodec.class, TaggedStringCodec.class})
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = Byte.class, codec = TaggedByteCodec.class)
+  @JsonDefaultCodec(type = String.class, codec = TaggedStringCodec.class)
   public static class Excluded {
     @JsonFormat(shape = JsonFormat.Shape.STRING)
     public BigDecimal formatted;
@@ -790,7 +779,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     }
   }
 
-  @JsonDefaultCodec(NullableTaggedCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = NullableTaggedCodec.class)
   public static class NullablePrices {
     @JsonProperty(include = JsonProperty.Include.ALWAYS)
     public BigDecimal price;
@@ -815,7 +804,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
 
   public interface Contract {}
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public interface AnnotatedContract {}
 
   public interface ExtendsAnnotated extends AnnotatedContract {}
@@ -830,12 +819,12 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     public BigDecimal price;
   }
 
-  @JsonDefaultCodec(JsonCodec.NoJsonValueCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = JsonCodec.NoJsonValueCodec.class)
   public static class SentinelTarget {
     public BigDecimal price;
   }
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
   public static class WildcardPrices {
     public List<? extends BigDecimal> prices;
   }
@@ -846,159 +835,6 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     value.prices = Collections.singletonList(TEN);
     // A wildcard is not a concrete child, which an explicit elementCodec rejects as well.
     assertEquals(newJson().toJson(value), "{\"prices\":[1E+1]}");
-  }
-
-  public static final class DecimalListCodec extends AbstractJsonValueCodec<List<BigDecimal>> {
-    @Override
-    public void write(JsonWriter writer, List<BigDecimal> value) {
-      writer.writeString("list:" + value.size());
-    }
-
-    @Override
-    public List<BigDecimal> read(JsonReader reader) {
-      reader.readString();
-      return Collections.emptyList();
-    }
-  }
-
-  @JsonDefaultCodec(DecimalListCodec.class)
-  public static class ExactAndWildcardLists {
-    public List<BigDecimal> exact;
-    public List<? extends BigDecimal> wildcard;
-  }
-
-  @Test
-  public void propertyWildcardDoesNotMatchAnExactTarget() {
-    ExactAndWildcardLists value = new ExactAndWildcardLists();
-    value.exact = Collections.singletonList(TEN);
-    value.wildcard = Collections.singletonList(TEN);
-    assertEquals(newJson().toJson(value), "{\"exact\":\"list:1\",\"wildcard\":[1E+1]}");
-  }
-
-  public static class Bucket<T> extends java.util.ArrayList<List<T>> {}
-
-  public static final class StringBucketCodec extends AbstractJsonValueCodec<Bucket<String>> {
-    @Override
-    public void write(JsonWriter writer, Bucket<String> value) {
-      writer.writeString("bucket:" + value.size());
-    }
-
-    @Override
-    public Bucket<String> read(JsonReader reader) {
-      reader.readString();
-      return new Bucket<>();
-    }
-  }
-
-  public static class Dictionary<V> extends java.util.HashMap<String, V> {}
-
-  public static final class DecimalDictionaryCodec
-      extends AbstractJsonValueCodec<Dictionary<BigDecimal>> {
-    @Override
-    public void write(JsonWriter writer, Dictionary<BigDecimal> value) {
-      writer.writeString("dict:" + value.size());
-    }
-
-    @Override
-    public Dictionary<BigDecimal> read(JsonReader reader) {
-      reader.readString();
-      return new Dictionary<>();
-    }
-  }
-
-  @JsonDefaultCodec({StringBucketCodec.class, DecimalDictionaryCodec.class})
-  public static class TransformedContainers {
-    public Bucket<String> bucket;
-    public Dictionary<BigDecimal> dictionary;
-  }
-
-  @Test
-  public void containerSubclassTargetsMatchTheirDeclaredArguments() {
-    TransformedContainers value = new TransformedContainers();
-    value.bucket = new Bucket<>();
-    value.bucket.add(Collections.singletonList("a"));
-    value.dictionary = new Dictionary<>();
-    value.dictionary.put("k", TEN);
-    assertEquals(newJson().toJson(value), "{\"bucket\":\"bucket:1\",\"dictionary\":\"dict:1\"}");
-  }
-
-  public static final class NestedBucketCodec extends AbstractJsonValueCodec<Bucket<List<String>>> {
-    @Override
-    public void write(JsonWriter writer, Bucket<List<String>> value) {
-      writer.writeString("nested:" + value.size());
-    }
-
-    @Override
-    public Bucket<List<String>> read(JsonReader reader) {
-      reader.readString();
-      return new Bucket<>();
-    }
-  }
-
-  public static final class DeeperBucketCodec
-      extends AbstractJsonValueCodec<Bucket<List<List<String>>>> {
-    @Override
-    public void write(JsonWriter writer, Bucket<List<List<String>>> value) {
-      writer.writeString("deeper:" + value.size());
-    }
-
-    @Override
-    public Bucket<List<List<String>>> read(JsonReader reader) {
-      reader.readString();
-      return new Bucket<>();
-    }
-  }
-
-  @JsonDefaultCodec(NestedBucketCodec.class)
-  public static class NestedBucketHolder {
-    public Bucket<List<String>> bucket;
-  }
-
-  @JsonDefaultCodec(DeeperBucketCodec.class)
-  public static class DeeperTargetHolder {
-    public Bucket<List<String>> bucket;
-  }
-
-  @Test
-  public void containerSubclassArgumentsAreNotConfusedWithTheirElementToken() {
-    Bucket<List<String>> bucket = new Bucket<>();
-    NestedBucketHolder nested = new NestedBucketHolder();
-    nested.bucket = bucket;
-    assertEquals(newJson().toJson(nested), "{\"bucket\":\"nested:0\"}");
-    DeeperTargetHolder deeper = new DeeperTargetHolder();
-    deeper.bucket = bucket;
-    assertEquals(newJson().toJson(deeper), "{\"bucket\":[]}");
-  }
-
-  @SuppressWarnings("rawtypes")
-  public static final class RawListArrayCodec extends AbstractJsonValueCodec<List[]> {
-    @Override
-    public void write(JsonWriter writer, List[] value) {
-      writer.writeNull();
-    }
-
-    @Override
-    public List[] read(JsonReader reader) {
-      return null;
-    }
-  }
-
-  @JsonDefaultCodec(RawListArrayCodec.class)
-  public static class RawListArrayDefaults {}
-
-  @Test
-  @SuppressWarnings("rawtypes")
-  public void rawArrayTargetComparesComponentTokens() {
-    org.apache.fory.json.resolver.JsonDefaultCodecs defaults =
-        org.apache.fory.json.resolver.JsonDefaultCodecs.of(
-            RawListArrayDefaults.class,
-            new org.apache.fory.json.resolver.JsonSharedRegistry(newJsonBuilder().buildConfig()));
-    // A language module may describe Array<List<Long>> as List[] with a parameterized component.
-    org.apache.fory.reflect.TypeRef<?> kotlinStyle =
-        org.apache.fory.reflect.TypeRef.of(
-            List[].class, null, null, new org.apache.fory.reflect.TypeRef<List<Long>>() {});
-    assertEquals(defaults.select(kotlinStyle), null);
-    assertTrue(defaults.select(org.apache.fory.reflect.TypeRef.of(List[].class)) != null);
   }
 
   public static final class Money {
@@ -1033,7 +869,7 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     }
   }
 
-  @JsonDefaultCodec(DefaultMoneyCodec.class)
+  @JsonDefaultCodec(type = Money.class, codec = DefaultMoneyCodec.class)
   public static class Wallet {
     public Money cash;
     public List<Money> coins;
@@ -1072,7 +908,8 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
   }
 
   /** The TreeNode default makes List<TreeNode> select a child default, so ownership is checked. */
-  @JsonDefaultCodec({TaggedDecimalCodec.class, TreeNodeCodec.class})
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = TreeNode.class, codec = TreeNodeCodec.class)
   public static class TreeNode {
     public BigDecimal value;
     public List<TreeNode> children;
@@ -1108,52 +945,33 @@ public class JsonDefaultCodecTest extends ForyJsonTestModels {
     assertEquals(json.toJson(node), "{\"value\":\"d:10\",\"children\":\"list:1\"}");
   }
 
-  public static final class BoundedListCodec
-      extends AbstractJsonValueCodec<List<? extends Number>> {
-    @Override
-    public void write(JsonWriter writer, List<? extends Number> value) {
-      writer.writeNull();
-    }
-
-    @Override
-    public List<? extends Number> read(JsonReader reader) {
-      return null;
-    }
-  }
-
-  @JsonDefaultCodec(BoundedListCodec.class)
-  public static class BoundedWildcardTarget {
-    public List<Number> numbers;
-  }
-
-  @JsonDefaultCodec({TaggedDecimalCodec.class, OtherDecimalCodec.class})
+  @JsonDefaultCodec(type = BigDecimal.class, codec = TaggedDecimalCodec.class)
+  @JsonDefaultCodec(type = BigDecimal.class, codec = OtherDecimalCodec.class)
   public static class DuplicateTarget {
     public BigDecimal price;
   }
 
-  @JsonDefaultCodec(TaggedDecimalCodec.class)
-  @JsonDefaultCodec(OtherDecimalCodec.class)
-  public static class RepeatedDuplicateTarget {
-    public BigDecimal price;
+  @JsonDefaultCodec(type = int.class, codec = TaggedIntegerCodec.class)
+  @JsonDefaultCodec(type = Integer.class, codec = TaggedIntegerCodec.class)
+  public static class PrimitiveDuplicateTarget {
+    public int count;
   }
 
-  @JsonDefaultCodec(WildcardListCodec.class)
-  public static class NoConcreteTarget {
+  @JsonDefaultCodec(type = void.class, codec = TaggedDecimalCodec.class)
+  public static class VoidTarget {
     public BigDecimal price;
   }
 
   @Test
   public void invalidDeclarations() {
     ForyJson json = newJson();
-    assertInvalid(json, DuplicateTarget.class, "Duplicate @JsonDefaultCodec target");
-    assertInvalid(json, RepeatedDuplicateTarget.class, "Duplicate @JsonDefaultCodec target");
-    assertInvalid(json, NoConcreteTarget.class, "does not declare a concrete value type");
+    assertInvalid(json, DuplicateTarget.class, "Duplicate @JsonDefaultCodec type");
+    assertInvalid(json, PrimitiveDuplicateTarget.class, "Duplicate @JsonDefaultCodec type");
+    assertInvalid(json, VoidTarget.class, "Invalid @JsonDefaultCodec");
     assertInvalid(json, ImplementsDefaults.class, "not from interface");
     assertInvalid(json, ImplementsThroughSuperinterface.class, "not from interface");
     assertInvalid(json, ImplementsThroughSuperclass.class, "not from interface");
-    assertInvalid(json, SentinelTarget.class, "is not a codec");
-    // Only a Kotlin codec's declaration-site variance reads as its bound.
-    assertInvalid(json, BoundedWildcardTarget.class, "does not declare a concrete value type");
+    assertInvalid(json, SentinelTarget.class, "Invalid @JsonDefaultCodec");
   }
 
   private static void assertInvalid(ForyJson json, Class<?> type, String message) {

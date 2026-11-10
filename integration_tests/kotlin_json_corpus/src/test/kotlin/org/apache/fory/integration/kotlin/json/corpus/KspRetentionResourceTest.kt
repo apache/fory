@@ -104,10 +104,6 @@ public class KspRetentionResourceTest {
     val defaultCodecs = rules("PlatformDefaultCodecs")
     assertConstructor(defaultCodecs, "$PACKAGE.PlatformDefaultTokenCodec")
     assertTrue(
-      defaultCodecs.contains("-keep,allowoptimization class $PACKAGE.PlatformPrefixCodec\n"),
-      defaultCodecs,
-    )
-    assertTrue(
       defaultCodecs.contains("@interface org.apache.fory.json.annotation.JsonDefaultCodec\n"),
       defaultCodecs,
     )
@@ -118,10 +114,6 @@ public class KspRetentionResourceTest {
     for (model in listOf("PlatformInheritedDefaults", "PlatformContainerDefaults")) {
       val text = rules(model)
       assertConstructor(text, "$PACKAGE.PlatformDefaultTokenCodec")
-      assertTrue(
-        text.contains("-keep,allowoptimization class $PACKAGE.PlatformPrefixCodec\n"),
-        text,
-      )
       assertTrue(
         text.contains("@interface org.apache.fory.json.annotation.JsonDefaultCodec\$List"),
         text,
@@ -135,10 +127,6 @@ public class KspRetentionResourceTest {
     val mixinDefaults = mixinRules("PlatformMixinDefaults")
     assertConstructor(mixinDefaults, "$PACKAGE.PlatformDefaultTokenCodec")
     assertConstructor(mixinDefaults, "$PACKAGE.PlatformLabelCodec")
-    assertTrue(
-      mixinDefaults.contains("-keep,allowoptimization class $PACKAGE.PlatformPrefixCodec\n"),
-      mixinDefaults,
-    )
     val mixin = mixinRules("PlatformJavaProfileMixin")
     assertTrue(mixin.contains("class $PACKAGE.PlatformJavaProfile"), mixin)
     assertTrue(mixin.contains("class $PACKAGE.PlatformJavaProfileMixin"), mixin)

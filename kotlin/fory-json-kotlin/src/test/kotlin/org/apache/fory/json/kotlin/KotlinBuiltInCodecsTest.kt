@@ -101,7 +101,7 @@ class KotlinBuiltInCodecsTest {
     override fun read(reader: JsonReader): Int = reader.readString().substring(2).toInt()
   }
 
-  @JsonDefaultCodec(TaggedIntCodec::class)
+  @JsonDefaultCodec(type = Int::class, codec = TaggedIntCodec::class)
   data class SignedAndUnsigned(
     val signed: Int,
     val unsigned: UInt,
@@ -119,9 +119,10 @@ class KotlinBuiltInCodecsTest {
     override fun read(reader: JsonReader): Price = Price(reader.readString().substring(2).toLong())
   }
 
-  @JsonDefaultCodec(TaggedPriceCodec::class) data class Priced(val price: Price)
+  @JsonDefaultCodec(type = Price::class, codec = TaggedPriceCodec::class)
+  data class Priced(val price: Price)
 
-  @JsonDefaultCodec(TaggedPriceCodec::class)
+  @JsonDefaultCodec(type = Price::class, codec = TaggedPriceCodec::class)
   data class BoxedPrices(val price: Price?, val prices: List<Price>)
 
   @Test
@@ -142,79 +143,14 @@ class KotlinBuiltInCodecsTest {
     override fun read(reader: JsonReader): UInt = reader.readString().substring(2).toUInt()
   }
 
-  @JsonDefaultCodec(UIntTagCodec::class) data class UnsignedTarget(val value: UInt)
+  @JsonDefaultCodec(type = UInt::class, codec = UIntTagCodec::class)
+  data class UnsignedTarget(val value: UInt)
 
   @Test
   fun defaultCodecRejectsUnsignedTarget() {
     val error = assertFailsWith<ForyJsonException> { fory.toJson(UnsignedTarget(1u)) }
-    assertTrue(error.message.orEmpty().contains("Kotlin unsigned type"), error.message)
+    assertTrue(error.message.orEmpty().contains("Invalid @JsonDefaultCodec"), error.message)
   }
-
-  class LongListArrayCodec : AbstractJsonValueCodec<Array<List<Long>>>() {
-    override fun write(writer: JsonWriter, value: Array<List<Long>>) {
-      writer.writeString("arrays:${value.size}")
-    }
-
-    override fun read(reader: JsonReader): Array<List<Long>> {
-      reader.readString()
-      return arrayOf(listOf(1L))
-    }
-  }
-
-  @JsonDefaultCodec(LongListArrayCodec::class)
-  class GenericArrayHolder(val values: Array<List<Long>>)
-
-  class LongListCodec : AbstractJsonValueCodec<List<Long>>() {
-    override fun write(writer: JsonWriter, value: List<Long>) {
-      writer.writeString("longs:${value.size}")
-    }
-
-    override fun read(reader: JsonReader): List<Long> {
-      reader.readString()
-      return listOf(1L)
-    }
-  }
-
-  @JsonDefaultCodec(LongListCodec::class) class LongListHolder(val values: List<Long>)
-
-  class AnyMapCodec : AbstractJsonValueCodec<Map<String, Any?>>() {
-    override fun write(writer: JsonWriter, value: Map<String, Any?>) {
-      writer.writeString("any:${value.size}")
-    }
-
-    override fun read(reader: JsonReader): Map<String, Any?> {
-      reader.readString()
-      return emptyMap()
-    }
-  }
-
-  // Kotlin writes Any as ? extends Object; the declaration must still be accepted.
-  @JsonDefaultCodec(AnyMapCodec::class, TaggedIntCodec::class)
-  data class AnyTargetDeclared(val count: Int)
-
-  @Test
-  fun defaultCodecAcceptsKotlinAnyArguments() {
-    assertEquals("{\"count\":\"i:3\"}", fory.toJson(AnyTargetDeclared(3)))
-  }
-
-  @Test
-  fun defaultCodecMatchesKotlinCollectionTarget() {
-    assertEquals("{\"values\":\"longs:2\"}", fory.toJson(LongListHolder(listOf(1L, 2L))))
-  }
-
-  class NestedArrayCodec : AbstractJsonValueCodec<List<Array<List<Long>>>>() {
-    override fun write(writer: JsonWriter, value: List<Array<List<Long>>>) {
-      writer.writeString("nested:${value.size}")
-    }
-
-    override fun read(reader: JsonReader): List<Array<List<Long>>> {
-      reader.readString()
-      return emptyList()
-    }
-  }
-
-  @JsonDefaultCodec(NestedArrayCodec::class)
-  class NestedArrayHolder(val values: List<Array<List<Long>>>)
 
   open class OpenShape(val name: String) {
     override fun equals(other: Any?): Boolean = other is OpenShape && name == other.name
@@ -230,7 +166,7 @@ class KotlinBuiltInCodecsTest {
     override fun read(reader: JsonReader): OpenShape = OpenShape(reader.readString().substring(2))
   }
 
-  @JsonDefaultCodec(OpenShapeCodec::class)
+  @JsonDefaultCodec(type = OpenShape::class, codec = OpenShapeCodec::class)
   class ListedCreator
   private constructor(
     val shapes: List<OpenShape>,
@@ -244,7 +180,7 @@ class KotlinBuiltInCodecsTest {
     ) : this(sourceShapes, sourceByKey, true)
   }
 
-  @JsonDefaultCodec(OpenShapeCodec::class)
+  @JsonDefaultCodec(type = OpenShape::class, codec = OpenShapeCodec::class)
   class LocalCreator
   @JsonCreator
   constructor(
@@ -268,23 +204,7 @@ class KotlinBuiltInCodecsTest {
     }
   }
 
-  @Test
-  fun defaultCodecMatchesNestedGenericArrayProperty() {
-    assertEquals(
-      "{\"values\":\"nested:1\"}",
-      fory.toJson(NestedArrayHolder(listOf(arrayOf(listOf(1L))))),
-    )
-  }
-
-  @Test
-  fun defaultCodecMatchesGenericArrayProperty() {
-    assertEquals(
-      "{\"values\":\"arrays:2\"}",
-      fory.toJson(GenericArrayHolder(arrayOf(listOf(1L), listOf(2L)))),
-    )
-  }
-
-  @JsonDefaultCodec(TaggedIntCodec::class)
+  @JsonDefaultCodec(type = Int::class, codec = TaggedIntCodec::class)
   class UnsignedCreator
   private constructor(val signed: Int, val unsigned: UInt, @get:JsonIgnore val selected: Boolean) {
     @JsonCreator(value = ["signed", "unsigned"])

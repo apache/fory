@@ -28,34 +28,31 @@ import java.lang.annotation.Target;
 import org.apache.fory.json.codec.JsonValueCodec;
 
 /**
- * Selects default codecs for the properties of the annotated class by their declared type.
+ * Selects a default codec for the properties of the annotated class that have one declared type.
+ * Repeat the annotation for several types; one class may name each type at most once.
  *
- * <p>Codecs may be listed in one annotation, {@code @JsonDefaultCodec({A.class, B.class})}, or in
- * repeated annotations, {@code @JsonDefaultCodec(A.class) @JsonDefaultCodec(B.class)}.
+ * <pre>{@code
+ * @JsonDefaultCodec(type = BigDecimal.class, codec = PlainBigDecimalCodec.class)
+ * public class Invoice { ... }
+ * }</pre>
  *
- * <p>Each codec targets the type argument it declares for {@link JsonValueCodec}: a codec of {@code
- * BigDecimal} targets {@code BigDecimal}, a codec of {@code Optional<BigDecimal>} targets exactly
- * {@code Optional<BigDecimal>}. That type must be concrete, without type variables or wildcards,
- * except that in a Kotlin codec a covariant {@code ? extends T}, which Kotlin emits, reads as
- * {@code T}. One class may name at most one codec per target type.
- *
- * <p>A property or creator parameter whose resolved type equals a target uses that codec as if it
- * declared {@code @JsonCodec(value = ...)}; a primitive property or array element matches its
- * wrapper type. Without a whole-type match, a target that equals the direct child of an array,
- * {@code Collection}, {@code AtomicReferenceArray}, {@code Optional}, {@code AtomicReference}, or
- * the value of a {@code Map} (Java containers only) is used as the matching {@link JsonCodec} child
- * member, but only where the container keeps its standard mapping: a registered codec or factory, a
- * module, or a type declaration that owns the container keeps it unchanged.
+ * <p>A property or creator parameter whose raw type equals {@link #type()} uses the codec as if it
+ * declared {@code @JsonCodec(value = ...)}; a primitive and its wrapper are the same type.
+ * Otherwise a {@link #type()} that equals the direct child of an object array, {@code Collection},
+ * {@code AtomicReferenceArray}, {@code Optional}, {@code AtomicReference}, or the value of a {@code
+ * Map} (Java containers only) is used as the matching {@link JsonCodec} child member, but only
+ * where the container keeps its standard mapping: a registered codec or factory, a module, or a
+ * type declaration that owns the container keeps it unchanged. Primitive arrays are not filled.
  *
  * <p>A property that declares its own {@link JsonCodec}, {@link JsonFormat}, {@link JsonByteArray},
  * {@link JsonRawValue}, or {@link JsonUnwrapped}, and JSON Any properties, do not use defaults.
- * Defaults declared on superclasses apply too, and a subclass default for the same target type
- * replaces the inherited one. A default codec receives and owns null like a property {@link
- * JsonCodec}. Declarations on interfaces and Kotlin unsigned targets are rejected. Defaults do not
- * reach nested object types, which use their own class declarations. A value-class property read
- * and written through its unboxed carrier cannot take a codec, so a default that matches one fails
- * like a declared {@link JsonCodec}; a nullable or container occurrence of the value class is boxed
- * and uses the default. An exact-target {@link JsonMixin} may supply or replace this annotation;
+ * Defaults declared on superclasses apply too, and a subclass default for the same type replaces
+ * the inherited one. A default codec receives and owns null like a property {@link JsonCodec}.
+ * Declarations on interfaces and Kotlin unsigned types are rejected. Defaults do not reach nested
+ * object types, which use their own class declarations. A value-class property read and written
+ * through its unboxed carrier cannot take a codec, so a default that matches one fails like a
+ * declared {@link JsonCodec}; a nullable or container occurrence of the value class is boxed and
+ * uses the default. An exact-target {@link JsonMixin} may supply or replace this annotation;
  * supplying or removing either the single or the repeated form replaces both forms declared on the
  * target, and a removal also drops inherited defaults.
  */
@@ -64,8 +61,11 @@ import org.apache.fory.json.codec.JsonValueCodec;
 @Target(ElementType.TYPE)
 @Repeatable(JsonDefaultCodec.List.class)
 public @interface JsonDefaultCodec {
-  /** Returns the default codecs; each targets its declared value type. */
-  Class<? extends JsonValueCodec<?>>[] value();
+  /** Returns the raw property type the codec applies to. */
+  Class<?> type();
+
+  /** Returns the codec used for properties of {@link #type()}. */
+  Class<? extends JsonValueCodec<?>> codec();
 
   /** Container of repeated {@link JsonDefaultCodec} declarations on one class. */
   @Documented

@@ -1199,10 +1199,10 @@ internal class KspModelBuilder(
       JSON_DEFAULT_CODEC -> {
         // Kotlin compiles a repeated declaration into the nested container annotation.
         result.annotations += "$JSON_DEFAULT_CODEC\$List"
-        annotation.arguments.forEach { argument ->
-          collectCodecType(argument.value, result.codecs)
-          collectCodecSupertypes(argument.value, result.types)
-        }
+        collectCodecType(
+          annotation.arguments.first { it.name?.asString() == "codec" }.value,
+          result.codecs,
+        )
       }
       JSON_DEFAULT_CODEC_LIST ->
         annotation.arguments.forEach { argument ->
@@ -1271,34 +1271,6 @@ internal class KspModelBuilder(
         if (binary != null && binary !in CODEC_SENTINELS) result += binary
       }
       is Iterable<*> -> value.forEach { collectCodecType(it, result) }
-    }
-  }
-
-  /**
-   * The runtime reads a default codec's target from the generic signatures of its supertypes, so a
-   * shrinker must neither drop nor merge the classes on the way to `JsonValueCodec`.
-   */
-  private fun collectCodecSupertypes(value: Any?, result: MutableSet<String>) {
-    when (value) {
-      is KSType ->
-        (actual(value.declaration) as? KSClassDeclaration)?.let { collectSupertypes(it, result) }
-      is Iterable<*> -> value.forEach { collectCodecSupertypes(it, result) }
-    }
-  }
-
-  private fun collectSupertypes(declaration: KSClassDeclaration, result: MutableSet<String>) {
-    declaration.superTypes.forEach { reference ->
-      val supertype = actual(reference.resolve().declaration) as? KSClassDeclaration
-      val name = supertype?.let(::binaryName)
-      if (
-        supertype != null &&
-          name != null &&
-          !name.startsWith("java.") &&
-          !name.startsWith("kotlin.") &&
-          result.add(name)
-      ) {
-        collectSupertypes(supertype, result)
-      }
     }
   }
 

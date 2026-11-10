@@ -278,7 +278,7 @@ import java.util.List;
 import java.util.Optional;
 import org.apache.fory.json.annotation.JsonDefaultCodec;
 
-@JsonDefaultCodec(PlainDecimalCodec.class)
+@JsonDefaultCodec(type = BigDecimal.class, codec = PlainDecimalCodec.class)
 public class Invoice {
   public BigDecimal total; // PlainDecimalCodec
   public Optional<BigDecimal> discount; // contentCodec = PlainDecimalCodec
@@ -288,23 +288,19 @@ public class Invoice {
 }
 ```
 
-Each codec targets the type argument it declares for `JsonValueCodec`. `PlainDecimalCodec extends
-AbstractJsonValueCodec<BigDecimal>` targets `BigDecimal`, and a codec declared over
-`Optional<BigDecimal>` targets exactly that parameterized type. The target must be concrete. List
-several codecs in one annotation, `@JsonDefaultCodec({A.class, B.class})`, or repeat the annotation;
-one class may name at most one codec per target type.
+`type` names the raw property type and `codec` the codec used for it. Repeat the annotation for
+several types; one class may name each type at most once, and a primitive and its wrapper are the
+same type. Type arguments are not part of the match, so `type = List.class` covers every `List`
+property; use a property `JsonCodec` where one parameterization needs its own codec.
 
-A property or creator parameter whose resolved type equals a target uses the codec as if it
-declared `@JsonCodec(value = ...)`; a primitive property or array element matches its wrapper type.
-In the declared type of a codec with a Kotlin class on its superclass chain, a `? extends T` that Kotlin emits for declaration-site variance
-reads as `T`, including `Any`, which reflection cannot tell from a star projection; a Java
-codec's target must not contain wildcards.
+A property or creator parameter whose raw type equals `type` uses the codec as if it declared
+`@JsonCodec(value = ...)`.
 
-Otherwise a target equal to the direct child of a Java array, `Collection`,
+Otherwise a `type` equal to the direct child of an object array, `Collection`,
 `AtomicReferenceArray`, `Optional`, `AtomicReference`, or the value of a `Map` fills the matching
 child member from the table above; a language module's own containers, such as Scala `Option` or
-`Seq`, are not filled, so a `Byte` default writes a `byte[]` as a JSON array of codec values whatever
-`byteArrayFormat` says. A child is filled only where the container keeps its standard mapping: a
+`Seq`, are not filled, and neither are primitive arrays, so a `Byte` default leaves `byte[]` to
+`byteArrayFormat`. A child is filled only where the container keeps its standard mapping: a
 registered codec or factory, a module, or a type declaration that owns the container keeps it
 unchanged. Deeper nesting is not searched, and a wildcard child such as `List<? extends Shape>`
 keeps its mapping, as an explicit child member would reject it.
@@ -315,12 +311,12 @@ described above for every property it reaches. Properties that declare `JsonCode
 there is no separate per-property opt-out.
 A value-class property read and written through its unboxed carrier cannot take a codec, so a
 default that matches one fails like a declared `JsonCodec`; a nullable or container occurrence of
-the value class is boxed and uses the default. A target that is a Kotlin unsigned type, which the
+the value class is boxed and uses the default. A `type` that is a Kotlin unsigned type, which the
 Kotlin module carries as a tagged primitive, is rejected.
 
-Defaults declared on superclasses apply to the subclass, and a subclass default for the same target
-type replaces the inherited one. Defaults stop at the class boundary: a nested object type uses its
-own declarations. A declaration on an interface is rejected; the build-time processors also reject
+Defaults declared on superclasses apply to the subclass, and a subclass default for the same type
+replaces the inherited one. Defaults stop at the class boundary: a nested object type uses its own
+declarations. A declaration on an interface is rejected; the build-time processors also reject
 one on an enum or annotation type, which never gets an object mapping. An exact-target Mixin may
 supply or replace the annotation; a Mixin that supplies or removes either the single or the
 repeated form replaces both forms declared on the target, and a removal also drops the defaults
