@@ -81,6 +81,11 @@ filenames = [
     'ForyConfig.cmake.in',
     'BUILD.standalone',
     'MODULE.bazel.example',
+    '.yamllint',
+    '.prettierignore',
+    '.npmrc',
+    'CODEOWNERS',
+    'org.mockito.plugins.MockMaker',
 ]
 
 [mapping.XML_STYLE]
