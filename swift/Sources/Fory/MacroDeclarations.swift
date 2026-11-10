@@ -284,3 +284,8 @@ public macro ForyCase(
 
 @attached(peer)
 public macro ForyUnknownCase() = #externalMacro(module: "ForyMacro", type: "ForyUnknownCaseMacro")
+
+@attached(member, names: named(rowSchema), named(writeRowFields), named(readRowFields))
+@attached(extension, conformances: RowStruct)
+/// Generates row format encoding for a struct's stored properties.
+public macro ForyRow() = #externalMacro(module: "ForyMacro", type: "ForyRowMacro")
