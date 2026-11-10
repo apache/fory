@@ -39,6 +39,16 @@ case class CollectionKindsHolder(
     linkedHashSet: mutable.LinkedHashSet[String],
     linkedHashMap: mutable.LinkedHashMap[String, Int])
 
+case class SpecificKindsHolder(
+    intMap: immutable.IntMap[String],
+    longMap: immutable.LongMap[String],
+    bitSet: immutable.BitSet,
+    mutableBitSet: mutable.BitSet,
+    mutableLongMap: mutable.LongMap[String],
+    stringBuilder: mutable.StringBuilder,
+    intArraySeq: immutable.ArraySeq[Int],
+    doubleArraySeq: mutable.ArraySeq[Double])
+
 class CollectionKindsTest extends AnyWordSpec with Matchers {
   private def newFory(compatible: Boolean, requireClassRegistration: Boolean): Fory =
     ForyScala.builder()
@@ -143,6 +153,55 @@ class CollectionKindsTest extends AnyWordSpec with Matchers {
         val decoded = roundTrip(fory, set)
         decoded.toList shouldEqual List(3, 2, 1)
         (decoded + 4).toList shouldEqual List(4, 3, 2, 1)
+      }
+
+      "round trip kinds with a specific factory" in {
+        assertSameKind(fory, immutable.IntMap(3 -> "c", 1 -> "a"))
+        assertSameKind(fory, immutable.IntMap.empty[String])
+        assertSameKind(fory, immutable.LongMap(3L -> "c", 1L -> "a"))
+        assertSameKind(fory, mutable.LongMap(3L -> "c", 1L -> "a"))
+        assertSameKind(fory, immutable.BitSet(1, 70, 200))
+        assertSameKind(fory, immutable.BitSet(3))
+        assertSameKind(fory, mutable.BitSet(1, 70, 200))
+        assertOrdered(fory, immutable.ArraySeq(3, 1, 2))
+        assertOrdered(fory, immutable.ArraySeq(3L, 1L))
+        assertOrdered(fory, immutable.ArraySeq('b', 'a'))
+        assertOrdered(fory, mutable.ArraySeq(2.5, 1.5))
+        assertOrdered(fory, mutable.ArraySeq(true, false))
+      }
+
+      "round trip StringBuilder" in {
+        val decoded = roundTrip(fory, new mutable.StringBuilder("abc\u00e9\u4e2d"))
+        decoded.getClass shouldBe classOf[mutable.StringBuilder]
+        decoded.toString shouldEqual "abc\u00e9\u4e2d"
+        decoded.append('!').toString shouldEqual "abc\u00e9\u4e2d!"
+        val copied = fory.copy(new mutable.StringBuilder("xyz"))
+        copied.toString shouldEqual "xyz"
+      }
+
+      "round trip kinds with a specific factory as case class fields" in {
+        val fory = newFory(compatible, requireClassRegistration = false)
+        fory.register(classOf[SpecificKindsHolder])
+        val holder = SpecificKindsHolder(
+          immutable.IntMap(1 -> "a"),
+          immutable.LongMap(2L -> "b"),
+          immutable.BitSet(1, 2),
+          mutable.BitSet(3, 4),
+          mutable.LongMap(5L -> "e"),
+          new mutable.StringBuilder("sb"),
+          immutable.ArraySeq(1, 2),
+          mutable.ArraySeq(1.5, 2.5))
+        val decoded = roundTrip(fory, holder)
+        decoded.intMap shouldEqual holder.intMap
+        decoded.longMap shouldEqual holder.longMap
+        decoded.bitSet shouldEqual holder.bitSet
+        decoded.mutableBitSet shouldEqual holder.mutableBitSet
+        decoded.mutableLongMap shouldEqual holder.mutableLongMap
+        decoded.stringBuilder.toString shouldEqual "sb"
+        decoded.intArraySeq shouldEqual holder.intArraySeq
+        decoded.intArraySeq.getClass shouldBe holder.intArraySeq.getClass
+        decoded.doubleArraySeq shouldEqual holder.doubleArraySeq
+        decoded.doubleArraySeq.getClass shouldBe holder.doubleArraySeq.getClass
       }
 
       "round trip every declared kind as case class fields" in {
