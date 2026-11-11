@@ -72,15 +72,6 @@ private let fooSchema = RowSchema([
     field("f5", .struct([field("f1", .int32), field("f2", .string)]))
 ])
 
-private let fooBytes: [UInt8] = [
-    0x01, 0x05,
-    0x46, 0x0b, 0xa8, 0x04,
-    0x46, 0x0b, 0xb0, 0x15,
-    0x46, 0x0b, 0xb8, 0x16, 0x49, 0x22, 0x64, 0x60, 0x15,
-    0x46, 0x0b, 0xc0, 0x18, 0x05, 0x28, 0x98, 0x15, 0x4d, 0xd4, 0x0b, 0xa1, 0x00, 0x04,
-    0x46, 0x0b, 0xc8, 0x1b, 0x02, 0x46, 0x0b, 0xa8, 0x04, 0x46, 0x0b, 0xb0, 0x15
-]
-
 private func nestedLists(_ levels: Int) -> RowDataType {
     var dataType = RowDataType.int32
     for _ in 0..<levels {
@@ -100,8 +91,8 @@ func rowSchemaBytesGolden() throws {
 
 @Test
 func rowSchemaBytesFoo() throws {
-    #expect(try fooSchema.toBytes() == fooBytes)
-    #expect(try RowSchema(bytes: fooBytes) == fooSchema)
+    #expect(try fooSchema.toBytes() == goldenFooSchema)
+    #expect(try RowSchema(bytes: goldenFooSchema) == fooSchema)
 }
 
 @Test
