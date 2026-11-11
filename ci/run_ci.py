@@ -313,7 +313,7 @@ def parse_args():
             "17",
             "21",
             "25",
-            "26",
+            "27",
             "windows_java21",
             "integration_tests",
             "graalvm",

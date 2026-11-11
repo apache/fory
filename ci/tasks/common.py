@@ -19,6 +19,7 @@ import subprocess
 import platform
 import os
 import logging
+import re
 
 # Constants
 PYARROW_VERSION = "15.0.0"
@@ -43,6 +44,19 @@ def exec_cmd(cmd: str):
 
     logging.info(f"command result: {result}")
     return result
+
+
+def java_major_version():
+    """Return the active Java runtime's major version."""
+    version_output = subprocess.check_output(
+        "java -version 2>&1", shell=True, universal_newlines=True
+    )
+    # Accept "1.8.0_382", "27.0.1", and pre-release forms such as "27-ea"; some
+    # distribution JDK packages keep the "-ea" suffix on GA builds.
+    match = re.search(r'version "(?:1\.(\d+)|(\d+))', version_output)
+    if not match:
+        raise RuntimeError(f"Unable to parse Java version from:\n{version_output}")
+    return int(match.group(1) or match.group(2))
 
 
 def get_os_name_lower():

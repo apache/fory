@@ -17,35 +17,7 @@
 
 import logging
 import os
-import subprocess
-import re
 from . import common, kotlin
-
-
-def get_jdk_major_version():
-    try:
-        # Run the 'java -version' command
-        result = subprocess.run(["java", "-version"], capture_output=True, text=True)
-        output = result.stderr  # java -version outputs to stderr
-
-        # Use regex to find the version string
-        match = re.search(r'version "([^"]+)"', output)
-        if not match:
-            return None
-
-        version_string = match.group(1)
-
-        # Parse the version string
-        version_parts = version_string.split(".")
-        if version_parts[0] == "1":
-            # Java 8 or earlier
-            return int(version_parts[1])
-        else:
-            # Java 9 or later
-            return int(version_parts[0])
-
-    except Exception:
-        return None
 
 
 # JDK versions
@@ -56,7 +28,7 @@ JDKS = {
     "21": "zulu21.28.85-ca-jdk21.0.0-linux_x64",
     "24": "zulu24.32.13-ca-fx-jdk24.0.2-linux_x64",
     "25": "zulu25.30.17-ca-jdk25.0.1-linux_x64",
-    "26": "zulu26.30.11-ca-crac-jdk26.0.1-linux_x64",
+    "27": "zulu27.30.109-ca-jdk27.0.1.0.3-linux_x64",
 }
 
 
@@ -219,7 +191,7 @@ def create_toolchains_xml(jdk_mappings):
 def install_fory():
     """Install Fory."""
     # Always install jdks and create toolchains.xml to ensure proper JDK environment
-    if get_jdk_major_version() == 8:
+    if common.java_major_version() == 8:
         install_jdks()
         java_home = os.path.join(common.PROJECT_ROOT_DIR, JDKS["11"])
         os.environ["JAVA_HOME"] = java_home
@@ -357,8 +329,7 @@ def run_integration_tests():
 def run_graalvm_tests(main_class):
     """Build and run JPMS GraalVM tests."""
     logging.info(f"Start GraalVM tests for {main_class}")
-    java_major = get_jdk_major_version()
-    if java_major is not None and java_major >= 25:
+    if common.java_major_version() >= 25:
         os.environ["JDK_JAVA_OPTIONS"] = " ".join(jdk25_javac_options())
     else:
         os.environ.pop("JDK_JAVA_OPTIONS", None)
@@ -411,8 +382,8 @@ def run(version=None, install_jdks=False, install_fory=False):
         run_jdk17_plus("21")
     elif version == "25":
         run_jdk17_plus("25")
-    elif version == "26":
-        run_jdk17_plus("26")
+    elif version == "27":
+        run_jdk17_plus("27")
     elif version == "windows_java21":
         run_windows_java21()
     elif version == "integration_tests":

@@ -150,7 +150,7 @@ jobs:
             echo "graalvm_kotlin=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^(rust/)' <<< "$changed_files"; then
+          if grep -Eq '^(\.github/workflows/ci\.yml$|rust/)' <<< "$changed_files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -225,7 +225,7 @@ jobs:
       MY_VAR: "PATH"
     strategy:
       matrix:
-        java-version: ${{ fromJSON(needs.changes.outputs.java_code == 'true' && '["8","11","17","21","25","26"]' || '["8"]') }}
+        java-version: ${{ fromJSON(needs.changes.outputs.java_code == 'true' && '["8","11","17","21","25","27"]' || '["8"]') }}
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up JDK ${{ matrix.java-version }}
@@ -749,9 +749,9 @@ jobs:
           - java-version: "17"
             kotlin_args: ""
             label: JDK 17
-          - java-version: "26"
+          - java-version: "27"
             kotlin_args: --kotlin-version 2.4.10
-            label: Kotlin 2.4.10 / JDK 26
+            label: Kotlin 2.4.10 / JDK 27
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up JDK ${{ matrix.java-version }}
@@ -785,7 +785,7 @@ jobs:
         with:
           java-version: 11
           distribution: "temurin"
-      - uses: sbt/setup-sbt@b113b960ba361e87e08ce02a390d51871b7ee459 # v1.5.13
+      - uses: sbt/setup-sbt@67d461eba2c4753196c230e02da850757ba4775e # v1.5.14
         with:
           disk-cache: false
       - name: Install fory java
@@ -812,7 +812,7 @@ jobs:
         uses: actions/setup-python@v7.1.0
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@b113b960ba361e87e08ce02a390d51871b7ee459 # v1.5.13
+      - uses: sbt/setup-sbt@67d461eba2c4753196c230e02da850757ba4775e # v1.5.14
         with:
           disk-cache: false
       - name: Run Scala Xlang Test
@@ -840,7 +840,7 @@ jobs:
         uses: actions/setup-python@v7.1.0
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@b113b960ba361e87e08ce02a390d51871b7ee459 # v1.5.13
+      - uses: sbt/setup-sbt@67d461eba2c4753196c230e02da850757ba4775e # v1.5.14
         with:
           disk-cache: false
       - name: Install Fory Java
@@ -1257,8 +1257,8 @@ jobs:
     needs: changes
     strategy:
       matrix:
-        # macos-14 is the arm64 runner; keep it for Rust code changes only.
-        os: ${{ fromJSON(needs.changes.outputs.rust == 'true' && '["ubuntu-latest","macos-14","macos-latest"]' || '["ubuntu-latest","macos-latest"]') }}
+        # Exercise macOS 15 for Rust code and workflow changes.
+        os: ${{ fromJSON(needs.changes.outputs.rust == 'true' && '["ubuntu-latest","macos-15","macos-latest"]' || '["ubuntu-latest","macos-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:

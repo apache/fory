@@ -18,7 +18,6 @@
 import logging
 import os
 import re
-import subprocess
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -56,20 +55,6 @@ CORPUS_MIXIN_TARGETS = {
 }
 
 
-def java_major_version():
-    """Return the active Java runtime's major version."""
-    version_output = subprocess.check_output(
-        "java -version 2>&1", shell=True, universal_newlines=True
-    )
-    match = re.search(r'version "([^"]+)"', version_output)
-    if not match:
-        raise RuntimeError(f"Unable to parse Java version from:\n{version_output}")
-    version = match.group(1)
-    if version.startswith("1."):
-        return int(version.split(".")[1])
-    return int(version.split(".")[0])
-
-
 def kotlin_version_option(version):
     """Return the Maven property for an explicit stable Kotlin version."""
     if version is None:
@@ -82,7 +67,7 @@ def kotlin_version_option(version):
 def install_java_json(include_jpms=False):
     """Install the Java artifacts consumed by Kotlin JSON modules."""
     modules = "fory-json,fory-annotation-processor"
-    major = java_major_version()
+    major = common.java_major_version()
     # JDK25+ activates multi-release verifiers whose test-owned main classes and source JAR inputs
     # must exist even when this installation does not run tests.
     test_option = "-DskipTests" if major >= 25 else "-Dmaven.test.skip=true"
@@ -188,7 +173,7 @@ def run_tests(kotlin_version=None):
     """Run the Kotlin JVM matrix for the active JDK."""
     logging.info("Executing fory kotlin tests")
     os.environ.setdefault("ENABLE_FORY_DEBUG_OUTPUT", "1")
-    major = java_major_version()
+    major = common.java_major_version()
     version_option = kotlin_version_option(kotlin_version)
     install_java_json(include_jpms=major == 25)
     modules = PRODUCTION_MODULES if major >= 17 else LOW_JDK_MODULES

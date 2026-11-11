@@ -34,6 +34,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -100,6 +101,7 @@ SCALA_SNAPSHOT_COMMANDS = (
     "sbt 'project fory-json-scala' +publish",
 )
 JVM_PUBLICATION_MODES = ("release", "snapshot")
+SYFT_VERSION = "1.57.0"
 KOTLIN_PUBLIC_ARTIFACTS = (
     "fory-kotlin",
     "fory-kotlin-ksp",
@@ -190,13 +192,89 @@ def build(v: str, rc_tag: str, skip_sign: bool = False):
         ]
     )
     os.chdir("dist")
-    if not skip_sign:
-        logger.info("Start to generate signature")
-        subprocess.check_call(
-            f"gpg --armor --output {src_tar}.asc --detach-sig {src_tar}", shell=True
+    _build_source_sbom(src_tar, v, rc_tag)
+    for artifact in (src_tar, src_tar + ".cdx.json"):
+        if not skip_sign:
+            subprocess.check_call(
+                [
+                    "gpg",
+                    "--armor",
+                    "--output",
+                    artifact + ".asc",
+                    "--detach-sig",
+                    artifact,
+                ]
+            )
+        Path(artifact + ".sha512").write_text(
+            f"{_sha512(artifact)}  {artifact}\n", encoding="utf-8"
         )
-    subprocess.check_call(f"sha512sum {src_tar} >{src_tar}.sha512", shell=True)
     verify(v, signature=not skip_sign)
+
+
+def _build_source_sbom(source_archive, version, rc_tag):
+    syft = os.environ.get("SYFT", "syft")
+    # Host-specific Syft settings and enrichment must not change release metadata.
+    env = {
+        key: value for key, value in os.environ.items() if not key.startswith("SYFT_")
+    }
+    tool = json.loads(subprocess.check_output([syft, "version", "-o", "json"], env=env))
+    if tool["version"] != SYFT_VERSION:
+        raise RuntimeError(f"Source SBOM generation requires Syft {SYFT_VERSION}")
+    source_archive = os.path.abspath(source_archive)
+    sbom_path = source_archive + ".cdx.json"
+    with tempfile.TemporaryDirectory(prefix="fory-source-sbom-") as directory:
+        subprocess.check_call(["tar", "-xzf", source_archive, "-C", directory])
+        source_root = os.path.join(directory, f"apache-fory-{version}-src")
+        subprocess.check_call(
+            [
+                syft,
+                "scan",
+                "dir:.",
+                "--config",
+                os.path.join(source_root, ".syft.yaml"),
+                "--source-name",
+                os.path.basename(source_archive),
+                "--source-version",
+                version,
+                "--output",
+                f"cyclonedx-json@1.6={sbom_path}",
+            ],
+            cwd=source_root,
+            env=env,
+        )
+    sbom = json.loads(Path(sbom_path).read_text(encoding="utf-8"))
+    if not sbom.get("components"):
+        raise RuntimeError("The source SBOM contains no components")
+    source_hash = _sha512(source_archive)
+    timestamp = int(
+        subprocess.check_output(
+            ["git", "show", "-s", "--format=%ct", f"refs/tags/{rc_tag}^{{commit}}"],
+            cwd=PROJECT_ROOT_DIR,
+            text=True,
+        ).strip()
+    )
+    # Use the source commit time and artifact identity instead of scan time/random UUIDs.
+    sbom["serialNumber"] = "urn:uuid:" + str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f"apache-fory:{source_hash}:syft:{SYFT_VERSION}")
+    )
+    metadata = sbom["metadata"]
+    metadata["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(timestamp))
+    metadata["supplier"] = {"name": "The Apache Software Foundation"}
+    component = metadata["component"]
+    component["supplier"] = metadata["supplier"]
+    component["hashes"] = [{"alg": "SHA-512", "content": source_hash}]
+    component["licenses"] = [{"license": {"id": "Apache-2.0"}}]
+    component["description"] = (
+        "Source archive inventory from included manifests and lock files; "
+        "not a resolved dependency inventory of built runtime packages."
+    )
+    sbom["compositions"] = [
+        {"aggregate": "incomplete", "assemblies": [component["bom-ref"]]}
+    ]
+    Path(sbom_path).write_text(
+        json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    logger.info("Built source SBOM with %d components", len(sbom["components"]))
 
 
 def _check_release_version(v: str):
@@ -220,10 +298,10 @@ def _check_all_committed():
 
 def verify(v, signature=True):
     src_tar = f"apache-fory-{v}-src.tar.gz"
-    if signature:
-        subprocess.check_call(f"gpg --verify {src_tar}.asc {src_tar}", shell=True)
-        logger.info("Verified signature")
-    subprocess.check_call(f"sha512sum --check {src_tar}.sha512", shell=True)
+    for artifact in (src_tar, src_tar + ".cdx.json"):
+        if signature:
+            subprocess.check_call(["gpg", "--verify", artifact + ".asc", artifact])
+        _verify_sha512_file(artifact, artifact + ".sha512")
     logger.info("Verified checksum successfully")
 
 
@@ -270,6 +348,8 @@ def stage_jvm(v, rc_tag, output=None):
         raise ValueError(f"HEAD {head} does not match {rc_tag} at {release_commit}")
     _require_jvm_release_version(v)
     authorization = _nexus_authorization()
+    _require_nexus_staging_profile(authorization)
+    runtime = _ensure_openjdk25()
     repositories_before = set(_nexus_repositories(authorization))
 
     try:
@@ -287,6 +367,8 @@ def stage_jvm(v, rc_tag, output=None):
 
     staging = {
         "java_kotlin_staging_id": java_kotlin_id,
+        "java_runtime_version": runtime["props"]["java.runtime.version"],
+        "java_vendor": runtime["props"]["java.vendor"],
         "new_staging_ids": sorted(
             _new_fory_staging_repositories(repositories_before, repositories)
         ),
@@ -374,6 +456,8 @@ def verify_ci_artifacts(
     java_kotlin_staging_id,
     scala_staging_id,
     gpg_fingerprint,
+    java_runtime_version,
+    java_vendor,
     source_url=None,
     keys_url=FORY_KEYS_URL,
     output=None,
@@ -389,7 +473,7 @@ def verify_ci_artifacts(
             raise ValueError(f"Invalid Apache Fory staging repository ID: {staging_id}")
     expected_fingerprint = _normalize_gpg_fingerprint(gpg_fingerprint)
     source_url = (
-        source_url or f"https://release-test.apache.org/vote/fory/{v}"
+        source_url or f"https://releases.apache.org/download/path/fory/{v}"
     ).rstrip("/")
     output = output or os.path.join(
         PROJECT_ROOT_DIR,
@@ -402,7 +486,7 @@ def verify_ci_artifacts(
         cwd=PROJECT_ROOT_DIR,
         text=True,
     ).strip()
-    _ensure_openjdk25()
+    jdk = _require_verification_jdk(java_runtime_version, java_vendor)
 
     os.makedirs(os.path.dirname(output), exist_ok=True)
     root = (
@@ -412,6 +496,20 @@ def verify_ci_artifacts(
             prefix=f"{rc_tag}-verification-", dir=os.path.dirname(output)
         )
     )
+    jdk_path = os.path.join(root, "jdk.json")
+    if rebuild_dir:
+        # The current process's JDK cannot establish which JDK built retained jars.
+        if not os.path.isfile(jdk_path):
+            raise RuntimeError(
+                "Retained rebuild has no JDK record; run a fresh verification"
+            )
+        with open(jdk_path, encoding="utf-8") as f:
+            retained_jdk = json.load(f)
+        if retained_jdk != jdk:
+            raise RuntimeError(
+                f"Retained rebuild JDK does not match staging: "
+                f"expected {jdk}, found {retained_jdk}; run a fresh verification"
+            )
     logger.info("Verification files (retained on failure): %s", root)
     with tempfile.TemporaryDirectory(prefix="fg-", dir="/tmp") as gnupg_home:
         checkout = os.path.join(root, "checkout")
@@ -486,6 +584,9 @@ def verify_ci_artifacts(
                 ],
                 cwd=checkout,
             )
+            with open(jdk_path, "w", encoding="utf-8") as f:
+                json.dump(jdk, f, indent=2, sort_keys=True)
+                f.write("\n")
 
         rows = []
         source_archive = f"apache-fory-{v}-src.tar.gz"
@@ -508,6 +609,20 @@ def verify_ci_artifacts(
         local_source = os.path.join(checkout, "dist", source_archive)
         rows.append(
             _compare_release_file("Source", source_archive, staged_source, local_source)
+        )
+
+        source_sbom = source_archive + ".cdx.json"
+        staged_sbom = os.path.join(staged, source_sbom)
+        for suffix in ("", ".asc", ".sha512"):
+            _download_file(f"{source_url}/{source_sbom}{suffix}", staged_sbom + suffix)
+        _verify_sha512_file(staged_sbom, staged_sbom + ".sha512")
+        _verify_gpg_signature(
+            staged_sbom, staged_sbom + ".asc", expected_fingerprint, gpg_env
+        )
+        rows.append(
+            _compare_release_file(
+                "Source SBOM", source_sbom, staged_sbom, local_source + ".cdx.json"
+            )
         )
 
         staged_payloads = {}
@@ -574,6 +689,8 @@ def verify_ci_artifacts(
             "maven": _tool_version(["mvn", "--version"]),
             "python": sys.version.replace("\n", " "),
             "sbt": _tool_version(["sbt", "--numeric-version"]),
+            "staging_java_runtime_version": java_runtime_version,
+            "staging_java_vendor": java_vendor,
             "system": platform.platform(),
         }
         _write_ci_verification_report(
@@ -1023,6 +1140,20 @@ def _nexus_request(path, authorization, method="GET", payload=None):
         raise RuntimeError(f"Nexus {method} {path} failed: {exc.reason}") from None
 
 
+def _require_nexus_staging_profile(authorization):
+    # Nexus can authenticate a shared CI deployer and list other projects while
+    # still denying access to Fory. Check the project grant before any upload.
+    _, body = _nexus_request("/service/local/staging/profiles", authorization)
+    profiles = json.loads(body).get("data", [])
+    if not any(profile.get("name") == "org.apache.fory" for profile in profiles):
+        raise RuntimeError(
+            "Nexus credentials cannot access the org.apache.fory staging profile. "
+            "Ask ASF Infra to grant Fory staging access to the account provided by "
+            "NEXUS_STAGE_DEPLOYER_USER and NEXUS_STAGE_DEPLOYER_PW. "
+            "Authentication and access to other projects do not establish this grant."
+        )
+
+
 def _nexus_repositories(authorization):
     status, body = _nexus_request(
         "/service/local/staging/profile_repositories", authorization
@@ -1334,8 +1465,10 @@ def _ensure_openjdk25():
     # JDK silently publishes a jar without the required JDK25 overlay.
     if runtime and _is_openjdk25(runtime):
         _export_java_home(runtime["props"]["java.home"])
-        logger.info("Using OpenJDK 25 release runtime: %s", os.environ["JAVA_HOME"])
-        return
+        logger.info(
+            "Using OpenJDK 25 release runtime: %s", _java_runtime_summary(runtime)
+        )
+        return runtime
     if sys.platform != "darwin":
         raise RuntimeError(
             "JVM releases must run with OpenJDK 25. "
@@ -1351,7 +1484,30 @@ def _ensure_openjdk25():
             f"Found {_java_runtime_summary(runtime)} after setting "
             f"JAVA_HOME={java_home}."
         )
-    logger.info("Using OpenJDK 25 release runtime: %s", os.environ["JAVA_HOME"])
+    logger.info("Using OpenJDK 25 release runtime: %s", _java_runtime_summary(runtime))
+    return runtime
+
+
+def _require_verification_jdk(java_runtime_version, java_vendor):
+    if not java_runtime_version.strip() or not java_vendor.strip():
+        raise ValueError("The staging JDK runtime version and vendor must be non-empty")
+    runtime = _read_java_runtime(_java_tool("java"))
+    expected = {
+        "java.runtime.version": java_runtime_version,
+        "java.vendor": java_vendor,
+    }
+    actual = {key: runtime["props"].get(key) for key in expected} if runtime else None
+    # JDK patch releases change module descriptors and bundled Javadoc resources.
+    # Verification must use the publisher's complete runtime version and vendor.
+    if not runtime or not _is_openjdk25(runtime) or actual != expected:
+        raise RuntimeError(
+            f"Verification JDK does not match staging: expected {expected}, "
+            f"found {_java_runtime_summary(runtime)}. "
+            "Set JAVA_HOME and PATH to the staging JDK before verification."
+        )
+    _export_java_home(runtime["props"]["java.home"])
+    logger.info("Verified staging JDK identity: %s", expected)
+    return actual
 
 
 def _homebrew_openjdk25_home():
@@ -1438,6 +1594,8 @@ def _java_runtime_summary(runtime):
     return (
         f"java.home={props.get('java.home', '')}, "
         f"java.version={props.get('java.version', '')}, "
+        f"java.runtime.version={props.get('java.runtime.version', '')}, "
+        f"java.vendor={props.get('java.vendor', '')}, "
         f"java.specification.version={props.get('java.specification.version', '')}, "
         f"java.runtime.name={props.get('java.runtime.name', '')}, "
         f"java.vm.name={props.get('java.vm.name', '')}"
@@ -2879,6 +3037,16 @@ def _parse_args():
         "--gpg-fingerprint",
         required=True,
         help="expected primary fingerprint of the CI signing key",
+    )
+    verify_ci_parser.add_argument(
+        "--java-runtime-version",
+        required=True,
+        help="complete java.runtime.version recorded by JVM staging, including build suffix",
+    )
+    verify_ci_parser.add_argument(
+        "--java-vendor",
+        required=True,
+        help="java.vendor recorded by JVM staging",
     )
     verify_ci_parser.add_argument(
         "--source-url",
