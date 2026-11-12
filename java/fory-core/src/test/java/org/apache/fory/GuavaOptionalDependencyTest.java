@@ -26,7 +26,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -102,7 +101,8 @@ public class GuavaOptionalDependencyTest {
   }
 
   private static RegistrationIds runWithPartialGuava() throws Exception {
-    try (PartialGuavaClassLoader loader = new PartialGuavaClassLoader(classPathUrls())) {
+    try (PartialGuavaClassLoader loader =
+        new PartialGuavaClassLoader(TestUtils.forkClassPathUrls())) {
       Class<?> main = Class.forName(PartialGuavaMain.class.getName(), true, loader);
       String output = (String) main.getMethod("run").invoke(null);
       return parseResult(output);
@@ -123,20 +123,6 @@ public class GuavaOptionalDependencyTest {
     return Arrays.stream(classPath.split(java.util.regex.Pattern.quote(File.pathSeparator)))
         .filter(path -> !new File(path).getName().startsWith("guava-"))
         .collect(Collectors.joining(File.pathSeparator));
-  }
-
-  private static URL[] classPathUrls() {
-    return Arrays.stream(System.getProperty("java.class.path").split(File.pathSeparator))
-        .map(GuavaOptionalDependencyTest::toUrl)
-        .toArray(URL[]::new);
-  }
-
-  private static URL toUrl(String path) {
-    try {
-      return new File(path).toURI().toURL();
-    } catch (MalformedURLException e) {
-      throw new IllegalArgumentException(e);
-    }
   }
 
   private static String readFully(InputStream inputStream) throws IOException {

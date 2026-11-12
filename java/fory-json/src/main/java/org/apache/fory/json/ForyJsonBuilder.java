@@ -58,6 +58,7 @@ public final class ForyJsonBuilder {
   private boolean writeLongAsString;
   private boolean escapeNonAscii;
   private boolean failOnMissingRequiredProperties;
+  private boolean failOnDuplicateProperties;
   private JsonByteArray.Format byteArrayFormat = JsonByteArray.Format.BASE64;
   private boolean codegenEnabled = true;
   private boolean asyncCompilationEnabled = true;
@@ -201,6 +202,22 @@ public final class ForyJsonBuilder {
    */
   public ForyJsonBuilder failOnMissingRequiredProperties(boolean enabled) {
     failOnMissingRequiredProperties = enabled;
+    return this;
+  }
+
+  /**
+   * Rejects a known property that appears twice in one JSON object. Disabled by default, so the
+   * last occurrence wins.
+   *
+   * <p>Known properties are read-enabled fields, setters, creator parameters, and names flattened
+   * in by {@link org.apache.fory.json.annotation.JsonUnwrapped}. An explicit null counts as an
+   * occurrence. Unknown and ignored names and Any entries are not checked. {@link
+   * org.apache.fory.json.annotation.JsonDuplicateProperties} on a class overrides this setting for
+   * that class. This setting applies to Fory-owned object codecs, including nested objects. Writing
+   * is unaffected.
+   */
+  public ForyJsonBuilder failOnDuplicateProperties(boolean enabled) {
+    failOnDuplicateProperties = enabled;
     return this;
   }
 
@@ -442,6 +459,7 @@ public final class ForyJsonBuilder {
         writeLongAsString,
         escapeNonAscii,
         failOnMissingRequiredProperties,
+        failOnDuplicateProperties,
         byteArrayFormat,
         effectiveCodegen,
         effectiveAsyncCompilation,

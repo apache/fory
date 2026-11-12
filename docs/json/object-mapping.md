@@ -133,6 +133,26 @@ This option does not change writing. If an inclusion policy omits a required pro
 JSON can be rejected by a strict reader. Preserve that property in the output or use a reader with
 the option disabled.
 
+## Duplicate properties
+
+By default, when a JSON object repeats a known property, the last occurrence wins. Enable
+`failOnDuplicateProperties(true)` to reject such an object instead:
+
+```java
+ForyJson json = ForyJson.builder()
+    .failOnDuplicateProperties(true)
+    .build();
+```
+
+The option defaults to `false` and applies to every Fory-owned object codec, including nested
+objects. Known properties are read-enabled fields, setters, creator parameters, and names flattened in
+by `JsonUnwrapped`. An explicit JSON null counts as an occurrence, also when `onNullRead(SKIP)` omits
+it. Unknown and ignored names are not checked, and repeated Any members keep their existing behavior.
+The read fails with a `ForyJsonException` that names the repeated property.
+
+To enable or disable the check for one class, annotate it with `JsonDuplicateProperties`; see
+[Annotations](annotations.md#jsonduplicateproperties). This option does not change writing.
+
 ## Kotlin object mapping
 
 Install `fory-json-kotlin` and use `ForyJsonKotlin.builder()` for Kotlin/JVM classes. Kotlin

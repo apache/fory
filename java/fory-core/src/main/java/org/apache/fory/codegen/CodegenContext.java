@@ -35,9 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import org.apache.fory.Fory;
 import org.apache.fory.codegen.Expression.BaseInvoke;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.collection.Collections;
@@ -120,8 +118,6 @@ public class CodegenContext {
             "null"));
     JAVA_RESERVED_WORDS = unmodifiableSet(JAVA_RESERVED_WORDS);
   }
-
-  private static Map<String, Map<String, Boolean>> nameConflicts = new ConcurrentHashMap<>();
 
   Map<String, Long> newValNameIds = new HashMap<>();
   Set<String> valNames = new HashSet<>(JAVA_RESERVED_WORDS);
@@ -283,8 +279,8 @@ public class CodegenContext {
    * Get type string.
    *
    * @param clz type
-   * @return simple name for class if type's canonical name starts with java.lang or is imported,
-   *     return canonical name otherwise.
+   * @return the qualified source name for {@code java.lang} types and unimported classes, or the
+   *     simple name for other imported classes
    */
   public String type(Class<?> clz) {
     if (!sourcePkgLevelAccessible(clz)) {
@@ -294,33 +290,11 @@ public class CodegenContext {
       return getArrayType(clz);
     }
     String type = ReflectionUtils.getLiteralName(clz);
-    if (type.startsWith("java.lang")) {
-      if (!type.substring("java.lang.".length()).contains(".")) {
-        String simpleName = clz.getSimpleName();
-        boolean hasPackage = StringUtils.isNotBlank(pkg);
-        Map<String, Boolean> packageMap =
-            nameConflicts.computeIfAbsent(hasPackage ? pkg : "", p -> new ConcurrentHashMap<>());
-        Class<?> c = clz;
-        Boolean conflictRes =
-            packageMap.computeIfAbsent(
-                simpleName,
-                sn -> {
-                  try {
-                    ClassLoader beanClassClassLoader =
-                        c.getClassLoader() == null
-                            ? Thread.currentThread().getContextClassLoader()
-                            : c.getClassLoader();
-                    if (beanClassClassLoader == null) {
-                      beanClassClassLoader = Fory.class.getClassLoader();
-                    }
-                    beanClassClassLoader.loadClass(hasPackage ? pkg + "." + sn : sn);
-                    return Boolean.TRUE;
-                  } catch (ClassNotFoundException e) {
-                    return Boolean.FALSE;
-                  }
-                });
-        return conflictRes ? clz.getName() : simpleName;
-      }
+    if (type.startsWith("java.lang.")) {
+      // A compiler thread's context loader may not see same-package classes in the bean's loader.
+      // Qualify these names so source resolution does not depend on a context-loader conflict
+      // probe.
+      return type;
     }
     if (imports.contains(type)) {
       return clz.getSimpleName();

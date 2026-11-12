@@ -323,6 +323,28 @@ public class CodegenSerializerTest extends ForyTestBase {
     Assert.assertEquals(o.b.t(), 2);
   }
 
+  static class PackagePrivateValue {
+    int value;
+  }
+
+  public static class PackagePrivateFieldType {
+    public PackagePrivateValue publicField;
+    PackagePrivateValue packageField;
+  }
+
+  @Test(dataProvider = "compatible")
+  public void testPackagePrivateFieldType(boolean compatible) {
+    Fory fory = builder().withCompatible(compatible).build();
+    PackagePrivateFieldType o = new PackagePrivateFieldType();
+    o.publicField = new PackagePrivateValue();
+    o.publicField.value = 1;
+    o.packageField = new PackagePrivateValue();
+    o.packageField.value = 2;
+    PackagePrivateFieldType copy = serDe(fory, o);
+    Assert.assertEquals(copy.publicField.value, 1);
+    Assert.assertEquals(copy.packageField.value, 2);
+  }
+
   private static final Object subclassObject = new B() {};
 
   @Test
