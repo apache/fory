@@ -25,10 +25,10 @@ private func field(_ dataType: RowDataType) -> RowField {
     RowField(name: "item", dataType: dataType, nullable: true)
 }
 
-private func writePoint(_ x: Int32, into buffer: ByteBuffer) -> (start: Int, size: Int) {
+private func writePoint(_ value: Int32, into buffer: ByteBuffer) -> (start: Int, size: Int) {
     var point = RowWriter(fields: pointFields, buffer: buffer)
     point.reset()
-    point.writeInt32(x, at: 0)
+    point.writeInt32(value, at: 0)
     return (point.base, point.size)
 }
 
@@ -203,8 +203,8 @@ func rowWriterNestedInListInMap() throws {
     try values.reset(count: 1)
     var list = RowArrayWriter(element: field(.struct(pointFields)), buffer: buffer)
     try list.reset(count: 2)
-    for (index, x) in [Int32(1), 2].enumerated() {
-        let point = writePoint(x, into: buffer)
+    for (index, value) in [Int32(1), 2].enumerated() {
+        let point = writePoint(value, into: buffer)
         try list.setOffsetAndSize(at: index, absoluteStart: point.start, size: point.size)
     }
     try values.setOffsetAndSize(at: 0, absoluteStart: list.base, size: list.size)
