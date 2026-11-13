@@ -19,7 +19,6 @@
 
 package org.apache.fory.serializer.scala
 
-import org.apache.fory.context.CopyContext
 import org.apache.fory.context.ReadContext
 import org.apache.fory.context.WriteContext
 import org.apache.fory.reflect.FieldAccessor
@@ -34,12 +33,10 @@ import java.lang.invoke.{MethodHandle, MethodHandles}
 import scala.collection.immutable.NumericRange
 
 class RangeSerializer[T <: Range](typeResolver: TypeResolver, cls: Class[T])
-  extends CollectionLikeSerializer[T](typeResolver, cls, false)
+  extends CollectionLikeSerializer[T](typeResolver, cls, false, true)
   with Shareable {
   private val rangeClass = cls
   private val graphMemoryBytes = GraphMemoryEstimates.shallowObjectBytes(cls)
-
-  override def copy(copyContext: CopyContext, value: T): T = value
 
   override def write(writeContext: WriteContext, value: T): Unit = {
     val buffer = writeContext.getBuffer
@@ -78,12 +75,10 @@ private object RangeUtils {
 
 
 class NumericRangeSerializer[A, T <: NumericRange[A]](typeResolver: TypeResolver, cls: Class[T])
-  extends CollectionLikeSerializer[T](typeResolver, cls, false)
+  extends CollectionLikeSerializer[T](typeResolver, cls, false, true)
   with Shareable {
   private val ctr = RangeUtils.lookupCache.get(cls)
   private val graphMemoryBytes = GraphMemoryEstimates.shallowObjectBytes(cls)
-
-  override def copy(copyContext: CopyContext, value: T): T = value
 
   private val getter =
     FieldAccessor.createAccessor(

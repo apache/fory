@@ -83,6 +83,7 @@ class RangeTest extends AnyWordSpec with Matchers {
     val builder = ForyScala.builder()
       .withXlang(false)
       .withRefTracking(true)
+      .withRefCopy(true)
       .requireClassRegistration(true)
       .suppressClassRegistrationWarnings(false)
     maxGraphMemoryBytes.foreach(builder.withMaxGraphMemoryBytes)
@@ -140,6 +141,13 @@ class RangeTest extends AnyWordSpec with Matchers {
       val v1 = Range.apply(1, 10)
       fory.deserialize(fory.serialize(v1)) shouldEqual v1
       (fory.serialize(v1).length < 8) shouldBe true
+    }
+    "copy immutable range serializers by identity" in {
+      val range = Range.inclusive(1, 4)
+      fory.copy(range) shouldBe theSameInstanceAs(range)
+
+      val numericRange = NumericRange.inclusive(1, 4, 1)
+      fory.copy(numericRange) shouldBe theSameInstanceAs(numericRange)
     }
     "serialize/deserialize numeric range object" in {
       val v = NumericRange.inclusive(1, 10, 1)

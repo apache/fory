@@ -20,6 +20,7 @@
 package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
+import org.apache.fory.exception.CopyException
 import org.apache.fory.exception.InsecureException
 import org.apache.fory.scala.ForyScala
 import org.scalatest.matchers.should.Matchers
@@ -116,6 +117,60 @@ class CollectionSerializerTest extends AnyWordSpec with Matchers {
       val reader = runtime(maxGraphMemoryBytes = Some(23))
       intercept[InsecureException] {
         reader.deserialize(writer.serialize(Map("a" -> 1, "b" -> 2, "c" -> 3)))
+      }
+    }
+  }
+
+  "native Scala collection copy" should {
+    "copy immutable collections and retain their shape" in {
+      val runtime = ForyScala.builder()
+        .withXlang(false)
+        .withRefTracking(true)
+        .withRefCopy(true)
+        .requireClassRegistration(false)
+        .build()
+      val list = List("a", "b")
+      val copiedList = runtime.copy(list).asInstanceOf[List[String]]
+      copiedList shouldEqual list
+      copiedList should not be theSameInstanceAs(list)
+
+      val sortedSet = scala.collection.immutable.TreeSet(3, 1, 2)
+      val copiedSet = runtime.copy(sortedSet).asInstanceOf[scala.collection.immutable.TreeSet[Int]]
+      copiedSet.toList shouldEqual List(1, 2, 3)
+      copiedSet should not be theSameInstanceAs(sortedSet)
+
+      val sortedMap = scala.collection.immutable.TreeMap(3 -> "c", 1 -> "a", 2 -> "b")
+      val copiedMap =
+        runtime.copy(sortedMap).asInstanceOf[scala.collection.immutable.TreeMap[Int, String]]
+      copiedMap.toList shouldEqual List(1 -> "a", 2 -> "b", 3 -> "c")
+      copiedMap should not be theSameInstanceAs(sortedMap)
+
+      val holder = CollectionStruct1(list)
+      val copiedHolder = runtime.copy(holder).asInstanceOf[CollectionStruct1]
+      copiedHolder shouldEqual holder
+      copiedHolder should not be theSameInstanceAs(holder)
+      copiedHolder.list should not be theSameInstanceAs(holder.list)
+    }
+
+    "fail clearly when an immutable collection is the root of a cycle" in {
+      val runtime = ForyScala.builder()
+        .withXlang(false)
+        .withRefTracking(true)
+        .withRefCopy(true)
+        .requireClassRegistration(false)
+        .build()
+      val mutableMap = scala.collection.mutable.LinkedHashMap.empty[String, AnyRef]
+      val immutableList = List[AnyRef](mutableMap)
+      mutableMap.put("list", immutableList)
+      intercept[CopyException] {
+        runtime.copy(immutableList)
+      }
+
+      val mutableList = scala.collection.mutable.ListBuffer.empty[AnyRef]
+      val immutableMap = Map[String, AnyRef]("list" -> mutableList)
+      mutableList += immutableMap
+      intercept[CopyException] {
+        runtime.copy(immutableMap)
       }
     }
   }

@@ -89,6 +89,56 @@ class MutableCollectionSerializerTest extends AnyWordSpec with Matchers {
       }
     }
   }
+
+  "native mutable Scala collection copy" should {
+    "copy mutable collections, maps, and fixed-size sequences" in {
+      val runtime = ForyScala.builder()
+        .withXlang(false)
+        .withRefTracking(true)
+        .withRefCopy(true)
+        .requireClassRegistration(false)
+        .build()
+      val list = mutable.ListBuffer(1, 2)
+      val copiedList = runtime.copy(list).asInstanceOf[mutable.ListBuffer[Int]]
+      copiedList shouldEqual list
+      copiedList should not be theSameInstanceAs(list)
+
+      val indexed = mutable.ArraySeq[AnyRef](null)
+      indexed.update(0, indexed)
+      val copiedIndexed = runtime.copy(indexed).asInstanceOf[mutable.ArraySeq[AnyRef]]
+      copiedIndexed(0) shouldBe theSameInstanceAs(copiedIndexed)
+
+      val sortedSet = mutable.TreeSet(3, 1, 2)(Ordering.Int.reverse)
+      val copiedSet = runtime.copy(sortedSet).asInstanceOf[mutable.TreeSet[Int]]
+      copiedSet.toList shouldEqual List(3, 2, 1)
+      copiedSet.ordering shouldBe Ordering.Int.reverse
+
+      val sortedMap = mutable.TreeMap(3 -> "c", 1 -> "a", 2 -> "b")(Ordering.Int.reverse)
+      val copiedMap = runtime.copy(sortedMap).asInstanceOf[mutable.TreeMap[Int, String]]
+      copiedMap.toList shouldEqual List(3 -> "c", 2 -> "b", 1 -> "a")
+      copiedMap.ordering shouldBe Ordering.Int.reverse
+    }
+
+    "preserve cycles in mutable collections and maps" in {
+      val runtime = ForyScala.builder()
+        .withXlang(false)
+        .withRefTracking(true)
+        .withRefCopy(true)
+        .requireClassRegistration(false)
+        .build()
+      val list = mutable.ArrayBuffer.empty[AnyRef]
+      list += list
+      val copiedList = runtime.copy(list).asInstanceOf[mutable.ArrayBuffer[AnyRef]]
+      copiedList should not be theSameInstanceAs(list)
+      copiedList.head shouldBe theSameInstanceAs(copiedList)
+
+      val map = mutable.LinkedHashMap.empty[String, AnyRef]
+      map.put("self", map)
+      val copiedMap = runtime.copy(map).asInstanceOf[mutable.LinkedHashMap[String, AnyRef]]
+      copiedMap should not be theSameInstanceAs(map)
+      copiedMap("self") shouldBe theSameInstanceAs(copiedMap)
+    }
+  }
 }
 
 case class CollectionStruct2(list: Seq[String])

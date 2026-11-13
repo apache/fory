@@ -20,6 +20,7 @@
 package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
+import org.apache.fory.exception.CopyException
 import org.apache.fory.exception.InsecureException
 import org.apache.fory.scala.ForyScala
 import org.scalatest.matchers.should.Matchers
@@ -120,6 +121,23 @@ class ScalaXlangSerializerTest extends AnyWordSpec with Matchers {
       copiedIntArraySeq.getClass shouldBe intArraySeq.getClass
       copiedCyclic should not be theSameInstanceAs(cyclic)
       copiedCyclic(0) shouldBe theSameInstanceAs(copiedCyclic)
+    }
+
+    "fail clearly for immutable collections at the root of mixed cycles" in {
+      val runtime = fory
+      val mutableMap = scala.collection.mutable.LinkedHashMap.empty[String, AnyRef]
+      val immutableList = List[AnyRef](mutableMap)
+      mutableMap.put("list", immutableList)
+      intercept[CopyException] {
+        runtime.copy(immutableList)
+      }
+
+      val mutableList = scala.collection.mutable.ListBuffer.empty[AnyRef]
+      val immutableMap = scala.collection.immutable.Map[String, AnyRef]("list" -> mutableList)
+      mutableList += immutableMap
+      intercept[CopyException] {
+        runtime.copy(immutableMap)
+      }
     }
 
     "enforce graph memory budget" in {

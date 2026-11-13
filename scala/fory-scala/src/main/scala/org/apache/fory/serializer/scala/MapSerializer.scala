@@ -89,21 +89,12 @@ abstract class AbstractScalaMapSerializer[K, V, T <: scala.collection.Map[K, V]]
   }
 
   override def copy(copyContext: CopyContext, value: T): T = {
-    if (isImmutable) {
-      value
-    } else if (value.isInstanceOf[mutable.Map[_, _]]) {
-      newMutableMapCopy(value, value.size) match {
-        case result: mutable.Map[_, _] =>
-          val mutableResult = result.asInstanceOf[mutable.Map[K, V]]
-          copyContext.reference(value, mutableResult.asInstanceOf[T])
-          copyEntries(copyContext, value, mutableResult)
-          mutableResult.asInstanceOf[T]
-        case _ =>
-          copyWithBuilder(copyContext, value, newCopyBuilder(value))
-      }
-    } else {
-      copyWithBuilder(copyContext, value, newCopyBuilder(value))
-    }
+    ScalaCollectionCopy.copyMap(
+      copyContext,
+      value,
+      isImmutable,
+      (map, _) => newCopyBuilder(map),
+      (map, size) => newMutableMapCopy(map, size))
   }
 
   protected def newCopyBuilder(value: T): mutable.Builder[(K, V), T] =
@@ -115,44 +106,6 @@ abstract class AbstractScalaMapSerializer[K, V, T <: scala.collection.Map[K, V]]
     builder.result()
   }
 
-  private def copyEntries(
-      copyContext: CopyContext,
-      value: T,
-      result: mutable.Map[K, V]): Unit = {
-    val iterator = value.iterator
-    while (iterator.hasNext) {
-      val entry = iterator.next()
-      result.addOne(
-        (
-          copyContext.copyObject(entry._1).asInstanceOf[K],
-          copyContext.copyObject(entry._2).asInstanceOf[V]))
-    }
-  }
-
-  private def copyWithBuilder(
-      copyContext: CopyContext,
-      value: T,
-      builder: mutable.Builder[(K, V), T]): T = {
-    val iterator = value.iterator
-    while (iterator.hasNext) {
-      val entry = iterator.next()
-      builder.addOne(
-        (
-          copyContext.copyObject(entry._1).asInstanceOf[K],
-          copyContext.copyObject(entry._2).asInstanceOf[V]))
-    }
-    // A recursive copy through a mutable child may already have constructed and registered the
-    // canonical immutable copy of this map. Reuse it instead of returning a second builder result
-    // that would split the cycle's identity.
-    val recursiveCopy = copyContext.getCopyObject(value)
-    if (recursiveCopy != null) {
-      recursiveCopy
-    } else {
-      val result = builder.result()
-      copyContext.reference(value, result)
-      result
-    }
-  }
 }
 
 /**

@@ -65,28 +65,12 @@ abstract class AbstractScalaXlangCollectionSerializer[A, T <: scala.collection.I
   }
 
   override def copy(copyContext: CopyContext, value: T): T = {
-    if (isImmutable) {
-      value
-    } else if (
-        value.isInstanceOf[mutable.IndexedSeq[_]] &&
-        !value.isInstanceOf[mutable.Growable[_]]) {
-      copyIndexedSeq(
-        copyContext,
-        value,
-        value.asInstanceOf[mutable.IndexedSeq[A]])
-    } else if (value.isInstanceOf[mutable.Iterable[_]]) {
-      newMutableCopy(value, value.size) match {
-        case result: mutable.Iterable[_] with mutable.Growable[_] =>
-          val growable = result.asInstanceOf[mutable.Iterable[A] with mutable.Growable[A]]
-          copyContext.reference(value, growable.asInstanceOf[T])
-          copyElements(copyContext, value, growable)
-          growable.asInstanceOf[T]
-        case _ =>
-          copyWithBuilder(copyContext, value, value.iterableFactory.newBuilder[A])
-      }
-    } else {
-      copyWithBuilder(copyContext, value, newBuilder(value.size))
-    }
+    ScalaCollectionCopy.copyIterable(
+      copyContext,
+      value,
+      isImmutable,
+      (_: T, size: Int) => newBuilder(size),
+      (collection, size) => newMutableCopy(collection, size))
   }
 
   protected def newMutableCopy(value: T, numElements: Int): scala.collection.Iterable[A] = {
@@ -95,51 +79,6 @@ abstract class AbstractScalaXlangCollectionSerializer[A, T <: scala.collection.I
     builder.result()
   }
 
-  private def copyElements(
-      copyContext: CopyContext,
-      value: T,
-      result: mutable.Growable[A]): Unit = {
-    val iterator = value.iterator
-    while (iterator.hasNext) {
-      result.addOne(copyContext.copyObject(iterator.next()).asInstanceOf[A])
-    }
-  }
-
-  private def copyWithBuilder(
-      copyContext: CopyContext,
-      value: T,
-      builder: mutable.Builder[A, _ <: scala.collection.Iterable[A]]): T = {
-    val iterator = value.iterator
-    while (iterator.hasNext) {
-      builder.addOne(copyContext.copyObject(iterator.next()).asInstanceOf[A])
-    }
-    val result = builder.result().asInstanceOf[T]
-    copyContext.reference(value, result)
-    result
-  }
-
-  private def copyIndexedSeq(
-      copyContext: CopyContext,
-      value: T,
-      indexed: mutable.IndexedSeq[A]): T = {
-    val result = indexed match {
-      case arraySeq: mutable.ArraySeq[_] =>
-        val sourceArray = arraySeq.array.asInstanceOf[AnyRef]
-        val array =
-          java.lang.reflect.Array.newInstance(sourceArray.getClass.getComponentType, indexed.size)
-        mutable.ArraySeq.make(array.asInstanceOf[Array[_]]).asInstanceOf[mutable.IndexedSeq[A]]
-      case _ =>
-        mutable.ArraySeq.make(new Array[Any](indexed.size)).asInstanceOf[mutable.IndexedSeq[A]]
-    }
-    val copied = result.asInstanceOf[T]
-    copyContext.reference(value, copied)
-    var i = 0
-    while (i < indexed.size) {
-      result.update(i, copyContext.copyObject(indexed(i)).asInstanceOf[A])
-      i += 1
-    }
-    copied
-  }
 }
 
 class ScalaXlangSeqSerializer[A, T <: scala.collection.Seq[A]](
@@ -391,21 +330,12 @@ abstract class AbstractScalaXlangMapSerializer[K, V, T <: scala.collection.Map[K
   override def onMapCopy(map: util.Map[_, _]): T = onMapRead(map)
 
   override def copy(copyContext: CopyContext, value: T): T = {
-    if (isImmutable) {
-      value
-    } else if (value.isInstanceOf[mutable.Map[_, _]]) {
-      newMutableMapCopy(value, value.size) match {
-        case result: mutable.Map[_, _] =>
-          val mutableResult = result.asInstanceOf[mutable.Map[K, V]]
-          copyContext.reference(value, mutableResult.asInstanceOf[T])
-          copyEntries(copyContext, value, mutableResult)
-          mutableResult.asInstanceOf[T]
-        case _ =>
-          copyWithBuilder(copyContext, value, value.mapFactory.newBuilder[K, V])
-      }
-    } else {
-      copyWithBuilder(copyContext, value, ScalaXlangCollectionShape.mapBuilder[K, V, T](cls, value.size))
-    }
+    ScalaCollectionCopy.copyMap(
+      copyContext,
+      value,
+      isImmutable,
+      (_: T, size: Int) => ScalaXlangCollectionShape.mapBuilder[K, V, T](cls, size),
+      (map, size) => newMutableMapCopy(map, size))
   }
 
   private def newMutableMapCopy(value: T, numElements: Int): scala.collection.Map[K, V] = {
@@ -414,37 +344,6 @@ abstract class AbstractScalaXlangMapSerializer[K, V, T <: scala.collection.Map[K
     builder.result()
   }
 
-  private def copyEntries(
-      copyContext: CopyContext,
-      value: T,
-      result: mutable.Map[K, V]): Unit = {
-    val iterator = value.iterator
-    while (iterator.hasNext) {
-      val entry = iterator.next()
-      result.addOne(
-        (
-          copyContext.copyObject(entry._1).asInstanceOf[K],
-          copyContext.copyObject(entry._2).asInstanceOf[V]))
-    }
-  }
-
-  private def copyWithBuilder(
-      copyContext: CopyContext,
-      value: T,
-      builder: mutable.Builder[(K, V), _ <: scala.collection.Map[K, V]])
-      : T = {
-    val iterator = value.iterator
-    while (iterator.hasNext) {
-      val entry = iterator.next()
-      builder.addOne(
-        (
-          copyContext.copyObject(entry._1).asInstanceOf[K],
-          copyContext.copyObject(entry._2).asInstanceOf[V]))
-    }
-    val result = builder.result().asInstanceOf[T]
-    copyContext.reference(value, result)
-    result
-  }
 }
 
 class ScalaXlangMapSerializer[K, V, T <: scala.collection.Map[K, V]](
