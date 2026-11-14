@@ -26,7 +26,7 @@ does not imply support for every Fory capability.
 | --------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | Xlang object serialization  | Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin | One shared xlang wire format                             |
 | Native object serialization | Java, Python, C++, Go, Rust, Scala, Kotlin                                         | One Fory implementation family only                      |
-| Standard Row Format         | Java, Python, C++, Rust                                                            | Shared Standard Row layout                               |
+| Standard Row Format         | Java, Python, C++, Rust, Swift                                                     | Shared Standard Row layout                               |
 | Compact Row Format          | Java                                                                               | Java-only compact layout                                 |
 | Fory JSON                   | Java, Kotlin, Scala                                                                | Standard JSON text                                       |
 | Fory compiler output        | Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin | Generated models use supported Fory APIs                 |

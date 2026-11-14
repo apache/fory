@@ -30,20 +30,20 @@ reconstruction as its primary access pattern.
 
 ## Choose a Layout
 
-| Layout       | Language support            | Compatibility                    |
-| ------------ | --------------------------- | -------------------------------- |
-| Standard Row | Java, Python, C++, Rust, Go | Shared Standard Row layout       |
-| Compact Row  | Java                        | Java-only, space-oriented layout |
+| Layout       | Language support                   | Compatibility                    |
+| ------------ | ---------------------------------- | -------------------------------- |
+| Standard Row | Java, Python, C++, Rust, Go, Swift | Shared Standard Row layout       |
+| Compact Row  | Java                               | Java-only, space-oriented layout |
 
 ## Standard Row
 
-Standard Row is the interoperable layout for Java, Python, C++, Rust, and Go.
+Standard Row is the interoperable layout for Java, Python, C++, Rust, Go, and Swift.
 
 ### Features
 
 - **Zero-copy random access**: Read selected fields directly from encoded data.
 - **Partial deserialization**: Reconstruct only the values an application needs.
-- **Cross-language compatibility**: Share Standard Row bytes between Java, Python, C++, Rust, and Go.
+- **Cross-language compatibility**: Share Standard Row bytes between Java, Python, C++, Rust, Go, and Swift.
 - **Apache Arrow integration**: Convert rows to Arrow data in Java and Python.
 
 ### Layout
@@ -62,6 +62,7 @@ layout, alignment rules, type table, and endianness are defined by the
 | C++      | Compatible                 | [C++](cpp.md)       | Native row readers and writers                         |
 | Rust     | Compatible                 | [Rust](rust.md)     | Borrowed struct, array, and map views                  |
 | Go       | Compatible                 | [Go](go.md)         | Reflection struct encoder; zero-copy row views         |
+| Swift    | Compatible                 | [Swift](swift.md)   | Macro-generated struct encoder; zero-copy row views    |
 
 Use the language guides for installation, schema construction, encoding, random access, partial
 reads, and language-specific integrations.
@@ -94,7 +95,7 @@ Reuse the encoder within one thread. Create separate encoders for concurrent thr
 - Fixed-size nested structs can be stored inline.
 
 Choose Compact Row only when every reader is Java and the space reduction justifies the
-Java-specific layout. Use Standard Row for Java, Python, C++, Rust, and Go interchange.
+Java-specific layout. Use Standard Row for Java, Python, C++, Rust, Go, and Swift interchange.
 
 See the [Row Format specification](../specification/row_format_spec.md) for the exact Standard and
 Compact binary layouts.

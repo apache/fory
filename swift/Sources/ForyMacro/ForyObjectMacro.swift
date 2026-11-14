@@ -36,7 +36,8 @@ struct ForySwiftPlugin: CompilerPlugin {
         SetFieldMacro.self,
         MapFieldMacro.self,
         ForyCaseMacro.self,
-        ForyUnknownCaseMacro.self
+        ForyUnknownCaseMacro.self,
+        ForyRowMacro.self
     ]
 }
 
@@ -344,7 +345,7 @@ public struct ForyUnknownCaseMacro: PeerMacro {
     }
 }
 
-private func serializerMemberAccessPrefix(_ declaration: some DeclGroupSyntax) -> String {
+func serializerMemberAccessPrefix(_ declaration: some DeclGroupSyntax) -> String {
     let isPublicType = declaration.modifiers.contains(where: { modifier in
         modifier.name.tokenKind == .keyword(.public) || modifier.name.tokenKind == .keyword(.open)
     })

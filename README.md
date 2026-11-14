@@ -844,7 +844,8 @@ deserialization, see the [Java row-format guide](docs/row-format/java.md),
 [Python row-format guide](docs/row-format/python.md),
 [C++ row-format guide](docs/row-format/cpp.md),
 [Rust row-format guide](docs/row-format/rust.md),
-[Go row-format guide](docs/row-format/go.md), and
+[Go row-format guide](docs/row-format/go.md),
+[Swift row-format guide](docs/row-format/swift.md), and
 [row-format specification](docs/specification/row_format_spec.md).
 
 ## Fory JSON

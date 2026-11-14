@@ -819,39 +819,7 @@ public final class ByteBuffer {
             guard let base = buffer.baseAddress else {
                 return nil
             }
-            let utf8Base = base.advanced(by: start)
-            let utf8Bytes = UnsafeBufferPointer(start: utf8Base, count: count)
-            var index = 0
-            var isASCII = true
-            // An ASCII byte has a clear high bit, so this mask checks eight bytes at once
-            // regardless of native byte order. The bounded loop makes the unaligned load safe.
-            while index <= count - MemoryLayout<UInt64>.size {
-                let word = UnsafeRawPointer(utf8Base.advanced(by: index))
-                    .loadUnaligned(as: UInt64.self)
-                if word & 0x8080_8080_8080_8080 != 0 {
-                    isASCII = false
-                    break
-                }
-                index += MemoryLayout<UInt64>.size
-            }
-            if isASCII {
-                while index < count {
-                    if utf8Bytes[index] >= 0x80 {
-                        isASCII = false
-                        break
-                    }
-                    index += 1
-                }
-            }
-            if isASCII {
-                // ASCII bytes are always valid UTF-8.
-                // swiftlint:disable:next optional_data_string_conversion
-                return String(decoding: utf8Bytes, as: UTF8.self)
-            }
-            if #available(macOS 15.0, iOS 18.0, tvOS 18.0, watchOS 11.0, visionOS 2.0, *) {
-                return String(validating: utf8Bytes, as: UTF8.self)
-            }
-            return String(bytes: utf8Bytes, encoding: .utf8)
+            return decodeValidatedUTF8(UnsafeBufferPointer(start: base.advanced(by: start), count: count))
         }
         guard let decoded else {
             throw ForyError.invalidData("invalid UTF-8 sequence")
@@ -874,4 +842,68 @@ public final class ByteBuffer {
             return Data(bytes: baseAddress, count: rawBytes.count)
         }
     }
+}
+
+extension ByteBuffer {
+
+    // For row support, a writer first reserves the fixed slots and patches them in place later.
+    // This appends `count` zero bytes and returns the absolute offset of the first one.
+    @inlinable
+    @inline(__always)
+    internal func appendZeros(_ count: Int) -> Int {
+        let start = storage.count
+        storage.append(contentsOf: repeatElement(0, count: count))
+        return start
+    }
+
+    // Writes `value` at `offset` with the smallest byte first, replacing the bytes already there.
+    // Row writers use this to fill a slot they reserved earlier. The offset doesn't need to be
+    // aligned, but those bytes must already exist.
+    @inlinable
+    @inline(__always)
+    internal func storeLittleEndian<T: FixedWidthInteger>(_ value: T, at offset: Int) {
+        storage.withUnsafeMutableBytes { raw in
+            raw.storeBytes(of: value.littleEndian, toByteOffset: offset, as: T.self)
+        }
+    }
+}
+
+@inlinable
+@inline(__always)
+internal func decodeValidatedUTF8(_ utf8Bytes: UnsafeBufferPointer<UInt8>) -> String? {
+    guard let utf8Base = utf8Bytes.baseAddress else {
+        return ""
+    }
+    let count = utf8Bytes.count
+    var index = 0
+    var isASCII = true
+    // An ASCII byte has a clear high bit, so this mask checks eight bytes at once
+    // regardless of native byte order. The bounded loop makes the unaligned load safe.
+    while index <= count - MemoryLayout<UInt64>.size {
+        let word = UnsafeRawPointer(utf8Base.advanced(by: index))
+            .loadUnaligned(as: UInt64.self)
+        if word & 0x8080_8080_8080_8080 != 0 {
+            isASCII = false
+            break
+        }
+        index += MemoryLayout<UInt64>.size
+    }
+    if isASCII {
+        while index < count {
+            if utf8Bytes[index] >= 0x80 {
+                isASCII = false
+                break
+            }
+            index += 1
+        }
+    }
+    if isASCII {
+        // ASCII bytes are always valid UTF-8.
+        // swiftlint:disable:next optional_data_string_conversion
+        return String(decoding: utf8Bytes, as: UTF8.self)
+    }
+    if #available(macOS 15.0, iOS 18.0, tvOS 18.0, watchOS 11.0, visionOS 2.0, *) {
+        return String(validating: utf8Bytes, as: UTF8.self)
+    }
+    return String(bytes: utf8Bytes, encoding: .utf8)
 }
