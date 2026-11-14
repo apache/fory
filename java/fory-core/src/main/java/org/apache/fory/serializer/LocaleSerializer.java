@@ -22,19 +22,60 @@ package org.apache.fory.serializer;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import org.apache.fory.collection.Tuple3;
+import java.util.Objects;
 import org.apache.fory.config.Config;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 
 /** Local serializer for {@link Locale}. */
 public final class LocaleSerializer extends ImmutableSerializer<Locale> implements Shareable {
-  // Using `new HashMap<>` to ensure thread safety by java constructor semantics.
-  private static final Map<Tuple3<String, String, String>, Locale> LOCALE_CACHE =
-      new HashMap<>(createCacheMap());
+  private static final class LocaleKey {
+    private final String language;
+    private final String country;
+    private final String variant;
+    private final String script;
+    private final Map<Character, String> extensions;
 
-  static Map<Tuple3<String, String, String>, Locale> createCacheMap() {
-    Map<Tuple3<String, String, String>, Locale> map = new HashMap<>();
+    private LocaleKey(
+        String language,
+        String country,
+        String variant,
+        String script,
+        Map<Character, String> extensions) {
+      this.language = language;
+      this.country = country;
+      this.variant = variant;
+      this.script = script;
+      this.extensions = extensions;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (!(o instanceof LocaleKey)) {
+        return false;
+      }
+      LocaleKey other = (LocaleKey) o;
+      return language.equals(other.language)
+          && country.equals(other.country)
+          && variant.equals(other.variant)
+          && script.equals(other.script)
+          && extensions.equals(other.extensions);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(language, country, variant, script, extensions);
+    }
+  }
+
+  // Using `new HashMap<>` to ensure thread safety by java constructor semantics.
+  private static final Map<LocaleKey, Locale> LOCALE_CACHE = new HashMap<>(createCacheMap());
+
+  static Map<LocaleKey, Locale> createCacheMap() {
+    Map<LocaleKey, Locale> map = new HashMap<>();
     populateMap(map, Locale.US);
     populateMap(map, Locale.SIMPLIFIED_CHINESE);
     populateMap(map, Locale.CHINESE);
@@ -62,8 +103,19 @@ public final class LocaleSerializer extends ImmutableSerializer<Locale> implemen
     return map;
   }
 
-  private static void populateMap(Map<Tuple3<String, String, String>, Locale> map, Locale locale) {
-    map.put(Tuple3.of(locale.getCountry(), locale.getLanguage(), locale.getVariant()), locale);
+  private static void populateMap(Map<LocaleKey, Locale> map, Locale locale) {
+    Map<Character, String> extensions = new HashMap<>();
+    for (Character key : locale.getExtensionKeys()) {
+      extensions.put(key, locale.getExtension(key));
+    }
+    map.put(
+        new LocaleKey(
+            locale.getLanguage(),
+            locale.getCountry(),
+            locale.getVariant(),
+            locale.getScript(),
+            extensions),
+        locale);
   }
 
   public LocaleSerializer(Config config) {
@@ -74,33 +126,73 @@ public final class LocaleSerializer extends ImmutableSerializer<Locale> implemen
     writeContext.writeString(l.getLanguage());
     writeContext.writeString(l.getCountry());
     writeContext.writeString(l.getVariant());
+    writeContext.writeString(l.getScript());
+    writeContext.writeInt32(l.getExtensionKeys().size());
+    for (Character key : l.getExtensionKeys()) {
+      writeContext.writeChar(key);
+      writeContext.writeString(l.getExtension(key));
+    }
   }
 
   public Locale read(ReadContext readContext) {
     String language = readContext.readString();
     String country = readContext.readString();
     String variant = readContext.readString();
-    // Fast path for Default/US/SIMPLIFIED_CHINESE
+    String script = readContext.readString();
+    int extensionCount = readContext.readInt32();
+
+    Map<Character, String> extensions = new HashMap<>();
+    for (int i = 0; i < extensionCount; i++) {
+      Character key = readContext.readChar();
+      String value = readContext.readString();
+      extensions.put(key, value);
+    }
+
     Locale defaultLocale = Locale.getDefault();
-    if (isSame(defaultLocale, language, country, variant)) {
+    if (isSame(defaultLocale, language, country, variant, script, extensions)) {
       return defaultLocale;
     }
-    if (defaultLocale != Locale.US && isSame(Locale.US, language, country, variant)) {
+    if (defaultLocale != Locale.US
+        && isSame(Locale.US, language, country, variant, script, extensions)) {
       return Locale.US;
     }
-    if (isSame(Locale.SIMPLIFIED_CHINESE, language, country, variant)) {
+    if (isSame(Locale.SIMPLIFIED_CHINESE, language, country, variant, script, extensions)) {
       return Locale.SIMPLIFIED_CHINESE;
     }
-    Object o = LOCALE_CACHE.get(Tuple3.of(language, country, variant));
-    if (o != null) {
-      return (Locale) o;
+
+    Locale cached = LOCALE_CACHE.get(new LocaleKey(language, country, variant, script, extensions));
+
+    if (cached != null) {
+      return cached;
     }
-    return new Locale(language, country, variant);
+
+    Locale.Builder builder =
+        new Locale.Builder()
+            .setLanguage(language)
+            .setRegion(country)
+            .setVariant(variant)
+            .setScript(script);
+    for (Map.Entry<Character, String> entry : extensions.entrySet()) {
+      builder.setExtension(entry.getKey(), entry.getValue());
+    }
+
+    return builder.build();
   }
 
-  static boolean isSame(Locale locale, String language, String country, String variant) {
-    return (locale.getLanguage().equals(language)
+  static boolean isSame(
+      Locale locale,
+      String language,
+      String country,
+      String variant,
+      String script,
+      Map<Character, String> extensions) {
+
+    return locale.getLanguage().equals(language)
         && locale.getCountry().equals(country)
-        && locale.getVariant().equals(variant));
+        && locale.getVariant().equals(variant)
+        && locale.getScript().equals(script)
+        && locale.getExtensionKeys().equals(extensions.keySet())
+        && extensions.entrySet().stream()
+            .allMatch(entry -> entry.getValue().equals(locale.getExtension(entry.getKey())));
   }
 }
