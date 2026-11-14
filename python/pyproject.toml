@@ -56,9 +56,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+inspect = ["PyYAML>=6.0"]
 format = ["pyarrow"]
-all = ["pyarrow"]
+all = ["pyarrow", "PyYAML>=6.0"]
 dev = [
+    "PyYAML>=6.0",
     "ruff",
     "pytest",
     "setuptools>=78.1.1; python_version >= '3.9'",
