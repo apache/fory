@@ -165,3 +165,23 @@ class ScalaSortedMapSerializer[K, V, T <: scala.collection.SortedMap[K, V]](
     new MapAdapter[K, V](value)
   }
 }
+
+/**
+ * Serializer for Scala map kinds whose generic `mapFactory` builds a different class, such as
+ * `IntMap` or `LongMap`. `factory` is the kind's own factory, chosen once per class by
+ * [[SpecificCollectionSerializers]].
+ */
+class ScalaSpecificMapSerializer[K, V, T <: scala.collection.Map[K, V]](
+    typeResolver: TypeResolver,
+    cls: Class[T],
+    factory: Factory[(K, V), T])
+  extends AbstractScalaMapSerializer[K, V, T](typeResolver, cls) {
+  override def onMapWrite(
+      writeContext: WriteContext,
+      value: T): util.Map[_, _] = {
+    val buffer = writeContext.getBuffer
+    buffer.writeVarUInt32Small7(value.size)
+    writeContext.writeRef(factory)
+    new MapAdapter[K, V](value)
+  }
+}

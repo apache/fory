@@ -55,6 +55,10 @@ public class ScalaSerializerFactory implements SerializerFactory {
         return new ScalaXlangCollectionSerializer(typeResolver, clz);
       }
     }
+    Serializer specific = SpecificCollectionSerializers.createSerializer(typeResolver, clz);
+    if (specific != null) {
+      return specific;
+    }
     // Many map/seq/set types doesn't extends DefaultSerializable.
     if (scala.collection.SortedMap.class.isAssignableFrom(clz)) {
       return new ScalaSortedMapSerializer(typeResolver, clz);

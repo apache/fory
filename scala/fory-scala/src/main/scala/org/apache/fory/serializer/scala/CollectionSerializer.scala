@@ -200,3 +200,23 @@ class ScalaSeqSerializer[A, T <: scala.collection.Seq[A]](
     new ListAdapter[Any](value)
   }
 }
+
+/**
+ * Serializer for Scala collection kinds whose generic `iterableFactory` or
+ * `sortedIterableFactory` builds a different class, such as `BitSet` or a primitive `ArraySeq`.
+ * `factory` is the kind's own factory, chosen once per class by [[SpecificCollectionSerializers]].
+ */
+class ScalaSpecificCollectionSerializer[A, T <: Iterable[A]](
+    typeResolver: TypeResolver,
+    cls: Class[T],
+    factory: Factory[A, T])
+  extends AbstractScalaCollectionSerializer[A, T](typeResolver, cls) {
+  override def onCollectionWrite(
+      writeContext: WriteContext,
+      value: T): util.Collection[_] = {
+    val buffer = writeContext.getBuffer
+    buffer.writeVarUInt32Small7(value.size)
+    writeContext.writeRef(factory)
+    new CollectionAdapter[A, T](value)
+  }
+}
