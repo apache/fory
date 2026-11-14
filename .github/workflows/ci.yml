@@ -2101,7 +2101,7 @@ jobs:
           }
           EOF
           cat <<'EOF' | sed 's/^          //' > "$FLUTTER_SMOKE_DIR/lib/main.dart"
-          import 'package:flutter/material.dart';
+          import 'package:flutter/widgets.dart';
 
           import 'person.dart';
 
