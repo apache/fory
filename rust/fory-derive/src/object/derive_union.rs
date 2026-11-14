@@ -18,7 +18,7 @@
 use super::util::{enum_variant_id, has_fory_unknown_attr, is_runtime_unknown_variant};
 use syn::{Attribute, Data, DataEnum, DeriveInput, Fields};
 
-pub(crate) fn validate_input(input: &DeriveInput) -> syn::Result<()> {
+pub(crate) fn validate_input(input: &DeriveInput, native: bool) -> syn::Result<()> {
     let Data::Enum(data_enum) = &input.data else {
         return Err(syn::Error::new(
             input.ident.span(),
@@ -34,6 +34,14 @@ pub(crate) fn validate_input(input: &DeriveInput) -> syn::Result<()> {
             input.ident.span(),
             "ForyUnion requires at least one payload variant; use ForyEnum for pure unit enums",
         ));
+    }
+    if native {
+        if let Some(variant) = data_enum.variants.iter().find(|v| has_fory_unknown_attr(v)) {
+            return Err(syn::Error::new(
+                variant.ident.span(),
+                "#[fory(native)] ForyUnion enums cannot declare #[fory(unknown)]; unknown-case carriers belong to xlang unions",
+            ));
+        }
     }
     if let Some(variant) = data_enum.variants.iter().find(|variant| {
         has_fory_unknown_attr(variant)
@@ -56,7 +64,10 @@ pub(crate) fn validate_input(input: &DeriveInput) -> syn::Result<()> {
             "ForyUnion must declare exactly one #[fory(unknown)] carrier",
         ));
     }
-    if is_typed_adt_union(data_enum) && !data_enum.variants.iter().any(is_runtime_unknown_variant) {
+    if !native
+        && is_typed_adt_union(data_enum)
+        && !data_enum.variants.iter().any(is_runtime_unknown_variant)
+    {
         return Err(syn::Error::new(
             input.ident.span(),
             "ForyUnion typed ADT unions require a #[fory(unknown)] carrier with one UnknownCase field",
@@ -223,7 +234,7 @@ mod tests {
             }
         );
 
-        let error = validate_input(&input).unwrap_err();
+        let error = validate_input(&input, false).unwrap_err();
         assert!(error
             .to_string()
             .contains("unknown case must have #[fory(unknown)]"));
@@ -241,7 +252,7 @@ mod tests {
                 Text(String),
             }
         );
-        let error = validate_input(&input).unwrap_err();
+        let error = validate_input(&input, false).unwrap_err();
         assert!(error
             .to_string()
             .contains("exactly one #[fory(unknown)] carrier"));
@@ -256,10 +267,40 @@ mod tests {
             }
         );
 
-        let error = validate_input(&input).unwrap_err();
+        let error = validate_input(&input, false).unwrap_err();
         assert!(error
             .to_string()
             .contains("ForyUnion typed ADT unions require"));
+    }
+
+    #[test]
+    fn native_union_needs_no_carrier() {
+        let input: DeriveInput = parse_quote!(
+            enum NativeUnion {
+                #[fory(default)]
+                Empty,
+                Dog(String),
+            }
+        );
+
+        validate_input(&input, true).unwrap();
+    }
+
+    #[test]
+    fn native_union_rejects_carrier() {
+        let input: DeriveInput = parse_quote!(
+            enum NativeUnion {
+                #[fory(unknown)]
+                Unknown(::fory::UnknownCase),
+                #[fory(default)]
+                Dog(String),
+            }
+        );
+
+        let error = validate_input(&input, true).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("cannot declare #[fory(unknown)]"));
     }
 
     #[test]
@@ -272,7 +313,7 @@ mod tests {
             }
         );
 
-        let error = validate_input(&input).unwrap_err();
+        let error = validate_input(&input, false).unwrap_err();
         assert!(error
             .to_string()
             .contains("ForyUnion typed ADT unions require"));
@@ -291,7 +332,7 @@ mod tests {
             }
         );
 
-        let error = validate_input(&input).unwrap_err();
+        let error = validate_input(&input, false).unwrap_err();
         assert!(error.to_string().contains("duplicate ForyUnion case id 0"));
     }
 
@@ -308,7 +349,7 @@ mod tests {
             }
         );
 
-        let error = validate_input(&input).unwrap_err();
+        let error = validate_input(&input, false).unwrap_err();
         assert!(error.to_string().contains("duplicate ForyUnion case id 0"));
     }
 }
