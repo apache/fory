@@ -180,7 +180,8 @@ public sealed class ClassInheritanceTests
             .Compatible(compatible)
             .TrackRef(trackRef)
             .Build()
-            .Register<InheritedLeaf>(6401);
+            .Register<InheritedLeaf>(6401)
+            .Register<InheritedMiddle>(6408);
         InheritedLeaf value = new()
         {
             PublicValue = 13,
@@ -205,7 +206,6 @@ public sealed class ClassInheritanceTests
         Assert.Equal(23, decoded.HiddenValue);
         Assert.Equal(trackRef, ReferenceEquals(decoded, decoded.Self));
 
-        fory.Register<InheritedMiddle>(6408);
         InheritedMiddle middle = new()
         {
             PublicValue = 29,
