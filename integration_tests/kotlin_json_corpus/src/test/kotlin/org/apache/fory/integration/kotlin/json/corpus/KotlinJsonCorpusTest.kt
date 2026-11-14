@@ -48,6 +48,22 @@ public class KotlinJsonCorpusTest {
   }
 
   @Test
+  public fun mixinRepeatedDefaults(): Unit {
+    for (codegen in listOf(false, true)) {
+      val json =
+        ForyJsonKotlin.builder()
+          .withCodegen(codegen)
+          .withAsyncCompilation(false)
+          .registerMixin(PlatformMixinDefaults::class.java)
+          .build()
+      val value = PlatformMixinDefaultsTarget(PlatformToken("a"), PlatformLabel("b"))
+      val text = json.toJson(value)
+      assertEquals(text, "{\"token\":\"t:a\",\"label\":\"l:b\"}")
+      assertEquals(json.fromJson(text, PlatformMixinDefaultsTarget::class.java), value)
+    }
+  }
+
+  @Test
   public fun sharedRoundTrip(): Unit {
     val json =
       ForyJsonKotlin.builder()

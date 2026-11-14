@@ -25,6 +25,7 @@ import com.google.devtools.ksp.processing.KSPLogger
 import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.processing.SymbolProcessor
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
+import com.google.devtools.ksp.symbol.ClassKind
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.validate
@@ -58,6 +59,26 @@ internal class ForyJsonKotlinSymbolProcessor(environment: SymbolProcessorEnviron
       if (!generatedRequests.add(R8RulesWriter.resourcePath(model))) continue
       write(model)
     }
+    // The runtime reads JsonDefaultCodec from classes only; a Mixin source may still supply it.
+    sequenceOf(JSON_DEFAULT_CODEC_NAME, "$JSON_DEFAULT_CODEC_NAME.List")
+      .flatMap(resolver::getSymbolsWithAnnotation)
+      .filterIsInstance<KSClassDeclaration>()
+      .filter {
+        it.classKind == ClassKind.INTERFACE ||
+          it.classKind == ClassKind.ENUM_CLASS ||
+          it.classKind == ClassKind.ANNOTATION_CLASS
+      }
+      .filter { declaration ->
+        declaration.annotations.none {
+          it.annotationType.resolve().declaration.qualifiedName?.asString() == JSON_MIXIN
+        }
+      }
+      .forEach {
+        logger.error(
+          "@JsonDefaultCodec is read from classes only, not from interfaces, enums, or annotation types",
+          it
+        )
+      }
     for (symbol in resolver.getSymbolsWithAnnotation(JSON_MIXIN)) {
       if (!symbol.validate()) {
         deferred += symbol
@@ -102,3 +123,5 @@ internal class ForyJsonKotlinSymbolProcessor(environment: SymbolProcessorEnviron
       }
   }
 }
+
+private const val JSON_DEFAULT_CODEC_NAME = "org.apache.fory.json.annotation.JsonDefaultCodec"

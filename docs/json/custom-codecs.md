@@ -266,6 +266,63 @@ The child members have these meanings:
 | `keyCodec`     | `Map<K, V>`                                       | JSON member name for `K`          |
 | `valueCodec`   | `Map<K, V>`                                       | direct `V` value                  |
 
+### Class defaults with `JsonDefaultCodec`
+
+Use `@JsonDefaultCodec` on a class when every property of one type needs the same occurrence codec.
+Built-in scalar types such as `BigDecimal` cannot be registered with `registerCodec`, so this is
+the way to give them one representation across a model without annotating each property:
+
+```java
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Optional;
+import org.apache.fory.json.annotation.JsonDefaultCodec;
+
+@JsonDefaultCodec(type = BigDecimal.class, codec = PlainDecimalCodec.class)
+public class Invoice {
+  public BigDecimal total; // PlainDecimalCodec
+  public Optional<BigDecimal> discount; // contentCodec = PlainDecimalCodec
+  public List<BigDecimal> lines; // elementCodec = PlainDecimalCodec
+  @JsonCodec(OtherDecimalCodec.class)
+  public BigDecimal tax; // the property declaration wins
+}
+```
+
+`type` names the raw property type and `codec` the codec used for it. Repeat the annotation for
+several types; one class may name each type at most once, and a primitive and its wrapper are the
+same type. Type arguments are not part of the match, so `type = List.class` covers every `List`
+property; use a property `JsonCodec` where one parameterization needs its own codec.
+
+A property or creator parameter whose raw type equals `type` uses the codec as if it declared
+`@JsonCodec(value = ...)`.
+
+Otherwise a `type` equal to the direct child of an object array, `Collection`,
+`AtomicReferenceArray`, `Optional`, `AtomicReference`, or the value of a `Map` fills the matching
+child member from the table above; a language module's own containers, such as Scala `Option` or
+`Seq`, are not filled, and neither are primitive arrays, so a `Byte` default leaves `byte[]` to
+`byteArrayFormat`. A child is filled only where the container keeps its standard mapping: a
+registered codec or factory, a module, or a type declaration that owns the container keeps it
+unchanged. Deeper nesting is not searched, and a wildcard child such as `List<? extends Shape>`
+or an unresolved type variable such as `List<T>` in a raw generic class keeps its mapping, as an
+explicit child member would reject it.
+
+A default codec is used exactly like a property `JsonCodec`, so it receives and owns null as
+described above for every property it reaches. Properties that declare `JsonCodec`, `JsonFormat`,
+`JsonByteArray`, `JsonRawValue`, or `JsonUnwrapped`, and JSON Any properties, do not use defaults;
+there is no separate per-property opt-out.
+A value-class property read and written through its unboxed carrier cannot take a codec, so a
+default that matches one fails like a declared `JsonCodec`; a nullable or container occurrence of
+the value class is boxed and uses the default. A `type` that is a Kotlin unsigned type, which the
+Kotlin module carries as a tagged primitive, is rejected.
+
+Defaults declared on superclasses apply to the subclass, and a subclass default for the same type
+replaces the inherited one. Defaults stop at the class boundary: a nested object type uses its own
+declarations. A declaration on an interface is rejected; the build-time processors also reject
+one on an enum or annotation type, which never gets an object mapping. An exact-target Mixin may
+supply or replace the annotation; a Mixin that supplies or removes either the single or the
+repeated form replaces both forms declared on the target, and a removal also drops the defaults
+inherited from superclasses.
+
 ### Kotlin occurrences
 
 Kotlin uses the same codec registrations and `JsonCodec` annotation. Apply property annotations to
@@ -352,13 +409,13 @@ The first `JsonAnySetter` parameter is the String property name. Its second para
 
 Fory resolves each current value in this order:
 
-| Priority | Source                                            |
-| -------: | ------------------------------------------------- |
-|        1 | Current property or parameter `JsonCodec`         |
-|        2 | Exact `registerCodec` registration                |
-|        3 | Exact-target type `JsonCodec` after Mixin overlay |
-|        4 | Inherited-frontier type `JsonCodec` declaration   |
-|        5 | Built-in or default JSON mapping                  |
+| Priority | Source                                                                   |
+| -------: | ------------------------------------------------------------------------ |
+|        1 | Current property or parameter `JsonCodec`, else class `JsonDefaultCodec` |
+|        2 | Exact `registerCodec` registration                                       |
+|        3 | Exact-target type `JsonCodec` after Mixin overlay                        |
+|        4 | Inherited-frontier type `JsonCodec` declaration                          |
+|        5 | Built-in or default JSON mapping                                         |
 
 One logical property may expose the annotation from its field, getter, setter parameter, creator
 parameter, or record propagation. Repeated configurations must be identical; Fory does not merge

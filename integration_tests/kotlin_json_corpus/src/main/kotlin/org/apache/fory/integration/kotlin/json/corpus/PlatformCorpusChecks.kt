@@ -37,6 +37,16 @@ public object PlatformCorpusChecks {
         )
         .values == listOf("kept")
     )
+    val defaults = PlatformDefaultCodecs(PlatformToken("a"), listOf(PlatformToken("b")))
+    val defaultsText = json.toJson(defaults)
+    check(defaultsText == "{\"token\":\"t:a\",\"tokens\":[\"t:b\"]}") { defaultsText }
+    check(json.fromJson(defaultsText, PlatformDefaultCodecs::class.java) == defaults)
+    val inherited = PlatformInheritedDefaults(PlatformToken("c"))
+    check(json.toJson(inherited) == "{\"token\":\"t:c\"}") { json.toJson(inherited) }
+    check(json.fromJson("{\"token\":\"t:c\"}", PlatformInheritedDefaults::class.java) == inherited)
+    val container = PlatformContainerDefaults(PlatformToken("d"))
+    check(json.toJson(container) == "{\"token\":\"t:d\"}") { json.toJson(container) }
+    check(json.fromJson("{\"token\":\"t:d\"}", PlatformContainerDefaults::class.java) == container)
     val type = KotlinJsonCorpus.rootType()
     val decoded = json.fromJson(KotlinJsonCorpus.rootJson(), type)
     verifyRoot(decoded)

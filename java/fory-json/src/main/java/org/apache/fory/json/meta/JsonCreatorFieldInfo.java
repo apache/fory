@@ -33,6 +33,7 @@ import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.resolver.JsonDefaultCodecs;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
@@ -46,6 +47,7 @@ public final class JsonCreatorFieldInfo {
   private final TypeRef<?> typeRef;
   private final Class<?> rawType;
   private final JsonCodec codecAnnotation;
+  private final JsonDefaultCodecs.Selection defaultCodec;
   private final Class<? extends JsonValueCodec<?>> valueCodecClass;
   private final JsonFormat formatAnnotation;
   private final boolean unboxedRequired;
@@ -67,6 +69,32 @@ public final class JsonCreatorFieldInfo {
       boolean unboxedRequired,
       NullHandling onNullRead,
       NullHandling onContentNullRead) {
+    this(
+        name,
+        argumentIndex,
+        typeRef,
+        rawType,
+        codecAnnotation,
+        null,
+        valueCodecClass,
+        formatAnnotation,
+        unboxedRequired,
+        onNullRead,
+        onContentNullRead);
+  }
+
+  public JsonCreatorFieldInfo(
+      String name,
+      int argumentIndex,
+      TypeRef<?> typeRef,
+      Class<?> rawType,
+      JsonCodec codecAnnotation,
+      JsonDefaultCodecs.Selection defaultCodec,
+      Class<? extends JsonValueCodec<?>> valueCodecClass,
+      JsonFormat formatAnnotation,
+      boolean unboxedRequired,
+      NullHandling onNullRead,
+      NullHandling onContentNullRead) {
     this.onNullRead = onNullRead;
     this.onContentNullRead = onContentNullRead;
     this.name = name;
@@ -75,10 +103,15 @@ public final class JsonCreatorFieldInfo {
     this.typeRef = typeRef;
     this.rawType = rawType;
     this.codecAnnotation = codecAnnotation;
+    this.defaultCodec = defaultCodec;
     this.valueCodecClass = valueCodecClass;
     this.formatAnnotation = formatAnnotation;
     this.unboxedRequired = unboxedRequired;
-    selectedCodec = codecAnnotation != null || valueCodecClass != null || formatAnnotation != null;
+    selectedCodec =
+        codecAnnotation != null
+            || defaultCodec != null
+            || valueCodecClass != null
+            || formatAnnotation != null;
   }
 
   public String name() {
@@ -112,6 +145,7 @@ public final class JsonCreatorFieldInfo {
         typeRef,
         rawType,
         codecAnnotation,
+        defaultCodec,
         valueCodecClass,
         formatAnnotation,
         unboxedRequired,
@@ -157,7 +191,8 @@ public final class JsonCreatorFieldInfo {
           "JSON creator property "
               + name
               + " cannot select a codec or format for the unboxed logical type "
-              + typeRef);
+              + typeRef
+              + (defaultCodec == null ? "" : " selected by the class @JsonDefaultCodec"));
     }
     JsonTypeInfo canonical =
         resolver.withContentNullRead(resolver.getTypeInfo(typeRef), onContentNullRead);
@@ -187,9 +222,11 @@ public final class JsonCreatorFieldInfo {
   private JsonTypeInfo selectedTypeInfo(JsonTypeResolver resolver) {
     return codecAnnotation != null
         ? resolver.getTypeInfo(typeRef, codecAnnotation)
-        : valueCodecClass != null
-            ? resolver.getTypeInfo(typeRef, valueCodecClass)
-            : resolver.getTypeInfo(typeRef, formatAnnotation);
+        : defaultCodec != null
+            ? resolver.getTypeInfo(typeRef, defaultCodec)
+            : valueCodecClass != null
+                ? resolver.getTypeInfo(typeRef, valueCodecClass)
+                : resolver.getTypeInfo(typeRef, formatAnnotation);
   }
 
   public Object readLatin1(Latin1JsonReader reader) {

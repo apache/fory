@@ -48,6 +48,7 @@ import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonDefaultCodec;
 import org.apache.fory.json.annotation.JsonDuplicateProperties;
 import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonIgnore;
@@ -74,6 +75,8 @@ final class JsonMixinAnnotations {
         JsonByteArray.class,
         JsonCodec.class,
         JsonCreator.class,
+        JsonDefaultCodec.class,
+        JsonDefaultCodec.List.class,
         JsonDuplicateProperties.class,
         JsonFormat.class,
         JsonIgnore.class,
@@ -510,6 +513,13 @@ final class JsonMixinAnnotations {
     boolean removed(AnnotatedElement target, Class<? extends Annotation> annotationType) {
       ElementOverlay overlay = declarations.get(target);
       return overlay != null && overlay.removals.contains(annotationType);
+    }
+
+    boolean overrides(AnnotatedElement target, Class<? extends Annotation> annotationType) {
+      ElementOverlay overlay = declarations.get(target);
+      return overlay != null
+          && (overlay.replacements.containsKey(annotationType)
+              || overlay.removals.contains(annotationType));
     }
   }
 
