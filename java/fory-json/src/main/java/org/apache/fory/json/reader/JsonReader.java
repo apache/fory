@@ -1326,8 +1326,10 @@ public abstract class JsonReader {
       position = start;
       value = readBigIntegerToken();
     } else {
-      value =
-          truncatedDecimal(start, MAX_BIG_NUMBER_LENGTH, "Integer part is too long").toBigInteger();
+      // An exponent must not expand a short token into a much longer integer: bound the integral
+      // digits by the token length, with the long range as the minimum allowance.
+      int maxDigits = Math.min(MAX_BIG_NUMBER_LENGTH, Math.max(position - start, LONG_MAX_DIGITS));
+      value = truncatedDecimal(start, maxDigits, "Integer part is too long").toBigInteger();
     }
     if (quoted) {
       finishQuotedScalar();
@@ -1346,7 +1348,9 @@ public abstract class JsonReader {
     try {
       decimal = new BigDecimal(slice(start, position));
     } catch (NumberFormatException e) {
-      if (zeroMantissa(start)) {
+      // The exponent is outside the int range; a zero mantissa or a negative exponent still
+      // truncates to zero because the token holds at most MAX_BIG_NUMBER_LENGTH digits.
+      if (zeroMantissa(start) || negativeExponent(start)) {
         return BigDecimal.ZERO;
       }
       throw errorAt("Number exponent is out of range", start);
@@ -1372,6 +1376,16 @@ public abstract class JsonReader {
       }
     }
     return true;
+  }
+
+  private boolean negativeExponent(int start) {
+    for (int i = start; i < position; i++) {
+      char ch = charAt(i);
+      if (ch == 'e' || ch == 'E') {
+        return i + 1 < position && charAt(i + 1) == '-';
+      }
+    }
+    return false;
   }
 
   // String content may contain raw spaces but no raw control characters, so lenient padding inside

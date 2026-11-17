@@ -339,6 +339,15 @@ public class JsonLenientTest extends ForyJsonTestModels {
       assertEquals(imp.d, 0d);
       assertEquals(imp.nums, Arrays.asList(null, 1));
       assertNull(imp.sizes);
+      imp =
+          read(
+              json,
+              "{\"sizes\":\" \",\"nums\":\" \",\"cat\":\" \"}",
+              LenientImp.class,
+              representation);
+      assertNull(imp.sizes);
+      assertNull(imp.nums);
+      assertEquals(imp.cat, Collections.singletonList(" "));
     }
   }
 
@@ -367,16 +376,19 @@ public class JsonLenientTest extends ForyJsonTestModels {
     assertRejected(json, "{\"b\":128.5}", LenientImp.class, "Byte overflow");
     assertRejected(json, "{\"l\":1e999999999}", LenientImp.class, "Long overflow");
     assertRejected(json, "{\"big\":1e20000}", LenientImp.class, "Integer part is too long");
+    assertRejected(json, "{\"big\":1e9999}", LenientImp.class, "Integer part is too long");
     assertRejected(json, "{\"l\":1e9999999999}", LenientImp.class, "exponent is out of range");
     for (int representation = 0; representation < REPRESENTATIONS; representation++) {
       LenientImp imp =
           read(
               json,
-              "{\"l\":1e-999999999,\"big\":-0.5,\"w\":-0.0,\"s\":0e-9999999999}",
+              "{\"l\":1e-9999999999,\"big\":-0.5,\"w\":-0.0,\"s\":0e-9999999999,"
+                  + "\"boxedLong\":1e18}",
               LenientImp.class,
               representation);
       assertEquals(imp.l, 0L);
       assertEquals(imp.big, BigInteger.ZERO);
+      assertEquals(imp.boxedLong, Long.valueOf(1_000_000_000_000_000_000L));
       assertEquals(imp.w, 0);
     }
   }
@@ -598,6 +610,16 @@ public class JsonLenientTest extends ForyJsonTestModels {
     assertRejected(strict, "{\"w\":2.5}", Imp.class, "");
     assertGeneratedWhenSupported(strict, Imp.class);
     assertGeneratedWhenSupported(lenient, Imp.class);
+    ForyJson text = newJsonBuilder().lenientRead(Feature.SCALAR_AS_STRING).build();
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      Imp imp = read(lenient, "{\"nums\":[1.5],\"sizes\":[2.7]}", Imp.class, representation);
+      assertEquals(imp.nums, Collections.singletonList(1));
+      assertEquals(imp.sizes, new int[] {2});
+      assertEquals(
+          read(text, "{\"cat\":[1,true]}", Imp.class, representation).cat,
+          Arrays.asList("1", "true"));
+    }
+    assertGeneratedWhenSupported(text, Imp.class);
     assertGeneratedWhenSupported(lenient, CreatorImp.class);
     assertGeneratedWhenSupported(newJson(), LenientCreator.class);
   }

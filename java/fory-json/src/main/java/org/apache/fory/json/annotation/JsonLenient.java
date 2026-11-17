@@ -76,7 +76,8 @@ public @interface JsonLenient {
      * A JSON number with a fraction or exponent read into a {@code byte}, {@code short}, {@code
      * int}, {@code long}, their boxed types, or {@code BigInteger} is truncated toward zero, for
      * example {@code 300.7} as {@code 300} and {@code 1e3} as {@code 1000}. Values outside the
-     * target range still fail. Quoted numbers are truncated the same way.
+     * target range still fail, and a {@code BigInteger} may have at most as many integer digits as
+     * its token has characters, and at least 19. Quoted numbers are truncated the same way.
      */
     FLOAT_AS_INT,
     /**

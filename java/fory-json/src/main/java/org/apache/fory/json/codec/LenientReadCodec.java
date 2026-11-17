@@ -163,6 +163,13 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
     if (containerFeatures == 0) {
       return null;
     }
+    // A space-only string is empty for a container of trimmed boolean or numeric elements, as it
+    // is for those elements themselves, rather than a single blank element.
+    if (element != null
+        && element.valueCodec() instanceof ScalarCodec
+        && ((ScalarCodec) element.valueCodec()).trim) {
+      containerFeatures |= TRIM_QUOTED_SCALAR;
+    }
     if ((containerFeatures & SINGLE_VALUE_AS_ARRAY) == 0) {
       element = null;
     }
@@ -347,11 +354,13 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
 
     final JsonTypeInfo element;
     private final boolean emptyAsNull;
+    private final boolean blank;
 
     private ContainerCodec(JsonTypeInfo base, JsonTypeInfo element, int features) {
       super(base);
       this.element = element;
       emptyAsNull = (features & EMPTY_STRING_AS_NULL) != 0;
+      blank = (features & TRIM_QUOTED_SCALAR) != 0;
     }
 
     final int shape(JsonReader reader) {
@@ -359,7 +368,7 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
       if (token == '[' || token == 'n') {
         return NATIVE;
       }
-      if (emptyAsNull && token == '"' && reader.tryReadEmptyString(false)) {
+      if (emptyAsNull && token == '"' && reader.tryReadEmptyString(blank)) {
         return EMPTY;
       }
       return element == null ? NATIVE : SINGLE;

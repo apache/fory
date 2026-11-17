@@ -425,11 +425,13 @@ metadata is built.
 
 Additional rules:
 
-- Truncation still fails for values outside the target range. `TRIM_QUOTED_SCALAR` accepts only
-  spaces around exactly one finite token: escape sequences, other characters, and padded
-  non-finite literals such as `" NaN "` still fail.
+- Truncation still fails for values outside the target range. A truncated `BigInteger` may have at
+  most as many integer digits as its token has characters, and at least 19, so `1e9999` fails.
+- `TRIM_QUOTED_SCALAR` accepts only spaces around exactly one finite token: escape sequences, other
+  characters, and padded non-finite literals such as `" NaN "` still fail.
 - With `EMPTY_STRING_AS_NULL`, an empty string read into an array or collection is `null`, not a
-  one-element array.
+  one-element array. With `TRIM_QUOTED_SCALAR` too, so is a space-only string read into an array or
+  collection of boolean or numeric elements.
 - An empty string is a decoded value, not an explicit JSON null, so `JsonProperty.onNullRead` and
   `onContentNullRead` do not apply to it.
 - Root values, map values, and optional contents are not affected. Writing is unaffected.
