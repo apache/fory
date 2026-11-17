@@ -38,9 +38,9 @@ import java.lang.annotation.Target;
  *
  * <p>Features apply to the property value and to the direct boolean, numeric, and string elements
  * of a property-owned array or collection. They apply only where Fory owns the representation: a
- * property with {@link JsonCodec}, {@link JsonFormat}, {@link JsonByteArray}, {@link JsonRawValue},
- * {@link JsonUnwrapped}, a registered codec, or a {@link JsonValue} type keeps that representation.
- * A class or builder setting applies silently wherever a feature fits the property type; a property
+ * property with {@link JsonCodec}, {@link JsonFormat}, {@link JsonByteArray}, {@link
+ * JsonUnwrapped}, a registered codec, or a {@link JsonValue} type keeps that representation. A
+ * class or builder setting applies silently wherever a feature fits the property type; a property
  * declaration without any feature that fits its type is rejected when metadata is built. Root
  * values, map values, and optional contents are not affected. Writing is unaffected.
  */

@@ -46,6 +46,7 @@ import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.LenientReadCodec;
+import org.apache.fory.json.codec.MapCodec;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.meta.TypeExtMeta;
@@ -460,6 +461,22 @@ public class JsonLenientTest extends ForyJsonTestModels {
           new short[] {-1});
     }
     assertRejected(json, "{\"values\":5}", UnsignedShorts.class, "");
+  }
+
+  public static class RegisteredMap {
+    public Map<String, Integer> ext;
+  }
+
+  @Test
+  public void registeredMapRepresentationKept() {
+    ForyJson json =
+        newJsonBuilder()
+            .lenientRead(Feature.values())
+            .registerCodec(
+                Map.class,
+                (type, resolver, runtimeType) -> MapCodec.create(Map.class, type, resolver))
+            .build();
+    assertRejected(json, "{\"ext\":\"\"}", RegisteredMap.class, "");
   }
 
   @Test

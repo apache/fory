@@ -539,19 +539,21 @@ public final class JsonTypeResolver {
   }
 
   private JsonTypeInfo lenientTypeInfo(JsonTypeInfo typeInfo, int features) {
+    JsonValueCodec<?> codec = typeInfo.valueCodec();
+    // A registered or module factory codec owns its representation, including element semantics
+    // such as unsigned arrays. Object codecs are never registered directly and always use the
+    // Fory object model, so they remain eligible.
+    if ((typeInfo.factoryKey() != null || typeInfo.exactCodecClass() != null)
+        && !(codec instanceof ObjectCodec)) {
+      return typeInfo;
+    }
     LenientReadCodec scalar = LenientReadCodec.scalar(typeInfo, features);
     if (scalar != null) {
       return newTypeInfo(typeInfo.typeRef(), JsonFieldKind.OBJECT, scalar, true);
     }
-    JsonValueCodec<?> codec = typeInfo.valueCodec();
     JsonTypeInfo occurrence = typeInfo;
     JsonTypeInfo element = null;
     if (codec instanceof ArrayCodec || codec instanceof CollectionCodec) {
-      // A registered or module factory codec owns its element semantics, such as unsigned arrays
-      // or custom component codecs; only built-in container representations are rebuilt.
-      if (typeInfo.factoryKey() != null || typeInfo.exactCodecClass() != null) {
-        return typeInfo;
-      }
       TypeRef<?> typeRef = typeInfo.typeRef();
       Class<?> rawType = typeInfo.rawType();
       TypeRef<?> elementType;
