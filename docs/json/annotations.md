@@ -421,7 +421,7 @@ is `[1, 2, null]`. They apply only where Fory owns the representation: propertie
 A class or builder setting applies silently wherever a feature fits the property type. A property
 declaration with no feature that fits the property type, or one on a property that is never read,
 selects its own representation, is an Any member, or is unwrapped, is rejected when the class
-metadata is built.
+metadata is built. So are different feature sets declared on members of the same property.
 
 Additional rules:
 

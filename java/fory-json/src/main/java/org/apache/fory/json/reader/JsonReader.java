@@ -1292,11 +1292,12 @@ public abstract class JsonReader {
     long value;
     // Integral tokens keep the allocation-free integer parser; its own long overflow error is
     // sufficient, so a whole number beyond the long range is not re-parsed for a target message.
-    if (scanNumberToken() == -1L) {
+    long separators = scanNumberToken();
+    if (separators == -1L) {
       position = start;
       value = readLongToken();
     } else {
-      BigDecimal decimal = truncatedDecimal(start, LONG_MAX_DIGITS, overflow);
+      BigDecimal decimal = truncatedDecimal(start, separators, LONG_MAX_DIGITS, overflow);
       if (decimal.compareTo(LONG_MIN_DECIMAL) < 0 || decimal.compareTo(LONG_MAX_DECIMAL) > 0) {
         throw errorAt(overflow, start);
       }
@@ -1324,14 +1325,16 @@ public abstract class JsonReader {
     }
     int start = position;
     BigInteger value;
-    if (scanNumberToken() == -1L) {
+    long separators = scanNumberToken();
+    if (separators == -1L) {
       position = start;
       value = readBigIntegerToken();
     } else {
       // An exponent must not expand a short token into a much longer integer: bound the integral
       // digits by the token length, with the long range as the minimum allowance.
       int maxDigits = Math.min(MAX_BIG_NUMBER_LENGTH, Math.max(position - start, LONG_MAX_DIGITS));
-      value = truncatedDecimal(start, maxDigits, "Integer part is too long").toBigInteger();
+      value =
+          truncatedDecimal(start, separators, maxDigits, "Integer part is too long").toBigInteger();
     }
     if (quoted) {
       finishQuotedScalar();
@@ -1342,9 +1345,20 @@ public abstract class JsonReader {
   // Parses the scanned token ending at the current position and drops its fraction. Magnitudes
   // below one return zero before scaling, and the integral digit count is bounded before any
   // exponent is expanded, so a huge exponent cannot drive allocation or work.
-  private BigDecimal truncatedDecimal(int start, int maxIntegerDigits, String overflow) {
+  private BigDecimal truncatedDecimal(
+      int start, long separators, int maxIntegerDigits, String overflow) {
     if (position - start > MAX_BIG_NUMBER_LENGTH) {
       throw errorAt("Number is too long", start);
+    }
+    int point = (int) (separators >> 32);
+    if ((int) separators < 0) {
+      // Without an exponent the truncated value is the integer part, so the fraction digits are
+      // never parsed and the integral digit count is checked before any allocation.
+      int digits = point - start - (charAt(start) == '-' ? 1 : 0);
+      if (digits > maxIntegerDigits) {
+        throw errorAt(overflow, start);
+      }
+      return new BigDecimal(slice(start, point));
     }
     BigDecimal decimal;
     try {

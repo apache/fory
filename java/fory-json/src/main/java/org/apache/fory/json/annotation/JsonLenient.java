@@ -43,8 +43,8 @@ import java.lang.annotation.Target;
  * applies silently wherever a feature fits the property type and skips other properties. A
  * declaration on the property itself is rejected when metadata is built if no feature fits its
  * type, or if the property is never read, selects its own representation, is a JSON Any member, or
- * is {@link JsonUnwrapped}. Root values, map values, and optional contents are not affected.
- * Writing is unaffected.
+ * is {@link JsonUnwrapped}, and so are different feature sets declared on members of one property.
+ * Root values, map values, and optional contents are not affected. Writing is unaffected.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

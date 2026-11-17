@@ -33,6 +33,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonByteArray;
@@ -43,6 +44,7 @@ import org.apache.fory.json.annotation.JsonLenient.Feature;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonProperty.NullHandling;
+import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.LenientReadCodec;
@@ -214,6 +216,22 @@ public class JsonLenientTest extends ForyJsonTestModels {
 
     @JsonProperty(onContentNullRead = NullHandling.SKIP)
     public Integer[] skipping;
+  }
+
+  @JsonSubTypes(
+      property = "kind",
+      value = @JsonSubTypes.Type(value = Circle.class, name = "circle"))
+  public interface Shape {}
+
+  public static class Circle implements Shape {
+    public int r;
+  }
+
+  @JsonLenient
+  public static class Unaffected {
+    public Shape shape;
+    public Object any;
+    public Optional<Integer> optional;
   }
 
   @JsonLenient({})
@@ -490,6 +508,30 @@ public class JsonLenientTest extends ForyJsonTestModels {
     assertRejected(json, "{}", WriteOnly.class, "requires a read-enabled property");
     assertRejected(json, "{}", LenientUnwrapped.class, "@JsonUnwrapped");
     assertRejected(json, "{\"id\":1}", LenientAny.class, "JSON Any");
+  }
+
+  @Test
+  public void unaffectedTargets() {
+    ForyJson json = newJson();
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      Unaffected unaffected = read(json, "{\"any\":\"\"}", Unaffected.class, representation);
+      assertEquals(unaffected.any, "");
+    }
+    assertRejected(json, "{\"shape\":\"\"}", Unaffected.class, "");
+    assertRejected(json, "{\"optional\":\" 5 \"}", Unaffected.class, "");
+    assertRejected(json, "{\"d\":\" -Infinity \"}", LenientImp.class, "");
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      LenientImp imp =
+          read(
+              json,
+              "{\"w\":\" 2\",\"h\":\"3 \",\"l\":12.99,\"big\":-0.99}",
+              LenientImp.class,
+              representation);
+      assertEquals(imp.w, 2);
+      assertEquals(imp.h, Integer.valueOf(3));
+      assertEquals(imp.l, 12L);
+      assertEquals(imp.big, BigInteger.ZERO);
+    }
   }
 
   @Test
