@@ -1162,7 +1162,10 @@ public abstract class CollectionCodec<T extends Collection<?>> implements Contai
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(requireElement(elementTypeInfo, codec.readLatin1(reader)));
+          Object element = codec.readLatin1(reader);
+          if (element != null || onContentNullRead != NullHandling.SKIP) {
+            collection.add(requireElement(elementTypeInfo, element));
+          }
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -1195,7 +1198,10 @@ public abstract class CollectionCodec<T extends Collection<?>> implements Contai
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(requireElement(elementTypeInfo, codec.readUtf16(reader)));
+          Object element = codec.readUtf16(reader);
+          if (element != null || onContentNullRead != NullHandling.SKIP) {
+            collection.add(requireElement(elementTypeInfo, element));
+          }
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -1228,7 +1234,10 @@ public abstract class CollectionCodec<T extends Collection<?>> implements Contai
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(requireElement(elementTypeInfo, codec.readUtf8(reader)));
+          Object element = codec.readUtf8(reader);
+          if (element != null || onContentNullRead != NullHandling.SKIP) {
+            collection.add(requireElement(elementTypeInfo, element));
+          }
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -1326,7 +1335,10 @@ public abstract class CollectionCodec<T extends Collection<?>> implements Contai
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(requireElement(elementTypeInfo, codec.readLatin1(reader)));
+          Object element = codec.readLatin1(reader);
+          if (element != null || onContentNullRead != NullHandling.SKIP) {
+            collection.add(requireElement(elementTypeInfo, element));
+          }
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -1362,7 +1374,10 @@ public abstract class CollectionCodec<T extends Collection<?>> implements Contai
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(requireElement(elementTypeInfo, codec.readUtf16(reader)));
+          Object element = codec.readUtf16(reader);
+          if (element != null || onContentNullRead != NullHandling.SKIP) {
+            collection.add(requireElement(elementTypeInfo, element));
+          }
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }
@@ -1398,7 +1413,10 @@ public abstract class CollectionCodec<T extends Collection<?>> implements Contai
           if ((size & REFERENCE_BATCH_MASK) == REFERENCE_BATCH_MASK) {
             reader.reserveGraphMemory(REFERENCE_BATCH_BYTES);
           }
-          collection.add(requireElement(elementTypeInfo, codec.readUtf8(reader)));
+          Object element = codec.readUtf8(reader);
+          if (element != null || onContentNullRead != NullHandling.SKIP) {
+            collection.add(requireElement(elementTypeInfo, element));
+          }
           size++;
         } while (reader.consumeNextCommaOrEndArray());
       }

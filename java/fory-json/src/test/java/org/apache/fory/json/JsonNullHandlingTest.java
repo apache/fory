@@ -94,12 +94,49 @@ public class JsonNullHandlingTest extends ForyJsonTestModels {
       value = read(skip, "{\"value\":\"new\",\"value\":null}", Values.class, reader);
       assertEquals(value.value, "new");
       assertEquals(value.calls, 1);
-      assertNull(read(skip, "{\"value\":\"decode-null\"}", Values.class, reader).value);
+      value = read(skip, "{\"value\":\"new\",\"value\":\"decode-null\"}", Values.class, reader);
+      assertEquals(value.value, "new");
+      assertEquals(value.calls, 1);
     }
     assertNull(skip.fromJson("null", Values.class));
     assertEquals(skip.fromJson("null", new TypeRef<Optional<String>>() {}), Optional.empty());
     assertThrows(
         ForyJsonException.class, () -> newJson().fromJson("{\"count\":null}", Values.class));
+  }
+
+  @Test
+  public void decodedNullProperties() {
+    ForyJson set = newJson();
+    ForyJson skip = newJsonBuilder().onNullRead(NullHandling.SKIP).build();
+    ForyJson strict =
+        newJsonBuilder()
+            .onNullRead(NullHandling.SKIP)
+            .failOnMissingRequiredProperties(true)
+            .build();
+    String text = "{\"field\":\"new\",\"field\":\"decode-null\",\"value\":\"decode-null\"}";
+    for (int reader = 0; reader < 4; reader++) {
+      DecodedValues value = read(skip, text, DecodedValues.class, reader);
+      assertEquals(value.field, "new");
+      assertEquals(value.value, "initial");
+      assertEquals(value.calls, 0);
+      value = read(set, text, DecodedValues.class, reader);
+      assertNull(value.field);
+      assertNull(value.value);
+      assertEquals(value.calls, 1);
+      assertEquals(
+          read(
+                  strict,
+                  "{\"value\":\"new\",\"value\":\"decode-null\"}",
+                  DecodedCreated.class,
+                  reader)
+              .value,
+          "new");
+      int representation = reader;
+      assertThrows(
+          ForyJsonException.class,
+          () -> read(strict, "{\"value\":\"decode-null\"}", DecodedCreated.class, representation));
+      assertNull(read(set, "{\"value\":\"decode-null\"}", DecodedCreated.class, reader).value);
+    }
   }
 
   @Test
@@ -299,9 +336,23 @@ public class JsonNullHandlingTest extends ForyJsonTestModels {
     ForyJson json = newJsonBuilder().onContentNullRead(NullHandling.SKIP).build();
     for (int reader = 0; reader < 4; reader++) {
       CustomContents value =
-          read(json, "{\"values\":[null,\"decode-null\",\"a\"]}", CustomContents.class, reader);
-      assertEquals(value.values, Arrays.asList(null, "a"));
+          read(
+              json,
+              "{\"values\":[null,\"decode-null\",\"a\"],\"set\":[\"decode-null\",\"b\"],"
+                  + "\"array\":[\"decode-null\",\"c\"],\"atomic\":[\"e\",\"decode-null\"],"
+                  + "\"map\":{\"x\":\"decode-null\",\"y\":\"d\"}}",
+              CustomContents.class,
+              reader);
+      assertEquals(value.values, ImmutableList.of("a"));
+      assertEquals(value.set, ImmutableSet.of("b"));
+      assertEquals(value.array, new String[] {"c"});
+      assertEquals(value.atomic.length(), 1);
+      assertEquals(value.atomic.get(0), "e");
+      assertEquals(value.map, ImmutableMap.of("y", "d"));
     }
+    CustomContents kept =
+        newJson().fromJson("{\"values\":[\"decode-null\",\"a\"]}", CustomContents.class);
+    assertEquals(kept.values, Arrays.asList(null, "a"));
     for (Class<?> type :
         new Class<?>[] {
           ScalarContent.class,
@@ -315,6 +366,26 @@ public class JsonNullHandlingTest extends ForyJsonTestModels {
     }
     assertEquals(
         json.fromJson("{\"values\":[null]}", OpaqueSet.class).values, Arrays.asList((String) null));
+  }
+
+  @Test
+  public void registeredElementCodec() {
+    ForyJson json =
+        newJsonBuilder()
+            .onContentNullRead(NullHandling.SKIP)
+            .registerCodec(Token.class, new TokenCodec())
+            .build();
+    String text = "{\"tokens\":[\"a\",\"decode-null\",\"b\",\"decode-null\"]}";
+    for (int reader = 0; reader < 4; reader++) {
+      Tokens value = read(json, text, Tokens.class, reader);
+      assertEquals(value.tokens.size(), 2);
+      assertEquals(value.tokens.get(0).value, "a");
+      assertEquals(value.tokens.get(1).value, "b");
+    }
+    byte[] root = "[\"a\",\"decode-null\",\"b\"]".getBytes(StandardCharsets.UTF_8);
+    for (int i = 0; i < 3; i++) {
+      assertEquals(json.fromJson(root, new TypeRef<List<Token>>() {}).size(), 2);
+    }
   }
 
   @Test
@@ -492,6 +563,45 @@ public class JsonNullHandlingTest extends ForyJsonTestModels {
   public static class CustomContents {
     @JsonCodec(elementCodec = NullStringCodec.class)
     public List<String> values;
+
+    @JsonCodec(elementCodec = NullStringCodec.class)
+    public Set<String> set;
+
+    @JsonCodec(elementCodec = NullStringCodec.class)
+    public String[] array;
+
+    @JsonCodec(elementCodec = NullStringCodec.class)
+    public AtomicReferenceArray<String> atomic;
+
+    @JsonCodec(valueCodec = NullStringCodec.class)
+    public Map<String, String> map;
+  }
+
+  public static class DecodedValues {
+    @JsonCodec(NullStringCodec.class)
+    public String field = "initial";
+
+    private String value = "initial";
+    @JsonIgnore public int calls;
+
+    public void setValue(String value) {
+      this.value = value;
+      calls++;
+    }
+
+    @JsonCodec(NullStringCodec.class)
+    public String getValue() {
+      return value;
+    }
+  }
+
+  public static class DecodedCreated {
+    public final String value;
+
+    @JsonCreator
+    public DecodedCreated(@JsonProperty("value") @JsonCodec(NullStringCodec.class) String value) {
+      this.value = value;
+    }
   }
 
   public static class ScalarContent {
@@ -536,6 +646,31 @@ public class JsonNullHandlingTest extends ForyJsonTestModels {
     @JsonCodec(StringListCodec.class)
     @JsonProperty(onContentNullRead = NullHandling.SET)
     public List<String> values;
+  }
+
+  public static class Token {
+    public final String value;
+
+    Token(String value) {
+      this.value = value;
+    }
+  }
+
+  public static class Tokens {
+    public List<Token> tokens;
+  }
+
+  public static class TokenCodec extends AbstractJsonValueCodec<Token> {
+    @Override
+    public void write(JsonWriter writer, Token value) {
+      writer.writeString(value.value);
+    }
+
+    @Override
+    public Token read(JsonReader reader) {
+      String value = reader.readString();
+      return "decode-null".equals(value) ? null : new Token(value);
+    }
   }
 
   public static class NullStringCodec extends AbstractJsonValueCodec<String> {

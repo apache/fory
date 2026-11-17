@@ -906,7 +906,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           } else {
             JsonCreatorFieldInfo field = creatorInfo.fields()[direct];
             if (!field.skipNullRead(reader)) {
-              ((Object[]) rootWorkspace)[field.argumentIndex()] = field.readLatin1(reader);
+              field.readLatin1(reader, (Object[]) rootWorkspace);
             }
           }
           continue;
@@ -986,7 +986,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           } else {
             JsonCreatorFieldInfo field = creatorInfo.fields()[direct];
             if (!field.skipNullRead(reader)) {
-              ((Object[]) rootWorkspace)[field.argumentIndex()] = field.readUtf16(reader);
+              field.readUtf16(reader, (Object[]) rootWorkspace);
             }
           }
           continue;
@@ -1066,7 +1066,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           } else {
             JsonCreatorFieldInfo field = creatorInfo.fields()[direct];
             if (!field.skipNullRead(reader)) {
-              ((Object[]) rootWorkspace)[field.argumentIndex()] = field.readUtf8(reader);
+              field.readUtf8(reader, (Object[]) rootWorkspace);
             }
           }
           continue;
@@ -1133,7 +1133,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
       route.field().readLatin1(reader, workspace);
     } else {
       JsonCreatorFieldInfo field = route.creatorField();
-      ((Object[]) workspace)[field.argumentIndex()] = field.readLatin1(reader);
+      field.readLatin1(reader, (Object[]) workspace);
     }
   }
 
@@ -1151,7 +1151,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
       route.field().readUtf16(reader, workspace);
     } else {
       JsonCreatorFieldInfo field = route.creatorField();
-      ((Object[]) workspace)[field.argumentIndex()] = field.readUtf16(reader);
+      field.readUtf16(reader, (Object[]) workspace);
     }
   }
 
@@ -1169,7 +1169,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
       route.field().readUtf8(reader, workspace);
     } else {
       JsonCreatorFieldInfo field = route.creatorField();
-      ((Object[]) workspace)[field.argumentIndex()] = field.readUtf8(reader);
+      field.readUtf8(reader, (Object[]) workspace);
     }
   }
 
@@ -1449,7 +1449,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             markRead(seen, index, field.name());
           }
           if (!field.skipNullRead(reader)) {
-            arguments[field.argumentIndex()] = field.readLatin1(reader);
+            field.readLatin1(reader, arguments);
           }
         } else {
           int match = table.match(hash);
@@ -1506,7 +1506,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             markRead(seen, index, field.name());
           }
           if (!field.skipNullRead(reader)) {
-            arguments[field.argumentIndex()] = field.readUtf16(reader);
+            field.readUtf16(reader, arguments);
           }
         } else {
           int match = table.match(hash);
@@ -1563,7 +1563,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             markRead(seen, index, field.name());
           }
           if (!field.skipNullRead(reader)) {
-            arguments[field.argumentIndex()] = field.readUtf8(reader);
+            field.readUtf8(reader, arguments);
           }
         } else {
           int match = table.match(hash);
@@ -1617,7 +1617,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             markRead(seen, index, field.name());
           }
           if (!field.skipNullRead(reader)) {
-            arguments[field.argumentIndex()] = field.readLatin1(reader);
+            field.readLatin1(reader, arguments);
           }
         }
       } while (reader.consume(','));
@@ -1652,7 +1652,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             markRead(seen, index, field.name());
           }
           if (!field.skipNullRead(reader)) {
-            arguments[field.argumentIndex()] = field.readUtf16(reader);
+            field.readUtf16(reader, arguments);
           }
         }
       } while (reader.consume(','));
@@ -1687,7 +1687,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             markRead(seen, index, field.name());
           }
           if (!field.skipNullRead(reader)) {
-            arguments[field.argumentIndex()] = field.readUtf8(reader);
+            field.readUtf8(reader, arguments);
           }
         }
       } while (reader.consume(','));

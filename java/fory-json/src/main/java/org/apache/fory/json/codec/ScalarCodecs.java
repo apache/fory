@@ -3454,6 +3454,9 @@ public final class ScalarCodecs {
         values[size++] = readElement(reader, codec);
       } while (reader.consumeNextCommaOrEndArray());
       finishArray(reader, size);
+      if (onContentNullRead == NullHandling.SKIP) {
+        size = ArrayCodec.removeDecodedNulls(values, size);
+      }
       return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
     }
 
@@ -3485,6 +3488,9 @@ public final class ScalarCodecs {
         values[size++] = readElement(reader, codec);
       } while (reader.consumeNextCommaOrEndArray());
       finishArray(reader, size);
+      if (onContentNullRead == NullHandling.SKIP) {
+        size = ArrayCodec.removeDecodedNulls(values, size);
+      }
       return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
     }
 
@@ -3512,6 +3518,9 @@ public final class ScalarCodecs {
         values[size++] = readElement(reader, codec);
       } while (reader.consumeNextCommaOrEndArray());
       finishArray(reader, size);
+      if (onContentNullRead == NullHandling.SKIP) {
+        size = ArrayCodec.removeDecodedNulls(values, size);
+      }
       return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
     }
 

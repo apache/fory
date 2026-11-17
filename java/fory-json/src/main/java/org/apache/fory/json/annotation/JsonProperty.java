@@ -88,7 +88,8 @@ public @interface JsonProperty {
    * Returns how an explicit JSON null is read for this property. {@code DEFAULT} inherits the
    * builder setting. {@code SKIP} consumes the null without assigning the field, invoking a setter,
    * or marking a creator argument present; existing missing-property defaults and requirements
-   * still apply. This setting affects reading only.
+   * still apply. {@code SKIP} treats a Java null returned by the property's codec for a non-null
+   * JSON token the same way. This setting affects reading only.
    */
   NullHandling onNullRead() default NullHandling.DEFAULT;
 
@@ -97,8 +98,9 @@ public @interface JsonProperty {
    * values are read. {@code SKIP} omits an element or map insertion. Nested containers resolve
    * their own settings. Explicit {@code SKIP} and {@code FAIL} require a container representation
    * owned by Fory; explicit {@code SET} also accepts a complete custom container codec. Encoded
-   * binary strings and non-container targets reject explicit settings. This does not filter values
-   * returned by a custom codec for non-null JSON tokens.
+   * binary strings and non-container targets reject explicit settings. {@code SKIP} also omits a
+   * Java null returned by the child codec of a collection, reference array, or map value for a
+   * non-null JSON token; {@code FAIL} rejects only explicit JSON null.
    */
   NullHandling onContentNullRead() default NullHandling.DEFAULT;
 
@@ -108,7 +110,10 @@ public @interface JsonProperty {
     DEFAULT,
     /** Use the normal type and codec read/assignment, including existing nullability checks. */
     SET,
-    /** Consume the null without assigning the property or inserting the container item. */
+    /**
+     * Consume the null without assigning the property or inserting the container item. A Java null
+     * decoded from a non-null JSON token by the selected codec is treated the same way.
+     */
     SKIP,
     /** Reject an explicit JSON null. Missing properties are unaffected. */
     FAIL

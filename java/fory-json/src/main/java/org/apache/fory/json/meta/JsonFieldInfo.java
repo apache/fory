@@ -577,6 +577,14 @@ public final class JsonFieldInfo {
     return true;
   }
 
+  /** Assigns a decoded value; SKIP leaves the property unchanged when the codec decodes null. */
+  private void putDecoded(Object object, Object value, boolean primitive) {
+    if (value == null && onNullRead == NullHandling.SKIP) {
+      return;
+    }
+    readAccessor.putObject(object, primitive ? requirePrimitive(value) : value);
+  }
+
   /** Returns parent-local metadata with a transformed JSON name and the same Java member owner. */
   public JsonFieldInfo withName(String transformedName, TypeRef<?> ownerType) {
     JsonFieldInfo copy =
@@ -1073,14 +1081,13 @@ public final class JsonFieldInfo {
         readAccessor.putChar(object, reader.readChar());
         return;
       case KIND_CUSTOM_PRIMITIVE:
-        readAccessor.putObject(
-            object, requirePrimitive(readTypeInfo.latin1Reader().readLatin1(reader)));
+        putDecoded(object, readTypeInfo.latin1Reader().readLatin1(reader), true);
         return;
       case KIND_UNBOXED:
         putCarrier(object, readUnboxedLatin1(reader));
         return;
       default:
-        readAccessor.putObject(object, readTypeInfo.latin1Reader().readLatin1(reader));
+        putDecoded(object, readTypeInfo.latin1Reader().readLatin1(reader), false);
     }
   }
 
@@ -1137,14 +1144,13 @@ public final class JsonFieldInfo {
         readAccessor.putChar(object, reader.readChar());
         return;
       case KIND_CUSTOM_PRIMITIVE:
-        readAccessor.putObject(
-            object, requirePrimitive(readTypeInfo.utf16Reader().readUtf16(reader)));
+        putDecoded(object, readTypeInfo.utf16Reader().readUtf16(reader), true);
         return;
       case KIND_UNBOXED:
         putCarrier(object, readUnboxedUtf16(reader));
         return;
       default:
-        readAccessor.putObject(object, readTypeInfo.utf16Reader().readUtf16(reader));
+        putDecoded(object, readTypeInfo.utf16Reader().readUtf16(reader), false);
     }
   }
 
@@ -1201,14 +1207,13 @@ public final class JsonFieldInfo {
         readAccessor.putChar(object, reader.readChar());
         return;
       case KIND_CUSTOM_PRIMITIVE:
-        readAccessor.putObject(
-            object, requirePrimitive(readTypeInfo.utf8Reader().readUtf8(reader)));
+        putDecoded(object, readTypeInfo.utf8Reader().readUtf8(reader), true);
         return;
       case KIND_UNBOXED:
         putCarrier(object, readUnboxedUtf8(reader));
         return;
       default:
-        readAccessor.putObject(object, readTypeInfo.utf8Reader().readUtf8(reader));
+        putDecoded(object, readTypeInfo.utf8Reader().readUtf8(reader), false);
     }
   }
 

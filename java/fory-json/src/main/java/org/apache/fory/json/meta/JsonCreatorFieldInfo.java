@@ -192,37 +192,52 @@ public final class JsonCreatorFieldInfo {
             : resolver.getTypeInfo(typeRef, formatAnnotation);
   }
 
-  public Object readLatin1(Latin1JsonReader reader) {
+  /** Stores the decoded argument; SKIP leaves it absent when the selected codec decodes null. */
+  public void readLatin1(Latin1JsonReader reader, Object[] arguments) {
     if (readOccurrenceNull(reader)) {
-      return null;
+      arguments[argumentIndex] = null;
+      return;
     }
     Object value =
         unboxedValueCodec == null
             ? typeInfo.latin1Reader().readLatin1(reader)
             : unboxedValueCodec.readLatin1Carrier(reader);
-    return requirePrimitive(value, rawType);
+    if (value == null && onNullRead == NullHandling.SKIP) {
+      return;
+    }
+    arguments[argumentIndex] = requirePrimitive(value, rawType);
   }
 
-  public Object readUtf16(Utf16JsonReader reader) {
+  /** Stores the decoded argument; SKIP leaves it absent when the selected codec decodes null. */
+  public void readUtf16(Utf16JsonReader reader, Object[] arguments) {
     if (readOccurrenceNull(reader)) {
-      return null;
+      arguments[argumentIndex] = null;
+      return;
     }
     Object value =
         unboxedValueCodec == null
             ? typeInfo.utf16Reader().readUtf16(reader)
             : unboxedValueCodec.readUtf16Carrier(reader);
-    return requirePrimitive(value, rawType);
+    if (value == null && onNullRead == NullHandling.SKIP) {
+      return;
+    }
+    arguments[argumentIndex] = requirePrimitive(value, rawType);
   }
 
-  public Object readUtf8(Utf8JsonReader reader) {
+  /** Stores the decoded argument; SKIP leaves it absent when the selected codec decodes null. */
+  public void readUtf8(Utf8JsonReader reader, Object[] arguments) {
     if (readOccurrenceNull(reader)) {
-      return null;
+      arguments[argumentIndex] = null;
+      return;
     }
     Object value =
         unboxedValueCodec == null
             ? typeInfo.utf8Reader().readUtf8(reader)
             : unboxedValueCodec.readUtf8Carrier(reader);
-    return requirePrimitive(value, rawType);
+    if (value == null && onNullRead == NullHandling.SKIP) {
+      return;
+    }
+    arguments[argumentIndex] = requirePrimitive(value, rawType);
   }
 
   private boolean readOccurrenceNull(org.apache.fory.json.reader.JsonReader reader) {
