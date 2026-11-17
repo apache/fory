@@ -41,11 +41,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonRawValue;
+import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.codec.AbstractJsonValueCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
@@ -1445,6 +1447,225 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertThrows(
         ForyJsonException.class,
         () -> json.fromJson("\"" + Character.toString('\uD800') + "\"", String.class));
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void writeUnpairedSurrogateField(boolean codegen) {
+    String plain = repeat('a', 40);
+    String[] values = {
+      "\uD800",
+      "\uDC00",
+      "a\uD800b",
+      "\uDC00\uD800",
+      "\uD83D\uDE00\uD800",
+      "\u4E2D\uDC00",
+      "x\n" + plain + "\uD800" + plain,
+      plain + "\uDBFF",
+      "\uD800" + plain + "\u4E2D"
+    };
+    for (boolean escapeNonAscii : new boolean[] {false, true}) {
+      ForyJson json =
+          newJsonBuilder(codegen)
+              .allowUnpairedSurrogates(true)
+              .escapeNonAscii(escapeNonAscii)
+              .build();
+      for (String value : values) {
+        PublicFields fields = new PublicFields();
+        fields.name = value;
+        String expected =
+            "{\"active\":true,\"id\":7,\"name\":" + tolerantEscape(value, escapeNonAscii) + "}";
+        assertEquals(json.toJson(fields), expected, value);
+        assertEquals(new String(json.toJsonBytes(fields), StandardCharsets.UTF_8), expected, value);
+        assertEquals(json.fromJson(expected, PublicFields.class).name, value);
+        assertEquals(json.fromJson(json.toJsonBytes(fields), PublicFields.class).name, value);
+        assertEquals(json.fromJson(json.toPrettyJson(fields), PublicFields.class).name, value);
+      }
+      CharValue charValue = new CharValue();
+      charValue.value = '\uDC00';
+      assertEquals(json.toJson(charValue), "{\"value\":\"\\udc00\"}");
+      assertEquals(
+          new String(json.toJsonBytes(charValue), StandardCharsets.UTF_8),
+          "{\"value\":\"\\udc00\"}");
+      assertEquals(json.fromJson("{\"value\":\"\\udc00\"}", CharValue.class).value, '\uDC00');
+    }
+  }
+
+  /** Every writer path escapes an unpaired surrogate, for String and CharSequence values. */
+  @Test
+  public void writeUnpairedSurrogates() {
+    String plain = repeat('a', 24);
+    for (boolean escapeNonAscii : new boolean[] {false, true}) {
+      JsonConfig config =
+          newJsonBuilder()
+              .allowUnpairedSurrogates(true)
+              .escapeNonAscii(escapeNonAscii)
+              .build()
+              .config();
+      for (String value :
+          new String[] {
+            "\uD83D",
+            "\uDE00",
+            "\uDE00\uD83D",
+            "x\n" + plain + "\uD83D" + plain,
+            "x\n" + plain + "\uDE00" + plain,
+            "x\n" + plain + "\uD83D",
+            "x\n\u4E2D" + plain + "\uD83D" + plain,
+            "\u4E2D\u4E2D\u4E2D\u4E2D\uD83D\u4E2D\u4E2D\u4E2D\u4E2D",
+            "\uD83D\uDE00\uDE00\uD83D\uDE00"
+          }) {
+        String expected = tolerantEscape(value, escapeNonAscii);
+        for (CharSequence input : new CharSequence[] {value, new StringBuilder(value)}) {
+          Utf8JsonWriter utf8 =
+              new Utf8JsonWriter(config, newUtf8Writer().typeResolver(), new byte[1]);
+          utf8.writeString(input);
+          assertEquals(new String(utf8.toJsonBytes(), StandardCharsets.UTF_8), expected, value);
+          StringJsonWriter latin1 =
+              new StringJsonWriter(config, newStringWriter().typeResolver(), new byte[1]);
+          latin1.writeString(input);
+          assertEquals(latin1.toJson(), expected, value);
+          StringJsonWriter utf16 =
+              new StringJsonWriter(config, newStringWriter().typeResolver(), new byte[1]);
+          utf16.writeRawValue("\u4E2D");
+          utf16.writeString(input);
+          assertEquals(utf16.toJson(), "\u4E2D" + expected, value);
+        }
+      }
+    }
+  }
+
+  @Test
+  public void readUnpairedSurrogates() {
+    ForyJson json = newJsonBuilder().allowUnpairedSurrogates(true).build();
+    String plain = repeat('a', 24);
+    // Escapes decode independently, so a valid escaped pair still decodes to the same pair.
+    String[][] escaped = {
+      {"\\uD800", "\uD800"},
+      {"\\uDC00", "\uDC00"},
+      {"\\uD800\\u0041", "\uD800A"},
+      {"\\uD800x", "\uD800x"},
+      {"\\uDC00\\uD800", "\uDC00\uD800"},
+      {"\\uD834\\uDD1E", "\uD834\uDD1E"},
+      {"\\n\\uD800", "\n\uD800"},
+      {"\\u00e9\\uDBFF", "\u00e9\uDBFF"},
+      {plain + "\\uDFFF" + plain, plain + "\uDFFF" + plain}
+    };
+    for (String[] value : escaped) {
+      for (String prefix : new String[] {"", "\u4E2D"}) {
+        String text = "\"" + prefix + value[0] + "\"";
+        assertEquals(json.fromJson(text, String.class), prefix + value[1], text);
+        assertEquals(readUtf8String(json, text), prefix + value[1], text);
+      }
+    }
+    // Raw unpaired surrogates can occur only in String input.
+    String[][] raw = {
+      {"\uD800", "\uD800"},
+      {"\uDC00", "\uDC00"},
+      {"a\uD800b", "a\uD800b"},
+      {"\uDC00\uD800", "\uDC00\uD800"},
+      {plain + "\uD800" + plain, plain + "\uD800" + plain},
+      {plain + "\uDC00", plain + "\uDC00"},
+      {"\\n\uD800", "\n\uD800"},
+      {"\\u00e9\uDC00", "\u00e9\uDC00"},
+      {"\\u4e2d\uDC00x", "\u4E2D\uDC00x"}
+    };
+    for (String[] value : raw) {
+      String text = "\"" + value[0] + "\"";
+      assertEquals(json.fromJson(text, String.class), value[1], text);
+    }
+    // Byte input must stay valid UTF-8, which has no encoding for a surrogate.
+    byte[] encodedSurrogate = {'"', (byte) 0xED, (byte) 0xA0, (byte) 0x80, '"'};
+    assertThrows(ForyJsonException.class, () -> json.fromJson(encodedSurrogate, String.class));
+    for (String text : new String[] {"\"\\uD800abcdef\"", "\"\u4E2D\\uD800abcdef\""}) {
+      assertThrows(ForyJsonException.class, () -> json.fromJson(text, UUID.class));
+      assertThrows(
+          ForyJsonException.class,
+          () -> json.fromJson(text.getBytes(StandardCharsets.UTF_8), UUID.class));
+    }
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void readUnpairedSurrogateNames(boolean codegen) {
+    ForyJson tolerant = newJsonBuilder(codegen).allowUnpairedSurrogates(true).build();
+    for (String prefix : new String[] {"", "\u4E2D"}) {
+      String text =
+          "{\""
+              + prefix
+              + "\\uD800\":\"\\uDC00\",\"id\":3,\"\\uDC00"
+              + prefix
+              + "\":[\"\\uD800\"],\"name\":\"\\uDBFF\"}";
+      for (Object input : new Object[] {text, text.getBytes(StandardCharsets.UTF_8)}) {
+        PublicFields fields = read(tolerant, input, PublicFields.class);
+        assertEquals(fields.id, 3);
+        assertEquals(fields.name, "\uDBFF");
+        assertEquals(
+            read(tolerant, input, new TypeRef<Map<String, Object>>() {}).get(prefix + "\uD800"),
+            "\uDC00");
+      }
+      String rawText = "{\"" + prefix + "\uD800\":1,\"id\":4,\"\uDC00\":\"\uD800\"}";
+      assertEquals(tolerant.fromJson(rawText, PublicFields.class).id, 4);
+      String shapeText =
+          "{\"" + prefix + "\\uD800\":\"\\uDC00\",\"kind\":\"circle\",\"label\":\"\\uDBFF\"}";
+      for (Object input : new Object[] {shapeText, shapeText.getBytes(StandardCharsets.UTF_8)}) {
+        SurrogateShape shape = read(tolerant, input, SurrogateShape.class);
+        assertEquals(((SurrogateCircle) shape).label, "\uDBFF");
+      }
+      SurrogateShape rawShape =
+          tolerant.fromJson(
+              "{\"" + prefix + "\uDC00\":1,\"kind\":\"circle\",\"label\":\"\uD800\"}",
+              SurrogateShape.class);
+      assertEquals(((SurrogateCircle) rawShape).label, "\uD800");
+      ForyJson strict = newJson(codegen);
+      assertThrows(ForyJsonException.class, () -> strict.fromJson(text, PublicFields.class));
+      assertThrows(ForyJsonException.class, () -> strict.fromJson(shapeText, SurrogateShape.class));
+    }
+    Map<String, String> map = Collections.singletonMap("\uD800", "\uDC00");
+    assertEquals(tolerant.toJson(map), "{\"\\ud800\":\"\\udc00\"}");
+    assertEquals(
+        new String(tolerant.toJsonBytes(map), StandardCharsets.UTF_8), "{\"\\ud800\":\"\\udc00\"}");
+  }
+
+  @JsonSubTypes(
+      property = "kind",
+      value = {@JsonSubTypes.Type(value = SurrogateCircle.class, name = "circle")})
+  public interface SurrogateShape {}
+
+  public static final class SurrogateCircle implements SurrogateShape {
+    public String label;
+  }
+
+  private static <T> T read(ForyJson json, Object input, Class<T> type) {
+    return input instanceof String
+        ? json.fromJson((String) input, type)
+        : json.fromJson((byte[]) input, type);
+  }
+
+  private static <T> T read(ForyJson json, Object input, TypeRef<T> type) {
+    return input instanceof String
+        ? json.fromJson((String) input, type)
+        : json.fromJson((byte[]) input, type);
+  }
+
+  /** Expected tolerant output: an unpaired surrogate always becomes a lowercase escape. */
+  private static String tolerantEscape(String value, boolean escapeNonAscii) {
+    StringBuilder builder = new StringBuilder("\"");
+    for (int i = 0; i < value.length(); i++) {
+      char ch = value.charAt(i);
+      boolean paired =
+          Character.isHighSurrogate(ch)
+                  && i + 1 < value.length()
+                  && Character.isLowSurrogate(value.charAt(i + 1))
+              || Character.isLowSurrogate(ch)
+                  && i > 0
+                  && Character.isHighSurrogate(value.charAt(i - 1));
+      if (ch == '\n') {
+        builder.append("\\n");
+      } else if (Character.isSurrogate(ch) && !paired || escapeNonAscii && ch > 0x7f) {
+        builder.append(String.format("\\u%04x", (int) ch));
+      } else {
+        builder.append(ch);
+      }
+    }
+    return builder.append('"').toString();
   }
 
   private static byte[] sharedBuffer(ForyJson json) {

@@ -96,6 +96,9 @@ public abstract class JsonWriter {
   private final JsonTypeResolver typeResolver;
   private final int maxDepth;
   protected final boolean escapeNonAscii;
+  // Tolerant writers emit an unpaired surrogate as a six-character escape. Check it only after
+  // pairing fails so paired and non-surrogate output keeps the strict path.
+  protected final boolean allowUnpairedSurrogates;
   protected boolean prettyPrint;
   // Indentation is emitted with the opening delimiter, including for custom codecs that omit
   // writeComma(0). Only the newest container can still be empty; closing it clears this marker.
@@ -107,6 +110,14 @@ public abstract class JsonWriter {
     this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
     maxDepth = config.maxDepth();
     escapeNonAscii = config.escapeNonAscii();
+    allowUnpairedSurrogates = config.allowUnpairedSurrogates();
+  }
+
+  protected static ForyJsonException unpairedSurrogate(char ch) {
+    return new ForyJsonException(
+        Character.isHighSurrogate(ch)
+            ? "Unpaired high surrogate in string"
+            : "Unpaired low surrogate in string");
   }
 
   /**

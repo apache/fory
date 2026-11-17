@@ -127,7 +127,7 @@ public final class Utf16JsonReader extends JsonReader {
           cursor = scanEscape(cursor);
         } else if (Character.isHighSurrogate(ch)) {
           cursor = scanRawSurrogate(cursor);
-        } else if (Character.isLowSurrogate(ch)) {
+        } else if (Character.isLowSurrogate(ch) && !allowUnpairedSurrogates) {
           throw errorAt("Unpaired low surrogate in string", cursor);
         } else {
           cursor++;
@@ -146,7 +146,7 @@ public final class Utf16JsonReader extends JsonReader {
         cursor = scanEscape(cursor);
       } else if (Character.isHighSurrogate(ch)) {
         cursor = scanRawSurrogate(cursor);
-      } else if (Character.isLowSurrogate(ch)) {
+      } else if (Character.isLowSurrogate(ch) && !allowUnpairedSurrogates) {
         throw errorAt("Unpaired low surrogate in string", cursor);
       } else {
         cursor++;
@@ -174,7 +174,7 @@ public final class Utf16JsonReader extends JsonReader {
           ch = scanSimpleEscape(escaped, cursor - 1);
         }
       }
-      if (Character.isHighSurrogate(ch)) {
+      if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
         if (latin1) {
           hash = JsonFieldNameHash.hashPacked(value, decodedLength);
           latin1 = false;
@@ -222,7 +222,7 @@ public final class Utf16JsonReader extends JsonReader {
           ch = scanSimpleEscape(escaped, cursor - 1);
         }
         matches &= index < expected.length() && expected.charAt(index++) == ch;
-        if (Character.isHighSurrogate(ch)) {
+        if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
           cursor += 2;
           char low = scanUnicodeEscape(cursor);
           cursor += 4;
@@ -231,7 +231,7 @@ public final class Utf16JsonReader extends JsonReader {
         continue;
       }
       matches &= index < expected.length() && expected.charAt(index++) == ch;
-      if (Character.isHighSurrogate(ch)) {
+      if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
         char low = charAtFast(cursor++);
         matches &= index < expected.length() && expected.charAt(index++) == low;
       }
@@ -254,7 +254,7 @@ public final class Utf16JsonReader extends JsonReader {
         } else {
           ch = scanSimpleEscape(escaped, offset - 1);
         }
-        if (Character.isHighSurrogate(ch)) {
+        if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
           offset += 2;
           char low = scanUnicodeEscape(offset);
           offset += 4;
@@ -263,7 +263,7 @@ public final class Utf16JsonReader extends JsonReader {
           out = putUtf16Char(outBytes, out, low);
           continue;
         }
-      } else if (Character.isHighSurrogate(ch)) {
+      } else if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
         char low = charAtFast(offset++);
         outBytes = ensureStringDecodeCapacity(outBytes, out + 4);
         out = putUtf16Char(outBytes, out, ch);
@@ -288,6 +288,9 @@ public final class Utf16JsonReader extends JsonReader {
     }
     char ch = scanUnicodeEscape(cursor);
     cursor += 4;
+    if (!Character.isSurrogate(ch) || allowUnpairedSurrogates) {
+      return cursor;
+    }
     if (Character.isHighSurrogate(ch)) {
       if (cursor + 6 > length || charAtFast(cursor) != '\\' || charAtFast(cursor + 1) != 'u') {
         throw errorAt("Unpaired high surrogate escape", slash);
@@ -298,14 +301,14 @@ public final class Utf16JsonReader extends JsonReader {
       }
       return cursor + 6;
     }
-    if (Character.isLowSurrogate(ch)) {
-      throw errorAt("Unpaired low surrogate escape", slash);
-    }
-    return cursor;
+    throw errorAt("Unpaired low surrogate escape", slash);
   }
 
   private int scanRawSurrogate(int cursor) {
     if (cursor + 1 >= length || !Character.isLowSurrogate(charAtFast(cursor + 1))) {
+      if (allowUnpairedSurrogates) {
+        return cursor + 1;
+      }
       throw errorAt("Unpaired high surrogate in string", cursor);
     }
     return cursor + 2;
@@ -1928,7 +1931,7 @@ public final class Utf16JsonReader extends JsonReader {
         boolean currentNonLatin =
             nonLatin || nonLatinBytes != 0 && hasNonLatinBeforeStop(word, stop - offset);
         char ch = charAtFast(stop);
-        if (Character.isHighSurrogate(ch)) {
+        if (Character.isSurrogate(ch)) {
           currentNonLatin = true;
         }
         String value = readUtf16StringStop(localBytes, start, stop, currentNonLatin, ch);
@@ -1949,7 +1952,7 @@ public final class Utf16JsonReader extends JsonReader {
         boolean currentNonLatin =
             nonLatin || nonLatinBytes != 0 && hasNonLatinBeforeStop(word, stop - nextOffset);
         char ch = charAtFast(stop);
-        if (Character.isHighSurrogate(ch)) {
+        if (Character.isSurrogate(ch)) {
           currentNonLatin = true;
         }
         String value = readUtf16StringStop(localBytes, start, stop, currentNonLatin, ch);
@@ -1977,7 +1980,7 @@ public final class Utf16JsonReader extends JsonReader {
       boolean currentNonLatin =
           nonLatin || nonLatinBytes != 0 && hasNonLatinBeforeStop(word, stop - offset);
       char ch = charAtFast(stop);
-      if (Character.isHighSurrogate(ch)) {
+      if (Character.isSurrogate(ch)) {
         currentNonLatin = true;
       }
       String value = readUtf16StringStop(localBytes, start, stop, currentNonLatin, ch);
@@ -2013,10 +2016,18 @@ public final class Utf16JsonReader extends JsonReader {
     if (Character.isHighSurrogate(ch)) {
       int lowOffset = stop + 1;
       if (lowOffset >= length || !Character.isLowSurrogate(charAtFast(lowOffset))) {
+        if (allowUnpairedSurrogates) {
+          position = lowOffset;
+          return null;
+        }
         position = stop;
         throw error("Unpaired high surrogate in string");
       }
       position = lowOffset + 1;
+      return null;
+    }
+    if (allowUnpairedSurrogates) {
+      position = stop + 1;
       return null;
     }
     position = stop;
@@ -2078,7 +2089,7 @@ public final class Utf16JsonReader extends JsonReader {
       }
       if (ch == '\\') {
         char escaped = readEscapedStringChar();
-        if (Character.isHighSurrogate(escaped)) {
+        if (Character.isHighSurrogate(escaped) && !allowUnpairedSurrogates) {
           char low = readLowSurrogateEscape();
           outBytes = widenStringDecodeBuffer(outBytes, out);
           out <<= 1;
@@ -2087,7 +2098,7 @@ public final class Utf16JsonReader extends JsonReader {
           out = putUtf16Char(outBytes, out, low);
           return readStringUtf16Tail(outBytes, out, nextStringChar());
         }
-        if (Character.isLowSurrogate(escaped)) {
+        if (Character.isLowSurrogate(escaped) && !allowUnpairedSurrogates) {
           throw error("Unpaired low surrogate escape");
         }
         if (escaped <= 0xFF) {
@@ -2102,7 +2113,7 @@ public final class Utf16JsonReader extends JsonReader {
         }
       } else if (ch < 0x20) {
         throw error("Control character in string");
-      } else if (Character.isHighSurrogate((char) ch)) {
+      } else if (Character.isHighSurrogate((char) ch) && !allowUnpairedSurrogates) {
         char low = readRawLowSurrogate();
         outBytes = widenStringDecodeBuffer(outBytes, out);
         out <<= 1;
@@ -2110,7 +2121,7 @@ public final class Utf16JsonReader extends JsonReader {
         out = putUtf16Char(outBytes, out, (char) ch);
         out = putUtf16Char(outBytes, out, low);
         return readStringUtf16Tail(outBytes, out, nextStringChar());
-      } else if (Character.isLowSurrogate((char) ch)) {
+      } else if (Character.isLowSurrogate((char) ch) && !allowUnpairedSurrogates) {
         throw error("Unpaired low surrogate in string");
       } else if (ch <= 0xFF) {
         outBytes = ensureStringDecodeCapacity(outBytes, out + 1);
@@ -2158,12 +2169,12 @@ public final class Utf16JsonReader extends JsonReader {
       }
       if (ch == '\\') {
         char escaped = readEscapedStringChar();
-        if (Character.isHighSurrogate(escaped)) {
+        if (Character.isHighSurrogate(escaped) && !allowUnpairedSurrogates) {
           char low = readLowSurrogateEscape();
           outBytes = ensureStringDecodeCapacity(outBytes, out + 4);
           out = putUtf16Char(outBytes, out, escaped);
           out = putUtf16Char(outBytes, out, low);
-        } else if (Character.isLowSurrogate(escaped)) {
+        } else if (Character.isLowSurrogate(escaped) && !allowUnpairedSurrogates) {
           throw error("Unpaired low surrogate escape");
         } else {
           outBytes = ensureStringDecodeCapacity(outBytes, out + 2);
@@ -2171,12 +2182,12 @@ public final class Utf16JsonReader extends JsonReader {
         }
       } else if (ch < 0x20) {
         throw error("Control character in string");
-      } else if (Character.isHighSurrogate((char) ch)) {
+      } else if (Character.isHighSurrogate((char) ch) && !allowUnpairedSurrogates) {
         char low = readRawLowSurrogate();
         outBytes = ensureStringDecodeCapacity(outBytes, out + 4);
         out = putUtf16Char(outBytes, out, (char) ch);
         out = putUtf16Char(outBytes, out, low);
-      } else if (Character.isLowSurrogate((char) ch)) {
+      } else if (Character.isLowSurrogate((char) ch) && !allowUnpairedSurrogates) {
         throw error("Unpaired low surrogate in string");
       } else {
         outBytes = ensureStringDecodeCapacity(outBytes, out + 2);
@@ -2295,13 +2306,13 @@ public final class Utf16JsonReader extends JsonReader {
         return readEscapedStringTail(start, position - 1, nonLatin);
       } else if (ch < 0x20) {
         throw error("Control character in string");
-      } else if (Character.isHighSurrogate(ch)) {
+      } else if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
         if (position >= length || !Character.isLowSurrogate(charAtFast(position))) {
           throw error("Unpaired high surrogate in string");
         }
         position++;
         nonLatin = true;
-      } else if (Character.isLowSurrogate(ch)) {
+      } else if (Character.isLowSurrogate(ch) && !allowUnpairedSurrogates) {
         throw error("Unpaired low surrogate in string");
       } else if (ch > 0xFF) {
         nonLatin = true;
@@ -2862,7 +2873,7 @@ public final class Utf16JsonReader extends JsonReader {
       }
       if (ch == '\\') {
         ch = readEscapedFieldNameChar();
-        if (Character.isHighSurrogate(ch)) {
+        if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
           if (latin1) {
             hash = JsonFieldNameHash.hashPacked(value, nameLength);
             latin1 = false;
@@ -2881,7 +2892,7 @@ public final class Utf16JsonReader extends JsonReader {
           }
           hash = JsonFieldNameHash.update(hash, low);
           nameLength++;
-        } else if (Character.isLowSurrogate(ch)) {
+        } else if (Character.isLowSurrogate(ch) && !allowUnpairedSurrogates) {
           throw error("Unpaired low surrogate escape");
         } else {
           if (latin1) {
@@ -2901,7 +2912,7 @@ public final class Utf16JsonReader extends JsonReader {
       if (ch < 0x20) {
         throw error("Control character in string");
       }
-      if (Character.isHighSurrogate(ch)) {
+      if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
         if (position >= inputLength || !Character.isLowSurrogate(charAtFast(position))) {
           throw error("Unpaired high surrogate in string");
         }
@@ -2914,7 +2925,7 @@ public final class Utf16JsonReader extends JsonReader {
         nameLength += 2;
         continue;
       }
-      if (Character.isLowSurrogate(ch)) {
+      if (Character.isLowSurrogate(ch) && !allowUnpairedSurrogates) {
         throw error("Unpaired low surrogate in string");
       }
       if (latin1) {
