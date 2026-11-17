@@ -1163,7 +1163,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
       return;
     }
     JsonCreatorFieldInfo creatorField = route.creatorField();
-    if (creatorField.onNullRead() == NullHandling.SKIP) {
+    if (creatorField.decodesBeforeGroup()) {
       // Decode first: a null decoded by the codec must not publish an otherwise absent group.
       Object value = creatorField.readLatin1Value(reader);
       if (value != null) {
@@ -1200,7 +1200,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
       return;
     }
     JsonCreatorFieldInfo creatorField = route.creatorField();
-    if (creatorField.onNullRead() == NullHandling.SKIP) {
+    if (creatorField.decodesBeforeGroup()) {
       // Decode first: a null decoded by the codec must not publish an otherwise absent group.
       Object value = creatorField.readUtf16Value(reader);
       if (value != null) {
@@ -1236,7 +1236,7 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
       return;
     }
     JsonCreatorFieldInfo creatorField = route.creatorField();
-    if (creatorField.onNullRead() == NullHandling.SKIP) {
+    if (creatorField.decodesBeforeGroup()) {
       // Decode first: a null decoded by the codec must not publish an otherwise absent group.
       Object value = creatorField.readUtf8Value(reader);
       if (value != null) {
