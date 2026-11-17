@@ -153,7 +153,9 @@ public class ForyJsonTokenOperationTest {
   public void readRawValueKeepsSourceText() {
     String input = " [ {\"a\" : [1, 2]} ,\"x\\u0041\u00e9\", 1.5e-3, true, null,\n{} ]";
     String[] expected = {"{\"a\" : [1, 2]}", "\"x\\u0041\u00e9\"", "1.5e-3", "true", "null", "{}"};
-    assertRawValues(JsonTestSupport.newLatin1Reader(input), expected);
+    // Byte input: on JDK 8 a String is never byte-backed, so the String constructor rejects it.
+    assertRawValues(
+        JsonTestSupport.newLatin1Reader(input.getBytes(StandardCharsets.ISO_8859_1)), expected);
     assertRawValues(JsonTestSupport.newUtf16Reader(input), expected);
     assertRawValues(
         JsonTestSupport.newUtf8Reader(input.getBytes(StandardCharsets.UTF_8)), expected);
