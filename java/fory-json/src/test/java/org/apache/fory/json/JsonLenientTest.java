@@ -168,6 +168,15 @@ public class JsonLenientTest extends ForyJsonTestModels {
     @JsonLenient @JsonAnyProperty public Map<String, Object> values;
   }
 
+  @JsonLenient
+  public static class ContentNulls {
+    @JsonProperty(onContentNullRead = NullHandling.FAIL)
+    public List<Integer> failing;
+
+    @JsonProperty(onContentNullRead = NullHandling.SKIP)
+    public Integer[] skipping;
+  }
+
   @JsonLenient({})
   public static class StrictImp {
     public int w;
@@ -507,6 +516,51 @@ public class JsonLenientTest extends ForyJsonTestModels {
                       .readUtf8(JsonTestSupport.newUtf8Reader(new byte[] {'"', '"'})));
       assertTrue(error.getMessage().contains("JSON null is not allowed"), error.getMessage());
     }
+  }
+
+  @Test
+  public void textOfBooleans() {
+    ForyJson json = newJson();
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      LenientImp imp =
+          read(json, "{\"id\":true,\"cat\":[false,0]}", LenientImp.class, representation);
+      assertEquals(imp.id, "true");
+      assertEquals(imp.cat, Arrays.asList("false", "0"));
+    }
+  }
+
+  @Test
+  public void strictAndLenientInstancesKeepSeparateCodecs() {
+    ForyJson strict = newJson();
+    ForyJson lenient = newJsonBuilder().lenientRead(Feature.FLOAT_AS_INT).build();
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      assertEquals(read(lenient, "{\"w\":2.5}", Imp.class, representation).w, 2);
+      assertEquals(read(strict, "{\"w\":2}", Imp.class, representation).w, 2);
+    }
+    assertRejected(strict, "{\"w\":2.5}", Imp.class, "");
+    assertGeneratedWhenSupported(strict, Imp.class);
+    assertGeneratedWhenSupported(lenient, Imp.class);
+    assertGeneratedWhenSupported(lenient, CreatorImp.class);
+    assertGeneratedWhenSupported(newJson(), LenientCreator.class);
+  }
+
+  @Test
+  public void contentNullHandlingAppliesToNullTokens() {
+    ForyJson json = newJson();
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      ContentNulls nulls =
+          read(
+              json,
+              "{\"failing\":[\" \",1],\"skipping\":[null,\"\",\" 2 \"]}",
+              ContentNulls.class,
+              representation);
+      assertEquals(nulls.failing, Arrays.asList(null, 1));
+      assertEquals(nulls.skipping, new Integer[] {null, 2});
+      assertEquals(
+          read(json, "{\"skipping\":\" 3 \"}", ContentNulls.class, representation).skipping,
+          new Integer[] {3});
+    }
+    assertRejected(json, "{\"failing\":[null]}", ContentNulls.class, "");
   }
 
   @Test

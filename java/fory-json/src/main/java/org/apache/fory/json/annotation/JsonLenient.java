@@ -29,8 +29,8 @@ import java.lang.annotation.Target;
  * Accepts common off-spec JSON value shapes when reading a property, as Jackson does by default or
  * behind its well-known coercion switches.
  *
- * <p>On a field, setter, or {@link JsonCreator} parameter, the listed features replace the class
- * and builder settings for that logical property; {@code @JsonLenient({})} makes one property
+ * <p>On a field, getter, setter, or {@link JsonCreator} parameter, the listed features replace the
+ * class and builder settings for that logical property; {@code @JsonLenient({})} makes one property
  * strict. On a class, they are the default for every property of that class and replace {@code
  * ForyJsonBuilder.lenientRead}. A class annotation is not inherited by subclasses and does not
  * apply to nested objects, which follow their own class setting. An exact-target {@link JsonMixin}
@@ -38,11 +38,13 @@ import java.lang.annotation.Target;
  *
  * <p>Features apply to the property value and to the direct boolean, numeric, and string elements
  * of a property-owned array or collection. They apply only where Fory owns the representation: a
- * property with {@link JsonCodec}, {@link JsonFormat}, {@link JsonByteArray}, {@link
- * JsonUnwrapped}, a registered codec, or a {@link JsonValue} type keeps that representation. A
- * class or builder setting applies silently wherever a feature fits the property type; a property
- * declaration without any feature that fits its type is rejected when metadata is built. Root
- * values, map values, and optional contents are not affected. Writing is unaffected.
+ * property with {@link JsonCodec}, {@link JsonFormat}, or {@link JsonByteArray}, and a type with a
+ * registered codec or {@link JsonValue}, keep that representation. A class or builder setting
+ * applies silently wherever a feature fits the property type and skips other properties. A
+ * declaration on the property itself is rejected when metadata is built if no feature fits its
+ * type, or if the property is never read, selects its own representation, is a JSON Any member, or
+ * is {@link JsonUnwrapped}. Root values, map values, and optional contents are not affected.
+ * Writing is unaffected.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
@@ -87,8 +89,10 @@ public @interface JsonLenient {
      * An empty JSON string read into a boolean, numeric, object, map, array, or collection target
      * is read as {@code null}; primitive targets receive {@code false} or zero. With {@link
      * #TRIM_QUOTED_SCALAR}, a space-only string read into a boolean or numeric target is also
-     * empty. The value is assigned like any other decoded value: explicit-null handling does not
-     * apply. Text targets such as strings, enums, and date/time values are not affected.
+     * empty. The value is assigned like any other decoded value: explicit-null handling ({@link
+     * JsonProperty#onNullRead()} and {@link JsonProperty#onContentNullRead()}) does not apply,
+     * while a non-null occurrence still rejects it. Text targets such as strings, enums, date/time
+     * values, and byte arrays encoded as binary strings are not affected.
      */
     EMPTY_STRING_AS_NULL
   }
