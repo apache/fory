@@ -132,7 +132,8 @@ applicable read setting is `SET`. Property `onNullRead`
 and Fory container `onContentNullRead` settings intercept literal null before invoking a selected
 child codec when configured as `SKIP` or `FAIL`. Under `SKIP`, a Java null returned after
 consuming a non-null token is also omitted: the property keeps its current value, and the
-collection element, reference-array element, or map value is not inserted. `SET` and `FAIL` assign
+collection element, reference-array or `AtomicReferenceArray` element, map value, or Any value is
+not inserted. `SET` and `FAIL` assign
 such a value normally. The registered instance is shared across concurrent operations and
 must be thread-safe.
 

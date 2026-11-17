@@ -140,6 +140,48 @@ public class JsonNullHandlingTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void decodedNullUnwrappedAndAny() {
+    ForyJson skip =
+        newJsonBuilder().onNullRead(NullHandling.SKIP).onContentNullRead(NullHandling.SKIP).build();
+    ForyJson strict =
+        newJsonBuilder()
+            .onNullRead(NullHandling.SKIP)
+            .failOnMissingRequiredProperties(true)
+            .build();
+    for (int reader = 0; reader < 4; reader++) {
+      assertNull(read(skip, "{\"value\":\"decode-null\"}", DecodedUnwrapped.class, reader).child);
+      assertEquals(
+          read(skip, "{\"value\":\"ok\",\"value\":\"decode-null\"}", DecodedUnwrapped.class, reader)
+              .child
+              .value,
+          "ok");
+      assertNull(
+          read(strict, "{\"value\":\"decode-null\"}", DecodedCreatedUnwrapped.class, reader).child);
+      assertEquals(
+          read(strict, "{\"value\":\"ok\"}", DecodedCreatedUnwrapped.class, reader).child.value,
+          "ok");
+      DecodedAnyValues value =
+          read(skip, "{\"x\":\"decode-null\",\"y\":\"a\"}", DecodedAnyValues.class, reader);
+      assertEquals(value.calls, reader == 1 ? 2 : 1);
+      assertFalse(value.sawNull);
+      DecodedAnyMap map = read(skip, "{\"x\":\"decode-null\"}", DecodedAnyMap.class, reader);
+      if (reader == 1) {
+        assertFalse(map.values.containsKey("x"));
+      } else {
+        assertNull(map.values);
+      }
+      DecodedCreatedAny created =
+          read(
+              skip,
+              "{\"x\":\"a\",\"x\":\"decode-null\",\"y\":\"decode-null\"}",
+              DecodedCreatedAny.class,
+              reader);
+      assertEquals(created.values.get("x"), "a");
+      assertFalse(created.values.containsKey("y"));
+    }
+  }
+
+  @Test
   public void creatorPresence() {
     ForyJson skip = newJsonBuilder().onNullRead(NullHandling.SKIP).build();
     ForyJson strict =
@@ -592,6 +634,47 @@ public class JsonNullHandlingTest extends ForyJsonTestModels {
     @JsonCodec(NullStringCodec.class)
     public String getValue() {
       return value;
+    }
+  }
+
+  public static class DecodedChild {
+    @JsonCodec(NullStringCodec.class)
+    public String value;
+  }
+
+  public static class DecodedUnwrapped {
+    @JsonUnwrapped public DecodedChild child;
+  }
+
+  public static class DecodedCreatedUnwrapped {
+    @JsonUnwrapped public DecodedCreated child;
+  }
+
+  public static class DecodedAnyValues {
+    @JsonIgnore public int calls;
+    @JsonIgnore public boolean sawNull;
+
+    @JsonAnySetter
+    public void accept(String name, @JsonCodec(NullStringCodec.class) String value) {
+      calls++;
+      sawNull |= value == null;
+    }
+  }
+
+  public static class DecodedAnyMap {
+    @JsonAnyProperty
+    @JsonCodec(valueCodec = NullStringCodec.class)
+    public Map<String, String> values;
+  }
+
+  public static class DecodedCreatedAny {
+    @JsonAnyProperty
+    @JsonCodec(valueCodec = NullStringCodec.class)
+    public final Map<String, String> values;
+
+    @JsonCreator({"values"})
+    public DecodedCreatedAny(Map<String, String> values) {
+      this.values = values;
     }
   }
 

@@ -805,11 +805,7 @@ abstract class JsonReaderCodegen {
             new Expression.Invoke(
                     readerRef(), "materializeFieldName", TypeRef.of(String.class), fieldStart)
                 .inline());
-    Expression value =
-        new Expression.Variable(
-            "anyValue",
-            new Expression.Invoke(
-                anyReaderRef(), readMethod(), TypeRef.of(Object.class), readerRef()));
+    Expression value = anyValue();
     Expression create =
         new Expression.Assign(
             anyMap,
@@ -821,9 +817,12 @@ abstract class JsonReaderCodegen {
             name,
             new Expression.Invoke(ownerRef(), "reserveAnyEntry", readerRef()),
             value,
-            new Expression.If(
-                eq(anyMap, new Expression.Null(TypeRef.of(Map.class), false)), create),
-            new Expression.Invoke(ownerRef(), "putAnyMap", anyMap, name, value));
+            skipDecodedAnyNull(
+                value,
+                new Expression.ListExpression(
+                    new Expression.If(
+                        eq(anyMap, new Expression.Null(TypeRef.of(Map.class), false)), create),
+                    new Expression.Invoke(ownerRef(), "putAnyMap", anyMap, name, value))));
     return new Expression.ListExpression(
         match,
         new Expression.If(
@@ -2680,7 +2679,10 @@ abstract class JsonReaderCodegen {
       ReadRoute route = routes[i];
       int id = directCount + i;
       Expression.ListExpression read = new Expression.ListExpression();
-      addEnsureUnwrappedGroup(read, route.group(), workspaces, present);
+      // Under SKIP, a null decoded by the codec must not publish an otherwise absent group, so the
+      // group is ensured only on the assignment branch of a decoded value.
+      Expression.ListExpression ensure = new Expression.ListExpression();
+      addEnsureUnwrappedGroup(ensure, route.group(), workspaces, present);
       int groupIndex = route.group().readIndex();
       ObjectCodec<?> child = route.group().childCodec();
       Expression workspace =
@@ -2691,7 +2693,17 @@ abstract class JsonReaderCodegen {
           throw new IllegalStateException("Creator group route must use creator metadata");
         }
         Expression object = new Expression.Cast(workspace, TypeRef.of(child.type()));
-        read.add(readField(builder, ownerType, field, id, object, false));
+        if (field.onNullRead() == NullHandling.SKIP && readsResolvedValue(field)) {
+          Expression decoded = readDecodedValue(field, id);
+          read.add(
+              new Expression.If(
+                  notNull(decoded),
+                  new Expression.ListExpression(
+                      ensure, builder.setField(field, object, resolvedValue(field, id, decoded)))));
+        } else {
+          read.add(ensure);
+          read.add(readField(builder, ownerType, field, id, object, false));
+        }
       } else {
         JsonCreatorFieldInfo field = route.creatorField();
         read.add(
@@ -2700,10 +2712,12 @@ abstract class JsonReaderCodegen {
                 field,
                 id,
                 value ->
-                    new Expression.AssignArrayElem(
-                        new Expression.Cast(workspace, TypeRef.of(Object[].class)),
-                        value,
-                        Expression.Literal.ofInt(field.argumentIndex()))));
+                    new Expression.ListExpression(
+                        ensure,
+                        new Expression.AssignArrayElem(
+                            new Expression.Cast(workspace, TypeRef.of(Object[].class)),
+                            value,
+                            Expression.Literal.ofInt(field.argumentIndex())))));
       }
       NullHandling handling =
           route.field() == null ? route.creatorField().onNullRead() : route.field().onNullRead();
@@ -4112,11 +4126,7 @@ abstract class JsonReaderCodegen {
             new Expression.Invoke(
                     readerRef(), "materializeFieldName", TypeRef.of(String.class), fieldStart)
                 .inline());
-    Expression value =
-        new Expression.Variable(
-            "anyValue",
-            new Expression.Invoke(
-                anyReaderRef(), readMethod(), TypeRef.of(Object.class), readerRef()));
+    Expression value = anyValue();
     Expression read;
     if (any.readSetter() != null) {
       Expression write =
@@ -4130,7 +4140,7 @@ abstract class JsonReaderCodegen {
               object,
               name,
               value);
-      read = new Expression.ListExpression(name, value, write);
+      read = new Expression.ListExpression(name, value, skipDecodedAnyNull(value, write));
     } else {
       Reference map = new Reference("anyMap", TypeRef.of(Map.class));
       Expression create =
@@ -4172,7 +4182,7 @@ abstract class JsonReaderCodegen {
               name,
               new Expression.Invoke(ownerRef(), "reserveAnyEntry", readerRef()),
               value,
-              write);
+              skipDecodedAnyNull(value, write));
     }
     return new Expression.If(
         reserved,
@@ -4181,6 +4191,22 @@ abstract class JsonReaderCodegen {
             eq(fieldIndex, Expression.Literal.ofInt(JsonFieldTable.UNKNOWN)),
             nullReadGuard(resolver.sharedRegistry().onContentNullRead(), "Any value", read),
             skip));
+  }
+
+  /** Reads one Any value; content SKIP needs a nullable local for the decoded-null test. */
+  private Expression anyValue() {
+    boolean skip = resolver.sharedRegistry().onContentNullRead() == NullHandling.SKIP;
+    return new Expression.Variable(
+        "anyValue",
+        new Expression.Invoke(
+            anyReaderRef(), readMethod(), "", TypeRef.of(Object.class), skip, readerRef()));
+  }
+
+  /** Under content SKIP, a null decoded by the Any value codec is omitted like a JSON null. */
+  private Expression skipDecodedAnyNull(Expression value, Expression write) {
+    return resolver.sharedRegistry().onContentNullRead() == NullHandling.SKIP
+        ? new Expression.If(notNull(value), write)
+        : write;
   }
 
   private Expression updateExpectedIndex(Expression expectedIndex, Expression fieldIndex) {
@@ -5214,14 +5240,7 @@ abstract class JsonReaderCodegen {
     }
     // SKIP leaves the property unchanged when the selected codec decodes null, like an explicit
     // JSON null. The decoded value is a local so the null test does not repeat the codec call.
-    Expression decoded =
-        new Expression.Invoke(
-            propertyReader(property, id),
-            readObjectMethod(),
-            "decoded",
-            TypeRef.of(Object.class),
-            true,
-            readerRef());
+    Expression decoded = readDecodedValue(property, id);
     return new Expression.If(
         notNull(decoded), builder.setField(property, object, resolvedValue(property, id, decoded)));
   }
@@ -5237,11 +5256,38 @@ abstract class JsonReaderCodegen {
       JsonFieldInfo property,
       int id,
       Expression object) {
-    if (property.readRawType() == Object.class
-        || resolver.canonicalObjectCodec(property.readTypeInfo()) == null) {
+    if (readsResolvedValue(property)) {
       return readResolvedField(builder, property, id, object);
     }
     return builder.setField(property, object, readObjectValue(type, property, id));
+  }
+
+  /** Returns whether a property value is read through its selected codec by readResolvedField. */
+  private boolean readsResolvedValue(JsonFieldInfo property) {
+    if (property.readsUnboxedValue()) {
+      return false;
+    }
+    switch (property.readKind()) {
+      case ARRAY:
+      case MAP:
+        return true;
+      case OBJECT:
+        return property.readRawType() == Object.class
+            || resolver.canonicalObjectCodec(property.readTypeInfo()) == null;
+      default:
+        return false;
+    }
+  }
+
+  /** Reads the raw codec value into a nullable local for the SKIP decoded-null test. */
+  private Expression readDecodedValue(JsonFieldInfo property, int id) {
+    return new Expression.Invoke(
+        propertyReader(property, id),
+        readObjectMethod(),
+        "decoded",
+        TypeRef.of(Object.class),
+        true,
+        readerRef());
   }
 
   final Expression box(Class<?> boxedType, Expression value) {

@@ -99,8 +99,8 @@ public @interface JsonProperty {
    * their own settings. Explicit {@code SKIP} and {@code FAIL} require a container representation
    * owned by Fory; explicit {@code SET} also accepts a complete custom container codec. Encoded
    * binary strings and non-container targets reject explicit settings. {@code SKIP} also omits a
-   * Java null returned by the child codec of a collection, reference array, or map value for a
-   * non-null JSON token; {@code FAIL} rejects only explicit JSON null.
+   * Java null returned by the child codec of a collection, reference array, AtomicReferenceArray,
+   * or map value for a non-null JSON token; {@code FAIL} rejects only explicit JSON null.
    */
   NullHandling onContentNullRead() default NullHandling.DEFAULT;
 

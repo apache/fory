@@ -194,50 +194,77 @@ public final class JsonCreatorFieldInfo {
 
   /** Stores the decoded argument; SKIP leaves it absent when the selected codec decodes null. */
   public void readLatin1(Latin1JsonReader reader, Object[] arguments) {
+    Object value = readLatin1Value(reader);
+    if (value != null || onNullRead != NullHandling.SKIP) {
+      arguments[argumentIndex] = value;
+    }
+  }
+
+  /**
+   * Decodes one argument value. Under SKIP, callers have already consumed an explicit JSON null, so
+   * a null result means the selected codec decoded null and the argument stays absent.
+   */
+  public Object readLatin1Value(Latin1JsonReader reader) {
     if (readOccurrenceNull(reader)) {
-      arguments[argumentIndex] = null;
-      return;
+      return null;
     }
     Object value =
         unboxedValueCodec == null
             ? typeInfo.latin1Reader().readLatin1(reader)
             : unboxedValueCodec.readLatin1Carrier(reader);
-    if (value == null && onNullRead == NullHandling.SKIP) {
-      return;
-    }
-    arguments[argumentIndex] = requirePrimitive(value, rawType);
+    return value == null && onNullRead == NullHandling.SKIP
+        ? null
+        : requirePrimitive(value, rawType);
   }
 
   /** Stores the decoded argument; SKIP leaves it absent when the selected codec decodes null. */
   public void readUtf16(Utf16JsonReader reader, Object[] arguments) {
+    Object value = readUtf16Value(reader);
+    if (value != null || onNullRead != NullHandling.SKIP) {
+      arguments[argumentIndex] = value;
+    }
+  }
+
+  /**
+   * Decodes one argument value. Under SKIP, callers have already consumed an explicit JSON null, so
+   * a null result means the selected codec decoded null and the argument stays absent.
+   */
+  public Object readUtf16Value(Utf16JsonReader reader) {
     if (readOccurrenceNull(reader)) {
-      arguments[argumentIndex] = null;
-      return;
+      return null;
     }
     Object value =
         unboxedValueCodec == null
             ? typeInfo.utf16Reader().readUtf16(reader)
             : unboxedValueCodec.readUtf16Carrier(reader);
-    if (value == null && onNullRead == NullHandling.SKIP) {
-      return;
-    }
-    arguments[argumentIndex] = requirePrimitive(value, rawType);
+    return value == null && onNullRead == NullHandling.SKIP
+        ? null
+        : requirePrimitive(value, rawType);
   }
 
   /** Stores the decoded argument; SKIP leaves it absent when the selected codec decodes null. */
   public void readUtf8(Utf8JsonReader reader, Object[] arguments) {
+    Object value = readUtf8Value(reader);
+    if (value != null || onNullRead != NullHandling.SKIP) {
+      arguments[argumentIndex] = value;
+    }
+  }
+
+  /**
+   * Decodes one argument value. Under SKIP, callers have already consumed an explicit JSON null, so
+   * a null result means the selected codec decoded null and the argument stays absent.
+   */
+  public Object readUtf8Value(Utf8JsonReader reader) {
     if (readOccurrenceNull(reader)) {
-      arguments[argumentIndex] = null;
-      return;
+      return null;
     }
     Object value =
         unboxedValueCodec == null
             ? typeInfo.utf8Reader().readUtf8(reader)
             : unboxedValueCodec.readUtf8Carrier(reader);
-    if (value == null && onNullRead == NullHandling.SKIP) {
-      return;
-    }
-    arguments[argumentIndex] = requirePrimitive(value, rawType);
+    return value == null && onNullRead == NullHandling.SKIP
+        ? null
+        : requirePrimitive(value, rawType);
   }
 
   private boolean readOccurrenceNull(org.apache.fory.json.reader.JsonReader reader) {

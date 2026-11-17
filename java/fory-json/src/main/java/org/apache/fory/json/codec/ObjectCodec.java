@@ -930,10 +930,17 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           }
           String name = reader.materializeFieldName(start);
           if (creatorInfo == null && !anyInfo.fieldRead()) {
-            anyInfo.put(rootWorkspace, name, anyReader.readLatin1(reader));
+            Object value = anyReader.readLatin1(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
+            anyInfo.put(rootWorkspace, name, value);
           } else {
             reserveAnyEntry(reader);
             Object value = anyReader.readLatin1(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
             if (anyMap == null) {
               if (creatorInfo == null) {
                 anyMap = anyInfo.readMap(rootWorkspace);
@@ -1010,10 +1017,17 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           }
           String name = reader.materializeFieldName(start);
           if (creatorInfo == null && !anyInfo.fieldRead()) {
-            anyInfo.put(rootWorkspace, name, anyReader.readUtf16(reader));
+            Object value = anyReader.readUtf16(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
+            anyInfo.put(rootWorkspace, name, value);
           } else {
             reserveAnyEntry(reader);
             Object value = anyReader.readUtf16(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
             if (anyMap == null) {
               if (creatorInfo == null) {
                 anyMap = anyInfo.readMap(rootWorkspace);
@@ -1090,10 +1104,17 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           }
           String name = reader.materializeFieldName(start);
           if (creatorInfo == null && !anyInfo.fieldRead()) {
-            anyInfo.put(rootWorkspace, name, anyReader.readUtf8(reader));
+            Object value = anyReader.readUtf8(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
+            anyInfo.put(rootWorkspace, name, value);
           } else {
             reserveAnyEntry(reader);
             Object value = anyReader.readUtf8(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
             if (anyMap == null) {
               if (creatorInfo == null) {
                 anyMap = anyInfo.readMap(rootWorkspace);
@@ -1127,14 +1148,33 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         : route.creatorField().skipNullRead(reader)) {
       return;
     }
-    Object workspace = ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present);
-    ObjectCodec<?> child = route.group().childCodec();
-    if (child.creatorInfo == null) {
-      route.field().readLatin1(reader, workspace);
-    } else {
-      JsonCreatorFieldInfo field = route.creatorField();
-      field.readLatin1(reader, (Object[]) workspace);
+    JsonFieldInfo field = route.field();
+    if (field != null) {
+      if (field.decodesBeforeGroup()) {
+        Object value = field.decodeLatin1(reader);
+        if (value != null) {
+          field.putDecoded(
+              ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present), value);
+        }
+        return;
+      }
+      field.readLatin1(
+          reader, ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present));
+      return;
     }
+    JsonCreatorFieldInfo creatorField = route.creatorField();
+    if (creatorField.onNullRead() == NullHandling.SKIP) {
+      // Decode first: a null decoded by the codec must not publish an otherwise absent group.
+      Object value = creatorField.readLatin1Value(reader);
+      if (value != null) {
+        Object[] arguments =
+            (Object[]) ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present);
+        arguments[creatorField.argumentIndex()] = value;
+      }
+      return;
+    }
+    creatorField.readLatin1(
+        reader, (Object[]) ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present));
   }
 
   private void readUtf16Route(
@@ -1145,14 +1185,33 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         : route.creatorField().skipNullRead(reader)) {
       return;
     }
-    Object workspace = ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present);
-    ObjectCodec<?> child = route.group().childCodec();
-    if (child.creatorInfo == null) {
-      route.field().readUtf16(reader, workspace);
-    } else {
-      JsonCreatorFieldInfo field = route.creatorField();
-      field.readUtf16(reader, (Object[]) workspace);
+    JsonFieldInfo field = route.field();
+    if (field != null) {
+      if (field.decodesBeforeGroup()) {
+        Object value = field.decodeUtf16(reader);
+        if (value != null) {
+          field.putDecoded(
+              ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present), value);
+        }
+        return;
+      }
+      field.readUtf16(
+          reader, ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present));
+      return;
     }
+    JsonCreatorFieldInfo creatorField = route.creatorField();
+    if (creatorField.onNullRead() == NullHandling.SKIP) {
+      // Decode first: a null decoded by the codec must not publish an otherwise absent group.
+      Object value = creatorField.readUtf16Value(reader);
+      if (value != null) {
+        Object[] arguments =
+            (Object[]) ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present);
+        arguments[creatorField.argumentIndex()] = value;
+      }
+      return;
+    }
+    creatorField.readUtf16(
+        reader, (Object[]) ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present));
   }
 
   private void readUtf8Route(
@@ -1163,14 +1222,32 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
         : route.creatorField().skipNullRead(reader)) {
       return;
     }
-    Object workspace = ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present);
-    ObjectCodec<?> child = route.group().childCodec();
-    if (child.creatorInfo == null) {
-      route.field().readUtf8(reader, workspace);
-    } else {
-      JsonCreatorFieldInfo field = route.creatorField();
-      field.readUtf8(reader, (Object[]) workspace);
+    JsonFieldInfo field = route.field();
+    if (field != null) {
+      if (field.decodesBeforeGroup()) {
+        Object value = field.decodeUtf8(reader);
+        if (value != null) {
+          field.putDecoded(
+              ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present), value);
+        }
+        return;
+      }
+      field.readUtf8(reader, ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present));
+      return;
     }
+    JsonCreatorFieldInfo creatorField = route.creatorField();
+    if (creatorField.onNullRead() == NullHandling.SKIP) {
+      // Decode first: a null decoded by the codec must not publish an otherwise absent group.
+      Object value = creatorField.readUtf8Value(reader);
+      if (value != null) {
+        Object[] arguments =
+            (Object[]) ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present);
+        arguments[creatorField.argumentIndex()] = value;
+      }
+      return;
+    }
+    creatorField.readUtf8(
+        reader, (Object[]) ensureUnwrappedGroup(reader, route.group(), groupWorkspaces, present));
   }
 
   private void finishUnwrappedAny(
@@ -1272,6 +1349,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           if (anyInfo.fieldRead()) {
             reserveAnyEntry(reader);
             Object value = anyReader.readLatin1(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
             if (anyMap == null) {
               anyMap = anyInfo.readMap(object);
               if (anyMap == null) {
@@ -1284,7 +1364,11 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             }
             putAnyMap(anyMap, name, value);
           } else {
-            anyInfo.put(object, name, anyReader.readLatin1(reader));
+            Object value = anyReader.readLatin1(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
+            anyInfo.put(object, name, value);
           }
         }
       } while (reader.consume(','));
@@ -1334,6 +1418,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           if (anyInfo.fieldRead()) {
             reserveAnyEntry(reader);
             Object value = anyReader.readUtf16(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
             if (anyMap == null) {
               anyMap = anyInfo.readMap(object);
               if (anyMap == null) {
@@ -1346,7 +1433,11 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             }
             putAnyMap(anyMap, name, value);
           } else {
-            anyInfo.put(object, name, anyReader.readUtf16(reader));
+            Object value = anyReader.readUtf16(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
+            anyInfo.put(object, name, value);
           }
         }
       } while (reader.consume(','));
@@ -1396,6 +1487,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
           if (anyInfo.fieldRead()) {
             reserveAnyEntry(reader);
             Object value = anyReader.readUtf8(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
             if (anyMap == null) {
               anyMap = anyInfo.readMap(object);
               if (anyMap == null) {
@@ -1408,7 +1502,11 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             }
             putAnyMap(anyMap, name, value);
           } else {
-            anyInfo.put(object, name, anyReader.readUtf8(reader));
+            Object value = anyReader.readUtf8(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
+            anyInfo.put(object, name, value);
           }
         }
       } while (reader.consume(','));
@@ -1462,6 +1560,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             String name = reader.materializeFieldName(start);
             reserveAnyEntry(reader);
             Object value = anyReader.readLatin1(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
             if (anyMap == null) {
               anyMap = newAnyMap(reader);
             }
@@ -1519,6 +1620,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             String name = reader.materializeFieldName(start);
             reserveAnyEntry(reader);
             Object value = anyReader.readUtf16(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
             if (anyMap == null) {
               anyMap = newAnyMap(reader);
             }
@@ -1576,6 +1680,9 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
             String name = reader.materializeFieldName(start);
             reserveAnyEntry(reader);
             Object value = anyReader.readUtf8(reader);
+            if (anyInfo.skipDecodedNull(value)) {
+              continue;
+            }
             if (anyMap == null) {
               anyMap = newAnyMap(reader);
             }
@@ -2187,6 +2294,11 @@ public class ObjectCodec<T> implements CompositeJsonCodec<T> {
                 ? MapCodec.create(mapRawType, TypeRef.of(mapType), resolver)
                 : MapCodec.create(mapRawType, String.class, valueTypeInfo);
       }
+    }
+
+    /** Returns whether content SKIP omits an Any value that its codec decoded to null. */
+    public boolean skipDecodedNull(Object value) {
+      return value == null && onContentNullRead == NullHandling.SKIP;
     }
 
     private boolean skipNullRead(JsonReader reader) {

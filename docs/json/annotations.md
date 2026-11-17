@@ -234,15 +234,16 @@ Constructor parameters follow their existing missing-property defaults and requi
 checks. A skipped duplicate does not erase an earlier value: `{"seats":["a"],"seats":null}`
 keeps `"a"`. Constructor-bypassed objects have no initializer to preserve.
 
+`SET` preserves codec behavior: null may become `Optional.empty()`, or fail for a primitive or
+non-null Kotlin value. `SKIP` and `FAIL` handle a literal JSON null before that decoding; the string
+`"null"` is an ordinary value.
+
 `SKIP` also applies when a selected codec returns Java null for a non-null JSON value. For example,
 a trimming property codec that decodes `" "` to null leaves the current value unchanged, and a
-trimming `elementCodec` omits that collection element. This covers property assignments, collection
-and reference-array elements, and map values. `FAIL` still rejects only an explicit JSON null.
-
-`SET` preserves codec behavior: null may become `Optional.empty()`, or fail for a primitive or
-non-null Kotlin value. `SKIP` and `FAIL` act before that decoding. Only the literal JSON null is
-affected; the string `"null"` and a custom codec returning Java null for another token are not
-filtered. These options do not affect writing or change the root value's null behavior.
+trimming `elementCodec` omits that collection element. This covers property and creator
+assignments, Any values, collection, reference-array and `AtomicReferenceArray` elements, and map
+values. `SET` assigns such a null normally, and `FAIL` rejects only a literal JSON null. These
+options do not affect writing or change the root value's null behavior.
 
 Content overrides are shallow. For `List<List<String>>`, a property override skips null inner
 lists; elements inside retained lists follow the global setting. Map keys are unaffected, and a

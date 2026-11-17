@@ -577,12 +577,38 @@ public final class JsonFieldInfo {
     return true;
   }
 
+  /**
+   * Returns whether an unwrapped route must decode this property before creating its group. Under
+   * SKIP, a null decoded by the selected codec must not publish an otherwise absent group.
+   */
+  public boolean decodesBeforeGroup() {
+    return onNullRead == NullHandling.SKIP
+        && (readPrimitiveKindId == 0 || readPrimitiveKindId == KIND_CUSTOM_PRIMITIVE);
+  }
+
   /** Assigns a decoded value; SKIP leaves the property unchanged when the codec decodes null. */
   private void putDecoded(Object object, Object value, boolean primitive) {
     if (value == null && onNullRead == NullHandling.SKIP) {
       return;
     }
     readAccessor.putObject(object, primitive ? requirePrimitive(value) : value);
+  }
+
+  /** Assigns a non-null value decoded by {@link #decodeLatin1} or its UTF-16/UTF-8 variants. */
+  public void putDecoded(Object object, Object value) {
+    putDecoded(object, value, readPrimitiveKindId == KIND_CUSTOM_PRIMITIVE);
+  }
+
+  public Object decodeLatin1(Latin1JsonReader reader) {
+    return readTypeInfo.latin1Reader().readLatin1(reader);
+  }
+
+  public Object decodeUtf16(Utf16JsonReader reader) {
+    return readTypeInfo.utf16Reader().readUtf16(reader);
+  }
+
+  public Object decodeUtf8(Utf8JsonReader reader) {
+    return readTypeInfo.utf8Reader().readUtf8(reader);
   }
 
   /** Returns parent-local metadata with a transformed JSON name and the same Java member owner. */
