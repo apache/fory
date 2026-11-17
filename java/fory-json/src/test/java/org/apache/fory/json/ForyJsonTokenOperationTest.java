@@ -174,6 +174,17 @@ public class ForyJsonTokenOperationTest {
     assertThrows(
         ForyJsonException.class,
         () -> json.readUtf8(empty, 0, empty.length, Utf8JsonReader::readRawValue));
+    // Invalid UTF-8 inside a string fails instead of being decoded with replacement characters,
+    // both in the short tail scan and in the word-at-a-time scan of a longer string.
+    byte[] shortString = {'{', '"', 'k', '"', ':', '"', (byte) 0xC3, '"', '}'};
+    String longText = "{\"k\":\"abcdefghijklmnop?qrstuvwxyz\"}";
+    byte[] longString = longText.getBytes(StandardCharsets.UTF_8);
+    longString[longText.indexOf('?')] = (byte) 0xFF;
+    for (byte[] malformed : new byte[][] {shortString, longString}) {
+      assertThrows(
+          ForyJsonException.class,
+          () -> json.readUtf8(malformed, 0, malformed.length, Utf8JsonReader::readRawValue));
+    }
   }
 
   private static void assertRawValues(JsonReader reader, String[] expected) {
