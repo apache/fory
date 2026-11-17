@@ -547,18 +547,17 @@ public final class JsonTypeResolver {
     JsonTypeInfo occurrence = typeInfo;
     JsonTypeInfo element = null;
     if (codec instanceof ArrayCodec || codec instanceof CollectionCodec) {
+      // A registered or module factory codec owns its element semantics, such as unsigned arrays
+      // or custom component codecs; only built-in container representations are rebuilt.
+      if (typeInfo.factoryKey() != null || typeInfo.exactCodecClass() != null) {
+        return typeInfo;
+      }
       TypeRef<?> typeRef = typeInfo.typeRef();
       Class<?> rawType = typeInfo.rawType();
       TypeRef<?> elementType;
       if (codec instanceof ArrayCodec) {
         elementType = typeRef.getComponentType();
         element = getTypeInfo(elementType);
-        // A module may own an array carrier with other element semantics, such as unsigned
-        // arrays. Only the default array representation of the component may be rebuilt.
-        if (ArrayCodec.create(rawType, element, sharedRegistry.byteArrayFormat()).getClass()
-            != codec.getClass()) {
-          return typeInfo;
-        }
       } else {
         elementType = CodecUtils.elementTypeRef(typeRef);
         element = ((CollectionCodec<?>) codec).elementTypeInfo();
