@@ -545,7 +545,10 @@ make the enclosing output invalid or change its structure. Java null still follo
 normal inclusion policy and, when included, is written as JSON `null`.
 
 Reading remains ordinary String-property reading. For example, `{"body":"text"}` can populate the
-field, but an object such as `{"body":{"id":1}}` cannot be read back into it. `JsonRawValue` is not
+field, but an object such as `{"body":{"id":1}}` cannot be read back into it. To capture any JSON
+value as its source text, select a custom codec for the property whose read operation calls
+`JsonReader.readRawValue()`; see [Reading raw values](custom-codecs.md#reading-raw-values).
+`JsonRawValue` is not
 a type-use annotation and does not apply to container elements or Map values. It cannot be placed
 on a setter, creator parameter, Any declaration, or the same property occurrence as `JsonCodec`.
 As an occurrence-local representation, it keeps the raw String shape even when the value type has

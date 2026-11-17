@@ -23,6 +23,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -4340,6 +4341,12 @@ public final class Utf8JsonReader extends JsonReader {
   @Override
   protected String slice(int start, int end) {
     return newLatin1String(start, end);
+  }
+
+  @Override
+  protected String rawText(int start, int end) {
+    // String content was validated as UTF-8 while the span was skipped.
+    return new String(input, start, end - start, StandardCharsets.UTF_8);
   }
 
   private String newLatin1String(int start, int end) {
