@@ -151,8 +151,9 @@ public final class JsonConfig {
   }
 
   /**
-   * Returns whether JSON strings and names may contain unpaired UTF-16 surrogates. Reads decode
-   * each escape independently, and writes escape an unpaired surrogate.
+   * Returns whether JSON string data may contain unpaired UTF-16 surrogates. Reads decode each
+   * escape independently, and writes escape an unpaired surrogate in values and map keys. Names
+   * declared in code are still validated.
    */
   public boolean allowUnpairedSurrogates() {
     return allowUnpairedSurrogates;

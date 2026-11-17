@@ -197,9 +197,10 @@ public final class ForyJsonBuilder {
    * surrogate without its partner becomes that single {@code char} in the decoded value, and a raw
    * unpaired surrogate in {@code String} input is kept as is. Byte input must still be valid UTF-8,
    * which cannot encode a surrogate. Writing emits an unpaired surrogate in a {@code String} or
-   * {@code char} value as a lowercase <code>&#92;uXXXX</code> escape, so String, UTF-8, stream, and
-   * pretty output all read back to the same value. Paired surrogates are read and written as
-   * before, and raw JSON supplied by the caller is still validated.
+   * {@code char} value or map key as a lowercase <code>&#92;uXXXX</code> escape, so String, UTF-8,
+   * stream, and pretty output all read back to the same value. Paired surrogates are read and
+   * written as before. Raw JSON supplied by the caller and names declared in code, such as {@code
+   * JsonProperty} and subtype names, are still validated.
    *
    * <p>The setting is fixed when {@link #build()} is called.
    */

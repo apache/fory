@@ -310,7 +310,7 @@ overrides `JsonInclude` on the class, which overrides the builder default. See
 | `writeNullFields(boolean)`              | `false`                                   | Select `ALWAYS` when true or `NON_NULL` when false              |
 | `writeLongAsString(boolean)`            | `false`                                   | Write built-in 64-bit integer values as decimal strings         |
 | `escapeNonAscii(boolean)`               | `false`                                   | Escape non-ASCII characters in generated JSON strings and names |
-| `allowUnpairedSurrogates(boolean)`      | `false`                                   | Read and write unpaired UTF-16 surrogates in strings and names  |
+| `allowUnpairedSurrogates(boolean)`      | `false`                                   | Read and write unpaired UTF-16 surrogates in string data        |
 | `byteArrayFormat(JsonByteArray.Format)` | `BASE64`                                  | Default byte-array representation for reading and writing       |
 | `withCodegen(boolean)`                  | `true`                                    | Enable generated object codecs                                  |
 | `withAsyncCompilation(boolean)`         | `true`                                    | Compile generated codecs asynchronously                         |
@@ -413,10 +413,12 @@ String text = json.toJson(value); // "a\ud83d"
 When enabled, reading decodes each `\uXXXX` escape on its own, so an escaped surrogate without its
 partner becomes that single `char`. A raw unpaired surrogate in `String` input is kept as is. Byte
 and stream input must still be valid UTF-8, which has no encoding for a surrogate. Writing emits
-an unpaired surrogate in string and `char` values, property names, and map keys as a lowercase
-`\uXXXX` escape through all String, UTF-8, stream, and pretty write APIs, so the output is valid
-UTF-8 and reads back to the same value with the option enabled. Surrogate pairs are read and
-written as before, and raw JSON values supplied by the caller are still validated.
+an unpaired surrogate in string and `char` values and map keys as a lowercase `\uXXXX` escape
+through all String, UTF-8, stream, and pretty write APIs, so the output is valid UTF-8 and reads
+back to the same value with the option enabled. Property names read from input may contain unpaired
+surrogates; such a name matches no declared property. Surrogate pairs are read and written as
+before. Raw JSON values supplied by the caller and names declared in code, such as `@JsonProperty`
+and subtype names, are still validated.
 
 The setting defaults to `false` and is fixed for each built instance.
 
