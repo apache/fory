@@ -1208,8 +1208,8 @@ public abstract class JsonReader {
   // cursor and leave native tokens to the concrete readers.
 
   /**
-   * Consumes the next value when it is an empty JSON string, or a string containing only JSON
-   * whitespace when {@code blank} is true.
+   * Consumes the next value when it is an empty JSON string, or a string containing only spaces
+   * when {@code blank} is true.
    *
    * @return whether such a string was consumed; otherwise only leading whitespace is consumed
    */
@@ -1221,7 +1221,7 @@ public abstract class JsonReader {
     }
     int cursor = position + 1;
     if (blank) {
-      cursor = scanWhitespace(cursor);
+      cursor = scanSpaces(cursor);
     }
     if (cursor < length() && charAt(cursor) == '"') {
       position = cursor + 1;
@@ -1232,8 +1232,8 @@ public abstract class JsonReader {
 
   /**
    * Consumes the opening quote and leading whitespace of a string whose unescaped content is a
-   * non-blank value with leading or trailing JSON whitespace. The caller then reads the bare token
-   * and finishes with {@link #finishPaddedQuotedScalar()}.
+   * non-blank value with leading or trailing spaces. The caller then reads the bare token and
+   * finishes with {@link #finishPaddedQuotedScalar()}.
    *
    * @return whether the opening quote was consumed; otherwise only leading whitespace is consumed
    */
@@ -1259,20 +1259,20 @@ public abstract class JsonReader {
     if (close >= inputLength || close == contentStart) {
       return false;
     }
-    int tokenStart = scanWhitespace(contentStart);
-    if (tokenStart == close || tokenStart == contentStart && !isJsonWhitespace(charAt(close - 1))) {
+    int tokenStart = scanSpaces(contentStart);
+    if (tokenStart == close
+        || tokenStart == contentStart && charAt(close - 1) != ' '
+        || isJsonWhitespace(charAt(tokenStart))) {
       return false;
     }
     position = tokenStart;
     return true;
   }
 
-  /**
-   * Consumes trailing whitespace and the closing quote after {@link #beginPaddedQuotedScalar()}.
-   */
+  /** Consumes trailing spaces and the closing quote after {@link #beginPaddedQuotedScalar()}. */
   @Internal
   public final void finishPaddedQuotedScalar() {
-    skipWhitespace();
+    position = scanSpaces(position);
     finishQuotedScalar();
   }
 
@@ -1352,6 +1352,16 @@ public abstract class JsonReader {
       throw errorAt(overflow, start);
     }
     return decimal.setScale(0, RoundingMode.DOWN);
+  }
+
+  // String content may contain raw spaces but no raw control characters, so lenient padding inside
+  // quotes is limited to spaces.
+  private int scanSpaces(int cursor) {
+    int inputLength = length();
+    while (cursor < inputLength && charAt(cursor) == ' ') {
+      cursor++;
+    }
+    return cursor;
   }
 
   private static boolean isJsonWhitespace(char ch) {

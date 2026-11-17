@@ -34,6 +34,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.apache.fory.json.annotation.JsonAnyProperty;
+import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonLenient;
@@ -41,6 +43,13 @@ import org.apache.fory.json.annotation.JsonLenient.Feature;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonProperty.NullHandling;
+import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.codec.LenientReadCodec;
+import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.meta.TypeExtMeta;
+import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.type.Types;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
@@ -78,6 +87,7 @@ public class JsonLenientTest extends ForyJsonTestModels {
     public List<Integer> nums;
     public int[] sizes;
     public Set<Long> ids;
+    public byte[] data;
   }
 
   @JsonLenient
@@ -128,6 +138,32 @@ public class JsonLenientTest extends ForyJsonTestModels {
   public static class Defaults {
     public Integer h = 5;
     public List<String> cat = Collections.singletonList("default");
+  }
+
+  @JsonLenient
+  public static final class LenientCreator {
+    private final int w;
+
+    @JsonCreator
+    public LenientCreator(@JsonProperty("w") int w) {
+      this.w = w;
+    }
+  }
+
+  public static class WriteOnly {
+    @JsonLenient
+    public int getW() {
+      return 1;
+    }
+  }
+
+  public static class LenientUnwrapped {
+    @JsonLenient @JsonUnwrapped public Banner banner;
+  }
+
+  public static class LenientAny {
+    public int id;
+    @JsonLenient @JsonAnyProperty public Map<String, Object> values;
   }
 
   @JsonLenient({})
@@ -363,6 +399,74 @@ public class JsonLenientTest extends ForyJsonTestModels {
     assertRejected(json, "{\"id\":\"a\"}", WrongFeature.class, "no feature applicable");
     assertRejected(json, "{\"w\":1}", WithFormat.class, "requires the default representation");
     assertRejected(json, "{\"w\":1}", ConflictingDeclarations.class, "Conflicting @JsonLenient");
+    assertRejected(json, "{}", WriteOnly.class, "requires a read-enabled property");
+    assertRejected(json, "{}", LenientUnwrapped.class, "@JsonUnwrapped");
+    assertRejected(json, "{\"id\":1}", LenientAny.class, "JSON Any");
+  }
+
+  @Test
+  public void controlCharactersAreNotPadding() {
+    ForyJson json = newJson();
+    assertRejected(json, "{\"w\":\"\n300\"}", LenientImp.class, "");
+    assertRejected(json, "{\"w\":\"300\t\"}", LenientImp.class, "");
+    assertRejected(json, "{\"w\":\"\\n300\"}", LenientImp.class, "");
+    assertRejected(json, "{\"h\":\"\t\"}", LenientImp.class, "");
+  }
+
+  @Test
+  public void elementsAndSingleValues() {
+    ForyJson json = newJsonBuilder().lenientRead(Feature.FLOAT_AS_INT).build();
+    ForyJson all = newJson();
+    ForyJson byteArrays = newJsonBuilder().byteArrayFormat(JsonByteArray.Format.ARRAY).build();
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      Imp imp = read(json, "{\"nums\":[1.5,-2.5],\"sizes\":[2.7]}", Imp.class, representation);
+      assertEquals(imp.nums, Arrays.asList(1, -2));
+      assertEquals(imp.sizes, new int[] {2});
+      LenientImp lenient =
+          read(all, "{\"sizes\":5,\"data\":\"AQI=\"}", LenientImp.class, representation);
+      assertEquals(lenient.sizes, new int[] {5});
+      assertEquals(lenient.data, new byte[] {1, 2});
+      lenient = read(byteArrays, "{\"data\":7}", LenientImp.class, representation);
+      assertEquals(lenient.data, new byte[] {7});
+      lenient = read(byteArrays, "{\"data\":[1.5,\" 2 \"]}", LenientImp.class, representation);
+      assertEquals(lenient.data, new byte[] {1, 2});
+      assertEquals(read(all, "{\"w\":4.5}", LenientCreator.class, representation).w, 4);
+    }
+    assertRejected(json, "{\"nums\":\"1\"}", Imp.class, "");
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      assertEquals(
+          read(all, "{\"sizes\":[\"\"]}", LenientImp.class, representation).sizes, new int[] {0});
+    }
+  }
+
+  @Test
+  public void nonNullOccurrence() {
+    ForyJson json = newJson();
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
+    int features = LenientReadCodec.mask(Arrays.asList(Feature.values()));
+    for (Class<?> type : new Class<?>[] {Integer.class, Banner.class, List.class}) {
+      JsonTypeInfo typeInfo;
+      resolver.lockJIT();
+      try {
+        typeInfo =
+            resolver.withLenientRead(
+                resolver.getTypeInfo(
+                    TypeRef.of(type, TypeExtMeta.of(Types.UNKNOWN, false, false, false, false))),
+                features,
+                false,
+                "value");
+      } finally {
+        resolver.unlockJIT();
+      }
+      ForyJsonException error =
+          expectThrows(
+              ForyJsonException.class,
+              () ->
+                  typeInfo
+                      .utf8Reader()
+                      .readUtf8(JsonTestSupport.newUtf8Reader(new byte[] {'"', '"'})));
+      assertTrue(error.getMessage().contains("JSON null is not allowed"), error.getMessage());
+    }
   }
 
   @Test

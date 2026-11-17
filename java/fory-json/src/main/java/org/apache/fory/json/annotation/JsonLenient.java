@@ -79,13 +79,14 @@ public @interface JsonLenient {
     FLOAT_AS_INT,
     /**
      * A quoted boolean or number read into a boolean or numeric target may have leading and
-     * trailing JSON whitespace inside the quotes, for example {@code " 300 "}.
+     * trailing spaces inside the quotes, for example {@code " 300 "}. Escapes and other characters
+     * around the value are not accepted.
      */
     TRIM_QUOTED_SCALAR,
     /**
      * An empty JSON string read into a boolean, numeric, object, map, array, or collection target
      * is read as {@code null}; primitive targets receive {@code false} or zero. With {@link
-     * #TRIM_QUOTED_SCALAR}, a whitespace-only string read into a boolean or numeric target is also
+     * #TRIM_QUOTED_SCALAR}, a space-only string read into a boolean or numeric target is also
      * empty. The value is assigned like any other decoded value: explicit-null handling does not
      * apply. Text targets such as strings, enums, and date/time values are not affected.
      */

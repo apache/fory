@@ -171,6 +171,14 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
         : new ContainerCodec(base, element, containerFeatures);
   }
 
+  // An empty string decodes to null, which a non-null occurrence rejects like a JSON null token.
+  final Object emptyReference() {
+    if (base.rejectsNull()) {
+      base.rejectNullValue();
+    }
+    return null;
+  }
+
   @Override
   public final void writeString(StringJsonWriter writer, Object value) {
     base.stringWriter().writeString(writer, value);
@@ -303,7 +311,7 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
     public Object readLatin1(Latin1JsonReader reader) {
       Object opening = begin(reader);
       if (opening != NATIVE && opening != PADDED) {
-        return opening == EMPTY_REFERENCE ? null : opening;
+        return opening == EMPTY_REFERENCE ? emptyReference() : opening;
       }
       Object value = truncate ? readTruncated(reader) : NATIVE;
       if (value == NATIVE) {
@@ -316,7 +324,7 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
     public Object readUtf16(Utf16JsonReader reader) {
       Object opening = begin(reader);
       if (opening != NATIVE && opening != PADDED) {
-        return opening == EMPTY_REFERENCE ? null : opening;
+        return opening == EMPTY_REFERENCE ? emptyReference() : opening;
       }
       Object value = truncate ? readTruncated(reader) : NATIVE;
       if (value == NATIVE) {
@@ -329,7 +337,7 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
     public Object readUtf8(Utf8JsonReader reader) {
       Object opening = begin(reader);
       if (opening != NATIVE && opening != PADDED) {
-        return opening == EMPTY_REFERENCE ? null : opening;
+        return opening == EMPTY_REFERENCE ? emptyReference() : opening;
       }
       Object value = truncate ? readTruncated(reader) : NATIVE;
       if (value == NATIVE) {
@@ -373,7 +381,7 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
     public final Object readLatin1(Latin1JsonReader reader) {
       switch (shape(reader)) {
         case EMPTY:
-          return null;
+          return emptyReference();
         case SINGLE:
           return single(reader, element.latin1Reader().readLatin1(reader));
         default:
@@ -385,7 +393,7 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
     public final Object readUtf16(Utf16JsonReader reader) {
       switch (shape(reader)) {
         case EMPTY:
-          return null;
+          return emptyReference();
         case SINGLE:
           return single(reader, element.utf16Reader().readUtf16(reader));
         default:
@@ -397,7 +405,7 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
     public final Object readUtf8(Utf8JsonReader reader) {
       switch (shape(reader)) {
         case EMPTY:
-          return null;
+          return emptyReference();
         case SINGLE:
           return single(reader, element.utf8Reader().readUtf8(reader));
         default:
@@ -418,6 +426,9 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
 
     @Override
     Object single(JsonReader reader, Object value) {
+      if (value == null && element.rejectsNull()) {
+        element.rejectNullValue();
+      }
       return ArrayCodec.singleElementArray(reader, componentType, value);
     }
   }

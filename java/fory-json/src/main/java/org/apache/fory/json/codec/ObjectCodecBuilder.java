@@ -3411,6 +3411,10 @@ final class ObjectCodecBuilder {
         GeneratedJsonCodec<?> generatedCodec,
         boolean escapeNonAscii) {
       validateTypes(ownerType);
+      if (lenientAnnotation != null && !hasReadSink() && creatorArgumentIndex < 0) {
+        throw new ForyJsonException(
+            "@JsonLenient requires a read-enabled property: " + name + " from " + lenientSource);
+      }
       if (explicitInclude != JsonProperty.Include.DEFAULT && !hasWriteSource()) {
         throw new ForyJsonException(
             "JSON inclusion policy requires a write source for property " + name);

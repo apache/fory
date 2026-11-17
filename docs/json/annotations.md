@@ -384,7 +384,7 @@ independent; the annotation without arguments enables all of them:
 | `SINGLE_VALUE_AS_ARRAY` | a value other than an array or `null` as a one-element array, for example `"IAB1"`   | arrays (except binary-encoded `byte[]`) and collections             |
 | `SCALAR_AS_STRING`      | a number or boolean as its exact token text, for example `1.50` as `"1.50"`          | `String`                                                            |
 | `FLOAT_AS_INT`          | a number with a fraction or exponent, truncated toward zero: `300.7` as `300`, `1e3` | `byte`, `short`, `int`, `long`, their boxed types, and `BigInteger` |
-| `TRIM_QUOTED_SCALAR`    | a quoted boolean or number with surrounding whitespace, for example `" 300 "`        | boolean and numeric types                                           |
+| `TRIM_QUOTED_SCALAR`    | a quoted boolean or number with surrounding spaces, for example `" 300 "`            | boolean and numeric types                                           |
 | `EMPTY_STRING_AS_NULL`  | `""` as `null`; primitives receive `false` or zero                                   | boolean, numeric, object, map, array, and collection types          |
 
 ```java
@@ -419,14 +419,14 @@ property-owned array or collection, so `["1", 2.9, ""]` read into `List<Integer>
 is `[1, 2, null]`. They apply only where Fory owns the representation: properties with `JsonCodec`,
 `JsonFormat`, `JsonByteArray`, a registered codec, or a `JsonValue` type keep their representation.
 A class or builder setting applies silently wherever a feature fits the property type. A property
-declaration with no feature that fits the property type, or one on a property that selects its own
-representation, an Any member, or an unwrapped property, is rejected when the class metadata is
-built.
+declaration with no feature that fits the property type, or one on a property that is never read,
+selects its own representation, is an Any member, or is unwrapped, is rejected when the class
+metadata is built.
 
 Additional rules:
 
-- Truncation still fails for values outside the target range. `TRIM_QUOTED_SCALAR` does not accept
-  escape sequences or anything other than one token between the whitespace.
+- Truncation still fails for values outside the target range. `TRIM_QUOTED_SCALAR` accepts only
+  spaces around exactly one token: escape sequences and other characters still fail.
 - An empty string read into an array or collection is `null`, not a one-element array.
 - An empty string is a decoded value, not an explicit JSON null, so `JsonProperty.onNullRead` does
   not apply to it.
