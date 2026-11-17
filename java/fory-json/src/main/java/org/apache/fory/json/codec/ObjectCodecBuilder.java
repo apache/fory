@@ -1692,6 +1692,7 @@ final class ObjectCodecBuilder {
         bindCreatorType(ownerType, creator, i, parameterTypes[i], builder);
         builder.mergeFormat(parameters[i]);
         builder.mergeCodec(parameters[i]);
+        builder.mergeLenient(parameters[i]);
         builder.mergeUnwrapped(parameters[i]);
         if (builder.isAny() && !builder.anyReadEnabled()) {
           throw new ForyJsonException(
@@ -3265,6 +3266,7 @@ final class ObjectCodecBuilder {
       mergeIgnore(parameter);
       mergeFormat(parameter);
       mergeCodec(parameter);
+      mergeLenient(parameter);
       mergeUnwrapped(parameter);
       if (ignoreRead || field != null && !fieldReadAllowed) {
         return;
@@ -3671,6 +3673,7 @@ final class ObjectCodecBuilder {
       mergeIgnore(parameter);
       mergeFormat(parameter);
       mergeCodec(parameter);
+      mergeLenient(parameter);
       mergeUnwrapped(parameter);
       JsonProperty property = annotations.get(parameter, JsonProperty.class);
       if (unwrappedAnnotation == null) {

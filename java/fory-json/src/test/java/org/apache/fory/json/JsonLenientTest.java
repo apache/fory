@@ -152,6 +152,45 @@ public class JsonLenientTest extends ForyJsonTestModels {
     }
   }
 
+  public static final class ListCreator {
+    public final int w;
+    public final int h;
+
+    @JsonCreator({"w", "h"})
+    public ListCreator(@JsonLenient(Feature.FLOAT_AS_INT) int w, int h) {
+      this.w = w;
+      this.h = h;
+    }
+  }
+
+  @JsonLenient
+  public static final class FactoryCreator {
+    public final int w;
+    public final int h;
+
+    private FactoryCreator(int w, int h) {
+      this.w = w;
+      this.h = h;
+    }
+
+    @JsonCreator({"w", "h"})
+    public static FactoryCreator of(int w, @JsonLenient({}) int h) {
+      return new FactoryCreator(w, h);
+    }
+  }
+
+  public static class SetterParameter {
+    private int w;
+
+    public int getW() {
+      return w;
+    }
+
+    public void setW(@JsonLenient(Feature.FLOAT_AS_INT) int w) {
+      this.w = w;
+    }
+  }
+
   public static class WriteOnly {
     @JsonLenient
     public int getW() {
@@ -377,6 +416,23 @@ public class JsonLenientTest extends ForyJsonTestModels {
     assertRejected(json, "{\"w\":\"\"}", PropertyOnly.class, "");
     assertGeneratedWhenSupported(json, PartlyStrict.class);
     assertGeneratedWhenSupported(json, PropertyOnly.class);
+  }
+
+  @Test
+  public void parameterDeclarations() {
+    ForyJson json = newJson();
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      ListCreator list = read(json, "{\"w\":2.5,\"h\":3}", ListCreator.class, representation);
+      assertEquals(list.w, 2);
+      assertEquals(list.h, 3);
+      FactoryCreator factory =
+          read(json, "{\"w\":4.5,\"h\":5}", FactoryCreator.class, representation);
+      assertEquals(factory.w, 4);
+      assertEquals(factory.h, 5);
+      assertEquals(read(json, "{\"w\":6.5}", SetterParameter.class, representation).getW(), 6);
+    }
+    assertRejected(json, "{\"w\":1,\"h\":2.5}", ListCreator.class, "");
+    assertRejected(json, "{\"w\":1,\"h\":2.5}", FactoryCreator.class, "");
   }
 
   @Test
