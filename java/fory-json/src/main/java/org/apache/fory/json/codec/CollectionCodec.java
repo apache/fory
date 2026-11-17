@@ -290,6 +290,17 @@ public abstract class CollectionCodec<T extends Collection<?>> implements Contai
     return collection;
   }
 
+  /**
+   * Builds the collection that a lenient single-value read produces from one decoded element. The
+   * collection owner and its single reference slot are reserved like an array of one element.
+   */
+  final Collection<?> singleElementCollection(JsonReader reader, Object element) {
+    Collection<Object> collection = newCollection(reader);
+    reader.reserveGraphMemory(REFERENCE_BYTES);
+    collection.add(requireElement(elementTypeInfo, element));
+    return finishCollection(reader, collection);
+  }
+
   @Internal
   final Collection<Object> newCollection(JsonReader reader) {
     // JSON arrays do not carry a trusted size. Avoid speculative backing-array preallocation in
@@ -305,6 +316,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements Contai
   @Internal
   public final boolean createsArrayList() {
     return createsArrayList;
+  }
+
+  /** Returns the element type information this collection reads its elements with. */
+  @Internal
+  public final JsonTypeInfo elementTypeInfo() {
+    return elementTypeInfo;
   }
 
   /** Returns this container's effective immediate-element null handling. */

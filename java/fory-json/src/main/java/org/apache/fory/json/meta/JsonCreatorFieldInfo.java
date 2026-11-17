@@ -52,6 +52,7 @@ public final class JsonCreatorFieldInfo {
   private final boolean selectedCodec;
   private final NullHandling onNullRead;
   private final NullHandling onContentNullRead;
+  private final int lenientRead;
   private JsonTypeInfo typeInfo;
   private JsonTypeInfo occurrenceTypeInfo;
   private UnboxedValueCodec unboxedValueCodec;
@@ -66,9 +67,11 @@ public final class JsonCreatorFieldInfo {
       JsonFormat formatAnnotation,
       boolean unboxedRequired,
       NullHandling onNullRead,
-      NullHandling onContentNullRead) {
+      NullHandling onContentNullRead,
+      int lenientRead) {
     this.onNullRead = onNullRead;
     this.onContentNullRead = onContentNullRead;
+    this.lenientRead = lenientRead;
     this.name = name;
     nameHash = JsonFieldNameHash.hash(name);
     this.argumentIndex = argumentIndex;
@@ -91,6 +94,11 @@ public final class JsonCreatorFieldInfo {
 
   public NullHandling onContentNullRead() {
     return onContentNullRead;
+  }
+
+  /** Returns the effective lenient read mask, including the declaration flag. */
+  public int lenientRead() {
+    return lenientRead;
   }
 
   /** Leaves argument and presence state untouched for a skipped input occurrence. */
@@ -116,7 +124,8 @@ public final class JsonCreatorFieldInfo {
         formatAnnotation,
         unboxedRequired,
         onNullRead,
-        onContentNullRead);
+        onContentNullRead,
+        lenientRead);
   }
 
   public long nameHash() {
@@ -149,9 +158,11 @@ public final class JsonCreatorFieldInfo {
           resolver.withContentNullRead(
               selectedCodec ? selectedTypeInfo(resolver) : resolver.getTypeInfo(typeRef),
               onContentNullRead);
+      typeInfo = resolver.withLenientRead(typeInfo, lenientRead, selectedCodec, name);
       occurrenceTypeInfo = typeInfo;
       return;
     }
+    resolver.withLenientRead(null, lenientRead, true, name);
     if (selectedCodec) {
       throw new ForyJsonException(
           "JSON creator property "

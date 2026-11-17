@@ -52,6 +52,7 @@ import org.apache.fory.json.annotation.JsonDuplicateProperties;
 import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonInclude;
+import org.apache.fory.json.annotation.JsonLenient;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonMixinRemove;
 import org.apache.fory.json.annotation.JsonProperty;
@@ -78,6 +79,7 @@ final class JsonMixinAnnotations {
         JsonFormat.class,
         JsonIgnore.class,
         JsonInclude.class,
+        JsonLenient.class,
         JsonProperty.class,
         JsonPropertyOrder.class,
         JsonRawValue.class,

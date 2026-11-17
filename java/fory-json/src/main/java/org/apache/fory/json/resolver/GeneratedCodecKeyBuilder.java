@@ -82,6 +82,7 @@ final class GeneratedCodecKeyBuilder {
       keyParts.add(owner.failOnDuplicateProperties());
       keyParts.add(registry.onNullRead());
       keyParts.add(registry.onContentNullRead());
+      keyParts.add(registry.lenientRead());
     }
     // Both readers and writers store concrete byte-array codecs selected by this default.
     keyParts.add(registry.byteArrayFormat());
@@ -183,12 +184,14 @@ final class GeneratedCodecKeyBuilder {
       for (JsonFieldInfo field : owner.readFields()) {
         keyParts.add(field.onNullRead());
         keyParts.add(field.onContentNullRead());
+        keyParts.add(field.lenientRead());
         addRegistration(field.readTypeInfo());
       }
     } else {
       for (JsonCreatorFieldInfo field : creator.fields()) {
         keyParts.add(field.onNullRead());
         keyParts.add(field.onContentNullRead());
+        keyParts.add(field.lenientRead());
         addRegistration(field.typeInfo());
       }
     }
@@ -201,6 +204,10 @@ final class GeneratedCodecKeyBuilder {
             route.field() == null
                 ? route.creatorField().onContentNullRead()
                 : route.field().onContentNullRead());
+        keyParts.add(
+            route.field() == null
+                ? route.creatorField().lenientRead()
+                : route.field().lenientRead());
         addRegistration(
             route.field() == null ? route.creatorField().typeInfo() : route.field().readTypeInfo());
       }

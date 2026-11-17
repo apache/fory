@@ -61,6 +61,7 @@ import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonByteArray;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonLenient;
 import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.annotation.JsonSubTypes;
@@ -1454,6 +1455,7 @@ public class JsonAsyncCompilationTest {
             false,
             failOnMissingRequiredProperties,
             false,
+            Collections.<JsonLenient.Feature>emptySet(),
             JsonByteArray.Format.BASE64,
             true,
             true,

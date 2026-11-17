@@ -67,6 +67,12 @@ public abstract class ArrayCodec<T> implements ContainerJsonCodec<T> {
   @Internal
   public abstract ArrayCodec<?> withContentNullRead(NullHandling handling);
 
+  /** Returns this array's effective immediate-element null handling. */
+  @Internal
+  public final NullHandling onContentNullRead() {
+    return onContentNullRead;
+  }
+
   public static <T> JsonValueCodec<T> create(
       Class<T> arrayType, TypeRef<?> arrayTypeRef, JsonTypeResolver resolver) {
     if (!arrayType.isArray()) {
@@ -231,6 +237,26 @@ public abstract class ArrayCodec<T> implements ContainerJsonCodec<T> {
     int tailSize = size & ARRAY_BATCH_MASK;
     reader.reserveGraphMemory(ARRAY_HEADER_BYTES + tailSize * REFERENCE_BYTES);
     reader.exitDepth();
+  }
+
+  /**
+   * Builds the array that a lenient single-value read produces from one decoded element. The array
+   * header and its single slot are reserved like any other one-element array.
+   */
+  static Object singleElementArray(JsonReader reader, Class<?> componentType, Object element) {
+    if (componentType.isPrimitive()) {
+      if (element == null) {
+        throw new ForyJsonException(
+            "Cannot read null into primitive array element " + componentType);
+      }
+      reader.reserveGraphMemory(
+          ARRAY_HEADER_BYTES + TypeUtils.getSizeOfPrimitiveType(componentType));
+    } else {
+      reader.reserveGraphMemory(ARRAY_HEADER_BYTES + REFERENCE_BYTES);
+    }
+    Object array = Array.newInstance(componentType, 1);
+    Array.set(array, 0, element);
+    return array;
   }
 
   static void finishPrimitiveArray(JsonReader reader, int size, int elementBytes) {

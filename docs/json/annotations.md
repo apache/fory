@@ -22,7 +22,7 @@ license: |
 Fory JSON provides these mapping and validation annotations in
 `org.apache.fory.json.annotation`:
 `JsonAnyGetter`, `JsonAnyProperty`, `JsonAnySetter`, `JsonByteArray`, `JsonCodec`, `JsonCreator`,
-`JsonDuplicateProperties`, `JsonFormat`, `JsonIgnore`, `JsonInclude`, `JsonProperty`, `JsonPropertyOrder`, `JsonRawValue`, `JsonSubTypes`, `JsonUnwrapped`,
+`JsonDuplicateProperties`, `JsonFormat`, `JsonIgnore`, `JsonInclude`, `JsonLenient`, `JsonProperty`, `JsonPropertyOrder`, `JsonRawValue`, `JsonSubTypes`, `JsonUnwrapped`,
 `JsonValidator`, and `JsonValue`. `JsonType` is a separate build-time model marker. They are
 Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
@@ -373,6 +373,70 @@ last-occurrence behavior for a class when the builder enables the check. The ann
 inherited by subclasses, and an exact-target Mixin can supply or replace it. It applies only where the
 class is read as a JSON object: a class read through `JsonValue`, `JsonCodec`, a registered codec, or as
 an enum is unaffected. Writing is unaffected.
+
+## `JsonLenient`
+
+`JsonLenient` accepts common off-spec value shapes when reading a property. Each feature is
+independent; the annotation without arguments enables all of them:
+
+| Feature                 | Accepts                                                                              | Target                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `SINGLE_VALUE_AS_ARRAY` | a value other than an array or `null` as a one-element array, for example `"IAB1"`   | arrays (except binary-encoded `byte[]`) and collections                                             |
+| `SCALAR_AS_STRING`      | a number or boolean as its exact token text, for example `1.50` as `"1.50"`          | `String`                                                                                            |
+| `FLOAT_AS_INT`          | a number with a fraction or exponent, truncated toward zero: `300.7` as `300`, `1e3` | `byte`, `short`, `int`, `long`, their boxed types, and `BigInteger`                                 |
+| `TRIM_QUOTED_SCALAR`    | a quoted boolean or number with surrounding spaces, for example `" 300 "`            | boolean and numeric types                                                                           |
+| `EMPTY_STRING_AS_NULL`  | `""` as `null`; primitives receive `false` or zero                                   | boolean, numeric, non-polymorphic object, map, array (except binary `byte[]`), and collection types |
+
+```java
+import org.apache.fory.json.annotation.JsonLenient;
+import org.apache.fory.json.annotation.JsonLenient.Feature;
+
+@JsonLenient
+public final class Imp {
+  public String id;
+  public List<String> cat;
+  public int w;
+
+  @JsonLenient({})
+  public List<String> strictCat;
+
+  @JsonLenient(Feature.SINGLE_VALUE_AS_ARRAY)
+  public List<Banner> banners;
+}
+```
+
+With this model, `{"id":123,"cat":"IAB1","w":"300.0"}` reads `id` as `"123"`, `cat` as `[IAB1]`, and
+`w` as `300`, while `strictCat` still requires a JSON array.
+
+A declaration on a field, getter, setter, or `JsonCreator` parameter replaces the class and builder settings
+for that logical property, and `@JsonLenient({})` makes one property strict. On any other method,
+including a `JsonCreator` method itself, the annotation is not used. A class declaration is
+the default for every property of that class and replaces the builder's `lenientRead` setting. It is
+not inherited by subclasses and does not apply to nested objects, which follow their own class
+setting. An exact-target Mixin can supply or replace either declaration.
+
+Features apply to the property value and to the direct boolean, numeric, and string elements of a
+property-owned array or collection, so `["1", 2.9, ""]` read into `List<Integer>` with all features
+is `[1, 2, null]`. They apply only where Fory owns the representation: properties with `JsonCodec`,
+`JsonFormat`, `JsonByteArray`, a registered codec, or a `JsonValue` type keep their representation.
+A class or builder setting applies silently wherever a feature fits the property type. A property
+declaration with no feature that fits the property type, or one on a property that is never read,
+selects its own representation, is an Any member, or is unwrapped, is rejected when the class
+metadata is built. So are different feature sets declared on members of the same property.
+
+Additional rules:
+
+- Truncation still fails for values outside the target range. A truncated `BigInteger` may have at
+  most as many integer digits as its token has characters, and at least 19, so `1e9999` fails.
+- `TRIM_QUOTED_SCALAR` accepts only spaces around exactly one finite token: escape sequences, other
+  characters, and padded non-finite literals such as `" NaN "` still fail.
+- With `EMPTY_STRING_AS_NULL`, an empty string read into an array or collection is `null`, not a
+  one-element array. With `TRIM_QUOTED_SCALAR` too, so is a space-only string read into an array or
+  collection of boolean or numeric elements.
+- An empty string is a decoded value, not an explicit JSON null, so `JsonProperty.onNullRead` and
+  `onContentNullRead` do not apply to it.
+- `EMPTY_STRING_AS_NULL` does not apply to `JsonSubTypes` bases or dynamic `Object` targets.
+- Root values, map values, and optional contents are not affected. Writing is unaffected.
 
 ## `JsonPropertyOrder`
 

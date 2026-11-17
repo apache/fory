@@ -153,6 +153,25 @@ The read fails with a `ForyJsonException` that names the repeated property.
 To enable or disable the check for one class, annotate it with `JsonDuplicateProperties`; see
 [Annotations](annotations.md#jsonduplicateproperties). This option does not change writing.
 
+## Lenient reading
+
+Reading is strict by default: apart from quoted booleans and numbers, each declared type accepts only
+its own JSON shape. Input from third parties often contains off-spec shapes that other JSON libraries
+accept, such as a lone string for a list, a number for a string, `300.0` or `" 300 "` for an `int`,
+or `""` for an absent number. Enable the matching features for every property with `lenientRead`:
+
+```java
+ForyJson json = ForyJson.builder()
+    .lenientRead(JsonLenient.Feature.SINGLE_VALUE_AS_ARRAY, JsonLenient.Feature.FLOAT_AS_INT)
+    .build();
+```
+
+No feature is enabled by default. A feature applies only to properties whose type and Fory-owned
+representation it fits; strict properties keep their normal read path and cost. To enable features
+for one class or property, or to keep one property strict, use `JsonLenient`; see
+[Annotations](annotations.md#jsonlenient) for the features and their exact behavior. Root values,
+map values, and optional contents are not affected. This option does not change writing.
+
 ## Kotlin object mapping
 
 Install `fory-json-kotlin` and use `ForyJsonKotlin.builder()` for Kotlin/JVM classes. Kotlin
