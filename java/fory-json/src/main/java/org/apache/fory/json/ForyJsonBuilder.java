@@ -57,6 +57,7 @@ public final class ForyJsonBuilder {
   private NullHandling onContentNullRead = NullHandling.SET;
   private boolean writeLongAsString;
   private boolean escapeNonAscii;
+  private boolean allowUnpairedSurrogates;
   private boolean failOnMissingRequiredProperties;
   private boolean failOnDuplicateProperties;
   private JsonByteArray.Format byteArrayFormat = JsonByteArray.Format.BASE64;
@@ -185,6 +186,25 @@ public final class ForyJsonBuilder {
    */
   public ForyJsonBuilder escapeNonAscii(boolean escapeNonAscii) {
     this.escapeNonAscii = escapeNonAscii;
+    return this;
+  }
+
+  /**
+   * Accepts unpaired UTF-16 surrogates in JSON strings and names. Disabled by default, so an
+   * unpaired surrogate fails the read or write.
+   *
+   * <p>When enabled, reading decodes each <code>&#92;uXXXX</code> escape independently: an escaped
+   * surrogate without its partner becomes that single {@code char} in the decoded value, and a raw
+   * unpaired surrogate in {@code String} input is kept as is. Byte input must still be valid UTF-8,
+   * which cannot encode a surrogate. Writing emits an unpaired surrogate in a {@code String} or
+   * {@code char} value as a lowercase <code>&#92;uXXXX</code> escape, so String, UTF-8, stream, and
+   * pretty output all read back to the same value. Paired surrogates are read and written as
+   * before, and raw JSON supplied by the caller is still validated.
+   *
+   * <p>The setting is fixed when {@link #build()} is called.
+   */
+  public ForyJsonBuilder allowUnpairedSurrogates(boolean allowUnpairedSurrogates) {
+    this.allowUnpairedSurrogates = allowUnpairedSurrogates;
     return this;
   }
 
@@ -458,6 +478,7 @@ public final class ForyJsonBuilder {
         onContentNullRead,
         writeLongAsString,
         escapeNonAscii,
+        allowUnpairedSurrogates,
         failOnMissingRequiredProperties,
         failOnDuplicateProperties,
         byteArrayFormat,

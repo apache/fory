@@ -44,6 +44,7 @@ public final class JsonConfig {
   private final NullHandling onContentNullRead;
   private final boolean writeLongAsString;
   private final boolean escapeNonAscii;
+  private final boolean allowUnpairedSurrogates;
   private final boolean failOnMissingRequiredProperties;
   private final boolean failOnDuplicateProperties;
   private final JsonByteArray.Format byteArrayFormat;
@@ -70,6 +71,7 @@ public final class JsonConfig {
       NullHandling onContentNullRead,
       boolean writeLongAsString,
       boolean escapeNonAscii,
+      boolean allowUnpairedSurrogates,
       boolean failOnMissingRequiredProperties,
       boolean failOnDuplicateProperties,
       JsonByteArray.Format byteArrayFormat,
@@ -93,6 +95,7 @@ public final class JsonConfig {
     this.onContentNullRead = onContentNullRead;
     this.writeLongAsString = writeLongAsString;
     this.escapeNonAscii = escapeNonAscii;
+    this.allowUnpairedSurrogates = allowUnpairedSurrogates;
     this.failOnMissingRequiredProperties = failOnMissingRequiredProperties;
     this.failOnDuplicateProperties = failOnDuplicateProperties;
     this.byteArrayFormat = Objects.requireNonNull(byteArrayFormat, "byteArrayFormat");
@@ -145,6 +148,14 @@ public final class JsonConfig {
    */
   public boolean escapeNonAscii() {
     return escapeNonAscii;
+  }
+
+  /**
+   * Returns whether JSON strings and names may contain unpaired UTF-16 surrogates. Reads decode
+   * each escape independently, and writes escape an unpaired surrogate.
+   */
+  public boolean allowUnpairedSurrogates() {
+    return allowUnpairedSurrogates;
   }
 
   /** Returns whether required creator properties must appear in the input. */

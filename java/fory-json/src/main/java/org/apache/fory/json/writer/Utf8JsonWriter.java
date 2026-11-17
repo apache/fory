@@ -421,11 +421,16 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       position = offset + 3;
       return;
     }
-    if (Character.isSurrogate(value)) {
+    boolean surrogate = Character.isSurrogate(value);
+    if (surrogate && !allowUnpairedSurrogates) {
       throw new ForyJsonException("JSON char cannot be a surrogate: " + Integer.toHexString(value));
     }
     writeByteRaw((byte) '"');
-    writeEscapedChar(value);
+    if (surrogate) {
+      writeUnicodeEscape(value);
+    } else {
+      writeEscapedChar(value);
+    }
     writeByteRaw((byte) '"');
   }
 
@@ -2422,17 +2427,16 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
         i += 2;
         if (ch > 0x7f) {
           if (Character.isSurrogate(ch)) {
-            if (!Character.isHighSurrogate(ch) || i == length) {
-              throw new ForyJsonException("Unpaired surrogate in string");
+            if (Character.isHighSurrogate(ch)
+                && i < length
+                && Character.isLowSurrogate(StringSerializer.getBytesChar(value, i))) {
+              LittleEndian.putInt64(bytes, pos, escapes[ch]);
+              pos += 6;
+              ch = StringSerializer.getBytesChar(value, i);
+              i += 2;
+            } else if (!allowUnpairedSurrogates) {
+              throw unpairedSurrogate(ch);
             }
-            char low = StringSerializer.getBytesChar(value, i);
-            i += 2;
-            if (!Character.isLowSurrogate(low)) {
-              throw new ForyJsonException("Unpaired high surrogate in string");
-            }
-            LittleEndian.putInt64(bytes, pos, escapes[ch]);
-            pos += 6;
-            ch = low;
           }
           LittleEndian.putInt64(bytes, pos, escapes[ch]);
           pos += 6;
@@ -2560,24 +2564,20 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
         continue;
       }
       ch = value.charAt(i++);
-      if (Character.isHighSurrogate(ch)) {
-        if (i >= length) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
+      if (!Character.isSurrogate(ch)) {
+        writeEscapedChar(ch);
+      } else if (Character.isHighSurrogate(ch)
+          && i < length
+          && Character.isLowSurrogate(value.charAt(i))) {
         char low = value.charAt(i++);
-        if (!Character.isLowSurrogate(low)) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
         if (escapeNonAscii) {
           writeUnicodeEscape(ch);
           writeUnicodeEscape(low);
         } else {
           writeCodePoint(Character.toCodePoint(ch, low));
         }
-      } else if (Character.isLowSurrogate(ch)) {
-        throw new ForyJsonException("Unpaired low surrogate in string");
       } else {
-        writeEscapedChar(ch);
+        writeUnpairedSurrogate(ch);
       }
     }
     writeByteRaw((byte) '"');
@@ -2604,24 +2604,20 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
         continue;
       }
       ch = value.charAt(i++);
-      if (Character.isHighSurrogate(ch)) {
-        if (i >= length) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
+      if (!Character.isSurrogate(ch)) {
+        writeEscapedChar(ch);
+      } else if (Character.isHighSurrogate(ch)
+          && i < length
+          && Character.isLowSurrogate(value.charAt(i))) {
         char low = value.charAt(i++);
-        if (!Character.isLowSurrogate(low)) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
         if (escapeNonAscii) {
           writeUnicodeEscape(ch);
           writeUnicodeEscape(low);
         } else {
           writeCodePoint(Character.toCodePoint(ch, low));
         }
-      } else if (Character.isLowSurrogate(ch)) {
-        throw new ForyJsonException("Unpaired low surrogate in string");
       } else {
-        writeEscapedChar(ch);
+        writeUnpairedSurrogate(ch);
       }
     }
     writeByteRaw((byte) '"');
@@ -2663,6 +2659,13 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     bytes[pos + 2] = (byte) (0x80 | ((codePoint >>> 6) & 0x3F));
     bytes[pos + 3] = (byte) (0x80 | (codePoint & 0x3F));
     position = pos + 4;
+  }
+
+  private void writeUnpairedSurrogate(char ch) {
+    if (!allowUnpairedSurrogates) {
+      throw unpairedSurrogate(ch);
+    }
+    writeUnicodeEscape(ch);
   }
 
   private void writeUnicodeEscape(char ch) {
