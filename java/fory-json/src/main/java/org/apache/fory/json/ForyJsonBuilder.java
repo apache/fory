@@ -125,7 +125,8 @@ public final class ForyJsonBuilder {
    * Sets the default handling of explicit JSON null property values. Defaults to {@code SET}.
    * Property {@link org.apache.fory.json.annotation.JsonProperty#onNullRead()} overrides it. {@code
    * SKIP} preserves the current field value or existing missing-creator-argument behavior; it does
-   * not fabricate defaults. Root null values and writing are unaffected.
+   * not fabricate defaults. {@code SKIP} also applies when the property's codec returns Java null
+   * for a non-null JSON token. Root null values and writing are unaffected.
    *
    * @throws IllegalArgumentException if handling is {@code DEFAULT}
    * @throws NullPointerException if handling is null
@@ -140,7 +141,9 @@ public final class ForyJsonBuilder {
    * Sets the default handling of explicit null elements and map values in Fory-owned containers,
    * including root containers. Defaults to {@code SET}. Property {@link
    * org.apache.fory.json.annotation.JsonProperty#onContentNullRead()} overrides the immediate
-   * container's setting. Complete custom codecs retain their representation. Writing is unaffected.
+   * container's setting. {@code SKIP} also omits a Java null returned by a child codec for a
+   * collection, reference-array, or AtomicReferenceArray element, a map value, or an Any value.
+   * Complete custom codecs retain their representation. Writing is unaffected.
    *
    * @throws IllegalArgumentException if handling is {@code DEFAULT}
    * @throws NullPointerException if handling is null

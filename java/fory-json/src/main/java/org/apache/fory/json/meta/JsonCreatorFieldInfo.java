@@ -104,6 +104,14 @@ public final class JsonCreatorFieldInfo {
     return true;
   }
 
+  /**
+   * Returns whether an unwrapped route must decode this argument before creating its group. Under
+   * SKIP, a null decoded by the selected codec must not publish an otherwise absent group.
+   */
+  public boolean decodesBeforeGroup() {
+    return onNullRead == NullHandling.SKIP && unboxedValueCodec == null;
+  }
+
   /** Returns parent-local metadata with a transformed JSON name and the same creator argument. */
   public JsonCreatorFieldInfo withName(String transformedName) {
     return new JsonCreatorFieldInfo(
@@ -192,37 +200,91 @@ public final class JsonCreatorFieldInfo {
             : resolver.getTypeInfo(typeRef, formatAnnotation);
   }
 
-  public Object readLatin1(Latin1JsonReader reader) {
+  /**
+   * Stores the decoded argument. SKIP leaves it absent when the selected codec decodes null;
+   * unboxed carriers are stored as decoded, like generated readers and property paths.
+   */
+  public void readLatin1(Latin1JsonReader reader, Object[] arguments) {
     if (readOccurrenceNull(reader)) {
-      return null;
+      arguments[argumentIndex] = null;
+      return;
     }
-    Object value =
-        unboxedValueCodec == null
-            ? typeInfo.latin1Reader().readLatin1(reader)
-            : unboxedValueCodec.readLatin1Carrier(reader);
-    return requirePrimitive(value, rawType);
+    if (unboxedValueCodec != null) {
+      arguments[argumentIndex] =
+          requirePrimitive(unboxedValueCodec.readLatin1Carrier(reader), rawType);
+      return;
+    }
+    Object value = typeInfo.latin1Reader().readLatin1(reader);
+    if (value != null || onNullRead != NullHandling.SKIP) {
+      arguments[argumentIndex] = requirePrimitive(value, rawType);
+    }
   }
 
-  public Object readUtf16(Utf16JsonReader reader) {
-    if (readOccurrenceNull(reader)) {
-      return null;
-    }
-    Object value =
-        unboxedValueCodec == null
-            ? typeInfo.utf16Reader().readUtf16(reader)
-            : unboxedValueCodec.readUtf16Carrier(reader);
-    return requirePrimitive(value, rawType);
+  /**
+   * Decodes a SKIP argument through its codec before an unwrapped group exists. The caller has
+   * already consumed an explicit JSON null, so null means the argument stays absent.
+   */
+  public Object readLatin1Value(Latin1JsonReader reader) {
+    Object value = typeInfo.latin1Reader().readLatin1(reader);
+    return value == null ? null : requirePrimitive(value, rawType);
   }
 
-  public Object readUtf8(Utf8JsonReader reader) {
+  /**
+   * Stores the decoded argument. SKIP leaves it absent when the selected codec decodes null;
+   * unboxed carriers are stored as decoded, like generated readers and property paths.
+   */
+  public void readUtf16(Utf16JsonReader reader, Object[] arguments) {
     if (readOccurrenceNull(reader)) {
-      return null;
+      arguments[argumentIndex] = null;
+      return;
     }
-    Object value =
-        unboxedValueCodec == null
-            ? typeInfo.utf8Reader().readUtf8(reader)
-            : unboxedValueCodec.readUtf8Carrier(reader);
-    return requirePrimitive(value, rawType);
+    if (unboxedValueCodec != null) {
+      arguments[argumentIndex] =
+          requirePrimitive(unboxedValueCodec.readUtf16Carrier(reader), rawType);
+      return;
+    }
+    Object value = typeInfo.utf16Reader().readUtf16(reader);
+    if (value != null || onNullRead != NullHandling.SKIP) {
+      arguments[argumentIndex] = requirePrimitive(value, rawType);
+    }
+  }
+
+  /**
+   * Decodes a SKIP argument through its codec before an unwrapped group exists. The caller has
+   * already consumed an explicit JSON null, so null means the argument stays absent.
+   */
+  public Object readUtf16Value(Utf16JsonReader reader) {
+    Object value = typeInfo.utf16Reader().readUtf16(reader);
+    return value == null ? null : requirePrimitive(value, rawType);
+  }
+
+  /**
+   * Stores the decoded argument. SKIP leaves it absent when the selected codec decodes null;
+   * unboxed carriers are stored as decoded, like generated readers and property paths.
+   */
+  public void readUtf8(Utf8JsonReader reader, Object[] arguments) {
+    if (readOccurrenceNull(reader)) {
+      arguments[argumentIndex] = null;
+      return;
+    }
+    if (unboxedValueCodec != null) {
+      arguments[argumentIndex] =
+          requirePrimitive(unboxedValueCodec.readUtf8Carrier(reader), rawType);
+      return;
+    }
+    Object value = typeInfo.utf8Reader().readUtf8(reader);
+    if (value != null || onNullRead != NullHandling.SKIP) {
+      arguments[argumentIndex] = requirePrimitive(value, rawType);
+    }
+  }
+
+  /**
+   * Decodes a SKIP argument through its codec before an unwrapped group exists. The caller has
+   * already consumed an explicit JSON null, so null means the argument stays absent.
+   */
+  public Object readUtf8Value(Utf8JsonReader reader) {
+    Object value = typeInfo.utf8Reader().readUtf8(reader);
+    return value == null ? null : requirePrimitive(value, rawType);
   }
 
   private boolean readOccurrenceNull(org.apache.fory.json.reader.JsonReader reader) {

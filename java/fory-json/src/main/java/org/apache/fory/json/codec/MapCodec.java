@@ -673,7 +673,10 @@ public abstract class MapCodec<T extends Map<?, ?>> implements ContainerJsonCode
           if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
             reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
           }
-          map.put(key, readValue(reader, codec));
+          Object value = readValue(reader, codec);
+          if (value != null || onContentNullRead != NullHandling.SKIP) {
+            map.put(key, value);
+          }
           size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
@@ -709,7 +712,10 @@ public abstract class MapCodec<T extends Map<?, ?>> implements ContainerJsonCode
           if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
             reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
           }
-          map.put(key, readValue(reader, codec));
+          Object value = readValue(reader, codec);
+          if (value != null || onContentNullRead != NullHandling.SKIP) {
+            map.put(key, value);
+          }
           size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
@@ -745,7 +751,10 @@ public abstract class MapCodec<T extends Map<?, ?>> implements ContainerJsonCode
           if ((size & ENTRY_BATCH_MASK) == ENTRY_BATCH_MASK) {
             reader.reserveGraphMemory(ENTRY_BATCH_BYTES);
           }
-          map.put(key, readValue(reader, codec));
+          Object value = readValue(reader, codec);
+          if (value != null || onContentNullRead != NullHandling.SKIP) {
+            map.put(key, value);
+          }
           size++;
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
