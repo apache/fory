@@ -82,7 +82,8 @@ public @interface JsonLenient {
     /**
      * A quoted boolean or number read into a boolean or numeric target may have leading and
      * trailing spaces inside the quotes, for example {@code " 300 "}. Escapes and other characters
-     * around the value are not accepted.
+     * around the value are not accepted, and non-finite floating-point literals such as {@code
+     * "NaN"} keep their exact quoted form.
      */
     TRIM_QUOTED_SCALAR,
     /**

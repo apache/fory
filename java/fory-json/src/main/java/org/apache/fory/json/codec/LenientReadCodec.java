@@ -278,25 +278,17 @@ public abstract class LenientReadCodec implements JsonValueCodec<Object> {
       if (integral == BIG_INTEGER_TARGET) {
         return reader.readTruncatedBigInteger();
       }
-      long value = reader.readTruncatedLong();
       switch (integral) {
         case INT_TARGET:
-          if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
-            throw new ForyJsonException("Integer overflow");
-          }
-          return (int) value;
+          return (int)
+              reader.readTruncatedLong(Integer.MIN_VALUE, Integer.MAX_VALUE, "Integer overflow");
         case SHORT_TARGET:
-          if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
-            throw new ForyJsonException("Short overflow");
-          }
-          return (short) value;
+          return (short)
+              reader.readTruncatedLong(Short.MIN_VALUE, Short.MAX_VALUE, "Short overflow");
         case BYTE_TARGET:
-          if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
-            throw new ForyJsonException("Byte overflow");
-          }
-          return (byte) value;
+          return (byte) reader.readTruncatedLong(Byte.MIN_VALUE, Byte.MAX_VALUE, "Byte overflow");
         default:
-          return value;
+          return reader.readTruncatedLong(Long.MIN_VALUE, Long.MAX_VALUE, "Long overflow");
       }
     }
 

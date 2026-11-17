@@ -323,6 +323,8 @@ public class JsonLenientTest extends ForyJsonTestModels {
   public void truncationLimits() {
     ForyJson json = newJson();
     assertRejected(json, "{\"w\":3e10}", LenientImp.class, "Integer overflow");
+    assertRejected(json, "{\"w\":1e20}", LenientImp.class, "Integer overflow at JSON position");
+    assertRejected(json, "{\"d\":\" NaN \"}", LenientImp.class, "");
     assertRejected(json, "{\"b\":128.5}", LenientImp.class, "Byte overflow");
     assertRejected(json, "{\"l\":1e999999999}", LenientImp.class, "Long overflow");
     assertRejected(json, "{\"big\":1e20000}", LenientImp.class, "Integer part is too long");
@@ -331,7 +333,7 @@ public class JsonLenientTest extends ForyJsonTestModels {
       LenientImp imp =
           read(
               json,
-              "{\"l\":1e-999999999,\"big\":-0.5,\"w\":-0.0}",
+              "{\"l\":1e-999999999,\"big\":-0.5,\"w\":-0.0,\"s\":0e-9999999999}",
               LenientImp.class,
               representation);
       assertEquals(imp.l, 0L);

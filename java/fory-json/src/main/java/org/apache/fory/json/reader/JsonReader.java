@@ -1278,11 +1278,11 @@ public abstract class JsonReader {
 
   /**
    * Reads a native or quoted JSON number as a {@code long}, truncating a fraction or exponent
-   * toward zero. An integral token uses the strict integer parser; values outside the {@code long}
-   * range fail.
+   * toward zero. An integral token uses the strict integer parser; values outside {@code [min,
+   * max]} fail with the given overflow message at the token position.
    */
   @Internal
-  public final long readTruncatedLong() {
+  public final long readTruncatedLong(long min, long max, String overflow) {
     skipWhitespace();
     boolean quoted = position < length() && charAt(position) == '"';
     if (quoted) {
@@ -1294,11 +1294,14 @@ public abstract class JsonReader {
       position = start;
       value = readLongToken();
     } else {
-      BigDecimal decimal = truncatedDecimal(start, LONG_MAX_DIGITS, "Long overflow");
+      BigDecimal decimal = truncatedDecimal(start, LONG_MAX_DIGITS, overflow);
       if (decimal.compareTo(LONG_MIN_DECIMAL) < 0 || decimal.compareTo(LONG_MAX_DECIMAL) > 0) {
-        throw errorAt("Long overflow", start);
+        throw errorAt(overflow, start);
       }
       value = decimal.longValue();
+    }
+    if (value < min || value > max) {
+      throw errorAt(overflow, start);
     }
     if (quoted) {
       finishQuotedScalar();
@@ -1343,6 +1346,9 @@ public abstract class JsonReader {
     try {
       decimal = new BigDecimal(slice(start, position));
     } catch (NumberFormatException e) {
+      if (zeroMantissa(start)) {
+        return BigDecimal.ZERO;
+      }
       throw errorAt("Number exponent is out of range", start);
     }
     if (decimal.signum() == 0 || decimal.abs().compareTo(BigDecimal.ONE) < 0) {
@@ -1352,6 +1358,20 @@ public abstract class JsonReader {
       throw errorAt(overflow, start);
     }
     return decimal.setScale(0, RoundingMode.DOWN);
+  }
+
+  // Tests the scanned number token ending at the current position for an all-zero mantissa.
+  private boolean zeroMantissa(int start) {
+    for (int i = start; i < position; i++) {
+      char ch = charAt(i);
+      if (ch == 'e' || ch == 'E') {
+        return true;
+      }
+      if (ch >= '1' && ch <= '9') {
+        return false;
+      }
+    }
+    return true;
   }
 
   // String content may contain raw spaces but no raw control characters, so lenient padding inside

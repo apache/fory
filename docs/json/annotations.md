@@ -426,12 +426,12 @@ metadata is built.
 Additional rules:
 
 - Truncation still fails for values outside the target range. `TRIM_QUOTED_SCALAR` accepts only
-  spaces around exactly one token: escape sequences and other characters still fail.
+  spaces around exactly one finite token: escape sequences, other characters, and padded
+  non-finite literals such as `" NaN "` still fail.
 - With `EMPTY_STRING_AS_NULL`, an empty string read into an array or collection is `null`, not a
   one-element array.
 - An empty string is a decoded value, not an explicit JSON null, so `JsonProperty.onNullRead` and
-  `onContentNullRead` do
-  not apply to it.
+  `onContentNullRead` do not apply to it.
 - Root values, map values, and optional contents are not affected. Writing is unaffected.
 
 ## `JsonPropertyOrder`
