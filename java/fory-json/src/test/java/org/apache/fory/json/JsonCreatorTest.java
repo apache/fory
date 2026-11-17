@@ -138,7 +138,8 @@ public class JsonCreatorTest extends ForyJsonTestModels {
             null,
             true,
             NullHandling.SET,
-            NullHandling.DEFAULT);
+            NullHandling.DEFAULT,
+            0);
     JsonCreatorInfo creator =
         new JsonCreatorInfo(
             DeferredCarrierOwner.class,

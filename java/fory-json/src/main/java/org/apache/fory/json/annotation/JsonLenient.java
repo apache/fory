@@ -1,0 +1,94 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.fory.json.annotation;
+
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * Accepts common off-spec JSON value shapes when reading a property, as Jackson does by default or
+ * behind its well-known coercion switches.
+ *
+ * <p>On a field, setter, or {@link JsonCreator} parameter, the listed features replace the class
+ * and builder settings for that logical property; {@code @JsonLenient({})} makes one property
+ * strict. On a class, they are the default for every property of that class and replace {@code
+ * ForyJsonBuilder.lenientRead}. A class annotation is not inherited by subclasses and does not
+ * apply to nested objects, which follow their own class setting. An exact-target {@link JsonMixin}
+ * may supply or replace either declaration.
+ *
+ * <p>Features apply to the property value and to the direct boolean, numeric, and string elements
+ * of a property-owned array or collection. They apply only where Fory owns the representation: a
+ * property with {@link JsonCodec}, {@link JsonFormat}, {@link JsonByteArray}, {@link JsonRawValue},
+ * {@link JsonUnwrapped}, a registered codec, or a {@link JsonValue} type keeps that representation.
+ * A class or builder setting applies silently wherever a feature fits the property type; a property
+ * declaration without any feature that fits its type is rejected when metadata is built. Root
+ * values, map values, and optional contents are not affected. Writing is unaffected.
+ */
+@Documented
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.TYPE, ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER})
+public @interface JsonLenient {
+  /** Returns the enabled features; the default enables all of them. */
+  Feature[] value() default {
+    Feature.SINGLE_VALUE_AS_ARRAY,
+    Feature.SCALAR_AS_STRING,
+    Feature.FLOAT_AS_INT,
+    Feature.TRIM_QUOTED_SCALAR,
+    Feature.EMPTY_STRING_AS_NULL
+  };
+
+  /** Independently selectable read coercions. */
+  enum Feature {
+    /**
+     * A JSON value other than an array or {@code null} read into an array or collection is read as
+     * its single element, for example {@code "IAB1"} into {@code List<String>}. Byte arrays encoded
+     * as binary strings are not affected.
+     */
+    SINGLE_VALUE_AS_ARRAY,
+    /**
+     * A JSON number or boolean read into a {@code String} is kept as its exact token text, for
+     * example {@code 1.50} as {@code "1.50"}.
+     */
+    SCALAR_AS_STRING,
+    /**
+     * A JSON number with a fraction or exponent read into a {@code byte}, {@code short}, {@code
+     * int}, {@code long}, their boxed types, or {@code BigInteger} is truncated toward zero, for
+     * example {@code 300.7} as {@code 300} and {@code 1e3} as {@code 1000}. Values outside the
+     * target range still fail. Quoted numbers are truncated the same way.
+     */
+    FLOAT_AS_INT,
+    /**
+     * A quoted boolean or number read into a boolean or numeric target may have leading and
+     * trailing JSON whitespace inside the quotes, for example {@code " 300 "}.
+     */
+    TRIM_QUOTED_SCALAR,
+    /**
+     * An empty JSON string read into a boolean, numeric, object, map, array, or collection target
+     * is read as {@code null}; primitive targets receive {@code false} or zero. With {@link
+     * #TRIM_QUOTED_SCALAR}, a whitespace-only string read into a boolean or numeric target is also
+     * empty. The value is assigned like any other decoded value: explicit-null handling does not
+     * apply. Text targets such as strings, enums, and date/time values are not affected.
+     */
+    EMPTY_STRING_AS_NULL
+  }
+}

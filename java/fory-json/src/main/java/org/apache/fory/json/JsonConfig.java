@@ -20,12 +20,15 @@
 package org.apache.fory.json;
 
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.annotation.JsonByteArray;
+import org.apache.fory.json.annotation.JsonLenient;
 import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.resolver.CodecRegistry;
@@ -46,6 +49,7 @@ public final class JsonConfig {
   private final boolean escapeNonAscii;
   private final boolean failOnMissingRequiredProperties;
   private final boolean failOnDuplicateProperties;
+  private final Set<JsonLenient.Feature> lenientRead;
   private final JsonByteArray.Format byteArrayFormat;
   private final boolean codegenEnabled;
   private final boolean asyncCompilationEnabled;
@@ -72,6 +76,7 @@ public final class JsonConfig {
       boolean escapeNonAscii,
       boolean failOnMissingRequiredProperties,
       boolean failOnDuplicateProperties,
+      Set<JsonLenient.Feature> lenientRead,
       JsonByteArray.Format byteArrayFormat,
       boolean codegenEnabled,
       boolean asyncCompilationEnabled,
@@ -95,6 +100,9 @@ public final class JsonConfig {
     this.escapeNonAscii = escapeNonAscii;
     this.failOnMissingRequiredProperties = failOnMissingRequiredProperties;
     this.failOnDuplicateProperties = failOnDuplicateProperties;
+    EnumSet<JsonLenient.Feature> features = EnumSet.noneOf(JsonLenient.Feature.class);
+    features.addAll(lenientRead);
+    this.lenientRead = Collections.unmodifiableSet(features);
     this.byteArrayFormat = Objects.requireNonNull(byteArrayFormat, "byteArrayFormat");
     this.codegenEnabled = codegenEnabled;
     this.asyncCompilationEnabled = asyncCompilationEnabled;
@@ -155,6 +163,11 @@ public final class JsonConfig {
   /** Returns whether a repeated known property fails the read by default. */
   public boolean failOnDuplicateProperties() {
     return failOnDuplicateProperties;
+  }
+
+  /** Returns the lenient read features applied to properties without a declared setting. */
+  public Set<JsonLenient.Feature> lenientRead() {
+    return lenientRead;
   }
 
   /** Returns the default byte-array representation for both reading and writing. */

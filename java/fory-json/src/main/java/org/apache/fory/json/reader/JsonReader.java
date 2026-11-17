@@ -23,6 +23,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -109,6 +110,9 @@ public abstract class JsonReader {
     100_000_000_000_000_000L,
     1_000_000_000_000_000_000L
   };
+  private static final BigDecimal LONG_MIN_DECIMAL = BigDecimal.valueOf(Long.MIN_VALUE);
+  private static final BigDecimal LONG_MAX_DECIMAL = BigDecimal.valueOf(Long.MAX_VALUE);
+  private static final int LONG_MAX_DIGITS = 19;
   private static final int DOUBLE_FAST_MAX_SCALE = 15;
   private static final long DOUBLE_FAST_MAX_UNSCALED = 1L << 53;
   private static final int DOUBLE_FRACTION_BITS = 52;
@@ -1197,6 +1201,161 @@ public abstract class JsonReader {
       return;
     }
     throw error("Expected closing quote");
+  }
+
+  // Lenient property reads. These operations run only for properties whose metadata selected a
+  // lenient read codec, so strict readers never reach them. They use the representation-neutral
+  // cursor and leave native tokens to the concrete readers.
+
+  /**
+   * Consumes the next value when it is an empty JSON string, or a string containing only JSON
+   * whitespace when {@code blank} is true.
+   *
+   * @return whether such a string was consumed; otherwise only leading whitespace is consumed
+   */
+  @Internal
+  public final boolean tryReadEmptyString(boolean blank) {
+    skipWhitespace();
+    if (position >= length() || charAt(position) != '"') {
+      return false;
+    }
+    int cursor = position + 1;
+    if (blank) {
+      cursor = scanWhitespace(cursor);
+    }
+    if (cursor < length() && charAt(cursor) == '"') {
+      position = cursor + 1;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Consumes the opening quote and leading whitespace of a string whose unescaped content is a
+   * non-blank value with leading or trailing JSON whitespace. The caller then reads the bare token
+   * and finishes with {@link #finishPaddedQuotedScalar()}.
+   *
+   * @return whether the opening quote was consumed; otherwise only leading whitespace is consumed
+   */
+  @Internal
+  public final boolean beginPaddedQuotedScalar() {
+    skipWhitespace();
+    if (position >= length() || charAt(position) != '"') {
+      return false;
+    }
+    int contentStart = position + 1;
+    int close = contentStart;
+    int inputLength = length();
+    while (close < inputLength) {
+      char ch = charAt(close);
+      if (ch == '"') {
+        break;
+      }
+      if (ch == '\\') {
+        return false;
+      }
+      close++;
+    }
+    if (close >= inputLength || close == contentStart) {
+      return false;
+    }
+    int tokenStart = scanWhitespace(contentStart);
+    if (tokenStart == close || tokenStart == contentStart && !isJsonWhitespace(charAt(close - 1))) {
+      return false;
+    }
+    position = tokenStart;
+    return true;
+  }
+
+  /**
+   * Consumes trailing whitespace and the closing quote after {@link #beginPaddedQuotedScalar()}.
+   */
+  @Internal
+  public final void finishPaddedQuotedScalar() {
+    skipWhitespace();
+    finishQuotedScalar();
+  }
+
+  /**
+   * Reads a native or quoted JSON number as a {@code long}, truncating a fraction or exponent
+   * toward zero. An integral token uses the strict integer parser; values outside the {@code long}
+   * range fail.
+   */
+  @Internal
+  public final long readTruncatedLong() {
+    skipWhitespace();
+    boolean quoted = position < length() && charAt(position) == '"';
+    if (quoted) {
+      beginQuotedScalar();
+    }
+    int start = position;
+    long value;
+    if (scanNumberToken() == -1L) {
+      position = start;
+      value = readLongToken();
+    } else {
+      BigDecimal decimal = truncatedDecimal(start, LONG_MAX_DIGITS, "Long overflow");
+      if (decimal.compareTo(LONG_MIN_DECIMAL) < 0 || decimal.compareTo(LONG_MAX_DECIMAL) > 0) {
+        throw errorAt("Long overflow", start);
+      }
+      value = decimal.longValue();
+    }
+    if (quoted) {
+      finishQuotedScalar();
+    }
+    return value;
+  }
+
+  /**
+   * Reads a native or quoted JSON number as a {@code BigInteger}, truncating a fraction or exponent
+   * toward zero. The integral part is limited to the arbitrary-precision number length.
+   */
+  @Internal
+  public final BigInteger readTruncatedBigInteger() {
+    skipWhitespace();
+    boolean quoted = position < length() && charAt(position) == '"';
+    if (quoted) {
+      beginQuotedScalar();
+    }
+    int start = position;
+    BigInteger value;
+    if (scanNumberToken() == -1L) {
+      position = start;
+      value = readBigIntegerToken();
+    } else {
+      value =
+          truncatedDecimal(start, MAX_BIG_NUMBER_LENGTH, "Integer part is too long").toBigInteger();
+    }
+    if (quoted) {
+      finishQuotedScalar();
+    }
+    return value;
+  }
+
+  // Parses the scanned token ending at the current position and drops its fraction. Magnitudes
+  // below one return zero before scaling, and the integral digit count is bounded before any
+  // exponent is expanded, so a huge exponent cannot drive allocation or work.
+  private BigDecimal truncatedDecimal(int start, int maxIntegerDigits, String overflow) {
+    if (position - start > MAX_BIG_NUMBER_LENGTH) {
+      throw errorAt("Number is too long", start);
+    }
+    BigDecimal decimal;
+    try {
+      decimal = new BigDecimal(slice(start, position));
+    } catch (NumberFormatException e) {
+      throw errorAt("Number exponent is out of range", start);
+    }
+    if (decimal.signum() == 0 || decimal.abs().compareTo(BigDecimal.ONE) < 0) {
+      return BigDecimal.ZERO;
+    }
+    if ((long) decimal.precision() - decimal.scale() > maxIntegerDigits) {
+      throw errorAt(overflow, start);
+    }
+    return decimal.setScale(0, RoundingMode.DOWN);
+  }
+
+  private static boolean isJsonWhitespace(char ch) {
+    return ch == ' ' || ch == '\n' || ch == '\r' || ch == '\t';
   }
 
   protected final BigDecimal readBigDecimalExponentValue(
