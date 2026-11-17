@@ -31,6 +31,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.testng.annotations.Test;
@@ -146,6 +147,56 @@ public class ForyJsonTokenOperationTest {
     assertSame(second, first);
     assertFalse(
         json.readUtf8("false".getBytes(StandardCharsets.UTF_8), 0, 5, Utf8JsonReader::readBoolean));
+  }
+
+  @Test
+  public void readRawValueKeepsSourceText() {
+    String input = " [ {\"a\" : [1, 2]} ,\"x\\u0041\u00e9\", 1.5e-3, true, null,\n{} ]";
+    String[] expected = {"{\"a\" : [1, 2]}", "\"x\\u0041\u00e9\"", "1.5e-3", "true", "null", "{}"};
+    // Byte input: on JDK 8 a String is never byte-backed, so the String constructor rejects it.
+    assertRawValues(
+        JsonTestSupport.newLatin1Reader(input.getBytes(StandardCharsets.ISO_8859_1)), expected);
+    assertRawValues(JsonTestSupport.newUtf16Reader(input), expected);
+    assertRawValues(
+        JsonTestSupport.newUtf8Reader(input.getBytes(StandardCharsets.UTF_8)), expected);
+
+    String unicode = "[\"\u4f60\u597d\",{\"k\":\"\ud83d\ude00\"}]";
+    String[] unicodeValues = {"\"\u4f60\u597d\"", "{\"k\":\"\ud83d\ude00\"}"};
+    assertRawValues(JsonTestSupport.newUtf16Reader(unicode), unicodeValues);
+    assertRawValues(
+        JsonTestSupport.newUtf8Reader(unicode.getBytes(StandardCharsets.UTF_8)), unicodeValues);
+
+    byte[] root = " {\"b\":[]} ".getBytes(StandardCharsets.UTF_8);
+    assertEquals(json.readUtf8(root, 0, root.length, Utf8JsonReader::readRawValue), "{\"b\":[]}");
+    byte[] invalid = "{\"b\":tru}".getBytes(StandardCharsets.UTF_8);
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.readUtf8(invalid, 0, invalid.length, Utf8JsonReader::readRawValue));
+    byte[] empty = "  ".getBytes(StandardCharsets.UTF_8);
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.readUtf8(empty, 0, empty.length, Utf8JsonReader::readRawValue));
+    // Invalid UTF-8 inside a string fails instead of being decoded with replacement characters,
+    // both in the short tail scan and in the word-at-a-time scan of a longer string.
+    byte[] shortString = {'{', '"', 'k', '"', ':', '"', (byte) 0xC3, '"', '}'};
+    String longText = "{\"k\":\"abcdefghijklmnop?qrstuvwxyz\"}";
+    byte[] longString = longText.getBytes(StandardCharsets.UTF_8);
+    longString[longText.indexOf('?')] = (byte) 0xFF;
+    for (byte[] malformed : new byte[][] {shortString, longString}) {
+      assertThrows(
+          ForyJsonException.class,
+          () -> json.readUtf8(malformed, 0, malformed.length, Utf8JsonReader::readRawValue));
+    }
+  }
+
+  private static void assertRawValues(JsonReader reader, String[] expected) {
+    reader.expectNextToken('[');
+    int index = 0;
+    do {
+      assertEquals(reader.readRawValue(), expected[index++]);
+    } while (reader.consumeNextCommaOrEndArray());
+    assertEquals(index, expected.length);
+    reader.finish();
   }
 
   private static Pair readPair(Utf8JsonReader reader) {

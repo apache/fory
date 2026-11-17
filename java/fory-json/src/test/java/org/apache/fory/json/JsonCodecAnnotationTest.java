@@ -455,6 +455,47 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void rawValueCodec() {
+    ForyJson json = newJson();
+    String object = "{\"title\": \"a\\\"b\", \"n\":[1, -2.5e3,true,null],\"o\":{}}";
+    String latin1 = "{\"body\": " + object + " ,\"id\":7}";
+    RawBodyModel value = json.fromJson(latin1, RawBodyModel.class);
+    assertEquals(value.body, object);
+    assertEquals(value.id, 7);
+    assertEquals(json.toJson(value), "{\"body\":" + object + ",\"id\":7}");
+
+    String unicodeObject = "{\"t\":\"\u4f60\u597d \\u00e9 \ud83d\ude00\"}";
+    String unicode = "{\"id\":3,\"body\":" + unicodeObject + "}";
+    assertEquals(json.fromJson(unicode, RawBodyModel.class).body, unicodeObject);
+    RawBodyModel utf8 = json.fromJson(unicode.getBytes(StandardCharsets.UTF_8), RawBodyModel.class);
+    assertEquals(utf8.body, unicodeObject);
+    assertEquals(utf8.id, 3);
+    assertEquals(
+        new String(json.toJsonBytes(utf8), StandardCharsets.UTF_8),
+        "{\"body\":" + unicodeObject + ",\"id\":3}");
+
+    String[] scalars = {"\"text \\n \u00e9\"", "-0.5E+2", "false", "[]"};
+    for (String scalar : scalars) {
+      String input = "{\"body\":" + scalar + ",\"id\":1}";
+      assertEquals(json.fromJson(input, RawBodyModel.class).body, scalar);
+      assertEquals(
+          json.fromJson(input.getBytes(StandardCharsets.UTF_8), RawBodyModel.class).body, scalar);
+    }
+
+    assertFailure(() -> json.fromJson("{\"body\":{\"a\":01},\"id\":1}", RawBodyModel.class));
+    assertFailure(() -> json.fromJson("{\"body\":{\"a\":\"x},\"id\":1}", RawBodyModel.class));
+    assertFailure(
+        () ->
+            json.fromJson(
+                "{\"body\":[1,],\"id\":1}".getBytes(StandardCharsets.UTF_8), RawBodyModel.class));
+    ForyJson shallow = newJsonBuilder().maxDepth(2).build();
+    assertEquals(
+        shallow.fromJson("{\"body\":{\"a\":1},\"id\":1}", RawBodyModel.class).body, "{\"a\":1}");
+    assertFailure(
+        () -> shallow.fromJson("{\"body\":{\"a\":[1]},\"id\":1}", RawBodyModel.class), "max depth");
+  }
+
+  @Test
   public void valueAndChild() {
     assertFailure(() -> newJson().toJson(new InvalidComposition()));
 
@@ -913,6 +954,40 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
 
   private static Value readValue(JsonReader reader) {
     return new Value(readTagged(reader, "V"));
+  }
+
+  public static class RawJsonCodec implements JsonValueCodec<String> {
+    @Override
+    public void writeString(StringJsonWriter writer, String value) {
+      writer.writeRawValue(value);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, String value) {
+      writer.writeRawValue(value);
+    }
+
+    @Override
+    public String readLatin1(Latin1JsonReader reader) {
+      return reader.readRawValue();
+    }
+
+    @Override
+    public String readUtf16(Utf16JsonReader reader) {
+      return reader.readRawValue();
+    }
+
+    @Override
+    public String readUtf8(Utf8JsonReader reader) {
+      return reader.readRawValue();
+    }
+  }
+
+  public static class RawBodyModel {
+    @JsonCodec(RawJsonCodec.class)
+    public String body;
+
+    public int id;
   }
 
   public static class RepresentationModel {
