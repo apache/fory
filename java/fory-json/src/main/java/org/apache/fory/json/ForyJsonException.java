@@ -25,8 +25,11 @@ import org.apache.fory.exception.ForyException;
  * Root runtime exception for JSON syntax, mapping, codec, generated-code, and resource-limit
  * failures reported by Fory JSON.
  *
- * <p>User exceptions thrown by custom code may retain their own type; this exception identifies
- * failures owned and contextualized by the JSON runtime itself.
+ * <p>An unchecked exception thrown by application code, such as a custom codec, while a {@code
+ * fromJson} root operation reads its value is reported as this exception with the original
+ * exception as its cause. A {@link ForyException} or an {@link Error} propagates unchanged. Write
+ * operations and the operations passed to {@link ForyJson#readUtf8} and {@link ForyJson#writeUtf8}
+ * may propagate application exceptions with their own type.
  */
 public class ForyJsonException extends ForyException {
   public ForyJsonException(String message) {

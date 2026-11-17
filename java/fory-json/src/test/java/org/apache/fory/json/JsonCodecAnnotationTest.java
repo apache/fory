@@ -20,9 +20,12 @@
 package org.apache.fory.json;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -42,6 +45,7 @@ import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.codec.AbstractJsonValueCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.reader.JsonReader;
@@ -52,6 +56,8 @@ import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.platform.JdkVersion;
+import org.apache.fory.reflect.TypeRef;
+import org.testng.Assert.ThrowingRunnable;
 import org.testng.SkipException;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
@@ -78,6 +84,47 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     assertEquals(
         json.fromJson(expected.getBytes(StandardCharsets.UTF_8), RepresentationModel.class).value,
         "utf8:x");
+  }
+
+  @Test
+  public void codecFailure() {
+    ForyJson json = newJson();
+    assertCodecFailure(json, Amount.class, "\"x\"");
+    assertCodecFailure(json, Amount.class, "\"é\"");
+    assertCodecFailure(json, Amount.class, "\"你\"");
+    assertCodecFailure(json, AmountHolder.class, "{\"amount\":\"x\"}");
+    assertCodecFailure(json, AmountHolder.class, "{\"amount\":\"你\"}");
+    assertGeneratedWhenSupported(json, AmountHolder.class);
+    assertSame(
+        expectThrows(
+            ForyJsonException.class,
+            () -> json.fromJson("{\"amount\":\"fory\"}", AmountHolder.class)),
+        AmountCodec.FORY_FAILURE);
+    assertSame(
+        expectThrows(
+            AmountCodecError.class,
+            () ->
+                json.fromJson(
+                    "{\"amount\":\"error\"}".getBytes(StandardCharsets.UTF_8), AmountHolder.class)),
+        AmountCodec.ERROR);
+    assertEquals(json.fromJson("{\"amount\":\"12\"}", AmountHolder.class).amount.cents, 12L);
+  }
+
+  private static void assertCodecFailure(ForyJson json, Class<?> type, String text) {
+    byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+    ThrowingRunnable[] reads = {
+      () -> json.fromJson(text, type),
+      () -> json.fromJson(text, TypeRef.of(type)),
+      () -> json.fromJson(bytes, type),
+      () -> json.fromJson(bytes, TypeRef.of(type)),
+      () -> json.fromJson(bytes, 0, bytes.length, type),
+      () -> json.fromJson(new ByteArrayInputStream(bytes), type)
+    };
+    for (ThrowingRunnable read : reads) {
+      ForyJsonException e = expectThrows(ForyJsonException.class, read);
+      assertTrue(e.getCause() instanceof NumberFormatException, String.valueOf(e.getCause()));
+      assertTrue(e.getMessage().contains("JSON position"), e.getMessage());
+    }
   }
 
   @Test
@@ -1412,4 +1459,41 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
 
   @JsonCodec(elementCodec = AStringCodec.class)
   public static class InvalidTypeDeclaration {}
+
+  @JsonCodec(AmountCodec.class)
+  public static final class Amount {
+    final long cents;
+
+    Amount(long cents) {
+      this.cents = cents;
+    }
+  }
+
+  public static class AmountHolder {
+    public Amount amount;
+  }
+
+  public static final class AmountCodecError extends Error {}
+
+  public static class AmountCodec extends AbstractJsonValueCodec<Amount> {
+    static final ForyJsonException FORY_FAILURE = new ForyJsonException("invalid amount");
+    static final AmountCodecError ERROR = new AmountCodecError();
+
+    @Override
+    public void write(JsonWriter writer, Amount value) {
+      writer.writeString(Long.toString(value.cents));
+    }
+
+    @Override
+    public Amount read(JsonReader reader) {
+      String text = reader.readString();
+      if (text.equals("fory")) {
+        throw FORY_FAILURE;
+      }
+      if (text.equals("error")) {
+        throw ERROR;
+      }
+      return new Amount(Long.parseLong(text));
+    }
+  }
 }
