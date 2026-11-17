@@ -318,6 +318,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements Contai
     return createsArrayList;
   }
 
+  /** Returns the element type information this collection reads its elements with. */
+  @Internal
+  public final JsonTypeInfo elementTypeInfo() {
+    return elementTypeInfo;
+  }
+
   /** Returns this container's effective immediate-element null handling. */
   @Internal
   public final NullHandling onContentNullRead() {

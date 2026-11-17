@@ -549,9 +549,20 @@ public final class JsonTypeResolver {
     if (codec instanceof ArrayCodec || codec instanceof CollectionCodec) {
       TypeRef<?> typeRef = typeInfo.typeRef();
       Class<?> rawType = typeInfo.rawType();
-      TypeRef<?> elementType =
-          rawType.isArray() ? typeRef.getComponentType() : CodecUtils.elementTypeRef(typeRef);
-      element = getTypeInfo(elementType);
+      TypeRef<?> elementType;
+      if (codec instanceof ArrayCodec) {
+        elementType = typeRef.getComponentType();
+        element = getTypeInfo(elementType);
+        // A module may own an array carrier with other element semantics, such as unsigned
+        // arrays. Only the default array representation of the component may be rebuilt.
+        if (ArrayCodec.create(rawType, element, sharedRegistry.byteArrayFormat()).getClass()
+            != codec.getClass()) {
+          return typeInfo;
+        }
+      } else {
+        elementType = CodecUtils.elementTypeRef(typeRef);
+        element = ((CollectionCodec<?>) codec).elementTypeInfo();
+      }
       LenientReadCodec elementCodec = LenientReadCodec.scalar(element, features);
       if (elementCodec != null) {
         // Rebuild only this occurrence with lenient direct elements. The shared element and

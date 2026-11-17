@@ -44,6 +44,7 @@ import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.LenientReadCodec;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
@@ -437,6 +438,28 @@ public class JsonLenientTest extends ForyJsonTestModels {
       assertEquals(
           read(all, "{\"sizes\":[\"\"]}", LenientImp.class, representation).sizes, new int[] {0});
     }
+  }
+
+  public static class UnsignedShorts {
+    public short[] values;
+  }
+
+  @Test
+  public void moduleArrayRepresentationKept() {
+    ForyJson json =
+        newJsonBuilder()
+            .lenientRead(Feature.values())
+            .registerCodec(
+                short[].class,
+                (type, resolver, runtimeType) ->
+                    ArrayCodec.createUnsignedPrimitive(short[].class, Types.UINT16_ARRAY, false))
+            .build();
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      assertEquals(
+          read(json, "{\"values\":[65535]}", UnsignedShorts.class, representation).values,
+          new short[] {-1});
+    }
+    assertRejected(json, "{\"values\":5}", UnsignedShorts.class, "");
   }
 
   @Test
