@@ -21,8 +21,10 @@ package org.apache.fory.json;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -31,6 +33,7 @@ import java.io.ByteArrayInputStream;
 import java.lang.reflect.Array;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -178,6 +181,35 @@ public class JsonNullHandlingTest extends ForyJsonTestModels {
               reader);
       assertEquals(created.values.get("x"), "a");
       assertFalse(created.values.containsKey("y"));
+    }
+  }
+
+  @Test
+  public void decodedNullOutsideSkip() {
+    String contents =
+        "{\"values\":[\"decode-null\",\"a\"],\"set\":[\"decode-null\"],"
+            + "\"array\":[\"decode-null\"],\"atomic\":[\"decode-null\"],"
+            + "\"map\":{\"x\":\"decode-null\"}}";
+    for (NullHandling handling : new NullHandling[] {NullHandling.SET, NullHandling.FAIL}) {
+      ForyJson json = newJsonBuilder().onNullRead(handling).onContentNullRead(handling).build();
+      for (int reader = 0; reader < 4; reader++) {
+        CustomContents value = read(json, contents, CustomContents.class, reader);
+        assertEquals(value.values, Arrays.asList(null, "a"));
+        assertEquals(value.set, Collections.singleton(null));
+        assertEquals(value.array, new String[] {null});
+        assertEquals(value.atomic.length(), 1);
+        assertNull(value.atomic.get(0));
+        assertEquals(value.map, Collections.singletonMap("x", null));
+        DecodedValues values =
+            read(json, "{\"field\":\"decode-null\"}", DecodedValues.class, reader);
+        assertNull(values.field);
+        DecodedAnyMap map = read(json, "{\"x\":\"decode-null\"}", DecodedAnyMap.class, reader);
+        assertTrue(map.values.containsKey("x"));
+        assertNull(map.values.get("x"));
+        assertTrue(read(json, "{\"x\":\"decode-null\"}", DecodedAnyValues.class, reader).sawNull);
+        assertNotNull(
+            read(json, "{\"value\":\"decode-null\"}", DecodedUnwrapped.class, reader).child);
+      }
     }
   }
 
