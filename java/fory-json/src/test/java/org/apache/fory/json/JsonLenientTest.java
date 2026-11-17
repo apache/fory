@@ -372,6 +372,14 @@ public class JsonLenientTest extends ForyJsonTestModels {
     ForyJson json = newJson();
     assertRejected(json, "{\"w\":3e10}", LenientImp.class, "Integer overflow");
     assertRejected(json, "{\"w\":1e20}", LenientImp.class, "Integer overflow at JSON position");
+    assertRejected(json, "{\"w\":99999999999999999999}", LenientImp.class, "Integer overflow");
+    assertRejected(json, "{\"w\":\"-99999999999999999999\"}", LenientImp.class, "Integer overflow");
+    assertRejected(json, "{\"l\":9223372036854775808}", LenientImp.class, "Long overflow");
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      assertEquals(
+          read(json, "{\"l\":-9223372036854775808}", LenientImp.class, representation).l,
+          Long.MIN_VALUE);
+    }
     assertRejected(json, "{\"d\":\" NaN \"}", LenientImp.class, "");
     assertRejected(json, "{\"b\":128.5}", LenientImp.class, "Byte overflow");
     assertRejected(json, "{\"l\":1e999999999}", LenientImp.class, "Long overflow");

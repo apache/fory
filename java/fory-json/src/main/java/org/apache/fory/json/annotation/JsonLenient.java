@@ -88,13 +88,14 @@ public @interface JsonLenient {
      */
     TRIM_QUOTED_SCALAR,
     /**
-     * An empty JSON string read into a boolean, numeric, object, map, array, or collection target
-     * is read as {@code null}; primitive targets receive {@code false} or zero. With {@link
-     * #TRIM_QUOTED_SCALAR}, a space-only string read into a boolean or numeric target is also
-     * empty. The value is assigned like any other decoded value: explicit-null handling ({@link
-     * JsonProperty#onNullRead()} and {@link JsonProperty#onContentNullRead()}) does not apply,
-     * while a non-null occurrence still rejects it. Text targets such as strings, enums, date/time
-     * values, and byte arrays encoded as binary strings are not affected.
+     * An empty JSON string read into a boolean, numeric, non-polymorphic object, map, array, or
+     * collection target is read as {@code null}; primitive targets receive {@code false} or zero.
+     * With {@link #TRIM_QUOTED_SCALAR}, a space-only string read into a boolean or numeric target
+     * is also empty. The value is assigned like any other decoded value: explicit-null handling
+     * ({@link JsonProperty#onNullRead()} and {@link JsonProperty#onContentNullRead()}) does not
+     * apply, while a non-null occurrence still rejects it. Text targets such as strings, enums,
+     * date/time values, byte arrays encoded as binary strings, {@link JsonSubTypes} bases, and
+     * dynamic {@code Object} targets are not affected.
      */
     EMPTY_STRING_AS_NULL
   }

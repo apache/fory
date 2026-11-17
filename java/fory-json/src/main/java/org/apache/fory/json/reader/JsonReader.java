@@ -113,6 +113,7 @@ public abstract class JsonReader {
   private static final BigDecimal LONG_MIN_DECIMAL = BigDecimal.valueOf(Long.MIN_VALUE);
   private static final BigDecimal LONG_MAX_DECIMAL = BigDecimal.valueOf(Long.MAX_VALUE);
   private static final int LONG_MAX_DIGITS = 19;
+  private static final int LONG_SAFE_TOKEN_LENGTH = 18;
   private static final int DOUBLE_FAST_MAX_SCALE = 15;
   private static final long DOUBLE_FAST_MAX_UNSCALED = 1L << 53;
   private static final int DOUBLE_FRACTION_BITS = 52;
@@ -1290,7 +1291,9 @@ public abstract class JsonReader {
     }
     int start = position;
     long value;
-    if (scanNumberToken() == -1L) {
+    // An integral token of at most 18 characters always fits a long. Longer tokens use the decimal
+    // range check so overflow reports the target's message, as for fractional tokens.
+    if (scanNumberToken() == -1L && position - start <= LONG_SAFE_TOKEN_LENGTH) {
       position = start;
       value = readLongToken();
     } else {

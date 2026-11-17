@@ -379,13 +379,13 @@ an enum is unaffected. Writing is unaffected.
 `JsonLenient` accepts common off-spec value shapes when reading a property. Each feature is
 independent; the annotation without arguments enables all of them:
 
-| Feature                 | Accepts                                                                              | Target                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| `SINGLE_VALUE_AS_ARRAY` | a value other than an array or `null` as a one-element array, for example `"IAB1"`   | arrays (except binary-encoded `byte[]`) and collections                             |
-| `SCALAR_AS_STRING`      | a number or boolean as its exact token text, for example `1.50` as `"1.50"`          | `String`                                                                            |
-| `FLOAT_AS_INT`          | a number with a fraction or exponent, truncated toward zero: `300.7` as `300`, `1e3` | `byte`, `short`, `int`, `long`, their boxed types, and `BigInteger`                 |
-| `TRIM_QUOTED_SCALAR`    | a quoted boolean or number with surrounding spaces, for example `" 300 "`            | boolean and numeric types                                                           |
-| `EMPTY_STRING_AS_NULL`  | `""` as `null`; primitives receive `false` or zero                                   | boolean, numeric, object, map, array (except binary `byte[]`), and collection types |
+| Feature                 | Accepts                                                                              | Target                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `SINGLE_VALUE_AS_ARRAY` | a value other than an array or `null` as a one-element array, for example `"IAB1"`   | arrays (except binary-encoded `byte[]`) and collections                                             |
+| `SCALAR_AS_STRING`      | a number or boolean as its exact token text, for example `1.50` as `"1.50"`          | `String`                                                                                            |
+| `FLOAT_AS_INT`          | a number with a fraction or exponent, truncated toward zero: `300.7` as `300`, `1e3` | `byte`, `short`, `int`, `long`, their boxed types, and `BigInteger`                                 |
+| `TRIM_QUOTED_SCALAR`    | a quoted boolean or number with surrounding spaces, for example `" 300 "`            | boolean and numeric types                                                                           |
+| `EMPTY_STRING_AS_NULL`  | `""` as `null`; primitives receive `false` or zero                                   | boolean, numeric, non-polymorphic object, map, array (except binary `byte[]`), and collection types |
 
 ```java
 import org.apache.fory.json.annotation.JsonLenient;
@@ -434,6 +434,7 @@ Additional rules:
   collection of boolean or numeric elements.
 - An empty string is a decoded value, not an explicit JSON null, so `JsonProperty.onNullRead` and
   `onContentNullRead` do not apply to it.
+- `EMPTY_STRING_AS_NULL` does not apply to `JsonSubTypes` bases or dynamic `Object` targets.
 - Root values, map values, and optional contents are not affected. Writing is unaffected.
 
 ## `JsonPropertyOrder`
