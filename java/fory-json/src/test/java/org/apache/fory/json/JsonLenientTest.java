@@ -443,7 +443,29 @@ public class JsonLenientTest extends ForyJsonTestModels {
     assertRejected(json, "{\"l\":1e999999999}", LenientImp.class, "Long overflow");
     assertRejected(json, "{\"big\":1e20000}", LenientImp.class, "Integer part is too long");
     assertRejected(json, "{\"big\":1e9999}", LenientImp.class, "Integer part is too long");
-    assertRejected(json, "{\"l\":1e9999999999}", LenientImp.class, "exponent is out of range");
+    assertRejected(json, "{\"l\":1e9999999999}", LenientImp.class, "Long overflow");
+    String longFraction = "1." + repeat('9', 9990);
+    assertRejected(json, "{\"w\":" + longFraction + "e10}", LenientImp.class, "Integer overflow");
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      LenientImp imp =
+          read(
+              json,
+              "{\"w\":"
+                  + longFraction
+                  + "e0,\"big\":"
+                  + longFraction
+                  + "e2,\"l\":-1.99e1,"
+                  + "\"h\":\"0.00123e4\",\"s\":123e-2,\"b\":5e-1,\"boxedLong\":12.5e1}",
+              LenientImp.class,
+              representation);
+      assertEquals(imp.w, 1);
+      assertEquals(imp.big, BigInteger.valueOf(199));
+      assertEquals(imp.l, -19L);
+      assertEquals(imp.h, Integer.valueOf(12));
+      assertEquals(imp.s, (short) 1);
+      assertEquals(imp.b, (byte) 0);
+      assertEquals(imp.boxedLong, Long.valueOf(125));
+    }
     for (int representation = 0; representation < REPRESENTATIONS; representation++) {
       LenientImp imp =
           read(

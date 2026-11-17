@@ -23,7 +23,6 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -113,6 +112,7 @@ public abstract class JsonReader {
   private static final BigDecimal LONG_MIN_DECIMAL = BigDecimal.valueOf(Long.MIN_VALUE);
   private static final BigDecimal LONG_MAX_DECIMAL = BigDecimal.valueOf(Long.MAX_VALUE);
   private static final int LONG_MAX_DIGITS = 19;
+  private static final long TRUNCATION_EXPONENT_LIMIT = 2L * MAX_BIG_NUMBER_LENGTH;
   private static final int DOUBLE_FAST_MAX_SCALE = 15;
   private static final long DOUBLE_FAST_MAX_UNSCALED = 1L << 53;
   private static final int DOUBLE_FRACTION_BITS = 52;
@@ -1342,66 +1342,72 @@ public abstract class JsonReader {
     return value;
   }
 
-  // Parses the scanned token ending at the current position and drops its fraction. Magnitudes
-  // below one return zero before scaling, and the integral digit count is bounded before any
-  // exponent is expanded, so a huge exponent cannot drive allocation or work.
+  // Truncates the scanned token ending at the current position toward zero without parsing it as a
+  // whole. The token's mantissa holds at most MAX_BIG_NUMBER_LENGTH digits, so the result's
+  // integral
+  // digit count is decided from the digit positions and the clamped exponent before any
+  // allocation, and only the digits that survive truncation are materialized.
   private BigDecimal truncatedDecimal(
       int start, long separators, int maxIntegerDigits, String overflow) {
     if (position - start > MAX_BIG_NUMBER_LENGTH) {
       throw errorAt("Number is too long", start);
     }
     int point = (int) (separators >> 32);
-    if ((int) separators < 0) {
-      // Without an exponent the truncated value is the integer part, so the fraction digits are
-      // never parsed and the integral digit count is checked before any allocation.
-      int digits = point - start - (charAt(start) == '-' ? 1 : 0);
-      if (digits > maxIntegerDigits) {
-        throw errorAt(overflow, start);
-      }
-      return new BigDecimal(slice(start, point));
+    int exponentOffset = (int) separators;
+    boolean negative = charAt(start) == '-';
+    int integerStart = negative ? start + 1 : start;
+    int mantissaEnd = exponentOffset >= 0 ? exponentOffset : position;
+    int integerLength = (point >= 0 ? point : mantissaEnd) - integerStart;
+    int fractionStart = point >= 0 ? point + 1 : mantissaEnd;
+    int mantissaLength = integerLength + mantissaEnd - fractionStart;
+    int leadingZeros = 0;
+    while (leadingZeros < mantissaLength
+        && mantissaDigit(leadingZeros, integerStart, integerLength, fractionStart) == '0') {
+      leadingZeros++;
     }
-    BigDecimal decimal;
-    try {
-      decimal = new BigDecimal(slice(start, position));
-    } catch (NumberFormatException e) {
-      // The exponent is outside the int range; a zero mantissa or a negative exponent still
-      // truncates to zero because the token holds at most MAX_BIG_NUMBER_LENGTH digits.
-      if (zeroMantissa(start) || negativeExponent(start)) {
-        return BigDecimal.ZERO;
-      }
-      throw errorAt("Number exponent is out of range", start);
-    }
-    if (decimal.signum() == 0 || decimal.abs().compareTo(BigDecimal.ONE) < 0) {
+    if (leadingZeros == mantissaLength) {
       return BigDecimal.ZERO;
     }
-    if ((long) decimal.precision() - decimal.scale() > maxIntegerDigits) {
+    long exponent = exponentOffset >= 0 ? truncationExponent(exponentOffset + 1) : 0;
+    long resultDigits = integerLength + exponent - leadingZeros;
+    if (resultDigits <= 0) {
+      return BigDecimal.ZERO;
+    }
+    if (resultDigits > maxIntegerDigits) {
       throw errorAt(overflow, start);
     }
-    return decimal.setScale(0, RoundingMode.DOWN);
+    StringBuilder digits = new StringBuilder((int) resultDigits + 1);
+    if (negative) {
+      digits.append('-');
+    }
+    long end = leadingZeros + resultDigits;
+    for (int i = leadingZeros; i < end; i++) {
+      digits.append(
+          i < mantissaLength ? mantissaDigit(i, integerStart, integerLength, fractionStart) : '0');
+    }
+    return new BigDecimal(digits.toString());
   }
 
-  // Tests the scanned number token ending at the current position for an all-zero mantissa.
-  private boolean zeroMantissa(int start) {
-    for (int i = start; i < position; i++) {
-      char ch = charAt(i);
-      if (ch == 'e' || ch == 'E') {
-        return true;
-      }
-      if (ch >= '1' && ch <= '9') {
-        return false;
-      }
-    }
-    return true;
+  private char mantissaDigit(int index, int integerStart, int integerLength, int fractionStart) {
+    return index < integerLength
+        ? charAt(integerStart + index)
+        : charAt(fractionStart + index - integerLength);
   }
 
-  private boolean negativeExponent(int start) {
-    for (int i = start; i < position; i++) {
-      char ch = charAt(i);
-      if (ch == 'e' || ch == 'E') {
-        return i + 1 < position && charAt(i + 1) == '-';
-      }
+  // Reads the already validated exponent digits. Magnitudes past twice the mantissa digit limit
+  // cannot change the outcome, so the value is clamped instead of overflowing.
+  private long truncationExponent(int offset) {
+    boolean negative = false;
+    char sign = charAt(offset);
+    if (sign == '-' || sign == '+') {
+      negative = sign == '-';
+      offset++;
     }
-    return false;
+    long value = 0;
+    for (int i = offset; i < position && value <= TRUNCATION_EXPONENT_LIMIT; i++) {
+      value = value * 10 + charAt(i) - '0';
+    }
+    return negative ? -value : value;
   }
 
   // String content may contain raw spaces but no raw control characters, so lenient padding inside
