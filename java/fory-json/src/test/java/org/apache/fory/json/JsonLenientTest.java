@@ -46,6 +46,7 @@ import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonProperty.NullHandling;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.LenientReadCodec;
 import org.apache.fory.json.codec.MapCodec;
@@ -232,6 +233,46 @@ public class JsonLenientTest extends ForyJsonTestModels {
     public Shape shape;
     public Object any;
     public Optional<Integer> optional;
+  }
+
+  public static class InheritsNothing extends Defaults {
+    public int w;
+  }
+
+  @JsonLenient
+  public static class NestedOwner {
+    public Banner banner;
+  }
+
+  public static class GetterDeclared {
+    private int w;
+
+    @JsonLenient(Feature.FLOAT_AS_INT)
+    public int getW() {
+      return w;
+    }
+
+    public void setW(int w) {
+      this.w = w;
+    }
+  }
+
+  public static final class Wrapped {
+    private final int value;
+
+    @JsonCreator
+    public Wrapped(int value) {
+      this.value = value;
+    }
+
+    @JsonValue
+    public int value() {
+      return value;
+    }
+  }
+
+  public static class ValueOwner {
+    public Wrapped wrapped;
   }
 
   @JsonLenient({})
@@ -532,6 +573,21 @@ public class JsonLenientTest extends ForyJsonTestModels {
       assertEquals(imp.l, 12L);
       assertEquals(imp.big, BigInteger.ZERO);
     }
+  }
+
+  @Test
+  public void declarationReach() {
+    ForyJson json = newJson();
+    ForyJson all = newJsonBuilder().lenientRead(Feature.values()).build();
+    for (int representation = 0; representation < REPRESENTATIONS; representation++) {
+      assertEquals(read(json, "{\"w\":2.5}", GetterDeclared.class, representation).getW(), 2);
+      assertEquals(
+          read(json, "{\"banner\":{\"w\":3}}", NestedOwner.class, representation).banner.w, 3);
+    }
+    assertRejected(json, "{\"h\":\" 1 \"}", InheritsNothing.class, "");
+    assertRejected(json, "{\"banner\":{\"w\":2.5}}", NestedOwner.class, "");
+    assertRejected(all, "{\"wrapped\":2.5}", ValueOwner.class, "");
+    assertRejected(all, "{\"wrapped\":\"\"}", ValueOwner.class, "");
   }
 
   @Test

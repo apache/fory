@@ -31,7 +31,8 @@ import java.lang.annotation.Target;
  *
  * <p>On a field, getter, setter, or {@link JsonCreator} parameter, the listed features replace the
  * class and builder settings for that logical property; {@code @JsonLenient({})} makes one property
- * strict. On a class, they are the default for every property of that class and replace {@code
+ * strict; on any other method, including a {@link JsonCreator} method itself, the annotation is not
+ * used. On a class, they are the default for every property of that class and replace {@code
  * ForyJsonBuilder.lenientRead}. A class annotation is not inherited by subclasses and does not
  * apply to nested objects, which follow their own class setting. An exact-target {@link JsonMixin}
  * may supply or replace either declaration.

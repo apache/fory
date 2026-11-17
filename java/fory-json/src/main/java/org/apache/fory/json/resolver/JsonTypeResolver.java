@@ -508,9 +508,10 @@ public final class JsonTypeResolver {
 
   /**
    * Resolves the read occurrence of a property with lenient features. Features apply only to
-   * Fory-owned representations; {@code typeInfo} is {@code null} and {@code selected} is true when
-   * the property selects its own representation. The occurrence is returned unchanged when no
-   * feature fits, which is rejected for a feature set declared on the property itself.
+   * Fory-owned representations; {@code typeInfo} is {@code null} for an unboxed value property, and
+   * {@code selected} is true when the property selects its own representation. The occurrence is
+   * returned unchanged when no feature fits, which is rejected for a feature set declared on the
+   * property itself.
    */
   @Internal
   public JsonTypeInfo withLenientRead(
@@ -523,7 +524,9 @@ public final class JsonTypeResolver {
     if (typeInfo == null || selected) {
       if (declared) {
         throw new ForyJsonException(
-            "@JsonLenient requires the default representation of JSON property " + property);
+            typeInfo == null
+                ? "@JsonLenient is not supported on unboxed value property " + property
+                : "@JsonLenient requires the default representation of JSON property " + property);
       }
       return typeInfo;
     }

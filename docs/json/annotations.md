@@ -409,7 +409,8 @@ With this model, `{"id":123,"cat":"IAB1","w":"300.0"}` reads `id` as `"123"`, `c
 `w` as `300`, while `strictCat` still requires a JSON array.
 
 A declaration on a field, getter, setter, or `JsonCreator` parameter replaces the class and builder settings
-for that logical property, and `@JsonLenient({})` makes one property strict. A class declaration is
+for that logical property, and `@JsonLenient({})` makes one property strict. On any other method,
+including a `JsonCreator` method itself, the annotation is not used. A class declaration is
 the default for every property of that class and replaces the builder's `lenientRead` setting. It is
 not inherited by subclasses and does not apply to nested objects, which follow their own class
 setting. An exact-target Mixin can supply or replace either declaration.
