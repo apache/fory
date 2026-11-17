@@ -167,7 +167,11 @@ import org.apache.fory.json.writer.JsonWriter;
 public final class ObjectTextCodec extends AbstractJsonValueCodec<String> {
   @Override
   public void write(JsonWriter writer, String value) {
-    writer.writeString(value);
+    if (value == null) {
+      writer.writeNull();
+    } else {
+      writer.writeString(value);
+    }
   }
 
   @Override
