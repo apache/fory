@@ -663,7 +663,7 @@ jobs:
         java-version: ["17", "25"]
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
+      - uses: graalvm/setup-graalvm@60e76998d25690099182b796e99b8804da582d90 # v1.6.10
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "graalvm"
@@ -690,7 +690,7 @@ jobs:
         java-version: ["17", "25"]
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
+      - uses: graalvm/setup-graalvm@60e76998d25690099182b796e99b8804da582d90 # v1.6.10
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "graalvm"
@@ -714,7 +714,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
+      - uses: graalvm/setup-graalvm@60e76998d25690099182b796e99b8804da582d90 # v1.6.10
         with:
           java-version: "25"
           distribution: "graalvm"
@@ -785,7 +785,7 @@ jobs:
         with:
           java-version: 11
           distribution: "temurin"
-      - uses: sbt/setup-sbt@67d461eba2c4753196c230e02da850757ba4775e # v1.5.14
+      - uses: sbt/setup-sbt@7e114eae4f32ec3f93c851c2793376a77f384409 # v1.5.15
         with:
           disk-cache: false
       - name: Install fory java
@@ -812,7 +812,7 @@ jobs:
         uses: actions/setup-python@v7.1.0
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@67d461eba2c4753196c230e02da850757ba4775e # v1.5.14
+      - uses: sbt/setup-sbt@7e114eae4f32ec3f93c851c2793376a77f384409 # v1.5.15
         with:
           disk-cache: false
       - name: Run Scala Xlang Test
@@ -840,7 +840,7 @@ jobs:
         uses: actions/setup-python@v7.1.0
         with:
           python-version: 3.11
-      - uses: sbt/setup-sbt@67d461eba2c4753196c230e02da850757ba4775e # v1.5.14
+      - uses: sbt/setup-sbt@7e114eae4f32ec3f93c851c2793376a77f384409 # v1.5.15
         with:
           disk-cache: false
       - name: Install Fory Java
@@ -1102,7 +1102,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Dart
-        uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         with:
           sdk: stable
       - name: Cache Maven local repository
@@ -1340,7 +1340,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1417,7 +1417,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1467,7 +1467,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1547,7 +1547,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1611,7 +1611,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1650,7 +1650,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1691,7 +1691,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1769,7 +1769,7 @@ jobs:
           python-version: 3.8
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
+        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
