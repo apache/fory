@@ -25,11 +25,13 @@ import java.util.function.Function;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
 import org.apache.fory.serializer.Serializers;
+import org.apache.fory.util.Preconditions;
 
 /** All Fory’s basic interface, including Fory’s basic methods. */
 public interface BaseFory {
@@ -233,6 +235,30 @@ public interface BaseFory {
   <T> T deserialize(ForyInputStream inputStream, Class<T> type);
 
   <T> T deserialize(ForyReadableChannel channel, Class<T> type);
+
+  @SuppressWarnings("unchecked")
+  default <T> T deserialize(byte[] bytes, TypeRef<T> typeRef) {
+    Preconditions.checkNotNull(typeRef, "typeRef must not be null");
+    return deserialize(bytes, (Class<T>) typeRef.getRawType());
+  }
+
+  @SuppressWarnings("unchecked")
+  default <T> T deserialize(MemoryBuffer buffer, TypeRef<T> typeRef) {
+    Preconditions.checkNotNull(typeRef, "typeRef must not be null");
+    return deserialize(buffer, (Class<T>) typeRef.getRawType());
+  }
+
+  @SuppressWarnings("unchecked")
+  default <T> T deserialize(ForyInputStream inputStream, TypeRef<T> typeRef) {
+    Preconditions.checkNotNull(typeRef, "typeRef must not be null");
+    return deserialize(inputStream, (Class<T>) typeRef.getRawType());
+  }
+
+  @SuppressWarnings("unchecked")
+  default <T> T deserialize(ForyReadableChannel channel, TypeRef<T> typeRef) {
+    Preconditions.checkNotNull(typeRef, "typeRef must not be null");
+    return deserialize(channel, (Class<T>) typeRef.getRawType());
+  }
 
   Object deserialize(byte[] bytes, Iterable<MemoryBuffer> outOfBandBuffers);
 

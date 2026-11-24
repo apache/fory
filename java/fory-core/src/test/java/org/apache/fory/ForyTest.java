@@ -27,11 +27,13 @@ import static org.testng.Assert.assertTrue;
 import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import java.io.ByteArrayInputStream;
 import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -45,6 +47,8 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -63,9 +67,12 @@ import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.exception.SerializationException;
+import org.apache.fory.io.ForyInputStream;
+import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.ArraySerializersTest;
 import org.apache.fory.serializer.EnumSerializerTest;
@@ -979,5 +986,82 @@ public class ForyTest extends ForyTestBase {
             .withCompatible(false)
             .build();
     assertThrows(InsecureException.class, () -> fory.deserialize(bytes));
+  }
+
+  @Test
+  public void testDeserializeWithTypeRef() throws Exception {
+    Fory fory =
+        Fory.builder()
+            .requireClassRegistration(false)
+            .withXlang(false)
+            .withCompatible(false)
+            .build();
+
+    // 1. Root ArrayList<String> (exercises CollectionSerializer / CollectionLikeSerializer)
+    List<String> arrayList = new ArrayList<>(Arrays.asList("hello", "fory", "world"));
+    byte[] listBytes = fory.serialize(arrayList);
+    TypeRef<List<String>> listTypeRef = new TypeRef<List<String>>() {};
+
+    assertEquals(fory.deserialize(listBytes, listTypeRef), arrayList);
+    assertEquals(fory.deserialize(MemoryBuffer.fromByteArray(listBytes), listTypeRef), arrayList);
+
+    try (ForyInputStream stream = new ForyInputStream(new ByteArrayInputStream(listBytes))) {
+      assertEquals(fory.deserialize(stream, listTypeRef), arrayList);
+    }
+    try (ForyReadableChannel channel =
+        new ForyReadableChannel(Channels.newChannel(new ByteArrayInputStream(listBytes)))) {
+      assertEquals(fory.deserialize(channel, listTypeRef), arrayList);
+    }
+
+    // 2. Root LinkedList<String> and HashSet<String>
+    List<String> linkedList = new LinkedList<>(Arrays.asList("a", "b", "c"));
+    assertEquals(
+        fory.deserialize(fory.serialize(linkedList), new TypeRef<List<String>>() {}), linkedList);
+
+    Set<String> set = new HashSet<>(Arrays.asList("x", "y", "z"));
+    assertEquals(fory.deserialize(fory.serialize(set), new TypeRef<Set<String>>() {}), set);
+
+    // 3. Root Map<String, Integer> and nested Map<String, List<Integer>>
+    Map<String, Integer> intMap = new HashMap<>();
+    intMap.put("one", 1);
+    intMap.put("two", 2);
+    assertEquals(
+        fory.deserialize(fory.serialize(intMap), new TypeRef<Map<String, Integer>>() {}), intMap);
+
+    Map<String, List<Integer>> nestedMap = new HashMap<>();
+    nestedMap.put("key1", new ArrayList<>(Arrays.asList(1, 2, 3)));
+    nestedMap.put("key2", new ArrayList<>(Arrays.asList(4, 5, 6)));
+    byte[] mapBytes = fory.serialize(nestedMap);
+    TypeRef<Map<String, List<Integer>>> mapTypeRef = new TypeRef<Map<String, List<Integer>>>() {};
+    assertEquals(fory.deserialize(mapBytes, mapTypeRef), nestedMap);
+    assertEquals(fory.deserialize(MemoryBuffer.fromByteArray(mapBytes), mapTypeRef), nestedMap);
+
+    // 4. Arrays.asList view
+    List<String> asList = Arrays.asList("1", "2", "3");
+    assertEquals(fory.deserialize(fory.serialize(asList), new TypeRef<List<String>>() {}), asList);
+
+    // 5. Concrete object with TypeRef.of
+    BeanA beanA = BeanA.createBeanA(2);
+    byte[] beanBytes = fory.serialize(beanA);
+    assertEquals(fory.deserialize(beanBytes, TypeRef.of(BeanA.class)), beanA);
+
+    // 6. Null typeRef checks across all deserialize overloads
+    assertThrows(
+        NullPointerException.class,
+        () -> fory.deserialize(listBytes, (TypeRef<List<String>>) null));
+    assertThrows(
+        NullPointerException.class,
+        () ->
+            fory.deserialize(MemoryBuffer.fromByteArray(listBytes), (TypeRef<List<String>>) null));
+    try (ForyInputStream stream = new ForyInputStream(new ByteArrayInputStream(listBytes))) {
+      assertThrows(
+          NullPointerException.class, () -> fory.deserialize(stream, (TypeRef<List<String>>) null));
+    }
+    try (ForyReadableChannel channel =
+        new ForyReadableChannel(Channels.newChannel(new ByteArrayInputStream(listBytes)))) {
+      assertThrows(
+          NullPointerException.class,
+          () -> fory.deserialize(channel, (TypeRef<List<String>>) null));
+    }
   }
 }

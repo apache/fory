@@ -31,6 +31,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.test.bean.Foo;
 import org.testng.annotations.Test;
 
@@ -43,9 +44,11 @@ public class BlockedStreamUtilsTest extends ForyTestBase {
     Foo foo = Foo.create();
     BlockedStreamUtils.serialize(fory, stream, foo);
     BlockedStreamUtils.serialize(fory, stream, foo);
+    BlockedStreamUtils.serialize(fory, stream, foo);
     ByteArrayInputStream inputStream = new ByteArrayInputStream(stream.toByteArray());
     assertEquals(BlockedStreamUtils.deserialize(fory, inputStream), foo);
     assertEquals(BlockedStreamUtils.deserialize(fory, inputStream, Foo.class), foo);
+    assertEquals(BlockedStreamUtils.deserialize(fory, inputStream, new TypeRef<Foo>() {}), foo);
   }
 
   @Test
@@ -55,10 +58,12 @@ public class BlockedStreamUtilsTest extends ForyTestBase {
     Foo foo = Foo.create();
     BlockedStreamUtils.serialize(fory, stream, foo);
     BlockedStreamUtils.serialize(fory, stream, foo);
+    BlockedStreamUtils.serialize(fory, stream, foo);
     try (MemoryBufferReadableChannel channel =
         new MemoryBufferReadableChannel(MemoryBuffer.fromByteArray(stream.toByteArray()))) {
       assertEquals(BlockedStreamUtils.deserialize(fory, channel), foo);
       assertEquals(BlockedStreamUtils.deserialize(fory, channel, Foo.class), foo);
+      assertEquals(BlockedStreamUtils.deserialize(fory, channel, new TypeRef<Foo>() {}), foo);
     }
   }
 
