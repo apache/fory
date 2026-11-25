@@ -148,6 +148,12 @@ representation, such as `MoneyCodec` above, does not reserve graph memory. Compl
 perform their own application validation; Fory JSON does not wrap a complete custom representation
 with the target type's `JsonValidator` methods.
 
+A codec can reject a malformed value by throwing any unchecked exception. When `fromJson` reads the
+value, Fory JSON reports that exception as a `ForyJsonException` that keeps it as the cause and
+names the JSON position, so callers can handle every read failure through `ForyException`. A
+`ForyException` thrown by the codec and any `Error` propagate unchanged. Exceptions thrown while
+writing, or inside an operation passed to `ForyJson.readUtf8`, keep their own type.
+
 Registering a custom codec for a `JsonSubTypes` base replaces that base's subtype annotation.
 Registering one for a listed subtype is supported by the two wrapper inclusions but not by inline
 property inclusion.

@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -999,7 +1000,14 @@ public final class ForyJson {
 
   private Object readLatin1Value(Latin1JsonReader reader, Class<?> type, JsonState state) {
     JsonTypeInfo typeInfo = state.declaredRootTypeInfo(type);
-    Object value = typeInfo.latin1Reader().readLatin1(reader);
+    Object value;
+    try {
+      value = typeInfo.latin1Reader().readLatin1(reader);
+    } catch (ForyException e) {
+      throw e;
+    } catch (RuntimeException e) {
+      throw readFailure(reader, e);
+    }
     reader.finish();
     return value;
   }
@@ -1010,14 +1018,28 @@ public final class ForyJson {
       reader.finish();
       return null;
     }
-    Object value = typeInfo.latin1Reader().readLatin1(reader);
+    Object value;
+    try {
+      value = typeInfo.latin1Reader().readLatin1(reader);
+    } catch (ForyException e) {
+      throw e;
+    } catch (RuntimeException e) {
+      throw readFailure(reader, e);
+    }
     reader.finish();
     return value;
   }
 
   private Object readUtf16Value(Utf16JsonReader reader, Class<?> type, JsonState state) {
     JsonTypeInfo typeInfo = state.declaredRootTypeInfo(type);
-    Object value = typeInfo.utf16Reader().readUtf16(reader);
+    Object value;
+    try {
+      value = typeInfo.utf16Reader().readUtf16(reader);
+    } catch (ForyException e) {
+      throw e;
+    } catch (RuntimeException e) {
+      throw readFailure(reader, e);
+    }
     reader.finish();
     return value;
   }
@@ -1028,14 +1050,28 @@ public final class ForyJson {
       reader.finish();
       return null;
     }
-    Object value = typeInfo.utf16Reader().readUtf16(reader);
+    Object value;
+    try {
+      value = typeInfo.utf16Reader().readUtf16(reader);
+    } catch (ForyException e) {
+      throw e;
+    } catch (RuntimeException e) {
+      throw readFailure(reader, e);
+    }
     reader.finish();
     return value;
   }
 
   private Object readUtf8Value(Utf8JsonReader reader, Class<?> type, JsonState state) {
     JsonTypeInfo typeInfo = state.declaredRootTypeInfo(type);
-    Object value = typeInfo.utf8Reader().readUtf8(reader);
+    Object value;
+    try {
+      value = typeInfo.utf8Reader().readUtf8(reader);
+    } catch (ForyException e) {
+      throw e;
+    } catch (RuntimeException e) {
+      throw readFailure(reader, e);
+    }
     reader.finish();
     return value;
   }
@@ -1046,9 +1082,27 @@ public final class ForyJson {
       reader.finish();
       return null;
     }
-    Object value = typeInfo.utf8Reader().readUtf8(reader);
+    Object value;
+    try {
+      value = typeInfo.utf8Reader().readUtf8(reader);
+    } catch (ForyException e) {
+      throw e;
+    } catch (RuntimeException e) {
+      throw readFailure(reader, e);
+    }
     reader.finish();
     return value;
+  }
+
+  /**
+   * Reports an unchecked failure of the root value read, such as one thrown by a custom codec, as a
+   * {@link ForyJsonException} that keeps the failure as its cause. Fory exceptions and errors are
+   * not routed here. Wrapping once per root read keeps codec, property, and generated read paths
+   * free of per-value exception handling.
+   */
+  private static ForyJsonException readFailure(JsonReader reader, RuntimeException cause) {
+    return new ForyJsonException(
+        "Cannot read JSON value at JSON position " + reader.position() + ": " + cause, cause);
   }
 
   private static boolean readOuterNull(JsonReader reader, TypeRef<?> type, JsonTypeInfo typeInfo) {
