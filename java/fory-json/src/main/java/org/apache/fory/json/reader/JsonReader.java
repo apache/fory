@@ -167,6 +167,9 @@ public abstract class JsonReader {
   };
 
   private final JsonConfig config;
+  // Strict reads pair every surrogate. Tolerant reads decode each escape or raw char on its own, so
+  // a valid pair still decodes to the same two chars; check it only after a surrogate is seen.
+  protected final boolean allowUnpairedSurrogates;
   private final JsonTypeResolver typeResolver;
   protected int position;
   private final int maxDepth;
@@ -284,6 +287,7 @@ public abstract class JsonReader {
     this.config = config;
     this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
     maxDepth = config.maxDepth();
+    allowUnpairedSurrogates = config.allowUnpairedSurrogates();
   }
 
   /**
@@ -2821,7 +2825,7 @@ public abstract class JsonReader {
       }
       if (ch == '\\') {
         ch = readEscapedFieldNameChar();
-        if (Character.isHighSurrogate(ch)) {
+        if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
           if (latin1) {
             hash = JsonFieldNameHash.hashPacked(value, nameLength);
             latin1 = false;
@@ -2838,7 +2842,7 @@ public abstract class JsonReader {
           }
           hash = JsonFieldNameHash.update(hash, low);
           nameLength++;
-        } else if (Character.isLowSurrogate(ch)) {
+        } else if (Character.isLowSurrogate(ch) && !allowUnpairedSurrogates) {
           throw error("Unpaired low surrogate escape");
         } else {
           if (latin1) {
@@ -2858,7 +2862,7 @@ public abstract class JsonReader {
       if (ch < 0x20) {
         throw error("Control character in string");
       }
-      if (Character.isHighSurrogate(ch)) {
+      if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
         if (position >= length() || !Character.isLowSurrogate(charAt(position))) {
           throw error("Unpaired high surrogate in string");
         }
@@ -2871,7 +2875,7 @@ public abstract class JsonReader {
         nameLength += 2;
         continue;
       }
-      if (Character.isLowSurrogate(ch)) {
+      if (Character.isLowSurrogate(ch) && !allowUnpairedSurrogates) {
         throw error("Unpaired low surrogate in string");
       }
       if (latin1) {

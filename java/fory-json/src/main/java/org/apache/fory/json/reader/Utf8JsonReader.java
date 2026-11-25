@@ -254,7 +254,9 @@ public final class Utf8JsonReader extends JsonReader {
         cursor = (int) (decoded >>> 32);
         codePoint = (int) decoded;
       }
-      if (codePoint <= 0xffff && Character.isHighSurrogate((char) codePoint)) {
+      if (codePoint <= 0xffff
+          && Character.isHighSurrogate((char) codePoint)
+          && !allowUnpairedSurrogates) {
         if (latin1) {
           hash = JsonFieldNameHash.hashPacked(value, decodedLength);
           latin1 = false;
@@ -310,7 +312,7 @@ public final class Utf8JsonReader extends JsonReader {
           escaped = scanSimpleEscape(escapedByte, cursor - 1);
         }
         matches &= index < expected.length() && expected.charAt(index++) == escaped;
-        if (Character.isHighSurrogate(escaped)) {
+        if (Character.isHighSurrogate(escaped) && !allowUnpairedSurrogates) {
           cursor += 2;
           char low = scanUnicodeEscape(cursor);
           cursor += 4;
@@ -355,7 +357,7 @@ public final class Utf8JsonReader extends JsonReader {
         } else {
           ch = scanSimpleEscape(escaped, offset - 1);
         }
-        if (Character.isHighSurrogate(ch)) {
+        if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
           offset += 2;
           char low = scanUnicodeEscape(offset);
           offset += 4;
@@ -400,6 +402,9 @@ public final class Utf8JsonReader extends JsonReader {
     }
     char ch = scanUnicodeEscape(cursor);
     cursor += 4;
+    if (!Character.isSurrogate(ch) || allowUnpairedSurrogates) {
+      return cursor;
+    }
     if (Character.isHighSurrogate(ch)) {
       if (cursor + 6 > inputLimit || input[cursor] != '\\' || input[cursor + 1] != 'u') {
         throw errorAt("Unpaired high surrogate escape", slash);
@@ -410,10 +415,7 @@ public final class Utf8JsonReader extends JsonReader {
       }
       return cursor + 6;
     }
-    if (Character.isLowSurrogate(ch)) {
-      throw errorAt("Unpaired low surrogate escape", slash);
-    }
-    return cursor;
+    throw errorAt("Unpaired low surrogate escape", slash);
   }
 
   private long scanUtf8CodePoint(int offset) {
@@ -4277,7 +4279,7 @@ public final class Utf8JsonReader extends JsonReader {
         position = cursor;
         b = readEscapedFieldNameChar();
         cursor = position;
-        if (Character.isHighSurrogate((char) b)) {
+        if (Character.isHighSurrogate((char) b) && !allowUnpairedSurrogates) {
           if (latin1) {
             hash = JsonFieldNameHash.hashPacked(value, nameLength);
             latin1 = false;
@@ -4297,7 +4299,7 @@ public final class Utf8JsonReader extends JsonReader {
           nameLength++;
           continue;
         }
-        if (Character.isLowSurrogate((char) b)) {
+        if (Character.isLowSurrogate((char) b) && !allowUnpairedSurrogates) {
           throw error("Unpaired low surrogate escape");
         }
       } else {
@@ -4385,7 +4387,7 @@ public final class Utf8JsonReader extends JsonReader {
       }
       if (b == '\\') {
         char ch = readEscapedStringChar();
-        if (Character.isHighSurrogate(ch)) {
+        if (Character.isHighSurrogate(ch) && !allowUnpairedSurrogates) {
           char low = readLowSurrogateEscape();
           bytes = widenStringDecodeBuffer(bytes, out);
           out <<= 1;
@@ -4394,7 +4396,7 @@ public final class Utf8JsonReader extends JsonReader {
           out = putUtf16Char(bytes, out, low);
           return readStringUtf16Tail(bytes, out);
         }
-        if (Character.isLowSurrogate(ch)) {
+        if (Character.isLowSurrogate(ch) && !allowUnpairedSurrogates) {
           throw error("Unpaired low surrogate escape");
         }
         if (ch <= 0xFF) {
@@ -4525,7 +4527,7 @@ public final class Utf8JsonReader extends JsonReader {
         this.position = position;
         char ch = readEscapedStringChar();
         position = this.position;
-        if (!Character.isSurrogate(ch)) {
+        if (!Character.isSurrogate(ch) || allowUnpairedSurrogates) {
           if (out + 2 > capacity) {
             bytes = growStringDecodeBuffer(bytes, out + 2);
             capacity = bytes.length;

@@ -132,6 +132,9 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   private byte coder;
   private byte nextCoder;
   private boolean latin1Output;
+  // UTF16 String values clear latin1Output before copying because their non-Latin1 char is
+  // normally written raw. An escaped unpaired surrogate can be that only char, so toJson rechecks.
+  private boolean unpairedSurrogateEscaped;
   private int position;
 
   public StringJsonWriter(JsonConfig config, JsonTypeResolver typeResolver) {
@@ -157,6 +160,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     }
     coder = nextCoder;
     latin1Output = coder == UTF16;
+    unpairedSurrogateEscaped = false;
     position = 0;
   }
 
@@ -184,7 +188,8 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     // exposed.
     byte resultCoder = coder;
     byte[] bytes;
-    if (coder == UTF16 && latin1Output) {
+    if (coder == UTF16
+        && (latin1Output || unpairedSurrogateEscaped && fitsLatin1(buffer, position))) {
       bytes = compressUtf16ToLatin1(buffer, position);
       resultCoder = LATIN1;
     } else {
@@ -433,11 +438,16 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeChar(char value) {
-    if (Character.isSurrogate(value)) {
+    boolean surrogate = Character.isSurrogate(value);
+    if (surrogate && !allowUnpairedSurrogates) {
       throw new ForyJsonException("JSON char cannot be a surrogate: " + Integer.toHexString(value));
     }
     writeByteRaw((byte) '"');
-    writeEscapedChar(value);
+    if (surrogate) {
+      writeUnpairedSurrogate(value);
+    } else {
+      writeEscapedChar(value);
+    }
     writeByteRaw((byte) '"');
   }
 
@@ -1954,14 +1964,12 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         continue;
       }
       ch = value.charAt(i++);
-      if (Character.isHighSurrogate(ch)) {
-        if (i >= length) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
+      if (!Character.isSurrogate(ch)) {
+        writeEscapedChar(ch);
+      } else if (Character.isHighSurrogate(ch)
+          && i < length
+          && Character.isLowSurrogate(value.charAt(i))) {
         char low = value.charAt(i++);
-        if (!Character.isLowSurrogate(low)) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
         if (escapeNonAscii) {
           writeUnicodeEscape(ch);
           writeUnicodeEscape(low);
@@ -1969,10 +1977,8 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
           writeCharRaw(ch);
           writeCharRaw(low);
         }
-      } else if (Character.isLowSurrogate(ch)) {
-        throw new ForyJsonException("Unpaired low surrogate in string");
       } else {
-        writeEscapedChar(ch);
+        writeUnpairedSurrogate(ch);
       }
     }
     writeByteRaw((byte) '"');
@@ -2020,14 +2026,12 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         continue;
       }
       ch = value.charAt(i++);
-      if (Character.isHighSurrogate(ch)) {
-        if (i >= length) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
+      if (!Character.isSurrogate(ch)) {
+        writeEscapedChar(ch);
+      } else if (Character.isHighSurrogate(ch)
+          && i < length
+          && Character.isLowSurrogate(value.charAt(i))) {
         char low = value.charAt(i++);
-        if (!Character.isLowSurrogate(low)) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
         if (escapeNonAscii) {
           writeUnicodeEscape(ch);
           writeUnicodeEscape(low);
@@ -2035,10 +2039,8 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
           writeCharRaw(ch);
           writeCharRaw(low);
         }
-      } else if (Character.isLowSurrogate(ch)) {
-        throw new ForyJsonException("Unpaired low surrogate in string");
       } else {
-        writeEscapedChar(ch);
+        writeUnpairedSurrogate(ch);
       }
     }
     writeByteRaw((byte) '"');
@@ -2140,17 +2142,18 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         i += 2;
         if (ch > 0x7f) {
           if (Character.isSurrogate(ch)) {
-            if (!Character.isHighSurrogate(ch) || i == length) {
-              throw new ForyJsonException("Unpaired surrogate in string");
+            if (Character.isHighSurrogate(ch)
+                && i < length
+                && Character.isLowSurrogate(StringSerializer.getBytesChar(value, i))) {
+              LittleEndian.putInt64(bytes, pos, escapes[ch]);
+              pos += 6;
+              ch = StringSerializer.getBytesChar(value, i);
+              i += 2;
+            } else if (allowUnpairedSurrogates) {
+              unpairedSurrogateEscaped = true;
+            } else {
+              throw unpairedSurrogate(ch);
             }
-            char low = StringSerializer.getBytesChar(value, i);
-            i += 2;
-            if (!Character.isLowSurrogate(low)) {
-              throw new ForyJsonException("Unpaired high surrogate in string");
-            }
-            LittleEndian.putInt64(bytes, pos, escapes[ch]);
-            pos += 6;
-            ch = low;
           }
           LittleEndian.putInt64(bytes, pos, escapes[ch]);
           pos += 6;
@@ -2424,24 +2427,20 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         continue;
       }
       ch = value.charAt(i++);
-      if (Character.isHighSurrogate(ch)) {
-        if (i >= length) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
+      if (!Character.isSurrogate(ch)) {
+        writeEscapedChar(ch);
+      } else if (Character.isHighSurrogate(ch)
+          && i < length
+          && Character.isLowSurrogate(value.charAt(i))) {
         char low = value.charAt(i++);
-        if (!Character.isLowSurrogate(low)) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
         latin1Output = false;
         if (position + 4 > buffer.length) {
           grow(4);
         }
         writeUtf16CharNoEnsure(ch);
         writeUtf16CharNoEnsure(low);
-      } else if (Character.isLowSurrogate(ch)) {
-        throw new ForyJsonException("Unpaired low surrogate in string");
       } else {
-        writeEscapedChar(ch);
+        writeUnpairedSurrogate(ch);
       }
     }
     writeByteRaw((byte) '"');
@@ -2475,27 +2474,31 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         continue;
       }
       ch = value.charAt(i++);
-      if (Character.isHighSurrogate(ch)) {
-        if (i >= length) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
+      if (!Character.isSurrogate(ch)) {
+        writeEscapedChar(ch);
+      } else if (Character.isHighSurrogate(ch)
+          && i < length
+          && Character.isLowSurrogate(value.charAt(i))) {
         char low = value.charAt(i++);
-        if (!Character.isLowSurrogate(low)) {
-          throw new ForyJsonException("Unpaired high surrogate in string");
-        }
         latin1Output = false;
         if (position + 4 > buffer.length) {
           grow(4);
         }
         writeUtf16CharNoEnsure(ch);
         writeUtf16CharNoEnsure(low);
-      } else if (Character.isLowSurrogate(ch)) {
-        throw new ForyJsonException("Unpaired low surrogate in string");
       } else {
-        writeEscapedChar(ch);
+        writeUnpairedSurrogate(ch);
       }
     }
     writeByteRaw((byte) '"');
+  }
+
+  private void writeUnpairedSurrogate(char ch) {
+    if (!allowUnpairedSurrogates) {
+      throw unpairedSurrogate(ch);
+    }
+    unpairedSurrogateEscaped = true;
+    writeUnicodeEscape(ch);
   }
 
   private void writeUnicodeEscape(char ch) {
@@ -3111,6 +3114,15 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   private static long spreadLatin1ToUtf16(long value) {
     value = (value | (value << 16)) & UTF16_PAIR_MASK;
     return (value | (value << 8)) & UTF16_BYTE_MASK;
+  }
+
+  private static boolean fitsLatin1(byte[] source, int length) {
+    for (int i = LITTLE_ENDIAN ? 1 : 0; i < length; i += 2) {
+      if (source[i] != 0) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private static byte[] compressUtf16ToLatin1(byte[] source, int length) {
